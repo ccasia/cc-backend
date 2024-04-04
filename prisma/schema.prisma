@@ -14,6 +14,25 @@ datasource db {
 }
 
 model User {
-  id   Int    @id @default(autoincrement())
-  name String @db.VarChar(255)
+  id       Int     @id @default(autoincrement())
+  email    String  @unique @db.VarChar(255)
+  password String  @db.VarChar(255)
+  Admin    Admin[]
+}
+
+model Admin {
+  id          Int     @id @default(autoincrement())
+  name        String  @db.VarChar(255)
+  designation String  @db.VarChar(100)
+  photoURL    String? @db.VarChar(255)
+  country     String  @db.VarChar(100)
+  phoneNumber String  @db.VarChar(100)
+  mode        Mode
+  user        User    @relation(fields: [userID], references: [id])
+  userID      Int
+}
+
+enum Mode {
+  god
+  normal
 }
