@@ -12,7 +12,8 @@
     "format": "npx eslint . --ext .ts --fix",
     "test": "jest",
     "migrate": "npx prisma migrate dev",
-    "prod:prev": "node dist/app.js"
+    "prod:prev": "node dist/app.js",
+    "studio": "npx prisma studio"
   },
   "dependencies": {
     "@prisma/client": "^5.12.1",
