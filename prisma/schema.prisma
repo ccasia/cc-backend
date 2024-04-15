@@ -26,23 +26,25 @@ model User {
 }
 
 model Admin {
-  id          String  @id @unique @default(uuid())
-  name        String  @db.VarChar(255)
-  designation String  @db.VarChar(100)
-  photoURL    String? @db.VarChar(255)
-  country     String  @db.VarChar(100)
-  phoneNumber String  @db.VarChar(100)
-  mode        Mode    @default(normal)
-  user        User    @relation(fields: [userId], references: [id])
-  userId      String  @unique
+  id                String  @id @unique @default(uuid())
+  name              String  @db.VarChar(255)
+  designation       String  @db.VarChar(100)
+  photoURL          String? @db.VarChar(255)
+  country           String  @db.VarChar(100)
+  phoneNumber       String  @db.VarChar(100)
+  confirmationToken String? @unique
+  status            Status  @default(active)
+  mode              Mode    @default(normal)
+  user              User    @relation(fields: [userId], references: [id])
+  userId            String  @unique
 }
 
 model Creator {
-  id     String @id @unique @default(uuid())
+  id        String @id @unique @default(uuid())
   firstName String @db.VarChar(100)
   lastName  String @db.VarChar(100)
-  user   User   @relation(fields: [userId], references: [id])
-  userId String @unique
+  user      User   @relation(fields: [userId], references: [id])
+  userId    String @unique
 }
 
 model Finance {
@@ -50,21 +52,23 @@ model Finance {
   user   User   @relation(fields: [userId], references: [id])
   userId String @unique
 }
+
 //  CREATE TABLE session (
 //   sid VARCHAR(255) PRIMARY KEY NOT NULL,
 //   sess JSON NOT NULL,
 //   expire TIMESTAMP WITH TIME ZONE NOT NULL
 // );
 
-model session{
-  sid String @id @unique @default(uuid())
-  sess Json 
-  expire DateTime 
+model session {
+  sid    String   @id @unique @default(uuid())
+  sess   Json
+  expire DateTime
 }
-model emailInvite{
-  id String @id @unique @default(uuid())
-  link String @unique
-  key String @unique
+
+model emailInvite {
+  id        String   @id @unique @default(uuid())
+  link      String   @unique
+  key       String   @unique
   createdAt DateTime @default(now())
 }
 
@@ -74,13 +78,15 @@ enum Mode {
   normal
 }
 
+enum Status {
+  active
+  inactive
+}
+
 enum Role {
   user
   admin
   superadmin
   creator
   finance
-  normal
-  afiq
-  mohand
 }

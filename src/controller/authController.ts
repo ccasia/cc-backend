@@ -31,9 +31,7 @@ export const login = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Invalid credentials' });
     }
 
-    // if (data?.password !== password) {
-    //   return res.status(401).json({ message: 'Invalid credentials' });
-    // }
+ 
     const accessToken = jwt.sign({ id: data.id }, process.env.ACCESSKEY as Secret, {
       expiresIn: '1h',
     });
@@ -78,7 +76,7 @@ export const registerUser = async (req: Request, res: Response) => {
       data: {
         email,
         password: hashedPassword,
-        role: 'normal',
+        role: 'admin',
       },
     });
     return res.status(201).json(data);
@@ -114,6 +112,7 @@ export const registerSuperAdmin = async (req: Request, res: Response) => {
         country: 'India',
         photoURL: 'https://www.google.com',
         phoneNumber: '1234567890',
+        status: 'active',
         userId: data.id,
       },
     });
@@ -133,9 +132,21 @@ type AdminRequestData = {
 };
 // for saprate admin function
 export const registerAdmin = async (req: Request, res: Response) => {
-  console.log('register', req.body);
-  const { firstname, lastname, phone, email, password }: AdminRequestData = req.body;
+
+  const { firstname, lastname, email, password }: AdminRequestData = req.body;
+ 
+  const verifyToken = jwt.sign({ email }, process.env.ACCESSKEY as string, { expiresIn: '1h' });
+
   try {
+    const user = await prisma.user.findFirst({
+      where: {
+        id: req.session.userid,
+      },
+    });
+    if (user?.role !== 'superadmin') {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
     const data = await prisma.user.create({
       data: {
         email,
@@ -150,11 +161,15 @@ export const registerAdmin = async (req: Request, res: Response) => {
         designation: 'admin',
         country: 'India',
         photoURL: 'https://www.google.com',
-        phoneNumber: phone,
+        phoneNumber: '019223223',
+        confirmationToken: verifyToken,
+        status: 'inactive',
         userId: data.id,
       },
     });
-
+    // add email
+    // AdminInvitaion(email, verifyToken);
+    AdminInvitaion(email, verifyToken);
     return res.status(201).json({ data, admin });
   } catch (error) {
     return res.status(400).json({ message: 'User already exists' });
@@ -238,6 +253,36 @@ export const sendEmail = async (req: Request, res: Response) => {
     return res.status(200).json({ message: 'Email sent' });
   } catch (error) {
     console.log(error);
+  }
+};
+//Token verification
+export const verifyUser = async (req: Request, res: Response) => {
+  const { token } = req.body;
+  try {
+    // Find the user by the verification token
+    const user = await prisma.admin.findUnique({
+      where: {
+        confirmationToken: token,
+      },
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    // Update the user's verified status
+    const updatedUser = await prisma.admin.update({
+      where: {
+       userId: user.userId,
+      },
+      data: {
+        status: 'active',
+      },
+    });
+
+    return res.status(200).json({ message: 'User verified successfully', user: updatedUser });
+  } catch (error) {
+    console.error('Error verifying user:', error);
+    return res.status(500).json({ error: 'An error occurred while verifying the user' });
   }
 };
 
