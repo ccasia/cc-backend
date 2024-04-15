@@ -4,6 +4,7 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 interface AdminProfile {
+  userId: string;
   name: string;
   email: string;
   password: string;
@@ -14,6 +15,7 @@ interface AdminProfile {
 }
 
 export const updateUser = async ({
+  userId,
   name,
   email,
   password,
@@ -25,8 +27,7 @@ export const updateUser = async ({
   try {
     const data = await prisma.admin.update({
       where: {
-        // Replace with admin id
-        id: 1,
+        id: userId,
       },
       data: {
         name,
