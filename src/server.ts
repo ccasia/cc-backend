@@ -11,7 +11,7 @@ import cookieParser from 'cookie-parser';
 dotenv.config();
 
 const app: Application = express();
-const name: string = 'mohand';
+const name = 'mohand';
 console.log(name);
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));

@@ -14,7 +14,6 @@ datasource db {
 }
 
 model User {
-<<<<<<< Updated upstream
   id        String   @id @unique @default(uuid())
   email     String   @unique @db.VarChar(255)
   password  String   @db.VarChar(255)
@@ -54,12 +53,6 @@ model Finance {
   userId String @unique
 }
 
-//  CREATE TABLE session (
-//   sid VARCHAR(255) PRIMARY KEY NOT NULL,
-//   sess JSON NOT NULL,
-//   expire TIMESTAMP WITH TIME ZONE NOT NULL
-// );
-
 model session {
   sid    String   @id @unique @default(uuid())
   sess   Json
@@ -71,32 +64,6 @@ model emailInvite {
   link      String   @unique
   key       String   @unique
   createdAt DateTime @default(now())
-=======
-  id           Int           @id @default(autoincrement())
-  email        String        @unique @db.VarChar(255)
-  password     String        @db.VarChar(255)
-  Admin        Admin?
-  Notification Notification?
-}
-
-model Admin {
-  id          Int     @id @default(autoincrement())
-  name        String  @db.VarChar(255)
-  designation String  @db.VarChar(100)
-  photoURL    String? @db.VarChar(255)
-  country     String  @db.VarChar(100)
-  phoneNumber String  @db.VarChar(100)
-  mode        Mode
-  user        User    @relation(fields: [userID], references: [id])
-  userID      Int     @unique
-}
-
-model Notification {
-  id          Int    @id @default(autoincrement())
-  content     String @db.VarChar(100)
-  receiver    User   @relation(fields: [receiver_id], references: [id])
-  receiver_id Int    @unique
->>>>>>> Stashed changes
 }
 
 enum Mode {
