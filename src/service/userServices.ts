@@ -48,3 +48,12 @@ export const updateUser = async ({
     return error;
   }
 };
+
+export const getUser = async (id: string) => {
+  const user = await prisma.user.findUnique({
+    where: {
+      id: id,
+    },
+  });
+  return user;
+};

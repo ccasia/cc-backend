@@ -5,6 +5,7 @@ import { Request, Response } from 'express';
 import { AdminInvitaion } from '../config/nodemailer.config';
 // import session from 'express-session';
 import bcrypt from 'bcryptjs';
+import { getUser } from 'src/service/userServices';
 
 const prisma = new PrismaClient();
 
@@ -292,4 +293,16 @@ export const logout = async (req: Request, res: Response) => {
     res.clearCookie('accessToken');
     return res.status(200).json({ message: 'Logged out' });
   });
+};
+
+export const getprofile = async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.user as any;
+    const user = await getUser(userId);
+    return res.status(200).json({ user });
+  } catch (error) {
+    return res.status(404).json({
+      error: (error as any).message,
+    });
+  }
 };
