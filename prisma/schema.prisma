@@ -14,25 +14,79 @@ datasource db {
 }
 
 model User {
-  id       Int     @id @default(autoincrement())
-  email    String  @unique @db.VarChar(255)
-  password String  @db.VarChar(255)
-  Admin    Admin[]
+  id        String   @id @unique @default(uuid())
+  email     String   @unique @db.VarChar(255)
+  password  String   @db.VarChar(255)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  role      Role     @default(user)
+  admin     Admin?
+  creator   Creator?
+  finance   Finance?
 }
 
 model Admin {
-  id          Int     @id @default(autoincrement())
-  name        String  @db.VarChar(255)
-  designation String  @db.VarChar(100)
-  photoURL    String? @db.VarChar(255)
-  country     String  @db.VarChar(100)
-  phoneNumber String  @db.VarChar(100)
-  mode        Mode
-  user        User    @relation(fields: [userID], references: [id])
-  userID      Int
+  id                String  @id @unique @default(uuid())
+  name              String  @db.VarChar(255)
+  designation       String  @db.VarChar(100)
+  photoURL          String? @db.VarChar(255)
+  country           String  @db.VarChar(100)
+  phoneNumber       String  @db.VarChar(100)
+  confirmationToken String? @unique
+  status            Status  @default(active)
+  mode              Mode    @default(normal)
+  user              User    @relation(fields: [userId], references: [id])
+  userId            String  @unique
+}
+
+model Creator {
+  id        String @id @unique @default(uuid())
+  firstName String @db.VarChar(100)
+  lastName  String @db.VarChar(100)
+  user      User   @relation(fields: [userId], references: [id])
+  userId    String @unique
+}
+
+model Finance {
+  id     String @id @unique @default(uuid())
+  user   User   @relation(fields: [userId], references: [id])
+  userId String @unique
+}
+
+//  CREATE TABLE session (
+//   sid VARCHAR(255) PRIMARY KEY NOT NULL,
+//   sess JSON NOT NULL,
+//   expire TIMESTAMP WITH TIME ZONE NOT NULL
+// );
+
+model session {
+  sid    String   @id @unique @default(uuid())
+  sess   Json
+  expire DateTime
+}
+
+model emailInvite {
+  id        String   @id @unique @default(uuid())
+  link      String   @unique
+  key       String   @unique
+  createdAt DateTime @default(now())
 }
 
 enum Mode {
+  // astaghfirullah
   god
   normal
+}
+
+enum Status {
+  active
+  inactive
+}
+
+enum Role {
+  user
+  admin
+  superadmin
+  creator
+  finance
 }
