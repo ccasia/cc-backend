@@ -14,7 +14,7 @@ const transport = nodemailer.createTransport({
   },
 });
 
-export const AdminInvitaion = ( email: string, confirmationCode: string) => {
+export const AdminInvitaion = (email: string, confirmationCode: string) => {
   transport
     .sendMail({
       from: user,

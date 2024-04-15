@@ -8,10 +8,10 @@ import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
-type RequestData = {
+interface RequestData {
   email: string;
   password: string;
-};
+}
 
 export const login = async (req: Request, res: Response) => {
   const { email, password }: RequestData = req.body;
@@ -23,21 +23,20 @@ export const login = async (req: Request, res: Response) => {
       },
     });
 
-    if (!data) return res.status(404).json({ message: 'User not found' });
+    if (!data) return res.status(404).json({ message: 'Wrong email' });
 
-    // hashed password
+    // Hashed password
     const isMatch = await bcrypt.compare(password, data.password);
     if (!isMatch) {
-      return res.status(404).json({ message: 'Invalid credentials' });
+      return res.status(404).json({ message: 'Wrong password' });
     }
 
- 
     const accessToken = jwt.sign({ id: data.id }, process.env.ACCESSKEY as Secret, {
       expiresIn: '1h',
     });
     // const refreshToken = jwt.sign({ id: data.id }, process.env.REFRESHKEY as Secret, {});
 
-    var session = req.session;
+    const session = req.session;
     session.userid = data.id;
     session.accessToken = accessToken;
     res.cookie('userid', data.id, {
@@ -59,7 +58,6 @@ export const login = async (req: Request, res: Response) => {
 };
 // normal user for testing
 export const registerUser = async (req: Request, res: Response) => {
-  console.log('register', req.body);
   const { email, password }: RequestData = req.body;
 
   try {
@@ -71,7 +69,7 @@ export const registerUser = async (req: Request, res: Response) => {
     if (search) {
       return res.status(400).json({ message: 'User already exists' });
     }
-    let hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(password, 10);
     const data = await prisma.user.create({
       data: {
         email,
@@ -84,6 +82,7 @@ export const registerUser = async (req: Request, res: Response) => {
     return res.status(400).json({ message: 'User already exists' });
   }
 };
+
 // temporary function for superadmin
 export const registerSuperAdmin = async (req: Request, res: Response) => {
   const { email, password }: RequestData = req.body;
@@ -96,7 +95,7 @@ export const registerSuperAdmin = async (req: Request, res: Response) => {
     if (search) {
       return res.status(400).json({ message: 'User already exists' });
     }
-    let hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(password, 10);
 
     const data = await prisma.user.create({
       data: {
@@ -123,18 +122,17 @@ export const registerSuperAdmin = async (req: Request, res: Response) => {
   }
 };
 
-type AdminRequestData = {
+interface AdminRequestData {
   firstname: string;
   lastname: string;
   phone: string;
   email: string;
   password: string;
-};
+}
 // for saprate admin function
 export const registerAdmin = async (req: Request, res: Response) => {
-
   const { firstname, lastname, email, password }: AdminRequestData = req.body;
- 
+
   const verifyToken = jwt.sign({ email }, process.env.ACCESSKEY as string, { expiresIn: '1h' });
 
   try {
@@ -176,12 +174,12 @@ export const registerAdmin = async (req: Request, res: Response) => {
   }
 };
 
-type CreatorRequestData = {
+interface CreatorRequestData {
   firstName: string;
   lastName: string;
   email: string;
   password: string;
-};
+}
 
 // register creator only
 export const registerCreator = async (req: Request, res: Response) => {
@@ -197,7 +195,7 @@ export const registerCreator = async (req: Request, res: Response) => {
     if (search) {
       return res.status(400).json({ message: 'User already exists' });
     }
-    let hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(password, 10);
 
     const data = await prisma.user.create({
       data: {
@@ -221,14 +219,13 @@ export const registerCreator = async (req: Request, res: Response) => {
   }
 };
 
-export const displayAll = async (req: Request, res: Response) => {
-  console.log(req.body);
+export const displayAll = async (_req: Request, res: Response) => {
   try {
     const data = await prisma.user.findMany();
     console.log(data);
     return res.status(201).json({ data });
   } catch (error) {
-    return res.status(400).json({ message: 'User already exists' });
+    return res.status(400).json({ message: 'No user found.' });
   }
 };
 
@@ -272,7 +269,7 @@ export const verifyUser = async (req: Request, res: Response) => {
     // Update the user's verified status
     const updatedUser = await prisma.admin.update({
       where: {
-       userId: user.userId,
+        userId: user.userId,
       },
       data: {
         status: 'active',
