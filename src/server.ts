@@ -69,7 +69,7 @@ app.use(
   }),
 );
 
-app.use(router);
+app.use('/api', router);
 
 app.get('/', (_req: Request, res: Response) => {
   res.send('Server is running...');

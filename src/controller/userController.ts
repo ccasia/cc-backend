@@ -5,6 +5,7 @@ import { updateUser } from 'src/service/userServices';
 export const updateProfile = async (req: Request, res: Response) => {
   //   const { name, email, password, photoURL, designation, country, phoneNumber } = req.body;
   try {
+    console.log(req.body);
     await updateUser(req.body);
     res.status(200).json({ message: 'Successfully updated' });
   } catch (error) {

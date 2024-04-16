@@ -6,10 +6,19 @@ import { AdminInvitaion } from '../config/nodemailer.config';
 // import session from 'express-session';
 import bcrypt from 'bcryptjs';
 import { getUser } from 'src/service/userServices';
+import { handleChangePassword } from 'src/service/authServices';
+// import { getUser } from 'src/service/userServices';
 
 const prisma = new PrismaClient();
 
 interface RequestData {
+  email: string;
+  password: string;
+}
+
+interface CreatorRequestData {
+  firstName: string;
+  lastName: string;
   email: string;
   password: string;
 }
@@ -84,6 +93,40 @@ export const registerUser = async (req: Request, res: Response) => {
   }
 };
 
+export const changePassword = async (req: Request, res: Response) => {
+  const { oldPassword, newPassword, confirmNewPassword } = req.body;
+
+  const { id } = req.user as any;
+  try {
+    const user = await prisma.user.findFirst({
+      where: {
+        id: id,
+      },
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: 'Not found' });
+    }
+
+    const comparePass = await bcrypt.compare(oldPassword, user.password);
+
+    if (!comparePass) {
+      return res.status(400).json({ message: 'Wrong password' });
+    }
+
+    if (newPassword !== confirmNewPassword) {
+      return res.status(400).json({ message: 'Make sure confirm password is same with with new password' });
+    }
+
+    const latestPassword = await bcrypt.hash(newPassword, 10);
+
+    await handleChangePassword({ userId: id, latestPassword: latestPassword });
+    return res.status(200).json({ message: 'Successfully changed password' });
+  } catch (error) {
+    return res.status(400).send('Error');
+  }
+};
+
 // temporary function for superadmin
 export const registerSuperAdmin = async (req: Request, res: Response) => {
   const { email, password }: RequestData = req.body;
@@ -142,18 +185,24 @@ export const registerAdmin = async (req: Request, res: Response) => {
         id: req.session.userid,
       },
     });
+
     if (user?.role !== 'superadmin') {
       return res.status(401).json({ message: 'Unauthorized' });
     }
 
+    const hashedPassword = await bcrypt.hash(password, 10);
+    console.log(hashedPassword);
+
     const data = await prisma.user.create({
       data: {
         email,
-        password,
+        password: hashedPassword,
         role: 'admin',
       },
     });
+
     const name = firstname + ' ' + lastname;
+
     const admin = await prisma.admin.create({
       data: {
         name: name,
@@ -166,21 +215,12 @@ export const registerAdmin = async (req: Request, res: Response) => {
         userId: data.id,
       },
     });
-    // add email
-    // AdminInvitaion(email, verifyToken);
     AdminInvitaion(email, verifyToken);
     return res.status(201).json({ data, admin });
   } catch (error) {
     return res.status(400).json({ message: 'User already exists' });
   }
 };
-
-interface CreatorRequestData {
-  firstName: string;
-  lastName: string;
-  email: string;
-  password: string;
-}
 
 // register creator only
 export const registerCreator = async (req: Request, res: Response) => {
@@ -297,8 +337,8 @@ export const logout = async (req: Request, res: Response) => {
 
 export const getprofile = async (req: Request, res: Response) => {
   try {
-    const { userId } = req.user as any;
-    const user = await getUser(userId);
+    const { id } = req.user as any;
+    const user = await getUser(id);
     return res.status(200).json({ user });
   } catch (error) {
     return res.status(404).json({

@@ -8,7 +8,7 @@ export const validateToken = (req: any, res: Response, next: NextFunction) => {
   if (!accessToken) return res.status(400).json({ error: 'User not Authenticated!' });
 
   try {
-    const validToken = verify(accessToken, process.env.SECRET_KEY as string);
+    const validToken = verify(accessToken, process.env.ACCESSKEY as string);
     if (validToken) {
       req.authenticated = true;
       req.user = validToken;
