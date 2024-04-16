@@ -16,17 +16,17 @@ console.log(name);
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
-// const corsOptions = {
-//   origin: true, //included origin as true
-//   credentials: true, //included credentials as true
-// };
+const corsOptions = {
+  origin: true, //included origin as true
+  credentials: true, //included credentials as true
+};
 
-// app.use(cors(corsOptions));
-app.use(
-  cors({
-    origin: ['https://staging.cultcreativeasia.com/', 'http://localhost:3030/'],
-  }),
-);
+app.use(cors(corsOptions));
+// app.use(
+//   cors({
+//     origin: ['https://staging.cultcreativeasia.com/', 'http://localhost:3030/'],
+//   }),
+// );
 app.use(morgan('combined'));
 app.disable('x-powered-by');
 
