@@ -22,7 +22,11 @@ app.use(cookieParser());
 // };
 
 // app.use(cors(corsOptions));
-app.use(cors());
+app.use(
+  cors({
+    origin: ['https://staging.cultcreativeasia.com/', 'http://localhost:3030/'],
+  }),
+);
 app.use(morgan('combined'));
 app.disable('x-powered-by');
 
