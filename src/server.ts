@@ -16,12 +16,13 @@ console.log(name);
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
-const corsOptions = {
-  origin: true, //included origin as true
-  credentials: true, //included credentials as true
-};
+// const corsOptions = {
+//   origin: true, //included origin as true
+//   credentials: true, //included credentials as true
+// };
 
-app.use(cors(corsOptions));
+// app.use(cors(corsOptions));
+app.use(cors());
 app.use(morgan('combined'));
 app.disable('x-powered-by');
 
@@ -69,7 +70,7 @@ app.use(
   }),
 );
 
-app.use(router);
+app.use('/api', router);
 
 app.get('/', (_req: Request, res: Response) => {
   res.send('Server is running...');
