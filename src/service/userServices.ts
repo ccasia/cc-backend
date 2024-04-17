@@ -60,3 +60,16 @@ export const getUser = async (id: string) => {
   });
   return user;
 };
+
+export const handleGetAdmins = async () => {
+  try {
+    const admins = await prisma.admin.findMany({
+      include: {
+        user: true,
+      },
+    });
+    return admins;
+  } catch (error) {
+    return error;
+  }
+};

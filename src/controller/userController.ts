@@ -1,15 +1,23 @@
 import { Request, Response } from 'express';
 
-import { updateUser } from 'src/service/userServices';
+import { handleGetAdmins, updateUser } from 'src/service/userServices';
 
 export const updateProfile = async (req: Request, res: Response) => {
   //   const { name, email, password, photoURL, designation, country, phoneNumber } = req.body;
   try {
-    console.log(req.body);
     await updateUser(req.body);
     res.status(200).json({ message: 'Successfully updated' });
   } catch (error) {
-    res.send(error);
+    res.status(400).json({ message: error });
+  }
+};
+
+export const getAdmins = async (_req: Request, res: Response) => {
+  try {
+    const data = await handleGetAdmins();
+    res.status(200).send(data);
+  } catch (error) {
+    res.status(400).json({ message: error });
   }
 };
 
