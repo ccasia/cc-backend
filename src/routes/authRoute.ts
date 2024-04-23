@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import {
   registerUser,
-  // registerAdmin,
   login,
   displayAll,
   registerCreator,
@@ -9,13 +8,14 @@ import {
   registerSuperAdmin,
   getprofile,
   changePassword,
-  // sendEmail,
+  logout,
 } from '../controller/authController';
 import { validateToken } from '@utils/jwtHelper';
 
 const router = Router();
 router.get('/', displayAll);
 router.post('/login', login);
+router.post('/logout', logout);
 router.patch('/changePassword', validateToken, changePassword);
 router.get('/me', validateToken, getprofile);
 router.post('/register', registerUser);

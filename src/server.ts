@@ -5,8 +5,8 @@ import morgan from 'morgan';
 import { router } from '@routes/index';
 import session from 'express-session';
 import pg from 'pg';
-import connectPgSimple from 'connect-pg-simple';
 import cookieParser from 'cookie-parser';
+import connectPgSimple from 'connect-pg-simple';
 
 dotenv.config();
 
@@ -33,7 +33,6 @@ declare module 'express-session' {
   interface SessionData {
     userid: string;
     accessToken: string;
-    role: string;
   }
 }
 

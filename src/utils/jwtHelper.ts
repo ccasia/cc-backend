@@ -3,7 +3,6 @@ import { verify } from 'jsonwebtoken';
 
 export const validateToken = (req: any, res: Response, next: NextFunction) => {
   const accessToken = req.cookies['accessToken'];
-  //const refeshToken = req.cookies["token"]
 
   if (!accessToken) return res.status(400).json({ error: 'User not Authenticated!' });
 

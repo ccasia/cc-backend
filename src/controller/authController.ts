@@ -13,6 +13,7 @@ const prisma = new PrismaClient();
 interface RequestData {
   email: string;
   password: string;
+  type: any;
 }
 
 interface CreatorRequestData {
@@ -23,32 +24,51 @@ interface CreatorRequestData {
 }
 
 export const login = async (req: Request, res: Response) => {
-  const { email, password }: RequestData = req.body;
-
+  const { email, password, type }: RequestData = req.body;
+  let data;
   try {
-    const data = await prisma.user.findFirst({
-      where: {
-        email,
-      },
-    });
+    if (type.admin) {
+      data = await prisma.admin.findFirst({
+        where: {
+          user: {
+            email: email,
+          },
+        },
+        include: {
+          user: true,
+        },
+      });
+    } else {
+      data = await prisma.creator.findFirst({
+        where: {
+          user: {
+            email: email,
+          },
+        },
+        include: {
+          user: true,
+        },
+      });
+    }
 
     if (!data) return res.status(404).json({ message: 'Wrong email' });
 
-    // Hashed password
-    const isMatch = await bcrypt.compare(password, data.password as string);
+    // // Hashed password
+    const isMatch = await bcrypt.compare(password, data.user.password as string);
+
     if (!isMatch) {
       return res.status(404).json({ message: 'Wrong password' });
     }
 
-    const accessToken = jwt.sign({ id: data.id }, process.env.ACCESSKEY as Secret, {
+    const accessToken = jwt.sign({ id: data.user.id }, process.env.ACCESSKEY as Secret, {
       expiresIn: '1h',
     });
-    // const refreshToken = jwt.sign({ id: data.id }, process.env.REFRESHKEY as Secret, {});
 
     const session = req.session;
-    session.userid = data.id;
+    session.userid = data.user.id;
     session.accessToken = accessToken;
-    res.cookie('userid', data.id, {
+
+    res.cookie('userid', data.user.id, {
       maxAge: 60 * 60 * 24 * 1000, // 1 Day
       httpOnly: true,
     });
@@ -165,66 +185,8 @@ export const registerSuperAdmin = async (req: Request, res: Response) => {
   }
 };
 
-// interface AdminRequestData {
-//   firstname: string;
-//   lastname: string;
-//   phone: string;
-//   email: string;
-//   password: string;
-// }
-// for saprate admin function
-// export const registerAdmin = async (req: Request, res: Response) => {
-//   const { firstname, lastname, email, password }: AdminRequestData = req.body;
-
-//   const verifyToken = jwt.sign({ email }, process.env.ACCESSKEY as string, { expiresIn: '1h' });
-
-//   try {
-//     const user = await prisma.user.findFirst({
-//       where: {
-//         id: req.session.userid,
-//       },
-//     });
-
-//     if (user?.role !== 'superadmin') {
-//       return res.status(401).json({ message: 'Unauthorized' });
-//     }
-
-//     const hashedPassword = await bcrypt.hash(password, 10);
-//     console.log(hashedPassword);
-
-//     const data = await prisma.user.create({
-//       data: {
-//         email,
-//         password: hashedPassword,
-//         role: 'admin',
-//       },
-//     });
-
-//     const name = firstname + ' ' + lastname;
-
-//     const admin = await prisma.admin.create({
-//       data: {
-//         name: name,
-//         designation: 'admin',
-//         country: 'India',
-//         photoURL: 'https://www.google.com',
-//         phoneNumber: '019223223',
-//         confirmationToken: verifyToken,
-//         status: 'inactive',
-//         userId: data.id,
-//       },
-//     });
-//     AdminInvitaion(email, verifyToken);
-//     return res.status(201).json({ data, admin });
-//   } catch (error) {
-//     return res.status(400).json({ message: 'User already exists' });
-//   }
-// };
-
 // register creator only
 export const registerCreator = async (req: Request, res: Response) => {
-  console.log(req.body);
-
   const { firstName, lastName, email, password }: CreatorRequestData = req.body.email;
   try {
     const search = await prisma.user.findFirst({
@@ -273,7 +235,7 @@ export const displayAll = async (_req: Request, res: Response) => {
 export const sendEmail = async (req: Request, res: Response) => {
   // add middleware to check the jwt token for authz
   const { email, userid } = req.body;
-  console.log(req);
+
   try {
     const user = await prisma.user.findFirst({
       where: {
@@ -303,6 +265,12 @@ export const verifyAdmin = async (req: Request, res: Response) => {
         inviteToken: inviteToken as string,
       },
     });
+
+    const isVerify = await jwt.verify(admin?.inviteToken as string, process.env.SESSION_SECRET as string);
+
+    if (!isVerify) {
+      return res.status(404).json({ message: 'Unauthorized' });
+    }
 
     if (!admin) {
       return res.status(404).json({ message: 'Admin not found' });

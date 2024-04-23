@@ -15,6 +15,7 @@ interface AdminProfile {
   designation: string;
   country: string;
   phoneNumber: string;
+  status: any;
 }
 
 export const updateUser = async ({
@@ -26,11 +27,12 @@ export const updateUser = async ({
   designation,
   country,
   phoneNumber,
+  status,
 }: AdminProfile) => {
   try {
     const data = await prisma.admin.update({
       where: {
-        id: userId,
+        userId: userId,
       },
       data: {
         name,
@@ -38,6 +40,7 @@ export const updateUser = async ({
         country,
         phoneNumber,
         photoURL,
+        status,
         user: {
           update: {
             email,
@@ -142,7 +145,7 @@ export const updateNewAdmin = async (adminData: any) => {
           designation,
           country,
           phoneNumber,
-          inviteToken: '',
+          inviteToken: null,
           status: 'active',
         },
       }),

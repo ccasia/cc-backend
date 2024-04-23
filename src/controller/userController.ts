@@ -87,6 +87,7 @@ export const updateAdminInformation = async (req: Request, res: Response) => {
     const result = await updateNewAdmin(req.body);
     res.status(200).json({ message: 'Successfully updated', result });
   } catch (error) {
+    console.log(error);
     res.status(404).send(error);
   }
 };
