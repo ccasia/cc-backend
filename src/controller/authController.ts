@@ -7,7 +7,6 @@ import { AdminInvitaion } from '../config/nodemailer.config';
 import bcrypt from 'bcryptjs';
 import { getUser } from 'src/service/userServices';
 import { handleChangePassword } from 'src/service/authServices';
-// import { getUser } from 'src/service/userServices';
 
 const prisma = new PrismaClient();
 
@@ -36,7 +35,7 @@ export const login = async (req: Request, res: Response) => {
     if (!data) return res.status(404).json({ message: 'Wrong email' });
 
     // Hashed password
-    const isMatch = await bcrypt.compare(password, data.password);
+    const isMatch = await bcrypt.compare(password, data.password as string);
     if (!isMatch) {
       return res.status(404).json({ message: 'Wrong password' });
     }
@@ -108,7 +107,7 @@ export const changePassword = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Not found' });
     }
 
-    const comparePass = await bcrypt.compare(oldPassword, user.password);
+    const comparePass = await bcrypt.compare(oldPassword, user.password as string);
 
     if (!comparePass) {
       return res.status(400).json({ message: 'Wrong password' });
@@ -166,61 +165,61 @@ export const registerSuperAdmin = async (req: Request, res: Response) => {
   }
 };
 
-interface AdminRequestData {
-  firstname: string;
-  lastname: string;
-  phone: string;
-  email: string;
-  password: string;
-}
+// interface AdminRequestData {
+//   firstname: string;
+//   lastname: string;
+//   phone: string;
+//   email: string;
+//   password: string;
+// }
 // for saprate admin function
-export const registerAdmin = async (req: Request, res: Response) => {
-  const { firstname, lastname, email, password }: AdminRequestData = req.body;
+// export const registerAdmin = async (req: Request, res: Response) => {
+//   const { firstname, lastname, email, password }: AdminRequestData = req.body;
 
-  const verifyToken = jwt.sign({ email }, process.env.ACCESSKEY as string, { expiresIn: '1h' });
+//   const verifyToken = jwt.sign({ email }, process.env.ACCESSKEY as string, { expiresIn: '1h' });
 
-  try {
-    const user = await prisma.user.findFirst({
-      where: {
-        id: req.session.userid,
-      },
-    });
+//   try {
+//     const user = await prisma.user.findFirst({
+//       where: {
+//         id: req.session.userid,
+//       },
+//     });
 
-    if (user?.role !== 'superadmin') {
-      return res.status(401).json({ message: 'Unauthorized' });
-    }
+//     if (user?.role !== 'superadmin') {
+//       return res.status(401).json({ message: 'Unauthorized' });
+//     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
-    console.log(hashedPassword);
+//     const hashedPassword = await bcrypt.hash(password, 10);
+//     console.log(hashedPassword);
 
-    const data = await prisma.user.create({
-      data: {
-        email,
-        password: hashedPassword,
-        role: 'admin',
-      },
-    });
+//     const data = await prisma.user.create({
+//       data: {
+//         email,
+//         password: hashedPassword,
+//         role: 'admin',
+//       },
+//     });
 
-    const name = firstname + ' ' + lastname;
+//     const name = firstname + ' ' + lastname;
 
-    const admin = await prisma.admin.create({
-      data: {
-        name: name,
-        designation: 'admin',
-        country: 'India',
-        photoURL: 'https://www.google.com',
-        phoneNumber: '019223223',
-        confirmationToken: verifyToken,
-        status: 'inactive',
-        userId: data.id,
-      },
-    });
-    AdminInvitaion(email, verifyToken);
-    return res.status(201).json({ data, admin });
-  } catch (error) {
-    return res.status(400).json({ message: 'User already exists' });
-  }
-};
+//     const admin = await prisma.admin.create({
+//       data: {
+//         name: name,
+//         designation: 'admin',
+//         country: 'India',
+//         photoURL: 'https://www.google.com',
+//         phoneNumber: '019223223',
+//         confirmationToken: verifyToken,
+//         status: 'inactive',
+//         userId: data.id,
+//       },
+//     });
+//     AdminInvitaion(email, verifyToken);
+//     return res.status(201).json({ data, admin });
+//   } catch (error) {
+//     return res.status(400).json({ message: 'User already exists' });
+//   }
+// };
 
 // register creator only
 export const registerCreator = async (req: Request, res: Response) => {
@@ -294,32 +293,29 @@ export const sendEmail = async (req: Request, res: Response) => {
   }
 };
 //Token verification
-export const verifyUser = async (req: Request, res: Response) => {
-  const { token } = req.body;
+export const verifyAdmin = async (req: Request, res: Response) => {
+  const { inviteToken } = req.query;
+
   try {
     // Find the user by the verification token
-    const user = await prisma.admin.findUnique({
+    const admin = await prisma.admin.findUnique({
       where: {
-        confirmationToken: token,
+        inviteToken: inviteToken as string,
       },
     });
 
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+    if (!admin) {
+      return res.status(404).json({ message: 'Admin not found' });
     }
-    // Update the user's verified status
-    const updatedUser = await prisma.admin.update({
+
+    const user = await prisma.user.findUnique({
       where: {
-        userId: user.userId,
-      },
-      data: {
-        status: 'active',
+        id: admin.userId,
       },
     });
 
-    return res.status(200).json({ message: 'User verified successfully', user: updatedUser });
+    return res.status(200).json({ message: 'Admin verified successfully', user });
   } catch (error) {
-    console.error('Error verifying user:', error);
     return res.status(500).json({ error: 'An error occurred while verifying the user' });
   }
 };

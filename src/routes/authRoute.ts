@@ -1,11 +1,11 @@
 import { Router } from 'express';
 import {
   registerUser,
-  registerAdmin,
+  // registerAdmin,
   login,
   displayAll,
   registerCreator,
-  verifyUser,
+  verifyAdmin,
   registerSuperAdmin,
   getprofile,
   changePassword,
@@ -19,8 +19,8 @@ router.post('/login', login);
 router.patch('/changePassword', validateToken, changePassword);
 router.get('/me', validateToken, getprofile);
 router.post('/register', registerUser);
-router.post('/registerAdmin', registerAdmin);
-router.put('/verfiyAdmin', verifyUser);
+// router.post('/registerAdmin', registerAdmin);
+router.get('/verifyAdmin', verifyAdmin);
 router.post('/registerCreator', registerCreator);
 router.post('/registerSuperAdmin', registerSuperAdmin);
 

@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
+import { AdminInvite } from 'src/config/nodemailer.config';
 
-import { handleGetAdmins, updateUser } from 'src/service/userServices';
+import { createNewAdmin, findUserByEmail, handleGetAdmins, updateNewAdmin, updateUser } from 'src/service/userServices';
 
 export const updateProfile = async (req: Request, res: Response) => {
   //   const { name, email, password, photoURL, designation, country, phoneNumber } = req.body;
@@ -12,9 +13,10 @@ export const updateProfile = async (req: Request, res: Response) => {
   }
 };
 
-export const getAdmins = async (_req: Request, res: Response) => {
+export const getAdmins = async (req: Request, res: Response) => {
+  const userid = req.session.userid;
   try {
-    const data = await handleGetAdmins();
+    const data = await handleGetAdmins(userid as string);
     res.status(200).send(data);
   } catch (error) {
     res.status(400).json({ message: error });
@@ -64,3 +66,27 @@ export const getAdmins = async (_req: Request, res: Response) => {
 //     return res.send(error);
 //   }
 // };
+
+export const inviteAdmin = async (req: Request, res: Response) => {
+  const { email } = req.body;
+  try {
+    const user = await findUserByEmail(email);
+    if (user) {
+      return res.status(400).json({ message: 'User already registered' });
+    }
+    const response = await createNewAdmin(email);
+    AdminInvite(response?.user.email as string, response?.admin.inviteToken as string);
+    res.status(200).send(response);
+  } catch (error) {
+    res.status(404).send(error);
+  }
+};
+
+export const updateAdminInformation = async (req: Request, res: Response) => {
+  try {
+    const result = await updateNewAdmin(req.body);
+    res.status(200).json({ message: 'Successfully updated', result });
+  } catch (error) {
+    res.status(404).send(error);
+  }
+};
