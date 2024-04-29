@@ -1,6 +1,6 @@
 /* eslint-disable no-unused-vars */
 import jwt, { Secret } from 'jsonwebtoken';
-import { PrismaClient } from '@prisma/client';
+import { Employment, PrismaClient } from '@prisma/client';
 import { Request, Response } from 'express';
 import { AdminInvitaion } from '../config/nodemailer.config';
 // import session from 'express-session';
@@ -21,6 +21,34 @@ interface CreatorRequestData {
   lastName: string;
   email: string;
   password: string;
+}
+
+interface InterestData {
+  name: string;
+  rank: number;
+}
+
+interface IndustryData {
+  name: string;
+  rank: string;
+}
+
+interface LanguagesData {
+  name: string;
+}
+
+interface CreatorUpdateData {
+  Interests: InterestData[];
+  Nationality: string;
+  birthDate: Date;
+  employment: string;
+  industries: IndustryData[];
+  instagram: string;
+  lanaugages: LanguagesData[];
+  location: string;
+  phone: string;
+  pronounce: string;
+  tiktok: string;
 }
 
 export const login = async (req: Request, res: Response) => {
@@ -299,10 +327,108 @@ export const logout = async (req: Request, res: Response) => {
   });
 };
 
+// check creator full data with two tables user and creator
+export const checkCreator = async (req: Request, res: Response) => {
+  const { userid } = req.session;
+
+  try {
+    const creator = await prisma.creator.findFirst({
+      where: {
+        userId: userid,
+      },
+      include: {
+        user: true,
+      },
+    });
+
+    if (!creator) {
+      return res.status(404).json({ message: 'Creator not found' });
+    }
+
+    return res.status(200).json({ creator });
+  } catch (error) {
+    return res.status(400).json({ message: 'Error fetching creator' });
+  }
+};
+
+export const getCurrentUser = async (req: Request, res: Response) => {
+  const { userid } = req.session;
+  try {
+    const user = await prisma.user.findFirst({
+      where: {
+        id: userid,
+      },
+    });
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    return res.status(200).json({ user });
+  } catch (error) {
+    return res.status(400).json({ message: 'Error fetching user' });
+  }
+};
+
+export const updateCreator = async (req: Request, res: Response) => {
+  const { userid } = req.session;
+
+  const {
+    Interests,
+    industries,
+    instagram,
+    phone,
+    tiktok,
+    Nationality,
+    birthDate,
+    employment,
+    lanaugages,
+    location,
+    pronounce,
+  }: CreatorUpdateData = req.body;
+
+  const data = new Date(birthDate);
+  try {
+    const creator = await prisma.creator.update({
+      where: {
+        userId: userid,
+      },
+      data: {
+        instagram,
+        phone,
+        pronounce,
+        Nationality,
+        location,
+        birthDate: data,
+        employment: employment as Employment,
+        tiktok,
+        lanaugages: {
+          create: lanaugages.map((language) => ({ name: language })),
+        },
+        interests: {
+          create: Interests.map((interest) => ({ name: interest.name, rank: interest.rank })),
+        },
+        industries: {
+          create: industries.map((industry) => ({ name: industry.name, rank: industry.rank })),
+        },
+      },
+      include: {
+        interests: true,
+        industries: true,
+        lanaugages: true,
+      },
+    });
+
+    return res.status(200).json({ creator });
+  } catch (error) {
+    console.log(error);
+    return res.status(400).json({ message: 'Error updating creator' });
+  }
+};
+
 export const getprofile = async (req: Request, res: Response) => {
   try {
-    const { id } = req.user as any;
-    const user = await getUser(id);
+    console.log(req.session.userid);
+    const userid = req.session.userid as any;
+    const user = await getUser(userid);
     return res.status(200).json({ user });
   } catch (error) {
     return res.status(404).json({
