@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -18,8 +12,8 @@ model User {
   email     String   @unique @db.VarChar(255)
   password  String?  @db.VarChar(255)
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
   role      Role     @default(user)
+  updatedAt DateTime @updatedAt
   admin     Admin?
   creator   Creator?
   finance   Finance?
@@ -32,25 +26,59 @@ model Admin {
   photoURL    String? @db.VarChar(255)
   country     String? @db.VarChar(100)
   phoneNumber String? @db.VarChar(100)
+  mode        Mode    @default(normal)
   inviteToken String? @unique
   status      Status  @default(pending)
-  mode        Mode    @default(normal)
-  user        User    @relation(fields: [userId], references: [id])
   userId      String  @unique
+  user        User    @relation(fields: [userId], references: [id])
 }
 
 model Creator {
-  id        String @id @unique @default(cuid())
-  firstName String @db.VarChar(100)
-  lastName  String @db.VarChar(100)
-  user      User   @relation(fields: [userId], references: [id])
-  userId    String @unique
+  id          String      @id @unique @default(cuid())
+  firstName   String      @db.VarChar(100)
+  lastName    String      @db.VarChar(100)
+  pronounce   String?     @db.VarChar(100)
+  phone       String?     @db.VarChar(100)
+  Nationality String?     @db.VarChar(100)
+  location    String?     @db.VarChar(100)
+  birthDate   DateTime?
+  instagram   String?     @db.VarChar(100)
+  tiktok      String?     @db.VarChar(100)
+  employment  Employment? @default(others)
+  lanaugages  Language[]  
+  industries  Industry[]
+  interests   Interest[]
+  userId      String     @unique
+  user        User        @relation(fields: [userId], references: [id])
+}
+model Language {
+  id        String  @id @unique @default(cuid())
+  name      String?
+  creator   Creator @relation(fields: [creatorId], references: [id])
+  creatorId String
+
+}
+
+model Industry {
+  id        String  @id @unique @default(cuid())
+  name      String?
+  rank      Int?
+  creator   Creator @relation(fields: [creatorId], references: [id])
+  creatorId String
+}
+
+model Interest {
+  id        String  @id @unique @default(cuid())
+  name      String?
+  rank      Int?
+  creator   Creator @relation(fields: [creatorId], references: [id])
+  creatorId String
 }
 
 model Finance {
   id     String @id @unique @default(cuid())
-  user   User   @relation(fields: [userId], references: [id])
   userId String @unique
+  user   User   @relation(fields: [userId], references: [id])
 }
 
 model session {
@@ -77,4 +105,14 @@ enum Role {
   superadmin
   creator
   finance
+}
+
+enum Employment {
+  fulltime
+  freelance
+  parttime
+  student
+  in_between
+  unemployed
+  others
 }

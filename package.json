@@ -12,6 +12,7 @@
     "format": "npx eslint . --ext .ts --fix",
     "test": "jest",
     "migrate": "npx prisma migrate dev",
+    "generate": "npx prisma generate",
     "prod:prev": "node dist/app.js",
     "studio": "npx prisma studio"
   },

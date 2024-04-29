@@ -9,6 +9,10 @@ import {
   getprofile,
   changePassword,
   logout,
+  getCurrentUser,
+  checkCreator,
+  updateCreator
+
 } from '../controller/authController';
 import { validateToken } from '@utils/jwtHelper';
 
@@ -23,6 +27,9 @@ router.post('/register', registerUser);
 router.get('/verifyAdmin', verifyAdmin);
 router.post('/registerCreator', registerCreator);
 router.post('/registerSuperAdmin', registerSuperAdmin);
+router.get('/currentUser',validateToken, getCurrentUser);
+router.get('/checkCreator', validateToken, checkCreator);
+router.put('/updateCreator', validateToken, updateCreator);
 
 // router.post('/adminEmail', sendEmail);
 export default router;
