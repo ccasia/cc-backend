@@ -45,7 +45,7 @@ interface CreatorUpdateData {
   employment: string;
   industries: IndustryData[];
   instagram: string;
-  lanaugages: LanguagesData[];
+  languages: LanguagesData[];
   location: string;
   phone: string;
   pronounce: string;
@@ -479,7 +479,7 @@ export const updateCreator = async (req: Request, res: Response) => {
     Nationality,
     birthDate,
     employment,
-    lanaugages,
+    languages,
     location,
     pronounce,
   }: CreatorUpdateData = req.body;
@@ -500,7 +500,7 @@ export const updateCreator = async (req: Request, res: Response) => {
         employment: employment as Employment,
         tiktok,
         languages: {
-          create: lanaugages.map((language) => ({ name: language })),
+          create: languages.map((language) => ({ name: language })),
         },
         interests: {
           create: Interests.map((interest) => ({ name: interest.name, rank: interest.rank })),
