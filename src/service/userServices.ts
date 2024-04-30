@@ -56,7 +56,7 @@ export const updateUser = async ({
 };
 
 export const getUser = async (id: string) => {
-  const user = await prisma.admin.findUnique({
+  const user = await prisma.creator.findUnique({
     where: {
       userId: id,
     },

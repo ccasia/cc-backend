@@ -527,7 +527,9 @@ export const updateCreator = async (req: Request, res: Response) => {
 export const getprofile = async (req: Request, res: Response) => {
   try {
     const userid = req.session.userid as any;
+
     const user = await getUser(userid);
+    console.log(user);
     return res.status(200).json({ user });
   } catch (error) {
     return res.status(404).json({
