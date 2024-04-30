@@ -7,6 +7,7 @@ import session from 'express-session';
 import pg from 'pg';
 import cookieParser from 'cookie-parser';
 import connectPgSimple from 'connect-pg-simple';
+// import { creatorVerificationEmail } from './config/nodemailer.config';
 
 dotenv.config();
 
@@ -76,6 +77,14 @@ app.use(router);
 app.get('/', (_req: Request, res: Response) => {
   res.send('Server is running...');
 });
+
+// app.get('/testemail', () => {
+//   try {
+//     creatorVerificationEmail('afiqapikol249@gmail.com', 'dawdadawdawe12e');
+//   } catch (error) {
+//     console.log(error);
+//   }
+// });
 
 app.listen(process.env.PORT, () => {
   console.log(`Listening to port ${process.env.PORT}...`);

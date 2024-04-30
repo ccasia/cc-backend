@@ -1,12 +1,13 @@
 /* eslint-disable no-unused-vars */
-import jwt, { Secret } from 'jsonwebtoken';
+import jwt, { JwtPayload, Secret } from 'jsonwebtoken';
 import { Employment, PrismaClient } from '@prisma/client';
 import { Request, Response } from 'express';
-import { AdminInvitaion } from '../config/nodemailer.config';
+import { AdminInvitaion, creatorVerificationEmail } from '../config/nodemailer.config';
 // import session from 'express-session';
 import bcrypt from 'bcryptjs';
 import { getUser } from 'src/service/userServices';
 import { handleChangePassword } from 'src/service/authServices';
+import { verifyToken } from '@utils/jwtHelper';
 
 const prisma = new PrismaClient();
 
@@ -81,6 +82,32 @@ export const login = async (req: Request, res: Response) => {
 
     if (!data) return res.status(404).json({ message: 'Wrong email' });
 
+    const isActive = await prisma.user.findFirst({
+      where: {
+        AND: [
+          {
+            email: data.user.email,
+          },
+          {
+            OR: [
+              {
+                admin: {
+                  status: 'active',
+                },
+              },
+              {
+                creator: {
+                  status: 'active',
+                },
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    if (!isActive) return res.status(400).json({ message: 'Account is not active' });
+
     // // Hashed password
     const isMatch = await bcrypt.compare(password, data.user.password as string);
 
@@ -113,6 +140,7 @@ export const login = async (req: Request, res: Response) => {
     return res.send(error);
   }
 };
+
 // normal user for testing
 export const registerUser = async (req: Request, res: Response) => {
   const { email, password }: RequestData = req.body;
@@ -140,6 +168,7 @@ export const registerUser = async (req: Request, res: Response) => {
   }
 };
 
+// Change password function
 export const changePassword = async (req: Request, res: Response) => {
   const { oldPassword, newPassword, confirmNewPassword } = req.body;
 
@@ -174,7 +203,7 @@ export const changePassword = async (req: Request, res: Response) => {
   }
 };
 
-// temporary function for superadmin
+// Temporary function for superadmin registration
 export const registerSuperAdmin = async (req: Request, res: Response) => {
   const { email, password }: RequestData = req.body;
   try {
@@ -213,7 +242,7 @@ export const registerSuperAdmin = async (req: Request, res: Response) => {
   }
 };
 
-// register creator only
+// Function to register creator
 export const registerCreator = async (req: Request, res: Response) => {
   const { firstName, lastName, email, password }: CreatorRequestData = req.body.email;
   try {
@@ -222,12 +251,14 @@ export const registerCreator = async (req: Request, res: Response) => {
         email,
       },
     });
+
     if (search) {
       return res.status(400).json({ message: 'User already exists' });
     }
+
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    const data = await prisma.user.create({
+    const user = await prisma.user.create({
       data: {
         email,
         password: hashedPassword,
@@ -235,20 +266,30 @@ export const registerCreator = async (req: Request, res: Response) => {
       },
     });
 
-    const creator = await prisma.creator.create({
+    const data = await prisma.creator.create({
       data: {
         firstName,
         lastName,
-        userId: data.id,
+        userId: user.id,
+      },
+      include: {
+        user: true,
       },
     });
 
-    return res.status(201).json({ user: data, creator: creator });
+    const token = jwt.sign({ id: user.id }, process.env.ACCESSKEY as Secret, {
+      expiresIn: '1h',
+    });
+
+    creatorVerificationEmail(user.email, token);
+
+    return res.status(201).json({ user: data.user.email });
   } catch (error) {
-    console.log(error);
+    return res.status(400).send(error);
   }
 };
 
+// Function to display all users
 export const displayAll = async (_req: Request, res: Response) => {
   try {
     const data = await prisma.user.findMany();
@@ -259,7 +300,7 @@ export const displayAll = async (_req: Request, res: Response) => {
   }
 };
 
-// email invitaion
+// Email invitation for admin
 export const sendEmail = async (req: Request, res: Response) => {
   // add middleware to check the jwt token for authz
   const { email, userid } = req.body;
@@ -282,6 +323,7 @@ export const sendEmail = async (req: Request, res: Response) => {
     console.log(error);
   }
 };
+
 //Token verification
 export const verifyAdmin = async (req: Request, res: Response) => {
   const { inviteToken } = req.query;
@@ -316,6 +358,61 @@ export const verifyAdmin = async (req: Request, res: Response) => {
   }
 };
 
+export const verifyCreator = async (req: Request, res: Response) => {
+  const { token } = req.body;
+  try {
+    const result = await verifyToken(token);
+
+    if (!result) {
+      return res.status(400).json({ message: 'Unauthorized' });
+    }
+
+    const creator = await prisma.creator.findFirst({
+      where: {
+        userId: (result as JwtPayload).id,
+      },
+      include: {
+        user: true,
+      },
+    });
+
+    if (!creator) {
+      return res.status(404).json({ message: 'Not found.' });
+    }
+
+    await prisma.creator.update({
+      where: {
+        userId: creator.userId,
+      },
+      data: {
+        status: 'active',
+      },
+    });
+
+    const accessToken = jwt.sign({ id: creator.user.id }, process.env.ACCESSKEY as Secret, {
+      expiresIn: '1h',
+    });
+
+    const session = req.session;
+    session.userid = creator.user.id;
+    session.accessToken = accessToken;
+
+    res.cookie('userid', creator.user.id, {
+      maxAge: 60 * 60 * 24 * 1000, // 1 Day
+      httpOnly: true,
+    });
+    res.cookie('accessToken', accessToken, {
+      maxAge: 60 * 60 * 24 * 1000, // 1 Day
+      httpOnly: true,
+    });
+
+    return res.status(200).json({ message: 'Your are verified!', user: creator, accessToken });
+  } catch (error) {
+    return res.status(400).json({ message: 'Error verifying creator' });
+  }
+};
+
+// Function for logout
 export const logout = async (req: Request, res: Response) => {
   req.session.destroy((err) => {
     if (err) {
@@ -351,6 +448,7 @@ export const checkCreator = async (req: Request, res: Response) => {
   }
 };
 
+// Function to get current user
 export const getCurrentUser = async (req: Request, res: Response) => {
   const { userid } = req.session;
   try {
@@ -368,6 +466,7 @@ export const getCurrentUser = async (req: Request, res: Response) => {
   }
 };
 
+// Function to update creator information
 export const updateCreator = async (req: Request, res: Response) => {
   const { userid } = req.session;
 
@@ -400,7 +499,7 @@ export const updateCreator = async (req: Request, res: Response) => {
         birthDate: data,
         employment: employment as Employment,
         tiktok,
-        lanaugages: {
+        languages: {
           create: lanaugages.map((language) => ({ name: language })),
         },
         interests: {
@@ -413,7 +512,7 @@ export const updateCreator = async (req: Request, res: Response) => {
       include: {
         interests: true,
         industries: true,
-        lanaugages: true,
+        languages: true,
       },
     });
 
@@ -424,9 +523,9 @@ export const updateCreator = async (req: Request, res: Response) => {
   }
 };
 
+// Function to get user's information
 export const getprofile = async (req: Request, res: Response) => {
   try {
-    console.log(req.session.userid);
     const userid = req.session.userid as any;
     const user = await getUser(userid);
     return res.status(200).json({ user });

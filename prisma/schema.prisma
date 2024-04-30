@@ -44,19 +44,20 @@ model Creator {
   birthDate   DateTime?
   instagram   String?     @db.VarChar(100)
   tiktok      String?     @db.VarChar(100)
+  status      Status      @default(pending)
   employment  Employment? @default(others)
-  lanaugages  Language[]  
+  languages   Language[]
   industries  Industry[]
   interests   Interest[]
-  userId      String     @unique
+  userId      String      @unique
   user        User        @relation(fields: [userId], references: [id])
 }
+
 model Language {
   id        String  @id @unique @default(cuid())
   name      String?
   creator   Creator @relation(fields: [creatorId], references: [id])
   creatorId String
-
 }
 
 model Industry {

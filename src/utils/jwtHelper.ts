@@ -17,3 +17,14 @@ export const validateToken = (req: any, res: Response, next: NextFunction) => {
     return res.status(400).json({ error: err });
   }
 };
+
+export const verifyToken = (token: string) => {
+  if (!token) return;
+
+  try {
+    const validToken = verify(token, process.env.ACCESSKEY as string);
+    return validToken;
+  } catch (err) {
+    return err;
+  }
+};
