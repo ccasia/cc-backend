@@ -5,9 +5,10 @@ import { Request, Response } from 'express';
 import { AdminInvitaion, creatorVerificationEmail } from '../config/nodemailer.config';
 // import session from 'express-session';
 import bcrypt from 'bcryptjs';
-import { getUser } from 'src/service/userServices';
+// import { getUser } from 'src/service/userServices';
 import { handleChangePassword } from 'src/service/authServices';
 import { verifyToken } from '@utils/jwtHelper';
+import { getUser } from 'src/service/userServices';
 
 const prisma = new PrismaClient();
 
@@ -55,6 +56,11 @@ interface CreatorUpdateData {
 export const login = async (req: Request, res: Response) => {
   const { email, password, type }: RequestData = req.body;
   let data;
+
+  if (!type) {
+    return res.status(400).json({ message: 'Type is not define' });
+  }
+
   try {
     if (type.admin) {
       data = await prisma.admin.findFirst({
@@ -116,17 +122,20 @@ export const login = async (req: Request, res: Response) => {
     }
 
     const accessToken = jwt.sign({ id: data.user.id }, process.env.ACCESSKEY as Secret, {
-      expiresIn: '1h',
+      expiresIn: '1d',
     });
+
+    const refreshToken = jwt.sign({ id: data?.user?.id }, process.env.REFRESHKEY as Secret);
 
     const session = req.session;
     session.userid = data.user.id;
-    session.accessToken = accessToken;
+    session.refreshToken = refreshToken;
 
     res.cookie('userid', data.user.id, {
       maxAge: 60 * 60 * 24 * 1000, // 1 Day
       httpOnly: true,
     });
+
     res.cookie('accessToken', accessToken, {
       maxAge: 60 * 60 * 24 * 1000, // 1 Day
       httpOnly: true,
@@ -393,9 +402,11 @@ export const verifyCreator = async (req: Request, res: Response) => {
       expiresIn: '1h',
     });
 
+    const refreshToken = jwt.sign({ id: creator?.user?.id }, process.env.REFRESHKEY as Secret);
+
     const session = req.session;
     session.userid = creator.user.id;
-    session.accessToken = accessToken;
+    session.refreshToken = refreshToken;
 
     res.cookie('userid', creator.user.id, {
       maxAge: 60 * 60 * 24 * 1000, // 1 Day
@@ -525,15 +536,34 @@ export const updateCreator = async (req: Request, res: Response) => {
 
 // Function to get user's information
 export const getprofile = async (req: Request, res: Response) => {
-  try {
-    const userid = req.session.userid as any;
+  const refreshToken = req.session.refreshToken;
 
-    const user = await getUser(userid);
-    console.log(user);
-    return res.status(200).json({ user });
-  } catch (error) {
-    return res.status(404).json({
-      error: (error as any).message,
+  if (!refreshToken) {
+    req.session.destroy((err) => {
+      if (err) {
+        return res.status(400).json({ message: 'Error logging out' });
+      }
+      res.clearCookie('userid');
+      res.clearCookie('accessToken');
     });
+    return res.status(401).json('You are not authenticated');
   }
+
+  jwt.verify(refreshToken, process.env.REFRESHKEY as any, async (err: any, decode: any) => {
+    if (err) return res.status(403).json({ message: 'Forbidden' });
+
+    const user = await getUser(decode.id);
+    if (!user) return res.status(401).json({ message: 'Unauthorized' });
+
+    const accessToken = jwt.sign({ id: user.user.id }, process.env.ACCESSKEY as Secret, {
+      expiresIn: '1d',
+    });
+
+    res.cookie('accessToken', accessToken, {
+      maxAge: 60 * 60 * 24 * 1000, // 1 Day
+      httpOnly: true,
+    });
+
+    return res.status(200).json({ user, accessToken });
+  });
 };
