@@ -21,11 +21,6 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-// app.use(
-//   cors({
-//     origin: ['https://staging.cultcreativeasia.com/', 'http://localhost:3030/'],
-//   }),
-// );
 app.use(morgan('combined'));
 app.disable('x-powered-by');
 
@@ -33,7 +28,7 @@ app.disable('x-powered-by');
 declare module 'express-session' {
   interface SessionData {
     userid: string;
-    accessToken: string;
+    refreshToken: string;
   }
 }
 

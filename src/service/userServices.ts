@@ -56,7 +56,9 @@ export const updateUser = async ({
 };
 
 export const getUser = async (id: string) => {
-  const user = await prisma.creator.findUnique({
+  let user;
+
+  user = await prisma.admin.findUnique({
     where: {
       userId: id,
     },
@@ -64,6 +66,18 @@ export const getUser = async (id: string) => {
       user: true,
     },
   });
+
+  if (!user) {
+    user = await prisma.creator.findUnique({
+      where: {
+        userId: id,
+      },
+      include: {
+        user: true,
+      },
+    });
+  }
+
   return user;
 };
 
@@ -79,6 +93,7 @@ export const handleGetAdmins = async (userid: string) => {
         user: true,
       },
     });
+
     return admins;
   } catch (error) {
     return error;
