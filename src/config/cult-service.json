@@ -1,0 +1,14 @@
+{
+  "type": "service_account",
+  "project_id": "cult-creative-421007",
+  "private_key_id": "074040453b69472257ca53a9ff84e92c0285919a",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQDcvbEQX7ItD08Q\nhdOCK51LIwhtB8SJ+MascuVorvgM+XIze6P8rYuFJGg6JZVv+Up8J/lsCmxfG5Jr\nxiJxIkmAernnwo1JuM/NvW0dXJqq9r3PDfnHBf1iF30yCIzeJUT0aVKVdj4+iEm4\nhd+3G6JeU3rDG9rZwGIW7G6ytP2w5emSYSqD7lD07f94sNU2d25w86IpkHL+yLRR\n12QMrTqi5ol2WUY1KTwsn7XehwBX8e5nuafoFIM7NBo3fn4k8XHu48IYRHFyRXmE\nOZpCLe0yNK47rcgH3nDfkd6rrTI9Vx47KB9pAvvrRVSi+bYgLp74gGYNQJ1s2Yko\nxwkNRZ/LAgMBAAECggEAII8AJ2SeEMRhypOaq2gIdtUvgHl1VU5y62u1B7hLEQrX\n+90ARpxIaHaCwxTZEl+IS4DP6s4sxuh3s9rRKLPAeKlhc1xAX7/ZMsT+a6bFj3L+\ncyRiE6eABLBnQHJ/aKLBpXVFf5Mlwi5zBTsF0OnMDLKueEnLAXQ9Y5kzCLvmcWlp\nuyCuBP7oCwgNa1n2taWiA/1P1Ewc3allBfjmuHIaW+cVrmQiaW0fChboiOs/kfV2\nJw5jFw2l1V95oXyi5I3CmaDHe2zJofHUfzb99h1JWMyGcSXAJpMEONmvKKhjGyVR\nLaJItrUHxuVvn/7NrO/hNGPfm8W8kZu2k7D3owihDQKBgQD+zQpIfwRPxPWXfXHz\nyFvn/Ml4qn8p+hTrD8FgVyscBwt9YJE6DrZHZOuewAbVlNAGI6Kjvzt0g90XA0gb\nchm5CktqRSzcwkaSlflziVbVV8aUxhuBT0Wi78g1rQPvcXr7wt3PzxvAX4wy6BCI\nZeyxzfA1vbHcqjWMvt7BpTW5hQKBgQDdx56K5eQVqRoe4Ibz+on4Gm5O5qh8oHuf\npK9cRd96YuDl1KoB6a60BeaTx7vwoEeaawhNCv64OLBhSV2OsgfnhQU2b+Rfvcth\nahK6Vi8Euue7AJcFqA2/GKrEaLmpCK4+b/0hMIiHb3W+oboqmJ9UN/LMi21Sdjqh\nf9WStiQNDwKBgGJfGvc+QpXhfsfL4LCzy/fWupnhiVLVgDn4TTo6rSQW/DKdk7QM\ndgc+SVFy5bCT0XRtUZ9Sd0vWlQcLd01RUekEtnUC2/0m7EQvrq0SevnG9538liXo\nSwRK+sruTzSkZUzJwQU3+ojc2q3Utn1SjH1g+rpk0ERXWnFKR4oPlJxZAoGAbdUW\nJyOCuVdtoC0BqIJDIaO1TU3d0xqHHqCoV8Ii0rF1P1z6dMgNxQnHDxizco9t5oNr\nMPxo+ULZ1tRGiQyR7Y5q7nKrXt7Xgf7OF4nm7yjA6lN4d0yqwiCtMWfLynKKGFHN\nwkoO00PXw/jEAaRkA4lRrQq/sT7r+l8cnfOmFvECgYBpXYlkl5ntsnmsd6sqxPAW\nOz5ue38MQTw4T6QQH4ZdRcJ5LkFZLl8jKxbUWFSXqGz/KVHKkY/PjBmnX4+YU821\n5PRWDbPI4J4kerdoBqG3TZuhmWerZ+MwZ5KI78dP+v88DyVTHoFdHh/KoLrFWMA0\nxVxCDrzBONE4Or12/epBmA==\n-----END PRIVATE KEY-----\n",
+  "client_email": "cultcreativeasia@cult-creative-421007.iam.gserviceaccount.com",
+  "client_id": "103970331437596895615",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/cultcreativeasia%40cult-creative-421007.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
+  

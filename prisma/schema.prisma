@@ -8,27 +8,27 @@ datasource db {
 }
 
 model User {
-  id        String   @id @unique @default(uuid())
-  email     String   @unique @db.VarChar(255)
-  password  String?  @db.VarChar(255)
-  createdAt DateTime @default(now())
-  role      Role     @default(user)
-  updatedAt DateTime @updatedAt
-  admin     Admin?
-  creator   Creator?
-  finance   Finance?
+  id          String   @id @unique @default(uuid())
+  email       String   @unique @db.VarChar(255)
+  password    String?  @db.VarChar(255)
+  createdAt   DateTime @default(now())
+  name        String?  @db.VarChar(255)
+  photoURL    String?  @db.VarChar(255)
+  country     String?  @db.VarChar(100)
+  phoneNumber String?  @db.VarChar(100)
+  role        Role
+  updatedAt   DateTime @updatedAt
+  status      Status   @default(pending)
+  admin       Admin?
+  creator     Creator?
+  finance     Finance?
 }
 
 model Admin {
   id          String  @id @unique @default(cuid())
-  name        String? @db.VarChar(255)
-  designation String? @db.VarChar(100)
-  photoURL    String? @db.VarChar(255)
-  country     String? @db.VarChar(100)
-  phoneNumber String? @db.VarChar(100)
+  designation String?
   mode        Mode    @default(normal)
   inviteToken String? @unique
-  status      Status  @default(pending)
   userId      String  @unique
   user        User    @relation(fields: [userId], references: [id])
 }
@@ -38,13 +38,11 @@ model Creator {
   firstName   String      @db.VarChar(100)
   lastName    String      @db.VarChar(100)
   pronounce   String?     @db.VarChar(100)
-  phone       String?     @db.VarChar(100)
-  Nationality String?     @db.VarChar(100)
+  nationality String?     @db.VarChar(100)
   location    String?     @db.VarChar(100)
   birthDate   DateTime?
   instagram   String?     @db.VarChar(100)
   tiktok      String?     @db.VarChar(100)
-  status      Status      @default(pending)
   employment  Employment? @default(others)
   languages   Language[]
   industries  Industry[]
@@ -101,11 +99,9 @@ enum Status {
 }
 
 enum Role {
-  user
   admin
-  superadmin
   creator
-  finance
+  brand
 }
 
 enum Employment {
@@ -117,3 +113,10 @@ enum Employment {
   unemployed
   others
 }
+
+// enum Designation {
+//   Finance
+//   CSM
+//   BD
+//   Growth
+// }

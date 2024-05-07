@@ -1,18 +1,50 @@
 import { Request, Response } from 'express';
 import { AdminInvite } from 'src/config/nodemailer.config';
 
-import { createNewAdmin, findUserByEmail, handleGetAdmins, updateNewAdmin, updateUser } from 'src/service/userServices';
+import {
+  createNewAdmin,
+  findUserByEmail,
+  handleGetAdmins,
+  updateAdmin,
+  updateNewAdmin,
+} from 'src/service/userServices';
+import { Storage } from '@google-cloud/storage';
 
-export const updateProfile = async (req: Request, res: Response) => {
-  //   const { name, email, password, photoURL, designation, country, phoneNumber } = req.body;
+const storage = new Storage({
+  keyFilename: 'src/config/cult-service.json',
+});
+
+const bucket = storage.bucket('cultcreativeasia');
+
+export const updateProfileAdmin = async (req: Request, res: Response) => {
+  const { files } = req;
+
   try {
-    await updateUser(req.body);
-    res.status(200).json({ message: 'Successfully updated' });
+    if (files && files.image) {
+      const { image } = files as any;
+      bucket.upload(image.tempFilePath, { destination: `profile/${image.name}` }, async (err, file) => {
+        if (err) {
+          return res.status(500).send('Error uploading image.');
+        }
+        file?.makePublic(async (err) => {
+          if (err) {
+            return res.status(500).send('Error uploading image.');
+          }
+          const publicURL = file.publicUrl();
+          await updateAdmin(req.body, publicURL);
+        });
+      });
+    }
+
+    await updateAdmin(req.body);
+
+    return res.status(200).json({ message: 'Successfully updated' });
   } catch (error) {
-    res.status(400).json({ message: error });
+    return res.status(400).json({ message: error });
   }
 };
 
+// Only superadmin is allow to run this function
 export const getAdmins = async (req: Request, res: Response) => {
   const userid = req.session.userid;
   try {

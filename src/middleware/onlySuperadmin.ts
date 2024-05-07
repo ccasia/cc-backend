@@ -10,7 +10,7 @@ export const isSuperAdmin = async (req: Request, res: Response, next: NextFuncti
 
   try {
     const user = await getUser(userid);
-    if (user?.user?.role !== 'superadmin') {
+    if (user?.admin?.mode !== 'god') {
       return res.status(404).json({ message: 'forbidden' });
     }
   } catch (error) {

@@ -1,10 +1,10 @@
 import { Router } from 'express';
-import { getAdmins, inviteAdmin, updateAdminInformation, updateProfile } from 'src/controller/userController';
+import { getAdmins, inviteAdmin, updateAdminInformation, updateProfileAdmin } from 'src/controller/userController';
 import { isSuperAdmin } from 'src/middleware/onlySuperadmin';
 
 const router = Router();
 
-router.patch('/updateProfile', updateProfile);
+router.patch('/updateProfileAdmin', updateProfileAdmin);
 router.get('/admins', isSuperAdmin, getAdmins);
 router.post('/newAdmin', inviteAdmin);
 router.put('/updateProfile/newAdmin', updateAdminInformation);

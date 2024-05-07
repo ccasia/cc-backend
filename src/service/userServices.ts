@@ -11,44 +11,39 @@ interface AdminProfile {
   name: string;
   email: string;
   password: string;
-  photoURL: string;
   designation: string;
   country: string;
   phoneNumber: string;
+  role: string;
   status: any;
 }
 
-export const updateUser = async ({
-  userId,
-  name,
-  email,
-  password,
-  photoURL,
-  designation,
-  country,
-  phoneNumber,
-  status,
-}: AdminProfile) => {
+export const updateAdmin = async (
+  { userId, name, email, designation, country, phoneNumber, status }: AdminProfile,
+  publicURL?: string | undefined,
+) => {
   try {
-    const data = await prisma.admin.update({
-      where: {
-        userId: userId,
-      },
-      data: {
-        name,
-        designation,
-        country,
-        phoneNumber,
-        photoURL,
-        status,
-        user: {
-          update: {
-            email,
-            password,
+    const data = await prisma.$transaction([
+      prisma.user.update({
+        where: {
+          id: userId,
+        },
+        data: {
+          name,
+          email,
+          country,
+          phoneNumber,
+          photoURL: publicURL,
+          status,
+          admin: {
+            update: {
+              designation,
+            },
           },
         },
-      },
-    });
+      }),
+    ]);
+
     return data;
   } catch (error) {
     return error;
@@ -56,41 +51,52 @@ export const updateUser = async ({
 };
 
 export const getUser = async (id: string) => {
-  let user;
+  // let user;
 
-  user = await prisma.admin.findUnique({
+  // user = await prisma.admin.findUnique({
+  //   where: {
+  //     userId: id,
+  //   },
+  //   include: {
+  //     user: true,
+  //   },
+  // });
+
+  // if (!user) {
+  //   user = await prisma.creator.findUnique({
+  //     where: {
+  //       userId: id,
+  //     },
+  //     include: {
+  //       user: true,
+  //     },
+  //   });
+  // }
+
+  const user = await prisma.user.findUnique({
     where: {
-      userId: id,
+      id,
     },
     include: {
-      user: true,
+      admin: true,
+      creator: true,
     },
   });
-
-  if (!user) {
-    user = await prisma.creator.findUnique({
-      where: {
-        userId: id,
-      },
-      include: {
-        user: true,
-      },
-    });
-  }
 
   return user;
 };
 
 export const handleGetAdmins = async (userid: string) => {
   try {
-    const admins = await prisma.admin.findMany({
+    const admins = await prisma.user.findMany({
       where: {
         NOT: {
-          userId: userid,
+          id: userid,
         },
+        role: 'admin',
       },
       include: {
-        user: true,
+        admin: true,
       },
     });
 
@@ -149,6 +155,10 @@ export const updateNewAdmin = async (adminData: any) => {
         },
         data: {
           password: hashedPassword,
+          status: 'active',
+          name,
+          country,
+          phoneNumber,
         },
       }),
       prisma.admin.update({
@@ -156,12 +166,8 @@ export const updateNewAdmin = async (adminData: any) => {
           userId: userId,
         },
         data: {
-          name,
           designation,
-          country,
-          phoneNumber,
           inviteToken: null,
-          status: 'active',
         },
       }),
     ]);

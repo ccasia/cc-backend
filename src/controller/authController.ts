@@ -7,15 +7,15 @@ import { AdminInvitaion, creatorVerificationEmail } from '../config/nodemailer.c
 import bcrypt from 'bcryptjs';
 // import { getUser } from 'src/service/userServices';
 import { handleChangePassword } from 'src/service/authServices';
-import { verifyToken } from '@utils/jwtHelper';
+// import { verifyToken } from '@utils/jwtHelper';
 import { getUser } from 'src/service/userServices';
+import { verifyToken } from '@utils/jwtHelper';
 
 const prisma = new PrismaClient();
 
 interface RequestData {
   email: string;
   password: string;
-  type: any;
 }
 
 interface CreatorRequestData {
@@ -40,115 +40,115 @@ interface LanguagesData {
 }
 
 interface CreatorUpdateData {
-  Interests: InterestData[];
+  interests: InterestData[];
   Nationality: string;
   birthDate: Date;
   employment: string;
   industries: IndustryData[];
   instagram: string;
-  lanaugages: LanguagesData[];
+  languages: LanguagesData[];
   location: string;
   phone: string;
   pronounce: string;
   tiktok: string;
 }
 
-export const login = async (req: Request, res: Response) => {
-  const { email, password, type }: RequestData = req.body;
-  let data;
+// export const login = async (req: Request, res: Response) => {
+//   const { email, password, type }: RequestData = req.body;
+//   let data;
 
-  if (!type) {
-    return res.status(400).json({ message: 'Type is not define' });
-  }
+//   if (!type) {
+//     return res.status(400).json({ message: 'Type is not define' });
+//   }
 
-  try {
-    if (type.admin) {
-      data = await prisma.admin.findFirst({
-        where: {
-          user: {
-            email: email,
-          },
-        },
-        include: {
-          user: true,
-        },
-      });
-    } else {
-      data = await prisma.creator.findFirst({
-        where: {
-          user: {
-            email: email,
-          },
-        },
-        include: {
-          user: true,
-        },
-      });
-    }
+//   try {
+//     if (type.admin) {
+//       data = await prisma.admin.findFirst({
+//         where: {
+//           user: {
+//             email: email,
+//           },
+//         },
+//         include: {
+//           user: true,
+//         },
+//       });
+//     } else {
+//       data = await prisma.creator.findFirst({
+//         where: {
+//           user: {
+//             email: email,
+//           },
+//         },
+//         include: {
+//           user: true,
+//         },
+//       });
+//     }
 
-    if (!data) return res.status(404).json({ message: 'Wrong email' });
+//     if (!data) return res.status(404).json({ message: 'Wrong email' });
 
-    const isActive = await prisma.user.findFirst({
-      where: {
-        AND: [
-          {
-            email: data.user.email,
-          },
-          {
-            OR: [
-              {
-                admin: {
-                  status: 'active',
-                },
-              },
-              {
-                creator: {
-                  status: 'active',
-                },
-              },
-            ],
-          },
-        ],
-      },
-    });
+//     const isActive = await prisma.user.findFirst({
+//       where: {
+//         AND: [
+//           {
+//             email: data.user.email,
+//           },
+//           {
+//             OR: [
+//               {
+//                 admin: {
+//                   status: 'active',
+//                 },
+//               },
+//               {
+//                 creator: {
+//                   status: 'active',
+//                 },
+//               },
+//             ],
+//           },
+//         ],
+//       },
+//     });
 
-    if (!isActive) return res.status(400).json({ message: 'Account is not active' });
+//     if (!isActive) return res.status(400).json({ message: 'Account is not active' });
 
-    // // Hashed password
-    const isMatch = await bcrypt.compare(password, data.user.password as string);
+//     // // Hashed password
+//     const isMatch = await bcrypt.compare(password, data.user.password as string);
 
-    if (!isMatch) {
-      return res.status(404).json({ message: 'Wrong password' });
-    }
+//     if (!isMatch) {
+//       return res.status(404).json({ message: 'Wrong password' });
+//     }
 
-    const accessToken = jwt.sign({ id: data.user.id }, process.env.ACCESSKEY as Secret, {
-      expiresIn: '1d',
-    });
+//     const accessToken = jwt.sign({ id: data.user.id }, process.env.ACCESSKEY as Secret, {
+//       expiresIn: '1d',
+//     });
 
-    const refreshToken = jwt.sign({ id: data?.user?.id }, process.env.REFRESHKEY as Secret);
+//     const refreshToken = jwt.sign({ id: data?.user?.id }, process.env.REFRESHKEY as Secret);
 
-    const session = req.session;
-    session.userid = data.user.id;
-    session.refreshToken = refreshToken;
+//     const session = req.session;
+//     session.userid = data.user.id;
+//     session.refreshToken = refreshToken;
 
-    res.cookie('userid', data.user.id, {
-      maxAge: 60 * 60 * 24 * 1000, // 1 Day
-      httpOnly: true,
-    });
+//     res.cookie('userid', data.user.id, {
+//       maxAge: 60 * 60 * 24 * 1000, // 1 Day
+//       httpOnly: true,
+//     });
 
-    res.cookie('accessToken', accessToken, {
-      maxAge: 60 * 60 * 24 * 1000, // 1 Day
-      httpOnly: true,
-    });
+//     res.cookie('accessToken', accessToken, {
+//       maxAge: 60 * 60 * 24 * 1000, // 1 Day
+//       httpOnly: true,
+//     });
 
-    return res.status(200).json({
-      user: data,
-      accessToken: accessToken,
-    });
-  } catch (error) {
-    return res.send(error);
-  }
-};
+//     return res.status(200).json({
+//       user: data,
+//       accessToken: accessToken,
+//     });
+//   } catch (error) {
+//     return res.send(error);
+//   }
+// };
 
 // normal user for testing
 export const registerUser = async (req: Request, res: Response) => {
@@ -164,6 +164,7 @@ export const registerUser = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'User already exists' });
     }
     const hashedPassword = await bcrypt.hash(password, 10);
+
     const data = await prisma.user.create({
       data: {
         email,
@@ -221,31 +222,36 @@ export const registerSuperAdmin = async (req: Request, res: Response) => {
         email,
       },
     });
+
     if (search) {
       return res.status(400).json({ message: 'User already exists' });
     }
+
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    const data = await prisma.user.create({
-      data: {
-        email,
-        password: hashedPassword,
-        role: 'superadmin',
-      },
-    });
-    const admin = await prisma.admin.create({
-      data: {
-        name: 'admin',
-        designation: 'admin',
-        country: 'India',
-        photoURL: 'https://www.google.com',
-        phoneNumber: '1234567890',
-        status: 'active',
-        userId: data.id,
-      },
+    const result = await prisma.$transaction(async (prisma) => {
+      const newUser = await prisma.user.create({
+        data: {
+          email,
+          password: hashedPassword,
+          name: 'Afiq',
+          role: 'admin',
+          status: 'active',
+        },
+      });
+
+      const newAdmin = await prisma.admin.create({
+        data: {
+          designation: 'CSM',
+          mode: 'god',
+          userId: newUser.id,
+        },
+      });
+
+      return { newUser, newAdmin };
     });
 
-    return res.status(201).json({ data, admin });
+    return res.status(201).json(result);
   } catch (error) {
     return res.status(400).json({ message: 'User already exists' });
   }
@@ -272,6 +278,7 @@ export const registerCreator = async (req: Request, res: Response) => {
         email,
         password: hashedPassword,
         role: 'creator',
+        name: firstName + ' ' + lastName,
       },
     });
 
@@ -319,8 +326,11 @@ export const sendEmail = async (req: Request, res: Response) => {
       where: {
         id: userid,
       },
+      include: {
+        admin: true,
+      },
     });
-    if (user?.role !== 'superadmin') {
+    if (user?.admin?.mode !== 'god') {
       return res.status(401).json({ message: 'Unauthorized' });
     }
     const adminToken = jwt.sign({ id: user.id }, process.env.ACCESSKEY as Secret, {
@@ -376,12 +386,12 @@ export const verifyCreator = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Unauthorized' });
     }
 
-    const creator = await prisma.creator.findFirst({
+    const creator = await prisma.user.findFirst({
       where: {
-        userId: (result as JwtPayload).id,
+        id: (result as JwtPayload).id,
       },
       include: {
-        user: true,
+        creator: true,
       },
     });
 
@@ -389,26 +399,26 @@ export const verifyCreator = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Not found.' });
     }
 
-    await prisma.creator.update({
+    await prisma.user.update({
       where: {
-        userId: creator.userId,
+        id: creator.id,
       },
       data: {
-        status: 'active',
+        status: 'pending',
       },
     });
 
-    const accessToken = jwt.sign({ id: creator.user.id }, process.env.ACCESSKEY as Secret, {
+    const accessToken = jwt.sign({ id: creator.id }, process.env.ACCESSKEY as Secret, {
       expiresIn: '1h',
     });
 
-    const refreshToken = jwt.sign({ id: creator?.user?.id }, process.env.REFRESHKEY as Secret);
+    const refreshToken = jwt.sign({ id: creator.id }, process.env.REFRESHKEY as Secret);
 
     const session = req.session;
-    session.userid = creator.user.id;
+    session.userid = creator.id;
     session.refreshToken = refreshToken;
 
-    res.cookie('userid', creator.user.id, {
+    res.cookie('userid', creator.id, {
       maxAge: 60 * 60 * 24 * 1000, // 1 Day
       httpOnly: true,
     });
@@ -467,6 +477,10 @@ export const getCurrentUser = async (req: Request, res: Response) => {
       where: {
         id: userid,
       },
+      include: {
+        admin: true,
+        creator: true,
+      },
     });
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
@@ -482,39 +496,46 @@ export const updateCreator = async (req: Request, res: Response) => {
   const { userid } = req.session;
 
   const {
-    Interests,
-    industries,
-    instagram,
     phone,
     tiktok,
-    Nationality,
-    birthDate,
-    employment,
-    lanaugages,
-    location,
     pronounce,
+    location,
+    interests,
+    languages,
+    instagram,
+    industries,
+    employment,
+    birthDate,
+    Nationality,
   }: CreatorUpdateData = req.body;
 
   const data = new Date(birthDate);
+
   try {
     const creator = await prisma.creator.update({
       where: {
         userId: userid,
       },
       data: {
+        user: {
+          update: {
+            phoneNumber: phone,
+            country: Nationality,
+            status: 'active',
+          },
+        },
         instagram,
-        phone,
         pronounce,
-        Nationality,
         location,
+        nationality: Nationality,
         birthDate: data,
         employment: employment as Employment,
         tiktok,
         languages: {
-          create: lanaugages.map((language) => ({ name: language })),
+          create: languages.map((language) => ({ name: language })),
         },
         interests: {
-          create: Interests.map((interest) => ({ name: interest.name, rank: interest.rank })),
+          create: interests.map((interest) => ({ name: interest.name, rank: interest.rank })),
         },
         industries: {
           create: industries.map((industry) => ({ name: industry.name, rank: industry.rank })),
@@ -536,7 +557,7 @@ export const updateCreator = async (req: Request, res: Response) => {
 
 // Function to get user's information
 export const getprofile = async (req: Request, res: Response) => {
-  const refreshToken = req.session.refreshToken;
+  const refreshToken = req.session.refreshToken as string;
 
   if (!refreshToken) {
     req.session.destroy((err) => {
@@ -545,18 +566,80 @@ export const getprofile = async (req: Request, res: Response) => {
       }
       res.clearCookie('userid');
       res.clearCookie('accessToken');
+      return res.status(401).json('You are not authenticated');
     });
-    return res.status(401).json('You are not authenticated');
+    return;
   }
 
-  jwt.verify(refreshToken, process.env.REFRESHKEY as any, async (err: any, decode: any) => {
+  jwt.verify(refreshToken, process.env.REFRESHKEY as string, async (err: any, decode: any) => {
     if (err) return res.status(403).json({ message: 'Forbidden' });
 
-    const user = await getUser(decode.id);
-    if (!user) return res.status(401).json({ message: 'Unauthorized' });
+    try {
+      const user = await getUser(decode.id);
 
-    const accessToken = jwt.sign({ id: user.user.id }, process.env.ACCESSKEY as Secret, {
+      if (!user) return res.status(401).json({ message: 'Unauthorized' });
+
+      const accessToken = jwt.sign({ id: user.id }, process.env.ACCESSKEY as Secret, {
+        expiresIn: '1d',
+      });
+
+      res.cookie('accessToken', accessToken, {
+        maxAge: 60 * 60 * 24 * 1000, // 1 Day
+        httpOnly: true,
+      });
+
+      return res.status(200).json({ user, accessToken });
+    } catch (error) {
+      return res.status(500).json({ message: 'Internal Server Error' });
+    }
+  });
+};
+
+export const login = async (req: Request, res: Response) => {
+  const { email, password }: RequestData = req.body;
+
+  try {
+    const data = await prisma.user.findFirst({
+      where: {
+        email,
+      },
+      include: {
+        admin: true,
+        creator: true,
+      },
+    });
+
+    if (!data) return res.status(404).json({ message: 'Wrong email' });
+
+    switch (data.status) {
+      case 'banned':
+        return res.status(400).json({ message: 'Account banned.' });
+      case 'pending':
+        return res.status(202).json({ message: 'Accoung pending.' });
+      case 'rejected':
+        return res.status(403).json({ message: 'Account rejected.' });
+    }
+
+    // // Hashed password
+    const isMatch = await bcrypt.compare(password, data.password as string);
+
+    if (!isMatch) {
+      return res.status(404).json({ message: 'Wrong password' });
+    }
+
+    const accessToken = jwt.sign({ id: data.id }, process.env.ACCESSKEY as Secret, {
       expiresIn: '1d',
+    });
+
+    const refreshToken = jwt.sign({ id: data.id }, process.env.REFRESHKEY as Secret);
+
+    const session = req.session;
+    session.userid = data.id;
+    session.refreshToken = refreshToken;
+
+    res.cookie('userid', data.id, {
+      maxAge: 60 * 60 * 24 * 1000, // 1 Day
+      httpOnly: true,
     });
 
     res.cookie('accessToken', accessToken, {
@@ -564,6 +647,11 @@ export const getprofile = async (req: Request, res: Response) => {
       httpOnly: true,
     });
 
-    return res.status(200).json({ user, accessToken });
-  });
+    return res.status(200).json({
+      user: data,
+      accessToken: accessToken,
+    });
+  } catch (error) {
+    return res.send(error);
+  }
 };

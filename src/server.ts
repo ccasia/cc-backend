@@ -7,6 +7,8 @@ import session from 'express-session';
 import pg from 'pg';
 import cookieParser from 'cookie-parser';
 import connectPgSimple from 'connect-pg-simple';
+import fileUpload from 'express-fileupload';
+
 // import { creatorVerificationEmail } from './config/nodemailer.config';
 
 dotenv.config();
@@ -15,6 +17,14 @@ const app: Application = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
+app.use(
+  fileUpload({
+    limits: { fileSize: 50 * 1024 * 1024 },
+    useTempFiles: true,
+    tempFileDir: '/tmp/',
+  }),
+);
+
 const corsOptions = {
   origin: true, //included origin as true
   credentials: true, //included credentials as true
@@ -51,6 +61,7 @@ const pgPool = new pg.Pool({
   password: 'postgres',
   port: 5435,
 });
+
 app.use(
   session({
     secret: process.env.SESSION_SECRET as string,
