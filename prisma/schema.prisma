@@ -62,19 +62,19 @@ model Creator {
 // }
 
 model Industry {
-  id        String  @id @unique @default(cuid())
-  name      String?
-  rank      Int?
-  creator   Creator @relation(fields: [userId], references: [userId])
-  userId String
+  id      String  @id @unique @default(cuid())
+  name    String?
+  rank    Int?
+  creator Creator @relation(fields: [userId], references: [userId])
+  userId  String
 }
 
 model Interest {
-  id        String  @id @unique @default(cuid())
-  name      String?
-  rank      Int?
-  creator   Creator @relation(fields: [userId], references: [userId])
-  userId String
+  id      String  @id @unique @default(cuid())
+  name    String?
+  rank    Int?
+  creator Creator @relation(fields: [userId], references: [userId])
+  userId  String
 }
 
 model Finance {
@@ -110,7 +110,7 @@ enum Role {
 enum Employment {
   fulltime
   freelance
-  parttime
+  part_time
   student
   in_between
   unemployed
