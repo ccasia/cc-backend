@@ -116,10 +116,3 @@ enum Employment {
   unemployed
   others
 }
-
-// enum Designation {
-//   Finance
-//   CSM
-//   BD
-//   Growth
-// }
