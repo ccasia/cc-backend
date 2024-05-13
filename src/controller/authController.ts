@@ -514,7 +514,12 @@ export const login = async (req: Request, res: Response) => {
       },
       include: {
         admin: true,
-        creator: true,
+        creator: {
+          include: {
+            industries: true,
+            interests: true,
+          },
+        },
       },
     });
 

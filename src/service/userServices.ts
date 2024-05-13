@@ -83,7 +83,12 @@ export const getUser = async (id: string) => {
     },
     include: {
       admin: true,
-      creator: true,
+      creator: {
+        include: {
+          industries: true,
+          interests: true,
+        },
+      },
     },
   });
 
