@@ -28,6 +28,7 @@ model Admin {
   id          String  @id @unique @default(cuid())
   designation String?
   mode        Mode    @default(normal)
+  adminRole   String?
   inviteToken String? @unique
   userId      String  @unique
   user        User    @relation(fields: [userId], references: [id])
@@ -44,34 +45,36 @@ model Creator {
   instagram   String?     @db.VarChar(100)
   tiktok      String?     @db.VarChar(100)
   employment  Employment? @default(others)
-  languages   Language[]
+  languages   Json?
   industries  Industry[]
   interests   Interest[]
   userId      String      @unique
   user        User        @relation(fields: [userId], references: [id])
 }
 
-model Language {
-  id        String  @id @unique @default(cuid())
-  name      String?
-  creator   Creator @relation(fields: [creatorId], references: [id])
-  creatorId String
-}
+// give more privlage to userId
+
+// model Language {
+//   id        String  @id @unique @default(cuid())
+//   name      String?
+//   creator   Creator @relation(fields: [userId], references: [userId])
+//   userId String
+// }
 
 model Industry {
   id        String  @id @unique @default(cuid())
   name      String?
   rank      Int?
-  creator   Creator @relation(fields: [creatorId], references: [id])
-  creatorId String
+  creator   Creator @relation(fields: [userId], references: [userId])
+  userId String
 }
 
 model Interest {
   id        String  @id @unique @default(cuid())
   name      String?
   rank      Int?
-  creator   Creator @relation(fields: [creatorId], references: [id])
-  creatorId String
+  creator   Creator @relation(fields: [userId], references: [userId])
+  userId String
 }
 
 model Finance {

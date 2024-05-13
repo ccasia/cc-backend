@@ -7,6 +7,7 @@ import {
   handleGetAdmins,
   updateAdmin,
   updateNewAdmin,
+  createAdminForm,
 } from 'src/service/userServices';
 import { Storage } from '@google-cloud/storage';
 
@@ -35,7 +36,6 @@ export const updateProfileAdmin = async (req: Request, res: Response) => {
         });
       });
     }
-
     await updateAdmin(req.body);
 
     return res.status(200).json({ message: 'Successfully updated' });
@@ -109,6 +109,23 @@ export const inviteAdmin = async (req: Request, res: Response) => {
     const response = await createNewAdmin(email);
     AdminInvite(response?.user.email as string, response?.admin.inviteToken as string);
     res.status(200).send(response);
+  } catch (error) {
+    res.status(404).send(error);
+  }
+};
+
+export const createAdmin = async (req: Request, res: Response) => {
+  try {
+    const user = await findUserByEmail(req.body.email);
+
+    if (user) {
+      return res.status(400).json({ message: 'User already registered' });
+    }
+
+    const result = await createAdminForm(req.body);
+    AdminInvite(result?.user.email as string, result?.admin.inviteToken as string);
+
+    res.status(200).json({ message: 'Successfully created', result });
   } catch (error) {
     res.status(404).send(error);
   }

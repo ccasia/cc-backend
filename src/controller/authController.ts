@@ -35,9 +35,9 @@ interface IndustryData {
   rank: string;
 }
 
-interface LanguagesData {
-  name: string;
-}
+// interface LanguagesData {
+//   name: string;
+// }
 
 interface CreatorUpdateData {
   interests: InterestData[];
@@ -46,7 +46,7 @@ interface CreatorUpdateData {
   employment: string;
   industries: IndustryData[];
   instagram: string;
-  languages: LanguagesData[];
+  languages: string[];
   location: string;
   phone: string;
   pronounce: string;
@@ -409,7 +409,7 @@ export const verifyCreator = async (req: Request, res: Response) => {
     });
 
     const accessToken = jwt.sign({ id: creator.id }, process.env.ACCESSKEY as Secret, {
-      expiresIn: '1h',
+      expiresIn: '4h',
     });
 
     const refreshToken = jwt.sign({ id: creator.id }, process.env.REFRESHKEY as Secret);
@@ -423,7 +423,7 @@ export const verifyCreator = async (req: Request, res: Response) => {
       httpOnly: true,
     });
     res.cookie('accessToken', accessToken, {
-      maxAge: 60 * 60 * 24 * 1000, // 1 Day
+      maxAge: 60 * 60 * 4 * 1000, // 1 Day
       httpOnly: true,
     });
 
@@ -531,9 +531,7 @@ export const updateCreator = async (req: Request, res: Response) => {
         birthDate: data,
         employment: employment as Employment,
         tiktok,
-        languages: {
-          create: languages.map((language) => ({ name: language })),
-        },
+        languages :languages,
         interests: {
           create: interests.map((interest) => ({ name: interest.name, rank: interest.rank })),
         },
@@ -544,7 +542,6 @@ export const updateCreator = async (req: Request, res: Response) => {
       include: {
         interests: true,
         industries: true,
-        languages: true,
       },
     });
 
@@ -580,11 +577,11 @@ export const getprofile = async (req: Request, res: Response) => {
       if (!user) return res.status(401).json({ message: 'Unauthorized' });
 
       const accessToken = jwt.sign({ id: user.id }, process.env.ACCESSKEY as Secret, {
-        expiresIn: '1d',
+        expiresIn: '4h',
       });
 
       res.cookie('accessToken', accessToken, {
-        maxAge: 60 * 60 * 24 * 1000, // 1 Day
+        maxAge: 60 * 60 * 4 * 1000, // 1 Day
         httpOnly: true,
       });
 
@@ -611,14 +608,14 @@ export const login = async (req: Request, res: Response) => {
 
     if (!data) return res.status(404).json({ message: 'Wrong email' });
 
-    switch (data.status) {
-      case 'banned':
-        return res.status(400).json({ message: 'Account banned.' });
-      case 'pending':
-        return res.status(202).json({ message: 'Accoung pending.' });
-      case 'rejected':
-        return res.status(403).json({ message: 'Account rejected.' });
-    }
+    // switch (data.status) {
+    //   case 'banned':
+    //     return res.status(400).json({ message: 'Account banned.' });
+    //   case 'pending':
+    //     return res.status(202).json({ message: 'Accoung pending.' });
+    //   case 'rejected':
+    //     return res.status(403).json({ message: 'Account rejected.' });
+    // }
 
     // // Hashed password
     const isMatch = await bcrypt.compare(password, data.password as string);
@@ -627,8 +624,9 @@ export const login = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Wrong password' });
     }
 
+    // 4 hours
     const accessToken = jwt.sign({ id: data.id }, process.env.ACCESSKEY as Secret, {
-      expiresIn: '1d',
+      expiresIn: '4h',
     });
 
     const refreshToken = jwt.sign({ id: data.id }, process.env.REFRESHKEY as Secret);
@@ -643,7 +641,7 @@ export const login = async (req: Request, res: Response) => {
     });
 
     res.cookie('accessToken', accessToken, {
-      maxAge: 60 * 60 * 24 * 1000, // 1 Day
+      maxAge: 60 * 60 * 4 * 1000, // 1 Day
       httpOnly: true,
     });
 
