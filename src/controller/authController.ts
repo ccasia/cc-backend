@@ -53,104 +53,6 @@ interface CreatorUpdateData {
   tiktok: string;
 }
 
-// export const login = async (req: Request, res: Response) => {
-//   const { email, password, type }: RequestData = req.body;
-//   let data;
-
-//   if (!type) {
-//     return res.status(400).json({ message: 'Type is not define' });
-//   }
-
-//   try {
-//     if (type.admin) {
-//       data = await prisma.admin.findFirst({
-//         where: {
-//           user: {
-//             email: email,
-//           },
-//         },
-//         include: {
-//           user: true,
-//         },
-//       });
-//     } else {
-//       data = await prisma.creator.findFirst({
-//         where: {
-//           user: {
-//             email: email,
-//           },
-//         },
-//         include: {
-//           user: true,
-//         },
-//       });
-//     }
-
-//     if (!data) return res.status(404).json({ message: 'Wrong email' });
-
-//     const isActive = await prisma.user.findFirst({
-//       where: {
-//         AND: [
-//           {
-//             email: data.user.email,
-//           },
-//           {
-//             OR: [
-//               {
-//                 admin: {
-//                   status: 'active',
-//                 },
-//               },
-//               {
-//                 creator: {
-//                   status: 'active',
-//                 },
-//               },
-//             ],
-//           },
-//         ],
-//       },
-//     });
-
-//     if (!isActive) return res.status(400).json({ message: 'Account is not active' });
-
-//     // // Hashed password
-//     const isMatch = await bcrypt.compare(password, data.user.password as string);
-
-//     if (!isMatch) {
-//       return res.status(404).json({ message: 'Wrong password' });
-//     }
-
-//     const accessToken = jwt.sign({ id: data.user.id }, process.env.ACCESSKEY as Secret, {
-//       expiresIn: '1d',
-//     });
-
-//     const refreshToken = jwt.sign({ id: data?.user?.id }, process.env.REFRESHKEY as Secret);
-
-//     const session = req.session;
-//     session.userid = data.user.id;
-//     session.refreshToken = refreshToken;
-
-//     res.cookie('userid', data.user.id, {
-//       maxAge: 60 * 60 * 24 * 1000, // 1 Day
-//       httpOnly: true,
-//     });
-
-//     res.cookie('accessToken', accessToken, {
-//       maxAge: 60 * 60 * 24 * 1000, // 1 Day
-//       httpOnly: true,
-//     });
-
-//     return res.status(200).json({
-//       user: data,
-//       accessToken: accessToken,
-//     });
-//   } catch (error) {
-//     return res.send(error);
-//   }
-// };
-
-// normal user for testing
 export const registerUser = async (req: Request, res: Response) => {
   const { email, password }: RequestData = req.body;
 
@@ -595,6 +497,7 @@ export const getprofile = async (req: Request, res: Response) => {
   });
 };
 
+// Login for both creator and admin
 export const login = async (req: Request, res: Response) => {
   const { email, password }: RequestData = req.body;
 

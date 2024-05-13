@@ -44,6 +44,7 @@ model Creator {
   instagram   String?     @db.VarChar(100)
   tiktok      String?     @db.VarChar(100)
   employment  Employment? @default(others)
+  industriess Json
   languages   Language[]
   industries  Industry[]
   interests   Interest[]
@@ -113,10 +114,3 @@ enum Employment {
   unemployed
   others
 }
-
-// enum Designation {
-//   Finance
-//   CSM
-//   BD
-//   Growth
-// }

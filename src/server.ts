@@ -8,12 +8,17 @@ import pg from 'pg';
 import cookieParser from 'cookie-parser';
 import connectPgSimple from 'connect-pg-simple';
 import fileUpload from 'express-fileupload';
+// import { Storage } from '@google-cloud/storage';
 
 // import { creatorVerificationEmail } from './config/nodemailer.config';
 
 dotenv.config();
 
 const app: Application = express();
+// const storage = new Storage({
+//   keyFilename: 'src/config/cult-service.json',
+// });
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
@@ -84,13 +89,31 @@ app.get('/', (_req: Request, res: Response) => {
   res.send('Server is running...');
 });
 
-// app.get('/testemail', () => {
+// app.get('/videos/:filename', async (req, res) => {
+//   const filename = req.params.filename;
+//   const file = storage.bucket('landing-cultcreative').file(`main/${filename}`);
+
 //   try {
-//     creatorVerificationEmail('afiqapikol249@gmail.com', 'dawdadawdawe12e');
+//     const [fileExists] = await file.exists();
+//     if (!fileExists) {
+//       return res.status(404).send('File not found');
+//     }
+
+//     // Set proper headers for video streaming
+//     res.setHeader('Content-Type', 'video/mp4');
+//     res.setHeader('Cache-Control', 'public, max-age=31536000');
+
+//     // Pipe the video stream to the response
+//     file.createReadStream().pipe(res);
 //   } catch (error) {
-//     console.log(error);
+//     console.error('Error retrieving file:', error);
+//     res.status(500).send('Internal Server Error');
 //   }
 // });
+
+app.get('/getInstaInformation', (_req: Request, res: Response) => {
+  res.send('https://www.instagram.com/apikoll/');
+});
 
 app.listen(process.env.PORT, () => {
   console.log(`Listening to port ${process.env.PORT}...`);
