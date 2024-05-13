@@ -1,5 +1,5 @@
 /* eslint-disable no-unused-vars */
-import { PrismaClient } from '@prisma/client';
+import { Mode, PrismaClient } from '@prisma/client';
 // import { AdminInvite } from 'src/config/nodemailer.config';
 import jwt, { Secret } from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
@@ -14,12 +14,14 @@ interface AdminProfile {
   designation: string;
   country: string;
   phoneNumber: string;
+  adminRole: string;
   role: string;
+  mode: string;
   status: any;
 }
 
 export const updateAdmin = async (
-  { userId, name, email, designation, country, phoneNumber, status }: AdminProfile,
+  { userId, name, email, designation, country, phoneNumber, status, mode, adminRole }: AdminProfile,
   publicURL?: string | undefined,
 ) => {
   try {
@@ -38,6 +40,8 @@ export const updateAdmin = async (
           admin: {
             update: {
               designation,
+              mode: mode as Mode,
+              adminRole,
             },
           },
         },
@@ -106,6 +110,45 @@ export const handleGetAdmins = async (userid: string) => {
   }
 };
 
+interface AdminForm {
+  name: string;
+  email: string;
+  phoneNumber: string;
+  country: string;
+  adminRole: string;
+  designation: string;
+}
+
+export const createAdminForm = async (data: AdminForm) => {
+  const { name, email, phoneNumber, country, adminRole  ,designation} = data;
+
+  try {
+    const user = await prisma.user.create({
+      data: {
+        name,
+        email,
+        phoneNumber,
+        country,
+        role: 'admin',
+        status:'pending'
+      },
+    });
+    const inviteToken = jwt.sign({ id: user?.id }, process.env.SESSION_SECRET as Secret, { expiresIn: '1h' });
+
+    const admin = await prisma.admin.create({
+      data: {
+        userId: user.id,
+        adminRole,
+        designation,
+        inviteToken,
+      },
+    });
+
+    return { user, admin };
+  } catch (error) {
+    throw new Error(error as any);
+  }
+};
 export const createNewAdmin = async (email: string) => {
   try {
     const user = await prisma.user.create({
