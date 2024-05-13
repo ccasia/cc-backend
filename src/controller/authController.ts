@@ -433,7 +433,7 @@ export const updateCreator = async (req: Request, res: Response) => {
         birthDate: data,
         employment: employment as Employment,
         tiktok,
-        languages :languages,
+        languages: languages,
         interests: {
           create: interests.map((interest) => ({ name: interest.name, rank: interest.rank })),
         },
@@ -478,6 +478,15 @@ export const getprofile = async (req: Request, res: Response) => {
 
       if (!user) return res.status(401).json({ message: 'Unauthorized' });
 
+      switch (user?.status) {
+        case 'banned':
+          return res.status(400).json({ message: 'Account banned.' });
+        case 'pending':
+          return res.status(202).json({ message: 'Accoung pending.' });
+        case 'rejected':
+          return res.status(403).json({ message: 'Account rejected.' });
+      }
+
       const accessToken = jwt.sign({ id: user.id }, process.env.ACCESSKEY as Secret, {
         expiresIn: '4h',
       });
@@ -511,14 +520,14 @@ export const login = async (req: Request, res: Response) => {
 
     if (!data) return res.status(404).json({ message: 'Wrong email' });
 
-    // switch (data.status) {
-    //   case 'banned':
-    //     return res.status(400).json({ message: 'Account banned.' });
-    //   case 'pending':
-    //     return res.status(202).json({ message: 'Accoung pending.' });
-    //   case 'rejected':
-    //     return res.status(403).json({ message: 'Account rejected.' });
-    // }
+    switch (data.status) {
+      case 'banned':
+        return res.status(400).json({ message: 'Account banned.' });
+      case 'pending':
+        return res.status(202).json({ message: 'Accoung pending.' });
+      case 'rejected':
+        return res.status(403).json({ message: 'Account rejected.' });
+    }
 
     // // Hashed password
     const isMatch = await bcrypt.compare(password, data.password as string);

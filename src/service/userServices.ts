@@ -120,7 +120,7 @@ interface AdminForm {
 }
 
 export const createAdminForm = async (data: AdminForm) => {
-  const { name, email, phoneNumber, country, adminRole  ,designation} = data;
+  const { name, email, phoneNumber, country, adminRole, designation } = data;
 
   try {
     const user = await prisma.user.create({
@@ -130,7 +130,7 @@ export const createAdminForm = async (data: AdminForm) => {
         phoneNumber,
         country,
         role: 'admin',
-        status:'pending'
+        status: 'pending',
       },
     });
     const inviteToken = jwt.sign({ id: user?.id }, process.env.SESSION_SECRET as Secret, { expiresIn: '1h' });
