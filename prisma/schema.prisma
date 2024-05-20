@@ -21,7 +21,9 @@ model User {
   status      Status   @default(pending)
   admin       Admin?
   creator     Creator?
+  Event       Event?   @relation(fields: [eventId], references: [id])
   finance     Finance?
+  eventId     String?
 }
 
 model Admin {
@@ -46,41 +48,46 @@ model Creator {
   tiktok      String?     @db.VarChar(100)
   employment  Employment? @default(others)
   languages   Json?
-  industries  Industry[]
-  interests   Interest[]
   userId      String      @unique
   user        User        @relation(fields: [userId], references: [id])
+  industries  Industry[]
+  interests   Interest[]
 }
-
-// give more privlage to userId
-
-// model Language {
-//   id        String  @id @unique @default(cuid())
-//   name      String?
-//   creator   Creator @relation(fields: [userId], references: [userId])
-//   userId String
-// }
 
 model Industry {
   id      String  @id @unique @default(cuid())
   name    String?
   rank    Int?
-  creator Creator @relation(fields: [userId], references: [userId])
   userId  String
+  creator Creator @relation(fields: [userId], references: [userId])
 }
 
 model Interest {
   id      String  @id @unique @default(cuid())
   name    String?
   rank    Int?
-  creator Creator @relation(fields: [userId], references: [userId])
   userId  String
+  creator Creator @relation(fields: [userId], references: [userId])
 }
 
 model Finance {
   id     String @id @unique @default(cuid())
   userId String @unique
   user   User   @relation(fields: [userId], references: [id])
+}
+
+model Event {
+  id          String   @id @unique @default(cuid())
+  title       String
+  description String
+  color       String
+  allDay      Boolean
+  userId      String
+  start       DateTime
+  end         DateTime
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  user        User[]
 }
 
 model session {

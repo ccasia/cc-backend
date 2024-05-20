@@ -8,6 +8,7 @@ import pg from 'pg';
 import cookieParser from 'cookie-parser';
 import connectPgSimple from 'connect-pg-simple';
 import fileUpload from 'express-fileupload';
+import { PrismaClient } from '@prisma/client';
 // import { Storage } from '@google-cloud/storage';
 
 // import { creatorVerificationEmail } from './config/nodemailer.config';
@@ -87,6 +88,16 @@ app.use(router);
 
 app.get('/', (_req: Request, res: Response) => {
   res.send('Server is running...');
+});
+
+app.get('/users', async (_req, res) => {
+  const prisma = new PrismaClient();
+  try {
+    const users = await prisma.user.findMany();
+    res.send(users);
+  } catch (error) {
+    console.log(error);
+  }
 });
 
 // app.get('/videos/:filename', async (req, res) => {
