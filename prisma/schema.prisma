@@ -52,6 +52,16 @@ model Creator {
   user        User        @relation(fields: [userId], references: [id])
   industries  Industry[]
   interests   Interest[]
+  MediaKit    MediaKit?
+}
+
+model MediaKit {
+  id        String  @id @unique @default(cuid())
+  photoUrl  String?
+  name      String?
+  about     String?
+  creatorId String  @unique
+  creator   Creator @relation(fields: [creatorId], references: [id])
 }
 
 model Industry {
