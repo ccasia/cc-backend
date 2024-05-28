@@ -81,3 +81,28 @@ export const deleteCreator = async (req: Request, res: Response) => {
     res.status(500).json({ message: error });
   }
 };
+
+export const updateCreator = async (req: Request, res: Response) => {
+  const data = req.body;
+  try {
+    await prisma.creator.update({
+      where: {
+        userId: data.id,
+      },
+      data: {
+        firstName: data.name.split()[0],
+        lastName: data.name.split()[1] || '',
+        user: {
+          update: {
+            name: data.name,
+            status: data.status,
+            country: data.country,
+          },
+        },
+      },
+    });
+    return res.status(200).json({ message: 'Successfully updated' });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
