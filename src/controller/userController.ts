@@ -2,14 +2,17 @@ import { Request, Response } from 'express';
 import { AdminInvite } from 'src/config/nodemailer.config';
 
 import {
-  createNewAdmin,
+  // createNewAdmin,
   findUserByEmail,
   handleGetAdmins,
   updateAdmin,
   updateNewAdmin,
   createAdminForm,
+  createNewAdmin,
+  // createNewAdmin,
 } from 'src/service/userServices';
 import { Storage } from '@google-cloud/storage';
+// import { serializePermission } from '@utils/serializePermission';
 
 const storage = new Storage({
   keyFilename: 'src/config/cult-service.json',
@@ -19,6 +22,9 @@ const bucket = storage.bucket('cultcreativeasia');
 
 export const updateProfileAdmin = async (req: Request, res: Response) => {
   const { files } = req;
+  const body = req.body;
+
+  const permission = body.permission;
 
   try {
     if (files && files.image) {
@@ -32,11 +38,12 @@ export const updateProfileAdmin = async (req: Request, res: Response) => {
             return res.status(500).send('Error uploading image.');
           }
           const publicURL = file.publicUrl();
-          await updateAdmin(req.body, publicURL);
+          await updateAdmin(req.body, permission, publicURL);
         });
       });
     }
-    await updateAdmin(req.body);
+
+    await updateAdmin(req.body, permission);
 
     return res.status(200).json({ message: 'Successfully updated' });
   } catch (error) {
@@ -100,13 +107,14 @@ export const getAdmins = async (req: Request, res: Response) => {
 // };
 
 export const inviteAdmin = async (req: Request, res: Response) => {
-  const { email } = req.body;
+  const { email, permission } = req.body;
+
   try {
     const user = await findUserByEmail(email);
     if (user) {
       return res.status(400).json({ message: 'User already registered' });
     }
-    const response = await createNewAdmin(email);
+    const response = await createNewAdmin(email, permission);
     AdminInvite(response?.user.email as string, response?.admin.inviteToken as string);
     res.status(200).send(response);
   } catch (error) {

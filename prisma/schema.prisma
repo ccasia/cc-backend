@@ -27,14 +27,21 @@ model User {
 }
 
 model Admin {
-  id          String     @id @unique @default(cuid())
-  designation String?
-  mode        Mode       @default(normal)
-  adminRole   String?
-  inviteToken String?    @unique
-  userId      String     @unique
-  campaign    Campaign[]
-  user        User       @relation(fields: [userId], references: [id])
+  id                    String                  @id @unique @default(cuid())
+  designation           Designation
+  mode                  Mode                    @default(normal)
+  inviteToken           String?                 @unique
+  userId                String                  @unique
+  campaign              Campaign[]
+  user                  User                    @relation(fields: [userId], references: [id])
+  AdminPermissionModule AdminPermissionModule[]
+}
+
+enum Designation {
+  Finance
+  CSM
+  BD
+  Growth
 }
 
 model Creator {
@@ -109,20 +116,20 @@ model session {
 
 // resgration number
 model Company {
-  id                  String     @id @unique @default(cuid())
-  name                String     @db.VarChar(100)
-  email               String?    @db.VarChar(255)
-  phone               String?    @db.VarChar(255)
-  website             String?    @db.VarChar(255)
-  address             String     @db.VarChar(255)
-  logo                String?    @db.VarChar(100)
-  about               String?    @db.VarChar(255)
+  id                  String   @id @unique @default(cuid())
+  name                String   @db.VarChar(100)
+  email               String?  @db.VarChar(255)
+  phone               String?  @db.VarChar(255)
+  website             String?  @db.VarChar(255)
+  address             String   @db.VarChar(255)
+  logo                String?  @db.VarChar(100)
+  about               String?  @db.VarChar(255)
   objectives          Json?
-  registration_number String     @unique
-  createdAt           DateTime   @default(now())
-  updatedAt           DateTime   @updatedAt
+  registration_number String   @unique
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
   brand               Brand[]
-  campaign            Campaign[]
+  // campaign            Campaign[]
 }
 
 // resgration number
@@ -202,14 +209,13 @@ model Campaign {
   userId              String
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
-  Admin               Admin                @relation(fields: [userId], references: [userId])
+  Admin               Admin                @relation(fields: [userId], references: [id])
   campaignBrief       CampaignBrief?
-  campaignRequirnment CampaignRequirnment?
-  companyId           String
-  company             Company              @relation(fields: [companyId], references: [id])
+  campaignRequirement CampaignRequirement?
+  CampaignTimeline    CampaignTimeline[]
 }
 
-model CampaignRequirnment {
+model CampaignRequirement {
   id              String   @id @unique @default(cuid())
   gender          String   @db.VarChar(255)
   age             String   @db.VarChar(255)
@@ -237,6 +243,69 @@ model CampaignBrief {
   campaign       Campaign @relation(fields: [campaignId], references: [id])
 }
 
+model Timeline {
+  id               String             @id @unique @default(cuid())
+  task_name        String?
+  start_date       DateTime?
+  end_date         DateTime?
+  CampaignTimeline CampaignTimeline[]
+}
+
+model CampaignTimeline {
+  id         String   @id @unique @default(cuid())
+  timeline   Timeline @relation(fields: [timelineId], references: [id])
+  timelineId String
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id])
+
+  @@index([timelineId, campaignId])
+}
+
+model Permission {
+  id                    String                  @id @unique @default(cuid())
+  name                  Permissions
+  description           String?
+  AdminPermissionModule AdminPermissionModule[]
+}
+
+model Module {
+  id                    String                  @id @unique @default(cuid())
+  name                  Modules
+  description           String?
+  AdminPermissionModule AdminPermissionModule[]
+}
+
+model AdminPermissionModule {
+  id           String     @id @unique @default(cuid())
+  adminId      String
+  moduleId     String
+  permissionId String
+  admin        Admin      @relation(fields: [adminId], references: [id])
+  module       Module     @relation(fields: [moduleId], references: [id])
+  permission   Permission @relation(fields: [permissionId], references: [id])
+}
+
+enum Permissions {
+  create
+  read
+  update
+  delete
+}
+
+enum Modules {
+  creator
+  campaign
+  brand
+  metric
+  invoice
+}
+
+enum Resources {
+  creator
+  brand
+  campaign
+}
+
 enum Mode {
   god
   normal
@@ -253,6 +322,7 @@ enum Role {
   admin
   creator
   brand
+  superadmin
 }
 
 enum Employment {

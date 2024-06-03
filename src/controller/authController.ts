@@ -2,7 +2,7 @@
 import jwt, { JwtPayload, Secret } from 'jsonwebtoken';
 import { Employment, PrismaClient } from '@prisma/client';
 import { Request, Response } from 'express';
-import { AdminInvitaion, creatorVerificationEmail } from '../config/nodemailer.config';
+import { AdminInvitaion, AdminInvite, creatorVerificationEmail } from '../config/nodemailer.config';
 // import session from 'express-session';
 import bcrypt from 'bcryptjs';
 // import { getUser } from 'src/service/userServices';
@@ -137,7 +137,7 @@ export const registerSuperAdmin = async (req: Request, res: Response) => {
           email,
           password: hashedPassword,
           name: 'Afiq',
-          role: 'admin',
+          role: 'superadmin',
           status: 'active',
         },
       });
@@ -257,7 +257,7 @@ export const verifyAdmin = async (req: Request, res: Response) => {
       },
     });
 
-    const isVerify = await jwt.verify(admin?.inviteToken as string, process.env.SESSION_SECRET as string);
+    const isVerify = jwt.verify(admin?.inviteToken as string, process.env.SESSION_SECRET as string);
 
     if (!isVerify) {
       return res.status(404).json({ message: 'Unauthorized' });
@@ -272,10 +272,66 @@ export const verifyAdmin = async (req: Request, res: Response) => {
         id: admin.userId,
       },
     });
-
     return res.status(200).json({ message: 'Admin verified successfully', user });
-  } catch (error) {
+  } catch (error: any) {
+    if (error.name) {
+      return res.status(400).json({ error: 'Token expired. Please contact our admin.' });
+    }
     return res.status(500).json({ error: 'An error occurred while verifying the user' });
+  }
+};
+
+export const resendVerifyTokenAdmin = async (req: Request, res: Response) => {
+  const { token } = req.body;
+  try {
+    const admin = await prisma.admin.findFirst({
+      where: {
+        inviteToken: token,
+      },
+    });
+
+    if (!admin) {
+      return res.status(404).json({ message: 'Invalid token' });
+    }
+
+    const newToken = jwt.sign({ id: admin?.userId }, process.env.SESSION_SECRET as Secret, { expiresIn: '1h' });
+
+    const result = await prisma.admin.update({
+      where: {
+        id: admin.id,
+      },
+      data: {
+        inviteToken: newToken,
+      },
+      include: {
+        user: true,
+      },
+    });
+
+    AdminInvite(result?.user.email as string, result?.inviteToken as string);
+
+    return res.status(200).json({ message: 'New link has been sent to your email' });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const checkTokenValidity = async (req: Request, res: Response) => {
+  const { token } = req.params;
+  try {
+    const isValid = await prisma.admin.findFirst({
+      where: {
+        inviteToken: token,
+      },
+    });
+
+    if (!isValid) {
+      return res.status(404).json({ message: 'Token is not valid' });
+    }
+
+    return res.status(200).json({ message: 'Token valid' });
+  } catch (error) {
+    return res.status(400).json(error);
   }
 };
 
@@ -513,7 +569,16 @@ export const login = async (req: Request, res: Response) => {
         email,
       },
       include: {
-        admin: true,
+        admin: {
+          include: {
+            AdminPermissionModule: {
+              include: {
+                module: true,
+                permission: true,
+              },
+            },
+          },
+        },
         creator: {
           include: {
             industries: true,
