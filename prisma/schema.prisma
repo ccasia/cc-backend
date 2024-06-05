@@ -203,16 +203,20 @@ model SupSupBrand {
 
 //campaign peroid and intervals
 model Campaign {
-  id                  String               @id @unique @default(cuid())
-  name                String
-  status              Status               @default(pending)
-  userId              String
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
-  Admin               Admin                @relation(fields: [userId], references: [id])
-  campaignBrief       CampaignBrief?
-  campaignRequirement CampaignRequirement?
-  CampaignTimeline    CampaignTimeline[]
+  id                        String                   @id @unique @default(cuid())
+  name                      String
+  status                    Status                   @default(pending)
+  userId                    String
+  createdAt                 DateTime                 @default(now())
+  updatedAt                 DateTime                 @updatedAt
+  Admin                     Admin                    @relation(fields: [userId], references: [id])
+  campaignBrief             CampaignBrief?
+  campaignRequirement       CampaignRequirement?
+  defaultCampaignTimeline   DefaultTimelineCampaign? @relation(fields: [defaultTimelineCampaignId], references: [id])
+  defaultTimelineCampaignId String?
+  customCampaignTimeline    CustomTimelineCampaign?  @relation(fields: [customTimelineCampaignId], references: [id])
+  CampaignTimeline          CampaignTimeline[]
+  customTimelineCampaignId  String?
 }
 
 model CampaignRequirement {
@@ -333,4 +337,32 @@ enum Employment {
   in_between
   unemployed
   others
+}
+
+model DefaultTimelineCampaign {
+  id                 String     @id @unique @default(cuid())
+  openForPitch       Int
+  shortlistCreator   Int
+  firstDraft         Int
+  finalDraft         Int
+  feedBackFirstDraft Int
+  feedBackFinalDraft Int
+  filterPitch        Int
+  agreementSign      Int
+  qc                 Int
+  Campaign           Campaign[]
+}
+
+model CustomTimelineCampaign {
+  id                 String     @id @unique @default(cuid())
+  openForPitch       Int
+  shortlistCreator   Int
+  firstDraft         Int
+  finalDraft         Int
+  feedBackFirstDraft Int
+  feedBackFinalDraft Int
+  filterPitch        Int
+  agreementSign      Int
+  qc                 Int
+  Campaign           Campaign[]
 }

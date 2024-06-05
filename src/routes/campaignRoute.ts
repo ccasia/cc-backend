@@ -1,6 +1,7 @@
-import { Router } from 'express';
+import { Response, Router, Request } from 'express';
 import { PrismaClient } from '@prisma/client';
 import dayjs from 'dayjs';
+import { updateDefaultTimeline } from 'src/controller/campaignController';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -43,5 +44,16 @@ router.post('/createCampaign', async (_req, res) => {
     return res.status(400).json(error);
   }
 });
+
+router.get('/defaultTimeline', async (_req: Request, res: Response) => {
+  try {
+    const defaults = await prisma.defaultTimelineCampaign.findMany();
+    return res.status(200).send(...defaults);
+  } catch (error) {
+    console.log(error);
+  }
+});
+
+router.post('/updateDefaultTimeline', updateDefaultTimeline);
 
 export default router;
