@@ -14,6 +14,8 @@ import {
   // updateCreator,
   verifyCreator,
   updateCreator,
+  resendVerifyTokenAdmin,
+  checkTokenValidity,
 } from '../controller/authController';
 import { validateToken } from '@utils/jwtHelper';
 
@@ -26,6 +28,8 @@ router.patch('/changePassword', validateToken, changePassword);
 router.get('/me', validateToken, getprofile);
 router.post('/register', registerUser);
 router.get('/verifyAdmin', verifyAdmin);
+router.post('/resendVerifyToken', resendVerifyTokenAdmin);
+router.get('/checkTokenValidity/:token', checkTokenValidity);
 router.post('/verifyCreator', verifyCreator);
 router.post('/registerCreator', registerCreator);
 router.post('/registerSuperAdmin', registerSuperAdmin);

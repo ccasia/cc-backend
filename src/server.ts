@@ -59,13 +59,14 @@ declare module 'express-session' {
 
 // store session in PostgreSQL
 const pgSession = connectPgSimple(session);
+
 const pgPool = new pg.Pool({
   user: 'postgres',
   connectionString: process.env.DATABASE_URL,
-  host: 'localhost:5435',
+  host: '127.0.0.1:5431',
   database: 'postgres',
   password: 'postgres',
-  port: 5435,
+  port: 5431,
 });
 
 app.use(

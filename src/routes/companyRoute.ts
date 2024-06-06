@@ -1,6 +1,6 @@
-import { Router } from "express";
+import { Router } from 'express';
 
-import { isSuperAdmin } from "src/middleware/onlySuperadmin";
+import { isSuperAdmin } from 'src/middleware/onlySuperadmin';
 
 import { createCompany , getAllCompanies ,createBrand ,getAllBrands ,createOneCompany ,createOneBrand } from "src/controller/companyController";
 

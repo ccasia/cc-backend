@@ -4,7 +4,6 @@ const prisma = new PrismaClient();
 
 interface ChangePassword {
   userId: string;
-
   latestPassword: string;
 }
 
