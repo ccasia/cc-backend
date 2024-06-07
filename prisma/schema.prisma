@@ -350,6 +350,7 @@ model DefaultTimelineCampaign {
   filterPitch        Int
   agreementSign      Int
   qc                 Int
+  posting            Int
   Campaign           Campaign[]
 }
 
@@ -364,5 +365,6 @@ model CustomTimelineCampaign {
   filterPitch        Int
   agreementSign      Int
   qc                 Int
+  posting            Int
   Campaign           Campaign[]
 }
