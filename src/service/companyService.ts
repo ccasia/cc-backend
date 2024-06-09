@@ -78,8 +78,11 @@ export const handleCreateCompany = async ({
     });
 
     return { company };
-  } catch (error) {
+  } catch (error: any) {
     console.log(error);
+
+    throw new Error(error.message);
+
     return error;
   }
 };

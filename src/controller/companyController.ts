@@ -8,8 +8,12 @@ const prisma = new PrismaClient();
 export const createCompany = async (req: Request, res: Response) => {
   try {
     const company = await handleCreateCompany(req.body);
+
     return res.status(201).json({ company, message: 'A new company has been created' });
-  } catch (err) {
+  } catch (err: any) {
+    if (err.message.includes('exists')) {
+      return res.status(404).json({ message: 'Company already exist' });
+    }
     return res.status(400).json({ message: err });
   }
 };
