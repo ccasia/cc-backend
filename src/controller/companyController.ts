@@ -54,7 +54,10 @@ export const createBrand = async (req: Request, res: Response) => {
   try {
     const brand = await handleCreateBrand(req.body);
     return res.status(201).json(brand);
-  } catch (err) {
+  } catch (err: any) {
+    if (err.message.includes('exists')) {
+      return res.status(404).json({ message: 'Company already exist' });
+    }
     return res.status(400).json({ message: err });
   }
 };

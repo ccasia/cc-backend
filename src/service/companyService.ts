@@ -79,11 +79,7 @@ export const handleCreateCompany = async ({
 
     return { company };
   } catch (error: any) {
-    console.log(error);
-
     throw new Error(error.message);
-
-    return error;
   }
 };
 
@@ -133,6 +129,7 @@ export const handleCreateBrand = async ({
         id: companyId,
       },
     });
+
     if (!companyExist) {
       throw new Error('Company does not exists');
     }
@@ -157,8 +154,8 @@ export const handleCreateBrand = async ({
     });
 
     return brand;
-  } catch (error) {
-    return error;
+  } catch (error: any) {
+    throw new Error(error.message);
   }
 };
 
