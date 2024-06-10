@@ -185,6 +185,7 @@ export const getUser = async (id: string) => {
         include: {
           industries: true,
           interests: true,
+          MediaKit: true,
         },
       },
     },

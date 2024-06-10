@@ -64,12 +64,13 @@ model Creator {
 }
 
 model MediaKit {
-  id        String  @id @unique @default(cuid())
+  id        String   @id @unique @default(cuid())
   photoUrl  String?
   name      String?
   about     String?
-  creatorId String  @unique
-  creator   Creator @relation(fields: [creatorId], references: [id])
+  interests String[]
+  creatorId String   @unique
+  creator   Creator  @relation(fields: [creatorId], references: [id])
 }
 
 model Industry {
