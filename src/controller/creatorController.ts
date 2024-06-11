@@ -106,3 +106,44 @@ export const updateCreator = async (req: Request, res: Response) => {
     return res.status(400).json(error);
   }
 };
+
+export const updateMediaKit = async (req: Request, res: Response) => {
+  const { name, about, interests, creatorId } = req.body;
+
+  try {
+    const mediaKit = await prisma.mediaKit.upsert({
+      where: {
+        creatorId: creatorId,
+      },
+      update: {
+        name: name,
+        about: about,
+        interests: interests,
+      },
+      create: {
+        name: name,
+        about: about,
+        interests: interests,
+        creatorId: creatorId as string,
+      },
+    });
+    return res.status(200).json({ message: 'Successfully updated', mediaKit });
+  } catch (error) {
+    console.log(error);
+    return res.status(400).json(error);
+  }
+};
+
+export const getMediaKit = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  try {
+    const mediaKit = await prisma.mediaKit.findUnique({
+      where: {
+        creatorId: id as string,
+      },
+    });
+    return res.status(200).json(mediaKit);
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};

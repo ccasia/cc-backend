@@ -2,7 +2,7 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-interface compnayForm {
+interface companyForm {
   companyName: string;
   companyEmail: string;
   companyPhone: string;
@@ -11,12 +11,6 @@ interface compnayForm {
   companyAbout: string;
   companyObjectives: string[];
   companyRegistrationNumber: string;
-  brandService_name: string;
-  brandInstagram: string;
-  brandTiktok: string;
-  brandFacebook: string;
-  brandIntersts: string[];
-  brandIndustries: string[];
 }
 
 interface brandForm {
@@ -37,7 +31,6 @@ interface brandForm {
   companyId: string;
 }
 
-
 // for creating new company with brand
 export const handleCreateCompany = async ({
   companyName,
@@ -48,13 +41,7 @@ export const handleCreateCompany = async ({
   companyAbout,
   companyObjectives,
   companyRegistrationNumber,
-  brandService_name,
-  brandInstagram,
-  brandTiktok,
-  brandFacebook,
-  brandIntersts,
-  brandIndustries,
-}: compnayForm) => {
+}: companyForm) => {
   try {
     // check if company already exists
     const companyExist = await prisma.company.findFirst({
@@ -72,9 +59,11 @@ export const handleCreateCompany = async ({
         ],
       },
     });
+
     if (companyExist) {
       throw new Error('Company already exists');
     }
+
     const company = await prisma.company.create({
       data: {
         name: companyName,
@@ -87,30 +76,12 @@ export const handleCreateCompany = async ({
         registration_number: companyRegistrationNumber,
       },
     });
-    const brand = await prisma.brand.create({
-      data: {
-        name: brandService_name,
-        instagram: brandInstagram,
-        tiktok: brandTiktok,
-        facebook: brandFacebook,
-        indystries: brandIndustries,
-        companyId: company?.id,
-        email: companyEmail,
-        phone: companyPhone,
-        website: companyWebsite,
-        objectives: companyObjectives,
-        registration_number: companyRegistrationNumber,
-        intersets: brandIntersts,
-      },
-    });
 
-    return { company, brand };
-  } catch (error) {
-    console.log(error);
-    return error;
+    return { company };
+  } catch (error: any) {
+    throw new Error(error.message);
   }
 };
-
 
 // for creating new brand without company
 // send company id to create brand
@@ -147,7 +118,7 @@ export const handleCreateBrand = async ({
         ],
       },
     });
-    
+
     if (brandExist) {
       throw new Error('Brand already exists');
     }
@@ -158,10 +129,10 @@ export const handleCreateBrand = async ({
         id: companyId,
       },
     });
+
     if (!companyExist) {
       throw new Error('Company does not exists');
     }
-
 
     const brand = await prisma.brand.create({
       data: {
@@ -183,9 +154,8 @@ export const handleCreateBrand = async ({
     });
 
     return brand;
-  } catch (error) {
-    console.log(error);
-    return error;
+  } catch (error: any) {
+    throw new Error(error.message);
   }
 };
 

@@ -29,6 +29,7 @@ export const updateAdmin = async (
   permissions: Permission[],
   publicURL?: string | undefined,
 ) => {
+  console.log(permissions);
   try {
     const data = await prisma.user.update({
       where: {
@@ -57,13 +58,13 @@ export const updateAdmin = async (
       },
     });
 
-    if (permissions.length < 1) {
-      await prisma.adminPermissionModule.deleteMany({
-        where: {
-          adminId: data?.admin?.id,
-        },
-      });
-    }
+    // if (permissions.length < 1) {
+    //   await prisma.adminPermissionModule.deleteMany({
+    //     where: {
+    //       adminId: data?.admin?.id,
+    //     },
+    //   });
+    // }
 
     // Get all adminmodulepermission
     // const allData = await prisma.adminPermissionModule.findMany({
@@ -93,11 +94,11 @@ export const updateAdmin = async (
       }
 
       for (const item of permission.permissions) {
-        await prisma.permission.findFirst({
+        const existingPermission = await prisma.permission.findFirst({
           where: { name: item as Permissions },
         });
 
-        if (!permission) {
+        if (!existingPermission) {
           await prisma.permission.create({
             data: {
               name: item as Permissions,
@@ -138,8 +139,6 @@ export const updateAdmin = async (
 
       // extract permission
       const pe = await prisma.permission.findMany();
-
-      // console.log('CURRENT PERMISSION', currectPermissions);
 
       let permissionsToAdd = pe.filter((elem) => currectPermissions.some((ha) => ha.id === elem.id));
 
@@ -185,6 +184,7 @@ export const getUser = async (id: string) => {
         include: {
           industries: true,
           interests: true,
+          MediaKit: true,
         },
       },
     },
