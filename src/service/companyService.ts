@@ -92,12 +92,10 @@ export const handleCreateBrand = async ({
   brandWebsite,
   brandObjectives,
   brandAbout,
-  brandRegistrationNumber,
   brandService_name,
   brandInstagram,
   brandTiktok,
   brandFacebook,
-  brandIntersts,
   brandIndustries,
   companyId,
 }: brandForm) => {
@@ -111,9 +109,6 @@ export const handleCreateBrand = async ({
           },
           {
             phone: brandPhone,
-          },
-          {
-            registration_number: brandRegistrationNumber,
           },
         ],
       },
@@ -140,10 +135,8 @@ export const handleCreateBrand = async ({
         email: brandEmail,
         phone: brandPhone,
         website: brandWebsite,
-        registration_number: brandRegistrationNumber,
         companyId: companyId,
         indystries: brandIndustries,
-        intersets: brandIntersts,
         objectives: brandObjectives,
         instagram: brandInstagram,
         facebook: brandFacebook,
@@ -155,6 +148,7 @@ export const handleCreateBrand = async ({
 
     return brand;
   } catch (error: any) {
+    console.log(error);
     throw new Error(error.message);
   }
 };

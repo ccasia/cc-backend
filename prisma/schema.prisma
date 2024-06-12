@@ -135,26 +135,24 @@ model Company {
 
 // resgration number
 model Brand {
-  id                  String     @id @unique @default(cuid())
-  name                String     @db.VarChar(100)
-  email               String?    @db.VarChar(255)
-  phone               String?    @db.VarChar(255)
-  website             String?    @db.VarChar(255)
-  logo                String?    @db.VarChar(255)
-  description         String?    @db.VarChar(255)
-  service_name        String?    @db.VarChar(255)
-  instagram           String?    @db.VarChar(255)
-  registration_number String     @unique
-  tiktok              String?    @db.VarChar(255)
-  facebook            String?    @db.VarChar(255)
-  objectives          Json?
-  supBrand            SupBrand[]
-  intersets           Json?
-  indystries          Json?
-  createdAt           DateTime   @default(now())
-  updatedAt           DateTime   @updatedAt
-  companyId           String
-  company             Company    @relation(fields: [companyId], references: [id])
+  id           String     @id @unique @default(cuid())
+  name         String     @db.VarChar(100)
+  email        String?    @db.VarChar(255)
+  phone        String?    @db.VarChar(255)
+  website      String?    @db.VarChar(255)
+  logo         String?    @db.VarChar(255)
+  description  String?    @db.VarChar(255)
+  service_name String?    @db.VarChar(255)
+  instagram    String?    @db.VarChar(255)
+  tiktok       String?    @db.VarChar(255)
+  facebook     String?    @db.VarChar(255)
+  objectives   Json?
+  supBrand     SupBrand[]
+  indystries   Json?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  companyId    String
+  company      Company    @relation(fields: [companyId], references: [id])
 }
 
 model SupBrand {

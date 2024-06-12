@@ -171,3 +171,38 @@ export const deleteCompany = async (req: Request, res: Response) => {
     return res.status(400).json(error);
   }
 };
+
+export const editCompany = async (req: Request, res: Response) => {
+  const {
+    companyId,
+    companyName,
+    companyEmail,
+    companyPhone,
+    companyAddress,
+    companyWebsite,
+    companyAbout,
+    companyObjectives,
+    companyRegistrationNumber,
+  } = req.body;
+  try {
+    const updatedCompany = await prisma.company.update({
+      where: {
+        id: companyId,
+      },
+      data: {
+        name: companyName,
+        about: companyAbout,
+        objectives: companyObjectives,
+        email: companyEmail,
+        phone: companyPhone,
+        address: companyAddress,
+        website: companyWebsite,
+        registration_number: companyRegistrationNumber,
+      },
+    });
+
+    return res.status(200).json({ message: 'Succesfully updated', ...updatedCompany });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
