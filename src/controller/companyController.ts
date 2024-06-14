@@ -86,11 +86,9 @@ export const createOneBrand = async (req: Request, res: Response) => {
     email,
     phone,
     company,
-    registration_number,
     brandInstagram,
     brandTiktok,
     brandFacebook,
-    brandIntersts,
     brandIndustries,
   }: {
     name: string;
@@ -115,13 +113,11 @@ export const createOneBrand = async (req: Request, res: Response) => {
         name: name,
         email: email,
         phone: phone,
-        registration_number: registration_number,
         companyId: companyInfo?.id as string,
         instagram: brandInstagram,
         facebook: brandFacebook,
         tiktok: brandTiktok,
-        intersets: brandIntersts,
-        indystries: brandIndustries,
+        industries: brandIndustries,
       },
     });
 
@@ -198,6 +194,61 @@ export const editCompany = async (req: Request, res: Response) => {
         address: companyAddress,
         website: companyWebsite,
         registration_number: companyRegistrationNumber,
+      },
+    });
+
+    return res.status(200).json({ message: 'Succesfully updated', ...updatedCompany });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const getBrand = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  try {
+    const brand = await prisma.brand.findUnique({
+      where: {
+        id: id,
+      },
+      include: {
+        company: true,
+      },
+    });
+    return res.status(200).json(brand);
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const editBrand = async (req: Request, res: Response) => {
+  const {
+    brandId,
+    brandName,
+    brandEmail,
+    brandPhone,
+    brandInstagram,
+    brandTiktok,
+    brandWebsite,
+    brandAbout,
+    brandObjectives,
+    brandIndustries,
+  } = req.body;
+
+  try {
+    const updatedCompany = await prisma.brand.update({
+      where: {
+        id: brandId,
+      },
+      data: {
+        name: brandName,
+        description: brandAbout,
+        objectives: brandObjectives,
+        email: brandEmail,
+        phone: brandPhone,
+        instagram: brandInstagram,
+        tiktok: brandTiktok,
+        website: brandWebsite,
+        industries: brandIndustries,
       },
     });
 

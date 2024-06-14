@@ -136,7 +136,7 @@ export const handleCreateBrand = async ({
         phone: brandPhone,
         website: brandWebsite,
         companyId: companyId,
-        indystries: brandIndustries,
+        industries: brandIndustries,
         objectives: brandObjectives,
         instagram: brandInstagram,
         facebook: brandFacebook,

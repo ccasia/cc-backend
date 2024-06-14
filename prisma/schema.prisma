@@ -148,7 +148,7 @@ model Brand {
   facebook     String?    @db.VarChar(255)
   objectives   Json?
   supBrand     SupBrand[]
-  indystries   Json?
+  industries   Json?
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
   companyId    String
@@ -169,7 +169,7 @@ model SupBrand {
   service_name        String?       @db.VarChar(255)
   facebook            String?       @db.VarChar(255)
   intersets           Json?
-  indystries          Json?
+  industries          Json?
   objectives          Json?
   createdAt           DateTime      @default(now())
   updatedAt           DateTime      @updatedAt
@@ -193,7 +193,7 @@ model SupSupBrand {
   description         String?  @db.VarChar(255)
   objectives          Json?
   intersets           Json?
-  indystries          Json?
+  industries          Json?
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
   supBrandId          String
