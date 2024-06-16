@@ -58,11 +58,11 @@ export const updateDefaultTimeline = async (req: Request, res: Response) => {
   }
 };
 
-type image = {
+interface image {
   path: string;
   preview: string;
-};
-type timeline = {
+}
+interface timeline {
   id: string;
   openForPitch: number;
   shortlistCreator: number;
@@ -74,9 +74,9 @@ type timeline = {
   agreementSign: number;
   qc: number;
   posting: number;
-};
+}
 
-type Campaign = {
+interface Campaign {
   campaignInterests: string[];
   campaignIndustries: string[];
   campaignBrand: string;
@@ -99,7 +99,7 @@ type Campaign = {
   defaultTimeline: timeline;
   status: string;
   adminId: string;
-};
+}
 
 export const createCampaign = async (req: Request, res: Response) => {
   const {
@@ -126,7 +126,6 @@ export const createCampaign = async (req: Request, res: Response) => {
   }: Campaign = req.body;
 
   try {
-  
     const brand = await prisma.brand.findFirst({
       where: {
         name: campaignBrand,
@@ -145,7 +144,6 @@ export const createCampaign = async (req: Request, res: Response) => {
         brandId: brand?.id as string,
         name: campaignTitle,
         status: 'active',
-
       },
     });
 
