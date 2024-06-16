@@ -46,8 +46,6 @@ enum Designation {
 
 model Creator {
   id          String      @id @unique @default(cuid())
-  firstName   String      @db.VarChar(100)
-  lastName    String      @db.VarChar(100)
   pronounce   String?     @db.VarChar(100)
   nationality String?     @db.VarChar(100)
   location    String?     @db.VarChar(100)

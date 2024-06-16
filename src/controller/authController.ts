@@ -19,8 +19,7 @@ interface RequestData {
 }
 
 interface CreatorRequestData {
-  firstName: string;
-  lastName: string;
+  name: string;
   email: string;
   password: string;
 }
@@ -161,7 +160,7 @@ export const registerSuperAdmin = async (req: Request, res: Response) => {
 
 // Function to register creator
 export const registerCreator = async (req: Request, res: Response) => {
-  const { firstName, lastName, email, password }: CreatorRequestData = req.body.email;
+  const { name, email, password }: CreatorRequestData = req.body.email;
   try {
     const search = await prisma.user.findFirst({
       where: {
@@ -180,14 +179,12 @@ export const registerCreator = async (req: Request, res: Response) => {
         email,
         password: hashedPassword,
         role: 'creator',
-        name: firstName + ' ' + lastName,
+        name: name,
       },
     });
 
     const data = await prisma.creator.create({
       data: {
-        firstName,
-        lastName,
         userId: user.id,
       },
       include: {
@@ -633,5 +630,36 @@ export const login = async (req: Request, res: Response) => {
     });
   } catch (error) {
     return res.send(error);
+  }
+};
+
+export const updateProfileCreator = async (req: Request, res: Response) => {
+  const { name, email, photoURL, phoneNumber, country, about, id } = req.body;
+
+  try {
+    await prisma.creator.update({
+      where: {
+        userId: id,
+      },
+      data: {
+        MediaKit: {
+          update: {
+            about: about,
+          },
+        },
+        user: {
+          update: {
+            name: name,
+            email: email,
+            photoURL: photoURL,
+            phoneNumber: phoneNumber,
+            country: country,
+          },
+        },
+      },
+    });
+    return res.status(200).json({ message: 'Succesfully updated' });
+  } catch (error) {
+    return res.status(400).json({ message: 'Error updating creator' });
   }
 };

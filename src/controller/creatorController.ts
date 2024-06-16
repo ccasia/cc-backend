@@ -90,8 +90,6 @@ export const updateCreator = async (req: Request, res: Response) => {
         userId: data.id,
       },
       data: {
-        firstName: data.name.split()[0],
-        lastName: data.name.split()[1] || '',
         user: {
           update: {
             name: data.name,

@@ -16,6 +16,7 @@ import {
   updateCreator,
   resendVerifyTokenAdmin,
   checkTokenValidity,
+  updateProfileCreator,
 } from '../controller/authController';
 import { validateToken } from '@utils/jwtHelper';
 
@@ -36,5 +37,6 @@ router.post('/registerSuperAdmin', registerSuperAdmin);
 router.get('/currentUser', validateToken, getCurrentUser);
 router.get('/checkCreator', validateToken, checkCreator);
 router.put('/updateCreator', validateToken, updateCreator);
+router.patch('/updateProfileCreator', validateToken, updateProfileCreator);
 
 export default router;
