@@ -125,7 +125,7 @@ export const inviteAdmin = async (req: Request, res: Response) => {
 export const createAdmin = async (req: Request, res: Response) => {
   try {
     const user = await findUserByEmail(req.body.email);
-
+console.log(req.body)
     if (user) {
       return res.status(400).json({ message: 'User already registered' });
     }
