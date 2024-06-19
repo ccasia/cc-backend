@@ -12,6 +12,7 @@ import {
   // createNewAdmin,
 } from 'src/service/userServices';
 import { Storage } from '@google-cloud/storage';
+import { PrismaClient } from '@prisma/client';
 // import { serializePermission } from '@utils/serializePermission';
 
 const storage = new Storage({
@@ -19,6 +20,8 @@ const storage = new Storage({
 });
 
 const bucket = storage.bucket('cultcreativeasia');
+
+const prisma = new PrismaClient();
 
 export const updateProfileAdmin = async (req: Request, res: Response) => {
   const { files } = req;
@@ -125,7 +128,6 @@ export const inviteAdmin = async (req: Request, res: Response) => {
 export const createAdmin = async (req: Request, res: Response) => {
   try {
     const user = await findUserByEmail(req.body.email);
-console.log(req.body)
     if (user) {
       return res.status(400).json({ message: 'User already registered' });
     }
@@ -146,5 +148,29 @@ export const updateAdminInformation = async (req: Request, res: Response) => {
   } catch (error) {
     console.log(error);
     res.status(404).send(error);
+  }
+};
+
+export const getAllActiveAdmins = async (_req: Request, res: Response) => {
+  try {
+    const admins = await prisma.user.findMany({
+      where: {
+        NOT: {
+          role: 'creator',
+        },
+        status: 'active',
+      },
+      select: {
+        id: true,
+        name: true,
+      },
+      // include: {
+      //   admin: true,
+      // },
+    });
+
+    return res.status(200).json(admins);
+  } catch (error) {
+    return res.status(400).json(error);
   }
 };

@@ -14,6 +14,7 @@ import {
   editCompany,
   getBrand,
   editBrand,
+  getOptions,
 } from 'src/controller/companyController';
 
 const router = Router();
@@ -23,6 +24,7 @@ router.get('/getCompany/:id', isSuperAdmin, getCompanyById);
 router.get('/getCompanies', isSuperAdmin, getAllCompanies);
 router.post('/createBrand', isSuperAdmin, createBrand);
 router.get('/getBrands', isSuperAdmin, getAllBrands);
+router.get('/getOptions', isSuperAdmin, getOptions);
 router.get('/getBrand/:id', isSuperAdmin, getBrand);
 router.post('/createOneCompany', isSuperAdmin, createOneCompany);
 router.post('/createOneBrand', isSuperAdmin, createOneBrand);

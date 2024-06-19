@@ -5,6 +5,7 @@ import {
   updateAdminInformation,
   updateProfileAdmin,
   createAdmin,
+  getAllActiveAdmins,
 } from 'src/controller/userController';
 import { isSuperAdmin } from 'src/middleware/onlySuperadmin';
 // import { PrismaClient } from '@prisma/client';
@@ -14,6 +15,7 @@ const router = Router();
 
 router.patch('/updateProfileAdmin', updateProfileAdmin);
 router.get('/admins', isSuperAdmin, getAdmins);
+router.get('/getAdmins', isSuperAdmin, getAllActiveAdmins);
 router.post('/newAdmin', inviteAdmin);
 router.put('/updateProfile/newAdmin', updateAdminInformation);
 router.post('/createAdmin', isSuperAdmin, createAdmin);

@@ -257,3 +257,25 @@ export const editBrand = async (req: Request, res: Response) => {
     return res.status(400).json(error);
   }
 };
+
+export const getOptions = async (_req: Request, res: Response) => {
+  try {
+    const company = await prisma.company.findMany({
+      select: {
+        id: true,
+        name: true,
+      },
+    });
+
+    const brand = await prisma.brand.findMany({
+      select: {
+        id: true,
+        name: true,
+      },
+    });
+
+    return res.status(200).json([...company, ...brand]);
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};

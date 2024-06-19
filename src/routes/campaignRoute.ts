@@ -1,7 +1,7 @@
 import { Response, Router, Request } from 'express';
 import { PrismaClient } from '@prisma/client';
 // import dayjs from 'dayjs';
-import { updateDefaultTimeline, createCampaign } from 'src/controller/campaignController';
+import { updateDefaultTimeline, createCampaign, getAllCampaigns } from 'src/controller/campaignController';
 import { isSuperAdmin } from 'src/middleware/onlySuperadmin';
 
 const router = Router();
@@ -19,5 +19,7 @@ router.get('/defaultTimeline', async (_req: Request, res: Response) => {
 router.post('/updateDefaultTimeline', updateDefaultTimeline);
 
 router.post('/createCampaign', isSuperAdmin, createCampaign);
+
+router.get('/getAllCampaignsByAdminID', isSuperAdmin, getAllCampaigns);
 
 export default router;

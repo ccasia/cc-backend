@@ -18,8 +18,6 @@ export const updateDefaultTimeline = async (req: Request, res: Response) => {
     posting,
   } = req.body;
 
-  console.log(req.body);
-
   try {
     const newDefaultTimeline = await prisma.defaultTimelineCampaign.upsert({
       where: {
@@ -79,103 +77,349 @@ interface timeline {
 interface Campaign {
   campaignInterests: string[];
   campaignIndustries: string[];
-  campaignBrand: string;
+  campaignBrand: {
+    id: string;
+  };
   campaignStartDate: Date;
   campaignEndDate: Date;
   campaignTitle: string;
   campaginObjectives: string;
   campaignDo: any;
   campaignDont: any;
+  campaignDescription: string;
   audienceAge: string;
   audienceGender: string;
   audienceLocation: string;
   audienceLanguage: string;
   audienceCreatorPersona: string;
   audienceUserPersona: string;
-  adminManager: string;
+  adminManager: {
+    id: string;
+  };
   campaignStage: string;
   campaignImages: image[];
   agreementFrom: image;
   defaultTimeline: timeline;
   status: string;
   adminId: string;
+  timeline: any;
 }
 
 export const createCampaign = async (req: Request, res: Response) => {
   const {
-    campaignInterests,
-    campaignIndustries,
+    campaignTitle,
     campaignBrand,
     campaignStartDate,
     campaignEndDate,
-    campaignTitle,
+    campaignInterests,
+    campaignIndustries,
     campaginObjectives,
-    campaignDo,
-    campaignDont,
-    audienceAge,
+    campaignDescription,
     audienceGender,
+    audienceAge,
     audienceLocation,
     audienceLanguage,
     audienceCreatorPersona,
     audienceUserPersona,
-    // adminManager,
-    campaignStage,
+    campaignDo,
+    campaignDont,
     campaignImages,
+    adminManager,
     agreementFrom,
-    // adminId,
+    campaignStage,
+    timeline,
   }: Campaign = req.body;
 
   try {
-    const brand = await prisma.brand.findFirst({
+    let campaign;
+
+    const admin = await prisma.user.findFirst({
       where: {
-        name: campaignBrand,
+        id: adminManager.id as string,
+      },
+      include: {
+        admin: true,
       },
     });
 
-    // const defaultTimelineCampaign = await prisma.defaultTimelineCampaign.findFirst({
-    //   where:{
-    //     id:defaultTimeline.id
-    //   }
-    // })
-
-    const campign = await prisma.campaign.create({
-      data: {
-        stage: campaignStage as Stage,
-        brandId: brand?.id as string,
-        name: campaignTitle,
-        status: 'active',
+    let brand: any = await prisma.brand.findUnique({
+      where: {
+        id: campaignBrand.id,
       },
     });
 
-    const campaignRequirements = await prisma.campaignRequirement.create({
-      data: {
-        gender: audienceGender,
-        age: audienceAge,
-        geoLocation: audienceLocation,
-        language: audienceLanguage,
-        creator_persona: audienceCreatorPersona,
-        user_persona: audienceUserPersona,
-        campaignId: campign.id,
-      },
-    });
+    if (!brand) {
+      brand = await prisma.company.findUnique({
+        where: {
+          id: campaignBrand.id,
+        },
+      });
 
-    const campaignBrief = await prisma.campaignBrief.create({
-      data: {
-        title: campaignTitle,
-        objectives: campaginObjectives,
-        images: campaignImages.map((image) => image.path),
-        agreementFrom: agreementFrom.path,
-        startDate: campaignStartDate,
-        endDate: campaignEndDate,
-        interests: campaignInterests,
-        industries: campaignIndustries,
-        campaigns_do: campaignDo,
-        campaigns_dont: campaignDont,
-        campaignId: campign.id,
-      },
-    });
-    res.status(200).json({ campaignBrief, campaignRequirements, campign });
+      if (timeline?.id) {
+        campaign = await prisma.campaign.create({
+          data: {
+            name: campaignTitle,
+            description: campaignDescription,
+            status: 'active',
+            stage: campaignStage as Stage,
+            company: {
+              connect: {
+                id: brand?.id,
+              },
+            },
+            admin: {
+              connect: {
+                id: admin?.admin?.id,
+              },
+            },
+            campaignBrief: {
+              create: {
+                title: campaignTitle,
+                // objectives: campaginObjectives,
+                images: campaignImages.map((image) => image.path),
+                agreementFrom: agreementFrom.path,
+                startDate: campaignStartDate,
+                endDate: campaignEndDate,
+                interests: campaignInterests,
+                industries: campaignIndustries,
+                campaigns_do: campaignDo,
+                campaigns_dont: campaignDont,
+              },
+            },
+            campaignRequirement: {
+              create: {
+                gender: audienceGender,
+                age: audienceAge,
+                geoLocation: audienceLocation,
+                language: audienceLanguage,
+                creator_persona: audienceCreatorPersona,
+                user_persona: audienceUserPersona,
+              },
+            },
+            defaultCampaignTimeline: {
+              connect: {
+                id: timeline?.id,
+              },
+            },
+          },
+        });
+      } else {
+        const customTimeline = await prisma.customTimelineCampaign.create({
+          data: {
+            openForPitch: timeline?.openForPitch,
+            shortlistCreator: timeline?.shortlistCreator,
+            firstDraft: timeline?.firstDraft,
+            finalDraft: timeline?.finalDraft,
+            feedBackFirstDraft: timeline?.feedBackFirstDraft,
+            feedBackFinalDraft: timeline?.feedBackFinalDraft,
+            filterPitch: timeline?.filterPitch,
+            agreementSign: timeline?.agreementSign,
+            qc: timeline?.qc,
+            posting: timeline?.posting,
+          },
+        });
+
+        campaign = await prisma.campaign.create({
+          data: {
+            name: campaignTitle,
+            description: campaignDescription,
+            status: 'active',
+            stage: campaignStage as Stage,
+            company: {
+              connect: {
+                id: brand?.id,
+              },
+            },
+            admin: {
+              connect: {
+                id: admin?.admin?.id,
+              },
+            },
+            campaignBrief: {
+              create: {
+                title: campaignTitle,
+                // objectives: campaginObjectives,
+                images: campaignImages.map((image) => image.path),
+                agreementFrom: agreementFrom.path,
+                startDate: campaignStartDate,
+                endDate: campaignEndDate,
+                interests: campaignInterests,
+                industries: campaignIndustries,
+                campaigns_do: campaignDo,
+                campaigns_dont: campaignDont,
+              },
+            },
+            campaignRequirement: {
+              create: {
+                gender: audienceGender,
+                age: audienceAge,
+                geoLocation: audienceLocation,
+                language: audienceLanguage,
+                creator_persona: audienceCreatorPersona,
+                user_persona: audienceUserPersona,
+              },
+            },
+            customCampaignTimeline: {
+              connect: {
+                id: customTimeline?.id,
+              },
+            },
+          },
+        });
+      }
+    } else {
+      if (timeline?.id) {
+        campaign = await prisma.campaign.create({
+          data: {
+            name: campaignTitle,
+            description: campaignDescription,
+            status: 'active',
+            stage: campaignStage as Stage,
+            brand: {
+              connect: {
+                id: brand?.id,
+              },
+            },
+            admin: {
+              connect: {
+                id: admin?.admin?.id,
+              },
+            },
+            campaignBrief: {
+              create: {
+                title: campaignTitle,
+                objectives: campaginObjectives,
+                images: campaignImages.map((image) => image.path),
+                agreementFrom: agreementFrom.path,
+                startDate: campaignStartDate,
+                endDate: campaignEndDate,
+                interests: campaignInterests,
+                industries: campaignIndustries,
+                campaigns_do: campaignDo,
+                campaigns_dont: campaignDont,
+              },
+            },
+            campaignRequirement: {
+              create: {
+                gender: audienceGender,
+                age: audienceAge,
+                geoLocation: audienceLocation,
+                language: audienceLanguage,
+                creator_persona: audienceCreatorPersona,
+                user_persona: audienceUserPersona,
+              },
+            },
+            defaultCampaignTimeline: {
+              connect: {
+                id: timeline?.id,
+              },
+            },
+          },
+        });
+      } else {
+        const customTimeline = await prisma.customTimelineCampaign.create({
+          data: {
+            openForPitch: timeline?.openForPitch,
+            shortlistCreator: timeline?.shortlistCreator,
+            firstDraft: timeline?.firstDraft,
+            finalDraft: timeline?.finalDraft,
+            feedBackFirstDraft: timeline?.feedBackFirstDraft,
+            feedBackFinalDraft: timeline?.feedBackFinalDraft,
+            filterPitch: timeline?.filterPitch,
+            agreementSign: timeline?.agreementSign,
+            qc: timeline?.qc,
+            posting: timeline?.posting,
+          },
+        });
+
+        campaign = await prisma.campaign.create({
+          data: {
+            name: campaignTitle,
+            description: campaignDescription,
+            status: 'active',
+            stage: campaignStage as Stage,
+            brand: {
+              connect: {
+                id: brand?.id,
+              },
+            },
+            admin: {
+              connect: {
+                id: admin?.admin?.id,
+              },
+            },
+            campaignBrief: {
+              create: {
+                title: campaignTitle,
+                objectives: campaginObjectives,
+                images: campaignImages.map((image) => image.path),
+                agreementFrom: agreementFrom.path,
+                startDate: campaignStartDate,
+                endDate: campaignEndDate,
+                interests: campaignInterests,
+                industries: campaignIndustries,
+                campaigns_do: campaignDo,
+                campaigns_dont: campaignDont,
+              },
+            },
+            campaignRequirement: {
+              create: {
+                gender: audienceGender,
+                age: audienceAge,
+                geoLocation: audienceLocation,
+                language: audienceLanguage,
+                creator_persona: audienceCreatorPersona,
+                user_persona: audienceUserPersona,
+              },
+            },
+            customCampaignTimeline: {
+              connect: {
+                id: customTimeline?.id,
+              },
+            },
+          },
+        });
+      }
+    }
+
+    return res.status(200).json({ campaign, message: 'Successfully created campaign' });
   } catch (error) {
     console.log(error);
+    return res.status(400).json(error);
+  }
+};
+
+export const getAllCampaigns = async (req: Request, res: Response) => {
+  const id = req.session.userid;
+  try {
+    const admin = await prisma.user.findUnique({
+      where: {
+        id: id,
+      },
+      select: {
+        admin: {
+          select: {
+            id: true,
+          },
+        },
+      },
+    });
+
+    const campaigns = await prisma.campaign.findMany({
+      where: {
+        adminId: admin?.admin?.id,
+      },
+      include: {
+        brand: true,
+        company: true,
+        customCampaignTimeline: true,
+        defaultCampaignTimeline: true,
+        campaignBrief: true,
+        campaignRequirement: true,
+      },
+    });
+    return res.status(200).json(campaigns);
+  } catch (error) {
+    return res.status(400).json(error);
   }
 };

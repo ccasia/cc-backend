@@ -35,6 +35,7 @@ model Admin {
   // campaign              Campaign[]
   user                  User                    @relation(fields: [userId], references: [id])
   AdminPermissionModule AdminPermissionModule[]
+  Campaign              Campaign[]
 }
 
 enum Designation {
@@ -115,20 +116,21 @@ model session {
 
 // resgration number
 model Company {
-  id                  String   @id @unique @default(cuid())
-  name                String   @db.VarChar(100)
-  email               String?  @db.VarChar(255)
-  phone               String?  @db.VarChar(255)
-  website             String?  @db.VarChar(255)
-  address             String   @db.VarChar(255)
-  logo                String?  @db.VarChar(100)
-  about               String?  @db.VarChar(255)
+  id                  String     @id @unique @default(cuid())
+  name                String     @db.VarChar(100)
+  email               String?    @db.VarChar(255)
+  phone               String?    @db.VarChar(255)
+  website             String?    @db.VarChar(255)
+  address             String     @db.VarChar(255)
+  logo                String?    @db.VarChar(100)
+  about               String?    @db.VarChar(255)
   objectives          Json?
-  registration_number String   @unique
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  registration_number String     @unique
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
   brand               Brand[]
   // campaign            Campaign[]
+  Campaign            Campaign[]
 }
 
 // resgration number
@@ -203,20 +205,22 @@ model SupSupBrand {
 model Campaign {
   id                        String                   @id @unique @default(cuid())
   name                      String
+  description               String
   status                    Status                   @default(pending)
-  // userId                    String
   stage                     Stage                    @default(draft)
   createdAt                 DateTime                 @default(now())
   updatedAt                 DateTime                 @updatedAt
-  Brand                     Brand                    @relation(fields: [brandId], references: [id])
-  brandId                   String
-  // Admin                     Admin                    @relation(fields: [userId], references: [userId])
+  brand                     Brand?                   @relation(fields: [brandId], references: [id])
+  brandId                   String?
+  company                   Company?                 @relation(fields: [companyId], references: [id])
+  companyId                 String?
+  admin                     Admin                    @relation(fields: [adminId], references: [id])
+  adminId                   String
   campaignBrief             CampaignBrief?
   campaignRequirement       CampaignRequirement?
   defaultCampaignTimeline   DefaultTimelineCampaign? @relation(fields: [defaultTimelineCampaignId], references: [id])
   defaultTimelineCampaignId String?
   customCampaignTimeline    CustomTimelineCampaign?  @relation(fields: [customTimelineCampaignId], references: [id])
-  CampaignTimeline          CampaignTimeline[]
   customTimelineCampaignId  String?
 }
 
@@ -237,7 +241,7 @@ model CampaignRequirement {
 model CampaignBrief {
   id             String   @id @unique @default(cuid())
   title          String   @db.VarChar(255)
-  objectives     String   @db.VarChar(255)
+  objectives     String?  @db.VarChar(255)
   images         Json?
   agreementFrom  String   @db.VarChar(255)
   startDate      DateTime
@@ -251,24 +255,6 @@ model CampaignBrief {
   createdAt      DateTime @default(now())
   campaignId     String   @unique
   campaign       Campaign @relation(fields: [campaignId], references: [id])
-}
-
-model Timeline {
-  id               String             @id @unique @default(cuid())
-  task_name        String?
-  start_date       DateTime?
-  end_date         DateTime?
-  CampaignTimeline CampaignTimeline[]
-}
-
-model CampaignTimeline {
-  id         String   @id @unique @default(cuid())
-  timeline   Timeline @relation(fields: [timelineId], references: [id])
-  timelineId String
-  campaignId String
-  campaign   Campaign @relation(fields: [campaignId], references: [id])
-
-  @@index([timelineId, campaignId])
 }
 
 model Permission {
