@@ -423,3 +423,26 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
     return res.status(400).json(error);
   }
 };
+
+export const getCampaignById = async (req: Request, res: Response) => {
+  const { id } = req.params;
+
+  try {
+    const campaign = await prisma.campaign.findUnique({
+      where: {
+        id: id,
+      },
+      include: {
+        brand: true,
+        company: true,
+        customCampaignTimeline: true,
+        defaultCampaignTimeline: true,
+        campaignBrief: true,
+        campaignRequirement: true,
+      },
+    });
+    return res.status(200).json(campaign);
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
