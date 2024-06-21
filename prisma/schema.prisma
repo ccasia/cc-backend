@@ -36,6 +36,7 @@ model Admin {
   user                  User                    @relation(fields: [userId], references: [id])
   AdminPermissionModule AdminPermissionModule[]
   Campaign              Campaign[]
+  CampaignAdmin         CampaignAdmin[]
 }
 
 enum Designation {
@@ -222,6 +223,18 @@ model Campaign {
   defaultTimelineCampaignId String?
   customCampaignTimeline    CustomTimelineCampaign?  @relation(fields: [customTimelineCampaignId], references: [id])
   customTimelineCampaignId  String?
+  CampaignAdmin             CampaignAdmin[]
+}
+
+model CampaignAdmin {
+  adminId    String
+  campaignId String
+  admin      Admin    @relation(fields: [adminId], references: [userId])
+  campaign   Campaign @relation(fields: [campaignId], references: [id])
+
+  @@id([adminId, campaignId])
+  @@index([adminId])
+  @@index([campaignId])
 }
 
 model CampaignRequirement {

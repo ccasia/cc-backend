@@ -103,6 +103,7 @@ interface Campaign {
   status: string;
   adminId: string;
   timeline: any;
+  adminTest: [];
 }
 
 export const createCampaign = async (req: Request, res: Response) => {
@@ -128,10 +129,15 @@ export const createCampaign = async (req: Request, res: Response) => {
     agreementFrom,
     campaignStage,
     timeline,
+    // adminTest,
   }: Campaign = req.body;
 
   try {
     let campaign;
+
+    // const admins = adminTest.map(async (elem: any) => {
+    //   await prisma.user.findFirst(elem.id);
+    // });
 
     const admin = await prisma.user.findFirst({
       where: {
@@ -439,6 +445,16 @@ export const getCampaignById = async (req: Request, res: Response) => {
         defaultCampaignTimeline: true,
         campaignBrief: true,
         campaignRequirement: true,
+        admin: {
+          select: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
       },
     });
     return res.status(200).json(campaign);
