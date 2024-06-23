@@ -531,6 +531,14 @@ export const getprofile = async (req: Request, res: Response) => {
 
       if (!user) return res.status(401).json({ message: 'Unauthorized' });
 
+      const accessToken = jwt.sign({ id: user.id }, process.env.ACCESSKEY as Secret, {
+        expiresIn: '4h',
+      });
+
+      if (user?.role === 'creator' && user?.status === 'pending') {
+        return res.status(202).json({ message: 'Accoung pending.', user, accessToken });
+      }
+
       switch (user?.status) {
         case 'banned':
           return res.status(400).json({ message: 'Account banned.' });
@@ -539,10 +547,6 @@ export const getprofile = async (req: Request, res: Response) => {
         case 'rejected':
           return res.status(403).json({ message: 'Account rejected.' });
       }
-
-      const accessToken = jwt.sign({ id: user.id }, process.env.ACCESSKEY as Secret, {
-        expiresIn: '4h',
-      });
 
       res.cookie('accessToken', accessToken, {
         maxAge: 60 * 60 * 4 * 1000, // 1 Day

@@ -24,6 +24,7 @@ model User {
   finance     Finance?
   Event       Event?   @relation(fields: [eventId], references: [id])
   eventId     String?
+  Pitch       Pitch[]
 }
 
 model Admin {
@@ -224,6 +225,7 @@ model Campaign {
   customCampaignTimeline    CustomTimelineCampaign?  @relation(fields: [customTimelineCampaignId], references: [id])
   customTimelineCampaignId  String?
   CampaignAdmin             CampaignAdmin[]
+  Pitch                     Pitch[]
 }
 
 model CampaignAdmin {
@@ -377,4 +379,19 @@ model CustomTimelineCampaign {
   qc                 Int
   posting            Int
   Campaign           Campaign[]
+}
+
+model Pitch {
+  id         String    @id @unique @default(cuid())
+  type       PitchType
+  campaignId String
+  campaign   Campaign  @relation(fields: [campaignId], references: [id])
+  user       User      @relation(fields: [userId], references: [id])
+  userId     String
+  createdAt  DateTime  @default(now())
+}
+
+enum PitchType {
+  video
+  text
 }

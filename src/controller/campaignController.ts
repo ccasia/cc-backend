@@ -462,3 +462,76 @@ export const getCampaignById = async (req: Request, res: Response) => {
     return res.status(400).json(error);
   }
 };
+
+export const getAllActiveCampaign = async (_req: Request, res: Response) => {
+  try {
+    const campaigns = await prisma.campaign.findMany({
+      where: {
+        AND: {
+          stage: 'publish',
+          status: 'active',
+        },
+      },
+      include: {
+        campaignBrief: true,
+        campaignRequirement: true,
+        defaultCampaignTimeline: true,
+        customCampaignTimeline: true,
+        brand: true,
+        company: true,
+        Pitch: true,
+      },
+    });
+
+    return res.status(200).json(campaigns);
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const creatorMakePitch = async (req: Request, res: Response) => {
+  const { campaignId } = req.body;
+  const id = req.session.userid;
+
+  try {
+    const campaign = await prisma.campaign.findUnique({
+      where: {
+        id: campaignId,
+      },
+      include: {
+        Pitch: true,
+      },
+    });
+
+    if (!campaign) {
+      return res.status(404).json({ message: 'No campaign found.' });
+    }
+
+    if (campaign.Pitch.some((item) => item.userId.includes(id as any))) {
+      return res.status(404).json({ message: 'You have make a pitch for this campaign.' });
+    }
+
+    const creator = await prisma.user.findUnique({
+      where: {
+        id: id,
+      },
+    });
+
+    if (!creator) {
+      return res.status(404).json({ message: 'Creator not found.' });
+    }
+
+    await prisma.pitch.create({
+      data: {
+        type: 'text',
+        campaignId: campaign?.id,
+        userId: creator?.id,
+      },
+    });
+
+    return res.status(200).json({ message: 'Successfully Pitch !' });
+  } catch (error) {
+    console.log(error);
+    return res.status(400).json(error);
+  }
+};

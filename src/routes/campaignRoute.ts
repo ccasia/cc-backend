@@ -6,6 +6,8 @@ import {
   createCampaign,
   getAllCampaigns,
   getCampaignById,
+  getAllActiveCampaign,
+  creatorMakePitch,
 } from 'src/controller/campaignController';
 import { isSuperAdmin } from 'src/middleware/onlySuperadmin';
 
@@ -25,8 +27,12 @@ router.get('/getAllCampaignsByAdminID', isSuperAdmin, getAllCampaigns);
 
 router.get('/getCampaignById/:id', isSuperAdmin, getCampaignById);
 
+router.get('/getAllActiveCampaign', getAllActiveCampaign);
+
 router.post('/updateDefaultTimeline', updateDefaultTimeline);
 
 router.post('/createCampaign', isSuperAdmin, createCampaign);
+
+router.patch('/pitch', creatorMakePitch);
 
 export default router;
