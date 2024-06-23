@@ -422,6 +422,7 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
         defaultCampaignTimeline: true,
         campaignBrief: true,
         campaignRequirement: true,
+        Pitch: true,
       },
     });
     return res.status(200).json(campaigns);
@@ -445,6 +446,7 @@ export const getCampaignById = async (req: Request, res: Response) => {
         defaultCampaignTimeline: true,
         campaignBrief: true,
         campaignRequirement: true,
+        Pitch: true,
         admin: {
           select: {
             user: {

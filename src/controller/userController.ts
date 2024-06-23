@@ -163,10 +163,12 @@ export const getAllActiveAdmins = async (_req: Request, res: Response) => {
       select: {
         id: true,
         name: true,
+        status: true,
+        phoneNumber: true,
+        country: true,
+        email: true,
+        admin: true,
       },
-      // include: {
-      //   admin: true,
-      // },
     });
 
     return res.status(200).json(admins);
