@@ -382,16 +382,23 @@ model CustomTimelineCampaign {
 }
 
 model Pitch {
-  id         String    @id @unique @default(cuid())
+  id         String       @id @unique @default(cuid())
   type       PitchType
   campaignId String
-  campaign   Campaign  @relation(fields: [campaignId], references: [id])
-  user       User      @relation(fields: [userId], references: [id])
+  campaign   Campaign     @relation(fields: [campaignId], references: [id])
+  user       User         @relation(fields: [userId], references: [id])
   userId     String
-  createdAt  DateTime  @default(now())
+  status     PitchStatus?
+  content    String       @default("test")
+  createdAt  DateTime     @default(now())
 }
 
 enum PitchType {
   video
   text
+}
+
+enum PitchStatus {
+  accept
+  reject
 }

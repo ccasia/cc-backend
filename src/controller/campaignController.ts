@@ -422,7 +422,15 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
         defaultCampaignTimeline: true,
         campaignBrief: true,
         campaignRequirement: true,
-        Pitch: true,
+        Pitch: {
+          include: {
+            user: {
+              include: {
+                creator: true,
+              },
+            },
+          },
+        },
       },
     });
     return res.status(200).json(campaigns);
@@ -446,7 +454,15 @@ export const getCampaignById = async (req: Request, res: Response) => {
         defaultCampaignTimeline: true,
         campaignBrief: true,
         campaignRequirement: true,
-        Pitch: true,
+        Pitch: {
+          include: {
+            user: {
+              include: {
+                creator: true,
+              },
+            },
+          },
+        },
         admin: {
           select: {
             user: {
@@ -492,7 +508,7 @@ export const getAllActiveCampaign = async (_req: Request, res: Response) => {
 };
 
 export const creatorMakePitch = async (req: Request, res: Response) => {
-  const { campaignId } = req.body;
+  const { campaignId, content } = req.body;
   const id = req.session.userid;
 
   try {
@@ -528,6 +544,7 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
         type: 'text',
         campaignId: campaign?.id,
         userId: creator?.id,
+        content: content,
       },
     });
 
