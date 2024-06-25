@@ -1,0 +1,65 @@
+
+{
+    "campaignTitle": "EcoSpring Sale",
+    "campaignBrand": {
+      "id": "clxlalnoi000r122kgrxbeeuo",
+      "name": "GadgetGuru"
+    },
+    "campaignStartDate": "2024-06-24T16:00:00.000Z",
+    "campaignEndDate": "2024-06-29T16:00:00.000Z",
+    "campaignInterests": ["Health", "Gaming", "Food"],
+    "campaignIndustries": ["Health", "Gaming", "Food"],
+    "campaignObjectives": "newProduct",
+    "campaignDescription": "Increase sales by 20% for the spring season",
+    "audienceGender": ["female", "male"],
+    "audienceAge": ["18-25", "26-34"],
+    "audienceLocation": ["KlangValley", "Selangor"],
+    "audienceLanguage": ["Malay", "English"],
+    "audienceCreatorPersona": ["health", "sports", "tech"],
+    "audienceUserPersona": "awdawdaw",
+    "campaignDo": [
+      {
+        "value": "awdawdwad"
+      }
+    ],
+    "campaignDont": [
+      {
+        "value": "awdawdwadawd"
+      }
+    ],
+    "campaignImages": [
+      {
+        "path": "cc_logo4 (1).png",
+        "preview": "blob:http://localhost/7b9364eb-971f-47b6-ad97-b1b050c3960c"
+      }
+    ],
+    "adminManager": [
+      {
+        "id": "d312d72b-d954-40a5-8571-2e610a5d69ff",
+        "name": "Afiq danial"
+      },
+      {
+        "id": "cfb84246-a6ea-4179-a22b-c780db00eba3",
+        "name": "Afiq"
+      }
+    ],
+    "agreementFrom": {
+      "path": "cc_logo7 (2).png",
+      "preview": "blob:http://localhost/294b6187-902f-44aa-9b8c-73118c6f4c67"
+    },
+    "timeline": {
+      "id": "clxlhw2wz0010122kh1l84rvf",
+      "openForPitch": 14,
+      "shortlistCreator": 2,
+      "firstDraft": 3,
+      "finalDraft": 2,
+      "feedBackFirstDraft": 3,
+      "feedBackFinalDraft": 2,
+      "filterPitch": 2,
+      "agreementSign": 1,
+      "qc": 5,
+      "posting": 2
+    },
+    "campaignStage": "publish"
+  }
+  

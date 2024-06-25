@@ -8,6 +8,7 @@ import {
   getCampaignById,
   getAllActiveCampaign,
   creatorMakePitch,
+  approvePitch,
 } from 'src/controller/campaignController';
 import { isSuperAdmin } from 'src/middleware/onlySuperadmin';
 
@@ -33,6 +34,20 @@ router.post('/updateDefaultTimeline', updateDefaultTimeline);
 
 router.post('/createCampaign', isSuperAdmin, createCampaign);
 
+router.post('/approvePitch', isSuperAdmin, approvePitch);
+
 router.patch('/pitch', creatorMakePitch);
+
+// router.post('/test', async (req, res) => {
+//   const test = req.files?.image;
+
+//   try {
+//     await uploadImage((test as any)?.tempFilePath as string);
+//     return res.status(200).send('Done');
+//   } catch (error) {
+//     console.log(error);
+//     return res.status(400).json(error);
+//   }
+// });
 
 export default router;

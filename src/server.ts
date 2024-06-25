@@ -123,10 +123,6 @@ app.get('/users', async (_req, res) => {
 //   }
 // });
 
-app.get('/getInstaInformation', (_req: Request, res: Response) => {
-  res.send('https://www.instagram.com/apikoll/');
-});
-
 app.listen(process.env.PORT, () => {
   console.log(`Listening to port ${process.env.PORT}...`);
 });

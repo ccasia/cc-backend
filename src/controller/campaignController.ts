@@ -5,7 +5,7 @@ const prisma = new PrismaClient();
 
 export const updateDefaultTimeline = async (req: Request, res: Response) => {
   const {
-    id = '1',
+    id,
     openForPitch,
     shortlistCreator,
     firstDraft,
@@ -17,6 +17,8 @@ export const updateDefaultTimeline = async (req: Request, res: Response) => {
     qc,
     posting,
   } = req.body;
+
+  console.log(req.body);
 
   try {
     const newDefaultTimeline = await prisma.defaultTimelineCampaign.upsert({
@@ -60,6 +62,7 @@ interface image {
   path: string;
   preview: string;
 }
+
 interface timeline {
   id: string;
   openForPitch: number;
@@ -87,15 +90,13 @@ interface Campaign {
   campaignDo: any;
   campaignDont: any;
   campaignDescription: string;
-  audienceAge: string;
-  audienceGender: string;
-  audienceLocation: string;
-  audienceLanguage: string;
-  audienceCreatorPersona: string;
+  audienceAge: string[];
+  audienceGender: string[];
+  audienceLocation: string[];
+  audienceLanguage: string[];
+  audienceCreatorPersona: string[];
   audienceUserPersona: string;
-  adminManager: {
-    id: string;
-  };
+  adminManager: [];
   campaignStage: string;
   campaignImages: image[];
   agreementFrom: image;
@@ -129,24 +130,23 @@ export const createCampaign = async (req: Request, res: Response) => {
     agreementFrom,
     campaignStage,
     timeline,
-    // adminTest,
   }: Campaign = req.body;
 
   try {
-    let campaign;
+    let campaign: any;
 
-    // const admins = adminTest.map(async (elem: any) => {
-    //   await prisma.user.findFirst(elem.id);
-    // });
-
-    const admin = await prisma.user.findFirst({
-      where: {
-        id: adminManager.id as string,
-      },
-      include: {
-        admin: true,
-      },
-    });
+    const admins = await Promise.all(
+      adminManager.map(async (admin) => {
+        return await prisma.user.findUnique({
+          where: {
+            id: (admin as any).id as string,
+          },
+          include: {
+            admin: true,
+          },
+        });
+      }),
+    );
 
     let brand: any = await prisma.brand.findUnique({
       where: {
@@ -160,7 +160,6 @@ export const createCampaign = async (req: Request, res: Response) => {
           id: campaignBrand.id,
         },
       });
-
       if (timeline?.id) {
         campaign = await prisma.campaign.create({
           data: {
@@ -173,15 +172,10 @@ export const createCampaign = async (req: Request, res: Response) => {
                 id: brand?.id,
               },
             },
-            admin: {
-              connect: {
-                id: admin?.admin?.id,
-              },
-            },
             campaignBrief: {
               create: {
                 title: campaignTitle,
-                // objectives: campaginObjectives,
+                objectives: campaginObjectives,
                 images: campaignImages.map((image) => image.path),
                 agreementFrom: agreementFrom.path,
                 startDate: campaignStartDate,
@@ -224,7 +218,6 @@ export const createCampaign = async (req: Request, res: Response) => {
             posting: timeline?.posting,
           },
         });
-
         campaign = await prisma.campaign.create({
           data: {
             name: campaignTitle,
@@ -236,15 +229,10 @@ export const createCampaign = async (req: Request, res: Response) => {
                 id: brand?.id,
               },
             },
-            admin: {
-              connect: {
-                id: admin?.admin?.id,
-              },
-            },
             campaignBrief: {
               create: {
                 title: campaignTitle,
-                // objectives: campaginObjectives,
+                objectives: campaginObjectives,
                 images: campaignImages.map((image) => image.path),
                 agreementFrom: agreementFrom.path,
                 startDate: campaignStartDate,
@@ -286,11 +274,7 @@ export const createCampaign = async (req: Request, res: Response) => {
                 id: brand?.id,
               },
             },
-            admin: {
-              connect: {
-                id: admin?.admin?.id,
-              },
-            },
+
             campaignBrief: {
               create: {
                 title: campaignTitle,
@@ -337,7 +321,6 @@ export const createCampaign = async (req: Request, res: Response) => {
             posting: timeline?.posting,
           },
         });
-
         campaign = await prisma.campaign.create({
           data: {
             name: campaignTitle,
@@ -347,11 +330,6 @@ export const createCampaign = async (req: Request, res: Response) => {
             brand: {
               connect: {
                 id: brand?.id,
-              },
-            },
-            admin: {
-              connect: {
-                id: admin?.admin?.id,
               },
             },
             campaignBrief: {
@@ -388,6 +366,15 @@ export const createCampaign = async (req: Request, res: Response) => {
       }
     }
 
+    admins.map(async (admin: any) => {
+      await prisma.campaignAdmin.create({
+        data: {
+          campaignId: (campaign as any).id as any,
+          adminId: admin?.id,
+        },
+      });
+    });
+
     return res.status(200).json({ campaign, message: 'Successfully created campaign' });
   } catch (error) {
     console.log(error);
@@ -402,18 +389,15 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
       where: {
         id: id,
       },
-      select: {
-        admin: {
-          select: {
-            id: true,
-          },
-        },
-      },
     });
 
     const campaigns = await prisma.campaign.findMany({
       where: {
-        adminId: admin?.admin?.id,
+        CampaignAdmin: {
+          some: {
+            adminId: admin?.id,
+          },
+        },
       },
       include: {
         brand: true,
@@ -429,6 +413,11 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
                 creator: true,
               },
             },
+          },
+        },
+        ShortListedCreator: {
+          select: {
+            creatorId: true,
           },
         },
       },
@@ -463,14 +452,23 @@ export const getCampaignById = async (req: Request, res: Response) => {
             },
           },
         },
-        admin: {
+        CampaignAdmin: {
           select: {
-            user: {
+            admin: {
               select: {
-                id: true,
-                name: true,
+                user: {
+                  select: {
+                    id: true,
+                    name: true,
+                  },
+                },
               },
             },
+          },
+        },
+        ShortListedCreator: {
+          select: {
+            creatorId: true,
           },
         },
       },
@@ -551,6 +549,49 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
     return res.status(200).json({ message: 'Successfully Pitch !' });
   } catch (error) {
     console.log(error);
+    return res.status(400).json(error);
+  }
+};
+
+export const approvePitch = async (req: Request, res: Response) => {
+  const { creatorId, campaignId, pitchId } = req.body;
+  try {
+    const creator = await prisma.user.findUnique({
+      where: {
+        id: creatorId,
+      },
+    });
+
+    const pitch = await prisma.shortListedCreator.findFirst({
+      where: {
+        AND: {
+          campaignId: campaignId,
+          creatorId: creator?.id,
+        },
+      },
+    });
+
+    if (pitch) {
+      return res.status(404).json({ message: 'Creator has been shortlisted' });
+    }
+
+    await prisma.pitch.update({
+      where: {
+        id: pitchId,
+      },
+      data: {
+        status: 'accept',
+      },
+    });
+
+    await prisma.shortListedCreator.create({
+      data: {
+        creatorId: creatorId,
+        campaignId: campaignId,
+      },
+    });
+    return res.status(200).json({ message: 'Successfully shortlisted' });
+  } catch (error) {
     return res.status(400).json(error);
   }
 };

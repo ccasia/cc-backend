@@ -8,23 +8,24 @@ datasource db {
 }
 
 model User {
-  id          String   @id @unique @default(uuid())
-  email       String   @unique @db.VarChar(255)
-  password    String?  @db.VarChar(255)
-  createdAt   DateTime @default(now())
-  name        String?  @db.VarChar(255)
-  photoURL    String?  @db.VarChar(255)
-  country     String?  @db.VarChar(100)
-  phoneNumber String?  @db.VarChar(100)
-  role        Role
-  updatedAt   DateTime @updatedAt
-  status      Status   @default(pending)
-  admin       Admin?
-  creator     Creator?
-  finance     Finance?
-  Event       Event?   @relation(fields: [eventId], references: [id])
-  eventId     String?
-  Pitch       Pitch[]
+  id                 String               @id @unique @default(uuid())
+  email              String               @unique @db.VarChar(255)
+  password           String?              @db.VarChar(255)
+  createdAt          DateTime             @default(now())
+  name               String?              @db.VarChar(255)
+  photoURL           String?              @db.VarChar(255)
+  country            String?              @db.VarChar(100)
+  phoneNumber        String?              @db.VarChar(100)
+  role               Role
+  updatedAt          DateTime             @updatedAt
+  status             Status               @default(pending)
+  admin              Admin?
+  creator            Creator?
+  finance            Finance?
+  Event              Event?               @relation(fields: [eventId], references: [id])
+  eventId            String?
+  Pitch              Pitch[]
+  ShortListedCreator ShortListedCreator[]
 }
 
 model Admin {
@@ -36,7 +37,6 @@ model Admin {
   // campaign              Campaign[]
   user                  User                    @relation(fields: [userId], references: [id])
   AdminPermissionModule AdminPermissionModule[]
-  Campaign              Campaign[]
   CampaignAdmin         CampaignAdmin[]
 }
 
@@ -216,8 +216,6 @@ model Campaign {
   brandId                   String?
   company                   Company?                 @relation(fields: [companyId], references: [id])
   companyId                 String?
-  admin                     Admin                    @relation(fields: [adminId], references: [id])
-  adminId                   String
   campaignBrief             CampaignBrief?
   campaignRequirement       CampaignRequirement?
   defaultCampaignTimeline   DefaultTimelineCampaign? @relation(fields: [defaultTimelineCampaignId], references: [id])
@@ -226,6 +224,7 @@ model Campaign {
   customTimelineCampaignId  String?
   CampaignAdmin             CampaignAdmin[]
   Pitch                     Pitch[]
+  ShortListedCreator        ShortListedCreator[]
 }
 
 model CampaignAdmin {
@@ -241,11 +240,11 @@ model CampaignAdmin {
 
 model CampaignRequirement {
   id              String   @id @unique @default(cuid())
-  gender          String   @db.VarChar(255)
-  age             String   @db.VarChar(255)
-  geoLocation     String   @db.VarChar(255)
-  language        String   @db.VarChar(255)
-  creator_persona String   @db.VarChar(255)
+  gender          String[]
+  age             String[]
+  geoLocation     String[]
+  language        String[]
+  creator_persona String[]
   user_persona    String   @db.VarChar(255)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -401,4 +400,13 @@ enum PitchType {
 enum PitchStatus {
   accept
   reject
+}
+
+model ShortListedCreator {
+  id               String   @id @unique @default(cuid())
+  shortlisted_date DateTime @default(now())
+  creatorId        String
+  creator          User     @relation(fields: [creatorId], references: [id])
+  campaign         Campaign @relation(fields: [campaignId], references: [id])
+  campaignId       String
 }
