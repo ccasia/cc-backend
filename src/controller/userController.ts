@@ -167,7 +167,16 @@ export const getAllActiveAdmins = async (_req: Request, res: Response) => {
         phoneNumber: true,
         country: true,
         email: true,
-        admin: true,
+        admin: {
+          include: {
+            AdminPermissionModule: {
+              select: {
+                permission: true,
+                module: true,
+              },
+            },
+          },
+        },
       },
     });
 

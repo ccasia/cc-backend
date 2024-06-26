@@ -1,21 +1,37 @@
 import { Request, Response } from 'express';
 
-import { handleCreateCompany, handleCreateBrand } from 'src/service/companyService';
+import {
+  // handleCreateCompany,
+  handleCreateBrand,
+  handleCreateCompany,
+} from 'src/service/companyService';
 import { PrismaClient } from '@prisma/client';
+import { uploadCompanyLogo } from 'src/config/cloudStorage.config';
 const prisma = new PrismaClient();
 
 // for creating new company with brand
 export const createCompany = async (req: Request, res: Response) => {
-  try {
-    const company = await handleCreateCompany(req.body);
+  const data = JSON.parse(req.body.data);
+  const { companyLogo } = req.files as any;
 
+  try {
+    const publicURL = await uploadCompanyLogo(companyLogo.tempFilePath, companyLogo.name);
+    const company = await handleCreateCompany(data, publicURL);
     return res.status(201).json({ company, message: 'A new company has been created' });
-  } catch (err: any) {
-    if (err.message.includes('exists')) {
-      return res.status(404).json({ message: 'Company already exist' });
-    }
-    return res.status(400).json({ message: err });
+  } catch (error) {
+    return res.status(400).json(error);
   }
+
+  // try {
+  //   const company = await handleCreateCompany(req.body);
+
+  //   return res.status(201).json({ company, message: 'A new company has been created' });
+  // } catch (err: any) {
+  //   if (err.message.includes('exists')) {
+  //     return res.status(404).json({ message: 'Company already exist' });
+  //   }
+  //   return res.status(400).json({ message: err });
+  // }
 };
 
 export const getAllCompanies = async (_req: Request, res: Response) => {
@@ -58,6 +74,7 @@ export const createBrand = async (req: Request, res: Response) => {
     return res.status(400).json({ message: err });
   }
 };
+
 export const getAllBrands = async (req: Request, res: Response) => {
   console.log(req.body);
   try {
