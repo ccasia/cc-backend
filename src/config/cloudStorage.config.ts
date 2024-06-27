@@ -2,7 +2,9 @@ import { Storage } from '@google-cloud/storage';
 
 // const pathToJSONKey = `${__dirname}/test-cs.json`;
 
-const storage = new Storage();
+const storage = new Storage({
+  keyFilename: '~/test-cs.json',
+});
 
 export const uploadImage = async (tempFilePath: string, fileName: string) => {
   const uploadPromise = new Promise<string>((resolve, reject) => {
