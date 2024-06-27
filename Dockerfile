@@ -5,7 +5,7 @@ WORKDIR /app
 COPY package.json ./
 #COPY yarn.lock ./
 
-COPY /home/afiqdanial/cultcreative/test-cs.json /app/test-cs.json
+COPY ../../test-cs.json /app/test-cs.json
 
 ENV GOOGLE_APPLICATION_CREDENTIALS=/app/test-cs.json
 
