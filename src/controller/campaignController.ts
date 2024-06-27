@@ -19,12 +19,10 @@ export const updateDefaultTimeline = async (req: Request, res: Response) => {
     posting,
   } = req.body;
 
-  console.log(req.body);
-
   try {
     const newDefaultTimeline = await prisma.defaultTimelineCampaign.upsert({
       where: {
-        id: id,
+        id: id || null,
       },
       update: {
         openForPitch,
