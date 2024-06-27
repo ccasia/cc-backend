@@ -19,6 +19,7 @@ export const createCompany = async (req: Request, res: Response) => {
     const company = await handleCreateCompany(data, publicURL);
     return res.status(201).json({ company, message: 'A new company has been created' });
   } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   }
 
