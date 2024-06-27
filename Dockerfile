@@ -5,6 +5,10 @@ WORKDIR /app
 COPY package.json ./
 #COPY yarn.lock ./
 
+COPY ~/test-cs.json /app/test-cs.json
+
+ENV GOOGLE_APPLICATION_CREDENTIALS=/app/test-cs.json
+
 RUN yarn install
 
 COPY . .
