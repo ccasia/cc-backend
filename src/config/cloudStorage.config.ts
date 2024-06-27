@@ -1,49 +1,12 @@
-// import { Storage } from '@google-cloud/storage';
+import { Storage } from '@google-cloud/storage';
 
 // const pathToJSONKey = `${__dirname}/test-cs.json`;
 
-// const storage = new Storage({ keyFilename: pathToJSONKey });
-
-// const bucketName = 'app-test-cult-cretive';
-
-// export const uploadImage = async (fileName: string) => {
-//   let publicURL;
-//   storage.bucket(bucketName).upload(
-//     `${fileName}`,
-//     {
-//       gzip: true,
-//       metadata: {
-//         cacheControl: 'public, max-age=31536000',
-//       },
-//     },
-//     async (err, file) => {
-//       if (err) {
-//         return err;
-//       }
-//       file?.makePublic(async (err) => {
-//         if (err) {
-//           return err;
-//         }
-//         const publicURL = file.publicUrl();
-//         return publicURL;
-//       });
-//     },
-//   );
-
-//   return publicURL;
-// };
-
-import { Storage } from '@google-cloud/storage';
-
-const pathToJSONKey = `${__dirname}/test-cs.json`;
-
-const storage = new Storage({ keyFilename: pathToJSONKey });
-
-const bucketName = 'app-test-cult-cretive';
+const storage = new Storage();
 
 export const uploadImage = async (tempFilePath: string, fileName: string) => {
   const uploadPromise = new Promise<string>((resolve, reject) => {
-    storage.bucket(bucketName).upload(
+    storage.bucket(process.env.BUCKET_NAME as string).upload(
       tempFilePath,
       {
         destination: `campaigns/${fileName}`,
@@ -63,7 +26,7 @@ export const uploadImage = async (tempFilePath: string, fileName: string) => {
           ?.makePublic()
           // eslint-disable-next-line promise/always-return
           .then(() => {
-            const publicURL = `https://storage.googleapis.com/${bucketName}/campaigns/${fileName}`;
+            const publicURL = `https://storage.googleapis.com/${process.env.BUCKET_NAME}/campaigns/${fileName}`;
             resolve(publicURL);
           })
           .catch((err) => {
@@ -83,7 +46,7 @@ export const uploadImage = async (tempFilePath: string, fileName: string) => {
 
 export const uploadCompanyLogo = async (tempFilePath: string, fileName: string) => {
   const uploadPromise = new Promise<string>((resolve, reject) => {
-    storage.bucket(bucketName).upload(
+    storage.bucket(process.env.BUCKET_NAME as string).upload(
       tempFilePath,
       {
         destination: `companyLogo/${fileName}`,
@@ -103,7 +66,7 @@ export const uploadCompanyLogo = async (tempFilePath: string, fileName: string) 
           ?.makePublic()
           // eslint-disable-next-line promise/always-return
           .then(() => {
-            const publicURL = `https://storage.googleapis.com/${bucketName}/companyLogo/${fileName}`;
+            const publicURL = `https://storage.googleapis.com/${process.env.BUCKET_NAME}/companyLogo/${fileName}`;
             resolve(publicURL);
           })
           .catch((err) => {
