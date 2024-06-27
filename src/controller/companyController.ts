@@ -12,11 +12,16 @@ const prisma = new PrismaClient();
 // for creating new company with brand
 export const createCompany = async (req: Request, res: Response) => {
   const data = JSON.parse(req.body.data);
-  const { companyLogo } = req.files as any;
+  const companyLogo = (req.files as { companyLogo: object })?.companyLogo as { tempFilePath: string; name: string };
 
   try {
-    const publicURL = await uploadCompanyLogo(companyLogo.tempFilePath, companyLogo.name);
-    const company = await handleCreateCompany(data, publicURL);
+    let company;
+    if (!companyLogo) {
+      company = await handleCreateCompany(data);
+    } else {
+      const publicURL = await uploadCompanyLogo(companyLogo.tempFilePath, companyLogo.name);
+      company = await handleCreateCompany(data, publicURL);
+    }
     return res.status(201).json({ company, message: 'A new company has been created' });
   } catch (error) {
     return res.status(400).json(error);

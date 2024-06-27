@@ -43,7 +43,7 @@ export const handleCreateCompany = async (
     companyObjectives,
     companyRegistrationNumber,
   }: companyForm,
-  publicURL: String,
+  publicURL?: string,
 ) => {
   try {
     // check if company already exists
