@@ -20,35 +20,42 @@ export const updateDefaultTimeline = async (req: Request, res: Response) => {
   } = req.body;
 
   try {
-    const newDefaultTimeline = await prisma.defaultTimelineCampaign.upsert({
-      where: {
-        id: id || null,
-      },
-      update: {
-        openForPitch,
-        shortlistCreator,
-        firstDraft,
-        finalDraft,
-        feedBackFirstDraft,
-        feedBackFinalDraft,
-        filterPitch,
-        agreementSign,
-        qc,
-        posting,
-      },
-      create: {
-        openForPitch,
-        shortlistCreator,
-        firstDraft,
-        finalDraft,
-        feedBackFirstDraft,
-        feedBackFinalDraft,
-        filterPitch,
-        agreementSign,
-        qc,
-        posting,
-      },
-    });
+    let newDefaultTimeline;
+
+    if (!id) {
+      newDefaultTimeline = await prisma.defaultTimelineCampaign.create({
+        data: {
+          openForPitch,
+          shortlistCreator,
+          firstDraft,
+          finalDraft,
+          feedBackFirstDraft,
+          feedBackFinalDraft,
+          filterPitch,
+          agreementSign,
+          qc,
+          posting,
+        },
+      });
+    } else {
+      newDefaultTimeline = await prisma.defaultTimelineCampaign.update({
+        where: {
+          id: id,
+        },
+        data: {
+          openForPitch,
+          shortlistCreator,
+          firstDraft,
+          finalDraft,
+          feedBackFirstDraft,
+          feedBackFinalDraft,
+          filterPitch,
+          agreementSign,
+          qc,
+          posting,
+        },
+      });
+    }
 
     return res.status(200).json({ message: 'Successfully updated default timeline', newDefaultTimeline });
   } catch (error) {
