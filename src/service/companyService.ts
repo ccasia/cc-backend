@@ -32,16 +32,19 @@ interface brandForm {
 }
 
 // for creating new company with brand
-export const handleCreateCompany = async ({
-  companyName,
-  companyEmail,
-  companyPhone,
-  companyAddress,
-  companyWebsite,
-  companyAbout,
-  companyObjectives,
-  companyRegistrationNumber,
-}: companyForm) => {
+export const handleCreateCompany = async (
+  {
+    companyName,
+    companyEmail,
+    companyPhone,
+    companyAddress,
+    companyWebsite,
+    companyAbout,
+    companyObjectives,
+    companyRegistrationNumber,
+  }: companyForm,
+  publicURL?: string,
+) => {
   try {
     // check if company already exists
     const companyExist = await prisma.company.findFirst({
@@ -74,6 +77,7 @@ export const handleCreateCompany = async ({
         about: companyAbout,
         objectives: companyObjectives,
         registration_number: companyRegistrationNumber,
+        logo: publicURL as string,
       },
     });
 

@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { PrismaClient, Stage } from '@prisma/client';
+import { uploadImage } from 'src/config/cloudStorage.config';
 
 const prisma = new PrismaClient();
 
@@ -18,38 +19,43 @@ export const updateDefaultTimeline = async (req: Request, res: Response) => {
     posting,
   } = req.body;
 
-  console.log(req.body);
-
   try {
-    const newDefaultTimeline = await prisma.defaultTimelineCampaign.upsert({
-      where: {
-        id: id,
-      },
-      update: {
-        openForPitch,
-        shortlistCreator,
-        firstDraft,
-        finalDraft,
-        feedBackFirstDraft,
-        feedBackFinalDraft,
-        filterPitch,
-        agreementSign,
-        qc,
-        posting,
-      },
-      create: {
-        openForPitch,
-        shortlistCreator,
-        firstDraft,
-        finalDraft,
-        feedBackFirstDraft,
-        feedBackFinalDraft,
-        filterPitch,
-        agreementSign,
-        qc,
-        posting,
-      },
-    });
+    let newDefaultTimeline;
+
+    if (!id) {
+      newDefaultTimeline = await prisma.defaultTimelineCampaign.create({
+        data: {
+          openForPitch,
+          shortlistCreator,
+          firstDraft,
+          finalDraft,
+          feedBackFirstDraft,
+          feedBackFinalDraft,
+          filterPitch,
+          agreementSign,
+          qc,
+          posting,
+        },
+      });
+    } else {
+      newDefaultTimeline = await prisma.defaultTimelineCampaign.update({
+        where: {
+          id: id,
+        },
+        data: {
+          openForPitch,
+          shortlistCreator,
+          firstDraft,
+          finalDraft,
+          feedBackFirstDraft,
+          feedBackFinalDraft,
+          filterPitch,
+          agreementSign,
+          qc,
+          posting,
+        },
+      });
+    }
 
     return res.status(200).json({ message: 'Successfully updated default timeline', newDefaultTimeline });
   } catch (error) {
@@ -125,15 +131,23 @@ export const createCampaign = async (req: Request, res: Response) => {
     audienceUserPersona,
     campaignDo,
     campaignDont,
-    campaignImages,
+    // campaignImages,
     adminManager,
     agreementFrom,
     campaignStage,
     timeline,
-  }: Campaign = req.body;
+  }: Campaign = JSON.parse(req.body.data);
+
+  const images = (req.files as any).campaignImages as [];
+
+  const publicURL = [];
+  let campaign: any;
 
   try {
-    let campaign: any;
+    for (const item of images as any) {
+      const url = await uploadImage(item.tempFilePath, item.name);
+      publicURL.push(url);
+    }
 
     const admins = await Promise.all(
       adminManager.map(async (admin) => {
@@ -176,7 +190,7 @@ export const createCampaign = async (req: Request, res: Response) => {
               create: {
                 title: campaignTitle,
                 objectives: campaginObjectives,
-                images: campaignImages.map((image) => image.path),
+                images: publicURL.map((image) => image) || '',
                 agreementFrom: agreementFrom.path,
                 startDate: campaignStartDate,
                 endDate: campaignEndDate,
@@ -233,7 +247,7 @@ export const createCampaign = async (req: Request, res: Response) => {
               create: {
                 title: campaignTitle,
                 objectives: campaginObjectives,
-                images: campaignImages.map((image) => image.path),
+                images: publicURL.map((image) => image) || '',
                 agreementFrom: agreementFrom.path,
                 startDate: campaignStartDate,
                 endDate: campaignEndDate,
@@ -279,7 +293,7 @@ export const createCampaign = async (req: Request, res: Response) => {
               create: {
                 title: campaignTitle,
                 objectives: campaginObjectives,
-                images: campaignImages.map((image) => image.path),
+                images: publicURL.map((image) => image) || '',
                 agreementFrom: agreementFrom.path,
                 startDate: campaignStartDate,
                 endDate: campaignEndDate,
@@ -336,7 +350,7 @@ export const createCampaign = async (req: Request, res: Response) => {
               create: {
                 title: campaignTitle,
                 objectives: campaginObjectives,
-                images: campaignImages.map((image) => image.path),
+                images: publicURL.map((image) => image) || '',
                 agreementFrom: agreementFrom.path,
                 startDate: campaignStartDate,
                 endDate: campaignEndDate,
