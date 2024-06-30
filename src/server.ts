@@ -9,16 +9,11 @@ import cookieParser from 'cookie-parser';
 import connectPgSimple from 'connect-pg-simple';
 import fileUpload from 'express-fileupload';
 import { PrismaClient } from '@prisma/client';
-// import { Storage } from '@google-cloud/storage';
-
-// import { creatorVerificationEmail } from './config/nodemailer.config';
+import 'src/config/cronjob';
 
 dotenv.config();
 
 const app: Application = express();
-// const storage = new Storage({
-//   keyFilename: 'src/config/cult-service.json',
-// });
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));

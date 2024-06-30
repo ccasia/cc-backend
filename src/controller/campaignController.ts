@@ -609,3 +609,22 @@ export const approvePitch = async (req: Request, res: Response) => {
     return res.status(400).json(error);
   }
 };
+
+export const changeCampaignStage = async (req: Request, res: Response) => {
+  const { stage } = req.body;
+  const { campaignId } = req.params;
+
+  try {
+    const campaign = await prisma.campaign.update({
+      where: {
+        id: campaignId,
+      },
+      data: {
+        stage: stage,
+      },
+    });
+    return res.status(200).json({ message: 'Successfully changed stage', stage: campaign?.stage });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
