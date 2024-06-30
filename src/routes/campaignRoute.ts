@@ -9,6 +9,7 @@ import {
   getAllActiveCampaign,
   creatorMakePitch,
   approvePitch,
+  changeCampaignStage,
 } from 'src/controller/campaignController';
 import { isSuperAdmin } from 'src/middleware/onlySuperadmin';
 
@@ -37,6 +38,8 @@ router.post('/createCampaign', isSuperAdmin, createCampaign);
 router.post('/approvePitch', isSuperAdmin, approvePitch);
 
 router.patch('/pitch', creatorMakePitch);
+
+router.patch('/changeCampaignStage/:campaignId', changeCampaignStage);
 
 // router.post('/test', async (req, res) => {
 //   const test = req.files?.image;
