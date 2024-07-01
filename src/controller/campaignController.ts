@@ -610,6 +610,48 @@ export const approvePitch = async (req: Request, res: Response) => {
   }
 };
 
+export const rejectPitch = async (req: Request, res: Response) => {
+  const { creatorId, campaignId, pitchId } = req.body;
+
+  try {
+    const creator = await prisma.user.findUnique({
+      where: {
+        id: creatorId,
+      },
+    });
+
+    const pitch = await prisma.shortListedCreator.findFirst({
+      where: {
+        AND: {
+          campaignId: campaignId,
+          creatorId: creator?.id,
+        },
+      },
+    });
+
+    if (pitch) {
+      await prisma.shortListedCreator.delete({
+        where: {
+          id: pitch.id,
+        },
+      });
+    }
+
+    await prisma.pitch.update({
+      where: {
+        id: pitchId,
+      },
+      data: {
+        status: 'reject',
+      },
+    });
+
+    return res.status(200).json({ message: 'Successfully rejected' });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
 export const changeCampaignStage = async (req: Request, res: Response) => {
   const { stage } = req.body;
   const { campaignId } = req.params;
@@ -624,6 +666,57 @@ export const changeCampaignStage = async (req: Request, res: Response) => {
       },
     });
     return res.status(200).json({ message: 'Successfully changed stage', stage: campaign?.stage });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const closeCampaign = async (req: Request, res: Response) => {
+  const { id } = req.params;
+
+  try {
+    await prisma.campaign.update({
+      where: {
+        id: id,
+      },
+      data: {
+        status: 'past',
+      },
+    });
+    return res.status(200).json({ message: 'Campaign is successfully closed.' });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const getPitchById = async (req: Request, res: Response) => {
+  const { id } = req.params;
+
+  try {
+    const pitch = await prisma.pitch.findUnique({
+      where: {
+        id: id,
+      },
+      include: {
+        user: {
+          include: {
+            creator: {
+              include: {
+                industries: true,
+                interests: true,
+              },
+            },
+          },
+        },
+        campaign: true,
+      },
+    });
+
+    if (!pitch) {
+      return res.status(400).json({ message: 'Pitch not found.' });
+    }
+
+    return res.status(200).json({ pitch });
   } catch (error) {
     return res.status(400).json(error);
   }
