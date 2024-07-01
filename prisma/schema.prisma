@@ -414,4 +414,10 @@ model ShortListedCreator {
   creator          User     @relation(fields: [creatorId], references: [id])
   campaign         Campaign @relation(fields: [campaignId], references: [id])
   campaignId       String
+
+  @@index([creatorId])
 }
+
+// model CampaignCalendar {
+//   id @u
+// }
