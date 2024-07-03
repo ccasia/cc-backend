@@ -721,3 +721,31 @@ export const getPitchById = async (req: Request, res: Response) => {
     return res.status(400).json(error);
   }
 };
+
+export const editCampaignBrandOrCompany = async (req: Request, res: Response) => {
+  console.log(req);
+  const {
+    id,
+    // `campaignBrand.id` can be either a brand ID or company ID
+    campaignBrand,
+  } = req.body;
+
+  try {
+    // If `null`, then `campaignBrand.id` is a company ID
+    const brand = await prisma.brand.findUnique({ where: { id: campaignBrand.id }});
+    const updatedCampaign = await prisma.campaign.update({
+      where: { id: id },
+      data: brand
+        ? {
+          brandId: campaignBrand.id,
+          companyId: null,
+        } : {
+          brandId: null,
+          companyId: campaignBrand.id,
+        },
+    });
+    return res.status(200).json({ message: `Updated campaign ${brand ? 'brand' : 'company'}.`, ...updatedCampaign });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
