@@ -1,0 +1,6 @@
+https://www.facebook.com/v20.0/dialog/oauth?response_type=token&display=popup&client_id=979931407118711&redirect_uri=https%3A%2F%2Fdevelopers.facebook.com%2Ftools%2Fexplorer%2Fcallback%3Fmethod%3DGET%26path%3Dme%26version%3Dv20.0&auth_type=rerequest&scope=pages_show_list%2Cbusiness_management%2Cinstagram_basic%2Cpages_manage_metadata
+
+https://www.facebook.com/v3.2/dialog/oauth?response_type=code&redirect_uri=https%3A%2F%2Fapp.cultcreativeasia.com%2Fapi%2Fauth%2Ffacebook%2Fcallback&client_id=979931407118711
+
+
+https://www.facebook.com/v20.0/dialog/oauth?response_type=token&display=popup&client_id=979931407118711&redirect_uri=https://app.cultcreativeasia.com/api/auth/facebook/callback&auth_type=rerequest&scope=pages_show_list%2Cbusiness_management%2Cinstagram_basic%2Cpages_manage_metadata
