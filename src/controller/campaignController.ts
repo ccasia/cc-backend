@@ -1,7 +1,9 @@
 import { Request, Response } from 'express';
 import { PrismaClient, Stage } from '@prisma/client';
-
+import { createNotification } from '../service/notificationService';
 const prisma = new PrismaClient();
+
+
 
 export const updateDefaultTimeline = async (req: Request, res: Response) => {
   const {
@@ -387,7 +389,13 @@ export const createCampaign = async (req: Request, res: Response) => {
         });
       }
     }
-
+    await createNotification({
+      receiver_id: admin?.id as string,
+      title: 'Your assigned to a new campaign',
+      type: 'normal',
+      category: 'campaign',
+      created_at: new Date(),
+    });
     return res.status(200).json({ campaign, message: 'Successfully created campaign' });
   } catch (error) {
     console.log(error);

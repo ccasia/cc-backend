@@ -8,22 +8,23 @@ datasource db {
 }
 
 model User {
-  id          String   @id @unique @default(uuid())
-  email       String   @unique @db.VarChar(255)
-  password    String?  @db.VarChar(255)
-  createdAt   DateTime @default(now())
-  name        String?  @db.VarChar(255)
-  photoURL    String?  @db.VarChar(255)
-  country     String?  @db.VarChar(100)
-  phoneNumber String?  @db.VarChar(100)
-  role        Role
-  updatedAt   DateTime @updatedAt
-  status      Status   @default(pending)
-  admin       Admin?
-  creator     Creator?
-  finance     Finance?
-  Event       Event?   @relation(fields: [eventId], references: [id])
-  eventId     String?
+  id           String         @id @unique @default(uuid())
+  email        String         @unique @db.VarChar(255)
+  password     String?        @db.VarChar(255)
+  createdAt    DateTime       @default(now())
+  name         String?        @db.VarChar(255)
+  photoURL     String?        @db.VarChar(255)
+  country      String?        @db.VarChar(100)
+  phoneNumber  String?        @db.VarChar(100)
+  role         Role
+  updatedAt    DateTime       @updatedAt
+  status       Status         @default(pending)
+  admin        Admin?
+  creator      Creator?
+  finance      Finance?
+  Event        Event?         @relation(fields: [eventId], references: [id])
+  eventId      String?
+  Notification Notification[]
 }
 
 model Admin {
@@ -377,4 +378,26 @@ model CustomTimelineCampaign {
   qc                 Int
   posting            Int
   Campaign           Campaign[]
+}
+
+model Notification {
+  id          String           @id @unique @default(cuid())
+  title       String
+  type        NotificationType
+  category    category
+  createdAt   DateTime         @default(now())
+  receiver_id String
+  user        User             @relation(fields: [receiver_id], references: [id])
+}
+
+enum NotificationType {
+  normal
+  meduim
+  urgent
+}
+
+enum category {
+  campaign
+  creator
+  brand
 }
