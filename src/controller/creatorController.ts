@@ -145,3 +145,22 @@ export const getMediaKit = async (req: Request, res: Response) => {
     return res.status(400).json(error);
   }
 };
+
+export const getCreatorFullInfoById = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  try {
+    const creator = await prisma.user.findUnique({
+      where: {
+        id: id,
+      },
+      include: {
+        creator: true,
+        ShortListedCreator: true,
+      },
+    });
+
+    return res.status(200).json({ creator });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};

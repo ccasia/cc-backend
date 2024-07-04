@@ -59,7 +59,6 @@ export const updateDefaultTimeline = async (req: Request, res: Response) => {
 
     return res.status(200).json({ message: 'Successfully updated default timeline', newDefaultTimeline });
   } catch (error) {
-    console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -431,6 +430,7 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
         },
         ShortListedCreator: {
           select: {
+            creator: true,
             creatorId: true,
           },
         },
@@ -483,6 +483,7 @@ export const getCampaignById = async (req: Request, res: Response) => {
         ShortListedCreator: {
           select: {
             creatorId: true,
+            creator: true,
           },
         },
       },

@@ -13,7 +13,7 @@ dayjs.extend(utc);
 dayjs.extend(timezone);
 
 new CronJob(
-  '0 0 * * * *', // cronTime
+  '0 0 * * *', // cronTime
   async function () {
     const today = dayjs().tz('Asia/Kuala_Lumpur').startOf('day').toISOString();
 

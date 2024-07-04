@@ -9,6 +9,8 @@ import cookieParser from 'cookie-parser';
 import connectPgSimple from 'connect-pg-simple';
 import fileUpload from 'express-fileupload';
 import { PrismaClient } from '@prisma/client';
+import passport from 'passport';
+import FacebookStrategy from 'passport-facebook';
 import 'src/config/cronjob';
 
 dotenv.config();
@@ -80,7 +82,36 @@ app.use(
   }),
 );
 
+app.use(passport.initialize());
+
+app.use(passport.session());
+
+passport.use(
+  new FacebookStrategy.Strategy(
+    {
+      clientID: process.env.APP_ID,
+      clientSecret: process.env.CLIENT_SECRET,
+      callbackURL: 'https://app.cultcreativeasia.com/',
+      profileFields: ['id', 'displayName', 'photos', 'email'], // Optional fields to request
+    } as any,
+    function (accessToken: any, refreshToken: any, profile: any, done: any) {
+      // Save the accessToken and profile information in your database
+      // For now, we will just log it
+      console.log('Access Token:', accessToken);
+      console.log('Profile:', profile);
+      return done(null, profile);
+    },
+  ),
+);
+
 app.use(router);
+
+app.get('/auth/facebook', passport.authenticate('facebook'));
+
+app.get('/auth/facebook/callback', passport.authenticate('facebook', { failureRedirect: '/' }), (req, res) => {
+  // Successful authentication
+  res.redirect('/');
+});
 
 app.get('/', (_req: Request, res: Response) => {
   res.send('Server is running...');
