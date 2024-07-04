@@ -91,7 +91,7 @@ passport.use(
     {
       clientID: process.env.APP_ID,
       clientSecret: process.env.CLIENT_SECRET,
-      callbackURL: 'https://app.cultcreativeasia.com/',
+      callbackURL: 'https://app.cultcreativeasia.com/auth/facebook/callback',
       profileFields: ['id', 'displayName', 'photos', 'email'], // Optional fields to request
     } as any,
     function (accessToken: any, refreshToken: any, profile: any, done: any) {
