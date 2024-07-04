@@ -93,7 +93,7 @@ passport.use(
       clientSecret: process.env.CLIENT_SECRET,
       callbackURL: 'https://app.cultcreativeasia.com/api/auth/facebook/callback',
       enableProof: true,
-      scope: ['pages_show_list', 'business_management', 'instagram_basic', 'pages_manage_metadata'],
+
       profileFields: ['id', 'displayName', 'photos', 'email'], // Optional fields to request
     } as any,
     function (accessToken: any, refreshToken: any, profile: any, done: any) {
@@ -108,7 +108,12 @@ passport.use(
 
 app.use(router);
 
-app.get('/auth/facebook', passport.authenticate('facebook', { scope: 'email' }));
+app.get(
+  '/auth/facebook',
+  passport.authenticate('facebook', {
+    scope: ['pages_show_list', 'business_management', 'instagram_basic', 'pages_manage_metadata'],
+  }),
+);
 
 app.get('/auth/facebook/callback', passport.authenticate('facebook', { failureRedirect: '/' }), (req, res) => {
   // Successful authentication
