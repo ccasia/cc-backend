@@ -26,10 +26,9 @@ interface Permission {
 
 export const updateAdmin = async (
   { userId, name, email, designation, country, phoneNumber, status, mode }: AdminProfile,
-  permissions: Permission[],
+  permissions?: Permission[],
   publicURL?: string | undefined,
 ) => {
-  console.log(permissions);
   try {
     const data = await prisma.user.update({
       where: {
@@ -77,89 +76,89 @@ export const updateAdmin = async (
     //     module: true,
     //   },
     // });
+    if (permissions) {
+      for (const permission of permissions) {
+        // Check if module is already exists
 
-    for (const permission of permissions) {
-      // Check if module is already exists
-
-      let module = await prisma.module.findFirst({
-        where: { name: permission.module as Modules },
-      });
-
-      if (!module) {
-        module = await prisma.module.create({
-          data: {
-            name: permission.module as Modules,
-          },
-        });
-      }
-
-      for (const item of permission.permissions) {
-        const existingPermission = await prisma.permission.findFirst({
-          where: { name: item as Permissions },
+        let module = await prisma.module.findFirst({
+          where: { name: permission.module as Modules },
         });
 
-        if (!existingPermission) {
-          await prisma.permission.create({
+        if (!module) {
+          module = await prisma.module.create({
             data: {
-              name: item as Permissions,
+              name: permission.module as Modules,
             },
           });
         }
-      }
 
-      // Get all permission from database based on data
-      const currectPermissions = await prisma.permission.findMany({
-        where: {
-          name: { in: permission.permissions as any },
-        },
-      });
+        for (const item of permission.permissions) {
+          const existingPermission = await prisma.permission.findFirst({
+            where: { name: item as Permissions },
+          });
 
-      const currentPermissionsForEachModule = await prisma.adminPermissionModule.findMany({
-        where: {
-          adminId: data?.admin?.id,
-          moduleId: module?.id as any,
-        },
-        include: {
-          permission: true,
-          module: true,
-        },
-      });
+          if (!existingPermission) {
+            await prisma.permission.create({
+              data: {
+                name: item as Permissions,
+              },
+            });
+          }
+        }
 
-      const permissionsToRemove = currentPermissionsForEachModule.filter(
-        (perm) => !permission.permissions.includes(perm.permission.name as any),
-      );
-
-      for (const perm of permissionsToRemove) {
-        await prisma.adminPermissionModule.delete({
+        // Get all permission from database based on data
+        const currectPermissions = await prisma.permission.findMany({
           where: {
-            id: perm.id,
+            name: { in: permission.permissions as any },
           },
         });
-      }
 
-      // extract permission
-      const pe = await prisma.permission.findMany();
-
-      let permissionsToAdd = pe.filter((elem) => currectPermissions.some((ha) => ha.id === elem.id));
-
-      permissionsToAdd = permissionsToAdd.filter((elem) =>
-        currentPermissionsForEachModule.every((item) => item.permissionId !== elem.id),
-      );
-
-      for (const perm of permissionsToAdd) {
-        await prisma.adminPermissionModule.create({
-          data: {
-            adminId: data?.admin?.id as any,
-            moduleId: module.id,
-            permissionId: perm.id,
+        const currentPermissionsForEachModule = await prisma.adminPermissionModule.findMany({
+          where: {
+            adminId: data?.admin?.id,
+            moduleId: module?.id as any,
+          },
+          include: {
+            permission: true,
+            module: true,
           },
         });
+
+        const permissionsToRemove = currentPermissionsForEachModule.filter(
+          (perm) => !permission.permissions.includes(perm.permission.name as any),
+        );
+
+        for (const perm of permissionsToRemove) {
+          await prisma.adminPermissionModule.delete({
+            where: {
+              id: perm.id,
+            },
+          });
+        }
+
+        // extract permission
+        const pe = await prisma.permission.findMany();
+
+        let permissionsToAdd = pe.filter((elem) => currectPermissions.some((ha) => ha.id === elem.id));
+
+        permissionsToAdd = permissionsToAdd.filter((elem) =>
+          currentPermissionsForEachModule.every((item) => item.permissionId !== elem.id),
+        );
+
+        for (const perm of permissionsToAdd) {
+          await prisma.adminPermissionModule.create({
+            data: {
+              adminId: data?.admin?.id as any,
+              moduleId: module.id,
+              permissionId: perm.id,
+            },
+          });
+        }
       }
     }
 
     return data;
   } catch (error) {
-    console.log(error);
     return error;
   }
 };

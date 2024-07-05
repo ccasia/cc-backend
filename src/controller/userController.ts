@@ -16,7 +16,7 @@ import { PrismaClient } from '@prisma/client';
 // import { serializePermission } from '@utils/serializePermission';
 
 const storage = new Storage({
-  keyFilename: 'src/config/cult-service.json',
+  keyFilename: 'src/config/test-cs.json',
 });
 
 const bucket = storage.bucket('cultcreativeasia');
@@ -34,19 +34,22 @@ export const updateProfileAdmin = async (req: Request, res: Response) => {
       const { image } = files as any;
       bucket.upload(image.tempFilePath, { destination: `profile/${image.name}` }, async (err, file) => {
         if (err) {
-          return res.status(500).send('Error uploading image.');
+          return err;
+
+          // return res.status(500).json({ message: 'Error uploading image.' });
         }
         file?.makePublic(async (err) => {
           if (err) {
-            return res.status(500).send('Error uploading image.');
+            return err;
+            // return res.status(500).json({ message: 'Error uploading image.' });
           }
           const publicURL = file.publicUrl();
           await updateAdmin(req.body, permission, publicURL);
         });
       });
+    } else {
+      await updateAdmin(req.body, permission);
     }
-
-    await updateAdmin(req.body, permission);
 
     return res.status(200).json({ message: 'Successfully updated' });
   } catch (error) {

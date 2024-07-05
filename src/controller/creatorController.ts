@@ -149,7 +149,7 @@ export const getMediaKit = async (req: Request, res: Response) => {
 export const getCreatorFullInfoById = async (req: Request, res: Response) => {
   const { id } = req.params;
   try {
-    const creator = await prisma.user.findUnique({
+    const user = await prisma.user.findUnique({
       where: {
         id: id,
       },
@@ -159,7 +159,7 @@ export const getCreatorFullInfoById = async (req: Request, res: Response) => {
       },
     });
 
-    return res.status(200).json({ creator });
+    return res.status(200).json({ user });
   } catch (error) {
     return res.status(400).json(error);
   }

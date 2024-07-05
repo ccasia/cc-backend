@@ -733,17 +733,18 @@ export const editCampaignBrandOrCompany = async (req: Request, res: Response) =>
 
   try {
     // If `null`, then `campaignBrand.id` is a company ID
-    const brand = await prisma.brand.findUnique({ where: { id: campaignBrand.id }});
+    const brand = await prisma.brand.findUnique({ where: { id: campaignBrand.id } });
     const updatedCampaign = await prisma.campaign.update({
       where: { id: id },
       data: brand
         ? {
-          brandId: campaignBrand.id,
-          companyId: null,
-        } : {
-          brandId: null,
-          companyId: campaignBrand.id,
-        },
+            brandId: campaignBrand.id,
+            companyId: null,
+          }
+        : {
+            brandId: null,
+            companyId: campaignBrand.id,
+          },
     });
     return res.status(200).json({ message: `Updated campaign ${brand ? 'brand' : 'company'}.`, ...updatedCampaign });
   } catch (error) {
