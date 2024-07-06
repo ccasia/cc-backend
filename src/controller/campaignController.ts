@@ -37,6 +37,7 @@ export const updateDefaultTimeline = async (req: Request, res: Response) => {
           posting,
         },
       });
+      return res.status(200).json({ message: 'Successfully updated default timeline', newDefaultTimeline });
     } else {
       newDefaultTimeline = await prisma.defaultTimelineCampaign.update({
         where: {
@@ -55,9 +56,8 @@ export const updateDefaultTimeline = async (req: Request, res: Response) => {
           posting,
         },
       });
+      return res.status(200).json({ message: 'Successfully updated default timeline', newDefaultTimeline });
     }
-
-    return res.status(200).json({ message: 'Successfully updated default timeline', newDefaultTimeline });
   } catch (error) {
     return res.status(400).json(error);
   }
