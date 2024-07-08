@@ -144,7 +144,7 @@ export const creatorVerificationEmail = (email: string, confirmationToken: strin
         <hr />
         <p>To use Cult Creative Platform, click the verification button. This helps keep your account secure.</p>
         <div class="btn-container">
-        <a href="http://${process.env.baseURL}/auth/verify/${confirmationToken}" class="button" style="color: white;">Verify my account</a>
+        <a href="https://${process.env.baseURL}/auth/verify/${confirmationToken}" class="button" style="color: white;">Verify my account</a>
         </div>        
         <p>You're receiving this email because you have an account in Cult Creative Platform. If you are not sure why you're receiving this, please contact us by replying to this email.</p>
       </div>
