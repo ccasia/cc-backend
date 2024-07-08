@@ -26,6 +26,7 @@ model User {
   eventId            String?
   Pitch              Pitch[]
   ShortListedCreator ShortListedCreator[]
+  // FilterPitch        FilterPitch[]
 }
 
 model Admin {
@@ -205,26 +206,26 @@ model SupSupBrand {
 
 //campaign peroid and intervals
 model Campaign {
-  id                        String                   @id @unique @default(cuid())
-  name                      String
-  description               String
-  status                    CampaignStatus           @default(past)
-  stage                     Stage                    @default(draft)
-  createdAt                 DateTime                 @default(now())
-  updatedAt                 DateTime                 @updatedAt
-  brand                     Brand?                   @relation(fields: [brandId], references: [id])
-  brandId                   String?
-  company                   Company?                 @relation(fields: [companyId], references: [id])
-  companyId                 String?
-  campaignBrief             CampaignBrief?
-  campaignRequirement       CampaignRequirement?
-  defaultCampaignTimeline   DefaultTimelineCampaign? @relation(fields: [defaultTimelineCampaignId], references: [id])
-  defaultTimelineCampaignId String?
-  customCampaignTimeline    CustomTimelineCampaign?  @relation(fields: [customTimelineCampaignId], references: [id])
-  customTimelineCampaignId  String?
-  CampaignAdmin             CampaignAdmin[]
-  Pitch                     Pitch[]
-  ShortListedCreator        ShortListedCreator[]
+  id                      String                    @id @unique @default(cuid())
+  name                    String
+  description             String
+  status                  CampaignStatus            @default(past)
+  stage                   Stage                     @default(draft)
+  createdAt               DateTime                  @default(now())
+  updatedAt               DateTime                  @updatedAt
+  brand                   Brand?                    @relation(fields: [brandId], references: [id])
+  brandId                 String?
+  company                 Company?                  @relation(fields: [companyId], references: [id])
+  companyId               String?
+  campaignBrief           CampaignBrief?
+  campaignRequirement     CampaignRequirement?
+  defaultCampaignTimeline DefaultTimelineCampaign[]
+  // campaignTimeline   CustomTimelineCampaign?   @relation(fields: [customTimelineCampaignId], references: [id])
+  // customTimelineCampaignId String?
+  campaignTimeline        CampaignTimeline[]
+  CampaignAdmin           CampaignAdmin[]
+  Pitch                   Pitch[]
+  ShortListedCreator      ShortListedCreator[]
 }
 
 model CampaignAdmin {
@@ -331,6 +332,7 @@ enum Status {
 enum CampaignStatus {
   active
   past
+  close
 }
 
 enum Role {
@@ -356,33 +358,64 @@ enum Employment {
 }
 
 model DefaultTimelineCampaign {
-  id                 String     @id @unique @default(cuid())
-  openForPitch       Int
-  shortlistCreator   Int
-  firstDraft         Int
-  finalDraft         Int
-  feedBackFirstDraft Int
-  feedBackFinalDraft Int
-  filterPitch        Int
-  agreementSign      Int
-  qc                 Int
-  posting            Int
-  Campaign           Campaign[]
+  id            String     @id @unique @default(cuid())
+  timeline_type String
+  days          String
+  for           String
+  Campaign      Campaign[]
 }
 
-model CustomTimelineCampaign {
-  id                 String     @id @unique @default(cuid())
-  openForPitch       Int
-  shortlistCreator   Int
-  firstDraft         Int
-  finalDraft         Int
-  feedBackFirstDraft Int
-  feedBackFinalDraft Int
-  filterPitch        Int
-  agreementSign      Int
-  qc                 Int
-  posting            Int
-  Campaign           Campaign[]
+// model CustomTimelineCampaign {
+//   id                 String     @id @unique @default(cuid())
+//   openForPitch       Int
+//   shortlistCreator   Int
+//   firstDraft         Int
+//   finalDraft         Int
+//   feedBackFirstDraft Int
+//   feedBackFinalDraft Int
+//   filterPitch        Int
+//   agreementSign      Int
+//   qc                 Int
+//   posting            Int
+//   Campaign           Campaign[]
+// }
+
+// model CampaignTimeline {
+//   id            String     @id @unique @default(cuid())
+//   timeline_type String
+//   days          String
+//   for           String
+//   Campaign      Campaign[]
+// }
+model CampaignTimeline {
+  id            String                  @id @unique @default(cuid())
+  timeline_type String
+  duration      String
+  startDate     DateTime
+  endDate       DateTime
+  status        CampaignTimelineStatus?
+  Campaign      Campaign[]
+}
+
+enum CampaignTimelineStatus {
+  close
+  active
+}
+
+model TimelineType {
+  id           String                   @id @unique @default(cuid())
+  name         String
+  for          String
+  dependencies TimelineTypeDependency[] @relation("TimelineDependencies")
+  dependsOn    TimelineTypeDependency[] @relation("DependsOnTimeline")
+}
+
+model TimelineTypeDependency {
+  id                  String        @id @unique @default(cuid())
+  timeline_id         String
+  dependsOnTimelineId String
+  timeline            TimelineType? @relation("TimelineDependencies", fields: [timeline_id], references: [id])
+  dependsOnTimeline   TimelineType? @relation("DependsOnTimeline", fields: [dependsOnTimelineId], references: [id])
 }
 
 model Pitch {
@@ -395,6 +428,7 @@ model Pitch {
   status     PitchStatus?
   content    String       @default("test")
   createdAt  DateTime     @default(now())
+  // FilterPitch FilterPitch[]
 }
 
 enum PitchType {
@@ -405,6 +439,7 @@ enum PitchType {
 enum PitchStatus {
   accept
   reject
+  filtered
 }
 
 model ShortListedCreator {
@@ -418,6 +453,13 @@ model ShortListedCreator {
   @@index([creatorId])
 }
 
-// model CampaignCalendar {
-//   id @u
+// model FilterPitch {
+//   id            String   @id @unique @default(cuid())
+//   filtered_date DateTime @default(now())
+//   creatorId     String
+//   creator       User     @relation(fields: [creatorId], references: [id])
+//   campaign      Campaign @relation(fields: [campaignId], references: [id])
+//   campaignId    String
+//   pitchId       String
+//   pitch         Pitch    @relation(fields: [pitchId], references: [id])
 // }

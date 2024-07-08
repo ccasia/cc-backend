@@ -186,6 +186,7 @@ export const getUser = async (id: string) => {
           MediaKit: true,
         },
       },
+      Pitch: true,
     },
   });
 
