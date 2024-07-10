@@ -27,6 +27,10 @@ model User {
   Pitch              Pitch[]
   ShortListedCreator ShortListedCreator[]
   // FilterPitch        FilterPitch[]
+  threads     Thread[] @relation("UserThreads")
+  UserThread  UserThread[]
+  sentMessages Message[] @relation("UserMessages")
+  
 }
 
 model Admin {
@@ -73,6 +77,34 @@ model MediaKit {
   interests String[]
   creatorId String   @unique
   creator   Creator  @relation(fields: [creatorId], references: [id])
+}
+
+model Message {
+  id          Int      @id @default(autoincrement())
+  content     String
+  createdAt   DateTime @default(now())
+  threadId    Int?
+  thread      Thread?   @relation(fields: [threadId], references: [id])
+  senderId    String?
+  sender      User?     @relation(fields: [senderId], references: [id], name: "UserMessages")
+}
+
+model Thread {
+  id           Int       @id @default(autoincrement())
+  title        String
+  description  String
+  users        User[]    @relation("UserThreads")
+  UserThread   UserThread[]
+  messages     Message[]
+  archived     Boolean   @default(false)
+}
+
+model UserThread {
+  userId   String
+  threadId Int
+  user     User     @relation(fields: [userId], references: [id])
+  thread   Thread   @relation(fields: [threadId], references: [id])
+  @@id([userId, threadId])
 }
 
 model Industry {
