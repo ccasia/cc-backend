@@ -8,25 +8,29 @@ datasource db {
 }
 
 model User {
-  id                 String               @id @unique @default(uuid())
-  email              String               @unique @db.VarChar(255)
-  password           String?              @db.VarChar(255)
-  createdAt          DateTime             @default(now())
-  name               String?              @db.VarChar(255)
-  photoURL           String?              @db.VarChar(255)
-  country            String?              @db.VarChar(100)
-  phoneNumber        String?              @db.VarChar(100)
-  role               Role
-  updatedAt          DateTime             @updatedAt
-  status             Status               @default(pending)
-  admin              Admin?
-  creator            Creator?
-  finance            Finance?
-  Event              Event?               @relation(fields: [eventId], references: [id])
-  eventId            String?
-  Pitch              Pitch[]
-  ShortListedCreator ShortListedCreator[]
+  id                   String                 @id @unique @default(uuid())
+  email                String                 @unique @db.VarChar(255)
+  password             String?                @db.VarChar(255)
+  createdAt            DateTime               @default(now())
+  name                 String?                @db.VarChar(255)
+  photoURL             String?                @db.VarChar(255)
+  country              String?                @db.VarChar(100)
+  phoneNumber          String?                @db.VarChar(100)
+  role                 Role
+  updatedAt            DateTime               @updatedAt
+  status               Status                 @default(pending)
+  admin                Admin?
+  creator              Creator?
+  finance              Finance?
+  Event                Event?                 @relation(fields: [eventId], references: [id])
+  eventId              String?
+  Pitch                Pitch[]
+  ShortListedCreator   ShortListedCreator[]
   // FilterPitch        FilterPitch[]
+  FirstDraft           FirstDraft[]
+  FinalDraft           FinalDraft[]
+  // Task                 Task[]
+  CampaignTimelineTask CampaignTimelineTask[]
 }
 
 model Admin {
@@ -49,20 +53,21 @@ enum Designation {
 }
 
 model Creator {
-  id          String      @id @unique @default(cuid())
-  pronounce   String?     @db.VarChar(100)
-  nationality String?     @db.VarChar(100)
-  location    String?     @db.VarChar(100)
-  birthDate   DateTime?
-  instagram   String?     @db.VarChar(100)
-  tiktok      String?     @db.VarChar(100)
-  employment  Employment? @default(others)
-  languages   Json?
-  userId      String      @unique
-  user        User        @relation(fields: [userId], references: [id])
-  industries  Industry[]
-  interests   Interest[]
-  MediaKit    MediaKit?
+  id         String      @id @unique @default(cuid())
+  pronounce  String?     @db.VarChar(100)
+  address    String?     @db.VarChar(255)
+  state      String?
+  location   String?     @db.VarChar(100)
+  birthDate  DateTime?
+  instagram  String?     @db.VarChar(100)
+  tiktok     String?     @db.VarChar(100)
+  employment Employment? @default(others)
+  languages  Json?
+  userId     String      @unique
+  user       User        @relation(fields: [userId], references: [id])
+  industries Industry[]
+  interests  Interest[]
+  MediaKit   MediaKit?
 }
 
 model MediaKit {
@@ -222,10 +227,15 @@ model Campaign {
   defaultCampaignTimeline DefaultTimelineCampaign[]
   // campaignTimeline   CustomTimelineCampaign?   @relation(fields: [customTimelineCampaignId], references: [id])
   // customTimelineCampaignId String?
-  campaignTimeline        CampaignTimeline[]
+  // campaignTimeline        CampaignTimeline[]
   CampaignAdmin           CampaignAdmin[]
   Pitch                   Pitch[]
   ShortListedCreator      ShortListedCreator[]
+  FirstDraft              FirstDraft[]
+  FinalDraft              FinalDraft[]
+  // Task                    Task[]
+  CampaignTimelineTask    CampaignTimelineTask[]
+  CampaignTimeline        CampaignTimeline[]
 }
 
 model CampaignAdmin {
@@ -387,35 +397,75 @@ model DefaultTimelineCampaign {
 //   for           String
 //   Campaign      Campaign[]
 // }
-model CampaignTimeline {
-  id            String                  @id @unique @default(cuid())
-  timeline_type String
-  duration      String
-  startDate     DateTime
-  endDate       DateTime
-  status        CampaignTimelineStatus?
-  Campaign      Campaign[]
-}
+// model CampaignTimeline {
+//   id                   String                  @id @unique @default(cuid())
+//   name                 String
+//   duration             String
+//   startDate            DateTime
+//   endDate              DateTime
+//   status               CampaignTimelineStatus?
+//   Campaign             Campaign[]
+//   // Task          Task[]
+//   CampaignTimelineTask CampaignTimelineTask[]
+// }
 
 enum CampaignTimelineStatus {
   close
   active
 }
 
-model TimelineType {
-  id           String                   @id @unique @default(cuid())
-  name         String
-  for          String
-  dependencies TimelineTypeDependency[] @relation("TimelineDependencies")
-  dependsOn    TimelineTypeDependency[] @relation("DependsOnTimeline")
+// Default Timeline Schema
+model TimelineTypeDefault {
+  id              String           @id @unique @default(cuid())
+  name            String           @unique
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  TimelineDefault TimelineDefault?
 }
 
-model TimelineTypeDependency {
-  id                  String        @id @unique @default(cuid())
+// Default Timeline Schema
+model TimelineDefault {
+  id                    String                          @id @unique @default(cuid())
+  timelineTypeDefaultId String                          @unique
+  for                   String?
+  duration              Int
+  createdAt             DateTime                        @default(now())
+  updatedAt             DateTime                        @updatedAt
+  timelineType          TimelineTypeDefault             @relation(fields: [timelineTypeDefaultId], references: [id])
+  dependencies          TimelineTypeDependencyDefault[] @relation("DependsOnTimeline")
+  dependsOn             TimelineTypeDependencyDefault[] @relation("TimelineDependencies")
+}
+
+// Default Timeline Schema
+model TimelineTypeDependencyDefault {
+  id                  String           @id @unique @default(cuid())
   timeline_id         String
   dependsOnTimelineId String
-  timeline            TimelineType? @relation("TimelineDependencies", fields: [timeline_id], references: [id])
-  dependsOnTimeline   TimelineType? @relation("DependsOnTimeline", fields: [dependsOnTimelineId], references: [id])
+  timeline            TimelineDefault? @relation("TimelineDependencies", fields: [timeline_id], references: [id])
+  dependsOnTimeline   TimelineDefault? @relation("DependsOnTimeline", fields: [dependsOnTimelineId], references: [id])
+}
+
+model CampaignTimeline {
+  id                         String                       @id @unique @default(cuid())
+  name                       String
+  createdAt                  DateTime                     @default(now())
+  updatedAt                  DateTime                     @updatedAt
+  for                        String?
+  duration                   Int
+  startDate                  DateTime
+  endDate                    DateTime
+  campaignId                 String
+  campaignTimelineDependency CampaignTimelineDependency[] @relation("CampaignTimeline")
+  dependsOnCampaignTimeline  CampaignTimelineDependency[] @relation("DependsOnCampaignTimeline")
+  campaign                   Campaign?                    @relation(references: [id], fields: [campaignId])
+}
+
+model CampaignTimelineDependency {
+  id                          String            @id @unique @default(cuid())
+  campaignTimelineId          String
+  dependsOnCampaignTimelineId String
+  campaignTimeline            CampaignTimeline? @relation("CampaignTimeline", fields: [campaignTimelineId], references: [id])
+  dependsOnCampaignTimeline   CampaignTimeline? @relation("DependsOnCampaignTimeline", fields: [dependsOnCampaignTimelineId], references: [id])
 }
 
 model Pitch {
@@ -453,13 +503,65 @@ model ShortListedCreator {
   @@index([creatorId])
 }
 
-// model FilterPitch {
-//   id            String   @id @unique @default(cuid())
-//   filtered_date DateTime @default(now())
-//   creatorId     String
-//   creator       User     @relation(fields: [creatorId], references: [id])
-//   campaign      Campaign @relation(fields: [campaignId], references: [id])
-//   campaignId    String
-//   pitchId       String
-//   pitch         Pitch    @relation(fields: [pitchId], references: [id])
+model FirstDraft {
+  id         String       @id @unique @default(cuid())
+  creatorId  String
+  creator    User         @relation(fields: [creatorId], references: [id])
+  campaignId String
+  campaign   Campaign     @relation(fields: [campaignId], references: [id])
+  status     DraftStatus?
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+}
+
+model FinalDraft {
+  id         String       @id @unique @default(cuid())
+  creatorId  String
+  creator    User         @relation(fields: [creatorId], references: [id])
+  campaignId String
+  campaign   Campaign     @relation(fields: [campaignId], references: [id])
+  status     DraftStatus?
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+}
+
+// model Task {
+//   id                   String                 @id @unique @default(cuid())
+//   creatorId            String
+//   campaignId           String
+//   timelineId           String
+//   name                 String
+//   dueDate              DateTime
+//   status               TaskStatus             @default(PENDING)
+//   creator              User                   @relation(fields: [creatorId], references: [id])
+//   campaign             Campaign               @relation(fields: [campaignId], references: [id])
+//   timeline             CampaignTimeline       @relation(fields: [timelineId], references: [id])
+//   CampaignTimelineTask CampaignTimelineTask[]
 // }
+
+enum DraftStatus {
+  Pending
+  Submitted
+  Reviewed
+  Approved
+}
+
+enum TaskStatus {
+  Pending
+  Completed
+}
+
+model CampaignTimelineTask {
+  id                  String     @id @unique @default(cuid())
+  userId              String
+  campaignTimeline_id String
+  campaignId          String
+  user                User       @relation(references: [id], fields: [userId])
+  // task                CampaignTimeline @relation(references: [id], fields: [campaignTimeline_id])
+  campaign            Campaign   @relation(references: [id], fields: [campaignId])
+  status              TaskStatus @default(Pending)
+  startDate           DateTime?
+  endDate             DateTime?
+  createdAt           DateTime   @default(now())
+  updatedAd           DateTime   @updatedAt
+}

@@ -189,102 +189,102 @@ export const updateDefaultTimeline = async (req: Request, res: Response) => {
 //   }
 // };
 
-export const updateTimeLineType = async (req: Request, res: Response) => {
-  const { timeline } = req.body;
+// export const updateTimeLineType = async (req: Request, res: Response) => {
+//   const { timeline } = req.body;
 
-  try {
-    const timelineLowerCase = timeline.map((item: any) => item.timeline_type.toLowerCase());
-    const duplicates = timeline.filter(
-      (item: any, index: number) => timelineLowerCase.indexOf(item.timeline_type.toLowerCase()) !== index,
-    );
+//   try {
+//     const timelineLowerCase = timeline.map((item: any) => item.timeline_type.toLowerCase());
+//     const duplicates = timeline.filter(
+//       (item: any, index: number) => timelineLowerCase.indexOf(item.timeline_type.toLowerCase()) !== index,
+//     );
 
-    if (duplicates.length) {
-      return res.status(404).json({ message: "There's a duplication of timeline type" });
-    }
+//     if (duplicates.length) {
+//       return res.status(404).json({ message: "There's a duplication of timeline type" });
+//     }
 
-    for (const item of timeline) {
-      // Find existing timeline
-      if (item.id) {
-        const timeline = await prisma.timelineType.update({
-          where: {
-            id: item.id,
-          },
-          data: {
-            name: item.timeline_type
-              .split(' ')
-              .map((elem: any) => `${elem[0].toUpperCase()}${elem.slice(1)}`)
-              .join(' '),
-            for: item.for,
-          },
-        });
+//     for (const item of timeline) {
+//       // Find existing timeline
+//       if (item.id) {
+//         const timeline = await prisma.timelineType.update({
+//           where: {
+//             id: item.id,
+//           },
+//           data: {
+//             name: item.timeline_type
+//               .split(' ')
+//               .map((elem: any) => `${elem[0].toUpperCase()}${elem.slice(1)}`)
+//               .join(' '),
+//             for: item.for,
+//           },
+//         });
 
-        if (item.dependsOn !== 'startDate') {
-          const existingTimeline = await prisma.timelineType.findFirst({
-            where: {
-              name: {
-                contains: item.dependsOn,
-              },
-            },
-          });
+//         if (item.dependsOn !== 'startDate') {
+//           const existingTimeline = await prisma.timelineType.findFirst({
+//             where: {
+//               name: {
+//                 contains: item.dependsOn,
+//               },
+//             },
+//           });
 
-          if (existingTimeline) {
-            if (item.dependenciesId) {
-              await prisma.timelineTypeDependency.update({
-                where: {
-                  id: item.dependenciesId,
-                },
-                data: {
-                  timeline_id: timeline.id,
-                  dependsOnTimelineId: existingTimeline.id,
-                },
-              });
-            } else {
-              await prisma.timelineTypeDependency.create({
-                data: {
-                  timeline_id: timeline.id,
-                  dependsOnTimelineId: existingTimeline.id,
-                },
-              });
-            }
-          }
-        }
-      } else {
-        const timeline = await prisma.timelineType.create({
-          data: {
-            name: item.timeline_type
-              .split(' ')
-              .map((elem: any) => `${elem[0].toUpperCase()}${elem.slice(1)}`)
-              .join(' '),
-            for: item.for,
-          },
-        });
+//           if (existingTimeline) {
+//             if (item.dependenciesId) {
+//               await prisma.timelineTypeDependency.update({
+//                 where: {
+//                   id: item.dependenciesId,
+//                 },
+//                 data: {
+//                   timeline_id: timeline.id,
+//                   dependsOnTimelineId: existingTimeline.id,
+//                 },
+//               });
+//             } else {
+//               await prisma.timelineTypeDependency.create({
+//                 data: {
+//                   timeline_id: timeline.id,
+//                   dependsOnTimelineId: existingTimeline.id,
+//                 },
+//               });
+//             }
+//           }
+//         }
+//       } else {
+//         const timeline = await prisma.timelineType.create({
+//           data: {
+//             name: item.timeline_type
+//               .split(' ')
+//               .map((elem: any) => `${elem[0].toUpperCase()}${elem.slice(1)}`)
+//               .join(' '),
+//             for: item.for,
+//           },
+//         });
 
-        if (item.dependsOn !== 'startDate') {
-          const existingTimeline = await prisma.timelineType.findFirst({
-            where: {
-              name: {
-                contains: item.dependsOn,
-              },
-            },
-          });
+//         if (item.dependsOn !== 'startDate') {
+//           const existingTimeline = await prisma.timelineType.findFirst({
+//             where: {
+//               name: {
+//                 contains: item.dependsOn,
+//               },
+//             },
+//           });
 
-          if (existingTimeline) {
-            await prisma.timelineTypeDependency.create({
-              data: {
-                timeline_id: timeline.id,
-                dependsOnTimelineId: existingTimeline.id,
-              },
-            });
-          }
-        }
-      }
-    }
-    return res.status(200).json({ message: 'Successfully Updated Timeline Type' });
-  } catch (error) {
-    console.log(error);
-    return res.status(400).json(error);
-  }
-};
+//           if (existingTimeline) {
+//             await prisma.timelineTypeDependency.create({
+//               data: {
+//                 timeline_id: timeline.id,
+//                 dependsOnTimelineId: existingTimeline.id,
+//               },
+//             });
+//           }
+//         }
+//       }
+//     }
+//     return res.status(200).json({ message: 'Successfully Updated Timeline Type' });
+//   } catch (error) {
+//     console.log(error);
+//     return res.status(400).json(error);
+//   }
+// };
 
 interface image {
   path: string;
@@ -359,15 +359,17 @@ export const createCampaign = async (req: Request, res: Response) => {
     timeline,
   }: Campaign = JSON.parse(req.body.data);
 
-  const images = (req.files as any).campaignImages as [];
-
   const publicURL = [];
+
   let campaign: any;
 
   try {
-    for (const item of images as any) {
-      const url = await uploadImage(item.tempFilePath, item.name);
-      publicURL.push(url);
+    if (req.files && req.files.image) {
+      const images = (req.files as any).campaignImages as [];
+      for (const item of images as any) {
+        const url = await uploadImage(item.tempFilePath, item.name, 'campaign');
+        publicURL.push(url);
+      }
     }
 
     const admins = await Promise.all(
@@ -396,7 +398,7 @@ export const createCampaign = async (req: Request, res: Response) => {
         },
       });
 
-      campaign = await prisma.campaign.create({
+      const a = await prisma.campaign.create({
         data: {
           name: campaignTitle,
           description: campaignDescription,
@@ -431,117 +433,31 @@ export const createCampaign = async (req: Request, res: Response) => {
               user_persona: audienceUserPersona,
             },
           },
-          campaignTimeline: {
+          CampaignTimeline: {
             create: timeline.map((item: any) => ({
-              timeline_type: item.timeline_type,
+              name: item.timeline_type,
+              for: item?.for,
               duration: item.duration,
               startDate: dayjs(item.startDate),
               endDate: dayjs(item.endDate),
             })),
           },
         },
+        include: {
+          CampaignTimeline: true,
+        },
       });
-      // if (timeline?.id) {
-      //   campaign = await prisma.campaign.create({
-      //     data: {
-      //       name: campaignTitle,
-      //       description: campaignDescription,
-      //       status: 'active',
-      //       stage: campaignStage as Stage,
-      //       company: {
-      //         connect: {
-      //           id: brand?.id,
-      //         },
-      //       },
-      //       campaignBrief: {
-      //         create: {
-      //           title: campaignTitle,
-      //           objectives: campaginObjectives,
-      //           images: publicURL.map((image) => image) || '',
-      //           agreementFrom: agreementFrom.path,
-      //           startDate: campaignStartDate,
-      //           endDate: campaignEndDate,
-      //           interests: campaignInterests,
-      //           industries: campaignIndustries,
-      //           campaigns_do: campaignDo,
-      //           campaigns_dont: campaignDont,
-      //         },
-      //       },
-      //       campaignRequirement: {
-      //         create: {
-      //           gender: audienceGender,
-      //           age: audienceAge,
-      //           geoLocation: audienceLocation,
-      //           language: audienceLanguage,
-      //           creator_persona: audienceCreatorPersona,
-      //           user_persona: audienceUserPersona,
-      //         },
-      //       },
-      //       defaultCampaignTimeline: {
-      //         connect: {
-      //           id: timeline?.id,
-      //         },
-      //       },
-      //     },
-      //   });
-      // } else {
-      //   const customTimeline = await prisma.customTimelineCampaign.create({
-      //     data: {
-      //       openForPitch: timeline?.openForPitch,
-      //       shortlistCreator: timeline?.shortlistCreator,
-      //       firstDraft: timeline?.firstDraft,
-      //       finalDraft: timeline?.finalDraft,
-      //       feedBackFirstDraft: timeline?.feedBackFirstDraft,
-      //       feedBackFinalDraft: timeline?.feedBackFinalDraft,
-      //       filterPitch: timeline?.filterPitch,
-      //       agreementSign: timeline?.agreementSign,
-      //       qc: timeline?.qc,
-      //       posting: timeline?.posting,
-      //     },
-      //   });
-      //   campaign = await prisma.campaign.create({
-      //     data: {
-      //       name: campaignTitle,
-      //       description: campaignDescription,
-      //       status: 'active',
-      //       stage: campaignStage as Stage,
-      //       company: {
-      //         connect: {
-      //           id: brand?.id,
-      //         },
-      //       },
-      //       campaignBrief: {
-      //         create: {
-      //           title: campaignTitle,
-      //           objectives: campaginObjectives,
-      //           images: publicURL.map((image) => image) || '',
-      //           agreementFrom: agreementFrom.path,
-      //           startDate: campaignStartDate,
-      //           endDate: campaignEndDate,
-      //           interests: campaignInterests,
-      //           industries: campaignIndustries,
-      //           campaigns_do: campaignDo,
-      //           campaigns_dont: campaignDont,
-      //         },
-      //       },
-      //       campaignRequirement: {
-      //         create: {
-      //           gender: audienceGender,
-      //           age: audienceAge,
-      //           geoLocation: audienceLocation,
-      //           language: audienceLanguage,
-      //           creator_persona: audienceCreatorPersona,
-      //           user_persona: audienceUserPersona,
-      //         },
-      //       },
-      //       campaignTimeline: {
-      //         connect: {
-      //           id: customTimeline?.id,
-      //         },
-      //       },
-      //     },
-      //   });
-      // }
+
+      campaign?.CampaignTimeline.forEach(async (item: any, index: any) => {
+        if (index !== 0) {
+          await prisma.campaignTimelineDependency.create({
+            data: {
+              campaignTimelineId: item?.id,
+              dependsOnCampaignTimelineId: campaign.CampaignTimeline[index - 1].id,
+            },
+          });
+        }
+      });
     } else {
       campaign = await prisma.campaign.create({
         data: {
@@ -578,118 +494,31 @@ export const createCampaign = async (req: Request, res: Response) => {
               user_persona: audienceUserPersona,
             },
           },
-          campaignTimeline: {
+          CampaignTimeline: {
             create: timeline.map((item: any) => ({
-              timeline_type: item.timeline_type,
+              name: item.timeline_type?.name,
+              for: item?.for,
               duration: item.duration,
               startDate: dayjs(item.startDate),
               endDate: dayjs(item.endDate),
             })),
           },
         },
+        include: {
+          CampaignTimeline: true,
+        },
       });
-      // if (timeline?.id) {
-      //   campaign = await prisma.campaign.create({
-      //     data: {
-      //       name: campaignTitle,
-      //       description: campaignDescription,
-      //       status: 'active',
-      //       stage: campaignStage as Stage,
-      //       brand: {
-      //         connect: {
-      //           id: brand?.id,
-      //         },
-      //       },
 
-      //       campaignBrief: {
-      //         create: {
-      //           title: campaignTitle,
-      //           objectives: campaginObjectives,
-      //           images: publicURL.map((image) => image) || '',
-      //           agreementFrom: agreementFrom.path,
-      //           startDate: campaignStartDate,
-      //           endDate: campaignEndDate,
-      //           interests: campaignInterests,
-      //           industries: campaignIndustries,
-      //           campaigns_do: campaignDo,
-      //           campaigns_dont: campaignDont,
-      //         },
-      //       },
-      //       campaignRequirement: {
-      //         create: {
-      //           gender: audienceGender,
-      //           age: audienceAge,
-      //           geoLocation: audienceLocation,
-      //           language: audienceLanguage,
-      //           creator_persona: audienceCreatorPersona,
-      //           user_persona: audienceUserPersona,
-      //         },
-      //       },
-      //       defaultCampaignTimeline: {
-      //         connect: {
-      //           id: timeline?.id,
-      //         },
-      //       },
-      //     },
-      //   });
-      // } else {
-      //   const customTimeline = await prisma.customTimelineCampaign.create({
-      //     data: {
-      //       openForPitch: timeline?.openForPitch,
-      //       shortlistCreator: timeline?.shortlistCreator,
-      //       firstDraft: timeline?.firstDraft,
-      //       finalDraft: timeline?.finalDraft,
-      //       feedBackFirstDraft: timeline?.feedBackFirstDraft,
-      //       feedBackFinalDraft: timeline?.feedBackFinalDraft,
-      //       filterPitch: timeline?.filterPitch,
-      //       agreementSign: timeline?.agreementSign,
-      //       qc: timeline?.qc,
-      //       posting: timeline?.posting,
-      //     },
-      //   });
-      //   campaign = await prisma.campaign.create({
-      //     data: {
-      //       name: campaignTitle,
-      //       description: campaignDescription,
-      //       status: 'active',
-      //       stage: campaignStage as Stage,
-      //       brand: {
-      //         connect: {
-      //           id: brand?.id,
-      //         },
-      //       },
-      //       campaignBrief: {
-      //         create: {
-      //           title: campaignTitle,
-      //           objectives: campaginObjectives,
-      //           images: publicURL.map((image) => image) || '',
-      //           agreementFrom: agreementFrom.path,
-      //           startDate: campaignStartDate,
-      //           endDate: campaignEndDate,
-      //           interests: campaignInterests,
-      //           industries: campaignIndustries,
-      //           campaigns_do: campaignDo,
-      //           campaigns_dont: campaignDont,
-      //         },
-      //       },
-      //       campaignRequirement: {
-      //         create: {
-      //           gender: audienceGender,
-      //           age: audienceAge,
-      //           geoLocation: audienceLocation,
-      //           language: audienceLanguage,
-      //           creator_persona: audienceCreatorPersona,
-      //           user_persona: audienceUserPersona,
-      //         },
-      //       },
-      //       campaignTimeline: {
-      //         connect: {
-      //           id: customTimeline?.id,
-      //         },
-      //       },
-      //     },
-      //   });
-      // }
+      campaign?.CampaignTimeline.forEach(async (item: any, index: any) => {
+        if (index !== 0) {
+          await prisma.campaignTimelineDependency.create({
+            data: {
+              campaignTimelineId: item?.id,
+              dependsOnCampaignTimelineId: campaign.CampaignTimeline[index - 1].id,
+            },
+          });
+        }
+      });
     }
 
     admins.map(async (admin: any) => {
@@ -728,8 +557,12 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
       include: {
         brand: true,
         company: true,
-        campaignTimeline: true,
         defaultCampaignTimeline: true,
+        CampaignTimeline: {
+          include: {
+            campaignTimelineDependency: true,
+          },
+        },
         campaignBrief: true,
         campaignRequirement: true,
         Pitch: {
@@ -764,9 +597,11 @@ export const getCampaignById = async (req: Request, res: Response) => {
         id: id,
       },
       include: {
+        FinalDraft: true,
+        FirstDraft: true,
         brand: true,
         company: true,
-        campaignTimeline: true,
+        CampaignTimeline: true,
         defaultCampaignTimeline: true,
         campaignBrief: true,
         campaignRequirement: true,
@@ -820,7 +655,7 @@ export const getAllActiveCampaign = async (_req: Request, res: Response) => {
         campaignBrief: true,
         campaignRequirement: true,
         defaultCampaignTimeline: true,
-        campaignTimeline: true,
+        CampaignTimeline: true,
         brand: true,
         company: true,
         Pitch: true,
@@ -918,6 +753,19 @@ export const approvePitch = async (req: Request, res: Response) => {
         campaignId: campaignId,
       },
     });
+
+    // const timelines = await prisma.campaign.findUnique({
+    //   where: {
+    //     id: campaignId,
+    //   },
+    //   include: {
+    //     campaignTimeline: true,
+    //   },
+    // });
+
+    // for (const item of timelines as any) {
+    // }
+
     return res.status(200).json({ message: 'Successfully shortlisted' });
   } catch (error) {
     return res.status(400).json(error);
@@ -1095,7 +943,7 @@ export const updateCampaignTimeline = async (req: Request, res: Response) => {
         id: id,
       },
       include: {
-        campaignTimeline: true,
+        CampaignTimeline: true,
         campaignBrief: true,
       },
     });
@@ -1110,7 +958,7 @@ export const updateCampaignTimeline = async (req: Request, res: Response) => {
           id: item.id,
         },
         data: {
-          timeline_type: item.timeline_type,
+          name: item.timeline_type,
           duration: item.duration,
           startDate: dayjs(item.startDate).format(),
           endDate: dayjs(item.endDate).format(),
@@ -1129,6 +977,22 @@ export const updateCampaignTimeline = async (req: Request, res: Response) => {
     });
 
     return res.status(200).json({ message: 'Succesfully updated' });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+// Get First Draft by user id and campaign id
+export const getFirstDraft = async (req: Request, res: Response) => {
+  const { creatorId, campaignId } = req.body;
+  try {
+    const firstDraft = await prisma.firstDraft.findMany({
+      where: {
+        creatorId: creatorId,
+        campaignId: campaignId,
+      },
+    });
+    return res.status(200).json(firstDraft);
   } catch (error) {
     return res.status(400).json(error);
   }

@@ -10,6 +10,7 @@ import { handleChangePassword } from 'src/service/authServices';
 // import { verifyToken } from '@utils/jwtHelper';
 import { getUser } from 'src/service/userServices';
 import { verifyToken } from '@utils/jwtHelper';
+import { uploadImage } from 'src/config/cloudStorage.config';
 
 const prisma = new PrismaClient();
 
@@ -482,7 +483,6 @@ export const updateCreator = async (req: Request, res: Response) => {
         instagram,
         pronounce,
         location,
-        nationality: Nationality,
         birthDate: data,
         employment: employment as Employment,
         tiktok,
@@ -638,30 +638,60 @@ export const login = async (req: Request, res: Response) => {
 };
 
 export const updateProfileCreator = async (req: Request, res: Response) => {
-  const { name, email, photoURL, phoneNumber, country, about, id } = req.body;
+  const { name, email, phoneNumber, country, about, id, state, address } = JSON.parse(req.body.data);
 
   try {
-    await prisma.creator.update({
-      where: {
-        userId: id,
-      },
-      data: {
-        MediaKit: {
-          update: {
-            about: about,
+    if (req.files) {
+      const { image } = req?.files as any;
+
+      const url = await uploadImage(image.tempFilePath, image.name, 'creator');
+      await prisma.creator.update({
+        where: {
+          userId: id,
+        },
+        data: {
+          state: state,
+          address: address,
+          MediaKit: {
+            update: {
+              about: about,
+            },
+          },
+          user: {
+            update: {
+              name: name,
+              email: email,
+              photoURL: url,
+              phoneNumber: phoneNumber,
+              country: country,
+            },
           },
         },
-        user: {
-          update: {
-            name: name,
-            email: email,
-            photoURL: photoURL,
-            phoneNumber: phoneNumber,
-            country: country,
+      });
+    } else {
+      await prisma.creator.update({
+        where: {
+          userId: id,
+        },
+        data: {
+          state: state,
+          address: address,
+          MediaKit: {
+            update: {
+              about: about,
+            },
+          },
+          user: {
+            update: {
+              name: name,
+              email: email,
+              phoneNumber: phoneNumber,
+              country: country,
+            },
           },
         },
-      },
-    });
+      });
+    }
     return res.status(200).json({ message: 'Succesfully updated' });
   } catch (error) {
     return res.status(400).json({ message: 'Error updating creator' });

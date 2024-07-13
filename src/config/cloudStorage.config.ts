@@ -6,12 +6,12 @@ const storage = new Storage({
   keyFilename: pathToJSONKey,
 });
 
-export const uploadImage = async (tempFilePath: string, fileName: string) => {
+export const uploadImage = async (tempFilePath: string, fileName: string, folderName: string) => {
   const uploadPromise = new Promise<string>((resolve, reject) => {
     storage.bucket(process.env.BUCKET_NAME as string).upload(
       tempFilePath,
       {
-        destination: `campaigns/${fileName}`,
+        destination: `${folderName}/${fileName}`,
         gzip: true,
         metadata: {
           cacheControl: 'public, max-age=31536000',
