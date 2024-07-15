@@ -576,7 +576,12 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
           include: {
             user: {
               include: {
-                creator: true,
+                creator: {
+                  include: {
+                    industries: true,
+                    interests: true,
+                  },
+                },
               },
             },
           },
@@ -628,7 +633,12 @@ export const getCampaignById = async (req: Request, res: Response) => {
           include: {
             user: {
               include: {
-                creator: true,
+                creator: {
+                  include: {
+                    industries: true,
+                    interests: true,
+                  },
+                },
               },
             },
           },
@@ -766,7 +776,7 @@ export const approvePitch = async (req: Request, res: Response) => {
         id: pitchId,
       },
       data: {
-        status: 'accepted',
+        status: 'approved',
       },
     });
 
@@ -795,47 +805,47 @@ export const approvePitch = async (req: Request, res: Response) => {
   }
 };
 
-export const rejectPitch = async (req: Request, res: Response) => {
-  const { creatorId, campaignId, pitchId } = req.body;
+// export const rejectPitch = async (req: Request, res: Response) => {
+//   const { creatorId, campaignId, pitchId } = req.body;
 
-  try {
-    const creator = await prisma.user.findUnique({
-      where: {
-        id: creatorId,
-      },
-    });
+//   try {
+//     const creator = await prisma.user.findUnique({
+//       where: {
+//         id: creatorId,
+//       },
+//     });
 
-    const pitch = await prisma.shortListedCreator.findFirst({
-      where: {
-        AND: {
-          campaignId: campaignId,
-          creatorId: creator?.id,
-        },
-      },
-    });
+//     const pitch = await prisma.shortListedCreator.findFirst({
+//       where: {
+//         AND: {
+//           campaignId: campaignId,
+//           creatorId: creator?.id,
+//         },
+//       },
+//     });
 
-    if (pitch) {
-      await prisma.shortListedCreator.delete({
-        where: {
-          id: pitch.id,
-        },
-      });
-    }
+//     if (pitch) {
+//       await prisma.shortListedCreator.delete({
+//         where: {
+//           id: pitch.id,
+//         },
+//       });
+//     }
 
-    await prisma.pitch.update({
-      where: {
-        id: pitchId,
-      },
-      data: {
-        status: 'rejected',
-      },
-    });
+//     await prisma.pitch.update({
+//       where: {
+//         id: pitchId,
+//       },
+//       data: {
+//         status: 'rejected',
+//       },
+//     });
 
-    return res.status(200).json({ message: 'Successfully rejected' });
-  } catch (error) {
-    return res.status(400).json(error);
-  }
-};
+//     return res.status(200).json({ message: 'Successfully rejected' });
+//   } catch (error) {
+//     return res.status(400).json(error);
+//   }
+// };
 
 export const filterPitch = async (req: Request, res: Response) => {
   const { pitchId } = req.body;
@@ -1045,6 +1055,42 @@ export const getFirstDraft = async (req: Request, res: Response) => {
       },
     });
     return res.status(200).json(firstDraft);
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const changePitchStatus = async (req: Request, res: Response) => {
+  const { status, pitchId } = req.body;
+  try {
+    const pitch = await prisma.pitch.update({
+      where: {
+        id: pitchId,
+      },
+      data: {
+        status: status,
+      },
+    });
+
+    if (pitch.status === 'approved') {
+      await prisma.shortListedCreator.create({
+        data: {
+          creatorId: pitch?.userId,
+          campaignId: pitch?.campaignId,
+        },
+      });
+    } else {
+      await prisma.shortListedCreator.delete({
+        where: {
+          creatorId_campaignId: {
+            creatorId: pitch?.userId,
+            campaignId: pitch?.campaignId,
+          },
+        },
+      });
+    }
+
+    return res.status(200).json({ message: 'Successfully changed' });
   } catch (error) {
     return res.status(400).json(error);
   }

@@ -11,12 +11,13 @@ import {
   changeCampaignStage,
   closeCampaign,
   getPitchById,
-  rejectPitch,
+  // rejectPitch,
   editCampaignBrandOrCompany,
   // updateTimeLineType,
   updateCampaignTimeline,
   filterPitch,
   getFirstDraft,
+  changePitchStatus,
 } from 'src/controller/campaignController';
 import { isSuperAdmin } from 'src/middleware/onlySuperadmin';
 import {
@@ -51,7 +52,7 @@ router.post('/updateOrCreateDefaultTimeline', updateOrCreateDefaultTimeline);
 router.post('/updateDefaultTimeline', updateDefaultTimeline);
 router.post('/createCampaign', isSuperAdmin, createCampaign);
 router.post('/approvePitch', isSuperAdmin, approvePitch);
-router.post('/rejectPitch', isSuperAdmin, rejectPitch);
+// router.post('/rejectPitch', isSuperAdmin, rejectPitch);
 router.post('/filterPitch', isSuperAdmin, filterPitch);
 router.post('/createNewTimeline', isSuperAdmin, createNewTimeline);
 
@@ -60,5 +61,6 @@ router.patch('/changeCampaignStage/:campaignId', changeCampaignStage);
 router.patch('/closeCampaign/:id', isSuperAdmin, closeCampaign);
 router.patch('/editCampaignBrandOrCompany', isSuperAdmin, editCampaignBrandOrCompany);
 router.patch('/updateCampaignTimeline/:id', isSuperAdmin, updateCampaignTimeline);
+router.patch('/changePitchStatus', changePitchStatus);
 
 export default router;

@@ -485,20 +485,21 @@ enum PitchType {
 }
 
 enum PitchStatus {
-  accepted
+  approved
   rejected
   filtered
   undecided
 }
 
 model ShortListedCreator {
-  id               String   @id @unique @default(cuid())
+  // id               String   @id @unique @default(cuid())
   shortlisted_date DateTime @default(now())
   creatorId        String
   creator          User     @relation(fields: [creatorId], references: [id])
   campaign         Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   campaignId       String
 
+  @@unique([creatorId, campaignId])
   @@index([creatorId])
 }
 
