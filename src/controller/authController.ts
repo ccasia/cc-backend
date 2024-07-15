@@ -10,7 +10,7 @@ import { handleChangePassword } from 'src/service/authServices';
 // import { verifyToken } from '@utils/jwtHelper';
 import { getUser } from 'src/service/userServices';
 import { verifyToken } from '@utils/jwtHelper';
-import { uploadImage } from 'src/config/cloudStorage.config';
+import { uploadImage, uploadProfileImage } from 'src/config/cloudStorage.config';
 
 const prisma = new PrismaClient();
 
@@ -644,7 +644,7 @@ export const updateProfileCreator = async (req: Request, res: Response) => {
     if (req.files) {
       const { image } = req?.files as any;
 
-      const url = await uploadImage(image.tempFilePath, image.name, 'creator');
+      const url = await uploadProfileImage(image.tempFilePath, image.name, 'creator');
       await prisma.creator.update({
         where: {
           userId: id,

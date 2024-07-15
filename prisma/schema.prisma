@@ -30,7 +30,7 @@ model User {
   FirstDraft           FirstDraft[]
   FinalDraft           FinalDraft[]
   // Task                 Task[]
-  CampaignTimelineTask CampaignTimelineTask[]
+  campaignTimelineTask CampaignTimelineTask[]
 }
 
 model Admin {
@@ -211,38 +211,35 @@ model SupSupBrand {
 
 //campaign peroid and intervals
 model Campaign {
-  id                      String                    @id @unique @default(cuid())
-  name                    String
-  description             String
-  status                  CampaignStatus            @default(past)
-  stage                   Stage                     @default(draft)
-  createdAt               DateTime                  @default(now())
-  updatedAt               DateTime                  @updatedAt
-  brand                   Brand?                    @relation(fields: [brandId], references: [id])
-  brandId                 String?
-  company                 Company?                  @relation(fields: [companyId], references: [id])
-  companyId               String?
-  campaignBrief           CampaignBrief?
-  campaignRequirement     CampaignRequirement?
-  defaultCampaignTimeline DefaultTimelineCampaign[]
-  // campaignTimeline   CustomTimelineCampaign?   @relation(fields: [customTimelineCampaignId], references: [id])
-  // customTimelineCampaignId String?
-  // campaignTimeline        CampaignTimeline[]
-  CampaignAdmin           CampaignAdmin[]
-  Pitch                   Pitch[]
-  ShortListedCreator      ShortListedCreator[]
-  FirstDraft              FirstDraft[]
-  FinalDraft              FinalDraft[]
+  id                  String               @id @unique @default(cuid())
+  name                String
+  description         String
+  status              CampaignStatus       @default(past)
+  stage               Stage                @default(draft)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  brand               Brand?               @relation(fields: [brandId], references: [id])
+  brandId             String?
+  company             Company?             @relation(fields: [companyId], references: [id])
+  companyId           String?
+  campaignBrief       CampaignBrief?
+  campaignRequirement CampaignRequirement?
+
+  CampaignAdmin        CampaignAdmin[]
+  Pitch                Pitch[]
+  ShortListedCreator   ShortListedCreator[]
+  FirstDraft           FirstDraft[]
+  FinalDraft           FinalDraft[]
   // Task                    Task[]
-  CampaignTimelineTask    CampaignTimelineTask[]
-  CampaignTimeline        CampaignTimeline[]
+  campaignTimelineTask CampaignTimelineTask[]
+  CampaignTimeline     CampaignTimeline[]
 }
 
 model CampaignAdmin {
   adminId    String
   campaignId String
   admin      Admin    @relation(fields: [adminId], references: [userId])
-  campaign   Campaign @relation(fields: [campaignId], references: [id])
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
   @@id([adminId, campaignId])
   @@index([adminId])
@@ -367,13 +364,13 @@ enum Employment {
   others
 }
 
-model DefaultTimelineCampaign {
-  id            String     @id @unique @default(cuid())
-  timeline_type String
-  days          String
-  for           String
-  Campaign      Campaign[]
-}
+// model DefaultTimelineCampaign {
+//   id            String     @id @unique @default(cuid())
+//   timeline_type String
+//   days          String
+//   for           String
+//   Campaign      Campaign[]
+// }
 
 // model CustomTimelineCampaign {
 //   id                 String     @id @unique @default(cuid())
@@ -458,24 +455,25 @@ model CampaignTimeline {
   campaignTimelineDependency CampaignTimelineDependency[] @relation("CampaignTimeline")
   dependsOnCampaignTimeline  CampaignTimelineDependency[] @relation("DependsOnCampaignTimeline")
   campaign                   Campaign?                    @relation(references: [id], fields: [campaignId])
+  campaignTimelineTask       CampaignTimelineTask[]
 }
 
 model CampaignTimelineDependency {
   id                          String            @id @unique @default(cuid())
   campaignTimelineId          String
   dependsOnCampaignTimelineId String
-  campaignTimeline            CampaignTimeline? @relation("CampaignTimeline", fields: [campaignTimelineId], references: [id])
-  dependsOnCampaignTimeline   CampaignTimeline? @relation("DependsOnCampaignTimeline", fields: [dependsOnCampaignTimelineId], references: [id])
+  campaignTimeline            CampaignTimeline? @relation("CampaignTimeline", fields: [campaignTimelineId], references: [id], onDelete: Cascade)
+  dependsOnCampaignTimeline   CampaignTimeline? @relation("DependsOnCampaignTimeline", fields: [dependsOnCampaignTimelineId], references: [id], onDelete: Cascade)
 }
 
 model Pitch {
   id         String       @id @unique @default(cuid())
   type       PitchType
   campaignId String
-  campaign   Campaign     @relation(fields: [campaignId], references: [id])
+  campaign   Campaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   user       User         @relation(fields: [userId], references: [id])
   userId     String
-  status     PitchStatus?
+  status     PitchStatus? @default(undecided)
   content    String       @default("test")
   createdAt  DateTime     @default(now())
   // FilterPitch FilterPitch[]
@@ -487,9 +485,10 @@ enum PitchType {
 }
 
 enum PitchStatus {
-  accept
-  reject
+  accepted
+  rejected
   filtered
+  undecided
 }
 
 model ShortListedCreator {
@@ -497,7 +496,7 @@ model ShortListedCreator {
   shortlisted_date DateTime @default(now())
   creatorId        String
   creator          User     @relation(fields: [creatorId], references: [id])
-  campaign         Campaign @relation(fields: [campaignId], references: [id])
+  campaign         Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   campaignId       String
 
   @@index([creatorId])
@@ -552,16 +551,17 @@ enum TaskStatus {
 }
 
 model CampaignTimelineTask {
-  id                  String     @id @unique @default(cuid())
-  userId              String
-  campaignTimeline_id String
-  campaignId          String
-  user                User       @relation(references: [id], fields: [userId])
-  // task                CampaignTimeline @relation(references: [id], fields: [campaignTimeline_id])
-  campaign            Campaign   @relation(references: [id], fields: [campaignId])
-  status              TaskStatus @default(Pending)
-  startDate           DateTime?
-  endDate             DateTime?
-  createdAt           DateTime   @default(now())
-  updatedAd           DateTime   @updatedAt
+  id                 String            @id @unique @default(cuid())
+  userId             String
+  task               String?
+  campaignTimelineId String
+  campaignId         String
+  user               User?             @relation(references: [id], fields: [userId], onDelete: Cascade)
+  timeline           CampaignTimeline? @relation(references: [id], fields: [campaignTimelineId], onDelete: Cascade)
+  campaign           Campaign?         @relation(references: [id], fields: [campaignId], onDelete: Cascade)
+  status             TaskStatus        @default(Pending)
+  startDate          DateTime?
+  endDate            DateTime?
+  createdAt          DateTime          @default(now())
+  updatedAd          DateTime          @updatedAt
 }
