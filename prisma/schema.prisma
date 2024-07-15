@@ -546,9 +546,18 @@ enum DraftStatus {
   Approved
 }
 
+// schema.prisma
+
 enum TaskStatus {
-  Pending
-  Completed
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+  ON_HOLD
+  OVERDUE
+  REVISIONS_REQUIRED
 }
 
 model CampaignTimelineTask {
@@ -560,7 +569,7 @@ model CampaignTimelineTask {
   user               User?             @relation(references: [id], fields: [userId], onDelete: Cascade)
   timeline           CampaignTimeline? @relation(references: [id], fields: [campaignTimelineId], onDelete: Cascade)
   campaign           Campaign?         @relation(references: [id], fields: [campaignId], onDelete: Cascade)
-  status             TaskStatus        @default(Pending)
+  status             TaskStatus        @default(NOT_STARTED)
   startDate          DateTime?
   endDate            DateTime?
   createdAt          DateTime          @default(now())

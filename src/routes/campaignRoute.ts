@@ -18,6 +18,8 @@ import {
   filterPitch,
   getFirstDraft,
   changePitchStatus,
+  getCampaignsByCreatorId,
+  getCampaignForCreatorById,
 } from 'src/controller/campaignController';
 import { isSuperAdmin } from 'src/middleware/onlySuperadmin';
 import {
@@ -26,6 +28,7 @@ import {
   getTimelineType,
   updateOrCreateDefaultTimeline,
 } from 'src/controller/timelineController';
+import { isLoggedIn } from 'src/middleware/onlyLogin';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -46,6 +49,8 @@ router.get('/pitch/:id', getPitchById);
 router.get('/firstDraft', isSuperAdmin, getFirstDraft);
 router.get('/timelineType', isSuperAdmin, getTimelineType);
 router.get('/defaultTimeline', isSuperAdmin, getDefaultTimeline);
+router.get('/getCampaignsBySessionId', getCampaignsByCreatorId);
+router.get('/getCampaignForCreatorById/:id', isLoggedIn, getCampaignForCreatorById);
 // router.get('/pitch/:campaignId', getPitchByCampaignId);
 
 router.post('/updateOrCreateDefaultTimeline', updateOrCreateDefaultTimeline);

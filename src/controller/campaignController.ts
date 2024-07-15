@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { PrismaClient, Stage } from '@prisma/client';
-import { uploadImage } from 'src/config/cloudStorage.config';
+import { uploadImage, uploadPitchVideo } from 'src/config/cloudStorage.config';
 import dayjs from 'dayjs';
 import { assignTask } from 'src/service/campaignServices';
 
@@ -704,6 +704,7 @@ export const getAllActiveCampaign = async (_req: Request, res: Response) => {
 export const creatorMakePitch = async (req: Request, res: Response) => {
   const { campaignId, content } = req.body;
   const id = req.session.userid;
+  const { pitchVideo } = req.files as any;
 
   try {
     const campaign = await prisma.campaign.findUnique({
@@ -733,18 +734,28 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Creator not found.' });
     }
 
-    await prisma.pitch.create({
-      data: {
-        type: 'text',
-        campaignId: campaign?.id,
-        userId: creator?.id,
-        content: content,
-      },
-    });
-
+    if (req.files && req.files.pitchVideo) {
+      const url = await uploadPitchVideo(pitchVideo?.tempFilePath, pitchVideo?.name, 'pitchVideo');
+      await prisma.pitch.create({
+        data: {
+          type: 'video',
+          campaignId: campaign?.id,
+          userId: creator?.id,
+          content: url,
+        },
+      });
+    } else {
+      await prisma.pitch.create({
+        data: {
+          type: 'text',
+          campaignId: campaign?.id,
+          userId: creator?.id,
+          content: content,
+        },
+      });
+    }
     return res.status(200).json({ message: 'Successfully Pitch !' });
   } catch (error) {
-    console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -805,47 +816,61 @@ export const approvePitch = async (req: Request, res: Response) => {
   }
 };
 
-// export const rejectPitch = async (req: Request, res: Response) => {
-//   const { creatorId, campaignId, pitchId } = req.body;
+export const getCampaignsByCreatorId = async (req: Request, res: Response) => {
+  const { userid } = req.session;
+  try {
+    const shortlisted = await prisma.shortListedCreator.findMany({
+      where: {
+        creatorId: userid,
+      },
+    });
 
-//   try {
-//     const creator = await prisma.user.findUnique({
-//       where: {
-//         id: creatorId,
-//       },
-//     });
+    const campaignShortlistedIds = shortlisted.map((item: any) => item.campaignId);
 
-//     const pitch = await prisma.shortListedCreator.findFirst({
-//       where: {
-//         AND: {
-//           campaignId: campaignId,
-//           creatorId: creator?.id,
-//         },
-//       },
-//     });
+    const campaigns = await Promise.all(
+      campaignShortlistedIds.map(async (id) => {
+        const campaign = await prisma.campaign.findUnique({
+          where: {
+            id: id,
+          },
+          include: {
+            campaignBrief: true,
+            campaignRequirement: true,
+            CampaignTimeline: {
+              include: {
+                dependsOnCampaignTimeline: {
+                  include: {
+                    campaignTimeline: true,
+                  },
+                },
+              },
+            },
+            CampaignAdmin: true,
+          },
+        });
 
-//     if (pitch) {
-//       await prisma.shortListedCreator.delete({
-//         where: {
-//           id: pitch.id,
-//         },
-//       });
-//     }
+        const tasks = await prisma.campaignTimelineTask.findMany({
+          where: {
+            AND: [
+              {
+                userId: userid,
+              },
+              {
+                campaignId: campaign?.id,
+              },
+            ],
+          },
+        });
+        return { ...campaign, tasks };
+      }),
+    );
 
-//     await prisma.pitch.update({
-//       where: {
-//         id: pitchId,
-//       },
-//       data: {
-//         status: 'rejected',
-//       },
-//     });
-
-//     return res.status(200).json({ message: 'Successfully rejected' });
-//   } catch (error) {
-//     return res.status(400).json(error);
-//   }
-// };
+    return res.status(200).json({ campaigns });
+  } catch (error) {
+    console.log(error);
+    return res.status(400).json(error);
+  }
+};
 
 export const filterPitch = async (req: Request, res: Response) => {
   const { pitchId } = req.body;
@@ -1079,6 +1104,33 @@ export const changePitchStatus = async (req: Request, res: Response) => {
           campaignId: pitch?.campaignId,
         },
       });
+      const timelines = await prisma.campaignTimeline.findMany({
+        where: {
+          campaignId: pitch?.campaignId,
+        },
+        include: {
+          dependsOnCampaignTimeline: {
+            include: {
+              campaignTimeline: true,
+            },
+          },
+        },
+      });
+
+      timelines
+        .filter((item: any) => item.for === 'creator' && item.name !== 'Open For Pitch')
+        .forEach(async (item: any) => {
+          await prisma.campaignTimelineTask.create({
+            data: {
+              userId: pitch?.userId,
+              task: item?.name,
+              campaignTimelineId: item?.id,
+              campaignId: pitch?.campaignId,
+              startDate: item?.startDate,
+              endDate: item?.endDate,
+            },
+          });
+        });
     } else {
       await prisma.shortListedCreator.delete({
         where: {
@@ -1086,6 +1138,18 @@ export const changePitchStatus = async (req: Request, res: Response) => {
             creatorId: pitch?.userId,
             campaignId: pitch?.campaignId,
           },
+        },
+      });
+      await prisma.campaignTimelineTask.deleteMany({
+        where: {
+          AND: [
+            {
+              userId: pitch?.userId,
+            },
+            {
+              campaignId: pitch?.campaignId,
+            },
+          ],
         },
       });
     }
@@ -1096,9 +1160,40 @@ export const changePitchStatus = async (req: Request, res: Response) => {
   }
 };
 
-// export const getPitchByCampaignId = async (req: Request, res: Response) => {
-//   try {
-//   } catch (error) {
-//     return res.status(400).json(error);
-//   }
-// };
+export const getCampaignForCreatorById = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { userid } = req.session as any;
+  try {
+    const campaign = await prisma.campaign.findUnique({
+      where: {
+        id: id,
+      },
+      include: {
+        CampaignAdmin: {
+          include: {
+            admin: true,
+          },
+        },
+        CampaignTimeline: {
+          include: {
+            dependsOnCampaignTimeline: {
+              include: {
+                campaignTimeline: true,
+              },
+            },
+          },
+        },
+        campaignBrief: true,
+        campaignRequirement: true,
+        campaignTimelineTask: {
+          where: {
+            userId: userid,
+          },
+        },
+      },
+    });
+    return res.status(200).json(campaign);
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
