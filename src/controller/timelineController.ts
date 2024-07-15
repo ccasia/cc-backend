@@ -98,7 +98,11 @@ export const getDefaultTimeline = async (req: Request, res: Response) => {
         timelineType: true,
         dependsOn: {
           include: {
-            dependsOnTimeline: true,
+            dependsOnTimeline: {
+              include: {
+                timelineType: true,
+              },
+            },
           },
         },
       },
