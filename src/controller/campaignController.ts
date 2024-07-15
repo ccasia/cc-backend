@@ -926,7 +926,7 @@ export const editCampaignBrandOrCompany = async (req: Request, res: Response) =>
             companyId: campaignBrand.id,
           },
     });
-    return res.status(200).json({ message: `Updated campaign ${brand ? 'brand' : 'company'}.`, ...updatedCampaign });
+    return res.status(200).json({ message: `Updated ${brand ? 'brand' : 'company'}`, ...updatedCampaign });
   } catch (error) {
     return res.status(400).json(error);
   }
@@ -976,7 +976,7 @@ export const updateCampaignTimeline = async (req: Request, res: Response) => {
       },
     });
 
-    return res.status(200).json({ message: 'Succesfully updated' });
+    return res.status(200).json({ message: 'Updated timeline' });
   } catch (error) {
     return res.status(400).json(error);
   }
