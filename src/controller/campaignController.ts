@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { PrismaClient, Stage } from '@prisma/client';
+import { Prisma, PrismaClient, Stage } from '@prisma/client';
 import { uploadImage, uploadPitchVideo } from 'src/config/cloudStorage.config';
 import dayjs from 'dayjs';
 import { assignTask } from 'src/service/campaignServices';
@@ -961,8 +961,43 @@ export const getPitchById = async (req: Request, res: Response) => {
   }
 };
 
-export const editCampaignBrandOrCompany = async (req: Request, res: Response) => {
+export const editCampaignInfo = async (req: Request, res: Response) => {
+  console.log('=== CAMPAIGN INFO ===');
   console.log(req);
+  console.log('=== END CAMPAIGN INFO ===');
+  const {
+    id,
+    name,
+    description,
+    campaignInterests,
+    campaignIndustries,
+  } = req.body;
+  const interests = campaignInterests as Prisma.JsonArray;
+  const industries = campaignIndustries as Prisma.JsonArray;
+
+  try {
+    const updatedCampaign = await prisma.campaign.update({
+      where: { id: id },
+      data: {
+        name: name,
+        description: description,
+        campaignBrief: {
+          // TODO BUG: "error TS2353: Object literal may only specify known properties, and 'interests' does not exist in type 'CampaignBriefUncheckedUpdateOneWithoutCampaignNestedInput | CampaignBriefUpdateOneWithoutCampaignNestedInput'."
+          // interests: interests,
+          // industries: industries,
+        },
+      },
+    });
+    return res.status(200).json({ message: 'Updated campaign information', ...updatedCampaign });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const editCampaignBrandOrCompany = async (req: Request, res: Response) => {
+  console.log('=== CAMPAIGN BRAND OR COMPANY ===');
+  console.log(req);
+  console.log('=== END CAMPAIGN BRAND OR COMPANY ===');
   const {
     id,
     // `campaignBrand.id` can be either a brand ID or company ID

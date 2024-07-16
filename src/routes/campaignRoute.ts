@@ -12,6 +12,7 @@ import {
   closeCampaign,
   getPitchById,
   // rejectPitch,
+  editCampaignInfo,
   editCampaignBrandOrCompany,
   // updateTimeLineType,
   updateCampaignTimeline,
@@ -64,6 +65,7 @@ router.post('/createNewTimeline', isSuperAdmin, createNewTimeline);
 router.patch('/pitch', creatorMakePitch);
 router.patch('/changeCampaignStage/:campaignId', changeCampaignStage);
 router.patch('/closeCampaign/:id', isSuperAdmin, closeCampaign);
+router.patch('/editCampaignInfo', isSuperAdmin, editCampaignInfo);
 router.patch('/editCampaignBrandOrCompany', isSuperAdmin, editCampaignBrandOrCompany);
 router.patch('/updateCampaignTimeline/:id', isSuperAdmin, updateCampaignTimeline);
 router.patch('/changePitchStatus', changePitchStatus);
