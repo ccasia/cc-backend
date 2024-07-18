@@ -59,3 +59,20 @@ export const markAllAsRead = async (req: Request, res: Response) => {
     return res.status(400).json(error);
   }
 };
+
+export const archiveAll = async (req: Request, res: Response) => {
+  const { userid } = req.session;
+  try {
+    await prisma.notificationStatus.updateMany({
+      where: {
+        userId: userid,
+      },
+      data: {
+        archive: true,
+      },
+    });
+    return res.sendStatus(200);
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};

@@ -11,6 +11,7 @@
     "lint": "npx eslint . --ext .ts",
     "format": "npx eslint . --ext .ts --fix",
     "test": "jest",
+    "seed": "ts-node prisma/seed.ts",
     "migrate": "npx prisma migrate dev",
     "generate": "npx prisma generate",
     "prod:prev": "node dist/app.js",

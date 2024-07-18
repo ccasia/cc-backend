@@ -925,6 +925,13 @@ export const changeCampaignStage = async (req: Request, res: Response) => {
       data: {
         stage: stage,
       },
+      include: {
+        CampaignAdmin: true,
+      },
+    });
+
+    campaign.CampaignAdmin.forEach(async (admin) => {
+      await saveNotification(admin.adminId, Title.Update, `${campaign.name} is up live !`, Entity.Campaign);
     });
     return res.status(200).json({ message: 'Successfully changed stage', stage: campaign?.stage });
   } catch (error) {
@@ -936,13 +943,24 @@ export const closeCampaign = async (req: Request, res: Response) => {
   const { id } = req.params;
 
   try {
-    await prisma.campaign.update({
+    const campaign = await prisma.campaign.update({
       where: {
         id: id,
       },
       data: {
         status: 'close',
       },
+      include: {
+        CampaignAdmin: true,
+      },
+    });
+    campaign.CampaignAdmin.forEach(async (item) => {
+      await saveNotification(
+        item.adminId,
+        Title.Update,
+        `${campaign.name} is close on ${dayjs().format('ddd LL')}`,
+        Entity.Campaign,
+      );
     });
     return res.status(200).json({ message: 'Campaign is successfully closed.' });
   } catch (error) {
@@ -1117,6 +1135,9 @@ export const changePitchStatus = async (req: Request, res: Response) => {
       data: {
         status: status,
       },
+      include: {
+        campaign: true,
+      },
     });
 
     if (pitch.status === 'approved') {
@@ -1126,6 +1147,12 @@ export const changePitchStatus = async (req: Request, res: Response) => {
           campaignId: pitch?.campaignId,
         },
       });
+      await saveNotification(
+        pitch.userId,
+        Title.Create,
+        `Congratulations! You've been shortlisted for the ${pitch.campaign.name} campaign.`,
+        Entity.Shortlist,
+      );
       const timelines = await prisma.campaignTimeline.findMany({
         where: {
           campaignId: pitch?.campaignId,
@@ -1178,6 +1205,7 @@ export const changePitchStatus = async (req: Request, res: Response) => {
 
     return res.status(200).json({ message: 'Successfully changed' });
   } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   }
 };

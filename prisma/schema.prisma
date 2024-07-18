@@ -10,7 +10,7 @@ datasource db {
 model User {
   id                   String                 @id @unique @default(uuid())
   email                String                 @unique @db.VarChar(255)
-  password             String?                @db.VarChar(255)
+  password             String                 @db.VarChar(255)
   createdAt            DateTime               @default(now())
   name                 String?                @db.VarChar(255)
   photoURL             String?                @db.VarChar(255)
@@ -41,7 +41,6 @@ model Admin {
   mode                  Mode                    @default(normal)
   inviteToken           String?                 @unique
   userId                String                  @unique
-  // campaign              Campaign[]
   user                  User                    @relation(fields: [userId], references: [id])
   AdminPermissionModule AdminPermissionModule[]
   CampaignAdmin         CampaignAdmin[]
@@ -570,6 +569,7 @@ model NotificationStatus {
   userId         String
   notificationId String
   read           Boolean      @default(false)
+  archive        Boolean      @default(false)
   readAt         DateTime?    @default(now())
   user           User         @relation(fields: [userId], references: [id])
   notification   Notification @relation(fields: [notificationId], references: [id])
