@@ -241,6 +241,7 @@ export const createAdminForm = async (data: AdminForm) => {
         name,
         email,
         phoneNumber,
+        password: '',
         country,
         role: 'admin',
         status: 'pending',
@@ -272,6 +273,7 @@ export const createNewAdmin = async (email: string, permissions: Permission[]) =
     const user = await prisma.user.create({
       data: {
         email: email,
+        password: '',
         role: 'admin',
       },
     });
