@@ -711,6 +711,7 @@ export const getAllActiveCampaign = async (_req: Request, res: Response) => {
 export const creatorMakePitch = async (req: Request, res: Response) => {
   const { campaignId, content } = req.body;
   const id = req.session.userid;
+  console.log(req);
   const { pitchVideo } = req.files as any;
 
   try {
