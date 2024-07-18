@@ -12,17 +12,27 @@ import { PrismaClient } from '@prisma/client';
 import passport from 'passport';
 import FacebookStrategy from 'passport-facebook';
 import 'src/config/cronjob';
+import http from 'http';
+import { isLoggedIn } from './middleware/onlyLogin';
+import { Server, Socket } from 'socket.io';
+// import { getNotificationByUserId } from './controller/notificationController';
 
 dotenv.config();
 
 const app: Application = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  connectionStateRecovery: {},
+});
+
+const prisma = new PrismaClient();
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 app.use(
   fileUpload({
-    limits: { fileSize: 50 * 1024 * 1024 },
+    // limits: { fileSize: 50 * 1024 * 1024 },
     useTempFiles: true,
     tempFileDir: '/tmp/',
   }),
@@ -66,21 +76,25 @@ const pgPool = new pg.Pool({
   port: 5431,
 });
 
-app.use(
-  session({
-    secret: process.env.SESSION_SECRET as string,
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-      secure: false,
-      maxAge: 24 * 60 * 60 * 1000, //expires in 24hours
-    },
-    store: new pgSession({
-      pool: pgPool,
-      tableName: 'session',
-    }),
+const sessionMiddleware = session({
+  secret: process.env.SESSION_SECRET as string,
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: false,
+    maxAge: 24 * 60 * 60 * 1000, //expires in 24hours
+  },
+  store: new pgSession({
+    pool: pgPool,
+    tableName: 'session',
   }),
-);
+});
+
+app.use(sessionMiddleware);
+
+io.use((socket: Socket, next) => {
+  return sessionMiddleware(socket.request as any, {} as any, next as any);
+});
 
 app.use(passport.initialize());
 
@@ -124,7 +138,7 @@ app.get('/', (_req: Request, res: Response) => {
   res.send('Server is running...');
 });
 
-app.get('/users', async (_req, res) => {
+app.get('/users', isLoggedIn, async (_req, res) => {
   const prisma = new PrismaClient();
   try {
     const users = await prisma.user.findMany();
@@ -134,28 +148,27 @@ app.get('/users', async (_req, res) => {
   }
 });
 
-// app.get('/videos/:filename', async (req, res) => {
-//   const filename = req.params.filename;
-//   const file = storage.bucket('landing-cultcreative').file(`main/${filename}`);
+export const clients = new Map();
 
-//   try {
-//     const [fileExists] = await file.exists();
-//     if (!fileExists) {
-//       return res.status(404).send('File not found');
-//     }
+io.on('connection', (socket) => {
+  const userid = (socket.request as any).session.userid;
 
-//     // Set proper headers for video streaming
-//     res.setHeader('Content-Type', 'video/mp4');
-//     res.setHeader('Cache-Control', 'public, max-age=31536000');
+  if (userid) {
+    clients.set(userid, socket.id);
+  }
 
-//     // Pipe the video stream to the response
-//     file.createReadStream().pipe(res);
-//   } catch (error) {
-//     console.error('Error retrieving file:', error);
-//     res.status(500).send('Internal Server Error');
-//   }
-// });
+  socket.on('chat', (data) => {
+    io.to(clients.get('01f17901-100b-4076-935c-1ec02abccace'))
+      .to(clients.get('7457ab90-efd3-4f26-8153-c4cc10997257'))
+      .emit('message', data);
+    // socket.broadcast.emit('message', data);
+  });
 
-app.listen(process.env.PORT, () => {
+  socket.on('disconnect', () => {
+    clients.delete(userid);
+  });
+});
+
+server.listen(process.env.PORT, () => {
   console.log(`Listening to port ${process.env.PORT}...`);
 });

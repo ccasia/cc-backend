@@ -31,6 +31,8 @@ model User {
   FinalDraft           FinalDraft[]
   // Task                 Task[]
   campaignTimelineTask CampaignTimelineTask[]
+
+  NotificationStatus NotificationStatus[]
 }
 
 model Admin {
@@ -364,48 +366,6 @@ enum Employment {
   others
 }
 
-// model DefaultTimelineCampaign {
-//   id            String     @id @unique @default(cuid())
-//   timeline_type String
-//   days          String
-//   for           String
-//   Campaign      Campaign[]
-// }
-
-// model CustomTimelineCampaign {
-//   id                 String     @id @unique @default(cuid())
-//   openForPitch       Int
-//   shortlistCreator   Int
-//   firstDraft         Int
-//   finalDraft         Int
-//   feedBackFirstDraft Int
-//   feedBackFinalDraft Int
-//   filterPitch        Int
-//   agreementSign      Int
-//   qc                 Int
-//   posting            Int
-//   Campaign           Campaign[]
-// }
-
-// model CampaignTimeline {
-//   id            String     @id @unique @default(cuid())
-//   timeline_type String
-//   days          String
-//   for           String
-//   Campaign      Campaign[]
-// }
-// model CampaignTimeline {
-//   id                   String                  @id @unique @default(cuid())
-//   name                 String
-//   duration             String
-//   startDate            DateTime
-//   endDate              DateTime
-//   status               CampaignTimelineStatus?
-//   Campaign             Campaign[]
-//   // Task          Task[]
-//   CampaignTimelineTask CampaignTimelineTask[]
-// }
-
 enum CampaignTimelineStatus {
   close
   active
@@ -574,4 +534,45 @@ model CampaignTimelineTask {
   endDate            DateTime?
   createdAt          DateTime          @default(now())
   updatedAd          DateTime          @updatedAt
+}
+
+// model Notification {
+//   id         String             @id @unique @default(cuid())
+//   content    String
+//   senderId   String?
+//   receiverId String?
+//   status     NotificationStatus @default(unread)
+//   receiver   User?              @relation("receiver", references: [id], fields: [receiverId])
+//   sender     User?              @relation("sender", references: [id], fields: [senderId])
+//   createdAt  DateTime           @default(now())
+//   userId     String?
+// }
+
+model Notification {
+  id                 String               @id @unique @default(cuid())
+  title              String
+  message            String
+  createdAt          DateTime             @default(now())
+  notificationStatus NotificationStatus[]
+  entity             Entity?
+}
+
+enum Entity {
+  Campaign
+  User
+  Pitch
+  Shortlist
+  Timeline
+}
+
+model NotificationStatus {
+  id             String       @id @unique @default(cuid())
+  userId         String
+  notificationId String
+  read           Boolean      @default(false)
+  readAt         DateTime?    @default(now())
+  user           User         @relation(fields: [userId], references: [id])
+  notification   Notification @relation(fields: [notificationId], references: [id])
+
+  @@unique([userId, notificationId])
 }
