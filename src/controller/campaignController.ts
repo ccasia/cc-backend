@@ -766,6 +766,7 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
     await saveNotification(creator.id, Title.Create, `Your pitch has been successfully sent.`, Entity.Pitch);
 
     const admins = campaign.CampaignAdmin;
+    console.log(admins);
 
     admins.forEach(async (item) => {
       await saveNotification(
@@ -778,7 +779,6 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
 
     return res.status(200).json({ message: 'Successfully Pitch !' });
   } catch (error) {
-    console.log(error);
     return res.status(400).json(error);
   }
 };
