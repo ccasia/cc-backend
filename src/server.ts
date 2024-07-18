@@ -149,6 +149,10 @@ app.get('/users', isLoggedIn, async (_req, res) => {
   }
 });
 
+app.post('/testFile', (req: Request, res: Response) => {
+  console.log(req);
+});
+
 // app.get('/outh', (req: Request, res: Response) => {
 //   const csrfState = Math.random().toString(36).substring(2);
 //   res.cookie('csrfState', csrfState, { maxAge: 60000 });
