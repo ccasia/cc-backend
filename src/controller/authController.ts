@@ -586,6 +586,8 @@ export const login = async (req: Request, res: Response) => {
             interests: true,
           },
         },
+        Pitch: true,
+        ShortListedCreator: true,
       },
     });
 
@@ -641,6 +643,12 @@ export const updateProfileCreator = async (req: Request, res: Response) => {
   const { name, email, phoneNumber, country, about, id, state, address } = JSON.parse(req.body.data);
 
   try {
+    const creator = await prisma.creator.findFirst({
+      where: {
+        userId: id,
+      },
+    });
+
     if (req.files) {
       const { image } = req?.files as any;
 
@@ -653,8 +661,16 @@ export const updateProfileCreator = async (req: Request, res: Response) => {
           state: state,
           address: address,
           MediaKit: {
-            update: {
-              about: about,
+            upsert: {
+              where: {
+                creatorId: creator?.id,
+              },
+              update: {
+                about: about,
+              },
+              create: {
+                about: about,
+              },
             },
           },
           user: {
@@ -677,8 +693,19 @@ export const updateProfileCreator = async (req: Request, res: Response) => {
           state: state,
           address: address,
           MediaKit: {
-            update: {
-              about: about,
+            // update: {
+            //   about: about,
+            // },
+            upsert: {
+              where: {
+                creatorId: creator?.id,
+              },
+              update: {
+                about: about,
+              },
+              create: {
+                about: about,
+              },
             },
           },
           user: {
@@ -694,6 +721,7 @@ export const updateProfileCreator = async (req: Request, res: Response) => {
     }
     return res.status(200).json({ message: 'Succesfully updated' });
   } catch (error) {
+    console.log(error);
     return res.status(400).json({ message: 'Error updating creator' });
   }
 };

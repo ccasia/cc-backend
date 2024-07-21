@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { Entity, PrismaClient } from '@prisma/client';
 import { time } from 'console';
+import { Title, saveNotification } from './notificationController';
 
 const prisma = new PrismaClient();
 
@@ -84,6 +85,16 @@ export const updateOrCreateDefaultTimeline = async (req: Request, res: Response)
         });
       }
     }
+
+    const admins = await prisma.user.findMany({
+      where: {
+        role: 'admin',
+      },
+    });
+
+    admins.forEach(async (item) => {
+      await saveNotification(item.id, Title.Update, 'Default Timeline Is Updated', Entity.Timeline);
+    });
     return res.status(200).json({ message: 'Successfully updated' });
   } catch (error) {
     console.log(error);

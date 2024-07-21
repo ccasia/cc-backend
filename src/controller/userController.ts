@@ -12,14 +12,15 @@ import {
   // createNewAdmin,
 } from 'src/service/userServices';
 import { Storage } from '@google-cloud/storage';
-import { PrismaClient } from '@prisma/client';
+import { Entity, PrismaClient } from '@prisma/client';
+import { Title, saveNotification } from './notificationController';
 // import { serializePermission } from '@utils/serializePermission';
 
 const storage = new Storage({
   keyFilename: 'src/config/test-cs.json',
 });
 
-const bucket = storage.bucket('cultcreativeasia');
+const bucket = storage.bucket('app-test-cult-cretive');
 
 const prisma = new PrismaClient();
 
@@ -50,9 +51,10 @@ export const updateProfileAdmin = async (req: Request, res: Response) => {
     } else {
       await updateAdmin(req.body, permission);
     }
-
+    saveNotification(req.body.userId, Title.Update, 'Profile Updated', Entity.User);
     return res.status(200).json({ message: 'Successfully updated' });
   } catch (error) {
+    console.log(error);
     return res.status(400).json({ message: error });
   }
 };

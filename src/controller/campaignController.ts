@@ -1,8 +1,10 @@
 import { Request, Response } from 'express';
-import { Prisma, PrismaClient, Stage } from '@prisma/client';
+import { Entity, Prisma, PrismaClient, Stage } from '@prisma/client';
+
 import { uploadImage, uploadPitchVideo } from 'src/config/cloudStorage.config';
 import dayjs from 'dayjs';
 import { assignTask } from 'src/service/campaignServices';
+import { Title, saveNotification } from './notificationController';
 
 const prisma = new PrismaClient();
 
@@ -365,13 +367,14 @@ export const createCampaign = async (req: Request, res: Response) => {
   try {
     // if (req.files && req.files.image) {
     const images = (req.files as any).campaignImages as [];
+    const publicURL: any = [];
 
-    prisma.$transaction(async (tx) => {
-      const publicURL = [];
-      for (const item of images as any) {
-        const url = await uploadImage(item.tempFilePath, item.name, 'campaign');
-        publicURL.push(url);
-      }
+    for (const item of images as any) {
+      const url = await uploadImage(item.tempFilePath, item.name, 'campaign');
+      publicURL.push(url);
+    }
+
+    await prisma.$transaction(async (tx) => {
       // }
 
       const admins = await Promise.all(
@@ -394,72 +397,77 @@ export const createCampaign = async (req: Request, res: Response) => {
       });
 
       if (!brand) {
-        brand = await tx.company.findUnique({
-          where: {
-            id: campaignBrand.id,
-          },
-        });
+        // eslint-disable-next-line no-useless-catch
+        try {
+          brand = await tx.company.findUnique({
+            where: {
+              id: campaignBrand.id,
+            },
+          });
 
-        campaign = await tx.campaign.create({
-          data: {
-            name: campaignTitle,
-            description: campaignDescription,
-            status: 'active',
-            stage: campaignStage as Stage,
-            company: {
-              connect: {
-                id: brand?.id,
+          campaign = await tx.campaign.create({
+            data: {
+              name: campaignTitle,
+              description: campaignDescription,
+              status: 'active',
+              stage: campaignStage as Stage,
+              company: {
+                connect: {
+                  id: brand?.id,
+                },
+              },
+              campaignBrief: {
+                create: {
+                  title: campaignTitle,
+                  objectives: campaginObjectives,
+                  images: publicURL.map((image: any) => image) || '',
+                  agreementFrom: agreementFrom.path,
+                  startDate: campaignStartDate,
+                  endDate: campaignEndDate,
+                  interests: campaignInterests,
+                  industries: campaignIndustries,
+                  campaigns_do: campaignDo,
+                  campaigns_dont: campaignDont,
+                },
+              },
+              campaignRequirement: {
+                create: {
+                  gender: audienceGender,
+                  age: audienceAge,
+                  geoLocation: audienceLocation,
+                  language: audienceLanguage,
+                  creator_persona: audienceCreatorPersona,
+                  user_persona: audienceUserPersona,
+                },
+              },
+              CampaignTimeline: {
+                create: timeline.map((item: any) => ({
+                  name: item.timeline_type?.name,
+                  for: item?.for,
+                  duration: parseInt(item.duration),
+                  startDate: dayjs(item.startDate),
+                  endDate: dayjs(item.endDate),
+                })),
               },
             },
-            campaignBrief: {
-              create: {
-                title: campaignTitle,
-                objectives: campaginObjectives,
-                images: publicURL.map((image) => image) || '',
-                agreementFrom: agreementFrom.path,
-                startDate: campaignStartDate,
-                endDate: campaignEndDate,
-                interests: campaignInterests,
-                industries: campaignIndustries,
-                campaigns_do: campaignDo,
-                campaigns_dont: campaignDont,
-              },
+            include: {
+              CampaignTimeline: true,
             },
-            campaignRequirement: {
-              create: {
-                gender: audienceGender,
-                age: audienceAge,
-                geoLocation: audienceLocation,
-                language: audienceLanguage,
-                creator_persona: audienceCreatorPersona,
-                user_persona: audienceUserPersona,
-              },
-            },
-            CampaignTimeline: {
-              create: timeline.map((item: any) => ({
-                name: item.timeline_type?.name,
-                for: item?.for,
-                duration: parseInt(item.duration),
-                startDate: dayjs(item.startDate),
-                endDate: dayjs(item.endDate),
-              })),
-            },
-          },
-          include: {
-            CampaignTimeline: true,
-          },
-        });
+          });
 
-        campaign?.CampaignTimeline.forEach(async (item: any, index: any) => {
-          if (index !== 0) {
-            await prisma.campaignTimelineDependency.create({
-              data: {
-                campaignTimelineId: campaign.CampaignTimeline[index - 1]?.id,
-                dependsOnCampaignTimelineId: item?.id,
-              },
-            });
-          }
-        });
+          campaign?.CampaignTimeline.forEach(async (item: any, index: any) => {
+            if (index !== 0) {
+              await prisma.campaignTimelineDependency.create({
+                data: {
+                  campaignTimelineId: campaign.CampaignTimeline[index - 1]?.id,
+                  dependsOnCampaignTimelineId: item?.id,
+                },
+              });
+            }
+          });
+        } catch (error) {
+          throw error;
+        }
       } else {
         campaign = await tx.campaign.create({
           data: {
@@ -476,7 +484,7 @@ export const createCampaign = async (req: Request, res: Response) => {
               create: {
                 title: campaignTitle,
                 objectives: campaginObjectives,
-                images: publicURL.map((image) => image) || '',
+                images: publicURL.map((image: any) => image) || '',
                 agreementFrom: agreementFrom.path,
                 startDate: campaignStartDate,
                 endDate: campaignEndDate,
@@ -535,12 +543,11 @@ export const createCampaign = async (req: Request, res: Response) => {
             await assignTask(admin?.id, campaign?.id, item.id);
           },
         );
+        saveNotification(admin.id, Title.Create, `You've been assign to Campaign ${campaign.name}.`, Entity.Campaign);
       });
+      return res.status(200).json({ campaign, message: 'Successfully created campaign' });
     });
-
-    return res.status(200).json({ campaign, message: 'Successfully created campaign' });
   } catch (error) {
-    console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -704,7 +711,6 @@ export const getAllActiveCampaign = async (_req: Request, res: Response) => {
 export const creatorMakePitch = async (req: Request, res: Response) => {
   const { campaignId, content } = req.body;
   const id = req.session.userid;
-  const { pitchVideo } = req.files as any;
 
   try {
     const campaign = await prisma.campaign.findUnique({
@@ -713,6 +719,7 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
       },
       include: {
         Pitch: true,
+        CampaignAdmin: true,
       },
     });
 
@@ -735,6 +742,7 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
     }
 
     if (req.files && req.files.pitchVideo) {
+      const { pitchVideo } = req.files as any;
       const url = await uploadPitchVideo(pitchVideo?.tempFilePath, pitchVideo?.name, 'pitchVideo');
       await prisma.pitch.create({
         data: {
@@ -754,6 +762,21 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
         },
       });
     }
+
+    await saveNotification(creator.id, Title.Create, `Your pitch has been successfully sent.`, Entity.Pitch);
+
+    const admins = campaign.CampaignAdmin;
+    console.log(admins);
+
+    admins.forEach(async (item) => {
+      await saveNotification(
+        item.adminId,
+        Title.Create,
+        `New Pitch By ${creator.name} for campaign ${campaign.name}`,
+        Entity.Pitch,
+      );
+    });
+
     return res.status(200).json({ message: 'Successfully Pitch !' });
   } catch (error) {
     return res.status(400).json(error);
@@ -903,6 +926,13 @@ export const changeCampaignStage = async (req: Request, res: Response) => {
       data: {
         stage: stage,
       },
+      include: {
+        CampaignAdmin: true,
+      },
+    });
+
+    campaign.CampaignAdmin.forEach(async (admin) => {
+      await saveNotification(admin.adminId, Title.Update, `${campaign.name} is up live !`, Entity.Campaign);
     });
     return res.status(200).json({ message: 'Successfully changed stage', stage: campaign?.stage });
   } catch (error) {
@@ -914,13 +944,24 @@ export const closeCampaign = async (req: Request, res: Response) => {
   const { id } = req.params;
 
   try {
-    await prisma.campaign.update({
+    const campaign = await prisma.campaign.update({
       where: {
         id: id,
       },
       data: {
         status: 'close',
       },
+      include: {
+        CampaignAdmin: true,
+      },
+    });
+    campaign.CampaignAdmin.forEach(async (item) => {
+      await saveNotification(
+        item.adminId,
+        Title.Update,
+        `${campaign.name} is close on ${dayjs().format('ddd LL')}`,
+        Entity.Campaign,
+      );
     });
     return res.status(200).json({ message: 'Campaign is successfully closed.' });
   } catch (error) {
@@ -1130,6 +1171,9 @@ export const changePitchStatus = async (req: Request, res: Response) => {
       data: {
         status: status,
       },
+      include: {
+        campaign: true,
+      },
     });
 
     if (pitch.status === 'approved') {
@@ -1139,6 +1183,12 @@ export const changePitchStatus = async (req: Request, res: Response) => {
           campaignId: pitch?.campaignId,
         },
       });
+      await saveNotification(
+        pitch.userId,
+        Title.Create,
+        `Congratulations! You've been shortlisted for the ${pitch.campaign.name} campaign.`,
+        Entity.Shortlist,
+      );
       const timelines = await prisma.campaignTimeline.findMany({
         where: {
           campaignId: pitch?.campaignId,
@@ -1191,6 +1241,7 @@ export const changePitchStatus = async (req: Request, res: Response) => {
 
     return res.status(200).json({ message: 'Successfully changed' });
   } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   }
 };
