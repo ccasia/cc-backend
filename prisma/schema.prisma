@@ -215,8 +215,7 @@ model Campaign {
   id                  String               @id @unique @default(cuid())
   name                String
   description         String
-  status              CampaignStatus       @default(past)
-  stage               Stage                @default(draft)
+  status              CampaignStatus
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
   brand               Brand?               @relation(fields: [brandId], references: [id])
@@ -338,9 +337,12 @@ enum Status {
 }
 
 enum CampaignStatus {
+  draft
   active
-  past
-  close
+  paused
+  completed
+  cancelled
+  expired
 }
 
 enum Role {
@@ -432,10 +434,9 @@ model Pitch {
   campaign   Campaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   user       User         @relation(fields: [userId], references: [id])
   userId     String
-  status     PitchStatus? @default(undecided)
+  status     PitchStatus? @default(pending)
   content    String       @default("test")
   createdAt  DateTime     @default(now())
-  // FilterPitch FilterPitch[]
 }
 
 enum PitchType {
@@ -444,6 +445,7 @@ enum PitchType {
 }
 
 enum PitchStatus {
+  pending
   approved
   rejected
   filtered

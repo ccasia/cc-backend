@@ -21,6 +21,7 @@ import {
   changePitchStatus,
   getCampaignsByCreatorId,
   getCampaignForCreatorById,
+  getCampaignPitchForCreator,
 } from 'src/controller/campaignController';
 import { isSuperAdmin } from 'src/middleware/onlySuperadmin';
 import {
@@ -52,6 +53,7 @@ router.get('/timelineType', isSuperAdmin, getTimelineType);
 router.get('/defaultTimeline', isSuperAdmin, getDefaultTimeline);
 router.get('/getCampaignsBySessionId', getCampaignsByCreatorId);
 router.get('/getCampaignForCreatorById/:id', isLoggedIn, getCampaignForCreatorById);
+router.get('/getCampaignPitch', isLoggedIn, getCampaignPitchForCreator);
 // router.get('/pitch/:campaignId', getPitchByCampaignId);
 
 router.post('/updateOrCreateDefaultTimeline', updateOrCreateDefaultTimeline);

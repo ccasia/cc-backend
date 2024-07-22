@@ -21,6 +21,7 @@
     "@google-cloud/storage": "^7.11.2",
     "@prisma/client": "^5.12.1",
     "@types/bcryptjs": "^2.4.6",
+    "amqplib": "^0.10.4",
     "bcrypt": "^5.1.1",
     "bcryptjs": "^2.4.3",
     "connect-pg-simple": "^9.0.1",
@@ -47,6 +48,7 @@
     "socket.io": "^4.7.5"
   },
   "devDependencies": {
+    "@types/amqplib": "^0.10.5",
     "@types/bcrypt": "^5.0.2",
     "@types/connect-pg-simple": "^7.0.3",
     "@types/cookie-parser": "^1.4.7",

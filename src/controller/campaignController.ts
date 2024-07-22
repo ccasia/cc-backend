@@ -1,10 +1,12 @@
 import { Request, Response } from 'express';
-import { Entity, Prisma, PrismaClient, Stage } from '@prisma/client';
+import { CampaignStatus, Entity, Prisma, PrismaClient, Status } from '@prisma/client';
 
 import { uploadImage, uploadPitchVideo } from 'src/config/cloudStorage.config';
 import dayjs from 'dayjs';
 import { assignTask } from 'src/service/campaignServices';
 import { Title, saveNotification } from './notificationController';
+import { clients, io } from 'src/server';
+import amqplib from 'amqplib';
 
 const prisma = new PrismaClient();
 
@@ -409,8 +411,7 @@ export const createCampaign = async (req: Request, res: Response) => {
             data: {
               name: campaignTitle,
               description: campaignDescription,
-              status: 'active',
-              stage: campaignStage as Stage,
+              status: campaignStage as CampaignStatus,
               company: {
                 connect: {
                   id: brand?.id,
@@ -473,8 +474,7 @@ export const createCampaign = async (req: Request, res: Response) => {
           data: {
             name: campaignTitle,
             description: campaignDescription,
-            status: 'active',
-            stage: campaignStage as Stage,
+            status: campaignStage as CampaignStatus,
             brand: {
               connect: {
                 id: brand?.id,
@@ -543,8 +543,16 @@ export const createCampaign = async (req: Request, res: Response) => {
             await assignTask(admin?.id, campaign?.id, item.id);
           },
         );
-        saveNotification(admin.id, Title.Create, `You've been assign to Campaign ${campaign.name}.`, Entity.Campaign);
+        const data = await saveNotification(
+          admin.id,
+          Title.Create,
+          `You've been assign to Campaign ${campaign.name}.`,
+          Entity.Campaign,
+        );
+
+        io.to(clients.get(admin.id)).emit('notification', data);
       });
+
       return res.status(200).json({ campaign, message: 'Successfully created campaign' });
     });
   } catch (error) {
@@ -687,7 +695,6 @@ export const getAllActiveCampaign = async (_req: Request, res: Response) => {
     const campaigns = await prisma.campaign.findMany({
       where: {
         AND: {
-          stage: 'publish',
           status: 'active',
         },
       },
@@ -743,15 +750,30 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
 
     if (req.files && req.files.pitchVideo) {
       const { pitchVideo } = req.files as any;
-      const url = await uploadPitchVideo(pitchVideo?.tempFilePath, pitchVideo?.name, 'pitchVideo');
-      await prisma.pitch.create({
+      const conn = await amqplib.connect('amqp://host.docker.internal');
+      const channel = await conn.createChannel();
+      channel.assertQueue('uploadVideo', {
+        durable: false,
+      });
+
+      const pitch = await prisma.pitch.create({
         data: {
           type: 'video',
           campaignId: campaign?.id,
           userId: creator?.id,
-          content: url,
+          content: '',
         },
       });
+
+      channel.sendToQueue(
+        'uploadVideo',
+        Buffer.from(
+          JSON.stringify({
+            content: pitchVideo,
+            pitchId: pitch.id,
+          }),
+        ),
+      );
     } else {
       await prisma.pitch.create({
         data: {
@@ -763,22 +785,30 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
       });
     }
 
-    await saveNotification(creator.id, Title.Create, `Your pitch has been successfully sent.`, Entity.Pitch);
+    const newPitch = await saveNotification(
+      creator.id,
+      Title.Create,
+      `Your pitch has been successfully sent.`,
+      Entity.Pitch,
+    );
+
+    io.to(clients.get(creator.id)).emit('notification', newPitch);
 
     const admins = campaign.CampaignAdmin;
-    console.log(admins);
 
     admins.forEach(async (item) => {
-      await saveNotification(
+      const data = await saveNotification(
         item.adminId,
         Title.Create,
         `New Pitch By ${creator.name} for campaign ${campaign.name}`,
         Entity.Pitch,
       );
+      io.to(clients.get(item.adminId)).emit('notification', data);
     });
 
     return res.status(200).json({ message: 'Successfully Pitch !' });
   } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -915,7 +945,7 @@ export const filterPitch = async (req: Request, res: Response) => {
 };
 
 export const changeCampaignStage = async (req: Request, res: Response) => {
-  const { stage } = req.body;
+  const { status } = req.body;
   const { campaignId } = req.params;
 
   try {
@@ -924,17 +954,25 @@ export const changeCampaignStage = async (req: Request, res: Response) => {
         id: campaignId,
       },
       data: {
-        stage: stage,
+        status: status,
       },
       include: {
         CampaignAdmin: true,
       },
     });
 
-    campaign.CampaignAdmin.forEach(async (admin) => {
-      await saveNotification(admin.adminId, Title.Update, `${campaign.name} is up live !`, Entity.Campaign);
-    });
-    return res.status(200).json({ message: 'Successfully changed stage', stage: campaign?.stage });
+    if (campaign?.status === 'active') {
+      campaign.CampaignAdmin.forEach(async (admin) => {
+        const data = await saveNotification(
+          admin.adminId,
+          Title.Update,
+          `${campaign.name} is up live !`,
+          Entity.Campaign,
+        );
+        io.to(clients.get(admin.adminId)).emit('notification', data);
+      });
+    }
+    return res.status(200).json({ message: 'Successfully changed stage', status: campaign?.status });
   } catch (error) {
     return res.status(400).json(error);
   }
@@ -949,19 +987,20 @@ export const closeCampaign = async (req: Request, res: Response) => {
         id: id,
       },
       data: {
-        status: 'close',
+        status: 'completed',
       },
       include: {
         CampaignAdmin: true,
       },
     });
     campaign.CampaignAdmin.forEach(async (item) => {
-      await saveNotification(
+      const data = await saveNotification(
         item.adminId,
         Title.Update,
         `${campaign.name} is close on ${dayjs().format('ddd LL')}`,
         Entity.Campaign,
       );
+      io.to(clients.get(item.adminId)).emit('notification', data);
     });
     return res.status(200).json({ message: 'Campaign is successfully closed.' });
   } catch (error) {
@@ -1183,12 +1222,14 @@ export const changePitchStatus = async (req: Request, res: Response) => {
           campaignId: pitch?.campaignId,
         },
       });
-      await saveNotification(
+      const data = await saveNotification(
         pitch.userId,
         Title.Create,
         `Congratulations! You've been shortlisted for the ${pitch.campaign.name} campaign.`,
         Entity.Shortlist,
       );
+
+      io.to(clients.get(pitch.userId)).emit('notification', data);
       const timelines = await prisma.campaignTimeline.findMany({
         where: {
           campaignId: pitch?.campaignId,
@@ -1279,6 +1320,53 @@ export const getCampaignForCreatorById = async (req: Request, res: Response) => 
       },
     });
     return res.status(200).json(campaign);
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const getCampaignPitchForCreator = async (req: Request, res: Response) => {
+  const userid = req.session.userid;
+  try {
+    const campaings = await prisma.pitch.findMany({
+      where: {
+        AND: [
+          {
+            userId: userid,
+          },
+          {
+            AND: [
+              {
+                status: {
+                  not: 'approved',
+                },
+              },
+              {
+                status: {
+                  not: 'rejected',
+                },
+              },
+            ],
+          },
+        ],
+      },
+      include: {
+        campaign: {
+          include: {
+            campaignRequirement: true,
+            CampaignAdmin: true,
+            company: true,
+            brand: true,
+            campaignBrief: {
+              select: {
+                images: true,
+              },
+            },
+          },
+        },
+      },
+    });
+    return res.status(200).json(campaings);
   } catch (error) {
     return res.status(400).json(error);
   }
