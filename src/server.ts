@@ -10,23 +10,18 @@ import connectPgSimple from 'connect-pg-simple';
 import fileUpload from 'express-fileupload';
 import { PrismaClient } from '@prisma/client';
 import passport from 'passport';
-import FacebookStrategy from 'passport-facebook';
+// import FacebookStrategy from 'passport-facebook';
 import 'src/config/cronjob';
 import http from 'http';
 import { isLoggedIn } from './middleware/onlyLogin';
 import { Server, Socket } from 'socket.io';
-
-// import { getNotificationByUserId } from './controller/notificationController';
+import 'src/service/uploadVideo';
 
 dotenv.config();
 
 const app: Application = express();
 const server = http.createServer(app);
-const io = new Server(server, {
-  connectionStateRecovery: {},
-});
-
-const prisma = new PrismaClient();
+export const io = new Server(server);
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
@@ -93,7 +88,7 @@ const sessionMiddleware = session({
 
 app.use(sessionMiddleware);
 
-io.use((socket: Socket, next) => {
+io.use((socket: Socket, next: any) => {
   return sessionMiddleware(socket.request as any, {} as any, next as any);
 });
 
@@ -149,10 +144,6 @@ app.get('/users', isLoggedIn, async (_req, res) => {
   }
 });
 
-app.post('/testFile', (req: Request, res: Response) => {
-  console.log(req);
-});
-
 // app.get('/outh', (req: Request, res: Response) => {
 //   const csrfState = Math.random().toString(36).substring(2);
 //   res.cookie('csrfState', csrfState, { maxAge: 60000 });
@@ -175,18 +166,17 @@ app.post('/testFile', (req: Request, res: Response) => {
 
 export const clients = new Map();
 
-io.on('connection', (socket) => {
+io.on('connection', (socket: any) => {
   const userid = (socket.request as any).session.userid;
 
   if (userid) {
     clients.set(userid, socket.id);
   }
 
-  socket.on('chat', (data) => {
+  socket.on('chat', (data: any) => {
     io.to(clients.get('01f17901-100b-4076-935c-1ec02abccace'))
       .to(clients.get('7457ab90-efd3-4f26-8153-c4cc10997257'))
       .emit('message', data);
-    // socket.broadcast.emit('message', data);
   });
 
   socket.on('disconnect', () => {

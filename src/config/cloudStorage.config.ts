@@ -145,6 +145,7 @@ export const uploadPitchVideo = async (tempFilePath: string, fileName: string, f
     const publicURL = `https://storage.googleapis.com/${bucketName}/${destination}`;
     return publicURL;
   } catch (err) {
+    console.log(err);
     throw new Error(`Error uploading file: ${err.message}`);
   }
 };

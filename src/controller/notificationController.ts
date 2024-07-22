@@ -69,6 +69,7 @@ export const archiveAll = async (req: Request, res: Response) => {
       },
       data: {
         archive: true,
+        read: true,
       },
     });
     return res.sendStatus(200);
