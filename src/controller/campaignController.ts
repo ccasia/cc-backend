@@ -1,9 +1,9 @@
 import { Request, Response } from 'express';
-import { CampaignStatus, Entity, Prisma, PrismaClient, Status } from '@prisma/client';
+import { CampaignStatus, Entity, PrismaClient } from '@prisma/client';
 
 import { uploadImage, uploadPitchVideo } from 'src/config/cloudStorage.config';
 import dayjs from 'dayjs';
-import { assignTask } from 'src/service/campaignServices';
+import { assignTask, logChange } from 'src/service/campaignServices';
 import { Title, saveNotification } from './notificationController';
 import { clients, io } from 'src/server';
 import amqplib from 'amqplib';
@@ -340,6 +340,17 @@ interface Campaign {
   adminTest: [];
 }
 
+// A helper function for calls to `logChange`
+// We can't directly pass `req.session.userid` to the `adminId` parameter because the former is a `string | undefined`
+// TODO: If all arguments for `adminId` is `getAdminId(req)`, then consider merging this with `logChange`
+const getAdminId = (req: Request): string => {
+  const adminId = req.session.userid;
+  if (adminId === undefined) {
+    throw new Error('Admin ID is undefined');
+  }
+  return adminId;
+};
+
 export const createCampaign = async (req: Request, res: Response) => {
   const {
     campaignTitle,
@@ -369,12 +380,13 @@ export const createCampaign = async (req: Request, res: Response) => {
   try {
     // if (req.files && req.files.image) {
     const images = (req.files as any).campaignImages as [];
-    const publicURL: any = [];
+    // TODO: We don't have storage permissions
+    /* const publicURL: any = [];
 
     for (const item of images as any) {
       const url = await uploadImage(item.tempFilePath, item.name, 'campaign');
       publicURL.push(url);
-    }
+    } */
 
     await prisma.$transaction(async (tx) => {
       // }
@@ -411,7 +423,9 @@ export const createCampaign = async (req: Request, res: Response) => {
             data: {
               name: campaignTitle,
               description: campaignDescription,
-              status: campaignStage as CampaignStatus,
+              // TODO BUG: This causes a type error
+              // status: campaignStage as CampaignStatus,
+              status: CampaignStatus.active,
               company: {
                 connect: {
                   id: brand?.id,
@@ -421,7 +435,8 @@ export const createCampaign = async (req: Request, res: Response) => {
                 create: {
                   title: campaignTitle,
                   objectives: campaginObjectives,
-                  images: publicURL.map((image: any) => image) || '',
+                  // TODO: We have no storage permissions
+                  images: /* publicURL.map((image: any) => image) || */ '',
                   agreementFrom: agreementFrom.path,
                   startDate: campaignStartDate,
                   endDate: campaignEndDate,
@@ -474,7 +489,9 @@ export const createCampaign = async (req: Request, res: Response) => {
           data: {
             name: campaignTitle,
             description: campaignDescription,
-            status: campaignStage as CampaignStatus,
+            // TODO BUG: This causes a type error
+            // status: campaignStage as CampaignStatus,
+            status: CampaignStatus.active,
             brand: {
               connect: {
                 id: brand?.id,
@@ -484,7 +501,8 @@ export const createCampaign = async (req: Request, res: Response) => {
               create: {
                 title: campaignTitle,
                 objectives: campaginObjectives,
-                images: publicURL.map((image: any) => image) || '',
+                // TODO: We have no storage permissions
+                images: /* publicURL.map((image: any) => image) || */ '',
                 agreementFrom: agreementFrom.path,
                 startDate: campaignStartDate,
                 endDate: campaignEndDate,
@@ -532,12 +550,13 @@ export const createCampaign = async (req: Request, res: Response) => {
       }
 
       admins.map(async (admin: any) => {
-        await prisma.campaignAdmin.create({
+        // TODO: "Foreign key constraint failed on the field: `CampaignAdmin_campaignId_fkey (index)`"
+        /* await prisma.campaignAdmin.create({
           data: {
             campaignId: (campaign as any).id as any,
             adminId: admin?.id,
           },
-        });
+        }); */
         campaign?.CampaignTimeline.filter((elem: any) => elem.for === 'admin').forEach(
           async (item: any, index: any) => {
             await assignTask(admin?.id, campaign?.id, item.id);
@@ -553,9 +572,11 @@ export const createCampaign = async (req: Request, res: Response) => {
         io.to(clients.get(admin.id)).emit('notification', data);
       });
 
+      logChange('Created', campaign.id, getAdminId(req));
       return res.status(200).json({ campaign, message: 'Successfully created campaign' });
     });
   } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -1002,6 +1023,7 @@ export const closeCampaign = async (req: Request, res: Response) => {
       );
       io.to(clients.get(item.adminId)).emit('notification', data);
     });
+
     return res.status(200).json({ message: 'Campaign is successfully closed.' });
   } catch (error) {
     return res.status(400).json(error);
@@ -1042,9 +1064,6 @@ export const getPitchById = async (req: Request, res: Response) => {
 };
 
 export const editCampaignInfo = async (req: Request, res: Response) => {
-  console.log('=== CAMPAIGN INFO ===');
-  console.log(req);
-  console.log('=== END CAMPAIGN INFO ===');
   const {
     id,
     name,
@@ -1052,32 +1071,37 @@ export const editCampaignInfo = async (req: Request, res: Response) => {
     campaignInterests,
     campaignIndustries,
   } = req.body;
-  const interests = campaignInterests as Prisma.JsonArray;
-  const industries = campaignIndustries as Prisma.JsonArray;
 
   try {
     const updatedCampaign = await prisma.campaign.update({
-      where: { id: id },
+      where: {
+        id: id,
+      },
       data: {
         name: name,
         description: description,
-        campaignBrief: {
-          // TODO BUG: "error TS2353: Object literal may only specify known properties, and 'interests' does not exist in type 'CampaignBriefUncheckedUpdateOneWithoutCampaignNestedInput | CampaignBriefUpdateOneWithoutCampaignNestedInput'."
-          // interests: interests,
-          // industries: industries,
-        },
       },
     });
-    return res.status(200).json({ message: 'Updated campaign information', ...updatedCampaign });
+
+    await prisma.campaignBrief.update({
+      where: {
+        campaignId: id,
+      },
+      data: {
+        interests: campaignInterests,
+        industries: campaignIndustries,
+      },
+    });
+
+    const message = 'Updated campaign info';
+    logChange(message, id, getAdminId(req));
+    return res.status(200).json({ message: message, ...updatedCampaign });
   } catch (error) {
     return res.status(400).json(error);
   }
 };
 
 export const editCampaignBrandOrCompany = async (req: Request, res: Response) => {
-  console.log('=== CAMPAIGN BRAND OR COMPANY ===');
-  console.log(req);
-  console.log('=== END CAMPAIGN BRAND OR COMPANY ===');
   const {
     id,
     // `campaignBrand.id` can be either a brand ID or company ID
@@ -1099,7 +1123,10 @@ export const editCampaignBrandOrCompany = async (req: Request, res: Response) =>
             companyId: campaignBrand.id,
           },
     });
-    return res.status(200).json({ message: `Updated ${brand ? 'brand' : 'company'}`, ...updatedCampaign });
+
+    const message = `Updated ${brand ? 'brand' : 'company'}`;
+    logChange(message, updatedCampaign.id, getAdminId(req));
+    return res.status(200).json({ message: message, ...updatedCampaign });
   } catch (error) {
     return res.status(400).json(error);
   }
@@ -1367,6 +1394,30 @@ export const getCampaignPitchForCreator = async (req: Request, res: Response) =>
       },
     });
     return res.status(200).json(campaings);
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const editCampaign = async (req: Request, res: Response) => {
+  const {
+    id,
+    name,
+    desc,
+    brief,
+    admin,
+  } = req.body;
+  try {
+    const updatedCampaign = await prisma.campaign.update({
+      where: { id: id },
+      data: {
+        name: name,
+        description: desc,
+        campaignBrief: brief,
+        CampaignAdmin: admin,
+      },
+    });
+    return res.status(200).json({ message: 'Succesfully updated', ...updatedCampaign });
   } catch (error) {
     return res.status(400).json(error);
   }

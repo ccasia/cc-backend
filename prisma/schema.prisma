@@ -32,7 +32,8 @@ model User {
   // Task                 Task[]
   campaignTimelineTask CampaignTimelineTask[]
 
-  NotificationStatus NotificationStatus[]
+  NotificationStatus   NotificationStatus[]
+  campaignLogs         CampaignLog[]
 }
 
 model Admin {
@@ -233,6 +234,7 @@ model Campaign {
   // Task                    Task[]
   campaignTimelineTask CampaignTimelineTask[]
   CampaignTimeline     CampaignTimeline[]
+  campaignLogs         CampaignLog[]
 }
 
 model CampaignAdmin {
@@ -425,6 +427,16 @@ model CampaignTimelineDependency {
   dependsOnCampaignTimelineId String
   campaignTimeline            CampaignTimeline? @relation("CampaignTimeline", fields: [campaignTimelineId], references: [id], onDelete: Cascade)
   dependsOnCampaignTimeline   CampaignTimeline? @relation("DependsOnCampaignTimeline", fields: [dependsOnCampaignTimelineId], references: [id], onDelete: Cascade)
+}
+
+model CampaignLog {
+  id         String   @id @unique @default(cuid())
+  createdAt  DateTime @default(now())
+  message    String
+  campaign   Campaign @relation(fields: [campaignId], references: [id])
+  campaignId String
+  admin      User    @relation(fields: [adminId], references: [id])
+  adminId    String
 }
 
 model Pitch {
