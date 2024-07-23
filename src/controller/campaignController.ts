@@ -1083,7 +1083,7 @@ export const editCampaignInfo = async (req: Request, res: Response) => {
       },
     });
 
-    await prisma.campaignBrief.update({
+    const updatedCampaignBrief = await prisma.campaignBrief.update({
       where: {
         campaignId: id,
       },
@@ -1095,7 +1095,7 @@ export const editCampaignInfo = async (req: Request, res: Response) => {
 
     const message = 'Updated campaign info';
     logChange(message, id, getAdminId(req));
-    return res.status(200).json({ message: message, ...updatedCampaign });
+    return res.status(200).json({ message: message, ...updatedCampaign, ...updatedCampaignBrief });
   } catch (error) {
     return res.status(400).json(error);
   }
@@ -1110,9 +1110,15 @@ export const editCampaignBrandOrCompany = async (req: Request, res: Response) =>
 
   try {
     // If `null`, then `campaignBrand.id` is a company ID
-    const brand = await prisma.brand.findUnique({ where: { id: campaignBrand.id } });
+    const brand = await prisma.brand.findUnique({
+      where: {
+        id: campaignBrand.id,
+      },
+    });
     const updatedCampaign = await prisma.campaign.update({
-      where: { id: id },
+      where: {
+        id: id,
+      },
       data: brand
         ? {
             brandId: campaignBrand.id,
@@ -1132,7 +1138,68 @@ export const editCampaignBrandOrCompany = async (req: Request, res: Response) =>
   }
 };
 
-export const updateCampaignTimeline = async (req: Request, res: Response) => {
+export const editCampaignDosAndDonts = async (req: Request, res: Response) => {
+  const {
+    id,
+    campaignDo,
+    campaignDont,
+  } = req.body;
+
+  try {
+    const updatedCampaignBrief = await prisma.campaignBrief.update({
+      where: {
+        campaignId: id,
+      },
+      data: {
+        campaigns_do: campaignDo,
+        campaigns_dont: campaignDont,
+      },
+    });
+
+    const message = "Updated dos and don'ts";
+    logChange(message, id, getAdminId(req));
+    return res.status(200).json({ message: message, ...updatedCampaignBrief });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const editCampaignRequirements = async (req: Request, res: Response) => {
+  const {
+    // ID of campaign, not of campaign requirements
+    id,
+    audienceGender,
+    audienceAge,
+    audienceLocation,
+    audienceLanguage,
+    audienceCreatorPersona,
+    audienceUserPersona,
+  } = req.body;
+
+  try {
+    const updatedCampaignRequirement = await prisma.campaignRequirement.update({
+      where: {
+        campaignId: id,
+      },
+      data: {
+        gender: audienceGender,
+        age: audienceAge,
+        geoLocation: audienceLocation,
+        language: audienceLanguage,
+        creator_persona: audienceCreatorPersona,
+        user_persona: audienceUserPersona,
+      },
+    });
+
+    const message = 'Updated requirements';
+    logChange(message, id, getAdminId(req));
+    return res.status(200).json({ message: message, ...updatedCampaignRequirement });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const editCampaignTimeline = async (req: Request, res: Response) => {
   const { id } = req.params;
 
   const { timeline, campaignStartDate, campaignEndDate } = req.body;
@@ -1204,7 +1271,9 @@ export const updateCampaignTimeline = async (req: Request, res: Response) => {
         });
     });
 
-    return res.status(200).json({ message: 'Updated timeline' });
+    const message = 'Updated timeline';
+    logChange(message, id, getAdminId(req));
+    return res.status(200).json({ message: message });
   } catch (error) {
     console.log(error);
     return res.status(400).json(error);

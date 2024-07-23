@@ -14,8 +14,10 @@ import {
   // rejectPitch,
   editCampaignInfo,
   editCampaignBrandOrCompany,
+  editCampaignDosAndDonts,
+  editCampaignRequirements,
   // updateTimeLineType,
-  updateCampaignTimeline,
+  editCampaignTimeline,
   filterPitch,
   getFirstDraft,
   changePitchStatus,
@@ -69,7 +71,9 @@ router.patch('/changeCampaignStage/:campaignId', changeCampaignStage);
 router.patch('/closeCampaign/:id', isSuperAdmin, closeCampaign);
 router.patch('/editCampaignInfo', isSuperAdmin, editCampaignInfo);
 router.patch('/editCampaignBrandOrCompany', isSuperAdmin, editCampaignBrandOrCompany);
-router.patch('/updateCampaignTimeline/:id', isSuperAdmin, updateCampaignTimeline);
+router.patch('/editCampaignDosAndDonts', isSuperAdmin, editCampaignDosAndDonts);
+router.patch('/editCampaignRequirements', isSuperAdmin, editCampaignRequirements);
+router.patch('/editCampaignTimeline/:id', isSuperAdmin, editCampaignTimeline);
 router.patch('/changePitchStatus', changePitchStatus);
 
 export default router;
