@@ -32,8 +32,8 @@ model User {
   // Task                 Task[]
   campaignTimelineTask CampaignTimelineTask[]
 
-  NotificationStatus   NotificationStatus[]
-  campaignLogs         CampaignLog[]
+  NotificationStatus NotificationStatus[]
+  campaignLogs       CampaignLog[]
 }
 
 model Admin {
@@ -213,25 +213,23 @@ model SupSupBrand {
 
 //campaign peroid and intervals
 model Campaign {
-  id                  String               @id @unique @default(cuid())
-  name                String
-  description         String
-  status              CampaignStatus
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
-  brand               Brand?               @relation(fields: [brandId], references: [id])
-  brandId             String?
-  company             Company?             @relation(fields: [companyId], references: [id])
-  companyId           String?
-  campaignBrief       CampaignBrief?
-  campaignRequirement CampaignRequirement?
-
+  id                   String                 @id @unique @default(cuid())
+  name                 String
+  description          String
+  status               CampaignStatus         @default(SCHEDULED)
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+  brand                Brand?                 @relation(fields: [brandId], references: [id])
+  brandId              String?
+  company              Company?               @relation(fields: [companyId], references: [id])
+  companyId            String?
+  campaignBrief        CampaignBrief?
+  campaignRequirement  CampaignRequirement?
   CampaignAdmin        CampaignAdmin[]
   Pitch                Pitch[]
   ShortListedCreator   ShortListedCreator[]
   FirstDraft           FirstDraft[]
   FinalDraft           FinalDraft[]
-  // Task                    Task[]
   campaignTimelineTask CampaignTimelineTask[]
   CampaignTimeline     CampaignTimeline[]
   campaignLogs         CampaignLog[]
@@ -339,12 +337,13 @@ enum Status {
 }
 
 enum CampaignStatus {
-  draft
-  active
-  paused
-  completed
-  cancelled
-  expired
+  DRAFT
+  ACTIVE
+  PAUSED
+  COMPLETED
+  CANCELLED
+  EXPIRED
+  SCHEDULED
 }
 
 enum Role {
@@ -435,7 +434,7 @@ model CampaignLog {
   message    String
   campaign   Campaign @relation(fields: [campaignId], references: [id])
   campaignId String
-  admin      User    @relation(fields: [adminId], references: [id])
+  admin      User     @relation(fields: [adminId], references: [id])
   adminId    String
 }
 
@@ -480,11 +479,15 @@ model FirstDraft {
   id         String       @id @unique @default(cuid())
   creatorId  String
   creator    User         @relation(fields: [creatorId], references: [id])
+  caption    String
+  draftURL   String
   campaignId String
   campaign   Campaign     @relation(fields: [campaignId], references: [id])
   status     DraftStatus?
   createdAt  DateTime     @default(now())
   updatedAt  DateTime     @updatedAt
+
+  @@unique([creatorId, campaignId])
 }
 
 model FinalDraft {
@@ -492,34 +495,23 @@ model FinalDraft {
   creatorId  String
   creator    User         @relation(fields: [creatorId], references: [id])
   campaignId String
+  caption    String
+  draftURL   String
   campaign   Campaign     @relation(fields: [campaignId], references: [id])
   status     DraftStatus?
   createdAt  DateTime     @default(now())
   updatedAt  DateTime     @updatedAt
-}
 
-// model Task {
-//   id                   String                 @id @unique @default(cuid())
-//   creatorId            String
-//   campaignId           String
-//   timelineId           String
-//   name                 String
-//   dueDate              DateTime
-//   status               TaskStatus             @default(PENDING)
-//   creator              User                   @relation(fields: [creatorId], references: [id])
-//   campaign             Campaign               @relation(fields: [campaignId], references: [id])
-//   timeline             CampaignTimeline       @relation(fields: [timelineId], references: [id])
-//   CampaignTimelineTask CampaignTimelineTask[]
-// }
+  @@unique([creatorId, campaignId])
+}
 
 enum DraftStatus {
   Pending
   Submitted
+  Request_For_Edit
   Reviewed
   Approved
 }
-
-// schema.prisma
 
 enum TaskStatus {
   NOT_STARTED

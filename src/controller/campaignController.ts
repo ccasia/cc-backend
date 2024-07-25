@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { CampaignStatus, Entity, PrismaClient } from '@prisma/client';
 
-import { uploadImage, uploadPitchVideo } from 'src/config/cloudStorage.config';
+import { uploadAgreementForm, uploadImage, uploadPitchVideo } from 'src/config/cloudStorage.config';
 import dayjs from 'dayjs';
 import { assignTask, logChange } from 'src/service/campaignServices';
 import { Title, saveNotification } from './notificationController';
@@ -319,7 +319,7 @@ interface Campaign {
   campaignStartDate: Date;
   campaignEndDate: Date;
   campaignTitle: string;
-  campaginObjectives: string;
+  campaignObjectives: string;
   campaignDo: any;
   campaignDont: any;
   campaignDescription: string;
@@ -359,7 +359,7 @@ export const createCampaign = async (req: Request, res: Response) => {
     campaignEndDate,
     campaignInterests,
     campaignIndustries,
-    campaginObjectives,
+    campaignObjectives,
     campaignDescription,
     audienceGender,
     audienceAge,
@@ -378,19 +378,24 @@ export const createCampaign = async (req: Request, res: Response) => {
   let campaign: any;
 
   try {
-    // if (req.files && req.files.image) {
-    const images = (req.files as any).campaignImages as [];
-    // TODO: We don't have storage permissions
-    /* const publicURL: any = [];
+    const publicURL: any = [];
+    let agreementFormURL = '';
 
-    for (const item of images as any) {
-      const url = await uploadImage(item.tempFilePath, item.name, 'campaign');
-      publicURL.push(url);
-    } */
+    if (req.files && req.files.campaignImages) {
+      const images = (req.files as any).campaignImages as [];
+
+      for (const item of images as any) {
+        const url = await uploadImage(item.tempFilePath, item.name, 'campaign');
+        publicURL.push(url);
+      }
+    }
+
+    if (req.files && req.files.agreementForm) {
+      const form = (req.files as any).agreementForm;
+      agreementFormURL = await uploadAgreementForm(form.tempFilePath, form.name, 'agreementForm');
+    }
 
     await prisma.$transaction(async (tx) => {
-      // }
-
       const admins = await Promise.all(
         adminManager.map(async (admin) => {
           return await tx.user.findUnique({
@@ -424,8 +429,7 @@ export const createCampaign = async (req: Request, res: Response) => {
               name: campaignTitle,
               description: campaignDescription,
               // TODO BUG: This causes a type error
-              // status: campaignStage as CampaignStatus,
-              status: CampaignStatus.active,
+              status: campaignStage as CampaignStatus,
               company: {
                 connect: {
                   id: brand?.id,
@@ -434,10 +438,10 @@ export const createCampaign = async (req: Request, res: Response) => {
               campaignBrief: {
                 create: {
                   title: campaignTitle,
-                  objectives: campaginObjectives,
+                  objectives: campaignObjectives,
                   // TODO: We have no storage permissions
-                  images: /* publicURL.map((image: any) => image) || */ '',
-                  agreementFrom: agreementFrom.path,
+                  images: publicURL.map((image: any) => image) || '',
+                  agreementFrom: agreementFormURL,
                   startDate: campaignStartDate,
                   endDate: campaignEndDate,
                   interests: campaignInterests,
@@ -490,8 +494,8 @@ export const createCampaign = async (req: Request, res: Response) => {
             name: campaignTitle,
             description: campaignDescription,
             // TODO BUG: This causes a type error
-            // status: campaignStage as CampaignStatus,
-            status: CampaignStatus.active,
+            status: campaignStage as CampaignStatus,
+            // status: CampaignStatus.active,
             brand: {
               connect: {
                 id: brand?.id,
@@ -500,10 +504,10 @@ export const createCampaign = async (req: Request, res: Response) => {
             campaignBrief: {
               create: {
                 title: campaignTitle,
-                objectives: campaginObjectives,
+                objectives: campaignObjectives,
                 // TODO: We have no storage permissions
-                images: /* publicURL.map((image: any) => image) || */ '',
-                agreementFrom: agreementFrom.path,
+                images: publicURL.map((image: any) => image) || '',
+                agreementFrom: agreementFormURL,
                 startDate: campaignStartDate,
                 endDate: campaignEndDate,
                 interests: campaignInterests,
@@ -551,12 +555,12 @@ export const createCampaign = async (req: Request, res: Response) => {
 
       admins.map(async (admin: any) => {
         // TODO: "Foreign key constraint failed on the field: `CampaignAdmin_campaignId_fkey (index)`"
-        /* await prisma.campaignAdmin.create({
+        await prisma.campaignAdmin.create({
           data: {
             campaignId: (campaign as any).id as any,
             adminId: admin?.id,
           },
-        }); */
+        });
         campaign?.CampaignTimeline.filter((elem: any) => elem.for === 'admin').forEach(
           async (item: any, index: any) => {
             await assignTask(admin?.id, campaign?.id, item.id);
@@ -715,9 +719,7 @@ export const getAllActiveCampaign = async (_req: Request, res: Response) => {
   try {
     const campaigns = await prisma.campaign.findMany({
       where: {
-        AND: {
-          status: 'active',
-        },
+        status: 'ACTIVE',
       },
       include: {
         campaignBrief: true,
@@ -812,20 +814,23 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
       `Your pitch has been successfully sent.`,
       Entity.Pitch,
     );
-
+    console.log('IDDDDDDD', creator.id);
     io.to(clients.get(creator.id)).emit('notification', newPitch);
+    console.log('Status done');
 
     const admins = campaign.CampaignAdmin;
 
-    admins.forEach(async (item) => {
-      const data = await saveNotification(
-        item.adminId,
+    const notifications = admins.map(async ({ adminId }) => {
+      const notification = await saveNotification(
+        adminId,
         Title.Create,
         `New Pitch By ${creator.name} for campaign ${campaign.name}`,
         Entity.Pitch,
       );
-      io.to(clients.get(item.adminId)).emit('notification', data);
+      io.to(clients.get(adminId)).emit('notification', notification);
     });
+
+    await Promise.all(notifications);
 
     return res.status(200).json({ message: 'Successfully Pitch !' });
   } catch (error) {
@@ -982,7 +987,7 @@ export const changeCampaignStage = async (req: Request, res: Response) => {
       },
     });
 
-    if (campaign?.status === 'active') {
+    if (campaign?.status === 'ACTIVE') {
       campaign.CampaignAdmin.forEach(async (admin) => {
         const data = await saveNotification(
           admin.adminId,
@@ -993,6 +998,9 @@ export const changeCampaignStage = async (req: Request, res: Response) => {
         io.to(clients.get(admin.adminId)).emit('notification', data);
       });
     }
+
+    io.emit('campaignStatus', campaign);
+
     return res.status(200).json({ message: 'Successfully changed stage', status: campaign?.status });
   } catch (error) {
     return res.status(400).json(error);
@@ -1008,7 +1016,7 @@ export const closeCampaign = async (req: Request, res: Response) => {
         id: id,
       },
       data: {
-        status: 'completed',
+        status: 'COMPLETED',
       },
       include: {
         CampaignAdmin: true,
@@ -1064,13 +1072,7 @@ export const getPitchById = async (req: Request, res: Response) => {
 };
 
 export const editCampaignInfo = async (req: Request, res: Response) => {
-  const {
-    id,
-    name,
-    description,
-    campaignInterests,
-    campaignIndustries,
-  } = req.body;
+  const { id, name, description, campaignInterests, campaignIndustries } = req.body;
 
   try {
     const updatedCampaign = await prisma.campaign.update({
@@ -1213,16 +1215,18 @@ export const updateCampaignTimeline = async (req: Request, res: Response) => {
 
 // Get First Draft by user id and campaign id
 export const getFirstDraft = async (req: Request, res: Response) => {
-  const { creatorId, campaignId } = req.body;
+  const { creatorId, campaignId } = req.query;
   try {
     const firstDraft = await prisma.firstDraft.findMany({
       where: {
-        creatorId: creatorId,
-        campaignId: campaignId,
+        creatorId: creatorId as any,
+        campaignId: campaignId as any,
       },
     });
+
     return res.status(200).json(firstDraft);
   } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -1256,7 +1260,15 @@ export const changePitchStatus = async (req: Request, res: Response) => {
         Entity.Shortlist,
       );
 
-      io.to(clients.get(pitch.userId)).emit('notification', data);
+      const socketId = clients.get(pitch.userId);
+      console.log('SDSADSAD', socketId);
+
+      if (socketId) {
+        io.to(socketId).emit('notification', data);
+      } else {
+        console.log(`User with ID ${pitch.userId} is not connected.`);
+      }
+
       const timelines = await prisma.campaignTimeline.findMany({
         where: {
           campaignId: pitch?.campaignId,
@@ -1272,7 +1284,7 @@ export const changePitchStatus = async (req: Request, res: Response) => {
 
       timelines
         .filter((item: any) => item.for === 'creator' && item.name !== 'Open For Pitch')
-        .forEach(async (item: any) => {
+        .forEach(async (item: any, index: number) => {
           await prisma.campaignTimelineTask.create({
             data: {
               userId: pitch?.userId,
@@ -1281,6 +1293,7 @@ export const changePitchStatus = async (req: Request, res: Response) => {
               campaignId: pitch?.campaignId,
               startDate: item?.startDate,
               endDate: item?.endDate,
+              status: index === 0 ? ('IN_PROGRESS' as any) : 'NOT_STARTED',
             },
           });
         });
@@ -1325,7 +1338,11 @@ export const getCampaignForCreatorById = async (req: Request, res: Response) => 
       include: {
         CampaignAdmin: {
           include: {
-            admin: true,
+            admin: {
+              include: {
+                user: true,
+              },
+            },
           },
         },
         CampaignTimeline: {
@@ -1344,6 +1361,8 @@ export const getCampaignForCreatorById = async (req: Request, res: Response) => 
             userId: userid,
           },
         },
+        brand: true,
+        company: true,
       },
     });
     return res.status(200).json(campaign);
@@ -1400,13 +1419,7 @@ export const getCampaignPitchForCreator = async (req: Request, res: Response) =>
 };
 
 export const editCampaign = async (req: Request, res: Response) => {
-  const {
-    id,
-    name,
-    desc,
-    brief,
-    admin,
-  } = req.body;
+  const { id, name, desc, brief, admin } = req.body;
   try {
     const updatedCampaign = await prisma.campaign.update({
       where: { id: id },

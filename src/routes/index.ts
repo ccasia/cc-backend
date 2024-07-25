@@ -7,6 +7,7 @@ import companyRoute from './companyRoute';
 import eventRoute from './eventRoute';
 import campaignRoute from './campaignRoute';
 import notificationRoute from './notificationRoute';
+import draftRoute from './draftRoute';
 
 export const router = express.Router();
 
@@ -18,3 +19,4 @@ router.use('/company', companyRoute);
 router.use('/event', eventRoute);
 router.use('/campaign', campaignRoute);
 router.use('/notification', notificationRoute);
+router.use('/draft', draftRoute);

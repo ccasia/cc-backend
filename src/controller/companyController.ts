@@ -275,6 +275,7 @@ export const getOptions = async (_req: Request, res: Response) => {
       select: {
         id: true,
         name: true,
+        logo: true,
       },
     });
 

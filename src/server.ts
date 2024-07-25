@@ -166,21 +166,27 @@ app.get('/users', isLoggedIn, async (_req, res) => {
 
 export const clients = new Map();
 
-io.on('connection', (socket: any) => {
-  const userid = (socket.request as any).session.userid;
-
-  if (userid) {
-    clients.set(userid, socket.id);
-  }
-
-  socket.on('chat', (data: any) => {
-    io.to(clients.get('01f17901-100b-4076-935c-1ec02abccace'))
-      .to(clients.get('7457ab90-efd3-4f26-8153-c4cc10997257'))
-      .emit('message', data);
+io.on('connection', (socket) => {
+  socket.on('register', (userId) => {
+    clients.set(userId, socket.id);
   });
 
+  socket.on('chat', (data) => {
+    const socketId = clients.get('49ade6f0-391f-409a-81ed-2fb780832f6f');
+    if (socketId) {
+      socket.to(socketId).emit('message', data);
+    } else {
+      console.log('User is not connected');
+    }
+  });
+
+  // When a user disconnects, remove their socket ID
   socket.on('disconnect', () => {
-    clients.delete(userid);
+    clients.forEach((value, key) => {
+      if (value === socket.id) {
+        clients.delete(key);
+      }
+    });
   });
 });
 

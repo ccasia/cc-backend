@@ -21,6 +21,13 @@ export const saveNotification = async (userId: string, title: Title, message: st
         },
       },
     },
+    include: {
+      notificationStatus: {
+        select: {
+          userId: true,
+        },
+      },
+    },
   });
 };
 
