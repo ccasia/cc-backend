@@ -1,4 +1,5 @@
 import { Storage } from '@google-cloud/storage';
+import { io } from 'src/server';
 
 const pathToJSONKey = `${__dirname}/test-cs.json`;
 
@@ -28,7 +29,7 @@ export const uploadImage = async (tempFilePath: string, fileName: string, folder
           ?.makePublic()
           // eslint-disable-next-line promise/always-return
           .then(() => {
-            const publicURL = `https://storage.googleapis.com/${process.env.BUCKET_NAME}/campaigns/${fileName}`;
+            const publicURL = `https://storage.googleapis.com/${process.env.BUCKET_NAME}/${folderName}/${fileName}`;
             resolve(publicURL);
           })
           .catch((err) => {
@@ -130,7 +131,33 @@ export const uploadPitchVideo = async (tempFilePath: string, fileName: string, f
   try {
     const bucketName = process.env.BUCKET_NAME as string;
     const destination = `${folderName}/${fileName}`;
-    console.log(tempFilePath);
+
+    // Upload the file to the specified bucket
+    const [file] = await storage.bucket(bucketName).upload(tempFilePath, {
+      destination,
+      gzip: true,
+    });
+
+    // Make the file public
+    await file.makePublic();
+
+    // Construct the public URL
+    const publicURL = `https://storage.googleapis.com/${bucketName}/${destination}`;
+    io.emit('notification', 'NATEBODI');
+    return publicURL;
+  } catch (err) {
+    throw new Error(`Error uploading file: ${err.message}`);
+  }
+};
+
+export const uploadAgreementForm = async (
+  tempFilePath: string,
+  fileName: string,
+  folderName: string,
+): Promise<string> => {
+  try {
+    const bucketName = process.env.BUCKET_NAME as string;
+    const destination = `${folderName}/${fileName}`;
 
     // Upload the file to the specified bucket
     const [file] = await storage.bucket(bucketName).upload(tempFilePath, {
@@ -145,7 +172,6 @@ export const uploadPitchVideo = async (tempFilePath: string, fileName: string, f
     const publicURL = `https://storage.googleapis.com/${bucketName}/${destination}`;
     return publicURL;
   } catch (err) {
-    console.log(err);
     throw new Error(`Error uploading file: ${err.message}`);
   }
 };

@@ -35,7 +35,6 @@ import {
 import { isLoggedIn } from 'src/middleware/onlyLogin';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // router.get('/defaultTimeline', async (_req: Request, res: Response) => {
 //   try {
@@ -50,7 +49,7 @@ router.get('/getAllCampaignsByAdminID', isSuperAdmin, getAllCampaigns);
 router.get('/getCampaignById/:id', isSuperAdmin, getCampaignById);
 router.get('/getAllActiveCampaign', getAllActiveCampaign);
 router.get('/pitch/:id', getPitchById);
-router.get('/firstDraft', isSuperAdmin, getFirstDraft);
+router.get('/firstDraft', getFirstDraft);
 router.get('/timelineType', isSuperAdmin, getTimelineType);
 router.get('/defaultTimeline', isSuperAdmin, getDefaultTimeline);
 router.get('/getCampaignsBySessionId', getCampaignsByCreatorId);

@@ -18,7 +18,7 @@ new CronJob(
     const today = dayjs().tz('Asia/Kuala_Lumpur').startOf('day').toISOString();
 
     // Find campaigns with the end date equal to today
-    const campaignEnds = await prisma.campaign.updateMany({
+    await prisma.campaign.updateMany({
       where: {
         campaignBrief: {
           endDate: {
@@ -27,7 +27,7 @@ new CronJob(
         },
       },
       data: {
-        status: 'completed',
+        status: 'COMPLETED',
       },
     });
 
@@ -40,7 +40,7 @@ new CronJob(
         },
       },
       data: {
-        status: 'active',
+        status: 'ACTIVE',
       },
     });
   },
