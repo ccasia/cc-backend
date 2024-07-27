@@ -49,43 +49,20 @@ export const updateOrCreateDefaultTimeline = async (req: Request, res: Response)
   const { timeline } = req.body;
 
   try {
-    await prisma.timelineTypeDependencyDefault.deleteMany();
+    // await prisma.timelineTypeDependencyDefault.deleteMany();
     await prisma.timelineDefault.deleteMany();
 
-    for (const item of timeline) {
-      if (item.dependsOn !== 'startDate') {
-        const timelineDefault = await prisma.timelineDefault.create({
+    await Promise.all(
+      timeline.map(async (item: any) => {
+        await prisma.timelineDefault.create({
           data: {
             timelineTypeDefaultId: item.timeline_type.id,
             for: item.for,
             duration: item.duration,
           },
         });
-
-        const dependsOn = await prisma.timelineDefault.findUnique({
-          where: {
-            timelineTypeDefaultId: item.dependsOn,
-          },
-        });
-
-        if (dependsOn) {
-          await prisma.timelineTypeDependencyDefault.create({
-            data: {
-              timeline_id: timelineDefault.id,
-              dependsOnTimelineId: dependsOn?.id,
-            },
-          });
-        }
-      } else {
-        const timelineDefault = await prisma.timelineDefault.create({
-          data: {
-            timelineTypeDefaultId: item.timeline_type.id,
-            for: item.for,
-            duration: item.duration,
-          },
-        });
-      }
-    }
+      }),
+    );
 
     const admins = await prisma.user.findMany({
       where: {
@@ -93,10 +70,12 @@ export const updateOrCreateDefaultTimeline = async (req: Request, res: Response)
       },
     });
 
-    admins.forEach(async (item) => {
-      const data = await saveNotification(item.id, Title.Update, 'Default Timeline Is Updated', Entity.Timeline);
-      io.to(clients.get(item.id)).emit('notification', data);
-    });
+    await Promise.all(
+      admins.map(async (admin) => {
+        const data = await saveNotification(admin.id, Title.Update, 'Default Timeline Is Updated', Entity.Timeline);
+        io.to(clients.get(admin.id)).emit('notification', data);
+      }),
+    );
     return res.status(200).json({ message: 'Successfully updated' });
   } catch (error) {
     console.log(error);
@@ -109,20 +88,27 @@ export const getDefaultTimeline = async (req: Request, res: Response) => {
     const timelines = await prisma.timelineDefault.findMany({
       include: {
         timelineType: true,
-        dependsOn: {
-          include: {
-            dependsOnTimeline: {
-              include: {
-                timelineType: true,
-              },
-            },
-          },
-        },
       },
     });
 
     return res.status(200).send(timelines);
   } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const deleteTimelineType = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  console.log(id);
+  try {
+    await prisma.timelineTypeDefault.delete({
+      where: {
+        id: id,
+      },
+    });
+    return res.status(200).json({ message: 'Successfully deleted' });
+  } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   }
 };

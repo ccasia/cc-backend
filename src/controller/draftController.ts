@@ -83,12 +83,12 @@ export const getAllDraftInfo = async (req: Request, res: Response) => {
             id: item.creator.id, // Assuming `creatorId` is the correct field in `shortListedCreator`
           },
           include: {
-            FirstDraft: {
+            firstDraft: {
               where: {
                 AND: [{ creatorId: item.creator.id }, { campaignId: campaignId }],
               },
             },
-            FinalDraft: {
+            finalDraft: {
               where: {
                 AND: [{ creatorId: item.creator.id }, { campaignId: campaignId }],
               },

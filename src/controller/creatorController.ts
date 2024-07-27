@@ -155,7 +155,7 @@ export const getCreatorFullInfoById = async (req: Request, res: Response) => {
       },
       include: {
         creator: true,
-        ShortListedCreator: true,
+        shortlistCreator: true,
       },
     });
 

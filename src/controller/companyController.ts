@@ -190,22 +190,32 @@ export const editCompany = async (req: Request, res: Response) => {
     companyAbout,
     companyObjectives,
     companyRegistrationNumber,
-  } = req.body;
+  } = JSON.parse(req.body.data);
   try {
+    let logoURL = '';
+
+    if (req.files && req.files.companyLogo) {
+      const logo = (req.files as any).companyLogo;
+      logoURL = await uploadCompanyLogo(logo.tempFilePath, logo.name);
+    }
+
+    const updateCompanyData = {
+      name: companyName,
+      about: companyAbout,
+      objectives: companyObjectives,
+      email: companyEmail,
+      phone: companyPhone,
+      address: companyAddress,
+      website: companyWebsite,
+      registration_number: companyRegistrationNumber,
+      ...(logoURL && { logo: logoURL }),
+    };
+
     const updatedCompany = await prisma.company.update({
       where: {
         id: companyId,
       },
-      data: {
-        name: companyName,
-        about: companyAbout,
-        objectives: companyObjectives,
-        email: companyEmail,
-        phone: companyPhone,
-        address: companyAddress,
-        website: companyWebsite,
-        registration_number: companyRegistrationNumber,
-      },
+      data: updateCompanyData,
     });
 
     return res.status(200).json({ message: 'Succesfully updated', ...updatedCompany });

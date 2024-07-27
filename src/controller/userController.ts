@@ -174,7 +174,7 @@ export const getAllActiveAdmins = async (_req: Request, res: Response) => {
         email: true,
         admin: {
           include: {
-            AdminPermissionModule: {
+            adminPermissionModule: {
               select: {
                 permission: true,
                 module: true,

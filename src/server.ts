@@ -21,7 +21,7 @@ dotenv.config();
 
 const app: Application = express();
 const server = http.createServer(app);
-export const io = new Server(server);
+export const io = new Server(server, { connectionStateRecovery: {} });
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));

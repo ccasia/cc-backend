@@ -1,0 +1,147 @@
+{
+    "campaignTitle": "asdasd",
+    "campaignBrand": {
+      "id": "clz0vnym90000dommxw3nqiay",
+      "name": "Lamboghini",
+      "logo": "https://storage.googleapis.com/app-test-cult-cretive/companyLogo/Lamborghini-logo-1-1024x819.jpg"
+    },
+    "campaignStartDate": "2024-07-28T16:00:00.000Z",
+    "campaignEndDate": "Mon September 2, 2024",
+    "campaignInterests": ["Art", "Beauty", "Business"],
+    "campaignObjectives": "I'm launching a new product",
+    "campaignDescription": "asdasd",
+    "audienceGender": ["female", "male"],
+    "audienceAge": ["18-25", "26-34"],
+    "audienceLocation": ["KlangValley", "Selangor"],
+    "audienceLanguage": ["Malay", "English"],
+    "audienceCreatorPersona": ["tech", "fashion", "beauty"],
+    "audienceUserPersona": "asdasd",
+    "campaignDo": [
+      {
+        "value": "asdasdas"
+      }
+    ],
+    "campaignDont": [
+      {
+        "value": "sadasdad"
+      }
+    ],
+    "campaignImages": [
+      {
+        "path": "Lamborghini-logo-1-1024x819.jpg",
+        "preview": "blob:http://localhost/45c86a8b-e4b5-491c-abd1-c09c0ac60121"
+      },
+      {
+        "path": "1.png",
+        "preview": "blob:http://localhost/d1821e11-e3ee-4ef9-a75e-9dfa28a28f36"
+      },
+      {
+        "path": "images (1).png",
+        "preview": "blob:http://localhost/82660f6f-c16a-491e-ad95-b42e9c81d1af"
+      },
+      {
+        "path": "MyStartup Cohort III Demo Day Slides (1920 × 1024 px).jpg",
+        "preview": "blob:http://localhost/9ac75138-06d4-4f5d-80c7-f61dccab81a2"
+      }
+    ],
+    "adminManager": [
+      {
+        "id": "clz18kv32000012aqznivi355",
+        "name": "Pikol"
+      },
+      {
+        "id": "a422f90f-527b-43be-be61-a612614ea88c",
+        "name": "Afiq"
+      }
+    ],
+    "agreementFrom": {
+      "path": "MuhammadFathulAminBinSulaimanResume (1) (1).pdf",
+      "preview": "blob:http://localhost/afa22599-a6a6-4605-9edd-4a28c83b6ac6"
+    },
+    "timeline": [
+      {
+        "timeline_type": "[Object]",
+        "id": "clz342l0y00017uk81a52zcl1",
+        "duration": 15,
+        "for": "creator",
+        "startDate": "Mon July 29, 2024",
+        "endDate": "Tue August 13, 2024"
+      },
+      {
+        "timeline_type": "[Object]",
+        "id": "clz342lwi000h7uk8lrzqz2qo",
+        "duration": 2,
+        "for": "admin",
+        "startDate": "Tue August 13, 2024",
+        "endDate": "Thu August 15, 2024"
+      },
+      {
+        "timeline_type": "[Object]",
+        "id": "clz342lvg00057uk8nxilc0v6",
+        "duration": 3,
+        "for": "admin",
+        "startDate": "Thu August 15, 2024",
+        "endDate": "Sun August 18, 2024"
+      },
+      {
+        "timeline_type": "[Object]",
+        "id": "clz342lwa000b7uk8y2l1jc3d",
+        "duration": 3,
+        "for": "creator",
+        "startDate": "Sun August 18, 2024",
+        "endDate": "Wed August 21, 2024"
+      },
+      {
+        "timeline_type": "[Object]",
+        "id": "clz342lwa000c7uk8r3hky36z",
+        "duration": 2,
+        "for": "admin",
+        "startDate": "Wed August 21, 2024",
+        "endDate": "Fri August 23, 2024"
+      },
+      {
+        "timeline_type": "[Object]",
+        "id": "clz342lwc000f7uk8gwzqpyrt",
+        "duration": 3,
+        "for": "creator",
+        "startDate": "Fri August 23, 2024",
+        "endDate": "Mon August 26, 2024"
+      },
+      {
+        "timeline_type": "[Object]",
+        "id": "clz342lwb000d7uk8p41d00zj",
+        "duration": 2,
+        "for": "admin",
+        "startDate": "Mon August 26, 2024",
+        "endDate": "Wed August 28, 2024"
+      },
+      {
+        "timeline_type": "[Object]",
+        "id": "clz342lvj00077uk813tkloee",
+        "duration": 1,
+        "for": "admin",
+        "startDate": "Wed August 28, 2024",
+        "endDate": "Thu August 29, 2024"
+      },
+      {
+        "timeline_type": "[Object]",
+        "id": "clz342lul00037uk8xumr9c0t",
+        "duration": 4,
+        "for": "creator",
+        "startDate": "Thu August 29, 2024",
+        "endDate": "Mon September 2, 2024"
+      }
+    ],
+    "campaignTasksAdmin": [],
+    "campaignTasksCreator": [
+      {
+        "id": "",
+        "name": "",
+        "dependency": "",
+        "dueDate": null,
+        "status": ""
+      }
+    ],
+    "campaignStage": "DRAFT"
+  }
+  

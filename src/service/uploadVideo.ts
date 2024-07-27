@@ -47,7 +47,7 @@ const prisma = new PrismaClient();
       include: {
         campaign: {
           include: {
-            CampaignAdmin: {
+            campaignAdmin: {
               include: {
                 admin: {
                   include: {
@@ -77,14 +77,14 @@ const prisma = new PrismaClient();
     // });
     const [newDraftNotification] = await Promise.all([
       saveNotification(draft.creatorId, Title.Create, `Your draft has been successfully sent.`, Entity.User),
-      prisma.campaignTimelineTask.update({
+      prisma.campaignTask.update({
         where: { id: video.taskId },
         data: { status: 'PENDING_REVIEW' },
       }),
     ]);
     io.to(clients.get(draft.creatorId)).emit('notification', newDraftNotification);
     io.to(clients.get(draft.creatorId)).emit('draft', draft);
-    draft.campaign.CampaignAdmin.forEach(async (item: any, index: any) => {
+    draft.campaign.campaignAdmin.forEach(async (item: any, index: any) => {
       const draftNoti = await saveNotification(
         item.admin.user.id,
         Title.Create,

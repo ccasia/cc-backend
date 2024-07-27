@@ -572,7 +572,7 @@ export const login = async (req: Request, res: Response) => {
       include: {
         admin: {
           include: {
-            AdminPermissionModule: {
+            adminPermissionModule: {
               include: {
                 module: true,
                 permission: true,
@@ -586,8 +586,8 @@ export const login = async (req: Request, res: Response) => {
             interests: true,
           },
         },
-        Pitch: true,
-        ShortListedCreator: true,
+        pitch: true,
+        shortlistCreator: true,
       },
     });
 
@@ -660,7 +660,7 @@ export const updateProfileCreator = async (req: Request, res: Response) => {
         data: {
           state: state,
           address: address,
-          MediaKit: {
+          mediaKit: {
             upsert: {
               where: {
                 creatorId: creator?.id,
@@ -692,10 +692,7 @@ export const updateProfileCreator = async (req: Request, res: Response) => {
         data: {
           state: state,
           address: address,
-          MediaKit: {
-            // update: {
-            //   about: about,
-            // },
+          mediaKit: {
             upsert: {
               where: {
                 creatorId: creator?.id,
