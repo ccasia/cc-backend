@@ -7,7 +7,7 @@ import { Title, saveNotification } from 'src/controller/notificationController';
 const prisma = new PrismaClient();
 
 (async () => {
-  const conn = await amqplib.connect('amqp://host.docker.internal');
+  const conn = await amqplib.connect('amqp://localhost');
 
   const channel = conn.createChannel();
 
