@@ -9,6 +9,8 @@ import campaignRoute from './campaignRoute';
 import notificationRoute from './notificationRoute';
 import draftRoute from './draftRoute';
 
+import threadRoute from './threadRoute';
+
 export const router = express.Router();
 
 router.use('/user', userRoute);
@@ -20,3 +22,4 @@ router.use('/event', eventRoute);
 router.use('/campaign', campaignRoute);
 router.use('/notification', notificationRoute);
 router.use('/draft', draftRoute);
+router.use('/thread', threadRoute);

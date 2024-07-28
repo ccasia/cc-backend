@@ -619,6 +619,9 @@ export const login = async (req: Request, res: Response) => {
     const session = req.session;
     session.userid = data.id;
     session.refreshToken = refreshToken;
+    session.role = data.role;
+    session.name = data.name || '';
+    session.photoURL = data.photoURL || '';
 
     res.cookie('userid', data.id, {
       maxAge: 60 * 60 * 24 * 1000, // 1 Day

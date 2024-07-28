@@ -529,6 +529,27 @@ export const createCampaign = async (req: Request, res: Response) => {
           },
         });
       }
+      if (!campaign || !campaign.id) {
+        throw new Error('Campaign creation failed or campaign ID is missing');
+      }
+
+      const thread = await tx.thread.create({
+        data: {
+          title: campaign.name,
+          description: campaign.description,
+          campaignId: campaign.id,
+          photoURL: publicURL[0],
+          UserThread: {
+            create: admins.map((admin: any) => ({
+              userId: admin.id,
+            })),
+          },
+        },
+        include: {
+          UserThread: true,
+          campaign: true,
+        },
+      });
 
       admins.map(async (admin: any) => {
         // TODO: "Foreign key constraint failed on the field: `CampaignAdmin_campaignId_fkey (index)`"
@@ -1166,6 +1187,32 @@ export const changePitchStatus = async (req: Request, res: Response) => {
       } else {
         console.log(`User with ID ${pitch.userId} is not connected.`);
       }
+
+      const campaign = await prisma.campaign.findUnique({
+        where: {
+          id: pitch.campaignId,
+        },
+        include: {
+          thread: true,
+        },
+      });
+
+      console.log('Campaign:', campaign);
+
+      if (!campaign || !campaign.thread) {
+        return res.status(404).json({ message: 'Campaign or thread not found' });
+      }
+
+      console.log('Thread:', campaign.thread);
+
+      await prisma.userThread.create({
+        data: {
+          threadId: campaign.thread.id,
+          userId: pitch.userId,
+        },
+      });
+
+      console.log('User added to thread:', pitch.userId);
 
       // const timelines = await prisma.campaignTimeline.findMany({
       //   where: {
