@@ -460,12 +460,13 @@ export const createCampaign = async (req: Request, res: Response) => {
               },
               campaignTimeline: {
                 create: timeline.map((item: any, index: number) => ({
-                  name: item.timeline_type?.name,
-                  for: item?.for,
+                  // Fields for CampaignTimeline
+                  for: item.for,
                   duration: parseInt(item.duration),
-                  startDate: dayjs(item.startDate),
-                  endDate: dayjs(item.endDate),
+                  startDate: dayjs(item.startDate).toDate(),
+                  endDate: dayjs(item.endDate).toDate(),
                   order: index + 1,
+                  name: item.timeline_type.name,
                 })),
               },
             },
@@ -515,12 +516,13 @@ export const createCampaign = async (req: Request, res: Response) => {
             },
             campaignTimeline: {
               create: timeline.map((item: any, index: number) => ({
-                name: item.timeline_type?.name,
-                for: item?.for,
+                // Fields for CampaignTimeline
+                for: item.for,
                 duration: parseInt(item.duration),
-                startDate: dayjs(item.startDate),
-                endDate: dayjs(item.endDate),
+                startDate: dayjs(item.startDate).toDate(),
+                endDate: dayjs(item.endDate).toDate(),
                 order: index + 1,
+                name: item.timeline_type.name,
               })),
             },
           },
@@ -626,8 +628,6 @@ export const getCampaignById = async (req: Request, res: Response) => {
         id: id,
       },
       include: {
-        finalDraft: true,
-        firstDraft: true,
         brand: true,
         company: true,
         campaignTimeline: true,
@@ -777,9 +777,8 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
       `Your pitch has been successfully sent.`,
       Entity.Pitch,
     );
-    console.log('IDDDDDDD', creator.id);
+
     io.to(clients.get(creator.id)).emit('notification', newPitch);
-    console.log('Status done');
 
     const admins = campaign.campaignAdmin;
 
@@ -864,8 +863,25 @@ export const changeCampaignStage = async (req: Request, res: Response) => {
       },
       include: {
         campaignAdmin: true,
+        shortlistCreator: {
+          include: {
+            creator: true,
+          },
+        },
       },
     });
+
+    if (campaign?.shortlistCreator.length && campaign?.status === 'PAUSED') {
+      campaign?.shortlistCreator?.map(async (value) => {
+        const data = await saveNotification(
+          value.creatorId,
+          Title.Update,
+          `Campaign ${campaign.name} is down for maintenance`,
+          Entity.Campaign,
+        );
+        io.to(clients.get(value.creatorId)).emit('notification', data);
+      });
+    }
 
     if (campaign?.status === 'ACTIVE') {
       campaign.campaignAdmin.forEach(async (admin) => {
@@ -1018,7 +1034,6 @@ export const updateCampaignTimeline = async (req: Request, res: Response) => {
   const { id } = req.params;
 
   const { timeline, campaignStartDate, campaignEndDate } = req.body;
-  // const timelines: { id: any }[] = [];
 
   try {
     const campaign = await prisma.campaign.findUnique({
@@ -1036,30 +1051,14 @@ export const updateCampaignTimeline = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Campaign not found' });
     }
 
-    const newTimeline = timeline.map((timeline: any, index: number) => ({
-      name: timeline.timeline_type.name,
-      for: timeline?.for,
-      duration: parseInt(timeline.duration),
-      startDate: dayjs(timeline?.startDate) as any,
-      endDate: dayjs(timeline?.endDate) as any,
-      campaignId: campaign?.id,
-      order: index + 1,
-    }));
-
-    // await prisma.campaignTimeline.deleteMany({
-    //   where: {
-    //     campaignId: campaign?.id,
-    //   },
-    // });
-
-    await Promise.all([
-      timeline.forEach(async (item: any, index: number) => {
-        await prisma.campaignTimeline.update({
+    const data = await Promise.all(
+      timeline.map(async (item: any, index: number) => {
+        const result = await prisma.campaignTimeline.upsert({
           where: {
-            id: item.id,
+            id: item?.id || item?.timeline_type.id,
           },
-          data: {
-            name: item.timeline_type?.name,
+          update: {
+            name: item?.timeline_type.name,
             for: item?.for,
             duration: parseInt(item.duration),
             startDate: dayjs(item?.startDate) as any,
@@ -1067,18 +1066,66 @@ export const updateCampaignTimeline = async (req: Request, res: Response) => {
             campaignId: campaign?.id,
             order: index + 1,
           },
+          create: {
+            name: item?.timeline_type.name,
+            for: item?.for,
+            duration: parseInt(item.duration),
+            startDate: dayjs(item?.startDate) as any,
+            endDate: dayjs(item?.endDate) as any,
+            campaignId: campaign?.id,
+            order: index + 1,
+          },
+          include: {
+            campaignTasks: true,
+          },
         });
+        return result;
       }),
-      await prisma.campaignBrief.update({
+    );
+
+    data.forEach(async (item: any) => {
+      const isExist = await prisma.campaignTask.findUnique({
         where: {
-          campaignId: campaign.id,
+          id: item.campaignTasks.id,
         },
-        data: {
-          startDate: dayjs(campaignStartDate).format(),
-          endDate: dayjs(campaignEndDate).format(),
-        },
-      }),
-    ]);
+      });
+
+      if (isExist) {
+        await prisma.campaignTask.update({
+          where: {
+            id: item.campaignTasks.id,
+          },
+          data: {
+            startDate: dayjs(item.startDate) as any,
+            endDate: dayjs(item.endDate) as any,
+          },
+        });
+      }
+    });
+
+    await prisma.campaignBrief.update({
+      where: {
+        campaignId: campaign.id,
+      },
+      data: {
+        startDate: dayjs(campaignStartDate).format(),
+        endDate: dayjs(campaignEndDate).format(),
+      },
+    });
+
+    // Promise.all(
+    //   data.map(async (item: any) => {
+    //     await prisma.campaignTask.update({
+    //       where: {
+    //         campaignTimelineId: item.id,
+    //       },
+    //       data: {
+    //         startDate: dayjs(item.startDate) as any,
+    //         endDate: dayjs(item.endDate) as any,
+    //       },
+    //     });
+    //   }),
+    // );
 
     // for (const item of timeline) {
     //   const a = await prisma.campaignTimeline.update({
@@ -1114,20 +1161,19 @@ export const updateCampaignTimeline = async (req: Request, res: Response) => {
 
 // Get First Draft by user id and campaign id
 export const getFirstDraft = async (req: Request, res: Response) => {
-  const { creatorId, campaignId } = req.query;
-  try {
-    const firstDraft = await prisma.firstDraft.findMany({
-      where: {
-        creatorId: creatorId as any,
-        campaignId: campaignId as any,
-      },
-    });
-
-    return res.status(200).json(firstDraft);
-  } catch (error) {
-    console.log(error);
-    return res.status(400).json(error);
-  }
+  // const { creatorId, campaignId } = req.query;
+  // try {
+  //   const firstDraft = await prisma.firstDraft.findMany({
+  //     where: {
+  //       creatorId: creatorId as any,
+  //       campaignId: campaignId as any,
+  //     },
+  //   });
+  //   return res.status(200).json(firstDraft);
+  // } catch (error) {
+  //   console.log(error);
+  //   return res.status(400).json(error);
+  // }
 };
 
 export const changePitchStatus = async (req: Request, res: Response) => {
@@ -1167,34 +1213,27 @@ export const changePitchStatus = async (req: Request, res: Response) => {
         console.log(`User with ID ${pitch.userId} is not connected.`);
       }
 
-      // const timelines = await prisma.campaignTimeline.findMany({
-      //   where: {
-      //     campaignId: pitch?.campaignId,
-      //   },
-      //   include: {
-      //     dependsOnCampaignTimeline: {
-      //       include: {
-      //         campaignTimeline: true,
-      //       },
-      //     },
-      //   },
-      // });
+      const timelines = await prisma.campaignTimeline.findMany({
+        where: {
+          campaignId: pitch?.campaignId,
+        },
+      });
 
-      // timelines
-      //   .filter((item: any) => item.for === 'creator' && item.name !== 'Open For Pitch')
-      //   .forEach(async (item: any, index: number) => {
-      //     await prisma.campaignTimelineTask.create({
-      //       data: {
-      //         userId: pitch?.userId,
-      //         task: item?.name,
-      //         campaignTimelineId: item?.id,
-      //         campaignId: pitch?.campaignId,
-      //         startDate: item?.startDate,
-      //         endDate: item?.endDate,
-      //         status: index === 0 ? ('IN_PROGRESS' as any) : 'NOT_STARTED',
-      //       },
-      //     });
-      //   });
+      timelines
+        .filter((item: any) => item.for === 'creator' && item.name !== 'Open For Pitch')
+        .forEach(async (item: any, index: number) => {
+          await prisma.campaignTask.create({
+            data: {
+              userId: pitch?.userId,
+              task: item?.name,
+              campaignTimelineId: item?.id,
+              campaignId: pitch?.campaignId,
+              startDate: item?.startDate,
+              endDate: item?.endDate,
+              status: item.name === 'Agreement' ? ('IN_PROGRESS' as any) : 'NOT_STARTED',
+            },
+          });
+        });
     } else {
       const isExist = await prisma.shortListedCreator.findUnique({
         where: {
@@ -1254,7 +1293,18 @@ export const getCampaignForCreatorById = async (req: Request, res: Response) => 
             },
           },
         },
-        campaignTimeline: true,
+        campaignTimeline: {
+          where: {
+            AND: [
+              { for: 'creator' },
+              {
+                name: {
+                  not: 'Open For Pitch',
+                },
+              },
+            ],
+          },
+        },
         campaignBrief: true,
         campaignRequirement: true,
         campaignTasks: {
@@ -1307,6 +1357,7 @@ export const getCampaignPitchForCreator = async (req: Request, res: Response) =>
             campaignBrief: {
               select: {
                 images: true,
+                interests: true,
               },
             },
           },

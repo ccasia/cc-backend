@@ -8,6 +8,7 @@ import eventRoute from './eventRoute';
 import campaignRoute from './campaignRoute';
 import notificationRoute from './notificationRoute';
 import draftRoute from './draftRoute';
+import taskRoute from './taskRoute';
 
 export const router = express.Router();
 
@@ -20,3 +21,4 @@ router.use('/event', eventRoute);
 router.use('/campaign', campaignRoute);
 router.use('/notification', notificationRoute);
 router.use('/draft', draftRoute);
+router.use('/tasks', taskRoute);

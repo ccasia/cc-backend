@@ -26,11 +26,12 @@ model User {
   eventId            String?
   pitch              Pitch[]
   shortlistCreator   ShortListedCreator[]
-  firstDraft         FirstDraft[]
-  finalDraft         FinalDraft[]
   campaignTasks      CampaignTask[]
   notiifcationStatus NotificationStatus[]
   campaignLogs       CampaignLog[]
+  campaignAgreement  CampaignAgreement[]
+  feedback           Feedback[]
+  submission         Submission[]
 }
 
 model Admin {
@@ -224,11 +225,11 @@ model Campaign {
   campaignAdmin       CampaignAdmin[]
   pitch               Pitch[]
   shortlistCreator    ShortListedCreator[]
-  firstDraft          FirstDraft[]
-  finalDraft          FinalDraft[]
   campaignTasks       CampaignTask[]
   campaignTimeline    CampaignTimeline[]
   campaignLogs        CampaignLog[]
+  campaignAgreement   CampaignAgreement[]
+  Submission          Submission[]
 }
 
 model CampaignAdmin {
@@ -370,15 +371,6 @@ enum CampaignTimelineStatus {
 }
 
 // Default Timeline Schema
-model TimelineTypeDefault {
-  id              String           @id @unique @default(cuid())
-  name            String           @unique
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
-  timelineDefault TimelineDefault?
-}
-
-// Default Timeline Schema
 model TimelineDefault {
   id                    String              @id @unique @default(cuid())
   timelineTypeDefaultId String              @unique
@@ -387,6 +379,15 @@ model TimelineDefault {
   createdAt             DateTime            @default(now())
   updatedAt             DateTime            @updatedAt
   timelineType          TimelineTypeDefault @relation(fields: [timelineTypeDefaultId], references: [id])
+}
+
+// Strictly Define Campaign Timeline Type
+model TimelineTypeDefault {
+  id              String           @id @unique @default(cuid())
+  name            String           @unique
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  timelineDefault TimelineDefault?
 }
 
 model CampaignTimeline {
@@ -401,8 +402,14 @@ model CampaignTimeline {
   endDate       DateTime
   campaignId    String
   order         Int
+  status        TimelineStatus @default(OPEN)
   campaign      Campaign?      @relation(references: [id], fields: [campaignId])
   campaignTasks CampaignTask[]
+}
+
+enum TimelineStatus {
+  OPEN
+  CLOSED
 }
 
 model CampaignLog {
@@ -453,32 +460,22 @@ model ShortListedCreator {
 
 model FirstDraft {
   id         String       @id @unique @default(cuid())
-  creatorId  String
-  creator    User         @relation(fields: [creatorId], references: [id])
   caption    String
   draftURL   String
-  campaignId String
-  campaign   Campaign     @relation(fields: [campaignId], references: [id])
+  submission Submission   @relation(fields: [id], references: [id], onDelete: Cascade)
   status     DraftStatus?
   createdAt  DateTime     @default(now())
   updatedAt  DateTime     @updatedAt
-
-  @@unique([creatorId, campaignId])
 }
 
 model FinalDraft {
   id         String       @id @unique @default(cuid())
-  creatorId  String
-  creator    User         @relation(fields: [creatorId], references: [id])
-  campaignId String
   caption    String
   draftURL   String
-  campaign   Campaign     @relation(fields: [campaignId], references: [id])
+  submission Submission   @relation(fields: [id], references: [id], onDelete: Cascade)
   status     DraftStatus?
   createdAt  DateTime     @default(now())
   updatedAt  DateTime     @updatedAt
-
-  @@unique([creatorId, campaignId])
 }
 
 enum DraftStatus {
@@ -498,7 +495,7 @@ enum TaskStatus {
   REJECTED
   ON_HOLD
   OVERDUE
-  REVISIONS_REQUIRED
+  CHANGES_REQUIRED
 }
 
 model CampaignTask {
@@ -508,16 +505,17 @@ model CampaignTask {
   campaignTimelineId     String
   campaignId             String
   user                   User?                    @relation(references: [id], fields: [userId], onDelete: Cascade)
-  timeline               CampaignTimeline?        @relation(references: [id], fields: [campaignTimelineId], onDelete: Cascade)
+  timeline               CampaignTimeline         @relation(references: [id], fields: [campaignTimelineId], onDelete: Cascade)
   campaign               Campaign?                @relation(references: [id], fields: [campaignId], onDelete: Cascade)
   status                 TaskStatus               @default(NOT_STARTED)
   startDate              DateTime?
   endDate                DateTime?
-  priroty                Priority                 @default(LOW)
+  priority               Priority                 @default(LOW)
   createdAt              DateTime                 @default(now())
   updatedAd              DateTime                 @updatedAt
   campaignTaskDependency CampaignTaskDependency[] @relation("CampaignTask")
   dependsOnCampaignTask  CampaignTaskDependency[] @relation("DependsOnCampaignTask")
+  submission             Submission?
 }
 
 model CampaignTaskDependency {
@@ -562,4 +560,54 @@ model NotificationStatus {
   notification   Notification @relation(fields: [notificationId], references: [id])
 
   @@unique([userId, notificationId])
+}
+
+model CampaignAgreement {
+  campaignId   String
+  creatorId    String
+  campaign     Campaign @relation(references: [id], fields: [campaignId])
+  creator      User     @relation(references: [id], fields: [creatorId])
+  agreementUrl String
+
+  @@id([campaignId, creatorId])
+}
+
+model Submission {
+  id             String         @id @unique @default(cuid())
+  creatorId      String
+  campaignTaskId String         @unique
+  campaignId     String
+  type           SubmissionType
+  firstDraft     FirstDraft?
+  finalDraft     FinalDraft?
+  content        String?
+  feedback       Feedback?
+  campaignTask   CampaignTask   @relation(fields: [campaignTaskId], references: [id])
+  creator        User           @relation(fields: [creatorId], references: [id])
+  campaign       Campaign       @relation(fields: [campaignId], references: [id])
+  finalDraftId   String?
+}
+
+model Feedback {
+  id           String        @id @unique @default(cuid())
+  content      String?
+  type         FeedbackType?
+  submissionId String        @unique
+  submission   Submission    @relation(fields: [submissionId], references: [id])
+  adminId      String
+  admin        User          @relation(fields: [adminId], references: [id])
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+}
+
+enum SubmissionType {
+  AGREEMENT_FORM
+  FIRST_DRAFT
+  FINAL_DRAFT
+  OTHER
+}
+
+enum FeedbackType {
+  COMMENT
+  REASON
 }
