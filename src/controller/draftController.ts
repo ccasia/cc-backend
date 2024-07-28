@@ -30,7 +30,7 @@ export const submitFirstDraft = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Only creator is allow to submit a pitch' });
     }
     if (req.files && req.files.firstDraftVideo) {
-      const conn = await amqplib.connect('amqp://localhost');
+      const conn = await amqplib.connect('amqp://34.1.203.152');
       const channel = conn.createChannel();
       (await channel).assertQueue('uploadFirstDraft');
 
@@ -99,7 +99,7 @@ export const submitFinalDraft = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Only creator is allow to submit a pitch' });
     }
     if (req.files && req.files.finalDraftVideo) {
-      const conn = await amqplib.connect('amqp://localhost');
+      const conn = await amqplib.connect('amqp://34.1.203.152');
       const channel = conn.createChannel();
       (await channel).assertQueue('uploadFinalDraft');
 
