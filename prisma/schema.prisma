@@ -29,9 +29,15 @@ model User {
   campaignTasks      CampaignTask[]
   notiifcationStatus NotificationStatus[]
   campaignLogs       CampaignLog[]
+
+  threads            Thread[]             @relation("UserThreads")
+  UserThread         UserThread[]
+  sentMessages       Message[]            @relation("UserMessages")
+
   campaignAgreement  CampaignAgreement[]
   feedback           Feedback[]
   submission         Submission[]
+
 }
 
 model Admin {
@@ -79,6 +85,40 @@ model MediaKit {
   creatorId String   @unique
   creator   Creator  @relation(fields: [creatorId], references: [id])
 }
+
+model Message {
+  id        Int      @id @default(autoincrement())
+  content   String
+  createdAt DateTime @default(now())
+  threadId  String?
+  thread    Thread?  @relation(fields: [threadId], references: [id])
+  senderId  String?
+  sender    User?    @relation(fields: [senderId], references: [id], name: "UserMessages")
+}
+
+model Thread {
+  id          String       @id @unique @default(cuid())
+  title       String
+  description String
+  photoURL    String?      @db.VarChar(255)
+  users       User[]       @relation("UserThreads")
+  UserThread  UserThread[]
+  messages    Message[]
+  archived    Boolean      @default(false)
+  isGroup     Boolean      @default(true)
+  campaignId  String?      @unique
+  campaign    Campaign?    @relation(fields: [campaignId], references: [id])
+}
+
+model UserThread {
+  userId   String
+  threadId String
+  user     User   @relation(fields: [userId], references: [id])
+  thread   Thread @relation(fields: [threadId], references: [id])
+
+  @@id([userId, threadId])
+}
+
 
 model Industry {
   id      String  @id @unique @default(cuid())
@@ -228,8 +268,12 @@ model Campaign {
   campaignTasks       CampaignTask[]
   campaignTimeline    CampaignTimeline[]
   campaignLogs        CampaignLog[]
+
+  thread                  Thread?
+
   campaignAgreement   CampaignAgreement[]
-  Submission          Submission[]
+  submission          Submission[]
+
 }
 
 model CampaignAdmin {
