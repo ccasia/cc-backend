@@ -112,3 +112,21 @@ export const deleteTimelineType = async (req: Request, res: Response) => {
     return res.status(400).json(error);
   }
 };
+
+export const createSingleTimelineType = async (req: Request, res: Response) => {
+  const { name } = req.body;
+  try {
+    const newTimelineType = await prisma.timelineTypeDefault.create({
+      data: {
+        name: name
+          .split(' ')
+          .map((elem: any) => `${elem[0].toUpperCase()}${elem.slice(1)}`)
+          .join(' '),
+      },
+    });
+    return res.status(200).json(newTimelineType);
+  } catch (error) {
+    console.log(error);
+    return res.status(400).json(error);
+  }
+};

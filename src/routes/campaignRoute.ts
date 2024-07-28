@@ -26,6 +26,7 @@ import {
 import { isSuperAdmin } from 'src/middleware/onlySuperadmin';
 import {
   createNewTimeline,
+  createSingleTimelineType,
   deleteTimelineType,
   getDefaultTimeline,
   getTimelineType,
@@ -61,6 +62,7 @@ router.post('/updateDefaultTimeline', updateDefaultTimeline);
 router.post('/createCampaign', isSuperAdmin, createCampaign);
 // router.post('/rejectPitch', isSuperAdmin, rejectPitch);
 router.post('/createNewTimeline', isSuperAdmin, createNewTimeline);
+router.post('/createSingleTimelineType', isSuperAdmin, createSingleTimelineType);
 
 router.patch('/pitch', creatorMakePitch);
 router.patch('/changeCampaignStage/:campaignId', changeCampaignStage);
