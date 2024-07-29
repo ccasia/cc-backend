@@ -771,7 +771,7 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
 
     if (req.files && req.files.pitchVideo) {
       const { pitchVideo } = req.files as any;
-      const conn = await amqplib.connect('amqp://host.docker.internal');
+      const conn = await amqplib.connect('amqp://myapp:mypassword@34.1.203.152/nexea');
       const channel = await conn.createChannel();
       channel.assertQueue('uploadVideo', {
         durable: false,
