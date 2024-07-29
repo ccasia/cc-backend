@@ -7,7 +7,7 @@ import { Title, saveNotification } from 'src/controller/notificationController';
 const prisma = new PrismaClient();
 
 (async () => {
-  const conn = await amqplib.connect('amqp://myuser:mypassword@34.1.203.152/nexea');
+  const conn = await amqplib.connect(`${process.env.RABBIT_MQ}`);
 
   const channel = conn.createChannel();
 
