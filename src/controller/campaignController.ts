@@ -371,8 +371,8 @@ export const createCampaign = async (req: Request, res: Response) => {
       const images = (req.files as any).campaignImages as [];
       for (const item of images as any) {
         // TODO TEMP: "Error uploading file: ENOENT: no such file or directory, open '/app/src/config/test-cs.json'"
-        /* const url = await uploadImage(item.tempFilePath, item.name, 'campaign');
-        publicURL.push(url); */
+        const url = await uploadImage(item.tempFilePath, item.name, 'campaign');
+        publicURL.push(url);
       }
     }
 
@@ -381,7 +381,7 @@ export const createCampaign = async (req: Request, res: Response) => {
     if (req.files && req.files.agreementForm) {
       const form = (req.files as any).agreementForm;
       // TODO TEMP: "Error uploading file: ENOENT: no such file or directory, open '/app/src/config/test-cs.json'"
-      /* agreementFormURL = await uploadAgreementForm(form.tempFilePath, form.name, 'agreementForm'); */
+      agreementFormURL = await uploadAgreementForm(form.tempFilePath, form.name, 'agreementForm');
     }
 
     await prisma.$transaction(async (tx) => {
@@ -541,6 +541,19 @@ export const createCampaign = async (req: Request, res: Response) => {
       });
 
       admins.map(async (admin: any) => {
+        const existing = await prisma.campaignAdmin.findUnique({
+          where: {
+            adminId_campaignId: {
+              adminId: admin?.id,
+              campaignId: campaign?.id,
+            },
+          },
+        });
+
+        if (existing) {
+          return res.status(400).json({ message: 'Admin  exists' });
+        }
+
         await prisma.campaignAdmin.create({
           data: {
             campaignId: (campaign as any).id as any,
@@ -1123,6 +1136,7 @@ export const editCampaignTimeline = async (req: Request, res: Response) => {
         campaignTimeline: true,
         campaignBrief: true,
         campaignAdmin: true,
+        campaignTasks: true,
       },
     });
 
@@ -1162,25 +1176,28 @@ export const editCampaignTimeline = async (req: Request, res: Response) => {
       }),
     );
 
-    data.forEach(async (item: any) => {
-      const isExist = await prisma.campaignTask.findUnique({
-        where: {
-          id: item.campaignTasks.id,
-        },
-      });
+    // await Promise.all(
+    //   data.map(async (item: any) => {
+    //     // console.log(item);
+    //     const isExist = await prisma.campaignTask.findUnique({
+    //       where: {
+    //         id: item.campaignTasks.id,
+    //       },
+    //     });
 
-      if (isExist) {
-        await prisma.campaignTask.update({
-          where: {
-            id: item.campaignTasks.id,
-          },
-          data: {
-            startDate: dayjs(item.startDate) as any,
-            endDate: dayjs(item.endDate) as any,
-          },
-        });
-      }
-    });
+    //     if (isExist) {
+    //       await prisma.campaignTask.update({
+    //         where: {
+    //           id: item.campaignTasks.id,
+    //         },
+    //         data: {
+    //           startDate: dayjs(item.startDate) as any,
+    //           endDate: dayjs(item.endDate) as any,
+    //         },
+    //       });
+    //     }
+    //   }),
+    // );
 
     await prisma.campaignBrief.update({
       where: {
