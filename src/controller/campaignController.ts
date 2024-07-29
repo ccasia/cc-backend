@@ -1118,25 +1118,27 @@ export const updateCampaignTimeline = async (req: Request, res: Response) => {
       }),
     );
 
-    data.forEach(async (item: any) => {
-      const isExist = await prisma.campaignTask.findUnique({
-        where: {
-          id: item.campaignTasks.id,
-        },
-      });
-
-      if (isExist) {
-        await prisma.campaignTask.update({
+    await Promise.all(
+      data.map(async (item: any) => {
+        const isExist = await prisma.campaignTask.findUnique({
           where: {
             id: item.campaignTasks.id,
           },
-          data: {
-            startDate: dayjs(item.startDate) as any,
-            endDate: dayjs(item.endDate) as any,
-          },
         });
-      }
-    });
+
+        if (isExist) {
+          await prisma.campaignTask.update({
+            where: {
+              id: item.campaignTasks.id,
+            },
+            data: {
+              startDate: dayjs(item.startDate) as any,
+              endDate: dayjs(item.endDate) as any,
+            },
+          });
+        }
+      }),
+    );
 
     await prisma.campaignBrief.update({
       where: {
