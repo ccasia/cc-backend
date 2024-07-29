@@ -1,5 +1,8 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { Entity, PrismaClient } from '@prisma/client';
+import { uploadAgreementForm } from 'src/config/cloudStorage.config';
+import { Title, saveNotification } from './notificationController';
+import { clients, io } from 'src/server';
 
 const prisma = new PrismaClient();
 
@@ -155,7 +158,11 @@ export const getCreatorFullInfoById = async (req: Request, res: Response) => {
       },
       include: {
         creator: true,
-        ShortListedCreator: true,
+        shortlistCreator: true,
+        campaignAgreement: true,
+
+        // firstDraft: true,
+        campaignTasks: true,
       },
     });
 

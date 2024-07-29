@@ -4,7 +4,7 @@ const prisma = new PrismaClient();
 
 export const assignTask = async (userId: string, campaignId: string, campaignTimelineId: string) => {
   try {
-    await prisma.campaignTimelineTask.create({
+    await prisma.campaignTask.create({
       data: {
         userId: userId,
         campaignId: campaignId,

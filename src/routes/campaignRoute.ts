@@ -7,7 +7,6 @@ import {
   getCampaignById,
   getAllActiveCampaign,
   creatorMakePitch,
-  approvePitch,
   changeCampaignStage,
   closeCampaign,
   getPitchById,
@@ -17,17 +16,20 @@ import {
   editCampaignDosAndDonts,
   editCampaignRequirements,
   // updateTimeLineType,
-  editCampaignTimeline,
-  filterPitch,
+  updateCampaignTimeline,
   getFirstDraft,
   changePitchStatus,
   getCampaignsByCreatorId,
   getCampaignForCreatorById,
   getCampaignPitchForCreator,
+  editRequirement,
+  editDosandDonts,
 } from 'src/controller/campaignController';
 import { isSuperAdmin } from 'src/middleware/onlySuperadmin';
 import {
   createNewTimeline,
+  createSingleTimelineType,
+  deleteTimelineType,
   getDefaultTimeline,
   getTimelineType,
   updateOrCreateDefaultTimeline,
@@ -60,10 +62,9 @@ router.get('/getCampaignPitch', isLoggedIn, getCampaignPitchForCreator);
 router.post('/updateOrCreateDefaultTimeline', updateOrCreateDefaultTimeline);
 router.post('/updateDefaultTimeline', updateDefaultTimeline);
 router.post('/createCampaign', isSuperAdmin, createCampaign);
-router.post('/approvePitch', isSuperAdmin, approvePitch);
 // router.post('/rejectPitch', isSuperAdmin, rejectPitch);
-router.post('/filterPitch', isSuperAdmin, filterPitch);
 router.post('/createNewTimeline', isSuperAdmin, createNewTimeline);
+router.post('/createSingleTimelineType', isSuperAdmin, createSingleTimelineType);
 
 router.patch('/pitch', creatorMakePitch);
 router.patch('/changeCampaignStage/:campaignId', changeCampaignStage);
@@ -74,5 +75,9 @@ router.patch('/editCampaignDosAndDonts', isSuperAdmin, editCampaignDosAndDonts);
 router.patch('/editCampaignRequirements', isSuperAdmin, editCampaignRequirements);
 router.patch('/editCampaignTimeline/:id', isSuperAdmin, editCampaignTimeline);
 router.patch('/changePitchStatus', changePitchStatus);
+router.patch('/editRequirement', isSuperAdmin, editRequirement);
+router.patch('/editDosandDonts', isSuperAdmin, editDosandDonts);
+
+router.delete('/timelineType/:id', isSuperAdmin, deleteTimelineType);
 
 export default router;

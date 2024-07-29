@@ -7,7 +7,7 @@ import { Title, saveNotification } from 'src/controller/notificationController';
 const prisma = new PrismaClient();
 
 (async () => {
-  const conn = await amqplib.connect('amqp://host.docker.internal');
+  const conn = await amqplib.connect('amqp://myuser:mypassword@34.1.203.152/nexea');
 
   const channel = conn.createChannel();
 
@@ -15,6 +15,7 @@ const prisma = new PrismaClient();
     durable: false,
   });
   (await channel).assertQueue('uploadFirstDraft');
+  (await channel).assertQueue('uploadFinalDraft');
 
   (await channel).consume('uploadVideo', async (data) => {
     let video = data?.content.toString() as any;
@@ -36,18 +37,22 @@ const prisma = new PrismaClient();
     let video = data?.content.toString() as any;
     video = JSON.parse(video);
     const publicURL = await uploadPitchVideo(video.video.tempFilePath, video.video.name, 'firstDraft');
-    const draft = await prisma.firstDraft.update({
+    const firstDraft = await prisma.submission.update({
       where: {
         id: video.draftId,
       },
       data: {
-        draftURL: publicURL,
-        status: 'Submitted',
+        firstDraft: {
+          update: {
+            draftURL: publicURL,
+            status: 'Submitted',
+          },
+        },
       },
       include: {
         campaign: {
           include: {
-            CampaignAdmin: {
+            campaignAdmin: {
               include: {
                 admin: {
                   include: {
@@ -61,34 +66,91 @@ const prisma = new PrismaClient();
         creator: true,
       },
     });
-    // const newDraft = await saveNotification(
-    //   draft.creatorId,
-    //   Title.Create,
-    //   `Your draft has been successfully sent.`,
-    //   Entity.User,
-    // );
-    // await prisma.campaignTimelineTask.update({
-    //   where: {
-    //     id: video.taskId,
-    //   },
-    //   data: {
-    //     status: 'PENDING_REVIEW',
-    //   },
-    // });
+    await prisma.campaignTask.update({
+      where: {
+        id: video.taskId,
+      },
+      data: {
+        status: 'PENDING_REVIEW',
+      },
+    });
     const [newDraftNotification] = await Promise.all([
-      saveNotification(draft.creatorId, Title.Create, `Your draft has been successfully sent.`, Entity.User),
-      prisma.campaignTimelineTask.update({
+      saveNotification(firstDraft.creatorId, Title.Create, `Your draft has been successfully sent.`, Entity.User),
+      prisma.campaignTask.update({
         where: { id: video.taskId },
         data: { status: 'PENDING_REVIEW' },
       }),
     ]);
-    io.to(clients.get(draft.creatorId)).emit('notification', newDraftNotification);
-    io.to(clients.get(draft.creatorId)).emit('draft', draft);
-    draft.campaign.CampaignAdmin.forEach(async (item: any, index: any) => {
+    io.to(clients.get(firstDraft.creatorId)).emit('notification', newDraftNotification);
+    io.to(clients.get(firstDraft.creatorId)).emit('draft', firstDraft);
+    firstDraft.campaign.campaignAdmin.forEach(async (item: any, index: any) => {
       const draftNoti = await saveNotification(
         item.admin.user.id,
         Title.Create,
-        `There's new draft from ${draft.creator.name} for campaign ${draft.campaign.name}`,
+        `There's new draft from ${firstDraft.creator.name} for campaign ${firstDraft.campaign.name}`,
+        Entity.Campaign,
+      );
+
+      io.emit('notification', draftNoti);
+    });
+    (await channel).ack(data as any);
+  });
+
+  (await channel).consume('uploadFinalDraft', async (data) => {
+    let video = data?.content.toString() as any;
+    video = JSON.parse(video);
+    const publicURL = await uploadPitchVideo(video.video.tempFilePath, video.video.name, 'finalDraft');
+    const finalDraft = await prisma.submission.update({
+      where: {
+        id: video.draftId,
+      },
+      data: {
+        finalDraft: {
+          update: {
+            draftURL: publicURL,
+            status: 'Submitted',
+          },
+        },
+      },
+      include: {
+        campaign: {
+          include: {
+            campaignAdmin: {
+              include: {
+                admin: {
+                  include: {
+                    user: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+        creator: true,
+      },
+    });
+    await prisma.campaignTask.update({
+      where: {
+        id: video.taskId,
+      },
+      data: {
+        status: 'PENDING_REVIEW',
+      },
+    });
+    const [newDraftNotification] = await Promise.all([
+      saveNotification(finalDraft.creatorId, Title.Create, `Your draft has been successfully sent.`, Entity.User),
+      prisma.campaignTask.update({
+        where: { id: video.taskId },
+        data: { status: 'PENDING_REVIEW' },
+      }),
+    ]);
+    io.to(clients.get(finalDraft.creatorId)).emit('notification', newDraftNotification);
+    io.to(clients.get(finalDraft.creatorId)).emit('draft', finalDraft);
+    finalDraft.campaign.campaignAdmin.forEach(async (item: any, index: any) => {
+      const draftNoti = await saveNotification(
+        item.admin.user.id,
+        Title.Create,
+        `There's new draft from ${finalDraft.creator.name} for campaign ${finalDraft.campaign.name}`,
         Entity.Campaign,
       );
 

@@ -572,7 +572,7 @@ export const login = async (req: Request, res: Response) => {
       include: {
         admin: {
           include: {
-            AdminPermissionModule: {
+            adminPermissionModule: {
               include: {
                 module: true,
                 permission: true,
@@ -586,8 +586,8 @@ export const login = async (req: Request, res: Response) => {
             interests: true,
           },
         },
-        Pitch: true,
-        ShortListedCreator: true,
+        pitch: true,
+        shortlistCreator: true,
       },
     });
 
@@ -619,6 +619,9 @@ export const login = async (req: Request, res: Response) => {
     const session = req.session;
     session.userid = data.id;
     session.refreshToken = refreshToken;
+    session.role = data.role;
+    session.name = data.name || '';
+    session.photoURL = data.photoURL || '';
 
     res.cookie('userid', data.id, {
       maxAge: 60 * 60 * 24 * 1000, // 1 Day
@@ -660,7 +663,7 @@ export const updateProfileCreator = async (req: Request, res: Response) => {
         data: {
           state: state,
           address: address,
-          MediaKit: {
+          mediaKit: {
             upsert: {
               where: {
                 creatorId: creator?.id,
@@ -692,10 +695,7 @@ export const updateProfileCreator = async (req: Request, res: Response) => {
         data: {
           state: state,
           address: address,
-          MediaKit: {
-            // update: {
-            //   about: about,
-            // },
+          mediaKit: {
             upsert: {
               where: {
                 creatorId: creator?.id,

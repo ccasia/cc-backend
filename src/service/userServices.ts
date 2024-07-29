@@ -51,7 +51,7 @@ export const updateAdmin = async (
       include: {
         admin: {
           include: {
-            AdminPermissionModule: true,
+            adminPermissionModule: true,
           },
         },
       },
@@ -171,7 +171,7 @@ export const getUser = async (id: string) => {
     include: {
       admin: {
         include: {
-          AdminPermissionModule: {
+          adminPermissionModule: {
             select: {
               permission: true,
               module: true,
@@ -183,11 +183,11 @@ export const getUser = async (id: string) => {
         include: {
           industries: true,
           interests: true,
-          MediaKit: true,
+          mediaKit: true,
         },
       },
-      Pitch: true,
-      ShortListedCreator: true,
+      pitch: true,
+      shortlistCreator: true,
     },
   });
 
@@ -206,7 +206,7 @@ export const handleGetAdmins = async (userid: string) => {
       include: {
         admin: {
           include: {
-            AdminPermissionModule: {
+            adminPermissionModule: {
               select: {
                 permission: true,
                 module: true,
