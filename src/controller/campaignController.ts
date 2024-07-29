@@ -1120,6 +1120,7 @@ export const updateCampaignTimeline = async (req: Request, res: Response) => {
 
     await Promise.all(
       data.map(async (item: any) => {
+        console.log(item);
         const isExist = await prisma.campaignTask.findUnique({
           where: {
             id: item.campaignTasks.id,
