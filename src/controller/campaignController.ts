@@ -555,6 +555,20 @@ export const createCampaign = async (req: Request, res: Response) => {
 
       admins.map(async (admin: any) => {
         // TODO: "Foreign key constraint failed on the field: `CampaignAdmin_campaignId_fkey (index)`"
+
+        const existing = await prisma.campaignAdmin.findUnique({
+          where: {
+            adminId_campaignId: {
+              adminId: admin?.id,
+              campaignId: campaign?.id,
+            },
+          },
+        });
+
+        if (existing) {
+          return res.status(400).json({ message: 'Admin  exists' });
+        }
+
         await prisma.campaignAdmin.create({
           data: {
             campaignId: (campaign as any).id as any,
@@ -757,7 +771,7 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
 
     if (req.files && req.files.pitchVideo) {
       const { pitchVideo } = req.files as any;
-      const conn = await amqplib.connect('amqp://myuser:mypassword@34.1.203.152/nexea');
+      const conn = await amqplib.connect('amqp://host.docker.internal');
       const channel = await conn.createChannel();
       channel.assertQueue('uploadVideo', {
         durable: false,

@@ -148,25 +148,25 @@ app.get('/users', isLoggedIn, async (_req, res) => {
   }
 });
 
-// app.get('/outh', (req: Request, res: Response) => {
-//   const csrfState = Math.random().toString(36).substring(2);
-//   res.cookie('csrfState', csrfState, { maxAge: 60000 });
+app.get('/tiktokOuth', (req: Request, res: Response) => {
+  const csrfState = Math.random().toString(36).substring(2);
+  res.cookie('csrfState', csrfState, { maxAge: 60000 });
 
-//   let url = 'https://www.tiktok.com/v2/auth/authorize/';
+  let url = 'https://www.tiktok.com/v2/auth/authorize/';
 
-//   // the following params need to be in `application/x-www-form-urlencoded` format.
-//   url += `?client_key=${process.env.TIKTOK_CLIENT_KEY}`;
-//   url += '&scope=user.info.basic,user.info.profile,user.info.stats';
-//   url += '&response_type=code';
-//   url += '&redirect_uri=https://app.cultcreativeasia.com/dashboard/user/profile';
-//   url += '&state=' + csrfState;
+  // the following params need to be in `application/x-www-form-urlencoded` format.
+  url += `?client_key=${process.env.TIKTOK_CLIENT_KEY}`;
+  url += '&scope=user.info.basic,user.info.profile,user.info.stats';
+  url += '&response_type=code';
+  url += '&redirect_uri=https://app.cultcreativeasia.com/dashboard/user/profile';
+  url += '&state=' + csrfState;
 
-//   res.redirect(url);
-// });
+  res.json({ url: url });
+});
 
-// app.post('/tiktok/data', (req: Request, res: Response) => {
-//   const url = 'https://open.tiktokapis.com/v2/oauth/token/';
-// });
+app.post('/tiktok/data', (req: Request, res: Response) => {
+  const url = 'https://open.tiktokapis.com/v2/oauth/token/';
+});
 
 export const clients = new Map();
 
