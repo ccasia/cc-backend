@@ -340,17 +340,6 @@ interface Campaign {
   adminTest: [];
 }
 
-// A helper function for calls to `logChange`
-// We can't directly pass `req.session.userid` to the `adminId` parameter because the former is a `string | undefined`
-// TODO: If all arguments for `adminId` is `getAdminId(req)`, then consider merging this with `logChange`
-const getAdminId = (req: Request): string => {
-  const adminId = req.session.userid;
-  if (adminId === undefined) {
-    throw new Error('Admin ID is undefined');
-  }
-  return adminId;
-};
-
 export const createCampaign = async (req: Request, res: Response) => {
   const {
     campaignTitle,
@@ -377,20 +366,22 @@ export const createCampaign = async (req: Request, res: Response) => {
 
   try {
     const publicURL: any = [];
-    let agreementFormURL = '';
 
     if (req.files && req.files.campaignImages) {
       const images = (req.files as any).campaignImages as [];
-
       for (const item of images as any) {
-        const url = await uploadImage(item.tempFilePath, item.name, 'campaign');
-        publicURL.push(url);
+        // TODO TEMP: "Error uploading file: ENOENT: no such file or directory, open '/app/src/config/test-cs.json'"
+        /* const url = await uploadImage(item.tempFilePath, item.name, 'campaign');
+        publicURL.push(url); */
       }
     }
 
+    let agreementFormURL = '';
+
     if (req.files && req.files.agreementForm) {
       const form = (req.files as any).agreementForm;
-      agreementFormURL = await uploadAgreementForm(form.tempFilePath, form.name, 'agreementForm');
+      // TODO TEMP: "Error uploading file: ENOENT: no such file or directory, open '/app/src/config/test-cs.json'"
+      /* agreementFormURL = await uploadAgreementForm(form.tempFilePath, form.name, 'agreementForm'); */
     }
 
     await prisma.$transaction(async (tx) => {
@@ -426,7 +417,6 @@ export const createCampaign = async (req: Request, res: Response) => {
             data: {
               name: campaignTitle,
               description: campaignDescription,
-              // TODO BUG: This causes a type error
               status: campaignStage as CampaignStatus,
               company: {
                 connect: {
@@ -437,7 +427,6 @@ export const createCampaign = async (req: Request, res: Response) => {
                 create: {
                   title: campaignTitle,
                   objectives: campaignObjectives,
-                  // TODO: We have no storage permissions
                   images: publicURL.map((image: any) => image) || '',
                   agreementFrom: agreementFormURL,
                   startDate: dayjs(campaignStartDate) as any,
@@ -482,7 +471,6 @@ export const createCampaign = async (req: Request, res: Response) => {
           data: {
             name: campaignTitle,
             description: campaignDescription,
-            // TODO BUG: This causes a type error
             status: campaignStage as CampaignStatus,
             brand: {
               connect: {
@@ -493,7 +481,6 @@ export const createCampaign = async (req: Request, res: Response) => {
               create: {
                 title: campaignTitle,
                 objectives: campaignObjectives,
-                // TODO: We have no storage permissions
                 images: publicURL.map((image: any) => image) || '',
                 agreementFrom: agreementFormURL,
                 startDate: dayjs(campaignStartDate) as any,
@@ -554,7 +541,6 @@ export const createCampaign = async (req: Request, res: Response) => {
       });
 
       admins.map(async (admin: any) => {
-        // TODO: "Foreign key constraint failed on the field: `CampaignAdmin_campaignId_fkey (index)`"
         await prisma.campaignAdmin.create({
           data: {
             campaignId: (campaign as any).id as any,
@@ -576,7 +562,7 @@ export const createCampaign = async (req: Request, res: Response) => {
         io.to(clients.get(admin.id)).emit('notification', data);
       });
 
-      logChange('Created', campaign.id, getAdminId(req));
+      logChange('Created', campaign.id, req);
       return res.status(200).json({ campaign, message: 'Successfully created campaign' });
     });
   } catch (error) {
@@ -989,7 +975,13 @@ export const getPitchById = async (req: Request, res: Response) => {
 };
 
 export const editCampaignInfo = async (req: Request, res: Response) => {
-  const { id, name, description, campaignInterests, campaignIndustries } = req.body;
+  const {
+    id,
+    name,
+    description,
+    campaignInterests,
+    campaignIndustries,
+  } = req.body;
 
   try {
     const updatedCampaign = await prisma.campaign.update({
@@ -1013,7 +1005,7 @@ export const editCampaignInfo = async (req: Request, res: Response) => {
     });
 
     const message = 'Updated campaign info';
-    logChange(message, id, getAdminId(req));
+    logChange(message, id, req);
     return res.status(200).json({ message: message, ...updatedCampaign, ...updatedCampaignBrief });
   } catch (error) {
     return res.status(400).json(error);
@@ -1050,7 +1042,7 @@ export const editCampaignBrandOrCompany = async (req: Request, res: Response) =>
     });
 
     const message = `Updated ${brand ? 'brand' : 'company'}`;
-    logChange(message, updatedCampaign.id, getAdminId(req));
+    logChange(message, updatedCampaign.id, req);
     return res.status(200).json({ message: message, ...updatedCampaign });
   } catch (error) {
     return res.status(400).json(error);
@@ -1059,7 +1051,7 @@ export const editCampaignBrandOrCompany = async (req: Request, res: Response) =>
 
 export const editCampaignDosAndDonts = async (req: Request, res: Response) => {
   const {
-    id,
+    campaignId,
     campaignDo,
     campaignDont,
   } = req.body;
@@ -1067,7 +1059,7 @@ export const editCampaignDosAndDonts = async (req: Request, res: Response) => {
   try {
     const updatedCampaignBrief = await prisma.campaignBrief.update({
       where: {
-        campaignId: id,
+        campaignId: campaignId,
       },
       data: {
         campaigns_do: campaignDo,
@@ -1076,7 +1068,7 @@ export const editCampaignDosAndDonts = async (req: Request, res: Response) => {
     });
 
     const message = "Updated dos and don'ts";
-    logChange(message, id, getAdminId(req));
+    logChange(message, campaignId, req);
     return res.status(200).json({ message: message, ...updatedCampaignBrief });
   } catch (error) {
     return res.status(400).json(error);
@@ -1085,8 +1077,7 @@ export const editCampaignDosAndDonts = async (req: Request, res: Response) => {
 
 export const editCampaignRequirements = async (req: Request, res: Response) => {
   const {
-    // ID of campaign, not of campaign requirements
-    id,
+    campaignId,
     audienceGender,
     audienceAge,
     audienceLocation,
@@ -1098,7 +1089,7 @@ export const editCampaignRequirements = async (req: Request, res: Response) => {
   try {
     const updatedCampaignRequirement = await prisma.campaignRequirement.update({
       where: {
-        campaignId: id,
+        campaignId: campaignId,
       },
       data: {
         gender: audienceGender,
@@ -1111,8 +1102,8 @@ export const editCampaignRequirements = async (req: Request, res: Response) => {
     });
 
     const message = 'Updated requirements';
-    logChange(message, id, getAdminId(req));
-    return res.status(200).json({ message: message, ...updatedCampaignRequirement });
+    logChange(message, campaignId, req);
+    return res.status(200).json({ message: message, newRequirement: updatedCampaignRequirement });
   } catch (error) {
     return res.status(400).json(error);
   }
@@ -1241,7 +1232,7 @@ export const editCampaignTimeline = async (req: Request, res: Response) => {
     // });
 
     const message = 'Updated timeline';
-    logChange(message, id, getAdminId(req));
+    logChange(message, id, req);
     return res.status(200).json({ message: message });
   } catch (error) {
     console.log(error);
@@ -1531,53 +1522,3 @@ export const getCampaignPitchForCreator = async (req: Request, res: Response) =>
 //     return res.status(400).json(error);
 //   }
 // };
-
-export const editRequirement = async (req: Request, res: Response) => {
-  const {
-    campaignId,
-    audienceGender,
-    audienceAge,
-    audienceLocation,
-    audienceLanguage,
-    audienceCreatorPersona,
-    audienceUserPersona,
-  } = req.body;
-
-  try {
-    const requirement = await prisma.campaignRequirement.update({
-      where: {
-        campaignId: campaignId,
-      },
-      data: {
-        gender: audienceGender,
-        age: audienceAge,
-        geoLocation: audienceLocation,
-        language: audienceLanguage,
-        creator_persona: audienceCreatorPersona,
-        user_persona: audienceUserPersona,
-      },
-    });
-    return res.status(200).json({ message: 'Successfully updated', newRequirement: requirement });
-  } catch (error) {
-    return res.status(400).json(error);
-  }
-};
-
-export const editDosandDonts = async (req: Request, res: Response) => {
-  const { campaignId, campaignDo, campaignDont } = req.body;
-
-  try {
-    await prisma.campaignBrief.update({
-      where: {
-        campaignId: campaignId,
-      },
-      data: {
-        campaigns_do: campaignDo,
-        campaigns_dont: campaignDont,
-      },
-    });
-    return res.status(200).json({ message: 'Successfully updated' });
-  } catch (error) {
-    return res.status(400).json(error);
-  }
-};

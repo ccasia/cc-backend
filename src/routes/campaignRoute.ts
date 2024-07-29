@@ -15,15 +15,13 @@ import {
   editCampaignBrandOrCompany,
   editCampaignDosAndDonts,
   editCampaignRequirements,
+  editCampaignTimeline,
   // updateTimeLineType,
-  updateCampaignTimeline,
   getFirstDraft,
   changePitchStatus,
   getCampaignsByCreatorId,
   getCampaignForCreatorById,
   getCampaignPitchForCreator,
-  editRequirement,
-  editDosandDonts,
 } from 'src/controller/campaignController';
 import { isSuperAdmin } from 'src/middleware/onlySuperadmin';
 import {
@@ -75,8 +73,6 @@ router.patch('/editCampaignDosAndDonts', isSuperAdmin, editCampaignDosAndDonts);
 router.patch('/editCampaignRequirements', isSuperAdmin, editCampaignRequirements);
 router.patch('/editCampaignTimeline/:id', isSuperAdmin, editCampaignTimeline);
 router.patch('/changePitchStatus', changePitchStatus);
-router.patch('/editRequirement', isSuperAdmin, editRequirement);
-router.patch('/editDosandDonts', isSuperAdmin, editDosandDonts);
 
 router.delete('/timelineType/:id', isSuperAdmin, deleteTimelineType);
 
