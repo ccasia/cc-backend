@@ -1079,6 +1079,7 @@ export const updateCampaignTimeline = async (req: Request, res: Response) => {
         campaignTimeline: true,
         campaignBrief: true,
         campaignAdmin: true,
+        campaignTasks: true,
       },
     });
 
@@ -1118,28 +1119,28 @@ export const updateCampaignTimeline = async (req: Request, res: Response) => {
       }),
     );
 
-    await Promise.all(
-      data.map(async (item: any) => {
-        console.log(item);
-        const isExist = await prisma.campaignTask.findUnique({
-          where: {
-            id: item.campaignTasks.id,
-          },
-        });
+    // await Promise.all(
+    //   data.map(async (item: any) => {
+    //     // console.log(item);
+    //     const isExist = await prisma.campaignTask.findUnique({
+    //       where: {
+    //         id: item.campaignTasks.id,
+    //       },
+    //     });
 
-        if (isExist) {
-          await prisma.campaignTask.update({
-            where: {
-              id: item.campaignTasks.id,
-            },
-            data: {
-              startDate: dayjs(item.startDate) as any,
-              endDate: dayjs(item.endDate) as any,
-            },
-          });
-        }
-      }),
-    );
+    //     if (isExist) {
+    //       await prisma.campaignTask.update({
+    //         where: {
+    //           id: item.campaignTasks.id,
+    //         },
+    //         data: {
+    //           startDate: dayjs(item.startDate) as any,
+    //           endDate: dayjs(item.endDate) as any,
+    //         },
+    //       });
+    //     }
+    //   }),
+    // );
 
     await prisma.campaignBrief.update({
       where: {
@@ -1190,7 +1191,7 @@ export const updateCampaignTimeline = async (req: Request, res: Response) => {
     //     });
     // });
 
-    return res.status(200).json({ message: 'Updated timeline' });
+    return res.status(200).json({ message: 'Timeline Updated.' });
   } catch (error) {
     console.log(error);
     return res.status(400).json(error);
