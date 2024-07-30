@@ -13,15 +13,15 @@ import {
   // rejectPitch,
   editCampaignInfo,
   editCampaignBrandOrCompany,
+  editCampaignDosAndDonts,
+  editCampaignRequirements,
+  editCampaignTimeline,
   // updateTimeLineType,
-  updateCampaignTimeline,
   getFirstDraft,
   changePitchStatus,
   getCampaignsByCreatorId,
   getCampaignForCreatorById,
   getCampaignPitchForCreator,
-  editRequirement,
-  editDosandDonts,
 } from 'src/controller/campaignController';
 import { isSuperAdmin } from 'src/middleware/onlySuperadmin';
 import {
@@ -69,10 +69,10 @@ router.patch('/changeCampaignStage/:campaignId', changeCampaignStage);
 router.patch('/closeCampaign/:id', isSuperAdmin, closeCampaign);
 router.patch('/editCampaignInfo', isSuperAdmin, editCampaignInfo);
 router.patch('/editCampaignBrandOrCompany', isSuperAdmin, editCampaignBrandOrCompany);
-router.patch('/updateCampaignTimeline/:id', isSuperAdmin, updateCampaignTimeline);
+router.patch('/editCampaignDosAndDonts', isSuperAdmin, editCampaignDosAndDonts);
+router.patch('/editCampaignRequirements', isSuperAdmin, editCampaignRequirements);
+router.patch('/editCampaignTimeline/:id', isSuperAdmin, editCampaignTimeline);
 router.patch('/changePitchStatus', changePitchStatus);
-router.patch('/editRequirement', isSuperAdmin, editRequirement);
-router.patch('/editDosandDonts', isSuperAdmin, editDosandDonts);
 
 router.delete('/timelineType/:id', isSuperAdmin, deleteTimelineType);
 
