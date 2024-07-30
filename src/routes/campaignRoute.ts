@@ -22,6 +22,7 @@ import {
   getCampaignPitchForCreator,
   editRequirement,
   editDosandDonts,
+  matchCampaignWithCreator,
 } from 'src/controller/campaignController';
 import { isSuperAdmin } from 'src/middleware/onlySuperadmin';
 import {
@@ -48,6 +49,7 @@ const router = Router();
 router.get('/getAllCampaignsByAdminID', isSuperAdmin, getAllCampaigns);
 router.get('/getCampaignById/:id', isSuperAdmin, getCampaignById);
 router.get('/getAllActiveCampaign', getAllActiveCampaign);
+router.get('/matchCampaignWithCreator', matchCampaignWithCreator);
 router.get('/pitch/:id', getPitchById);
 router.get('/firstDraft', getFirstDraft);
 router.get('/timelineType', isSuperAdmin, getTimelineType);

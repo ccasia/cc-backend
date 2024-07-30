@@ -714,6 +714,179 @@ export const getCampaignById = async (req: Request, res: Response) => {
   }
 };
 
+export const matchCampaignWithCreator = async (req: Request, res: Response) => {
+  const { userid } = req.session;
+  try {
+    const campaigns = await prisma.campaign.findMany({
+      where: {
+        status: 'ACTIVE',
+      },
+      include: {
+        campaignBrief: true,
+        campaignRequirement: true,
+        campaignTimeline: true,
+        brand: true,
+        company: true,
+        pitch: true,
+      },
+    });
+console.log(campaigns)
+    const user = await prisma.user.findUnique({
+      where: {
+        id: userid,
+      },
+      include: {
+        creator: {
+          include: {
+            interests: true,
+            industries: true,
+          },
+        },
+      },
+    });
+    const matchCampaign = (user: any, campaign: any) => {
+      // compare campaign with user
+      // const gender = ['nonbinary', 'female', 'male'];
+      const lang2 = user?.creator?.languages.includes('Mandarin')
+        ? [...user?.creator?.languages, 'Chinese']
+        : [...user?.creator?.languages];
+      let newGender2 = '';
+      if (user?.creator.pronounce === 'he/him') {
+        newGender2 = 'male';
+      } else if (user?.creator.pronounce === 'she/her') {
+        newGender2 = 'female';
+      } else {
+        newGender2 = 'nonbinary';
+      }
+
+      let match = {
+        languages: false,
+        interests: false,
+        gender: false,
+        age: false,
+        location: false,
+      };
+
+      function hasCommonElement(arr1: string[], arr2: string[]): boolean {
+        return arr1.some((value) => arr2.includes(value));
+      }
+      const languagesMatch = hasCommonElement(campaign?.campaignRequirement?.language || [], lang2);
+
+      if (languagesMatch) {
+        match.languages = true;
+      }
+
+      if (campaign?.campaignRequirement?.gender.includes(newGender2)) {
+        match.gender = true;
+      }
+      // age
+      const birthDate = new Date(user?.creator?.birthDate);
+      const today = new Date();
+
+      let age = today.getFullYear() - birthDate.getFullYear();
+      const monthDifference = today.getMonth() - birthDate.getMonth();
+
+      if (monthDifference < 0 || (monthDifference === 0 && today.getDate() < birthDate.getDate())) {
+        age--;
+      }
+
+      function isAgeInRange(age: number, ranges: string[]): boolean {
+        return ranges.some((range) => {
+          const [min, max] = range.split('-').map(Number);
+          return age >= min && age <= max;
+        });
+      }
+      const finalAge = isAgeInRange(age, campaign?.campaignRequirement?.age);
+
+      if (finalAge) {
+        match.age = true;
+      }
+      // location
+      let location: any = [];
+      const mainCitiesInMalaysia: string[] = [
+        'Kuala Lumpur',
+        'George Town',
+        'Ipoh',
+        'Johor Bahru',
+        'Malacca City',
+        'Alor Setar',
+        'Kota Kinabalu',
+        'Kuching',
+        'Shah Alam',
+        'Petaling Jaya',
+        'Iskandar Puteri',
+        'Seberang Perai',
+        'Seremban',
+        'Kuantan',
+        'Kuala Terengganu',
+        'Miri',
+        'Sibu',
+        'Sandakan',
+        'Tawau',
+      ];
+
+      if (campaign?.campaignRequirement?.geoLocation.includes('MainCities')) {
+        location = [...campaign?.campaignRequirement?.geoLocation, ...mainCitiesInMalaysia];
+      } else {
+        location = campaign?.campaignRequirement?.geoLocation;
+      }
+
+      const locationMatch = location.includes(user?.creator?.location);
+
+      if (locationMatch) {
+        match.location = true;
+      }
+      // interests
+      // map interset out of objects
+      const interestArr = user?.creator?.interests.map((item: any) => item.name);
+      function hasCommonElement2(arr1: string[], arr2: string[]): boolean {
+        return arr1.some((value) => arr2.includes(value));
+      }
+
+      const interestsMatch = hasCommonElement2(campaign?.campaignBrief?.interests || [], interestArr);
+
+      if (interestsMatch) {
+        match.interests = true;
+      }
+
+      function allMatchTrue(match: any): boolean {
+        return Object.values(match).every((value) => value === true);
+      }
+
+      const finalMatch = allMatchTrue(match);
+      return finalMatch;
+    };
+
+    function getPercentageMatch(user: any, campaign: any) {
+      const interestArr = user?.creator?.interests.map((item: any) => item.name);
+      const campInterest = campaign?.campaignBrief?.interests;
+
+      function getMatchingElements(arr1: string[], arr2: string[]): string[] {
+        return arr1.filter((value) => arr2.includes(value));
+      }
+
+      const matchedInterests = getMatchingElements(interestArr, campInterest);
+
+      const percantage = (matchedInterests.length / campInterest.length) * 100;
+
+      return percantage;
+    }
+
+    const matchedCampaign = campaigns.filter((item) => matchCampaign(user, item));
+
+    const matchedCampaignWithPercentage = matchedCampaign.map((item) => {
+      return {
+        ...item,
+        percentageMatch: getPercentageMatch(user, item),
+      };
+    });
+
+    return res.status(200).json(matchedCampaignWithPercentage);
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
 export const getAllActiveCampaign = async (_req: Request, res: Response) => {
   try {
     const campaigns = await prisma.campaign.findMany({
