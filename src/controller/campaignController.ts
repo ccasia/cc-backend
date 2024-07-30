@@ -340,17 +340,6 @@ interface Campaign {
   adminTest: [];
 }
 
-// A helper function for calls to `logChange`
-// We can't directly pass `req.session.userid` to the `adminId` parameter because the former is a `string | undefined`
-// TODO: If all arguments for `adminId` is `getAdminId(req)`, then consider merging this with `logChange`
-const getAdminId = (req: Request): string => {
-  const adminId = req.session.userid;
-  if (adminId === undefined) {
-    throw new Error('Admin ID is undefined');
-  }
-  return adminId;
-};
-
 export const createCampaign = async (req: Request, res: Response) => {
   const {
     campaignTitle,
@@ -377,19 +366,21 @@ export const createCampaign = async (req: Request, res: Response) => {
 
   try {
     const publicURL: any = [];
-    let agreementFormURL = '';
 
     if (req.files && req.files.campaignImages) {
       const images = (req.files as any).campaignImages as [];
-
       for (const item of images as any) {
+        // TODO TEMP: "Error uploading file: ENOENT: no such file or directory, open '/app/src/config/test-cs.json'"
         const url = await uploadImage(item.tempFilePath, item.name, 'campaign');
         publicURL.push(url);
       }
     }
 
+    let agreementFormURL = '';
+
     if (req.files && req.files.agreementForm) {
       const form = (req.files as any).agreementForm;
+      // TODO TEMP: "Error uploading file: ENOENT: no such file or directory, open '/app/src/config/test-cs.json'"
       agreementFormURL = await uploadAgreementForm(form.tempFilePath, form.name, 'agreementForm');
     }
 
@@ -426,7 +417,6 @@ export const createCampaign = async (req: Request, res: Response) => {
             data: {
               name: campaignTitle,
               description: campaignDescription,
-              // TODO BUG: This causes a type error
               status: campaignStage as CampaignStatus,
               company: {
                 connect: {
@@ -437,7 +427,6 @@ export const createCampaign = async (req: Request, res: Response) => {
                 create: {
                   title: campaignTitle,
                   objectives: campaignObjectives,
-                  // TODO: We have no storage permissions
                   images: publicURL.map((image: any) => image) || '',
                   agreementFrom: agreementFormURL,
                   startDate: dayjs(campaignStartDate) as any,
@@ -482,7 +471,6 @@ export const createCampaign = async (req: Request, res: Response) => {
           data: {
             name: campaignTitle,
             description: campaignDescription,
-            // TODO BUG: This causes a type error
             status: campaignStage as CampaignStatus,
             brand: {
               connect: {
@@ -493,7 +481,6 @@ export const createCampaign = async (req: Request, res: Response) => {
               create: {
                 title: campaignTitle,
                 objectives: campaignObjectives,
-                // TODO: We have no storage permissions
                 images: publicURL.map((image: any) => image) || '',
                 agreementFrom: agreementFormURL,
                 startDate: dayjs(campaignStartDate) as any,
@@ -554,8 +541,6 @@ export const createCampaign = async (req: Request, res: Response) => {
       });
 
       admins.map(async (admin: any) => {
-        // TODO: "Foreign key constraint failed on the field: `CampaignAdmin_campaignId_fkey (index)`"
-
         const existing = await prisma.campaignAdmin.findUnique({
           where: {
             adminId_campaignId: {
@@ -590,7 +575,7 @@ export const createCampaign = async (req: Request, res: Response) => {
         io.to(clients.get(admin.id)).emit('notification', data);
       });
 
-      logChange('Created', campaign.id, getAdminId(req));
+      logChange('Created', campaign.id, req);
       return res.status(200).json({ campaign, message: 'Successfully created campaign' });
     });
   } catch (error) {
@@ -944,30 +929,35 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
 
     if (req.files && req.files.pitchVideo) {
       const { pitchVideo } = req.files as any;
-      const conn = await amqplib.connect('amqp://myuser:mypassword@34.1.203.152/nexea');
-      const channel = await conn.createChannel();
-      channel.assertQueue('uploadVideo', {
-        durable: false,
-      });
+
+      // RABBITMQ
+      // const conn = await amqplib.connect(`${process.env.RABBIT_MQ}`);
+      // const channel = await conn.createChannel();
+      // channel.assertQueue('uploadVideo', {
+      //   durable: true,
+      // });
+
+      const publicURL = await uploadPitchVideo(pitchVideo.tempFilePath, pitchVideo.name, 'pitchVideo');
 
       const pitch = await prisma.pitch.create({
         data: {
           type: 'video',
           campaignId: campaign?.id,
           userId: creator?.id,
-          content: '',
+          content: publicURL,
+          status: 'undecided',
         },
       });
 
-      channel.sendToQueue(
-        'uploadVideo',
-        Buffer.from(
-          JSON.stringify({
-            content: pitchVideo,
-            pitchId: pitch.id,
-          }),
-        ),
-      );
+      // channel.sendToQueue(
+      //   'uploadVideo',
+      //   Buffer.from(
+      //     JSON.stringify({
+      //       content: pitchVideo,
+      //       pitchId: pitch.id,
+      //     }),
+      //   ),
+      // );
     } else {
       await prisma.pitch.create({
         data: {
@@ -1189,7 +1179,7 @@ export const editCampaignInfo = async (req: Request, res: Response) => {
       },
     });
 
-    await prisma.campaignBrief.update({
+    const updatedCampaignBrief = await prisma.campaignBrief.update({
       where: {
         campaignId: id,
       },
@@ -1200,8 +1190,8 @@ export const editCampaignInfo = async (req: Request, res: Response) => {
     });
 
     const message = 'Updated campaign info';
-    logChange(message, id, getAdminId(req));
-    return res.status(200).json({ message: message, ...updatedCampaign });
+    logChange(message, id, req);
+    return res.status(200).json({ message: message, ...updatedCampaign, ...updatedCampaignBrief });
   } catch (error) {
     return res.status(400).json(error);
   }
@@ -1216,9 +1206,15 @@ export const editCampaignBrandOrCompany = async (req: Request, res: Response) =>
 
   try {
     // If `null`, then `campaignBrand.id` is a company ID
-    const brand = await prisma.brand.findUnique({ where: { id: campaignBrand.id } });
+    const brand = await prisma.brand.findUnique({
+      where: {
+        id: campaignBrand.id,
+      },
+    });
     const updatedCampaign = await prisma.campaign.update({
-      where: { id: id },
+      where: {
+        id: id,
+      },
       data: brand
         ? {
             brandId: campaignBrand.id,
@@ -1231,14 +1227,70 @@ export const editCampaignBrandOrCompany = async (req: Request, res: Response) =>
     });
 
     const message = `Updated ${brand ? 'brand' : 'company'}`;
-    logChange(message, updatedCampaign.id, getAdminId(req));
+    logChange(message, updatedCampaign.id, req);
     return res.status(200).json({ message: message, ...updatedCampaign });
   } catch (error) {
     return res.status(400).json(error);
   }
 };
 
-export const updateCampaignTimeline = async (req: Request, res: Response) => {
+export const editCampaignDosAndDonts = async (req: Request, res: Response) => {
+  const { campaignId, campaignDo, campaignDont } = req.body;
+
+  try {
+    const updatedCampaignBrief = await prisma.campaignBrief.update({
+      where: {
+        campaignId: campaignId,
+      },
+      data: {
+        campaigns_do: campaignDo,
+        campaigns_dont: campaignDont,
+      },
+    });
+
+    const message = "Updated dos and don'ts";
+    logChange(message, campaignId, req);
+    return res.status(200).json({ message: message, ...updatedCampaignBrief });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const editCampaignRequirements = async (req: Request, res: Response) => {
+  const {
+    campaignId,
+    audienceGender,
+    audienceAge,
+    audienceLocation,
+    audienceLanguage,
+    audienceCreatorPersona,
+    audienceUserPersona,
+  } = req.body;
+
+  try {
+    const updatedCampaignRequirement = await prisma.campaignRequirement.update({
+      where: {
+        campaignId: campaignId,
+      },
+      data: {
+        gender: audienceGender,
+        age: audienceAge,
+        geoLocation: audienceLocation,
+        language: audienceLanguage,
+        creator_persona: audienceCreatorPersona,
+        user_persona: audienceUserPersona,
+      },
+    });
+
+    const message = 'Updated requirements';
+    logChange(message, campaignId, req);
+    return res.status(200).json({ message: message, newRequirement: updatedCampaignRequirement });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const editCampaignTimeline = async (req: Request, res: Response) => {
   const { id } = req.params;
 
   const { timeline, campaignStartDate, campaignEndDate } = req.body;
@@ -1252,6 +1304,7 @@ export const updateCampaignTimeline = async (req: Request, res: Response) => {
         campaignTimeline: true,
         campaignBrief: true,
         campaignAdmin: true,
+        campaignTasks: true,
       },
     });
 
@@ -1291,28 +1344,28 @@ export const updateCampaignTimeline = async (req: Request, res: Response) => {
       }),
     );
 
-    await Promise.all(
-      data.map(async (item: any) => {
-        console.log(item);
-        const isExist = await prisma.campaignTask.findUnique({
-          where: {
-            id: item.campaignTasks.id,
-          },
-        });
+    // await Promise.all(
+    //   data.map(async (item: any) => {
+    //     // console.log(item);
+    //     const isExist = await prisma.campaignTask.findUnique({
+    //       where: {
+    //         id: item.campaignTasks.id,
+    //       },
+    //     });
 
-        if (isExist) {
-          await prisma.campaignTask.update({
-            where: {
-              id: item.campaignTasks.id,
-            },
-            data: {
-              startDate: dayjs(item.startDate) as any,
-              endDate: dayjs(item.endDate) as any,
-            },
-          });
-        }
-      }),
-    );
+    //     if (isExist) {
+    //       await prisma.campaignTask.update({
+    //         where: {
+    //           id: item.campaignTasks.id,
+    //         },
+    //         data: {
+    //           startDate: dayjs(item.startDate) as any,
+    //           endDate: dayjs(item.endDate) as any,
+    //         },
+    //       });
+    //     }
+    //   }),
+    // );
 
     await prisma.campaignBrief.update({
       where: {
@@ -1363,7 +1416,9 @@ export const updateCampaignTimeline = async (req: Request, res: Response) => {
     //     });
     // });
 
-    return res.status(200).json({ message: 'Updated timeline' });
+    const message = 'Updated timeline';
+    logChange(message, id, req);
+    return res.status(200).json({ message: message });
   } catch (error) {
     console.log(error);
     return res.status(400).json(error);
@@ -1652,53 +1707,3 @@ export const getCampaignPitchForCreator = async (req: Request, res: Response) =>
 //     return res.status(400).json(error);
 //   }
 // };
-
-export const editRequirement = async (req: Request, res: Response) => {
-  const {
-    campaignId,
-    audienceGender,
-    audienceAge,
-    audienceLocation,
-    audienceLanguage,
-    audienceCreatorPersona,
-    audienceUserPersona,
-  } = req.body;
-
-  try {
-    const requirement = await prisma.campaignRequirement.update({
-      where: {
-        campaignId: campaignId,
-      },
-      data: {
-        gender: audienceGender,
-        age: audienceAge,
-        geoLocation: audienceLocation,
-        language: audienceLanguage,
-        creator_persona: audienceCreatorPersona,
-        user_persona: audienceUserPersona,
-      },
-    });
-    return res.status(200).json({ message: 'Successfully updated', newRequirement: requirement });
-  } catch (error) {
-    return res.status(400).json(error);
-  }
-};
-
-export const editDosandDonts = async (req: Request, res: Response) => {
-  const { campaignId, campaignDo, campaignDont } = req.body;
-
-  try {
-    await prisma.campaignBrief.update({
-      where: {
-        campaignId: campaignId,
-      },
-      data: {
-        campaigns_do: campaignDo,
-        campaigns_dont: campaignDont,
-      },
-    });
-    return res.status(200).json({ message: 'Successfully updated' });
-  } catch (error) {
-    return res.status(400).json(error);
-  }
-};

@@ -143,7 +143,6 @@ export const uploadPitchVideo = async (tempFilePath: string, fileName: string, f
 
     // Construct the public URL
     const publicURL = `https://storage.googleapis.com/${bucketName}/${destination}`;
-    io.emit('notification', 'NATEBODI');
     return publicURL;
   } catch (err) {
     throw new Error(`Error uploading file: ${err.message}`);
