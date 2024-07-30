@@ -771,10 +771,10 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
 
     if (req.files && req.files.pitchVideo) {
       const { pitchVideo } = req.files as any;
-      const conn = await amqplib.connect(`${`${process.env.RABBIT_MQ}`}`);
+      const conn = await amqplib.connect(`${process.env.RABBIT_MQ}`);
       const channel = await conn.createChannel();
       channel.assertQueue('uploadVideo', {
-        durable: false,
+        durable: true,
       });
 
       const pitch = await prisma.pitch.create({
