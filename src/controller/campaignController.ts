@@ -756,30 +756,35 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
 
     if (req.files && req.files.pitchVideo) {
       const { pitchVideo } = req.files as any;
-      const conn = await amqplib.connect(`${process.env.RABBIT_MQ}`);
-      const channel = await conn.createChannel();
-      channel.assertQueue('uploadVideo', {
-        durable: true,
-      });
+
+      // RABBITMQ
+      // const conn = await amqplib.connect(`${process.env.RABBIT_MQ}`);
+      // const channel = await conn.createChannel();
+      // channel.assertQueue('uploadVideo', {
+      //   durable: true,
+      // });
+
+      const publicURL = await uploadPitchVideo(pitchVideo.tempFilePath, pitchVideo.name, 'pitchVideo');
 
       const pitch = await prisma.pitch.create({
         data: {
           type: 'video',
           campaignId: campaign?.id,
           userId: creator?.id,
-          content: '',
+          content: publicURL,
+          status: 'undecided',
         },
       });
 
-      channel.sendToQueue(
-        'uploadVideo',
-        Buffer.from(
-          JSON.stringify({
-            content: pitchVideo,
-            pitchId: pitch.id,
-          }),
-        ),
-      );
+      // channel.sendToQueue(
+      //   'uploadVideo',
+      //   Buffer.from(
+      //     JSON.stringify({
+      //       content: pitchVideo,
+      //       pitchId: pitch.id,
+      //     }),
+      //   ),
+      // );
     } else {
       await prisma.pitch.create({
         data: {
@@ -988,13 +993,7 @@ export const getPitchById = async (req: Request, res: Response) => {
 };
 
 export const editCampaignInfo = async (req: Request, res: Response) => {
-  const {
-    id,
-    name,
-    description,
-    campaignInterests,
-    campaignIndustries,
-  } = req.body;
+  const { id, name, description, campaignInterests, campaignIndustries } = req.body;
 
   try {
     const updatedCampaign = await prisma.campaign.update({
@@ -1063,11 +1062,7 @@ export const editCampaignBrandOrCompany = async (req: Request, res: Response) =>
 };
 
 export const editCampaignDosAndDonts = async (req: Request, res: Response) => {
-  const {
-    campaignId,
-    campaignDo,
-    campaignDont,
-  } = req.body;
+  const { campaignId, campaignDo, campaignDont } = req.body;
 
   try {
     const updatedCampaignBrief = await prisma.campaignBrief.update({
