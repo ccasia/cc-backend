@@ -1534,3 +1534,26 @@ export const getCampaignPitchForCreator = async (req: Request, res: Response) =>
 //     return res.status(400).json(error);
 //   }
 // };
+
+export const getCampaignLog = async (req: Request, res: Response) => {
+  console.log('=== BEGIN getCampaignLog ===');
+  console.log(req.params);
+  console.log('=== END getCampaignLog ===');
+
+  const { id } = req.params;
+
+  try {
+    const campaignLog = await prisma.campaignLog.findMany({
+      where: {
+        campaignId: id,
+      },
+    });
+    return res.status(200).json(campaignLog);
+  } catch (error) {
+    // TODO TEMP
+    console.log('=== BEGIN getCampaignLog error ===');
+    console.log(error);
+    console.log('=== END getCampaignLog error ===');
+    return res.status(400).json(error);
+  }
+};
