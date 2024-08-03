@@ -23,6 +23,7 @@
       "resolveJsonModule": true,
       "removeComments": true,
       
+      
   
       "strictNullChecks": true, // Enable strict null checks
       "strictFunctionTypes": true, // Enable strict checking of function types
@@ -41,7 +42,6 @@
     },
     "include": [
       "src/**/*", // Include all files in the src directory
-      "../**/*.test.ts", "src/test",
     ],
     "exclude": [
       "node_modules", // Exclude the node_modules directory

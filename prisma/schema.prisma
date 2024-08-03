@@ -25,19 +25,15 @@ model User {
   event              Event?               @relation(fields: [eventId], references: [id])
   eventId            String?
   pitch              Pitch[]
-  shortlistCreator   ShortListedCreator[]
+  shortlisted        ShortListedCreator[]
   campaignTasks      CampaignTask[]
   notiifcationStatus NotificationStatus[]
   campaignLogs       CampaignLog[]
-
   threads            Thread[]             @relation("UserThreads")
   UserThread         UserThread[]
   sentMessages       Message[]            @relation("UserMessages")
-
-  campaignAgreement  CampaignAgreement[]
   feedback           Feedback[]
   submission         Submission[]
-
 }
 
 model Admin {
@@ -118,7 +114,6 @@ model UserThread {
 
   @@id([userId, threadId])
 }
-
 
 model Industry {
   id      String  @id @unique @default(cuid())
@@ -250,30 +245,27 @@ model SupSupBrand {
 
 //campaign peroid and intervals
 model Campaign {
-  id                  String               @id @unique @default(cuid())
-  name                String
-  description         String
-  status              CampaignStatus       @default(SCHEDULED)
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
-  brand               Brand?               @relation(fields: [brandId], references: [id])
-  brandId             String?
-  company             Company?             @relation(fields: [companyId], references: [id])
-  companyId           String?
-  campaignBrief       CampaignBrief?
-  campaignRequirement CampaignRequirement?
-  campaignAdmin       CampaignAdmin[]
-  pitch               Pitch[]
-  shortlistCreator    ShortListedCreator[]
-  campaignTasks       CampaignTask[]
-  campaignTimeline    CampaignTimeline[]
-  campaignLogs        CampaignLog[]
-
-  thread                  Thread?
-
-  campaignAgreement   CampaignAgreement[]
-  submission          Submission[]
-
+  id                            String                          @id @unique @default(cuid())
+  name                          String
+  description                   String
+  status                        CampaignStatus                  @default(SCHEDULED)
+  createdAt                     DateTime                        @default(now())
+  updatedAt                     DateTime                        @updatedAt
+  brand                         Brand?                          @relation(fields: [brandId], references: [id])
+  brandId                       String?
+  company                       Company?                        @relation(fields: [companyId], references: [id])
+  companyId                     String?
+  campaignBrief                 CampaignBrief?
+  campaignRequirement           CampaignRequirement?
+  campaignAdmin                 CampaignAdmin[]
+  pitch                         Pitch[]
+  shortlisted                   ShortListedCreator[]
+  campaignTasks                 CampaignTask[]
+  campaignTimeline              CampaignTimeline[]
+  campaignLogs                  CampaignLog[]
+  thread                        Thread?
+  submission                    Submission[]
+  campaignSubmissionRequirement CampaignSubmissionRequirement[]
 }
 
 model CampaignAdmin {
@@ -435,20 +427,22 @@ model TimelineTypeDefault {
 }
 
 model CampaignTimeline {
-  id            String         @id @unique @default(cuid())
-  name          String
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  for           String?
-  description   String?
-  duration      Int
-  startDate     DateTime
-  endDate       DateTime
-  campaignId    String
-  order         Int
-  status        TimelineStatus @default(OPEN)
-  campaign      Campaign?      @relation(references: [id], fields: [campaignId])
-  campaignTasks CampaignTask[]
+  id               String          @id @unique @default(cuid())
+  name             String
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  for              String?
+  description      String?
+  duration         Int
+  startDate        DateTime
+  endDate          DateTime
+  campaignId       String
+  order            Int
+  status           TimelineStatus  @default(OPEN)
+  campaign         Campaign?       @relation(references: [id], fields: [campaignId])
+  campaignTasks    CampaignTask[]
+  submissionTypeId String?
+  submissionType   SubmissionType? @relation(references: [id], fields: [submissionTypeId])
 }
 
 enum TimelineStatus {
@@ -476,6 +470,8 @@ model Pitch {
   status     PitchStatus? @default(pending)
   content    String       @default("test")
   createdAt  DateTime     @default(now())
+
+  @@unique([userId, campaignId])
 }
 
 enum PitchType {
@@ -492,34 +488,37 @@ enum PitchStatus {
 }
 
 model ShortListedCreator {
-  shortlisted_date DateTime @default(now())
-  creatorId        String
-  creator          User     @relation(fields: [creatorId], references: [id])
+  id               String   @id @default(cuid())
+  // creatorId        String
+  // creator          User     @relation(fields: [creatorId], references: [id])
   campaign         Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   campaignId       String
+  userId           String?
+  shortlisted_date DateTime @default(now())
+  user             User?    @relation(fields: [userId], references: [id])
 
-  @@unique([creatorId, campaignId])
-  @@index([creatorId])
+  @@unique([userId, campaignId])
+  @@index([userId])
 }
 
 model FirstDraft {
-  id         String       @id @unique @default(cuid())
-  caption    String
-  draftURL   String
-  submission Submission   @relation(fields: [id], references: [id], onDelete: Cascade)
-  status     DraftStatus?
-  createdAt  DateTime     @default(now())
-  updatedAt  DateTime     @updatedAt
+  id        String       @id @unique @default(cuid())
+  caption   String
+  draftURL  String
+  // submission Submission   @relation(fields: [id], references: [id], onDelete: Cascade)
+  status    DraftStatus?
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
 }
 
 model FinalDraft {
-  id         String       @id @unique @default(cuid())
-  caption    String
-  draftURL   String
-  submission Submission   @relation(fields: [id], references: [id], onDelete: Cascade)
-  status     DraftStatus?
-  createdAt  DateTime     @default(now())
-  updatedAt  DateTime     @updatedAt
+  id        String       @id @unique @default(cuid())
+  caption   String
+  draftURL  String
+  // submission Submission   @relation(fields: [id], references: [id], onDelete: Cascade)
+  status    DraftStatus?
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
 }
 
 enum DraftStatus {
@@ -559,7 +558,8 @@ model CampaignTask {
   updatedAd              DateTime                 @updatedAt
   campaignTaskDependency CampaignTaskDependency[] @relation("CampaignTask")
   dependsOnCampaignTask  CampaignTaskDependency[] @relation("DependsOnCampaignTask")
-  submission             Submission?
+  // submission             Submission?              @relation(fields: [submissionId], references: [id])
+  submissionId           String?
 }
 
 model CampaignTaskDependency {
@@ -606,30 +606,71 @@ model NotificationStatus {
   @@unique([userId, notificationId])
 }
 
-model CampaignAgreement {
-  campaignId   String
-  creatorId    String
-  campaign     Campaign @relation(references: [id], fields: [campaignId])
-  creator      User     @relation(references: [id], fields: [creatorId])
-  agreementUrl String
+// model CampaignAgreement {
+//   campaignId   String
+//   creatorId    String
+//   campaign     Campaign @relation(references: [id], fields: [campaignId])
+//   creator      User     @relation(references: [id], fields: [creatorId])
+//   agreementUrl String
 
-  @@id([campaignId, creatorId])
+//   @@id([campaignId, creatorId])
+// }
+
+// model Submission {
+//   id             String         @id @unique @default(cuid())
+//   creatorId      String
+//   campaignTaskId String         @unique
+//   campaignId     String
+//   type           SubmissionType
+//   firstDraft     FirstDraft?
+//   finalDraft     FinalDraft?
+//   content        String?
+//   feedback       Feedback?
+//   campaignTask   CampaignTask   @relation(fields: [campaignTaskId], references: [id])
+//   creator        User           @relation(fields: [creatorId], references: [id])
+//   campaign       Campaign       @relation(fields: [campaignId], references: [id])
+//   finalDraftId   String?
+// }
+
+// This modal is 
+model Submission {
+  id               String         @id @default(cuid())
+  content          String
+  caption          String?
+  campaignId       String
+  status           TaskStatus     @default(NOT_STARTED)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  userId           String
+  submissionTypeId String
+  user             User           @relation(fields: [userId], references: [id])
+  campaign         Campaign       @relation(fields: [campaignId], references: [id])
+  submissionType   SubmissionType @relation(fields: [submissionTypeId], references: [id])
+  Feedback         Feedback?
+
+  @@unique([userId, campaignId, submissionTypeId]) // Ensures unique submission per user per project type
 }
 
-model Submission {
-  id             String         @id @unique @default(cuid())
-  creatorId      String
-  campaignTaskId String         @unique
-  campaignId     String
-  type           SubmissionType
-  firstDraft     FirstDraft?
-  finalDraft     FinalDraft?
-  content        String?
-  feedback       Feedback?
-  campaignTask   CampaignTask   @relation(fields: [campaignTaskId], references: [id])
-  creator        User           @relation(fields: [creatorId], references: [id])
-  campaign       Campaign       @relation(fields: [campaignId], references: [id])
-  finalDraftId   String?
+model CampaignSubmissionRequirement {
+  id               String         @id @default(cuid())
+  order            Int // Specifies the order in which this submission type should be completed
+  campaignId       String
+  submissionTypeId String
+  startDate        DateTime
+  endDate          DateTime
+  campaign         Campaign       @relation(fields: [campaignId], references: [id])
+  submissionType   SubmissionType @relation(fields: [submissionTypeId], references: [id])
+
+  @@unique([campaignId, submissionTypeId]) // Ensures unique submission type per project
+}
+
+model SubmissionType {
+  id               String                          @id @default(cuid())
+  type             SubmissionEnum // E.g., "Document", "Video", "Presentation"
+  description      String? // Optional description for the type
+  requirements     CampaignSubmissionRequirement[] // Reference to requirements
+  submissions      Submission[] // Submissions of this type
+  campaignTimeline CampaignTimeline[]
 }
 
 model Feedback {
@@ -644,10 +685,11 @@ model Feedback {
   updatedAt    DateTime      @updatedAt
 }
 
-enum SubmissionType {
+enum SubmissionEnum {
   AGREEMENT_FORM
   FIRST_DRAFT
   FINAL_DRAFT
+  POSTING
   OTHER
 }
 
