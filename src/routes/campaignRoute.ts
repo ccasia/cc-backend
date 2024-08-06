@@ -18,8 +18,12 @@ import {
   getCampaignsByCreatorId,
   getCampaignForCreatorById,
   getCampaignPitchForCreator,
+
+  getCampaignLog,
+
   getSubmission,
   uploadVideoTest,
+
 } from 'src/controller/campaignController';
 import { isSuperAdmin } from 'src/middleware/onlySuperadmin';
 import {
@@ -56,6 +60,7 @@ router.get('/getCampaignPitch', isLoggedIn, getCampaignPitchForCreator);
 
 router.get('/getSubmissions', isSuperAdmin, getSubmission);
 // router.get('/pitch/:campaignId', getPitchByCampaignId);
+router.get('/getCampaignLog/:id', getCampaignLog);
 
 router.post('/updateOrCreateDefaultTimeline', updateOrCreateDefaultTimeline);
 router.post('/createCampaign', isSuperAdmin, createCampaign);
