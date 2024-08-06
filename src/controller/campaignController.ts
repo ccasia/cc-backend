@@ -13,6 +13,7 @@ import ffmpegPath from '@ffmpeg-installer/ffmpeg';
 import ffprobePath from '@ffprobe-installer/ffprobe';
 import { fork } from 'child_process';
 import path from 'path';
+import { compress } from 'src/helper/compression';
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
 Ffmpeg.setFfprobePath(ffprobePath.path);
 
@@ -488,7 +489,7 @@ export const getAllActiveCampaign = async (_req: Request, res: Response) => {
 };
 
 export const creatorMakePitch = async (req: Request, res: Response) => {
-  const { campaignId, content } = req.body;
+  const { campaignId, content, type } = req.body;
   const id = req.session.userid;
 
   // const conn = await amqplib.connect('amqp://host.docker.internal');
@@ -525,42 +526,70 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
       },
     });
 
-    if (req.files && req.files.pitchVideo) {
-      const { pitchVideo } = req.files as any;
+    // if (req.files && req.files.pitchVideo) {
+    //   const { pitchVideo } = req.files as any;
 
-      const job = {
-        tempFilePath: pitchVideo.tempFilePath,
-        name: `${user?.id}-${campaign?.id}-pitch.mp4`,
-      };
+    //   const job = {
+    //     tempFilePath: pitchVideo.tempFilePath,
+    //     name: `${user?.id}-${campaign?.id}-pitch.mp4`,
+    //   };
 
-      const childProcess = fork(path.resolve('src/helper/video.ts'));
+    //   const childProcess = fork(path.resolve('src/helper/video.ts'));
 
-      childProcess.send(job);
+    //   childProcess.send(job);
 
-      childProcess.on('message', async (data: any) => {
-        io.to(clients.get(user?.id)).emit('pitch-loading', { progress: data.progress, campaignId: campaignId });
-        if (data.statusCode === 200) {
-          const publicURL = await uploadPitchVideo(path.resolve(`src/upload/${job.name}`), job.name, 'pitchVideo');
-          fs.unlinkSync(path.resolve(`src/upload/${job.name}`));
-          await prisma.pitch.create({
-            data: {
-              type: 'video',
-              content: publicURL,
-              userId: id as string,
-              campaignId: campaignId,
-              status: 'undecided',
-            },
-          });
-          io.to(clients.get(user?.id)).emit('pitch-uploaded', {
-            name: 'Uploading pitch video is complete.',
-            campaignId: campaign?.id,
-          });
-        }
-      });
+    //   const pitch = await prisma.pitch.create({
+    //     data: {
+    //       type: 'video',
+    //       content: '',
+    //       userId: id as string,
+    //       campaignId: campaignId,
+    //       status: 'pending',
+    //     },
+    //   });
 
-      childProcess.on('error', () => {
-        fs.unlinkSync(path.resolve(`src/upload/${job.name}`));
-        console.log('There is error when uploading file');
+    //   childProcess.on('message', async (data: any) => {
+    //     io.to(clients.get(user?.id)).emit('pitch-loading', { progress: data.progress, campaignId: campaignId });
+    //     if (data.statusCode === 200) {
+    //       const { publicUrl } = data;
+    //       // const publicURL = await uploadPitchVideo(path.resolve(`src/upload/${job.name}`), job.name, 'pitchVideo');
+    //       fs.unlinkSync(path.resolve(`src/upload/${job.name}`));
+    //       await prisma.pitch.update({
+    //         where: {
+    //           id: pitch.id,
+    //         },
+    //         data: {
+    //           content: publicUrl,
+    //           status: 'undecided',
+    //         },
+    //       });
+    //       io.to(clients.get(user?.id)).emit('pitch-uploaded', {
+    //         name: 'Uploading pitch video is complete.',
+    //         campaignId: campaign?.id,
+    //       });
+    //     }
+    //   });
+
+    //   childProcess.on('error', async () => {
+    //     fs.unlinkSync(path.resolve(`src/upload/${job.name}`));
+    //     await prisma.pitch.delete({
+    //       where: {
+    //         id: pitch.id,
+    //       },
+    //     });
+    //     console.log('There is error when uploading file');
+    //   });
+    // }
+
+    if (type === 'video') {
+      await prisma.pitch.create({
+        data: {
+          type: 'video',
+          content: content,
+          userId: id as string,
+          campaignId: campaignId,
+          status: 'undecided',
+        },
       });
     } else {
       const pitch = await prisma.pitch.create({
@@ -1011,134 +1040,134 @@ export const editCampaignTimeline = async (req: Request, res: Response) => {
 
   const { timeline, campaignStartDate, campaignEndDate } = req.body;
 
-  // try {
-  //   const campaign = await prisma.campaign.findUnique({
-  //     where: {
-  //       id: id,
-  //     },
-  //     include: {
-  //       campaignTimeline: true,
-  //       campaignBrief: true,
-  //       campaignAdmin: true,
-  //       campaignTasks: true,
-  //     },
-  //   });
+  try {
+    const campaign = await prisma.campaign.findUnique({
+      where: {
+        id: id,
+      },
+      include: {
+        campaignTimeline: true,
+        campaignBrief: true,
+        campaignAdmin: true,
+        campaignTasks: true,
+      },
+    });
 
-  //   if (!campaign) {
-  //     return res.status(404).json({ message: 'Campaign not found' });
-  //   }
+    if (!campaign) {
+      return res.status(404).json({ message: 'Campaign not found' });
+    }
 
-  //   const data = await Promise.all(
-  //     timeline.map(async (item: any, index: number) => {
-  //       const result = await prisma.campaignTimeline.upsert({
-  //         where: {
-  //           id: item?.id || item?.timeline_type.id,
-  //         },
-  //         update: {
-  //           name: item?.timeline_type.name,
-  //           for: item?.for,
-  //           duration: parseInt(item.duration),
-  //           startDate: dayjs(item?.startDate) as any,
-  //           endDate: dayjs(item?.endDate) as any,
-  //           campaignId: campaign?.id,
-  //           order: index + 1,
-  //         },
-  //         create: {
-  //           name: item?.timeline_type.name,
-  //           for: item?.for,
-  //           duration: parseInt(item.duration),
-  //           startDate: dayjs(item?.startDate) as any,
-  //           endDate: dayjs(item?.endDate) as any,
-  //           campaignId: campaign?.id,
-  //           order: index + 1,
-  //         },
-  //         include: {
-  //           campaignTasks: true,
-  //         },
-  //       });
-  //       return result;
-  //     }),
-  //   );
+    const data = await Promise.all(
+      timeline.map(async (item: any, index: number) => {
+        const result = await prisma.campaignTimeline.upsert({
+          where: {
+            id: item?.id || item?.timeline_type.id,
+          },
+          update: {
+            name: item?.timeline_type.name,
+            for: item?.for,
+            duration: parseInt(item.duration),
+            startDate: dayjs(item?.startDate) as any,
+            endDate: dayjs(item?.endDate) as any,
+            campaignId: campaign?.id,
+            order: index + 1,
+          },
+          create: {
+            name: item?.timeline_type.name,
+            for: item?.for,
+            duration: parseInt(item.duration),
+            startDate: dayjs(item?.startDate) as any,
+            endDate: dayjs(item?.endDate) as any,
+            campaignId: campaign?.id,
+            order: index + 1,
+          },
+          include: {
+            campaignTasks: true,
+          },
+        });
+        return result;
+      }),
+    );
 
-  //   // await Promise.all(
-  //   //   data.map(async (item: any) => {
-  //   //     // console.log(item);
-  //   //     const isExist = await prisma.campaignTask.findUnique({
-  //   //       where: {
-  //   //         id: item.campaignTasks.id,
-  //   //       },
-  //   //     });
+    // await Promise.all(
+    //   data.map(async (item: any) => {
+    //     // console.log(item);
+    //     const isExist = await prisma.campaignTask.findUnique({
+    //       where: {
+    //         id: item.campaignTasks.id,
+    //       },
+    //     });
 
-  //   //     if (isExist) {
-  //   //       await prisma.campaignTask.update({
-  //   //         where: {
-  //   //           id: item.campaignTasks.id,
-  //   //         },
-  //   //         data: {
-  //   //           startDate: dayjs(item.startDate) as any,
-  //   //           endDate: dayjs(item.endDate) as any,
-  //   //         },
-  //   //       });
-  //   //     }
-  //   //   }),
-  //   // );
+    //     if (isExist) {
+    //       await prisma.campaignTask.update({
+    //         where: {
+    //           id: item.campaignTasks.id,
+    //         },
+    //         data: {
+    //           startDate: dayjs(item.startDate) as any,
+    //           endDate: dayjs(item.endDate) as any,
+    //         },
+    //       });
+    //     }
+    //   }),
+    // );
 
-  //   await prisma.campaignBrief.update({
-  //     where: {
-  //       campaignId: campaign.id,
-  //     },
-  //     data: {
-  //       startDate: dayjs(campaignStartDate).format(),
-  //       endDate: dayjs(campaignEndDate).format(),
-  //     },
-  //   });
+    await prisma.campaignBrief.update({
+      where: {
+        campaignId: campaign.id,
+      },
+      data: {
+        startDate: dayjs(campaignStartDate).format(),
+        endDate: dayjs(campaignEndDate).format(),
+      },
+    });
 
-  //   // Promise.all(
-  //   //   data.map(async (item: any) => {
-  //   //     await prisma.campaignTask.update({
-  //   //       where: {
-  //   //         campaignTimelineId: item.id,
-  //   //       },
-  //   //       data: {
-  //   //         startDate: dayjs(item.startDate) as any,
-  //   //         endDate: dayjs(item.endDate) as any,
-  //   //       },
-  //   //     });
-  //   //   }),
-  //   // );
+    // Promise.all(
+    //   data.map(async (item: any) => {
+    //     await prisma.campaignTask.update({
+    //       where: {
+    //         campaignTimelineId: item.id,
+    //       },
+    //       data: {
+    //         startDate: dayjs(item.startDate) as any,
+    //         endDate: dayjs(item.endDate) as any,
+    //       },
+    //     });
+    //   }),
+    // );
 
-  //   // for (const item of timeline) {
-  //   //   const a = await prisma.campaignTimeline.update({
-  //   //     where: {
-  //   //       id: item.id,
-  //   //     },
-  //   //     data: {
-  //   //       name: item.timeline_type?.name,
-  //   //       for: item?.for,
-  //   //       duration: parseInt(item.duration),
-  //   //       startDate: dayjs(item?.startDate) as any,
-  //   //       endDate: dayjs(item?.endDate) as any,
-  //   //       campaignId: campaign?.id,
-  //   //       order: index + 1,
-  //   //     },
-  //   //   });
-  //   // }
+    // for (const item of timeline) {
+    //   const a = await prisma.campaignTimeline.update({
+    //     where: {
+    //       id: item.id,
+    //     },
+    //     data: {
+    //       name: item.timeline_type?.name,
+    //       for: item?.for,
+    //       duration: parseInt(item.duration),
+    //       startDate: dayjs(item?.startDate) as any,
+    //       endDate: dayjs(item?.endDate) as any,
+    //       campaignId: campaign?.id,
+    //       order: index + 1,
+    //     },
+    //   });
+    // }
 
-  //   // campaign?.campaignAdmin?.forEach((admin: any) => {
-  //   //   timelines
-  //   //     .filter((elem: any) => elem.for === 'admin')
-  //   //     .forEach(async (item: any) => {
-  //   //       await assignTask(admin?.adminId, campaign?.id, item?.id);
-  //   //     });
-  //   // });
+    // campaign?.campaignAdmin?.forEach((admin: any) => {
+    //   timelines
+    //     .filter((elem: any) => elem.for === 'admin')
+    //     .forEach(async (item: any) => {
+    //       await assignTask(admin?.adminId, campaign?.id, item?.id);
+    //     });
+    // });
 
-  //   const message = 'Updated timeline';
-  //   logChange(message, id, req);
-  //   return res.status(200).json({ message: message });
-  // } catch (error) {
-  //   console.log(error);
-  //   return res.status(400).json(error);
-  // }
+    const message = 'Updated timeline';
+    logChange(message, id, req);
+    return res.status(200).json({ message: message });
+  } catch (error) {
+    console.log(error);
+    return res.status(400).json(error);
+  }
 };
 
 // Get First Draft by user id and campaign id
@@ -1419,3 +1448,61 @@ export const getSubmission = async (req: Request, res: Response) => {
 //     return res.status(400).json(error);
 //   }
 // };
+
+export const uploadVideoTest = async (req: Request, res: Response) => {
+  const abortController = new AbortController();
+  const { campaignId } = req.body;
+  const { userid } = req.session;
+  const outputPath = `${campaignId}-${userid}-pitch.mp4`;
+  let cancel = false;
+
+  res.on('close', () => {
+    console.log('ABORTING....');
+    cancel = true;
+    fs.unlinkSync(path.resolve(`src/upload/${outputPath}`));
+    abortController.abort();
+  });
+
+  try {
+    if (!cancel) {
+      console.log('COMPRESSION START');
+      const path: any = await compress(
+        (req.files as any).pitchVideo.tempFilePath,
+        outputPath,
+        (data: number) => {
+          io.to(clients.get(req.session.userid)).emit('video-upload', { campaignId: campaignId, progress: data });
+        },
+        abortController.signal,
+      );
+
+      const size = await new Promise((resolve, reject) => {
+        fs.stat(path, (err, data) => {
+          if (err) {
+            reject();
+          }
+          resolve(data.size);
+        });
+      });
+
+      console.log('UPLOADING START');
+      const a = await uploadPitchVideo(
+        path,
+        outputPath,
+        'pitchVideo',
+        size as number,
+        (data: number) => {
+          io.to(clients.get(req.session.userid)).emit('video-upload', { campaignId: campaignId, progress: data });
+        },
+        abortController.signal,
+      );
+
+      // fs.unlinkSync(path);
+
+      io.to(clients.get(req.session.userid)).emit('video-upload-done', { campaignId: campaignId });
+
+      return res.status(200).json({ publicUrl: a, message: 'Succesfully uploaded' });
+    }
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};

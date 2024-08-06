@@ -19,6 +19,7 @@ import {
   getCampaignForCreatorById,
   getCampaignPitchForCreator,
   getSubmission,
+  uploadVideoTest,
 } from 'src/controller/campaignController';
 import { isSuperAdmin } from 'src/middleware/onlySuperadmin';
 import {
@@ -61,6 +62,16 @@ router.post('/createCampaign', isSuperAdmin, createCampaign);
 // router.post('/rejectPitch', isSuperAdmin, rejectPitch);
 router.post('/createNewTimeline', isSuperAdmin, createNewTimeline);
 router.post('/createSingleTimelineType', isSuperAdmin, createSingleTimelineType);
+router.post(
+  '/uploadVideo',
+  // (req, res, next) => {
+  //   req.on('close', () => {
+  //     console.log('ABORTINGGG');
+  //   });
+  //   next();
+  // },
+  uploadVideoTest,
+);
 
 router.patch('/pitch', creatorMakePitch);
 router.patch('/changeCampaignStage/:campaignId', changeCampaignStage);
