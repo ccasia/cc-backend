@@ -749,7 +749,7 @@ console.log(campaigns)
         interests: false,
         gender: false,
         age: false,
-        location: false,
+        // location: false,
       };
 
       function hasCommonElement(arr1: string[], arr2: string[]): boolean {
@@ -787,40 +787,40 @@ console.log(campaigns)
         match.age = true;
       }
       // location
-      let location: any = [];
-      const mainCitiesInMalaysia: string[] = [
-        'Kuala Lumpur',
-        'George Town',
-        'Ipoh',
-        'Johor Bahru',
-        'Malacca City',
-        'Alor Setar',
-        'Kota Kinabalu',
-        'Kuching',
-        'Shah Alam',
-        'Petaling Jaya',
-        'Iskandar Puteri',
-        'Seberang Perai',
-        'Seremban',
-        'Kuantan',
-        'Kuala Terengganu',
-        'Miri',
-        'Sibu',
-        'Sandakan',
-        'Tawau',
-      ];
+      // let location: any = [];
+      // const mainCitiesInMalaysia: string[] = [
+      //   'Kuala Lumpur',
+      //   'George Town',
+      //   'Ipoh',
+      //   'Johor Bahru',
+      //   'Malacca City',
+      //   'Alor Setar',
+      //   'Kota Kinabalu',
+      //   'Kuching',
+      //   'Shah Alam',
+      //   'Petaling Jaya',
+      //   'Iskandar Puteri',
+      //   'Seberang Perai',
+      //   'Seremban',
+      //   'Kuantan',
+      //   'Kuala Terengganu',
+      //   'Miri',
+      //   'Sibu',
+      //   'Sandakan',
+      //   'Tawau',
+      // ];
 
-      if (campaign?.campaignRequirement?.geoLocation.includes('MainCities')) {
-        location = [...campaign?.campaignRequirement?.geoLocation, ...mainCitiesInMalaysia];
-      } else {
-        location = campaign?.campaignRequirement?.geoLocation;
-      }
+      // if (campaign?.campaignRequirement?.geoLocation.includes('MainCities')) {
+      //   location = [...campaign?.campaignRequirement?.geoLocation, ...mainCitiesInMalaysia];
+      // } else {
+      //   location = campaign?.campaignRequirement?.geoLocation;
+      // }
 
-      const locationMatch = location.includes(user?.creator?.location);
+      // const locationMatch = location.includes(user?.creator?.location);
 
-      if (locationMatch) {
-        match.location = true;
-      }
+      // if (locationMatch) {
+      //   match.location = true;
+      // }
       // interests
       // map interset out of objects
       const interestArr = user?.creator?.interests.map((item: any) => item.name);
@@ -843,15 +843,15 @@ console.log(campaigns)
     };
 
     function getPercentageMatch(user: any, campaign: any) {
-      const interestArr = user?.creator?.interests.map((item: any) => item.name);
-      const campInterest = campaign?.campaignBrief?.interests;
+      const creatorInterest = user?.creator?.interests.map((item: any) => item.name.toLowerCase());
+      const campInterest = campaign?.campaignBrief?.interests.map((e : string) => e.toLowerCase());
 
       function getMatchingElements(arr1: string[], arr2: string[]): string[] {
         return arr1.filter((value) => arr2.includes(value));
       }
 
-      const matchedInterests = getMatchingElements(interestArr, campInterest);
-
+      const matchedInterests = getMatchingElements(creatorInterest , campInterest);
+      console.log(campInterest)
       const percantage = (matchedInterests.length / campInterest.length) * 100;
 
       return percantage;

@@ -112,6 +112,36 @@ export const updateMediaKit = async (req: Request, res: Response) => {
   const { name, about, interests, creatorId } = req.body;
 
   try {
+    const creator = await prisma.creator.findUnique({
+      where: { id: creatorId },
+      include: { interests: true },
+    });
+
+    if (!creator) {
+      return res.status(404).json({ message: 'Creator not found' });
+    }
+
+    const creatorInterests = creator.interests.map((interest: any) => interest.name);
+
+    const unmatchedInterests = creatorInterests.filter((interest: string) => !interests.includes(interest));
+
+    await prisma.interest.deleteMany({
+      where: {
+        name: { in: unmatchedInterests },
+        userId: creator.userId,
+      },
+    });
+
+    const newInterests = interests.filter((interest: string) => !creatorInterests.includes(interest));
+
+    const addedInterst = await prisma.interest.createMany({
+      data: newInterests.map((interest: string) => ({
+        name: interest,
+        rank: 5,
+        userId: creator.userId,
+      })),
+    });
+
     const mediaKit = await prisma.mediaKit.upsert({
       where: {
         creatorId: creatorId,
