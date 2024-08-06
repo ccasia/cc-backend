@@ -100,33 +100,48 @@ export const getSubmissionByCampaignCreatorId = async (req: Request, res: Respon
   //       submission: true,
   //     },
   //   });
+  try {
+    // const data = await Promise.all(
+    //   campaignTask.map(async (value) => {
+    //     const result = await prisma.submission.findUnique({
+    //       where: {
+    //         campaignTaskId: value.id,
+    //       },
+    //       include: {
+    //         campaignTask: {
+    //           select: {
+    //             status: true,
+    //             id: true,
+    //           },
+    //         },
+    //         firstDraft: true,
+    //         finalDraft: true,
+    //         feedback: true,
+    //       },
+    //     });
+    //     return result;
+    //   }),
+    // );
 
-  //   const data = await Promise.all(
-  //     campaignTask.map(async (value) => {
-  //       const result = await prisma.submission.findUnique({
-  //         where: {
-  //           campaignTaskId: value.id,
-  //         },
-  //         include: {
-  //           campaignTask: {
-  //             select: {
-  //               status: true,
-  //               id: true,
-  //             },
-  //           },
-  //           firstDraft: true,
-  //           finalDraft: true,
-  //           feedback: true,
-  //         },
-  //       });
-  //       return result;
-  //     }),
-  //   );
+    const data = await prisma.submission.findMany({
+      where: {
+        userId: creatorId as string,
+        campaignId: campaignId as string,
+      },
+      include: {
+        submissionType: {
+          select: {
+            id: true,
+            type: true,
+          },
+        },
+      },
+    });
 
-  //   return res.status(200).json(data);
-  // } catch (error) {
-  //   return res.status(400).json(error);
-  // }
+    return res.status(200).json(data);
+  } catch (error) {
+    return res.status(400).json(error);
+  }
 };
 
 export const adminManageAgreementSubmission = async (req: Request, res: Response) => {

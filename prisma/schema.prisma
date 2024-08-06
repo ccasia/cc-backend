@@ -646,7 +646,7 @@ model Submission {
   user             User           @relation(fields: [userId], references: [id])
   campaign         Campaign       @relation(fields: [campaignId], references: [id])
   submissionType   SubmissionType @relation(fields: [submissionTypeId], references: [id])
-  Feedback         Feedback?
+  feedback         Feedback?
 
   @@unique([userId, campaignId, submissionTypeId]) // Ensures unique submission per user per project type
 }
