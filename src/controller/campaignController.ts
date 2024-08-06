@@ -1,295 +1,23 @@
 import { Request, Response } from 'express';
-import { CampaignStatus, Entity, PrismaClient } from '@prisma/client';
+import { CampaignStatus, CampaignSubmissionRequirement, CampaignTimeline, Entity, PrismaClient } from '@prisma/client';
 
 import { uploadAgreementForm, uploadImage, uploadPitchVideo } from 'src/config/cloudStorage.config';
 import dayjs from 'dayjs';
-import { assignTask, logChange } from 'src/service/campaignServices';
+import { logChange } from 'src/service/campaignServices';
 import { Title, saveNotification } from './notificationController';
 import { clients, io } from 'src/server';
 import amqplib from 'amqplib';
+import fs from 'fs';
+import Ffmpeg from 'fluent-ffmpeg';
+import ffmpegPath from '@ffmpeg-installer/ffmpeg';
+import ffprobePath from '@ffprobe-installer/ffprobe';
+import { fork } from 'child_process';
+import path from 'path';
+import { compress } from 'src/helper/compression';
+Ffmpeg.setFfmpegPath(ffmpegPath.path);
+Ffmpeg.setFfprobePath(ffprobePath.path);
 
 const prisma = new PrismaClient();
-
-// export const updateDefaultTimeline = async (req: Request, res: Response) => {
-//   const {
-//     id,
-//     openForPitch,
-//     shortlistCreator,
-//     firstDraft,
-//     finalDraft,
-//     feedBackFirstDraft,
-//     feedBackFinalDraft,
-//     filterPitch,
-//     agreementSign,
-//     qc,
-//     posting,
-//   } = req.body;
-
-//   try {
-//     let newDefaultTimeline;
-
-//     if (!id) {
-//       newDefaultTimeline = await prisma.defaultTimelineCampaign.create({
-//         data: {
-//           openForPitch,
-//           shortlistCreator,
-//           firstDraft,
-//           finalDraft,
-//           feedBackFirstDraft,
-//           feedBackFinalDraft,
-//           filterPitch,
-//           agreementSign,
-//           qc,
-//           posting,
-//         },
-//       });
-//       return res.status(200).json({ message: 'Successfully updated default timeline', newDefaultTimeline });
-//     } else {
-//       newDefaultTimeline = await prisma.defaultTimelineCampaign.update({
-//         where: {
-//           id: id,
-//         },
-//         data: {
-//           openForPitch,
-//           shortlistCreator,
-//           firstDraft,
-//           finalDraft,
-//           feedBackFirstDraft,
-//           feedBackFinalDraft,
-//           filterPitch,
-//           agreementSign,
-//           qc,
-//           posting,
-//         },
-//       });
-//       return res.status(200).json({ message: 'Successfully updated default timeline', newDefaultTimeline });
-//     }
-//   } catch (error) {
-//     return res.status(400).json(error);
-//   }
-// };
-export const updateDefaultTimeline = async (req: Request, res: Response) => {
-  // const { timeline } = req.body;
-  // console.log(timeline);
-  // try {
-  //   const timelines = await prisma.defaultTimelineCampaign.findMany();
-  //   const timelineId = timelines.map((elem) => elem.id);
-  //   const defaultTimelineId = defaultTimeline?.map((elem: any) => elem.id);
-  //   const missingIds = timelineId.filter((id) => !defaultTimelineId.includes(id));
-  //   if (missingIds.length) {
-  //     for (const item of missingIds) {
-  //       await prisma.defaultTimelineCampaign.delete({
-  //         where: {
-  //           id: item,
-  //         },
-  //       });
-  //     }
-  //   }
-  //   for (const item of defaultTimeline) {
-  //     if (item.id) {
-  //       await prisma.defaultTimelineCampaign.update({
-  //         where: {
-  //           id: item.id,
-  //         },
-  //         data: {
-  //           timeline_type: item.timeline_type
-  //             .split(' ')
-  //             .map((elem: any) => `${elem[0].toUpperCase()}${elem.slice(1)}`)
-  //             .join(' '),
-  //           for: item.for,
-  //           days: item.days.toString(),
-  //         },
-  //       });
-  //     } else {
-  //       await prisma.defaultTimelineCampaign.create({
-  //         data: {
-  //           timeline_type: item.timeline_type
-  //             .split(' ')
-  //             .map((elem: any) => `${elem[0].toUpperCase()}${elem.slice(1)}`)
-  //             .join(' '),
-  //           for: item.for,
-  //           days: item.days.toString(),
-  //         },
-  //       });
-  //     }
-  //   }
-  //   return res.status(200).json({ message: 'Successfully updated!' });
-  // } catch (error) {
-  //   return res.status(400).json({ error });
-  // }
-};
-
-// export const updateTimeLineType = async (req: Request, res: Response) => {
-//   const { timeline } = req.body;
-
-//   console.log(timeline);
-
-//   try {
-//     const timelines = await prisma.timelineType.findMany();
-
-//     // ExistingTimelineId
-//     const timelineId = timelines.map((elem) => elem.id);
-//     // Timeline from client
-//     const defaultTimelineId = timeline?.map((elem: any) => elem.id);
-
-//     const missingIds = timelineId.filter((id) => !defaultTimelineId.includes(id));
-
-//     if (missingIds.length) {
-//       for (const item of missingIds) {
-//         await prisma.timelineType.delete({
-//           where: {
-//             id: item,
-//           },
-//         });
-//       }
-//     }
-
-//     for (const item of timeline) {
-//       if (item.id) {
-//         const timeline = await prisma.timelineType.update({
-//           where: {
-//             id: item.id,
-//           },
-//           data: {
-//             name: item.timeline_type
-//               .split(' ')
-//               .map((elem: any) => `${elem[0].toUpperCase()}${elem.slice(1)}`)
-//               .join(' '),
-//             for: item.for,
-//           },
-//         });
-//       } else {
-//         const timeline = await prisma.timelineType.create({
-//           data: {
-//             name: item.timeline_type
-//               .split(' ')
-//               .map((elem: any) => `${elem[0].toUpperCase()}${elem.slice(1)}`)
-//               .join(' '),
-//             for: item.for,
-//           },
-//         });
-
-//         // const dependsOnTimeline = await prisma.timelineType.findFirst({
-//         //   where: {
-//         //     name: {
-//         //       contains: item?.dependsOn,
-//         //     },
-//         //   },
-//         // });
-
-//         // if (dependsOnTimeline) {
-//         //   await prisma.timelineTypeDependency.create({
-//         //     data: {
-//         //       timeline_id: timeline?.id,
-//         //       dependsOnTimelineId: dependsOnTimeline?.id,
-//         //     },
-//         //   });
-//         // }
-//       }
-//     }
-//     return res.status(200).json({ message: 'Successfully Updated Timeline Type' });
-//   } catch (error) {
-//     console.log(error);
-//     return res.status(400).json(error);
-//   }
-// };
-
-// export const updateTimeLineType = async (req: Request, res: Response) => {
-//   const { timeline } = req.body;
-
-//   try {
-//     const timelineLowerCase = timeline.map((item: any) => item.timeline_type.toLowerCase());
-//     const duplicates = timeline.filter(
-//       (item: any, index: number) => timelineLowerCase.indexOf(item.timeline_type.toLowerCase()) !== index,
-//     );
-
-//     if (duplicates.length) {
-//       return res.status(404).json({ message: "There's a duplication of timeline type" });
-//     }
-
-//     for (const item of timeline) {
-//       // Find existing timeline
-//       if (item.id) {
-//         const timeline = await prisma.timelineType.update({
-//           where: {
-//             id: item.id,
-//           },
-//           data: {
-//             name: item.timeline_type
-//               .split(' ')
-//               .map((elem: any) => `${elem[0].toUpperCase()}${elem.slice(1)}`)
-//               .join(' '),
-//             for: item.for,
-//           },
-//         });
-
-//         if (item.dependsOn !== 'startDate') {
-//           const existingTimeline = await prisma.timelineType.findFirst({
-//             where: {
-//               name: {
-//                 contains: item.dependsOn,
-//               },
-//             },
-//           });
-
-//           if (existingTimeline) {
-//             if (item.dependenciesId) {
-//               await prisma.timelineTypeDependency.update({
-//                 where: {
-//                   id: item.dependenciesId,
-//                 },
-//                 data: {
-//                   timeline_id: timeline.id,
-//                   dependsOnTimelineId: existingTimeline.id,
-//                 },
-//               });
-//             } else {
-//               await prisma.timelineTypeDependency.create({
-//                 data: {
-//                   timeline_id: timeline.id,
-//                   dependsOnTimelineId: existingTimeline.id,
-//                 },
-//               });
-//             }
-//           }
-//         }
-//       } else {
-//         const timeline = await prisma.timelineType.create({
-//           data: {
-//             name: item.timeline_type
-//               .split(' ')
-//               .map((elem: any) => `${elem[0].toUpperCase()}${elem.slice(1)}`)
-//               .join(' '),
-//             for: item.for,
-//           },
-//         });
-
-//         if (item.dependsOn !== 'startDate') {
-//           const existingTimeline = await prisma.timelineType.findFirst({
-//             where: {
-//               name: {
-//                 contains: item.dependsOn,
-//               },
-//             },
-//           });
-
-//           if (existingTimeline) {
-//             await prisma.timelineTypeDependency.create({
-//               data: {
-//                 timeline_id: timeline.id,
-//                 dependsOnTimelineId: existingTimeline.id,
-//               },
-//             });
-//           }
-//         }
-//       }
-//     }
-//     return res.status(200).json({ message: 'Successfully Updated Timeline Type' });
-//   } catch (error) {
-//     console.log(error);
-//     return res.status(400).json(error);
-//   }
-// };
 
 interface image {
   path: string;
@@ -312,7 +40,6 @@ interface timeline {
 
 interface Campaign {
   campaignInterests: string[];
-  // campaignIndustries: string[];
   campaignBrand: {
     id: string;
   };
@@ -362,8 +89,6 @@ export const createCampaign = async (req: Request, res: Response) => {
     timeline,
   }: Campaign = JSON.parse(req.body.data);
 
-  let campaign: any;
-
   try {
     const publicURL: any = [];
 
@@ -398,131 +123,250 @@ export const createCampaign = async (req: Request, res: Response) => {
         }),
       );
 
-      let brand: any = await tx.brand.findUnique({
+      const brand: any = await tx.brand.findUnique({
         where: {
           id: campaignBrand.id,
         },
       });
 
-      if (!brand) {
-        // eslint-disable-next-line no-useless-catch
-        try {
-          brand = await tx.company.findUnique({
-            where: {
-              id: campaignBrand.id,
-            },
-          });
+//       if (!brand) {
+//         // eslint-disable-next-line no-useless-catch
+//         try {
+//           brand = await tx.company.findUnique({
+//             where: {
+//               id: campaignBrand.id,
+//             },
+//           });
 
-          campaign = await tx.campaign.create({
-            data: {
-              name: campaignTitle,
-              description: campaignDescription,
-              status: campaignStage as CampaignStatus,
-              company: {
-                connect: {
-                  id: brand?.id,
-                },
-              },
-              campaignBrief: {
-                create: {
-                  title: campaignTitle,
-                  objectives: campaignObjectives,
-                  images: publicURL.map((image: any) => image) || '',
-                  agreementFrom: agreementFormURL,
-                  startDate: dayjs(campaignStartDate) as any,
-                  endDate: dayjs(campaignEndDate) as any,
-                  interests: campaignInterests,
+//           campaign = await tx.campaign.create({
+//             data: {
+//               name: campaignTitle,
+//               description: campaignDescription,
+//               status: campaignStage as CampaignStatus,
+//               company: {
+//                 connect: {
+//                   id: brand?.id,
+//                 },
+//               },
+//               campaignBrief: {
+//                 create: {
+//                   title: campaignTitle,
+//                   objectives: campaignObjectives,
+//                   images: publicURL.map((image: any) => image) || '',
+//                   agreementFrom: agreementFormURL,
+//                   startDate: dayjs(campaignStartDate) as any,
+//                   endDate: dayjs(campaignEndDate) as any,
+//                   interests: campaignInterests,
 
-                  campaigns_do: campaignDo,
-                  campaigns_dont: campaignDont,
-                },
-              },
-              campaignRequirement: {
-                create: {
-                  gender: audienceGender,
-                  age: audienceAge,
-                  geoLocation: audienceLocation,
-                  language: audienceLanguage,
-                  creator_persona: audienceCreatorPersona,
-                  user_persona: audienceUserPersona,
-                },
-              },
-              campaignTimeline: {
-                create: timeline.map((item: any, index: number) => ({
-                  // Fields for CampaignTimeline
-                  for: item.for,
-                  duration: parseInt(item.duration),
-                  startDate: dayjs(item.startDate).toDate(),
-                  endDate: dayjs(item.endDate).toDate(),
-                  order: index + 1,
-                  name: item.timeline_type.name,
-                })),
-              },
+//                   campaigns_do: campaignDo,
+//                   campaigns_dont: campaignDont,
+//                 },
+//               },
+//               campaignRequirement: {
+//                 create: {
+//                   gender: audienceGender,
+//                   age: audienceAge,
+//                   geoLocation: audienceLocation,
+//                   language: audienceLanguage,
+//                   creator_persona: audienceCreatorPersona,
+//                   user_persona: audienceUserPersona,
+//                 },
+//               },
+//               campaignTimeline: {
+//                 create: timeline.map((item: any, index: number) => ({
+//                   // Fields for CampaignTimeline
+//                   for: item.for,
+//                   duration: parseInt(item.duration),
+//                   startDate: dayjs(item.startDate).toDate(),
+//                   endDate: dayjs(item.endDate).toDate(),
+//                   order: index + 1,
+//                   name: item.timeline_type.name,
+//                 })),
+//               },
+      // Create Campaign
+      const campaign = await tx.campaign.create({
+        data: {
+          name: campaignTitle,
+          description: campaignDescription,
+          status: campaignStage as CampaignStatus,
+          campaignBrief: {
+            create: {
+              title: campaignTitle,
+              objectives: campaignObjectives,
+              images: publicURL.map((image: any) => image) || '',
+              agreementFrom: agreementFormURL,
+              startDate: dayjs(campaignStartDate) as any,
+              endDate: dayjs(campaignEndDate) as any,
+              interests: campaignInterests,
+              campaigns_do: campaignDo,
+              campaigns_dont: campaignDont,
             },
-            include: {
-              campaignTimeline: true,
+          },
+          campaignRequirement: {
+            create: {
+              gender: audienceGender,
+              age: audienceAge,
+              geoLocation: audienceLocation,
+              language: audienceLanguage,
+              creator_persona: audienceCreatorPersona,
+              user_persona: audienceUserPersona,
             },
-          });
-        } catch (error) {
-          throw error;
-        }
-      } else {
-        campaign = await tx.campaign.create({
+          },
+        },
+      });
+
+      // Create submission requirement
+      const submissionTypes = await prisma.submissionType.findMany({
+        where: {
+          NOT: {
+            type: 'OTHER',
+          },
+        },
+      });
+
+      const defaultRequirements = submissionTypes.map((item) => ({
+        submissionTypeId: item.id,
+        order:
+          item.type === 'AGREEMENT_FORM' ? 1 : item.type === 'FIRST_DRAFT' ? 2 : item.type === 'FINAL_DRAFT' ? 3 : 4,
+        campaignId: campaign.id,
+        startDate:
+          item.type === 'AGREEMENT_FORM'
+            ? dayjs(timeline.find((item: any) => item.timeline_type.name === 'First Draft').startDate).toDate()
+            : item.type === 'FIRST_DRAFT'
+              ? dayjs(timeline.find((item: any) => item.timeline_type.name === 'Agreement').startDate).toDate()
+              : item.type === 'FINAL_DRAFT'
+                ? dayjs(timeline.find((item: any) => item.timeline_type.name === 'Final Draft').startDate).toDate()
+                : dayjs(timeline.find((item: any) => item.timeline_type.name === 'Posting').startDate).toDate(),
+        endDate:
+          item.type === 'AGREEMENT_FORM'
+            ? dayjs(timeline.find((item: any) => item.timeline_type.name === 'First Draft').endDate).toDate()
+            : item.type === 'FIRST_DRAFT'
+              ? dayjs(timeline.find((item: any) => item.timeline_type.name === 'Agreement').endDate).toDate()
+              : item.type === 'FINAL_DRAFT'
+                ? dayjs(timeline.find((item: any) => item.timeline_type.name === 'Final Draft').endDate).toDate()
+                : dayjs(timeline.find((item: any) => item.timeline_type.name === 'Posting').endDate).toDate(),
+      }));
+
+      defaultRequirements.forEach(async (item) => {
+        await tx.campaignSubmissionRequirement.create({
           data: {
-            name: campaignTitle,
-            description: campaignDescription,
-            status: campaignStage as CampaignStatus,
-            brand: {
-              connect: {
-                id: brand?.id,
-              },
-            },
-            campaignBrief: {
-              create: {
-                title: campaignTitle,
-                objectives: campaignObjectives,
-                images: publicURL.map((image: any) => image) || '',
-                agreementFrom: agreementFormURL,
-                startDate: dayjs(campaignStartDate) as any,
-                endDate: dayjs(campaignEndDate) as any,
-                interests: campaignInterests,
+//             name: campaignTitle,
+//             description: campaignDescription,
+//             status: campaignStage as CampaignStatus,
+//             brand: {
+//               connect: {
+//                 id: brand?.id,
+//               },
+//             },
+//             campaignBrief: {
+//               create: {
+//                 title: campaignTitle,
+//                 objectives: campaignObjectives,
+//                 images: publicURL.map((image: any) => image) || '',
+//                 agreementFrom: agreementFormURL,
+//                 startDate: dayjs(campaignStartDate) as any,
+//                 endDate: dayjs(campaignEndDate) as any,
+//                 interests: campaignInterests,
 
-                campaigns_do: campaignDo,
-                campaigns_dont: campaignDont,
-              },
+//                 campaigns_do: campaignDo,
+//                 campaigns_dont: campaignDont,
+//               },
+//             },
+//             campaignRequirement: {
+//               create: {
+//                 gender: audienceGender,
+//                 age: audienceAge,
+//                 geoLocation: audienceLocation,
+//                 language: audienceLanguage,
+//                 creator_persona: audienceCreatorPersona,
+//                 user_persona: audienceUserPersona,
+//               },
+            campaignId: campaign.id,
+            submissionTypeId: item.submissionTypeId,
+            startDate: item.startDate,
+            endDate: item.endDate,
+            order: item.order,
+          },
+        });
+      });
+
+      // Create Campaign Timeline
+      await Promise.all(
+        timeline.map(async (item: any, index: number) => {
+          const submission = await tx.submissionType.findFirst({
+            where: {
+              type:
+                item.timeline_type.name === 'First Draft'
+                  ? 'FIRST_DRAFT'
+                  : item.timeline_type.name === 'Agreement'
+                    ? 'AGREEMENT_FORM'
+                    : item.timeline_type.name === 'Final Draft'
+                      ? 'FINAL_DRAFT'
+                      : item.timeline_type.name === 'Posting'
+                        ? 'POSTING'
+                        : 'OTHER',
             },
-            campaignRequirement: {
-              create: {
-                gender: audienceGender,
-                age: audienceAge,
-                geoLocation: audienceLocation,
-                language: audienceLanguage,
-                creator_persona: audienceCreatorPersona,
-                user_persona: audienceUserPersona,
-              },
-            },
-            campaignTimeline: {
-              create: timeline.map((item: any, index: number) => ({
-                // Fields for CampaignTimeline
+          });
+
+          if (submission?.type === 'OTHER') {
+            return tx.campaignTimeline.create({
+              data: {
                 for: item.for,
                 duration: parseInt(item.duration),
                 startDate: dayjs(item.startDate).toDate(),
                 endDate: dayjs(item.endDate).toDate(),
                 order: index + 1,
                 name: item.timeline_type.name,
-              })),
+                campaign: { connect: { id: campaign.id } },
+              },
+            });
+          }
+          return tx.campaignTimeline.create({
+            data: {
+              for: item.for,
+              duration: parseInt(item.duration),
+              startDate: dayjs(item.startDate).toDate(),
+              endDate: dayjs(item.endDate).toDate(),
+              order: index + 1,
+              name: item.timeline_type.name,
+              campaign: { connect: { id: campaign.id } },
+              submissionType: { connect: { id: submission?.id } },
             },
+          });
+        }),
+      );
+
+      // Connect to brand
+      if (!brand) {
+        const company = await tx.company.findUnique({
+          where: {
+            id: campaignBrand.id,
           },
-          include: {
-            campaignTimeline: true,
+        });
+        await tx.campaign.update({
+          where: {
+            id: campaign.id,
+          },
+          data: {
+            company: { connect: { id: company?.id } },
+          },
+        });
+      } else {
+        await tx.campaign.update({
+          where: {
+            id: campaign.id,
+          },
+          data: {
+            company: { connect: { id: campaignBrand.id } },
           },
         });
       }
+
       if (!campaign || !campaign.id) {
         throw new Error('Campaign creation failed or campaign ID is missing');
       }
 
-      const thread = await tx.thread.create({
+      await tx.thread.create({
         data: {
           title: campaign.name,
           description: campaign.description,
@@ -560,11 +404,6 @@ export const createCampaign = async (req: Request, res: Response) => {
             adminId: admin?.id,
           },
         });
-        // campaign?.CampaignTimeline.filter((elem: any) => elem.for === 'admin').forEach(
-        //   async (item: any, index: any) => {
-        //     await assignTask(admin?.id, campaign?.id, item.id);
-        //   },
-        // );
         const data = await saveNotification(
           admin.id,
           Title.Create,
@@ -583,7 +422,7 @@ export const createCampaign = async (req: Request, res: Response) => {
     return res.status(400).json(error);
   }
 };
-
+// Campaign Info for Admin
 export const getAllCampaigns = async (req: Request, res: Response) => {
   const id = req.session.userid;
   try {
@@ -607,6 +446,9 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
         campaignTimeline: true,
         campaignBrief: true,
         campaignRequirement: true,
+        campaignLogs: true,
+        campaignAdmin: true,
+        campaignSubmissionRequirement: true,
         pitch: {
           include: {
             user: {
@@ -621,14 +463,14 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
             },
           },
         },
-        shortlistCreator: {
+        shortlisted: {
           select: {
-            creator: {
+            user: {
               include: {
                 creator: true,
               },
             },
-            creatorId: true,
+            userId: true,
           },
         },
       },
@@ -681,16 +523,26 @@ export const getCampaignById = async (req: Request, res: Response) => {
             },
           },
         },
-        shortlistCreator: {
+        shortlisted: {
           select: {
-            creatorId: true,
-            creator: {
+            user: {
               include: {
                 creator: true,
               },
             },
+            userId: true,
           },
         },
+        campaignSubmissionRequirement: {
+          include: {
+            submissionType: {
+              select: {
+                type: true,
+              },
+            },
+          },
+        },
+        submission: true,
       },
     });
     return res.status(200).json(campaign);
@@ -885,6 +737,8 @@ export const getAllActiveCampaign = async (_req: Request, res: Response) => {
         brand: true,
         company: true,
         pitch: true,
+        shortlisted: true,
+        submission: true,
       },
     });
 
@@ -895,10 +749,33 @@ export const getAllActiveCampaign = async (_req: Request, res: Response) => {
 };
 
 export const creatorMakePitch = async (req: Request, res: Response) => {
-  const { campaignId, content } = req.body;
+  const { campaignId, content, type } = req.body;
   const id = req.session.userid;
 
+  // const conn = await amqplib.connect('amqp://host.docker.internal');
+  // const channel = await conn.createChannel();
+  // channel.assertQueue('videoQueue');
+
   try {
+    const isPitchExist = await prisma.pitch.findUnique({
+      where: {
+        userId_campaignId: {
+          userId: id as string,
+          campaignId: campaignId,
+        },
+      },
+    });
+
+    if (isPitchExist) {
+      return res.status(400).json({ message: 'You have make a pitch for this campaign.' });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: {
+        id: id,
+      },
+    });
+
     const campaign = await prisma.campaign.findUnique({
       where: {
         id: campaignId,
@@ -909,23 +786,17 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
       },
     });
 
-    if (!campaign) {
-      return res.status(404).json({ message: 'No campaign found.' });
-    }
+    // if (req.files && req.files.pitchVideo) {
+    //   const { pitchVideo } = req.files as any;
 
-    if (campaign.pitch.some((item) => item.userId.includes(id as any))) {
-      return res.status(404).json({ message: 'You have make a pitch for this campaign.' });
-    }
+    //   const job = {
+    //     tempFilePath: pitchVideo.tempFilePath,
+    //     name: `${user?.id}-${campaign?.id}-pitch.mp4`,
+    //   };
 
-    const creator = await prisma.user.findUnique({
-      where: {
-        id: id,
-      },
-    });
+    //   const childProcess = fork(path.resolve('src/helper/video.ts'));
 
-    if (!creator) {
-      return res.status(404).json({ message: 'Creator not found.' });
-    }
+    //   childProcess.send(job);
 
     if (req.files && req.files.pitchVideo) {
       const { pitchVideo } = req.files as any;
@@ -938,17 +809,49 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
       // });
 
       const publicURL = await uploadPitchVideo(pitchVideo.tempFilePath, pitchVideo.name, 'pitchVideo');
+    //   const pitch = await prisma.pitch.create({
+    //     data: {
+    //       type: 'video',
+    //       content: '',
+    //       userId: id as string,
+    //       campaignId: campaignId,
+    //       status: 'pending',
+    //     },
+    //   });
 
-      const pitch = await prisma.pitch.create({
-        data: {
-          type: 'video',
-          campaignId: campaign?.id,
-          userId: creator?.id,
-          content: publicURL,
-          status: 'undecided',
-        },
-      });
+    //   childProcess.on('message', async (data: any) => {
+    //     io.to(clients.get(user?.id)).emit('pitch-loading', { progress: data.progress, campaignId: campaignId });
+    //     if (data.statusCode === 200) {
+    //       const { publicUrl } = data;
+    //       // const publicURL = await uploadPitchVideo(path.resolve(`src/upload/${job.name}`), job.name, 'pitchVideo');
+    //       fs.unlinkSync(path.resolve(`src/upload/${job.name}`));
+    //       await prisma.pitch.update({
+    //         where: {
+    //           id: pitch.id,
+    //         },
+    //         data: {
+    //           content: publicUrl,
+    //           status: 'undecided',
+    //         },
+    //       });
+    //       io.to(clients.get(user?.id)).emit('pitch-uploaded', {
+    //         name: 'Uploading pitch video is complete.',
+    //         campaignId: campaign?.id,
+    //       });
+    //     }
+    //   });
 
+    //   childProcess.on('error', async () => {
+    //     fs.unlinkSync(path.resolve(`src/upload/${job.name}`));
+    //     await prisma.pitch.delete({
+    //       where: {
+    //         id: pitch.id,
+    //       },
+    //     });
+    //     console.log('There is error when uploading file');
+    //   });
+    // }
+      
       // channel.sendToQueue(
       //   'uploadVideo',
       //   Buffer.from(
@@ -958,45 +861,168 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
       //     }),
       //   ),
       // );
-    } else {
+
+    if (type === 'video') {
       await prisma.pitch.create({
         data: {
-          type: 'text',
-          campaignId: campaign?.id,
-          userId: creator?.id,
+          type: 'video',
           content: content,
+          userId: id as string,
+          campaignId: campaignId,
+          status: 'undecided',
+        },
+      });  
+    } else {
+      const pitch = await prisma.pitch.create({
+        data: {
+          type: 'text',
+          content: content,
+          userId: id as string,
+          campaignId: campaignId,
+          status: 'undecided',
         },
       });
     }
 
     const newPitch = await saveNotification(
-      creator.id,
+      user?.id as string,
       Title.Create,
       `Your pitch has been successfully sent.`,
       Entity.Pitch,
     );
 
-    io.to(clients.get(creator.id)).emit('notification', newPitch);
+    io.to(clients.get(user?.id)).emit('notification', newPitch);
 
-    const admins = campaign.campaignAdmin;
+    const admins = campaign?.campaignAdmin;
 
-    const notifications = admins.map(async ({ adminId }) => {
+    admins?.map(async ({ adminId }) => {
       const notification = await saveNotification(
         adminId,
         Title.Create,
-        `New Pitch By ${creator.name} for campaign ${campaign.name}`,
+        `New Pitch By ${user?.name} for campaign ${campaign?.name}`,
         Entity.Pitch,
       );
       io.to(clients.get(adminId)).emit('notification', notification);
     });
 
-    await Promise.all(notifications);
+    // channel.assertQueue('videoQueue');
 
-    return res.status(200).json({ message: 'Successfully Pitch !' });
+    // channel.sendToQueue('videoQueue', Buffer.from(JSON.stringify(job)));
+    // return res.status(202).json({ message: 'Successfully Pitch !' });
+    return res.status(202).json({ message: 'Successfully Pitch !' });
   } catch (error) {
     console.log(error);
-    return res.status(400).json(error);
+    return res.status(400).json({ message: 'Error' });
   }
+
+  // try {
+  //   const campaign = await prisma.campaign.findUnique({
+  //     where: {
+  //       id: campaignId,
+  //     },
+  //     include: {
+  //       pitch: true,
+  //       campaignAdmin: true,
+  //     },
+  //   });
+
+  //   if (!campaign) {
+  //     return res.status(404).json({ message: 'No campaign found.' });
+  //   }
+
+  //   if (campaign.pitch.some((item) => item.userId.includes(id as any))) {
+  //     return res.status(404).json({ message: 'You have make a pitch for this campaign.' });
+  //   }
+
+  //   const creator = await prisma.user.findUnique({
+  //     where: {
+  //       id: id,
+  //     },
+  //   });
+
+  //   if (!creator) {
+  //     return res.status(404).json({ message: 'Creator not found.' });
+  //   }
+
+  //   if (req.files && req.files.pitchVideo) {
+  //     const { pitchVideo } = req.files as any;
+  //     const job = {
+  //       tempFilePath: pitchVideo.tempFilePath,
+  //       name: pitchVideo.name,
+  //     };
+  //     channel.assertQueue('videoQueue');
+
+  //     channel.sendToQueue('videoQueue', Buffer.from(JSON.stringify(job)));
+  //     return res.status(200).json({ message: 'Successfully Pitch !' });
+  //     // send to compress queue
+
+  //     // RABBITMQ
+  //     // const conn = await amqplib.connect(`${process.env.RABBIT_MQ}`);
+  //     // const channel = await conn.createChannel();
+  //     // channel.assertQueue('uploadVideo', {
+  //     //   durable: true,
+  //     // });
+
+  //     // const publicURL = await uploadPitchVideo(pitchVideo.tempFilePath, pitchVideo.name, 'pitchVideo');
+
+  //     // const pitch = await prisma.pitch.create({
+  //     //   data: {
+  //     //     type: 'video',
+  //     //     campaignId: campaign?.id,
+  //     //     userId: creator?.id,
+  //     //     content: '',
+  //     //     status: 'undecided',
+  //     //   },
+  //     // });
+
+  //     // channel.sendToQueue(
+  //     //   'uploadVideo',
+  //     //   Buffer.from(
+  //     //     JSON.stringify({
+  //     //       content: pitchVideo,
+  //     //       pitchId: pitch.id,
+  //     //     }),
+  //     //   ),
+  //     // );
+  //   } else {
+  //     await prisma.pitch.create({
+  //       data: {
+  //         type: 'text',
+  //         campaignId: campaign?.id,
+  //         userId: creator?.id,
+  //         content: content,
+  //       },
+  //     });
+  //   }
+
+  //   const newPitch = await saveNotification(
+  //     creator.id,
+  //     Title.Create,
+  //     `Your pitch has been successfully sent.`,
+  //     Entity.Pitch,
+  //   );
+
+  //   io.to(clients.get(creator.id)).emit('notification', newPitch);
+
+  //   const admins = campaign.campaignAdmin;
+
+  //   const notifications = admins.map(async ({ adminId }) => {
+  //     const notification = await saveNotification(
+  //       adminId,
+  //       Title.Create,
+  //       `New Pitch By ${creator.name} for campaign ${campaign.name}`,
+  //       Entity.Pitch,
+  //     );
+  //     io.to(clients.get(adminId)).emit('notification', notification);
+  //   });
+
+  //   await Promise.all(notifications);
+
+  //   return res.status(200).json({ message: 'Successfully Pitch !' });
+  // } catch (error) {
+  //   console.log(error);
+  //   return res.status(400).json(error);
+  // }
 };
 
 export const getCampaignsByCreatorId = async (req: Request, res: Response) => {
@@ -1004,7 +1030,7 @@ export const getCampaignsByCreatorId = async (req: Request, res: Response) => {
   try {
     const shortlisted = await prisma.shortListedCreator.findMany({
       where: {
-        creatorId: userid,
+        userId: userid,
       },
     });
 
@@ -1061,23 +1087,23 @@ export const changeCampaignStage = async (req: Request, res: Response) => {
       },
       include: {
         campaignAdmin: true,
-        shortlistCreator: {
+        shortlisted: {
           include: {
-            creator: true,
+            user: true,
           },
         },
       },
     });
 
-    if (campaign?.shortlistCreator.length && campaign?.status === 'PAUSED') {
-      campaign?.shortlistCreator?.map(async (value) => {
+    if (campaign?.shortlisted.length && campaign?.status === 'PAUSED') {
+      campaign?.shortlisted?.map(async (value) => {
         const data = await saveNotification(
-          value.creatorId,
+          value.userId as string,
           Title.Update,
           `Campaign ${campaign.name} is down for maintenance`,
           Entity.Campaign,
         );
-        io.to(clients.get(value.creatorId)).emit('notification', data);
+        io.to(clients.get(value.userId)).emit('notification', data);
       });
     }
 
@@ -1444,6 +1470,7 @@ export const getFirstDraft = async (req: Request, res: Response) => {
 
 export const changePitchStatus = async (req: Request, res: Response) => {
   const { status, pitchId } = req.body;
+
   try {
     const pitch = await prisma.pitch.update({
       where: {
@@ -1460,7 +1487,7 @@ export const changePitchStatus = async (req: Request, res: Response) => {
     if (pitch.status === 'approved') {
       await prisma.shortListedCreator.create({
         data: {
-          creatorId: pitch?.userId,
+          userId: pitch?.userId,
           campaignId: pitch?.campaignId,
         },
       });
@@ -1488,13 +1515,9 @@ export const changePitchStatus = async (req: Request, res: Response) => {
         },
       });
 
-      console.log('Campaign:', campaign);
-
       if (!campaign || !campaign.thread) {
         return res.status(404).json({ message: 'Campaign or thread not found' });
       }
-
-      console.log('Thread:', campaign.thread);
 
       await prisma.userThread.create({
         data: {
@@ -1503,25 +1526,16 @@ export const changePitchStatus = async (req: Request, res: Response) => {
         },
       });
 
-      console.log('User added to thread:', pitch.userId);
-
       // const timelines = await prisma.campaignTimeline.findMany({
       //   where: {
       //     campaignId: pitch?.campaignId,
-      //   },
-      //   include: {
-      //     dependsOnCampaignTimeline: {
-      //       include: {
-      //         campaignTimeline: true,
-      //       },
-      //     },
       //   },
       // });
 
       // timelines
       //   .filter((item: any) => item.for === 'creator' && item.name !== 'Open For Pitch')
       //   .forEach(async (item: any, index: number) => {
-      //     await prisma.campaignTimelineTask.create({
+      //     await prisma.campaignTask.create({
       //       data: {
       //         userId: pitch?.userId,
       //         task: item?.name,
@@ -1529,36 +1543,15 @@ export const changePitchStatus = async (req: Request, res: Response) => {
       //         campaignId: pitch?.campaignId,
       //         startDate: item?.startDate,
       //         endDate: item?.endDate,
-      //         status: index === 0 ? ('IN_PROGRESS' as any) : 'NOT_STARTED',
+      //         status: item.name === 'Agreement' ? ('IN_PROGRESS' as any) : 'NOT_STARTED',
       //       },
       //     });
       //   });
-      const timelines = await prisma.campaignTimeline.findMany({
-        where: {
-          campaignId: pitch?.campaignId,
-        },
-      });
-
-      timelines
-        .filter((item: any) => item.for === 'creator' && item.name !== 'Open For Pitch')
-        .forEach(async (item: any, index: number) => {
-          await prisma.campaignTask.create({
-            data: {
-              userId: pitch?.userId,
-              task: item?.name,
-              campaignTimelineId: item?.id,
-              campaignId: pitch?.campaignId,
-              startDate: item?.startDate,
-              endDate: item?.endDate,
-              status: item.name === 'Agreement' ? ('IN_PROGRESS' as any) : 'NOT_STARTED',
-            },
-          });
-        });
     } else {
       const isExist = await prisma.shortListedCreator.findUnique({
         where: {
-          creatorId_campaignId: {
-            creatorId: pitch?.userId,
+          userId_campaignId: {
+            userId: pitch?.userId,
             campaignId: pitch?.campaignId,
           },
         },
@@ -1567,8 +1560,8 @@ export const changePitchStatus = async (req: Request, res: Response) => {
       if (isExist) {
         await prisma.shortListedCreator.delete({
           where: {
-            creatorId_campaignId: {
-              creatorId: pitch?.userId,
+            userId_campaignId: {
+              userId: pitch?.userId,
               campaignId: pitch?.campaignId,
             },
           },
@@ -1634,6 +1627,8 @@ export const getCampaignForCreatorById = async (req: Request, res: Response) => 
         },
         brand: true,
         company: true,
+        pitch: true,
+        shortlisted: true,
       },
     });
     return res.status(200).json(campaign);
@@ -1680,11 +1675,38 @@ export const getCampaignPitchForCreator = async (req: Request, res: Response) =>
                 interests: true,
               },
             },
+            pitch: true,
+            shortlisted: true,
           },
         },
       },
     });
     return res.status(200).json(campaings);
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const getSubmission = async (req: Request, res: Response) => {
+  const { userId, campaignId, submissionTypeId } = req.query;
+
+  try {
+    const submission = await prisma.submission.findMany({
+      where: {
+        userId: userId as string,
+        campaignId: campaignId as string,
+      },
+      include: {
+        submissionType: {
+          select: {
+            type: true,
+          },
+        },
+      },
+    });
+
+    console.log(submission);
+    return res.status(200).json(submission);
   } catch (error) {
     return res.status(400).json(error);
   }
@@ -1707,3 +1729,82 @@ export const getCampaignPitchForCreator = async (req: Request, res: Response) =>
 //     return res.status(400).json(error);
 //   }
 // };
+
+
+export const getCampaignLog = async (req: Request, res: Response) => {
+  console.log('=== BEGIN getCampaignLog ===');
+  console.log(req.params);
+  console.log('=== END getCampaignLog ===');
+
+  const { id } = req.params;
+
+  try {
+    const campaignLog = await prisma.campaignLog.findMany({
+      where: {
+        campaignId: id,
+      },
+    });
+    return res.status(200).json(campaignLog);
+  } catch (error) {
+    // TODO TEMP
+    console.log('=== BEGIN getCampaignLog error ===');
+    console.log(error);
+    console.log('=== END getCampaignLog error ===');
+
+export const uploadVideoTest = async (req: Request, res: Response) => {
+  const abortController = new AbortController();
+  const { campaignId } = req.body;
+  const { userid } = req.session;
+  const outputPath = `${campaignId}-${userid}-pitch.mp4`;
+  let cancel = false;
+
+  res.on('close', () => {
+    console.log('ABORTING....');
+    cancel = true;
+    fs.unlinkSync(path.resolve(`src/upload/${outputPath}`));
+    abortController.abort();
+  });
+
+  try {
+    if (!cancel) {
+      console.log('COMPRESSION START');
+      const path: any = await compress(
+        (req.files as any).pitchVideo.tempFilePath,
+        outputPath,
+        (data: number) => {
+          io.to(clients.get(req.session.userid)).emit('video-upload', { campaignId: campaignId, progress: data });
+        },
+        abortController.signal,
+      );
+
+      const size = await new Promise((resolve, reject) => {
+        fs.stat(path, (err, data) => {
+          if (err) {
+            reject();
+          }
+          resolve(data.size);
+        });
+      });
+
+      console.log('UPLOADING START');
+      const a = await uploadPitchVideo(
+        path,
+        outputPath,
+        'pitchVideo',
+        size as number,
+        (data: number) => {
+          io.to(clients.get(req.session.userid)).emit('video-upload', { campaignId: campaignId, progress: data });
+        },
+        abortController.signal,
+      );
+
+      // fs.unlinkSync(path);
+
+      io.to(clients.get(req.session.userid)).emit('video-upload-done', { campaignId: campaignId });
+
+      return res.status(200).json({ publicUrl: a, message: 'Succesfully uploaded' });
+    }
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};

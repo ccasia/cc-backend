@@ -187,7 +187,7 @@ export const getUser = async (id: string) => {
         },
       },
       pitch: true,
-      shortlistCreator: true,
+      shortlisted: true,
     },
   });
 

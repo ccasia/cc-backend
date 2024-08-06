@@ -188,10 +188,7 @@ export const getCreatorFullInfoById = async (req: Request, res: Response) => {
       },
       include: {
         creator: true,
-        shortlistCreator: true,
-        campaignAgreement: true,
-
-        // firstDraft: true,
+        shortlisted: true,
         campaignTasks: true,
       },
     });
