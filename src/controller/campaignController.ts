@@ -95,6 +95,7 @@ export const createCampaign = async (req: Request, res: Response) => {
     if (req.files && req.files.campaignImages) {
       const images = (req.files as any).campaignImages as [];
       for (const item of images as any) {
+        // TODO TEMP: "Error uploading file: ENOENT: no such file or directory, open '/app/src/config/test-cs.json'"
         const url = await uploadImage(item.tempFilePath, item.name, 'campaign');
         publicURL.push(url);
       }
@@ -104,6 +105,7 @@ export const createCampaign = async (req: Request, res: Response) => {
 
     if (req.files && req.files.agreementForm) {
       const form = (req.files as any).agreementForm;
+      // TODO TEMP: "Error uploading file: ENOENT: no such file or directory, open '/app/src/config/test-cs.json'"
       agreementFormURL = await uploadAgreementForm(form.tempFilePath, form.name, 'agreementForm');
     }
 
@@ -127,6 +129,60 @@ export const createCampaign = async (req: Request, res: Response) => {
         },
       });
 
+//       if (!brand) {
+//         // eslint-disable-next-line no-useless-catch
+//         try {
+//           brand = await tx.company.findUnique({
+//             where: {
+//               id: campaignBrand.id,
+//             },
+//           });
+
+//           campaign = await tx.campaign.create({
+//             data: {
+//               name: campaignTitle,
+//               description: campaignDescription,
+//               status: campaignStage as CampaignStatus,
+//               company: {
+//                 connect: {
+//                   id: brand?.id,
+//                 },
+//               },
+//               campaignBrief: {
+//                 create: {
+//                   title: campaignTitle,
+//                   objectives: campaignObjectives,
+//                   images: publicURL.map((image: any) => image) || '',
+//                   agreementFrom: agreementFormURL,
+//                   startDate: dayjs(campaignStartDate) as any,
+//                   endDate: dayjs(campaignEndDate) as any,
+//                   interests: campaignInterests,
+
+//                   campaigns_do: campaignDo,
+//                   campaigns_dont: campaignDont,
+//                 },
+//               },
+//               campaignRequirement: {
+//                 create: {
+//                   gender: audienceGender,
+//                   age: audienceAge,
+//                   geoLocation: audienceLocation,
+//                   language: audienceLanguage,
+//                   creator_persona: audienceCreatorPersona,
+//                   user_persona: audienceUserPersona,
+//                 },
+//               },
+//               campaignTimeline: {
+//                 create: timeline.map((item: any, index: number) => ({
+//                   // Fields for CampaignTimeline
+//                   for: item.for,
+//                   duration: parseInt(item.duration),
+//                   startDate: dayjs(item.startDate).toDate(),
+//                   endDate: dayjs(item.endDate).toDate(),
+//                   order: index + 1,
+//                   name: item.timeline_type.name,
+//                 })),
+//               },
       // Create Campaign
       const campaign = await tx.campaign.create({
         data: {
@@ -194,6 +250,37 @@ export const createCampaign = async (req: Request, res: Response) => {
       defaultRequirements.forEach(async (item) => {
         await tx.campaignSubmissionRequirement.create({
           data: {
+//             name: campaignTitle,
+//             description: campaignDescription,
+//             status: campaignStage as CampaignStatus,
+//             brand: {
+//               connect: {
+//                 id: brand?.id,
+//               },
+//             },
+//             campaignBrief: {
+//               create: {
+//                 title: campaignTitle,
+//                 objectives: campaignObjectives,
+//                 images: publicURL.map((image: any) => image) || '',
+//                 agreementFrom: agreementFormURL,
+//                 startDate: dayjs(campaignStartDate) as any,
+//                 endDate: dayjs(campaignEndDate) as any,
+//                 interests: campaignInterests,
+
+//                 campaigns_do: campaignDo,
+//                 campaigns_dont: campaignDont,
+//               },
+//             },
+//             campaignRequirement: {
+//               create: {
+//                 gender: audienceGender,
+//                 age: audienceAge,
+//                 geoLocation: audienceLocation,
+//                 language: audienceLanguage,
+//                 creator_persona: audienceCreatorPersona,
+//                 user_persona: audienceUserPersona,
+//               },
             campaignId: campaign.id,
             submissionTypeId: item.submissionTypeId,
             startDate: item.startDate,
@@ -464,6 +551,179 @@ export const getCampaignById = async (req: Request, res: Response) => {
   }
 };
 
+export const matchCampaignWithCreator = async (req: Request, res: Response) => {
+  const { userid } = req.session;
+  try {
+    const campaigns = await prisma.campaign.findMany({
+      where: {
+        status: 'ACTIVE',
+      },
+      include: {
+        campaignBrief: true,
+        campaignRequirement: true,
+        campaignTimeline: true,
+        brand: true,
+        company: true,
+        pitch: true,
+      },
+    });
+console.log(campaigns)
+    const user = await prisma.user.findUnique({
+      where: {
+        id: userid,
+      },
+      include: {
+        creator: {
+          include: {
+            interests: true,
+            industries: true,
+          },
+        },
+      },
+    });
+    const matchCampaign = (user: any, campaign: any) => {
+      // compare campaign with user
+      // const gender = ['nonbinary', 'female', 'male'];
+      const lang2 = user?.creator?.languages.includes('Mandarin')
+        ? [...user?.creator?.languages, 'Chinese']
+        : [...user?.creator?.languages];
+      let newGender2 = '';
+      if (user?.creator.pronounce === 'he/him') {
+        newGender2 = 'male';
+      } else if (user?.creator.pronounce === 'she/her') {
+        newGender2 = 'female';
+      } else {
+        newGender2 = 'nonbinary';
+      }
+
+      let match = {
+        languages: false,
+        interests: false,
+        gender: false,
+        age: false,
+        // location: false,
+      };
+
+      function hasCommonElement(arr1: string[], arr2: string[]): boolean {
+        return arr1.some((value) => arr2.includes(value));
+      }
+      const languagesMatch = hasCommonElement(campaign?.campaignRequirement?.language || [], lang2);
+
+      if (languagesMatch) {
+        match.languages = true;
+      }
+
+      if (campaign?.campaignRequirement?.gender.includes(newGender2)) {
+        match.gender = true;
+      }
+      // age
+      const birthDate = new Date(user?.creator?.birthDate);
+      const today = new Date();
+
+      let age = today.getFullYear() - birthDate.getFullYear();
+      const monthDifference = today.getMonth() - birthDate.getMonth();
+
+      if (monthDifference < 0 || (monthDifference === 0 && today.getDate() < birthDate.getDate())) {
+        age--;
+      }
+
+      function isAgeInRange(age: number, ranges: string[]): boolean {
+        return ranges.some((range) => {
+          const [min, max] = range.split('-').map(Number);
+          return age >= min && age <= max;
+        });
+      }
+      const finalAge = isAgeInRange(age, campaign?.campaignRequirement?.age);
+
+      if (finalAge) {
+        match.age = true;
+      }
+      // location
+      // let location: any = [];
+      // const mainCitiesInMalaysia: string[] = [
+      //   'Kuala Lumpur',
+      //   'George Town',
+      //   'Ipoh',
+      //   'Johor Bahru',
+      //   'Malacca City',
+      //   'Alor Setar',
+      //   'Kota Kinabalu',
+      //   'Kuching',
+      //   'Shah Alam',
+      //   'Petaling Jaya',
+      //   'Iskandar Puteri',
+      //   'Seberang Perai',
+      //   'Seremban',
+      //   'Kuantan',
+      //   'Kuala Terengganu',
+      //   'Miri',
+      //   'Sibu',
+      //   'Sandakan',
+      //   'Tawau',
+      // ];
+
+      // if (campaign?.campaignRequirement?.geoLocation.includes('MainCities')) {
+      //   location = [...campaign?.campaignRequirement?.geoLocation, ...mainCitiesInMalaysia];
+      // } else {
+      //   location = campaign?.campaignRequirement?.geoLocation;
+      // }
+
+      // const locationMatch = location.includes(user?.creator?.location);
+
+      // if (locationMatch) {
+      //   match.location = true;
+      // }
+      // interests
+      // map interset out of objects
+      const interestArr = user?.creator?.interests.map((item: any) => item.name);
+      function hasCommonElement2(arr1: string[], arr2: string[]): boolean {
+        return arr1.some((value) => arr2.includes(value));
+      }
+
+      const interestsMatch = hasCommonElement2(campaign?.campaignBrief?.interests || [], interestArr);
+
+      if (interestsMatch) {
+        match.interests = true;
+      }
+
+      function allMatchTrue(match: any): boolean {
+        return Object.values(match).every((value) => value === true);
+      }
+
+      const finalMatch = allMatchTrue(match);
+      return finalMatch;
+    };
+
+    function getPercentageMatch(user: any, campaign: any) {
+      const creatorInterest = user?.creator?.interests.map((item: any) => item.name.toLowerCase());
+      const campInterest = campaign?.campaignBrief?.interests.map((e : string) => e.toLowerCase());
+
+      function getMatchingElements(arr1: string[], arr2: string[]): string[] {
+        return arr1.filter((value) => arr2.includes(value));
+      }
+
+      const matchedInterests = getMatchingElements(creatorInterest , campInterest);
+      console.log(campInterest)
+      const percantage = (matchedInterests.length / campInterest.length) * 100;
+
+      return percantage;
+    }
+
+    const matchedCampaign = campaigns.filter((item) => matchCampaign(user, item));
+
+    const matchedCampaignWithPercentage = matchedCampaign.map((item) => {
+      return {
+        ...item,
+        percentageMatch: getPercentageMatch(user, item),
+      };
+    });
+
+    return res.status(200).json(matchedCampaignWithPercentage);
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
 export const getAllActiveCampaign = async (_req: Request, res: Response) => {
   try {
     const campaigns = await prisma.campaign.findMany({
@@ -538,6 +798,17 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
 
     //   childProcess.send(job);
 
+    if (req.files && req.files.pitchVideo) {
+      const { pitchVideo } = req.files as any;
+
+      // RABBITMQ
+      // const conn = await amqplib.connect(`${process.env.RABBIT_MQ}`);
+      // const channel = await conn.createChannel();
+      // channel.assertQueue('uploadVideo', {
+      //   durable: true,
+      // });
+
+      const publicURL = await uploadPitchVideo(pitchVideo.tempFilePath, pitchVideo.name, 'pitchVideo');
     //   const pitch = await prisma.pitch.create({
     //     data: {
     //       type: 'video',
@@ -580,6 +851,16 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
     //     console.log('There is error when uploading file');
     //   });
     // }
+      
+      // channel.sendToQueue(
+      //   'uploadVideo',
+      //   Buffer.from(
+      //     JSON.stringify({
+      //       content: pitchVideo,
+      //       pitchId: pitch.id,
+      //     }),
+      //   ),
+      // );
 
     if (type === 'video') {
       await prisma.pitch.create({
@@ -590,7 +871,7 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
           campaignId: campaignId,
           status: 'undecided',
         },
-      });
+      });  
     } else {
       const pitch = await prisma.pitch.create({
         data: {

@@ -18,6 +18,9 @@ import {
   getCampaignsByCreatorId,
   getCampaignForCreatorById,
   getCampaignPitchForCreator,
+  editRequirement,
+  editDosandDonts,
+  matchCampaignWithCreator,
 
   getCampaignLog,
 
@@ -50,6 +53,7 @@ const router = Router();
 router.get('/getAllCampaignsByAdminID', isSuperAdmin, getAllCampaigns);
 router.get('/getCampaignById/:id', isSuperAdmin, getCampaignById);
 router.get('/getAllActiveCampaign', getAllActiveCampaign);
+router.get('/matchCampaignWithCreator', matchCampaignWithCreator);
 router.get('/pitch/:id', getPitchById);
 router.get('/firstDraft', getFirstDraft);
 router.get('/timelineType', isSuperAdmin, getTimelineType);
