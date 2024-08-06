@@ -1,5 +1,5 @@
-import { Storage } from '@google-cloud/storage';
-import { io } from 'src/server';
+import { Storage, TransferManager } from '@google-cloud/storage';
+import fs from 'fs';
 
 const pathToJSONKey = `${__dirname}/test-cs.json`;
 
@@ -127,23 +127,71 @@ export const uploadCompanyLogo = async (tempFilePath: string, fileName: string) 
   }
 };
 
-export const uploadPitchVideo = async (tempFilePath: string, fileName: string, folderName: string): Promise<string> => {
+export const uploadPitchVideo = async (
+  tempFilePath: string,
+  fileName: string,
+  folderName: string,
+  size: number,
+  progressCallback: any,
+  abortSignal: AbortSignal,
+) => {
   try {
     const bucketName = process.env.BUCKET_NAME as string;
     const destination = `${folderName}/${fileName}`;
+
+    // const bucket = storage.bucket(bucketName);
+    // const file = bucket.file(destination);
+
+    // const readStream = fs.createReadStream(tempFilePath, { highWaterMark: 20 * 1024 * 1024 });
+    // const writeStream = file.createWriteStream({
+    //   resumable: true,
+    //   metadata: {
+    //     contentType: 'video/mp4',
+    //   },
+    // });
+
+    // return new Promise((resolve, reject) => {
+    //   writeStream.on('finish', () => {
+    //     const publicURL = `https://storage.googleapis.com/${bucketName}/${destination}`;
+    //     resolve(publicURL); // Resolve the promise with the public URL
+    //   });
+
+    //   writeStream.on('error', (err) => {
+    //     reject(err); // Reject the promise if there's an error
+    //   });
+
+    //   readStream.on('error', (err) => {
+    //     reject(err); // Reject the promise if there's an error with the read stream
+    //   });
+
+    //   readStream.pipe(writeStream);
+    // });
 
     // Upload the file to the specified bucket
     const [file] = await storage.bucket(bucketName).upload(tempFilePath, {
       destination,
       gzip: true,
+      resumable: true,
+      metadata: {
+        contentType: 'video/mp4',
+      },
+      onUploadProgress: (event) => {
+        const progress = (event.bytesWritten / size) * 100;
+        progressCallback(progress);
+      },
+    });
+
+    abortSignal.addEventListener('abort', () => {
+      console.log('ABORTING UPLOAD GCP');
     });
 
     // Make the file public
-    await file.makePublic();
+    // await file.makePublic();
 
-    // Construct the public URL
     const publicURL = `https://storage.googleapis.com/${bucketName}/${destination}`;
     return publicURL;
+
+    // Construct the public URL
   } catch (err) {
     throw new Error(`Error uploading file: ${err.message}`);
   }

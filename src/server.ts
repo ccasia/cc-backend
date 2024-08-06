@@ -34,6 +34,7 @@ app.use(
     tempFileDir: '/tmp/',
   }),
 );
+// app.use(fileUpload());
 
 const corsOptions = {
   origin: true, //included origin as true

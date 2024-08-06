@@ -1,7 +1,5 @@
-import { Response, Router, Request } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { Router } from 'express';
 import {
-  updateDefaultTimeline,
   createCampaign,
   getAllCampaigns,
   getCampaignById,
@@ -10,19 +8,22 @@ import {
   changeCampaignStage,
   closeCampaign,
   getPitchById,
-  // rejectPitch,
   editCampaignInfo,
   editCampaignBrandOrCompany,
   editCampaignDosAndDonts,
   editCampaignRequirements,
   editCampaignTimeline,
-  // updateTimeLineType,
   getFirstDraft,
   changePitchStatus,
   getCampaignsByCreatorId,
   getCampaignForCreatorById,
   getCampaignPitchForCreator,
+
   getCampaignLog,
+
+  getSubmission,
+  uploadVideoTest,
+
 } from 'src/controller/campaignController';
 import { isSuperAdmin } from 'src/middleware/onlySuperadmin';
 import {
@@ -56,15 +57,26 @@ router.get('/defaultTimeline', isSuperAdmin, getDefaultTimeline);
 router.get('/getCampaignsBySessionId', getCampaignsByCreatorId);
 router.get('/getCampaignForCreatorById/:id', isLoggedIn, getCampaignForCreatorById);
 router.get('/getCampaignPitch', isLoggedIn, getCampaignPitchForCreator);
+
+router.get('/getSubmissions', isSuperAdmin, getSubmission);
 // router.get('/pitch/:campaignId', getPitchByCampaignId);
 router.get('/getCampaignLog/:id', getCampaignLog);
 
 router.post('/updateOrCreateDefaultTimeline', updateOrCreateDefaultTimeline);
-router.post('/updateDefaultTimeline', updateDefaultTimeline);
 router.post('/createCampaign', isSuperAdmin, createCampaign);
 // router.post('/rejectPitch', isSuperAdmin, rejectPitch);
 router.post('/createNewTimeline', isSuperAdmin, createNewTimeline);
 router.post('/createSingleTimelineType', isSuperAdmin, createSingleTimelineType);
+router.post(
+  '/uploadVideo',
+  // (req, res, next) => {
+  //   req.on('close', () => {
+  //     console.log('ABORTINGGG');
+  //   });
+  //   next();
+  // },
+  uploadVideoTest,
+);
 
 router.patch('/pitch', creatorMakePitch);
 router.patch('/changeCampaignStage/:campaignId', changeCampaignStage);

@@ -587,7 +587,7 @@ export const login = async (req: Request, res: Response) => {
           },
         },
         pitch: true,
-        shortlistCreator: true,
+        shortlisted: true,
       },
     });
 
@@ -638,6 +638,7 @@ export const login = async (req: Request, res: Response) => {
       accessToken: accessToken,
     });
   } catch (error) {
+    console.log(error);
     return res.send(error);
   }
 };
