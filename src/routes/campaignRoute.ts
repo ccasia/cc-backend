@@ -18,15 +18,12 @@ import {
   getCampaignsByCreatorId,
   getCampaignForCreatorById,
   getCampaignPitchForCreator,
-  editRequirement,
-  editDosandDonts,
+  // editRequirement,
+  // editDosandDonts,
   matchCampaignWithCreator,
-
   getCampaignLog,
-
   getSubmission,
   uploadVideoTest,
-
 } from 'src/controller/campaignController';
 import { isSuperAdmin } from 'src/middleware/onlySuperadmin';
 import {

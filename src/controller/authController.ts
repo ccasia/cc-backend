@@ -209,7 +209,7 @@ export const registerCreator = async (req: Request, res: Response) => {
 export const displayAll = async (_req: Request, res: Response) => {
   try {
     const data = await prisma.user.findMany();
-    console.log(data);
+    // console.log(data);
     return res.status(201).json({ data });
   } catch (error) {
     return res.status(400).json({ message: 'No user found.' });

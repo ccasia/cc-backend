@@ -84,45 +84,7 @@ export const creatorUploadAgreement = async (req: Request, res: Response) => {
 export const getSubmissionByCampaignCreatorId = async (req: Request, res: Response) => {
   const { creatorId, campaignId } = req.query;
 
-  // try {
-  //   const campaignTask = await prisma.campaignTask.findMany({
-  //     where: {
-  //       AND: [
-  //         {
-  //           userId: creatorId as string,
-  //         },
-  //         {
-  //           campaignId: campaignId as string,
-  //         },
-  //       ],
-  //     },
-  //     include: {
-  //       submission: true,
-  //     },
-  //   });
   try {
-    // const data = await Promise.all(
-    //   campaignTask.map(async (value) => {
-    //     const result = await prisma.submission.findUnique({
-    //       where: {
-    //         campaignTaskId: value.id,
-    //       },
-    //       include: {
-    //         campaignTask: {
-    //           select: {
-    //             status: true,
-    //             id: true,
-    //           },
-    //         },
-    //         firstDraft: true,
-    //         finalDraft: true,
-    //         feedback: true,
-    //       },
-    //     });
-    //     return result;
-    //   }),
-    // );
-
     const data = await prisma.submission.findMany({
       where: {
         userId: creatorId as string,
@@ -135,8 +97,13 @@ export const getSubmissionByCampaignCreatorId = async (req: Request, res: Respon
             type: true,
           },
         },
+        feedback: true,
+        dependentOn: true,
+        dependencies: true,
       },
     });
+
+    console.log(data);
 
     return res.status(200).json(data);
   } catch (error) {
