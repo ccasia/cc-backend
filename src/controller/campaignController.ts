@@ -1,5 +1,12 @@
 import { Request, Response } from 'express';
-import { CampaignStatus, CampaignSubmissionRequirement, CampaignTimeline, Entity, PrismaClient } from '@prisma/client';
+import {
+  CampaignStatus,
+  CampaignSubmissionRequirement,
+  CampaignTimeline,
+  Entity,
+  PrismaClient,
+  Submission,
+} from '@prisma/client';
 
 import { uploadAgreementForm, uploadImage, uploadPitchVideo } from 'src/config/cloudStorage.config';
 import dayjs from 'dayjs';
@@ -129,60 +136,60 @@ export const createCampaign = async (req: Request, res: Response) => {
         },
       });
 
-//       if (!brand) {
-//         // eslint-disable-next-line no-useless-catch
-//         try {
-//           brand = await tx.company.findUnique({
-//             where: {
-//               id: campaignBrand.id,
-//             },
-//           });
+      //       if (!brand) {
+      //         // eslint-disable-next-line no-useless-catch
+      //         try {
+      //           brand = await tx.company.findUnique({
+      //             where: {
+      //               id: campaignBrand.id,
+      //             },
+      //           });
 
-//           campaign = await tx.campaign.create({
-//             data: {
-//               name: campaignTitle,
-//               description: campaignDescription,
-//               status: campaignStage as CampaignStatus,
-//               company: {
-//                 connect: {
-//                   id: brand?.id,
-//                 },
-//               },
-//               campaignBrief: {
-//                 create: {
-//                   title: campaignTitle,
-//                   objectives: campaignObjectives,
-//                   images: publicURL.map((image: any) => image) || '',
-//                   agreementFrom: agreementFormURL,
-//                   startDate: dayjs(campaignStartDate) as any,
-//                   endDate: dayjs(campaignEndDate) as any,
-//                   interests: campaignInterests,
+      //           campaign = await tx.campaign.create({
+      //             data: {
+      //               name: campaignTitle,
+      //               description: campaignDescription,
+      //               status: campaignStage as CampaignStatus,
+      //               company: {
+      //                 connect: {
+      //                   id: brand?.id,
+      //                 },
+      //               },
+      //               campaignBrief: {
+      //                 create: {
+      //                   title: campaignTitle,
+      //                   objectives: campaignObjectives,
+      //                   images: publicURL.map((image: any) => image) || '',
+      //                   agreementFrom: agreementFormURL,
+      //                   startDate: dayjs(campaignStartDate) as any,
+      //                   endDate: dayjs(campaignEndDate) as any,
+      //                   interests: campaignInterests,
 
-//                   campaigns_do: campaignDo,
-//                   campaigns_dont: campaignDont,
-//                 },
-//               },
-//               campaignRequirement: {
-//                 create: {
-//                   gender: audienceGender,
-//                   age: audienceAge,
-//                   geoLocation: audienceLocation,
-//                   language: audienceLanguage,
-//                   creator_persona: audienceCreatorPersona,
-//                   user_persona: audienceUserPersona,
-//                 },
-//               },
-//               campaignTimeline: {
-//                 create: timeline.map((item: any, index: number) => ({
-//                   // Fields for CampaignTimeline
-//                   for: item.for,
-//                   duration: parseInt(item.duration),
-//                   startDate: dayjs(item.startDate).toDate(),
-//                   endDate: dayjs(item.endDate).toDate(),
-//                   order: index + 1,
-//                   name: item.timeline_type.name,
-//                 })),
-//               },
+      //                   campaigns_do: campaignDo,
+      //                   campaigns_dont: campaignDont,
+      //                 },
+      //               },
+      //               campaignRequirement: {
+      //                 create: {
+      //                   gender: audienceGender,
+      //                   age: audienceAge,
+      //                   geoLocation: audienceLocation,
+      //                   language: audienceLanguage,
+      //                   creator_persona: audienceCreatorPersona,
+      //                   user_persona: audienceUserPersona,
+      //                 },
+      //               },
+      //               campaignTimeline: {
+      //                 create: timeline.map((item: any, index: number) => ({
+      //                   // Fields for CampaignTimeline
+      //                   for: item.for,
+      //                   duration: parseInt(item.duration),
+      //                   startDate: dayjs(item.startDate).toDate(),
+      //                   endDate: dayjs(item.endDate).toDate(),
+      //                   order: index + 1,
+      //                   name: item.timeline_type.name,
+      //                 })),
+      //               },
       // Create Campaign
       const campaign = await tx.campaign.create({
         data: {
@@ -250,37 +257,37 @@ export const createCampaign = async (req: Request, res: Response) => {
       defaultRequirements.forEach(async (item) => {
         await tx.campaignSubmissionRequirement.create({
           data: {
-//             name: campaignTitle,
-//             description: campaignDescription,
-//             status: campaignStage as CampaignStatus,
-//             brand: {
-//               connect: {
-//                 id: brand?.id,
-//               },
-//             },
-//             campaignBrief: {
-//               create: {
-//                 title: campaignTitle,
-//                 objectives: campaignObjectives,
-//                 images: publicURL.map((image: any) => image) || '',
-//                 agreementFrom: agreementFormURL,
-//                 startDate: dayjs(campaignStartDate) as any,
-//                 endDate: dayjs(campaignEndDate) as any,
-//                 interests: campaignInterests,
+            //             name: campaignTitle,
+            //             description: campaignDescription,
+            //             status: campaignStage as CampaignStatus,
+            //             brand: {
+            //               connect: {
+            //                 id: brand?.id,
+            //               },
+            //             },
+            //             campaignBrief: {
+            //               create: {
+            //                 title: campaignTitle,
+            //                 objectives: campaignObjectives,
+            //                 images: publicURL.map((image: any) => image) || '',
+            //                 agreementFrom: agreementFormURL,
+            //                 startDate: dayjs(campaignStartDate) as any,
+            //                 endDate: dayjs(campaignEndDate) as any,
+            //                 interests: campaignInterests,
 
-//                 campaigns_do: campaignDo,
-//                 campaigns_dont: campaignDont,
-//               },
-//             },
-//             campaignRequirement: {
-//               create: {
-//                 gender: audienceGender,
-//                 age: audienceAge,
-//                 geoLocation: audienceLocation,
-//                 language: audienceLanguage,
-//                 creator_persona: audienceCreatorPersona,
-//                 user_persona: audienceUserPersona,
-//               },
+            //                 campaigns_do: campaignDo,
+            //                 campaigns_dont: campaignDont,
+            //               },
+            //             },
+            //             campaignRequirement: {
+            //               create: {
+            //                 gender: audienceGender,
+            //                 age: audienceAge,
+            //                 geoLocation: audienceLocation,
+            //                 language: audienceLanguage,
+            //                 creator_persona: audienceCreatorPersona,
+            //                 user_persona: audienceUserPersona,
+            //               },
             campaignId: campaign.id,
             submissionTypeId: item.submissionTypeId,
             startDate: item.startDate,
@@ -567,7 +574,7 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
         pitch: true,
       },
     });
-console.log(campaigns)
+    // console.log(campaigns);
     const user = await prisma.user.findUnique({
       where: {
         id: userid,
@@ -585,8 +592,10 @@ console.log(campaigns)
       // compare campaign with user
       // const gender = ['nonbinary', 'female', 'male'];
       const lang2 = user?.creator?.languages.includes('Mandarin')
-        ? [...user?.creator?.languages, 'Chinese']
-        : [...user?.creator?.languages];
+        ? // eslint-disable-next-line no-unsafe-optional-chaining
+          [...user?.creator?.languages, 'Chinese']
+        : // eslint-disable-next-line no-unsafe-optional-chaining
+          [...user?.creator?.languages];
       let newGender2 = '';
       if (user?.creator.pronounce === 'he/him') {
         newGender2 = 'male';
@@ -596,7 +605,7 @@ console.log(campaigns)
         newGender2 = 'nonbinary';
       }
 
-      let match = {
+      const match = {
         languages: false,
         interests: false,
         gender: false,
@@ -694,20 +703,20 @@ console.log(campaigns)
       return finalMatch;
     };
 
-    function getPercentageMatch(user: any, campaign: any) {
+    const getPercentageMatch = (user: any, campaign: any) => {
       const creatorInterest = user?.creator?.interests.map((item: any) => item.name.toLowerCase());
-      const campInterest = campaign?.campaignBrief?.interests.map((e : string) => e.toLowerCase());
+      const campInterest = campaign?.campaignBrief?.interests.map((e: string) => e.toLowerCase());
 
       function getMatchingElements(arr1: string[], arr2: string[]): string[] {
         return arr1.filter((value) => arr2.includes(value));
       }
 
-      const matchedInterests = getMatchingElements(creatorInterest , campInterest);
-      console.log(campInterest)
+      const matchedInterests = getMatchingElements(creatorInterest, campInterest);
+      // console.log(campInterest);
       const percantage = (matchedInterests.length / campInterest.length) * 100;
 
       return percantage;
-    }
+    };
 
     const matchedCampaign = campaigns.filter((item) => matchCampaign(user, item));
 
@@ -798,17 +807,17 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
 
     //   childProcess.send(job);
 
-    if (req.files && req.files.pitchVideo) {
-      const { pitchVideo } = req.files as any;
+    // if (req.files && req.files.pitchVideo) {
+    // const { pitchVideo } = req.files as any;
 
-      // RABBITMQ
-      // const conn = await amqplib.connect(`${process.env.RABBIT_MQ}`);
-      // const channel = await conn.createChannel();
-      // channel.assertQueue('uploadVideo', {
-      //   durable: true,
-      // });
+    // RABBITMQ
+    // const conn = await amqplib.connect(`${process.env.RABBIT_MQ}`);
+    // const channel = await conn.createChannel();
+    // channel.assertQueue('uploadVideo', {
+    //   durable: true,
+    // });
 
-      const publicURL = await uploadPitchVideo(pitchVideo.tempFilePath, pitchVideo.name, 'pitchVideo');
+    // const publicURL = await uploadPitchVideo(pitchVideo.tempFilePath, pitchVideo.name, 'pitchVideo');
     //   const pitch = await prisma.pitch.create({
     //     data: {
     //       type: 'video',
@@ -851,16 +860,16 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
     //     console.log('There is error when uploading file');
     //   });
     // }
-      
-      // channel.sendToQueue(
-      //   'uploadVideo',
-      //   Buffer.from(
-      //     JSON.stringify({
-      //       content: pitchVideo,
-      //       pitchId: pitch.id,
-      //     }),
-      //   ),
-      // );
+
+    // channel.sendToQueue(
+    //   'uploadVideo',
+    //   Buffer.from(
+    //     JSON.stringify({
+    //       content: pitchVideo,
+    //       pitchId: pitch.id,
+    //     }),
+    //   ),
+    // );
 
     if (type === 'video') {
       await prisma.pitch.create({
@@ -871,7 +880,7 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
           campaignId: campaignId,
           status: 'undecided',
         },
-      });  
+      });
     } else {
       const pitch = await prisma.pitch.create({
         data: {
@@ -914,116 +923,116 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
     console.log(error);
     return res.status(400).json({ message: 'Error' });
   }
-
-  // try {
-  //   const campaign = await prisma.campaign.findUnique({
-  //     where: {
-  //       id: campaignId,
-  //     },
-  //     include: {
-  //       pitch: true,
-  //       campaignAdmin: true,
-  //     },
-  //   });
-
-  //   if (!campaign) {
-  //     return res.status(404).json({ message: 'No campaign found.' });
-  //   }
-
-  //   if (campaign.pitch.some((item) => item.userId.includes(id as any))) {
-  //     return res.status(404).json({ message: 'You have make a pitch for this campaign.' });
-  //   }
-
-  //   const creator = await prisma.user.findUnique({
-  //     where: {
-  //       id: id,
-  //     },
-  //   });
-
-  //   if (!creator) {
-  //     return res.status(404).json({ message: 'Creator not found.' });
-  //   }
-
-  //   if (req.files && req.files.pitchVideo) {
-  //     const { pitchVideo } = req.files as any;
-  //     const job = {
-  //       tempFilePath: pitchVideo.tempFilePath,
-  //       name: pitchVideo.name,
-  //     };
-  //     channel.assertQueue('videoQueue');
-
-  //     channel.sendToQueue('videoQueue', Buffer.from(JSON.stringify(job)));
-  //     return res.status(200).json({ message: 'Successfully Pitch !' });
-  //     // send to compress queue
-
-  //     // RABBITMQ
-  //     // const conn = await amqplib.connect(`${process.env.RABBIT_MQ}`);
-  //     // const channel = await conn.createChannel();
-  //     // channel.assertQueue('uploadVideo', {
-  //     //   durable: true,
-  //     // });
-
-  //     // const publicURL = await uploadPitchVideo(pitchVideo.tempFilePath, pitchVideo.name, 'pitchVideo');
-
-  //     // const pitch = await prisma.pitch.create({
-  //     //   data: {
-  //     //     type: 'video',
-  //     //     campaignId: campaign?.id,
-  //     //     userId: creator?.id,
-  //     //     content: '',
-  //     //     status: 'undecided',
-  //     //   },
-  //     // });
-
-  //     // channel.sendToQueue(
-  //     //   'uploadVideo',
-  //     //   Buffer.from(
-  //     //     JSON.stringify({
-  //     //       content: pitchVideo,
-  //     //       pitchId: pitch.id,
-  //     //     }),
-  //     //   ),
-  //     // );
-  //   } else {
-  //     await prisma.pitch.create({
-  //       data: {
-  //         type: 'text',
-  //         campaignId: campaign?.id,
-  //         userId: creator?.id,
-  //         content: content,
-  //       },
-  //     });
-  //   }
-
-  //   const newPitch = await saveNotification(
-  //     creator.id,
-  //     Title.Create,
-  //     `Your pitch has been successfully sent.`,
-  //     Entity.Pitch,
-  //   );
-
-  //   io.to(clients.get(creator.id)).emit('notification', newPitch);
-
-  //   const admins = campaign.campaignAdmin;
-
-  //   const notifications = admins.map(async ({ adminId }) => {
-  //     const notification = await saveNotification(
-  //       adminId,
-  //       Title.Create,
-  //       `New Pitch By ${creator.name} for campaign ${campaign.name}`,
-  //       Entity.Pitch,
-  //     );
-  //     io.to(clients.get(adminId)).emit('notification', notification);
-  //   });
-
-  //   await Promise.all(notifications);
-
-  //   return res.status(200).json({ message: 'Successfully Pitch !' });
-  // } catch (error) {
-  //   console.log(error);
-  //   return res.status(400).json(error);
-  // }
 };
+
+// try {
+//   const campaign = await prisma.campaign.findUnique({
+//     where: {
+//       id: campaignId,
+//     },
+//     include: {
+//       pitch: true,
+//       campaignAdmin: true,
+//     },
+//   });
+
+//   if (!campaign) {
+//     return res.status(404).json({ message: 'No campaign found.' });
+//   }
+
+//   if (campaign.pitch.some((item) => item.userId.includes(id as any))) {
+//     return res.status(404).json({ message: 'You have make a pitch for this campaign.' });
+//   }
+
+//   const creator = await prisma.user.findUnique({
+//     where: {
+//       id: id,
+//     },
+//   });
+
+//   if (!creator) {
+//     return res.status(404).json({ message: 'Creator not found.' });
+//   }
+
+//   if (req.files && req.files.pitchVideo) {
+//     const { pitchVideo } = req.files as any;
+//     const job = {
+//       tempFilePath: pitchVideo.tempFilePath,
+//       name: pitchVideo.name,
+//     };
+//     channel.assertQueue('videoQueue');
+
+//     channel.sendToQueue('videoQueue', Buffer.from(JSON.stringify(job)));
+//     return res.status(200).json({ message: 'Successfully Pitch !' });
+//     // send to compress queue
+
+//     // RABBITMQ
+//     // const conn = await amqplib.connect(`${process.env.RABBIT_MQ}`);
+//     // const channel = await conn.createChannel();
+//     // channel.assertQueue('uploadVideo', {
+//     //   durable: true,
+//     // });
+
+//     // const publicURL = await uploadPitchVideo(pitchVideo.tempFilePath, pitchVideo.name, 'pitchVideo');
+
+//     // const pitch = await prisma.pitch.create({
+//     //   data: {
+//     //     type: 'video',
+//     //     campaignId: campaign?.id,
+//     //     userId: creator?.id,
+//     //     content: '',
+//     //     status: 'undecided',
+//     //   },
+//     // });
+
+//     // channel.sendToQueue(
+//     //   'uploadVideo',
+//     //   Buffer.from(
+//     //     JSON.stringify({
+//     //       content: pitchVideo,
+//     //       pitchId: pitch.id,
+//     //     }),
+//     //   ),
+//     // );
+//   } else {
+//     await prisma.pitch.create({
+//       data: {
+//         type: 'text',
+//         campaignId: campaign?.id,
+//         userId: creator?.id,
+//         content: content,
+//       },
+//     });
+//   }
+
+//   const newPitch = await saveNotification(
+//     creator.id,
+//     Title.Create,
+//     `Your pitch has been successfully sent.`,
+//     Entity.Pitch,
+//   );
+
+//   io.to(clients.get(creator.id)).emit('notification', newPitch);
+
+//   const admins = campaign.campaignAdmin;
+
+//   const notifications = admins.map(async ({ adminId }) => {
+//     const notification = await saveNotification(
+//       adminId,
+//       Title.Create,
+//       `New Pitch By ${creator.name} for campaign ${campaign.name}`,
+//       Entity.Pitch,
+//     );
+//     io.to(clients.get(adminId)).emit('notification', notification);
+//   });
+
+//   await Promise.all(notifications);
+
+//   return res.status(200).json({ message: 'Successfully Pitch !' });
+// } catch (error) {
+//   console.log(error);
+//   return res.status(400).json(error);
+// }
 
 export const getCampaignsByCreatorId = async (req: Request, res: Response) => {
   const { userid } = req.session;
@@ -1485,68 +1494,106 @@ export const changePitchStatus = async (req: Request, res: Response) => {
     });
 
     if (pitch.status === 'approved') {
-      await prisma.shortListedCreator.create({
-        data: {
-          userId: pitch?.userId,
-          campaignId: pitch?.campaignId,
-        },
+      prisma.$transaction(async (tx) => {
+        await tx.shortListedCreator.create({
+          data: {
+            userId: pitch?.userId,
+            campaignId: pitch?.campaignId,
+          },
+        });
+
+        const timelines = await tx.campaignTimeline.findMany({
+          where: {
+            AND: [
+              {
+                campaignId: pitch?.campaignId,
+              },
+              {
+                for: 'creator',
+              },
+              {
+                name: {
+                  not: 'Open For Pitch',
+                },
+              },
+            ],
+          },
+          orderBy: {
+            order: 'asc',
+          },
+        });
+
+        const submissions: Submission[] = await Promise.all(
+          timelines.map(async (timeline) => {
+            return await tx.submission.create({
+              data: {
+                dueDate: timeline.endDate,
+                campaignId: timeline.campaignId,
+                userId: pitch.userId as string,
+                submissionTypeId: timeline.submissionTypeId as string,
+              },
+            });
+          }),
+        );
+
+        await Promise.all(
+          submissions.map(async (item, i) => {
+            // Skip the first submission as it has no dependency
+            if (i > 0) {
+              await tx.submissionDependency.create({
+                data: {
+                  submissionId: submissions[i].id,
+                  dependentSubmissionId: submissions[i - 1].id,
+                },
+              });
+            }
+          }),
+        );
+
+        const data = await saveNotification(
+          pitch.userId,
+          Title.Create,
+          `Congratulations! You've been shortlisted for the ${pitch.campaign.name} campaign.`,
+          Entity.Shortlist,
+        );
+
+        const socketId = clients.get(pitch.userId);
+
+        if (socketId) {
+          io.to(socketId).emit('notification', data);
+        } else {
+          console.log(`User with ID ${pitch.userId} is not connected.`);
+        }
+
+        const campaign = await tx.campaign.findUnique({
+          where: {
+            id: pitch.campaignId,
+          },
+          include: {
+            thread: true,
+          },
+        });
+
+        if (!campaign || !campaign.thread) {
+          return res.status(404).json({ message: 'Campaign or thread not found' });
+        }
+
+        const isThreadExist = await tx.userThread.findFirst({
+          where: {
+            threadId: campaign.thread.id,
+            userId: pitch.userId,
+          },
+        });
+
+        if (!isThreadExist) {
+          await tx.userThread.create({
+            data: {
+              threadId: campaign.thread.id,
+              userId: pitch.userId,
+            },
+          });
+        }
       });
-      const data = await saveNotification(
-        pitch.userId,
-        Title.Create,
-        `Congratulations! You've been shortlisted for the ${pitch.campaign.name} campaign.`,
-        Entity.Shortlist,
-      );
-
-      const socketId = clients.get(pitch.userId);
-
-      if (socketId) {
-        io.to(socketId).emit('notification', data);
-      } else {
-        console.log(`User with ID ${pitch.userId} is not connected.`);
-      }
-
-      const campaign = await prisma.campaign.findUnique({
-        where: {
-          id: pitch.campaignId,
-        },
-        include: {
-          thread: true,
-        },
-      });
-
-      if (!campaign || !campaign.thread) {
-        return res.status(404).json({ message: 'Campaign or thread not found' });
-      }
-
-      await prisma.userThread.create({
-        data: {
-          threadId: campaign.thread.id,
-          userId: pitch.userId,
-        },
-      });
-
-      // const timelines = await prisma.campaignTimeline.findMany({
-      //   where: {
-      //     campaignId: pitch?.campaignId,
-      //   },
-      // });
-
-      // timelines
-      //   .filter((item: any) => item.for === 'creator' && item.name !== 'Open For Pitch')
-      //   .forEach(async (item: any, index: number) => {
-      //     await prisma.campaignTask.create({
-      //       data: {
-      //         userId: pitch?.userId,
-      //         task: item?.name,
-      //         campaignTimelineId: item?.id,
-      //         campaignId: pitch?.campaignId,
-      //         startDate: item?.startDate,
-      //         endDate: item?.endDate,
-      //         status: item.name === 'Agreement' ? ('IN_PROGRESS' as any) : 'NOT_STARTED',
-      //       },
-      //     });
-      //   });
     } else {
       const isExist = await prisma.shortListedCreator.findUnique({
         where: {
@@ -1567,6 +1614,7 @@ export const changePitchStatus = async (req: Request, res: Response) => {
           },
         });
       }
+
       await prisma.campaignTask.deleteMany({
         where: {
           AND: [
@@ -1575,6 +1623,35 @@ export const changePitchStatus = async (req: Request, res: Response) => {
             },
             {
               campaignId: pitch?.campaignId,
+            },
+          ],
+        },
+      });
+
+      const submissions = await prisma.submission.findMany({
+        where: {
+          AND: [
+            {
+              userId: pitch.userId,
+            },
+            {
+              campaignId: pitch.campaignId,
+            },
+          ],
+        },
+        include: {
+          dependentOn: true,
+        },
+      });
+
+      await prisma.submission.deleteMany({
+        where: {
+          AND: [
+            {
+              campaignId: pitch.campaignId,
+            },
+            {
+              userId: pitch.userId,
             },
           ],
         },
@@ -1730,7 +1807,6 @@ export const getSubmission = async (req: Request, res: Response) => {
 //   }
 // };
 
-
 export const getCampaignLog = async (req: Request, res: Response) => {
   console.log('=== BEGIN getCampaignLog ===');
   console.log(req.params);
@@ -1750,6 +1826,8 @@ export const getCampaignLog = async (req: Request, res: Response) => {
     console.log('=== BEGIN getCampaignLog error ===');
     console.log(error);
     console.log('=== END getCampaignLog error ===');
+  }
+};
 
 export const uploadVideoTest = async (req: Request, res: Response) => {
   const abortController = new AbortController();

@@ -133,7 +133,7 @@ export const uploadPitchVideo = async (
   folderName: string,
   size: number,
   progressCallback: any,
-  abortSignal: AbortSignal,
+  abortSignal?: AbortSignal,
 ) => {
   try {
     const bucketName = process.env.BUCKET_NAME as string;
@@ -181,7 +181,7 @@ export const uploadPitchVideo = async (
       },
     });
 
-    abortSignal.addEventListener('abort', () => {
+    abortSignal?.addEventListener('abort', () => {
       console.log('ABORTING UPLOAD GCP');
     });
 

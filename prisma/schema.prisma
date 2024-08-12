@@ -606,49 +606,38 @@ model NotificationStatus {
   @@unique([userId, notificationId])
 }
 
-// model CampaignAgreement {
-//   campaignId   String
-//   creatorId    String
-//   campaign     Campaign @relation(references: [id], fields: [campaignId])
-//   creator      User     @relation(references: [id], fields: [creatorId])
-//   agreementUrl String
-
-//   @@id([campaignId, creatorId])
-// }
-
-// model Submission {
-//   id             String         @id @unique @default(cuid())
-//   creatorId      String
-//   campaignTaskId String         @unique
-//   campaignId     String
-//   type           SubmissionType
-//   firstDraft     FirstDraft?
-//   finalDraft     FinalDraft?
-//   content        String?
-//   feedback       Feedback?
-//   campaignTask   CampaignTask   @relation(fields: [campaignTaskId], references: [id])
-//   creator        User           @relation(fields: [creatorId], references: [id])
-//   campaign       Campaign       @relation(fields: [campaignId], references: [id])
-//   finalDraftId   String?
-// }
-
 // This modal is 
 model Submission {
-  id               String         @id @default(cuid())
-  content          String
+  id               String                 @id @default(cuid())
+  content          String?
   caption          String?
   campaignId       String
-  status           TaskStatus     @default(NOT_STARTED)
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
+  status           TaskStatus             @default(IN_PROGRESS)
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+  submissionDate   DateTime?
+  dueDate          DateTime?
   userId           String
   submissionTypeId String
-  user             User           @relation(fields: [userId], references: [id])
-  campaign         Campaign       @relation(fields: [campaignId], references: [id])
-  submissionType   SubmissionType @relation(fields: [submissionTypeId], references: [id])
+  user             User                   @relation(fields: [userId], references: [id])
+  campaign         Campaign               @relation(fields: [campaignId], references: [id])
+  submissionType   SubmissionType         @relation(fields: [submissionTypeId], references: [id])
   feedback         Feedback?
+  isReview         Boolean                @default(false)
+  dependencies     SubmissionDependency[] @relation("Dependencies")
+  dependentOn      SubmissionDependency[] @relation("DependentOn")
 
   @@unique([userId, campaignId, submissionTypeId]) // Ensures unique submission per user per project type
+}
+
+model SubmissionDependency {
+  id                    String     @id @default(cuid())
+  submissionId          String
+  dependentSubmissionId String
+  submission            Submission @relation("DependentOn", fields: [submissionId], references: [id], onDelete: Cascade)
+  dependentSubmission   Submission @relation("Dependencies", fields: [dependentSubmissionId], references: [id], onDelete: Cascade)
+
+  @@unique([submissionId, dependentSubmissionId]) // Prevent duplicate dependencies
 }
 
 model CampaignSubmissionRequirement {

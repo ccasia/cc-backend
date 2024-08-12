@@ -41,7 +41,11 @@ export const getCreatorByID = async (req: Request, res: Response) => {
         },
       },
       include: {
-        creator: true,
+        creator: {
+          include: {
+            interests: true,
+          },
+        },
       },
     });
     return res.status(200).json(creator);
@@ -187,7 +191,11 @@ export const getCreatorFullInfoById = async (req: Request, res: Response) => {
         id: id,
       },
       include: {
-        creator: true,
+        creator: {
+          include: {
+            interests: true,
+          },
+        },
         shortlisted: true,
         campaignTasks: true,
       },

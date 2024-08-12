@@ -4,17 +4,19 @@ import bcrypt from 'bcryptjs';
 const prisma = new PrismaClient();
 
 const timeline_type = [
-  'first draft',
-  'final draft',
-  'agreement',
-  'shortlist creator',
+  'open for pitch',
   'filter pitch',
+  'shortlist creator',
+  'agreement',
+  'first draft',
+  'feedback first draft',
+  'final draft',
+  'feedback final draft',
   'qc',
   'posting',
-  'open for pitch',
 ];
 
-const submissionType = ['FIRST_DRAFT', 'FINAL_DRAFT', 'AGREEMENT', 'POSTING', 'OTHER'];
+const submissionType = ['FIRST_DRAFT', 'FINAL_DRAFT', 'AGREEMENT_FORM', 'POSTING', 'OTHER'];
 
 async function main() {
   // Seed Users
@@ -103,7 +105,10 @@ async function main() {
     timeline_type.forEach(async (value) => {
       await prisma.timelineTypeDefault.create({
         data: {
-          name: value,
+          name: value
+            .split(' ')
+            .map((e) => `${e[0].toUpperCase()}${e.slice(1)}`)
+            .join(' '),
         },
       });
     }),
