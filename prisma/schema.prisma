@@ -591,6 +591,13 @@ enum Entity {
   Pitch
   Shortlist
   Timeline
+  Feedback
+  Draft
+  Post
+  Approval
+  Logistic
+  Inbox
+  Invoice
 }
 
 model NotificationStatus {
