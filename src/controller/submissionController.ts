@@ -116,6 +116,36 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
   }
 };
 
+export const getSubmissionByCampaignCreatorId = async (req: Request, res: Response) => {
+  const { creatorId, campaignId } = req.query;
+
+  try {
+    const data = await prisma.submission.findMany({
+      where: {
+        userId: creatorId as string,
+        campaignId: campaignId as string,
+      },
+      include: {
+        submissionType: {
+          select: {
+            id: true,
+            type: true,
+          },
+        },
+        feedback: true,
+        dependentOn: true,
+        dependencies: true,
+      },
+    });
+
+    console.log(data);
+
+    return res.status(200).json(data);
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
 export const draftSubmission = async (req: Request, res: Response) => {
   const { submissionId, caption } = JSON.parse(req.body.data);
 

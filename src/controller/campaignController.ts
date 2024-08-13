@@ -1,9 +1,14 @@
 import { Request, Response } from 'express';
 import {
+  CampaignAdmin,
+  CampaignRequirement,
   CampaignStatus,
   CampaignSubmissionRequirement,
+  CampaignTask,
   CampaignTimeline,
+  Creator,
   Entity,
+  Interest,
   PrismaClient,
   Submission,
 } from '@prisma/client';
@@ -136,60 +141,6 @@ export const createCampaign = async (req: Request, res: Response) => {
         },
       });
 
-      //       if (!brand) {
-      //         // eslint-disable-next-line no-useless-catch
-      //         try {
-      //           brand = await tx.company.findUnique({
-      //             where: {
-      //               id: campaignBrand.id,
-      //             },
-      //           });
-
-      //           campaign = await tx.campaign.create({
-      //             data: {
-      //               name: campaignTitle,
-      //               description: campaignDescription,
-      //               status: campaignStage as CampaignStatus,
-      //               company: {
-      //                 connect: {
-      //                   id: brand?.id,
-      //                 },
-      //               },
-      //               campaignBrief: {
-      //                 create: {
-      //                   title: campaignTitle,
-      //                   objectives: campaignObjectives,
-      //                   images: publicURL.map((image: any) => image) || '',
-      //                   agreementFrom: agreementFormURL,
-      //                   startDate: dayjs(campaignStartDate) as any,
-      //                   endDate: dayjs(campaignEndDate) as any,
-      //                   interests: campaignInterests,
-
-      //                   campaigns_do: campaignDo,
-      //                   campaigns_dont: campaignDont,
-      //                 },
-      //               },
-      //               campaignRequirement: {
-      //                 create: {
-      //                   gender: audienceGender,
-      //                   age: audienceAge,
-      //                   geoLocation: audienceLocation,
-      //                   language: audienceLanguage,
-      //                   creator_persona: audienceCreatorPersona,
-      //                   user_persona: audienceUserPersona,
-      //                 },
-      //               },
-      //               campaignTimeline: {
-      //                 create: timeline.map((item: any, index: number) => ({
-      //                   // Fields for CampaignTimeline
-      //                   for: item.for,
-      //                   duration: parseInt(item.duration),
-      //                   startDate: dayjs(item.startDate).toDate(),
-      //                   endDate: dayjs(item.endDate).toDate(),
-      //                   order: index + 1,
-      //                   name: item.timeline_type.name,
-      //                 })),
-      //               },
       // Create Campaign
       const campaign = await tx.campaign.create({
         data: {
@@ -223,7 +174,7 @@ export const createCampaign = async (req: Request, res: Response) => {
       });
 
       // Create submission requirement
-      const submissionTypes = await prisma.submissionType.findMany({
+      const submissionTypes = await tx.submissionType.findMany({
         where: {
           NOT: {
             type: 'OTHER',
@@ -257,37 +208,6 @@ export const createCampaign = async (req: Request, res: Response) => {
       defaultRequirements.forEach(async (item) => {
         await tx.campaignSubmissionRequirement.create({
           data: {
-            //             name: campaignTitle,
-            //             description: campaignDescription,
-            //             status: campaignStage as CampaignStatus,
-            //             brand: {
-            //               connect: {
-            //                 id: brand?.id,
-            //               },
-            //             },
-            //             campaignBrief: {
-            //               create: {
-            //                 title: campaignTitle,
-            //                 objectives: campaignObjectives,
-            //                 images: publicURL.map((image: any) => image) || '',
-            //                 agreementFrom: agreementFormURL,
-            //                 startDate: dayjs(campaignStartDate) as any,
-            //                 endDate: dayjs(campaignEndDate) as any,
-            //                 interests: campaignInterests,
-
-            //                 campaigns_do: campaignDo,
-            //                 campaigns_dont: campaignDont,
-            //               },
-            //             },
-            //             campaignRequirement: {
-            //               create: {
-            //                 gender: audienceGender,
-            //                 age: audienceAge,
-            //                 geoLocation: audienceLocation,
-            //                 language: audienceLanguage,
-            //                 creator_persona: audienceCreatorPersona,
-            //                 user_persona: audienceUserPersona,
-            //               },
             campaignId: campaign.id,
             submissionTypeId: item.submissionTypeId,
             startDate: item.startDate,
@@ -298,7 +218,7 @@ export const createCampaign = async (req: Request, res: Response) => {
       });
 
       // Create Campaign Timeline
-      await Promise.all(
+      const timelines: CampaignTimeline[] = await Promise.all(
         timeline.map(async (item: any, index: number) => {
           const submission = await tx.submissionType.findFirst({
             where: {
@@ -391,35 +311,60 @@ export const createCampaign = async (req: Request, res: Response) => {
         },
       });
 
-      admins.map(async (admin: any) => {
-        const existing = await prisma.campaignAdmin.findUnique({
-          where: {
-            adminId_campaignId: {
-              adminId: admin?.id,
-              campaignId: campaign?.id,
+      const filterTimelines = timelines.filter((timeline) => timeline.for === 'admin');
+
+      const test = await Promise.all(
+        admins.map(async (admin: any) => {
+          const existing = await tx.campaignAdmin.findUnique({
+            where: {
+              adminId_campaignId: {
+                adminId: admin?.id,
+                campaignId: campaign?.id,
+              },
             },
-          },
-        });
+          });
 
-        if (existing) {
-          return res.status(400).json({ message: 'Admin  exists' });
-        }
+          if (existing) {
+            return res.status(400).json({ message: 'Admin exists' });
+          }
 
-        await prisma.campaignAdmin.create({
-          data: {
-            campaignId: (campaign as any).id as any,
-            adminId: admin?.id,
-          },
-        });
-        const data = await saveNotification(
-          admin.id,
-          Title.Create,
-          `You've been assign to Campaign ${campaign.name}.`,
-          Entity.Campaign,
-        );
+          const a = await tx.campaignAdmin.create({
+            data: {
+              adminId: admin?.id,
+              campaignId: campaign.id,
+            },
+          });
 
-        io.to(clients.get(admin.id)).emit('notification', data);
-      });
+          const data = await saveNotification(
+            admin.id,
+            Title.Create,
+            `You've been assign to Campaign ${campaign.name}.`,
+            Entity.Campaign,
+          );
+
+          io.to(clients.get(admin.id)).emit('notification', data);
+          return a;
+        }),
+      );
+
+      await Promise.all(
+        filterTimelines.map((item) =>
+          tx.campaignTask.create({
+            data: {
+              campaignTimelineId: item.id,
+              campaignId: item.campaignId,
+              task: item.name,
+              status: 'IN_PROGRESS',
+              dueDate: dayjs(item.endDate).format(),
+              campaignTaskAdmin: {
+                create: test.map((admin: any) => ({
+                  userId: admin.adminId,
+                })),
+              },
+            },
+          }),
+        ),
+      );
 
       logChange('Created', campaign.id, req);
       return res.status(200).json({ campaign, message: 'Successfully created campaign' });
@@ -453,7 +398,11 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
         campaignTimeline: true,
         campaignBrief: true,
         campaignRequirement: true,
-        campaignLogs: true,
+        campaignLogs: {
+          include: {
+            admin: true,
+          },
+        },
         campaignAdmin: true,
         campaignSubmissionRequirement: true,
         pitch: {
@@ -478,6 +427,11 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
               },
             },
             userId: true,
+          },
+        },
+        campaignTasks: {
+          include: {
+            campaignTaskAdmin: true,
           },
         },
       },
@@ -560,6 +514,7 @@ export const getCampaignById = async (req: Request, res: Response) => {
 
 export const matchCampaignWithCreator = async (req: Request, res: Response) => {
   const { userid } = req.session;
+
   try {
     const campaigns = await prisma.campaign.findMany({
       where: {
@@ -574,7 +529,7 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
         pitch: true,
       },
     });
-    // console.log(campaigns);
+
     const user = await prisma.user.findUnique({
       where: {
         id: userid,
@@ -588,10 +543,9 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
         },
       },
     });
+
     const matchCampaign = (user: any, campaign: any) => {
-      // compare campaign with user
-      // const gender = ['nonbinary', 'female', 'male'];
-      const lang2 = user?.creator?.languages.includes('Mandarin')
+      const lang2 = user?.creator?.languages.includes('Chinese')
         ? // eslint-disable-next-line no-unsafe-optional-chaining
           [...user?.creator?.languages, 'Chinese']
         : // eslint-disable-next-line no-unsafe-optional-chaining
@@ -610,11 +564,10 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
         interests: false,
         gender: false,
         age: false,
-        // location: false,
       };
 
       function hasCommonElement(arr1: string[], arr2: string[]): boolean {
-        return arr1.some((value) => arr2.includes(value));
+        return arr1?.some((value) => arr2.includes(value));
       }
       const languagesMatch = hasCommonElement(campaign?.campaignRequirement?.language || [], lang2);
 
@@ -637,7 +590,7 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       }
 
       function isAgeInRange(age: number, ranges: string[]): boolean {
-        return ranges.some((range) => {
+        return ranges?.some((range) => {
           const [min, max] = range.split('-').map(Number);
           return age >= min && age <= max;
         });
@@ -647,43 +600,7 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       if (finalAge) {
         match.age = true;
       }
-      // location
-      // let location: any = [];
-      // const mainCitiesInMalaysia: string[] = [
-      //   'Kuala Lumpur',
-      //   'George Town',
-      //   'Ipoh',
-      //   'Johor Bahru',
-      //   'Malacca City',
-      //   'Alor Setar',
-      //   'Kota Kinabalu',
-      //   'Kuching',
-      //   'Shah Alam',
-      //   'Petaling Jaya',
-      //   'Iskandar Puteri',
-      //   'Seberang Perai',
-      //   'Seremban',
-      //   'Kuantan',
-      //   'Kuala Terengganu',
-      //   'Miri',
-      //   'Sibu',
-      //   'Sandakan',
-      //   'Tawau',
-      // ];
 
-      // if (campaign?.campaignRequirement?.geoLocation.includes('MainCities')) {
-      //   location = [...campaign?.campaignRequirement?.geoLocation, ...mainCitiesInMalaysia];
-      // } else {
-      //   location = campaign?.campaignRequirement?.geoLocation;
-      // }
-
-      // const locationMatch = location.includes(user?.creator?.location);
-
-      // if (locationMatch) {
-      //   match.location = true;
-      // }
-      // interests
-      // map interset out of objects
       const interestArr = user?.creator?.interests.map((item: any) => item.name);
       function hasCommonElement2(arr1: string[], arr2: string[]): boolean {
         return arr1.some((value) => arr2.includes(value));
@@ -703,6 +620,69 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       return finalMatch;
     };
 
+    const calculateInterestMatchingPercentage = (creatorInterests: Interest[], campaignInterests: []) => {
+      const totalInterests = campaignInterests.length;
+
+      const matchingInterests = creatorInterests.filter((interest) =>
+        campaignInterests.includes(interest?.name as never),
+      ).length;
+      return (matchingInterests / totalInterests) * 100;
+    };
+
+    const calculateRequirementMatchingPercentage = (creator: Creator, campaignRequirements: CampaignRequirement) => {
+      let matches = 0;
+      let totalCriteria = 0;
+
+      function isAgeInRange(age: any, ranges: any) {
+        for (const range of ranges) {
+          const [min, max] = range.split('-').map(Number);
+          if (age >= min && age <= max) {
+            return true;
+          }
+        }
+        return false;
+      }
+
+      // Age
+      const creatorAge = dayjs().diff(dayjs(creator.birthDate), 'year');
+      if (campaignRequirements?.age) {
+        totalCriteria++;
+        if (isAgeInRange(creatorAge, campaignRequirements.age)) {
+          matches++;
+        }
+      }
+
+      // Gender
+      const creatorGender =
+        creator.pronounce === 'he/him' ? 'male' : creator.pronounce === 'she/her' ? 'female' : 'nonbinary';
+      if (campaignRequirements?.gender) {
+        totalCriteria++;
+        if (campaignRequirements.gender.includes(creatorGender)) {
+          matches++;
+        }
+      }
+
+      // Language
+      const creatorLang: any = creator.languages;
+      if (campaignRequirements?.language.length) {
+        totalCriteria++;
+        if (campaignRequirements.language.map((item: any) => creatorLang.includes(item))) {
+          matches++;
+        }
+      }
+
+      return (matches / totalCriteria) * 100;
+    };
+
+    const calculateOverallMatchingPercentage = (
+      interestMatch: number,
+      requirementMatch: number,
+      interestWeight = 0.8,
+      requirementWeight = 0.2,
+    ) => {
+      return interestMatch * interestWeight + requirementMatch * requirementWeight;
+    };
+
     const getPercentageMatch = (user: any, campaign: any) => {
       const creatorInterest = user?.creator?.interests.map((item: any) => item.name.toLowerCase());
       const campInterest = campaign?.campaignBrief?.interests.map((e: string) => e.toLowerCase());
@@ -712,23 +692,37 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       }
 
       const matchedInterests = getMatchingElements(creatorInterest, campInterest);
-      // console.log(campInterest);
       const percantage = (matchedInterests.length / campInterest.length) * 100;
 
       return percantage;
     };
 
-    const matchedCampaign = campaigns.filter((item) => matchCampaign(user, item));
+    const matchedCampaign = campaigns?.filter((item) => matchCampaign(user, item));
 
     const matchedCampaignWithPercentage = matchedCampaign.map((item) => {
+      const interestPercentage = calculateInterestMatchingPercentage(
+        user?.creator?.interests as never,
+        item.campaignBrief?.interests as any,
+      );
+
+      const requirementPercentage = calculateRequirementMatchingPercentage(
+        user?.creator as Creator,
+        item.campaignRequirement as CampaignRequirement,
+      );
+
+      const overallMatchingPercentage = calculateOverallMatchingPercentage(interestPercentage, requirementPercentage);
       return {
         ...item,
-        percentageMatch: getPercentageMatch(user, item),
+        // percentageMatch: getPercentageMatch(user, item),
+        percentageMatch: overallMatchingPercentage,
       };
     });
 
+    console.log('ASDSAD', matchedCampaignWithPercentage);
+
     return res.status(200).json(matchedCampaignWithPercentage);
   } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -795,82 +789,6 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
       },
     });
 
-    // if (req.files && req.files.pitchVideo) {
-    //   const { pitchVideo } = req.files as any;
-
-    //   const job = {
-    //     tempFilePath: pitchVideo.tempFilePath,
-    //     name: `${user?.id}-${campaign?.id}-pitch.mp4`,
-    //   };
-
-    //   const childProcess = fork(path.resolve('src/helper/video.ts'));
-
-    //   childProcess.send(job);
-
-    // if (req.files && req.files.pitchVideo) {
-    // const { pitchVideo } = req.files as any;
-
-    // RABBITMQ
-    // const conn = await amqplib.connect(`${process.env.RABBIT_MQ}`);
-    // const channel = await conn.createChannel();
-    // channel.assertQueue('uploadVideo', {
-    //   durable: true,
-    // });
-
-    // const publicURL = await uploadPitchVideo(pitchVideo.tempFilePath, pitchVideo.name, 'pitchVideo');
-    //   const pitch = await prisma.pitch.create({
-    //     data: {
-    //       type: 'video',
-    //       content: '',
-    //       userId: id as string,
-    //       campaignId: campaignId,
-    //       status: 'pending',
-    //     },
-    //   });
-
-    //   childProcess.on('message', async (data: any) => {
-    //     io.to(clients.get(user?.id)).emit('pitch-loading', { progress: data.progress, campaignId: campaignId });
-    //     if (data.statusCode === 200) {
-    //       const { publicUrl } = data;
-    //       // const publicURL = await uploadPitchVideo(path.resolve(`src/upload/${job.name}`), job.name, 'pitchVideo');
-    //       fs.unlinkSync(path.resolve(`src/upload/${job.name}`));
-    //       await prisma.pitch.update({
-    //         where: {
-    //           id: pitch.id,
-    //         },
-    //         data: {
-    //           content: publicUrl,
-    //           status: 'undecided',
-    //         },
-    //       });
-    //       io.to(clients.get(user?.id)).emit('pitch-uploaded', {
-    //         name: 'Uploading pitch video is complete.',
-    //         campaignId: campaign?.id,
-    //       });
-    //     }
-    //   });
-
-    //   childProcess.on('error', async () => {
-    //     fs.unlinkSync(path.resolve(`src/upload/${job.name}`));
-    //     await prisma.pitch.delete({
-    //       where: {
-    //         id: pitch.id,
-    //       },
-    //     });
-    //     console.log('There is error when uploading file');
-    //   });
-    // }
-
-    // channel.sendToQueue(
-    //   'uploadVideo',
-    //   Buffer.from(
-    //     JSON.stringify({
-    //       content: pitchVideo,
-    //       pitchId: pitch.id,
-    //     }),
-    //   ),
-    // );
-
     if (type === 'video') {
       await prisma.pitch.create({
         data: {
@@ -925,115 +843,6 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
   }
 };
 
-// try {
-//   const campaign = await prisma.campaign.findUnique({
-//     where: {
-//       id: campaignId,
-//     },
-//     include: {
-//       pitch: true,
-//       campaignAdmin: true,
-//     },
-//   });
-
-//   if (!campaign) {
-//     return res.status(404).json({ message: 'No campaign found.' });
-//   }
-
-//   if (campaign.pitch.some((item) => item.userId.includes(id as any))) {
-//     return res.status(404).json({ message: 'You have make a pitch for this campaign.' });
-//   }
-
-//   const creator = await prisma.user.findUnique({
-//     where: {
-//       id: id,
-//     },
-//   });
-
-//   if (!creator) {
-//     return res.status(404).json({ message: 'Creator not found.' });
-//   }
-
-//   if (req.files && req.files.pitchVideo) {
-//     const { pitchVideo } = req.files as any;
-//     const job = {
-//       tempFilePath: pitchVideo.tempFilePath,
-//       name: pitchVideo.name,
-//     };
-//     channel.assertQueue('videoQueue');
-
-//     channel.sendToQueue('videoQueue', Buffer.from(JSON.stringify(job)));
-//     return res.status(200).json({ message: 'Successfully Pitch !' });
-//     // send to compress queue
-
-//     // RABBITMQ
-//     // const conn = await amqplib.connect(`${process.env.RABBIT_MQ}`);
-//     // const channel = await conn.createChannel();
-//     // channel.assertQueue('uploadVideo', {
-//     //   durable: true,
-//     // });
-
-//     // const publicURL = await uploadPitchVideo(pitchVideo.tempFilePath, pitchVideo.name, 'pitchVideo');
-
-//     // const pitch = await prisma.pitch.create({
-//     //   data: {
-//     //     type: 'video',
-//     //     campaignId: campaign?.id,
-//     //     userId: creator?.id,
-//     //     content: '',
-//     //     status: 'undecided',
-//     //   },
-//     // });
-
-//     // channel.sendToQueue(
-//     //   'uploadVideo',
-//     //   Buffer.from(
-//     //     JSON.stringify({
-//     //       content: pitchVideo,
-//     //       pitchId: pitch.id,
-//     //     }),
-//     //   ),
-//     // );
-//   } else {
-//     await prisma.pitch.create({
-//       data: {
-//         type: 'text',
-//         campaignId: campaign?.id,
-//         userId: creator?.id,
-//         content: content,
-//       },
-//     });
-//   }
-
-//   const newPitch = await saveNotification(
-//     creator.id,
-//     Title.Create,
-//     `Your pitch has been successfully sent.`,
-//     Entity.Pitch,
-//   );
-
-//   io.to(clients.get(creator.id)).emit('notification', newPitch);
-
-//   const admins = campaign.campaignAdmin;
-
-//   const notifications = admins.map(async ({ adminId }) => {
-//     const notification = await saveNotification(
-//       adminId,
-//       Title.Create,
-//       `New Pitch By ${creator.name} for campaign ${campaign.name}`,
-//       Entity.Pitch,
-//     );
-//     io.to(clients.get(adminId)).emit('notification', notification);
-//   });
-
-//   await Promise.all(notifications);
-
-//   return res.status(200).json({ message: 'Successfully Pitch !' });
-// } catch (error) {
-//   console.log(error);
-//   return res.status(400).json(error);
-// }
-
 export const getCampaignsByCreatorId = async (req: Request, res: Response) => {
   const { userid } = req.session;
   try {
@@ -1059,19 +868,7 @@ export const getCampaignsByCreatorId = async (req: Request, res: Response) => {
           },
         });
 
-        const tasks = await prisma.campaignTask.findMany({
-          where: {
-            AND: [
-              {
-                userId: userid,
-              },
-              {
-                campaignId: campaign?.id,
-              },
-            ],
-          },
-        });
-        return { ...campaign, tasks };
+        return { ...campaign };
       }),
     );
 
@@ -1615,19 +1412,6 @@ export const changePitchStatus = async (req: Request, res: Response) => {
         });
       }
 
-      await prisma.campaignTask.deleteMany({
-        where: {
-          AND: [
-            {
-              userId: pitch?.userId,
-            },
-            {
-              campaignId: pitch?.campaignId,
-            },
-          ],
-        },
-      });
-
       const submissions = await prisma.submission.findMany({
         where: {
           AND: [
@@ -1697,11 +1481,6 @@ export const getCampaignForCreatorById = async (req: Request, res: Response) => 
         },
         campaignBrief: true,
         campaignRequirement: true,
-        campaignTasks: {
-          where: {
-            userId: userid,
-          },
-        },
         brand: true,
         company: true,
         pitch: true,

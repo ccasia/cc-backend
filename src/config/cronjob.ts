@@ -1,10 +1,13 @@
 import { CronJob } from 'cron';
 
-import { PrismaClient } from '@prisma/client';
+import { Entity, PrismaClient } from '@prisma/client';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
 import LocalizedFormat from 'dayjs/plugin/localizedFormat';
+import { Title, saveNotification } from 'src/controller/notificationController';
+import { notifications } from '@constants/reminders';
+import { clients, io } from 'src/server';
 
 const prisma = new PrismaClient();
 
@@ -12,8 +15,15 @@ dayjs.extend(LocalizedFormat);
 dayjs.extend(utc);
 dayjs.extend(timezone);
 
+const mapping: any = {
+  AGREEMENT_FORM: 'Agreement Form',
+  FIRST_DRAFT: 'First Draft',
+  FINAL_DRAFT: 'Final Draft',
+  POSTING: 'Posting',
+};
+
 new CronJob(
-  '* * * * *', // cronTime
+  '0 0 * * *', // cronTime
   async function () {
     const today = dayjs().tz('Asia/Kuala_Lumpur').startOf('day').toISOString();
 
@@ -33,6 +43,7 @@ new CronJob(
       },
     });
 
+    // Update campaign start date
     await prisma.campaign.updateMany({
       where: {
         campaignBrief: {
@@ -46,13 +57,45 @@ new CronJob(
       },
     });
 
+    // Update campaign timeline status
     await prisma.campaignTimeline.updateMany({
       where: {
         endDate: {
           equals: today,
         },
       },
-      data: {},
+      data: {
+        status: 'CLOSED',
+      },
+    });
+
+    // Remind creator about due date
+    const submissions = await prisma.submission.findMany({ include: { submissionType: true, campaign: true } });
+    const dueDatesObject: any = notifications.level2.medium.find((item) => item.key === 'dueDates');
+
+    submissions.map(async (submission) => {
+      const startTrigger = dayjs(submission.dueDate).subtract(2, 'day');
+      const today = dayjs();
+      if (
+        !submission.content &&
+        (startTrigger.isBefore(today, 'date') || startTrigger.isSame(today, 'date')) &&
+        today.isBefore(dayjs(submission.dueDate), 'date')
+      ) {
+        const data = await saveNotification(
+          submission.userId,
+          Title.Create,
+          dueDatesObject?.message
+            ? dueDatesObject?.message(
+                mapping[submission.submissionType.type],
+                // submission.submissionType.type,
+                dayjs(submission.dueDate).format('ddd LL'),
+                submission.campaign.name,
+              )
+            : 'Message function not found',
+          Entity.Timeline,
+        );
+        io.to(clients.get(submission.userId)).emit('notification', data);
+      }
     });
   },
   null, // onComplete

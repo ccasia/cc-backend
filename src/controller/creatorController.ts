@@ -197,7 +197,6 @@ export const getCreatorFullInfoById = async (req: Request, res: Response) => {
           },
         },
         shortlisted: true,
-        campaignTasks: true,
       },
     });
 
