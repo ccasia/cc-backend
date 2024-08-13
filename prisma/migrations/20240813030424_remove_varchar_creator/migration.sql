@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "Creator" ALTER COLUMN "address" SET DATA TYPE TEXT,
+ALTER COLUMN "location" SET DATA TYPE TEXT;

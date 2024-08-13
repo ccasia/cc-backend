@@ -3,19 +3,19 @@ import { Request } from 'express';
 
 const prisma = new PrismaClient();
 
-export const assignTask = async (userId: string, campaignId: string, campaignTimelineId: string) => {
-  try {
-    await prisma.campaignTask.create({
-      data: {
-        userId: userId,
-        campaignId: campaignId,
-        campaignTimelineId: campaignTimelineId,
-      },
-    });
-  } catch (error) {
-    return error;
-  }
-};
+// export const assignTask = async (userId: string, campaignId: string, campaignTimelineId: string) => {
+//   try {
+//     await prisma.campaignTask.create({
+//       data: {
+//         userId: userId,
+//         campaignId: campaignId,
+//         campaignTimelineId: campaignTimelineId,
+//       },
+//     });
+//   } catch (error) {
+//     return error;
+//   }
+// };
 
 // `req` is for the admin ID
 export const logChange = async (message: string, campaignId: string, req: Request) => {

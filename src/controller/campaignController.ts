@@ -1,8 +1,10 @@
 import { Request, Response } from 'express';
 import {
+  CampaignAdmin,
   CampaignRequirement,
   CampaignStatus,
   CampaignSubmissionRequirement,
+  CampaignTask,
   CampaignTimeline,
   Creator,
   Entity,
@@ -172,7 +174,7 @@ export const createCampaign = async (req: Request, res: Response) => {
       });
 
       // Create submission requirement
-      const submissionTypes = await prisma.submissionType.findMany({
+      const submissionTypes = await tx.submissionType.findMany({
         where: {
           NOT: {
             type: 'OTHER',
@@ -216,7 +218,7 @@ export const createCampaign = async (req: Request, res: Response) => {
       });
 
       // Create Campaign Timeline
-      await Promise.all(
+      const timelines: CampaignTimeline[] = await Promise.all(
         timeline.map(async (item: any, index: number) => {
           const submission = await tx.submissionType.findFirst({
             where: {
@@ -309,35 +311,60 @@ export const createCampaign = async (req: Request, res: Response) => {
         },
       });
 
-      admins.map(async (admin: any) => {
-        const existing = await prisma.campaignAdmin.findUnique({
-          where: {
-            adminId_campaignId: {
-              adminId: admin?.id,
-              campaignId: campaign?.id,
+      const filterTimelines = timelines.filter((timeline) => timeline.for === 'admin');
+
+      const test = await Promise.all(
+        admins.map(async (admin: any) => {
+          const existing = await tx.campaignAdmin.findUnique({
+            where: {
+              adminId_campaignId: {
+                adminId: admin?.id,
+                campaignId: campaign?.id,
+              },
             },
-          },
-        });
+          });
 
-        if (existing) {
-          return res.status(400).json({ message: 'Admin  exists' });
-        }
+          if (existing) {
+            return res.status(400).json({ message: 'Admin exists' });
+          }
 
-        await prisma.campaignAdmin.create({
-          data: {
-            campaignId: (campaign as any).id as any,
-            adminId: admin?.id,
-          },
-        });
-        const data = await saveNotification(
-          admin.id,
-          Title.Create,
-          `You've been assign to Campaign ${campaign.name}.`,
-          Entity.Campaign,
-        );
+          const a = await tx.campaignAdmin.create({
+            data: {
+              adminId: admin?.id,
+              campaignId: campaign.id,
+            },
+          });
 
-        io.to(clients.get(admin.id)).emit('notification', data);
-      });
+          const data = await saveNotification(
+            admin.id,
+            Title.Create,
+            `You've been assign to Campaign ${campaign.name}.`,
+            Entity.Campaign,
+          );
+
+          io.to(clients.get(admin.id)).emit('notification', data);
+          return a;
+        }),
+      );
+
+      await Promise.all(
+        filterTimelines.map((item) =>
+          tx.campaignTask.create({
+            data: {
+              campaignTimelineId: item.id,
+              campaignId: item.campaignId,
+              task: item.name,
+              status: 'IN_PROGRESS',
+              dueDate: dayjs(item.endDate).format(),
+              campaignTaskAdmin: {
+                create: test.map((admin: any) => ({
+                  userId: admin.adminId,
+                })),
+              },
+            },
+          }),
+        ),
+      );
 
       logChange('Created', campaign.id, req);
       return res.status(200).json({ campaign, message: 'Successfully created campaign' });
@@ -371,7 +398,11 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
         campaignTimeline: true,
         campaignBrief: true,
         campaignRequirement: true,
-        campaignLogs: true,
+        campaignLogs: {
+          include: {
+            admin: true,
+          },
+        },
         campaignAdmin: true,
         campaignSubmissionRequirement: true,
         pitch: {
@@ -396,6 +427,11 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
               },
             },
             userId: true,
+          },
+        },
+        campaignTasks: {
+          include: {
+            campaignTaskAdmin: true,
           },
         },
       },
@@ -478,6 +514,7 @@ export const getCampaignById = async (req: Request, res: Response) => {
 
 export const matchCampaignWithCreator = async (req: Request, res: Response) => {
   const { userid } = req.session;
+
   try {
     const campaigns = await prisma.campaign.findMany({
       where: {
@@ -508,7 +545,7 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
     });
 
     const matchCampaign = (user: any, campaign: any) => {
-      const lang2 = user?.creator?.languages.includes('Mandarin')
+      const lang2 = user?.creator?.languages.includes('Chinese')
         ? // eslint-disable-next-line no-unsafe-optional-chaining
           [...user?.creator?.languages, 'Chinese']
         : // eslint-disable-next-line no-unsafe-optional-chaining
@@ -530,7 +567,7 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       };
 
       function hasCommonElement(arr1: string[], arr2: string[]): boolean {
-        return arr1.some((value) => arr2.includes(value));
+        return arr1?.some((value) => arr2.includes(value));
       }
       const languagesMatch = hasCommonElement(campaign?.campaignRequirement?.language || [], lang2);
 
@@ -553,7 +590,7 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       }
 
       function isAgeInRange(age: number, ranges: string[]): boolean {
-        return ranges.some((range) => {
+        return ranges?.some((range) => {
           const [min, max] = range.split('-').map(Number);
           return age >= min && age <= max;
         });
@@ -608,7 +645,7 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
 
       // Age
       const creatorAge = dayjs().diff(dayjs(creator.birthDate), 'year');
-      if (campaignRequirements.age) {
+      if (campaignRequirements?.age) {
         totalCriteria++;
         if (isAgeInRange(creatorAge, campaignRequirements.age)) {
           matches++;
@@ -618,7 +655,7 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       // Gender
       const creatorGender =
         creator.pronounce === 'he/him' ? 'male' : creator.pronounce === 'she/her' ? 'female' : 'nonbinary';
-      if (campaignRequirements.gender) {
+      if (campaignRequirements?.gender) {
         totalCriteria++;
         if (campaignRequirements.gender.includes(creatorGender)) {
           matches++;
@@ -627,7 +664,7 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
 
       // Language
       const creatorLang: any = creator.languages;
-      if (campaignRequirements.language.length) {
+      if (campaignRequirements?.language.length) {
         totalCriteria++;
         if (campaignRequirements.language.map((item: any) => creatorLang.includes(item))) {
           matches++;
@@ -660,7 +697,7 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       return percantage;
     };
 
-    const matchedCampaign = campaigns.filter((item) => matchCampaign(user, item));
+    const matchedCampaign = campaigns?.filter((item) => matchCampaign(user, item));
 
     const matchedCampaignWithPercentage = matchedCampaign.map((item) => {
       const interestPercentage = calculateInterestMatchingPercentage(
@@ -681,8 +718,11 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       };
     });
 
+    console.log('ASDSAD', matchedCampaignWithPercentage);
+
     return res.status(200).json(matchedCampaignWithPercentage);
   } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -828,19 +868,7 @@ export const getCampaignsByCreatorId = async (req: Request, res: Response) => {
           },
         });
 
-        const tasks = await prisma.campaignTask.findMany({
-          where: {
-            AND: [
-              {
-                userId: userid,
-              },
-              {
-                campaignId: campaign?.id,
-              },
-            ],
-          },
-        });
-        return { ...campaign, tasks };
+        return { ...campaign };
       }),
     );
 
@@ -1384,19 +1412,6 @@ export const changePitchStatus = async (req: Request, res: Response) => {
         });
       }
 
-      await prisma.campaignTask.deleteMany({
-        where: {
-          AND: [
-            {
-              userId: pitch?.userId,
-            },
-            {
-              campaignId: pitch?.campaignId,
-            },
-          ],
-        },
-      });
-
       const submissions = await prisma.submission.findMany({
         where: {
           AND: [
@@ -1466,11 +1481,6 @@ export const getCampaignForCreatorById = async (req: Request, res: Response) => 
         },
         campaignBrief: true,
         campaignRequirement: true,
-        campaignTasks: {
-          where: {
-            userId: userid,
-          },
-        },
         brand: true,
         company: true,
         pitch: true,

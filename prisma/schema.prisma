@@ -26,7 +26,7 @@ model User {
   eventId            String?
   pitch              Pitch[]
   shortlisted        ShortListedCreator[]
-  campaignTasks      CampaignTask[]
+  // campaignTasks      CampaignTask[]
   notiifcationStatus NotificationStatus[]
   campaignLogs       CampaignLog[]
   threads            Thread[]             @relation("UserThreads")
@@ -34,6 +34,7 @@ model User {
   sentMessages       Message[]            @relation("UserMessages")
   feedback           Feedback[]
   submission         Submission[]
+  CampaignTaskAdmin  CampaignTaskAdmin[]
 }
 
 model Admin {
@@ -57,9 +58,9 @@ enum Designation {
 model Creator {
   id         String      @id @unique @default(cuid())
   pronounce  String?     @db.VarChar(100)
-  address    String?     @db.VarChar(255)
+  address    String?
   state      String?
-  location   String?     @db.VarChar(100)
+  location   String?
   birthDate  DateTime?
   instagram  String?     @db.VarChar(100)
   tiktok     String?     @db.VarChar(100)
@@ -489,8 +490,6 @@ enum PitchStatus {
 
 model ShortListedCreator {
   id               String   @id @default(cuid())
-  // creatorId        String
-  // creator          User     @relation(fields: [creatorId], references: [id])
   campaign         Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   campaignId       String
   userId           String?
@@ -499,26 +498,6 @@ model ShortListedCreator {
 
   @@unique([userId, campaignId])
   @@index([userId])
-}
-
-model FirstDraft {
-  id        String       @id @unique @default(cuid())
-  caption   String
-  draftURL  String
-  // submission Submission   @relation(fields: [id], references: [id], onDelete: Cascade)
-  status    DraftStatus?
-  createdAt DateTime     @default(now())
-  updatedAt DateTime     @updatedAt
-}
-
-model FinalDraft {
-  id        String       @id @unique @default(cuid())
-  caption   String
-  draftURL  String
-  // submission Submission   @relation(fields: [id], references: [id], onDelete: Cascade)
-  status    DraftStatus?
-  createdAt DateTime     @default(now())
-  updatedAt DateTime     @updatedAt
 }
 
 enum DraftStatus {
@@ -543,23 +522,30 @@ enum TaskStatus {
 
 model CampaignTask {
   id                     String                   @id @unique @default(cuid())
-  userId                 String
+  // userId                 String
   task                   String?
   campaignTimelineId     String
   campaignId             String
-  user                   User?                    @relation(references: [id], fields: [userId], onDelete: Cascade)
+  // user                   User?                    @relation(references: [id], fields: [userId], onDelete: Cascade)
   timeline               CampaignTimeline         @relation(references: [id], fields: [campaignTimelineId], onDelete: Cascade)
   campaign               Campaign?                @relation(references: [id], fields: [campaignId], onDelete: Cascade)
   status                 TaskStatus               @default(NOT_STARTED)
-  startDate              DateTime?
-  endDate                DateTime?
-  priority               Priority                 @default(LOW)
+  dueDate                DateTime?
   createdAt              DateTime                 @default(now())
   updatedAd              DateTime                 @updatedAt
   campaignTaskDependency CampaignTaskDependency[] @relation("CampaignTask")
   dependsOnCampaignTask  CampaignTaskDependency[] @relation("DependsOnCampaignTask")
-  // submission             Submission?              @relation(fields: [submissionId], references: [id])
-  submissionId           String?
+  campaignTaskAdmin      CampaignTaskAdmin[]
+}
+
+model CampaignTaskAdmin {
+  id             String       @id @default(cuid())
+  userId         String
+  campaignTaskId String
+  user           User         @relation(references: [id], fields: [userId], onDelete: Cascade)
+  campaignTask   CampaignTask @relation(references: [id], fields: [campaignTaskId], onDelete: Cascade)
+
+  @@unique([userId, campaignTaskId])
 }
 
 model CampaignTaskDependency {
