@@ -35,20 +35,12 @@ import {
   updateOrCreateDefaultTimeline,
 } from 'src/controller/timelineController';
 import { isLoggedIn } from 'src/middleware/onlyLogin';
+import { needPermissions } from 'src/middleware/needPermissions';
 
 const router = Router();
 
-// router.get('/defaultTimeline', async (_req: Request, res: Response) => {
-//   try {
-//     const defaults = await prisma.defaultTimelineCampaign.findMany();
-//     return res.status(200).send(defaults);
-//   } catch (error) {
-//     return res.status(400).json({ error });
-//   }
-// });
-
-router.get('/getAllCampaignsByAdminID', isSuperAdmin, getAllCampaigns);
-router.get('/getCampaignById/:id', isSuperAdmin, getCampaignById);
+router.get('/getAllCampaignsByAdminID', needPermissions(['list:campaign']), isSuperAdmin, getAllCampaigns);
+router.get('/getCampaignById/:id', needPermissions(['read:campaign']), isSuperAdmin, getCampaignById);
 router.get('/getAllActiveCampaign', getAllActiveCampaign);
 router.get('/matchCampaignWithCreator', matchCampaignWithCreator);
 router.get('/pitch/:id', getPitchById);

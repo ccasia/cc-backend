@@ -10,6 +10,7 @@ import notificationRoute from './notificationRoute';
 import draftRoute from './draftRoute';
 import taskRoute from './taskRoute';
 import submissionRoute from './submissionRoute';
+import roleRoute from './roleRoute';
 
 import threadRoute from './threadRoute';
 
@@ -27,3 +28,4 @@ router.use('/draft', draftRoute);
 router.use('/thread', threadRoute);
 router.use('/tasks', taskRoute);
 router.use('/submission', submissionRoute);
+router.use('/role', roleRoute);

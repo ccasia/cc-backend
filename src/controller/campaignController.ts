@@ -1464,6 +1464,7 @@ export const getCampaignForCreatorById = async (req: Request, res: Response) => 
             admin: {
               include: {
                 user: true,
+                role: true,
               },
             },
           },
