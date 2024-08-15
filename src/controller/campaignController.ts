@@ -234,6 +234,7 @@ export const createCampaign = async (req: Request, res: Response) => {
                         : 'OTHER',
             },
           });
+          console.log(submission);
 
           if (submission?.type === 'OTHER') {
             return tx.campaignTimeline.create({

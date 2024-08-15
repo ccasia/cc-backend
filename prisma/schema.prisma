@@ -385,6 +385,7 @@ enum Role {
   creator
   brand
   superadmin
+  finance
 }
 
 enum Stage {

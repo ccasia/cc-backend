@@ -205,6 +205,41 @@ export const registerCreator = async (req: Request, res: Response) => {
   }
 };
 
+
+export const registerFinanceUser = async (req: Request, res: Response) => {
+  const { email, password, name } = req.body;
+
+  try {
+    // Check if the user already exists
+    const existingUser = await prisma.user.findUnique({
+      where: { email },
+    });
+
+    if (existingUser) {
+      return res.status(400).json({ message: 'User already exists' });
+    }
+
+    // Hash the password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Create the user with the finance role
+    const user = await prisma.user.create({
+      data: {
+        email,
+        password: hashedPassword,
+        name,
+        role: 'finance', // Assign the finance role
+        status: 'active',
+      },
+    });
+
+    return res.status(201).json({ message: 'Finance user registered successfully', user });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
 // Function to display all users
 export const displayAll = async (_req: Request, res: Response) => {
   try {
