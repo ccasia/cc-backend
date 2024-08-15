@@ -19,10 +19,11 @@ import {
   updateProfileCreator,
 } from '../controller/authController';
 import { validateToken } from '@utils/jwtHelper';
+import { needPermissions } from 'src/middleware/needPermissions';
 
 const router = Router();
 
-router.get('/', displayAll);
+router.get('/', needPermissions(['list:creator', 'list:admin']), displayAll);
 router.post('/login', login);
 router.post('/logout', logout);
 router.patch('/changePassword', validateToken, changePassword);

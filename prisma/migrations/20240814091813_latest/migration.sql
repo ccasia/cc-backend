@@ -2,7 +2,7 @@
 CREATE TYPE "Designation" AS ENUM ('Finance', 'CSM', 'BD', 'Growth');
 
 -- CreateEnum
-CREATE TYPE "Permissions" AS ENUM ('create', 'read', 'update', 'delete');
+CREATE TYPE "PermissionsEnum" AS ENUM ('create', 'read', 'update', 'delete');
 
 -- CreateEnum
 CREATE TYPE "Modules" AS ENUM ('creator', 'campaign', 'brand', 'metric', 'invoice');
@@ -20,7 +20,7 @@ CREATE TYPE "Status" AS ENUM ('active', 'pending', 'banned', 'rejected');
 CREATE TYPE "CampaignStatus" AS ENUM ('DRAFT', 'ACTIVE', 'PAUSED', 'COMPLETED', 'CANCELLED', 'EXPIRED', 'SCHEDULED');
 
 -- CreateEnum
-CREATE TYPE "Role" AS ENUM ('admin', 'creator', 'brand', 'superadmin');
+CREATE TYPE "RoleEnum" AS ENUM ('admin', 'creator', 'brand', 'superadmin');
 
 -- CreateEnum
 CREATE TYPE "Stage" AS ENUM ('publish', 'draft');
@@ -68,10 +68,10 @@ CREATE TABLE "User" (
     "photoURL" VARCHAR(255),
     "country" VARCHAR(100),
     "phoneNumber" VARCHAR(100),
-    "role" "Role" NOT NULL,
     "updatedAt" TIMESTAMP(3) NOT NULL,
     "status" "Status" NOT NULL DEFAULT 'pending',
     "eventId" TEXT,
+    "role" "RoleEnum" NOT NULL,
 
     CONSTRAINT "User_pkey" PRIMARY KEY ("id")
 );
@@ -91,9 +91,9 @@ CREATE TABLE "Admin" (
 CREATE TABLE "Creator" (
     "id" TEXT NOT NULL,
     "pronounce" VARCHAR(100),
-    "address" VARCHAR(255),
+    "address" TEXT,
     "state" TEXT,
-    "location" VARCHAR(100),
+    "location" TEXT,
     "birthDate" TIMESTAMP(3),
     "instagram" VARCHAR(100),
     "tiktok" VARCHAR(100),
@@ -351,8 +351,8 @@ CREATE TABLE "CampaignBrief" (
 -- CreateTable
 CREATE TABLE "Permission" (
     "id" TEXT NOT NULL,
-    "name" "Permissions" NOT NULL,
     "description" TEXT,
+    "name" TEXT NOT NULL,
 
     CONSTRAINT "Permission_pkey" PRIMARY KEY ("id")
 );
@@ -452,45 +452,26 @@ CREATE TABLE "ShortListedCreator" (
 );
 
 -- CreateTable
-CREATE TABLE "FirstDraft" (
-    "id" TEXT NOT NULL,
-    "caption" TEXT NOT NULL,
-    "draftURL" TEXT NOT NULL,
-    "status" "DraftStatus",
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "FirstDraft_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "FinalDraft" (
-    "id" TEXT NOT NULL,
-    "caption" TEXT NOT NULL,
-    "draftURL" TEXT NOT NULL,
-    "status" "DraftStatus",
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "FinalDraft_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
 CREATE TABLE "CampaignTask" (
     "id" TEXT NOT NULL,
-    "userId" TEXT NOT NULL,
     "task" TEXT,
     "campaignTimelineId" TEXT NOT NULL,
     "campaignId" TEXT NOT NULL,
     "status" "TaskStatus" NOT NULL DEFAULT 'NOT_STARTED',
-    "startDate" TIMESTAMP(3),
-    "endDate" TIMESTAMP(3),
-    "priority" "Priority" NOT NULL DEFAULT 'LOW',
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAd" TIMESTAMP(3) NOT NULL,
-    "submissionId" TEXT,
+    "dueDate" TIMESTAMP(3),
 
     CONSTRAINT "CampaignTask_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "CampaignTaskAdmin" (
+    "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "campaignTaskId" TEXT NOT NULL,
+
+    CONSTRAINT "CampaignTaskAdmin_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -725,13 +706,10 @@ CREATE INDEX "ShortListedCreator_userId_idx" ON "ShortListedCreator"("userId");
 CREATE UNIQUE INDEX "ShortListedCreator_userId_campaignId_key" ON "ShortListedCreator"("userId", "campaignId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "FirstDraft_id_key" ON "FirstDraft"("id");
-
--- CreateIndex
-CREATE UNIQUE INDEX "FinalDraft_id_key" ON "FinalDraft"("id");
-
--- CreateIndex
 CREATE UNIQUE INDEX "CampaignTask_id_key" ON "CampaignTask"("id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "CampaignTaskAdmin_userId_campaignTaskId_key" ON "CampaignTaskAdmin"("userId", "campaignTaskId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "CampaignTaskDependency_id_key" ON "CampaignTaskDependency"("id");
@@ -779,19 +757,19 @@ ALTER TABLE "Creator" ADD CONSTRAINT "Creator_userId_fkey" FOREIGN KEY ("userId"
 ALTER TABLE "MediaKit" ADD CONSTRAINT "MediaKit_creatorId_fkey" FOREIGN KEY ("creatorId") REFERENCES "Creator"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Message" ADD CONSTRAINT "Message_threadId_fkey" FOREIGN KEY ("threadId") REFERENCES "Thread"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "Message" ADD CONSTRAINT "Message_senderId_fkey" FOREIGN KEY ("senderId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Message" ADD CONSTRAINT "Message_senderId_fkey" FOREIGN KEY ("senderId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "Message" ADD CONSTRAINT "Message_threadId_fkey" FOREIGN KEY ("threadId") REFERENCES "Thread"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Thread" ADD CONSTRAINT "Thread_campaignId_fkey" FOREIGN KEY ("campaignId") REFERENCES "Campaign"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "UserThread" ADD CONSTRAINT "UserThread_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "UserThread" ADD CONSTRAINT "UserThread_threadId_fkey" FOREIGN KEY ("threadId") REFERENCES "Thread"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "UserThread" ADD CONSTRAINT "UserThread_threadId_fkey" FOREIGN KEY ("threadId") REFERENCES "Thread"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "UserThread" ADD CONSTRAINT "UserThread_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Industry" ADD CONSTRAINT "Industry_userId_fkey" FOREIGN KEY ("userId") REFERENCES "Creator"("userId") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -848,10 +826,10 @@ ALTER TABLE "CampaignTimeline" ADD CONSTRAINT "CampaignTimeline_campaignId_fkey"
 ALTER TABLE "CampaignTimeline" ADD CONSTRAINT "CampaignTimeline_submissionTypeId_fkey" FOREIGN KEY ("submissionTypeId") REFERENCES "SubmissionType"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "CampaignLog" ADD CONSTRAINT "CampaignLog_campaignId_fkey" FOREIGN KEY ("campaignId") REFERENCES "Campaign"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "CampaignLog" ADD CONSTRAINT "CampaignLog_adminId_fkey" FOREIGN KEY ("adminId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "CampaignLog" ADD CONSTRAINT "CampaignLog_adminId_fkey" FOREIGN KEY ("adminId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "CampaignLog" ADD CONSTRAINT "CampaignLog_campaignId_fkey" FOREIGN KEY ("campaignId") REFERENCES "Campaign"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Pitch" ADD CONSTRAINT "Pitch_campaignId_fkey" FOREIGN KEY ("campaignId") REFERENCES "Campaign"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -866,13 +844,16 @@ ALTER TABLE "ShortListedCreator" ADD CONSTRAINT "ShortListedCreator_campaignId_f
 ALTER TABLE "ShortListedCreator" ADD CONSTRAINT "ShortListedCreator_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "CampaignTask" ADD CONSTRAINT "CampaignTask_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "CampaignTask" ADD CONSTRAINT "CampaignTask_campaignId_fkey" FOREIGN KEY ("campaignId") REFERENCES "Campaign"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "CampaignTask" ADD CONSTRAINT "CampaignTask_campaignTimelineId_fkey" FOREIGN KEY ("campaignTimelineId") REFERENCES "CampaignTimeline"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "CampaignTask" ADD CONSTRAINT "CampaignTask_campaignId_fkey" FOREIGN KEY ("campaignId") REFERENCES "Campaign"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "CampaignTaskAdmin" ADD CONSTRAINT "CampaignTaskAdmin_campaignTaskId_fkey" FOREIGN KEY ("campaignTaskId") REFERENCES "CampaignTask"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "CampaignTaskAdmin" ADD CONSTRAINT "CampaignTaskAdmin_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "CampaignTaskDependency" ADD CONSTRAINT "CampaignTaskDependency_campaignTaskId_fkey" FOREIGN KEY ("campaignTaskId") REFERENCES "CampaignTask"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -881,13 +862,10 @@ ALTER TABLE "CampaignTaskDependency" ADD CONSTRAINT "CampaignTaskDependency_camp
 ALTER TABLE "CampaignTaskDependency" ADD CONSTRAINT "CampaignTaskDependency_dependsOnCampaignTaskId_fkey" FOREIGN KEY ("dependsOnCampaignTaskId") REFERENCES "CampaignTask"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "NotificationStatus" ADD CONSTRAINT "NotificationStatus_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
 ALTER TABLE "NotificationStatus" ADD CONSTRAINT "NotificationStatus_notificationId_fkey" FOREIGN KEY ("notificationId") REFERENCES "Notification"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Submission" ADD CONSTRAINT "Submission_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "NotificationStatus" ADD CONSTRAINT "NotificationStatus_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Submission" ADD CONSTRAINT "Submission_campaignId_fkey" FOREIGN KEY ("campaignId") REFERENCES "Campaign"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -896,10 +874,13 @@ ALTER TABLE "Submission" ADD CONSTRAINT "Submission_campaignId_fkey" FOREIGN KEY
 ALTER TABLE "Submission" ADD CONSTRAINT "Submission_submissionTypeId_fkey" FOREIGN KEY ("submissionTypeId") REFERENCES "SubmissionType"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "SubmissionDependency" ADD CONSTRAINT "SubmissionDependency_submissionId_fkey" FOREIGN KEY ("submissionId") REFERENCES "Submission"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "Submission" ADD CONSTRAINT "Submission_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "SubmissionDependency" ADD CONSTRAINT "SubmissionDependency_dependentSubmissionId_fkey" FOREIGN KEY ("dependentSubmissionId") REFERENCES "Submission"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "SubmissionDependency" ADD CONSTRAINT "SubmissionDependency_submissionId_fkey" FOREIGN KEY ("submissionId") REFERENCES "Submission"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "CampaignSubmissionRequirement" ADD CONSTRAINT "CampaignSubmissionRequirement_campaignId_fkey" FOREIGN KEY ("campaignId") REFERENCES "Campaign"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -908,10 +889,10 @@ ALTER TABLE "CampaignSubmissionRequirement" ADD CONSTRAINT "CampaignSubmissionRe
 ALTER TABLE "CampaignSubmissionRequirement" ADD CONSTRAINT "CampaignSubmissionRequirement_submissionTypeId_fkey" FOREIGN KEY ("submissionTypeId") REFERENCES "SubmissionType"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Feedback" ADD CONSTRAINT "Feedback_submissionId_fkey" FOREIGN KEY ("submissionId") REFERENCES "Submission"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "Feedback" ADD CONSTRAINT "Feedback_adminId_fkey" FOREIGN KEY ("adminId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Feedback" ADD CONSTRAINT "Feedback_adminId_fkey" FOREIGN KEY ("adminId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "Feedback" ADD CONSTRAINT "Feedback_submissionId_fkey" FOREIGN KEY ("submissionId") REFERENCES "Submission"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "_UserThreads" ADD CONSTRAINT "_UserThreads_A_fkey" FOREIGN KEY ("A") REFERENCES "Thread"("id") ON DELETE CASCADE ON UPDATE CASCADE;

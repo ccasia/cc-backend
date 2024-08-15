@@ -115,14 +115,14 @@ export const getAdmins = async (req: Request, res: Response) => {
 // };
 
 export const inviteAdmin = async (req: Request, res: Response) => {
-  const { email, permission } = req.body;
+  const { email, role } = req.body;
 
   try {
     const user = await findUserByEmail(email);
     if (user) {
-      return res.status(400).json({ message: 'User already registered' });
+      return res.status(400).json({ message: 'Admin is already registered.' });
     }
-    const response = await createNewAdmin(email, permission);
+    const response = await createNewAdmin(email, role);
     AdminInvite(response?.user.email as string, response?.admin.inviteToken as string);
     res.status(200).send(response);
   } catch (error) {
