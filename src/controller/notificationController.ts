@@ -9,10 +9,53 @@ export enum Title {
   Delete,
 }
 
-export const saveNotification = async (userId: string, title: Title, message: string, entity: Entity) => {
+export const saveNotification = async (userId: string, message: string, entity: Entity, entityId?: string) => {
+  if (entity === 'Campaign' && entityId) {
+    return prisma.notification.create({
+      data: {
+        message: message,
+        entity: entity,
+        campaign: {
+          connect: {
+            id: entityId || '',
+          },
+        },
+        notificationStatus: {
+          create: {
+            userId: userId,
+          },
+        },
+      },
+      include: {
+        notificationStatus: {
+          select: {
+            userId: true,
+          },
+        },
+      },
+    });
+  } else if (entity === 'Pitch' && !entityId) {
+    return prisma.notification.create({
+      data: {
+        message: message,
+        entity: entity,
+        notificationStatus: {
+          create: {
+            userId: userId,
+          },
+        },
+      },
+      include: {
+        notificationStatus: {
+          select: {
+            userId: true,
+          },
+        },
+      },
+    });
+  }
   return prisma.notification.create({
     data: {
-      title: title.toString(),
       message: message,
       entity: entity,
       notificationStatus: {
@@ -39,7 +82,11 @@ export const getNotificationByUserId = async (req: Request, res: Response) => {
         userId: userid,
       },
       include: {
-        notification: true,
+        notification: {
+          include: {
+            campaign: true,
+          },
+        },
       },
     });
 

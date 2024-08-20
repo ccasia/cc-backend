@@ -15,7 +15,8 @@
     "migrate": "npx prisma migrate dev",
     "generate": "npx prisma generate",
     "prod:prev": "node dist/app.js",
-    "studio": "npx prisma studio"
+    "studio": "npx prisma studio",
+    "create-timeline": "ts-node prisma/createTimeline.ts" 
   },
   "dependencies": {
     "@ffmpeg-installer/ffmpeg": "^1.1.0",

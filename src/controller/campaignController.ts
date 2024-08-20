@@ -18,12 +18,12 @@ import dayjs from 'dayjs';
 import { logChange } from 'src/service/campaignServices';
 import { Title, saveNotification } from './notificationController';
 import { clients, io } from 'src/server';
-import amqplib from 'amqplib';
+// import amqplib from 'amqplib';
 import fs from 'fs';
 import Ffmpeg from 'fluent-ffmpeg';
 import ffmpegPath from '@ffmpeg-installer/ffmpeg';
 import ffprobePath from '@ffprobe-installer/ffprobe';
-import { fork } from 'child_process';
+// import { fork } from 'child_process';
 import path from 'path';
 import { compress } from 'src/helper/compression';
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
@@ -335,12 +335,29 @@ export const createCampaign = async (req: Request, res: Response) => {
             },
           });
 
-          const data = await saveNotification(
-            admin.id,
-            Title.Create,
-            `You've been assign to Campaign ${campaign.name}.`,
-            Entity.Campaign,
-          );
+          const data = await tx.notification.create({
+            data: {
+              message: `You've been assign to Campaign ${campaign.name}.`,
+              entity: Entity.Campaign,
+              campaign: {
+                connect: {
+                  id: campaign.id,
+                },
+              },
+              notificationStatus: {
+                create: {
+                  userId: admin.id,
+                },
+              },
+            },
+            include: {
+              notificationStatus: {
+                select: {
+                  userId: true,
+                },
+              },
+            },
+          });
 
           io.to(clients.get(admin.id)).emit('notification', data);
           return a;
@@ -516,7 +533,7 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
   const { userid } = req.session;
 
   try {
-    const campaigns = await prisma.campaign.findMany({
+    let campaigns = await prisma.campaign.findMany({
       where: {
         status: 'ACTIVE',
       },
@@ -527,8 +544,13 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
         brand: true,
         company: true,
         pitch: true,
+        bookMarkCampaign: true,
       },
     });
+
+    campaigns = campaigns.filter(
+      (campaign) => campaign.campaignTimeline.find((timeline) => timeline.name === 'Open For Pitch')?.status === 'OPEN',
+    );
 
     const user = await prisma.user.findUnique({
       where: {
@@ -713,12 +735,9 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       const overallMatchingPercentage = calculateOverallMatchingPercentage(interestPercentage, requirementPercentage);
       return {
         ...item,
-        // percentageMatch: getPercentageMatch(user, item),
         percentageMatch: overallMatchingPercentage,
       };
     });
-
-    console.log('ASDSAD', matchedCampaignWithPercentage);
 
     return res.status(200).json(matchedCampaignWithPercentage);
   } catch (error) {
@@ -790,7 +809,7 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
     });
 
     if (type === 'video') {
-      await prisma.pitch.create({
+      const pitch = await prisma.pitch.create({
         data: {
           type: 'video',
           content: content,
@@ -799,6 +818,7 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
           status: 'undecided',
         },
       });
+      await saveNotification(user?.id as string, `Your pitch has been successfully sent.`, Entity.Pitch);
     } else {
       const pitch = await prisma.pitch.create({
         data: {
@@ -811,12 +831,7 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
       });
     }
 
-    const newPitch = await saveNotification(
-      user?.id as string,
-      Title.Create,
-      `Your pitch has been successfully sent.`,
-      Entity.Pitch,
-    );
+    const newPitch = await saveNotification(user?.id as string, `Your pitch has been successfully sent.`, Entity.Pitch);
 
     io.to(clients.get(user?.id)).emit('notification', newPitch);
 
@@ -825,7 +840,6 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
     admins?.map(async ({ adminId }) => {
       const notification = await saveNotification(
         adminId,
-        Title.Create,
         `New Pitch By ${user?.name} for campaign ${campaign?.name}`,
         Entity.Pitch,
       );
@@ -838,7 +852,6 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
     // return res.status(202).json({ message: 'Successfully Pitch !' });
     return res.status(202).json({ message: 'Successfully Pitch !' });
   } catch (error) {
-    console.log(error);
     return res.status(400).json({ message: 'Error' });
   }
 };
@@ -864,7 +877,15 @@ export const getCampaignsByCreatorId = async (req: Request, res: Response) => {
             campaignBrief: true,
             campaignRequirement: true,
             campaignTimeline: true,
-            campaignAdmin: true,
+            campaignAdmin: {
+              include: {
+                admin: {
+                  include: {
+                    role: true,
+                  },
+                },
+              },
+            },
           },
         });
 
@@ -905,9 +926,9 @@ export const changeCampaignStage = async (req: Request, res: Response) => {
       campaign?.shortlisted?.map(async (value) => {
         const data = await saveNotification(
           value.userId as string,
-          Title.Update,
           `Campaign ${campaign.name} is down for maintenance`,
           Entity.Campaign,
+          campaign.id,
         );
         io.to(clients.get(value.userId)).emit('notification', data);
       });
@@ -917,9 +938,9 @@ export const changeCampaignStage = async (req: Request, res: Response) => {
       campaign.campaignAdmin.forEach(async (admin) => {
         const data = await saveNotification(
           admin.adminId,
-          Title.Update,
           `${campaign.name} is up live !`,
           Entity.Campaign,
+          campaign.id,
         );
         io.to(clients.get(admin.adminId)).emit('notification', data);
       });
@@ -951,9 +972,9 @@ export const closeCampaign = async (req: Request, res: Response) => {
     campaign.campaignAdmin.forEach(async (item) => {
       const data = await saveNotification(
         item.adminId,
-        Title.Update,
         `${campaign.name} is close on ${dayjs().format('ddd LL')}`,
         Entity.Campaign,
+        campaign.id,
       );
       io.to(clients.get(item.adminId)).emit('notification', data);
     });
@@ -1349,7 +1370,6 @@ export const changePitchStatus = async (req: Request, res: Response) => {
 
         const data = await saveNotification(
           pitch.userId,
-          Title.Create,
           `Congratulations! You've been shortlisted for the ${pitch.campaign.name} campaign.`,
           Entity.Shortlist,
         );
@@ -1613,7 +1633,7 @@ export const uploadVideoTest = async (req: Request, res: Response) => {
   const abortController = new AbortController();
   const { campaignId } = req.body;
   const { userid } = req.session;
-  const outputPath = `${campaignId}-${userid}-pitch.mp4`;
+  const outputPath = `${userid}_pitch.mp4`;
   let cancel = false;
 
   res.on('close', () => {
@@ -1656,12 +1676,77 @@ export const uploadVideoTest = async (req: Request, res: Response) => {
         abortController.signal,
       );
 
-      // fs.unlinkSync(path);
-
       io.to(clients.get(req.session.userid)).emit('video-upload-done', { campaignId: campaignId });
 
       return res.status(200).json({ publicUrl: a, message: 'Succesfully uploaded' });
     }
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const saveCampaign = async (req: Request, res: Response) => {
+  const { campaignId } = req.body;
+  const userid = req.session.userid;
+
+  try {
+    const bookmark = await prisma.bookMarkCampaign.create({
+      data: {
+        user: {
+          connect: { id: userid as string },
+        },
+        campaign: {
+          connect: {
+            id: campaignId,
+          },
+        },
+      },
+      include: {
+        campaign: true,
+      },
+    });
+
+    return res.status(200).json({ message: `Campaign ${bookmark.campaign?.name} has been bookmark` });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const unSaveCampaign = async (req: Request, res: Response) => {
+  const { id } = req.params;
+
+  try {
+    const bookmark = await prisma.bookMarkCampaign.delete({
+      where: {
+        id: id as string,
+      },
+      include: {
+        campaign: true,
+      },
+    });
+
+    return res
+      .status(200)
+      .json({ message: `Campaign ${bookmark.campaign?.name} has been remove from saved campaigns` });
+  } catch (error) {
+    console.log(error);
+    return res.status(400).json(error);
+  }
+};
+
+export const createLogistics = async (req: Request, res: Response) => {
+  const { campaignId, userId, trackingNumber, itemName, courier } = req.body;
+  try {
+    const logistic = await prisma.logistic.create({
+      data: {
+        trackingNumber: trackingNumber,
+        itemName: itemName,
+        courier: courier,
+        campaignId: campaignId as string,
+        userId: userId as string,
+      },
+    });
+    return res.status(200).json({ message: 'Succesfully created logistics' });
   } catch (error) {
     return res.status(400).json(error);
   }

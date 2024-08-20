@@ -586,6 +586,11 @@ export const login = async (req: Request, res: Response) => {
                 permission: true,
               },
             },
+            role: {
+              include: {
+                permissions: true,
+              },
+            },
           },
         },
         creator: {

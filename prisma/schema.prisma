@@ -34,6 +34,8 @@ model User {
   event              Event?               @relation(fields: [eventId], references: [id])
   UserThread         UserThread[]
   threads            Thread[]             @relation("UserThreads")
+  BookMarkCampaign   BookMarkCampaign[]
+  logistic           Logistic[]
 }
 
 model Admin {
@@ -276,6 +278,17 @@ model Campaign {
   shortlisted                   ShortListedCreator[]
   submission                    Submission[]
   thread                        Thread?
+  notifications                 Notification[]
+  bookMarkCampaign              BookMarkCampaign?
+  logistic                      Logistic[]
+}
+
+model BookMarkCampaign {
+  id         String    @id @unique @default(cuid())
+  userId     String
+  user       User      @relation(references: [id], fields: [userId])
+  campaignId String    @unique
+  campaign   Campaign? @relation(references: [id], fields: [campaignId])
 }
 
 model CampaignAdmin {
@@ -353,6 +366,7 @@ model TimelineDefault {
   duration              Int
   createdAt             DateTime            @default(now())
   updatedAt             DateTime            @updatedAt
+  order                 Int
   timelineType          TimelineTypeDefault @relation(fields: [timelineTypeDefaultId], references: [id])
 }
 
@@ -394,15 +408,16 @@ model CampaignLog {
 }
 
 model Pitch {
-  id         String       @id @unique @default(cuid())
-  type       PitchType
-  campaignId String
-  userId     String
-  status     PitchStatus? @default(pending)
-  content    String       @default("test")
-  createdAt  DateTime     @default(now())
-  campaign   Campaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  user       User         @relation(fields: [userId], references: [id])
+  id           String         @id @unique @default(cuid())
+  type         PitchType
+  campaignId   String
+  userId       String
+  status       PitchStatus?   @default(pending)
+  content      String         @default("test")
+  createdAt    DateTime       @default(now())
+  campaign     Campaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  user         User           @relation(fields: [userId], references: [id])
+  Notification Notification[]
 
   @@unique([userId, campaignId])
 }
@@ -455,11 +470,16 @@ model CampaignTaskDependency {
 
 model Notification {
   id                 String               @id @unique @default(cuid())
-  title              String
   message            String
   createdAt          DateTime             @default(now())
   entity             Entity?
   notificationStatus NotificationStatus[]
+  campaignId         String?
+  pitchId            String?
+  submissionId       String?
+  campaign           Campaign?            @relation(references: [id], fields: [campaignId])
+  pitch              Pitch?               @relation(references: [id], fields: [pitchId])
+  submission         Submission?          @relation(references: [id], fields: [submissionId])
 }
 
 model NotificationStatus {
@@ -468,19 +488,26 @@ model NotificationStatus {
   notificationId String
   read           Boolean      @default(false)
   archive        Boolean      @default(false)
-  readAt         DateTime?    @default(now())
+  readAt         DateTime?
   notification   Notification @relation(fields: [notificationId], references: [id])
   user           User         @relation(fields: [userId], references: [id])
 
   @@unique([userId, notificationId])
 }
 
+// model NotificationType {
+//   id        String   @id @unique @default(cuid())
+//   name      String
+//   createdAt DateTime @default(now())
+//   updatedAt DateTime @updatedAt
+// }
+
 model Submission {
   id               String                 @id @default(cuid())
   content          String?
   caption          String?
   campaignId       String
-  status           TaskStatus             @default(IN_PROGRESS)
+  status           SubmissionStatus       @default(IN_PROGRESS)
   createdAt        DateTime               @default(now())
   updatedAt        DateTime               @updatedAt
   submissionDate   DateTime?
@@ -494,6 +521,7 @@ model Submission {
   user             User                   @relation(fields: [userId], references: [id])
   dependencies     SubmissionDependency[] @relation("Dependencies")
   dependentOn      SubmissionDependency[] @relation("DependentOn")
+  Notification     Notification[]
 
   @@unique([userId, campaignId, submissionTypeId])
 }
@@ -523,7 +551,7 @@ model CampaignSubmissionRequirement {
 
 model SubmissionType {
   id               String                          @id @default(cuid())
-  type             SubmissionEnum
+  type             SubmissionEnum                  @unique
   description      String?
   requirements     CampaignSubmissionRequirement[]
   campaignTimeline CampaignTimeline[]
@@ -542,19 +570,33 @@ model Feedback {
   submission   Submission    @relation(fields: [submissionId], references: [id])
 }
 
+model Logistic {
+  id             String         @id @unique @default(cuid())
+  trackingNumber String
+  itemName       String
+  courier        String
+  status         LogisticStatus @default(Shipping)
+  updateAt       DateTime       @updatedAt
+  createdAt      DateTime       @default(now())
+  userId         String
+  campaignId     String
+  user           User           @relation(references: [id], fields: [userId])
+  campaign       Campaign       @relation(references: [id], fields: [campaignId])
+}
+
+enum LogisticStatus {
+  Pending //Before the ship
+  Shipping //Shipping
+  Shipped //Already arrived
+  Pending_Delivery_Confirmation //Item has been delivered by creator
+}
+
 enum Designation {
   Finance
   CSM
   BD
   Growth
 }
-
-// enum PermissionsEnum {
-//   create
-//   read
-//   update
-//   delete
-// }
 
 enum Modules {
   creator
@@ -647,6 +689,14 @@ enum DraftStatus {
 
 enum TaskStatus {
   NOT_STARTED
+  TO_DO
+  IN_PROGRESS
+  COMPLETED
+  OVERDUE
+}
+
+enum SubmissionStatus {
+  NOT_STARTED
   IN_PROGRESS
   COMPLETED
   PENDING_REVIEW
@@ -672,10 +722,11 @@ enum Entity {
   Feedback
   Draft
   Post
-  Approval
   Logistic
-  Inbox
   Invoice
+  Metrcis
+  Agreement
+  Chat
 }
 
 enum SubmissionEnum {

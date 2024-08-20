@@ -17,6 +17,7 @@ import { sendMessageInThread, fetchMessagesFromThread } from './controller/threa
 import { isLoggedIn } from './middleware/onlyLogin';
 import { Server, Socket } from 'socket.io';
 import 'src/service/uploadVideo';
+import 'src/helper/videoDraft';
 
 dotenv.config();
 
@@ -149,31 +150,43 @@ app.get('/users', isLoggedIn, async (_req, res) => {
   }
 });
 
-app.get('/tiktokOuth', (req: Request, res: Response) => {
-  const csrfState = Math.random().toString(36).substring(2);
-  res.cookie('csrfState', csrfState, { maxAge: 60000 });
+// app.get('/tiktokOuth', (req: Request, res: Response) => {
+//   const csrfState = Math.random().toString(36).substring(2);
+//   res.cookie('csrfState', csrfState, { maxAge: 60000 });
 
-  let url = 'https://www.tiktok.com/v2/auth/authorize/';
+//   let url = 'https://www.tiktok.com/v2/auth/authorize/';
 
-  // the following params need to be in `application/x-www-form-urlencoded` format.
-  url += `?client_key=${process.env.TIKTOK_CLIENT_KEY}`;
-  url += '&scope=user.info.basic,user.info.profile,user.info.stats';
-  url += '&response_type=code';
-  url += '&redirect_uri=https://app.cultcreativeasia.com/dashboard/user/profile';
-  url += '&state=' + csrfState;
+//   // the following params need to be in `application/x-www-form-urlencoded` format.
+//   url += `?client_key=${process.env.TIKTOK_CLIENT_KEY}`;
+//   url += '&scope=user.info.basic,user.info.profile,user.info.stats';
+//   url += '&response_type=code';
+//   url += '&redirect_uri=https://app.cultcreativeasia.com/dashboard/user/profile';
+//   url += '&state=' + csrfState;
 
-  res.json({ url: url });
-});
+//   res.json({ url: url });
+// });
 
-app.post('/tiktok/data', (req: Request, res: Response) => {
-  const url = 'https://open.tiktokapis.com/v2/oauth/token/';
-});
+// app.post('/tiktok/data', (req: Request, res: Response) => {
+//   const url = 'https://open.tiktokapis.com/v2/oauth/token/';
+// });
 
 export const clients = new Map();
+export const activeProcesses = new Map();
 
 io.on('connection', (socket) => {
   socket.on('register', (userId) => {
     clients.set(userId, socket.id);
+  });
+
+  socket.on('cancel-processing', (data) => {
+    const { submissionId } = data;
+    if (activeProcesses.has(submissionId)) {
+      const command = activeProcesses.get(submissionId);
+      command.kill('SIGKILL'); // Terminate the FFmpeg process
+      activeProcesses.delete(submissionId);
+      console.log(`Processing for video ${submissionId} has been cancelled.`);
+      socket.emit('progress', { submissionId, progress: 0 }); // Reset progress
+    }
   });
 
   // Joins a room for every thread
