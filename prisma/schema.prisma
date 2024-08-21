@@ -33,6 +33,8 @@ model User {
   threads            Thread[]             @relation("UserThreads")
   UserThread         UserThread[]
   sentMessages       Message[]            @relation("UserMessages")
+  unreadMessages     UnreadMessage[]
+  seenMessages       SeenMessage[]
 
   campaignAgreement  CampaignAgreement[]
   feedback           Feedback[]
@@ -94,6 +96,29 @@ model Message {
   thread    Thread?  @relation(fields: [threadId], references: [id])
   senderId  String?
   sender    User?    @relation(fields: [senderId], references: [id], name: "UserMessages")
+  seenMessages SeenMessage[]
+  unreadMessages UnreadMessage[]
+}
+model UnreadMessage {
+  id        Int      @id @default(autoincrement())
+  userId    String
+  threadId  String
+  messageId Int
+  message   Message @relation(fields: [messageId], references: [id])
+  user      User    @relation(fields: [userId], references: [id])
+  thread    Thread  @relation(fields: [threadId], references: [id])
+
+  @@unique([userId, threadId, messageId])
+}
+
+model SeenMessage {
+  id        Int      @id @default(autoincrement())
+  userId    String
+  messageId Int
+  user      User     @relation(fields: [userId], references: [id])
+  message   Message  @relation(fields: [messageId], references: [id])
+
+  @@unique([userId, messageId])
 }
 
 model Thread {
@@ -108,6 +133,7 @@ model Thread {
   isGroup     Boolean      @default(true)
   campaignId  String?      @unique
   campaign    Campaign?    @relation(fields: [campaignId], references: [id])
+  unreadMessages UnreadMessage[]
 }
 
 model UserThread {
@@ -591,6 +617,8 @@ enum Entity {
   Pitch
   Shortlist
   Timeline
+  Groupchat
+  MessagebyAdmin
 }
 
 model NotificationStatus {
