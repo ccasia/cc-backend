@@ -24,6 +24,7 @@ import {
   getCampaignLog,
   getSubmission,
   uploadVideoTest,
+  getAllCampaignsFinance,
 } from 'src/controller/campaignController';
 import { isSuperAdmin } from 'src/middleware/onlySuperadmin';
 import {
@@ -39,9 +40,14 @@ import { needPermissions } from 'src/middleware/needPermissions';
 
 const router = Router();
 
+// create isFinance permission later
+
 router.get('/getAllCampaignsByAdminID', needPermissions(['list:campaign']), isSuperAdmin, getAllCampaigns);
 router.get('/getCampaignById/:id', needPermissions(['read:campaign']), isSuperAdmin, getCampaignById);
+router.get('/getClientByCampID/:id', getCampaignById);
+// router.get('/getCampaignByIdInvoice/:id' , getCampaignById);
 router.get('/getAllActiveCampaign', getAllActiveCampaign);
+router.get('/getAllCampaignsFinance', getAllCampaignsFinance);
 router.get('/matchCampaignWithCreator', matchCampaignWithCreator);
 router.get('/pitch/:id', getPitchById);
 router.get('/firstDraft', getFirstDraft);

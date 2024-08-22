@@ -206,7 +206,6 @@ export const registerCreator = async (req: Request, res: Response) => {
   }
 };
 
-
 export const registerFinanceUser = async (req: Request, res: Response) => {
   const { email, password, name } = req.body;
 
