@@ -1,7 +1,5 @@
-import { Response, Router, Request } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { Router } from 'express';
 import {
-  updateDefaultTimeline,
   createCampaign,
   getAllCampaigns,
   getCampaignById,
@@ -10,18 +8,25 @@ import {
   changeCampaignStage,
   closeCampaign,
   getPitchById,
-  // rejectPitch,
   editCampaignInfo,
   editCampaignBrandOrCompany,
-  // updateTimeLineType,
-  updateCampaignTimeline,
+  editCampaignDosAndDonts,
+  editCampaignRequirements,
+  editCampaignTimeline,
   getFirstDraft,
   changePitchStatus,
   getCampaignsByCreatorId,
   getCampaignForCreatorById,
   getCampaignPitchForCreator,
-  editRequirement,
-  editDosandDonts,
+  // editRequirement,
+  // editDosandDonts,
+  matchCampaignWithCreator,
+  getCampaignLog,
+  getSubmission,
+  uploadVideoTest,
+  saveCampaign,
+  unSaveCampaign,
+  createLogistics,
 } from 'src/controller/campaignController';
 import { isSuperAdmin } from 'src/middleware/onlySuperadmin';
 import {
@@ -33,47 +38,61 @@ import {
   updateOrCreateDefaultTimeline,
 } from 'src/controller/timelineController';
 import { isLoggedIn } from 'src/middleware/onlyLogin';
+import { needPermissions } from 'src/middleware/needPermissions';
 
 const router = Router();
 
-// router.get('/defaultTimeline', async (_req: Request, res: Response) => {
-//   try {
-//     const defaults = await prisma.defaultTimelineCampaign.findMany();
-//     return res.status(200).send(defaults);
-//   } catch (error) {
-//     return res.status(400).json({ error });
-//   }
-// });
+router.get('/getAllCampaignsByAdminID', needPermissions(['list:campaign']), isSuperAdmin, getAllCampaigns);
+router.get('/getCampaignById/:id', needPermissions(['view:campaign']), isSuperAdmin, getCampaignById);
 
-router.get('/getAllCampaignsByAdminID', isSuperAdmin, getAllCampaigns);
-router.get('/getCampaignById/:id', isSuperAdmin, getCampaignById);
-router.get('/getAllActiveCampaign', getAllActiveCampaign);
-router.get('/pitch/:id', getPitchById);
-router.get('/firstDraft', getFirstDraft);
-router.get('/timelineType', isSuperAdmin, getTimelineType);
+router.get('/getAllActiveCampaign', needPermissions(['list:campaign']), getAllActiveCampaign);
+router.get('/matchCampaignWithCreator', matchCampaignWithCreator);
+router.get('/pitch/:id', needPermissions(['view:campaign']), getPitchById);
+router.get('/firstDraft', needPermissions(['list:campaign']), getFirstDraft);
+router.get('/timelineType', needPermissions(['list:campaign']), isSuperAdmin, getTimelineType);
 router.get('/defaultTimeline', isSuperAdmin, getDefaultTimeline);
 router.get('/getCampaignsBySessionId', getCampaignsByCreatorId);
 router.get('/getCampaignForCreatorById/:id', isLoggedIn, getCampaignForCreatorById);
 router.get('/getCampaignPitch', isLoggedIn, getCampaignPitchForCreator);
-// router.get('/pitch/:campaignId', getPitchByCampaignId);
 
-router.post('/updateOrCreateDefaultTimeline', updateOrCreateDefaultTimeline);
-router.post('/updateDefaultTimeline', updateDefaultTimeline);
-router.post('/createCampaign', isSuperAdmin, createCampaign);
+router.get('/getSubmissions', needPermissions(['list:campaign']), isSuperAdmin, getSubmission);
+// router.get('/pitch/:campaignId', getPitchByCampaignId);
+router.get('/getCampaignLog/:id', needPermissions(['view:campaign']), getCampaignLog);
+
+router.post('/updateOrCreateDefaultTimeline', needPermissions(['create:campaign']), updateOrCreateDefaultTimeline);
+router.post('/createCampaign', needPermissions(['create:campaign']), isSuperAdmin, createCampaign);
 // router.post('/rejectPitch', isSuperAdmin, rejectPitch);
-router.post('/createNewTimeline', isSuperAdmin, createNewTimeline);
-router.post('/createSingleTimelineType', isSuperAdmin, createSingleTimelineType);
+router.post('/createNewTimeline', needPermissions(['create:campaign']), isSuperAdmin, createNewTimeline);
+router.post('/createSingleTimelineType', needPermissions(['create:campaign']), isSuperAdmin, createSingleTimelineType);
+router.post(
+  '/uploadVideo',
+  // (req, res, next) => {
+  //   req.on('close', () => {
+  //     console.log('ABORTINGGG');
+  //   });
+  //   next();
+  // },
+  uploadVideoTest,
+);
+router.post('/saveCampaign', isLoggedIn, saveCampaign);
+router.post('/createLogistic', needPermissions(['view_creator', 'list_creator']), createLogistics);
 
 router.patch('/pitch', creatorMakePitch);
-router.patch('/changeCampaignStage/:campaignId', changeCampaignStage);
-router.patch('/closeCampaign/:id', isSuperAdmin, closeCampaign);
-router.patch('/editCampaignInfo', isSuperAdmin, editCampaignInfo);
-router.patch('/editCampaignBrandOrCompany', isSuperAdmin, editCampaignBrandOrCompany);
-router.patch('/updateCampaignTimeline/:id', isSuperAdmin, updateCampaignTimeline);
-router.patch('/changePitchStatus', changePitchStatus);
-router.patch('/editRequirement', isSuperAdmin, editRequirement);
-router.patch('/editDosandDonts', isSuperAdmin, editDosandDonts);
+router.patch('/changeCampaignStage/:campaignId', needPermissions(['update:campaign']), changeCampaignStage);
+router.patch('/closeCampaign/:id', needPermissions(['update:campaign']), isSuperAdmin, closeCampaign);
+router.patch('/editCampaignInfo', needPermissions(['update:campaign']), isSuperAdmin, editCampaignInfo);
+router.patch(
+  '/editCampaignBrandOrCompany',
+  needPermissions(['update:campaign']),
+  isSuperAdmin,
+  editCampaignBrandOrCompany,
+);
+router.patch('/editCampaignDosAndDonts', needPermissions(['update:campaign']), isSuperAdmin, editCampaignDosAndDonts);
+router.patch('/editCampaignRequirements', needPermissions(['update:campaign']), isSuperAdmin, editCampaignRequirements);
+router.patch('/editCampaignTimeline/:id', needPermissions(['update:campaign']), isSuperAdmin, editCampaignTimeline);
+router.patch('/changePitchStatus', needPermissions(['update:campaign']), changePitchStatus);
 
-router.delete('/timelineType/:id', isSuperAdmin, deleteTimelineType);
+router.delete('/timelineType/:id', needPermissions(['delete:campaign']), isSuperAdmin, deleteTimelineType);
+router.delete('/unsaveCampaign/:id', isLoggedIn, unSaveCampaign);
 
 export default router;

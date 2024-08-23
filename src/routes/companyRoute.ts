@@ -16,23 +16,26 @@ import {
   editBrand,
   getOptions,
 } from 'src/controller/companyController';
+import { needPermissions } from 'src/middleware/needPermissions';
 
 const router = Router();
 
-router.post('/createCompany', isSuperAdmin, createCompany);
-router.get('/getCompany/:id', isSuperAdmin, getCompanyById);
-router.get('/getCompanies', isSuperAdmin, getAllCompanies);
-router.post('/createBrand', isSuperAdmin, createBrand);
-router.get('/getBrands', isSuperAdmin, getAllBrands);
+router.get('/getCompany/:id', needPermissions(['view:client']), isSuperAdmin, getCompanyById);
+router.get('/getCompanies', needPermissions(['list:client']), isSuperAdmin, getAllCompanies);
+router.get('/getBrands', needPermissions(['list:client']), isSuperAdmin, getAllBrands);
 router.get('/getOptions', isSuperAdmin, getOptions);
-router.get('/getBrand/:id', isSuperAdmin, getBrand);
-router.post('/createOneCompany', isSuperAdmin, createOneCompany);
-router.post('/createOneBrand', isSuperAdmin, createOneBrand);
-router.post('/createCompany', isSuperAdmin, createCompany);
-router.post('/createBrand', isSuperAdmin, createBrand);
-router.patch('/editCompany', isSuperAdmin, editCompany);
-router.patch('/editBrand', isSuperAdmin, editBrand);
+router.get('/getBrand/:id', needPermissions(['view:client']), isSuperAdmin, getBrand);
 
-router.delete('/deleteCompany/:id', isSuperAdmin, deleteCompany);
+router.post('/createCompany', needPermissions(['create:client']), isSuperAdmin, createCompany);
+router.post('/createBrand', needPermissions(['create:client']), isSuperAdmin, createBrand);
+router.post('/createOneCompany', needPermissions(['create:client']), isSuperAdmin, createOneCompany);
+router.post('/createOneBrand', needPermissions(['create:client']), isSuperAdmin, createOneBrand);
+router.post('/createCompany', needPermissions(['create:client']), isSuperAdmin, createCompany);
+router.post('/createBrand', needPermissions(['create:client']), isSuperAdmin, createBrand);
+
+router.patch('/editCompany', needPermissions(['update:client']), isSuperAdmin, editCompany);
+router.patch('/editBrand', needPermissions(['update:client']), isSuperAdmin, editBrand);
+
+router.delete('/deleteCompany/:id', needPermissions(['delete:client']), isSuperAdmin, deleteCompany);
 
 export default router;

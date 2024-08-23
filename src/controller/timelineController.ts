@@ -53,11 +53,12 @@ export const updateOrCreateDefaultTimeline = async (req: Request, res: Response)
     await prisma.timelineDefault.deleteMany();
 
     await Promise.all(
-      timeline.map(async (item: any) => {
+      timeline.map(async (item: any, index: number) => {
         await prisma.timelineDefault.create({
           data: {
             timelineTypeDefaultId: item.timeline_type.id,
             for: item.for,
+            order: index + 1,
             duration: item.duration,
           },
         });
@@ -72,7 +73,7 @@ export const updateOrCreateDefaultTimeline = async (req: Request, res: Response)
 
     await Promise.all(
       admins.map(async (admin) => {
-        const data = await saveNotification(admin.id, Title.Update, 'Default Timeline Is Updated', Entity.Timeline);
+        const data = await saveNotification(admin.id, 'Default Timeline Is Updated', Entity.Timeline);
         io.to(clients.get(admin.id)).emit('notification', data);
       }),
     );

@@ -9,16 +9,17 @@ import {
 } from 'src/controller/userController';
 import { isSuperAdmin } from 'src/middleware/onlySuperadmin';
 // import { PrismaClient } from '@prisma/client';
+import { needPermissions } from 'src/middleware/needPermissions';
 
 const router = Router();
 // const prisma = new PrismaClient();
 
-router.patch('/updateProfileAdmin', updateProfileAdmin);
-router.get('/admins', isSuperAdmin, getAdmins);
-router.get('/getAdmins', isSuperAdmin, getAllActiveAdmins);
-router.post('/newAdmin', inviteAdmin);
-router.put('/updateProfile/newAdmin', updateAdminInformation);
-router.post('/createAdmin', isSuperAdmin, createAdmin);
+router.patch('/updateProfileAdmin', needPermissions(['update:admin']), updateProfileAdmin);
+router.get('/admins', needPermissions(['list:admin']), isSuperAdmin, getAdmins);
+router.get('/getAdmins', needPermissions(['list:admin']), isSuperAdmin, getAllActiveAdmins);
+router.post('/newAdmin', needPermissions(['create:admin']), inviteAdmin);
+router.put('/updateProfile/newAdmin', needPermissions(['update:admin']), updateAdminInformation);
+router.post('/createAdmin', needPermissions(['create:admin']), isSuperAdmin, createAdmin);
 
 // router.post('/approveOrReject', approveOrReject);
 // router.get('/:id/notification', getAllNotification);

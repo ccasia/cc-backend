@@ -18,6 +18,7 @@ import { handleSendMessage, fetchMessagesFromThread } from './service/threadServ
 import { isLoggedIn } from './middleware/onlyLogin';
 import { Server, Socket } from 'socket.io';
 import 'src/service/uploadVideo';
+import 'src/helper/videoDraft';
 
 dotenv.config();
 
@@ -35,6 +36,7 @@ app.use(
     tempFileDir: '/tmp/',
   }),
 );
+// app.use(fileUpload());
 
 const corsOptions = {
   origin: true, //included origin as true
@@ -149,7 +151,7 @@ app.get('/users', isLoggedIn, async (_req, res) => {
   }
 });
 
-// app.get('/outh', (req: Request, res: Response) => {
+// app.get('/tiktokOuth', (req: Request, res: Response) => {
 //   const csrfState = Math.random().toString(36).substring(2);
 //   res.cookie('csrfState', csrfState, { maxAge: 60000 });
 
@@ -162,7 +164,7 @@ app.get('/users', isLoggedIn, async (_req, res) => {
 //   url += '&redirect_uri=https://app.cultcreativeasia.com/dashboard/user/profile';
 //   url += '&state=' + csrfState;
 
-//   res.redirect(url);
+//   res.json({ url: url });
 // });
 
 // app.post('/tiktok/data', (req: Request, res: Response) => {
@@ -170,10 +172,22 @@ app.get('/users', isLoggedIn, async (_req, res) => {
 // });
 
 export const clients = new Map();
+export const activeProcesses = new Map();
 
 io.on('connection', (socket) => {
   socket.on('register', (userId) => {
     clients.set(userId, socket.id);
+  });
+
+  socket.on('cancel-processing', (data) => {
+    const { submissionId } = data;
+    if (activeProcesses.has(submissionId)) {
+      const command = activeProcesses.get(submissionId);
+      command.kill('SIGKILL'); // Terminate the FFmpeg process
+      activeProcesses.delete(submissionId);
+      console.log(`Processing for video ${submissionId} has been cancelled.`);
+      socket.emit('progress', { submissionId, progress: 0 }); // Reset progress
+    }
   });
 
   // Joins a room for every thread

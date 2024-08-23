@@ -1,5 +1,5 @@
-import { Storage } from '@google-cloud/storage';
-import { io } from 'src/server';
+import { Storage, TransferManager } from '@google-cloud/storage';
+import fs from 'fs';
 
 const pathToJSONKey = `${__dirname}/test-cs.json`;
 
@@ -127,7 +127,14 @@ export const uploadCompanyLogo = async (tempFilePath: string, fileName: string) 
   }
 };
 
-export const uploadPitchVideo = async (tempFilePath: string, fileName: string, folderName: string): Promise<string> => {
+export const uploadPitchVideo = async (
+  tempFilePath: string,
+  fileName: string,
+  folderName: string,
+  size?: number,
+  progressCallback?: any,
+  abortSignal?: AbortSignal,
+) => {
   try {
     const bucketName = process.env.BUCKET_NAME as string;
     const destination = `${folderName}/${fileName}`;
@@ -136,15 +143,29 @@ export const uploadPitchVideo = async (tempFilePath: string, fileName: string, f
     const [file] = await storage.bucket(bucketName).upload(tempFilePath, {
       destination,
       gzip: true,
+      resumable: true,
+      metadata: {
+        contentType: 'video/mp4',
+      },
+      onUploadProgress: (event) => {
+        if (size) {
+          const progress = (event.bytesWritten / size) * 100;
+          progressCallback(progress);
+        }
+      },
+    });
+
+    abortSignal?.addEventListener('abort', () => {
+      console.log('ABORTING UPLOAD GCP');
     });
 
     // Make the file public
-    await file.makePublic();
+    // await file.makePublic();
+
+    const publicURL = `https://storage.googleapis.com/${bucketName}/${destination}`;
+    return publicURL;
 
     // Construct the public URL
-    const publicURL = `https://storage.googleapis.com/${bucketName}/${destination}`;
-    io.emit('notification', 'NATEBODI');
-    return publicURL;
   } catch (err) {
     throw new Error(`Error uploading file: ${err.message}`);
   }

@@ -125,6 +125,8 @@ export const registerSuperAdmin = async (req: Request, res: Response) => {
       },
     });
 
+    console.log(search);
+
     if (search) {
       return res.status(400).json({ message: 'User already exists' });
     }
@@ -144,7 +146,6 @@ export const registerSuperAdmin = async (req: Request, res: Response) => {
 
       const newAdmin = await prisma.admin.create({
         data: {
-          designation: 'CSM',
           mode: 'god',
           userId: newUser.id,
         },
@@ -209,7 +210,7 @@ export const registerCreator = async (req: Request, res: Response) => {
 export const displayAll = async (_req: Request, res: Response) => {
   try {
     const data = await prisma.user.findMany();
-    console.log(data);
+
     return res.status(201).json({ data });
   } catch (error) {
     return res.status(400).json({ message: 'No user found.' });
@@ -268,6 +269,13 @@ export const verifyAdmin = async (req: Request, res: Response) => {
     const user = await prisma.user.findUnique({
       where: {
         id: admin.userId,
+      },
+      include: {
+        admin: {
+          include: {
+            role: true,
+          },
+        },
       },
     });
     return res.status(200).json({ message: 'Admin verified successfully', user });
@@ -578,6 +586,11 @@ export const login = async (req: Request, res: Response) => {
                 permission: true,
               },
             },
+            role: {
+              include: {
+                permissions: true,
+              },
+            },
           },
         },
         creator: {
@@ -587,7 +600,7 @@ export const login = async (req: Request, res: Response) => {
           },
         },
         pitch: true,
-        shortlistCreator: true,
+        shortlisted: true,
       },
     });
 
@@ -638,6 +651,7 @@ export const login = async (req: Request, res: Response) => {
       accessToken: accessToken,
     });
   } catch (error) {
+    console.log(error);
     return res.send(error);
   }
 };
