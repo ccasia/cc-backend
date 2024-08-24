@@ -27,6 +27,9 @@ import {
   saveCampaign,
   unSaveCampaign,
   createLogistics,
+  getLogisticById,
+  updateStatusLogistic,
+  shortlistCreator,
 } from 'src/controller/campaignController';
 import { isSuperAdmin } from 'src/middleware/onlySuperadmin';
 import {
@@ -54,6 +57,7 @@ router.get('/defaultTimeline', isSuperAdmin, getDefaultTimeline);
 router.get('/getCampaignsBySessionId', getCampaignsByCreatorId);
 router.get('/getCampaignForCreatorById/:id', isLoggedIn, getCampaignForCreatorById);
 router.get('/getCampaignPitch', isLoggedIn, getCampaignPitchForCreator);
+router.get('/getLogistics', isSuperAdmin, getLogisticById);
 
 router.get('/getSubmissions', needPermissions(['list:campaign']), isSuperAdmin, getSubmission);
 // router.get('/pitch/:campaignId', getPitchByCampaignId);
@@ -76,6 +80,7 @@ router.post(
 );
 router.post('/saveCampaign', isLoggedIn, saveCampaign);
 router.post('/createLogistic', needPermissions(['view_creator', 'list_creator']), createLogistics);
+router.post('/shortlistCreator', isSuperAdmin, shortlistCreator);
 
 router.patch('/pitch', creatorMakePitch);
 router.patch('/changeCampaignStage/:campaignId', needPermissions(['update:campaign']), changeCampaignStage);
@@ -91,6 +96,7 @@ router.patch('/editCampaignDosAndDonts', needPermissions(['update:campaign']), i
 router.patch('/editCampaignRequirements', needPermissions(['update:campaign']), isSuperAdmin, editCampaignRequirements);
 router.patch('/editCampaignTimeline/:id', needPermissions(['update:campaign']), isSuperAdmin, editCampaignTimeline);
 router.patch('/changePitchStatus', needPermissions(['update:campaign']), changePitchStatus);
+router.patch('/changeLogisticStatus', isSuperAdmin, updateStatusLogistic); //need permission later
 
 router.delete('/timelineType/:id', needPermissions(['delete:campaign']), isSuperAdmin, deleteTimelineType);
 router.delete('/unsaveCampaign/:id', isLoggedIn, unSaveCampaign);

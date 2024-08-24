@@ -1,15 +1,16 @@
 /* eslint-disable promise/always-return */
-import { ChildProcess } from 'child_process';
+
 import Ffmpeg from 'fluent-ffmpeg';
 import ffmpegPath from '@ffmpeg-installer/ffmpeg';
 import ffprobePath from '@ffprobe-installer/ffprobe';
 import fs from 'fs';
-import path from 'path';
 import { uploadPitchVideo } from 'src/config/cloudStorage.config';
 import amqplib from 'amqplib';
 import { activeProcesses, clients, io } from 'src/server';
 import { Entity, PrismaClient } from '@prisma/client';
 import { saveNotification } from 'src/controller/notificationController';
+import child from 'child_process';
+
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
 Ffmpeg.setFfprobePath(ffprobePath.path);
 
@@ -144,9 +145,6 @@ const processVideo = async (
     const command = Ffmpeg(inputPath)
       .outputOptions(['-c:v libx264', '-crf 23'])
       .save(outputPath)
-      // .on('start', () => {
-      //  // Track the process
-      // })
       .on('progress', (progress: any) => {
         activeProcesses.set(submissionId, command);
         const percentage = Math.round(progress.percent);
@@ -207,11 +205,11 @@ const processVideo = async (
 
 (async () => {
   try {
-    const conn = await amqplib.connect(process.env.RABBIT_MQ_DEVELOPMENT as string);
+    const conn = await amqplib.connect(process.env.RABBIT_MQ as string);
     const channel = await conn.createChannel();
     await channel.assertQueue('draft', { durable: true });
     await channel.purgeQueue('draft');
-    await channel.prefetch(1);
+    // await channel.prefetch(2);
 
     console.log('Waiting for messages in queue:', 'draft');
 

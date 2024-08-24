@@ -14,7 +14,7 @@ import { needPermissions } from 'src/middleware/needPermissions';
 import { isLoggedIn } from 'src/middleware/onlyLogin';
 const router = Router();
 
-router.get('/getAll', needPermissions(['list:creator']), isSuperAdmin, getCreators);
+router.get('/getAllCreators', needPermissions(['list:creator']), isSuperAdmin, getCreators);
 router.get('/getMediaKit', needPermissions(['list:creator']), isSuperAdmin, getMediaKit);
 router.get('/getCreatorByID/:id', needPermissions(['view:creator']), isSuperAdmin, getCreatorByID);
 router.delete('/delete/:id', needPermissions(['delete:creator']), isSuperAdmin, deleteCreator);

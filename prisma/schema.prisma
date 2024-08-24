@@ -527,11 +527,11 @@ model Submission {
 }
 
 model SubmissionDependency {
-  id                    String     @id @default(cuid())
-  submissionId          String
-  dependentSubmissionId String
-  dependentSubmission   Submission @relation("Dependencies", fields: [dependentSubmissionId], references: [id], onDelete: Cascade)
-  submission            Submission @relation("DependentOn", fields: [submissionId], references: [id], onDelete: Cascade)
+  id                    String      @id @default(cuid())
+  submissionId          String?
+  dependentSubmissionId String?
+  dependentSubmission   Submission? @relation("Dependencies", fields: [dependentSubmissionId], references: [id], onDelete: Cascade)
+  submission            Submission? @relation("DependentOn", fields: [submissionId], references: [id], onDelete: Cascade)
 
   @@unique([submissionId, dependentSubmissionId])
 }

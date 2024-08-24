@@ -141,7 +141,7 @@ export const getSubmissionByCampaignCreatorId = async (req: Request, res: Respon
 
 export const draftSubmission = async (req: Request, res: Response) => {
   const { submissionId, caption } = JSON.parse(req.body.data);
-  const amqp = await amqplib.connect(process.env.RABBIT_MQ_DEVELOPMENT as string);
+  const amqp = await amqplib.connect(process.env.RABBIT_MQ as string);
   const channel = await amqp.createChannel();
   await channel.assertQueue('draft');
   const userid = req.session.userid;
