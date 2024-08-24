@@ -2,7 +2,6 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { markMessagesService, fetchMessagesFromThread, totalUnreadMessagesService } from 'src/service/threadService';
-//  import { markMessageAsSeen } from 'src/service/threadService';
 
 const prisma = new PrismaClient();
 
@@ -29,6 +28,12 @@ export const getAllThreads = async (_req: Request, res: Response) => {
           },
         },
         campaign: true,
+        latestMessage: true,
+      },
+      orderBy: {
+        latestMessage: {
+          createdAt: 'desc', // Order threads by the most recent message
+        },
       },
     });
     res.status(200).json(threads);
@@ -51,6 +56,7 @@ export const getThreadById = async (req: Request, res: Response) => {
           },
         },
         campaign: true,
+        latestMessage: true,
       },
     });
 
@@ -69,16 +75,23 @@ export const getThreadById = async (req: Request, res: Response) => {
     res.status(500).json({ error: 'An error occurred while retrieving the thread.' });
   }
 };
+
 export const archiveThread = async (req: Request, res: Response) => {
   const { threadId } = req.params;
-
+  const userId = req.session.userid;
   try {
-    const updatedThread = await prisma.thread.update({
-      where: { id: String(threadId) },
+    const updatedUserThread = await prisma.userThread.update({
+      where: {
+        userId_threadId: {
+          userId: String(userId),
+          threadId: String(threadId),
+        },
+      },
       data: { archived: true },
     });
-
-    res.status(200).json({ message: `Thread with ID ${threadId} archived successfully.`, updatedThread });
+    res
+      .status(200)
+      .json({ message: `Thread with ID ${threadId} archived with user ${userId} successfully.`, updatedUserThread });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'An error occurred while archiving the thread.' });
@@ -87,14 +100,19 @@ export const archiveThread = async (req: Request, res: Response) => {
 
 export const unarchiveThread = async (req: Request, res: Response) => {
   const { threadId } = req.params;
-
+  const userId = req.session.userid;
   try {
-    const updatedThread = await prisma.thread.update({
-      where: { id: String(threadId) },
-      data: { archived: false }, // Set archived to false to unarchive the thread
+    const updatedUserThread = await prisma.userThread.update({
+      where: {
+        userId_threadId: {
+          userId: String(userId),
+          threadId: String(threadId),
+        },
+      },
+      data: { archived: false },
     });
 
-    res.status(200).json({ message: `Thread with ID ${threadId} unarchived successfully.`, updatedThread });
+    res.status(200).json({ message: `Thread with ID ${threadId} unarchived successfully.`, updatedUserThread });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'An error occurred while unarchiving the thread.' });
@@ -126,7 +144,6 @@ export const createThread = async (req: Request, res: Response) => {
       const singleChat = await prisma.thread.findFirst({
         where: {
           isGroup: false,
-          archived: false,
           campaignId: null,
           UserThread: {
             every: {
@@ -144,25 +161,11 @@ export const createThread = async (req: Request, res: Response) => {
       return res.status(500).json({ error: 'An error occurred while checking for existing single chat.' });
     }
   }
-
-  //  const photoURL = null;
-
-  // if (userIds.length === 2) {
-  //   // Fetch the photo URLs of both users
-  //   const userA = await prisma.user.findUnique({ where: { id: userIds[0] } });
-  //   const userB = await prisma.user.findUnique({ where: { id: userIds[1] } });
-
-  //   const currentUserId = req.session.userid;
-  //   photoURL = currentUserId === userIds[0] ? userB?.photoURL : userA?.photoURL;
-  //   console.log('session', currentUserId);
-  // }
-
   try {
     const thread = await prisma.thread.create({
       data: {
         title,
         description,
-        archived: false,
         photoURL,
         campaignId: campaignId || null,
         isGroup: userIds.length > 2,
@@ -220,6 +223,12 @@ export const sendMessageInThread = async (req: Request, res: Response) => {
         createdAt: new Date(),
       },
     });
+
+    await prisma.thread.update({
+      where: { id: threadId },
+      data: { latestMessageId: message.id },
+    });
+
     res.status(201).json(message);
     console.log('Message created:', message);
   } catch (error) {
@@ -227,30 +236,6 @@ export const sendMessageInThread = async (req: Request, res: Response) => {
     res.status(400).json({ error: 'An error occurred while sending the message.' });
   }
 };
-
-// Function to get all messages from a thread
-// export const fetchMessagesFromThread = async (threadId: string) => {
-//   try {
-//     const messages = await prisma.message.findMany({
-//       where: { threadId: String(threadId) },
-//       orderBy: { createdAt: 'asc' },
-//       include: {
-//         sender: {
-//           select: {
-//             id: true,
-//             name: true,
-//             photoURL: true,
-//             role: true,
-//           },
-//         },
-//       },
-//     });
-//     return messages;
-//   } catch (error) {
-//     console.error('Error fetching messages:', error);
-//     throw new Error('Failed to fetch messages');
-//   }
-// };
 
 export const getMessagesFromThread = async (req: Request, res: Response) => {
   const { threadId } = req.params;

@@ -45,9 +45,9 @@ router.get('/message/totalcount', getTotalUnreadMessageCount);
 router.put('/:threadId/seen', markMessagesAsSeen);
 
 // Un- Archive
-router.put('/threads/:threadId/unarchive', unarchiveThread);
+router.put('/:threadId/unarchive', unarchiveThread);
 
 // Archive
-router.put('/threads/:threadId/archive', archiveThread);
+router.put('/:threadId/archive', archiveThread);
 
 export default router;

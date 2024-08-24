@@ -212,6 +212,7 @@ io.on('connection', (socket) => {
   // Sends message and saves to database
   socket.on('sendMessage', async (message) => {
     await handleSendMessage(message, io);
+    io.to(message.threadId).emit('latestMessage', message);
   });
 
   socket.on('markMessagesAsSeen', async ({ threadId, userId }) => {
