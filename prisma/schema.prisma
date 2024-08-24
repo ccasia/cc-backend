@@ -562,6 +562,7 @@ model Feedback {
   id           String        @id @unique @default(cuid())
   content      String?
   type         FeedbackType?
+  reasons      String[]
   submissionId String        @unique
   adminId      String
   createdAt    DateTime      @default(now())

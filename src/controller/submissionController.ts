@@ -1,14 +1,13 @@
-import { Request, Response } from 'express';
+import e, { Request, Response } from 'express';
 
-import { Entity, PrismaClient } from '@prisma/client';
+import { Entity, PrismaClient, SubmissionStatus } from '@prisma/client';
 import { uploadAgreementForm, uploadPitchVideo } from 'src/config/cloudStorage.config';
 import { saveNotification } from './notificationController';
 import { clients, io } from 'src/server';
 import Ffmpeg from 'fluent-ffmpeg';
 import FfmpegPath from '@ffmpeg-installer/ffmpeg';
-import path from 'path';
-import { fork } from 'child_process';
 import amqplib from 'amqplib';
+import dayjs from 'dayjs';
 
 Ffmpeg.setFfmpegPath(FfmpegPath.path);
 // Ffmpeg.setFfmpegPath(FfmpegProbe.path);
@@ -33,6 +32,7 @@ export const agreementSubmission = async (req: Request, res: Response) => {
         data: {
           status: 'PENDING_REVIEW',
           content: url as string,
+          submissionDate: dayjs().format(),
         },
         include: {
           user: true,
@@ -260,28 +260,47 @@ export const draftSubmission = async (req: Request, res: Response) => {
 };
 
 export const adminManageDraft = async (req: Request, res: Response) => {
-  const { submissionId, feedback, type } = req.body;
-
-  console.log(req.body);
+  const { submissionId, feedback, type, reasons } = req.body;
 
   try {
+    const submission = await prisma.submission.findUnique({
+      where: {
+        id: submissionId,
+      },
+      include: {
+        feedback: true,
+      },
+    });
+
     if (type === 'approve') {
       await prisma.submission.update({
         where: {
-          id: submissionId,
+          id: submission?.id,
         },
         data: {
           status: 'APPROVED',
           isReview: true,
           feedback: feedback && {
-            create: {
-              type: 'COMMENT',
-              content: feedback,
-              adminId: req.session.userid as string,
+            upsert: {
+              where: {
+                id: submission?.feedback?.id,
+              },
+              update: {
+                content: feedback,
+                admin: {
+                  connect: { id: req.session.userid },
+                },
+              },
+              create: {
+                type: 'COMMENT',
+                content: feedback,
+                adminId: req.session.userid as string,
+              },
             },
           },
         },
       });
+      return res.status(200).json({ message: 'Succesfully submitted.' });
     } else {
       await prisma.submission.update({
         where: {
@@ -291,21 +310,110 @@ export const adminManageDraft = async (req: Request, res: Response) => {
           status: 'CHANGES_REQUIRED',
           isReview: true,
           feedback: {
-            create: {
-              type: 'REASON',
-              content: feedback,
-              admin: {
-                connect: { id: req.session.userid },
+            upsert: {
+              where: {
+                id: submission?.feedback?.id,
+              },
+              update: {
+                reasons: reasons,
+                content: feedback,
+                admin: {
+                  connect: { id: req.session.userid },
+                },
+              },
+              create: {
+                type: 'REASON',
+                reasons: reasons,
+                content: feedback,
+                admin: {
+                  connect: { id: req.session.userid },
+                },
               },
             },
           },
         },
       });
+      return res.status(200).json({ message: 'Succesfully submitted.' });
     }
-
-    return res.status(200).json({ message: 'Succesfully submitted.' });
   } catch (error) {
     console.log(error);
+    return res.status(400).json(error);
+  }
+};
+
+export const postingSubmission = async (req: Request, res: Response) => {
+  const { submissionId, postingLink } = req.body;
+  try {
+    const submission = await prisma.submission.update({
+      where: {
+        id: submissionId,
+      },
+      data: {
+        content: postingLink,
+        status: 'PENDING_REVIEW',
+        submissionDate: dayjs().format(),
+      },
+      include: {
+        campaign: {
+          include: {
+            campaignAdmin: true,
+          },
+        },
+        user: true,
+      },
+    });
+
+    for (const admin of submission.campaign.campaignAdmin) {
+      const notification = await saveNotification(
+        admin.adminId,
+        `${submission.user.name} submitted a new post link for campaign ${submission?.campaign?.name}`,
+        Entity.Post,
+      );
+
+      io.to(clients.get(admin.adminId)).emit('notification', notification);
+    }
+
+    const notification = await saveNotification(
+      submission.userId,
+      `Successfully submitted post link for campaign ${submission.campaign.name}`,
+      Entity.Post,
+    );
+
+    io.to(clients.get(submission.userId)).emit('notification', notification);
+
+    return res.status(200).json({ message: 'Successfully submitted' });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const adminManagePosting = async (req: Request, res: Response) => {
+  const { status, submissionId } = req.body;
+  try {
+    const data = await prisma.submission.update({
+      where: {
+        id: submissionId,
+      },
+      data: {
+        status: status as SubmissionStatus,
+        isReview: true,
+      },
+      include: {
+        user: true,
+        campaign: true,
+      },
+    });
+
+    const notification = await saveNotification(
+      data.userId,
+      `Your posting has been approved for campaign ${data.campaign.name}`,
+      Entity.Post,
+    );
+
+    io.to(clients.get(data.userId)).emit('notification', notification);
+
+    return res.status(200).json({ message: 'Successfully submitted' });
+  } catch (error) {
     return res.status(400).json(error);
   }
 };
