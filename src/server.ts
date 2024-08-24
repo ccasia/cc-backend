@@ -1,5 +1,4 @@
 import express, { Request, Response, Application } from 'express';
-import dotenv from 'dotenv';
 import cors from 'cors';
 import morgan from 'morgan';
 import { router } from '@routes/index';
@@ -19,6 +18,8 @@ import { isLoggedIn } from './middleware/onlyLogin';
 import { Server, Socket } from 'socket.io';
 import 'src/service/uploadVideo';
 import 'src/helper/videoDraft';
+// import dotenvx from '@dotenvx/dotenvx';
+import dotenv from 'dotenv';
 
 dotenv.config();
 
@@ -36,7 +37,6 @@ app.use(
     tempFileDir: '/tmp/',
   }),
 );
-// app.use(fileUpload());
 
 const corsOptions = {
   origin: true, //included origin as true
@@ -71,12 +71,12 @@ declare module 'express-session' {
 const pgSession = connectPgSimple(session);
 
 const pgPool = new pg.Pool({
-  user: 'postgres',
+  // user: 'afiqdanial',
   connectionString: process.env.DATABASE_URL,
-  host: '127.0.0.1:5431',
-  database: 'postgres',
-  password: 'postgres',
-  port: 5431,
+  // host: 'localhost',
+  // database: 'cult_creative',
+  // password: 'postgres',
+  // port: 5431,
 });
 
 const sessionMiddleware = session({
@@ -138,7 +138,7 @@ app.use(router);
 // });
 
 app.get('/', (_req: Request, res: Response) => {
-  res.send('Server is running...');
+  res.send(`${process.env.NODE_ENV} is running...`);
 });
 
 app.get('/users', isLoggedIn, async (_req, res) => {
@@ -150,26 +150,6 @@ app.get('/users', isLoggedIn, async (_req, res) => {
     console.log(error);
   }
 });
-
-// app.get('/tiktokOuth', (req: Request, res: Response) => {
-//   const csrfState = Math.random().toString(36).substring(2);
-//   res.cookie('csrfState', csrfState, { maxAge: 60000 });
-
-//   let url = 'https://www.tiktok.com/v2/auth/authorize/';
-
-//   // the following params need to be in `application/x-www-form-urlencoded` format.
-//   url += `?client_key=${process.env.TIKTOK_CLIENT_KEY}`;
-//   url += '&scope=user.info.basic,user.info.profile,user.info.stats';
-//   url += '&response_type=code';
-//   url += '&redirect_uri=https://app.cultcreativeasia.com/dashboard/user/profile';
-//   url += '&state=' + csrfState;
-
-//   res.json({ url: url });
-// });
-
-// app.post('/tiktok/data', (req: Request, res: Response) => {
-//   const url = 'https://open.tiktokapis.com/v2/oauth/token/';
-// });
 
 export const clients = new Map();
 export const activeProcesses = new Map();
@@ -250,4 +230,5 @@ io.on('connection', (socket) => {
 
 server.listen(process.env.PORT, () => {
   console.log(`Listening to port ${process.env.PORT}...`);
+  console.log(`${process.env.NODE_ENV} stage is running...`);
 });

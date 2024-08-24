@@ -9,7 +9,10 @@ import {
   Creator,
   Entity,
   Interest,
+  Industry,
+  LogisticStatus,
   PrismaClient,
+  ShortListedCreator,
   Submission,
 } from '@prisma/client';
 
@@ -52,6 +55,7 @@ interface timeline {
 
 interface Campaign {
   campaignInterests: string[];
+  campaignIndustries: string[];
   campaignBrand: {
     id: string;
   };
@@ -98,6 +102,7 @@ export const createCampaign = async (req: Request, res: Response) => {
     campaignDont,
     adminManager,
     campaignStage,
+    campaignIndustries,
     timeline,
   }: Campaign = JSON.parse(req.body.data);
 
@@ -155,7 +160,8 @@ export const createCampaign = async (req: Request, res: Response) => {
               agreementFrom: agreementFormURL,
               startDate: dayjs(campaignStartDate) as any,
               endDate: dayjs(campaignEndDate) as any,
-              interests: campaignInterests,
+              // interests: campaignInterests,
+              industries: campaignIndustries,
               campaigns_do: campaignDo,
               campaigns_dont: campaignDont,
             },
@@ -451,6 +457,7 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
             campaignTaskAdmin: true,
           },
         },
+        logistic: true,
       },
     });
     return res.status(200).json(campaigns);
@@ -521,6 +528,7 @@ export const getCampaignById = async (req: Request, res: Response) => {
           },
         },
         submission: true,
+        logistic: true,
       },
     });
     return res.status(200).json(campaign);
@@ -545,6 +553,7 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
         company: true,
         pitch: true,
         bookMarkCampaign: true,
+        shortlisted: true,
       },
     });
 
@@ -628,7 +637,7 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
         return arr1.some((value) => arr2.includes(value));
       }
 
-      const interestsMatch = hasCommonElement2(campaign?.campaignBrief?.interests || [], interestArr);
+      const interestsMatch = hasCommonElement2(campaign?.campaignBrief?.industries || [], interestArr);
 
       if (interestsMatch) {
         match.interests = true;
@@ -724,7 +733,7 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
     const matchedCampaignWithPercentage = matchedCampaign.map((item) => {
       const interestPercentage = calculateInterestMatchingPercentage(
         user?.creator?.interests as never,
-        item.campaignBrief?.interests as any,
+        item.campaignBrief?.industries as any,
       );
 
       const requirementPercentage = calculateRequirementMatchingPercentage(
@@ -761,6 +770,7 @@ export const getAllActiveCampaign = async (_req: Request, res: Response) => {
         pitch: true,
         shortlisted: true,
         submission: true,
+        logistic: true,
       },
     });
 
@@ -1037,7 +1047,7 @@ export const editCampaignInfo = async (req: Request, res: Response) => {
         campaignId: id,
       },
       data: {
-        interests: campaignInterests,
+        // interests: campaignInterests,
         industries: campaignIndustries,
       },
     });
@@ -1735,7 +1745,12 @@ export const unSaveCampaign = async (req: Request, res: Response) => {
 };
 
 export const createLogistics = async (req: Request, res: Response) => {
-  const { campaignId, userId, trackingNumber, itemName, courier } = req.body;
+  const {
+    data: { trackingNumber, itemName, courier },
+    campaignId,
+    creatorId: userId,
+  } = req.body;
+
   try {
     const logistic = await prisma.logistic.create({
       data: {
@@ -1747,6 +1762,154 @@ export const createLogistics = async (req: Request, res: Response) => {
       },
     });
     return res.status(200).json({ message: 'Succesfully created logistics' });
+  } catch (error) {
+    console.log(error);
+    return res.status(400).json(error);
+  }
+};
+
+export const getLogisticById = async (req: Request, res: Response) => {
+  try {
+    const logistics = await prisma.logistic.findMany();
+    return res.status(200).json(logistics);
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const updateStatusLogistic = async (req: Request, res: Response) => {
+  // eslint-disable-next-line prefer-const
+  let { logisticId, status } = req.body;
+  if (status === 'Pending Delivery Confirmation') {
+    status = status.split(' ').join('_');
+  }
+  try {
+    const updated = await prisma.logistic.update({
+      where: {
+        id: logisticId,
+      },
+      data: {
+        status: status as LogisticStatus,
+      },
+    });
+    return res.status(200).json({ message: 'Successfully changed status' });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const shortlistCreator = async (req: Request, res: Response) => {
+  const {
+    value: { creator: creators },
+    campaignId,
+  } = req.body;
+
+  try {
+    prisma.$transaction(async (tx) => {
+      const timelines = await tx.campaignTimeline.findMany({
+        where: {
+          AND: [
+            {
+              campaignId: campaignId,
+            },
+            {
+              for: 'creator',
+            },
+            {
+              name: {
+                not: 'Open For Pitch',
+              },
+            },
+          ],
+        },
+        orderBy: {
+          order: 'asc',
+        },
+      });
+
+      const campaignInfo = await tx.campaign.findUnique({
+        where: {
+          id: campaignId,
+        },
+        include: {
+          thread: true,
+        },
+      });
+
+      const shortlistedCreators = await Promise.all(
+        creators.map(async (creator: any) => {
+          return await tx.shortListedCreator.create({
+            data: {
+              userId: creator.id,
+              campaignId: campaignId,
+            },
+          });
+        }),
+      );
+
+      const submissions: any[] = [];
+
+      for (const creator of shortlistedCreators) {
+        for (const timeline of timelines) {
+          const submission = await tx.submission.create({
+            data: {
+              dueDate: timeline.endDate,
+              campaignId: timeline.campaignId,
+              userId: creator.userId as string,
+              submissionTypeId: timeline.submissionTypeId as string,
+            },
+          });
+          submissions.push(submission);
+        }
+      }
+
+      for (let i = 1; i < submissions.length; i++) {
+        await tx.submissionDependency.create({
+          data: {
+            submissionId: submissions[i].id,
+            dependentSubmissionId: submissions[i - 1].id,
+          },
+        });
+      }
+
+      await Promise.all(
+        shortlistedCreators.map(async (creator: ShortListedCreator) => {
+          const data = await saveNotification(
+            creator.userId as string,
+            `Congratulations! You've been shortlisted for the ${campaignInfo?.name} campaign.`,
+            Entity.Shortlist,
+          );
+          const socketId = clients.get(creator.userId);
+          if (socketId) {
+            io.to(socketId).emit('notification', data);
+          } else {
+            console.log(`User with ID ${creator.userId} is not connected.`);
+          }
+
+          if (!campaignInfo || !campaignInfo.thread) {
+            return res.status(404).json({ message: 'Campaign or thread not found' });
+          }
+
+          const isThreadExist = await tx.userThread.findFirst({
+            where: {
+              threadId: campaignInfo.thread.id,
+              userId: creator.userId as string,
+            },
+          });
+
+          if (!isThreadExist) {
+            await tx.userThread.create({
+              data: {
+                threadId: campaignInfo.thread.id,
+                userId: creator.userId as string,
+              },
+            });
+          }
+        }),
+      );
+    });
+
+    return res.status(200).json({ message: 'Successfully shortlisted' });
   } catch (error) {
     return res.status(400).json(error);
   }
