@@ -131,8 +131,8 @@ export const uploadPitchVideo = async (
   tempFilePath: string,
   fileName: string,
   folderName: string,
-  size?: number,
   progressCallback?: any,
+  size?: number,
   abortSignal?: AbortSignal,
 ) => {
   try {

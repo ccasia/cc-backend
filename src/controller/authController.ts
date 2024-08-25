@@ -467,7 +467,7 @@ export const updateCreator = async (req: Request, res: Response) => {
     interests,
     languages,
     instagram,
-    industries,
+    // industries,
     employment,
     birthDate,
     Nationality,
@@ -498,19 +498,18 @@ export const updateCreator = async (req: Request, res: Response) => {
         interests: {
           create: interests.map((interest) => ({ name: interest.name, rank: interest.rank })),
         },
-        industries: {
-          create: industries.map((industry) => ({ name: industry.name, rank: industry.rank })),
-        },
+        // industries: {
+        //   create: industries.map((industry) => ({ name: industry.name, rank: industry.rank })),
+        // },
       },
       include: {
         interests: true,
-        industries: true,
+        // industries: true,
       },
     });
 
     return res.status(200).json({ creator });
   } catch (error) {
-    console.log(error);
     return res.status(400).json({ message: 'Error updating creator' });
   }
 };

@@ -554,6 +554,7 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
         pitch: true,
         bookMarkCampaign: true,
         shortlisted: true,
+        logistic: true,
       },
     });
 
@@ -884,6 +885,7 @@ export const getCampaignsByCreatorId = async (req: Request, res: Response) => {
             id: id,
           },
           include: {
+            logistic: true,
             campaignBrief: true,
             campaignRequirement: true,
             campaignTimeline: true,
@@ -1488,6 +1490,7 @@ export const getCampaignForCreatorById = async (req: Request, res: Response) => 
         id: id,
       },
       include: {
+        logistic: true,
         campaignAdmin: {
           include: {
             admin: {
@@ -1679,10 +1682,10 @@ export const uploadVideoTest = async (req: Request, res: Response) => {
         path,
         outputPath,
         'pitchVideo',
-        size as number,
         (data: number) => {
           io.to(clients.get(req.session.userid)).emit('video-upload', { campaignId: campaignId, progress: data });
         },
+        size as number,
         abortController.signal,
       );
 
@@ -1746,7 +1749,7 @@ export const unSaveCampaign = async (req: Request, res: Response) => {
 
 export const createLogistics = async (req: Request, res: Response) => {
   const {
-    data: { trackingNumber, itemName, courier },
+    data: { trackingNumber, itemName, courier, otherCourier },
     campaignId,
     creatorId: userId,
   } = req.body;
@@ -1756,11 +1759,24 @@ export const createLogistics = async (req: Request, res: Response) => {
       data: {
         trackingNumber: trackingNumber,
         itemName: itemName,
-        courier: courier,
+        courier: courier === 'Other' ? otherCourier : courier,
         campaignId: campaignId as string,
         userId: userId as string,
       },
+      include: {
+        user: true,
+        campaign: true,
+      },
     });
+
+    const notification = await saveNotification(
+      userId,
+      `Hi ${logistic.user.name}, your logistics details for the ${logistic.campaign.name} campaign are now available. Please check the logistics section for shipping information and tracking details. If you have any questions, don't hesitate to reach out!`,
+      Entity.Logistic,
+    );
+
+    io.to(clients.get(userId)).emit('notification', notification);
+
     return res.status(200).json({ message: 'Succesfully created logistics' });
   } catch (error) {
     console.log(error);

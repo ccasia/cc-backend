@@ -150,11 +150,34 @@ const processVideo = async (
         activeProcesses.set(submissionId, command);
         const percentage = Math.round(progress.percent);
         if (socket) {
-          socket.to(clients.get(userid)).emit('progress', { progress: percentage, submissionId: submissionId });
+          socket
+            .to(clients.get(userid))
+            .emit('progress', { progress: percentage, submissionId: submissionId, name: 'Compression Start' });
         }
       })
       .on('end', async () => {
-        const publicURL = await uploadPitchVideo(outputPath, fileName, folder);
+        const size = await new Promise((resolve, reject) => {
+          fs.stat(outputPath, (err, data) => {
+            if (err) {
+              reject();
+            }
+            resolve(data.size);
+          });
+        });
+
+        const publicURL = await uploadPitchVideo(
+          outputPath,
+          fileName,
+          folder,
+          (data: number) => {
+            if (socket) {
+              socket
+                .to(clients.get(userid))
+                .emit('progress', { progress: data, submissionId: submissionId, name: 'Uploading Start' });
+            }
+          },
+          size as number,
+        );
         const data = await prisma.submission.update({
           where: {
             id: submissionId,
