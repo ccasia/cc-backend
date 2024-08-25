@@ -111,70 +111,64 @@ export const getSubmissionByCampaignCreatorId = async (req: Request, res: Respon
   }
 };
 
-export const adminManageAgreementSubmission = async (req: Request, res: Response) => {
-  const data = req.body;
+// export const adminManageAgreementSubmission = async (req: Request, res: Response) => {
+//   const data = req.body;
 
-  try {
-    const campaign = await prisma.campaign.findUnique({
-      where: {
-        id: data?.campaignId,
-      },
-    });
+//   try {
+//     const campaign = await prisma.campaign.findUnique({
+//       where: {
+//         id: data?.campaignId,
+//       },
+//     });
 
-    if (data.status === 'approve') {
-      const { campaignTaskId, firstDraftId, userId } = data;
-      await prisma.campaignTask.update({
-        where: {
-          id: campaignTaskId,
-        },
-        data: {
-          status: 'COMPLETED',
-        },
-      });
-      await prisma.campaignTask.update({
-        where: {
-          id: firstDraftId,
-        },
-        data: {
-          status: 'IN_PROGRESS',
-        },
-      });
-      const notification = await saveNotification(
-        userId,
-        Title.Create,
-        `First Draft is open for submission`,
-        Entity.Campaign,
-      );
-      io.to(clients.get(userId)).emit('notification', notification);
-    } else if (data.status === 'reject') {
-      const { feedback, campaignTaskId, submissionId, userId } = data;
-      await prisma.campaignTask.update({
-        where: {
-          id: campaignTaskId,
-        },
-        data: {
-          status: 'CHANGES_REQUIRED',
-        },
-      });
-      await prisma.feedback.create({
-        data: {
-          content: feedback,
-          submissionId: submissionId,
-          adminId: req.session.userid as string,
-        },
-      });
-      const notification = await saveNotification(
-        userId,
-        Title.Create,
-        `Please Resubmit Your Agreement Form for ${campaign?.name}`,
-        Entity.Campaign,
-      );
-      io.to(clients.get(userId)).emit('notification', notification);
-    }
+//     if (data.status === 'approve') {
+//       const { campaignTaskId, firstDraftId, userId } = data;
+//       await prisma.campaignTask.update({
+//         where: {
+//           id: campaignTaskId,
+//         },
+//         data: {
+//           status: 'COMPLETED',
+//         },
+//       });
+//       await prisma.campaignTask.update({
+//         where: {
+//           id: firstDraftId,
+//         },
+//         data: {
+//           status: 'IN_PROGRESS',
+//         },
+//       });
+//       const notification = await saveNotification(userId, `First Draft is open for submission`, Entity.Campaign);
+//       io.to(clients.get(userId)).emit('notification', notification);
+//     } else if (data.status === 'reject') {
+//       const { feedback, campaignTaskId, submissionId, userId } = data;
+//       await prisma.campaignTask.update({
+//         where: {
+//           id: campaignTaskId,
+//         },
+//         data: {
+//           status: 'CHANGES_REQUIRED',
+//         },
+//       });
+//       await prisma.feedback.create({
+//         data: {
+//           content: feedback,
+//           submissionId: submissionId,
+//           adminId: req.session.userid as string,
+//         },
+//       });
+//       const notification = await saveNotification(
+//         userId,
+//         `Please Resubmit Your Agreement Form for ${campaign?.name}`,
+//         Entity.Campaign,
+//       );
+//       io.to(clients.get(userId)).emit('notification', notification);
+//     }
 
-    return res.status(200).json({ message: 'Successfully updated' });
-  } catch (error) {
-    console.log(error);
-    return res.status(400).json(error);
-  }
-};
+//     return res.status(200).json({ message: 'Successfully updated' });
+//   } catch (error) {
+//     console.log(error);
+//     return res.status(400).json(error);
+//   }
+// };

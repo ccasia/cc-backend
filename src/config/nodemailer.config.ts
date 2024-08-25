@@ -59,7 +59,7 @@ export const AdminInvite = (email: string, inviteCode: string) => {
           <h1 style="margin: 0 0 20px;">Welcome to our  System!</h1>
           <p style="margin: 0 0 20px;">You have been invited to join our system as an admin.</p>
           <p style="margin: 0 0 20px;">Please click on the following link to complete your registration:</p>
-          <a href="https://${process.env.baseURL}/admin/form/token=${inviteCode}" style="display: inline-block; padding: 10px 20px; background-color: #007bff; color: #fff; text-decoration: none; border-radius: 5px;">Complete Registration</a>
+          <a href="${process.env.BASE_EMAIL_URL}/admin/form/token=${inviteCode}" style="display: inline-block; padding: 10px 20px; background-color: #007bff; color: #fff; text-decoration: none; border-radius: 5px;">Complete Registration</a>
           <p style="margin: 20px 0 0;">If you did not request this invitation, please ignore this email.</p>
         </div>
       </body>
@@ -144,7 +144,7 @@ export const creatorVerificationEmail = (email: string, confirmationToken: strin
         <hr />
         <p>To use Cult Creative Platform, click the verification button. This helps keep your account secure.</p>
         <div class="btn-container">
-        <a href="https://${process.env.baseURL}/auth/verify/${confirmationToken}" class="button" style="color: white;">Verify my account</a>
+        <a href="${process.env.BASE_EMAIL_URL}/auth/verify/${confirmationToken}" class="button" style="color: white;">Verify my account</a>
         </div>        
         <p>You're receiving this email because you have an account in Cult Creative Platform. If you are not sure why you're receiving this, please contact us by replying to this email.</p>
       </div>

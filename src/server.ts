@@ -1,5 +1,4 @@
 import express, { Request, Response, Application } from 'express';
-import dotenv from 'dotenv';
 import cors from 'cors';
 import morgan from 'morgan';
 import { router } from '@routes/index';
@@ -13,10 +12,14 @@ import passport from 'passport';
 // import FacebookStrategy from 'passport-facebook';
 import 'src/config/cronjob';
 import http from 'http';
-import { sendMessageInThread, fetchMessagesFromThread } from './controller/threadController';
+import { markMessagesAsSeen } from './controller/threadController';
+import { handleSendMessage, fetchMessagesFromThread } from './service/threadService';
 import { isLoggedIn } from './middleware/onlyLogin';
 import { Server, Socket } from 'socket.io';
 import 'src/service/uploadVideo';
+import 'src/helper/videoDraft';
+// import dotenvx from '@dotenvx/dotenvx';
+import dotenv from 'dotenv';
 
 dotenv.config();
 
@@ -34,7 +37,6 @@ app.use(
     tempFileDir: '/tmp/',
   }),
 );
-// app.use(fileUpload());
 
 const corsOptions = {
   origin: true, //included origin as true
@@ -69,12 +71,12 @@ declare module 'express-session' {
 const pgSession = connectPgSimple(session);
 
 const pgPool = new pg.Pool({
-  user: 'postgres',
+  // user: 'afiqdanial',
   connectionString: process.env.DATABASE_URL,
-  host: '127.0.0.1:5431',
-  database: 'postgres',
-  password: 'postgres',
-  port: 5431,
+  // host: 'localhost',
+  // database: 'cult_creative',
+  // password: 'postgres',
+  // port: 5431,
 });
 
 const sessionMiddleware = session({
@@ -136,7 +138,7 @@ app.use(router);
 // });
 
 app.get('/', (_req: Request, res: Response) => {
-  res.send('Server is running...');
+  res.send(`${process.env.NODE_ENV} is running...`);
 });
 
 app.get('/users', isLoggedIn, async (_req, res) => {
@@ -149,31 +151,23 @@ app.get('/users', isLoggedIn, async (_req, res) => {
   }
 });
 
-app.get('/tiktokOuth', (req: Request, res: Response) => {
-  const csrfState = Math.random().toString(36).substring(2);
-  res.cookie('csrfState', csrfState, { maxAge: 60000 });
-
-  let url = 'https://www.tiktok.com/v2/auth/authorize/';
-
-  // the following params need to be in `application/x-www-form-urlencoded` format.
-  url += `?client_key=${process.env.TIKTOK_CLIENT_KEY}`;
-  url += '&scope=user.info.basic,user.info.profile,user.info.stats';
-  url += '&response_type=code';
-  url += '&redirect_uri=https://app.cultcreativeasia.com/dashboard/user/profile';
-  url += '&state=' + csrfState;
-
-  res.json({ url: url });
-});
-
-app.post('/tiktok/data', (req: Request, res: Response) => {
-  const url = 'https://open.tiktokapis.com/v2/oauth/token/';
-});
-
 export const clients = new Map();
+export const activeProcesses = new Map();
 
 io.on('connection', (socket) => {
   socket.on('register', (userId) => {
     clients.set(userId, socket.id);
+  });
+
+  socket.on('cancel-processing', (data) => {
+    const { submissionId } = data;
+    if (activeProcesses.has(submissionId)) {
+      const command = activeProcesses.get(submissionId);
+      command.kill('SIGKILL'); // Terminate the FFmpeg process
+      activeProcesses.delete(submissionId);
+      console.log(`Processing for video ${submissionId} has been cancelled.`);
+      socket.emit('progress', { submissionId, progress: 0 }); // Reset progress
+    }
   });
 
   // Joins a room for every thread
@@ -195,68 +189,33 @@ io.on('connection', (socket) => {
       socket.emit('error', 'Failed to fetch messages');
     }
   });
-  // socket.on('room', (threadId: string) => {
-  //   socket.join(threadId);
-  //   console.log(`Client joined room : ${threadId}`);
-  // });
-
   // Sends message and saves to database
-  socket.on(
-    'sendMessage',
-    async (message: {
-      senderId: string;
-      name: string;
-      role: string;
-      photoURL: string;
-      threadId: string;
-      content: any;
-    }) => {
-      const { senderId, threadId, content, role, name, photoURL } = message;
+  socket.on('sendMessage', async (message) => {
+    await handleSendMessage(message, io);
+    io.to(message.threadId).emit('latestMessage', message);
+  });
 
-      // Simulate the request and response for calling the API endpoint
-      const req = {
-        body: {
-          threadId,
-          content,
-        },
-        session: {
-          userid: senderId,
-        },
-        app: {
-          get: (key: string) => {
-            if (key === 'io') return io;
-            return null;
-          },
-        },
+  socket.on('markMessagesAsSeen', async ({ threadId, userId }) => {
+    if (!userId) {
+      socket.emit('error', 'User not authenticated.');
+      return;
+    }
+
+    try {
+      const mockRequest = {
+        params: { threadId },
+        session: { userid: userId },
+        cookies: {},
+        headers: {},
       } as unknown as Request;
 
-      const res = {
-        status: (code: number) => ({
-          json: (data: any) => {
-            if (code === 201) {
-              console.log('Message saved:', data);
-              io.to(threadId).emit('message', {
-                senderId,
-                threadId,
-                content,
-                sender: { role, name, photoURL },
-                createdAt: new Date().toISOString(),
-              });
-            } else {
-              console.error('Error saving message:', data);
-            }
-          },
-        }),
-      } as unknown as Response;
-
-      await sendMessageInThread(req, res);
-    },
-  );
-  // socket.on('sendMessage', (message: { userId: string; threadId: string; text: string }) => {
-  //   const { userId, threadId, text } = message;
-  //   //Broadcast to thread
-  //   io.to(threadId).emit('message', message);
-  // });
+      await markMessagesAsSeen(mockRequest, {} as Response);
+      io.to(threadId).emit('messagesSeen', { threadId, userId });
+    } catch (error) {
+      console.error('Error marking messages as seen:', error);
+      socket.emit('error', 'Failed to mark messages as seen.');
+    }
+  });
 
   socket.on('disconnect', () => {
     console.log('Client disconnected:', socket.id);
@@ -267,29 +226,9 @@ io.on('connection', (socket) => {
       }
     });
   });
-  // socket.on('chat', (data: any) => {
-  //   const socketId = clients.get('49ade6f0-391f-409a-81ed-2fb780832f6f');
-  //   if (socketId) {
-  //     socket.to(socketId).emit('message', data);
-  //   } else {
-  //     console.log('User is not connected');
-  //   }
-  // });
-
-  // When a user disconnects, remove their socket ID
-  //   socket.on('disconnect', () => {
-  //     clients.forEach((value, key) => {
-  //       if (value === socket.id) {
-  //         clients.delete(key);
-  //       }
-  //     });
-  //   });
-  // });
-  // Handle chat messages
-
-  // Handle disconnection
 });
 
 server.listen(process.env.PORT, () => {
   console.log(`Listening to port ${process.env.PORT}...`);
+  console.log(`${process.env.NODE_ENV} stage is running...`);
 });

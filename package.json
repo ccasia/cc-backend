@@ -13,11 +13,14 @@
     "test": "jest",
     "seed": "ts-node prisma/seed.ts",
     "migrate": "npx prisma migrate dev",
+    "deploy": "npx prisma migrate deploy",
     "generate": "npx prisma generate",
     "prod:prev": "node dist/app.js",
-    "studio": "npx prisma studio"
+    "studio": "npx prisma studio",
+    "create-timeline": "ts-node prisma/createTimeline.ts"
   },
   "dependencies": {
+    "@dotenvx/dotenvx": "^1.9.0",
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@ffprobe-installer/ffprobe": "^2.1.2",
     "@google-cloud/storage": "^7.11.2",
@@ -49,6 +52,7 @@
     "passport-facebook": "^3.0.0",
     "passport-jwt": "^4.0.1",
     "pg": "^8.11.5",
+    "prisma": "^5.18.0",
     "socket.io": "^4.7.5"
   },
   "devDependencies": {

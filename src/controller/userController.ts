@@ -45,11 +45,11 @@ export const updateProfileAdmin = async (req: Request, res: Response) => {
             // return res.status(500).json({ message: 'Error uploading image.' });
           }
           const publicURL = file.publicUrl();
-          await updateAdmin(req.body, permission, publicURL);
+          await updateAdmin(req.body, publicURL);
         });
       });
     } else {
-      await updateAdmin(req.body, permission);
+      await updateAdmin(req.body);
     }
     // saveNotification(req.body.userId, Title.Update, 'Profile Updated', Entity.User);
     return res.status(200).json({ message: 'Successfully updated' });
@@ -180,6 +180,7 @@ export const getAllActiveAdmins = async (_req: Request, res: Response) => {
                 module: true,
               },
             },
+            role: true,
           },
         },
       },

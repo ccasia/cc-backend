@@ -25,8 +25,8 @@ interface Permission {
 }
 
 export const updateAdmin = async (
-  { userId, name, email, designation, country, phoneNumber, status, mode }: AdminProfile,
-  permissions?: Permission[],
+  { userId, name, email, country, phoneNumber, status, mode, role }: AdminProfile,
+  // permissions?: Permission[],
   publicURL?: string | undefined,
 ) => {
   try {
@@ -39,11 +39,12 @@ export const updateAdmin = async (
         email,
         country,
         phoneNumber,
-        photoURL: publicURL,
+        photoURL: publicURL || '',
         status,
         admin: {
           update: {
             mode: mode as Mode,
+            roleId: role,
           },
         },
       },
@@ -75,89 +76,90 @@ export const updateAdmin = async (
     //     module: true,
     //   },
     // });
-    if (permissions) {
-      for (const permission of permissions) {
-        // Check if module is already exists
+    // if (permissions) {
+    //   for (const permission of permissions) {
+    //     // Check if module is already exists
 
-        let module = await prisma.module.findFirst({
-          where: { name: permission.module as Modules },
-        });
+    //     let module = await prisma.module.findFirst({
+    //       where: { name: permission.module as Modules },
+    //     });
 
-        if (!module) {
-          module = await prisma.module.create({
-            data: {
-              name: permission.module as Modules,
-            },
-          });
-        }
+    //     if (!module) {
+    //       module = await prisma.module.create({
+    //         data: {
+    //           name: permission.module as Modules,
+    //         },
+    //       });
+    //     }
 
-        for (const item of permission.permissions) {
-          const existingPermission = await prisma.permission.findFirst({
-            where: { name: item },
-          });
+    //     for (const item of permission.permissions) {
+    //       const existingPermission = await prisma.permission.findFirst({
+    //         where: { name: item },
+    //       });
 
-          if (!existingPermission) {
-            await prisma.permission.create({
-              data: {
-                name: item,
-              },
-            });
-          }
-        }
+    //       if (!existingPermission) {
+    //         await prisma.permission.create({
+    //           data: {
+    //             name: item,
+    //           },
+    //         });
+    //       }
+    //     }
 
-        // Get all permission from database based on data
-        const currectPermissions = await prisma.permission.findMany({
-          where: {
-            name: { in: permission.permissions as any },
-          },
-        });
+    //     // Get all permission from database based on data
+    //     const currectPermissions = await prisma.permission.findMany({
+    //       where: {
+    //         name: { in: permission.permissions as any },
+    //       },
+    //     });
 
-        const currentPermissionsForEachModule = await prisma.adminPermissionModule.findMany({
-          where: {
-            adminId: data?.admin?.id,
-            moduleId: module?.id as any,
-          },
-          include: {
-            permission: true,
-            module: true,
-          },
-        });
+    //     const currentPermissionsForEachModule = await prisma.adminPermissionModule.findMany({
+    //       where: {
+    //         adminId: data?.admin?.id,
+    //         moduleId: module?.id as any,
+    //       },
+    //       include: {
+    //         permission: true,
+    //         module: true,
+    //       },
+    //     });
 
-        const permissionsToRemove = currentPermissionsForEachModule.filter(
-          (perm) => !permission.permissions.includes(perm.permission.name as any),
-        );
+    //     const permissionsToRemove = currentPermissionsForEachModule.filter(
+    //       (perm) => !permission.permissions.includes(perm.permission.name as any),
+    //     );
 
-        for (const perm of permissionsToRemove) {
-          await prisma.adminPermissionModule.delete({
-            where: {
-              id: perm.id,
-            },
-          });
-        }
+    //     for (const perm of permissionsToRemove) {
+    //       await prisma.adminPermissionModule.delete({
+    //         where: {
+    //           id: perm.id,
+    //         },
+    //       });
+    //     }
 
-        // extract permission
-        const pe = await prisma.permission.findMany();
+    //     // extract permission
+    //     const pe = await prisma.permission.findMany();
 
-        let permissionsToAdd = pe.filter((elem) => currectPermissions.some((ha) => ha.id === elem.id));
+    //     let permissionsToAdd = pe.filter((elem) => currectPermissions.some((ha) => ha.id === elem.id));
 
-        permissionsToAdd = permissionsToAdd.filter((elem) =>
-          currentPermissionsForEachModule.every((item) => item.permissionId !== elem.id),
-        );
+    //     permissionsToAdd = permissionsToAdd.filter((elem) =>
+    //       currentPermissionsForEachModule.every((item) => item.permissionId !== elem.id),
+    //     );
 
-        for (const perm of permissionsToAdd) {
-          await prisma.adminPermissionModule.create({
-            data: {
-              adminId: data?.admin?.id as any,
-              moduleId: module.id,
-              permissionId: perm.id,
-            },
-          });
-        }
-      }
-    }
+    //     for (const perm of permissionsToAdd) {
+    //       await prisma.adminPermissionModule.create({
+    //         data: {
+    //           adminId: data?.admin?.id as any,
+    //           moduleId: module.id,
+    //           permissionId: perm.id,
+    //         },
+    //       });
+    //     }
+    //   }
+    // }
 
     return data;
   } catch (error) {
+    console.log(error);
     return error;
   }
 };
@@ -176,7 +178,11 @@ export const getUser = async (id: string) => {
               module: true,
             },
           },
-          role: true,
+          role: {
+            include: {
+              permissions: true,
+            },
+          },
         },
       },
       creator: {
@@ -212,6 +218,7 @@ export const handleGetAdmins = async (userid: string) => {
                 module: true,
               },
             },
+            role: true,
           },
         },
       },

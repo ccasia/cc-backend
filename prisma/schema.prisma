@@ -35,6 +35,10 @@ model User {
   UserThread         UserThread[]
   threads            Thread[]             @relation("UserThreads")
   invoices           Invoice[]
+  BookMarkCampaign   BookMarkCampaign[]
+  logistic           Logistic[]
+  unreadMessages     UnreadMessage[]
+  seenMessages       SeenMessage[]
 }
 
 model Admin {
@@ -105,6 +109,30 @@ model Message {
   senderId  String?
   sender    User?    @relation("UserMessages", fields: [senderId], references: [id])
   thread    Thread?  @relation(fields: [threadId], references: [id])
+  seenMessages SeenMessage[]
+  unreadMessages UnreadMessage[]
+  threadLatest   Thread?          @relation("LatestMessage")
+}
+model UnreadMessage {
+  id        Int      @id @default(autoincrement())
+  userId    String
+  threadId  String
+  messageId Int
+  message   Message @relation(fields: [messageId], references: [id])
+  user      User    @relation(fields: [userId], references: [id])
+  thread    Thread  @relation(fields: [threadId], references: [id])
+
+  @@unique([userId, threadId, messageId])
+}
+
+model SeenMessage {
+  id        Int      @id @default(autoincrement())
+  userId    String
+  messageId Int
+  user      User     @relation(fields: [userId], references: [id])
+  message   Message  @relation(fields: [messageId], references: [id])
+
+  @@unique([userId, messageId])
 }
 
 model Thread {
@@ -112,13 +140,17 @@ model Thread {
   title       String
   description String
   photoURL    String?      @db.VarChar(255)
-  archived    Boolean      @default(false)
-  isGroup     Boolean      @default(true)
-  campaignId  String?      @unique
-  messages    Message[]
-  campaign    Campaign?    @relation(fields: [campaignId], references: [id])
-  UserThread  UserThread[]
   users       User[]       @relation("UserThreads")
+  UserThread  UserThread[]
+  messages    Message[]
+  isGroup     Boolean      @default(true)
+  unreadMessages UnreadMessage[]
+  campaignId  String?      @unique
+  campaign    Campaign?    @relation(fields: [campaignId], references: [id])
+  latestMessageId Int?     @unique 
+  latestMessage Message?   @relation("LatestMessage", fields: [latestMessageId], references: [id])
+ 
+ 
 }
 
 model UserThread {
@@ -126,7 +158,7 @@ model UserThread {
   threadId String
   thread   Thread @relation(fields: [threadId], references: [id])
   user     User   @relation(fields: [userId], references: [id])
-
+  archived Boolean @default(false)
   @@id([userId, threadId])
 }
 
@@ -279,6 +311,17 @@ model Campaign {
   submission                    Submission[]
   thread                        Thread?
   invoice                       Invoice[]
+  notifications                 Notification[]
+  bookMarkCampaign              BookMarkCampaign?
+  logistic                      Logistic[]
+}
+
+model BookMarkCampaign {
+  id         String    @id @unique @default(cuid())
+  userId     String
+  user       User      @relation(references: [id], fields: [userId])
+  campaignId String    @unique
+  campaign   Campaign? @relation(references: [id], fields: [campaignId])
 }
 
 model CampaignAdmin {
@@ -356,6 +399,7 @@ model TimelineDefault {
   duration              Int
   createdAt             DateTime            @default(now())
   updatedAt             DateTime            @updatedAt
+  order                 Int
   timelineType          TimelineTypeDefault @relation(fields: [timelineTypeDefaultId], references: [id])
 }
 
@@ -397,15 +441,16 @@ model CampaignLog {
 }
 
 model Pitch {
-  id         String       @id @unique @default(cuid())
-  type       PitchType
-  campaignId String
-  userId     String
-  status     PitchStatus? @default(pending)
-  content    String       @default("test")
-  createdAt  DateTime     @default(now())
-  campaign   Campaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  user       User         @relation(fields: [userId], references: [id])
+  id           String         @id @unique @default(cuid())
+  type         PitchType
+  campaignId   String
+  userId       String
+  status       PitchStatus?   @default(pending)
+  content      String         @default("test")
+  createdAt    DateTime       @default(now())
+  campaign     Campaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  user         User           @relation(fields: [userId], references: [id])
+  Notification Notification[]
 
   @@unique([userId, campaignId])
 }
@@ -458,11 +503,16 @@ model CampaignTaskDependency {
 
 model Notification {
   id                 String               @id @unique @default(cuid())
-  title              String
   message            String
   createdAt          DateTime             @default(now())
   entity             Entity?
   notificationStatus NotificationStatus[]
+  campaignId         String?
+  pitchId            String?
+  submissionId       String?
+  campaign           Campaign?            @relation(references: [id], fields: [campaignId])
+  pitch              Pitch?               @relation(references: [id], fields: [pitchId])
+  submission         Submission?          @relation(references: [id], fields: [submissionId])
 }
 
 model NotificationStatus {
@@ -471,19 +521,26 @@ model NotificationStatus {
   notificationId String
   read           Boolean      @default(false)
   archive        Boolean      @default(false)
-  readAt         DateTime?    @default(now())
+  readAt         DateTime?
   notification   Notification @relation(fields: [notificationId], references: [id])
   user           User         @relation(fields: [userId], references: [id])
 
   @@unique([userId, notificationId])
 }
 
+// model NotificationType {
+//   id        String   @id @unique @default(cuid())
+//   name      String
+//   createdAt DateTime @default(now())
+//   updatedAt DateTime @updatedAt
+// }
+
 model Submission {
   id               String                 @id @default(cuid())
   content          String?
   caption          String?
   campaignId       String
-  status           TaskStatus             @default(IN_PROGRESS)
+  status           SubmissionStatus       @default(IN_PROGRESS)
   createdAt        DateTime               @default(now())
   updatedAt        DateTime               @updatedAt
   submissionDate   DateTime?
@@ -497,16 +554,17 @@ model Submission {
   user             User                   @relation(fields: [userId], references: [id])
   dependencies     SubmissionDependency[] @relation("Dependencies")
   dependentOn      SubmissionDependency[] @relation("DependentOn")
+  Notification     Notification[]
 
   @@unique([userId, campaignId, submissionTypeId])
 }
 
 model SubmissionDependency {
-  id                    String     @id @default(cuid())
-  submissionId          String
-  dependentSubmissionId String
-  dependentSubmission   Submission @relation("Dependencies", fields: [dependentSubmissionId], references: [id], onDelete: Cascade)
-  submission            Submission @relation("DependentOn", fields: [submissionId], references: [id], onDelete: Cascade)
+  id                    String      @id @default(cuid())
+  submissionId          String?
+  dependentSubmissionId String?
+  dependentSubmission   Submission? @relation("Dependencies", fields: [dependentSubmissionId], references: [id], onDelete: Cascade)
+  submission            Submission? @relation("DependentOn", fields: [submissionId], references: [id], onDelete: Cascade)
 
   @@unique([submissionId, dependentSubmissionId])
 }
@@ -526,7 +584,7 @@ model CampaignSubmissionRequirement {
 
 model SubmissionType {
   id               String                          @id @default(cuid())
-  type             SubmissionEnum
+  type             SubmissionEnum                  @unique
   description      String?
   requirements     CampaignSubmissionRequirement[]
   campaignTimeline CampaignTimeline[]
@@ -537,6 +595,7 @@ model Feedback {
   id           String        @id @unique @default(cuid())
   content      String?
   type         FeedbackType?
+  reasons      String[]
   submissionId String        @unique
   adminId      String
   createdAt    DateTime      @default(now())
@@ -563,6 +622,27 @@ model Invoice {
   creator       Creator       @relation(fields: [creatorId], references: [userId])
   campaignId    String
   campaign      Campaign      @relation(fields: [campaignId], references: [id])
+  
+model Logistic {
+  id             String         @id @unique @default(cuid())
+  trackingNumber String
+  itemName       String
+  courier        String
+  status         LogisticStatus @default(Shipping)
+  updateAt       DateTime       @updatedAt
+  createdAt      DateTime       @default(now())
+  userId         String
+  campaignId     String
+  user           User           @relation(references: [id], fields: [userId])
+  campaign       Campaign       @relation(references: [id], fields: [campaignId])
+}
+
+enum LogisticStatus {
+  Pending //Before the ship
+  Shipping //Shipping
+  Shipped //Already arrived
+  Pending_Delivery_Confirmation
+  Delivered
 }
 
 enum Designation {
@@ -571,13 +651,6 @@ enum Designation {
   BD
   Growth
 }
-
-// enum PermissionsEnum {
-//   create
-//   read
-//   update
-//   delete
-// }
 
 enum Modules {
   creator
@@ -681,6 +754,14 @@ enum DraftStatus {
 
 enum TaskStatus {
   NOT_STARTED
+  TO_DO
+  IN_PROGRESS
+  COMPLETED
+  OVERDUE
+}
+
+enum SubmissionStatus {
+  NOT_STARTED
   IN_PROGRESS
   COMPLETED
   PENDING_REVIEW
@@ -706,10 +787,11 @@ enum Entity {
   Feedback
   Draft
   Post
-  Approval
   Logistic
-  Inbox
   Invoice
+  Metrcis
+  Agreement
+  Chat
 }
 
 enum SubmissionEnum {

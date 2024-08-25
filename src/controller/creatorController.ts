@@ -24,9 +24,9 @@ export const getCreators = async (_req: Request, res: Response) => {
         creator: true,
       },
     });
-    res.status(200).json(creators);
+    return res.status(200).json(creators);
   } catch (error) {
-    res.status(500).json({ message: error });
+    return res.status(500).json({ message: error });
   }
 };
 

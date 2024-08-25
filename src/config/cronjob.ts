@@ -83,11 +83,9 @@ new CronJob(
       ) {
         const data = await saveNotification(
           submission.userId,
-          Title.Create,
           dueDatesObject?.message
             ? dueDatesObject?.message(
                 mapping[submission.submissionType.type],
-                // submission.submissionType.type,
                 dayjs(submission.dueDate).format('ddd LL'),
                 submission.campaign.name,
               )
