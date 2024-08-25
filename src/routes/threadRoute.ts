@@ -6,11 +6,14 @@ import {
   sendMessageInThread,
   getAllThreads,
   getUserThreads,
-  messagewithThreads,
+  // messagewithThreads,
   archiveThread,
   unarchiveThread,
-  fetchExistingSingleChat,
+  // fetchExistingSingleChat,
   getThreadById,
+  getUnreadMessageCount,
+  markMessagesAsSeen,
+  getTotalUnreadMessageCount,
 } from '../controller/threadController';
 
 const router = Router();
@@ -23,8 +26,8 @@ router.post('/createthread', createThread);
 router.get('/threads', getAllThreads);
 router.get('/:threadId', getThreadById);
 router.get('/userthreads', getUserThreads);
-router.get('/threads/:threadId', messagewithThreads);
-router.get('/single', fetchExistingSingleChat);
+// router.get('/threads/:threadId', messagewithThreads);
+// router.get('/single', fetchExistingSingleChat);
 
 // add user
 router.post('/adduser', addUserToThread);
@@ -35,13 +38,16 @@ router.post('/send', sendMessageInThread);
 // Get messages between users for group chat & 1 on 1
 router.get('/getmessage/:threadId', getMessagesFromThread);
 
-// Mark a message as read
-// router.put('/:messageId/read', markAsRead);
+// Get unread message count for the current user
+router.get('/:threadId/unreadcount', getUnreadMessageCount);
+router.get('/message/totalcount', getTotalUnreadMessageCount);
+// Mark messages as seen
+router.put('/:threadId/seen', markMessagesAsSeen);
 
 // Un- Archive
-router.put('/threads/:threadId/unarchive', unarchiveThread);
+router.put('/:threadId/unarchive', unarchiveThread);
 
 // Archive
-router.put('/threads/:threadId/archive', archiveThread);
+router.put('/:threadId/archive', archiveThread);
 
 export default router;

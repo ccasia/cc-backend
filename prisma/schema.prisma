@@ -36,6 +36,8 @@ model User {
   threads            Thread[]             @relation("UserThreads")
   BookMarkCampaign   BookMarkCampaign[]
   logistic           Logistic[]
+  unreadMessages     UnreadMessage[]
+  seenMessages       SeenMessage[]
 }
 
 model Admin {
@@ -105,6 +107,30 @@ model Message {
   senderId  String?
   sender    User?    @relation("UserMessages", fields: [senderId], references: [id])
   thread    Thread?  @relation(fields: [threadId], references: [id])
+  seenMessages SeenMessage[]
+  unreadMessages UnreadMessage[]
+  threadLatest   Thread?          @relation("LatestMessage")
+}
+model UnreadMessage {
+  id        Int      @id @default(autoincrement())
+  userId    String
+  threadId  String
+  messageId Int
+  message   Message @relation(fields: [messageId], references: [id])
+  user      User    @relation(fields: [userId], references: [id])
+  thread    Thread  @relation(fields: [threadId], references: [id])
+
+  @@unique([userId, threadId, messageId])
+}
+
+model SeenMessage {
+  id        Int      @id @default(autoincrement())
+  userId    String
+  messageId Int
+  user      User     @relation(fields: [userId], references: [id])
+  message   Message  @relation(fields: [messageId], references: [id])
+
+  @@unique([userId, messageId])
 }
 
 model Thread {
@@ -112,13 +138,17 @@ model Thread {
   title       String
   description String
   photoURL    String?      @db.VarChar(255)
-  archived    Boolean      @default(false)
-  isGroup     Boolean      @default(true)
-  campaignId  String?      @unique
-  messages    Message[]
-  campaign    Campaign?    @relation(fields: [campaignId], references: [id])
-  UserThread  UserThread[]
   users       User[]       @relation("UserThreads")
+  UserThread  UserThread[]
+  messages    Message[]
+  isGroup     Boolean      @default(true)
+  unreadMessages UnreadMessage[]
+  campaignId  String?      @unique
+  campaign    Campaign?    @relation(fields: [campaignId], references: [id])
+  latestMessageId Int?     @unique 
+  latestMessage Message?   @relation("LatestMessage", fields: [latestMessageId], references: [id])
+ 
+ 
 }
 
 model UserThread {
@@ -126,7 +156,7 @@ model UserThread {
   threadId String
   thread   Thread @relation(fields: [threadId], references: [id])
   user     User   @relation(fields: [userId], references: [id])
-
+  archived Boolean @default(false)
   @@id([userId, threadId])
 }
 
