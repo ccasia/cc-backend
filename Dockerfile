@@ -28,7 +28,6 @@ ENV NODE_ENV=production
 WORKDIR /app
 COPY package.json ./
 COPY yarn.lock ./
-
 RUN yarn deploy
 RUN yarn global add prisma
 RUN npx prisma generate
