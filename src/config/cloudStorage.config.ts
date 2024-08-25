@@ -139,6 +139,8 @@ export const uploadPitchVideo = async (
     const bucketName = process.env.BUCKET_NAME as string;
     const destination = `${folderName}/${fileName}`;
 
+    await checkIfVideoExist(fileName, folderName);
+
     // Upload the file to the specified bucket
     const [file] = await storage.bucket(bucketName).upload(tempFilePath, {
       destination,
@@ -159,13 +161,8 @@ export const uploadPitchVideo = async (
       console.log('ABORTING UPLOAD GCP');
     });
 
-    // Make the file public
-    // await file.makePublic();
-
     const publicURL = `https://storage.googleapis.com/${bucketName}/${destination}`;
     return publicURL;
-
-    // Construct the public URL
   } catch (err) {
     throw new Error(`Error uploading file: ${err.message}`);
   }
@@ -194,5 +191,26 @@ export const uploadAgreementForm = async (
     return publicURL;
   } catch (err) {
     throw new Error(`Error uploading file: ${err.message}`);
+  }
+};
+
+export const checkIfVideoExist = async (fileName: string, folderName: string) => {
+  try {
+    const bucketName = process.env.BUCKET_NAME as string;
+    const destination = `${folderName}/${fileName}`;
+
+    const bucket = storage.bucket(bucketName);
+
+    const file = bucket.file(`https://storage.googleapis.com/${bucketName}/${destination}`);
+
+    const [exist] = await file.exists();
+
+    if (exist) {
+      await file.delete();
+      return true;
+    }
+    return false;
+  } catch (error) {
+    throw new Error('Error');
   }
 };

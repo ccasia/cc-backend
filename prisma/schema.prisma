@@ -630,7 +630,7 @@ model Logistic {
   trackingNumber String
   itemName       String
   courier        String
-  status         LogisticStatus @default(Shipping)
+  status         LogisticStatus @default(Product_is_being_packaged)
   updateAt       DateTime       @updatedAt
   createdAt      DateTime       @default(now())
   userId         String
@@ -651,11 +651,10 @@ model PaymentForm {
 }
 
 enum LogisticStatus {
-  Pending //Before the ship
-  Shipping //Shipping
-  Shipped //Already arrived
-  Pending_Delivery_Confirmation
-  Delivered
+  Product_is_being_packaged
+  Proudct_is_at_delivery_warehouse_in_transit
+  Product_is_out_for_delivery
+  Product_has_been_received
 }
 
 enum Designation {

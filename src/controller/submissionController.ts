@@ -8,6 +8,7 @@ import Ffmpeg from 'fluent-ffmpeg';
 import FfmpegPath from '@ffmpeg-installer/ffmpeg';
 import amqplib from 'amqplib';
 import dayjs from 'dayjs';
+import { MAP_TIMELINE } from '@constants/map-timeline';
 
 Ffmpeg.setFfmpegPath(FfmpegPath.path);
 // Ffmpeg.setFfmpegPath(FfmpegProbe.path);
@@ -273,7 +274,7 @@ export const adminManageDraft = async (req: Request, res: Response) => {
     });
 
     if (type === 'approve') {
-      await prisma.submission.update({
+      const sub = await prisma.submission.update({
         where: {
           id: submission?.id,
         },
@@ -299,10 +300,23 @@ export const adminManageDraft = async (req: Request, res: Response) => {
             },
           },
         },
+        include: {
+          user: true,
+          submissionType: true,
+        },
       });
+
+      const notification = await saveNotification(
+        sub.userId,
+        `Your ${MAP_TIMELINE[sub.submissionType.type]} has been approved.`,
+        'Draft',
+      );
+
+      io.to(sub.userId).emit('notification', notification);
+
       return res.status(200).json({ message: 'Succesfully submitted.' });
     } else {
-      await prisma.submission.update({
+      const sub = await prisma.submission.update({
         where: {
           id: submissionId,
         },
@@ -332,11 +346,23 @@ export const adminManageDraft = async (req: Request, res: Response) => {
             },
           },
         },
+        include: {
+          user: true,
+          submissionType: true,
+        },
       });
+
+      const notification = await saveNotification(
+        sub.userId,
+        `Your ${MAP_TIMELINE[sub.submissionType.type]} is required for changes.`,
+        'Draft',
+      );
+
+      io.to(sub.userId).emit('notification', notification);
+
       return res.status(200).json({ message: 'Succesfully submitted.' });
     }
   } catch (error) {
-    console.log(error);
     return res.status(400).json(error);
   }
 };

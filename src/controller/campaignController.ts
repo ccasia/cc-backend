@@ -432,7 +432,15 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
             admin: true,
           },
         },
-        campaignAdmin: true,
+        campaignAdmin: {
+          include: {
+            admin: {
+              include: {
+                user: true,
+              },
+            },
+          },
+        },
         campaignSubmissionRequirement: true,
         pitch: {
           include: {
@@ -582,7 +590,6 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
         creator: {
           include: {
             interests: true,
-            industries: true,
           },
         },
       },
@@ -613,6 +620,7 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       function hasCommonElement(arr1: string[], arr2: string[]): boolean {
         return arr1?.some((value) => arr2.includes(value));
       }
+
       const languagesMatch = hasCommonElement(campaign?.campaignRequirement?.language || [], lang2);
 
       if (languagesMatch) {
@@ -622,6 +630,7 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       if (campaign?.campaignRequirement?.gender.includes(newGender2)) {
         match.gender = true;
       }
+
       // age
       const birthDate = new Date(user?.creator?.birthDate);
       const today = new Date();
@@ -761,9 +770,10 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       };
     });
 
+    console.log('MATHCEEE', matchedCampaignWithPercentage);
+
     return res.status(200).json(matchedCampaignWithPercentage);
   } catch (error) {
-    console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -792,6 +802,7 @@ export const getAllActiveCampaign = async (_req: Request, res: Response) => {
     return res.status(400).json(error);
   }
 };
+
 export const getAllCampaignsFinance = async (req: Request, res: Response) => {
   const { userid } = req.session;
   const user = await prisma.user.findUnique({
@@ -1671,7 +1682,6 @@ export const getSubmission = async (req: Request, res: Response) => {
       },
     });
 
-    console.log(submission);
     return res.status(200).json(submission);
   } catch (error) {
     return res.status(400).json(error);
@@ -2015,7 +2025,7 @@ export const receiveLogistic = async (req: Request, res: Response) => {
         id: logisticId,
       },
       data: {
-        status: 'Delivered',
+        status: 'Product_has_been_received',
       },
     });
 

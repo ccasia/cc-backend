@@ -178,6 +178,8 @@ const processVideo = async (
           },
           size as number,
         );
+
+        console.log(publicURL);
         const data = await prisma.submission.update({
           where: {
             id: submissionId,
@@ -198,14 +200,28 @@ const processVideo = async (
             user: true,
           },
         });
-        await saveNotification(data.userId, `Successfully submitted ${data.submissionType.type}`, Entity.Draft);
+
+        const notification = await saveNotification(
+          data.userId,
+          `Successfully submitted ${data.submissionType.type}`,
+          Entity.Draft,
+        );
+
+        if (socket) {
+          socket.to(clients.get(data.userId)).emit('notification', notification);
+        }
+
         data.campaign.campaignAdmin.forEach(async (item) => {
-          await saveNotification(
+          const notification = await saveNotification(
             item.adminId,
             `New draft from ${data.user.name} for campaign ${data.campaign.name}`,
             Entity.Draft,
           );
+          if (socket) {
+            socket.to(clients.get(item.adminId)).emit('notification', notification);
+          }
         });
+
         console.log('Video processing completed for:', videoData.fileName);
         activeProcesses.delete(submissionId);
         if (socket) {

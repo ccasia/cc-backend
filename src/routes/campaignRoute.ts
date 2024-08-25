@@ -58,7 +58,7 @@ router.get('/getAllActiveCampaign', getAllActiveCampaign);
 router.get('/getAllCampaignsFinance', getAllCampaignsFinance);
 router.get('/getCampaignById/:id', needPermissions(['view:campaign']), isSuperAdmin, getCampaignById);
 router.get('/getAllActiveCampaign', needPermissions(['list:campaign']), getAllActiveCampaign);
-router.get('/matchCampaignWithCreator', matchCampaignWithCreator);
+router.get('/matchCampaignWithCreator', isLoggedIn, matchCampaignWithCreator);
 router.get('/pitch/:id', needPermissions(['view:campaign']), getPitchById);
 router.get('/firstDraft', needPermissions(['list:campaign']), getFirstDraft);
 router.get('/timelineType', needPermissions(['list:campaign']), isSuperAdmin, getTimelineType);
