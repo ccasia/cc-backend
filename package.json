@@ -15,7 +15,7 @@
     "migrate": "npx prisma migrate dev",
     "deploy": "npx prisma migrate deploy",
     "generate": "npx prisma generate",
-    "prod:prev": "node dist/app.js",
+    "prod:prev": "node -r module-alias/register src/server.js",
     "studio": "npx prisma studio",
     "create-timeline": "ts-node prisma/createTimeline.ts"
   },
@@ -45,6 +45,7 @@
     "jest": "^29.7.0",
     "jsonwebtoken": "^9.0.2",
     "mime": "^4.0.4",
+    "module-alias": "^2.2.3",
     "morgan": "^1.10.0",
     "multer": "^1.4.5-lts.1",
     "nodemailer": "^6.9.13",
@@ -69,6 +70,7 @@
     "@types/jest": "^29.5.12",
     "@types/jsonwebtoken": "^9.0.6",
     "@types/mime": "^4.0.0",
+    "@types/module-alias": "^2.0.4",
     "@types/morgan": "^1.9.9",
     "@types/multer": "^1.4.11",
     "@types/node": "^20.11.16",
@@ -92,5 +94,11 @@
     "tsc-alias": "^1.8.8",
     "tsconfig-paths": "^4.2.0",
     "typescript": "*"
+  },
+  "_moduleAliases": {
+    "src": "src",
+    "@constants": "src/constants",
+    "@utils": "src/utils",
+    "@routes": "src/routes"
   }
 }

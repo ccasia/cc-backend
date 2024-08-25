@@ -1,3 +1,4 @@
+import 'module-alias/register';
 import express, { Request, Response, Application } from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
