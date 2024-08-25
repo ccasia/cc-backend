@@ -145,7 +145,6 @@ export const createCampaign = async (req: Request, res: Response) => {
           id: campaignBrand.id,
         },
       });
-
       // Create Campaign
       const campaign = await tx.campaign.create({
         data: {
@@ -240,6 +239,7 @@ export const createCampaign = async (req: Request, res: Response) => {
                         : 'OTHER',
             },
           });
+          console.log(submission);
 
           if (submission?.type === 'OTHER') {
             return tx.campaignTimeline.create({
@@ -290,7 +290,7 @@ export const createCampaign = async (req: Request, res: Response) => {
             id: campaign.id,
           },
           data: {
-            company: { connect: { id: campaignBrand.id } },
+            brand: { connect: { id: campaignBrand.id } },
           },
         });
       }
@@ -480,6 +480,7 @@ export const getCampaignById = async (req: Request, res: Response) => {
         campaignTimeline: true,
         campaignBrief: true,
         campaignRequirement: true,
+
         pitch: {
           include: {
             user: {
@@ -775,6 +776,70 @@ export const getAllActiveCampaign = async (_req: Request, res: Response) => {
       },
     });
 
+    return res.status(200).json(campaigns);
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+export const getAllCampaignsFinance = async (req: Request, res: Response) => {
+  const { userid } = req.session;
+  const user = await prisma.user.findUnique({
+    where: {
+      id: userid,
+    },
+  });
+
+  // if (user?.role !== 'finance') {
+  //   return res.status(401).json({ message: 'Unauthorized' });
+  // }
+
+  try {
+    const campaigns = await prisma.campaign.findMany({
+      include: {
+        brand: true,
+        company: true,
+        campaignTimeline: true,
+        campaignBrief: true,
+        campaignRequirement: true,
+        campaignLogs: {
+          include: {
+            admin: true,
+          },
+        },
+        campaignAdmin: true,
+        campaignSubmissionRequirement: true,
+        pitch: {
+          include: {
+            user: {
+              include: {
+                creator: {
+                  include: {
+                    industries: true,
+                    interests: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+        shortlisted: {
+          select: {
+            user: {
+              include: {
+                creator: true,
+              },
+            },
+            userId: true,
+          },
+        },
+        campaignTasks: {
+          include: {
+            campaignTaskAdmin: true,
+          },
+        },
+      },
+    });
+    console.log(campaigns);
     return res.status(200).json(campaigns);
   } catch (error) {
     return res.status(400).json(error);

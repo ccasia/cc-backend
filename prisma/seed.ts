@@ -67,6 +67,33 @@ const growthRole = {
 async function main() {
   // Seed Users
   // Create Timeline Type
+
+  await Promise.all([
+    timeline_type.forEach(async (value) => {
+      await prisma.timelineTypeDefault.create({
+        data: {
+          name: value
+            .split(' ')
+            .map((e) => `${e[0].toUpperCase()}${e.slice(1)}`)
+            .join(' '),
+        },
+      });
+    }),
+    submissionType.forEach(async (value) => {
+      await prisma.submissionType.create({
+        data: {
+          type: value as SubmissionEnum,
+        },
+      });
+    }),
+  ]);
+  // const permissions = await Promise.all(
+  //   scopes.map(async (elem) => {
+  //     return await prisma.permisions.create({
+  //       data: {
+  //         name: elem.name,
+  //         descriptions: elem.description,
+
   // await Promise.all([
   //   timeline_type.forEach(async (value) => {
   //     await prisma.timelineTypeDefault.upsert({

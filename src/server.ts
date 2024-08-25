@@ -12,7 +12,8 @@ import passport from 'passport';
 // import FacebookStrategy from 'passport-facebook';
 import 'src/config/cronjob';
 import http from 'http';
-import { sendMessageInThread, fetchMessagesFromThread } from './controller/threadController';
+import { markMessagesAsSeen } from './controller/threadController';
+import { handleSendMessage, fetchMessagesFromThread } from './service/threadService';
 import { isLoggedIn } from './middleware/onlyLogin';
 import { Server, Socket } from 'socket.io';
 import 'src/service/uploadVideo';
@@ -188,68 +189,33 @@ io.on('connection', (socket) => {
       socket.emit('error', 'Failed to fetch messages');
     }
   });
-  // socket.on('room', (threadId: string) => {
-  //   socket.join(threadId);
-  //   console.log(`Client joined room : ${threadId}`);
-  // });
-
   // Sends message and saves to database
-  socket.on(
-    'sendMessage',
-    async (message: {
-      senderId: string;
-      name: string;
-      role: string;
-      photoURL: string;
-      threadId: string;
-      content: any;
-    }) => {
-      const { senderId, threadId, content, role, name, photoURL } = message;
+  socket.on('sendMessage', async (message) => {
+    await handleSendMessage(message, io);
+    io.to(message.threadId).emit('latestMessage', message);
+  });
 
-      // Simulate the request and response for calling the API endpoint
-      const req = {
-        body: {
-          threadId,
-          content,
-        },
-        session: {
-          userid: senderId,
-        },
-        app: {
-          get: (key: string) => {
-            if (key === 'io') return io;
-            return null;
-          },
-        },
+  socket.on('markMessagesAsSeen', async ({ threadId, userId }) => {
+    if (!userId) {
+      socket.emit('error', 'User not authenticated.');
+      return;
+    }
+
+    try {
+      const mockRequest = {
+        params: { threadId },
+        session: { userid: userId },
+        cookies: {},
+        headers: {},
       } as unknown as Request;
 
-      const res = {
-        status: (code: number) => ({
-          json: (data: any) => {
-            if (code === 201) {
-              console.log('Message saved:', data);
-              io.to(threadId).emit('message', {
-                senderId,
-                threadId,
-                content,
-                sender: { role, name, photoURL },
-                createdAt: new Date().toISOString(),
-              });
-            } else {
-              console.error('Error saving message:', data);
-            }
-          },
-        }),
-      } as unknown as Response;
-
-      await sendMessageInThread(req, res);
-    },
-  );
-  // socket.on('sendMessage', (message: { userId: string; threadId: string; text: string }) => {
-  //   const { userId, threadId, text } = message;
-  //   //Broadcast to thread
-  //   io.to(threadId).emit('message', message);
-  // });
+      await markMessagesAsSeen(mockRequest, {} as Response);
+      io.to(threadId).emit('messagesSeen', { threadId, userId });
+    } catch (error) {
+      console.error('Error marking messages as seen:', error);
+      socket.emit('error', 'Failed to mark messages as seen.');
+    }
+  });
 
   socket.on('disconnect', () => {
     console.log('Client disconnected:', socket.id);
@@ -260,27 +226,6 @@ io.on('connection', (socket) => {
       }
     });
   });
-  // socket.on('chat', (data: any) => {
-  //   const socketId = clients.get('49ade6f0-391f-409a-81ed-2fb780832f6f');
-  //   if (socketId) {
-  //     socket.to(socketId).emit('message', data);
-  //   } else {
-  //     console.log('User is not connected');
-  //   }
-  // });
-
-  // When a user disconnects, remove their socket ID
-  //   socket.on('disconnect', () => {
-  //     clients.forEach((value, key) => {
-  //       if (value === socket.id) {
-  //         clients.delete(key);
-  //       }
-  //     });
-  //   });
-  // });
-  // Handle chat messages
-
-  // Handle disconnection
 });
 
 server.listen(process.env.PORT, () => {

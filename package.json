@@ -24,7 +24,7 @@
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@ffprobe-installer/ffprobe": "^2.1.2",
     "@google-cloud/storage": "^7.11.2",
-    "@prisma/client": "^5.12.1",
+    "@prisma/client": "^5.18.0",
     "@types/bcryptjs": "^2.4.6",
     "amqplib": "^0.10.4",
     "bcrypt": "^5.1.1",
