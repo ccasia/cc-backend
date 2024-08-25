@@ -34,6 +34,7 @@ model User {
   event              Event?               @relation(fields: [eventId], references: [id])
   UserThread         UserThread[]
   threads            Thread[]             @relation("UserThreads")
+  invoices           Invoice[]
   BookMarkCampaign   BookMarkCampaign[]
   logistic           Logistic[]
   unreadMessages     UnreadMessage[]
@@ -86,6 +87,7 @@ model Creator {
   user       User        @relation(fields: [userId], references: [id])
   industries Industry[]
   interests  Interest[]
+  invoices   Invoice[]
   mediaKit   MediaKit?
 }
 
@@ -308,6 +310,7 @@ model Campaign {
   shortlisted                   ShortListedCreator[]
   submission                    Submission[]
   thread                        Thread?
+  invoice                       Invoice[]
   notifications                 Notification[]
   bookMarkCampaign              BookMarkCampaign?
   logistic                      Logistic[]
@@ -601,6 +604,25 @@ model Feedback {
   submission   Submission    @relation(fields: [submissionId], references: [id])
 }
 
+model Invoice {
+  id            String        @id @unique @default(cuid())
+  invoiceNumber String
+  amount        Float
+  status        InvoiceStatus @default(draft)
+  task          Json?
+  bankAcc       Json?
+  invoiceFrom   Json?
+  invoiceTo     Json?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  dueDate       DateTime
+  createdBy     String
+  user          User          @relation(fields: [createdBy], references: [id])
+  creatorId     String
+  creator       Creator       @relation(fields: [creatorId], references: [userId])
+  campaignId    String
+  campaign      Campaign      @relation(fields: [campaignId], references: [id])
+  
 model Logistic {
   id             String         @id @unique @default(cuid())
   trackingNumber String
@@ -656,6 +678,16 @@ enum Status {
   rejected
 }
 
+enum InvoiceStatus {
+  pending
+  paid
+  overdue
+  draft
+  pending_approval
+  pending_payment
+  approved
+}
+
 enum CampaignStatus {
   DRAFT
   ACTIVE
@@ -671,6 +703,7 @@ enum RoleEnum {
   creator
   brand
   superadmin
+  finance
 }
 
 enum Stage {

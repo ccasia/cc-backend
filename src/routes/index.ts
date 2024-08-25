@@ -11,7 +11,7 @@ import draftRoute from './draftRoute';
 import taskRoute from './taskRoute';
 import submissionRoute from './submissionRoute';
 import roleRoute from './roleRoute';
-
+import invoiceRoute from './invoiceRoute';
 import threadRoute from './threadRoute';
 
 export const router = express.Router();
@@ -29,3 +29,4 @@ router.use('/thread', threadRoute);
 router.use('/tasks', taskRoute);
 router.use('/submission', submissionRoute);
 router.use('/role', roleRoute);
+router.use('/invoice', invoiceRoute);

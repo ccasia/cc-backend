@@ -24,6 +24,7 @@ import {
   getCampaignLog,
   getSubmission,
   uploadVideoTest,
+  getAllCampaignsFinance,
   saveCampaign,
   unSaveCampaign,
   createLogistics,
@@ -46,9 +47,16 @@ import { needPermissions } from 'src/middleware/needPermissions';
 
 const router = Router();
 
-router.get('/getAllCampaignsByAdminID', needPermissions(['list:campaign']), isSuperAdmin, getAllCampaigns);
-router.get('/getCampaignById/:id', needPermissions(['view:campaign']), isSuperAdmin, getCampaignById);
+// create isFinance permission later
 
+router.get('/getAllCampaignsByAdminID', needPermissions(['list:campaign']), isSuperAdmin, getAllCampaigns);
+
+router.get('/getCampaignById/:id', needPermissions(['read:campaign']), isSuperAdmin, getCampaignById);
+router.get('/getClientByCampID/:id', getCampaignById);
+// router.get('/getCampaignByIdInvoice/:id' , getCampaignById);
+router.get('/getAllActiveCampaign', getAllActiveCampaign);
+router.get('/getAllCampaignsFinance', getAllCampaignsFinance);
+router.get('/getCampaignById/:id', needPermissions(['view:campaign']), isSuperAdmin, getCampaignById);
 router.get('/getAllActiveCampaign', needPermissions(['list:campaign']), getAllActiveCampaign);
 router.get('/matchCampaignWithCreator', matchCampaignWithCreator);
 router.get('/pitch/:id', needPermissions(['view:campaign']), getPitchById);
