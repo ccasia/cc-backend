@@ -589,7 +589,8 @@ enum LogisticStatus {
   Pending //Before the ship
   Shipping //Shipping
   Shipped //Already arrived
-  Pending_Delivery_Confirmation //Item has been delivered by creator
+  Pending_Delivery_Confirmation
+  Delivered
 }
 
 enum Designation {

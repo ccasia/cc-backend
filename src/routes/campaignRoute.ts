@@ -30,6 +30,7 @@ import {
   getLogisticById,
   updateStatusLogistic,
   shortlistCreator,
+  receiveLogistic,
 } from 'src/controller/campaignController';
 import { isSuperAdmin } from 'src/middleware/onlySuperadmin';
 import {
@@ -97,6 +98,7 @@ router.patch('/editCampaignRequirements', needPermissions(['update:campaign']), 
 router.patch('/editCampaignTimeline/:id', needPermissions(['update:campaign']), isSuperAdmin, editCampaignTimeline);
 router.patch('/changePitchStatus', needPermissions(['update:campaign']), changePitchStatus);
 router.patch('/changeLogisticStatus', isSuperAdmin, updateStatusLogistic); //need permission later
+router.patch('/receiveLogistic', isLoggedIn, receiveLogistic);
 
 router.delete('/timelineType/:id', needPermissions(['delete:campaign']), isSuperAdmin, deleteTimelineType);
 router.delete('/unsaveCampaign/:id', isLoggedIn, unSaveCampaign);

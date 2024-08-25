@@ -1930,3 +1930,21 @@ export const shortlistCreator = async (req: Request, res: Response) => {
     return res.status(400).json(error);
   }
 };
+
+export const receiveLogistic = async (req: Request, res: Response) => {
+  const { logisticId } = req.body;
+  try {
+    await prisma.logistic.update({
+      where: {
+        id: logisticId,
+      },
+      data: {
+        status: 'Delivered',
+      },
+    });
+
+    return res.status(200).json({ message: 'Item has been successfully delivered.' });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
