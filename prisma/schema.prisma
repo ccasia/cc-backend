@@ -622,7 +622,8 @@ model Invoice {
   creator       Creator       @relation(fields: [creatorId], references: [userId])
   campaignId    String
   campaign      Campaign      @relation(fields: [campaignId], references: [id])
-  
+}  
+
 model Logistic {
   id             String         @id @unique @default(cuid())
   trackingNumber String
