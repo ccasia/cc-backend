@@ -22,8 +22,7 @@
       "moduleResolution": "NodeNext", // Choose a module resolution strategy
       "resolveJsonModule": true,
       "removeComments": true,
-      
-      
+
   
       "strictNullChecks": true, // Enable strict null checks
       "strictFunctionTypes": true, // Enable strict checking of function types

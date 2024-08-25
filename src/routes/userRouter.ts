@@ -14,7 +14,7 @@ import { needPermissions } from 'src/middleware/needPermissions';
 const router = Router();
 // const prisma = new PrismaClient();
 
-router.patch('/updateProfileAdmin', needPermissions(['update:admin']), updateProfileAdmin);
+router.patch('/updateProfileAdmin', isSuperAdmin, updateProfileAdmin);
 router.get('/admins', needPermissions(['list:admin']), isSuperAdmin, getAdmins);
 router.get('/getAdmins', needPermissions(['list:admin']), isSuperAdmin, getAllActiveAdmins);
 router.post('/newAdmin', needPermissions(['create:admin']), inviteAdmin);

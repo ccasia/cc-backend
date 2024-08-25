@@ -53,6 +53,7 @@ const financeRole = {
     'update:invoice',
     'delete:invoice',
     'list:agreements',
+    'view:campaign',
   ],
 };
 
@@ -67,33 +68,31 @@ const growthRole = {
 async function main() {
   // Seed Users
   // Create Timeline Type
-
-  await Promise.all([
-    timeline_type.forEach(async (value) => {
-      await prisma.timelineTypeDefault.create({
-        data: {
-          name: value
-            .split(' ')
-            .map((e) => `${e[0].toUpperCase()}${e.slice(1)}`)
-            .join(' '),
-        },
-      });
-    }),
-    submissionType.forEach(async (value) => {
-      await prisma.submissionType.create({
-        data: {
-          type: value as SubmissionEnum,
-        },
-      });
-    }),
-  ]);
+  // await Promise.all([
+  //   timeline_type.forEach(async (value) => {
+  //     await prisma.timelineTypeDefault.create({
+  //       data: {
+  //         name: value
+  //           .split(' ')
+  //           .map((e) => `${e[0].toUpperCase()}${e.slice(1)}`)
+  //           .join(' '),
+  //       },
+  //     });
+  //   }),
+  //   submissionType.forEach(async (value) => {
+  //     await prisma.submissionType.create({
+  //       data: {
+  //         type: value as SubmissionEnum,
+  //       },
+  //     });
+  //   }),
+  // ]);
   // const permissions = await Promise.all(
   //   scopes.map(async (elem) => {
   //     return await prisma.permisions.create({
   //       data: {
   //         name: elem.name,
   //         descriptions: elem.description,
-
   // await Promise.all([
   //   timeline_type.forEach(async (value) => {
   //     await prisma.timelineTypeDefault.upsert({
@@ -133,58 +132,58 @@ async function main() {
   // ]);
   // // Uncomment code below to create list of roles and permissions
   // // const permissions = await prisma.permisions.findMany(); //comment this line if permissions is not created yet
-  // const permissions = await Promise.all(
-  //   scopes.map(async (elem) => {
-  //     return await prisma.permisions.create({
-  //       data: {
-  //         name: elem.name,
-  //         descriptions: elem.description,
-  //       },
-  //     });
-  //   }),
-  // );
-  // // Create CSM Role
-  // const csmPermissions = csmRoles.permissions;
-  // const filteredCSMPermissions = permissions.filter((item) => csmPermissions.includes(item.name));
-  // await prisma.role.create({
-  //   data: {
-  //     name: 'CSM',
-  //     permissions: {
-  //       connect: filteredCSMPermissions.map((item) => ({ id: item.id })),
-  //     },
-  //   },
-  // });
-  // // Create Finance Role
-  // const financePermissions = financeRole.permissions;
-  // const filteredFinancePermissions = permissions.filter((item) => financePermissions.includes(item.name));
-  // await prisma.role.create({
-  //   data: {
-  //     name: 'Finance',
-  //     permissions: {
-  //       connect: filteredFinancePermissions.map((item) => ({ id: item.id })),
-  //     },
-  //   },
-  // });
-  // const bdPermissions = bdRole.permissions;
-  // const filteredbdPermissions = permissions.filter((item) => bdPermissions.includes(item.name));
-  // await prisma.role.create({
-  //   data: {
-  //     name: 'BD',
-  //     permissions: {
-  //       connect: filteredbdPermissions.map((item) => ({ id: item.id })),
-  //     },
-  //   },
-  // });
-  // const growthPermissions = growthRole.permissions;
-  // const filteredgrowthPermissions = permissions.filter((item) => growthPermissions.includes(item.name));
-  // await prisma.role.create({
-  //   data: {
-  //     name: 'Growth',
-  //     permissions: {
-  //       connect: filteredgrowthPermissions.map((item) => ({ id: item.id })),
-  //     },
-  //   },
-  // });
+  const permissions = await Promise.all(
+    scopes.map(async (elem) => {
+      return await prisma.permisions.create({
+        data: {
+          name: elem.name,
+          descriptions: elem.description,
+        },
+      });
+    }),
+  );
+  // Create CSM Role
+  const csmPermissions = csmRoles.permissions;
+  const filteredCSMPermissions = permissions.filter((item) => csmPermissions.includes(item.name));
+  await prisma.role.create({
+    data: {
+      name: 'CSM',
+      permissions: {
+        connect: filteredCSMPermissions.map((item) => ({ id: item.id })),
+      },
+    },
+  });
+  // Create Finance Role
+  const financePermissions = financeRole.permissions;
+  const filteredFinancePermissions = permissions.filter((item) => financePermissions.includes(item.name));
+  await prisma.role.create({
+    data: {
+      name: 'Finance',
+      permissions: {
+        connect: filteredFinancePermissions.map((item) => ({ id: item.id })),
+      },
+    },
+  });
+  const bdPermissions = bdRole.permissions;
+  const filteredbdPermissions = permissions.filter((item) => bdPermissions.includes(item.name));
+  await prisma.role.create({
+    data: {
+      name: 'BD',
+      permissions: {
+        connect: filteredbdPermissions.map((item) => ({ id: item.id })),
+      },
+    },
+  });
+  const growthPermissions = growthRole.permissions;
+  const filteredgrowthPermissions = permissions.filter((item) => growthPermissions.includes(item.name));
+  await prisma.role.create({
+    data: {
+      name: 'Growth',
+      permissions: {
+        connect: filteredgrowthPermissions.map((item) => ({ id: item.id })),
+      },
+    },
+  });
 }
 
 // eslint-disable-next-line promise/catch-or-return

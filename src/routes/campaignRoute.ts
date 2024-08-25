@@ -51,7 +51,7 @@ const router = Router();
 
 router.get('/getAllCampaignsByAdminID', needPermissions(['list:campaign']), isSuperAdmin, getAllCampaigns);
 
-router.get('/getCampaignById/:id', needPermissions(['read:campaign']), isSuperAdmin, getCampaignById);
+router.get('/getCampaignById/:id', needPermissions(['view:campaign']), isSuperAdmin, getCampaignById);
 router.get('/getClientByCampID/:id', getCampaignById);
 // router.get('/getCampaignByIdInvoice/:id' , getCampaignById);
 router.get('/getAllActiveCampaign', getAllActiveCampaign);
