@@ -416,6 +416,12 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
         },
       },
       include: {
+        submission: {
+          include: {
+            submissionType: true,
+            dependencies: true,
+          },
+        },
         brand: true,
         company: true,
         campaignTimeline: true,
@@ -480,7 +486,6 @@ export const getCampaignById = async (req: Request, res: Response) => {
         campaignTimeline: true,
         campaignBrief: true,
         campaignRequirement: true,
-
         pitch: {
           include: {
             user: {
@@ -528,7 +533,13 @@ export const getCampaignById = async (req: Request, res: Response) => {
             },
           },
         },
-        submission: true,
+        submission: {
+          include: {
+            submissionType: true,
+            dependencies: true,
+            dependentOn: true,
+          },
+        },
         logistic: true,
       },
     });

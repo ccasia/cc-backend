@@ -205,3 +205,35 @@ export const getCreatorFullInfoById = async (req: Request, res: Response) => {
     return res.status(400).json(error);
   }
 };
+
+export const updatePaymentForm = async (req: Request, res: Response) => {
+  const { bankName, bankNumber, bodyMeasurement, allergies, icPassportNumber }: any = req.body;
+
+  try {
+    const data = await prisma.paymentForm.upsert({
+      where: {
+        userId: req.session.userid as string,
+      },
+      update: {
+        icNumber: icPassportNumber.toString(),
+        bankAccountNumber: bankNumber.toString(),
+        bankName: bankName?.bank,
+        bodyMeasurement: bodyMeasurement.toString(),
+        allergies: allergies.map((allergy: any) => allergy.name),
+      },
+      create: {
+        user: { connect: { id: req.session.userid } },
+        icNumber: icPassportNumber.toString(),
+        bankAccountNumber: bankNumber.toString(),
+        bankName: bankName?.bank,
+        bodyMeasurement: bodyMeasurement.toString(),
+        allergies: allergies.map((allergy: any) => allergy.name),
+      },
+    });
+
+    return res.status(200).json({ message: 'Successfully updated payment form' });
+  } catch (error) {
+    console.log(error);
+    return res.status(400).json(error);
+  }
+};

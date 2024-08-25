@@ -79,12 +79,7 @@ router.post('/createNewTimeline', needPermissions(['create:campaign']), isSuperA
 router.post('/createSingleTimelineType', needPermissions(['create:campaign']), isSuperAdmin, createSingleTimelineType);
 router.post(
   '/uploadVideo',
-  // (req, res, next) => {
-  //   req.on('close', () => {
-  //     console.log('ABORTINGGG');
-  //   });
-  //   next();
-  // },
+
   uploadVideoTest,
 );
 router.post('/saveCampaign', isLoggedIn, saveCampaign);

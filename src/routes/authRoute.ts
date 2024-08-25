@@ -21,6 +21,7 @@ import {
 } from '../controller/authController';
 import { validateToken } from '@utils/jwtHelper';
 import { needPermissions } from 'src/middleware/needPermissions';
+import { isLoggedIn } from 'src/middleware/onlyLogin';
 
 const router = Router();
 
@@ -28,7 +29,7 @@ router.get('/', needPermissions(['list:creator', 'list:admin']), displayAll);
 router.post('/login', login);
 router.post('/logout', logout);
 router.patch('/changePassword', validateToken, changePassword);
-router.get('/me', getprofile);
+router.get('/me', isLoggedIn, getprofile);
 router.post('/register', registerUser);
 router.get('/verifyAdmin', verifyAdmin);
 router.post('/resendVerifyToken', resendVerifyTokenAdmin);

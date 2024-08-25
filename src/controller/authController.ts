@@ -1,6 +1,6 @@
 /* eslint-disable no-unused-vars */
 import jwt, { JwtPayload, Secret } from 'jsonwebtoken';
-import { Employment, PrismaClient } from '@prisma/client';
+import { Employment, PrismaClient, RoleEnum } from '@prisma/client';
 import { Request, Response } from 'express';
 import { AdminInvitaion, AdminInvite, creatorVerificationEmail } from '../config/nodemailer.config';
 // import session from 'express-session';
@@ -228,7 +228,7 @@ export const registerFinanceUser = async (req: Request, res: Response) => {
         email,
         password: hashedPassword,
         name,
-        role: 'finance', // Assign the finance role
+        role: 'finance' as RoleEnum, // Assign the finance role
         status: 'active',
       },
     });
@@ -611,6 +611,7 @@ export const login = async (req: Request, res: Response) => {
         email,
       },
       include: {
+        paymentForm: true,
         admin: {
           include: {
             adminPermissionModule: {

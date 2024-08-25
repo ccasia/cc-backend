@@ -103,39 +103,7 @@ app.use(passport.initialize());
 
 app.use(passport.session());
 
-// passport.use(
-//   new FacebookStrategy.Strategy(
-//     {
-//       clientID: process.env.APP_ID,
-//       clientSecret: process.env.CLIENT_SECRET,
-//       callbackURL: 'https://app.cultcreativeasia.com/api/auth/facebook/callback',
-//       enableProof: true,
-
-//       profileFields: ['id', 'displayName', 'photos', 'email'], // Optional fields to request
-//     } as any,
-//     function (accessToken: any, refreshToken: any, profile: any, done: any) {
-//       // Save the accessToken and profile information in your database
-//       // For now, we will just log it
-//       console.log('Access Token:', accessToken);
-//       console.log('Profile:', profile);
-//       return done(null, profile);
-//     },
-//   ),
-// );
-
 app.use(router);
-
-// app.get(
-//   '/auth/facebook',
-//   passport.authenticate('facebook', {
-//     scope: ['pages_show_list', 'business_management', 'instagram_basic', 'pages_manage_metadata'],
-//   }),
-// );
-
-// app.get('/auth/facebook/callback', passport.authenticate('facebook', { failureRedirect: '/' }), (req, res) => {
-//   // Successful authentication
-//   res.redirect('/');
-// });
 
 app.get('/', (_req: Request, res: Response) => {
   res.send(`${process.env.NODE_ENV} is running...`);

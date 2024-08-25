@@ -39,6 +39,7 @@ model User {
   logistic           Logistic[]
   unreadMessages     UnreadMessage[]
   seenMessages       SeenMessage[]
+  paymentForm        PaymentForm?
 }
 
 model Admin {
@@ -102,19 +103,20 @@ model MediaKit {
 }
 
 model Message {
-  id        Int      @id @default(autoincrement())
-  content   String
-  createdAt DateTime @default(now())
-  threadId  String?
-  senderId  String?
-  sender    User?    @relation("UserMessages", fields: [senderId], references: [id])
-  thread    Thread?  @relation(fields: [threadId], references: [id])
-  seenMessages SeenMessage[]
+  id             Int             @id @default(autoincrement())
+  content        String
+  createdAt      DateTime        @default(now())
+  threadId       String?
+  senderId       String?
+  sender         User?           @relation("UserMessages", fields: [senderId], references: [id])
+  thread         Thread?         @relation(fields: [threadId], references: [id])
+  seenMessages   SeenMessage[]
   unreadMessages UnreadMessage[]
-  threadLatest   Thread?          @relation("LatestMessage")
+  threadLatest   Thread?         @relation("LatestMessage")
 }
+
 model UnreadMessage {
-  id        Int      @id @default(autoincrement())
+  id        Int     @id @default(autoincrement())
   userId    String
   threadId  String
   messageId Int
@@ -126,39 +128,38 @@ model UnreadMessage {
 }
 
 model SeenMessage {
-  id        Int      @id @default(autoincrement())
+  id        Int     @id @default(autoincrement())
   userId    String
   messageId Int
-  user      User     @relation(fields: [userId], references: [id])
-  message   Message  @relation(fields: [messageId], references: [id])
+  user      User    @relation(fields: [userId], references: [id])
+  message   Message @relation(fields: [messageId], references: [id])
 
   @@unique([userId, messageId])
 }
 
 model Thread {
-  id          String       @id @unique @default(cuid())
-  title       String
-  description String
-  photoURL    String?      @db.VarChar(255)
-  users       User[]       @relation("UserThreads")
-  UserThread  UserThread[]
-  messages    Message[]
-  isGroup     Boolean      @default(true)
-  unreadMessages UnreadMessage[]
-  campaignId  String?      @unique
-  campaign    Campaign?    @relation(fields: [campaignId], references: [id])
-  latestMessageId Int?     @unique 
-  latestMessage Message?   @relation("LatestMessage", fields: [latestMessageId], references: [id])
- 
- 
+  id              String          @id @unique @default(cuid())
+  title           String
+  description     String
+  photoURL        String?         @db.VarChar(255)
+  users           User[]          @relation("UserThreads")
+  UserThread      UserThread[]
+  messages        Message[]
+  isGroup         Boolean         @default(true)
+  unreadMessages  UnreadMessage[]
+  campaignId      String?         @unique
+  campaign        Campaign?       @relation(fields: [campaignId], references: [id])
+  latestMessageId Int?            @unique
+  latestMessage   Message?        @relation("LatestMessage", fields: [latestMessageId], references: [id])
 }
 
 model UserThread {
   userId   String
   threadId String
-  thread   Thread @relation(fields: [threadId], references: [id])
-  user     User   @relation(fields: [userId], references: [id])
+  thread   Thread  @relation(fields: [threadId], references: [id])
+  user     User    @relation(fields: [userId], references: [id])
   archived Boolean @default(false)
+
   @@id([userId, threadId])
 }
 
@@ -622,7 +623,11 @@ model Invoice {
   creator       Creator       @relation(fields: [creatorId], references: [userId])
   campaignId    String
   campaign      Campaign      @relation(fields: [campaignId], references: [id])
+<<<<<<< Updated upstream
 }  
+=======
+}
+>>>>>>> Stashed changes
 
 model Logistic {
   id             String         @id @unique @default(cuid())
@@ -636,6 +641,17 @@ model Logistic {
   campaignId     String
   user           User           @relation(references: [id], fields: [userId])
   campaign       Campaign       @relation(references: [id], fields: [campaignId])
+}
+
+model PaymentForm {
+  id                String   @id @unique @default(cuid())
+  userId            String   @unique
+  user              User     @relation(references: [id], fields: [userId])
+  icNumber          String
+  bankName          String
+  bankAccountNumber String
+  bodyMeasurement   String?
+  allergies         String[]
 }
 
 enum LogisticStatus {
