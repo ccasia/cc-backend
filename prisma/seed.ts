@@ -42,7 +42,19 @@ const scopes = [
 ];
 
 const csmRoles = {
-  permissions: ['view:campaign', 'create:campaign', 'update:campaign', 'delete:campaign', 'list:creator'],
+  permissions: [
+    'view:campaign',
+    'create:campaign',
+    'update:campaign',
+    'delete:campaign',
+    'list:creator',
+    'list:client',
+    'view:client',
+    'create:client',
+    'update:client',
+    'delete:client',
+    'list:admin',
+  ],
 };
 
 const financeRole = {
