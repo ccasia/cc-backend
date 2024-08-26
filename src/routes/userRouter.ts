@@ -18,7 +18,7 @@ router.patch('/updateProfileAdmin', isSuperAdmin, updateProfileAdmin);
 router.get('/admins', needPermissions(['list:admin']), isSuperAdmin, getAdmins);
 router.get('/getAdmins', needPermissions(['list:admin']), isSuperAdmin, getAllActiveAdmins);
 router.post('/newAdmin', needPermissions(['create:admin']), inviteAdmin);
-router.put('/updateProfile/newAdmin', needPermissions(['update:admin']), updateAdminInformation);
+router.put('/updateProfile/newAdmin', updateAdminInformation);
 router.post('/createAdmin', needPermissions(['create:admin']), isSuperAdmin, createAdmin);
 
 // router.post('/approveOrReject', approveOrReject);
