@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { handleDeleteAdminById } from 'src/service/adminService';
+import { handleDeleteAdminById } from '@services/adminService';
 
 export const deleteAdminById = async (req: Request, res: Response) => {
   const { id } = req.params;

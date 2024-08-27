@@ -13,6 +13,7 @@ import submissionRoute from './submissionRoute';
 import roleRoute from './roleRoute';
 import invoiceRoute from './invoiceRoute';
 import threadRoute from './threadRoute';
+import kanbanRoute from './kanbanRoute';
 
 export const router = express.Router();
 
@@ -30,3 +31,4 @@ router.use('/tasks', taskRoute);
 router.use('/submission', submissionRoute);
 router.use('/role', roleRoute);
 router.use('/invoice', invoiceRoute);
+router.use('/kanban', kanbanRoute);

@@ -10,9 +10,10 @@ import {
   getCreatorFullInfoById,
   updatePaymentForm,
 } from '../controller/creatorController';
-import { isSuperAdmin } from 'src/middleware/onlySuperadmin';
-import { needPermissions } from 'src/middleware/needPermissions';
-import { isLoggedIn } from 'src/middleware/onlyLogin';
+import { isSuperAdmin } from '@middlewares/onlySuperadmin';
+import { needPermissions } from '@middlewares/needPermissions';
+import { isLoggedIn } from '@middlewares/onlyLogin';
+
 const router = Router();
 
 router.get('/getAllCreators', isSuperAdmin, getCreators);

@@ -40,6 +40,8 @@ model User {
   unreadMessages     UnreadMessage[]
   seenMessages       SeenMessage[]
   paymentForm        PaymentForm?
+  Board              Board?
+  taskAssignee       TaskAssignee[]
 }
 
 model Admin {
@@ -817,4 +819,47 @@ enum SubmissionEnum {
 enum FeedbackType {
   COMMENT
   REASON
+}
+
+// Kanban Model
+
+model Board {
+  id        String    @id @unique @default(cuid())
+  name      String
+  createdAt DateTime  @default(now())
+  user      User      @relation(references: [id], fields: [userId])
+  userId    String    @unique
+  columns   Columns[]
+}
+
+model Columns {
+  id        String   @id @unique @default(cuid())
+  name      String
+  position  Int      @default(autoincrement())
+  boardId   String
+  board     Board    @relation(references: [id], fields: [boardId])
+  createdAt DateTime @default(now())
+  task      Task[]
+}
+
+model Task {
+  id          String    @id @unique @default(cuid())
+  title       String
+  description String?
+  position    Int
+  createdAt   DateTime  @default(now())
+  dueDate     DateTime?
+  columnId    String
+  column      Columns   @relation(fields: [columnId], references: [id])
+
+  assignees TaskAssignee[]
+}
+
+model TaskAssignee {
+  id         Int      @id @default(autoincrement())
+  assignedAt DateTime @default(now())
+  taskId     String
+  task       Task     @relation(fields: [taskId], references: [id])
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
 }

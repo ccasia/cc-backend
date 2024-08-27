@@ -2,9 +2,9 @@ import nodemailer from 'nodemailer';
 // import dayjs from 'dayjs';
 // import fs from 'fs';
 
-const user = 'afiq@nexea.co';
+const user = process.env.SMTP_EMAIL;
 // const pass = "nsxtsgpxyaxfjalr"; // Uses google's app specific password
-const pass = 'bpnolahgcqzqxlmj';
+const pass = process.env.SMTP_PASSWORD;
 
 const transport = nodemailer.createTransport({
   host: 'smtp.gmail.com',

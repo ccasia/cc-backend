@@ -1,32 +1,26 @@
 import { Request, Response } from 'express';
 import {
-  CampaignAdmin,
   CampaignRequirement,
   CampaignStatus,
-  CampaignSubmissionRequirement,
-  CampaignTask,
   CampaignTimeline,
   Creator,
   Entity,
   Interest,
-  Industry,
   LogisticStatus,
   PrismaClient,
   ShortListedCreator,
   Submission,
 } from '@prisma/client';
 
-import { uploadAgreementForm, uploadImage, uploadPitchVideo } from 'src/config/cloudStorage.config';
+import { uploadAgreementForm, uploadImage, uploadPitchVideo } from '@configs/cloudStorage.config';
 import dayjs from 'dayjs';
-import { logChange } from 'src/service/campaignServices';
-import { Title, saveNotification } from './notificationController';
+import { logChange } from '@services/campaignServices';
+import { saveNotification } from '@controllers/notificationController';
 import { clients, io } from 'src/server';
-// import amqplib from 'amqplib';
 import fs from 'fs';
 import Ffmpeg from 'fluent-ffmpeg';
 import ffmpegPath from '@ffmpeg-installer/ffmpeg';
 import ffprobePath from '@ffprobe-installer/ffprobe';
-// import { fork } from 'child_process';
 import path from 'path';
 import { compress } from 'src/helper/compression';
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
