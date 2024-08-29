@@ -25,8 +25,41 @@ export const getKanbanBoard = async (req: Request, res: Response) => {
       },
     });
 
+    console.log(board);
+
+    // const json: any = {
+    //   board: {
+    //     id: board?.id,
+    //     columns: {},
+    //     tasks: {},
+    //     ordered: [],
+    //   },
+    // };
+
+    // board?.columns.forEach((column) => {
+    //   json.board.columns[column?.id] = {
+    //     id: column.id,
+    //     name: column.name,
+    //     taskIds: [],
+    //   };
+
+    //   json.board.ordered.push(column?.id);
+
+    //   column.task.forEach((item) => {
+    //     json.board.tasks[item?.id] = {
+    //       id: item.id,
+    //       name: item.title,
+    //       description: item.description,
+    //       createdAt: item.createdAt,
+    //       dueDate: item.dueDate,
+    //     };
+    //     json.board.columns[column?.id].taskIds.push(item?.id);
+    //   });
+    // });
+
     return res.status(200).json({ board: board });
   } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -201,8 +234,9 @@ export const createTask = async (req: Request, res: Response) => {
 
     await prisma.task.create({
       data: {
-        title: title,
+        name: title,
         position: taskCount + 1,
+        priority: 'Test',
         column: {
           connect: { id: columnId },
         },

@@ -17,7 +17,8 @@
     "generate": "npx prisma generate",
     "prod:prev": "node dist/app.js",
     "studio": "npx prisma studio",
-    "create-timeline": "ts-node prisma/createTimeline.ts"
+    "create-timeline": "ts-node prisma/createTimeline.ts",
+    "try": "ts-node src/config/nodemailer.config.ts"
   },
   "dependencies": {
     "@dotenvx/dotenvx": "^1.9.0",

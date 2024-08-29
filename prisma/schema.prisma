@@ -844,11 +844,14 @@ model Columns {
 
 model Task {
   id          String    @id @unique @default(cuid())
-  title       String
+  name        String
   description String?
+  status      String?
   position    Int
+  priority    String
   createdAt   DateTime  @default(now())
   dueDate     DateTime?
+  labels      String[]
   columnId    String
   column      Columns   @relation(fields: [columnId], references: [id])
 

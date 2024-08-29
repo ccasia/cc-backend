@@ -39,28 +39,46 @@
 // const a = scopes.filter((item) => csmPermissions.includes(item.name));
 // console.log(a);
 
-const test_A = [
-  { name: 'Afiq', id: 1 },
-  { name: 'Danial', id: 2 },
-  { name: 'bin', id: 3 },
-  { name: 'Nooraza', id: 4 },
+const columndTasks = [
+  {
+    id: 1,
+    name: 'Todsa',
+    position: 0,
+  },
+  {
+    id: 2,
+    name: 'dsad',
+    position: 2,
+  },
+  {
+    id: 3,
+    name: 'sdasd',
+    position: 1,
+  },
 ];
 
-const test_B = [
-  { job: 'Software Engineer', id: 1 },
-  { job: 'Accountant', id: 2 },
-  { job: 'Mobile App Developer', id: 3 },
-];
+const changePosition = (newPosition, id) => {
+  const columnTask = columndTasks.find((task) => task.id === id);
 
-const newArr = [];
-
-for (const a of test_A) {
-  for (const b of test_B) {
-    if (!newArr.map((item) => item.job).includes(b.job)) {
-      newArr.push({ job: b.job, workers: [] });
-    }
-    newArr.find((arr) => arr.job === b.job).workers.push(a.id);
+  if (!columnTask) {
+    return 'Task not found';
   }
-}
 
-console.log(newArr);
+  const updatedColumnTask = { ...columnTask, position: newPosition };
+  const updatedOtherTask = columndTasks.splice(newPosition).map((item, index) => ({
+    ...item,
+    position: index + newPosition + 1,
+  }));
+
+  console.log([updatedColumnTask, updatedOtherTask]);
+
+  // columndTasks.splice(0, 1);
+
+  // columndTasks.splice(newPosition, 0, updatedColumnTask);
+
+  // console.log(columndTasks);
+
+  // return [...columndTasks];
+};
+
+// changePosition(0, 3);
