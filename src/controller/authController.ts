@@ -311,6 +311,7 @@ export const verifyAdmin = async (req: Request, res: Response) => {
     });
     return res.status(200).json({ message: 'Admin verified successfully', user });
   } catch (error: any) {
+    console.log(error);
     if (error.name) {
       return res.status(400).json({ error: 'Token expired. Please contact our admin.' });
     }
