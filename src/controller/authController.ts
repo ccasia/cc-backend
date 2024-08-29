@@ -287,14 +287,16 @@ export const verifyAdmin = async (req: Request, res: Response) => {
       },
     });
 
+    console.log(admin);
+
+    if (!admin) {
+      return res.status(404).json({ message: 'Admin not found' });
+    }
+
     const isVerify = jwt.verify(admin?.inviteToken as string, process.env.SESSION_SECRET as string);
 
     if (!isVerify) {
       return res.status(404).json({ message: 'Unauthorized' });
-    }
-
-    if (!admin) {
-      return res.status(404).json({ message: 'Admin not found' });
     }
 
     const user = await prisma.user.findUnique({
