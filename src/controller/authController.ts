@@ -4,10 +4,10 @@ import { Employment, PrismaClient, RoleEnum } from '@prisma/client';
 import { Request, Response } from 'express';
 import { AdminInvitaion, AdminInvite, creatorVerificationEmail } from '../config/nodemailer.config';
 import bcrypt from 'bcryptjs';
-import { handleChangePassword } from 'src/service/authServices';
-import { getUser } from 'src/service/userServices';
+import { handleChangePassword } from './service/authServices';
+import { getUser } from './service/userServices';
 import { verifyToken } from '@utils/jwtHelper';
-import { uploadImage, uploadProfileImage } from 'src/config/cloudStorage.config';
+import { uploadImage, uploadProfileImage } from './config/cloudStorage.config';
 
 const prisma = new PrismaClient();
 

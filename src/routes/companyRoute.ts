@@ -1,6 +1,6 @@
 import { Router } from 'express';
 
-import { isSuperAdmin } from 'src/middleware/onlySuperadmin';
+import { isSuperAdmin } from './middleware/onlySuperadmin';
 
 import {
   createCompany,
@@ -15,8 +15,8 @@ import {
   getBrand,
   editBrand,
   getOptions,
-} from 'src/controller/companyController';
-import { needPermissions } from 'src/middleware/needPermissions';
+} from './controller/companyController';
+import { needPermissions } from './middleware/needPermissions';
 
 const router = Router();
 

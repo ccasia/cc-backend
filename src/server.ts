@@ -10,14 +10,14 @@ import fileUpload from 'express-fileupload';
 import { PrismaClient } from '@prisma/client';
 import passport from 'passport';
 // import FacebookStrategy from 'passport-facebook';
-import 'src/config/cronjob';
+import './config/cronjob';
 import http from 'http';
 import { markMessagesAsSeen } from './controller/threadController';
 import { handleSendMessage, fetchMessagesFromThread } from './service/threadService';
 import { isLoggedIn } from './middleware/onlyLogin';
 import { Server, Socket } from 'socket.io';
-import 'src/service/uploadVideo';
-import 'src/helper/videoDraft';
+import './service/uploadVideo';
+import './helper/videoDraft';
 // import dotenvx from '@dotenvx/dotenvx';
 import dotenv from 'dotenv';
 

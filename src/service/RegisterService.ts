@@ -1,4 +1,4 @@
-import { Designation, PrismaClient } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 // import passport from 'passport';
 
 const prisma = new PrismaClient();
@@ -10,7 +10,6 @@ interface User {
 
 interface SuperAdmin {
   name: string;
-  designation: string;
   country: string;
   phoneNumber: string;
 }
@@ -27,7 +26,7 @@ export const registerUser = async ({ email, password }: User) => {
 
 export const registerSuperadmin = async (
   { email, password }: User,
-  { name, designation, country, phoneNumber }: SuperAdmin,
+  { name, country, phoneNumber }: SuperAdmin,
 ) => {
   try {
     const user = await prisma.user.create({
@@ -44,7 +43,6 @@ export const registerSuperadmin = async (
     await prisma.admin.create({
       data: {
         userId: user?.id,
-        designation: designation as Designation,
         mode: 'god',
       },
     });

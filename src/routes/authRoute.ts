@@ -20,8 +20,8 @@ import {
   registerFinanceUser,
 } from '../controller/authController';
 import { validateToken } from '@utils/jwtHelper';
-import { needPermissions } from 'src/middleware/needPermissions';
-import { isLoggedIn } from 'src/middleware/onlyLogin';
+import { needPermissions } from './middleware/needPermissions';
+import { isLoggedIn } from './middleware/onlyLogin';
 
 const router = Router();
 

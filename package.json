@@ -5,6 +5,7 @@
   "author": "Nexea developer team",
   "license": "MIT",
   "scripts": {
+    "start": "node dist/server.js",
     "build": "tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json",
     "build_watch": "tsc --watch",
     "dev": "npx nodemon",
@@ -15,7 +16,7 @@
     "migrate": "npx prisma migrate dev",
     "deploy": "npx prisma migrate deploy",
     "generate": "npx prisma generate",
-    "prod:prev": "node dist/app.js",
+    "prod:prev": "node dist/server.js",
     "studio": "npx prisma studio",
     "create-timeline": "ts-node prisma/createTimeline.ts"
   },

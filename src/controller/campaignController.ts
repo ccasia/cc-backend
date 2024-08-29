@@ -16,13 +16,13 @@ import { uploadAgreementForm, uploadImage, uploadPitchVideo } from '@configs/clo
 import dayjs from 'dayjs';
 import { logChange } from '@services/campaignServices';
 import { saveNotification } from '@controllers/notificationController';
-import { clients, io } from 'src/server';
+import { clients, io } from './server';
 import fs from 'fs';
 import Ffmpeg from 'fluent-ffmpeg';
 import ffmpegPath from '@ffmpeg-installer/ffmpeg';
 import ffprobePath from '@ffprobe-installer/ffprobe';
 import path from 'path';
-import { compress } from 'src/helper/compression';
+import { compress } from './helper/compression';
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
 Ffmpeg.setFfprobePath(ffprobePath.path);
 
@@ -106,7 +106,7 @@ export const createCampaign = async (req: Request, res: Response) => {
     if (req.files && req.files.campaignImages) {
       const images = (req.files as any).campaignImages as [];
       for (const item of images as any) {
-        // TODO TEMP: "Error uploading file: ENOENT: no such file or directory, open '/app/src/config/test-cs.json'"
+        // TODO TEMP: "Error uploading file: ENOENT: no such file or directory, open '/app/./config/test-cs.json'"
         const url = await uploadImage(item.tempFilePath, item.name, 'campaign');
         publicURL.push(url);
       }
@@ -116,7 +116,7 @@ export const createCampaign = async (req: Request, res: Response) => {
 
     if (req.files && req.files.agreementForm) {
       const form = (req.files as any).agreementForm;
-      // TODO TEMP: "Error uploading file: ENOENT: no such file or directory, open '/app/src/config/test-cs.json'"
+      // TODO TEMP: "Error uploading file: ENOENT: no such file or directory, open '/app/./config/test-cs.json'"
       agreementFormURL = await uploadAgreementForm(form.tempFilePath, form.name, 'agreementForm');
     }
 
@@ -1732,7 +1732,7 @@ export const uploadVideoTest = async (req: Request, res: Response) => {
   res.on('close', () => {
     console.log('ABORTING....');
     cancel = true;
-    fs.unlinkSync(path.resolve(`src/upload/${outputPath}`));
+    fs.unlinkSync(path.resolve(`./upload/${outputPath}`));
     abortController.abort();
   });
 

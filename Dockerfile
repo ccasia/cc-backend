@@ -1,37 +1,41 @@
-# STAGE 1 - BUILDING THE CODE
-FROM node:20-alpine3.17 AS base
+# Build stage
+FROM node:20-alpine3.17 AS builder
 WORKDIR /app
-COPY package.json ./
-COPY yarn.lock ./
 
-FROM base AS development
-ENV NODE_ENV=development
-RUN yarn install
+# Copy package files and install dependencies
+COPY package.json yarn.lock ./
+RUN yarn install --frozen-lockfile
+
+# Copy source files
 COPY . .
-RUN yarn global add prisma
+
+# Generate Prisma client
 RUN npx prisma generate
-EXPOSE 3001
-CMD [ "yarn", "dev" ]
 
-
-# Stage 2 - Builder
-FROM node as builder
-WORKDIR /app
-COPY package.json ./
-COPY yarn.lock ./
-COPY --from=development /app ./
+# Build the application
 RUN yarn build
 
-# Stage 3 - Compiled
-FROM node as staging
+# Production stage
+FROM node:20-alpine3.17 AS production
 ENV NODE_ENV=production
 WORKDIR /app
-COPY package.json ./
-COPY yarn.lock ./
-RUN yarn deploy
 
+# Copy package files and install production dependencies
+COPY package.json yarn.lock ./
+RUN yarn install --production --frozen-lockfile
+
+# Copy built files and necessary folders
 COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+
+# Generate Prisma client in production environment
+RUN npx prisma generate
+
+# Run database migrations
+RUN yarn deploy
 
 EXPOSE 3001
 
-CMD [ "yarn", "prod:prev" ]
+# Use node to run the built app.js file
+CMD ["node", "dist/server.js"]

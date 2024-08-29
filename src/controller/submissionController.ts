@@ -1,9 +1,9 @@
 import e, { Request, Response } from 'express';
 
 import { Entity, PrismaClient, SubmissionStatus } from '@prisma/client';
-import { uploadAgreementForm, uploadPitchVideo } from 'src/config/cloudStorage.config';
+import { uploadAgreementForm, uploadPitchVideo } from './config/cloudStorage.config';
 import { saveNotification } from './notificationController';
-import { clients, io } from 'src/server';
+import { clients, io } from './server';
 import Ffmpeg from 'fluent-ffmpeg';
 import FfmpegPath from '@ffmpeg-installer/ffmpeg';
 import amqplib from 'amqplib';
@@ -191,7 +191,7 @@ export const draftSubmission = async (req: Request, res: Response) => {
     await channel.close();
     await amqp.close();
 
-    // const child = fork(path.resolve('src/helper/videoDraft.ts'), { signal: controller.signal });
+    // const child = fork(path.resolve('./helper/videoDraft.ts'), { signal: controller.signal });
 
     // child.on('message', (data) => {
     //   console.log('MESSAGE', data);
