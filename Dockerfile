@@ -20,6 +20,12 @@ FROM node:20-alpine3.17 AS production
 ENV NODE_ENV=production
 WORKDIR /app
 
+# Define build argument
+ARG DATABASE_URL
+
+# Set environment variable
+ENV DATABASE_URL=$DATABASE_URL
+
 # Copy package files and install production dependencies
 COPY package.json yarn.lock ./
 RUN yarn install --production --frozen-lockfile
