@@ -4,7 +4,7 @@ import Ffmpeg from 'fluent-ffmpeg';
 import ffmpegPath from '@ffmpeg-installer/ffmpeg';
 import ffprobePath from '@ffprobe-installer/ffprobe';
 import fs from 'fs';
-import { uploadPitchVideo } from './config/cloudStorage.config';
+import { uploadPitchVideo } from '@configs/cloudStorage.config';
 import amqplib from 'amqplib';
 import { activeProcesses, clients, io } from './server';
 import { Entity, PrismaClient } from '@prisma/client';

@@ -1,7 +1,7 @@
 import e, { Request, Response } from 'express';
 
 import { Entity, PrismaClient, SubmissionStatus } from '@prisma/client';
-import { uploadAgreementForm, uploadPitchVideo } from './config/cloudStorage.config';
+import { uploadAgreementForm, uploadPitchVideo } from '@configs/cloudStorage.config';
 import { saveNotification } from './notificationController';
 import { clients, io } from './server';
 import Ffmpeg from 'fluent-ffmpeg';

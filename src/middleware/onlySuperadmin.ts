@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { getUser } from './service/userServices';
+import { getUser } from '@services/userServices';
 
 export const isSuperAdmin = async (req: Request, res: Response, next: NextFunction) => {
   const userid = req.session.userid;

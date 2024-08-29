@@ -1,7 +1,7 @@
 // @controllers/socketController.ts
 import { PrismaClient } from '@prisma/client';
 import { sendMessageInThread } from './threadController';
-import { fetchMessagesFromThread } from './service/threadService';
+import { fetchMessagesFromThread } from '@services/threadService';
 import { Request, Response } from 'express';
 const prisma = new PrismaClient();
 

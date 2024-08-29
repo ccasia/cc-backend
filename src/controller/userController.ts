@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { AdminInvite } from './config/nodemailer.config';
+import { AdminInvite } from '@configs/nodemailer.config';
 
 import {
   // createNewAdmin,
@@ -10,14 +10,14 @@ import {
   createAdminForm,
   createNewAdmin,
   // createNewAdmin,
-} from './service/userServices';
+} from '@services/userServices';
 import { Storage } from '@google-cloud/storage';
 import { Entity, PrismaClient } from '@prisma/client';
 import { Title, saveNotification } from './notificationController';
 // import { serializePermission } from '@utils/serializePermission';
 
 const storage = new Storage({
-  keyFilename: './config/test-cs.json',
+  keyFilename: '@configs/test-cs.json',
 });
 
 const bucket = storage.bucket('app-test-cult-cretive');

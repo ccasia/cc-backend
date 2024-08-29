@@ -2,12 +2,12 @@
 import jwt, { JwtPayload, Secret } from 'jsonwebtoken';
 import { Employment, PrismaClient, RoleEnum } from '@prisma/client';
 import { Request, Response } from 'express';
-import { AdminInvitaion, AdminInvite, creatorVerificationEmail } from '../config/nodemailer.config';
+import { AdminInvitaion, AdminInvite, creatorVerificationEmail } from '.@configs/nodemailer.config';
 import bcrypt from 'bcryptjs';
-import { handleChangePassword } from './service/authServices';
-import { getUser } from './service/userServices';
+import { handleChangePassword } from '@services/authServices';
+import { getUser } from '@services/userServices';
 import { verifyToken } from '@utils/jwtHelper';
-import { uploadImage, uploadProfileImage } from './config/cloudStorage.config';
+import { uploadImage, uploadProfileImage } from '@configs/cloudStorage.config';
 
 const prisma = new PrismaClient();
 

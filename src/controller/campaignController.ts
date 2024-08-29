@@ -106,7 +106,7 @@ export const createCampaign = async (req: Request, res: Response) => {
     if (req.files && req.files.campaignImages) {
       const images = (req.files as any).campaignImages as [];
       for (const item of images as any) {
-        // TODO TEMP: "Error uploading file: ENOENT: no such file or directory, open '/app/./config/test-cs.json'"
+        // TODO TEMP: "Error uploading file: ENOENT: no such file or directory, open '/app/@configs/test-cs.json'"
         const url = await uploadImage(item.tempFilePath, item.name, 'campaign');
         publicURL.push(url);
       }
@@ -116,7 +116,7 @@ export const createCampaign = async (req: Request, res: Response) => {
 
     if (req.files && req.files.agreementForm) {
       const form = (req.files as any).agreementForm;
-      // TODO TEMP: "Error uploading file: ENOENT: no such file or directory, open '/app/./config/test-cs.json'"
+      // TODO TEMP: "Error uploading file: ENOENT: no such file or directory, open '/app/@configs/test-cs.json'"
       agreementFormURL = await uploadAgreementForm(form.tempFilePath, form.name, 'agreementForm');
     }
 

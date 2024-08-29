@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { createEventService, deleteEventService, getEvents, updateEventService } from './service/eventService';
+import { createEventService, deleteEventService, getEvents, updateEventService } from '@services/eventService';
 import { Event } from '@prisma/client';
 
 // @desc Create Event

@@ -4,9 +4,9 @@ import {
   // handleCreateCompany,
   handleCreateBrand,
   handleCreateCompany,
-} from './service/companyService';
+} from '@services/companyService';
 import { PrismaClient } from '@prisma/client';
-import { uploadCompanyLogo } from './config/cloudStorage.config';
+import { uploadCompanyLogo } from '@configs/cloudStorage.config';
 const prisma = new PrismaClient();
 
 // for creating new company with brand
