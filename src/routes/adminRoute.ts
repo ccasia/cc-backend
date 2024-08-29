@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import { deleteAdminById } from './controller/adminController';
-import { needPermissions } from './middleware/needPermissions';
-import { isSuperAdmin } from './middleware/onlySuperadmin';
+import { deleteAdminById } from '@controllers/adminController';
+import { needPermissions } from '@middlewares/needPermissions';
+import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 
 const router = Router();
 

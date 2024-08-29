@@ -8,7 +8,7 @@ import { uploadPitchVideo } from './config/cloudStorage.config';
 import amqplib from 'amqplib';
 import { activeProcesses, clients, io } from './server';
 import { Entity, PrismaClient } from '@prisma/client';
-import { saveNotification } from './controller/notificationController';
+import { saveNotification } from '@controllers/notificationController';
 import child from 'child_process';
 import dayjs from 'dayjs';
 

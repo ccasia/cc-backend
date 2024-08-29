@@ -32,8 +32,8 @@ import {
   updateStatusLogistic,
   shortlistCreator,
   receiveLogistic,
-} from './controller/campaignController';
-import { isSuperAdmin } from './middleware/onlySuperadmin';
+} from '@controllers/campaignController';
+import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 import {
   createNewTimeline,
   createSingleTimelineType,
@@ -41,9 +41,9 @@ import {
   getDefaultTimeline,
   getTimelineType,
   updateOrCreateDefaultTimeline,
-} from './controller/timelineController';
-import { isLoggedIn } from './middleware/onlyLogin';
-import { needPermissions } from './middleware/needPermissions';
+} from '@controllers/timelineController';
+import { isLoggedIn } from '@middlewares/onlyLogin';
+import { needPermissions } from '@middlewares/needPermissions';
 
 const router = Router();
 

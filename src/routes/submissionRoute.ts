@@ -7,9 +7,9 @@ import {
   draftSubmission,
   getSubmissionByCampaignCreatorId,
   postingSubmission,
-} from './controller/submissionController';
-import { isLoggedIn } from './middleware/onlyLogin';
-import { isSuperAdmin } from './middleware/onlySuperadmin';
+} from '@controllers/submissionController';
+import { isLoggedIn } from '@middlewares/onlyLogin';
+import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 
 const router = Router();
 

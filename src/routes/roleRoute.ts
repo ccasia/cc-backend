@@ -1,6 +1,6 @@
 import { Router } from 'express';
-import { getAllRoles } from './controller/roleController';
-import { isSuperAdmin } from './middleware/onlySuperadmin';
+import { getAllRoles } from '@controllers/roleController';
+import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 
 const router = Router();
 

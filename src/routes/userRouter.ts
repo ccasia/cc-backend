@@ -6,10 +6,10 @@ import {
   updateProfileAdmin,
   createAdmin,
   getAllActiveAdmins,
-} from './controller/userController';
-import { isSuperAdmin } from './middleware/onlySuperadmin';
+} from '@controllers/userController';
+import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 // import { PrismaClient } from '@prisma/client';
-import { needPermissions } from './middleware/needPermissions';
+import { needPermissions } from '@middlewares/needPermissions';
 
 const router = Router();
 // const prisma = new PrismaClient();

@@ -4,10 +4,10 @@ import {
   getFirstDraft,
   submitFeedBackFirstDraft,
   submitFinalDraft,
-} from './controller/draftController';
-import { submitFirstDraft } from './controller/draftController';
-import { isLoggedIn } from './middleware/onlyLogin';
-import { isSuperAdmin } from './middleware/onlySuperadmin';
+} from '@controllers/draftController';
+import { submitFirstDraft } from '@controllers/draftController';
+import { isLoggedIn } from '@middlewares/onlyLogin';
+import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 
 const router = Router();
 
