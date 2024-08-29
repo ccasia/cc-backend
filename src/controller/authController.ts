@@ -287,8 +287,6 @@ export const verifyAdmin = async (req: Request, res: Response) => {
       },
     });
 
-    console.log(admin);
-
     if (!admin) {
       return res.status(404).json({ message: 'Admin not found' });
     }
