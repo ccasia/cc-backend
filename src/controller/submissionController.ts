@@ -3,7 +3,7 @@ import e, { Request, Response } from 'express';
 import { Entity, PrismaClient, SubmissionStatus } from '@prisma/client';
 import { uploadAgreementForm, uploadPitchVideo } from '@configs/cloudStorage.config';
 import { saveNotification } from './notificationController';
-import { clients, io } from './server';
+import { clients, io } from '../server';
 import Ffmpeg from 'fluent-ffmpeg';
 import FfmpegPath from '@ffmpeg-installer/ffmpeg';
 import amqplib from 'amqplib';

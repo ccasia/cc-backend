@@ -18,7 +18,7 @@ import {
   checkTokenValidity,
   updateProfileCreator,
   registerFinanceUser,
-} from '.@controllers/authController';
+} from '@controllers/authController';
 import { validateToken } from '@utils/jwtHelper';
 import { needPermissions } from '@middlewares/needPermissions';
 import { isLoggedIn } from '@middlewares/onlyLogin';

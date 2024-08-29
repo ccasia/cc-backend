@@ -6,7 +6,7 @@ import ffprobePath from '@ffprobe-installer/ffprobe';
 import fs from 'fs';
 import { uploadPitchVideo } from '@configs/cloudStorage.config';
 import amqplib from 'amqplib';
-import { activeProcesses, clients, io } from './server';
+import { activeProcesses, clients, io } from '../server';
 import { Entity, PrismaClient } from '@prisma/client';
 import { saveNotification } from '@controllers/notificationController';
 import child from 'child_process';

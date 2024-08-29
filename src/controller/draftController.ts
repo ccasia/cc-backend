@@ -2,7 +2,7 @@ import { Entity, PrismaClient, User } from '@prisma/client';
 import { Request, Response } from 'express';
 import amqplib from 'amqplib';
 import { Title, saveNotification } from './notificationController';
-import { clients, io } from './server';
+import { clients, io } from '../server';
 
 const prisma = new PrismaClient();
 

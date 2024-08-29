@@ -2,7 +2,7 @@
 import jwt, { JwtPayload, Secret } from 'jsonwebtoken';
 import { Employment, PrismaClient, RoleEnum } from '@prisma/client';
 import { Request, Response } from 'express';
-import { AdminInvitaion, AdminInvite, creatorVerificationEmail } from '.@configs/nodemailer.config';
+import { AdminInvitaion, AdminInvite, creatorVerificationEmail } from '@configs/nodemailer.config';
 import bcrypt from 'bcryptjs';
 import { handleChangePassword } from '@services/authServices';
 import { getUser } from '@services/userServices';

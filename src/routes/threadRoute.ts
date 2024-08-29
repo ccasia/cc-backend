@@ -14,7 +14,7 @@ import {
   getUnreadMessageCount,
   markMessagesAsSeen,
   getTotalUnreadMessageCount,
-} from '.@controllers/threadController';
+} from '@controllers/threadController';
 
 const router = Router();
 

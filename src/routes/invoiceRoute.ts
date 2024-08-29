@@ -7,7 +7,7 @@ import {
   getInvoicesByCreatorId,
   getInvoicesByCampaignId,
   getInvoiceById,
-} from '.@controllers/invoiceController';
+} from '@controllers/invoiceController';
 
 router.get('/creator/:id', getInvoicesByCreatorId);
 router.get('/getInvoicesByCampaignId/:id', getInvoicesByCampaignId);

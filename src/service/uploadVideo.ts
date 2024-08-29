@@ -1,7 +1,7 @@
 import amqplib from 'amqplib';
 import { uploadPitchVideo } from '@configs/cloudStorage.config';
 import { Entity, PrismaClient, User } from '@prisma/client';
-import { clients, io } from './server';
+import { clients, io } from '../server';
 import { Title, saveNotification } from '@controllers/notificationController';
 
 const prisma = new PrismaClient();

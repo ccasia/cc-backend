@@ -9,7 +9,7 @@ import {
   getMediaKit,
   getCreatorFullInfoById,
   updatePaymentForm,
-} from '.@controllers/creatorController';
+} from '@controllers/creatorController';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 import { needPermissions } from '@middlewares/needPermissions';
 import { isLoggedIn } from '@middlewares/onlyLogin';

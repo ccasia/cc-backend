@@ -7,7 +7,7 @@ import timezone from 'dayjs/plugin/timezone';
 import LocalizedFormat from 'dayjs/plugin/localizedFormat';
 import { Title, saveNotification } from '@controllers/notificationController';
 import { notifications } from '@constants/reminders';
-import { clients, io } from './server';
+import { clients, io } from '.../server';
 
 const prisma = new PrismaClient();
 

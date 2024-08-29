@@ -16,7 +16,7 @@ import { uploadAgreementForm, uploadImage, uploadPitchVideo } from '@configs/clo
 import dayjs from 'dayjs';
 import { logChange } from '@services/campaignServices';
 import { saveNotification } from '@controllers/notificationController';
-import { clients, io } from './server';
+import { clients, io } from '../server';
 import fs from 'fs';
 import Ffmpeg from 'fluent-ffmpeg';
 import ffmpegPath from '@ffmpeg-installer/ffmpeg';
