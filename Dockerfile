@@ -30,10 +30,10 @@ COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 
 # Generate Prisma client in production environment
-RUN npx prisma generate
+RUN --mount=type=secret,id=env,target=/app/.env npx prisma generate
 
 # Run database migrations
-RUN yarn deploy
+RUN --mount=type=secret,id=env,target=/app/.env yarn deploy
 
 EXPOSE 3001
 
