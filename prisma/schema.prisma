@@ -853,7 +853,7 @@ model Task {
   dueDate     DateTime?
   labels      String[]
   columnId    String
-  column      Columns   @relation(fields: [columnId], references: [id])
+  column      Columns   @relation(fields: [columnId], references: [id], onDelete: Cascade)
 
   assignees TaskAssignee[]
 }

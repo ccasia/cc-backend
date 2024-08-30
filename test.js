@@ -44,25 +44,22 @@ const columnTasks = [
     id: 1,
     name: 'Position 1',
     position: 0,
+    task: ['dasdsa', 'dasdsa'],
   },
   {
     id: 2,
     name: 'Position 2',
     position: 1,
+    task: ['f', 'a'],
   },
   {
     id: 3,
     name: 'Position 3',
     position: 2,
+    task: ['a', 's'],
   },
 ];
 
-const source = 2;
-const destination = 1;
+const lol = columnTasks.map((item, index) => (item.id === 1 ? { ...item, task: [] } : item));
 
-// Remove and take destination
-const a = columnTasks.splice(source, 1);
-
-columnTasks.splice(destination, 0, ...a);
-
-console.log(columnTasks);
+console.log(lol);

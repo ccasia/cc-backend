@@ -1,4 +1,5 @@
 import {
+  clearColumn,
   createColumn,
   createTask,
   deleteColumn,
@@ -20,6 +21,7 @@ router.post('/createTask', isLoggedIn, createTask);
 router.patch('/moveColumn', isLoggedIn, moveColumn);
 router.patch('/updateColumn', isLoggedIn, editColumn);
 router.patch('/moveTask', isLoggedIn, moveTask);
+router.patch('/clearColumn', isLoggedIn, clearColumn);
 
 router.delete('/deleteColumn', isLoggedIn, deleteColumn);
 

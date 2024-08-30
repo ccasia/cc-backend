@@ -88,7 +88,7 @@ export const deleteColumn = async (req: Request, res: Response) => {
 
     return res.status(200).json(deletedColumn);
   } catch (error) {
-    // console.log(error);
+    console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -190,6 +190,21 @@ export const moveColumn = async (req: Request, res: Response) => {
     return res.status(200).json(updatedColumns);
   } catch (error) {
     // console.log(error);
+    return res.status(400).json(error);
+  }
+};
+
+export const clearColumn = async (req: Request, res: Response) => {
+  const { columnId } = req.body;
+  try {
+    const tasksRemove = await prisma.task.deleteMany({
+      where: {
+        columnId: columnId,
+      },
+    });
+
+    return res.status(200).json({ message: `Tasks deleted ` });
+  } catch (error) {
     return res.status(400).json(error);
   }
 };
