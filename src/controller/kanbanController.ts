@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
+import { Columns } from 'src/types';
 
 const prisma = new PrismaClient();
 
@@ -25,41 +26,9 @@ export const getKanbanBoard = async (req: Request, res: Response) => {
       },
     });
 
-    console.log(board);
-
-    // const json: any = {
-    //   board: {
-    //     id: board?.id,
-    //     columns: {},
-    //     tasks: {},
-    //     ordered: [],
-    //   },
-    // };
-
-    // board?.columns.forEach((column) => {
-    //   json.board.columns[column?.id] = {
-    //     id: column.id,
-    //     name: column.name,
-    //     taskIds: [],
-    //   };
-
-    //   json.board.ordered.push(column?.id);
-
-    //   column.task.forEach((item) => {
-    //     json.board.tasks[item?.id] = {
-    //       id: item.id,
-    //       name: item.title,
-    //       description: item.description,
-    //       createdAt: item.createdAt,
-    //       dueDate: item.dueDate,
-    //     };
-    //     json.board.columns[column?.id].taskIds.push(item?.id);
-    //   });
-    // });
-
     return res.status(200).json({ board: board });
   } catch (error) {
-    console.log(error);
+    // console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -119,7 +88,7 @@ export const deleteColumn = async (req: Request, res: Response) => {
 
     return res.status(200).json(deletedColumn);
   } catch (error) {
-    console.log(error);
+    // console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -220,7 +189,7 @@ export const moveColumn = async (req: Request, res: Response) => {
 
     return res.status(200).json(updatedColumns);
   } catch (error) {
-    console.log(error);
+    // console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -244,6 +213,58 @@ export const createTask = async (req: Request, res: Response) => {
     });
     return res.status(200).json({ message: 'Task Created' });
   } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const moveTask = async (req: Request, res: Response) => {
+  const data = req.body as Columns;
+
+  try {
+    if (data.type === 'differentColumn') {
+      const tasks = data?.allTasks || [];
+      for (const task of tasks) {
+        await prisma.task.update({
+          where: {
+            id: task.id,
+          },
+          data: {
+            position: task.position,
+            columnId: task.columnId,
+          },
+        });
+      }
+
+      return res.status(200).json({ message: 'Task Moved To Other Column' });
+    }
+
+    const column = await prisma.columns.findUnique({
+      where: {
+        id: data.columnId,
+      },
+      include: {
+        task: true,
+      },
+    });
+
+    if (!column) {
+      return res.status(404).json({ message: 'Column not found' });
+    }
+
+    for (const task of data.tasks) {
+      await prisma.task.update({
+        where: {
+          id: task.id,
+        },
+        data: {
+          position: task.position,
+        },
+      });
+    }
+
+    return res.status(200).json({ message: 'Task Moved' });
+  } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   }
 };

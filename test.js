@@ -39,46 +39,30 @@
 // const a = scopes.filter((item) => csmPermissions.includes(item.name));
 // console.log(a);
 
-const columndTasks = [
+const columnTasks = [
   {
     id: 1,
-    name: 'Todsa',
+    name: 'Position 1',
     position: 0,
   },
   {
     id: 2,
-    name: 'dsad',
-    position: 2,
+    name: 'Position 2',
+    position: 1,
   },
   {
     id: 3,
-    name: 'sdasd',
-    position: 1,
+    name: 'Position 3',
+    position: 2,
   },
 ];
 
-const changePosition = (newPosition, id) => {
-  const columnTask = columndTasks.find((task) => task.id === id);
+const source = 2;
+const destination = 1;
 
-  if (!columnTask) {
-    return 'Task not found';
-  }
+// Remove and take destination
+const a = columnTasks.splice(source, 1);
 
-  const updatedColumnTask = { ...columnTask, position: newPosition };
-  const updatedOtherTask = columndTasks.splice(newPosition).map((item, index) => ({
-    ...item,
-    position: index + newPosition + 1,
-  }));
+columnTasks.splice(destination, 0, ...a);
 
-  console.log([updatedColumnTask, updatedOtherTask]);
-
-  // columndTasks.splice(0, 1);
-
-  // columndTasks.splice(newPosition, 0, updatedColumnTask);
-
-  // console.log(columndTasks);
-
-  // return [...columndTasks];
-};
-
-// changePosition(0, 3);
+console.log(columnTasks);
