@@ -25,6 +25,6 @@ router.patch('/update-creator', isLoggedIn, updateCreator);
 router.patch('/update-media-kit', isLoggedIn, updateMediaKit);
 router.patch('/updatePaymentForm', isLoggedIn, updatePaymentForm);
 
-router.delete('/delete/:id', needPermissions(['delete:creator']), isSuperAdmin, deleteCreator);
+router.delete('/delete/:id', isSuperAdmin, deleteCreator);
 
 export default router;

@@ -37,6 +37,16 @@ export const createColumn = async (req: Request, res: Response) => {
   const { name, boardId, position } = req.body.columnData;
 
   try {
+    const board = await prisma.board.findUnique({
+      where: {
+        id: boardId,
+      },
+    });
+
+    if (!board) {
+      return res.status(404).json({ message: 'No board found.' });
+    }
+
     const column = await prisma.columns.create({
       data: {
         name: name,
@@ -49,6 +59,7 @@ export const createColumn = async (req: Request, res: Response) => {
     });
     return res.status(200).json({ message: 'Success', newColumn: column });
   } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   }
 };

@@ -499,13 +499,14 @@ export const updateCreator = async (req: Request, res: Response) => {
     interests,
     languages,
     instagram,
-    // industries,
     employment,
     birthDate,
     Nationality,
   }: CreatorUpdateData = req.body;
 
   const data = new Date(birthDate);
+
+  console.log(req.body);
 
   try {
     const creator = await prisma.creator.update({
@@ -528,19 +529,22 @@ export const updateCreator = async (req: Request, res: Response) => {
         tiktok,
         languages: languages,
         interests: {
-          create: interests.map((interest) => ({ name: interest.name, rank: interest.rank })),
+          create: interests.map((interest) => ({ name: interest })),
         },
-        // industries: {
-        //   create: industries.map((industry) => ({ name: industry.name, rank: industry.rank })),
-        // },
       },
       include: {
         interests: true,
-        // industries: true,
+        user: true,
+      },
+    });
+    await prisma.board.create({
+      data: {
+        name: 'My Task',
+        userId: creator.userId,
       },
     });
 
-    return res.status(200).json({ creator });
+    return res.status(200).json({ name: creator.user.name });
   } catch (error) {
     return res.status(400).json({ message: 'Error updating creator' });
   }
@@ -642,9 +646,9 @@ export const login = async (req: Request, res: Response) => {
       case 'banned':
         return res.status(400).json({ message: 'Account banned.' });
       case 'pending':
-        return res.status(202).json({ message: 'Accoung pending.' });
+        return res.status(400).json({ message: 'Accoung pending.' });
       case 'rejected':
-        return res.status(403).json({ message: 'Account rejected.' });
+        return res.status(400).json({ message: 'Account rejected.' });
     }
 
     // // Hashed password

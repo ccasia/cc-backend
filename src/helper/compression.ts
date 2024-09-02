@@ -2,7 +2,6 @@ import Ffmpeg from 'fluent-ffmpeg';
 import FfmpegPath from '@ffmpeg-installer/ffmpeg';
 import FfmpegProbe from '@ffprobe-installer/ffprobe';
 import path from 'path';
-import fs from 'fs';
 
 Ffmpeg.setFfmpegPath(FfmpegPath.path);
 Ffmpeg.setFfmpegPath(FfmpegProbe.path);

@@ -9,7 +9,6 @@ import amqplib from 'amqplib';
 import { activeProcesses, clients, io } from 'src/server';
 import { Entity, PrismaClient } from '@prisma/client';
 import { saveNotification } from 'src/controller/notificationController';
-import child from 'child_process';
 import dayjs from 'dayjs';
 
 Ffmpeg.setFfmpegPath(ffmpegPath.path);

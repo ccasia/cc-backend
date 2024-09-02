@@ -63,7 +63,7 @@ router.get('/pitch/:id', getPitchById);
 router.get('/firstDraft', getFirstDraft);
 router.get('/timelineType', isSuperAdmin, getTimelineType);
 router.get('/defaultTimeline', isSuperAdmin, getDefaultTimeline);
-router.get('/getCampaignsBySessionId', getCampaignsByCreatorId);
+router.get('/getCampaignsBySessionId', isLoggedIn, getCampaignsByCreatorId);
 router.get('/getCampaignForCreatorById/:id', isLoggedIn, getCampaignForCreatorById);
 router.get('/getCampaignPitch', isLoggedIn, getCampaignPitchForCreator);
 router.get('/getLogistics', isSuperAdmin, getLogisticById);
@@ -82,7 +82,7 @@ router.post(
 
   uploadVideoTest,
 );
-router.post('/saveCampaign', isLoggedIn, isSuperAdmin, saveCampaign);
+router.post('/saveCampaign', isLoggedIn, saveCampaign);
 router.post('/createLogistic', isLoggedIn, createLogistics);
 router.post('/shortlistCreator', isSuperAdmin, shortlistCreator);
 

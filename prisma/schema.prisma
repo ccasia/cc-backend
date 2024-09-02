@@ -42,6 +42,7 @@ model User {
   paymentForm        PaymentForm?
   Board              Board?
   taskAssignee       TaskAssignee[]
+  creatorAgreement   CreatorAgreement[]
 }
 
 model Admin {
@@ -101,7 +102,7 @@ model MediaKit {
   about     String?
   interests String[]
   creatorId String   @unique
-  creator   Creator  @relation(fields: [creatorId], references: [id])
+  creator   Creator  @relation(fields: [creatorId], references: [id], onDelete: Cascade)
 }
 
 model Message {
@@ -170,7 +171,7 @@ model Industry {
   name    String?
   rank    Int?
   userId  String
-  creator Creator @relation(fields: [userId], references: [userId])
+  creator Creator @relation(fields: [userId], references: [userId], onDelete: Cascade)
 }
 
 model Interest {
@@ -178,7 +179,7 @@ model Interest {
   name    String?
   rank    Int?
   userId  String
-  creator Creator @relation(fields: [userId], references: [userId])
+  creator Creator @relation(fields: [userId], references: [userId], onDelete: Cascade)
 }
 
 model Finance {
@@ -300,6 +301,8 @@ model Campaign {
   updatedAt                     DateTime                        @updatedAt
   brandId                       String?
   companyId                     String?
+  brandTone                     String?
+  productName                   String?
   brand                         Brand?                          @relation(fields: [brandId], references: [id])
   company                       Company?                        @relation(fields: [companyId], references: [id])
   campaignAdmin                 CampaignAdmin[]
@@ -317,6 +320,7 @@ model Campaign {
   notifications                 Notification[]
   bookMarkCampaign              BookMarkCampaign?
   logistic                      Logistic[]
+  creatorAgreement              CreatorAgreement[]
 }
 
 model BookMarkCampaign {
@@ -827,7 +831,7 @@ model Board {
   id        String    @id @unique @default(cuid())
   name      String
   createdAt DateTime  @default(now())
-  user      User      @relation(references: [id], fields: [userId])
+  user      User      @relation(references: [id], fields: [userId], onDelete: Cascade)
   userId    String    @unique
   columns   Columns[]
 }
@@ -837,7 +841,7 @@ model Columns {
   name      String
   position  Int      @default(autoincrement())
   boardId   String
-  board     Board    @relation(references: [id], fields: [boardId])
+  board     Board    @relation(references: [id], fields: [boardId], onDelete: Cascade)
   createdAt DateTime @default(now())
   task      Task[]
 }
@@ -859,10 +863,22 @@ model Task {
 }
 
 model TaskAssignee {
-  id         Int      @id @default(autoincrement())
+  id         String   @id @unique @default(cuid())
   assignedAt DateTime @default(now())
   taskId     String
   task       Task     @relation(fields: [taskId], references: [id])
   userId     String
   user       User     @relation(fields: [userId], references: [id])
+}
+
+model CreatorAgreement {
+  id           String   @id @unique @default(cuid())
+  agreementUrl String
+  createdAt    DateTime @default(now())
+  userId       String
+  campaignId   String
+  user         User     @relation(references: [id], fields: [userId])
+  campaign     Campaign @relation(references: [id], fields: [campaignId])
+
+  @@unique([userId, campaignId])
 }

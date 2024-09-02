@@ -8,6 +8,7 @@ const storage = new Storage({
 });
 
 export const uploadImage = async (tempFilePath: string, fileName: string, folderName: string) => {
+  console.log(tempFilePath, fileName, folderName);
   const uploadPromise = new Promise<string>((resolve, reject) => {
     storage.bucket(process.env.BUCKET_NAME as string).upload(
       tempFilePath,

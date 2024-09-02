@@ -26,7 +26,7 @@ export const getCreators = async (_req: Request, res: Response) => {
     });
     return res.status(200).json(creators);
   } catch (error) {
-    return res.status(500).json({ message: error });
+    return res.status(400).json({ message: error });
   }
 };
 
@@ -56,7 +56,7 @@ export const getCreatorByID = async (req: Request, res: Response) => {
 
 export const deleteCreator = async (req: Request, res: Response) => {
   const { id } = req.params;
-  console.log(id);
+
   try {
     const deleteCreator = await prisma.$transaction([
       prisma.industry.deleteMany({
@@ -74,6 +74,9 @@ export const deleteCreator = async (req: Request, res: Response) => {
         where: {
           userId: id,
         },
+        include: {
+          mediaKit: true,
+        },
       }),
 
       prisma.user.delete({
@@ -82,10 +85,11 @@ export const deleteCreator = async (req: Request, res: Response) => {
         },
       }),
     ]);
-    console.log(deleteCreator);
+
     res.status(200).json('Creator deleted successfully');
   } catch (error) {
-    res.status(500).json({ message: error });
+    console.log(error);
+    res.status(400).json({ message: error });
   }
 };
 

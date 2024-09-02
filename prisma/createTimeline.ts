@@ -9,7 +9,7 @@ const timeline_type = [
   { name: 'Agreement', for: 'creator', duration: 1 },
   { name: 'First Draft', for: 'creator', duration: 2 },
   { name: 'Feedback First Draft', for: 'admin', duration: 2 },
-  { name: 'Final Draft', for: 'creator', duration: 0 },
+  { name: 'Final Draft', for: 'creator', duration: 2 },
   { name: 'Feedback Final Draft', for: 'admin', duration: 2 },
   { name: 'QC', for: 'admin', duration: 2 },
   { name: 'Posting', for: 'creator', duration: 2 },
