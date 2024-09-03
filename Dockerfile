@@ -6,7 +6,7 @@ WORKDIR /app
 COPY package.json yarn.lock ./
 RUN yarn install --frozen-lockfile
 
-# Copy source files
+# Copy source files, including .env
 COPY . .
 
 # Generate Prisma client
@@ -23,9 +23,6 @@ WORKDIR /app
 # Define build argument
 ARG DATABASE_URL
 
-# Set environment variable
-ENV DATABASE_URL=$DATABASE_URL
-
 # Copy package files and install production dependencies
 COPY package.json yarn.lock ./
 RUN yarn install --production --frozen-lockfile
@@ -34,6 +31,12 @@ RUN yarn install --production --frozen-lockfile
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder /app/.env ./.env
+
+# Update DATABASE_URL in .env file
+RUN if [ -n "$DATABASE_URL" ]; then \
+    sed -i "s|^DATABASE_URL=.*|DATABASE_URL=$DATABASE_URL|" .env; \
+    fi
 
 # Generate Prisma client in production environment
 RUN npx prisma generate
