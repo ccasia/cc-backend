@@ -1,10 +1,10 @@
 # STAGE 1 - BUILDING THE CODE
 FROM node:20-alpine3.17 AS base
-RUN apk add --no-cache \
-    libreoffice \
-    ttf-dejavu \
-    fontconfig \
-    && rm -rf /var/cache/apk/*
+# RUN apk add --no-cache \
+#     libreoffice \
+#     ttf-dejavu \
+#     fontconfig \
+#     && rm -rf /var/cache/apk/*
 WORKDIR /app
 COPY package.json ./
 COPY yarn.lock ./
