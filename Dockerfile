@@ -11,7 +11,7 @@ COPY yarn.lock ./
 
 FROM base AS development
 ENV NODE_ENV=development
-RUN yarn install
+RUN yarn install --production=false
 COPY . .
 RUN yarn global add prisma
 RUN npx prisma generate
