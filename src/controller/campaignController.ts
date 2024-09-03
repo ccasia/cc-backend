@@ -16,7 +16,7 @@ import { uploadAgreementForm, uploadImage, uploadPitchVideo } from '@configs/clo
 import dayjs from 'dayjs';
 import { logChange } from '@services/campaignServices';
 import { saveNotification } from '@controllers/notificationController';
-import { clients, io } from 'src/server';
+import { clients, io } from '../server';
 import fs from 'fs';
 import Ffmpeg from 'fluent-ffmpeg';
 import ffmpegPath from '@ffmpeg-installer/ffmpeg';
@@ -1756,7 +1756,7 @@ export const uploadVideoTest = async (req: Request, res: Response) => {
   res.on('close', () => {
     console.log('ABORTING....');
     cancel = true;
-    fs.unlinkSync(path.resolve(`src/upload/${outputPath}`));
+    fs.unlinkSync(path.resolve(`./upload/${outputPath}`));
     abortController.abort();
   });
 

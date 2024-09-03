@@ -4,11 +4,12 @@ import Ffmpeg from 'fluent-ffmpeg';
 import ffmpegPath from '@ffmpeg-installer/ffmpeg';
 import ffprobePath from '@ffprobe-installer/ffprobe';
 import fs from 'fs';
-import { uploadPitchVideo } from 'src/config/cloudStorage.config';
+import { uploadPitchVideo } from '@configs/cloudStorage.config';
 import amqplib from 'amqplib';
-import { activeProcesses, clients, io } from 'src/server';
+import { activeProcesses, clients, io } from '../server';
 import { Entity, PrismaClient } from '@prisma/client';
 import { saveNotification } from 'src/controller/notificationController';
+
 import dayjs from 'dayjs';
 
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
@@ -51,7 +52,7 @@ const prisma = new PrismaClient();
 //       const duration: any = await getVideoDuration(tempFilePath);
 
 //       // Create the output file path
-//       // const outputFilePath = path.resolve(`src/upload/${name}`);
+//       // const outputFilePath = path.resolve(`./upload/${name}`);
 
 //       // Create a promise that resolves when the ffmpeg processing is complete
 //       const processPromise = new Promise<void>((resolve, reject) => {
@@ -124,7 +125,7 @@ const prisma = new PrismaClient();
 //   //       .on('error', (err) => {
 //   //         endProcess({ statusCode: 500, text: err.message });
 //   //       })
-//   //       .save(path.resolve(`src/upload/${name}`));
+//   //       .save(path.resolve(`./upload/${name}`));
 //   //   })
 //   //   .catch((err) => console.log(err));
 // });

@@ -1,8 +1,8 @@
 import { Router } from 'express';
 
-import { creatorUploadAgreement } from 'src/controller/tasksController';
+import { creatorUploadAgreement } from '@controllers/tasksController';
 
-import { isLoggedIn } from 'src/middleware/onlyLogin';
+import { isLoggedIn } from '@middlewares/onlyLogin';
 
 const router = Router();
 

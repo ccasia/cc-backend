@@ -1,5 +1,5 @@
 import { PrismaClient } from '@prisma/client';
-import { sendMessageInThread } from 'src/controller/threadController';
+import { sendMessageInThread } from '@controllers/threadController';
 import { Request, Response } from 'express';
 
 const prisma = new PrismaClient();

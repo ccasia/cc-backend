@@ -35,6 +35,7 @@ import {
   creatorAgreements,
 } from 'src/controller/campaignController';
 import { isSuperAdmin } from 'src/middleware/onlySuperadmin';
+
 import {
   createNewTimeline,
   createSingleTimelineType,
@@ -42,9 +43,9 @@ import {
   getDefaultTimeline,
   getTimelineType,
   updateOrCreateDefaultTimeline,
-} from 'src/controller/timelineController';
-import { isLoggedIn } from 'src/middleware/onlyLogin';
-import { needPermissions } from 'src/middleware/needPermissions';
+} from '@controllers/timelineController';
+import { isLoggedIn } from '@middlewares/onlyLogin';
+import { needPermissions } from '@middlewares/needPermissions';
 
 const router = Router();
 

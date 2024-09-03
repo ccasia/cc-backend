@@ -1,6 +1,6 @@
 /* eslint-disable no-unused-vars */
 import { Mode, Modules, PrismaClient } from '@prisma/client';
-// import { AdminInvite } from 'src/config/nodemailer.config';
+// import { AdminInvite } from '@configs/nodemailer.config';
 import jwt, { Secret } from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
 

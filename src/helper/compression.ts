@@ -19,7 +19,7 @@ Ffmpeg.setFfmpegPath(FfmpegProbe.path);
 //     });
 //   };
 
-//   //   const outputFilePath = path.resolve(`src/upload/test.mp4`);
+//   //   const outputFilePath = path.resolve(`./upload/test.mp4`);
 
 //   return new Promise((resolve, reject) => {
 //     Ffmpeg(tempFilePath)
@@ -41,15 +41,15 @@ Ffmpeg.setFfmpegPath(FfmpegProbe.path);
 //       })
 //       .on('end', () => {
 //         console.log('Processing finished.');
-//         resolve(path.resolve(`src/upload/${outputPath}`));
+//         resolve(path.resolve(`./upload/${outputPath}`));
 //         //   (process as unknown as ChildProcess).send({ progress: 100 });
 //       })
 //       .on('error', (err) => {
 //         console.error('Error processing video:', err.message);
-//         fs.unlinkSync(`src/upload/${outputPath}`);
+//         fs.unlinkSync(`./upload/${outputPath}`);
 //         reject(err);
 //       })
-//       .save(path.resolve(`src/upload/${outputPath}`));
+//       .save(path.resolve(`./upload/${outputPath}`));
 //   });
 // };
 
@@ -91,14 +91,14 @@ export const compress = (
       })
       .on('end', () => {
         console.log('Processing finished.');
-        resolve(path.resolve(`src/upload/${outputPath}`));
+        resolve(path.resolve(`./upload/${outputPath}`));
       })
       .on('error', (err) => {
         console.error('Error processing video:', err.message);
-        // fs.unlinkSync(path.resolve(`src/upload/${outputPath}`));
+        // fs.unlinkSync(path.resolve(`./upload/${outputPath}`));
         reject(err);
       })
-      .save(path.resolve(`src/upload/${outputPath}`));
+      .save(path.resolve(`./upload/${outputPath}`));
 
     // Handle abort signal
     abortSignal.addEventListener('abort', () => {

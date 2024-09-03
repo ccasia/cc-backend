@@ -18,10 +18,10 @@ import {
   checkTokenValidity,
   updateProfileCreator,
   registerFinanceUser,
-} from '../controller/authController';
+} from '@controllers/authController';
 import { validateToken } from '@utils/jwtHelper';
-import { needPermissions } from 'src/middleware/needPermissions';
-import { isLoggedIn } from 'src/middleware/onlyLogin';
+import { needPermissions } from '@middlewares/needPermissions';
+import { isLoggedIn } from '@middlewares/onlyLogin';
 
 const router = Router();
 

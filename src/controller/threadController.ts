@@ -1,7 +1,7 @@
 /* eslint-disable no-unused-vars */
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
-import { markMessagesService, fetchMessagesFromThread, totalUnreadMessagesService } from 'src/service/threadService';
+import { markMessagesService, fetchMessagesFromThread, totalUnreadMessagesService } from '@services/threadService';
 
 const prisma = new PrismaClient();
 

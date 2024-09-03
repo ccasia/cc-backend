@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { Entity, PrismaClient } from '@prisma/client';
 import { time } from 'console';
 import { Title, saveNotification } from './notificationController';
-import { clients, io } from 'src/server';
+import { clients, io } from '../server';
 
 const prisma = new PrismaClient();
 
