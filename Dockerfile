@@ -1,6 +1,11 @@
 # Build stage
 FROM node:20-alpine3.17 AS builder
 WORKDIR /app
+RUN apk add --no-cache \
+    libreoffice \
+    ttf-dejavu \
+    fontconfig \
+    && rm -rf /var/cache/apk/*
 
 # Copy package files and install dependencies
 COPY package.json yarn.lock ./
@@ -18,7 +23,13 @@ RUN yarn build
 # Production stage
 FROM node:20-alpine3.17 AS production
 ENV NODE_ENV=production
+
 WORKDIR /app
+RUN apk add --no-cache \
+    libreoffice \
+    ttf-dejavu \
+    fontconfig \
+    && rm -rf /var/cache/apk/*
 
 # Define build argument
 ARG DATABASE_URL
