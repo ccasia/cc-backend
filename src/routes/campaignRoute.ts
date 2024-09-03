@@ -32,6 +32,7 @@ import {
   updateStatusLogistic,
   shortlistCreator,
   receiveLogistic,
+  creatorAgreements,
 } from 'src/controller/campaignController';
 import { isSuperAdmin } from 'src/middleware/onlySuperadmin';
 import {
@@ -67,10 +68,10 @@ router.get('/getCampaignsBySessionId', isLoggedIn, getCampaignsByCreatorId);
 router.get('/getCampaignForCreatorById/:id', isLoggedIn, getCampaignForCreatorById);
 router.get('/getCampaignPitch', isLoggedIn, getCampaignPitchForCreator);
 router.get('/getLogistics', isSuperAdmin, getLogisticById);
-
 router.get('/getSubmissions', isSuperAdmin, getSubmission);
 // router.get('/pitch/:campaignId', getPitchByCampaignId);
 router.get('/getCampaignLog/:id', getCampaignLog);
+router.get('/creatorAgreements/:campaignId', isLoggedIn, creatorAgreements);
 
 router.post('/updateOrCreateDefaultTimeline', updateOrCreateDefaultTimeline);
 router.post('/createCampaign', isSuperAdmin, createCampaign);

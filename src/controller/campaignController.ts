@@ -1925,36 +1925,6 @@ export const shortlistCreator = async (req: Request, res: Response) => {
   } = req.body;
 
   try {
-    // Autofill agreement and return output path
-
-    // const data = await Promise.all(
-    //   creators.map((creator: Creator) =>
-    //     prisma.user.findUnique({
-    //       where: {
-    //         id: creator.id,
-    //       },
-    //       include: {
-    //         creator: true,
-    //       },
-    //     }),
-    //   ),
-    // );
-
-    // const agreementsPath = await Promise.all(
-    //   data.map((item: any) => {
-    //     return agreementInput({
-    //       date: dayjs().format('ddd LL'),
-    //       creatorName: item.name,
-    //       icNumber: '',
-    //       address: item.creator.address,
-    //       agreement_endDate: dayjs().add(1, 'M').format('ddd LL'),
-    //       now_date: dayjs().format('ddd LL'),
-    //     });
-    //   }),
-    // );
-
-    // console.log(agreementsPath);
-
     prisma.$transaction(async (tx) => {
       const timelines = await tx.campaignTimeline.findMany({
         where: {
@@ -2119,6 +2089,29 @@ export const receiveLogistic = async (req: Request, res: Response) => {
     });
 
     return res.status(200).json({ message: 'Item has been successfully delivered.' });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const creatorAgreements = async (req: Request, res: Response) => {
+  const { campaignId } = req.params;
+
+  try {
+    const agreements = await prisma.creatorAgreement.findMany({
+      where: {
+        campaignId: campaignId,
+      },
+      include: {
+        user: {
+          include: {
+            creator: true,
+          },
+        },
+      },
+    });
+
+    return res.status(200).json(agreements);
   } catch (error) {
     return res.status(400).json(error);
   }
