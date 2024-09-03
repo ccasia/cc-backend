@@ -46,5 +46,17 @@ RUN yarn deploy
 
 EXPOSE 3001
 
+# Debug: Show the final directory structure (excluding node_modules)
+RUN echo "Final directory structure (excluding node_modules):" && \
+    find /app -not -path "*/node_modules/*" -not -name "node_modules"
+
+# Debug: Check file permissions
+RUN ls -l /app/dist/server.js
+
+# Debug: Print current working directory
+RUN pwd
+
+WORKDIR /app/dist
+
 # Use node to run the built app.js file
-CMD ["node", "dist/server.js"]
+CMD ["node", "server.js"]
