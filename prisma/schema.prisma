@@ -841,7 +841,7 @@ model Columns {
   name      String
   position  Int      @default(autoincrement())
   boardId   String
-  board     Board    @relation(references: [id], fields: [boardId], onDelete: Cascade)
+  board     Board?   @relation(references: [id], fields: [boardId], onDelete: Cascade)
   createdAt DateTime @default(now())
   task      Task[]
 }
