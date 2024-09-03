@@ -22,7 +22,10 @@ import Ffmpeg from 'fluent-ffmpeg';
 import ffmpegPath from '@ffmpeg-installer/ffmpeg';
 import ffprobePath from '@ffprobe-installer/ffprobe';
 import path from 'path';
-import { compress } from '../helper/compression';
+import { compress } from 'src/helper/compression';
+import { agreementInput } from 'src/helper/agreementInput';
+import { pdfConverter } from 'src/helper/pdfConverter';
+
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
 Ffmpeg.setFfprobePath(ffprobePath.path);
 
@@ -75,6 +78,8 @@ interface Campaign {
   adminId: string;
   timeline: any;
   adminTest: [];
+  brandTone: string;
+  productName: string;
 }
 
 export const createCampaign = async (req: Request, res: Response) => {
@@ -98,16 +103,23 @@ export const createCampaign = async (req: Request, res: Response) => {
     campaignStage,
     campaignIndustries,
     timeline,
+    brandTone,
+    productName,
   }: Campaign = JSON.parse(req.body.data);
 
   try {
     const publicURL: any = [];
 
     if (req.files && req.files.campaignImages) {
-      const images = (req.files as any).campaignImages as [];
-      for (const item of images as any) {
-        // TODO TEMP: "Error uploading file: ENOENT: no such file or directory, open '/app/@configs/test-cs.json'"
-        const url = await uploadImage(item.tempFilePath, item.name, 'campaign');
+      const images: any = (req.files as any).campaignImages as [];
+
+      if (images.length) {
+        for (const item of images as any) {
+          const url = await uploadImage(item.tempFilePath, item.name, 'campaign');
+          publicURL.push(url);
+        }
+      } else {
+        const url = await uploadImage(images.tempFilePath, images.name, 'campaign');
         publicURL.push(url);
       }
     }
@@ -116,7 +128,6 @@ export const createCampaign = async (req: Request, res: Response) => {
 
     if (req.files && req.files.agreementForm) {
       const form = (req.files as any).agreementForm;
-      // TODO TEMP: "Error uploading file: ENOENT: no such file or directory, open '/app/@configs/test-cs.json'"
       agreementFormURL = await uploadAgreementForm(form.tempFilePath, form.name, 'agreementForm');
     }
 
@@ -145,6 +156,8 @@ export const createCampaign = async (req: Request, res: Response) => {
           name: campaignTitle,
           description: campaignDescription,
           status: campaignStage as CampaignStatus,
+          brandTone: brandTone,
+          productName: productName,
           campaignBrief: {
             create: {
               title: campaignTitle,
@@ -233,7 +246,6 @@ export const createCampaign = async (req: Request, res: Response) => {
                         : 'OTHER',
             },
           });
-          console.log(submission);
 
           if (submission?.type === 'OTHER') {
             return tx.campaignTimeline.create({
@@ -648,12 +660,12 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
         match.age = true;
       }
 
-      const interestArr = user?.creator?.interests.map((item: any) => item.name);
+      const interestArr = user?.creator?.interests.map((item: any) => item.name.toLowerCase());
       function hasCommonElement2(arr1: string[], arr2: string[]): boolean {
         return arr1.some((value) => arr2.includes(value));
       }
 
-      const interestsMatch = hasCommonElement2(campaign?.campaignBrief?.industries || [], interestArr);
+      const interestsMatch = hasCommonElement2(campaign?.campaignRequirement?.creator_persona || [], interestArr);
 
       if (interestsMatch) {
         match.interests = true;
@@ -667,12 +679,13 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       return finalMatch;
     };
 
-    const calculateInterestMatchingPercentage = (creatorInterests: Interest[], campaignInterests: []) => {
-      const totalInterests = campaignInterests.length;
+    const calculateInterestMatchingPercentage = (creatorInterests: Interest[], creatorPerona: []) => {
+      const totalInterests = creatorPerona.length;
 
       const matchingInterests = creatorInterests.filter((interest) =>
-        campaignInterests.includes(interest?.name as never),
+        creatorPerona.includes(interest?.name?.toLowerCase() as never),
       ).length;
+
       return (matchingInterests / totalInterests) * 100;
     };
 
@@ -730,26 +743,27 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       return interestMatch * interestWeight + requirementMatch * requirementWeight;
     };
 
-    const getPercentageMatch = (user: any, campaign: any) => {
-      const creatorInterest = user?.creator?.interests.map((item: any) => item.name.toLowerCase());
-      const campInterest = campaign?.campaignBrief?.interests.map((e: string) => e.toLowerCase());
+    // const getPercentageMatch = (user: any, campaign: any) => {
+    //   const creatorInterest = user?.creator?.interests.map((item: any) => item.name.toLowerCase());
+    //   const campInterest = campaign?.campaignBrief?.interests.map((e: string) => e.toLowerCase());
 
-      function getMatchingElements(arr1: string[], arr2: string[]): string[] {
-        return arr1.filter((value) => arr2.includes(value));
-      }
+    //   function getMatchingElements(arr1: string[], arr2: string[]): string[] {
+    //     return arr1.filter((value) => arr2.includes(value));
+    //   }
 
-      const matchedInterests = getMatchingElements(creatorInterest, campInterest);
-      const percantage = (matchedInterests.length / campInterest.length) * 100;
+    //   const matchedInterests = getMatchingElements(creatorInterest, campInterest);
+    //   const percantage = (matchedInterests.length / campInterest.length) * 100;
 
-      return percantage;
-    };
+    //   return percantage;
+    // };
 
     const matchedCampaign = campaigns?.filter((item) => matchCampaign(user, item));
 
     const matchedCampaignWithPercentage = matchedCampaign.map((item) => {
       const interestPercentage = calculateInterestMatchingPercentage(
         user?.creator?.interests as never,
-        item.campaignBrief?.industries as any,
+        item.campaignRequirement?.creator_persona as any,
+        // item.campaignBrief?.industries as any,
       );
 
       const requirementPercentage = calculateRequirementMatchingPercentage(
@@ -763,8 +777,6 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
         percentageMatch: overallMatchingPercentage,
       };
     });
-
-    console.log('MATHCEEE', matchedCampaignWithPercentage);
 
     return res.status(200).json(matchedCampaignWithPercentage);
   } catch (error) {
@@ -966,7 +978,10 @@ export const getCampaignsByCreatorId = async (req: Request, res: Response) => {
             id: id,
           },
           include: {
+            creatorAgreement: true,
             logistic: true,
+            company: true,
+            brand: true,
             campaignBrief: true,
             campaignRequirement: true,
             campaignTimeline: true,
@@ -1602,7 +1617,16 @@ export const getCampaignForCreatorById = async (req: Request, res: Response) => 
         shortlisted: true,
       },
     });
-    return res.status(200).json(campaign);
+
+    const agreement = await prisma.creatorAgreement.findUnique({
+      where: {
+        userId_campaignId: {
+          userId: userid,
+          campaignId: id,
+        },
+      },
+    });
+    return res.status(200).json({ ...campaign, agreement });
   } catch (error) {
     return res.status(400).json(error);
   }
@@ -1932,6 +1956,47 @@ export const shortlistCreator = async (req: Request, res: Response) => {
         },
       });
 
+      const data = await Promise.all(
+        creators.map((creator: Creator) =>
+          tx.user.findUnique({
+            where: {
+              id: creator.id,
+            },
+            include: {
+              creator: true,
+            },
+          }),
+        ),
+      );
+
+      for (const creator of data) {
+        const agreementsPath = agreementInput({
+          date: dayjs().format('ddd LL'),
+          creatorName: creator.name,
+          icNumber: '_______________',
+          address: creator.creator.address,
+          agreement_endDate: dayjs().add(1, 'M').format('ddd LL'),
+          now_date: dayjs().format('ddd LL'),
+        });
+
+        const pdfPath = await pdfConverter(
+          agreementsPath,
+          path.resolve(__dirname, `../form/pdf/${creator.name.split(' ').join('_')}.pdf`),
+        );
+
+        const url = await uploadAgreementForm(pdfPath, `${creator.name.split(' ').join('_')}.pdf`, 'creatorAgreements');
+
+        await tx.creatorAgreement.create({
+          data: {
+            userId: creator.id as string,
+            campaignId: campaignInfo?.id as any,
+            agreementUrl: url,
+          },
+        });
+
+        fs.unlinkSync(pdfPath);
+      }
+
       const shortlistedCreators = await Promise.all(
         creators.map(async (creator: any) => {
           return await tx.shortListedCreator.create({
@@ -2024,6 +2089,29 @@ export const receiveLogistic = async (req: Request, res: Response) => {
     });
 
     return res.status(200).json({ message: 'Item has been successfully delivered.' });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const creatorAgreements = async (req: Request, res: Response) => {
+  const { campaignId } = req.params;
+
+  try {
+    const agreements = await prisma.creatorAgreement.findMany({
+      where: {
+        campaignId: campaignId,
+      },
+      include: {
+        user: {
+          include: {
+            creator: true,
+          },
+        },
+      },
+    });
+
+    return res.status(200).json(agreements);
   } catch (error) {
     return res.status(400).json(error);
   }

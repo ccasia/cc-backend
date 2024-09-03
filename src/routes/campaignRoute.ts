@@ -32,8 +32,10 @@ import {
   updateStatusLogistic,
   shortlistCreator,
   receiveLogistic,
-} from '@controllers/campaignController';
-import { isSuperAdmin } from '@middlewares/onlySuperadmin';
+  creatorAgreements,
+} from 'src/controller/campaignController';
+import { isSuperAdmin } from 'src/middleware/onlySuperadmin';
+
 import {
   createNewTimeline,
   createSingleTimelineType,
@@ -63,14 +65,14 @@ router.get('/pitch/:id', getPitchById);
 router.get('/firstDraft', getFirstDraft);
 router.get('/timelineType', isSuperAdmin, getTimelineType);
 router.get('/defaultTimeline', isSuperAdmin, getDefaultTimeline);
-router.get('/getCampaignsBySessionId', getCampaignsByCreatorId);
+router.get('/getCampaignsBySessionId', isLoggedIn, getCampaignsByCreatorId);
 router.get('/getCampaignForCreatorById/:id', isLoggedIn, getCampaignForCreatorById);
 router.get('/getCampaignPitch', isLoggedIn, getCampaignPitchForCreator);
 router.get('/getLogistics', isSuperAdmin, getLogisticById);
-
 router.get('/getSubmissions', isSuperAdmin, getSubmission);
 // router.get('/pitch/:campaignId', getPitchByCampaignId);
 router.get('/getCampaignLog/:id', getCampaignLog);
+router.get('/creatorAgreements/:campaignId', isLoggedIn, creatorAgreements);
 
 router.post('/updateOrCreateDefaultTimeline', updateOrCreateDefaultTimeline);
 router.post('/createCampaign', isSuperAdmin, createCampaign);
@@ -82,7 +84,7 @@ router.post(
 
   uploadVideoTest,
 );
-router.post('/saveCampaign', isLoggedIn, isSuperAdmin, saveCampaign);
+router.post('/saveCampaign', isLoggedIn, saveCampaign);
 router.post('/createLogistic', isLoggedIn, createLogistics);
 router.post('/shortlistCreator', isSuperAdmin, shortlistCreator);
 

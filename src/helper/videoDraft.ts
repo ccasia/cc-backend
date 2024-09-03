@@ -8,8 +8,8 @@ import { uploadPitchVideo } from '@configs/cloudStorage.config';
 import amqplib from 'amqplib';
 import { activeProcesses, clients, io } from '../server';
 import { Entity, PrismaClient } from '@prisma/client';
-import { saveNotification } from '@controllers/notificationController';
-import child from 'child_process';
+import { saveNotification } from 'src/controller/notificationController';
+
 import dayjs from 'dayjs';
 
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
