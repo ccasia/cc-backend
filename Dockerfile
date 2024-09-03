@@ -1,11 +1,6 @@
 # Build stage
 FROM node:20-alpine3.17 AS builder
 WORKDIR /app
-RUN apk add --no-cache \
-    libreoffice \
-    ttf-dejavu \
-    fontconfig \
-    && rm -rf /var/cache/apk/*
 
 # Copy package files and install dependencies
 COPY package.json yarn.lock ./

@@ -1,18 +1,39 @@
 import nodemailer from 'nodemailer';
-// import dayjs from 'dayjs';
-// import fs from 'fs';
 
-const user = process.env.SMTP_EMAIL;
-// const pass = "nsxtsgpxyaxfjalr"; // Uses google's app specific password
-const pass = process.env.SMTP_PASSWORD;
+const user = process.env.SMTP_EMAIL || 'atiqah@cultcreative.asia';
+const pass = process.env.SMTP_PASSWORD || 'qszpxgxbqxkmbfqy';
 
 const transport = nodemailer.createTransport({
+  service: 'gmail',
   host: 'smtp.gmail.com',
+  secure: false,
   auth: {
     user: user,
     pass: pass,
   },
 });
+
+// const mailOptions = {
+//   from: {
+//     name: 'Atiqah',
+//     address: user,
+//   },
+//   to: 'afiq@nexea.co',
+//   subject: 'Testing',
+//   text: 'Hello Afiq',
+//   html: `<b>Hello Afiq</b>`,
+// };
+
+// const sendMail = async (transport: any, mailOptions: any) => {
+//   try {
+//     await transport.sendMail(mailOptions);
+//     console.log(`Email has been sent.`);
+//   } catch (error) {
+//     console.log(error);
+//   }
+// };
+
+// sendMail(transport, mailOptions);
 
 export const AdminInvitaion = (email: string, confirmationCode: string) => {
   transport

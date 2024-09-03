@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
+import { Columns } from 'src/types';
 
 const prisma = new PrismaClient();
 
@@ -27,6 +28,7 @@ export const getKanbanBoard = async (req: Request, res: Response) => {
 
     return res.status(200).json({ board: board });
   } catch (error) {
+    // console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -35,6 +37,16 @@ export const createColumn = async (req: Request, res: Response) => {
   const { name, boardId, position } = req.body.columnData;
 
   try {
+    const board = await prisma.board.findUnique({
+      where: {
+        id: boardId,
+      },
+    });
+
+    if (!board) {
+      return res.status(404).json({ message: 'No board found.' });
+    }
+
     const column = await prisma.columns.create({
       data: {
         name: name,
@@ -47,6 +59,7 @@ export const createColumn = async (req: Request, res: Response) => {
     });
     return res.status(200).json({ message: 'Success', newColumn: column });
   } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -187,7 +200,22 @@ export const moveColumn = async (req: Request, res: Response) => {
 
     return res.status(200).json(updatedColumns);
   } catch (error) {
-    console.log(error);
+    // console.log(error);
+    return res.status(400).json(error);
+  }
+};
+
+export const clearColumn = async (req: Request, res: Response) => {
+  const { columnId } = req.body;
+  try {
+    const tasksRemove = await prisma.task.deleteMany({
+      where: {
+        columnId: columnId,
+      },
+    });
+
+    return res.status(200).json({ message: `Tasks deleted ` });
+  } catch (error) {
     return res.status(400).json(error);
   }
 };
@@ -201,8 +229,9 @@ export const createTask = async (req: Request, res: Response) => {
 
     await prisma.task.create({
       data: {
-        title: title,
+        name: title,
         position: taskCount + 1,
+        priority: 'Test',
         column: {
           connect: { id: columnId },
         },
@@ -210,6 +239,58 @@ export const createTask = async (req: Request, res: Response) => {
     });
     return res.status(200).json({ message: 'Task Created' });
   } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const moveTask = async (req: Request, res: Response) => {
+  const data = req.body as Columns;
+
+  try {
+    if (data.type === 'differentColumn') {
+      const tasks = data?.allTasks || [];
+      for (const task of tasks) {
+        await prisma.task.update({
+          where: {
+            id: task.id,
+          },
+          data: {
+            position: task.position,
+            columnId: task.columnId,
+          },
+        });
+      }
+
+      return res.status(200).json({ message: 'Task Moved To Other Column' });
+    }
+
+    const column = await prisma.columns.findUnique({
+      where: {
+        id: data.columnId,
+      },
+      include: {
+        task: true,
+      },
+    });
+
+    if (!column) {
+      return res.status(404).json({ message: 'Column not found' });
+    }
+
+    for (const task of data.tasks) {
+      await prisma.task.update({
+        where: {
+          id: task.id,
+        },
+        data: {
+          position: task.position,
+        },
+      });
+    }
+
+    return res.status(200).json({ message: 'Task Moved' });
+  } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   }
 };
