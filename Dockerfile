@@ -12,7 +12,7 @@ COPY yarn.lock ./
 FROM base AS development
 ENV NODE_ENV=development
 RUN yarn install --production=false
-RUN mkdir ./src/pdf
+RUN mkdir -p /app/src/pdf
 COPY . .
 RUN yarn global add prisma
 RUN npx prisma generate
