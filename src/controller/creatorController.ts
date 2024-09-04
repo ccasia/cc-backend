@@ -241,3 +241,58 @@ export const updatePaymentForm = async (req: Request, res: Response) => {
     return res.status(400).json(error);
   }
 };
+
+export const updateCreatorForm = async (req: Request, res: Response) => {
+  const { fullName, address, icNumber, bankName, accountNumber, userId } = req.body;
+  try {
+    const user = await prisma.user.findUnique({
+      where: {
+        id: userId,
+      },
+      include: {
+        creator: true,
+      },
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    await prisma.user.update({
+      where: {
+        id: user?.id,
+      },
+      data: {
+        name: fullName,
+        creator: {
+          update: {
+            address: address,
+            isFormCompleted: true,
+          },
+        },
+        paymentForm: {
+          upsert: {
+            where: {
+              userId: user?.id,
+            },
+            update: {
+              bankName: bankName,
+              bankAccountNumber: accountNumber,
+              icNumber: icNumber,
+            },
+            create: {
+              bankName: bankName,
+              bankAccountNumber: accountNumber,
+              icNumber: icNumber,
+            },
+          },
+        },
+      },
+    });
+
+    return res.status(200).json({ message: 'You can start your pitch now !' });
+  } catch (error) {
+    console.log(error);
+    return res.status(400).json(error);
+  }
+};
