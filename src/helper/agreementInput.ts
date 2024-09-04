@@ -14,8 +14,10 @@ export const agreementInput = (data: {
   address: string;
   agreement_endDate: string;
   now_date: string;
+  creatorAccNumber: string;
+  creatorBankName: string;
 }) => {
-  const { date, creatorName, icNumber, address, agreement_endDate, now_date } = data;
+  const { date, creatorName, icNumber, address, agreement_endDate, now_date, creatorAccNumber, creatorBankName } = data;
 
   try {
     const paths = path.resolve(__dirname, '../form/agreement_template.docx');
@@ -34,6 +36,9 @@ export const agreementInput = (data: {
       CC_PHONE_NUMBER: '123123123',
       AGREEMENT_ENDDATE: agreement_endDate,
       NOW_DATE: now_date,
+      CREATOR_NAME: creatorName,
+      CREATOR_ACCOUNT_NUMBER: creatorAccNumber,
+      CREATOR_BANK_NAME: creatorBankName,
     });
 
     try {

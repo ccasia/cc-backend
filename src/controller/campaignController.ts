@@ -7,9 +7,11 @@ import {
   Entity,
   Interest,
   LogisticStatus,
+  PaymentForm,
   PrismaClient,
   ShortListedCreator,
   Submission,
+  User,
 } from '@prisma/client';
 
 import { uploadAgreementForm, uploadImage, uploadPitchVideo } from '@configs/cloudStorage.config';
@@ -1990,7 +1992,8 @@ export const shortlistCreator = async (req: Request, res: Response) => {
   } = req.body;
 
   try {
-    prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx) => {
+      // Find all timelines based on campaign Id
       const timelines = await tx.campaignTimeline.findMany({
         where: {
           AND: [
@@ -2012,6 +2015,7 @@ export const shortlistCreator = async (req: Request, res: Response) => {
         },
       });
 
+      // Find campaign by campaign Id
       const campaignInfo = await tx.campaign.findUnique({
         where: {
           id: campaignId,
@@ -2021,6 +2025,7 @@ export const shortlistCreator = async (req: Request, res: Response) => {
         },
       });
 
+      // Find creator information y creator id
       const data = await Promise.all(
         creators.map((creator: Creator) =>
           tx.user.findUnique({
@@ -2029,19 +2034,23 @@ export const shortlistCreator = async (req: Request, res: Response) => {
             },
             include: {
               creator: true,
+              paymentForm: true,
             },
           }),
         ),
       );
 
+      // Generating a pdf with creator information
       for (const creator of data) {
         const agreementsPath = agreementInput({
           date: dayjs().format('ddd LL'),
-          creatorName: creator.name,
-          icNumber: '_______________',
+          creatorName: creator.name as string,
+          icNumber: creator?.paymentForm.icNumber,
           address: creator.creator.address,
           agreement_endDate: dayjs().add(1, 'M').format('ddd LL'),
           now_date: dayjs().format('ddd LL'),
+          creatorAccNumber: creator?.paymentForm.bankAccountNumber,
+          creatorBankName: creator?.paymentForm?.bankName,
         });
 
         const pdfPath = await pdfConverter(
@@ -2049,8 +2058,13 @@ export const shortlistCreator = async (req: Request, res: Response) => {
           path.resolve(__dirname, `../form/pdf/${creator.name.split(' ').join('_')}.pdf`),
         );
 
-        const url = await uploadAgreementForm(pdfPath, `${creator.name.split(' ').join('_')}.pdf`, 'creatorAgreements');
+        const url = await uploadAgreementForm(
+          pdfPath,
+          `${creator.name.split(' ').join('_')}-${campaignInfo?.name}.pdf`,
+          'creatorAgreements',
+        );
 
+        // Create creator agreement
         await tx.creatorAgreement.create({
           data: {
             userId: creator.id as string,
@@ -2059,9 +2073,10 @@ export const shortlistCreator = async (req: Request, res: Response) => {
           },
         });
 
-        fs.unlinkSync(pdfPath);
+        await fs.promises.unlink(pdfPath);
       }
 
+      // Create a shortlisted creator data
       const shortlistedCreators = await Promise.all(
         creators.map(async (creator: any) => {
           return await tx.shortListedCreator.create({
@@ -2075,9 +2090,10 @@ export const shortlistCreator = async (req: Request, res: Response) => {
 
       const submissions: any[] = [];
 
+      // Create submissions for creator
       for (const creator of shortlistedCreators) {
         for (const timeline of timelines) {
-          const submission = await tx.submission.create({
+          const submission = tx.submission.create({
             data: {
               dueDate: timeline.endDate,
               campaignId: timeline.campaignId,
@@ -2089,8 +2105,9 @@ export const shortlistCreator = async (req: Request, res: Response) => {
         }
       }
 
+      // Create submissions dependency for submissions
       for (let i = 1; i < submissions.length; i++) {
-        await tx.submissionDependency.create({
+        tx.submissionDependency.create({
           data: {
             submissionId: submissions[i].id,
             dependentSubmissionId: submissions[i - 1].id,
@@ -2135,8 +2152,9 @@ export const shortlistCreator = async (req: Request, res: Response) => {
       );
     });
 
-    return res.status(200).json({ message: 'Successfully shortlisted' });
+    res.status(200).json({ message: 'Successfully shortlisted' });
   } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   }
 };

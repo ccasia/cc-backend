@@ -871,8 +871,8 @@ model CreatorAgreement {
   createdAt    DateTime @default(now())
   userId       String
   campaignId   String
-  user         User     @relation(references: [id], fields: [userId])
-  campaign     Campaign @relation(references: [id], fields: [campaignId])
+  user         User     @relation(references: [id], fields: [userId], onDelete: Cascade)
+  campaign     Campaign @relation(references: [id], fields: [campaignId], onDelete: Cascade)
 
   @@unique([userId, campaignId])
 }
