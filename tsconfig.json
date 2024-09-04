@@ -14,7 +14,8 @@
         "@configs/*": ["./src/config/*"],
         "@middlewares/*": ["./src/middleware/*"],
         "@services/*": ["./src/service/*"],
-        "@utils/*": ["./src/utils/*"]
+        "@utils/*": ["./src/utils/*"],
+        "@helpers/*": ["./src/helper/*"],
       },
       "skipLibCheck": true, // Skip type checking of all declaration files (*.d.ts)
       "esModuleInterop": true, // Enables compatibility with default imports from modules

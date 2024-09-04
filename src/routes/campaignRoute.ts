@@ -33,8 +33,8 @@ import {
   shortlistCreator,
   receiveLogistic,
   creatorAgreements,
-} from 'src/controller/campaignController';
-import { isSuperAdmin } from 'src/middleware/onlySuperadmin';
+} from '@controllers/campaignController';
+import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 
 import {
   createNewTimeline,
