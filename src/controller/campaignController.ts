@@ -399,87 +399,152 @@ export const createCampaign = async (req: Request, res: Response) => {
       return res.status(200).json({ campaign, message: 'Successfully created campaign' });
     });
   } catch (error) {
-    console.log(error);
     return res.status(400).json(error);
   }
 };
+
 // Campaign Info for Admin
 export const getAllCampaigns = async (req: Request, res: Response) => {
   const id = req.session.userid;
   try {
+    let campaigns;
     const admin = await prisma.user.findUnique({
       where: {
         id: id,
       },
     });
 
-    const campaigns = await prisma.campaign.findMany({
-      where: {
-        campaignAdmin: {
-          some: {
-            adminId: admin?.id,
+    if (admin?.role === 'superadmin') {
+      campaigns = await prisma.campaign.findMany({
+        include: {
+          submission: {
+            include: {
+              submissionType: true,
+              dependencies: true,
+            },
           },
-        },
-      },
-      include: {
-        submission: {
-          include: {
-            submissionType: true,
-            dependencies: true,
+          brand: true,
+          company: true,
+          campaignTimeline: true,
+          campaignBrief: true,
+          campaignRequirement: true,
+          campaignLogs: {
+            include: {
+              admin: true,
+            },
           },
-        },
-        brand: true,
-        company: true,
-        campaignTimeline: true,
-        campaignBrief: true,
-        campaignRequirement: true,
-        campaignLogs: {
-          include: {
-            admin: true,
-          },
-        },
-        campaignAdmin: {
-          include: {
-            admin: {
-              include: {
-                user: true,
+          campaignAdmin: {
+            include: {
+              admin: {
+                include: {
+                  user: true,
+                },
               },
             },
           },
-        },
-        campaignSubmissionRequirement: true,
-        pitch: {
-          include: {
-            user: {
-              include: {
-                creator: {
-                  include: {
-                    industries: true,
-                    interests: true,
+          campaignSubmissionRequirement: true,
+          pitch: {
+            include: {
+              user: {
+                include: {
+                  creator: {
+                    include: {
+                      industries: true,
+                      interests: true,
+                    },
                   },
                 },
               },
             },
           },
+          shortlisted: {
+            select: {
+              user: {
+                include: {
+                  creator: true,
+                },
+              },
+              userId: true,
+            },
+          },
+          campaignTasks: {
+            include: {
+              campaignTaskAdmin: true,
+            },
+          },
+          logistic: true,
         },
-        shortlisted: {
-          select: {
-            user: {
-              include: {
-                creator: true,
+      });
+    } else {
+      campaigns = await prisma.campaign.findMany({
+        where: {
+          campaignAdmin: {
+            some: {
+              adminId: admin?.id,
+            },
+          },
+        },
+        include: {
+          submission: {
+            include: {
+              submissionType: true,
+              dependencies: true,
+            },
+          },
+          brand: true,
+          company: true,
+          campaignTimeline: true,
+          campaignBrief: true,
+          campaignRequirement: true,
+          campaignLogs: {
+            include: {
+              admin: true,
+            },
+          },
+          campaignAdmin: {
+            include: {
+              admin: {
+                include: {
+                  user: true,
+                },
               },
             },
-            userId: true,
           },
-        },
-        campaignTasks: {
-          include: {
-            campaignTaskAdmin: true,
+          campaignSubmissionRequirement: true,
+          pitch: {
+            include: {
+              user: {
+                include: {
+                  creator: {
+                    include: {
+                      industries: true,
+                      interests: true,
+                    },
+                  },
+                },
+              },
+            },
           },
+          shortlisted: {
+            select: {
+              user: {
+                include: {
+                  creator: true,
+                },
+              },
+              userId: true,
+            },
+          },
+          campaignTasks: {
+            include: {
+              campaignTaskAdmin: true,
+            },
+          },
+          logistic: true,
         },
-        logistic: true,
-      },
-    });
+      });
+    }
+
     return res.status(200).json(campaigns);
   } catch (error) {
     return res.status(400).json(error);
