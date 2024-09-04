@@ -22,9 +22,9 @@ import Ffmpeg from 'fluent-ffmpeg';
 import ffmpegPath from '@ffmpeg-installer/ffmpeg';
 import ffprobePath from '@ffprobe-installer/ffprobe';
 import path from 'path';
-import { compress } from 'src/helper/compression';
-import { agreementInput } from 'src/helper/agreementInput';
-import { pdfConverter } from 'src/helper/pdfConverter';
+import { compress } from '@helper/compression';
+import { agreementInput } from '@helper/agreementInput';
+import { pdfConverter } from '@helper/pdfConverter';
 
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
 Ffmpeg.setFfprobePath(ffprobePath.path);
