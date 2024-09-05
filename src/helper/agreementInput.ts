@@ -16,8 +16,19 @@ export const agreementInput = (data: {
   now_date: string;
   creatorAccNumber: string;
   creatorBankName: string;
+  paymentAmount?: number;
 }) => {
-  const { date, creatorName, icNumber, address, agreement_endDate, now_date, creatorAccNumber, creatorBankName } = data;
+  const {
+    date,
+    creatorName,
+    icNumber,
+    address,
+    agreement_endDate,
+    now_date,
+    creatorAccNumber,
+    creatorBankName,
+    paymentAmount,
+  } = data;
 
   try {
     const paths = path.resolve(__dirname, '../form/agreement_template.docx');
@@ -39,6 +50,7 @@ export const agreementInput = (data: {
       CREATOR_NAME: creatorName,
       CREATOR_ACCOUNT_NUMBER: creatorAccNumber,
       CREATOR_BANK_NAME: creatorBankName,
+      CREATOR_PAYMENT: paymentAmount ? paymentAmount.toString() : '200',
     });
 
     try {

@@ -2025,7 +2025,7 @@ export const shortlistCreator = async (req: Request, res: Response) => {
         },
       });
 
-      // Find creator information y creator id
+      // Find creator information by creator id
       const data = await Promise.all(
         creators.map((creator: Creator) =>
           tx.user.findUnique({
@@ -2195,6 +2195,15 @@ export const creatorAgreements = async (req: Request, res: Response) => {
     });
 
     return res.status(200).json(agreements);
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const updateAmountAgreement = async (req: Request, res: Response) => {
+  const { paymentAmount, user } = req.body;
+  try {
+    console.log(paymentAmount);
   } catch (error) {
     return res.status(400).json(error);
   }

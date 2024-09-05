@@ -506,8 +506,6 @@ export const updateCreator = async (req: Request, res: Response) => {
 
   const data = new Date(birthDate);
 
-  console.log(req.body);
-
   try {
     const creator = await prisma.creator.update({
       where: {

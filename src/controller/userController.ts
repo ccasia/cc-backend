@@ -64,9 +64,9 @@ export const getAdmins = async (req: Request, res: Response) => {
   const userid = req.session.userid;
   try {
     const data = await handleGetAdmins(userid as string);
-    res.status(200).send(data);
+    return res.status(200).send(data);
   } catch (error) {
-    res.status(400).json({ message: error });
+    return res.status(400).json(error);
   }
 };
 

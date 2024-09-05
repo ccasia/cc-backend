@@ -51,7 +51,7 @@ model Admin {
   mode                  Mode                    @default(normal)
   inviteToken           String?                 @unique
   userId                String                  @unique
-  user                  User                    @relation(fields: [userId], references: [id])
+  user                  User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
   adminPermissionModule AdminPermissionModule[]
   campaignAdmin         CampaignAdmin[]
   role                  Role?                   @relation(fields: [roleId], references: [id])
@@ -470,6 +470,7 @@ model ShortListedCreator {
   shortlisted_date DateTime @default(now())
   campaign         Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   user             User?    @relation(fields: [userId], references: [id])
+  isAgreementReady Boolean  @default(false)
 
   @@unique([userId, campaignId])
   @@index([userId])
