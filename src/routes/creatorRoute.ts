@@ -9,6 +9,7 @@ import {
   getMediaKit,
   getCreatorFullInfoById,
   updatePaymentForm,
+  crawlCreator
 } from '@controllers/creatorController';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 import { needPermissions } from '@middlewares/needPermissions';
@@ -20,6 +21,8 @@ router.get('/getAllCreators', isSuperAdmin, getCreators);
 router.get('/getMediaKit', isSuperAdmin, getMediaKit);
 router.get('/getCreatorByID/:id', isSuperAdmin, getCreatorByID);
 router.get('/getCreatorFullInfoById/:id', isSuperAdmin, getCreatorFullInfoById);
+
+router.post('/crawl', isLoggedIn, isSuperAdmin, crawlCreator);
 
 router.patch('/update-creator', isLoggedIn, updateCreator);
 router.patch('/update-media-kit', isLoggedIn, updateMediaKit);

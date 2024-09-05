@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import https from 'https';
 import { Entity, PrismaClient } from '@prisma/client';
 import { uploadAgreementForm } from '@configs/cloudStorage.config';
 import { Title, saveNotification } from './notificationController';
@@ -241,3 +242,49 @@ export const updatePaymentForm = async (req: Request, res: Response) => {
     return res.status(400).json(error);
   }
 };
+
+export const crawlCreator = async (req: Request, res: Response) => {
+  const { identifier, platform } = req.body;
+
+  const options = {
+    hostname: 'stg.api.fair-indonesia.com',
+    path: '/api/client/analyzer',
+    method: 'POST',
+    headers: {
+      Accept: 'application/json, text/plain, */*',
+      Authorization: 'AtLrQ+Od&KKyxIr+E$4S*2nFS',
+      'Content-Type': 'application/json',
+      Origin: 'https://www.fair-indonesia.com',
+    },
+  };
+
+  const data = JSON.stringify({ identifier, platform });
+
+  return new Promise((resolve, reject) => {
+    const req = https.request(options, (res) => {
+      let responseData = '';
+
+      res.on('data', (chunk) => {
+        responseData += chunk;
+      });
+
+      res.on('end', () => {
+        try {
+          const parsedData = JSON.parse(responseData);
+          resolve(parsedData);
+        } catch (error) {
+          reject(error);
+        }
+      });
+    });
+
+    req.on('error', (error) => {
+      reject(error);
+    });
+
+    req.write(data);
+    req.end();
+  });
+};
+
+
