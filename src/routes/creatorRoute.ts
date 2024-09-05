@@ -22,7 +22,7 @@ router.get('/getMediaKit', isSuperAdmin, getMediaKit);
 router.get('/getCreatorByID/:id', isSuperAdmin, getCreatorByID);
 router.get('/getCreatorFullInfoById/:id', isSuperAdmin, getCreatorFullInfoById);
 
-router.post('/crawl', isLoggedIn, isSuperAdmin, crawlCreator);
+router.post('/crawl', crawlCreator);
 
 router.patch('/update-creator', isLoggedIn, updateCreator);
 router.patch('/update-media-kit', isLoggedIn, updateMediaKit);
