@@ -32,6 +32,7 @@ import {
   receiveLogistic,
   creatorAgreements,
   updateAmountAgreement,
+  sendAgreement,
 } from '@controllers/campaignController';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 
@@ -99,6 +100,7 @@ router.patch('/changePitchStatus', changePitchStatus);
 router.patch('/changeLogisticStatus', isSuperAdmin, updateStatusLogistic); //need permission later
 router.patch('/receiveLogistic', isLoggedIn, receiveLogistic);
 router.patch('/updateAmountAgreement', isLoggedIn, isSuperAdmin, updateAmountAgreement);
+router.patch('/sendAgreement', isLoggedIn, isSuperAdmin, sendAgreement);
 
 router.delete('/timelineType/:id', isSuperAdmin, deleteTimelineType);
 router.delete('/unsaveCampaign/:id', isLoggedIn, unSaveCampaign);

@@ -2093,7 +2093,7 @@ export const shortlistCreator = async (req: Request, res: Response) => {
       // Create submissions for creator
       for (const creator of shortlistedCreators) {
         for (const timeline of timelines) {
-          const submission = tx.submission.create({
+          const submission = await tx.submission.create({
             data: {
               dueDate: timeline.endDate,
               campaignId: timeline.campaignId,
@@ -2107,7 +2107,7 @@ export const shortlistCreator = async (req: Request, res: Response) => {
 
       // Create submissions dependency for submissions
       for (let i = 1; i < submissions.length; i++) {
-        tx.submissionDependency.create({
+        await tx.submissionDependency.create({
           data: {
             submissionId: submissions[i].id,
             dependentSubmissionId: submissions[i - 1].id,
@@ -2201,10 +2201,142 @@ export const creatorAgreements = async (req: Request, res: Response) => {
 };
 
 export const updateAmountAgreement = async (req: Request, res: Response) => {
-  const { paymentAmount, user } = req.body;
+  const { paymentAmount, user, campaignId, id: agreementId } = req.body;
   try {
-    console.log(paymentAmount);
+    const creator = await prisma.user.findUnique({
+      where: {
+        id: user?.id,
+      },
+      include: {
+        paymentForm: true,
+        creator: true,
+      },
+    });
+
+    if (!creator) {
+      return res.status(404).json({ message: 'Creator not found' });
+    }
+
+    const campaign = await prisma.campaign.findUnique({
+      where: {
+        id: campaignId,
+      },
+    });
+
+    if (!campaign) {
+      return res.status(404).json({ message: 'Campaign not found' });
+    }
+
+    const agreementsPath = agreementInput({
+      date: dayjs().format('ddd LL'),
+      creatorName: creator.name as string,
+      icNumber: creator.paymentForm?.icNumber as string,
+      address: creator.creator?.address as string,
+      agreement_endDate: dayjs().add(1, 'M').format('ddd LL'),
+      now_date: dayjs().format('ddd LL'),
+      creatorAccNumber: creator.paymentForm?.bankAccountNumber as string,
+      creatorBankName: creator.paymentForm?.bankName as string,
+      paymentAmount: paymentAmount,
+    });
+
+    const pdfPath = await pdfConverter(
+      agreementsPath,
+      path.resolve(__dirname, `../form/pdf/${creator.name?.split(' ').join('_')}.pdf`),
+    );
+
+    const url = await uploadAgreementForm(
+      pdfPath,
+      `${creator.name?.split(' ').join('_')}-${campaign.name}.pdf`,
+      'creatorAgreements',
+    );
+
+    // Create creator agreement
+    await prisma.creatorAgreement.update({
+      where: {
+        id: agreementId,
+      },
+      data: {
+        userId: creator.id,
+        campaignId: campaign.id,
+        agreementUrl: url,
+        updatedAt: dayjs().format(),
+      },
+    });
+
+    await fs.promises.unlink(pdfPath);
+
+    return res.status(200).json({ message: 'Update Success' });
   } catch (error) {
+    console.log(error);
+    return res.status(400).json(error);
+  }
+};
+
+export const sendAgreement = async (req: Request, res: Response) => {
+  const { user, id: agreementId, agreementUrl, campaignId } = req.body;
+  try {
+    const isUserExist = await prisma.user.findUnique({
+      where: {
+        id: user?.id,
+      },
+      include: {
+        creator: true,
+      },
+    });
+
+    if (!isUserExist) {
+      return res.status(404).json({ message: 'Creator not exist' });
+    }
+
+    const agreement = await prisma.creatorAgreement.findUnique({
+      where: {
+        id: agreementId,
+      },
+    });
+
+    if (!agreement) {
+      return res.status(404).json({ message: 'Agreement not found' });
+    }
+
+    // update the status of agreement
+    await prisma.creatorAgreement.update({
+      where: {
+        id: agreement.id,
+      },
+      data: {
+        isSent: true,
+      },
+    });
+
+    const shortlistedCreator = await prisma.shortListedCreator.findFirst({
+      where: {
+        AND: [
+          {
+            userId: isUserExist.id,
+          },
+          {
+            campaignId: campaignId,
+          },
+        ],
+      },
+    });
+
+    if (!shortlistedCreator) {
+      return res.status(404).json({ message: 'This creator is not shortlisted' });
+    }
+    // update shortlisted creator table
+    await prisma.shortListedCreator.update({
+      where: {
+        id: shortlistedCreator.id,
+      },
+      data: {
+        isAgreementReady: true,
+      },
+    });
+
+    return res.status(200).json({ message: 'Agreement has been sent.' });
+  } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   }
 };
