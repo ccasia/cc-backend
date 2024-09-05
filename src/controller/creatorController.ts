@@ -251,40 +251,40 @@ export const crawlCreator = async (req: Request, res: Response) => {
     path: '/api/client/analyzer',
     method: 'POST',
     headers: {
-      Accept: 'application/json, text/plain, */*',
-      Authorization: 'AtLrQ+Od&KKyxIr+E$4S*2nFS',
+      'Accept': 'application/json, text/plain, */*',
+      'Authorization': 'AtLrQ+Od&KKyxIr+E$4S*2nFS',
       'Content-Type': 'application/json',
-      Origin: 'https://www.fair-indonesia.com',
-    },
+      'Origin': 'https://www.fair-indonesia.com'
+    }
   };
 
   const data = JSON.stringify({ identifier, platform });
 
-  return new Promise((resolve, reject) => {
-    const req = https.request(options, (res) => {
-      let responseData = '';
+  const apiRequest = https.request(options, (apiResponse) => {
+    let responseData = '';
 
-      res.on('data', (chunk) => {
-        responseData += chunk;
-      });
-
-      res.on('end', () => {
-        try {
-          const parsedData = JSON.parse(responseData);
-          resolve(parsedData);
-        } catch (error) {
-          reject(error);
-        }
-      });
+    apiResponse.on('data', (chunk) => {
+      responseData += chunk;
     });
 
-    req.on('error', (error) => {
-      reject(error);
+    apiResponse.on('end', () => {
+      try {
+        const parsedData = JSON.parse(responseData);
+        res.status(200).json(parsedData);
+      } catch (error) {
+        console.error('Error parsing response:', error);
+        res.status(500).json({ error: 'Error parsing response' });
+      }
     });
-
-    req.write(data);
-    req.end();
   });
+
+  apiRequest.on('error', (error) => {
+    console.error('Error making request:', error);
+    res.status(500).json({ error: 'Error making request' });
+  });
+
+  apiRequest.write(data);
+  apiRequest.end();
 };
 
 
