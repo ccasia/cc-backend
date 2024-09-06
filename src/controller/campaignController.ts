@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import {
+  CampaignBrief,
   CampaignRequirement,
   CampaignStatus,
   CampaignTimeline,
@@ -83,6 +84,34 @@ interface Campaign {
   brandTone: string;
   productName: string;
 }
+
+const generateAgreement = async (creator: any, campaign: any) => {
+  const agreementsPath = agreementInput({
+    date: dayjs().format('ddd LL'),
+    creatorName: creator.name as string,
+    icNumber: creator?.paymentForm.icNumber,
+    address: creator.creator.address,
+    agreement_endDate: dayjs().add(1, 'M').format('ddd LL'),
+    now_date: dayjs().format('ddd LL'),
+    creatorAccNumber: creator?.paymentForm.bankAccountNumber,
+    creatorBankName: creator?.paymentForm?.bankName,
+  });
+
+  const pdfPath = await pdfConverter(
+    agreementsPath,
+    path.resolve(__dirname, `../form/pdf/${creator.name.split(' ').join('_')}.pdf`),
+  );
+
+  const url = await uploadAgreementForm(
+    pdfPath,
+    `${creator.name.split(' ').join('_')}-${campaign.name}.pdf`,
+    'creatorAgreements',
+  );
+
+  await fs.promises.unlink(pdfPath);
+
+  return url;
+};
 
 export const createCampaign = async (req: Request, res: Response) => {
   const {
@@ -945,10 +974,6 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
   const { campaignId, content, type } = req.body;
   const id = req.session.userid;
 
-  // const conn = await amqplib.connect('amqp://host.docker.internal');
-  // const channel = await conn.createChannel();
-  // channel.assertQueue('videoQueue');
-
   try {
     const isPitchExist = await prisma.pitch.findUnique({
       where: {
@@ -1474,9 +1499,28 @@ export const changePitchStatus = async (req: Request, res: Response) => {
   const { status, pitchId } = req.body;
 
   try {
-    const pitch = await prisma.pitch.update({
+    const existingPitch = await prisma.pitch.findUnique({
       where: {
         id: pitchId,
+      },
+      include: {
+        campaign: true,
+        user: {
+          include: {
+            paymentForm: true,
+            creator: true,
+          },
+        },
+      },
+    });
+
+    if (!existingPitch) {
+      return res.status(404).json({ message: 'Pitch not found.' });
+    }
+
+    const pitch = await prisma.pitch.update({
+      where: {
+        id: existingPitch.id,
       },
       data: {
         status: status,
@@ -1488,6 +1532,16 @@ export const changePitchStatus = async (req: Request, res: Response) => {
 
     if (pitch.status === 'approved') {
       prisma.$transaction(async (tx) => {
+        const url = await generateAgreement(existingPitch.user, existingPitch.campaign);
+
+        await tx.creatorAgreement.create({
+          data: {
+            userId: existingPitch.userId,
+            campaignId: existingPitch.campaignId,
+            agreementUrl: url,
+          },
+        });
+
         await tx.shortListedCreator.create({
           data: {
             userId: pitch?.userId,
@@ -1820,10 +1874,10 @@ export const uploadVideoTest = async (req: Request, res: Response) => {
   const outputPath = `${userid}_pitch.mp4`;
   let cancel = false;
 
-  res.on('close', () => {
+  res.on('close', async () => {
     console.log('ABORTING....');
     cancel = true;
-    fs.unlinkSync(path.resolve(`./upload/${outputPath}`));
+    await fs.promises.unlink(path.resolve(__dirname, `../upload/${outputPath}`));
     abortController.abort();
   });
 
@@ -1865,6 +1919,7 @@ export const uploadVideoTest = async (req: Request, res: Response) => {
       return res.status(200).json({ publicUrl: a, message: 'Succesfully uploaded' });
     }
   } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -2042,27 +2097,7 @@ export const shortlistCreator = async (req: Request, res: Response) => {
 
       // Generating a pdf with creator information
       for (const creator of data) {
-        const agreementsPath = agreementInput({
-          date: dayjs().format('ddd LL'),
-          creatorName: creator.name as string,
-          icNumber: creator?.paymentForm.icNumber,
-          address: creator.creator.address,
-          agreement_endDate: dayjs().add(1, 'M').format('ddd LL'),
-          now_date: dayjs().format('ddd LL'),
-          creatorAccNumber: creator?.paymentForm.bankAccountNumber,
-          creatorBankName: creator?.paymentForm?.bankName,
-        });
-
-        const pdfPath = await pdfConverter(
-          agreementsPath,
-          path.resolve(__dirname, `../form/pdf/${creator.name.split(' ').join('_')}.pdf`),
-        );
-
-        const url = await uploadAgreementForm(
-          pdfPath,
-          `${creator.name.split(' ').join('_')}-${campaignInfo?.name}.pdf`,
-          'creatorAgreements',
-        );
+        const url = await generateAgreement(creator, campaignInfo);
 
         // Create creator agreement
         await tx.creatorAgreement.create({
@@ -2072,8 +2107,6 @@ export const shortlistCreator = async (req: Request, res: Response) => {
             agreementUrl: url,
           },
         });
-
-        await fs.promises.unlink(pdfPath);
       }
 
       // Create a shortlisted creator data

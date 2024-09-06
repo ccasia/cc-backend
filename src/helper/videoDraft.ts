@@ -179,7 +179,6 @@ const processVideo = async (
           size as number,
         );
 
-        console.log(publicURL);
         const data = await prisma.submission.update({
           where: {
             id: submissionId,

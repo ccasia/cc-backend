@@ -163,7 +163,7 @@ export const uploadPitchVideo = async (
       console.log('ABORTING UPLOAD GCP');
     });
 
-    const publicURL = `https://storage.googleapis.com/${bucketName}/${destination}`;
+    const publicURL = `https://storage.googleapis.com/${bucketName}/${destination}?v=${dayjs().format()}`;
     return publicURL;
   } catch (err) {
     throw new Error(`Error uploading file: ${err.message}`);
