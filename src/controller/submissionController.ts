@@ -65,6 +65,8 @@ export const agreementSubmission = async (req: Request, res: Response) => {
 export const adminManageAgreementSubmission = async (req: Request, res: Response) => {
   const data = req.body;
 
+  console.log(data);
+
   const { campaignId, userId, status, submissionId } = data;
 
   try {
@@ -107,7 +109,6 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
 
     return res.status(200).json({ message: 'Successfully updated' });
   } catch (error) {
-    console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -261,7 +262,7 @@ export const draftSubmission = async (req: Request, res: Response) => {
 };
 
 export const adminManageDraft = async (req: Request, res: Response) => {
-  const { submissionId, feedback, type, reasons } = req.body;
+  const { submissionId, feedback, type, reasons, userId } = req.body;
 
   try {
     const submission = await prisma.submission.findUnique({
@@ -272,6 +273,10 @@ export const adminManageDraft = async (req: Request, res: Response) => {
         feedback: true,
       },
     });
+
+    if (!submission) {
+      return res.status(404).json({ message: 'Submission not found' });
+    }
 
     if (type === 'approve') {
       const sub = await prisma.submission.update({
@@ -305,6 +310,41 @@ export const adminManageDraft = async (req: Request, res: Response) => {
           submissionType: true,
         },
       });
+
+      if (
+        (sub.submissionType.type === 'FIRST_DRAFT' || sub.submissionType.type === 'FINAL_DRAFT') &&
+        sub.status === 'APPROVED'
+      ) {
+        const posting = await prisma.submission.findFirst({
+          where: {
+            AND: [
+              { userId: userId },
+              {
+                submissionType: {
+                  type: {
+                    equals: 'POSTING',
+                  },
+                },
+              },
+            ],
+          },
+        });
+
+        if (!posting) {
+          return res.status(404).json({ message: 'Submission called posting not found.' });
+        }
+
+        await prisma.submission.update({
+          where: {
+            id: posting.id,
+          },
+          data: {
+            startDate: dayjs(req.body.schedule.startDate).format(),
+            endDate: dayjs(req.body.schedule.endDate).format(),
+            dueDate: dayjs(req.body.schedule.endDate).format(),
+          },
+        });
+      }
 
       const notification = await saveNotification(
         sub.userId,

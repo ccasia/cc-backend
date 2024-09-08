@@ -504,6 +504,7 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
             },
           },
           logistic: true,
+          creatorAgreement: true,
         },
       });
     } else {
@@ -572,6 +573,7 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
             },
           },
           logistic: true,
+          creatorAgreement: true,
         },
       });
     }
@@ -2036,6 +2038,7 @@ export const updateStatusLogistic = async (req: Request, res: Response) => {
     });
     return res.status(200).json({ message: 'Successfully changed status' });
   } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   }
 };

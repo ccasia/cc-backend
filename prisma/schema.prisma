@@ -558,6 +558,9 @@ model Submission {
   dependentOn      SubmissionDependency[] @relation("DependentOn")
   Notification     Notification[]
 
+  startDate DateTime?
+  endDate   DateTime?
+
   @@unique([userId, campaignId, submissionTypeId])
 }
 
