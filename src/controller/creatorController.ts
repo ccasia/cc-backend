@@ -247,15 +247,15 @@ export const crawlCreator = async (req: Request, res: Response) => {
   const { identifier, platform } = req.body;
 
   const options = {
-    hostname: 'stg.api.fair-indonesia.com',
-    path: '/api/client/analyzer',
-    method: 'POST',
-    headers: {
-      'Accept': 'application/json, text/plain, */*',
-      'Authorization': 'AtLrQ+Od&KKyxIr+E$4S*2nFS',
-      'Content-Type': 'application/json',
-      'Origin': 'https://www.fair-indonesia.com'
-    }
+      hostname: 'stg.api.fair-indonesia.com',
+      path: '/api/client/analyzer',
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json, text/plain, */*',
+        'Authorization': 'AtLrQ+Od&KKyxIr+E$4S*2nFS',
+        'Content-Type': 'application/json',
+        'Origin': 'https://www.fair-indonesia.com'
+      }
   };
 
   const data = JSON.stringify({ identifier, platform });

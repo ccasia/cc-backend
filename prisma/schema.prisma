@@ -93,6 +93,7 @@ model Creator {
   interests  Interest[]
   invoices   Invoice[]
   mediaKit   MediaKit?
+  socialMediaData Json?
 }
 
 model MediaKit {

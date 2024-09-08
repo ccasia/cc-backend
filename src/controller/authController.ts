@@ -1,6 +1,6 @@
 /* eslint-disable no-unused-vars */
 import jwt, { JwtPayload, Secret } from 'jsonwebtoken';
-import { Employment, PrismaClient, RoleEnum } from '@prisma/client';
+import { Employment, PrismaClient, RoleEnum, Prisma } from '@prisma/client';
 import { Request, Response } from 'express';
 import { AdminInvitaion, AdminInvite, creatorVerificationEmail } from '@configs/nodemailer.config';
 import bcrypt from 'bcryptjs';
@@ -48,6 +48,7 @@ interface CreatorUpdateData {
   phone: string;
   pronounce: string;
   tiktok: string;
+  socialMediaData: Prisma.InputJsonValue;
 }
 
 export const registerUser = async (req: Request, res: Response) => {
@@ -502,6 +503,7 @@ export const updateCreator = async (req: Request, res: Response) => {
     employment,
     birthDate,
     Nationality,
+    socialMediaData
   }: CreatorUpdateData = req.body;
 
   const data = new Date(birthDate);
@@ -531,6 +533,7 @@ export const updateCreator = async (req: Request, res: Response) => {
         interests: {
           create: interests.map((interest) => ({ name: interest })),
         },
+        socialMediaData: socialMediaData,
       },
       include: {
         interests: true,
