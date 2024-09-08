@@ -11,6 +11,7 @@ import { Entity, PrismaClient } from '@prisma/client';
 import { saveNotification } from '@controllers/notificationController';
 
 import dayjs from 'dayjs';
+import { notificationDraft } from './notification';
 
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
 Ffmpeg.setFfprobePath(ffprobePath.path);
@@ -200,22 +201,35 @@ const processVideo = async (
           },
         });
 
-        const notification = await saveNotification(
-          data.userId,
-          `Successfully submitted ${data.submissionType.type}`,
-          Entity.Draft,
-        );
+        const { title, message } = notificationDraft(data.campaign.name, 'Creator');
+
+        const notification = await saveNotification({
+          userId: data.userId,
+          message: message,
+          title: title,
+          entity: 'Draft',
+          entityId: data.campaign.id,
+        });
 
         if (socket) {
           socket.to(clients.get(data.userId)).emit('notification', notification);
         }
 
+        const { title: adminTitle, message: adminMessage } = notificationDraft(
+          data.campaign.name,
+          'Admin',
+          data.user.name as string,
+        );
+
         data.campaign.campaignAdmin.forEach(async (item) => {
-          const notification = await saveNotification(
-            item.adminId,
-            `New draft from ${data.user.name} for campaign ${data.campaign.name}`,
-            Entity.Draft,
-          );
+          const notification = await saveNotification({
+            userId: item.adminId,
+            message: adminMessage,
+            title: adminTitle,
+            entity: 'Draft',
+            entityId: data.campaignId,
+          });
+
           if (socket) {
             socket.to(clients.get(item.adminId)).emit('notification', notification);
           }

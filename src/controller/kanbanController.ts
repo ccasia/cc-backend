@@ -4,6 +4,8 @@ import { Columns } from '@types';
 
 const prisma = new PrismaClient();
 
+const COLUMNS = ['To Do', 'In Progress', 'Done'];
+
 export const getKanbanBoard = async (req: Request, res: Response) => {
   try {
     const board = await prisma.board.findUnique({
@@ -304,7 +306,17 @@ export const createKanbanBoard = async (userId: string) => {
       },
     });
 
-    return board;
+    const columns = COLUMNS.map(async (column, index) => {
+      await prisma.columns.create({
+        data: {
+          name: column,
+          board: { connect: { id: board.id } },
+          position: index,
+        },
+      });
+    });
+
+    return { board, ...columns };
   } catch (error) {
     throw new Error(error);
   }

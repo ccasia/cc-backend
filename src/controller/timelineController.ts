@@ -73,7 +73,11 @@ export const updateOrCreateDefaultTimeline = async (req: Request, res: Response)
 
     await Promise.all(
       admins.map(async (admin) => {
-        const data = await saveNotification(admin.id, 'Default Timeline Is Updated', Entity.Timeline);
+        const data = await saveNotification({
+          userId: admin.id,
+          message: 'Default Timeline Is Updated',
+          entity: 'Timeline',
+        });
         io.to(clients.get(admin.id)).emit('notification', data);
       }),
     );

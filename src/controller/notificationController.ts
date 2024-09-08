@@ -9,44 +9,38 @@ export enum Title {
   Delete,
 }
 
-export const saveNotification = async (userId: string, message: string, entity: Entity, entityId?: string) => {
-  if (entity === 'Campaign' && entityId) {
+export const saveNotification = async ({
+  userId,
+  message,
+  entity,
+  entityId,
+  title,
+}: {
+  userId: string;
+  message: string;
+  entity: Entity;
+  entityId?: string;
+  title?: string;
+}) => {
+  if (entity && entityId) {
     return prisma.notification.create({
       data: {
         message: message,
+        title: title,
         entity: entity,
         campaign: {
           connect: {
             id: entityId || '',
           },
         },
-        notificationStatus: {
+        userNotification: {
           create: {
             userId: userId,
           },
         },
       },
       include: {
-        notificationStatus: {
-          select: {
-            userId: true,
-          },
-        },
-      },
-    });
-  } else if (entity === 'Pitch' && !entityId) {
-    return prisma.notification.create({
-      data: {
-        message: message,
-        entity: entity,
-        notificationStatus: {
-          create: {
-            userId: userId,
-          },
-        },
-      },
-      include: {
-        notificationStatus: {
+        userNotification: {
           select: {
             userId: true,
           },
@@ -54,18 +48,19 @@ export const saveNotification = async (userId: string, message: string, entity: 
       },
     });
   }
+
   return prisma.notification.create({
     data: {
       message: message,
       entity: entity,
-      notificationStatus: {
+      userNotification: {
         create: {
           userId: userId,
         },
       },
     },
     include: {
-      notificationStatus: {
+      userNotification: {
         select: {
           userId: true,
         },
@@ -77,7 +72,7 @@ export const saveNotification = async (userId: string, message: string, entity: 
 export const getNotificationByUserId = async (req: Request, res: Response) => {
   const { userid } = req.session;
   try {
-    const notifications = await prisma.notificationStatus.findMany({
+    const notifications = await prisma.userNotification.findMany({
       where: {
         userId: userid,
       },
@@ -99,7 +94,7 @@ export const getNotificationByUserId = async (req: Request, res: Response) => {
 export const markAllAsRead = async (req: Request, res: Response) => {
   const { userid } = req.session;
   try {
-    await prisma.notificationStatus.updateMany({
+    await prisma.userNotification.updateMany({
       where: {
         userId: userid,
       },
@@ -116,7 +111,7 @@ export const markAllAsRead = async (req: Request, res: Response) => {
 export const archiveAll = async (req: Request, res: Response) => {
   const { userid } = req.session;
   try {
-    await prisma.notificationStatus.updateMany({
+    await prisma.userNotification.updateMany({
       where: {
         userId: userid,
       },

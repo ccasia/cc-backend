@@ -9,6 +9,7 @@ import {
   Interest,
   LogisticStatus,
   PaymentForm,
+  Pitch,
   PrismaClient,
   ShortListedCreator,
   Submission,
@@ -28,6 +29,7 @@ import path from 'path';
 import { compress } from '@helper/compression';
 import { agreementInput } from '@helper/agreementInput';
 import { pdfConverter } from '@helper/pdfConverter';
+import { notificationPitch } from '@helper/notification';
 
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
 Ffmpeg.setFfprobePath(ffprobePath.path);
@@ -387,14 +389,14 @@ export const createCampaign = async (req: Request, res: Response) => {
                   id: campaign.id,
                 },
               },
-              notificationStatus: {
+              userNotification: {
                 create: {
                   userId: admin.id,
                 },
               },
             },
             include: {
-              notificationStatus: {
+              userNotification: {
                 select: {
                   userId: true,
                 },
@@ -975,6 +977,7 @@ export const getAllCampaignsFinance = async (req: Request, res: Response) => {
 export const creatorMakePitch = async (req: Request, res: Response) => {
   const { campaignId, content, type } = req.body;
   const id = req.session.userid;
+  let pitch;
 
   try {
     const isPitchExist = await prisma.pitch.findUnique({
@@ -1007,7 +1010,7 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
     });
 
     if (type === 'video') {
-      const pitch = await prisma.pitch.create({
+      pitch = await prisma.pitch.create({
         data: {
           type: 'video',
           content: content,
@@ -1015,10 +1018,14 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
           campaignId: campaignId,
           status: 'undecided',
         },
+        include: {
+          campaign: true,
+          user: true,
+        },
       });
-      await saveNotification(user?.id as string, `Your pitch has been successfully sent.`, Entity.Pitch);
+      // await saveNotification(user?.id as string, `Your pitch has been successfully sent.`, Entity.Pitch);
     } else {
-      const pitch = await prisma.pitch.create({
+      pitch = await prisma.pitch.create({
         data: {
           type: 'text',
           content: content,
@@ -1026,28 +1033,53 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
           campaignId: campaignId,
           status: 'undecided',
         },
+        include: {
+          campaign: true,
+          user: true,
+        },
       });
     }
 
-    const newPitch = await saveNotification(user?.id as string, `Your pitch has been successfully sent.`, Entity.Pitch);
+    const notification = notificationPitch(pitch.campaign.name, 'Creator');
+
+    const newPitch = await saveNotification({
+      userId: user?.id as string,
+      message: notification.message,
+      title: notification.title,
+      entity: 'Pitch',
+      entityId: campaign?.id as string,
+    });
+
+    // const newPitch = await saveNotification(
+    //   user?.id as string,
+    //   notificationPitchCreator(pitch.campaign.name, 'Creator'),
+    //   Entity.Pitch,
+    //   pitch?.campaign?.id,
+    // );
 
     io.to(clients.get(user?.id)).emit('notification', newPitch);
 
     const admins = campaign?.campaignAdmin;
 
+    const notificationAdmin = notificationPitch(pitch.campaign.name, 'Admin', pitch.user.name as string);
+
     admins?.map(async ({ adminId }) => {
-      const notification = await saveNotification(
-        adminId,
-        `New Pitch By ${user?.name} for campaign ${campaign?.name}`,
-        Entity.Pitch,
-      );
+      const notification = await saveNotification({
+        userId: user?.id as string,
+        message: notificationAdmin.message,
+        title: notificationAdmin.title,
+        entity: 'Pitch',
+        entityId: campaign?.id as string,
+      });
+
+      // await saveNotification(
+      //   adminId,
+      //   `New Pitch By ${user?.name} for campaign ${campaign?.name}`,
+      //   Entity.Pitch,
+      // );
       io.to(clients.get(adminId)).emit('notification', notification);
     });
 
-    // channel.assertQueue('videoQueue');
-
-    // channel.sendToQueue('videoQueue', Buffer.from(JSON.stringify(job)));
-    // return res.status(202).json({ message: 'Successfully Pitch !' });
     return res.status(202).json({ message: 'Successfully Pitch !' });
   } catch (error) {
     return res.status(400).json({ message: 'Error' });
@@ -1126,24 +1158,25 @@ export const changeCampaignStage = async (req: Request, res: Response) => {
 
     if (campaign?.shortlisted.length && campaign?.status === 'PAUSED') {
       campaign?.shortlisted?.map(async (value) => {
-        const data = await saveNotification(
-          value.userId as string,
-          `Campaign ${campaign.name} is down for maintenance`,
-          Entity.Campaign,
-          campaign.id,
-        );
+        const data = await saveNotification({
+          userId: value.userId as string,
+          title: 'Campaign Maintenance',
+          message: `Campaign ${campaign.name} is down for maintenance`,
+          entity: 'Campaign',
+          entityId: campaign.id,
+        });
         io.to(clients.get(value.userId)).emit('notification', data);
       });
     }
 
     if (campaign?.status === 'ACTIVE') {
       campaign.campaignAdmin.forEach(async (admin) => {
-        const data = await saveNotification(
-          admin.adminId,
-          `${campaign.name} is up live !`,
-          Entity.Campaign,
-          campaign.id,
-        );
+        const data = await saveNotification({
+          userId: admin.adminId,
+          message: `${campaign.name} is up live !`,
+          entity: 'Campaign',
+          entityId: campaign.id,
+        });
         io.to(clients.get(admin.adminId)).emit('notification', data);
       });
     }
@@ -1172,12 +1205,12 @@ export const closeCampaign = async (req: Request, res: Response) => {
       },
     });
     campaign.campaignAdmin.forEach(async (item) => {
-      const data = await saveNotification(
-        item.adminId,
-        `${campaign.name} is close on ${dayjs().format('ddd LL')}`,
-        Entity.Campaign,
-        campaign.id,
-      );
+      const data = await saveNotification({
+        userId: item.adminId,
+        message: `${campaign.name} is close on ${dayjs().format('ddd LL')}`,
+        entity: 'Campaign',
+        entityId: campaign.id,
+      });
       io.to(clients.get(item.adminId)).emit('notification', data);
     });
 
@@ -1599,11 +1632,11 @@ export const changePitchStatus = async (req: Request, res: Response) => {
           }),
         );
 
-        const data = await saveNotification(
-          pitch.userId,
-          `Congratulations! You've been shortlisted for the ${pitch.campaign.name} campaign.`,
-          Entity.Shortlist,
-        );
+        const data = await saveNotification({
+          userId: pitch.userId,
+          message: `Congratulations! You've been shortlisted for the ${pitch.campaign.name} campaign.`,
+          entity: 'Shortlist',
+        });
 
         const socketId = clients.get(pitch.userId);
 
@@ -1997,11 +2030,11 @@ export const createLogistics = async (req: Request, res: Response) => {
       },
     });
 
-    const notification = await saveNotification(
-      userId,
-      `Hi ${logistic.user.name}, your logistics details for the ${logistic.campaign.name} campaign are now available. Please check the logistics section for shipping information and tracking details. If you have any questions, don't hesitate to reach out!`,
-      Entity.Logistic,
-    );
+    const notification = await saveNotification({
+      userId: userId,
+      message: `Hi ${logistic.user.name}, your logistics details for the ${logistic.campaign.name} campaign are now available. Please check the logistics section for shipping information and tracking details. If you have any questions, don't hesitate to reach out!`,
+      entity: 'Logistic',
+    });
 
     io.to(clients.get(userId)).emit('notification', notification);
 
@@ -2153,11 +2186,11 @@ export const shortlistCreator = async (req: Request, res: Response) => {
 
       await Promise.all(
         shortlistedCreators.map(async (creator: ShortListedCreator) => {
-          const data = await saveNotification(
-            creator.userId as string,
-            `Congratulations! You've been shortlisted for the ${campaignInfo?.name} campaign.`,
-            Entity.Shortlist,
-          );
+          const data = await saveNotification({
+            userId: creator.userId as string,
+            message: `Congratulations! You've been shortlisted for the ${campaignInfo?.name} campaign.`,
+            entity: 'Shortlist',
+          });
           const socketId = clients.get(creator.userId);
           if (socketId) {
             io.to(socketId).emit('notification', data);

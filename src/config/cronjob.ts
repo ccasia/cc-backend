@@ -8,6 +8,7 @@ import LocalizedFormat from 'dayjs/plugin/localizedFormat';
 import { Title, saveNotification } from '@controllers/notificationController';
 import { notifications } from '@constants/reminders';
 import { clients, io } from '../server';
+import { reminderDueDate } from '@helper/notification';
 
 const prisma = new PrismaClient();
 
@@ -16,9 +17,9 @@ dayjs.extend(utc);
 dayjs.extend(timezone);
 
 const mapping: any = {
-  AGREEMENT_FORM: 'Agreement Form',
-  FIRST_DRAFT: 'First Draft',
-  FINAL_DRAFT: 'Final Draft',
+  AGREEMENT_FORM: 'Agreement',
+  FIRST_DRAFT: 'Draft',
+  FINAL_DRAFT: 'Draft',
   POSTING: 'Posting',
 };
 
@@ -81,17 +82,29 @@ new CronJob(
         (startTrigger.isBefore(today, 'date') || startTrigger.isSame(today, 'date')) &&
         today.isBefore(dayjs(submission.dueDate), 'date')
       ) {
-        const data = await saveNotification(
-          submission.userId,
-          dueDatesObject?.message
-            ? dueDatesObject?.message(
-                mapping[submission.submissionType.type],
-                dayjs(submission.dueDate).format('ddd LL'),
-                submission.campaign.name,
-              )
-            : 'Message function not found',
-          Entity.Timeline,
-        );
+        const { title, message } = reminderDueDate(
+          submission.campaign.name,
+          dayjs(submission.dueDate).format('D MMMM, YYYY'),
+          mapping[submission.submissionType.type],
+        ) as any;
+
+        const data = await saveNotification({
+          userId: submission.userId,
+          entity: 'Timeline',
+          message: message,
+          title: title,
+        });
+        // const data = await saveNotification(
+        //   submission.userId,
+        //   dueDatesObject?.message
+        //     ? dueDatesObject?.message(
+        //         mapping[submission.submissionType.type],
+        //         dayjs(submission.dueDate).format('ddd LL'),
+        //         submission.campaign.name,
+        //       )
+        //     : 'Message function not found',
+        //   Entity.Timeline,
+        // );
         io.to(clients.get(submission.userId)).emit('notification', data);
       }
     });
