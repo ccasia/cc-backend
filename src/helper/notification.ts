@@ -47,7 +47,7 @@ const notificationApproveAgreement = (campaignName: string) => {
 const notificationApproveDraft = (campaignName: string, draft: string) => {
   return {
     title: `✅ ${draft} Approved!`,
-    message: `Your ${draft} for [Campaign Name] has been approved. Great work!`,
+    message: `Your ${draft} for ${campaignName} has been approved. Great work!`,
   };
 };
 
