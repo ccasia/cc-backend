@@ -294,3 +294,18 @@ export const moveTask = async (req: Request, res: Response) => {
     return res.status(400).json(error);
   }
 };
+
+export const createKanbanBoard = async (userId: string) => {
+  try {
+    const board = await prisma.board.create({
+      data: {
+        name: 'My Tasks',
+        user: { connect: { id: userId } },
+      },
+    });
+
+    return board;
+  } catch (error) {
+    throw new Error(error);
+  }
+};

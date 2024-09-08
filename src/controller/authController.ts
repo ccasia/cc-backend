@@ -8,6 +8,7 @@ import { handleChangePassword } from '@services/authServices';
 import { getUser } from '@services/userServices';
 import { verifyToken } from '@utils/jwtHelper';
 import { uploadImage, uploadProfileImage } from '@configs/cloudStorage.config';
+import { createKanbanBoard } from './kanbanController';
 
 const prisma = new PrismaClient();
 
@@ -116,22 +117,20 @@ export const changePassword = async (req: Request, res: Response) => {
 export const registerSuperAdmin = async (req: Request, res: Response) => {
   const { email, password }: RequestData = req.body;
   try {
-    const search = await prisma.user.findFirst({
+    const superadmin = await prisma.user.findFirst({
       where: {
         email,
       },
     });
 
-    console.log(search);
-
-    if (search) {
+    if (superadmin) {
       return res.status(400).json({ message: 'User already exists' });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    const result = await prisma.$transaction(async (prisma) => {
-      const newUser = await prisma.user.create({
+    const result = await prisma.$transaction(async (tx) => {
+      const newUser = await tx.user.create({
         data: {
           email,
           password: hashedPassword,
@@ -141,7 +140,7 @@ export const registerSuperAdmin = async (req: Request, res: Response) => {
         },
       });
 
-      const newAdmin = await prisma.admin.create({
+      const newAdmin = await tx.admin.create({
         data: {
           mode: 'god',
           userId: newUser.id,
@@ -150,6 +149,8 @@ export const registerSuperAdmin = async (req: Request, res: Response) => {
 
       return { newUser, newAdmin };
     });
+
+    await createKanbanBoard(result.newUser.id);
 
     return res.status(201).json(result);
   } catch (error) {
