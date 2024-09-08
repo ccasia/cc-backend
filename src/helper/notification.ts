@@ -15,7 +15,7 @@ const notificationDraft = (campaignName: string, type: 'Admin' | 'Creator', crea
   if (type === 'Admin') {
     return {
       title: '📬 New Draft Received!',
-      message: `A new draft for the ${campaignName} has been submitted by ${creatorName}. Review it in the Campaign Discover to provide feedback`,
+      message: `A new draft for the ${campaignName} has been submitted by ${creatorName}.`,
     };
   }
   return {
@@ -28,7 +28,7 @@ const notificationAgreement = (campaignName: string, type: 'Admin' | 'Creator', 
   if (type === 'Admin') {
     return {
       title: '📄 New Agreement Sent!',
-      message: `An agreement for the ${campaignName} has been submitted by ${creatorName}.  Review it in the Campaign Discover.`,
+      message: `An agreement for the ${campaignName} has been submitted by ${creatorName}. `,
     };
   }
   return {
