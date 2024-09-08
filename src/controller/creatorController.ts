@@ -287,4 +287,26 @@ export const crawlCreator = async (req: Request, res: Response) => {
   apiRequest.end();
 };
 
+export const getCreatorSocialMediaData = async (req: Request, res: Response) => {
+
+  try {
+    const creator = await prisma.creator.findUnique({
+      where: {
+        userId: req.session.userid as string,
+      },
+      select: {
+        socialMediaData: true,
+      },
+    });
+
+    if (!creator) {
+      return res.status(404).json({ message: 'Creator not found' });
+    }
+
+    return res.status(200).json(creator.socialMediaData);
+  } catch (error) {
+    console.error('Error fetching social media data:', error);
+    return res.status(500).json({ message: 'Error fetching social media data' });
+  }
+};
 
