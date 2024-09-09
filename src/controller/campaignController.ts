@@ -87,6 +87,13 @@ interface Campaign {
   productName: string;
 }
 
+const MAPPING: Record<string, string> = {
+  AGREEMENT_FORM: 'Agreement',
+  FIRST_DRAFT: 'First Draft',
+  FINAL_DRAFT: 'Final Draft',
+  POSTING: 'Posting',
+};
+
 const generateAgreement = async (creator: any, campaign: any) => {
   const agreementsPath = agreementInput({
     date: dayjs().format('ddd LL'),
@@ -2084,7 +2091,6 @@ export const shortlistCreator = async (req: Request, res: Response) => {
 
   try {
     await prisma.$transaction(async (tx) => {
-      // Find all timelines based on campaign Id
       const timelines = await tx.campaignTimeline.findMany({
         where: {
           AND: [
@@ -2161,13 +2167,55 @@ export const shortlistCreator = async (req: Request, res: Response) => {
 
       // Create submissions for creator
       for (const creator of shortlistedCreators) {
-        for (const timeline of timelines) {
+        const board = await tx.board.findUnique({
+          where: {
+            userId: creator.userId,
+          },
+          include: {
+            columns: true,
+          },
+        });
+
+        if (!board) {
+          throw new Error('Board not found.');
+        }
+
+        const column = await tx.columns.findFirst({
+          where: {
+            AND: [
+              { boardId: board?.id },
+              {
+                name: {
+                  contains: 'To Do',
+                },
+              },
+            ],
+          },
+        });
+
+        if (!column) {
+          throw new Error('Column not found.');
+        }
+
+        for (const [index, timeline] of timelines.entries()) {
           const submission = await tx.submission.create({
             data: {
               dueDate: timeline.endDate,
               campaignId: timeline.campaignId,
               userId: creator.userId as string,
               submissionTypeId: timeline.submissionTypeId as string,
+              task: {
+                create: {
+                  name: timeline.name,
+                  position: index,
+                  columnId: column?.id as string,
+                  priority: '',
+                  status: 'To Do',
+                },
+              },
+            },
+            include: {
+              submissionType: true,
             },
           });
           submissions.push(submission);

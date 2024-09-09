@@ -13,9 +13,23 @@ export const getKanbanBoard = async (req: Request, res: Response) => {
         userId: req.session.userid,
       },
       include: {
+        user: true,
         columns: {
           include: {
             task: {
+              include: {
+                submission: {
+                  include: {
+                    feedback: true,
+                    campaign: {
+                      include: {
+                        campaignTimeline: true,
+                      },
+                    },
+                    submissionType: true,
+                  },
+                },
+              },
               orderBy: {
                 position: 'asc',
               },
@@ -30,7 +44,6 @@ export const getKanbanBoard = async (req: Request, res: Response) => {
 
     return res.status(200).json({ board: board });
   } catch (error) {
-    // console.log(error);
     return res.status(400).json(error);
   }
 };

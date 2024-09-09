@@ -536,12 +536,15 @@ export const updateCreator = async (req: Request, res: Response) => {
         user: true,
       },
     });
-    await prisma.board.create({
-      data: {
-        name: 'My Task',
-        userId: creator.userId,
-      },
-    });
+
+    // await prisma.board.create({
+    //   data: {
+    //     name: 'My Task',
+    //     userId: creator.userId,
+    //   },
+    // });
+
+    await createKanbanBoard(creator.user.id);
 
     return res.status(200).json({ name: creator.user.name });
   } catch (error) {

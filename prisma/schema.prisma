@@ -562,6 +562,7 @@ model Submission {
 
   startDate DateTime?
   endDate   DateTime?
+  task      Task?
 
   @@unique([userId, campaignId, submissionTypeId])
 }
@@ -847,17 +848,19 @@ model Columns {
 }
 
 model Task {
-  id          String    @id @unique @default(cuid())
-  name        String
-  description String?
-  status      String?
-  position    Int
-  priority    String
-  createdAt   DateTime  @default(now())
-  dueDate     DateTime?
-  labels      String[]
-  columnId    String
-  column      Columns   @relation(fields: [columnId], references: [id], onDelete: Cascade)
+  id           String      @id @unique @default(cuid())
+  name         String
+  description  String?
+  status       String?
+  position     Int
+  priority     String?
+  createdAt    DateTime    @default(now())
+  dueDate      DateTime?
+  labels       String[]
+  columnId     String
+  column       Columns     @relation(fields: [columnId], references: [id], onDelete: Cascade)
+  submissionId String?     @unique
+  submission   Submission? @relation(references: [id], fields: [submissionId])
 
   assignees TaskAssignee[]
 }
