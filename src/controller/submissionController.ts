@@ -9,7 +9,7 @@ import FfmpegPath from '@ffmpeg-installer/ffmpeg';
 import amqplib from 'amqplib';
 import dayjs from 'dayjs';
 import { MAP_TIMELINE } from '@constants/map-timeline';
-
+import { createInvoiceService } from '../service/invoiceService';
 Ffmpeg.setFfmpegPath(FfmpegPath.path);
 // Ffmpeg.setFfmpegPath(FfmpegProbe.path);
 
@@ -415,6 +415,7 @@ export const postingSubmission = async (req: Request, res: Response) => {
 
 export const adminManagePosting = async (req: Request, res: Response) => {
   const { status, submissionId } = req.body;
+  const userId = req.session.userid;
   try {
     const data = await prisma.submission.update({
       where: {
@@ -425,11 +426,18 @@ export const adminManagePosting = async (req: Request, res: Response) => {
         isReview: true,
       },
       include: {
-        user: true,
+        user: {
+          include: {
+            creator: true,
+            paymentForm: true,
+          },
+        },
         campaign: true,
       },
     });
 
+    const generatedInvoice = status === 'APPROVED' ?  createInvoiceService(data, userId) : null;
+    console.log('invoice generated', generatedInvoice);
     const notification = await saveNotification(
       data.userId,
       `Your posting has been approved for campaign ${data.campaign.name}`,
