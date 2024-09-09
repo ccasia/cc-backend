@@ -264,7 +264,7 @@ export const crawlCreator = async (req: Request, res: Response) => {
       'Content-Type': 'application/json',
       'Origin': 'https://www.fair-indonesia.com'
     },
-    rejectUnauthorized: false
+    // rejectUnauthorized: false
   };
 
   const data = JSON.stringify({ identifier, platform });
