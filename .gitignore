@@ -131,3 +131,5 @@ dist
 .pnp.*
 
 src/config/*.json
+
+.env
