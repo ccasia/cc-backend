@@ -24,10 +24,7 @@ export const registerUser = async ({ email, password }: User) => {
   });
 };
 
-export const registerSuperadmin = async (
-  { email, password }: User,
-  { name, country, phoneNumber }: SuperAdmin,
-) => {
+export const registerSuperadmin = async ({ email, password }: User, { name, country, phoneNumber }: SuperAdmin) => {
   try {
     const user = await prisma.user.create({
       data: {

@@ -504,7 +504,7 @@ export const updateCreator = async (req: Request, res: Response) => {
     employment,
     birthDate,
     Nationality,
-    socialMediaData
+    socialMediaData,
   }: CreatorUpdateData = req.body;
 
   const data = new Date(birthDate);

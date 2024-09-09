@@ -315,10 +315,10 @@ export const crawlCreator = async (req: Request, res: Response) => {
     path: '/api/client/analyzer',
     method: 'POST',
     headers: {
-      'Accept': 'application/json, text/plain, */*',
-      'Authorization': 'AtLrQ+Od&KKyxIr+E$4S*2nFS',
+      Accept: 'application/json, text/plain, */*',
+      Authorization: 'AtLrQ+Od&KKyxIr+E$4S*2nFS',
       'Content-Type': 'application/json',
-      'Origin': 'https://www.fair-indonesia.com'
+      Origin: 'https://www.fair-indonesia.com',
     },
     // rejectUnauthorized: false
   };
@@ -370,7 +370,6 @@ export const crawlCreator = async (req: Request, res: Response) => {
 };
 
 export const getCreatorSocialMediaData = async (req: Request, res: Response) => {
-
   try {
     const creator = await prisma.creator.findUnique({
       where: {
@@ -391,4 +390,3 @@ export const getCreatorSocialMediaData = async (req: Request, res: Response) => 
     return res.status(500).json({ message: 'Error fetching social media data' });
   }
 };
-
