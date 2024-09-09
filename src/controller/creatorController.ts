@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import https from 'https';
 import { Entity, PrismaClient } from '@prisma/client';
 import { uploadAgreementForm } from '@configs/cloudStorage.config';
 import { Title, saveNotification } from './notificationController';
@@ -297,3 +298,97 @@ export const updateCreatorForm = async (req: Request, res: Response) => {
     return res.status(400).json(error);
   }
 };
+
+export const crawlCreator = async (req: Request, res: Response) => {
+  console.log('crawlCreator function called');
+  console.log('Request body:', req.body);
+
+  const { identifier, platform } = req.body;
+
+  if (!identifier || !platform) {
+    console.log('Missing identifier or platform');
+    return res.status(400).json({ error: 'Missing identifier or platform' });
+  }
+
+  const options = {
+    hostname: 'stg.api.fair-indonesia.com',
+    path: '/api/client/analyzer',
+    method: 'POST',
+    headers: {
+      'Accept': 'application/json, text/plain, */*',
+      'Authorization': 'AtLrQ+Od&KKyxIr+E$4S*2nFS',
+      'Content-Type': 'application/json',
+      'Origin': 'https://www.fair-indonesia.com'
+    },
+    // rejectUnauthorized: false
+  };
+
+  const data = JSON.stringify({ identifier, platform });
+
+  console.log('Sending request to external API with data:', data);
+
+  try {
+    const result = await new Promise((resolve, reject) => {
+      const apiRequest = https.request(options, (apiResponse) => {
+        console.log('Received response from external API');
+        console.log('Status Code:', apiResponse.statusCode);
+        console.log('Headers:', apiResponse.headers);
+
+        let responseData = '';
+
+        apiResponse.on('data', (chunk) => {
+          responseData += chunk;
+        });
+
+        apiResponse.on('end', () => {
+          console.log('Response data:', responseData);
+          try {
+            const parsedData = JSON.parse(responseData);
+            console.log('Parsed data:', parsedData);
+            resolve(parsedData);
+          } catch (error) {
+            console.error('Error parsing response:', error);
+            reject(new Error(`Error parsing response: ${error.message}`));
+          }
+        });
+      });
+
+      apiRequest.on('error', (error) => {
+        console.error('Error making request:', error);
+        reject(new Error(`Error making request: ${error.message}`));
+      });
+
+      apiRequest.write(data);
+      apiRequest.end();
+    });
+
+    res.status(200).json(result);
+  } catch (error) {
+    console.error('Unexpected error:', error);
+    res.status(500).json({ error: 'Unexpected error', details: error.message });
+  }
+};
+
+export const getCreatorSocialMediaData = async (req: Request, res: Response) => {
+
+  try {
+    const creator = await prisma.creator.findUnique({
+      where: {
+        userId: req.session.userid as string,
+      },
+      select: {
+        socialMediaData: true,
+      },
+    });
+
+    if (!creator) {
+      return res.status(404).json({ message: 'Creator not found' });
+    }
+
+    return res.status(200).json(creator.socialMediaData);
+  } catch (error) {
+    console.error('Error fetching social media data:', error);
+    return res.status(500).json({ message: 'Error fetching social media data' });
+  }
+};
+
