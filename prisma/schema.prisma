@@ -359,22 +359,24 @@ model CampaignRequirement {
 }
 
 model CampaignBrief {
-  id             String   @id @unique @default(cuid())
-  title          String   @db.VarChar(255)
-  objectives     String?  @db.VarChar(255)
-  images         Json?
-  agreementFrom  String   @db.VarChar(255)
-  startDate      DateTime
-  endDate        DateTime
-  interests      Json?
-  industries     Json?
-  success        String?  @db.VarChar(255)
-  campaigns_do   Json?
-  campaigns_dont Json?
-  updatedAt      DateTime @updatedAt
-  createdAt      DateTime @default(now())
-  campaignId     String   @unique
-  campaign       Campaign @relation(fields: [campaignId], references: [id])
+  id                  String   @id @unique @default(cuid())
+  title               String   @db.VarChar(255)
+  objectives          String?  @db.VarChar(255)
+  images              Json?
+  agreementFrom       String   @db.VarChar(255)
+  startDate           DateTime
+  endDate             DateTime
+  interests           Json?
+  industries          Json?
+  success             String?  @db.VarChar(255)
+  socialMediaPlatform String[]
+  videoAngle          String[]
+  campaigns_do        Json?
+  campaigns_dont      Json?
+  updatedAt           DateTime @updatedAt
+  createdAt           DateTime @default(now())
+  campaignId          String   @unique
+  campaign            Campaign @relation(fields: [campaignId], references: [id])
 }
 
 model Permission {

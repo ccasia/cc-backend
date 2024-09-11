@@ -692,7 +692,6 @@ export const login = async (req: Request, res: Response) => {
       accessToken: accessToken,
     });
   } catch (error) {
-    console.log(error);
     return res.send(error);
   }
 };

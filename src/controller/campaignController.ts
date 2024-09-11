@@ -85,6 +85,8 @@ interface Campaign {
   adminTest: [];
   brandTone: string;
   productName: string;
+  socialMediaPlatform: string[];
+  videoAngle: string[];
 }
 
 const MAPPING: Record<string, string> = {
@@ -130,6 +132,8 @@ export const createCampaign = async (req: Request, res: Response) => {
     campaignEndDate,
     campaignInterests,
     campaignObjectives,
+    socialMediaPlatform,
+    videoAngle,
     campaignDescription,
     audienceGender,
     audienceAge,
@@ -206,10 +210,12 @@ export const createCampaign = async (req: Request, res: Response) => {
               agreementFrom: agreementFormURL,
               startDate: dayjs(campaignStartDate) as any,
               endDate: dayjs(campaignEndDate) as any,
-              // interests: campaignInterests,
+
               industries: campaignIndustries,
               campaigns_do: campaignDo,
               campaigns_dont: campaignDont,
+              videoAngle: videoAngle,
+              socialMediaPlatform: socialMediaPlatform,
             },
           },
           campaignRequirement: {
@@ -1641,6 +1647,7 @@ export const changePitchStatus = async (req: Request, res: Response) => {
 
         const data = await saveNotification({
           userId: pitch.userId,
+          title: "✅ You're shorlisted!",
           message: `Congratulations! You've been shortlisted for the ${pitch.campaign.name} campaign.`,
           entity: 'Shortlist',
         });
