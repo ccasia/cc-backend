@@ -6,11 +6,14 @@ const prisma = new PrismaClient();
 
 // get invoices by creator id
 export const getInvoicesByCreatorId = async (req: Request, res: Response) => {
-  const { id } = req.params;
+  const  userid  = req.session.userid;
   try {
     const invoices = await prisma.invoice.findMany({
       where: {
-        creatorId: id,
+        creatorId: userid,
+      },
+      include: {
+        campaign: true,
       },
     });
     res.status(200).json(invoices);

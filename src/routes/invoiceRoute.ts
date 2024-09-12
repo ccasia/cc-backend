@@ -12,7 +12,7 @@ import {
   updateInvoice
 } from '@controllers/invoiceController';
 
-router.get('/creator/:id', getInvoicesByCreatorId);
+router.get('/creator', getInvoicesByCreatorId);
 router.get('/getInvoicesByCampaignId/:id', getInvoicesByCampaignId);
 router.get('/:id', getInvoiceById);
 router.post('/create', createInvoice);
