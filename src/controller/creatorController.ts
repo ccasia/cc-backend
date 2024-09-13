@@ -45,6 +45,7 @@ export const getCreatorByID = async (req: Request, res: Response) => {
         creator: {
           include: {
             interests: true,
+            mediaKit: true,
           },
         },
       },

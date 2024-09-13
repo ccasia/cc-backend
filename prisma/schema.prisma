@@ -474,6 +474,7 @@ model ShortListedCreator {
   campaign         Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   user             User?    @relation(fields: [userId], references: [id])
   isAgreementReady Boolean  @default(false)
+  isCampaignDone   Boolean  @default(false)
 
   @@unique([userId, campaignId])
   @@index([userId])
