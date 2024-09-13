@@ -245,7 +245,12 @@ export const updatePaymentForm = async (req: Request, res: Response) => {
 };
 
 export const updateCreatorForm = async (req: Request, res: Response) => {
+
+//   const { fullName, address, icNumber, bankName, accountNumber } = req.body;
+//   const userId = req.session.userid as string;
+
   const { fullName, address, icNumber, bankName, accountNumber, userId } = req.body;
+
   console.log(req.body);
   try {
     const user = await prisma.user.findUnique({

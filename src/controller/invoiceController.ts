@@ -6,11 +6,14 @@ const prisma = new PrismaClient();
 
 // get invoices by creator id
 export const getInvoicesByCreatorId = async (req: Request, res: Response) => {
-  const { id } = req.params;
+  const  userid  = req.session.userid;
   try {
     const invoices = await prisma.invoice.findMany({
       where: {
-        creatorId: id,
+        creatorId: userid,
+      },
+      include: {
+        campaign: true,
       },
     });
     res.status(200).json(invoices);
@@ -58,8 +61,28 @@ export const getInvoiceById = async (req: Request, res: Response) => {
     res.status(500).json({ error: 'Something went wrong' });
   }
 };
+
+// get invoice by creator id and campaign id
+export const getInvoiceByCreatorIdAndCampaignId = async (req: Request, res: Response) => {
+  const { creatorId, campaignId } = req.params;
+  console.log(req.params);
+  try {
+    const invoice = await prisma.invoice.findFirst({
+      where: {
+        creatorId: creatorId,
+        campaignId: campaignId,
+      },
+    });
+    res.status(200).json(invoice);
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ error: 'Something went wrong' });
+  }
+};
+
 // invoice type definition
 interface invoiceData {
+  invoiceId: string;
   invoiceNumber: string;
   createDate: Date;
   dueDate: Date;
@@ -92,9 +115,7 @@ export const createInvoice = async (req: Request, res: Response) => {
   }: invoiceData = req.body;
   const item: object = items[0];
   const creatorIdInfo = invoiceFrom.id;
-  console.log(invoiceFrom);
   const creator = await prisma.creator.findMany();
-  console.log(creator);
 
   try {
     const invoice = await prisma.invoice.create({
@@ -120,6 +141,50 @@ export const createInvoice = async (req: Request, res: Response) => {
   }
 };
 
+// update invoice status
+export const updateInvoiceStatus = async (req: Request, res: Response) => {
+  const { invoiceId, status } = req.body;
+  try {
+    const invoice = await prisma.invoice.update({
+      where: {
+        id: invoiceId,
+      },
+      data: {
+        status: status as InvoiceStatus,
+      },
+    });
+    res.status(200).json(invoice);
+  } catch (error) {
+    res.status(500).json({ error: 'Something went wrong' });
+  }
+};
+
+export const updateInvoice = async (req: Request, res: Response) => {
+  console.log(req.body);
+  const { invoiceId, dueDate, status, invoiceFrom, invoiceTo, items, totalAmount, campaignId, bankInfo }: invoiceData =
+    req.body;
+  try {
+    const invoice = await prisma.invoice.update({
+      where: {
+        id: invoiceId,
+      },
+      data: {
+        dueDate,
+        status: status as InvoiceStatus,
+        invoiceFrom,
+        invoiceTo,
+        task: items[0],
+        amount: totalAmount,
+        bankAcc: bankInfo,
+        campaignId,
+      },
+    });
+    res.status(200).json(invoice);
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ error: 'Something went wrong' });
+  }
+};
 // create delete function
 
 // create update function
