@@ -1,4 +1,5 @@
 import { Storage, TransferManager } from '@google-cloud/storage';
+import dayjs from 'dayjs';
 import fs from 'fs';
 
 const pathToJSONKey = `${__dirname}/test-cs.json`;
@@ -162,7 +163,7 @@ export const uploadPitchVideo = async (
       console.log('ABORTING UPLOAD GCP');
     });
 
-    const publicURL = `https://storage.googleapis.com/${bucketName}/${destination}`;
+    const publicURL = `https://storage.googleapis.com/${bucketName}/${destination}?v=${dayjs().format()}`;
     return publicURL;
   } catch (err) {
     throw new Error(`Error uploading file: ${err.message}`);
@@ -188,7 +189,7 @@ export const uploadAgreementForm = async (
     await file.makePublic();
 
     // Construct the public URL
-    const publicURL = `https://storage.googleapis.com/${bucketName}/${destination}`;
+    const publicURL = `https://storage.googleapis.com/${bucketName}/${destination}?v=${dayjs().format()}`;
     return publicURL;
   } catch (err) {
     throw new Error(`Error uploading file: ${err.message}`);

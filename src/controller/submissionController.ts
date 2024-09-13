@@ -9,14 +9,25 @@ import FfmpegPath from '@ffmpeg-installer/ffmpeg';
 import amqplib from 'amqplib';
 import dayjs from 'dayjs';
 import { MAP_TIMELINE } from '@constants/map-timeline';
+
 import { createInvoiceService } from '../service/invoiceService';
+
+import {
+  notificationAgreement,
+  notificationApproveAgreement,
+  notificationApproveDraft,
+  notificationDraft,
+  notificationPosting,
+  notificationRejectDraft,
+} from '@helper/notification';
+
 Ffmpeg.setFfmpegPath(FfmpegPath.path);
 // Ffmpeg.setFfmpegPath(FfmpegProbe.path);
 
 const prisma = new PrismaClient();
 
 export const agreementSubmission = async (req: Request, res: Response) => {
-  const { campaignId, submissionTypeId, submissionId } = JSON.parse(req.body.data);
+  const { submissionId } = JSON.parse(req.body.data);
 
   try {
     if (req.files && req.files.agreementForm) {
@@ -44,15 +55,40 @@ export const agreementSubmission = async (req: Request, res: Response) => {
           },
         },
       });
+      const { title, message } = notificationAgreement(submission.campaign.name, 'Creator');
+
+      const creatorNotification = await saveNotification({
+        userId: submission.userId,
+        entity: 'Agreement',
+        entityId: submission.campaignId,
+        title: title,
+        message: message,
+      });
+
+      io.to(clients.get(submission.userId)).emit('notification', creatorNotification);
+
+      const { title: adminTitle, message: adminMessage } = notificationAgreement(
+        submission.campaign.name,
+        'Admin',
+        submission.user.name as string,
+      );
 
       submission.campaign.campaignAdmin.forEach(async (item) => {
-        const notification = await saveNotification(
-          item.adminId,
-          `${submission.user.name} has submitted their agreement for campaign ${submission.campaign.name}. Please review it.`,
-          Entity.Agreement,
-        );
+        const adminNotification = await saveNotification({
+          userId: item.adminId,
+          entity: 'Agreement',
+          entityId: submission.campaignId,
+          title: adminTitle,
+          message: adminMessage,
+        });
 
-        io.to(clients.get(item.adminId)).emit('notification', notification);
+        // const notification = await saveNotification(
+        //   item.adminId,
+        //   `${submission.user.name} has submitted their agreement for campaign ${submission.campaign.name}. Please review it.`,
+        //   Entity.Agreement,
+        // );
+
+        io.to(clients.get(item.adminId)).emit('notification', adminNotification);
       });
     }
     return res.status(200).json({ message: 'Successfully submitted' });
@@ -85,7 +121,16 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
         },
       });
 
-      const notification = await saveNotification(userId, `First Draft is open for submission`, Entity.Campaign);
+      const { title, message } = notificationApproveAgreement(campaign?.name as string);
+
+      const notification = await saveNotification({
+        userId: userId,
+        message: message,
+        title: title,
+        entity: 'Campaign',
+        entityId: campaign?.id,
+      });
+
       io.to(clients.get(userId)).emit('notification', notification);
     } else if (data.status === 'reject') {
       const { feedback, campaignTaskId, submissionId, userId } = data;
@@ -97,17 +142,17 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
           adminId: req.session.userid as string,
         },
       });
-      const notification = await saveNotification(
-        userId,
-        `Please Resubmit Your Agreement Form for ${campaign?.name}`,
-        Entity.Campaign,
-      );
+      const notification = await saveNotification({
+        userId: userId,
+        title: 'Agreement Rejected',
+        message: `Please Resubmit Your Agreement Form for ${campaign?.name}`,
+        entity: 'Campaign',
+      });
       io.to(clients.get(userId)).emit('notification', notification);
     }
 
     return res.status(200).json({ message: 'Successfully updated' });
   } catch (error) {
-    console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -261,7 +306,7 @@ export const draftSubmission = async (req: Request, res: Response) => {
 };
 
 export const adminManageDraft = async (req: Request, res: Response) => {
-  const { submissionId, feedback, type, reasons } = req.body;
+  const { submissionId, feedback, type, reasons, userId } = req.body;
 
   try {
     const submission = await prisma.submission.findUnique({
@@ -270,8 +315,14 @@ export const adminManageDraft = async (req: Request, res: Response) => {
       },
       include: {
         feedback: true,
+        campaign: true,
+        user: true,
       },
     });
+
+    if (!submission) {
+      return res.status(404).json({ message: 'Submission not found' });
+    }
 
     if (type === 'approve') {
       const sub = await prisma.submission.update({
@@ -306,11 +357,59 @@ export const adminManageDraft = async (req: Request, res: Response) => {
         },
       });
 
-      const notification = await saveNotification(
-        sub.userId,
-        `Your ${MAP_TIMELINE[sub.submissionType.type]} has been approved.`,
-        'Draft',
+      if (
+        (sub.submissionType.type === 'FIRST_DRAFT' || sub.submissionType.type === 'FINAL_DRAFT') &&
+        sub.status === 'APPROVED'
+      ) {
+        const posting = await prisma.submission.findFirst({
+          where: {
+            AND: [
+              { userId: userId },
+              {
+                submissionType: {
+                  type: {
+                    equals: 'POSTING',
+                  },
+                },
+              },
+            ],
+          },
+        });
+
+        if (!posting) {
+          return res.status(404).json({ message: 'Submission called posting not found.' });
+        }
+
+        await prisma.submission.update({
+          where: {
+            id: posting.id,
+          },
+          data: {
+            startDate: dayjs(req.body.schedule.startDate).format(),
+            endDate: dayjs(req.body.schedule.endDate).format(),
+            dueDate: dayjs(req.body.schedule.endDate).format(),
+          },
+        });
+      }
+
+      const { title, message } = notificationApproveDraft(
+        submission.campaign.name,
+        MAP_TIMELINE[sub.submissionType.type],
       );
+
+      const notification = await saveNotification({
+        userId: submission.userId,
+        title: title,
+        message: message,
+        entity: 'Draft',
+        entityId: submission.campaignId,
+      });
+
+      // const notification = await saveNotification(
+      //   sub.userId,
+      //   `Your ${MAP_TIMELINE[sub.submissionType.type]} has been approved.`,
+      //   'Draft',
+      // );
 
       io.to(sub.userId).emit('notification', notification);
 
@@ -352,11 +451,18 @@ export const adminManageDraft = async (req: Request, res: Response) => {
         },
       });
 
-      const notification = await saveNotification(
-        sub.userId,
-        `Your ${MAP_TIMELINE[sub.submissionType.type]} is required for changes.`,
-        'Draft',
+      const { title, message } = notificationRejectDraft(
+        submission.campaign.name,
+        MAP_TIMELINE[sub.submissionType.type],
       );
+
+      const notification = await saveNotification({
+        userId: sub.userId,
+        message: message,
+        title: title,
+        entity: 'Draft',
+        entityId: submission.campaignId,
+      });
 
       io.to(sub.userId).emit('notification', notification);
 
@@ -389,21 +495,32 @@ export const postingSubmission = async (req: Request, res: Response) => {
       },
     });
 
+    const { title, message } = notificationPosting(submission.campaign.name, 'Creator');
+    const { title: adminTitle, message: adminMessage } = notificationPosting(
+      submission.campaign.name,
+      'Admin',
+      submission.user.name as string,
+    );
+
     for (const admin of submission.campaign.campaignAdmin) {
-      const notification = await saveNotification(
-        admin.adminId,
-        `${submission.user.name} submitted a new post link for campaign ${submission?.campaign?.name}`,
-        Entity.Post,
-      );
+      const notification = await saveNotification({
+        userId: admin.adminId,
+        message: adminMessage,
+        title: adminTitle,
+        entity: 'Post',
+        entityId: submission.campaignId,
+      });
 
       io.to(clients.get(admin.adminId)).emit('notification', notification);
     }
 
-    const notification = await saveNotification(
-      submission.userId,
-      `Successfully submitted post link for campaign ${submission.campaign.name}`,
-      Entity.Post,
-    );
+    const notification = await saveNotification({
+      userId: submission.userId,
+      message: message,
+      title: title,
+      entity: 'Post',
+      entityId: submission.campaignId,
+    });
 
     io.to(clients.get(submission.userId)).emit('notification', notification);
 
@@ -436,6 +553,7 @@ export const adminManagePosting = async (req: Request, res: Response) => {
       },
     });
 
+
     const generatedInvoice = status === 'APPROVED' ?  createInvoiceService(data, userId) : null;
     console.log('invoice generated', generatedInvoice);
     const notification = await saveNotification(
@@ -444,7 +562,8 @@ export const adminManagePosting = async (req: Request, res: Response) => {
       Entity.Post,
     );
 
-    io.to(clients.get(data.userId)).emit('notification', notification);
+
+    // io.to(clients.get(data.userId)).emit('notification', notification);
 
     return res.status(200).json({ message: 'Successfully submitted' });
   } catch (error) {

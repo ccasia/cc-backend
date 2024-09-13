@@ -4,6 +4,8 @@ import { Columns } from '@types';
 
 const prisma = new PrismaClient();
 
+const COLUMNS = ['To Do', 'In Progress', 'Done'];
+
 export const getKanbanBoard = async (req: Request, res: Response) => {
   try {
     const board = await prisma.board.findUnique({
@@ -11,9 +13,23 @@ export const getKanbanBoard = async (req: Request, res: Response) => {
         userId: req.session.userid,
       },
       include: {
+        user: true,
         columns: {
           include: {
             task: {
+              include: {
+                submission: {
+                  include: {
+                    feedback: true,
+                    campaign: {
+                      include: {
+                        campaignTimeline: true,
+                      },
+                    },
+                    submissionType: true,
+                  },
+                },
+              },
               orderBy: {
                 position: 'asc',
               },
@@ -28,7 +44,6 @@ export const getKanbanBoard = async (req: Request, res: Response) => {
 
     return res.status(200).json({ board: board });
   } catch (error) {
-    // console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -292,5 +307,30 @@ export const moveTask = async (req: Request, res: Response) => {
   } catch (error) {
     console.log(error);
     return res.status(400).json(error);
+  }
+};
+
+export const createKanbanBoard = async (userId: string) => {
+  try {
+    const board = await prisma.board.create({
+      data: {
+        name: 'My Tasks',
+        user: { connect: { id: userId } },
+      },
+    });
+
+    const columns = COLUMNS.map(async (column, index) => {
+      await prisma.columns.create({
+        data: {
+          name: column,
+          board: { connect: { id: board.id } },
+          position: index,
+        },
+      });
+    });
+
+    return { board, ...columns };
+  } catch (error) {
+    throw new Error(error);
   }
 };

@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import {
+  CampaignBrief,
   CampaignRequirement,
   CampaignStatus,
   CampaignTimeline,
@@ -7,9 +8,12 @@ import {
   Entity,
   Interest,
   LogisticStatus,
+  PaymentForm,
+  Pitch,
   PrismaClient,
   ShortListedCreator,
   Submission,
+  User,
 } from '@prisma/client';
 
 import { uploadAgreementForm, uploadImage, uploadPitchVideo } from '@configs/cloudStorage.config';
@@ -25,6 +29,7 @@ import path from 'path';
 import { compress } from '@helper/compression';
 import { agreementInput } from '@helper/agreementInput';
 import { pdfConverter } from '@helper/pdfConverter';
+import { notificationPitch } from '@helper/notification';
 
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
 Ffmpeg.setFfprobePath(ffprobePath.path);
@@ -80,7 +85,44 @@ interface Campaign {
   adminTest: [];
   brandTone: string;
   productName: string;
+  socialMediaPlatform: string[];
+  videoAngle: string[];
 }
+
+const MAPPING: Record<string, string> = {
+  AGREEMENT_FORM: 'Agreement',
+  FIRST_DRAFT: 'First Draft',
+  FINAL_DRAFT: 'Final Draft',
+  POSTING: 'Posting',
+};
+
+const generateAgreement = async (creator: any, campaign: any) => {
+  const agreementsPath = agreementInput({
+    date: dayjs().format('ddd LL'),
+    creatorName: creator.name as string,
+    icNumber: creator?.paymentForm.icNumber,
+    address: creator.creator.address,
+    agreement_endDate: dayjs().add(1, 'M').format('ddd LL'),
+    now_date: dayjs().format('ddd LL'),
+    creatorAccNumber: creator?.paymentForm.bankAccountNumber,
+    creatorBankName: creator?.paymentForm?.bankName,
+  });
+
+  const pdfPath = await pdfConverter(
+    agreementsPath,
+    path.resolve(__dirname, `../form/pdf/${creator.name.split(' ').join('_')}.pdf`),
+  );
+
+  const url = await uploadAgreementForm(
+    pdfPath,
+    `${creator.name.split(' ').join('_')}-${campaign.name}.pdf`,
+    'creatorAgreements',
+  );
+
+  await fs.promises.unlink(pdfPath);
+
+  return url;
+};
 
 export const createCampaign = async (req: Request, res: Response) => {
   const {
@@ -90,6 +132,8 @@ export const createCampaign = async (req: Request, res: Response) => {
     campaignEndDate,
     campaignInterests,
     campaignObjectives,
+    socialMediaPlatform,
+    videoAngle,
     campaignDescription,
     audienceGender,
     audienceAge,
@@ -166,10 +210,12 @@ export const createCampaign = async (req: Request, res: Response) => {
               agreementFrom: agreementFormURL,
               startDate: dayjs(campaignStartDate) as any,
               endDate: dayjs(campaignEndDate) as any,
-              // interests: campaignInterests,
+
               industries: campaignIndustries,
               campaigns_do: campaignDo,
               campaigns_dont: campaignDont,
+              videoAngle: videoAngle,
+              socialMediaPlatform: socialMediaPlatform,
             },
           },
           campaignRequirement: {
@@ -356,14 +402,14 @@ export const createCampaign = async (req: Request, res: Response) => {
                   id: campaign.id,
                 },
               },
-              notificationStatus: {
+              userNotification: {
                 create: {
                   userId: admin.id,
                 },
               },
             },
             include: {
-              notificationStatus: {
+              userNotification: {
                 select: {
                   userId: true,
                 },
@@ -473,6 +519,7 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
             },
           },
           logistic: true,
+          creatorAgreement: true,
         },
       });
     } else {
@@ -541,6 +588,7 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
             },
           },
           logistic: true,
+          creatorAgreement: true,
         },
       });
     }
@@ -942,10 +990,7 @@ export const getAllCampaignsFinance = async (req: Request, res: Response) => {
 export const creatorMakePitch = async (req: Request, res: Response) => {
   const { campaignId, content, type } = req.body;
   const id = req.session.userid;
-
-  // const conn = await amqplib.connect('amqp://host.docker.internal');
-  // const channel = await conn.createChannel();
-  // channel.assertQueue('videoQueue');
+  let pitch;
 
   try {
     const isPitchExist = await prisma.pitch.findUnique({
@@ -978,7 +1023,7 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
     });
 
     if (type === 'video') {
-      const pitch = await prisma.pitch.create({
+      pitch = await prisma.pitch.create({
         data: {
           type: 'video',
           content: content,
@@ -986,10 +1031,14 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
           campaignId: campaignId,
           status: 'undecided',
         },
+        include: {
+          campaign: true,
+          user: true,
+        },
       });
-      await saveNotification(user?.id as string, `Your pitch has been successfully sent.`, Entity.Pitch);
+      // await saveNotification(user?.id as string, `Your pitch has been successfully sent.`, Entity.Pitch);
     } else {
-      const pitch = await prisma.pitch.create({
+      pitch = await prisma.pitch.create({
         data: {
           type: 'text',
           content: content,
@@ -997,28 +1046,53 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
           campaignId: campaignId,
           status: 'undecided',
         },
+        include: {
+          campaign: true,
+          user: true,
+        },
       });
     }
 
-    const newPitch = await saveNotification(user?.id as string, `Your pitch has been successfully sent.`, Entity.Pitch);
+    const notification = notificationPitch(pitch.campaign.name, 'Creator');
+
+    const newPitch = await saveNotification({
+      userId: user?.id as string,
+      message: notification.message,
+      title: notification.title,
+      entity: 'Pitch',
+      entityId: campaign?.id as string,
+    });
+
+    // const newPitch = await saveNotification(
+    //   user?.id as string,
+    //   notificationPitchCreator(pitch.campaign.name, 'Creator'),
+    //   Entity.Pitch,
+    //   pitch?.campaign?.id,
+    // );
 
     io.to(clients.get(user?.id)).emit('notification', newPitch);
 
     const admins = campaign?.campaignAdmin;
 
+    const notificationAdmin = notificationPitch(pitch.campaign.name, 'Admin', pitch.user.name as string);
+
     admins?.map(async ({ adminId }) => {
-      const notification = await saveNotification(
-        adminId,
-        `New Pitch By ${user?.name} for campaign ${campaign?.name}`,
-        Entity.Pitch,
-      );
+      const notification = await saveNotification({
+        userId: user?.id as string,
+        message: notificationAdmin.message,
+        title: notificationAdmin.title,
+        entity: 'Pitch',
+        entityId: campaign?.id as string,
+      });
+
+      // await saveNotification(
+      //   adminId,
+      //   `New Pitch By ${user?.name} for campaign ${campaign?.name}`,
+      //   Entity.Pitch,
+      // );
       io.to(clients.get(adminId)).emit('notification', notification);
     });
 
-    // channel.assertQueue('videoQueue');
-
-    // channel.sendToQueue('videoQueue', Buffer.from(JSON.stringify(job)));
-    // return res.status(202).json({ message: 'Successfully Pitch !' });
     return res.status(202).json({ message: 'Successfully Pitch !' });
   } catch (error) {
     return res.status(400).json({ message: 'Error' });
@@ -1097,24 +1171,25 @@ export const changeCampaignStage = async (req: Request, res: Response) => {
 
     if (campaign?.shortlisted.length && campaign?.status === 'PAUSED') {
       campaign?.shortlisted?.map(async (value) => {
-        const data = await saveNotification(
-          value.userId as string,
-          `Campaign ${campaign.name} is down for maintenance`,
-          Entity.Campaign,
-          campaign.id,
-        );
+        const data = await saveNotification({
+          userId: value.userId as string,
+          title: 'Campaign Maintenance',
+          message: `Campaign ${campaign.name} is down for maintenance`,
+          entity: 'Campaign',
+          entityId: campaign.id,
+        });
         io.to(clients.get(value.userId)).emit('notification', data);
       });
     }
 
     if (campaign?.status === 'ACTIVE') {
       campaign.campaignAdmin.forEach(async (admin) => {
-        const data = await saveNotification(
-          admin.adminId,
-          `${campaign.name} is up live !`,
-          Entity.Campaign,
-          campaign.id,
-        );
+        const data = await saveNotification({
+          userId: admin.adminId,
+          message: `${campaign.name} is up live !`,
+          entity: 'Campaign',
+          entityId: campaign.id,
+        });
         io.to(clients.get(admin.adminId)).emit('notification', data);
       });
     }
@@ -1143,12 +1218,12 @@ export const closeCampaign = async (req: Request, res: Response) => {
       },
     });
     campaign.campaignAdmin.forEach(async (item) => {
-      const data = await saveNotification(
-        item.adminId,
-        `${campaign.name} is close on ${dayjs().format('ddd LL')}`,
-        Entity.Campaign,
-        campaign.id,
-      );
+      const data = await saveNotification({
+        userId: item.adminId,
+        message: `${campaign.name} is close on ${dayjs().format('ddd LL')}`,
+        entity: 'Campaign',
+        entityId: campaign.id,
+      });
       io.to(clients.get(item.adminId)).emit('notification', data);
     });
 
@@ -1472,9 +1547,28 @@ export const changePitchStatus = async (req: Request, res: Response) => {
   const { status, pitchId } = req.body;
 
   try {
-    const pitch = await prisma.pitch.update({
+    const existingPitch = await prisma.pitch.findUnique({
       where: {
         id: pitchId,
+      },
+      include: {
+        campaign: true,
+        user: {
+          include: {
+            paymentForm: true,
+            creator: true,
+          },
+        },
+      },
+    });
+
+    if (!existingPitch) {
+      return res.status(404).json({ message: 'Pitch not found.' });
+    }
+
+    const pitch = await prisma.pitch.update({
+      where: {
+        id: existingPitch.id,
       },
       data: {
         status: status,
@@ -1486,6 +1580,16 @@ export const changePitchStatus = async (req: Request, res: Response) => {
 
     if (pitch.status === 'approved') {
       prisma.$transaction(async (tx) => {
+        const url = await generateAgreement(existingPitch.user, existingPitch.campaign);
+
+        await tx.creatorAgreement.create({
+          data: {
+            userId: existingPitch.userId,
+            campaignId: existingPitch.campaignId,
+            agreementUrl: url,
+          },
+        });
+
         await tx.shortListedCreator.create({
           data: {
             userId: pitch?.userId,
@@ -1541,11 +1645,12 @@ export const changePitchStatus = async (req: Request, res: Response) => {
           }),
         );
 
-        const data = await saveNotification(
-          pitch.userId,
-          `Congratulations! You've been shortlisted for the ${pitch.campaign.name} campaign.`,
-          Entity.Shortlist,
-        );
+        const data = await saveNotification({
+          userId: pitch.userId,
+          title: "✅ You're shorlisted!",
+          message: `Congratulations! You've been shortlisted for the ${pitch.campaign.name} campaign.`,
+          entity: 'Shortlist',
+        });
 
         const socketId = clients.get(pitch.userId);
 
@@ -1818,10 +1923,10 @@ export const uploadVideoTest = async (req: Request, res: Response) => {
   const outputPath = `${userid}_pitch.mp4`;
   let cancel = false;
 
-  res.on('close', () => {
+  res.on('close', async () => {
     console.log('ABORTING....');
     cancel = true;
-    fs.unlinkSync(path.resolve(`./upload/${outputPath}`));
+    await fs.promises.unlink(path.resolve(__dirname, `../upload/${outputPath}`));
     abortController.abort();
   });
 
@@ -1863,6 +1968,7 @@ export const uploadVideoTest = async (req: Request, res: Response) => {
       return res.status(200).json({ publicUrl: a, message: 'Succesfully uploaded' });
     }
   } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -1938,11 +2044,11 @@ export const createLogistics = async (req: Request, res: Response) => {
       },
     });
 
-    const notification = await saveNotification(
-      userId,
-      `Hi ${logistic.user.name}, your logistics details for the ${logistic.campaign.name} campaign are now available. Please check the logistics section for shipping information and tracking details. If you have any questions, don't hesitate to reach out!`,
-      Entity.Logistic,
-    );
+    const notification = await saveNotification({
+      userId: userId,
+      message: `Hi ${logistic.user.name}, your logistics details for the ${logistic.campaign.name} campaign are now available. Please check the logistics section for shipping information and tracking details. If you have any questions, don't hesitate to reach out!`,
+      entity: 'Logistic',
+    });
 
     io.to(clients.get(userId)).emit('notification', notification);
 
@@ -1979,6 +2085,7 @@ export const updateStatusLogistic = async (req: Request, res: Response) => {
     });
     return res.status(200).json({ message: 'Successfully changed status' });
   } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -1990,7 +2097,7 @@ export const shortlistCreator = async (req: Request, res: Response) => {
   } = req.body;
 
   try {
-    prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx) => {
       const timelines = await tx.campaignTimeline.findMany({
         where: {
           AND: [
@@ -2012,6 +2119,7 @@ export const shortlistCreator = async (req: Request, res: Response) => {
         },
       });
 
+      // Find campaign by campaign Id
       const campaignInfo = await tx.campaign.findUnique({
         where: {
           id: campaignId,
@@ -2021,6 +2129,7 @@ export const shortlistCreator = async (req: Request, res: Response) => {
         },
       });
 
+      // Find creator information by creator id
       const data = await Promise.all(
         creators.map((creator: Creator) =>
           tx.user.findUnique({
@@ -2029,28 +2138,17 @@ export const shortlistCreator = async (req: Request, res: Response) => {
             },
             include: {
               creator: true,
+              paymentForm: true,
             },
           }),
         ),
       );
 
+      // Generating a pdf with creator information
       for (const creator of data) {
-        const agreementsPath = agreementInput({
-          date: dayjs().format('ddd LL'),
-          creatorName: creator.name,
-          icNumber: '_______________',
-          address: creator.creator.address,
-          agreement_endDate: dayjs().add(1, 'M').format('ddd LL'),
-          now_date: dayjs().format('ddd LL'),
-        });
+        const url = await generateAgreement(creator, campaignInfo);
 
-        const pdfPath = await pdfConverter(
-          agreementsPath,
-          path.resolve(__dirname, `../form/pdf/${creator.name.split(' ').join('_')}.pdf`),
-        );
-
-        const url = await uploadAgreementForm(pdfPath, `${creator.name.split(' ').join('_')}.pdf`, 'creatorAgreements');
-
+        // Create creator agreement
         await tx.creatorAgreement.create({
           data: {
             userId: creator.id as string,
@@ -2058,10 +2156,9 @@ export const shortlistCreator = async (req: Request, res: Response) => {
             agreementUrl: url,
           },
         });
-
-        fs.unlinkSync(pdfPath);
       }
 
+      // Create a shortlisted creator data
       const shortlistedCreators = await Promise.all(
         creators.map(async (creator: any) => {
           return await tx.shortListedCreator.create({
@@ -2075,20 +2172,64 @@ export const shortlistCreator = async (req: Request, res: Response) => {
 
       const submissions: any[] = [];
 
+      // Create submissions for creator
       for (const creator of shortlistedCreators) {
-        for (const timeline of timelines) {
+        const board = await tx.board.findUnique({
+          where: {
+            userId: creator.userId,
+          },
+          include: {
+            columns: true,
+          },
+        });
+
+        if (!board) {
+          throw new Error('Board not found.');
+        }
+
+        const column = await tx.columns.findFirst({
+          where: {
+            AND: [
+              { boardId: board?.id },
+              {
+                name: {
+                  contains: 'To Do',
+                },
+              },
+            ],
+          },
+        });
+
+        if (!column) {
+          throw new Error('Column not found.');
+        }
+
+        for (const [index, timeline] of timelines.entries()) {
           const submission = await tx.submission.create({
             data: {
               dueDate: timeline.endDate,
               campaignId: timeline.campaignId,
               userId: creator.userId as string,
               submissionTypeId: timeline.submissionTypeId as string,
+              task: {
+                create: {
+                  name: timeline.name,
+                  position: index,
+                  columnId: column?.id as string,
+                  priority: '',
+                  status: 'To Do',
+                },
+              },
+            },
+            include: {
+              submissionType: true,
             },
           });
           submissions.push(submission);
         }
       }
 
+      // Create submissions dependency for submissions
       for (let i = 1; i < submissions.length; i++) {
         await tx.submissionDependency.create({
           data: {
@@ -2100,11 +2241,11 @@ export const shortlistCreator = async (req: Request, res: Response) => {
 
       await Promise.all(
         shortlistedCreators.map(async (creator: ShortListedCreator) => {
-          const data = await saveNotification(
-            creator.userId as string,
-            `Congratulations! You've been shortlisted for the ${campaignInfo?.name} campaign.`,
-            Entity.Shortlist,
-          );
+          const data = await saveNotification({
+            userId: creator.userId as string,
+            message: `Congratulations! You've been shortlisted for the ${campaignInfo?.name} campaign.`,
+            entity: 'Shortlist',
+          });
           const socketId = clients.get(creator.userId);
           if (socketId) {
             io.to(socketId).emit('notification', data);
@@ -2135,8 +2276,9 @@ export const shortlistCreator = async (req: Request, res: Response) => {
       );
     });
 
-    return res.status(200).json({ message: 'Successfully shortlisted' });
+    res.status(200).json({ message: 'Successfully shortlisted' });
   } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -2178,6 +2320,147 @@ export const creatorAgreements = async (req: Request, res: Response) => {
 
     return res.status(200).json(agreements);
   } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const updateAmountAgreement = async (req: Request, res: Response) => {
+  const { paymentAmount, user, campaignId, id: agreementId } = req.body;
+  try {
+    const creator = await prisma.user.findUnique({
+      where: {
+        id: user?.id,
+      },
+      include: {
+        paymentForm: true,
+        creator: true,
+      },
+    });
+
+    if (!creator) {
+      return res.status(404).json({ message: 'Creator not found' });
+    }
+
+    const campaign = await prisma.campaign.findUnique({
+      where: {
+        id: campaignId,
+      },
+    });
+
+    if (!campaign) {
+      return res.status(404).json({ message: 'Campaign not found' });
+    }
+
+    const agreementsPath = agreementInput({
+      date: dayjs().format('ddd LL'),
+      creatorName: creator.name as string,
+      icNumber: creator.paymentForm?.icNumber as string,
+      address: creator.creator?.address as string,
+      agreement_endDate: dayjs().add(1, 'M').format('ddd LL'),
+      now_date: dayjs().format('ddd LL'),
+      creatorAccNumber: creator.paymentForm?.bankAccountNumber as string,
+      creatorBankName: creator.paymentForm?.bankName as string,
+      paymentAmount: paymentAmount,
+    });
+
+    const pdfPath = await pdfConverter(
+      agreementsPath,
+      path.resolve(__dirname, `../form/pdf/${creator.name?.split(' ').join('_')}.pdf`),
+    );
+
+    const url = await uploadAgreementForm(
+      pdfPath,
+      `${creator.name?.split(' ').join('_')}-${campaign.name}.pdf`,
+      'creatorAgreements',
+    );
+
+    // Create creator agreement
+    await prisma.creatorAgreement.update({
+      where: {
+        id: agreementId,
+      },
+      data: {
+        userId: creator.id,
+        campaignId: campaign.id,
+        agreementUrl: url,
+        updatedAt: dayjs().format(),
+      },
+    });
+
+    await fs.promises.unlink(pdfPath);
+
+    return res.status(200).json({ message: 'Update Success' });
+  } catch (error) {
+    console.log(error);
+    return res.status(400).json(error);
+  }
+};
+
+export const sendAgreement = async (req: Request, res: Response) => {
+  const { user, id: agreementId, agreementUrl, campaignId } = req.body;
+  try {
+    const isUserExist = await prisma.user.findUnique({
+      where: {
+        id: user?.id,
+      },
+      include: {
+        creator: true,
+      },
+    });
+
+    if (!isUserExist) {
+      return res.status(404).json({ message: 'Creator not exist' });
+    }
+
+    const agreement = await prisma.creatorAgreement.findUnique({
+      where: {
+        id: agreementId,
+      },
+    });
+
+    if (!agreement) {
+      return res.status(404).json({ message: 'Agreement not found' });
+    }
+
+    // update the status of agreement
+    await prisma.creatorAgreement.update({
+      where: {
+        id: agreement.id,
+      },
+      data: {
+        isSent: true,
+      },
+    });
+
+    const shortlistedCreator = await prisma.shortListedCreator.findFirst({
+      where: {
+        AND: [
+          {
+            userId: isUserExist.id,
+          },
+          {
+            campaignId: campaignId,
+          },
+        ],
+      },
+    });
+
+    if (!shortlistedCreator) {
+      return res.status(404).json({ message: 'This creator is not shortlisted' });
+    }
+    // update shortlisted creator table
+    await prisma.shortListedCreator.update({
+      where: {
+        id: shortlistedCreator.id,
+      },
+      data: {
+        isAgreementReady: true,
+      },
+    });
+
+    return res.status(200).json({ message: 'Agreement has been sent.' });
+  } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   }
 };

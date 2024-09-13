@@ -1,6 +1,6 @@
 /* eslint-disable no-unused-vars */
 import jwt, { JwtPayload, Secret } from 'jsonwebtoken';
-import { Employment, PrismaClient, RoleEnum } from '@prisma/client';
+import { Employment, PrismaClient, RoleEnum, Prisma } from '@prisma/client';
 import { Request, Response } from 'express';
 import { AdminInvitaion, AdminInvite, creatorVerificationEmail } from '@configs/nodemailer.config';
 import bcrypt from 'bcryptjs';
@@ -8,6 +8,7 @@ import { handleChangePassword } from '@services/authServices';
 import { getUser } from '@services/userServices';
 import { verifyToken } from '@utils/jwtHelper';
 import { uploadImage, uploadProfileImage } from '@configs/cloudStorage.config';
+import { createKanbanBoard } from './kanbanController';
 
 const prisma = new PrismaClient();
 
@@ -48,6 +49,7 @@ interface CreatorUpdateData {
   phone: string;
   pronounce: string;
   tiktok: string;
+  socialMediaData: Prisma.InputJsonValue;
 }
 
 export const registerUser = async (req: Request, res: Response) => {
@@ -116,22 +118,20 @@ export const changePassword = async (req: Request, res: Response) => {
 export const registerSuperAdmin = async (req: Request, res: Response) => {
   const { email, password }: RequestData = req.body;
   try {
-    const search = await prisma.user.findFirst({
+    const superadmin = await prisma.user.findFirst({
       where: {
         email,
       },
     });
 
-    console.log(search);
-
-    if (search) {
+    if (superadmin) {
       return res.status(400).json({ message: 'User already exists' });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    const result = await prisma.$transaction(async (prisma) => {
-      const newUser = await prisma.user.create({
+    const result = await prisma.$transaction(async (tx) => {
+      const newUser = await tx.user.create({
         data: {
           email,
           password: hashedPassword,
@@ -141,7 +141,7 @@ export const registerSuperAdmin = async (req: Request, res: Response) => {
         },
       });
 
-      const newAdmin = await prisma.admin.create({
+      const newAdmin = await tx.admin.create({
         data: {
           mode: 'god',
           userId: newUser.id,
@@ -150,6 +150,8 @@ export const registerSuperAdmin = async (req: Request, res: Response) => {
 
       return { newUser, newAdmin };
     });
+
+    await createKanbanBoard(result.newUser.id);
 
     return res.status(201).json(result);
   } catch (error) {
@@ -502,11 +504,10 @@ export const updateCreator = async (req: Request, res: Response) => {
     employment,
     birthDate,
     Nationality,
+    socialMediaData,
   }: CreatorUpdateData = req.body;
 
   const data = new Date(birthDate);
-
-  console.log(req.body);
 
   try {
     const creator = await prisma.creator.update({
@@ -531,18 +532,22 @@ export const updateCreator = async (req: Request, res: Response) => {
         interests: {
           create: interests.map((interest) => ({ name: interest })),
         },
+        socialMediaData: socialMediaData,
       },
       include: {
         interests: true,
         user: true,
       },
     });
-    await prisma.board.create({
-      data: {
-        name: 'My Task',
-        userId: creator.userId,
-      },
-    });
+
+    // await prisma.board.create({
+    //   data: {
+    //     name: 'My Task',
+    //     userId: creator.userId,
+    //   },
+    // });
+
+    await createKanbanBoard(creator.user.id);
 
     return res.status(200).json({ name: creator.user.name });
   } catch (error) {
@@ -598,6 +603,7 @@ export const getprofile = async (req: Request, res: Response) => {
 
       return res.status(200).json({ user, accessToken });
     } catch (error) {
+      console.log(error);
       return res.status(500).json({ message: 'Internal Server Error' });
     }
   });
@@ -687,7 +693,6 @@ export const login = async (req: Request, res: Response) => {
       accessToken: accessToken,
     });
   } catch (error) {
-    console.log(error);
     return res.send(error);
   }
 };

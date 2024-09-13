@@ -3,6 +3,7 @@ import { Mode, Modules, PrismaClient } from '@prisma/client';
 // import { AdminInvite } from '@configs/nodemailer.config';
 import jwt, { Secret } from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
+import { createKanbanBoard } from '@controllers/kanbanController';
 
 const prisma = new PrismaClient();
 
@@ -367,15 +368,15 @@ export const findUserByEmail = async (email: string) => {
 
 export const updateNewAdmin = async (adminData: any) => {
   const {
-    data: { name, designation, country, phoneNumber, password },
+    data: { name, country, phoneNumber, password },
     userId,
   } = adminData;
 
   const hashedPassword = await bcrypt.hash(password, 10);
 
   try {
-    const res = await prisma.$transaction([
-      prisma.user.update({
+    const res = await prisma.$transaction(async (tx) => {
+      const user = await tx.user.update({
         where: {
           id: userId,
         },
@@ -386,16 +387,43 @@ export const updateNewAdmin = async (adminData: any) => {
           country,
           phoneNumber,
         },
-      }),
-      prisma.admin.update({
+      });
+
+      const admin = tx.admin.update({
         where: {
           userId: userId,
         },
         data: {
           inviteToken: null,
         },
-      }),
-    ]);
+      });
+
+      return { user, admin };
+    });
+    // const res = await prisma.$transaction([
+    //   prisma.user.update({
+    //     where: {
+    //       id: userId,
+    //     },
+    //     data: {
+    //       password: hashedPassword,
+    //       status: 'active',
+    //       name,
+    //       country,
+    //       phoneNumber,
+    //     },
+    //   }),
+    //   prisma.admin.update({
+    //     where: {
+    //       userId: userId,
+    //     },
+    //     data: {
+    //       inviteToken: null,
+    //     },
+    //   }),
+    // ]);
+
+    await createKanbanBoard(res.user.id);
     return res;
   } catch (error) {
     throw new Error(error as string);

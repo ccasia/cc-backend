@@ -91,14 +91,14 @@ export const compress = (
       })
       .on('end', () => {
         console.log('Processing finished.');
-        resolve(path.resolve(`./upload/${outputPath}`));
+        resolve(path.resolve(__dirname, `../upload/${outputPath}`));
       })
       .on('error', (err) => {
         console.error('Error processing video:', err.message);
-        // fs.unlinkSync(path.resolve(`./upload/${outputPath}`));
+
         reject(err);
       })
-      .save(path.resolve(`./upload/${outputPath}`));
+      .save(path.resolve(__dirname, `../upload/${outputPath}`));
 
     // Handle abort signal
     abortSignal.addEventListener('abort', () => {

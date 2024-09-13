@@ -8,41 +8,41 @@ datasource db {
 }
 
 model User {
-  id                 String               @id @unique @default(cuid())
-  email              String               @unique @db.VarChar(255)
-  password           String               @db.VarChar(255)
-  createdAt          DateTime             @default(now())
-  name               String?              @db.VarChar(255)
-  photoURL           String?              @db.VarChar(255)
-  country            String?              @db.VarChar(100)
-  phoneNumber        String?              @db.VarChar(100)
-  updatedAt          DateTime             @updatedAt
-  status             Status               @default(pending)
-  eventId            String?
-  role               RoleEnum
-  admin              Admin?
-  campaignLogs       CampaignLog[]
-  CampaignTaskAdmin  CampaignTaskAdmin[]
-  creator            Creator?
-  feedback           Feedback[]
-  finance            Finance?
-  sentMessages       Message[]            @relation("UserMessages")
-  notiifcationStatus NotificationStatus[]
-  pitch              Pitch[]
-  shortlisted        ShortListedCreator[]
-  submission         Submission[]
-  event              Event?               @relation(fields: [eventId], references: [id])
-  UserThread         UserThread[]
-  threads            Thread[]             @relation("UserThreads")
-  invoices           Invoice[]
-  BookMarkCampaign   BookMarkCampaign[]
-  logistic           Logistic[]
-  unreadMessages     UnreadMessage[]
-  seenMessages       SeenMessage[]
-  paymentForm        PaymentForm?
-  Board              Board?
-  taskAssignee       TaskAssignee[]
-  creatorAgreement   CreatorAgreement[]
+  id                String               @id @unique @default(cuid())
+  email             String               @unique @db.VarChar(255)
+  password          String               @db.VarChar(255)
+  createdAt         DateTime             @default(now())
+  name              String?              @db.VarChar(255)
+  photoURL          String?              @db.VarChar(255)
+  country           String?              @db.VarChar(100)
+  phoneNumber       String?              @db.VarChar(100)
+  updatedAt         DateTime             @updatedAt
+  status            Status               @default(pending)
+  eventId           String?
+  role              RoleEnum
+  admin             Admin?
+  campaignLogs      CampaignLog[]
+  CampaignTaskAdmin CampaignTaskAdmin[]
+  creator           Creator?
+  feedback          Feedback[]
+  finance           Finance?
+  sentMessages      Message[]            @relation("UserMessages")
+  userNotification  UserNotification[]
+  pitch             Pitch[]
+  shortlisted       ShortListedCreator[]
+  submission        Submission[]
+  event             Event?               @relation(fields: [eventId], references: [id])
+  UserThread        UserThread[]
+  threads           Thread[]             @relation("UserThreads")
+  invoices          Invoice[]
+  BookMarkCampaign  BookMarkCampaign[]
+  logistic          Logistic[]
+  unreadMessages    UnreadMessage[]
+  seenMessages      SeenMessage[]
+  paymentForm       PaymentForm?
+  Board             Board?
+  taskAssignee      TaskAssignee[]
+  creatorAgreement  CreatorAgreement[]
 }
 
 model Admin {
@@ -51,7 +51,7 @@ model Admin {
   mode                  Mode                    @default(normal)
   inviteToken           String?                 @unique
   userId                String                  @unique
-  user                  User                    @relation(fields: [userId], references: [id])
+  user                  User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
   adminPermissionModule AdminPermissionModule[]
   campaignAdmin         CampaignAdmin[]
   role                  Role?                   @relation(fields: [roleId], references: [id])
@@ -86,7 +86,6 @@ model Creator {
   instagram       String?     @db.VarChar(100)
   tiktok          String?     @db.VarChar(100)
   employment      Employment? @default(others)
-  isFormCompleted Boolean     @default(false)
   languages       Json?
   userId          String      @unique
   user            User        @relation(fields: [userId], references: [id])
@@ -94,6 +93,8 @@ model Creator {
   interests       Interest[]
   invoices        Invoice[]
   mediaKit        MediaKit?
+  socialMediaData Json?
+  isFormCompleted Boolean?
 }
 
 model MediaKit {
@@ -211,13 +212,13 @@ model session {
 
 model Company {
   id                  String     @id @unique @default(cuid())
-  name                String     @db.VarChar(100)
-  email               String?    @db.VarChar(255)
-  phone               String?    @db.VarChar(255)
-  website             String?    @db.VarChar(255)
-  address             String     @db.VarChar(255)
-  logo                String?    @db.VarChar(100)
-  about               String?    @db.VarChar(255)
+  name                String
+  email               String?
+  phone               String?
+  website             String?
+  address             String
+  logo                String?
+  about               String?
   objectives          Json?
   registration_number String     @unique
   createdAt           DateTime   @default(now())
@@ -358,22 +359,24 @@ model CampaignRequirement {
 }
 
 model CampaignBrief {
-  id             String   @id @unique @default(cuid())
-  title          String   @db.VarChar(255)
-  objectives     String?  @db.VarChar(255)
-  images         Json?
-  agreementFrom  String   @db.VarChar(255)
-  startDate      DateTime
-  endDate        DateTime
-  interests      Json?
-  industries     Json?
-  success        String?  @db.VarChar(255)
-  campaigns_do   Json?
-  campaigns_dont Json?
-  updatedAt      DateTime @updatedAt
-  createdAt      DateTime @default(now())
-  campaignId     String   @unique
-  campaign       Campaign @relation(fields: [campaignId], references: [id])
+  id                  String   @id @unique @default(cuid())
+  title               String   @db.VarChar(255)
+  objectives          String?  @db.VarChar(255)
+  images              Json?
+  agreementFrom       String   @db.VarChar(255)
+  startDate           DateTime
+  endDate             DateTime
+  interests           Json?
+  industries          Json?
+  success             String?  @db.VarChar(255)
+  socialMediaPlatform String[]
+  videoAngle          String[]
+  campaigns_do        Json?
+  campaigns_dont      Json?
+  updatedAt           DateTime @updatedAt
+  createdAt           DateTime @default(now())
+  campaignId          String   @unique
+  campaign            Campaign @relation(fields: [campaignId], references: [id])
 }
 
 model Permission {
@@ -470,6 +473,8 @@ model ShortListedCreator {
   shortlisted_date DateTime @default(now())
   campaign         Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   user             User?    @relation(fields: [userId], references: [id])
+  isAgreementReady Boolean  @default(false)
+  isCampaignDone   Boolean  @default(false)
 
   @@unique([userId, campaignId])
   @@index([userId])
@@ -509,21 +514,23 @@ model CampaignTaskDependency {
   dependsOnCampaignTimeline CampaignTask @relation("DependsOnCampaignTask", fields: [dependsOnCampaignTaskId], references: [id], onDelete: Cascade)
 }
 
+// 
 model Notification {
-  id                 String               @id @unique @default(cuid())
-  message            String
-  createdAt          DateTime             @default(now())
-  entity             Entity?
-  notificationStatus NotificationStatus[]
-  campaignId         String?
-  pitchId            String?
-  submissionId       String?
-  campaign           Campaign?            @relation(references: [id], fields: [campaignId])
-  pitch              Pitch?               @relation(references: [id], fields: [pitchId])
-  submission         Submission?          @relation(references: [id], fields: [submissionId])
+  id               String             @id @unique @default(cuid())
+  title            String?
+  message          String
+  createdAt        DateTime           @default(now())
+  entity           Entity?
+  userNotification UserNotification[]
+  campaignId       String?
+  pitchId          String?
+  submissionId     String?
+  campaign         Campaign?          @relation(references: [id], fields: [campaignId])
+  pitch            Pitch?             @relation(references: [id], fields: [pitchId])
+  submission       Submission?        @relation(references: [id], fields: [submissionId])
 }
 
-model NotificationStatus {
+model UserNotification {
   id             String       @id @unique @default(cuid())
   userId         String
   notificationId String
@@ -556,6 +563,10 @@ model Submission {
   dependencies     SubmissionDependency[] @relation("Dependencies")
   dependentOn      SubmissionDependency[] @relation("DependentOn")
   Notification     Notification[]
+
+  startDate DateTime?
+  endDate   DateTime?
+  task      Task?
 
   @@unique([userId, campaignId, submissionTypeId])
 }
@@ -841,17 +852,19 @@ model Columns {
 }
 
 model Task {
-  id          String    @id @unique @default(cuid())
-  name        String
-  description String?
-  status      String?
-  position    Int
-  priority    String
-  createdAt   DateTime  @default(now())
-  dueDate     DateTime?
-  labels      String[]
-  columnId    String
-  column      Columns   @relation(fields: [columnId], references: [id], onDelete: Cascade)
+  id           String      @id @unique @default(cuid())
+  name         String
+  description  String?
+  status       String?
+  position     Int
+  priority     String?
+  createdAt    DateTime    @default(now())
+  dueDate      DateTime?
+  labels       String[]
+  columnId     String
+  column       Columns     @relation(fields: [columnId], references: [id], onDelete: Cascade)
+  submissionId String?     @unique
+  submission   Submission? @relation(references: [id], fields: [submissionId])
 
   assignees TaskAssignee[]
 }
@@ -869,10 +882,12 @@ model CreatorAgreement {
   id           String   @id @unique @default(cuid())
   agreementUrl String
   createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  isSent       Boolean  @default(false)
   userId       String
   campaignId   String
-  user         User     @relation(references: [id], fields: [userId])
-  campaign     Campaign @relation(references: [id], fields: [campaignId])
+  user         User     @relation(references: [id], fields: [userId], onDelete: Cascade)
+  campaign     Campaign @relation(references: [id], fields: [campaignId], onDelete: Cascade)
 
   @@unique([userId, campaignId])
 }
