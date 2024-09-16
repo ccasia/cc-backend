@@ -556,11 +556,12 @@ export const adminManagePosting = async (req: Request, res: Response) => {
 
     const generatedInvoice = status === 'APPROVED' ?  createInvoiceService(data, userId) : null;
     console.log('invoice generated', generatedInvoice);
-    const notification = await saveNotification(
-      data.userId,
-      `Your posting has been approved for campaign ${data.campaign.name}`,
-      Entity.Post,
-    );
+    const notification = await saveNotification({
+      userId: data.userId,
+      message: `Your posting has been approved for campaign ${data.campaign.name}`,
+      entity: Entity.Post,
+      entityId: data.campaignId,
+    });
 
 
     // io.to(clients.get(data.userId)).emit('notification', notification);
