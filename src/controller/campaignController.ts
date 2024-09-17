@@ -229,6 +229,9 @@ export const createCampaign = async (req: Request, res: Response) => {
             },
           },
         },
+        include: {
+          campaignBrief: true,
+        },
       });
 
       // Create submission requirement
@@ -380,16 +383,36 @@ export const createCampaign = async (req: Request, res: Response) => {
                 campaignId: campaign?.id,
               },
             },
+            include: {
+              admin: {
+                include: {
+                  user: true,
+                },
+              },
+            },
           });
 
           if (existing) {
             return res.status(400).json({ message: 'Admin exists' });
           }
 
-          const a = await tx.campaignAdmin.create({
+          const admins = await tx.campaignAdmin.create({
             data: {
               adminId: admin?.id,
               campaignId: campaign.id,
+            },
+            include: {
+              admin: true,
+            },
+          });
+
+          await tx.event.create({
+            data: {
+              start: dayjs(campaign?.campaignBrief?.startDate).format(),
+              end: dayjs(campaign?.campaignBrief?.endDate).format(),
+              title: campaign?.name,
+              userId: admins.admin.userId as string,
+              allDay: false,
             },
           });
 
@@ -418,7 +441,7 @@ export const createCampaign = async (req: Request, res: Response) => {
           });
 
           io.to(clients.get(admin.id)).emit('notification', data);
-          return a;
+          return admins;
         }),
       );
 
@@ -445,6 +468,7 @@ export const createCampaign = async (req: Request, res: Response) => {
       return res.status(200).json({ campaign, message: 'Successfully created campaign' });
     });
   } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -2187,7 +2211,7 @@ export const shortlistCreator = async (req: Request, res: Response) => {
           throw new Error('Board not found.');
         }
 
-        const column = await tx.columns.findFirst({
+        const columnToDo = await tx.columns.findFirst({
           where: {
             AND: [
               { boardId: board?.id },
@@ -2200,7 +2224,20 @@ export const shortlistCreator = async (req: Request, res: Response) => {
           },
         });
 
-        if (!column) {
+        const columnInProgress = await tx.columns.findFirst({
+          where: {
+            AND: [
+              { boardId: board?.id },
+              {
+                name: {
+                  contains: 'In Progress',
+                },
+              },
+            ],
+          },
+        });
+
+        if (!columnToDo || !columnInProgress) {
           throw new Error('Column not found.');
         }
 
@@ -2211,13 +2248,14 @@ export const shortlistCreator = async (req: Request, res: Response) => {
               campaignId: timeline.campaignId,
               userId: creator.userId as string,
               submissionTypeId: timeline.submissionTypeId as string,
+              status: index === 0 ? 'IN_PROGRESS' : 'NOT_STARTED',
               task: {
                 create: {
                   name: timeline.name,
                   position: index,
-                  columnId: column?.id as string,
+                  columnId: index === 0 ? columnInProgress.id : (columnToDo?.id as string),
                   priority: '',
-                  status: 'To Do',
+                  status: index === 0 ? 'In Progress' : 'To Do',
                 },
               },
             },

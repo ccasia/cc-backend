@@ -53,6 +53,7 @@ export const saveNotification = async ({
     data: {
       message: message,
       entity: entity,
+      title: title,
       userNotification: {
         create: {
           userId: userId,

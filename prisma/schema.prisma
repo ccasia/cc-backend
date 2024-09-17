@@ -191,17 +191,20 @@ model Finance {
 }
 
 model Event {
-  id          String   @id @unique @default(cuid())
-  title       String
-  description String
-  color       String
+  id          String     @id @unique @default(cuid())
+  title       String?
+  description String?
+  color       String?
   allDay      Boolean
   userId      String
   start       DateTime
   end         DateTime
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
   user        User[]
+  // campaignId  String?   @unique
+  // campaign    Campaign? @relation(references: [id], fields: [campaignId])
+  Campaign    Campaign[]
 }
 
 model session {
@@ -323,6 +326,8 @@ model Campaign {
   bookMarkCampaign              BookMarkCampaign?
   logistic                      Logistic[]
   creatorAgreement              CreatorAgreement[]
+  event                         Event?                          @relation(fields: [eventId], references: [id])
+  eventId                       String?
 }
 
 model BookMarkCampaign {

@@ -547,7 +547,7 @@ export const updateCreator = async (req: Request, res: Response) => {
     //   },
     // });
 
-    await createKanbanBoard(creator.user.id);
+    await createKanbanBoard(creator.user.id, 'creator');
 
     return res.status(200).json({ name: creator.user.name });
   } catch (error) {
@@ -646,7 +646,7 @@ export const login = async (req: Request, res: Response) => {
       },
     });
 
-    if (!data) return res.status(404).json({ message: 'Wrong email' });
+    if (!data) return res.status(404).json({ message: 'User not registered.' });
 
     switch (data.status) {
       case 'banned':
