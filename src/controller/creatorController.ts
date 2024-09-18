@@ -212,6 +212,35 @@ export const getCreatorFullInfoById = async (req: Request, res: Response) => {
   }
 };
 
+export const getCreatorFullInfoByIdPublic = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  try {
+    const user = await prisma.user.findUnique({
+      where: {
+        id: id,
+      },
+      include: {
+        creator: {
+          include: {
+            interests: true,
+            mediaKit: true,
+          },
+        },
+        shortlisted: true,
+      },
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    return res.status(200).json({ user });
+  } catch (error) {
+    console.error('Error fetching user data:', error);
+    return res.status(400).json({ message: 'Error fetching user data', error });
+  }
+};
+
 export const updatePaymentForm = async (req: Request, res: Response) => {
   const { bankName, bankNumber, bodyMeasurement, allergies, icPassportNumber }: any = req.body;
 
@@ -348,13 +377,19 @@ export const crawlCreator = async (req: Request, res: Response) => {
 
         apiResponse.on('end', () => {
           console.log('Response data:', responseData);
-          try {
-            const parsedData = JSON.parse(responseData);
-            console.log('Parsed data:', parsedData);
-            resolve(parsedData);
-          } catch (error) {
-            console.error('Error parsing response:', error);
-            reject(new Error(`Error parsing response: ${error.message}`));
+          // Check if statusCode is defined before using it
+          if (apiResponse.statusCode && apiResponse.statusCode >= 200 && apiResponse.statusCode < 300) {
+            try {
+              const parsedData = JSON.parse(responseData);
+              console.log('Parsed data:', parsedData);
+              resolve(parsedData);
+            } catch (error) {
+              console.error('Error parsing response:', error);
+              reject(new Error(`Invalid JSON response: ${responseData}`));
+            }
+          } else {
+            const statusCode = apiResponse.statusCode || 'unknown';
+            reject(new Error(`API request failed with status ${statusCode}: ${responseData}`));
           }
         });
       });
@@ -396,3 +431,29 @@ export const getCreatorSocialMediaData = async (req: Request, res: Response) => 
     return res.status(500).json({ message: 'Error fetching social media data' });
   }
 };
+
+export const getCreatorSocialMediaDataById = async (req: Request, res: Response) => {
+  const { userId } = req.params;
+
+  try {
+    const creator = await prisma.creator.findUnique({
+      where: {
+        userId: userId,
+      },
+      select: {
+        socialMediaData: true,
+      },
+    });
+
+    if (!creator) {
+      return res.status(404).json({ message: 'Creator not found' });
+    }
+
+    return res.status(200).json(creator.socialMediaData);
+  } catch (error) {
+    console.error('Error fetching social media data:', error);
+    return res.status(500).json({ message: 'Error fetching social media data' });
+  }
+};
+
+

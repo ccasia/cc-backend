@@ -493,6 +493,10 @@ export const getCurrentUser = async (req: Request, res: Response) => {
 export const updateCreator = async (req: Request, res: Response) => {
   const { userid } = req.session;
 
+  if (!userid) {
+    return res.status(401).json({ message: 'User not authenticated' });
+  }
+
   const {
     phone,
     tiktok,
@@ -507,9 +511,26 @@ export const updateCreator = async (req: Request, res: Response) => {
     socialMediaData,
   }: CreatorUpdateData = req.body;
 
-  const data = new Date(birthDate);
-
   try {
+    let parsedBirthDate: Date | undefined;
+    if (birthDate) {
+      parsedBirthDate = new Date(birthDate);
+      if (isNaN(parsedBirthDate.getTime())) {
+        throw new Error('Invalid birth date');
+      }
+    }
+
+    // Parse socialMediaData if it's a string
+    let parsedSocialMediaData = socialMediaData;
+    if (typeof socialMediaData === 'string') {
+      try {
+        parsedSocialMediaData = JSON.parse(socialMediaData);
+      } catch (error) {
+        console.error('Error parsing socialMediaData:', error);
+        throw new Error('Invalid socialMediaData format');
+      }
+    }
+
     const creator = await prisma.creator.update({
       where: {
         userId: userid,
@@ -525,14 +546,18 @@ export const updateCreator = async (req: Request, res: Response) => {
         instagram,
         pronounce,
         location,
-        birthDate: data,
+        birthDate: parsedBirthDate,
         employment: employment as Employment,
         tiktok,
         languages: languages,
-        interests: {
-          create: interests.map((interest) => ({ name: interest })),
-        },
-        socialMediaData: socialMediaData,
+        ...(Array.isArray(interests) && interests.length > 0
+          ? {
+              interests: {
+                create: interests.map((interest) => ({ name: interest })),
+              },
+            }
+          : {}),
+        socialMediaData: parsedSocialMediaData, // Store as JSON object
       },
       include: {
         interests: true,
@@ -540,18 +565,10 @@ export const updateCreator = async (req: Request, res: Response) => {
       },
     });
 
-    // await prisma.board.create({
-    //   data: {
-    //     name: 'My Task',
-    //     userId: creator.userId,
-    //   },
-    // });
-
-    await createKanbanBoard(creator.user.id);
-
     return res.status(200).json({ name: creator.user.name });
   } catch (error) {
-    return res.status(400).json({ message: 'Error updating creator' });
+    console.error('Error updating creator:', error);
+    return res.status(400).json({ message: 'Error updating creator', error: error.message });
   }
 };
 
