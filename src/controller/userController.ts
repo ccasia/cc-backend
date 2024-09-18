@@ -63,6 +63,38 @@ export const updateProfileAdmin = async (req: Request, res: Response) => {
 export const getAdmins = async (req: Request, res: Response) => {
   const userid = req.session.userid;
   try {
+    if (req.query.target && req.query.target === 'active') {
+      const admins = await prisma.user.findMany({
+        where: {
+          NOT: {
+            role: 'creator',
+          },
+          status: 'active',
+        },
+        select: {
+          id: true,
+          name: true,
+          status: true,
+          phoneNumber: true,
+          country: true,
+          email: true,
+          admin: {
+            include: {
+              adminPermissionModule: {
+                select: {
+                  permission: true,
+                  module: true,
+                },
+              },
+              role: true,
+            },
+          },
+        },
+      });
+
+      return res.status(200).json(admins);
+    }
+
     const data = await handleGetAdmins(userid as string);
     return res.status(200).send(data);
   } catch (error) {

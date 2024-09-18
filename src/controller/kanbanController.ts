@@ -5,6 +5,7 @@ import { Columns } from '@types';
 const prisma = new PrismaClient();
 
 const COLUMNS = ['To Do', 'In Progress', 'Done'];
+const CREATOR_COLUMNS = ['To Do', 'In Progress', 'In Review', 'Done'];
 
 export const getKanbanBoard = async (req: Request, res: Response) => {
   try {
@@ -310,7 +311,8 @@ export const moveTask = async (req: Request, res: Response) => {
   }
 };
 
-export const createKanbanBoard = async (userId: string) => {
+export const createKanbanBoard = async (userId: string, type?: any) => {
+  let columns;
   try {
     const board = await prisma.board.create({
       data: {
@@ -319,18 +321,64 @@ export const createKanbanBoard = async (userId: string) => {
       },
     });
 
-    const columns = COLUMNS.map(async (column, index) => {
-      await prisma.columns.create({
-        data: {
-          name: column,
-          board: { connect: { id: board.id } },
-          position: index,
-        },
+    if (type === 'creator') {
+      columns = CREATOR_COLUMNS.map(async (column, index) => {
+        await prisma.columns.create({
+          data: {
+            name: column,
+            board: { connect: { id: board.id } },
+            position: index,
+          },
+        });
       });
-    });
+    } else {
+      columns = COLUMNS.map(async (column, index) => {
+        await prisma.columns.create({
+          data: {
+            name: column,
+            board: { connect: { id: board.id } },
+            position: index,
+          },
+        });
+      });
+    }
 
     return { board, ...columns };
   } catch (error) {
     throw new Error(error);
   }
+};
+
+export const getColumnId = async ({
+  userId,
+  boardId,
+  columnName,
+}: {
+  userId?: string;
+  boardId?: string;
+  columnName: 'To Do' | 'In Progress' | 'In Review' | 'Done';
+}) => {
+  const board = await prisma.board.findFirst({
+    where: {
+      OR: [
+        {
+          id: boardId,
+        },
+        {
+          userId: userId,
+        },
+      ],
+    },
+    include: {
+      columns: true,
+    },
+  });
+
+  if (!board) {
+    throw new Error('Board not found');
+  }
+
+  const id = board.columns.find((column) => column.name === columnName)?.id;
+
+  return id;
 };
