@@ -151,9 +151,11 @@ export const createCampaign = async (req: Request, res: Response) => {
     productName,
   }: Campaign = JSON.parse(req.body.data);
 
+  // console.log(JSON.parse(req.body.data));
   try {
     const publicURL: any = [];
 
+    // Handle Campaign Images
     if (req.files && req.files.campaignImages) {
       const images: any = (req.files as any).campaignImages as [];
 
@@ -170,12 +172,15 @@ export const createCampaign = async (req: Request, res: Response) => {
 
     let agreementFormURL = '';
 
+    // Handle Campaign Agreement
     if (req.files && req.files.agreementForm) {
       const form = (req.files as any).agreementForm;
       agreementFormURL = await uploadAgreementForm(form.tempFilePath, form.name, 'agreementForm');
     }
 
+    // Handle All processes
     await prisma.$transaction(async (tx) => {
+      // Find All Admins
       const admins = await Promise.all(
         adminManager.map(async (admin) => {
           return await tx.user.findUnique({
@@ -189,11 +194,13 @@ export const createCampaign = async (req: Request, res: Response) => {
         }),
       );
 
+      // Find Brand
       const brand: any = await tx.brand.findUnique({
         where: {
           id: campaignBrand.id,
         },
       });
+
       // Create Campaign
       const campaign = await tx.campaign.create({
         data: {
