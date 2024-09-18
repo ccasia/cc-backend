@@ -930,4 +930,3 @@ export const financeAdminInvoice = (email: string, campaignName: string, adminNa
       return err;
     });
 };
-
