@@ -1642,14 +1642,67 @@ export const changePitchStatus = async (req: Request, res: Response) => {
           },
         });
 
+        const board = await tx.board.findUnique({
+          where: {
+            userId: existingPitch.userId,
+          },
+          include: {
+            columns: true,
+          },
+        });
+
+        if (!board) {
+          throw new Error('Board not found.');
+        }
+
+        const columnToDo = await tx.columns.findFirst({
+          where: {
+            AND: [
+              { boardId: board?.id },
+              {
+                name: {
+                  contains: 'To Do',
+                },
+              },
+            ],
+          },
+        });
+
+        const columnInProgress = await tx.columns.findFirst({
+          where: {
+            AND: [
+              { boardId: board?.id },
+              {
+                name: {
+                  contains: 'In Progress',
+                },
+              },
+            ],
+          },
+        });
+
+        if (!columnToDo || !columnInProgress) {
+          throw new Error('Column not found.');
+        }
+
         const submissions: Submission[] = await Promise.all(
-          timelines.map(async (timeline) => {
+          timelines.map(async (timeline, index) => {
             return await tx.submission.create({
               data: {
                 dueDate: timeline.endDate,
                 campaignId: timeline.campaignId,
                 userId: pitch.userId as string,
+                status: index === 0 ? 'IN_PROGRESS' : 'NOT_STARTED',
                 submissionTypeId: timeline.submissionTypeId as string,
+                task: {
+                  create: {
+                    name: timeline.name,
+                    position: index,
+                    columnId: index === 0 ? columnInProgress.id : (columnToDo?.id as string),
+                    priority: '',
+                    status: index === 0 ? 'In Progress' : 'To Do',
+                  },
+                },
               },
             });
           }),
