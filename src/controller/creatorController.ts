@@ -213,6 +213,11 @@ export const getCreatorFullInfoById = async (req: Request, res: Response) => {
         creator: {
           include: {
             interests: true,
+            mediaKit: {
+              select: {
+                about: true,
+              },
+            },
           },
         },
         shortlisted: true,
