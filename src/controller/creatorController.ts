@@ -7,6 +7,19 @@ import { clients, io } from '../server';
 
 const prisma = new PrismaClient();
 
+interface SocialMediaData {
+  [platform: string]: {
+    data?: {
+      followers?: number;
+      engagement_rate?: number;
+      user_performance?: {
+        avg_likes_per_post?: number;
+      };
+      top_contents?: any[];
+    };
+  };
+}
+
 export const getCreators = async (_req: Request, res: Response) => {
   try {
     const creators = await prisma.user.findMany({
@@ -219,11 +232,19 @@ export const getCreatorFullInfoByIdPublic = async (req: Request, res: Response) 
       where: {
         id: id,
       },
-      include: {
+      select: {
+        name: true,
+        country: true,
+        email: true,
         creator: {
-          include: {
+          select: {
+            socialMediaData: true,
             interests: true,
-            mediaKit: true,
+            mediaKit: {
+              select: {
+                about: true,
+              },
+            },
           },
         },
         shortlisted: true,
@@ -232,6 +253,30 @@ export const getCreatorFullInfoByIdPublic = async (req: Request, res: Response) 
 
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Process socialMediaData to include only specified fields
+    if (user.creator && user.creator.socialMediaData) {
+      const processedSocialMediaData: any = {};
+      
+      ['instagram', 'tiktok'].forEach(platform => {
+        if (user.creator?.socialMediaData) {
+          const socialMediaData = user.creator.socialMediaData as SocialMediaData;
+          ['instagram', 'tiktok'].forEach(platform => {
+            if (socialMediaData[platform]?.data) {
+              processedSocialMediaData[platform] = {
+                followers: socialMediaData[platform].data?.followers,
+                engagement_rate: socialMediaData[platform].data?.engagement_rate,
+                avg_likes_per_post: socialMediaData[platform].data?.user_performance?.avg_likes_per_post,
+                top_contents: socialMediaData[platform].data?.top_contents
+              };
+            }
+          });
+          user.creator.socialMediaData = processedSocialMediaData;
+        }
+      });
+
+      user.creator.socialMediaData = processedSocialMediaData;
     }
 
     return res.status(200).json({ user });
