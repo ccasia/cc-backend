@@ -1818,10 +1818,6 @@ export const changePitchStatus = async (req: Request, res: Response) => {
         },
       });
 
-      if (submissions.length < 1) {
-        return res.status(404).json({ message: 'Submissions not found.' });
-      }
-
       await prisma.submission.deleteMany({
         where: {
           AND: [
@@ -1843,14 +1839,19 @@ export const changePitchStatus = async (req: Request, res: Response) => {
         });
       }
 
-      await prisma.creatorAgreement.delete({
+      const agreement = await prisma.creatorAgreement.findFirst({
         where: {
-          userId_campaignId: {
-            userId: pitch?.userId,
-            campaignId: pitch?.campaignId,
-          },
+          AND: [{ userId: pitch.userId }, { campaignId: pitch.campaignId }],
         },
       });
+
+      if (agreement) {
+        await prisma.creatorAgreement.delete({
+          where: {
+            id: agreement.id,
+          },
+        });
+      }
     }
 
     return res.status(200).json({ message: 'Successfully changed' });
