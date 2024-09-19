@@ -219,11 +219,11 @@ model Company {
   email               String?
   phone               String?
   website             String?
-  address             String
+  address             String?
   logo                String?
   about               String?
   objectives          Json?
-  registration_number String     @unique
+  registration_number String?     @unique
   createdAt           DateTime   @default(now())
   updatedAt           DateTime   @updatedAt
   brand               Brand[]
@@ -895,4 +895,14 @@ model CreatorAgreement {
   campaign     Campaign @relation(references: [id], fields: [campaignId], onDelete: Cascade)
 
   @@unique([userId, campaignId])
+}
+
+model Crawler {
+  id                 String   @id @unique @default(cuid())
+  followers          Int
+  engagement_rate    Int
+  avg_likes_per_post Int
+  top_contents       Json[]
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 }
