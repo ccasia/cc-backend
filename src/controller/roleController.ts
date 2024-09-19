@@ -47,3 +47,33 @@ export const getSpecificRole = async (req: Request, res: Response) => {
     return res.status(400).json(error);
   }
 };
+
+export const updateRole = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { role: roleName } = req.body;
+
+  try {
+    const role = await prisma.role.findUnique({
+      where: {
+        id: id,
+      },
+    });
+
+    if (!role) {
+      return res.status(404).json({ message: 'Role not found' });
+    }
+
+    await prisma.role.update({
+      where: {
+        id: role.id,
+      },
+      data: {
+        name: roleName,
+      },
+    });
+
+    return res.status(200).json({ message: 'Role Update Success' });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
