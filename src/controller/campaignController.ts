@@ -1171,6 +1171,7 @@ export const getCampaignsByCreatorId = async (req: Request, res: Response) => {
                 },
               },
             },
+            shortlisted: true,
           },
         });
 
@@ -1180,7 +1181,6 @@ export const getCampaignsByCreatorId = async (req: Request, res: Response) => {
 
     return res.status(200).json({ campaigns });
   } catch (error) {
-    //console.log(error);
     return res.status(400).json(error);
   }
 };
