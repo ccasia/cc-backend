@@ -1606,7 +1606,11 @@ export const changePitchStatus = async (req: Request, res: Response) => {
         status: status,
       },
       include: {
-        campaign: true,
+        campaign: {
+          include: {
+            campaignBrief: true,
+          },
+        },
       },
     });
 
@@ -1741,8 +1745,6 @@ export const changePitchStatus = async (req: Request, res: Response) => {
 
         if (socketId) {
           io.to(socketId).emit('notification', data);
-        } else {
-          //console.log(`User with ID ${pitch.userId} is not connected.`);
         }
 
         const campaign = await tx.campaign.findUnique({
@@ -1808,8 +1810,13 @@ export const changePitchStatus = async (req: Request, res: Response) => {
         },
         include: {
           dependentOn: true,
+          task: true,
         },
       });
+
+      if (submissions.length < 1) {
+        return res.status(404).json({ message: 'Submissions not found.' });
+      }
 
       await prisma.submission.deleteMany({
         where: {
@@ -1823,11 +1830,28 @@ export const changePitchStatus = async (req: Request, res: Response) => {
           ],
         },
       });
+
+      for (const submission of submissions) {
+        await prisma.task.delete({
+          where: {
+            id: submission.task?.id,
+          },
+        });
+      }
+
+      await prisma.creatorAgreement.delete({
+        where: {
+          userId_campaignId: {
+            userId: pitch?.userId,
+            campaignId: pitch?.campaignId,
+          },
+        },
+      });
     }
 
     return res.status(200).json({ message: 'Successfully changed' });
   } catch (error) {
-    //console.log(error);
+    console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -1870,6 +1894,7 @@ export const getCampaignForCreatorById = async (req: Request, res: Response) => 
         company: true,
         pitch: true,
         shortlisted: true,
+        invoice: true,
       },
     });
 

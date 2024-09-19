@@ -28,8 +28,6 @@ new CronJob(
   async function () {
     const today = dayjs().tz('Asia/Kuala_Lumpur').startOf('day').toISOString();
 
-    //console.log('Running cronjob...');
-
     // Find campaigns with the end date equal to today
     await prisma.campaign.updateMany({
       where: {
@@ -94,17 +92,7 @@ new CronJob(
           message: message,
           title: title,
         });
-        // const data = await saveNotification(
-        //   submission.userId,
-        //   dueDatesObject?.message
-        //     ? dueDatesObject?.message(
-        //         mapping[submission.submissionType.type],
-        //         dayjs(submission.dueDate).format('ddd LL'),
-        //         submission.campaign.name,
-        //       )
-        //     : 'Message function not found',
-        //   Entity.Timeline,
-        // );
+
         io.to(clients.get(submission.userId)).emit('notification', data);
       }
     });

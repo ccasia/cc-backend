@@ -18,119 +18,6 @@ Ffmpeg.setFfprobePath(ffprobePath.path);
 
 const prisma = new PrismaClient();
 
-// process.on('message', (payload: { tempFilePath: string; name: string; outputPath: string }) => {
-//   const { tempFilePath, name, outputPath } = payload;
-
-//   const endProcess = (endPayload: { statusCode: number; text: string; publicUrl?: string }) => {
-//     const { statusCode, text } = endPayload;
-//     // Remove temp file
-//     fs.unlink(tempFilePath, (err) => {
-//       if (err) {
-//         (process as unknown as ChildProcess).send({ statusCode: 500, text: err.message });
-//       }
-//     });
-
-//     // Format response so it fits the api response
-//     (process as unknown as ChildProcess).send({ statusCode, text });
-//     // End process
-//     process.exit();
-//   };
-
-//   const getVideoDuration = (inputPath: string) => {
-//     return new Promise((resolve, reject) => {
-//       Ffmpeg.ffprobe(inputPath, (err, metadata) => {
-//         if (err) {
-//           reject(err);
-//         } else {
-//           resolve(metadata.format.duration);
-//         }
-//       });
-//     });
-//   };
-
-//   (async () => {
-//     try {
-//       const duration: any = await getVideoDuration(tempFilePath);
-
-//       // Create the output file path
-//       // const outputFilePath = path.resolve(`./upload/${name}`);
-
-//       // Create a promise that resolves when the ffmpeg processing is complete
-//       const processPromise = new Promise<void>((resolve, reject) => {
-//         Ffmpeg(tempFilePath)
-//           .fps(30)
-//           .outputOptions(['-c:v libx264', '-crf 26'])
-//           .on('start', () => {
-//             //console.log('Starting...');
-//           })
-//           .on('progress', (progress) => {
-//             if (progress.timemark) {
-//               const [hours, minutes, seconds] = progress.timemark.split(':').map(parseFloat);
-//               const timemarkInSeconds = hours * 3600 + minutes * 60 + seconds;
-//               const percentComplete = (timemarkInSeconds / duration) * 100;
-//               (process as unknown as ChildProcess).send({ progress: percentComplete });
-//             }
-//           })
-//           .on('end', () => {
-//             //console.log('Processing finished.');
-//             resolve();
-//             (process as unknown as ChildProcess).send({ progress: 100 });
-//           })
-//           .on('error', (err) => {
-//             console.error('Error processing video:', err.message);
-//             reject(err);
-//           })
-//           .save(outputPath);
-//       });
-
-//       // Wait for the ffmpeg processing to complete
-//       await processPromise;
-
-//       const publicURL: any = '';
-
-//       while (!publicURL) {
-//         (process as unknown as ChildProcess).send({ progress: 100 });
-//       }
-//       // Upload the processed video to Google Cloud Storage
-//       // publicURL = await uploadPitchVideo(outputFilePath, name, 'pitchVideo', 123);
-
-//       // End process with success
-//       // (process as unknown as ChildProcess).send({ statusCode: 200, text: 'Success', publicUrl: publicURL });
-//     } catch (error) {
-//       console.error('Error during video processing and upload:', error);
-//       (process as unknown as ChildProcess).send({ statusCode: 500, text: `Error: ${error.message}` });
-//     }
-//   })();
-
-//   // getVideoDuration(tempFilePath)
-//   //   .then((duration: any) => {
-//   //     Ffmpeg(tempFilePath)
-//   //       .fps(30)
-//   //       .outputOptions(['-c:v libx264', '-crf 26'])
-//   //       .on('start', () => {
-//   //         //console.log('Starting...');
-//   //       })
-//   //       .on('progress', (progress) => {
-//   //         if (progress.timemark) {
-//   //           const [hours, minutes, seconds] = progress.timemark.split(':').map(parseFloat);
-//   //           const timemarkInSeconds = hours * 3600 + minutes * 60 + seconds;
-//   //           const percentComplete = (timemarkInSeconds / duration) * 100;
-
-//   //           // //console.log(`Processing: ${percentComplete.toFixed(2)}% done`);
-//   //           (process as unknown as ChildProcess).send({ progress: percentComplete });
-//   //         }
-//   //       })
-//   //       .on('end', (data) => {
-//   //         endProcess({ statusCode: 200, text: 'Success' });
-//   //       })
-//   //       .on('error', (err) => {
-//   //         endProcess({ statusCode: 500, text: err.message });
-//   //       })
-//   //       .save(path.resolve(`./upload/${name}`));
-//   //   })
-//   //   .catch((err) => //console.log(err));
-// });
-
 const processVideo = async (
   videoData: any,
   socket: any,
@@ -221,7 +108,7 @@ const processVideo = async (
           data.user.name as string,
         );
 
-        data.campaign.campaignAdmin.forEach(async (item) => {
+        for (const item of data.campaign.campaignAdmin) {
           const notification = await saveNotification({
             userId: item.adminId,
             message: adminMessage,
@@ -233,7 +120,21 @@ const processVideo = async (
           if (socket) {
             socket.to(clients.get(item.adminId)).emit('notification', notification);
           }
-        });
+        }
+
+        // data.campaign.campaignAdmin.forEach(async (item) => {
+        //   const notification = await saveNotification({
+        //     userId: item.adminId,
+        //     message: adminMessage,
+        //     title: adminTitle,
+        //     entity: 'Draft',
+        //     entityId: data.campaignId,
+        //   });
+
+        //   if (socket) {
+        //     socket.to(clients.get(item.adminId)).emit('notification', notification);
+        //   }
+        // });
 
         //console.log('Video processing completed for:', videoData.fileName);
         activeProcesses.delete(submissionId);
@@ -244,14 +145,23 @@ const processVideo = async (
         resolve();
       })
       .on('error', (err) => {
-        if (err.message.includes('ffmpeg was killed with signal SIGKILL')) {
-          //console.log(`Processing for video ${submissionId} was cancelled.`);
+        if (err.message.includes('ffmpeg was killed')) {
+          // Handle known errors
           resolve();
         } else {
           console.error('Error processing video:', err);
           activeProcesses.delete(submissionId); // Clean up the map
           reject(err); // Reject for non-cancellation errors
         }
+
+        // if (err.message.includes('ffmpeg was killed with signal SIGKILL')) {
+        //   //console.log(`Processing for video ${submissionId} was cancelled.`);
+        //   resolve();
+        // } else {
+        //   console.error('Error processing video:', err);
+        //   activeProcesses.delete(submissionId); // Clean up the map
+        //   reject(err); // Reject for non-cancellation errors
+        // }
         fs.unlinkSync(inputPath);
       });
   });
