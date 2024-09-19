@@ -28,9 +28,10 @@ const prisma = new PrismaClient();
 //   campaignId: string;
 // };
 
-export const createInvoiceService = async (data: any, userId: any) => {
+export const createInvoiceService = async (data: any, userId: any, amount: any) => {
   // invoice number generator get it from frontend
   //console.log('data invoice', data, userId, '\n\n\n');
+  console.log('AMUNTTTTT', amount);
   const generateRandomInvoiceNumber = () => {
     const randomNumber = Math.floor(1000 + Math.random() * 9000);
     return `INV-${randomNumber}`;
@@ -47,6 +48,7 @@ export const createInvoiceService = async (data: any, userId: any) => {
     email: 'support@cultcreative.asia',
     primary: true,
   };
+
   // get item from aggremant form
   const item = {
     title: 'Posting on social media',
@@ -56,6 +58,7 @@ export const createInvoiceService = async (data: any, userId: any) => {
     price: 200,
     total: 200,
   };
+
   const invoiceFrom = {
     id: data.user.id,
     name: data.user.name,
@@ -74,7 +77,6 @@ export const createInvoiceService = async (data: any, userId: any) => {
     accountEmail: data.user.email,
   };
 
-  //console.log('other important data', invoiceFrom, invoiceTo, item, bankInfo);
   try {
     const newInvoice = await prisma.invoice.create({
       data: {
@@ -85,14 +87,14 @@ export const createInvoiceService = async (data: any, userId: any) => {
         invoiceFrom: invoiceFrom,
         invoiceTo,
         task: item,
-        amount: 200.0,
+        amount: parseFloat(amount) || 200.0,
         bankAcc: bankInfo,
         campaignId: data.campaignId,
         creatorId: data.userId,
         createdBy: userId as string,
       },
     });
-    //console.log(newInvoice);
+
     return newInvoice;
   } catch (error) {
     //console.log(error);

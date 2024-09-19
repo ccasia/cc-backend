@@ -652,6 +652,7 @@ export const adminManagePosting = async (req: Request, res: Response) => {
   const { status, submissionId } = req.body;
 
   const userId = req.session.userid;
+
   try {
     if (status === 'APPROVED') {
       const data = await prisma.submission.update({
@@ -667,6 +668,7 @@ export const adminManagePosting = async (req: Request, res: Response) => {
             include: {
               creator: true,
               paymentForm: true,
+              creatorAgreement: true,
             },
           },
           campaign: true,
@@ -685,8 +687,28 @@ export const adminManagePosting = async (req: Request, res: Response) => {
         },
       });
 
-      const generatedInvoice = status === 'APPROVED' ? createInvoiceService(data, userId) : null;
-      //console.log('invoice generated', generatedInvoice);
+      const invoiceAmount = data.user.creatorAgreement.find((item) => item.userId === data.userId)?.amount;
+
+      const generatedInvoice = status === 'APPROVED' ? createInvoiceService(data, userId, invoiceAmount) : null;
+
+      const shortlistedCreator = await prisma.shortListedCreator.findFirst({
+        where: {
+          AND: [{ userId: data.userId }, { campaignId: data.campaignId }],
+        },
+      });
+
+      if (!shortlistedCreator) {
+        return res.status(404).json({ message: 'Shortlisted creator not found.' });
+      }
+
+      await prisma.shortListedCreator.update({
+        where: {
+          id: shortlistedCreator.id,
+        },
+        data: {
+          isCampaignDone: true,
+        },
+      });
 
       const notification = await saveNotification({
         userId: data.userId,
@@ -739,6 +761,7 @@ export const adminManagePosting = async (req: Request, res: Response) => {
 
     return res.status(200).json({ message: 'Successfully submitted' });
   } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   }
 };

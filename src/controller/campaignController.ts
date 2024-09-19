@@ -107,6 +107,7 @@ const generateAgreement = async (creator: any, campaign: any) => {
     creatorAccNumber: creator?.paymentForm.bankAccountNumber,
     creatorBankName: creator?.paymentForm?.bankName,
     agreementFormUrl: campaign?.campaignBrief?.agreementFrom,
+    version: 1,
   });
 
   const pdfPath = await pdfConverter(
@@ -1068,7 +1069,12 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
           user: true,
         },
       });
-      // await saveNotification(user?.id as string, `Your pitch has been successfully sent.`, Entity.Pitch);
+
+      // await saveNotification({
+      //   userId: user?.id as string,
+      //   message: `Your pitch has been successfully sent.`,
+      //   entity: Entity.Pitch,
+      // });
     } else {
       pitch = await prisma.pitch.create({
         data: {
@@ -1110,7 +1116,7 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
 
     admins?.map(async ({ adminId }) => {
       const notification = await saveNotification({
-        userId: user?.id as string,
+        userId: adminId as string,
         message: notificationAdmin.message,
         title: notificationAdmin.title,
         entity: 'Pitch',
@@ -1856,7 +1862,6 @@ export const changePitchStatus = async (req: Request, res: Response) => {
 
     return res.status(200).json({ message: 'Successfully changed' });
   } catch (error) {
-    console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -2484,6 +2489,18 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Campaign not found' });
     }
 
+    const agreement = await prisma.creatorAgreement.findUnique({
+      where: {
+        id: agreementId,
+      },
+    });
+
+    if (!agreement) {
+      return res.status(404).json({ message: 'Agreement not found.' });
+    }
+
+    const version = agreement?.version ? agreement?.version + 1 : 1;
+
     const agreementsPath = await agreementInput({
       date: dayjs().format('ddd LL'),
       creatorName: creator.name as string,
@@ -2495,6 +2512,7 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
       creatorBankName: creator.paymentForm?.bankName as string,
       paymentAmount: paymentAmount,
       agreementFormUrl: campaign?.campaignBrief?.agreementFrom as string,
+      version: version,
     });
 
     const pdfPath = await pdfConverter(

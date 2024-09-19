@@ -20,6 +20,7 @@ export const agreementInput = async (data: {
   creatorBankName: string;
   paymentAmount?: number;
   agreementFormUrl: string;
+  version: number;
 }) => {
   const {
     date,
@@ -32,6 +33,7 @@ export const agreementInput = async (data: {
     creatorBankName,
     paymentAmount,
     agreementFormUrl,
+    version,
   } = data;
 
   try {
@@ -59,6 +61,7 @@ export const agreementInput = async (data: {
       CREATOR_ACCOUNT_NUMBER: creatorAccNumber,
       CREATOR_BANK_NAME: creatorBankName,
       CREATOR_PAYMENT: paymentAmount ? paymentAmount.toString() : '200',
+      CREATOR_VERSION: `V.${version.toString()}`,
     });
 
     try {

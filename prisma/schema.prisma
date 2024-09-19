@@ -893,6 +893,7 @@ model CreatorAgreement {
   amount       String?
   userId       String
   campaignId   String
+  version      Int?     @default(1)
   user         User     @relation(references: [id], fields: [userId], onDelete: Cascade)
   campaign     Campaign @relation(references: [id], fields: [campaignId], onDelete: Cascade)
 
