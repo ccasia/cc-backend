@@ -220,6 +220,7 @@ model Company {
   phone               String?
   website             String?
   address             String?
+  address             String?
   logo                String?
   about               String?
   objectives          Json?

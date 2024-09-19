@@ -13,7 +13,7 @@ import {
   crawlCreator,
   getCreatorSocialMediaData,
   getCreatorSocialMediaDataById,
-  getCreatorFullInfoByIdPublic
+  getCreatorFullInfoByIdPublic,
 } from '@controllers/creatorController';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 import { needPermissions } from '@middlewares/needPermissions';

@@ -70,7 +70,7 @@ export const submitFirstDraft = async (req: Request, res: Response) => {
   //   }
   //   return res.status(200).json({ message: 'Successfully submitted' });
   // } catch (error) {
-  //   console.log(error);
+  //   //console.log(error);
   //   return res.status(400).json(error);
   // }
 };
@@ -129,7 +129,7 @@ export const submitFinalDraft = async (req: Request, res: Response) => {
   //   }
   //   return res.status(200).json({ message: 'Successfully submitted' });
   // } catch (error) {
-  //   console.log(error);
+  //   //console.log(error);
   //   return res.status(400).json(error);
   // }
 };
@@ -257,7 +257,7 @@ export const submitFeedBackFirstDraft = async (req: Request, res: Response) => {
   //     });
   //   }
   // } catch (error) {
-  //   console.log(error);
+  //   //console.log(error);
   //   return res.status(400).json(error);
   // }
 };

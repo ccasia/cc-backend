@@ -54,7 +54,7 @@ export const updateProfileAdmin = async (req: Request, res: Response) => {
     // saveNotification(req.body.userId, Title.Update, 'Profile Updated', Entity.User);
     return res.status(200).json({ message: 'Successfully updated' });
   } catch (error) {
-    console.log(error);
+    //console.log(error);
     return res.status(400).json({ message: error });
   }
 };

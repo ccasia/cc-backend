@@ -115,7 +115,7 @@ app.get('/users', isLoggedIn, async (_req, res) => {
     const users = await prisma.user.findMany();
     res.send(users);
   } catch (error) {
-    console.log(error);
+    //console.log(error);
   }
 });
 
@@ -133,7 +133,7 @@ io.on('connection', (socket) => {
       const command = activeProcesses.get(submissionId);
       command.kill('SIGKILL'); // Terminate the FFmpeg process
       activeProcesses.delete(submissionId);
-      console.log(`Processing for video ${submissionId} has been cancelled.`);
+      //console.log(`Processing for video ${submissionId} has been cancelled.`);
       socket.emit('progress', { submissionId, progress: 0 }); // Reset progress
     }
   });
@@ -143,7 +143,7 @@ io.on('connection', (socket) => {
     try {
       // Join the room specified by threadId
       socket.join(threadId);
-      console.log(`Client joined room: ${threadId}`);
+      //console.log(`Client joined room: ${threadId}`);
 
       // Fetch old messages using the service
       const oldMessages = await fetchMessagesFromThread(threadId);
@@ -186,17 +186,17 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
-    console.log('Client disconnected:', socket.id);
+    //console.log('Client disconnected:', socket.id);
     clients.forEach((value, key) => {
       if (value === socket.id) {
         clients.delete(key);
-        console.log(`Removed user ${key} from clients map`);
+        //console.log(`Removed user ${key} from clients map`);
       }
     });
   });
 });
 
 server.listen(process.env.PORT, () => {
-  console.log(`Listening to port ${process.env.PORT}...`);
-  console.log(`${process.env.NODE_ENV} stage is running...`);
+  //console.log(`Listening to port ${process.env.PORT}...`);
+  //console.log(`${process.env.NODE_ENV} stage is running...`);
 });

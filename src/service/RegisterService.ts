@@ -44,6 +44,6 @@ export const registerSuperadmin = async ({ email, password }: User, { name, coun
       },
     });
   } catch (error) {
-    console.log(error);
+    //console.log(error);
   }
 };

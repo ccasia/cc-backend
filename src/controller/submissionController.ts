@@ -114,7 +114,7 @@ export const agreementSubmission = async (req: Request, res: Response) => {
     }
     return res.status(200).json({ message: 'Successfully submitted' });
   } catch (error) {
-    console.log(error);
+    //console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -268,7 +268,7 @@ export const getSubmissionByCampaignCreatorId = async (req: Request, res: Respon
       },
     });
 
-    console.log(data);
+    //console.log(data);
 
     return res.status(200).json(data);
   } catch (error) {
@@ -338,14 +338,14 @@ export const draftSubmission = async (req: Request, res: Response) => {
         persistent: true,
       },
     );
-    console.log(`Sent video processing task to queue: draft`);
+    //console.log(`Sent video processing task to queue: draft`);
 
     await channel.close();
     await amqp.close();
 
     return res.status(200).json({ message: 'Video start processing' });
   } catch (error) {
-    console.log(error);
+    //console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -685,7 +685,7 @@ export const adminManagePosting = async (req: Request, res: Response) => {
       });
 
       const generatedInvoice = status === 'APPROVED' ? createInvoiceService(data, userId) : null;
-      console.log('invoice generated', generatedInvoice);
+      //console.log('invoice generated', generatedInvoice);
 
       const notification = await saveNotification({
         userId: data.userId,

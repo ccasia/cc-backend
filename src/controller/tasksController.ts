@@ -76,7 +76,7 @@ export const creatorUploadAgreement = async (req: Request, res: Response) => {
   //     return res.status(404).json({ message: 'File not found' });
   //   }
   // } catch (error) {
-  //   console.log(error);
+  //   //console.log(error);
   //   return res.status(400).json(error);
   // }
 };
@@ -103,7 +103,7 @@ export const getSubmissionByCampaignCreatorId = async (req: Request, res: Respon
       },
     });
 
-    console.log(data);
+    //console.log(data);
 
     return res.status(200).json(data);
   } catch (error) {
@@ -168,7 +168,7 @@ export const getSubmissionByCampaignCreatorId = async (req: Request, res: Respon
 
 //     return res.status(200).json({ message: 'Successfully updated' });
 //   } catch (error) {
-//     console.log(error);
+//     //console.log(error);
 //     return res.status(400).json(error);
 //   }
 // };

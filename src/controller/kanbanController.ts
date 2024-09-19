@@ -75,7 +75,7 @@ export const createColumn = async (req: Request, res: Response) => {
     });
     return res.status(200).json({ message: 'Success', newColumn: column });
   } catch (error) {
-    console.log(error);
+    //console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -115,7 +115,7 @@ export const deleteColumn = async (req: Request, res: Response) => {
 
     return res.status(200).json(deletedColumn);
   } catch (error) {
-    console.log(error);
+    //console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -216,7 +216,7 @@ export const moveColumn = async (req: Request, res: Response) => {
 
     return res.status(200).json(updatedColumns);
   } catch (error) {
-    // console.log(error);
+    // //console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -306,7 +306,7 @@ export const moveTask = async (req: Request, res: Response) => {
 
     return res.status(200).json({ message: 'Task Moved' });
   } catch (error) {
-    console.log(error);
+    //console.log(error);
     return res.status(400).json(error);
   }
 };
