@@ -4,6 +4,25 @@ import { InvoiceStatus, PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
+export const getAllInvoices = async (req: Request, res: Response) => {
+  try {
+    const invoices = await prisma.invoice.findMany({
+      include: {
+        user: {
+          include: {
+            creator: true,
+          },
+        },
+        campaign: true,
+      },
+    });
+
+    return res.status(200).json(invoices);
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
 // get invoices by creator id
 export const getInvoicesByCreatorId = async (req: Request, res: Response) => {
   const userid = req.session.userid;

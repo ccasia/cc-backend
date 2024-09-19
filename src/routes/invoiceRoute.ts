@@ -9,9 +9,12 @@ import {
   getInvoiceById,
   getInvoiceByCreatorIdAndCampaignId,
   updateInvoiceStatus,
-  updateInvoice
+  updateInvoice,
+  getAllInvoices,
 } from '@controllers/invoiceController';
+import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 
+router.get('/', isSuperAdmin, getAllInvoices);
 router.get('/creator', getInvoicesByCreatorId);
 router.get('/getInvoicesByCampaignId/:id', getInvoicesByCampaignId);
 router.get('/:id', getInvoiceById);
