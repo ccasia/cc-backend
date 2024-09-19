@@ -1584,7 +1584,11 @@ export const changePitchStatus = async (req: Request, res: Response) => {
         id: pitchId,
       },
       include: {
-        campaign: true,
+        campaign: {
+          include: {
+            campaignBrief: true,
+          },
+        },
         user: {
           include: {
             paymentForm: true,
