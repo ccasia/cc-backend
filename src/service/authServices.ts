@@ -20,7 +20,7 @@ export const handleChangePassword = async ({ userId, latestPassword }: ChangePas
 
     return user;
   } catch (error) {
-    console.log(error);
+    //console.log(error);
     throw new Error('Error');
   }
 };

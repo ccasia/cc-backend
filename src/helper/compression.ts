@@ -26,7 +26,7 @@ Ffmpeg.setFfmpegPath(FfmpegProbe.path);
 //       .fps(30)
 //       .outputOptions(['-c:v libx264', '-crf 26'])
 //       .on('start', () => {
-//         console.log('Starting...');
+//         //console.log('Starting...');
 //       })
 //       .on('progress', async (progress) => {
 //         if (progress.timemark) {
@@ -40,7 +40,7 @@ Ffmpeg.setFfmpegPath(FfmpegProbe.path);
 //         }
 //       })
 //       .on('end', () => {
-//         console.log('Processing finished.');
+//         //console.log('Processing finished.');
 //         resolve(path.resolve(`./upload/${outputPath}`));
 //         //   (process as unknown as ChildProcess).send({ progress: 100 });
 //       })
@@ -76,7 +76,7 @@ export const compress = (
       .fps(30)
       .outputOptions(['-c:v libx264', '-crf 26'])
       .on('start', () => {
-        console.log('Starting...');
+        //console.log('Starting...');
       })
       .on('progress', async (progress) => {
         if (progress.timemark) {
@@ -90,7 +90,7 @@ export const compress = (
         }
       })
       .on('end', () => {
-        console.log('Processing finished.');
+        //console.log('Processing finished.');
         resolve(path.resolve(__dirname, `../upload/${outputPath}`));
       })
       .on('error', (err) => {
@@ -102,7 +102,7 @@ export const compress = (
 
     // Handle abort signal
     abortSignal.addEventListener('abort', () => {
-      console.log('Aborting FFmpeg process');
+      //console.log('Aborting FFmpeg process');
       // FFmpeg does not directly expose a method to abort via Fluent-FFmpeg.
       // Here, we assume you handle it externally by stopping the process.
       ffmpegProcess.kill('SIGTERM'); // Or 'SIGKILL' if 'SIGTERM' doesn't work

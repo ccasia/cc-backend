@@ -14,7 +14,7 @@ export const pdfConverter = async (inputPath: string, outputPath: string) => {
       } else {
         fs.unlinkSync(inputPath);
         fs.writeFileSync(outputPath, done);
-        console.log(`PDF saved to: ${outputPath}`);
+        //console.log(`PDF saved to: ${outputPath}`);
         resolve(outputPath);
       }
     });

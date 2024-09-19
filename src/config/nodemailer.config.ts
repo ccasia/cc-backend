@@ -27,9 +27,9 @@ const transport = nodemailer.createTransport({
 // const sendMail = async (transport: any, mailOptions: any) => {
 //   try {
 //     await transport.sendMail(mailOptions);
-//     console.log(`Email has been sent.`);
+//     //console.log(`Email has been sent.`);
 //   } catch (error) {
-//     console.log(error);
+//     //console.log(error);
 //   }
 // };
 

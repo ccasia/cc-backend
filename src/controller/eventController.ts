@@ -8,7 +8,7 @@ export const createEvent = async (req: Request, res: Response) => {
   const userId = req.session.userid;
 
   if (!userId) {
-    console.log('ab');
+    //console.log('ab');
     return res.status(400).json({ message: 'Not authenticated.' });
   }
 
@@ -17,7 +17,7 @@ export const createEvent = async (req: Request, res: Response) => {
     await createEventService({ title, description, userId, allDay, start, end, color } as Event);
     return res.status(200).json({ message: 'New event is created!' });
   } catch (error) {
-    console.log(error);
+    //console.log(error);
     return res.status(400).json(error);
   }
 };

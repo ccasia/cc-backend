@@ -151,7 +151,7 @@ export const createCampaign = async (req: Request, res: Response) => {
     productName,
   }: Campaign = JSON.parse(req.body.data);
 
-  // console.log(JSON.parse(req.body.data));
+  // //console.log(JSON.parse(req.body.data));
   try {
     const publicURL: any = [];
 
@@ -475,7 +475,7 @@ export const createCampaign = async (req: Request, res: Response) => {
       return res.status(200).json({ campaign, message: 'Successfully created campaign' });
     });
   } catch (error) {
-    console.log(error);
+    //console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -1011,7 +1011,7 @@ export const getAllCampaignsFinance = async (req: Request, res: Response) => {
         },
       },
     });
-    console.log(campaigns);
+    //console.log(campaigns);
     return res.status(200).json(campaigns);
   } catch (error) {
     return res.status(400).json(error);
@@ -1173,7 +1173,7 @@ export const getCampaignsByCreatorId = async (req: Request, res: Response) => {
 
     return res.status(200).json({ campaigns });
   } catch (error) {
-    console.log(error);
+    //console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -1478,7 +1478,7 @@ export const editCampaignTimeline = async (req: Request, res: Response) => {
 
     // await Promise.all(
     //   data.map(async (item: any) => {
-    //     // console.log(item);
+    //     // //console.log(item);
     //     const isExist = await prisma.campaignTask.findUnique({
     //       where: {
     //         id: item.campaignTasks.id,
@@ -1552,7 +1552,7 @@ export const editCampaignTimeline = async (req: Request, res: Response) => {
     logChange(message, id, req);
     return res.status(200).json({ message: message });
   } catch (error) {
-    console.log(error);
+    //console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -1569,7 +1569,7 @@ export const getFirstDraft = async (req: Request, res: Response) => {
   //   });
   //   return res.status(200).json(firstDraft);
   // } catch (error) {
-  //   console.log(error);
+  //   //console.log(error);
   //   return res.status(400).json(error);
   // }
 };
@@ -1741,7 +1741,7 @@ export const changePitchStatus = async (req: Request, res: Response) => {
         if (socketId) {
           io.to(socketId).emit('notification', data);
         } else {
-          console.log(`User with ID ${pitch.userId} is not connected.`);
+          //console.log(`User with ID ${pitch.userId} is not connected.`);
         }
 
         const campaign = await tx.campaign.findUnique({
@@ -1826,7 +1826,7 @@ export const changePitchStatus = async (req: Request, res: Response) => {
 
     return res.status(200).json({ message: 'Successfully changed' });
   } catch (error) {
-    console.log(error);
+    //console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -1979,9 +1979,9 @@ export const getSubmission = async (req: Request, res: Response) => {
 // };
 
 export const getCampaignLog = async (req: Request, res: Response) => {
-  console.log('=== BEGIN getCampaignLog ===');
-  console.log(req.params);
-  console.log('=== END getCampaignLog ===');
+  //console.log('=== BEGIN getCampaignLog ===');
+  //console.log(req.params);
+  //console.log('=== END getCampaignLog ===');
 
   const { id } = req.params;
 
@@ -1994,9 +1994,9 @@ export const getCampaignLog = async (req: Request, res: Response) => {
     return res.status(200).json(campaignLog);
   } catch (error) {
     // TODO TEMP
-    console.log('=== BEGIN getCampaignLog error ===');
-    console.log(error);
-    console.log('=== END getCampaignLog error ===');
+    //console.log('=== BEGIN getCampaignLog error ===');
+    //console.log(error);
+    //console.log('=== END getCampaignLog error ===');
   }
 };
 
@@ -2008,7 +2008,7 @@ export const uploadVideoTest = async (req: Request, res: Response) => {
   let cancel = false;
 
   res.on('close', async () => {
-    console.log('ABORTING....');
+    //console.log('ABORTING....');
     cancel = true;
     await fs.promises.unlink(path.resolve(__dirname, `../upload/${outputPath}`));
     abortController.abort();
@@ -2016,7 +2016,7 @@ export const uploadVideoTest = async (req: Request, res: Response) => {
 
   try {
     if (!cancel) {
-      console.log('COMPRESSION START');
+      //console.log('COMPRESSION START');
       const path: any = await compress(
         (req.files as any).pitchVideo.tempFilePath,
         outputPath,
@@ -2035,7 +2035,7 @@ export const uploadVideoTest = async (req: Request, res: Response) => {
         });
       });
 
-      console.log('UPLOADING START');
+      //console.log('UPLOADING START');
       const a = await uploadPitchVideo(
         path,
         outputPath,
@@ -2052,7 +2052,7 @@ export const uploadVideoTest = async (req: Request, res: Response) => {
       return res.status(200).json({ publicUrl: a, message: 'Succesfully uploaded' });
     }
   } catch (error) {
-    console.log(error);
+    //console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -2101,7 +2101,7 @@ export const unSaveCampaign = async (req: Request, res: Response) => {
       .status(200)
       .json({ message: `Campaign ${bookmark.campaign?.name} has been remove from saved campaigns` });
   } catch (error) {
-    console.log(error);
+    //console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -2138,7 +2138,7 @@ export const createLogistics = async (req: Request, res: Response) => {
 
     return res.status(200).json({ message: 'Succesfully created logistics' });
   } catch (error) {
-    console.log(error);
+    //console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -2169,7 +2169,7 @@ export const updateStatusLogistic = async (req: Request, res: Response) => {
     });
     return res.status(200).json({ message: 'Successfully changed status' });
   } catch (error) {
-    console.log(error);
+    //console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -2348,7 +2348,7 @@ export const shortlistCreator = async (req: Request, res: Response) => {
           if (socketId) {
             io.to(socketId).emit('notification', data);
           } else {
-            console.log(`User with ID ${creator.userId} is not connected.`);
+            //console.log(`User with ID ${creator.userId} is not connected.`);
           }
 
           if (!campaignInfo || !campaignInfo.thread) {
@@ -2376,7 +2376,7 @@ export const shortlistCreator = async (req: Request, res: Response) => {
 
     res.status(200).json({ message: 'Successfully shortlisted' });
   } catch (error) {
-    console.log(error);
+    //console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -2489,7 +2489,7 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
 
     return res.status(200).json({ message: 'Update Success' });
   } catch (error) {
-    console.log(error);
+    //console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -2558,7 +2558,7 @@ export const sendAgreement = async (req: Request, res: Response) => {
 
     return res.status(200).json({ message: 'Agreement has been sent.' });
   } catch (error) {
-    console.log(error);
+    //console.log(error);
     return res.status(400).json(error);
   }
 };

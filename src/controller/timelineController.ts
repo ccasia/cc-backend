@@ -83,7 +83,7 @@ export const updateOrCreateDefaultTimeline = async (req: Request, res: Response)
     );
     return res.status(200).json({ message: 'Successfully updated' });
   } catch (error) {
-    console.log(error);
+    //console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -104,7 +104,7 @@ export const getDefaultTimeline = async (req: Request, res: Response) => {
 
 export const deleteTimelineType = async (req: Request, res: Response) => {
   const { id } = req.params;
-  console.log(id);
+  //console.log(id);
   try {
     await prisma.timelineTypeDefault.delete({
       where: {
@@ -113,7 +113,7 @@ export const deleteTimelineType = async (req: Request, res: Response) => {
     });
     return res.status(200).json({ message: 'Successfully deleted' });
   } catch (error) {
-    console.log(error);
+    //console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -131,7 +131,7 @@ export const createSingleTimelineType = async (req: Request, res: Response) => {
     });
     return res.status(200).json(newTimelineType);
   } catch (error) {
-    console.log(error);
+    //console.log(error);
     return res.status(400).json(error);
   }
 };

@@ -61,7 +61,7 @@ const prisma = new PrismaClient();
 //           .fps(30)
 //           .outputOptions(['-c:v libx264', '-crf 26'])
 //           .on('start', () => {
-//             console.log('Starting...');
+//             //console.log('Starting...');
 //           })
 //           .on('progress', (progress) => {
 //             if (progress.timemark) {
@@ -72,7 +72,7 @@ const prisma = new PrismaClient();
 //             }
 //           })
 //           .on('end', () => {
-//             console.log('Processing finished.');
+//             //console.log('Processing finished.');
 //             resolve();
 //             (process as unknown as ChildProcess).send({ progress: 100 });
 //           })
@@ -108,7 +108,7 @@ const prisma = new PrismaClient();
 //   //       .fps(30)
 //   //       .outputOptions(['-c:v libx264', '-crf 26'])
 //   //       .on('start', () => {
-//   //         console.log('Starting...');
+//   //         //console.log('Starting...');
 //   //       })
 //   //       .on('progress', (progress) => {
 //   //         if (progress.timemark) {
@@ -116,7 +116,7 @@ const prisma = new PrismaClient();
 //   //           const timemarkInSeconds = hours * 3600 + minutes * 60 + seconds;
 //   //           const percentComplete = (timemarkInSeconds / duration) * 100;
 
-//   //           // console.log(`Processing: ${percentComplete.toFixed(2)}% done`);
+//   //           // //console.log(`Processing: ${percentComplete.toFixed(2)}% done`);
 //   //           (process as unknown as ChildProcess).send({ progress: percentComplete });
 //   //         }
 //   //       })
@@ -128,7 +128,7 @@ const prisma = new PrismaClient();
 //   //       })
 //   //       .save(path.resolve(`./upload/${name}`));
 //   //   })
-//   //   .catch((err) => console.log(err));
+//   //   .catch((err) => //console.log(err));
 // });
 
 const processVideo = async (
@@ -235,7 +235,7 @@ const processVideo = async (
           }
         });
 
-        console.log('Video processing completed for:', videoData.fileName);
+        //console.log('Video processing completed for:', videoData.fileName);
         activeProcesses.delete(submissionId);
         if (socket) {
           socket.to(clients.get(userid)).emit('progress', { submissionId, progress: 100 });
@@ -245,7 +245,7 @@ const processVideo = async (
       })
       .on('error', (err) => {
         if (err.message.includes('ffmpeg was killed with signal SIGKILL')) {
-          console.log(`Processing for video ${submissionId} was cancelled.`);
+          //console.log(`Processing for video ${submissionId} was cancelled.`);
           resolve();
         } else {
           console.error('Error processing video:', err);
@@ -265,7 +265,7 @@ const processVideo = async (
     await channel.purgeQueue('draft');
     // await channel.prefetch(2);
 
-    console.log('Waiting for messages in queue:', 'draft');
+    //console.log('Waiting for messages in queue:', 'draft');
 
     await channel.consume('draft', async (msg) => {
       if (msg !== null) {
@@ -285,6 +285,6 @@ const processVideo = async (
       }
     });
   } catch (error) {
-    console.log('Error rabbitmq');
+    //console.log('Error rabbitmq');
   }
 })();

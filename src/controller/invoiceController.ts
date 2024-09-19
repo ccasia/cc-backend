@@ -6,7 +6,7 @@ const prisma = new PrismaClient();
 
 // get invoices by creator id
 export const getInvoicesByCreatorId = async (req: Request, res: Response) => {
-  const  userid  = req.session.userid;
+  const userid = req.session.userid;
   try {
     const invoices = await prisma.invoice.findMany({
       where: {
@@ -65,7 +65,7 @@ export const getInvoiceById = async (req: Request, res: Response) => {
 // get invoice by creator id and campaign id
 export const getInvoiceByCreatorIdAndCampaignId = async (req: Request, res: Response) => {
   const { creatorId, campaignId } = req.params;
-  console.log(req.params);
+  //console.log(req.params);
   try {
     const invoice = await prisma.invoice.findFirst({
       where: {
@@ -75,7 +75,7 @@ export const getInvoiceByCreatorIdAndCampaignId = async (req: Request, res: Resp
     });
     res.status(200).json(invoice);
   } catch (error) {
-    console.log(error);
+    //console.log(error);
     res.status(500).json({ error: 'Something went wrong' });
   }
 };
@@ -136,7 +136,7 @@ export const createInvoice = async (req: Request, res: Response) => {
     });
     res.status(201).json(invoice);
   } catch (error) {
-    console.log(error);
+    //console.log(error);
     res.status(500).json({ error: 'Something went wrong' });
   }
 };
@@ -160,7 +160,7 @@ export const updateInvoiceStatus = async (req: Request, res: Response) => {
 };
 
 export const updateInvoice = async (req: Request, res: Response) => {
-  console.log(req.body);
+  //console.log(req.body);
   const { invoiceId, dueDate, status, invoiceFrom, invoiceTo, items, totalAmount, campaignId, bankInfo }: invoiceData =
     req.body;
   try {
@@ -181,7 +181,7 @@ export const updateInvoice = async (req: Request, res: Response) => {
     });
     res.status(200).json(invoice);
   } catch (error) {
-    console.log(error);
+    //console.log(error);
     res.status(500).json({ error: 'Something went wrong' });
   }
 };

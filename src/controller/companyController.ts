@@ -37,7 +37,7 @@ export const getAllCompanies = async (_req: Request, res: Response) => {
     });
     return res.status(200).json(companies);
   } catch (err) {
-    console.log('DAWDAW', err);
+    //console.log('DAWDAW', err);
     return res.status(400).json({ message: err });
   }
 };
@@ -55,7 +55,7 @@ export const getCompanyById = async (req: Request, res: Response) => {
     });
     return res.status(200).json(companies);
   } catch (err) {
-    console.log('DAWDAW', err);
+    //console.log('DAWDAW', err);
     return res.status(400).json({ message: err });
   }
 };
@@ -70,7 +70,7 @@ export const createBrand = async (req: Request, res: Response) => {
 };
 
 export const getAllBrands = async (req: Request, res: Response) => {
-  console.log(req.body);
+  //console.log(req.body);
   try {
     const brands = await prisma.brand.findMany();
     return res.status(200).json(brands);
@@ -80,7 +80,7 @@ export const getAllBrands = async (req: Request, res: Response) => {
 };
 
 export const createOneCompany = async (req: Request, res: Response) => {
-  console.log(req.body);
+  //console.log(req.body);
   try {
     const company = await prisma.company.create({
       data: req.body,

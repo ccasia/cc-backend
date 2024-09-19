@@ -25,7 +25,7 @@ shortlisted('email@gmail.com', 'Design Better', 'Afiq');
 // csmAdminInvoice("email@gmail.com", "Design Better", "Administrator")
 // financeAdminInvoice("novagaming991@gmail.com", "Design Better", "Administrator")
 
-console.log('Email Sent!');
+//console.log('Email Sent!');
 
 // Design Better is a placeholder Campaign
 // Uncomment to test

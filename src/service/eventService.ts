@@ -65,7 +65,7 @@ export const updateEventService = async (eventId: string, eventData: Event) => {
     });
     return updatedEvent;
   } catch (error) {
-    console.log(error);
+    //console.log(error);
     throw new Error(error as any);
   }
 };

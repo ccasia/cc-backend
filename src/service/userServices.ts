@@ -160,7 +160,7 @@ export const updateAdmin = async (
 
     return data;
   } catch (error) {
-    console.log(error);
+    //console.log(error);
     return error;
   }
 };
@@ -352,7 +352,7 @@ export const createNewAdmin = async (email: string, role: String) => {
 
     return { user, admin };
   } catch (error) {
-    console.log(error);
+    //console.log(error);
     throw new Error(error as any);
   }
 };

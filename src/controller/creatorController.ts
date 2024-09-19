@@ -7,8 +7,9 @@ import { clients, io } from '../server';
 
 const prisma = new PrismaClient();
 
-interface SocialMediaData {
-  [platform: string]: {
+type SocialMediaData = Record<
+  string,
+  {
     data?: {
       followers?: number;
       engagement_rate?: number;
@@ -17,8 +18,8 @@ interface SocialMediaData {
       };
       top_contents?: any[];
     };
-  };
-}
+  }
+>;
 
 export const getCreators = async (_req: Request, res: Response) => {
   try {
@@ -103,7 +104,7 @@ export const deleteCreator = async (req: Request, res: Response) => {
 
     res.status(200).json('Creator deleted successfully');
   } catch (error) {
-    console.log(error);
+    //console.log(error);
     res.status(400).json({ message: error });
   }
 };
@@ -123,6 +124,8 @@ export const updateCreator = async (req: Request, res: Response) => {
             country: data.country,
           },
         },
+        instagram: data?.instagram,
+        tiktok: data?.tiktok,
       },
     });
     return res.status(200).json({ message: 'Successfully updated' });
@@ -183,7 +186,7 @@ export const updateMediaKit = async (req: Request, res: Response) => {
     });
     return res.status(200).json({ message: 'Successfully updated', mediaKit });
   } catch (error) {
-    console.log(error);
+    //console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -263,17 +266,17 @@ export const getCreatorFullInfoByIdPublic = async (req: Request, res: Response) 
     // Process socialMediaData to include only specified fields
     if (user.creator && user.creator.socialMediaData) {
       const processedSocialMediaData: any = {};
-      
-      ['instagram', 'tiktok'].forEach(platform => {
+
+      ['instagram', 'tiktok'].forEach((platform) => {
         if (user.creator?.socialMediaData) {
           const socialMediaData = user.creator.socialMediaData as SocialMediaData;
-          ['instagram', 'tiktok'].forEach(platform => {
+          ['instagram', 'tiktok'].forEach((platform) => {
             if (socialMediaData[platform]?.data) {
               processedSocialMediaData[platform] = {
                 followers: socialMediaData[platform].data?.followers,
                 engagement_rate: socialMediaData[platform].data?.engagement_rate,
                 avg_likes_per_post: socialMediaData[platform].data?.user_performance?.avg_likes_per_post,
-                top_contents: socialMediaData[platform].data?.top_contents
+                top_contents: socialMediaData[platform].data?.top_contents,
               };
             }
           });
@@ -318,19 +321,18 @@ export const updatePaymentForm = async (req: Request, res: Response) => {
 
     return res.status(200).json({ message: 'Successfully updated payment form' });
   } catch (error) {
-    console.log(error);
+    //console.log(error);
     return res.status(400).json(error);
   }
 };
 
 export const updateCreatorForm = async (req: Request, res: Response) => {
-
-//   const { fullName, address, icNumber, bankName, accountNumber } = req.body;
-//   const userId = req.session.userid as string;
+  //   const { fullName, address, icNumber, bankName, accountNumber } = req.body;
+  //   const userId = req.session.userid as string;
 
   const { fullName, address, icNumber, bankName, accountNumber, userId } = req.body;
 
-  console.log(req.body);
+  //console.log(req.body);
   try {
     const user = await prisma.user.findUnique({
       where: {
@@ -379,19 +381,16 @@ export const updateCreatorForm = async (req: Request, res: Response) => {
 
     return res.status(200).json({ message: 'You can start your pitch now !' });
   } catch (error) {
-    console.log(error);
+    //console.log(error);
     return res.status(400).json(error);
   }
 };
 
 export const crawlCreator = async (req: Request, res: Response) => {
-  console.log('crawlCreator function called');
-  console.log('Request body:', req.body);
-
   const { identifier, platform } = req.body;
 
   if (!identifier || !platform) {
-    console.log('Missing identifier or platform');
+    //console.log('Missing identifier or platform');
     return res.status(400).json({ error: 'Missing identifier or platform' });
   }
 
@@ -410,15 +409,9 @@ export const crawlCreator = async (req: Request, res: Response) => {
 
   const data = JSON.stringify({ identifier, platform });
 
-  console.log('Sending request to external API with data:', data);
-
   try {
     const result = await new Promise((resolve, reject) => {
       const apiRequest = https.request(options, (apiResponse) => {
-        console.log('Received response from external API');
-        console.log('Status Code:', apiResponse.statusCode);
-        console.log('Headers:', apiResponse.headers);
-
         let responseData = '';
 
         apiResponse.on('data', (chunk) => {
@@ -426,12 +419,10 @@ export const crawlCreator = async (req: Request, res: Response) => {
         });
 
         apiResponse.on('end', () => {
-          console.log('Response data:', responseData);
           // Check if statusCode is defined before using it
           if (apiResponse.statusCode && apiResponse.statusCode >= 200 && apiResponse.statusCode < 300) {
             try {
               const parsedData = JSON.parse(responseData);
-              console.log('Parsed data:', parsedData);
               resolve(parsedData);
             } catch (error) {
               console.error('Error parsing response:', error);
@@ -455,6 +446,7 @@ export const crawlCreator = async (req: Request, res: Response) => {
 
     res.status(200).json(result);
   } catch (error) {
+    console.log(error);
     console.error('Unexpected error:', error);
     res.status(500).json({ error: 'Unexpected error', details: error.message });
   }
@@ -505,5 +497,3 @@ export const getCreatorSocialMediaDataById = async (req: Request, res: Response)
     return res.status(500).json({ message: 'Error fetching social media data' });
   }
 };
-
-

@@ -181,7 +181,7 @@ export const createThread = async (req: Request, res: Response) => {
       },
     });
     res.status(201).json(thread);
-    console.log(thread);
+    //console.log(thread);
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'An error occurred while creating the thread.' });
@@ -230,7 +230,7 @@ export const sendMessageInThread = async (req: Request, res: Response) => {
     });
 
     res.status(201).json(message);
-    console.log('Message created:', message);
+    //console.log('Message created:', message);
   } catch (error) {
     console.error(error);
     res.status(400).json({ error: 'An error occurred while sending the message.' });
@@ -249,7 +249,7 @@ export const getMessagesFromThread = async (req: Request, res: Response) => {
         userId,
       },
     });
-    console.log('Unread messages to be deleted:', unreadMessages);
+    //console.log('Unread messages to be deleted:', unreadMessages);
 
     // Delete unread messages
     if (unreadMessages.length > 0) {
@@ -259,7 +259,7 @@ export const getMessagesFromThread = async (req: Request, res: Response) => {
           userId,
         },
       });
-      console.log('Unread messages marked as seen.');
+      //console.log('Unread messages marked as seen.');
     }
     res.status(200).json(messages);
   } catch (error) {

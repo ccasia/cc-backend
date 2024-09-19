@@ -67,8 +67,8 @@ export const agreementInput = (data: {
 
     return outputPath;
   } catch (error) {
-    console.log(error);
-    console.log('File path not found');
+    //console.log(error);
+    //console.log('File path not found');
     return error;
   }
 };
