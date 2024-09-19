@@ -214,12 +214,12 @@ model session {
 }
 
 model Company {
-  id      String  @id @unique @default(cuid())
-  name    String
-  email   String?
-  phone   String?
-  website String?
-  address String?
+  id                  String     @id @unique @default(cuid())
+  name                String
+  email               String?
+  phone               String?
+  website             String?
+  address             String?
   logo                String?
   about               String?
   objectives          Json?
@@ -889,6 +889,7 @@ model CreatorAgreement {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   isSent       Boolean  @default(false)
+  amount       String?
   userId       String
   campaignId   String
   user         User     @relation(references: [id], fields: [userId], onDelete: Cascade)

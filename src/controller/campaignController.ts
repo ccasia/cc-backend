@@ -2488,6 +2488,7 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
         campaignId: campaign.id,
         agreementUrl: url,
         updatedAt: dayjs().format(),
+        amount: paymentAmount,
       },
     });
 
