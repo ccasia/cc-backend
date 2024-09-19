@@ -214,17 +214,16 @@ model session {
 }
 
 model Company {
-  id                  String     @id @unique @default(cuid())
-  name                String
-  email               String?
-  phone               String?
-  website             String?
-  address             String?
-  address             String?
+  id      String  @id @unique @default(cuid())
+  name    String
+  email   String?
+  phone   String?
+  website String?
+  address String?
   logo                String?
   about               String?
   objectives          Json?
-  registration_number String?     @unique
+  registration_number String?    @unique
   createdAt           DateTime   @default(now())
   updatedAt           DateTime   @updatedAt
   brand               Brand[]

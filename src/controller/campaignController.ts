@@ -97,7 +97,7 @@ const MAPPING: Record<string, string> = {
 };
 
 const generateAgreement = async (creator: any, campaign: any) => {
-  const agreementsPath = agreementInput({
+  const agreementsPath = await agreementInput({
     date: dayjs().format('ddd LL'),
     creatorName: creator.name as string,
     icNumber: creator?.paymentForm.icNumber,
@@ -106,6 +106,7 @@ const generateAgreement = async (creator: any, campaign: any) => {
     now_date: dayjs().format('ddd LL'),
     creatorAccNumber: creator?.paymentForm.bankAccountNumber,
     creatorBankName: creator?.paymentForm?.bankName,
+    agreementFormUrl: campaign?.campaignBrief?.agreementFrom,
   });
 
   const pdfPath = await pdfConverter(
@@ -475,7 +476,7 @@ export const createCampaign = async (req: Request, res: Response) => {
       return res.status(200).json({ campaign, message: 'Successfully created campaign' });
     });
   } catch (error) {
-    //console.log(error);
+    console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -2210,6 +2211,7 @@ export const shortlistCreator = async (req: Request, res: Response) => {
         },
         include: {
           thread: true,
+          campaignBrief: true,
         },
       });
 
@@ -2443,13 +2445,16 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
       where: {
         id: campaignId,
       },
+      include: {
+        campaignBrief: true,
+      },
     });
 
     if (!campaign) {
       return res.status(404).json({ message: 'Campaign not found' });
     }
 
-    const agreementsPath = agreementInput({
+    const agreementsPath = await agreementInput({
       date: dayjs().format('ddd LL'),
       creatorName: creator.name as string,
       icNumber: creator.paymentForm?.icNumber as string,
@@ -2459,6 +2464,7 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
       creatorAccNumber: creator.paymentForm?.bankAccountNumber as string,
       creatorBankName: creator.paymentForm?.bankName as string,
       paymentAmount: paymentAmount,
+      agreementFormUrl: campaign?.campaignBrief?.agreementFrom as string,
     });
 
     const pdfPath = await pdfConverter(
@@ -2489,7 +2495,7 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
 
     return res.status(200).json({ message: 'Update Success' });
   } catch (error) {
-    //console.log(error);
+    console.log(error);
     return res.status(400).json(error);
   }
 };

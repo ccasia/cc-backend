@@ -218,7 +218,7 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
 
       await prisma.feedback.upsert({
         where: {
-          id: sub?.feedback?.id,
+          submissionId: submission.id,
         },
         update: {
           content: feedback,
@@ -242,6 +242,7 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
 
     return res.status(200).json({ message: 'Successfully updated' });
   } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   }
 };

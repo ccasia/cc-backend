@@ -4,10 +4,12 @@ import Docxtemplater from 'docxtemplater';
 import dayjs from 'dayjs';
 import localizedFormat from 'dayjs/plugin/localizedFormat.js';
 import path from 'path';
+import { request } from 'http';
+import axios from 'axios';
 
 dayjs.extend(localizedFormat);
 
-export const agreementInput = (data: {
+export const agreementInput = async (data: {
   date: string;
   creatorName: string;
   icNumber: string;
@@ -17,6 +19,7 @@ export const agreementInput = (data: {
   creatorAccNumber: string;
   creatorBankName: string;
   paymentAmount?: number;
+  agreementFormUrl: string;
 }) => {
   const {
     date,
@@ -28,13 +31,18 @@ export const agreementInput = (data: {
     creatorAccNumber,
     creatorBankName,
     paymentAmount,
+    agreementFormUrl,
   } = data;
 
   try {
-    const paths = path.resolve(__dirname, '../form/agreement_template.docx');
-    const content = fs.readFileSync(paths, 'binary');
+    // const paths = path.resolve(__dirname, '../form/agreement_template.docx');
+    // const content = fs.readFileSync(agreementFormUrl, 'binary');
 
-    const zip = new PizZip(content);
+    const response = await axios.get(agreementFormUrl, {
+      responseType: 'arraybuffer',
+    });
+
+    const zip = new PizZip(response.data);
 
     const doc = new Docxtemplater(zip);
 
@@ -67,8 +75,6 @@ export const agreementInput = (data: {
 
     return outputPath;
   } catch (error) {
-    //console.log(error);
-    //console.log('File path not found');
     return error;
   }
 };
