@@ -1069,12 +1069,6 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
           user: true,
         },
       });
-
-      // await saveNotification({
-      //   userId: user?.id as string,
-      //   message: `Your pitch has been successfully sent.`,
-      //   entity: Entity.Pitch,
-      // });
     } else {
       pitch = await prisma.pitch.create({
         data: {
@@ -1862,6 +1856,7 @@ export const changePitchStatus = async (req: Request, res: Response) => {
 
     return res.status(200).json({ message: 'Successfully changed' });
   } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -2413,7 +2408,7 @@ export const shortlistCreator = async (req: Request, res: Response) => {
 
     res.status(200).json({ message: 'Successfully shortlisted' });
   } catch (error) {
-    //console.log(error);
+    console.log(error);
     return res.status(400).json(error);
   }
 };
