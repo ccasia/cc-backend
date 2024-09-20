@@ -531,9 +531,23 @@ export const updateCreator = async (req: Request, res: Response) => {
       }
     }
 
+    const user = await prisma.user.findUnique({
+      where: {
+        id: userid,
+      },
+      include: {
+        creator: true,
+        Board: true,
+      },
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: 'Creator Not Found' });
+    }
+
     const creator = await prisma.creator.update({
       where: {
-        userId: userid,
+        userId: user.id,
       },
       data: {
         user: {
@@ -565,14 +579,9 @@ export const updateCreator = async (req: Request, res: Response) => {
       },
     });
 
-    // await prisma.board.create({
-    //   data: {
-    //     name: 'My Task',
-    //     userId: creator.userId,
-    //   },
-    // });
-
-    await createKanbanBoard(creator.user.id, 'creator');
+    if (!user.Board) {
+      await createKanbanBoard(creator.user.id, 'creator');
+    }
 
     return res.status(200).json({ name: creator.user.name });
   } catch (error) {

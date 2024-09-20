@@ -154,14 +154,6 @@ const processVideo = async (
           reject(err); // Reject for non-cancellation errors
         }
 
-        // if (err.message.includes('ffmpeg was killed with signal SIGKILL')) {
-        //   //console.log(`Processing for video ${submissionId} was cancelled.`);
-        //   resolve();
-        // } else {
-        //   console.error('Error processing video:', err);
-        //   activeProcesses.delete(submissionId); // Clean up the map
-        //   reject(err); // Reject for non-cancellation errors
-        // }
         fs.unlinkSync(inputPath);
       });
   });
@@ -173,9 +165,6 @@ const processVideo = async (
     const channel = await conn.createChannel();
     await channel.assertQueue('draft', { durable: true });
     await channel.purgeQueue('draft');
-    // await channel.prefetch(2);
-
-    //console.log('Waiting for messages in queue:', 'draft');
 
     await channel.consume('draft', async (msg) => {
       if (msg !== null) {
@@ -195,6 +184,7 @@ const processVideo = async (
       }
     });
   } catch (error) {
+    throw new Error(error);
     //console.log('Error rabbitmq');
   }
 })();
