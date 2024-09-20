@@ -97,33 +97,42 @@ const MAPPING: Record<string, string> = {
 };
 
 const generateAgreement = async (creator: any, campaign: any) => {
-  const agreementsPath = await agreementInput({
-    date: dayjs().format('ddd LL'),
-    creatorName: creator.name as string,
-    icNumber: creator?.paymentForm.icNumber,
-    address: creator.creator.address,
-    agreement_endDate: dayjs().add(1, 'M').format('ddd LL'),
-    now_date: dayjs().format('ddd LL'),
-    creatorAccNumber: creator?.paymentForm.bankAccountNumber,
-    creatorBankName: creator?.paymentForm?.bankName,
-    agreementFormUrl: campaign?.campaignBrief?.agreementFrom,
-    version: 1,
-  });
+  try {
+    const agreementsPath = await agreementInput({
+      date: dayjs().format('ddd LL'),
+      creatorName: creator.name as string,
+      icNumber: creator?.paymentForm.icNumber,
+      address: creator.creator.address,
+      agreement_endDate: dayjs().add(1, 'M').format('ddd LL'),
+      now_date: dayjs().format('ddd LL'),
+      creatorAccNumber: creator?.paymentForm.bankAccountNumber,
+      creatorBankName: creator?.paymentForm?.bankName,
+      agreementFormUrl: campaign?.campaignBrief?.agreementFrom,
+      version: 1,
+    });
 
-  const pdfPath = await pdfConverter(
-    agreementsPath,
-    path.resolve(__dirname, `../form/pdf/${creator.name.split(' ').join('_')}.pdf`),
-  );
+    console.log(agreementsPath);
 
-  const url = await uploadAgreementForm(
-    pdfPath,
-    `${creator.name.split(' ').join('_')}-${campaign.name}.pdf`,
-    'creatorAgreements',
-  );
+    const pdfPath = await pdfConverter(
+      agreementsPath,
+      path.resolve(__dirname, `../form/pdf/${creator.name.split(' ').join('_')}.pdf`),
+    );
 
-  await fs.promises.unlink(pdfPath);
+    console.log(pdfPath);
 
-  return url;
+    const url = await uploadAgreementForm(
+      pdfPath,
+      `${creator.name.split(' ').join('_')}-${campaign.name}.pdf`,
+      'creatorAgreements',
+    );
+
+    await fs.promises.unlink(pdfPath);
+
+    return url;
+  } catch (error) {
+    console.log(error);
+    throw new Error(error);
+  }
 };
 
 export const createCampaign = async (req: Request, res: Response) => {
