@@ -2,6 +2,7 @@ import Ffmpeg from 'fluent-ffmpeg';
 import FfmpegPath from '@ffmpeg-installer/ffmpeg';
 import FfmpegProbe from '@ffprobe-installer/ffprobe';
 import path from 'path';
+import { clients, io } from 'src/server';
 
 Ffmpeg.setFfmpegPath(FfmpegPath.path);
 Ffmpeg.setFfmpegPath(FfmpegProbe.path);
@@ -75,9 +76,7 @@ export const compress = (
     const ffmpegProcess = Ffmpeg(tempFilePath)
       .fps(30)
       .outputOptions(['-c:v libx264', '-crf 26'])
-      .on('start', () => {
-        //console.log('Starting...');
-      })
+
       .on('progress', async (progress) => {
         if (progress.timemark) {
           const [hours, minutes, seconds] = progress.timemark.split(':').map(parseFloat);

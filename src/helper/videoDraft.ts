@@ -165,7 +165,7 @@ const processVideo = async (
     const channel = await conn.createChannel();
     await channel.assertQueue('draft', { durable: true });
     await channel.purgeQueue('draft');
-
+    console.log('RabbitMQ server starting...');
     await channel.consume('draft', async (msg) => {
       if (msg !== null) {
         const content = JSON.parse(msg.content.toString());
@@ -185,6 +185,5 @@ const processVideo = async (
     });
   } catch (error) {
     throw new Error(error);
-    //console.log('Error rabbitmq');
   }
 })();

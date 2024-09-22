@@ -83,7 +83,6 @@ export const updateOrCreateDefaultTimeline = async (req: Request, res: Response)
     );
     return res.status(200).json({ message: 'Successfully updated' });
   } catch (error) {
-    //console.log(error);
     return res.status(400).json(error);
   }
 };
