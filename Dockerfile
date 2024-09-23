@@ -69,8 +69,13 @@ RUN if [ -n "$DATABASE_URL" ]; then \
 # Generate Prisma client in production environment
 RUN npx prisma generate
 
+RUN npx prisma migrate dev --name init
+
 # Run database migrations
 RUN yarn deploy
+
+# Add seed and create-timeline commands
+RUN yarn seed && yarn create-timeline
 
 EXPOSE 3001
 
@@ -85,6 +90,8 @@ RUN ls -l /app/dist/server.js
 RUN pwd
 
 WORKDIR /app/dist
+
+RUN mkdir -p form/tmp form/pdf upload
 
 # Use node to run the built app.js file
 CMD ["node", "server.js"]
