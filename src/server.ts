@@ -25,7 +25,13 @@ dotenv.config();
 
 const app: Application = express();
 const server = http.createServer(app);
-export const io = new Server(server, { connectionStateRecovery: {} });
+export const io = new Server(server, {
+  connectionStateRecovery: {},
+  cors: {
+    origin: '*',
+    methods: ['GET', 'POST'],
+  },
+});
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
