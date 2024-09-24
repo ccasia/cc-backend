@@ -46,10 +46,14 @@ import {
 } from '@controllers/timelineController';
 import { isLoggedIn } from '@middlewares/onlyLogin';
 import { needPermissions } from '@middlewares/needPermissions';
+import { getAllTemplate } from '@controllers/templateController';
 
 const router = Router();
 
 // create isFinance permission later
+
+// Agreement Template
+router.get('/template', isSuperAdmin, getAllTemplate);
 
 router.get('/getAllCampaignsByAdminID', isSuperAdmin, getAllCampaigns);
 

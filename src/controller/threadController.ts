@@ -2,6 +2,7 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { markMessagesService, fetchMessagesFromThread, totalUnreadMessagesService } from '@services/threadService';
+import { clients, io } from 'src/server';
 
 const prisma = new PrismaClient();
 
@@ -215,25 +216,67 @@ export const sendMessageInThread = async (req: Request, res: Response) => {
     if (!userId) {
       return res.status(400).json({ error: 'Missing sender information.' });
     }
-    const message = await prisma.message.create({
-      data: {
-        content,
-        threadId,
-        senderId: userId,
-        createdAt: new Date(),
+
+    const datas = await prisma.$transaction(async (tx) => {
+      const message = await tx.message.create({
+        data: {
+          content,
+          threadId,
+          senderId: userId,
+          createdAt: new Date(),
+        },
+      });
+
+      const data = await tx.thread.update({
+        where: { id: threadId },
+        data: { latestMessageId: message.id },
+        include: {
+          campaign: true,
+          UserThread: {
+            include: {
+              user: true,
+            },
+          },
+          unreadMessages: true,
+        },
+      });
+
+      return { data, message };
+    });
+
+    const userIds = datas.data.UserThread.map((thread) => thread.user.id);
+
+    const unreadMessages = await prisma.unreadMessage.groupBy({
+      by: ['userId'],
+      _count: true,
+      where: {
+        userId: { in: userIds },
+        threadId: threadId,
       },
     });
 
-    await prisma.thread.update({
-      where: { id: threadId },
-      data: { latestMessageId: message.id },
-    });
+    const unreadCountMap = new Map(unreadMessages.map((count) => [count.userId, count._count]));
 
-    res.status(201).json(message);
-    //console.log('Message created:', message);
+    for (const thread of datas.data.UserThread) {
+      const count = unreadCountMap.get(thread.user.id) || 0; // default to 0 if no unread messages
+
+      io.to(clients.get(thread.user.id)).emit('messageCount', { count });
+    }
+
+    // for (const thread of data.UserThread) {
+    //   const unreadCount = await prisma.unreadMessage.count({
+    //     where: {
+    //       userId: thread.user.id,
+    //       threadId,
+    //     },
+    //   });
+
+    //   io.to(clients.get(thread.user.id)).emit('messageCount', { count: unreadCount });
+    // }
+
+    return res.status(201).json(datas.message);
   } catch (error) {
-    console.error(error);
-    res.status(400).json({ error: 'An error occurred while sending the message.' });
+    return res.status(400).json({ error: 'An error occurred while sending the message.' });
   }
 };
 
@@ -284,10 +327,9 @@ export const getUnreadMessageCount = async (req: Request, res: Response) => {
       },
     });
 
-    res.status(200).json({ unreadCount });
+    return res.status(200).json({ unreadCount });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'An error occurred while fetching unread message count.' });
+    return res.status(500).json({ error: 'An error occurred while fetching unread message count.' });
   }
 };
 
