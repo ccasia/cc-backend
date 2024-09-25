@@ -2,7 +2,7 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { markMessagesService, fetchMessagesFromThread, totalUnreadMessagesService } from '@services/threadService';
-import { clients, io } from 'src/server';
+import { clients, io } from '../server';
 
 const prisma = new PrismaClient();
 

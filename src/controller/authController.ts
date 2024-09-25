@@ -402,14 +402,14 @@ export const verifyCreator = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Not found.' });
     }
 
-    await prisma.user.update({
-      where: {
-        id: creator.id,
-      },
-      data: {
-        status: 'pending',
-      },
-    });
+    // await prisma.user.update({
+    //   where: {
+    //     id: creator.id,
+    //   },
+    //   data: {
+    //     status: 'pending',
+    //   },
+    // });
 
     const accessToken = jwt.sign({ id: creator.id }, process.env.ACCESSKEY as Secret, {
       expiresIn: '4h',

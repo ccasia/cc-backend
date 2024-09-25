@@ -20,7 +20,7 @@ import {
   registerFinanceUser,
 } from '@controllers/authController';
 import { validateToken } from '@utils/jwtHelper';
-import { needPermissions } from '@middlewares/needPermissions';
+// import { needPermissions } from '@middlewares/needPermissions';
 import { isLoggedIn } from '@middlewares/onlyLogin';
 
 const router = Router();

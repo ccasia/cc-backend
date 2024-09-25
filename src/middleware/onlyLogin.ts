@@ -6,5 +6,6 @@ export const isLoggedIn = async (req: Request, res: Response, next: NextFunction
   if (!userid) {
     return res.status(403).json({ message: 'Forbidden' });
   }
+
   next();
 };
