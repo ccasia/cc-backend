@@ -162,6 +162,7 @@ export const registerSuperAdmin = async (req: Request, res: Response) => {
 // Function to register creator
 export const registerCreator = async (req: Request, res: Response) => {
   const { name, email, password }: CreatorRequestData = req.body.email;
+
   try {
     const search = await prisma.user.findFirst({
       where: {
@@ -193,9 +194,13 @@ export const registerCreator = async (req: Request, res: Response) => {
       },
     });
 
-    const token = jwt.sign({ id: user.id }, process.env.ACCESSKEY as Secret, {
-      expiresIn: '1h',
-    });
+    const token = jwt.sign(
+      { id: user.id },
+      process.env.ACCESSKEY as Secret,
+      //   {
+      //   expiresIn: '1h',
+      // }
+    );
 
     creatorVerificationEmail(user.email, token);
 
