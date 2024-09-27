@@ -162,6 +162,7 @@ export const registerSuperAdmin = async (req: Request, res: Response) => {
 // Function to register creator
 export const registerCreator = async (req: Request, res: Response) => {
   const { name, email, password }: CreatorRequestData = req.body.email;
+
   try {
     const search = await prisma.user.findFirst({
       where: {
@@ -193,9 +194,13 @@ export const registerCreator = async (req: Request, res: Response) => {
       },
     });
 
-    const token = jwt.sign({ id: user.id }, process.env.ACCESSKEY as Secret, {
-      expiresIn: '1h',
-    });
+    const token = jwt.sign(
+      { id: user.id },
+      process.env.ACCESSKEY as Secret,
+      //   {
+      //   expiresIn: '1h',
+      // }
+    );
 
     creatorVerificationEmail(user.email, token);
 
@@ -397,14 +402,14 @@ export const verifyCreator = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Not found.' });
     }
 
-    await prisma.user.update({
-      where: {
-        id: creator.id,
-      },
-      data: {
-        status: 'pending',
-      },
-    });
+    // await prisma.user.update({
+    //   where: {
+    //     id: creator.id,
+    //   },
+    //   data: {
+    //     status: 'pending',
+    //   },
+    // });
 
     const accessToken = jwt.sign({ id: creator.id }, process.env.ACCESSKEY as Secret, {
       expiresIn: '4h',
@@ -811,7 +816,6 @@ export const updateProfileCreator = async (req: Request, res: Response) => {
     }
     return res.status(200).json({ message: 'Succesfully updated' });
   } catch (error) {
-    //console.log(error);
     return res.status(400).json({ message: 'Error updating creator' });
   }
 };

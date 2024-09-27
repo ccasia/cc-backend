@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import { sendMessageInThread } from './threadController';
 import { fetchMessagesFromThread } from '@services/threadService';
 import { Request, Response } from 'express';
+import { clients } from 'src/server';
 const prisma = new PrismaClient();
 
 export const handleSendMessage = async (message: any, io: any) => {

@@ -8,41 +8,42 @@ datasource db {
 }
 
 model User {
-  id                String               @id @unique @default(cuid())
-  email             String               @unique @db.VarChar(255)
-  password          String               @db.VarChar(255)
-  createdAt         DateTime             @default(now())
-  name              String?              @db.VarChar(255)
-  photoURL          String?              @db.VarChar(255)
-  country           String?              @db.VarChar(100)
-  phoneNumber       String?              @db.VarChar(100)
-  updatedAt         DateTime             @updatedAt
-  status            Status               @default(pending)
-  eventId           String?
-  role              RoleEnum
-  admin             Admin?
-  campaignLogs      CampaignLog[]
-  CampaignTaskAdmin CampaignTaskAdmin[]
-  creator           Creator?
-  feedback          Feedback[]
-  finance           Finance?
-  sentMessages      Message[]            @relation("UserMessages")
-  userNotification  UserNotification[]
-  pitch             Pitch[]
-  shortlisted       ShortListedCreator[]
-  submission        Submission[]
-  event             Event?               @relation(fields: [eventId], references: [id])
-  UserThread        UserThread[]
-  threads           Thread[]             @relation("UserThreads")
-  invoices          Invoice[]
-  BookMarkCampaign  BookMarkCampaign[]
-  logistic          Logistic[]
-  unreadMessages    UnreadMessage[]
-  seenMessages      SeenMessage[]
-  paymentForm       PaymentForm?
-  Board             Board?
-  taskAssignee      TaskAssignee[]
-  creatorAgreement  CreatorAgreement[]
+  id                 String               @id @unique @default(cuid())
+  email              String               @unique @db.VarChar(255)
+  password           String               @db.VarChar(255)
+  createdAt          DateTime             @default(now())
+  name               String?              @db.VarChar(255)
+  photoURL           String?              @db.VarChar(255)
+  photoBackgroundURL String?              @db.VarChar(255)
+  country            String?              @db.VarChar(100)
+  phoneNumber        String?              @db.VarChar(100)
+  updatedAt          DateTime             @updatedAt
+  status             Status               @default(pending)
+  eventId            String?
+  role               RoleEnum
+  admin              Admin?
+  campaignLogs       CampaignLog[]
+  CampaignTaskAdmin  CampaignTaskAdmin[]
+  creator            Creator?
+  feedback           Feedback[]
+  finance            Finance?
+  sentMessages       Message[]            @relation("UserMessages")
+  userNotification   UserNotification[]
+  pitch              Pitch[]
+  shortlisted        ShortListedCreator[]
+  submission         Submission[]
+  event              Event?               @relation(fields: [eventId], references: [id])
+  UserThread         UserThread[]
+  threads            Thread[]             @relation("UserThreads")
+  invoices           Invoice[]
+  BookMarkCampaign   BookMarkCampaign[]
+  logistic           Logistic[]
+  unreadMessages     UnreadMessage[]
+  seenMessages       SeenMessage[]
+  paymentForm        PaymentForm?
+  Board              Board?
+  taskAssignee       TaskAssignee[]
+  creatorAgreement   CreatorAgreement[]
 }
 
 model Admin {
@@ -908,4 +909,11 @@ model Crawler {
   top_contents       Json[]
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
+}
+
+model AgreementTemplate {
+  id        String   @id @unique @default(cuid())
+  url       String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

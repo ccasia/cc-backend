@@ -332,7 +332,6 @@ export const updateCreatorForm = async (req: Request, res: Response) => {
 
   const { fullName, address, icNumber, bankName, accountNumber, userId } = req.body;
 
-  //console.log(req.body);
   try {
     const user = await prisma.user.findUnique({
       where: {
