@@ -328,6 +328,7 @@ export const verifyAdmin = async (req: Request, res: Response) => {
 
 export const resendVerifyTokenAdmin = async (req: Request, res: Response) => {
   const { token } = req.body;
+
   try {
     const admin = await prisma.admin.findFirst({
       where: {
@@ -336,7 +337,7 @@ export const resendVerifyTokenAdmin = async (req: Request, res: Response) => {
     });
 
     if (!admin) {
-      return res.status(404).json({ message: 'Invalid token' });
+      return res.status(404).json({ message: 'Invalid token.' });
     }
 
     const newToken = jwt.sign({ id: admin?.userId }, process.env.SESSION_SECRET as Secret, { expiresIn: '1h' });

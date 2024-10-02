@@ -46,7 +46,7 @@ import {
 } from '@controllers/timelineController';
 import { isLoggedIn } from '@middlewares/onlyLogin';
 import { needPermissions } from '@middlewares/needPermissions';
-import { getAllTemplate } from '@controllers/templateController';
+import { createNewTemplate, getAllTemplate, getTemplatebyId } from '@controllers/templateController';
 
 const router = Router();
 
@@ -54,6 +54,7 @@ const router = Router();
 
 // Agreement Template
 router.get('/template', isSuperAdmin, getAllTemplate);
+router.get('/template/:id', getTemplatebyId);
 
 router.get('/getAllCampaignsByAdminID', isSuperAdmin, getAllCampaigns);
 
@@ -91,6 +92,7 @@ router.post(
 router.post('/saveCampaign', isLoggedIn, saveCampaign);
 router.post('/createLogistic', isLoggedIn, createLogistics);
 router.post('/shortlistCreator', isSuperAdmin, shortlistCreator);
+router.post('/template/:id', isSuperAdmin, createNewTemplate);
 
 router.patch('/pitch', creatorMakePitch);
 router.patch('/changeCampaignStage/:campaignId', changeCampaignStage);

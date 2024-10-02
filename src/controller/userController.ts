@@ -14,6 +14,7 @@ import {
 import { Storage } from '@google-cloud/storage';
 import { Entity, PrismaClient } from '@prisma/client';
 import { Title, saveNotification } from './notificationController';
+import { uploadProfileImage } from '@configs/cloudStorage.config';
 // import { serializePermission } from '@utils/serializePermission';
 
 const storage = new Storage({
@@ -33,28 +34,14 @@ export const updateProfileAdmin = async (req: Request, res: Response) => {
   try {
     if (files && files.image) {
       const { image } = files as any;
-      bucket.upload(image.tempFilePath, { destination: `profile/${image.name}` }, async (err, file) => {
-        if (err) {
-          return err;
-
-          // return res.status(500).json({ message: 'Error uploading image.' });
-        }
-        file?.makePublic(async (err) => {
-          if (err) {
-            return err;
-            // return res.status(500).json({ message: 'Error uploading image.' });
-          }
-          const publicURL = file.publicUrl();
-          await updateAdmin(req.body, publicURL);
-        });
-      });
+      const publicURL = await uploadProfileImage(image.tempFilePath, image.name, 'admin');
+      await updateAdmin(req.body, publicURL);
     } else {
       await updateAdmin(req.body);
     }
-    // saveNotification(req.body.userId, Title.Update, 'Profile Updated', Entity.User);
+
     return res.status(200).json({ message: 'Successfully updated' });
   } catch (error) {
-    //console.log(error);
     return res.status(400).json({ message: error });
   }
 };
@@ -179,8 +166,9 @@ export const createAdmin = async (req: Request, res: Response) => {
 };
 
 export const updateAdminInformation = async (req: Request, res: Response) => {
+  const photo = (req?.files as any)?.photoUrl;
   try {
-    const result = await updateNewAdmin(req.body);
+    const result = await updateNewAdmin(req.body, photo);
     res.status(200).json({ message: 'Successfully updated', result });
   } catch (error) {
     res.status(404).send(error);
