@@ -62,9 +62,9 @@ COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/.env ./.env
 
 # Update DATABASE_URL in .env file
-RUN if [ -n "$DATABASE_URL" ]; then \
-    sed -i "s|^DATABASE_URL=.*|DATABASE_URL=$DATABASE_URL|" .env; \
-    fi
+# RUN if [ -n "$DATABASE_URL" ]; then \
+#    sed -i "s|^DATABASE_URL=.*|DATABASE_URL=$DATABASE_URL|" .env; \
+#    fi
 
 # Generate Prisma client in production environment
 RUN npx prisma generate
