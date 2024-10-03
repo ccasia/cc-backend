@@ -4,6 +4,7 @@ import {
   CampaignRequirement,
   CampaignStatus,
   CampaignTimeline,
+  Company,
   Creator,
   Entity,
   Interest,
@@ -61,6 +62,8 @@ interface Campaign {
   campaignBrand: {
     id: string;
   };
+  hasBrand: Boolean;
+  client: Company;
   campaignStartDate: Date;
   campaignEndDate: Date;
   campaignTitle: string;
@@ -87,6 +90,7 @@ interface Campaign {
   productName: string;
   socialMediaPlatform: string[];
   videoAngle: string[];
+  agreementForm: string;
 }
 
 const MAPPING: Record<string, string> = {
@@ -111,14 +115,10 @@ const generateAgreement = async (creator: any, campaign: any) => {
       version: 1,
     });
 
-    console.log(agreementsPath);
-
     const pdfPath = await pdfConverter(
       agreementsPath,
       path.resolve(__dirname, `../form/pdf/${creator.name.split(' ').join('_')}.pdf`),
     );
-
-    console.log(pdfPath);
 
     const url = await uploadAgreementForm(
       pdfPath,
@@ -139,6 +139,8 @@ export const createCampaign = async (req: Request, res: Response) => {
   const {
     campaignTitle,
     campaignBrand,
+    hasBrand,
+    client,
     campaignStartDate,
     campaignEndDate,
     campaignInterests,
@@ -160,9 +162,9 @@ export const createCampaign = async (req: Request, res: Response) => {
     timeline,
     brandTone,
     productName,
+    agreementForm,
   }: Campaign = JSON.parse(req.body.data);
 
-  // //console.log(JSON.parse(req.body.data));
   try {
     const publicURL: any = [];
 
@@ -181,13 +183,13 @@ export const createCampaign = async (req: Request, res: Response) => {
       }
     }
 
-    let agreementFormURL = '';
+    // let agreementFormURL = '';
 
     // Handle Campaign Agreement
-    if (req.files && req.files.agreementForm) {
-      const form = (req.files as any).agreementForm;
-      agreementFormURL = await uploadAgreementForm(form.tempFilePath, form.name, 'agreementForm');
-    }
+    // if (req.files && req.files.agreementForm) {
+    //   const form = (req.files as any).agreementForm;
+    //   agreementFormURL = await uploadAgreementForm(form.tempFilePath, form.name, 'agreementForm');
+    // }
 
     // Handle All processes
     await prisma.$transaction(async (tx) => {
@@ -205,12 +207,12 @@ export const createCampaign = async (req: Request, res: Response) => {
         }),
       );
 
-      // Find Brand
-      const brand: any = await tx.brand.findUnique({
-        where: {
-          id: campaignBrand.id,
-        },
-      });
+      // // Find Brand
+      // const brand: any = await tx.brand.findUnique({
+      //   where: {
+      //     id: campaignBrand.id,
+      //   },
+      // });
 
       // Create Campaign
       const campaign = await tx.campaign.create({
@@ -225,10 +227,9 @@ export const createCampaign = async (req: Request, res: Response) => {
               title: campaignTitle,
               objectives: campaignObjectives,
               images: publicURL.map((image: any) => image) || '',
-              agreementFrom: agreementFormURL,
+              agreementFrom: agreementForm,
               startDate: dayjs(campaignStartDate) as any,
               endDate: dayjs(campaignEndDate) as any,
-
               industries: campaignIndustries,
               campaigns_do: campaignDo,
               campaigns_dont: campaignDont,
@@ -343,21 +344,8 @@ export const createCampaign = async (req: Request, res: Response) => {
       );
 
       // Connect to brand
-      if (!brand) {
-        const company = await tx.company.findUnique({
-          where: {
-            id: campaignBrand.id,
-          },
-        });
-        await tx.campaign.update({
-          where: {
-            id: campaign.id,
-          },
-          data: {
-            company: { connect: { id: company?.id } },
-          },
-        });
-      } else {
+      if (hasBrand) {
+        // connect with brand
         await tx.campaign.update({
           where: {
             id: campaign.id,
@@ -366,7 +354,42 @@ export const createCampaign = async (req: Request, res: Response) => {
             brand: { connect: { id: campaignBrand.id } },
           },
         });
+      } else {
+        // connect with client
+        await tx.campaign.update({
+          where: {
+            id: campaign.id,
+          },
+          data: {
+            company: { connect: { id: client.id } },
+          },
+        });
       }
+
+      // if (!brand) {
+      //   const company = await tx.company.findUnique({
+      //     where: {
+      //       id: campaignBrand.id,
+      //     },
+      //   });
+      //   await tx.campaign.update({
+      //     where: {
+      //       id: campaign.id,
+      //     },
+      //     data: {
+      //       company: { connect: { id: company?.id } },
+      //     },
+      //   });
+      // } else {
+      //   await tx.campaign.update({
+      //     where: {
+      //       id: campaign.id,
+      //     },
+      //     data: {
+      //       brand: { connect: { id: campaignBrand.id } },
+      //     },
+      //   });
+      // }
 
       if (!campaign || !campaign.id) {
         throw new Error('Campaign creation failed or campaign ID is missing');
@@ -541,6 +564,8 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
                       interests: true,
                     },
                   },
+                  // creatorAgreement: true,
+                  paymentForm: true,
                 },
               },
             },
@@ -914,11 +939,10 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
 
     const matchedCampaign = campaigns?.filter((item) => matchCampaign(user, item));
 
-    const matchedCampaignWithPercentage = matchedCampaign.map((item) => {
+    const matchedCampaignWithPercentage = campaigns.map((item) => {
       const interestPercentage = calculateInterestMatchingPercentage(
         user?.creator?.interests as never,
         item.campaignRequirement?.creator_persona as any,
-        // item.campaignBrief?.industries as any,
       );
 
       const requirementPercentage = calculateRequirementMatchingPercentage(
@@ -933,7 +957,9 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       };
     });
 
-    return res.status(200).json(matchedCampaignWithPercentage);
+    const sortedMatchedCampaigns = matchedCampaignWithPercentage.sort((a, b) => b.percentageMatch - a.percentageMatch);
+
+    return res.status(200).json(sortedMatchedCampaigns);
   } catch (error) {
     return res.status(400).json(error);
   }
@@ -1611,31 +1637,31 @@ export const changePitchStatus = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Pitch not found.' });
     }
 
-    const pitch = await prisma.pitch.update({
-      where: {
-        id: existingPitch.id,
-      },
-      data: {
-        status: status,
-      },
-      include: {
-        campaign: {
-          include: {
-            campaignBrief: true,
-          },
-        },
-      },
-    });
+    if (status === 'approved') {
+      await prisma.$transaction(async (tx) => {
+        // const url = await generateAgreement(existingPitch.user, existingPitch.campaign);
 
-    if (pitch.status === 'approved') {
-      prisma.$transaction(async (tx) => {
-        const url = await generateAgreement(existingPitch.user, existingPitch.campaign);
+        const pitch = await prisma.pitch.update({
+          where: {
+            id: existingPitch.id,
+          },
+          data: {
+            status: status,
+          },
+          include: {
+            campaign: {
+              include: {
+                campaignBrief: true,
+              },
+            },
+          },
+        });
 
         await tx.creatorAgreement.create({
           data: {
             userId: existingPitch.userId,
             campaignId: existingPitch.campaignId,
-            agreementUrl: url,
+            agreementUrl: '',
           },
         });
 
@@ -1790,6 +1816,22 @@ export const changePitchStatus = async (req: Request, res: Response) => {
         }
       });
     } else {
+      const pitch = await prisma.pitch.update({
+        where: {
+          id: existingPitch.id,
+        },
+        data: {
+          status: status,
+        },
+        include: {
+          campaign: {
+            include: {
+              campaignBrief: true,
+            },
+          },
+        },
+      });
+
       const isExist = await prisma.shortListedCreator.findUnique({
         where: {
           userId_campaignId: {
@@ -1865,7 +1907,6 @@ export const changePitchStatus = async (req: Request, res: Response) => {
 
     return res.status(200).json({ message: 'Successfully changed' });
   } catch (error) {
-    console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -2452,6 +2493,7 @@ export const creatorAgreements = async (req: Request, res: Response) => {
         user: {
           include: {
             creator: true,
+            paymentForm: true,
           },
         },
       },
@@ -2464,8 +2506,11 @@ export const creatorAgreements = async (req: Request, res: Response) => {
 };
 
 export const updateAmountAgreement = async (req: Request, res: Response) => {
-  const { paymentAmount, user, campaignId, id: agreementId } = req.body;
+  const { paymentAmount, user, campaignId, id: agreementId } = JSON.parse(req.body.data);
+  let agreementForm;
   try {
+    if (req?.files && (req?.files as any)?.agreementForm) agreementForm = (req?.files as any)?.agreementForm;
+
     const creator = await prisma.user.findUnique({
       where: {
         id: user?.id,
@@ -2503,29 +2548,29 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Agreement not found.' });
     }
 
-    const version = agreement?.version ? agreement?.version + 1 : 1;
+    // const version = agreement?.version ? agreement?.version + 1 : 1;
 
-    const agreementsPath = await agreementInput({
-      date: dayjs().format('ddd LL'),
-      creatorName: creator.name as string,
-      icNumber: creator.paymentForm?.icNumber as string,
-      address: creator.creator?.address as string,
-      agreement_endDate: dayjs().add(1, 'M').format('ddd LL'),
-      now_date: dayjs().format('ddd LL'),
-      creatorAccNumber: creator.paymentForm?.bankAccountNumber as string,
-      creatorBankName: creator.paymentForm?.bankName as string,
-      paymentAmount: paymentAmount,
-      agreementFormUrl: campaign?.campaignBrief?.agreementFrom as string,
-      version: version,
-    });
+    // const agreementsPath = await agreementInput({
+    //   date: dayjs().format('ddd LL'),
+    //   creatorName: creator.name as string,
+    //   icNumber: creator.paymentForm?.icNumber as string,
+    //   address: creator.creator?.address as string,
+    //   agreement_endDate: dayjs().add(1, 'M').format('ddd LL'),
+    //   now_date: dayjs().format('ddd LL'),
+    //   creatorAccNumber: creator.paymentForm?.bankAccountNumber as string,
+    //   creatorBankName: creator.paymentForm?.bankName as string,
+    //   paymentAmount: paymentAmount,
+    //   agreementFormUrl: campaign?.campaignBrief?.agreementFrom as string,
+    //   version: version,
+    // });
 
-    const pdfPath = await pdfConverter(
-      agreementsPath,
-      path.resolve(__dirname, `../form/pdf/${creator.name?.split(' ').join('_')}.pdf`),
-    );
+    // const pdfPath = await pdfConverter(
+    //   agreementsPath,
+    //   path.resolve(__dirname, `../form/pdf/${creator.name?.split(' ').join('_')}.pdf`),
+    // );
 
     const url = await uploadAgreementForm(
-      pdfPath,
+      agreementForm.tempFilePath,
       `${creator.name?.split(' ').join('_')}-${campaign.name}.pdf`,
       'creatorAgreements',
     );
@@ -2544,7 +2589,7 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
       },
     });
 
-    await fs.promises.unlink(pdfPath);
+    // await fs.promises.unlink(pdfPath);
 
     return res.status(200).json({ message: 'Update Success' });
   } catch (error) {

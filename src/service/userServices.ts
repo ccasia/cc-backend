@@ -173,6 +173,7 @@ export const getUser = async (id: string) => {
     },
     include: {
       paymentForm: true,
+      agreementTemplate: true,
       admin: {
         include: {
           adminPermissionModule: {

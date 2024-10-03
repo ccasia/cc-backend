@@ -1,4 +1,4 @@
-import { uploadAgreementTemplate } from '@configs/cloudStorage.config';
+import { uploadAgreementTemplate, uploadDigitalSignature } from '@configs/cloudStorage.config';
 import { PrismaClient } from '@prisma/client';
 import dayjs from 'dayjs';
 import { Request, Response } from 'express';
@@ -44,6 +44,8 @@ export const getTemplatebyId = async (req: Request, res: Response) => {
 export const createNewTemplate = async (req: Request, res: Response) => {
   const { id } = req.params;
   const { signedAgreement, signatureImage } = req.files as any;
+  const { name, icNumber } = JSON.parse(req.body.data);
+
   try {
     const user = await prisma.user.findUnique({
       where: {
@@ -62,13 +64,31 @@ export const createNewTemplate = async (req: Request, res: Response) => {
     const url = await uploadAgreementTemplate({
       tempFilePath: signedAgreement.tempFilePath,
       folderName: 'agreementTemplate',
-      fileName: `${user.name}-template-${dayjs().format()}.pdf`,
+      fileName: `${user.name}-template.pdf`,
     });
 
-    await prisma.agreementTemplate.create({
-      data: {
+    const signedUrl = await uploadDigitalSignature({
+      tempFilePath: signatureImage.tempFilePath,
+      folderName: 'digitalSignature',
+      fileName: `${name}-template.png`,
+    });
+
+    await prisma.agreementTemplate.upsert({
+      where: {
+        userId: user.id,
+      },
+      update: {
+        url: url,
+        signURL: signedUrl,
+        adminName: name,
+        adminICNumber: icNumber,
+      },
+      create: {
         userId: user.id,
         url: url,
+        signURL: signedUrl,
+        adminName: name,
+        adminICNumber: icNumber,
       },
     });
 

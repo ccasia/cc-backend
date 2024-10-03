@@ -78,6 +78,6 @@ export const agreementInput = async (data: {
 
     return outputPath;
   } catch (error) {
-    return error;
+    throw new Error(error);
   }
 };

@@ -737,12 +737,15 @@ model Crawler {
 }
 
 model AgreementTemplate {
-  id        String   @id @unique @default(cuid())
-  url       String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  userId    String?  @unique
-  user      User?    @relation(fields: [userId], references: [id])
+  id            String   @id @unique @default(cuid())
+  url           String?
+  adminName     String?
+  adminICNumber String?
+  signURL       String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  userId        String?  @unique
+  user          User?    @relation(fields: [userId], references: [id])
 }
 
 model AdminSignature {
