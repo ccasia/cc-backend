@@ -572,10 +572,10 @@ export const updateCreator = async (req: Request, res: Response) => {
         languages: languages,
         ...(Array.isArray(interests) && interests.length > 0
           ? {
-            interests: {
-              create: interests.map((interest) => ({ name: interest })),
-            },
-          }
+              interests: {
+                create: interests.map((interest) => ({ name: interest })),
+              },
+            }
           : {}),
         socialMediaData: parsedSocialMediaData, // Store as JSON object
       },
