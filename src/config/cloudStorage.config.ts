@@ -50,42 +50,24 @@ export const uploadImage = async (tempFilePath: string, fileName: string, folder
 };
 
 export const uploadProfileImage = async (tempFilePath: string, fileName: string, folderName: string) => {
-  const uploadPromise = new Promise<string>((resolve, reject) => {
-    storage.bucket(process.env.BUCKET_NAME as string).upload(
-      tempFilePath,
-      {
-        destination: `${folderName}/${fileName}`,
-        gzip: true,
-        metadata: {
-          cacheControl: 'public, max-age=31536000',
-        },
-      },
-      (err, file) => {
-        if (err) {
-          reject(err);
-          return;
-        }
-        // Making the file public and getting the public URL
-        // eslint-disable-next-line promise/no-promise-in-callback
-        file
-          ?.makePublic()
-          // eslint-disable-next-line promise/always-return
-          .then(() => {
-            const publicURL = `https://storage.googleapis.com/${process.env.BUCKET_NAME}/${folderName}/${fileName}`;
-            resolve(publicURL);
-          })
-          .catch((err) => {
-            reject(err);
-          });
-      },
-    );
-  });
-
   try {
-    const publicURL = await uploadPromise;
-    return publicURL;
+    const bucket = storage.bucket(process.env.BUCKET_NAME as string);
+    const destination = `${folderName}/${fileName}`;
+
+    await bucket.upload(tempFilePath, {
+      destination: destination,
+      metadata: {
+        cacheControl: 'public, max-age=31536000',
+      },
+    });
+
+    // Construct the URL manually
+    const publicUrl = `https://storage.googleapis.com/${process.env.BUCKET_NAME}/${destination}`;
+
+    return publicUrl;
   } catch (err) {
-    throw new Error(`Error uploading file: ${err}`);
+    console.error('Error uploading file:', err);
+    throw new Error(`Error uploading file: ${err.message}`);
   }
 };
 
