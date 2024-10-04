@@ -2312,14 +2312,14 @@ export const shortlistCreator = async (req: Request, res: Response) => {
 
       // Generating a pdf with creator information
       for (const creator of data) {
-        const url = await generateAgreement(creator, campaignInfo);
+        // const url = await generateAgreement(creator, campaignInfo);
 
         // Create creator agreement
         await tx.creatorAgreement.create({
           data: {
             userId: creator.id as string,
             campaignId: campaignInfo?.id as any,
-            agreementUrl: url,
+            agreementUrl: '',
           },
         });
       }
