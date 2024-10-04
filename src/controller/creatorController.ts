@@ -32,6 +32,7 @@ export const getCreators = async (_req: Request, res: Response) => {
         name: true,
         phoneNumber: true,
         photoURL: true,
+        photoBackgroundURL: true,
         country: true,
         status: true,
         email: true,
@@ -244,6 +245,8 @@ export const getCreatorFullInfoByIdPublic = async (req: Request, res: Response) 
         name: true,
         country: true,
         email: true,
+        photoURL: true,
+        photoBackgroundURL: true,
         creator: {
           select: {
             socialMediaData: true,

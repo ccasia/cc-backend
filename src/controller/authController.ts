@@ -566,10 +566,10 @@ export const updateCreator = async (req: Request, res: Response) => {
         languages: languages,
         ...(Array.isArray(interests) && interests.length > 0
           ? {
-              interests: {
-                create: interests.map((interest) => ({ name: interest })),
-              },
-            }
+            interests: {
+              create: interests.map((interest) => ({ name: interest })),
+            },
+          }
           : {}),
         socialMediaData: parsedSocialMediaData, // Store as JSON object
       },
@@ -742,76 +742,61 @@ export const updateProfileCreator = async (req: Request, res: Response) => {
       },
     });
 
+    if (!creator) {
+      return res.status(404).json({ message: 'Creator not found' });
+    }
+
+    const updateData: any = {
+      state: state,
+      address: address,
+      mediaKit: {
+        upsert: {
+          where: {
+            creatorId: creator?.id,
+          },
+          update: {
+            about: about,
+          },
+          create: {
+            about: about,
+          },
+        },
+      },
+      user: {
+        update: {
+          name: name,
+          email: email,
+          phoneNumber: phoneNumber,
+          country: country,
+        },
+      },
+    };
+
     if (req.files) {
       const { image } = req?.files as any;
+      const { backgroundImage } = req?.files as any;
 
-      const url = await uploadProfileImage(image.tempFilePath, image.name, 'creator');
-      await prisma.creator.update({
-        where: {
-          userId: id,
-        },
-        data: {
-          state: state,
-          address: address,
-          mediaKit: {
-            upsert: {
-              where: {
-                creatorId: creator?.id,
-              },
-              update: {
-                about: about,
-              },
-              create: {
-                about: about,
-              },
-            },
-          },
-          user: {
-            update: {
-              name: name,
-              email: email,
-              photoURL: url,
-              phoneNumber: phoneNumber,
-              country: country,
-            },
-          },
-        },
-      });
-    } else {
-      await prisma.creator.update({
-        where: {
-          userId: id,
-        },
-        data: {
-          state: state,
-          address: address,
-          mediaKit: {
-            upsert: {
-              where: {
-                creatorId: creator?.id,
-              },
-              update: {
-                about: about,
-              },
-              create: {
-                about: about,
-              },
-            },
-          },
-          user: {
-            update: {
-              name: name,
-              email: email,
-              phoneNumber: phoneNumber,
-              country: country,
-            },
-          },
-        },
-      });
+      if (image) {
+        const url = await uploadProfileImage(image.tempFilePath, image.name, 'creator');
+        updateData.user.update.photoURL = url;
+      }
+
+      if (backgroundImage) {
+        const urlBackground = await uploadProfileImage(backgroundImage.tempFilePath, backgroundImage.name, 'creator');
+        updateData.user.update.photoBackgroundURL = urlBackground;
+      }
     }
-    return res.status(200).json({ message: 'Succesfully updated' });
+
+    await prisma.creator.update({
+      where: {
+        userId: id,
+      },
+      data: updateData,
+    });
+
+    return res.status(200).json({ message: 'Successfully updated' });
   } catch (error) {
-    //console.log(error);
+    console.error('Error updating creator:', error);
     return res.status(400).json({ message: 'Error updating creator' });
   }
 };
