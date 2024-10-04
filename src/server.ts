@@ -31,7 +31,6 @@ export const io = new Server(server, {
     origin: '*',
     methods: ['GET', 'POST'],
   },
-  path: '/socket.io',
 });
 
 app.use(express.json());
