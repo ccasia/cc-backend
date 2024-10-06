@@ -318,11 +318,10 @@ export const verifyAdmin = async (req: Request, res: Response) => {
     });
     return res.status(200).json({ message: 'Admin verified successfully', user });
   } catch (error: any) {
-    //console.log(error);
     if (error.name) {
-      return res.status(400).json({ error: 'Token expired. Please contact our admin.' });
+      return res.status(400).json({ message: 'Token expired. Please contact our admin.' });
     }
-    return res.status(500).json({ error: 'An error occurred while verifying the user' });
+    return res.status(500).json({ message: 'An error occurred while verifying the user' });
   }
 };
 

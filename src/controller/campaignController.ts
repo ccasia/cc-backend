@@ -2133,7 +2133,7 @@ export const uploadVideoTest = async (req: Request, res: Response) => {
       return res.status(200).json({ publicUrl: a, message: 'Succesfully uploaded' });
     }
   } catch (error) {
-    //console.log(error);
+    console.log(error);
     return res.status(400).json(error);
   }
 };
