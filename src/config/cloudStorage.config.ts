@@ -123,6 +123,8 @@ export const uploadPitchVideo = async (
     const bucketName = process.env.BUCKET_NAME as string;
     const destination = `${folderName}/${fileName}`;
 
+    console.log(fileName, folderName);
+
     await checkIfVideoExist(fileName, folderName);
 
     // Upload the file to the specified bucket
