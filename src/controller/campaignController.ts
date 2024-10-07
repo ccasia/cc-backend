@@ -1969,6 +1969,7 @@ export const getCampaignForCreatorById = async (req: Request, res: Response) => 
 
 export const getCampaignPitchForCreator = async (req: Request, res: Response) => {
   const userid = req.session.userid;
+
   try {
     const campaings = await prisma.pitch.findMany({
       where: {

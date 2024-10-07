@@ -792,12 +792,12 @@ enum Mode {
 
 enum Status {
   active
-  blacklisted
   pending
-  suspended
-  spam
   banned
   rejected
+  blacklisted
+  suspended
+  spam
 }
 
 enum InvoiceStatus {
