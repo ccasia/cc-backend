@@ -44,7 +44,7 @@ export const getTemplatebyId = async (req: Request, res: Response) => {
 export const createNewTemplate = async (req: Request, res: Response) => {
   const { id } = req.params;
   const { signedAgreement, signatureImage } = req.files as any;
-  const { name, icNumber } = JSON.parse(req.body.data);
+  const { name, icNumber, campaignId } = JSON.parse(req.body.data);
 
   try {
     const user = await prisma.user.findUnique({
@@ -92,8 +92,20 @@ export const createNewTemplate = async (req: Request, res: Response) => {
       },
     });
 
+    if (campaignId) {
+      await prisma.campaignBrief.update({
+        where: {
+          campaignId: campaignId,
+        },
+        data: {
+          agreementFrom: url,
+        },
+      });
+    }
+
     return res.status(200).json({ message: 'Successfully created.' });
   } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   }
 };
