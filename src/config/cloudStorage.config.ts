@@ -146,10 +146,9 @@ export const uploadPitchVideo = async (
     });
 
     const publicURL = `https://storage.googleapis.com/${bucketName}/${destination}?v=${dayjs().format()}`;
-    console.log(publicURL);
+
     return publicURL;
   } catch (err) {
-    console.log(err);
     throw new Error(`Error uploading file: ${err.message}`);
   }
 };

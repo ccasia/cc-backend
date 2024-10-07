@@ -2128,6 +2128,7 @@ export const uploadVideoTest = async (req: Request, res: Response) => {
         size as number,
         abortController.signal,
       );
+      console.log('SADSAD', a);
 
       io.to(clients.get(req.session.userid)).emit('video-upload-done', { campaignId: campaignId });
 
