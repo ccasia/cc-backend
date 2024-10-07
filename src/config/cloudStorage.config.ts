@@ -123,8 +123,6 @@ export const uploadPitchVideo = async (
     const bucketName = process.env.BUCKET_NAME as string;
     const destination = `${folderName}/${fileName}`;
 
-    console.log(fileName, folderName);
-
     await checkIfVideoExist(fileName, folderName);
 
     // Upload the file to the specified bucket
@@ -148,8 +146,10 @@ export const uploadPitchVideo = async (
     });
 
     const publicURL = `https://storage.googleapis.com/${bucketName}/${destination}?v=${dayjs().format()}`;
+    console.log(publicURL);
     return publicURL;
   } catch (err) {
+    console.log(err);
     throw new Error(`Error uploading file: ${err.message}`);
   }
 };
