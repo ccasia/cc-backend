@@ -631,9 +631,15 @@ export const getprofile = async (req: Request, res: Response) => {
         case 'banned':
           return res.status(400).json({ message: 'Account banned.' });
         case 'pending':
-          return res.status(202).json({ message: 'Accoung pending.' });
+          return res.status(400).json({ message: 'Accoung pending.' });
+        case 'blacklisted':
+          return res.status(400).json({ message: 'Account blacklisted.' });
+        case 'suspended':
+          return res.status(400).json({ message: 'Accoung suspended.' });
+        case 'spam':
+          return res.status(400).json({ message: 'Accoung spam.' });
         case 'rejected':
-          return res.status(403).json({ message: 'Account rejected.' });
+          return res.status(400).json({ message: 'Account rejected.' });
       }
 
       res.cookie('accessToken', accessToken, {
@@ -643,7 +649,6 @@ export const getprofile = async (req: Request, res: Response) => {
 
       return res.status(200).json({ user, accessToken });
     } catch (error) {
-      //console.log(error);
       return res.status(500).json({ message: 'Internal Server Error' });
     }
   });
@@ -693,6 +698,12 @@ export const login = async (req: Request, res: Response) => {
         return res.status(400).json({ message: 'Account banned.' });
       case 'pending':
         return res.status(400).json({ message: 'Accoung pending.' });
+      case 'blacklisted':
+        return res.status(400).json({ message: 'Account blacklisted.' });
+      case 'suspended':
+        return res.status(400).json({ message: 'Accoung suspended.' });
+      case 'spam':
+        return res.status(400).json({ message: 'Accoung spam.' });
       case 'rejected':
         return res.status(400).json({ message: 'Account rejected.' });
     }

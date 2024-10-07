@@ -792,7 +792,10 @@ enum Mode {
 
 enum Status {
   active
+  blacklisted
   pending
+  suspended
+  spam
   banned
   rejected
 }
