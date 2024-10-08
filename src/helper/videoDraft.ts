@@ -32,7 +32,14 @@ const processVideo = async (
     const userid = videoData.userid;
 
     const command = Ffmpeg(inputPath)
-      .outputOptions(['-c:v libx264', '-crf 23'])
+      .outputOptions([
+        '-c:v libx264',
+        '-crf 26',
+        '-pix_fmt yuv420p',
+        '-map 0:v:0', // Select the first video stream
+        '-map 0:a:0?',
+      ])
+      // .outputOptions(['-c:v libx264', '-crf 23'])
       .save(outputPath)
       .on('progress', (progress: any) => {
         activeProcesses.set(submissionId, command);

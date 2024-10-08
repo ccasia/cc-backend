@@ -74,9 +74,18 @@ export const compress = (
 
   return new Promise<string>((resolve, reject) => {
     const ffmpegProcess = Ffmpeg(tempFilePath)
+      .inputFormat('mov')
       .fps(30)
-      .outputOptions(['-c:v libx264', '-crf 26'])
-
+      // .outputOptions(['-c:v libx264', '-crf 26'])
+      .outputOptions([
+        '-c:v libx264',
+        '-crf 26',
+        '-pix_fmt yuv420p',
+        '-map 0:v:0', // Select the first video stream
+        '-map 0:a:0?',
+      ])
+      .toFormat('mp4')
+      // -pix_fmt yuv420p
       .on('progress', async (progress) => {
         if (progress.timemark) {
           const [hours, minutes, seconds] = progress.timemark.split(':').map(parseFloat);

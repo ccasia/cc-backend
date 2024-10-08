@@ -2117,7 +2117,6 @@ export const uploadVideoTest = async (req: Request, res: Response) => {
         });
       });
 
-      //console.log('UPLOADING START');
       const a = await uploadPitchVideo(
         path,
         outputPath,
@@ -2162,6 +2161,7 @@ export const saveCampaign = async (req: Request, res: Response) => {
 
     return res.status(200).json({ message: `Campaign ${bookmark.campaign?.name} has been bookmark` });
   } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -2594,7 +2594,6 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
 
     return res.status(200).json({ message: 'Update Success' });
   } catch (error) {
-    console.log(error);
     return res.status(400).json(error);
   }
 };
