@@ -392,21 +392,19 @@ export const crawlCreator = async (req: Request, res: Response) => {
   const { identifier, platform } = req.body;
 
   if (!identifier || !platform) {
-    //console.log('Missing identifier or platform');
     return res.status(400).json({ error: 'Missing identifier or platform' });
   }
 
   const options = {
-    hostname: 'stg.api.fair-indonesia.com',
+    hostname: 'api.fair-indonesia.com',
     path: '/api/client/analyzer',
     method: 'POST',
     headers: {
       Accept: 'application/json, text/plain, */*',
-      Authorization: 'AtLrQ+Od&KKyxIr+E$4S*2nFS',
+      Authorization: 'IPMmEy81BL20jvkwd2zO',
       'Content-Type': 'application/json',
       Origin: 'https://www.fair-indonesia.com',
     },
-    // rejectUnauthorized: false
   };
 
   const data = JSON.stringify({ identifier, platform });

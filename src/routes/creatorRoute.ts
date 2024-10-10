@@ -16,7 +16,7 @@ import {
   getCreatorFullInfoByIdPublic,
 } from '@controllers/creatorController';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
-import { needPermissions } from '@middlewares/needPermissions';
+// import { needPermissions } from '@middlewares/needPermissions';
 import { isLoggedIn } from '@middlewares/onlyLogin';
 
 const router = Router();

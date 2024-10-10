@@ -256,11 +256,12 @@ export const sendMessageInThread = async (req: Request, res: Response) => {
     });
 
     const unreadCountMap = new Map(unreadMessages.map((count) => [count.userId, count._count]));
+    const senderInformation = datas.data.UserThread.find((elem) => elem.userId === userId);
 
-    for (const thread of datas.data.UserThread) {
+    for (const thread of datas.data.UserThread.filter((elem) => elem.userId !== userId)) {
       const count = unreadCountMap.get(thread.user.id) || 0; // default to 0 if no unread messages
 
-      io.to(clients.get(thread.user.id)).emit('messageCount', { count });
+      io.to(clients.get(thread.user.id)).emit('messageCount', { count, name: senderInformation?.user.name });
     }
 
     // for (const thread of data.UserThread) {

@@ -103,9 +103,8 @@ export const createNewTemplate = async (req: Request, res: Response) => {
       });
     }
 
-    return res.status(200).json({ message: 'Successfully created.' });
+    return res.status(200).json({ message: 'Successfully created.', templateURL: url });
   } catch (error) {
-    console.log(error);
     return res.status(400).json(error);
   }
 };
