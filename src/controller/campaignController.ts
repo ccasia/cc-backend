@@ -459,7 +459,7 @@ export const createCampaign = async (req: Request, res: Response) => {
 
           const data = await tx.notification.create({
             data: {
-              message: `You've been assign to Campaign ${campaign.name}.`,
+              message: `You have been assigned to Campaign ${campaign.name}.`,
               entity: Entity.Campaign,
               campaign: {
                 connect: {
@@ -506,7 +506,7 @@ export const createCampaign = async (req: Request, res: Response) => {
       );
 
       logChange('Created', campaign.id, req);
-      return res.status(200).json({ campaign, message: 'Successfully created campaign' });
+      return res.status(200).json({ campaign, message: 'Campaign created successfully.' });
     });
   } catch (error) {
     console.log(error);
@@ -1160,9 +1160,9 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
       io.to(clients.get(adminId)).emit('notification', notification);
     });
 
-    return res.status(202).json({ message: 'Successfully Pitch !' });
+    return res.status(202).json({ message: 'Pitch submitted successfully!' });
   } catch (error) {
-    return res.status(400).json({ message: 'Error' });
+    return res.status(400).json({ message: 'Error! Please try again.' });
   }
 };
 
@@ -1241,7 +1241,7 @@ export const changeCampaignStage = async (req: Request, res: Response) => {
         const data = await saveNotification({
           userId: value.userId as string,
           title: 'Campaign Maintenance',
-          message: `Campaign ${campaign.name} is down for maintenance`,
+          message: `Campaign ${campaign.name} is currently down for maintenance.`,
           entity: 'Campaign',
           entityId: campaign.id,
         });
@@ -1253,7 +1253,7 @@ export const changeCampaignStage = async (req: Request, res: Response) => {
       campaign.campaignAdmin.forEach(async (admin) => {
         const data = await saveNotification({
           userId: admin.adminId,
-          message: `${campaign.name} is up live !`,
+          message: `${campaign.name} is now live!`,
           entity: 'Campaign',
           entityId: campaign.id,
         });
@@ -1263,7 +1263,7 @@ export const changeCampaignStage = async (req: Request, res: Response) => {
 
     io.emit('campaignStatus', campaign);
 
-    return res.status(200).json({ message: 'Successfully changed stage', status: campaign?.status });
+    return res.status(200).json({ message: 'Campaign stage changed successfully.', status: campaign?.status });
   } catch (error) {
     return res.status(400).json(error);
   }
@@ -1294,7 +1294,7 @@ export const closeCampaign = async (req: Request, res: Response) => {
       io.to(clients.get(item.adminId)).emit('notification', data);
     });
 
-    return res.status(200).json({ message: 'Campaign is successfully closed.' });
+    return res.status(200).json({ message: 'Campaign closed successfully.' });
   } catch (error) {
     return res.status(400).json(error);
   }
@@ -1416,7 +1416,7 @@ export const editCampaignDosAndDonts = async (req: Request, res: Response) => {
       },
     });
 
-    const message = "Updated dos and don'ts";
+    const message = 'Dos and don’ts updated successfully.';
     logChange(message, campaignId, req);
     return res.status(200).json({ message: message, ...updatedCampaignBrief });
   } catch (error) {
@@ -1450,7 +1450,7 @@ export const editCampaignRequirements = async (req: Request, res: Response) => {
       },
     });
 
-    const message = 'Updated requirements';
+    const message = 'Campaign requirements updated successfully.';
     logChange(message, campaignId, req);
     return res.status(200).json({ message: message, newRequirement: updatedCampaignRequirement });
   } catch (error) {
@@ -1477,7 +1477,7 @@ export const editCampaignTimeline = async (req: Request, res: Response) => {
     });
 
     if (!campaign) {
-      return res.status(404).json({ message: 'Campaign not found' });
+      return res.status(404).json({ message: 'Campaign not found.' });
     }
 
     const data = await Promise.all(
@@ -1796,7 +1796,7 @@ export const changePitchStatus = async (req: Request, res: Response) => {
         });
 
         if (!campaign || !campaign.thread) {
-          return res.status(404).json({ message: 'Campaign or thread not found' });
+          return res.status(404).json({ message: 'Campaign or thread not found.' });
         }
 
         const isThreadExist = await tx.userThread.findFirst({
@@ -1905,7 +1905,7 @@ export const changePitchStatus = async (req: Request, res: Response) => {
       }
     }
 
-    return res.status(200).json({ message: 'Successfully changed' });
+    return res.status(200).json({ message: 'Successfully changed.' });
   } catch (error) {
     return res.status(400).json(error);
   }
@@ -2130,7 +2130,7 @@ export const uploadVideoTest = async (req: Request, res: Response) => {
 
       io.to(clients.get(req.session.userid)).emit('video-upload-done', { campaignId: campaignId });
 
-      return res.status(200).json({ publicUrl: a, message: 'Succesfully uploaded' });
+      return res.status(200).json({ publicUrl: a, message: 'Pitch video uploaded successfully.' });
     }
   } catch (error) {
     console.log(error);
@@ -2159,7 +2159,7 @@ export const saveCampaign = async (req: Request, res: Response) => {
       },
     });
 
-    return res.status(200).json({ message: `Campaign ${bookmark.campaign?.name} has been bookmark` });
+    return res.status(200).json({ message: `Campaign ${bookmark.campaign?.name} has been bookmarked.` });
   } catch (error) {
     console.log(error);
     return res.status(400).json(error);
@@ -2181,7 +2181,7 @@ export const unSaveCampaign = async (req: Request, res: Response) => {
 
     return res
       .status(200)
-      .json({ message: `Campaign ${bookmark.campaign?.name} has been remove from saved campaigns` });
+      .json({ message: `Campaign ${bookmark.campaign?.name} has been removed from your saved campaigns.` });
   } catch (error) {
     //console.log(error);
     return res.status(400).json(error);
@@ -2218,7 +2218,7 @@ export const createLogistics = async (req: Request, res: Response) => {
 
     io.to(clients.get(userId)).emit('notification', notification);
 
-    return res.status(200).json({ message: 'Succesfully created logistics' });
+    return res.status(200).json({ message: 'Logistics created successfully.' });
   } catch (error) {
     //console.log(error);
     return res.status(400).json(error);
@@ -2249,7 +2249,7 @@ export const updateStatusLogistic = async (req: Request, res: Response) => {
         status: status as LogisticStatus,
       },
     });
-    return res.status(200).json({ message: 'Successfully changed status' });
+    return res.status(200).json({ message: 'Logistic status updated successfully.' });
   } catch (error) {
     //console.log(error);
     return res.status(400).json(error);
@@ -2621,7 +2621,7 @@ export const sendAgreement = async (req: Request, res: Response) => {
     });
 
     if (!agreement) {
-      return res.status(404).json({ message: 'Agreement not found' });
+      return res.status(404).json({ message: 'Agreement not found.' });
     }
 
     // update the status of agreement
@@ -2648,7 +2648,7 @@ export const sendAgreement = async (req: Request, res: Response) => {
     });
 
     if (!shortlistedCreator) {
-      return res.status(404).json({ message: 'This creator is not shortlisted' });
+      return res.status(404).json({ message: 'This creator is not shortlisted.' });
     }
     // update shortlisted creator table
     await prisma.shortListedCreator.update({
