@@ -2666,3 +2666,56 @@ export const sendAgreement = async (req: Request, res: Response) => {
     return res.status(400).json(error);
   }
 };
+
+export const editCampaignImages = async (req: Request, res: Response) => {
+  const { campaignImages, campaignId } = req.body;
+  const newImages: string[] = [];
+  try {
+    const newCampaignImages = (req.files as any)?.campaignImages;
+
+    const campaign = await prisma.campaignBrief.findFirst({
+      where: {
+        campaignId: campaignId,
+      },
+    });
+
+    if (!campaign) {
+      return res.status(404).json({ message: 'Campaign Not Found.' });
+    }
+
+    if (newCampaignImages) {
+      if (newCampaignImages?.length) {
+        for (const item of newCampaignImages as any) {
+          const url = await uploadImage(item.tempFilePath, item.name, 'campaign');
+          newImages.push(url);
+        }
+      } else {
+        const images = newCampaignImages;
+        const url = await uploadImage(images.tempFilePath, images.name, 'campaign');
+        newImages.push(url);
+      }
+
+      await prisma.campaignBrief.update({
+        where: {
+          campaignId: campaign?.campaignId,
+        },
+        data: {
+          images: [...campaignImages, ...newImages],
+        },
+      });
+    } else {
+      await prisma.campaignBrief.update({
+        where: {
+          campaignId: campaign?.campaignId,
+        },
+        data: {
+          images: campaignImages,
+        },
+      });
+    }
+    return res.status(200).json({ message: 'Image are updated.' });
+  } catch (error) {
+    console.log(error);
+    return res.status(400).json(error);
+  }
+};

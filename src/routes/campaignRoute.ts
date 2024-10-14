@@ -33,6 +33,7 @@ import {
   creatorAgreements,
   updateAmountAgreement,
   sendAgreement,
+  editCampaignImages,
 } from '@controllers/campaignController';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 
@@ -98,6 +99,7 @@ router.patch('/editCampaignBrandOrCompany', isSuperAdmin, editCampaignBrandOrCom
 router.patch('/editCampaignDosAndDonts', isSuperAdmin, editCampaignDosAndDonts);
 router.patch('/editCampaignRequirements', isSuperAdmin, editCampaignRequirements);
 router.patch('/editCampaignTimeline/:id', isSuperAdmin, editCampaignTimeline);
+router.patch('/editCampaignImages/:id', isSuperAdmin, editCampaignImages);
 router.patch('/changePitchStatus', isSuperAdmin, changePitchStatus);
 router.patch('/changeLogisticStatus', isSuperAdmin, updateStatusLogistic); //need permission later
 router.patch('/receiveLogistic', isLoggedIn, receiveLogistic);
