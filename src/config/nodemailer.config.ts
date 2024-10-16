@@ -49,7 +49,7 @@ export const AdminInvitaion = (email: string, confirmationCode: string) => {
       </head>
       <body style="font-family: Arial, sans-serif; line-height: 1.6; background-color: #f4f4f4; margin: 0; padding: 0;">
         <div style="max-width: 600px; margin: auto; padding: 20px; background: #fff; border-radius: 5px; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);">
-          <h1 style="margin: 0 0 20px;">Welcome to our  System!</h1>
+          <h1 style="margin: 0 0 20px;">Welcome to Cult Creative Platform!</h1>
           <p style="margin: 0 0 20px;">You have been invited to join our system as an admin.</p>
           <p style="margin: 0 0 20px;">Please click on the following link to complete your registration:</p>
           <a href="http://localhost/auth/jwt/adminForm?token=${confirmationCode}" style="display: inline-block; padding: 10px 20px; background-color: #007bff; color: #fff; text-decoration: none; border-radius: 5px;">Complete Registration</a>
@@ -924,6 +924,81 @@ export const financeAdminInvoice = (email: string, campaignName: string, adminNa
 
 </body>
 </html>
+          `,
+    })
+    .catch((err) => {
+      return err;
+    });
+};
+
+export const forgetPasswordEmail = (email: string, token: string, name?: string) => {
+  transport
+    .sendMail({
+      from: user,
+      to: email,
+      subject: '[Cult Creative] Reset your password',
+      html: `
+       <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Password Reset</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            color: #333;
+        }
+        .container {
+            width: 100%;
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        h2 {
+            color: #007BFF;
+        }
+        p {
+            font-size: 16px;
+        }
+        a.button {
+            display: inline-block;
+            padding: 10px 20px;
+            margin-top: 20px;
+            background-color: #007BFF;
+            color: #fff;
+            text-decoration: none;
+            border-radius: 5px;
+        }
+        a.button:hover {
+            background-color: #0056b3;
+        }
+        .footer {
+            margin-top: 30px;
+            font-size: 12px;
+            color: #888;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Password Reset Request</h2>
+        <p>Hello ${name},</p>
+        <p>We received a request to reset the password for your account at <strong>Cult Creative Platform</strong>. If you did not request a password reset, please ignore this email.</p>
+        <p>To reset your password, click the button below:</p>
+        <a href="${process.env.BASE_EMAIL_URL}/auth/jwt/new-password?token=${token}" class="button">Reset Password</a>
+        <p>Or copy and paste this URL into your browser:</p>
+        <p><a href="${process.env.BASE_EMAIL_URL}/auth/jwt/new-password?token=${token}">${process.env.BASE_EMAIL_URL}/auth/jwt/new-password?token=${token}</a></p>
+        <p>This link will expire in 15 minutes for security reasons.</p>
+        <p>If you continue to have trouble, please contact our support team.</p>
+        <p>Thank you,<br>The Cult Creative Team</p>
+        <div class="footer">
+            <p>&copy; Cult Creative Platform. All rights reserved.</p>
+        </div>
+    </div>
+</body>
           `,
     })
     .catch((err) => {

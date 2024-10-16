@@ -46,6 +46,16 @@ model User {
   userNotification   UserNotification[]
   UserThread         UserThread[]
   threads            Thread[]             @relation("UserThreads")
+  resetPasswordToken ResetPasswordToken?
+}
+
+model ResetPasswordToken {
+  id        String   @id @unique @default(cuid())
+  token     String?
+  userId    String?  @unique
+  user      User?    @relation(references: [id], fields: [userId])
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
 }
 
 model Admin {

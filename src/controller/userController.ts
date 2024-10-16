@@ -1,5 +1,7 @@
 import { Request, Response } from 'express';
-import { AdminInvite } from '@configs/nodemailer.config';
+import { AdminInvite, forgetPasswordEmail } from '@configs/nodemailer.config';
+import jwt, { JwtPayload, Secret } from 'jsonwebtoken';
+import bcrypt from 'bcrypt';
 
 import {
   // createNewAdmin,
@@ -206,6 +208,120 @@ export const getAllActiveAdmins = async (_req: Request, res: Response) => {
     });
 
     return res.status(200).json(admins);
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const forgetPassword = async (req: Request, res: Response) => {
+  const { email } = req.body;
+
+  try {
+    const user = await prisma.user.findFirst({
+      where: {
+        email: email,
+      },
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: 'No account registered with the email.' });
+    }
+
+    const token = jwt.sign({ email: user?.email }, process.env.ACCESSKEY as Secret, {
+      expiresIn: '5m',
+    });
+
+    await prisma.resetPasswordToken.upsert({
+      where: {
+        userId: user?.id,
+      },
+      update: {
+        token: token,
+      },
+      create: {
+        token: token,
+      },
+    });
+
+    forgetPasswordEmail(user?.email, token, user?.name || '');
+
+    return res.status(200).json({ message: 'Reset link has been sent to your email!' });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const checkForgetPasswordToken = async (req: Request, res: Response) => {
+  const params = req.params;
+  try {
+    if (!params.token) {
+      return res.status(404).json({ message: 'Token not found.' });
+    }
+
+    const forgetPasswordToken = await prisma.resetPasswordToken.findFirst({
+      where: {
+        token: params.token,
+      },
+    });
+
+    if (!forgetPasswordToken) {
+      return res.status(404).json({ message: 'Token not found.' });
+    }
+
+    const userDecode: any = jwt.verify(forgetPasswordToken.token as string, process.env.ACCESSKEY as string);
+
+    if (!userDecode) {
+      return res.status(404).json({ message: 'Token expired' });
+    }
+
+    const user = await prisma.user.findFirst({
+      where: {
+        email: userDecode?.email,
+      },
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+
+    return res.status(200).json({ message: 'User authenticated.', email: user?.email });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const changePassword = async (req: Request, res: Response) => {
+  const { token, password, confirmPassword } = req.body;
+
+  try {
+    if (password !== confirmPassword) {
+      return res.status(404).json({ message: 'Password must match.' });
+    }
+
+    const tokenDecoded: any = jwt.verify(token as string, process.env.ACCESSKEY as string);
+
+    const user = await prisma.user.findFirst({
+      where: {
+        email: tokenDecoded.email,
+      },
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    await prisma.user.update({
+      where: {
+        id: user.id,
+      },
+      data: {
+        password: hashedPassword,
+      },
+    });
+
+    return res.status(200).json({ message: 'Successfully changed password.' });
   } catch (error) {
     return res.status(400).json(error);
   }
