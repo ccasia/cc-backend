@@ -874,6 +874,7 @@ enum PitchStatus {
   rejected
   filtered
   undecided
+  draft
 }
 
 enum DraftStatus {

@@ -2728,3 +2728,60 @@ export const editCampaignImages = async (req: Request, res: Response) => {
     return res.status(400).json(error);
   }
 };
+
+export const draftPitch = async (req: Request, res: Response) => {
+  const { content, userId, campaignId } = req.body;
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: {
+        id: userId,
+      },
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+
+    const campaign = await prisma.campaign.findUnique({
+      where: {
+        id: campaignId,
+      },
+    });
+
+    if (!campaign) {
+      return res.status(404).json({ message: 'Campaign not found.' });
+    }
+
+    const pitch = await prisma.pitch.findFirst({
+      where: {
+        AND: [{ userId: user?.id }, { campaignId: campaign?.id }],
+      },
+    });
+
+    if (!pitch) {
+      await prisma.pitch.create({
+        data: {
+          userId: user?.id,
+          campaignId: campaign?.id,
+          content: content,
+          status: 'draft',
+          type: 'text',
+        },
+      });
+    } else {
+      await prisma.pitch.update({
+        where: {
+          id: pitch?.id,
+        },
+        data: {
+          content: content,
+        },
+      });
+    }
+
+    return res.status(200).json({ message: 'Pitch has been draft.' });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
