@@ -247,6 +247,7 @@ export const forgetPassword = async (req: Request, res: Response) => {
 
     return res.status(200).json({ message: 'Reset link has been sent to your email!' });
   } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   }
 };
