@@ -341,21 +341,12 @@ export const getOverview = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'User not found.' });
     }
 
-    const campaignsCounts = await prisma.campaign.count({
-      where: {
-        shortlisted: {
-          some: {
-            userId: user?.id,
-          },
-        },
-      },
-    });
-
     const campaigns = await prisma.campaign.findMany({
       where: {
         shortlisted: {
           some: {
             userId: user.id,
+            isCampaignDone: false,
           },
         },
       },
