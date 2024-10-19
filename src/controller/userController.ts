@@ -327,3 +327,86 @@ export const changePassword = async (req: Request, res: Response) => {
     return res.status(400).json(error);
   }
 };
+
+export const getOverview = async (req: Request, res: Response) => {
+  const { userId } = req.params;
+  try {
+    const user = await prisma.user.findUnique({
+      where: {
+        id: userId,
+      },
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+
+    const campaignsCounts = await prisma.campaign.count({
+      where: {
+        shortlisted: {
+          some: {
+            userId: user?.id,
+          },
+        },
+      },
+    });
+
+    const campaigns = await prisma.campaign.findMany({
+      where: {
+        shortlisted: {
+          some: {
+            userId: user.id,
+          },
+        },
+      },
+      include: {
+        campaignBrief: true,
+        submission: {
+          where: {
+            userId: user.id,
+          },
+          include: {
+            submissionType: {
+              select: {
+                type: true,
+              },
+            },
+          },
+        },
+        brand: true,
+        company: true,
+      },
+    });
+
+    const adjustedCampaigns = campaigns.map((campaign) => {
+      const submissions = campaign.submission;
+      let completed = 0;
+
+      submissions?.filter((submission) => {
+        if (
+          submission?.submissionType?.type === 'FIRST_DRAFT' &&
+          (submission?.status === 'CHANGES_REQUIRED' || submission?.status === 'APPROVED')
+        ) {
+          completed++;
+        } else if (submission?.status === 'APPROVED') {
+          completed++;
+        }
+      });
+
+      return {
+        campaignId: campaign?.id,
+        campaignName: campaign?.name,
+        campaignImages: campaign?.campaignBrief?.images,
+        brand: {
+          id: campaign?.brand?.id || campaign?.company?.id,
+          name: campaign?.brand?.name || campaign?.company?.name,
+        },
+        completed: (completed / 4) * 100,
+      };
+    });
+
+    return res.status(200).json(adjustedCampaigns);
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
