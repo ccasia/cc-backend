@@ -1071,7 +1071,54 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
     });
 
     if (isPitchExist) {
-      return res.status(400).json({ message: 'You have make a pitch for this campaign.' });
+      if (isPitchExist.type === 'text') {
+        pitch = await prisma.pitch.update({
+          where: {
+            id: isPitchExist.id,
+          },
+          data: {
+            type: 'text',
+            content: content,
+            userId: id as string,
+            campaignId: campaignId,
+            status: 'undecided',
+          },
+          include: {
+            campaign: true,
+            user: true,
+          },
+        });
+      }
+    } else {
+      if (type === 'video') {
+        pitch = await prisma.pitch.create({
+          data: {
+            type: 'video',
+            content: content,
+            userId: id as string,
+            campaignId: campaignId,
+            status: 'undecided',
+          },
+          include: {
+            campaign: true,
+            user: true,
+          },
+        });
+      } else {
+        pitch = await prisma.pitch.create({
+          data: {
+            type: 'text',
+            content: content,
+            userId: id as string,
+            campaignId: campaignId,
+            status: 'undecided',
+          },
+          include: {
+            campaign: true,
+            user: true,
+          },
+        });
+      }
     }
 
     const user = await prisma.user.findUnique({
@@ -1090,75 +1137,69 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
       },
     });
 
-    if (type === 'video') {
-      pitch = await prisma.pitch.create({
-        data: {
-          type: 'video',
-          content: content,
-          userId: id as string,
-          campaignId: campaignId,
-          status: 'undecided',
-        },
-        include: {
-          campaign: true,
-          user: true,
-        },
-      });
-    } else {
-      pitch = await prisma.pitch.create({
-        data: {
-          type: 'text',
-          content: content,
-          userId: id as string,
-          campaignId: campaignId,
-          status: 'undecided',
-        },
-        include: {
-          campaign: true,
-          user: true,
-        },
-      });
-    }
+    // if (type === 'video') {
+    //   pitch = await prisma.pitch.create({
+    //     data: {
+    //       type: 'video',
+    //       content: content,
+    //       userId: id as string,
+    //       campaignId: campaignId,
+    //       status: 'undecided',
+    //     },
+    //     include: {
+    //       campaign: true,
+    //       user: true,
+    //     },
+    //   });
+    // } else {
+    //   pitch = await prisma.pitch.create({
+    //     data: {
+    //       type: 'text',
+    //       content: content,
+    //       userId: id as string,
+    //       campaignId: campaignId,
+    //       status: 'undecided',
+    //     },
+    //     include: {
+    //       campaign: true,
+    //       user: true,
+    //     },
+    //   });
+    // }
 
-    const notification = notificationPitch(pitch.campaign.name, 'Creator');
-
-    const newPitch = await saveNotification({
-      userId: user?.id as string,
-      message: notification.message,
-      title: notification.title,
-      entity: 'Pitch',
-      entityId: campaign?.id as string,
-    });
-
-    // const newPitch = await saveNotification(
-    //   user?.id as string,
-    //   notificationPitchCreator(pitch.campaign.name, 'Creator'),
-    //   Entity.Pitch,
-    //   pitch?.campaign?.id,
-    // );
-
-    io.to(clients.get(user?.id)).emit('notification', newPitch);
-
-    const admins = campaign?.campaignAdmin;
-
-    const notificationAdmin = notificationPitch(pitch.campaign.name, 'Admin', pitch.user.name as string);
-
-    admins?.map(async ({ adminId }) => {
-      const notification = await saveNotification({
-        userId: adminId as string,
-        message: notificationAdmin.message,
-        title: notificationAdmin.title,
+    if (pitch) {
+      const notification = notificationPitch(pitch.campaign.name, 'Creator');
+      const newPitch = await saveNotification({
+        userId: user?.id as string,
+        message: notification.message,
+        title: notification.title,
         entity: 'Pitch',
         entityId: campaign?.id as string,
       });
 
-      // await saveNotification(
-      //   adminId,
-      //   `New Pitch By ${user?.name} for campaign ${campaign?.name}`,
-      //   Entity.Pitch,
-      // );
-      io.to(clients.get(adminId)).emit('notification', notification);
-    });
+      io.to(clients.get(user?.id)).emit('notification', newPitch);
+
+      const admins = campaign?.campaignAdmin;
+
+      const notificationAdmin = notificationPitch(pitch.campaign.name, 'Admin', pitch.user.name as string);
+
+      admins?.map(async ({ adminId }) => {
+        const notification = await saveNotification({
+          userId: adminId as string,
+          message: notificationAdmin.message,
+          title: notificationAdmin.title,
+          entity: 'Pitch',
+          entityId: campaign?.id as string,
+        });
+
+        // await saveNotification(
+        //   adminId,
+        //   `New Pitch By ${user?.name} for campaign ${campaign?.name}`,
+        //   Entity.Pitch,
+        // );
+        io.to(clients.get(adminId)).emit('notification', notification);
+      });
+    }
 
     return res.status(202).json({ message: 'Pitch submitted successfully!' });
   } catch (error) {

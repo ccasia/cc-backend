@@ -303,16 +303,16 @@ export const draftSubmission = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Submission not found' });
     }
 
-    const inReviewColumn = await getColumnId({ userId: userid, columnName: 'In Review' });
+    // const inReviewColumn = await getColumnId({ userId: userid, columnName: 'In Review' });
 
-    await prisma.task.update({
-      where: {
-        id: submission.task?.id,
-      },
-      data: {
-        columnId: inReviewColumn,
-      },
-    });
+    // await prisma.task.update({
+    //   where: {
+    //     id: submission.task?.id,
+    //   },
+    //   data: {
+    //     columnId: inReviewColumn,
+    //   },
+    // });
 
     const file = (req.files as any).draftVideo;
 
@@ -339,14 +339,12 @@ export const draftSubmission = async (req: Request, res: Response) => {
         persistent: true,
       },
     );
-    //console.log(`Sent video processing task to queue: draft`);
 
     await channel.close();
     await amqp.close();
 
     return res.status(200).json({ message: 'Video start processing' });
   } catch (error) {
-    //console.log(error);
     return res.status(400).json(error);
   }
 };
