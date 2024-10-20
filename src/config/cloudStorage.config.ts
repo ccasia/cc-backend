@@ -117,12 +117,10 @@ export const uploadPitchVideo = async (
   folderName: string,
   progressCallback?: any,
   size?: number,
-  abortSignal?: AbortSignal,
 ) => {
   try {
     const bucketName = process.env.BUCKET_NAME as string;
     const destination = `${folderName}/${fileName}`;
-    console.log(bucketName, destination);
 
     await checkIfVideoExist(fileName, folderName);
 
@@ -140,10 +138,6 @@ export const uploadPitchVideo = async (
           progressCallback(progress);
         }
       },
-    });
-
-    abortSignal?.addEventListener('abort', () => {
-      //console.log('ABORTING UPLOAD GCP');
     });
 
     const publicURL = `https://storage.googleapis.com/${bucketName}/${destination}?v=${dayjs().format()}`;

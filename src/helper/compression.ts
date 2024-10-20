@@ -7,53 +7,6 @@ import { clients, io } from 'src/server';
 Ffmpeg.setFfmpegPath(FfmpegPath.path);
 Ffmpeg.setFfmpegPath(FfmpegProbe.path);
 
-// export const compress = (tempFilePath: string, outputPath: string, progressCallback: any): Promise<string> => {
-//   const getVideoDuration = (inputPath: string): Promise<number | undefined> => {
-//     return new Promise((resolve, reject) => {
-//       Ffmpeg.ffprobe(inputPath, (err, metadata) => {
-//         if (err) {
-//           reject(err);
-//         } else {
-//           resolve(metadata.format.duration);
-//         }
-//       });
-//     });
-//   };
-
-//   //   const outputFilePath = path.resolve(`./upload/test.mp4`);
-
-//   return new Promise((resolve, reject) => {
-//     Ffmpeg(tempFilePath)
-//       .fps(30)
-//       .outputOptions(['-c:v libx264', '-crf 26'])
-//       .on('start', () => {
-//         //console.log('Starting...');
-//       })
-//       .on('progress', async (progress) => {
-//         if (progress.timemark) {
-//           const [hours, minutes, seconds] = progress.timemark.split(':').map(parseFloat);
-//           const timemarkInSeconds = hours * 3600 + minutes * 60 + seconds;
-//           const duration: number | undefined = await getVideoDuration(tempFilePath);
-//           if (duration) {
-//             const percentComplete = (timemarkInSeconds / duration) * 100;
-//             progressCallback(percentComplete);
-//           }
-//         }
-//       })
-//       .on('end', () => {
-//         //console.log('Processing finished.');
-//         resolve(path.resolve(`./upload/${outputPath}`));
-//         //   (process as unknown as ChildProcess).send({ progress: 100 });
-//       })
-//       .on('error', (err) => {
-//         console.error('Error processing video:', err.message);
-//         fs.unlinkSync(`./upload/${outputPath}`);
-//         reject(err);
-//       })
-//       .save(path.resolve(`./upload/${outputPath}`));
-//   });
-// };
-
 export const compress = (
   tempFilePath: string,
   outputPath: string,
@@ -74,18 +27,9 @@ export const compress = (
 
   return new Promise<string>((resolve, reject) => {
     const ffmpegProcess = Ffmpeg(tempFilePath)
-      .inputFormat('mov')
       .fps(30)
-      // .outputOptions(['-c:v libx264', '-crf 26'])
-      .outputOptions([
-        '-c:v libx264',
-        '-crf 26',
-        '-pix_fmt yuv420p',
-        '-map 0:v:0', // Select the first video stream
-        '-map 0:a:0?',
-      ])
+      .outputOptions(['-c:v libx264', '-crf 26', '-pix_fmt yuv420p', '-map 0:v:0', '-map 0:a:0?'])
       .toFormat('mp4')
-      // -pix_fmt yuv420p
       .on('progress', async (progress) => {
         if (progress.timemark) {
           const [hours, minutes, seconds] = progress.timemark.split(':').map(parseFloat);
@@ -98,15 +42,17 @@ export const compress = (
         }
       })
       .on('end', () => {
-        //console.log('Processing finished.');
-        resolve(path.resolve(__dirname, `../upload/${outputPath}`));
+        resolve(outputPath);
+        // resolve(path.resolve(__dirname, `../upload/${outputPath}`));
       })
       .on('error', (err) => {
         console.error('Error processing video:', err.message);
-
         reject(err);
       })
-      .save(path.resolve(__dirname, `../upload/${outputPath}`));
+      .save(
+        outputPath,
+        // path.resolve(__dirname, `../upload/${outputPath}`)
+      );
 
     // Handle abort signal
     abortSignal.addEventListener('abort', () => {

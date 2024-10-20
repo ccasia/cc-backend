@@ -2127,19 +2127,18 @@ export const uploadVideoTest = async (req: Request, res: Response) => {
   const abortController = new AbortController();
   const { campaignId } = req.body;
   const { userid } = req.session;
-  const outputPath = `${userid}_pitch.mp4`;
+  const outputPath = `/tmp/${userid}_pitch.mp4`;
   let cancel = false;
 
   res.on('close', async () => {
-    //console.log('ABORTING....');
     cancel = true;
-    await fs.promises.unlink(path.resolve(__dirname, `../upload/${outputPath}`));
+    // await fs.promises.unlink(path.resolve(__dirname, `../upload/${outputPath}`));
+    await fs.promises.unlink(outputPath);
     abortController.abort();
   });
 
   try {
     if (!cancel) {
-      //console.log('COMPRESSION START');
       const path: any = await compress(
         (req.files as any).pitchVideo.tempFilePath,
         outputPath,
@@ -2166,7 +2165,6 @@ export const uploadVideoTest = async (req: Request, res: Response) => {
           io.to(clients.get(req.session.userid)).emit('video-upload', { campaignId: campaignId, progress: data });
         },
         size as number,
-        abortController.signal,
       );
 
       io.to(clients.get(req.session.userid)).emit('video-upload-done', { campaignId: campaignId });
@@ -2174,7 +2172,6 @@ export const uploadVideoTest = async (req: Request, res: Response) => {
       return res.status(200).json({ publicUrl: a, message: 'Pitch video uploaded successfully.' });
     }
   } catch (error) {
-    console.log(error);
     return res.status(400).json(error);
   }
 };
