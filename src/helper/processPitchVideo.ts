@@ -1,6 +1,6 @@
 import amqplib from 'amqplib';
 import { compress } from './compression';
-import { clients, io } from 'src/server';
+import { clients, io } from '../server';
 import ffmpegPath from '@ffmpeg-installer/ffmpeg';
 import ffprobePath from '@ffprobe-installer/ffprobe';
 import Ffmpeg from 'fluent-ffmpeg';
