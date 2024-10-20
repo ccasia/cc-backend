@@ -1,8 +1,6 @@
 import Ffmpeg from 'fluent-ffmpeg';
 import FfmpegPath from '@ffmpeg-installer/ffmpeg';
 import FfmpegProbe from '@ffprobe-installer/ffprobe';
-import path from 'path';
-import { clients, io } from 'src/server';
 
 Ffmpeg.setFfmpegPath(FfmpegPath.path);
 Ffmpeg.setFfmpegPath(FfmpegProbe.path);
@@ -26,11 +24,13 @@ export const compress = (
   };
 
   return new Promise<string>((resolve, reject) => {
+    console.log('Starting compression');
     const ffmpegProcess = Ffmpeg(tempFilePath)
       .fps(30)
       .outputOptions(['-c:v libx264', '-crf 26', '-pix_fmt yuv420p', '-map 0:v:0', '-map 0:a:0?'])
       .toFormat('mp4')
       .on('progress', async (progress) => {
+        console.log('PROGRESS');
         if (progress.timemark) {
           const [hours, minutes, seconds] = progress.timemark.split(':').map(parseFloat);
           const timemarkInSeconds = hours * 3600 + minutes * 60 + seconds;
@@ -42,6 +42,7 @@ export const compress = (
         }
       })
       .on('end', () => {
+        console.log('END');
         resolve(outputPath);
         // resolve(path.resolve(__dirname, `../upload/${outputPath}`));
       })

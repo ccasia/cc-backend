@@ -17,6 +17,8 @@ import {
   User,
 } from '@prisma/client';
 
+import amqplib from 'amqplib';
+
 import { uploadAgreementForm, uploadImage, uploadPitchVideo } from '@configs/cloudStorage.config';
 import dayjs from 'dayjs';
 import { logChange } from '@services/campaignServices';
@@ -2127,53 +2129,91 @@ export const uploadVideoTest = async (req: Request, res: Response) => {
   const abortController = new AbortController();
   const { campaignId } = req.body;
   const { userid } = req.session;
-  const outputPath = `/tmp/${userid}_pitch.mp4`;
-  let cancel = false;
-
-  res.on('close', async () => {
-    cancel = true;
-    // await fs.promises.unlink(path.resolve(__dirname, `../upload/${outputPath}`));
-    await fs.promises.unlink(outputPath);
-    abortController.abort();
-  });
+  // const outputPath = `/tmp/${userid}_pitch.mp4`;
+  const outputPath = `${userid}_pitch.mp4`;
 
   try {
-    if (!cancel) {
-      const path: any = await compress(
-        (req.files as any).pitchVideo.tempFilePath,
-        outputPath,
-        (data: number) => {
-          io.to(clients.get(req.session.userid)).emit('video-upload', { campaignId: campaignId, progress: data });
-        },
-        abortController.signal,
-      );
-
-      const size = await new Promise((resolve, reject) => {
-        fs.stat(path, (err, data) => {
-          if (err) {
-            reject();
-          }
-          resolve(data?.size);
-        });
-      });
-
-      const a = await uploadPitchVideo(
-        path,
-        outputPath,
-        'pitchVideo',
-        (data: number) => {
-          io.to(clients.get(req.session.userid)).emit('video-upload', { campaignId: campaignId, progress: data });
-        },
-        size as number,
-      );
-
-      io.to(clients.get(req.session.userid)).emit('video-upload-done', { campaignId: campaignId });
-
-      return res.status(200).json({ publicUrl: a, message: 'Pitch video uploaded successfully.' });
+    if (!(req.files as any).pitchVideo) {
+      return res.status(404).json({ message: 'Pitch Video not found.' });
     }
+
+    const file = (req.files as any).pitchVideo;
+
+    const filePath = `/tmp/${outputPath}`;
+    const compressedFilePath = `/tmp/${userid}_compressed.mp4`;
+
+    await file.mv(filePath);
+
+    const amqp = await amqplib.connect(process.env.RABBIT_MQ as string);
+    const channel = await amqp.createChannel();
+    await channel.assertQueue('pitch');
+
+    channel.sendToQueue(
+      'pitch',
+      Buffer.from(
+        JSON.stringify({
+          tempPath: filePath,
+          outputPath: compressedFilePath,
+          userId: userid,
+          campaignId: campaignId,
+        }),
+      ),
+      {
+        persistent: true,
+      },
+    );
+
+    await channel.close();
+    await amqp.close();
+
+    // return res.status(200).json({ publicUrl: a, message: 'Pitch video start processing' });
   } catch (error) {
     return res.status(400).json(error);
   }
+  // res.on('close', async () => {
+  //   cancel = true;
+  //   // await fs.promises.unlink(path.resolve(__dirname, `../upload/${outputPath}`));
+  //   await fs.promises.unlink(outputPath);
+  //   abortController.abort();
+  // });
+
+  // try {
+  //   if (!cancel) {
+  //     const path: any = await compress(
+  //       (req.files as any).pitchVideo.tempFilePath,
+  //       outputPath,
+  //       (data: number) => {
+  //         io.to(clients.get(req.session.userid)).emit('video-upload', { campaignId: campaignId, progress: data });
+  //       },
+  //       abortController.signal,
+  //     );
+
+  // const size = await new Promise((resolve, reject) => {
+  //   fs.stat(path, (err, data) => {
+  //     if (err) {
+  //       reject();
+  //     }
+  //     resolve(data?.size);
+  //   });
+  // });
+
+  // const a = await uploadPitchVideo(
+  //   path,
+  //   outputPath,
+  //   'pitchVideo',
+  //   (data: number) => {
+  //     io.to(clients.get(req.session.userid)).emit('video-upload', { campaignId: campaignId, progress: data });
+  //   },
+  //   size as number,
+  // );
+
+  //     io.to(clients.get(req.session.userid)).emit('video-upload-done', { campaignId: campaignId });
+
+  //     return res.status(200).json({ publicUrl: a, message: 'Pitch video uploaded successfully.' });
+  //   }
+  // } catch (error) {
+  //   return res.status(400).json(error);
+  // }
 };
 
 export const saveCampaign = async (req: Request, res: Response) => {

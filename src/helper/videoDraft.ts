@@ -39,7 +39,6 @@ const processVideo = async (
         '-map 0:v:0', // Select the first video stream
         '-map 0:a:0?',
       ])
-      // .outputOptions(['-c:v libx264', '-crf 23'])
       .save(outputPath)
       .on('progress', (progress: any) => {
         activeProcesses.set(submissionId, command);
@@ -157,7 +156,7 @@ const processVideo = async (
     const channel = await conn.createChannel();
     await channel.assertQueue('draft', { durable: true });
     await channel.purgeQueue('draft');
-    console.log('RabbitMQ server starting...');
+    console.log('Video Draft Queue starting...');
     await channel.consume('draft', async (msg) => {
       if (msg !== null) {
         const content = JSON.parse(msg.content.toString());
