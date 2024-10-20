@@ -2153,7 +2153,7 @@ export const uploadVideoTest = async (req: Request, res: Response) => {
           if (err) {
             reject();
           }
-          resolve(data.size);
+          resolve(data?.size);
         });
       });
 
