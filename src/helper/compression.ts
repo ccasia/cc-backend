@@ -46,8 +46,15 @@ export const compress = (
         // resolve(path.resolve(__dirname, `../upload/${outputPath}`));
       })
       .on('error', (err) => {
-        console.error('Error processing video:', err.message);
-        reject(err);
+        if (abortSignal.aborted) {
+          console.log('FFmpeg process aborted by user.');
+          reject(new Error('Process aborted by user.'));
+        } else {
+          console.error('Error processing video:', err.message);
+          reject(err);
+        }
+        // console.error('Error processing video:', err.message);
+        // reject(err);
       })
       .save(
         outputPath,
@@ -55,11 +62,11 @@ export const compress = (
       );
 
     // Handle abort signal
-    abortSignal.addEventListener('abort', () => {
-      //console.log('Aborting FFmpeg process');
-      // FFmpeg does not directly expose a method to abort via Fluent-FFmpeg.
-      // Here, we assume you handle it externally by stopping the process.
-      ffmpegProcess.kill('SIGTERM'); // Or 'SIGKILL' if 'SIGTERM' doesn't work
-    });
+    // abortSignal.addEventListener('abort', () => {
+    //   //console.log('Aborting FFmpeg process');
+    //   // FFmpeg does not directly expose a method to abort via Fluent-FFmpeg.
+    //   // Here, we assume you handle it externally by stopping the process.
+    //   ffmpegProcess.kill('SIGTERM'); // Or 'SIGKILL' if 'SIGTERM' doesn't work
+    // });
   });
 };
