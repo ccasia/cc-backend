@@ -17,11 +17,11 @@ export const saveNotification = async ({
   entityId,
   title,
   pitchId,
-  creatorId,
+ // creatorId,
 }: {
   userId: string;
   campaignId?: string;
-  creatorId?: string;
+//  creatorId?: string;
   message: string;
   entity: Entity;
   entityId?: string;
@@ -78,28 +78,29 @@ export const saveNotification = async ({
     });
   }
 
-  if (creatorId && entity) {
-    return prisma.notification.create({
-      data: {
-        message: message,
-        title: title,
-        entity: entity,
-        creatorId: creatorId,
-        userNotification: {
-          create: {
-            userId: userId,
-          },
-        },
-      },
-      include: {
-        userNotification: {
-          select: {
-            userId: true,
-          },
-        },
-      },
-    });
-  }
+
+  // if (creatorId && entity) {
+  //   return prisma.notification.create({
+  //     data: {
+  //       message: message,
+  //       title: title,
+  //       entity: entity,
+  //      // creatorId: creatorId,
+  //       userNotification: {
+  //         create: {
+  //           userId: userId,
+  //         },
+  //       },
+  //     },
+  //     include: {
+  //       userNotification: {
+  //         select: {
+  //           userId: true,
+  //         },
+  //       },
+  //     },
+  //   });
+  // }
 
   return prisma.notification.create({
     data: {

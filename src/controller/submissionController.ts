@@ -115,7 +115,7 @@ export const agreementSubmission = async (req: Request, res: Response) => {
         const adminNotification = await saveNotification({
           userId: item.adminId,
           entity: 'Agreement',
-          creatorId: submission.user.id,
+          //  creatorId: submission.user.id,
           entityId: submission.campaignId,
           title: adminTitle,
           message: adminMessage,
