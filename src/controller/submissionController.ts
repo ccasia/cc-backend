@@ -489,25 +489,31 @@ export const adminManageDraft = async (req: Request, res: Response) => {
           status: 'CHANGES_REQUIRED',
           isReview: true,
           feedback: {
-            upsert: {
-              where: {
-                id: submission?.feedback?.id,
+            create: {
+              type: 'REASON',
+              reasons: reasons,
+              content: feedback,
+              admin: {
+                connect: { id: req.session.userid },
               },
-              update: {
-                reasons: reasons,
-                content: feedback,
-                admin: {
-                  connect: { id: req.session.userid },
-                },
-              },
-              create: {
-                type: 'REASON',
-                reasons: reasons,
-                content: feedback,
-                admin: {
-                  connect: { id: req.session.userid },
-                },
-              },
+              // where: {
+              //   id: submission?.feedback?.id,
+              // },
+              // data: {
+              // reasons: reasons,
+              // content: feedback,
+              // admin: {
+              //   connect: { id: req.session.userid },
+              // },
+              // },
+              // create: {
+              //   type: 'REASON',
+              //   reasons: reasons,
+              //   content: feedback,
+              //   admin: {
+              //     connect: { id: req.session.userid },
+              //   },
+              // },
             },
           },
         },
