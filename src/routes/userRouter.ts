@@ -8,13 +8,16 @@ import {
   forgetPassword,
   checkForgetPasswordToken,
   changePassword,
+  getOverview,
 } from '@controllers/userController';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
+import { isLoggedIn } from '@middlewares/onlyLogin';
 
 const router = Router();
 
 router.get('/admins', isSuperAdmin, getAdmins);
 router.get('/forget-password-token/:token', checkForgetPasswordToken);
+router.get('/overview/:userId', isLoggedIn, getOverview);
 // router.get('/getAdmins', isSuperAdmin, getAllActiveAdmins);
 
 router.post('/admins', inviteAdmin);

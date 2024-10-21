@@ -39,7 +39,6 @@ const processVideo = async (
         '-map 0:v:0', // Select the first video stream
         '-map 0:a:0?',
       ])
-      // .outputOptions(['-c:v libx264', '-crf 23'])
       .save(outputPath)
       .on('progress', (progress: any) => {
         activeProcesses.set(submissionId, command);
@@ -130,21 +129,6 @@ const processVideo = async (
           }
         }
 
-        // data.campaign.campaignAdmin.forEach(async (item) => {
-        //   const notification = await saveNotification({
-        //     userId: item.adminId,
-        //     message: adminMessage,
-        //     title: adminTitle,
-        //     entity: 'Draft',
-        //     entityId: data.campaignId,
-        //   });
-
-        //   if (socket) {
-        //     socket.to(clients.get(item.adminId)).emit('notification', notification);
-        //   }
-        // });
-
-        //console.log('Video processing completed for:', videoData.fileName);
         activeProcesses.delete(submissionId);
         if (socket) {
           socket.to(clients.get(userid)).emit('progress', { submissionId, progress: 100 });
@@ -173,7 +157,7 @@ const processVideo = async (
     const channel = await conn.createChannel();
     await channel.assertQueue('draft', { durable: true });
     await channel.purgeQueue('draft');
-    console.log('RabbitMQ server starting...');
+    console.log('Video Draft Queue starting...');
     await channel.consume('draft', async (msg) => {
       if (msg !== null) {
         const content = JSON.parse(msg.content.toString());

@@ -579,7 +579,7 @@ model Submission {
   isReview         Boolean                @default(false)
   startDate        DateTime?
   endDate          DateTime?
-  feedback         Feedback?
+  feedback         Feedback[]
   Notification     Notification[]
   campaign         Campaign               @relation(fields: [campaignId], references: [id])
   submissionType   SubmissionType         @relation(fields: [submissionTypeId], references: [id])
@@ -628,7 +628,7 @@ model Feedback {
   content      String?
   type         FeedbackType?
   reasons      String[]
-  submissionId String        @unique
+  submissionId String
   adminId      String
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt

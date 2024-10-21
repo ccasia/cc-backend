@@ -17,6 +17,7 @@ import { isLoggedIn } from '@middlewares/onlyLogin';
 import { Server, Socket } from 'socket.io';
 import '@services/uploadVideo';
 import './helper/videoDraft';
+import './helper/processPitchVideo';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -39,6 +40,7 @@ app.use(
     // limits: { fileSize: 50 * 1024 * 1024 },
     useTempFiles: true,
     tempFileDir: '/tmp/',
+    // debug: true,
   }),
 );
 

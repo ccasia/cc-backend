@@ -17,6 +17,8 @@ import {
   User,
 } from '@prisma/client';
 
+import amqplib from 'amqplib';
+
 import { uploadAgreementForm, uploadImage, uploadPitchVideo } from '@configs/cloudStorage.config';
 import dayjs from 'dayjs';
 import { logChange } from '@services/campaignServices';
@@ -961,6 +963,7 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
 
     return res.status(200).json(sortedMatchedCampaigns);
   } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -1071,7 +1074,54 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
     });
 
     if (isPitchExist) {
-      return res.status(400).json({ message: 'You have make a pitch for this campaign.' });
+      if (isPitchExist.type === 'text') {
+        pitch = await prisma.pitch.update({
+          where: {
+            id: isPitchExist.id,
+          },
+          data: {
+            type: 'text',
+            content: content,
+            userId: id as string,
+            campaignId: campaignId,
+            status: 'undecided',
+          },
+          include: {
+            campaign: true,
+            user: true,
+          },
+        });
+      }
+    } else {
+      if (type === 'video') {
+        pitch = await prisma.pitch.create({
+          data: {
+            type: 'video',
+            content: content,
+            userId: id as string,
+            campaignId: campaignId,
+            status: 'undecided',
+          },
+          include: {
+            campaign: true,
+            user: true,
+          },
+        });
+      } else {
+        pitch = await prisma.pitch.create({
+          data: {
+            type: 'text',
+            content: content,
+            userId: id as string,
+            campaignId: campaignId,
+            status: 'undecided',
+          },
+          include: {
+            campaign: true,
+            user: true,
+          },
+        });
+      }
     }
 
     const user = await prisma.user.findUnique({
@@ -1090,79 +1140,73 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
       },
     });
 
-    if (type === 'video') {
-      pitch = await prisma.pitch.create({
-        data: {
-          type: 'video',
-          content: content,
-          userId: id as string,
-          campaignId: campaignId,
-          status: 'undecided',
-        },
-        include: {
-          campaign: true,
-          user: true,
-        },
-      });
-    } else {
-      pitch = await prisma.pitch.create({
-        data: {
-          type: 'text',
-          content: content,
-          userId: id as string,
-          campaignId: campaignId,
-          status: 'undecided',
-        },
-        include: {
-          campaign: true,
-          user: true,
-        },
-      });
-    }
+    // if (type === 'video') {
+    //   pitch = await prisma.pitch.create({
+    //     data: {
+    //       type: 'video',
+    //       content: content,
+    //       userId: id as string,
+    //       campaignId: campaignId,
+    //       status: 'undecided',
+    //     },
+    //     include: {
+    //       campaign: true,
+    //       user: true,
+    //     },
+    //   });
+    // } else {
+    //   pitch = await prisma.pitch.create({
+    //     data: {
+    //       type: 'text',
+    //       content: content,
+    //       userId: id as string,
+    //       campaignId: campaignId,
+    //       status: 'undecided',
+    //     },
+    //     include: {
+    //       campaign: true,
+    //       user: true,
+    //     },
+    //   });
+    // }
 
-    const notification = notificationPitch(pitch.campaign.name, 'Creator');
-
-    const newPitch = await saveNotification({
-      userId: user?.id as string,
-      message: notification.message,
-      title: notification.title,
-      entity: 'Pitch',
-      entityId: campaign?.id as string,
+    if (pitch) {
+      const notification = notificationPitch(pitch.campaign.name, 'Creator');
+      const newPitch = await saveNotification({
+        userId: user?.id as string,
+        message: notification.message,
+        title: notification.title,
+        entity: 'Pitch',
+        entityId: campaign?.id as string,
       pitchId: pitch.id,
-    });
+      });
 
     console.log("Created Pitch ID:", pitch.id);
     console.log ("Save NOTI", newPitch)
 
-    // const newPitch = await saveNotification(
-    //   user?.id as string,
-    //   notificationPitchCreator(pitch.campaign.name, 'Creator'),
-    //   Entity.Pitch,
-    //   pitch?.campaign?.id,
-    // );
+      io.to(clients.get(user?.id)).emit('notification', newPitch);
 
-    io.to(clients.get(user?.id)).emit('notification', newPitch);
+      const admins = campaign?.campaignAdmin;
 
-    const admins = campaign?.campaignAdmin;
+      const notificationAdmin = notificationPitch(pitch.campaign.name, 'Admin', pitch.user.name as string);
 
-    const notificationAdmin = notificationPitch(pitch.campaign.name, 'Admin', pitch.user.name as string);
+      admins?.map(async ({ adminId }) => {
+        const notification = await saveNotification({
+          userId: adminId as string,
+          message: notificationAdmin.message,
+          title: notificationAdmin.title,
+          entity: 'Pitch',
+          entityId: campaign?.id as string,
+        });
 
-    admins?.map(async ({ adminId }) => {
-      const notification = await saveNotification({
-        userId: adminId as string,
-        message: notificationAdmin.message,
-        title: notificationAdmin.title,
-        entity: 'Pitch',
-        entityId: campaign?.id as string,
+        // await saveNotification(
+        //   adminId,
+        //   `New Pitch By ${user?.name} for campaign ${campaign?.name}`,
+        //   Entity.Pitch,
+        // );
+        io.to(clients.get(adminId)).emit('notification', notification);
       });
-
-      // await saveNotification(
-      //   adminId,
-      //   `New Pitch By ${user?.name} for campaign ${campaign?.name}`,
-      //   Entity.Pitch,
-      // );
-      io.to(clients.get(adminId)).emit('notification', notification);
-    });
+    }
 
     return res.status(202).json({ message: 'Pitch submitted successfully!' });
   } catch (error) {
@@ -2103,56 +2147,92 @@ export const uploadVideoTest = async (req: Request, res: Response) => {
   const abortController = new AbortController();
   const { campaignId } = req.body;
   const { userid } = req.session;
-  const outputPath = `${userid}_pitch.mp4`;
-  let cancel = false;
 
-  res.on('close', async () => {
-    //console.log('ABORTING....');
-    cancel = true;
-    await fs.promises.unlink(path.resolve(__dirname, `../upload/${outputPath}`));
-    abortController.abort();
-  });
+  const fileName = `${userid}_pitch.mp4`;
 
   try {
-    if (!cancel) {
-      //console.log('COMPRESSION START');
-      const path: any = await compress(
-        (req.files as any).pitchVideo.tempFilePath,
-        outputPath,
-        (data: number) => {
-          io.to(clients.get(req.session.userid)).emit('video-upload', { campaignId: campaignId, progress: data });
-        },
-        abortController.signal,
-      );
-
-      const size = await new Promise((resolve, reject) => {
-        fs.stat(path, (err, data) => {
-          if (err) {
-            reject();
-          }
-          resolve(data.size);
-        });
-      });
-
-      const a = await uploadPitchVideo(
-        path,
-        outputPath,
-        'pitchVideo',
-        (data: number) => {
-          io.to(clients.get(req.session.userid)).emit('video-upload', { campaignId: campaignId, progress: data });
-        },
-        size as number,
-        abortController.signal,
-      );
-
-      io.to(clients.get(req.session.userid)).emit('video-upload-done', { campaignId: campaignId });
-
-      return res.status(200).json({ publicUrl: a, message: 'Pitch video uploaded successfully.' });
+    if (!(req.files as any).pitchVideo) {
+      return res.status(404).json({ message: 'Pitch Video not found.' });
     }
+
+    const file = (req.files as any).pitchVideo;
+
+    const filePath = `/tmp/${fileName}`;
+    const compressedFilePath = `/tmp/${userid}_compressed.mp4`;
+
+    await file.mv(filePath);
+
+    const amqp = await amqplib.connect(process.env.RABBIT_MQ as string);
+    const channel = await amqp.createChannel();
+    await channel.assertQueue('pitch');
+
+    channel.sendToQueue(
+      'pitch',
+      Buffer.from(
+        JSON.stringify({
+          tempPath: filePath,
+          outputPath: compressedFilePath,
+          userId: userid,
+          campaignId: campaignId,
+          fileName: fileName,
+        }),
+      ),
+      {
+        persistent: true,
+      },
+    );
+
+    await channel.close();
+    await amqp.close();
+
+    return res.status(200).json({ message: 'Pitch video start processing' });
   } catch (error) {
-    console.log(error);
     return res.status(400).json(error);
   }
+  // res.on('close', async () => {
+  //   cancel = true;
+  //   // await fs.promises.unlink(path.resolve(__dirname, `../upload/${outputPath}`));
+  //   await fs.promises.unlink(outputPath);
+  //   abortController.abort();
+  // });
+
+  // try {
+  //   if (!cancel) {
+  //     const path: any = await compress(
+  //       (req.files as any).pitchVideo.tempFilePath,
+  //       outputPath,
+  //       (data: number) => {
+  //         io.to(clients.get(req.session.userid)).emit('video-upload', { campaignId: campaignId, progress: data });
+  //       },
+  //       abortController.signal,
+  //     );
+
+  // const size = await new Promise((resolve, reject) => {
+  //   fs.stat(path, (err, data) => {
+  //     if (err) {
+  //       reject();
+  //     }
+  //     resolve(data?.size);
+  //   });
+  // });
+
+  // const a = await uploadPitchVideo(
+  //   path,
+  //   outputPath,
+  //   'pitchVideo',
+  //   (data: number) => {
+  //     io.to(clients.get(req.session.userid)).emit('video-upload', { campaignId: campaignId, progress: data });
+  //   },
+  //   size as number,
+  // );
+
+  //     io.to(clients.get(req.session.userid)).emit('video-upload-done', { campaignId: campaignId });
+
+  //     return res.status(200).json({ publicUrl: a, message: 'Pitch video uploaded successfully.' });
+  //   }
+  // } catch (error) {
+  //   return res.status(400).json(error);
+  // }
 };
 
 export const saveCampaign = async (req: Request, res: Response) => {

@@ -93,7 +93,7 @@ router.post('/shortlistCreator', isSuperAdmin, shortlistCreator);
 router.post('/template/:id', isSuperAdmin, createNewTemplate);
 router.post('/draftPitch', isLoggedIn, draftPitch);
 
-router.patch('/pitch', creatorMakePitch);
+router.patch('/pitch', isLoggedIn, creatorMakePitch);
 router.patch('/changeCampaignStage/:campaignId', changeCampaignStage);
 router.patch('/closeCampaign/:id', isSuperAdmin, closeCampaign);
 router.patch('/editCampaignInfo', isSuperAdmin, editCampaignInfo);
