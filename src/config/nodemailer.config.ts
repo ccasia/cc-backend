@@ -589,7 +589,7 @@ export const postingSchedule = (email: string, campaignName: string, creatorName
     });
 };
 
-export const trackingNumber = (email: string, campaignName: string, creatorName: string, trackingNumber: string) => {
+export const tracking = (email: string, campaignName: string, creatorName: string, trackingNumber: string) => {
   transport
     .sendMail({
       from: user,

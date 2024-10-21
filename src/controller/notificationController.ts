@@ -11,16 +11,22 @@ export enum Title {
 
 export const saveNotification = async ({
   userId,
+  campaignId,
   message,
   entity,
   entityId,
   title,
+  pitchId,
+ // creatorId,
 }: {
   userId: string;
+  campaignId?: string;
+//  creatorId?: string;
   message: string;
   entity: Entity;
   entityId?: string;
   title?: string;
+  pitchId?: string;
 }) => {
   if (entity && entityId) {
     return prisma.notification.create({
@@ -49,11 +55,59 @@ export const saveNotification = async ({
     });
   }
 
+  if (pitchId && entity) {
+    return prisma.notification.create({
+      data: {
+        message: message,
+        title: title,
+        entity: entity,
+        pitchId: pitchId,
+        userNotification: {
+          create: {
+            userId: userId,
+          },
+        },
+      },
+      include: {
+        userNotification: {
+          select: {
+            userId: true,
+          },
+        },
+      },
+    });
+  }
+
+
+  // if (creatorId && entity) {
+  //   return prisma.notification.create({
+  //     data: {
+  //       message: message,
+  //       title: title,
+  //       entity: entity,
+  //      // creatorId: creatorId,
+  //       userNotification: {
+  //         create: {
+  //           userId: userId,
+  //         },
+  //       },
+  //     },
+  //     include: {
+  //       userNotification: {
+  //         select: {
+  //           userId: true,
+  //         },
+  //       },
+  //     },
+  //   });
+  // }
+
   return prisma.notification.create({
     data: {
       message: message,
       entity: entity,
       title: title,
+
       userNotification: {
         create: {
           userId: userId,
@@ -81,6 +135,7 @@ export const getNotificationByUserId = async (req: Request, res: Response) => {
         notification: {
           include: {
             campaign: true,
+            pitch: true,
           },
         },
       },
@@ -88,6 +143,7 @@ export const getNotificationByUserId = async (req: Request, res: Response) => {
 
     return res.status(200).json({ notifications });
   } catch (error) {
+    console.log("Error", error)
     return res.status(400).json(error);
   }
 };

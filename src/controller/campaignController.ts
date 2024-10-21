@@ -33,6 +33,7 @@ import { compress } from '@helper/compression';
 import { agreementInput } from '@helper/agreementInput';
 import { pdfConverter } from '@helper/pdfConverter';
 import { notificationPitch } from '@helper/notification';
+import { deliveryConfirmation, shortlisted, tracking} from '@configs/nodemailer.config';
 
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
 Ffmpeg.setFfprobePath(ffprobePath.path);
@@ -192,7 +193,6 @@ export const createCampaign = async (req: Request, res: Response) => {
     //   const form = (req.files as any).agreementForm;
     //   agreementFormURL = await uploadAgreementForm(form.tempFilePath, form.name, 'agreementForm');
     // }
-
     // Handle All processes
     await prisma.$transaction(async (tx) => {
       // Find All Admins
@@ -1178,7 +1178,11 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
         title: notification.title,
         entity: 'Pitch',
         entityId: campaign?.id as string,
+      pitchId: pitch.id,
       });
+
+    console.log("Created Pitch ID:", pitch.id);
+    console.log ("Save NOTI", newPitch)
 
       io.to(clients.get(user?.id)).emit('notification', newPitch);
 
@@ -1737,6 +1741,7 @@ export const changePitchStatus = async (req: Request, res: Response) => {
           },
         });
 
+        console.log("Looking for board with userId:", existingPitch);
         const board = await tx.board.findUnique({
           where: {
             userId: existingPitch.userId,
@@ -1816,9 +1821,17 @@ export const changePitchStatus = async (req: Request, res: Response) => {
             }
           }),
         );
+        
+        // Sending email 
+        const user = existingPitch.user;
+        const campaignName = existingPitch?.campaign?.name;
+        const creatorName = existingPitch?.user?.name;
+
+        shortlisted(user.email, campaignName, creatorName ?? 'Creator');
 
         const data = await saveNotification({
           userId: pitch.userId,
+          entityId: pitch.campaign.id as string,
           title: "✅ You're shorlisted!",
           message: `Congratulations! You've been shortlisted for the ${pitch.campaign.name} campaign.`,
           entity: 'Shortlist',
@@ -1858,7 +1871,11 @@ export const changePitchStatus = async (req: Request, res: Response) => {
             },
           });
         }
-      });
+      },
+      // {
+      //   timeout: 10000, 
+      // }
+    );
     } else {
       const pitch = await prisma.pitch.update({
         where: {
@@ -2263,7 +2280,6 @@ export const unSaveCampaign = async (req: Request, res: Response) => {
       .status(200)
       .json({ message: `Campaign ${bookmark.campaign?.name} has been removed from your saved campaigns.` });
   } catch (error) {
-    //console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -2290,6 +2306,11 @@ export const createLogistics = async (req: Request, res: Response) => {
       },
     });
 
+    console.log("Tracking", logistic);
+
+    //Email for tracking logistics 
+    tracking (logistic.user.email, logistic.campaign.name, logistic.user.name ?? 'Creator', logistic.trackingNumber )
+    
     const notification = await saveNotification({
       userId: userId,
       message: `Hi ${logistic.user.name}, your logistics details for the ${logistic.campaign.name} campaign are now available. Please check the logistics section for shipping information and tracking details. If you have any questions, don't hesitate to reach out!`,
@@ -2329,6 +2350,11 @@ export const updateStatusLogistic = async (req: Request, res: Response) => {
         status: status as LogisticStatus,
       },
     });
+
+    console.log ( "Status ", updated); 
+
+    // deliveryConfirmation (updated.userId.email, )
+    
     return res.status(200).json({ message: 'Logistic status updated successfully.' });
   } catch (error) {
     //console.log(error);
@@ -2499,10 +2525,25 @@ export const shortlistCreator = async (req: Request, res: Response) => {
         });
       }
 
+      const admins = await tx.campaignAdmin.findMany({
+        where: {
+          campaignId: campaignId,
+        },
+        include: {
+          admin: {
+            include: {
+              user: true,
+            },
+          },
+        },
+      });
+
+      
       await Promise.all(
         shortlistedCreators.map(async (creator: ShortListedCreator) => {
           const data = await saveNotification({
             userId: creator.userId as string,
+            entityId: campaignId as string,
             message: `Congratulations! You've been shortlisted for the ${campaignInfo?.name} campaign.`,
             entity: 'Shortlist',
           });
