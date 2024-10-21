@@ -21,6 +21,7 @@ import {
   notificationRejectDraft,
 } from '@helper/notification';
 import { getColumnId } from './kanbanController';
+import { approvalOfDraft, feedbackOnDraft, finalDraftDue, firstDraftDue, postingSchedule } from '@configs/nodemailer.config';
 
 Ffmpeg.setFfmpegPath(FfmpegPath.path);
 // Ffmpeg.setFfmpegPath(FfmpegProbe.path);
@@ -30,6 +31,8 @@ const prisma = new PrismaClient();
 export const agreementSubmission = async (req: Request, res: Response) => {
   const { submissionId } = JSON.parse(req.body.data);
 
+  console.log('Submission ID:', submissionId);
+  // console.log('Next Submission ID:', nextSubmissionId);
   try {
     if (req.files && req.files.agreementForm) {
       const url = await uploadAgreementForm(
@@ -38,6 +41,7 @@ export const agreementSubmission = async (req: Request, res: Response) => {
         'agreement',
       );
 
+      
       const submission = await prisma.submission.update({
         where: {
           id: submissionId,
@@ -58,6 +62,7 @@ export const agreementSubmission = async (req: Request, res: Response) => {
         },
       });
 
+    
       const boards = await prisma.board.findFirst({
         where: {
           userId: submission.userId,
@@ -66,6 +71,10 @@ export const agreementSubmission = async (req: Request, res: Response) => {
           columns: true,
         },
       });
+
+      console.log("boards", boards)
+
+      console.log("submission", submission)
 
       if (!boards) {
         return res.status(404).json({ message: 'Board not found' });
@@ -100,10 +109,13 @@ export const agreementSubmission = async (req: Request, res: Response) => {
         submission.user.name as string,
       );
 
+      //  console.log("Check", submission); 
+
       submission.campaign.campaignAdmin.forEach(async (item) => {
         const adminNotification = await saveNotification({
           userId: item.adminId,
           entity: 'Agreement',
+          creatorId: submission.user.id,
           entityId: submission.campaignId,
           title: adminTitle,
           message: adminMessage,
@@ -114,7 +126,7 @@ export const agreementSubmission = async (req: Request, res: Response) => {
     }
     return res.status(200).json({ message: 'Successfully submitted' });
   } catch (error) {
-    //console.log(error);
+    console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -171,6 +183,16 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
         },
       });
 
+      const user = await prisma.user.findUnique({
+        where: {
+          id: userId,
+        },
+        select: {
+          email: true,
+          name: true,
+        },
+      });
+
       const submission = await prisma.submission.update({
         where: {
           id: nextSubmissionId as string,
@@ -201,6 +223,11 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
         entity: 'Campaign',
         entityId: campaign?.id,
       });
+
+      // Emailer for First Draft   
+      if (user) {
+        firstDraftDue(user.email, campaign?.name as string, user.name ?? 'Creator');
+      }
 
       io.to(clients.get(userId)).emit('notification', notification);
     } else if (data.status === 'reject') {
@@ -346,7 +373,7 @@ export const draftSubmission = async (req: Request, res: Response) => {
 
     return res.status(200).json({ message: 'Video start processing' });
   } catch (error) {
-    //console.log(error);
+    console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -415,10 +442,34 @@ export const adminManageDraft = async (req: Request, res: Response) => {
         },
       });
 
-      if (
-        (sub.submissionType.type === 'FIRST_DRAFT' || sub.submissionType.type === 'FINAL_DRAFT') &&
-        sub.status === 'APPROVED'
-      ) {
+      console.log("sub data", sub)
+      if (sub.submissionType.type === 'FIRST_DRAFT' && sub.status === 'APPROVED') {
+       // Notify about final draft due
+        approvalOfDraft(
+          sub.user.email,
+          submission.campaign.name,
+          sub.user.name ?? 'Creator' 
+        ); 
+        finalDraftDue(
+          sub.user.email,
+          submission.campaign.name,
+          sub.user.name ?? 'Creator' 
+        ); 
+      } else if (sub.submissionType.type === 'FINAL_DRAFT' && sub.status === 'APPROVED') {
+       // Notify about final draft approval
+        approvalOfDraft(
+          sub.user.email,
+          submission.campaign.name,
+          sub.user.name ?? 'Creator' 
+        ); 
+      } else {
+        // Fallback email if the draft is not approved
+        feedbackOnDraft(
+          sub.user.email,
+          submission.campaign.name,
+          sub.user.name ?? 'Creator'
+        );
+      }
         const posting = await prisma.submission.findFirst({
           where: {
             AND: [
@@ -464,7 +515,7 @@ export const adminManageDraft = async (req: Request, res: Response) => {
             dueDate: dayjs(req.body.schedule.endDate).format(),
           },
         });
-      }
+      
 
       const { title, message } = notificationApproveDraft(
         submission.campaign.name,
@@ -580,6 +631,7 @@ export const adminManageDraft = async (req: Request, res: Response) => {
 export const postingSubmission = async (req: Request, res: Response) => {
   const { submissionId, postingLink } = req.body;
 
+ 
   try {
     const submission = await prisma.submission.update({
       where: {
@@ -603,6 +655,8 @@ export const postingSubmission = async (req: Request, res: Response) => {
 
     const inReviewColumnId = await getColumnId({ userId: submission.userId, columnName: 'In Review' });
 
+    console.log("Data id", submissionId);
+    console.log("Data submisison", submission);
     await prisma.task.update({
       where: {
         id: submission.task?.id,
@@ -631,7 +685,7 @@ export const postingSubmission = async (req: Request, res: Response) => {
 
       io.to(clients.get(admin.adminId)).emit('notification', notification);
     }
-
+ 
     const notification = await saveNotification({
       userId: submission.userId,
       message: message,
@@ -652,6 +706,8 @@ export const adminManagePosting = async (req: Request, res: Response) => {
   const { status, submissionId } = req.body;
 
   const userId = req.session.userid;
+
+
 
   try {
     if (status === 'APPROVED') {
@@ -710,6 +766,9 @@ export const adminManagePosting = async (req: Request, res: Response) => {
         },
       });
 
+      // Sending posting schedule
+      postingSchedule(data.user.email, data.campaign.name, data.user.name ?? 'Creator' )
+  
       const notification = await saveNotification({
         userId: data.userId,
         message: `Your posting has been approved for campaign ${data.campaign.name}`,

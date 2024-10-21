@@ -119,6 +119,7 @@ const processVideo = async (
           const notification = await saveNotification({
             userId: item.adminId,
             message: adminMessage,
+            creatorId: userid,
             title: adminTitle,
             entity: 'Draft',
             entityId: data.campaignId,
