@@ -1,3 +1,11 @@
+const notificationCampaign = (campaignName: string) => {
+  return {
+    title: 'Campaign is Live',
+    message: `🚀 Campaign Live! The ${campaignName} is now live!`,
+  };
+};
+
+
 const notificationPitch = (campaignName: string, type: 'Admin' | 'Creator', creatorName?: string) => {
   if (type === 'Admin') {
     return {
@@ -23,6 +31,22 @@ const notificationDraft = (campaignName: string, type: 'Admin' | 'Creator', crea
     message: `Your draft for the ${campaignName} has been sent. We’ll review it and let you know if any changes are needed`,
   };
 };
+
+const notificationSignature = (campaignName: string) => {
+  return {
+    title: ' Agreement Due for Signature and Upload',
+    message: `📄 Agreement Pending. The agreement for ${campaignName} is ready for signature.`,
+  };
+};
+
+//
+const notificationPendingAgreement = (campaignName: string) => {
+  return {
+    title: 'Shortlisted Creators Pending Agreement Generation',
+    message: `📝 Shortlisted Creators Pending! Shortlisted creators are pending agreement generation for ${campaignName}.`,
+  };
+};
+
 
 const notificationAgreement = (campaignName: string, type: 'Admin' | 'Creator', creatorName?: string) => {
   if (type === 'Admin') {
@@ -103,6 +127,8 @@ export {
   notificationPitch,
   notificationDraft,
   notificationAgreement,
+  notificationPendingAgreement,
+  notificationSignature,
   notificationApproveAgreement,
   notificationApproveDraft,
   notificationRejectDraft,
