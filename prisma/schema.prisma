@@ -622,7 +622,7 @@ model Feedback {
   content      String?
   type         FeedbackType?
   reasons      String[]
-  submissionId String        @unique
+  submissionId String
   adminId      String
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt

@@ -216,14 +216,8 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
         },
       });
 
-      await prisma.feedback.upsert({
-        where: {
-          submissionId: submission.id,
-        },
-        update: {
-          content: feedback,
-        },
-        create: {
+      await prisma.feedback.create({
+        data: {
           content: feedback,
           submissionId: submission.id,
           adminId: req.session.userid as string,
@@ -582,6 +576,7 @@ export const adminManageDraft = async (req: Request, res: Response) => {
       return res.status(200).json({ message: 'Succesfully submitted.' });
     }
   } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   }
 };
