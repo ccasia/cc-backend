@@ -37,6 +37,7 @@ model User {
   sentMessages       Message[]            @relation("UserMessages")
   paymentForm        PaymentForm?
   pitch              Pitch[]
+  notifications      Notification[]
   seenMessages       SeenMessage[]
   shortlisted        ShortListedCreator[]
   submission         Submission[]
@@ -537,12 +538,15 @@ model Notification {
   createdAt        DateTime           @default(now())
   entity           Entity?
   campaignId       String?
+  creatorId        String?
   pitchId          String?
   submissionId     String?
   campaign         Campaign?          @relation(fields: [campaignId], references: [id])
   pitch            Pitch?             @relation(fields: [pitchId], references: [id])
+  creator          User?              @relation(fields: [creatorId], references: [id])
   submission       Submission?        @relation(fields: [submissionId], references: [id])
   userNotification UserNotification[]
+
 }
 
 model UserNotification {
