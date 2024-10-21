@@ -455,10 +455,11 @@ export const adminManageDraft = async (req: Request, res: Response) => {
         // Fallback email if the draft is not approved
         feedbackOnDraft(sub.user.email, submission.campaign.name, sub.user.name ?? 'Creator');
       }
+
       const posting = await prisma.submission.findFirst({
         where: {
           AND: [
-            { userId: userId },
+            { userId: sub.userId },
             { campaignId: submission.campaignId },
             {
               submissionType: {
@@ -500,6 +501,8 @@ export const adminManageDraft = async (req: Request, res: Response) => {
           dueDate: dayjs(req.body.schedule.endDate).format(),
         },
       });
+
+      console.log(test);
 
       const { title, message } = notificationApproveDraft(
         submission.campaign.name,

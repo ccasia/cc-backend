@@ -33,7 +33,7 @@ import { compress } from '@helper/compression';
 import { agreementInput } from '@helper/agreementInput';
 import { pdfConverter } from '@helper/pdfConverter';
 import { notificationPitch } from '@helper/notification';
-import { deliveryConfirmation, shortlisted, tracking} from '@configs/nodemailer.config';
+import { deliveryConfirmation, shortlisted, tracking } from '@configs/nodemailer.config';
 
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
 Ffmpeg.setFfprobePath(ffprobePath.path);
@@ -1178,11 +1178,11 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
         title: notification.title,
         entity: 'Pitch',
         entityId: campaign?.id as string,
-      pitchId: pitch.id,
+        pitchId: pitch.id,
       });
 
-    console.log("Created Pitch ID:", pitch.id);
-    console.log ("Save NOTI", newPitch)
+      console.log('Created Pitch ID:', pitch.id);
+      console.log('Save NOTI', newPitch);
 
       io.to(clients.get(user?.id)).emit('notification', newPitch);
 
@@ -1686,196 +1686,197 @@ export const changePitchStatus = async (req: Request, res: Response) => {
     }
 
     if (status === 'approved') {
-      await prisma.$transaction(async (tx) => {
-        // const url = await generateAgreement(existingPitch.user, existingPitch.campaign);
+      await prisma.$transaction(
+        async (tx) => {
+          // const url = await generateAgreement(existingPitch.user, existingPitch.campaign);
 
-        const pitch = await prisma.pitch.update({
-          where: {
-            id: existingPitch.id,
-          },
-          data: {
-            status: status,
-          },
-          include: {
-            campaign: {
-              include: {
-                campaignBrief: true,
+          const pitch = await prisma.pitch.update({
+            where: {
+              id: existingPitch.id,
+            },
+            data: {
+              status: status,
+            },
+            include: {
+              campaign: {
+                include: {
+                  campaignBrief: true,
+                },
               },
             },
-          },
-        });
+          });
 
-        await tx.creatorAgreement.create({
-          data: {
-            userId: existingPitch.userId,
-            campaignId: existingPitch.campaignId,
-            agreementUrl: '',
-          },
-        });
+          await tx.creatorAgreement.create({
+            data: {
+              userId: existingPitch.userId,
+              campaignId: existingPitch.campaignId,
+              agreementUrl: '',
+            },
+          });
 
-        await tx.shortListedCreator.create({
-          data: {
-            userId: pitch?.userId,
-            campaignId: pitch?.campaignId,
-          },
-        });
+          await tx.shortListedCreator.create({
+            data: {
+              userId: pitch?.userId,
+              campaignId: pitch?.campaignId,
+            },
+          });
 
-        const timelines = await tx.campaignTimeline.findMany({
-          where: {
-            AND: [
-              {
-                campaignId: pitch?.campaignId,
-              },
-              {
-                for: 'creator',
-              },
-              {
-                name: {
-                  not: 'Open For Pitch',
+          const timelines = await tx.campaignTimeline.findMany({
+            where: {
+              AND: [
+                {
+                  campaignId: pitch?.campaignId,
                 },
-              },
-            ],
-          },
-          orderBy: {
-            order: 'asc',
-          },
-        });
-
-        console.log("Looking for board with userId:", existingPitch);
-        const board = await tx.board.findUnique({
-          where: {
-            userId: existingPitch.userId,
-          },
-          include: {
-            columns: true,
-          },
-        });
-
-        if (!board) {
-          throw new Error('Board not found.');
-        }
-
-        const columnToDo = await tx.columns.findFirst({
-          where: {
-            AND: [
-              { boardId: board?.id },
-              {
-                name: {
-                  contains: 'To Do',
+                {
+                  for: 'creator',
                 },
-              },
-            ],
-          },
-        });
-
-        const columnInProgress = await tx.columns.findFirst({
-          where: {
-            AND: [
-              { boardId: board?.id },
-              {
-                name: {
-                  contains: 'In Progress',
-                },
-              },
-            ],
-          },
-        });
-
-        if (!columnToDo || !columnInProgress) {
-          throw new Error('Column not found.');
-        }
-
-        const submissions: Submission[] = await Promise.all(
-          timelines.map(async (timeline, index) => {
-            return await tx.submission.create({
-              data: {
-                dueDate: timeline.endDate,
-                campaignId: timeline.campaignId,
-                userId: pitch.userId as string,
-                status: index === 0 ? 'IN_PROGRESS' : 'NOT_STARTED',
-                submissionTypeId: timeline.submissionTypeId as string,
-                task: {
-                  create: {
-                    name: timeline.name,
-                    position: index,
-                    columnId: index === 0 ? columnInProgress.id : (columnToDo?.id as string),
-                    priority: '',
-                    status: index === 0 ? 'In Progress' : 'To Do',
+                {
+                  name: {
+                    not: 'Open For Pitch',
                   },
                 },
-              },
-            });
-          }),
-        );
+              ],
+            },
+            orderBy: {
+              order: 'asc',
+            },
+          });
 
-        await Promise.all(
-          submissions.map(async (item, i) => {
-            // Skip the first submission as it has no dependency
-            if (i > 0) {
-              await tx.submissionDependency.create({
+          console.log('Looking for board with userId:', existingPitch);
+          const board = await tx.board.findUnique({
+            where: {
+              userId: existingPitch.userId,
+            },
+            include: {
+              columns: true,
+            },
+          });
+
+          if (!board) {
+            throw new Error('Board not found.');
+          }
+
+          const columnToDo = await tx.columns.findFirst({
+            where: {
+              AND: [
+                { boardId: board?.id },
+                {
+                  name: {
+                    contains: 'To Do',
+                  },
+                },
+              ],
+            },
+          });
+
+          const columnInProgress = await tx.columns.findFirst({
+            where: {
+              AND: [
+                { boardId: board?.id },
+                {
+                  name: {
+                    contains: 'In Progress',
+                  },
+                },
+              ],
+            },
+          });
+
+          if (!columnToDo || !columnInProgress) {
+            throw new Error('Column not found.');
+          }
+
+          const submissions: Submission[] = await Promise.all(
+            timelines.map(async (timeline, index) => {
+              return await tx.submission.create({
                 data: {
-                  submissionId: submissions[i].id,
-                  dependentSubmissionId: submissions[i - 1].id,
+                  dueDate: timeline.endDate,
+                  campaignId: timeline.campaignId,
+                  userId: pitch.userId as string,
+                  status: index === 0 ? 'IN_PROGRESS' : 'NOT_STARTED',
+                  submissionTypeId: timeline.submissionTypeId as string,
+                  task: {
+                    create: {
+                      name: timeline.name,
+                      position: index,
+                      columnId: index === 0 ? columnInProgress.id : (columnToDo?.id as string),
+                      priority: '',
+                      status: index === 0 ? 'In Progress' : 'To Do',
+                    },
+                  },
                 },
               });
-            }
-          }),
-        );
-        
-        // Sending email 
-        const user = existingPitch.user;
-        const campaignName = existingPitch?.campaign?.name;
-        const creatorName = existingPitch?.user?.name;
+            }),
+          );
 
-        shortlisted(user.email, campaignName, creatorName ?? 'Creator');
+          await Promise.all(
+            submissions.map(async (item, i) => {
+              // Skip the first submission as it has no dependency
+              if (i > 0) {
+                await tx.submissionDependency.create({
+                  data: {
+                    submissionId: submissions[i].id,
+                    dependentSubmissionId: submissions[i - 1].id,
+                  },
+                });
+              }
+            }),
+          );
 
-        const data = await saveNotification({
-          userId: pitch.userId,
-          entityId: pitch.campaign.id as string,
-          title: "✅ You're shorlisted!",
-          message: `Congratulations! You've been shortlisted for the ${pitch.campaign.name} campaign.`,
-          entity: 'Shortlist',
-        });
+          // Sending email
+          const user = existingPitch.user;
+          const campaignName = existingPitch?.campaign?.name;
+          const creatorName = existingPitch?.user?.name;
 
-        const socketId = clients.get(pitch.userId);
+          shortlisted(user.email, campaignName, creatorName ?? 'Creator');
 
-        if (socketId) {
-          io.to(socketId).emit('notification', data);
-        }
-
-        const campaign = await tx.campaign.findUnique({
-          where: {
-            id: pitch.campaignId,
-          },
-          include: {
-            thread: true,
-          },
-        });
-
-        if (!campaign || !campaign.thread) {
-          return res.status(404).json({ message: 'Campaign or thread not found.' });
-        }
-
-        const isThreadExist = await tx.userThread.findFirst({
-          where: {
-            threadId: campaign.thread.id,
+          const data = await saveNotification({
             userId: pitch.userId,
-          },
-        });
+            entityId: pitch.campaign.id as string,
+            title: "✅ You're shorlisted!",
+            message: `Congratulations! You've been shortlisted for the ${pitch.campaign.name} campaign.`,
+            entity: 'Shortlist',
+          });
 
-        if (!isThreadExist) {
-          await tx.userThread.create({
-            data: {
+          const socketId = clients.get(pitch.userId);
+
+          if (socketId) {
+            io.to(socketId).emit('notification', data);
+          }
+
+          const campaign = await tx.campaign.findUnique({
+            where: {
+              id: pitch.campaignId,
+            },
+            include: {
+              thread: true,
+            },
+          });
+
+          if (!campaign || !campaign.thread) {
+            return res.status(404).json({ message: 'Campaign or thread not found.' });
+          }
+
+          const isThreadExist = await tx.userThread.findFirst({
+            where: {
               threadId: campaign.thread.id,
               userId: pitch.userId,
             },
           });
-        }
-      },
-      // {
-      //   timeout: 10000, 
-      // }
-    );
+
+          if (!isThreadExist) {
+            await tx.userThread.create({
+              data: {
+                threadId: campaign.thread.id,
+                userId: pitch.userId,
+              },
+            });
+          }
+        },
+        // {
+        //   timeout: 10000,
+        // }
+      );
     } else {
       const pitch = await prisma.pitch.update({
         where: {
@@ -2306,11 +2307,11 @@ export const createLogistics = async (req: Request, res: Response) => {
       },
     });
 
-    console.log("Tracking", logistic);
+    console.log('Tracking', logistic);
 
-    //Email for tracking logistics 
-    tracking (logistic.user.email, logistic.campaign.name, logistic.user.name ?? 'Creator', logistic.trackingNumber )
-    
+    //Email for tracking logistics
+    tracking(logistic.user.email, logistic.campaign.name, logistic.user.name ?? 'Creator', logistic.trackingNumber);
+
     const notification = await saveNotification({
       userId: userId,
       message: `Hi ${logistic.user.name}, your logistics details for the ${logistic.campaign.name} campaign are now available. Please check the logistics section for shipping information and tracking details. If you have any questions, don't hesitate to reach out!`,
@@ -2351,10 +2352,10 @@ export const updateStatusLogistic = async (req: Request, res: Response) => {
       },
     });
 
-    console.log ( "Status ", updated); 
+    console.log('Status ', updated);
 
     // deliveryConfirmation (updated.userId.email, )
-    
+
     return res.status(200).json({ message: 'Logistic status updated successfully.' });
   } catch (error) {
     //console.log(error);
@@ -2489,41 +2490,79 @@ export const shortlistCreator = async (req: Request, res: Response) => {
           throw new Error('Column not found.');
         }
 
-        for (const [index, timeline] of timelines.entries()) {
-          const submission = await tx.submission.create({
-            data: {
-              dueDate: timeline.endDate,
-              campaignId: timeline.campaignId,
-              userId: creator.userId as string,
-              submissionTypeId: timeline.submissionTypeId as string,
-              status: index === 0 ? 'IN_PROGRESS' : 'NOT_STARTED',
-              task: {
-                create: {
-                  name: timeline.name,
-                  position: index,
-                  columnId: index === 0 ? columnInProgress.id : (columnToDo?.id as string),
-                  priority: '',
-                  status: index === 0 ? 'In Progress' : 'To Do',
+        const submissions: Submission[] = await Promise.all(
+          timelines.map(async (timeline, index) => {
+            return await tx.submission.create({
+              data: {
+                dueDate: timeline.endDate,
+                campaignId: timeline.campaignId,
+                userId: creator.userId as string,
+                status: index === 0 ? 'IN_PROGRESS' : 'NOT_STARTED',
+                submissionTypeId: timeline.submissionTypeId as string,
+                task: {
+                  create: {
+                    name: timeline.name,
+                    position: index,
+                    columnId: index === 0 ? columnInProgress.id : (columnToDo?.id as string),
+                    priority: '',
+                    status: index === 0 ? 'In Progress' : 'To Do',
+                  },
                 },
               },
-            },
-            include: {
-              submissionType: true,
+            });
+          }),
+        );
+
+        for (let i = 1; i < submissions.length; i++) {
+          await tx.submissionDependency.create({
+            data: {
+              submissionId: submissions[i].id,
+              dependentSubmissionId: submissions[i - 1].id,
             },
           });
-          submissions.push(submission);
         }
+
+        // await Promise.all(
+        //   submissions.map(async (item, i) => {
+        //     // Skip the first submission as it has no dependency
+        //     if (i > 0) {
+        //       await tx.submissionDependency.create({
+        //         data: {
+        //           submissionId: submissions[i].id,
+        //           dependentSubmissionId: submissions[i - 1].id,
+        //         },
+        //       });
+        //     }
+        //   }),
+        // );
+
+        // for (const [index, timeline] of timelines.entries()) {
+        //   const submission = await tx.submission.create({
+        //     data: {
+        //       dueDate: timeline.endDate,
+        //       campaignId: timeline.campaignId,
+        //       userId: creator.userId as string,
+        //       submissionTypeId: timeline.submissionTypeId as string,
+        //       status: index === 0 ? 'IN_PROGRESS' : 'NOT_STARTED',
+        //       task: {
+        //         create: {
+        //           name: timeline.name,
+        //           position: index,
+        //           columnId: index === 0 ? columnInProgress.id : (columnToDo?.id as string),
+        //           priority: '',
+        //           status: index === 0 ? 'In Progress' : 'To Do',
+        //         },
+        //       },
+        //     },
+        //     include: {
+        //       submissionType: true,
+        //     },
+        //   });
+        //   submissions.push(submission);
+        // }
       }
 
       // Create submissions dependency for submissions
-      for (let i = 1; i < submissions.length; i++) {
-        await tx.submissionDependency.create({
-          data: {
-            submissionId: submissions[i].id,
-            dependentSubmissionId: submissions[i - 1].id,
-          },
-        });
-      }
 
       const admins = await tx.campaignAdmin.findMany({
         where: {
@@ -2538,7 +2577,6 @@ export const shortlistCreator = async (req: Request, res: Response) => {
         },
       });
 
-      
       await Promise.all(
         shortlistedCreators.map(async (creator: ShortListedCreator) => {
           const data = await saveNotification({
