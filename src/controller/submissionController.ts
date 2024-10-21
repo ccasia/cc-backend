@@ -376,22 +376,22 @@ export const adminManageDraft = async (req: Request, res: Response) => {
               content: feedback,
               adminId: req.session.userid as string,
             },
-            // upsert: {
-            //   where: {
-            //     id: submission?.feedback?.id,
-            //   },
-            //   update: {
-            //     content: feedback,
-            //     admin: {
-            //       connect: { id: req.session.userid },
-            //     },
-            //   },
-            //   create: {
-            //     type: 'COMMENT',
-            //     content: feedback,
-            //     adminId: req.session.userid as string,
-            //   },
-            // },
+            upsert: {
+              where: {
+                id: submission?.feedback?.[0]?.id,
+              },
+              update: {
+                content: feedback,
+                admin: {
+                  connect: { id: req.session.userid },
+                },
+              },
+              create: {
+                type: 'COMMENT',
+                content: feedback,
+                adminId: req.session.userid as string,
+              },
+            },
           },
         },
         include: {
@@ -769,3 +769,4 @@ export const adminManagePosting = async (req: Request, res: Response) => {
     return res.status(400).json(error);
   }
 };
+
