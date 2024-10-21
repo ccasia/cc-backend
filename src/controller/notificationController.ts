@@ -17,17 +17,43 @@ export const saveNotification = async ({
   entityId,
   title,
   pitchId,
- // creatorId,
+  creatorId,
+  type,
 }: {
   userId: string;
   campaignId?: string;
-//  creatorId?: string;
+  creatorId?: string;
   message: string;
   entity: Entity;
   entityId?: string;
   title?: string;
   pitchId?: string;
+  type?: string;
 }) => {
+  if (entity === 'Agreement' || entity === 'Draft') {
+    return prisma.notification.create({
+      data: {
+        message: message,
+        title: title,
+        entity: entity,
+        campaignId: entityId,
+        creatorId: creatorId,
+        userNotification: {
+          create: {
+            userId: userId,
+          },
+        },
+      },
+      include: {
+        userNotification: {
+          select: {
+            userId: true,
+          },
+        },
+      },
+    });
+  }
+
   if (entity && entityId) {
     return prisma.notification.create({
       data: {
@@ -78,36 +104,34 @@ export const saveNotification = async ({
     });
   }
 
-
-  // if (creatorId && entity) {
-  //   return prisma.notification.create({
-  //     data: {
-  //       message: message,
-  //       title: title,
-  //       entity: entity,
-  //      // creatorId: creatorId,
-  //       userNotification: {
-  //         create: {
-  //           userId: userId,
-  //         },
-  //       },
-  //     },
-  //     include: {
-  //       userNotification: {
-  //         select: {
-  //           userId: true,
-  //         },
-  //       },
-  //     },
-  //   });
-  // }
+  if (creatorId && entity) {
+    return prisma.notification.create({
+      data: {
+        message: message,
+        title: title,
+        entity: entity,
+        creatorId: creatorId,
+        userNotification: {
+          create: {
+            userId: userId,
+          },
+        },
+      },
+      include: {
+        userNotification: {
+          select: {
+            userId: true,
+          },
+        },
+      },
+    });
+  }
 
   return prisma.notification.create({
     data: {
       message: message,
       entity: entity,
       title: title,
-
       userNotification: {
         create: {
           userId: userId,
@@ -143,7 +167,6 @@ export const getNotificationByUserId = async (req: Request, res: Response) => {
 
     return res.status(200).json({ notifications });
   } catch (error) {
-    console.log("Error", error)
     return res.status(400).json(error);
   }
 };

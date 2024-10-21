@@ -5,7 +5,6 @@ const notificationCampaign = (campaignName: string) => {
   };
 };
 
-
 const notificationPitch = (campaignName: string, type: 'Admin' | 'Creator', creatorName?: string) => {
   if (type === 'Admin') {
     return {
@@ -46,7 +45,6 @@ const notificationPendingAgreement = (campaignName: string) => {
     message: `📝 Shortlisted Creators Pending! Shortlisted creators are pending agreement generation for ${campaignName}.`,
   };
 };
-
 
 const notificationAgreement = (campaignName: string, type: 'Admin' | 'Creator', creatorName?: string) => {
   if (type === 'Admin') {
