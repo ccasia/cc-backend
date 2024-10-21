@@ -16,6 +16,7 @@ const processVideo = async (
   progressCallback: (progress: number) => void,
   userId: string,
   campaignId: string,
+  fileName: string,
 ) => {
   const getVideoDuration = (inputPath: string): Promise<number | undefined> => {
     return new Promise((resolve, reject) => {
@@ -62,7 +63,7 @@ const processVideo = async (
 
         const a = await uploadPitchVideo(
           outputPath,
-          outputPath,
+          fileName,
           'pitchVideo',
           (data: number) => {
             io.to(clients.get(userId)).emit('video-upload', { campaignId: campaignId, progress: data });
@@ -70,7 +71,7 @@ const processVideo = async (
           size as number,
         );
 
-        io.to(clients.get(userId)).emit('video-upload-done', { campaignId: campaignId, video: a });
+        io.to(clients.get(userId)).emit('video-upload-done', { campaignId: campaignId, video: a, size });
       })
 
       .on('error', (err) => {
@@ -88,7 +89,7 @@ const processVideo = async (
     console.log('Video Pitch Queue starting...');
     await channel.consume('pitch', async (msg) => {
       if (msg !== null) {
-        const { outputPath, tempPath, userId, campaignId } = JSON.parse(msg.content.toString());
+        const { outputPath, tempPath, userId, campaignId, fileName } = JSON.parse(msg.content.toString());
 
         await processVideo(
           tempPath,
@@ -98,6 +99,7 @@ const processVideo = async (
           },
           userId,
           campaignId,
+          fileName,
         );
 
         channel.ack(msg);

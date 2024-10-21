@@ -2130,7 +2130,7 @@ export const uploadVideoTest = async (req: Request, res: Response) => {
   const { campaignId } = req.body;
   const { userid } = req.session;
   // const outputPath = `/tmp/${userid}_pitch.mp4`;
-  const outputPath = `${userid}_pitch.mp4`;
+  const fileName = `${userid}_pitch.mp4`;
 
   try {
     if (!(req.files as any).pitchVideo) {
@@ -2139,7 +2139,7 @@ export const uploadVideoTest = async (req: Request, res: Response) => {
 
     const file = (req.files as any).pitchVideo;
 
-    const filePath = `/tmp/${outputPath}`;
+    const filePath = `/tmp/${fileName}`;
     const compressedFilePath = `/tmp/${userid}_compressed.mp4`;
 
     await file.mv(filePath);
@@ -2156,6 +2156,7 @@ export const uploadVideoTest = async (req: Request, res: Response) => {
           outputPath: compressedFilePath,
           userId: userid,
           campaignId: campaignId,
+          fileName: fileName,
         }),
       ),
       {
