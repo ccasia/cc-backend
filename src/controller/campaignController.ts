@@ -2129,7 +2129,7 @@ export const uploadVideoTest = async (req: Request, res: Response) => {
   const abortController = new AbortController();
   const { campaignId } = req.body;
   const { userid } = req.session;
-  // const outputPath = `/tmp/${userid}_pitch.mp4`;
+
   const fileName = `${userid}_pitch.mp4`;
 
   try {
@@ -2167,7 +2167,7 @@ export const uploadVideoTest = async (req: Request, res: Response) => {
     await channel.close();
     await amqp.close();
 
-    // return res.status(200).json({ publicUrl: a, message: 'Pitch video start processing' });
+    return res.status(200).json({ message: 'Pitch video start processing' });
   } catch (error) {
     return res.status(400).json(error);
   }

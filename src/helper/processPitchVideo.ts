@@ -72,10 +72,13 @@ const processVideo = async (
         );
 
         io.to(clients.get(userId)).emit('video-upload-done', { campaignId: campaignId, video: a, size });
-      })
 
+        fs.unlinkSync(inputPath);
+        fs.unlinkSync(outputPath);
+        resolve();
+      })
       .on('error', (err) => {
-        console.log(err);
+        reject(err);
       });
   });
 };
@@ -86,25 +89,39 @@ const processVideo = async (
     const channel = await conn.createChannel();
     await channel.assertQueue('pitch', { durable: true });
     await channel.purgeQueue('pitch');
+
+    // channel.prefetch(2);
+
     console.log('Video Pitch Queue starting...');
-    await channel.consume('pitch', async (msg) => {
-      if (msg !== null) {
-        const { outputPath, tempPath, userId, campaignId, fileName } = JSON.parse(msg.content.toString());
+    await channel.consume(
+      'pitch',
+      async (msg) => {
+        if (msg !== null) {
+          try {
+            const secs = msg.content.toString().split('.').length - 1;
+            const { outputPath, tempPath, userId, campaignId, fileName } = JSON.parse(msg.content.toString());
 
-        await processVideo(
-          tempPath,
-          outputPath,
-          (data: number) => {
-            io.to(clients.get(userId)).emit('video-upload', { campaignId: campaignId, progress: data });
-          },
-          userId,
-          campaignId,
-          fileName,
-        );
+            await processVideo(
+              tempPath,
+              outputPath,
+              (data: number) => {
+                io.to(clients.get(userId)).emit('video-upload', { campaignId: campaignId, progress: data });
+              },
+              userId,
+              campaignId,
+              fileName,
+            );
 
-        channel.ack(msg);
-      }
-    });
+            channel.ack(msg);
+          } catch (error) {
+            console.log(error);
+          }
+        }
+      },
+      {
+        noAck: false,
+      },
+    );
   } catch (error) {
     throw new Error(error);
   }
