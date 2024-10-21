@@ -298,7 +298,7 @@ export const getCreatorFullInfoByIdPublic = async (req: Request, res: Response) 
 };
 
 export const updatePaymentForm = async (req: Request, res: Response) => {
-  const { bankName, bankNumber, bodyMeasurement, allergies, icPassportNumber }: any = req.body;
+  const { bankName, bankNumber, icPassportNumber }: any = req.body;
 
   try {
     const data = await prisma.paymentForm.upsert({
@@ -309,22 +309,17 @@ export const updatePaymentForm = async (req: Request, res: Response) => {
         icNumber: icPassportNumber.toString(),
         bankAccountNumber: bankNumber.toString(),
         bankName: bankName?.bank,
-        bodyMeasurement: bodyMeasurement.toString(),
-        allergies: allergies.map((allergy: any) => allergy.name),
       },
       create: {
         user: { connect: { id: req.session.userid } },
         icNumber: icPassportNumber.toString(),
         bankAccountNumber: bankNumber.toString(),
         bankName: bankName?.bank,
-        bodyMeasurement: bodyMeasurement.toString(),
-        allergies: allergies.map((allergy: any) => allergy.name),
       },
     });
 
-    return res.status(200).json({ message: 'Successfully updated payment form' });
+    return res.status(200).json({ message: 'Successfully updated payment form.' });
   } catch (error) {
-    //console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -495,5 +490,58 @@ export const getCreatorSocialMediaDataById = async (req: Request, res: Response)
   } catch (error) {
     console.error('Error fetching social media data:', error);
     return res.status(500).json({ message: 'Error fetching social media data' });
+  }
+};
+
+export const updateSocialMedia = async (req: Request, res: Response) => {
+  const { userid } = req.session;
+  const { tiktok: tiktokUsername, instagram: instagramUsername } = req.body;
+  try {
+    const user = await prisma.user.findUnique({
+      where: {
+        id: userid,
+      },
+      include: {
+        creator: true,
+      },
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: 'No creator found.' });
+    }
+
+    if (user.creator?.socialMediaUpdateCount) {
+      const { tiktok, instagram } = user.creator?.socialMediaUpdateCount as any;
+
+      if (tiktok > 2 && instagram > 2) {
+        return res.status(400).json({ message: 'Limit reach. Contact our admin.' });
+      }
+
+      await prisma.creator.update({
+        where: {
+          userId: user.id,
+        },
+        data: {
+          ...(instagramUsername && { instagram: instagramUsername }),
+          ...(tiktokUsername && { tiktok: tiktokUsername }),
+          socialMediaUpdateCount: { tiktok: tiktok + 1, instagram: instagram + 1 },
+        },
+      });
+    } else {
+      await prisma.creator.update({
+        where: {
+          userId: user.id,
+        },
+        data: {
+          ...(instagramUsername && { instagram: instagramUsername }),
+          ...(tiktokUsername && { tiktok: tiktokUsername }),
+          socialMediaUpdateCount: { tiktok: 1, instagram: 1 },
+        },
+      });
+    }
+
+    return res.status(200).json({ message: 'Successfully changed.' });
+  } catch (error) {
+    return res.status(400).json(error);
   }
 };

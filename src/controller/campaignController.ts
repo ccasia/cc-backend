@@ -2337,10 +2337,9 @@ export const updateStatusLogistic = async (req: Request, res: Response) => {
 };
 
 export const shortlistCreator = async (req: Request, res: Response) => {
-  const {
-    value: { creator: creators },
-    campaignId,
-  } = req.body;
+  const { newVal: creators, campaignId } = req.body;
+
+  // console.log(req.body);
 
   try {
     await prisma.$transaction(async (tx) => {
@@ -2537,7 +2536,7 @@ export const shortlistCreator = async (req: Request, res: Response) => {
       );
     });
 
-    res.status(200).json({ message: 'Successfully shortlisted' });
+    return res.status(200).json({ message: 'Successfully shortlisted' });
   } catch (error) {
     console.log(error);
     return res.status(400).json(error);

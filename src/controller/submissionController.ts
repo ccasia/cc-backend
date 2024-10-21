@@ -297,16 +297,16 @@ export const draftSubmission = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Submission not found' });
     }
 
-    // const inReviewColumn = await getColumnId({ userId: userid, columnName: 'In Review' });
+    const inReviewColumn = await getColumnId({ userId: userid, columnName: 'In Review' });
 
-    // await prisma.task.update({
-    //   where: {
-    //     id: submission.task?.id,
-    //   },
-    //   data: {
-    //     columnId: inReviewColumn,
-    //   },
-    // });
+    await prisma.task.update({
+      where: {
+        id: submission.task?.id,
+      },
+      data: {
+        columnId: inReviewColumn,
+      },
+    });
 
     const file = (req.files as any).draftVideo;
 
@@ -376,22 +376,22 @@ export const adminManageDraft = async (req: Request, res: Response) => {
               content: feedback,
               adminId: req.session.userid as string,
             },
-            upsert: {
-              where: {
-                id: submission?.feedback?.[0]?.id,
-              },
-              update: {
-                content: feedback,
-                admin: {
-                  connect: { id: req.session.userid },
-                },
-              },
-              create: {
-                type: 'COMMENT',
-                content: feedback,
-                adminId: req.session.userid as string,
-              },
-            },
+            // upsert: {
+            //   where: {
+            //     id: submission?.feedback?.[0]?.id,
+            //   },
+            //   update: {
+            //     content: feedback,
+            //     admin: {
+            //       connect: { id: req.session.userid },
+            //     },
+            //   },
+            //   create: {
+            //     type: 'COMMENT',
+            //     content: feedback,
+            //     adminId: req.session.userid as string,
+            //   },
+            // },
           },
         },
         include: {
@@ -733,21 +733,26 @@ export const adminManagePosting = async (req: Request, res: Response) => {
         status: 'REJECTED',
         isReview: true,
         feedback: {
-          upsert: {
-            where: {
-              id: req.body.feedbackId,
-            },
-            update: {
-              content: req.body.feedback,
-              type: 'REASON',
-              adminId: userId as string,
-            },
-            create: {
-              content: req.body.feedback,
-              type: 'REASON',
-              adminId: userId as string,
-            },
+          create: {
+            content: req.body.feedback,
+            type: 'REASON',
+            adminId: userId as string,
           },
+          // create: {
+          //   // where: {
+          //   //   id: req.body.feedbackId,
+          //   // },
+          //   // update: {
+          //   //   content: req.body.feedback,
+          //   //   type: 'REASON',
+          //   //   adminId: userId as string,
+          //   // },
+          //   data: {
+          // content: req.body.feedback,
+          // type: 'REASON',
+          // adminId: userId as string,
+          //   },
+          // },
         },
       },
       include: {
@@ -769,4 +774,3 @@ export const adminManagePosting = async (req: Request, res: Response) => {
     return res.status(400).json(error);
   }
 };
-

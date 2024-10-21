@@ -749,7 +749,11 @@ export const login = async (req: Request, res: Response) => {
 };
 
 export const updateProfileCreator = async (req: Request, res: Response) => {
-  const { name, email, phoneNumber, country, about, id, state, address } = JSON.parse(req.body.data);
+  const { name, email, phoneNumber, country, about, id, state, address, allergies, bodyMeasurement } = JSON.parse(
+    req.body.data,
+  );
+
+  // console.log(JSON.parse(req.body.data));
 
   try {
     const creator = await prisma.creator.findFirst({
@@ -803,16 +807,34 @@ export const updateProfileCreator = async (req: Request, res: Response) => {
       }
     }
 
+    await prisma.paymentForm.update({
+      where: {
+        userId: id,
+      },
+      data: {
+        bodyMeasurement: bodyMeasurement.toString(),
+        allergies: allergies.map((allergy: { name: string }) => allergy.name),
+      },
+    });
+
     await prisma.creator.update({
       where: {
         userId: id,
       },
-      data: updateData,
+      data: {
+        ...updateData,
+      },
+      include: {
+        user: {
+          include: {
+            paymentForm: true,
+          },
+        },
+      },
     });
 
     return res.status(200).json({ message: 'Successfully updated' });
   } catch (error) {
-    console.error('Error updating creator:', error);
     return res.status(400).json({ message: 'Error updating creator' });
   }
 };

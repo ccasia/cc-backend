@@ -89,24 +89,26 @@ model Permisions {
 }
 
 model Creator {
-  id              String      @id @unique @default(cuid())
-  pronounce       String?     @db.VarChar(100)
-  address         String?
-  state           String?
-  location        String?
-  birthDate       DateTime?
-  instagram       String?     @db.VarChar(100)
-  tiktok          String?     @db.VarChar(100)
-  employment      Employment? @default(others)
-  languages       Json?
-  userId          String      @unique
-  socialMediaData Json?
-  isFormCompleted Boolean?
-  user            User        @relation(fields: [userId], references: [id])
-  industries      Industry[]
-  interests       Interest[]
-  invoices        Invoice[]
-  mediaKit        MediaKit?
+  id                     String      @id @unique @default(cuid())
+  pronounce              String?     @db.VarChar(100)
+  address                String?
+  state                  String?
+  location               String?
+  birthDate              DateTime?
+  instagram              String?     @db.VarChar(100)
+  tiktok                 String?     @db.VarChar(100)
+  socialMediaUpdateCount Json?
+  allowToChange          Boolean     @default(false)
+  employment             Employment? @default(others)
+  languages              Json?
+  userId                 String      @unique
+  socialMediaData        Json?
+  isFormCompleted        Boolean?
+  user                   User        @relation(fields: [userId], references: [id])
+  industries             Industry[]
+  interests              Interest[]
+  invoices               Invoice[]
+  mediaKit               MediaKit?
 }
 
 model MediaKit {
