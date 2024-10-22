@@ -809,7 +809,7 @@ export const updateProfileCreator = async (req: Request, res: Response) => {
 
     await prisma.paymentForm.update({
       where: {
-        userId: id,
+        userId: creator.userId,
       },
       data: {
         bodyMeasurement: bodyMeasurement.toString(),
