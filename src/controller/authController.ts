@@ -760,7 +760,16 @@ export const updateProfileCreator = async (req: Request, res: Response) => {
       where: {
         userId: id,
       },
+      include: {
+        user: {
+          include: {
+            paymentForm: true,
+          },
+        },
+      },
     });
+
+    console.log(creator);
 
     if (!creator) {
       return res.status(404).json({ message: 'Creator not found' });
