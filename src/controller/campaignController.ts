@@ -14,6 +14,7 @@ import {
   PrismaClient,
   ShortListedCreator,
   Submission,
+  SubmissionType,
   User,
 } from '@prisma/client';
 
@@ -118,22 +119,23 @@ const generateAgreement = async (creator: any, campaign: any) => {
       version: 1,
     });
 
-    const pdfPath = await pdfConverter(
-      agreementsPath,
-      path.resolve(__dirname, `../form/pdf/${creator.name.split(' ').join('_')}.pdf`),
-    );
+    console.log(agreementsPath);
 
-    const url = await uploadAgreementForm(
-      pdfPath,
-      `${creator.name.split(' ').join('_')}-${campaign.name}.pdf`,
-      'creatorAgreements',
-    );
+    // const pdfPath = await pdfConverter(
+    //   agreementsPath,
+    //   path.resolve(__dirname, `../form/pdf/${creator.name.split(' ').join('_')}.pdf`),
+    // );
 
-    await fs.promises.unlink(pdfPath);
+    // const url = await uploadAgreementForm(
+    //   pdfPath,
+    //   `${creator.name.split(' ').join('_')}-${campaign.name}.pdf`,
+    //   'creatorAgreements',
+    // );
 
-    return url;
+    // await fs.promises.unlink(pdfPath);
+
+    // return url;
   } catch (error) {
-    console.log(error);
     throw new Error(error);
   }
 };
@@ -939,7 +941,7 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
     //   return percantage;
     // };
 
-    const matchedCampaign = campaigns?.filter((item) => matchCampaign(user, item));
+    // const matchedCampaign = campaigns?.filter((item) => matchCampaign(user, item));
 
     const matchedCampaignWithPercentage = campaigns.map((item) => {
       const interestPercentage = calculateInterestMatchingPercentage(
@@ -963,7 +965,6 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
 
     return res.status(200).json(sortedMatchedCampaigns);
   } catch (error) {
-    console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -1688,8 +1689,6 @@ export const changePitchStatus = async (req: Request, res: Response) => {
     if (status === 'approved') {
       await prisma.$transaction(
         async (tx) => {
-          // const url = await generateAgreement(existingPitch.user, existingPitch.campaign);
-
           const pitch = await prisma.pitch.update({
             where: {
               id: existingPitch.id,
@@ -1737,12 +1736,14 @@ export const changePitchStatus = async (req: Request, res: Response) => {
                 },
               ],
             },
+            include: {
+              submissionType: true,
+            },
             orderBy: {
               order: 'asc',
             },
           });
 
-          console.log('Looking for board with userId:', existingPitch);
           const board = await tx.board.findUnique({
             where: {
               userId: existingPitch.userId,
@@ -1786,42 +1787,91 @@ export const changePitchStatus = async (req: Request, res: Response) => {
             throw new Error('Column not found.');
           }
 
-          const submissions: Submission[] = await Promise.all(
+          type SubmissionWithRelations = Submission & {
+            submissionType: SubmissionType;
+          };
+
+          // const submissions: Submission[] = await Promise.all(
+          //   timelines.map(async (timeline, index) => {
+          //     return await tx.submission.create({
+          //       data: {
+          //         dueDate: timeline.endDate,
+          //         campaignId: timeline.campaignId,
+          //         userId: pitch.userId as string,
+          //         status: index === 0 ? 'IN_PROGRESS' : 'NOT_STARTED',
+          //         submissionTypeId: timeline.submissionTypeId as string,
+          //         task: {
+          //           create: {
+          //             name: timeline.name,
+          //             position: index,
+          //             columnId: index === 0 ? columnInProgress.id : (columnToDo?.id as string),
+          //             priority: '',
+          //             status: index === 0 ? 'In Progress' : 'To Do',
+          //           },
+          //         },
+          //       },
+          //     });
+          //   }),
+          // );
+
+          const submissions: SubmissionWithRelations[] = await Promise.all(
             timelines.map(async (timeline, index) => {
               return await tx.submission.create({
                 data: {
                   dueDate: timeline.endDate,
                   campaignId: timeline.campaignId,
                   userId: pitch.userId as string,
-                  status: index === 0 ? 'IN_PROGRESS' : 'NOT_STARTED',
+                  // status: index === 0 ? 'IN_PROGRESS' : 'NOT_STARTED',
+                  status: timeline.submissionType?.type === 'AGREEMENT_FORM' ? 'IN_PROGRESS' : 'NOT_STARTED',
                   submissionTypeId: timeline.submissionTypeId as string,
                   task: {
                     create: {
                       name: timeline.name,
                       position: index,
-                      columnId: index === 0 ? columnInProgress.id : (columnToDo?.id as string),
+                      columnId: timeline.submissionType?.type ? columnInProgress.id : (columnToDo?.id as string),
                       priority: '',
-                      status: index === 0 ? 'In Progress' : 'To Do',
+                      status: timeline.submissionType?.type ? 'In Progress' : 'To Do',
                     },
                   },
+                },
+                include: {
+                  submissionType: true,
                 },
               });
             }),
           );
 
-          await Promise.all(
-            submissions.map(async (item, i) => {
-              // Skip the first submission as it has no dependency
-              if (i > 0) {
-                await tx.submissionDependency.create({
-                  data: {
-                    submissionId: submissions[i].id,
-                    dependentSubmissionId: submissions[i - 1].id,
-                  },
-                });
-              }
-            }),
-          );
+          const agreement = submissions.find((submission) => submission?.submissionType.type === 'AGREEMENT_FORM');
+          const draft = submissions.find((submission) => submission?.submissionType.type === 'FIRST_DRAFT');
+          const finalDraft = submissions.find((submission) => submission?.submissionType.type === 'FINAL_DRAFT');
+          const posting = submissions.find((submission) => submission?.submissionType.type === 'POSTING');
+
+          // Might change in the future
+          const dependencies = [
+            { submissionId: draft?.id, dependentSubmissionId: agreement?.id },
+            { submissionId: finalDraft?.id, dependentSubmissionId: draft?.id },
+            { submissionId: posting?.id, dependentSubmissionId: finalDraft?.id },
+          ];
+
+          const filteredDependencies = dependencies.filter((dep) => dep.submissionId && dep.dependentSubmissionId);
+
+          await tx.submissionDependency.createMany({
+            data: filteredDependencies,
+          });
+
+          // await Promise.all(
+          //   submissions.map(async (item, i) => {
+          //     // Skip the first submission as it has no dependency
+          //     if (i > 0) {
+          //       await tx.submissionDependency.create({
+          //         data: {
+          //           submissionId: submissions[i].id,
+          //           dependentSubmissionId: submissions[i - 1].id,
+          //         },
+          //       });
+          //     }
+          //   }),
+          // );
 
           // Sending email
           const user = existingPitch.user;
@@ -2259,7 +2309,6 @@ export const saveCampaign = async (req: Request, res: Response) => {
 
     return res.status(200).json({ message: `Campaign ${bookmark.campaign?.name} has been bookmarked.` });
   } catch (error) {
-    console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -2366,15 +2415,27 @@ export const updateStatusLogistic = async (req: Request, res: Response) => {
 export const shortlistCreator = async (req: Request, res: Response) => {
   const { newVal: creators, campaignId } = req.body;
 
-  // console.log(req.body);
-
   try {
     await prisma.$transaction(async (tx) => {
+      const campaign = await tx.campaign.findUnique({
+        where: {
+          id: campaignId,
+        },
+        include: {
+          thread: true,
+          campaignBrief: true,
+        },
+      });
+
+      if (!campaign) {
+        return res.status(404).json({ message: 'Campaign not found.' });
+      }
+
       const timelines = await tx.campaignTimeline.findMany({
         where: {
           AND: [
             {
-              campaignId: campaignId,
+              campaignId: campaign.id,
             },
             {
               for: 'creator',
@@ -2386,19 +2447,11 @@ export const shortlistCreator = async (req: Request, res: Response) => {
             },
           ],
         },
+        include: {
+          submissionType: true,
+        },
         orderBy: {
           order: 'asc',
-        },
-      });
-
-      // Find campaign by campaign Id
-      const campaignInfo = await tx.campaign.findUnique({
-        where: {
-          id: campaignId,
-        },
-        include: {
-          thread: true,
-          campaignBrief: true,
         },
       });
 
@@ -2425,7 +2478,7 @@ export const shortlistCreator = async (req: Request, res: Response) => {
         await tx.creatorAgreement.create({
           data: {
             userId: creator.id as string,
-            campaignId: campaignInfo?.id as any,
+            campaignId: campaign?.id as any,
             agreementUrl: '',
           },
         });
@@ -2442,8 +2495,6 @@ export const shortlistCreator = async (req: Request, res: Response) => {
           });
         }),
       );
-
-      const submissions: any[] = [];
 
       // Create submissions for creator
       for (const creator of shortlistedCreators) {
@@ -2490,79 +2541,84 @@ export const shortlistCreator = async (req: Request, res: Response) => {
           throw new Error('Column not found.');
         }
 
-        const submissions: Submission[] = await Promise.all(
+        type SubmissionWithRelations = Submission & {
+          submissionType: SubmissionType;
+        };
+
+        const submissions: SubmissionWithRelations[] = await Promise.all(
           timelines.map(async (timeline, index) => {
             return await tx.submission.create({
               data: {
                 dueDate: timeline.endDate,
                 campaignId: timeline.campaignId,
                 userId: creator.userId as string,
-                status: index === 0 ? 'IN_PROGRESS' : 'NOT_STARTED',
+                // status: index === 0 ? 'IN_PROGRESS' : 'NOT_STARTED',
+                status: timeline.submissionType?.type === 'AGREEMENT_FORM' ? 'IN_PROGRESS' : 'NOT_STARTED',
                 submissionTypeId: timeline.submissionTypeId as string,
                 task: {
                   create: {
                     name: timeline.name,
                     position: index,
-                    columnId: index === 0 ? columnInProgress.id : (columnToDo?.id as string),
+                    columnId: timeline.submissionType?.type ? columnInProgress.id : (columnToDo?.id as string),
                     priority: '',
-                    status: index === 0 ? 'In Progress' : 'To Do',
+                    status: timeline.submissionType?.type ? 'In Progress' : 'To Do',
                   },
                 },
+              },
+              include: {
+                submissionType: true,
               },
             });
           }),
         );
 
-        for (let i = 1; i < submissions.length; i++) {
-          await tx.submissionDependency.create({
-            data: {
-              submissionId: submissions[i].id,
-              dependentSubmissionId: submissions[i - 1].id,
-            },
-          });
-        }
+        const agreement = submissions.find((submission) => submission?.submissionType.type === 'AGREEMENT_FORM');
+        const draft = submissions.find((submission) => submission?.submissionType.type === 'FIRST_DRAFT');
+        const finalDraft = submissions.find((submission) => submission?.submissionType.type === 'FINAL_DRAFT');
+        const posting = submissions.find((submission) => submission?.submissionType.type === 'POSTING');
 
-        // await Promise.all(
-        //   submissions.map(async (item, i) => {
-        //     // Skip the first submission as it has no dependency
-        //     if (i > 0) {
-        //       await tx.submissionDependency.create({
-        //         data: {
-        //           submissionId: submissions[i].id,
-        //           dependentSubmissionId: submissions[i - 1].id,
-        //         },
-        //       });
-        //     }
-        //   }),
-        // );
+        const dependencies = [
+          { submissionId: draft?.id, dependentSubmissionId: agreement?.id },
+          { submissionId: finalDraft?.id, dependentSubmissionId: draft?.id },
+          { submissionId: posting?.id, dependentSubmissionId: finalDraft?.id },
+        ];
 
-        // for (const [index, timeline] of timelines.entries()) {
-        //   const submission = await tx.submission.create({
+        const filteredDependencies = dependencies.filter((dep) => dep.submissionId && dep.dependentSubmissionId);
+
+        await tx.submissionDependency.createMany({
+          data: filteredDependencies,
+        });
+
+        // await tx.submissionDependency.create({
+        //   data: {
+        //     submissionId: draft?.id,
+        //     dependentSubmissionId: agreement?.id,
+        //   },
+        // });
+
+        // await tx.submissionDependency.create({
+        //   data: {
+        //     submissionId: finalDraft?.id,
+        //     dependentSubmissionId: draft?.id,
+        //   },
+        // });
+
+        // await tx.submissionDependency.create({
+        //   data: {
+        //     submissionId: posting?.id,
+        //     dependentSubmissionId: finalDraft?.id,
+        //   },
+        // });
+
+        // for (let i = 1; i < submissions.length; i++) {
+        //   await tx.submissionDependency.create({
         //     data: {
-        //       dueDate: timeline.endDate,
-        //       campaignId: timeline.campaignId,
-        //       userId: creator.userId as string,
-        //       submissionTypeId: timeline.submissionTypeId as string,
-        //       status: index === 0 ? 'IN_PROGRESS' : 'NOT_STARTED',
-        //       task: {
-        //         create: {
-        //           name: timeline.name,
-        //           position: index,
-        //           columnId: index === 0 ? columnInProgress.id : (columnToDo?.id as string),
-        //           priority: '',
-        //           status: index === 0 ? 'In Progress' : 'To Do',
-        //         },
-        //       },
-        //     },
-        //     include: {
-        //       submissionType: true,
+        //       submissionId: submissions[i].id,
+        //       dependentSubmissionId: submissions[i - 1].id,
         //     },
         //   });
-        //   submissions.push(submission);
         // }
       }
-
-      // Create submissions dependency for submissions
 
       const admins = await tx.campaignAdmin.findMany({
         where: {
@@ -2582,7 +2638,7 @@ export const shortlistCreator = async (req: Request, res: Response) => {
           const data = await saveNotification({
             userId: creator.userId as string,
             entityId: campaignId as string,
-            message: `Congratulations! You've been shortlisted for the ${campaignInfo?.name} campaign.`,
+            message: `Congratulations! You've been shortlisted for the ${campaign?.name} campaign.`,
             entity: 'Shortlist',
           });
           const socketId = clients.get(creator.userId);
@@ -2592,13 +2648,13 @@ export const shortlistCreator = async (req: Request, res: Response) => {
             //console.log(`User with ID ${creator.userId} is not connected.`);
           }
 
-          if (!campaignInfo || !campaignInfo.thread) {
+          if (!campaign || !campaign.thread) {
             return res.status(404).json({ message: 'Campaign or thread not found' });
           }
 
           const isThreadExist = await tx.userThread.findFirst({
             where: {
-              threadId: campaignInfo.thread.id,
+              threadId: campaign.thread.id,
               userId: creator.userId as string,
             },
           });
@@ -2606,7 +2662,7 @@ export const shortlistCreator = async (req: Request, res: Response) => {
           if (!isThreadExist) {
             await tx.userThread.create({
               data: {
-                threadId: campaignInfo.thread.id,
+                threadId: campaign.thread.id,
                 userId: creator.userId as string,
               },
             });
@@ -2617,7 +2673,6 @@ export const shortlistCreator = async (req: Request, res: Response) => {
 
     return res.status(200).json({ message: 'Successfully shortlisted' });
   } catch (error) {
-    console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -2666,7 +2721,9 @@ export const creatorAgreements = async (req: Request, res: Response) => {
 
 export const updateAmountAgreement = async (req: Request, res: Response) => {
   const { paymentAmount, user, campaignId, id: agreementId } = JSON.parse(req.body.data);
+
   let agreementForm;
+
   try {
     if (req?.files && (req?.files as any)?.agreementForm) agreementForm = (req?.files as any)?.agreementForm;
 
@@ -2730,7 +2787,7 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
 
     const url = await uploadAgreementForm(
       agreementForm.tempFilePath,
-      `${creator.name?.split(' ').join('_')}-${campaign.name}.pdf`,
+      `${creator.id?.split(' ').join('_')}-${campaign.name}.pdf`,
       'creatorAgreements',
     );
 
@@ -2750,7 +2807,7 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
 
     // await fs.promises.unlink(pdfPath);
 
-    return res.status(200).json({ message: 'Update Success' });
+    return res.status(200).json({ message: 'Payment amount Updated.' });
   } catch (error) {
     return res.status(400).json(error);
   }
@@ -2808,6 +2865,7 @@ export const sendAgreement = async (req: Request, res: Response) => {
     if (!shortlistedCreator) {
       return res.status(404).json({ message: 'This creator is not shortlisted.' });
     }
+
     // update shortlisted creator table
     await prisma.shortListedCreator.update({
       where: {
@@ -2820,7 +2878,6 @@ export const sendAgreement = async (req: Request, res: Response) => {
 
     return res.status(200).json({ message: 'Agreement has been sent.' });
   } catch (error) {
-    //console.log(error);
     return res.status(400).json(error);
   }
 };

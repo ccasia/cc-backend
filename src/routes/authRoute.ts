@@ -25,7 +25,7 @@ import { isLoggedIn } from '@middlewares/onlyLogin';
 
 const router = Router();
 
-router.get('/', isLoggedIn, displayAll);
+// router.get('/', isLoggedIn, displayAll);
 router.post('/login', login);
 router.post('/logout', logout);
 router.patch('/changePassword', validateToken, changePassword);

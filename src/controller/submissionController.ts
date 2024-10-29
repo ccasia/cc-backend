@@ -37,24 +37,11 @@ const prisma = new PrismaClient();
 export const agreementSubmission = async (req: Request, res: Response) => {
   const { submissionId } = JSON.parse(req.body.data);
 
-  console.log('Submission ID:', submissionId);
-  // console.log('Next Submission ID:', nextSubmissionId);
   try {
     if (req.files && req.files.agreementForm) {
-      const url = await uploadAgreementForm(
-        (req.files as any).agreementForm.tempFilePath,
-        (req.files as any).agreementForm.name,
-        'agreement',
-      );
-
-      const submission = await prisma.submission.update({
+      const submission = await prisma.submission.findUnique({
         where: {
           id: submissionId,
-        },
-        data: {
-          status: 'PENDING_REVIEW',
-          content: url as string,
-          submissionDate: dayjs().format(),
         },
         include: {
           user: true,
@@ -67,6 +54,27 @@ export const agreementSubmission = async (req: Request, res: Response) => {
         },
       });
 
+      if (!submission) {
+        return res.status(404).json({ message: 'Submission not found.' });
+      }
+
+      const url = await uploadAgreementForm(
+        (req.files as any).agreementForm.tempFilePath,
+        `${submission.id}.pdf`,
+        'agreement',
+      );
+
+      await prisma.submission.update({
+        where: {
+          id: submission.id,
+        },
+        data: {
+          status: 'PENDING_REVIEW',
+          content: url as string,
+          submissionDate: dayjs().format(),
+        },
+      });
+
       const boards = await prisma.board.findFirst({
         where: {
           userId: submission.userId,
@@ -75,10 +83,6 @@ export const agreementSubmission = async (req: Request, res: Response) => {
           columns: true,
         },
       });
-
-      console.log('boards', boards);
-
-      console.log('submission', submission);
 
       if (!boards) {
         return res.status(404).json({ message: 'Board not found' });
@@ -113,10 +117,6 @@ export const agreementSubmission = async (req: Request, res: Response) => {
         submission.user.name as string,
       );
 
-      //  console.log("Check", submission);
-
-      // console.log(submission.user.id);
-
       submission.campaign.campaignAdmin.forEach(async (item) => {
         const adminNotification = await saveNotification({
           userId: item.adminId,
@@ -132,7 +132,6 @@ export const agreementSubmission = async (req: Request, res: Response) => {
     }
     return res.status(200).json({ message: 'Successfully submitted' });
   } catch (error) {
-    console.log(error);
     return res.status(400).json(error);
   }
 };
