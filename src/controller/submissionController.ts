@@ -700,46 +700,58 @@ export const adminManagePosting = async (req: Request, res: Response) => {
   const userId = req.session.userid;
 
   try {
+    const submission = await prisma.submission.findUnique({
+      where: {
+        id: submissionId,
+      },
+      include: {
+        user: {
+          include: {
+            creator: true,
+            paymentForm: true,
+            creatorAgreement: true,
+          },
+        },
+        campaign: true,
+        task: true,
+      },
+    });
+
+    if (!submission) {
+      return res.status(404).json({ message: 'Submission not found.' });
+    }
+
     if (status === 'APPROVED') {
-      const data = await prisma.submission.update({
+      await prisma.submission.update({
         where: {
-          id: submissionId,
+          id: submission.id,
         },
         data: {
           status: status as SubmissionStatus,
           isReview: true,
         },
-        include: {
-          user: {
-            include: {
-              creator: true,
-              paymentForm: true,
-              creatorAgreement: true,
-            },
-          },
-          campaign: true,
-          task: true,
-        },
       });
 
-      const doneColumnId = await getColumnId({ userId: data.userId, columnName: 'Done' });
+      const doneColumnId = await getColumnId({ userId: submission.userId, columnName: 'Done' });
 
       await prisma.task.update({
         where: {
-          id: data.task?.id,
+          id: submission.task?.id,
         },
         data: {
           columnId: doneColumnId,
         },
       });
 
-      const invoiceAmount = data.user.creatorAgreement.find((item) => item.userId === data.userId)?.amount;
+      const invoiceAmount = submission.user.creatorAgreement.find(
+        (elem) => elem.campaignId === submission.campaign.id,
+      )?.amount;
 
-      const generatedInvoice = status === 'APPROVED' ? createInvoiceService(data, userId, invoiceAmount) : null;
+      const generatedInvoice = status === 'APPROVED' ? createInvoiceService(submission, userId, invoiceAmount) : null;
 
       const shortlistedCreator = await prisma.shortListedCreator.findFirst({
         where: {
-          AND: [{ userId: data.userId }, { campaignId: data.campaignId }],
+          AND: [{ userId: submission.userId }, { campaignId: submission.campaignId }],
         },
       });
 
@@ -757,20 +769,20 @@ export const adminManagePosting = async (req: Request, res: Response) => {
       });
 
       // Sending posting schedule
-      postingSchedule(data.user.email, data.campaign.name, data.user.name ?? 'Creator');
+      postingSchedule(submission.user.email, submission.campaign.name, submission.user.name ?? 'Creator');
 
       const notification = await saveNotification({
-        userId: data.userId,
-        message: `Your posting has been approved for campaign ${data.campaign.name}`,
+        userId: submission.userId,
+        message: `Your posting has been approved for campaign ${submission.campaign.name}`,
         entity: Entity.Post,
       });
 
-      io.to(clients.get(data.userId)).emit('notification', notification);
+      io.to(clients.get(submission.userId)).emit('notification', notification);
 
       return res.status(200).json({ message: 'Successfully submitted' });
     }
 
-    const data = await prisma.submission.update({
+    await prisma.submission.update({
       where: {
         id: submissionId,
       },
@@ -783,35 +795,17 @@ export const adminManagePosting = async (req: Request, res: Response) => {
             type: 'REASON',
             adminId: userId as string,
           },
-          // create: {
-          //   // where: {
-          //   //   id: req.body.feedbackId,
-          //   // },
-          //   // update: {
-          //   //   content: req.body.feedback,
-          //   //   type: 'REASON',
-          //   //   adminId: userId as string,
-          //   // },
-          //   data: {
-          // content: req.body.feedback,
-          // type: 'REASON',
-          // adminId: userId as string,
-          //   },
-          // },
         },
-      },
-      include: {
-        campaign: true,
       },
     });
 
     const notification = await saveNotification({
-      userId: data.userId,
-      message: `Your posting has been rejected for campaign ${data.campaign.name}. Feedback is provided.`,
+      userId: submission.userId,
+      message: `Your posting has been rejected for campaign ${submission.campaign.name}. Feedback is provided.`,
       entity: Entity.Post,
     });
 
-    io.to(clients.get(data.userId)).emit('notification', notification);
+    io.to(clients.get(submission.userId)).emit('notification', notification);
 
     return res.status(200).json({ message: 'Successfully submitted' });
   } catch (error) {
