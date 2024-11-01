@@ -564,7 +564,7 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
                 include: {
                   creator: {
                     include: {
-                      industries: true,
+                      // industries: true,
                       interests: true,
                     },
                   },
@@ -635,7 +635,7 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
                 include: {
                   creator: {
                     include: {
-                      industries: true,
+                      // industries: true,
                       interests: true,
                     },
                   },
@@ -666,6 +666,7 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
 
     return res.status(200).json(campaigns);
   } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -690,7 +691,7 @@ export const getCampaignById = async (req: Request, res: Response) => {
               include: {
                 creator: {
                   include: {
-                    industries: true,
+                    // industries: true,
                     interests: true,
                   },
                 },
@@ -1027,7 +1028,7 @@ export const getAllCampaignsFinance = async (req: Request, res: Response) => {
               include: {
                 creator: {
                   include: {
-                    industries: true,
+                    // industries: true,
                     interests: true,
                   },
                 },
@@ -1362,7 +1363,7 @@ export const getPitchById = async (req: Request, res: Response) => {
           include: {
             creator: {
               include: {
-                industries: true,
+                // industries: true,
                 interests: true,
               },
             },

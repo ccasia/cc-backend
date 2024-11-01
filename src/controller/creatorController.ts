@@ -76,11 +76,6 @@ export const deleteCreator = async (req: Request, res: Response) => {
 
   try {
     const deleteCreator = await prisma.$transaction([
-      prisma.industry.deleteMany({
-        where: {
-          userId: id,
-        },
-      }),
       prisma.interest.deleteMany({
         where: {
           userId: id,

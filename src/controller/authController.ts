@@ -682,7 +682,7 @@ export const login = async (req: Request, res: Response) => {
         },
         creator: {
           include: {
-            industries: true,
+            // industries: true,
             interests: true,
           },
         },

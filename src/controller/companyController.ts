@@ -32,12 +32,16 @@ export const getAllCompanies = async (_req: Request, res: Response) => {
   try {
     const companies = await prisma.company.findMany({
       include: {
-        brand: true,
+        brand: {
+          include: {
+            campaign: true,
+          },
+        },
+        campaign: true,
       },
     });
     return res.status(200).json(companies);
   } catch (err) {
-    //console.log('DAWDAW', err);
     return res.status(400).json({ message: err });
   }
 };
