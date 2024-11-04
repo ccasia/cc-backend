@@ -35,6 +35,7 @@ import {
   sendAgreement,
   editCampaignImages,
   draftPitch,
+  getMyCampaigns,
 } from '@controllers/campaignController';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 
@@ -80,6 +81,9 @@ router.get('/getSubmissions', isSuperAdmin, getSubmission);
 // router.get('/pitch/:campaignId', getPitchByCampaignId);
 router.get('/getCampaignLog/:id', getCampaignLog);
 router.get('/creatorAgreements/:campaignId', isLoggedIn, creatorAgreements);
+
+// For creator MyCampaigns
+router.get('/getMyCampaigns/:userId', isLoggedIn, getMyCampaigns);
 
 router.post('/updateOrCreateDefaultTimeline', updateOrCreateDefaultTimeline);
 router.post('/createCampaign', isSuperAdmin, createCampaign);

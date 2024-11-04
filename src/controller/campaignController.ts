@@ -3001,3 +3001,69 @@ export const draftPitch = async (req: Request, res: Response) => {
     return res.status(400).json(error);
   }
 };
+
+// For creator
+export const getMyCampaigns = async (req: Request, res: Response) => {
+  const { userId } = req.params;
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: {
+        id: userId,
+      },
+      include: {
+        pitch: true,
+        shortlisted: true,
+      },
+    });
+
+    if (!user) return res.status(404).json({ message: 'User not found.' });
+
+    const campaigns = await prisma.campaign.findMany({
+      include: {
+        shortlisted: {
+          where: {
+            userId: user.id,
+          },
+        },
+        pitch: {
+          where: {
+            userId: user.id,
+          },
+        },
+        campaignBrief: true,
+        campaignAdmin: true,
+        campaignRequirement: true,
+        creatorAgreement: {
+          where: {
+            userId: user.id,
+          },
+        },
+        submission: {
+          include: {
+            submissionType: true,
+            dependencies: true,
+            dependentOn: true,
+          },
+        },
+      },
+    });
+
+    const adjustedCampaigns = campaigns.map((campaign) => ({
+      ...campaign,
+      pitch: campaign.pitch.find((pitch) => pitch.userId === user.id) ?? null,
+      shortlisted: campaign.shortlisted.find((shortlisted) => shortlisted.userId === user.id) ?? null,
+      creatorAgreement: campaign.creatorAgreement.find((agreement) => agreement.userId === user.id) ?? null,
+      submission: campaign.submission.filter((submission) => submission.userId === user.id) ?? null,
+      totalCompletion:
+        (campaign.submission.filter((submission) => submission.userId === user.id && submission.status === 'APPROVED')
+          .length /
+          campaign.submission.filter((submission) => submission.userId === user.id).length) *
+          100 || null,
+    }));
+
+    return res.status(200).json(adjustedCampaigns);
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
