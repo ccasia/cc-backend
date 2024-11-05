@@ -538,6 +538,7 @@ model Notification {
   creatorId        String?
   threadId         String?
   pitchId          String?
+  threadId         String?  
   submissionId     String?
   campaign         Campaign?          @relation(fields: [campaignId], references: [id])
   pitch            Pitch?             @relation(fields: [pitchId], references: [id])
@@ -917,6 +918,7 @@ enum Priority {
 enum Entity {
   Campaign
   Live
+  Status
   User
   Pitch
   Shortlist
