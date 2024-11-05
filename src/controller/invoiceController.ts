@@ -1,8 +1,28 @@
+import axios from 'axios';
+
+import { XeroClient, Contact, LineItem, Invoice, Phone } from 'xero-node';
+import jwt, { Secret } from 'jsonwebtoken';
+
 import { Request, Response } from 'express';
 
 import { InvoiceStatus, PrismaClient } from '@prisma/client';
 
+import { TokenSet } from 'openid-client';
+import { error } from 'console';
+
 const prisma = new PrismaClient();
+
+const client_id: string = process.env.XeroCLientID as string;
+const client_secret: string = process.env.XeroClientSecret as string;
+const redirectUrl: string = process.env.XeroRedirectUrl as string;
+const scopes: string = process.env.XeroScopes as string;
+
+const xero = new XeroClient({
+  clientId: client_id,
+  clientSecret: client_secret,
+  redirectUris: [redirectUrl],
+  scopes: scopes.split(' '),
+});
 
 export const getAllInvoices = async (req: Request, res: Response) => {
   try {
@@ -182,6 +202,7 @@ export const updateInvoice = async (req: Request, res: Response) => {
   //console.log(req.body);
   const { invoiceId, dueDate, status, invoiceFrom, invoiceTo, items, totalAmount, campaignId, bankInfo }: invoiceData =
     req.body;
+
   try {
     const invoice = await prisma.invoice.update({
       where: {
@@ -197,13 +218,306 @@ export const updateInvoice = async (req: Request, res: Response) => {
         bankAcc: bankInfo,
         campaignId,
       },
+      include: {
+        creator: true,
+        user: true,
+      },
+    });
+
+    let contactID: any;
+
+    if (status == 'approved' && Object.keys(req.body.contactId).length != 0) {
+      await createXeroInvoiceLocal(
+        req.body.contactId.contact.contactID,
+        items,
+        dueDate,
+        'AUTHORISED',
+        req.body.contactId.type,
+      );
+      contactID = req.body.contactId.contact.contactID;
+    }
+
+    if (status == 'approved' && req.body.newContact == true) {
+      const contact: any = await createXeroContact(bankInfo, invoice.creator, invoice.user, invoiceFrom);
+      contactID = contact[0].contactID;
+      await createXeroInvoiceLocal(contactID, items, dueDate, 'AUTHORISED', req.body.contactId.type);
+    }
+
+    await prisma.creator.update({
+      where: {
+        id: invoice.creator.id,
+      },
+      data: {
+        xeroContactId: contactID,
+      },
     });
     res.status(200).json(invoice);
   } catch (error) {
-    //console.log(error);
+    console.log(error);
     res.status(500).json({ error: 'Something went wrong' });
   }
 };
-// create delete function
 
-// create update function
+export const getXero = async (req: Request, res: Response) => {
+  try {
+    const consentUrl: string = await xero.buildConsentUrl();
+    console.log("consentUrl" , consentUrl)
+    return res.status(200).json({ url: consentUrl });
+    // res.redirect(consentUrl);
+  } catch (err) {
+    console.error('Error generating consent URL:', err);
+    return res.status(500).json({ error: 'Failed to generate consent URL' });
+  }
+};
+
+export const xeroCallBack = async (req: Request, res: Response) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: {
+        id: req.session.userid,
+      },
+    });
+
+    const tokenSet: TokenSet = await xero.apiCallback(req.url);
+    await xero.updateTenants();
+
+    const decodedIdToken: any = jwt.decode(tokenSet.id_token as any);
+    const decodedAccessToken: any = jwt.decode(tokenSet.access_token as any);
+
+    req.session.xeroTokenid = decodedIdToken;
+    req.session.xeroToken = decodedAccessToken;
+    req.session.xeroTokenSet = tokenSet;
+    req.session.xeroTenants = xero.tenants;
+    req.session.xeroActiveTenants = xero.tenants[0];
+
+    const today = new Date();
+    const refreshExpiry = new Date(today);
+
+    await prisma.user.update({
+      where: {
+        id: req.session.userid,
+      },
+      data: {
+        xeroRefreshToken: tokenSet.refresh_token,
+        updateRefershToken: new Date(refreshExpiry),
+      },
+    });
+
+    res.status(200).json({ token: decodedAccessToken || null }); // Send the token response back to the client
+  } catch (err) {
+    console.log(err);
+  }
+};
+
+export const getXeroContacts = async (req: Request, res: Response) => {
+  if (req.session.xeroActiveTenants == undefined) {
+    console.log(error);
+    return res
+      .status(400)
+      .json({ error: 'Tenant ID is missing check your xero connection please activate your xero account' });
+  }
+
+  const activeTenants: any = req.session.xeroActiveTenants.tenantId;
+
+  try {
+    const contacts = await xero.accountingApi.getContacts(activeTenants);
+    const contactData: any = contacts.body.contacts;
+    const reduceConctacts = contactData
+      ?.filter((contact: any) => contact.isSupplier == true)
+      .map((contact: any) => {
+        return {
+          contactID: contact.contactID,
+          name: contact.name,
+        };
+      });
+    return res.status(200).json(reduceConctacts);
+  } catch (error) {
+    console.log(error);
+    return res.status(400).json({ Message: 'check your xero auth' });
+  }
+};
+
+export const checkRefreshToken = async (req: Request, res: Response) => {
+  const userId = req.session.userid;
+  try {
+    const user = await prisma.user.findUnique({
+      where: {
+        id: userId,
+      },
+    });
+    if (!user) {
+      return res.status(400).json({ error: 'user not found' });
+    }
+    // const refreshTokenUser = user.xeroRefreshToken;
+
+    if (!user.updateRefershToken) {
+      return res.status(400).json({ error: 'not valid' });
+    }
+    const lastRefreshToken: any = new Date(user.updateRefershToken || new Date());
+
+    let tokenStatus = lastRefreshToken >= new Date();
+
+    return res.status(200).json({ tokenStatus: true, lastRefreshToken });
+  } catch (error) {
+    return res.status(400).json({ tokenStatus: false });
+  }
+};
+
+export const checkAndRefreshAccessToken = async (req: Request, res: Response, next: Function) => {
+  try {
+    const userId = req.session.userid;
+
+    const user = await prisma.user.findUnique({
+      where: {
+        id: userId,
+      },
+    });
+
+    const refreshTokenUser = user?.xeroRefreshToken;
+    // if (!refreshTokenUser) {
+    //   console.log(error)
+    //   return res.status(400).json({ error: 'Not authenticated user for using xero' });
+    // }
+
+    console.log('refresh token exp :', refreshTokenUser);
+    if (!req.session.xeroTokenSet) {
+      const tokenSet: TokenSet = await xero.refreshWithRefreshToken(client_id, client_secret, refreshTokenUser);
+      await xero.updateTenants();
+
+      const newTokenSet = xero.readTokenSet();
+      const decodedAccessTokenRef = jwt.decode(tokenSet.access_token as any);
+      const decodedIdToken: any = jwt.decode(tokenSet.id_token as any);
+
+      req.session.xeroTokenid = decodedIdToken;
+      req.session.xeroToken = decodedAccessTokenRef;
+      req.session.xeroTokenSet = tokenSet;
+      req.session.xeroTenants = xero.tenants;
+      req.session.xeroActiveTenants = xero.tenants[0];
+
+      await prisma.user.update({
+        where: {
+          id: req.session.userid,
+        },
+        data: {
+          xeroRefreshToken: tokenSet.refresh_token,
+        },
+      });
+    }
+    const decodedAccessToken = jwt.decode(req.session.xeroTokenSet.access_token) as any;
+
+    const currentTime = Math.floor(Date.now() / 1000);
+
+    if (decodedAccessToken) {
+      const tokenSet: TokenSet = await xero.refreshWithRefreshToken(client_id, client_secret, refreshTokenUser);
+      await xero.updateTenants();
+
+      const newTokenSet = xero.readTokenSet();
+      const decodedAccessTokenRef = jwt.decode(tokenSet.access_token as any);
+      const decodedIdToken: any = jwt.decode(tokenSet.id_token as any);
+
+      req.session.xeroTokenid = decodedIdToken;
+      req.session.xeroToken = decodedAccessTokenRef;
+      req.session.xeroTokenSet = tokenSet;
+      req.session.xeroTenants = xero.tenants;
+      req.session.xeroActiveTenants = xero.tenants[0];
+
+      await prisma.user.update({
+        where: {
+          id: req.session.userid,
+        },
+        data: {
+          xeroRefreshToken: tokenSet.refresh_token,
+        },
+      });
+    }
+
+    next();
+  } catch (err) {
+    console.error('Error checking and refreshing token:', err);
+    res.status(500).json({ error: 'Failed to check and refresh token' });
+  }
+};
+
+export const createXeroInvoice = async (req: Request, res: Response) => {
+  const { contactId, lineItems, invoiceType, dueDate, reference, status } = req.body;
+
+  if (!contactId || !lineItems || !invoiceType || !dueDate || !status) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+
+  const contact: Contact = { contactID: contactId };
+
+  const lineItemsArray: LineItem[] = lineItems.map((item: any) => ({
+    description: item.description,
+    quantity: item.quantity,
+    unitAmount: item.unitAmount,
+    accountCode: item.accountCode,
+  }));
+
+  const invoice: Invoice = {
+    type: invoiceType, // e.g., 'ACCREC' for Accounts Receivable
+    contact: contact,
+    dueDate: dueDate,
+    lineItems: lineItemsArray,
+    reference: reference,
+    status: status,
+  };
+  const response = await xero.accountingApi.createInvoices(xero.tenants[0].tenantId, { invoices: [invoice] });
+};
+
+export const createXeroContact = async (bankInfo: any, creator: any, user: any, invoiceFrom: any) => {
+  if (Object.keys(bankInfo).length == 0) {
+    throw new Error('bank information not found');
+  }
+
+  const contact: Contact = {
+    name: invoiceFrom.name,
+    emailAddress: invoiceFrom.email,
+    phones: [{ phoneType: Phone.PhoneTypeEnum.MOBILE, phoneNumber: invoiceFrom.phoneNumber }],
+    addresses: [
+      {
+        addressLine1: creator.address,
+      },
+    ],
+    bankAccountDetails: bankInfo.accountNumber,
+  };
+
+  const response = await xero.accountingApi.createContacts(xero.tenants[0].tenantId, { contacts: [contact] });
+
+  return response.body.contacts;
+};
+
+export const createXeroInvoiceLocal = async (
+  contactId: string,
+  lineItems: any,
+  dueDate: any,
+  status: any,
+  invoiceType: any,
+) => {
+  try {
+    const contact: Contact = { contactID: contactId };
+    const where = 'Status=="ACTIVE"';
+    const accounts: any = await xero.accountingApi.getAccounts(xero.tenants[0].tenantId, undefined, where);
+    console.log('accounts.body.accounts[0]', accounts.body.accounts[0]);
+    const lineItemsArray: LineItem[] = lineItems.map((item: any) => ({
+      accountID: accounts.body.accounts[0].accountID,
+      description: item.description,
+      quantity: item.quantity,
+      unitAmount: item.total,
+      taxType: 'NONE',
+    }));
+
+    const invoice: Invoice = {
+      type: invoiceType, // e.g., 'ACCREC' for Accounts Receivable
+      contact: contact,
+      dueDate: dueDate,
+      lineItems: lineItemsArray,
+      status: status,
+    };
+
+    const response = await xero.accountingApi.createInvoices(xero.tenants[0].tenantId, { invoices: [invoice] });
+    console.log('invoices: ', response.body.invoices);
+  } catch (error) {
+    console.log(error);
+  }
+};

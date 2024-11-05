@@ -1,0 +1,152 @@
+{
+      "invoiceNumber": "INV-1202",
+      "createDate": "2024-10-23T12:26:08.475Z",
+      "dueDate": "2024-11-03T17:53:55.000Z",
+      "status": "approved",
+      "invoiceFrom": {
+        "id": "cm19fguk9001vdtzjinngt16o",
+        "name": "Creator Three",
+        "email": "bc767329f7@mailmaxy.one",
+        "company": "part_time",
+        "primary": false,
+        "addressType": "Home",
+        "phoneNumber": "9289323"
+      },
+      "invoiceTo": {
+        "id": "1",
+        "name": "Cult Creative",
+        "email": "support@cultcreative.asia",
+        "company": "Cult Creative",
+        "primary": true,
+        "addressType": "Hq",
+        "fullAddress": "4-402, Level 4, The Starling Mall, Lot 4-401 &, 6, Jalan SS 21/37, Damansara Utama, 47400 Petaling Jaya, Selangor",
+        "phoneNumber": "+60 11-5415 5751"
+      },
+      "items": [
+        {
+          "price": 200,
+          "title": "Posting on social media",
+          "total": 200,
+          "service": "Posting on social media",
+          "quantity": 1,
+          "description": "posting on social media"
+        }
+      ],
+      "bankInfo": {
+        "payTo": "Creator Three",
+        "bankName": "CIMB Bank Berhad",
+        "accountEmail": "bc767329f7@mailmaxy.one",
+        "accountNumber": "736878282323"
+      },
+      "totalAmount": 200,
+      "invoiceId": "cm2ggjw4g001o4y5wtpbjp38i",
+      "contactId": {
+        "contact": {
+          "contactID": "d0dd30c8-0856-469a-b527-bb276065cccb",
+          "name": "Iman Marissa"
+        },
+        "type": "ACCREC",
+        "description": "new account"
+      }
+    }
+
+    new created contact Contact {
+        contactID: 'b620aacb-51b7-441f-84a8-9e87ce2357a2',
+        mergedToContactID: undefined,
+        contactNumber: undefined,
+        accountNumber: undefined,
+        contactStatus: 'ACTIVE',
+        name: 'Creator Three',
+        firstName: undefined,
+        lastName: undefined,
+        companyNumber: undefined,
+        emailAddress: 'bc767329f7@mailmaxy.one',
+        contactPersons: [],
+        bankAccountDetails: '736878282323',
+        taxNumber: undefined,
+        accountsReceivableTaxType: undefined,
+        accountsPayableTaxType: undefined,
+        addresses: [
+          Address {
+            addressType: 'STREET',
+            addressLine1: undefined,
+            addressLine2: undefined,
+            addressLine3: undefined,
+            addressLine4: undefined,
+            city: '',
+            region: '',
+            postalCode: '',
+            country: '',
+            attentionTo: undefined
+          },
+          Address {
+            addressType: 'POBOX',
+            addressLine1: undefined,
+            addressLine2: undefined,
+            addressLine3: undefined,
+            addressLine4: undefined,
+            city: '',
+            region: '',
+            postalCode: '',
+            country: '',
+            attentionTo: undefined
+          }
+        ],
+        phones: [
+          Phone {
+            phoneType: 'DEFAULT',
+            phoneNumber: '',
+            phoneAreaCode: '',
+            phoneCountryCode: ''
+          },
+          Phone {
+            phoneType: 'DDI',
+            phoneNumber: '',
+            phoneAreaCode: '',
+            phoneCountryCode: ''
+          },
+          Phone {
+            phoneType: 'FAX',
+            phoneNumber: '',
+            phoneAreaCode: '',
+            phoneCountryCode: ''
+          },
+          Phone {
+            phoneType: 'MOBILE',
+            phoneNumber: '9289323',
+            phoneAreaCode: '',
+            phoneCountryCode: ''
+          }
+        ],
+        isSupplier: false,
+        isCustomer: false,
+        salesDefaultLineAmountType: undefined,
+        purchasesDefaultLineAmountType: undefined,
+        defaultCurrency: undefined,
+        xeroNetworkKey: undefined,
+        salesDefaultAccountCode: undefined,
+        purchasesDefaultAccountCode: undefined,
+        salesTrackingCategories: [],
+        purchasesTrackingCategories: [],
+        trackingCategoryName: undefined,
+        trackingCategoryOption: undefined,
+        paymentTerms: undefined,
+        updatedDateUTC: 2024-10-27T22:26:30.660Z,
+        contactGroups: [],
+        website: undefined,
+        brandingTheme: undefined,
+        batchPayments: BatchPaymentDetails {
+          bankAccountNumber: '736878282323',
+          bankAccountName: undefined,
+          details: undefined,
+          code: undefined,
+          reference: undefined
+        },
+        discount: undefined,
+        balances: undefined,
+        attachments: undefined,
+        hasAttachments: undefined,
+        validationErrors: undefined,
+        hasValidationErrors: false,
+        statusAttributeString: undefined
+      }

@@ -1630,7 +1630,6 @@ export const changePitchStatus = async (req: Request, res: Response) => {
     if (pitch.status === 'approved') {
       prisma.$transaction(async (tx) => {
         const url = await generateAgreement(existingPitch.user, existingPitch.campaign);
-
         await tx.creatorAgreement.create({
           data: {
             userId: existingPitch.userId,
@@ -1641,7 +1640,8 @@ export const changePitchStatus = async (req: Request, res: Response) => {
 
         await tx.shortListedCreator.create({
           data: {
-            userId: pitch?.userId,
+          
+            userId: pitch.userId as string,
             campaignId: pitch?.campaignId,
           },
         });
@@ -2221,199 +2221,205 @@ export const shortlistCreator = async (req: Request, res: Response) => {
   } = req.body;
 
   try {
-    await prisma.$transaction(async (tx) => {
-      const timelines = await tx.campaignTimeline.findMany({
-        where: {
-          AND: [
-            {
-              campaignId: campaignId,
-            },
-            {
-              for: 'creator',
-            },
-            {
-              name: {
-                not: 'Open For Pitch',
+    await prisma.$transaction(
+      async (tx) => {
+        const timelines = await tx.campaignTimeline.findMany({
+          where: {
+            AND: [
+              {
+                campaignId: campaignId,
               },
-            },
-          ],
-        },
-        orderBy: {
-          order: 'asc',
-        },
-      });
-
-      // Find campaign by campaign Id
-      const campaignInfo = await tx.campaign.findUnique({
-        where: {
-          id: campaignId,
-        },
-        include: {
-          thread: true,
-          campaignBrief: true,
-        },
-      });
-
-      // Find creator information by creator id
-      const data = await Promise.all(
-        creators.map((creator: Creator) =>
-          tx.user.findUnique({
-            where: {
-              id: creator.id,
-            },
-            include: {
-              creator: true,
-              paymentForm: true,
-            },
-          }),
-        ),
-      );
-
-      // Generating a pdf with creator information
-      for (const creator of data) {
-        const url = await generateAgreement(creator, campaignInfo);
-
-        // Create creator agreement
-        await tx.creatorAgreement.create({
-          data: {
-            userId: creator.id as string,
-            campaignId: campaignInfo?.id as any,
-            agreementUrl: url,
+              {
+                for: 'creator',
+              },
+              {
+                name: {
+                  not: 'Open For Pitch',
+                },
+              },
+            ],
+          },
+          orderBy: {
+            order: 'asc',
           },
         });
-      }
 
-      // Create a shortlisted creator data
-      const shortlistedCreators = await Promise.all(
-        creators.map(async (creator: any) => {
-          return await tx.shortListedCreator.create({
-            data: {
-              userId: creator.id,
-              campaignId: campaignId,
-            },
-          });
-        }),
-      );
-
-      const submissions: any[] = [];
-
-      // Create submissions for creator
-      for (const creator of shortlistedCreators) {
-        const board = await tx.board.findUnique({
+        // Find campaign by campaign Id
+        const campaignInfo = await tx.campaign.findUnique({
           where: {
-            userId: creator.userId,
+            id: campaignId,
           },
           include: {
-            columns: true,
+            thread: true,
+            campaignBrief: true,
           },
         });
 
-        if (!board) {
-          throw new Error('Board not found.');
-        }
-
-        const columnToDo = await tx.columns.findFirst({
-          where: {
-            AND: [
-              { boardId: board?.id },
-              {
-                name: {
-                  contains: 'To Do',
-                },
+        // Find creator information by creator id
+        const data = await Promise.all(
+          creators.map((creator: Creator) =>
+            tx.user.findUnique({
+              where: {
+                id: creator.id,
               },
-            ],
-          },
-        });
-
-        const columnInProgress = await tx.columns.findFirst({
-          where: {
-            AND: [
-              { boardId: board?.id },
-              {
-                name: {
-                  contains: 'In Progress',
-                },
+              include: {
+                creator: true,
+                paymentForm: true,
               },
-            ],
-          },
-        });
+            }),
+          ),
+        );
 
-        if (!columnToDo || !columnInProgress) {
-          throw new Error('Column not found.');
-        }
+        // Generating a pdf with creator information
+        for (const creator of data) {
+          const url = await generateAgreement(creator, campaignInfo);
 
-        for (const [index, timeline] of timelines.entries()) {
-          const submission = await tx.submission.create({
+          // Create creator agreement
+          await tx.creatorAgreement.create({
             data: {
-              dueDate: timeline.endDate,
-              campaignId: timeline.campaignId,
-              userId: creator.userId as string,
-              submissionTypeId: timeline.submissionTypeId as string,
-              status: index === 0 ? 'IN_PROGRESS' : 'NOT_STARTED',
-              task: {
-                create: {
-                  name: timeline.name,
-                  position: index,
-                  columnId: index === 0 ? columnInProgress.id : (columnToDo?.id as string),
-                  priority: '',
-                  status: index === 0 ? 'In Progress' : 'To Do',
-                },
+              userId: creator.id as string,
+              campaignId: campaignInfo?.id as any,
+              agreementUrl: url,
+            },
+          });
+        }
+
+        // Create a shortlisted creator data
+        const shortlistedCreators = await Promise.all(
+          creators.map(async (creator: any) => {
+            return await tx.shortListedCreator.create({
+              data: {
+                userId: creator.id,
+                campaignId: campaignId,
               },
+            });
+          }),
+        );
+
+        const submissions: any[] = [];
+
+        // Create submissions for creator
+        for (const creator of shortlistedCreators) {
+          const board = await tx.board.findUnique({
+            where: {
+              userId: creator.userId,
             },
             include: {
-              submissionType: true,
+              columns: true,
             },
           });
-          submissions.push(submission);
-        }
-      }
 
-      // Create submissions dependency for submissions
-      for (let i = 1; i < submissions.length; i++) {
-        await tx.submissionDependency.create({
-          data: {
-            submissionId: submissions[i].id,
-            dependentSubmissionId: submissions[i - 1].id,
-          },
-        });
-      }
-
-      await Promise.all(
-        shortlistedCreators.map(async (creator: ShortListedCreator) => {
-          const data = await saveNotification({
-            userId: creator.userId as string,
-            message: `Congratulations! You've been shortlisted for the ${campaignInfo?.name} campaign.`,
-            entity: 'Shortlist',
-          });
-          const socketId = clients.get(creator.userId);
-          if (socketId) {
-            io.to(socketId).emit('notification', data);
-          } else {
-            //console.log(`User with ID ${creator.userId} is not connected.`);
+          if (!board) {
+            throw new Error('Board not found.');
           }
 
-          if (!campaignInfo || !campaignInfo.thread) {
-            return res.status(404).json({ message: 'Campaign or thread not found' });
-          }
-
-          const isThreadExist = await tx.userThread.findFirst({
+          const columnToDo = await tx.columns.findFirst({
             where: {
-              threadId: campaignInfo.thread.id,
-              userId: creator.userId as string,
+              AND: [
+                { boardId: board?.id },
+                {
+                  name: {
+                    contains: 'To Do',
+                  },
+                },
+              ],
             },
           });
 
-          if (!isThreadExist) {
-            await tx.userThread.create({
+          const columnInProgress = await tx.columns.findFirst({
+            where: {
+              AND: [
+                { boardId: board?.id },
+                {
+                  name: {
+                    contains: 'In Progress',
+                  },
+                },
+              ],
+            },
+          });
+
+          if (!columnToDo || !columnInProgress) {
+            throw new Error('Column not found.');
+          }
+
+          for (const [index, timeline] of timelines.entries()) {
+            const submission = await tx.submission.create({
               data: {
+                dueDate: timeline.endDate,
+                campaignId: timeline.campaignId,
+                userId: creator.userId as string,
+                submissionTypeId: timeline.submissionTypeId as string,
+                status: index === 0 ? 'IN_PROGRESS' : 'NOT_STARTED',
+                task: {
+                  create: {
+                    name: timeline.name,
+                    position: index,
+                    columnId: index === 0 ? columnInProgress.id : (columnToDo?.id as string),
+                    priority: '',
+                    status: index === 0 ? 'In Progress' : 'To Do',
+                  },
+                },
+              },
+              include: {
+                submissionType: true,
+              },
+            });
+            submissions.push(submission);
+          }
+        }
+
+        // Create submissions dependency for submissions
+        for (let i = 1; i < submissions.length; i++) {
+          await tx.submissionDependency.create({
+            data: {
+              submissionId: submissions[i].id,
+              dependentSubmissionId: submissions[i - 1].id,
+            },
+          });
+        }
+
+        await Promise.all(
+          shortlistedCreators.map(async (creator: ShortListedCreator) => {
+            const data = await saveNotification({
+              userId: creator.userId as string,
+              message: `Congratulations! You've been shortlisted for the ${campaignInfo?.name} campaign.`,
+              entity: 'Shortlist',
+            });
+            const socketId = clients.get(creator.userId);
+            if (socketId) {
+              io.to(socketId).emit('notification', data);
+            } else {
+              //console.log(`User with ID ${creator.userId} is not connected.`);
+            }
+
+            if (!campaignInfo || !campaignInfo.thread) {
+              return res.status(404).json({ message: 'Campaign or thread not found' });
+            }
+
+            const isThreadExist = await tx.userThread.findFirst({
+              where: {
                 threadId: campaignInfo.thread.id,
                 userId: creator.userId as string,
               },
             });
-          }
-        }),
-      );
-    });
+
+            if (!isThreadExist) {
+              await tx.userThread.create({
+                data: {
+                  threadId: campaignInfo.thread.id,
+                  userId: creator.userId as string,
+                },
+              });
+            }
+          }),
+        );
+      },
+      {
+        maxWait: 5000, // 5 seconds max wait to connect to prisma
+        timeout: 20000, // 20 seconds
+      },
+    );
 
     res.status(200).json({ message: 'Successfully shortlisted' });
   } catch (error) {

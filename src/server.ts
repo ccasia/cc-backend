@@ -61,6 +61,11 @@ declare module 'express-session' {
     name: string;
     role: string;
     photoURL: string;
+    xeroToken:any;
+    xeroTokenid:any;
+    xeroTokenSet:any;
+    xeroTenants:any;
+    xeroActiveTenants:any;
   }
 }
 

@@ -19,6 +19,13 @@ import {
   updateProfileCreator,
   registerFinanceUser,
 } from '@controllers/authController';
+import {
+  getXero,
+  xeroCallBack,
+  getXeroContacts,
+  checkAndRefreshAccessToken,
+  checkRefreshToken
+} from '@controllers/invoiceController';
 import { validateToken } from '@utils/jwtHelper';
 // import { needPermissions } from '@middlewares/needPermissions';
 import { isLoggedIn } from '@middlewares/onlyLogin';
@@ -42,5 +49,9 @@ router.get('/checkCreator', validateToken, checkCreator);
 router.put('/updateCreator', validateToken, updateCreator);
 router.patch('/updateProfileCreator', validateToken, updateProfileCreator);
 router.post('/registerFinanceUser', registerFinanceUser);
+
+router.get('/xeroCallback', xeroCallBack);
+router.get('/getXeroContacts', checkAndRefreshAccessToken, getXeroContacts);
+router.get('/checkRefreshToken', checkRefreshToken);
 
 export default router;

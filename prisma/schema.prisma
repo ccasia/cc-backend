@@ -20,6 +20,8 @@ model User {
   updatedAt          DateTime             @updatedAt
   status             Status               @default(pending)
   eventId            String?
+  xeroRefreshToken   String?
+  updateRefershToken DateTime?
   role               RoleEnum
   admin              Admin?
   campaignLogs       CampaignLog[]
@@ -86,6 +88,7 @@ model Creator {
   birthDate       DateTime?
   instagram       String?     @db.VarChar(100)
   tiktok          String?     @db.VarChar(100)
+  xeroContactId   String?
   employment      Employment? @default(others)
   languages       Json?
   userId          String      @unique
