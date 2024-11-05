@@ -18,10 +18,46 @@ const notificationPitch = (campaignName: string, type: 'Admin' | 'Creator', crea
   };
 };
 
+//  Feedback on Draft
+const notificationDraftFeedback = (campaignName: string) => {
+  return {
+    title: '📝 Feedback on Draft',
+    message: ` 📝 Draft Feedback Available! Feedback on your draft for ${campaignName} is ready.`,
+  };
+};
+
+const notificationFinalDraft = (campaignName: string, type: 'Admin' | 'Creator', creatorName?: string) => {
+  if (type === 'Admin') {
+    return {
+      title: '📬 Final Draft Received!',
+      message: `📝 Final Draft Submitted! The final draft for ${campaignName} has been submitted by ${creatorName}.`,
+    };
+  }
+  return {
+    title: '📝 Draft Sent Successfully!',
+    message: `Your draft for the ${campaignName} has been sent. We’ll review it and let you know if any changes are needed`,
+  };
+};
+
+
+// const notificationDraft = (campaignName: string, type: 'Admin' | 'Creator', creatorName?: string,  draft?: string) => {
+//   if (type === 'Admin') {
+//     return {
+//       title: `📬 New ${draft}  Received!`,
+//       message: `A new ${draft} for the ${campaignName} has been submitted by ${creatorName}.`,
+//     };
+//   }
+//   return {
+//     title: '📝 Draft Sent Successfully!',
+//     message: `Your draft for the ${campaignName} has been sent. We’ll review it and let you know if any changes are needed`,
+//   };
+// };
+
+
 const notificationDraft = (campaignName: string, type: 'Admin' | 'Creator', creatorName?: string) => {
   if (type === 'Admin') {
     return {
-      title: '📬 New Draft Received!',
+      title: `📬 New Submission of Draft Received!`,
       message: `A new draft for the ${campaignName} has been submitted by ${creatorName}.`,
     };
   }
@@ -49,7 +85,7 @@ const notificationPendingAgreement = (campaignName: string) => {
 const notificationAgreement = (campaignName: string, type: 'Admin' | 'Creator', creatorName?: string) => {
   if (type === 'Admin') {
     return {
-      title: '📄 New Agreement Sent!',
+      title: '📄 New Agreement Received!',
       message: `An agreement for the ${campaignName} has been submitted by ${creatorName}. `,
     };
   }
@@ -68,7 +104,7 @@ const notificationApproveAgreement = (campaignName: string) => {
 
 const notificationApproveDraft = (campaignName: string, draft: string) => {
   return {
-    title: `✅ ${draft} Approved!`,
+    title: `✅ Draft Approved!`,
     message: `Your ${draft} for ${campaignName} has been approved. Great work!`,
   };
 };
@@ -92,6 +128,22 @@ const notificationPosting = (campaignName: string, type: 'Admin' | 'Creator', cr
     message: `Your post for the ${campaignName} has been successfully submitted. Thank you for your work!`,
   };
 };
+
+const notificationGroupChat = (campaignName: string, thread: string) => {
+  return {
+    title: `💬 New Message in ${thread} Chat!`,
+    message: `You have a new message in your group chat for ${campaignName} `,
+  };
+};
+
+const notificationCSMChat = (thread: string) => {
+  return {
+    title: `💬 New Private!`,
+    message: `You have a new message in your CSM chat for ${thread}. `,
+  };
+};
+
+
 
 const reminderDueDate = (
   campaignName: string,
@@ -131,5 +183,7 @@ export {
   notificationApproveDraft,
   notificationRejectDraft,
   notificationPosting,
+  notificationCSMChat,
+  notificationGroupChat,
   reminderDueDate,
 };
