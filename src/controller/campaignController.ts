@@ -33,7 +33,7 @@ import path from 'path';
 import { compress } from '@helper/compression';
 import { agreementInput } from '@helper/agreementInput';
 import { pdfConverter } from '@helper/pdfConverter';
-import { notificationPitch } from '@helper/notification';
+import { notificationPendingAgreement, notificationPitch, notificationSignature } from '@helper/notification';
 import { deliveryConfirmation, shortlisted, tracking } from '@configs/nodemailer.config';
 
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
@@ -289,7 +289,7 @@ export const createCampaign = async (req: Request, res: Response) => {
                 : dayjs(timeline.find((item: any) => item.timeline_type.name === 'Posting').endDate).toDate(),
       }));
 
-      defaultRequirements.forEach(async (item) => {
+      defaultRequirements.map(async (item) => {
         await tx.campaignSubmissionRequirement.create({
           data: {
             campaignId: campaign.id,
@@ -420,6 +420,7 @@ export const createCampaign = async (req: Request, res: Response) => {
       const filterTimelines = timelines.filter((timeline) => timeline.for === 'admin');
 
       const test = await Promise.all(
+       
         admins.map(async (admin: any) => {
           const existing = await tx.campaignAdmin.findUnique({
             where: {
@@ -450,6 +451,8 @@ export const createCampaign = async (req: Request, res: Response) => {
               admin: true,
             },
           });
+
+          console.log("Admins", admins);
 
           await tx.event.create({
             data: {
@@ -511,6 +514,9 @@ export const createCampaign = async (req: Request, res: Response) => {
 
       logChange('Created', campaign.id, req);
       return res.status(200).json({ campaign, message: 'Campaign created successfully.' });
+    },{
+      maxWait: 5000, // 5 seconds max wait to connect to prisma
+      timeout: 20000, // 20 seconds
     });
   } catch (error) {
     console.log(error);
@@ -1183,8 +1189,6 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
         pitchId: pitch.id,
       });
 
-      console.log('Created Pitch ID:', pitch.id);
-      console.log('Save NOTI', newPitch);
 
       io.to(clients.get(user?.id)).emit('notification', newPitch);
 
@@ -1292,7 +1296,7 @@ export const changeCampaignStage = async (req: Request, res: Response) => {
           userId: value.userId as string,
           title: 'Campaign Maintenance',
           message: `Campaign ${campaign.name} is currently down for maintenance.`,
-          entity: 'Campaign',
+          entity: 'Status',
           entityId: campaign.id,
         });
         io.to(clients.get(value.userId)).emit('notification', data);
@@ -1304,7 +1308,7 @@ export const changeCampaignStage = async (req: Request, res: Response) => {
         const data = await saveNotification({
           userId: admin.adminId,
           message: `${campaign.name} is now live!`,
-          entity: 'Campaign',
+          entity: 'Status',
           entityId: campaign.id,
         });
         io.to(clients.get(admin.adminId)).emit('notification', data);
@@ -1895,6 +1899,38 @@ export const changePitchStatus = async (req: Request, res: Response) => {
             io.to(socketId).emit('notification', data);
           }
 
+            // Fetching admins for the campaign
+            const admins = await tx.campaignAdmin.findMany({
+              where: {
+                campaignId: pitch.campaignId,
+              },
+              include: {
+                admin: {
+                  include: {
+                    user: true,
+                  },
+                },
+              },
+            });
+  
+            // Send notifications to each admin
+            for (const admin of admins) {
+              const { title, message } = notificationPendingAgreement(pitch.campaign.name);
+              const notification = await saveNotification({
+                userId: admin.adminId, 
+                title: title,
+                message: message,
+                entity: 'Pitch',
+                creatorId: pitch.userId,
+                entityId: pitch.campaignId,
+              });
+  
+              const adminSocketId = clients.get(admin.admin.userId);
+              if (adminSocketId) {
+                io.to(adminSocketId).emit('notification', notification);
+              }
+            }
+            
           const campaign = await tx.campaign.findUnique({
             where: {
               id: pitch.campaignId,
@@ -1924,9 +1960,9 @@ export const changePitchStatus = async (req: Request, res: Response) => {
             });
           }
         },
-        // {
-        //   timeout: 10000,
-        // }
+        {
+          timeout: 10000,
+        }
       );
     } else {
       const pitch = await prisma.pitch.update({
@@ -2020,6 +2056,7 @@ export const changePitchStatus = async (req: Request, res: Response) => {
 
     return res.status(200).json({ message: 'Successfully changed.' });
   } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -2490,7 +2527,6 @@ export const shortlistCreator = async (req: Request, res: Response) => {
           });
         }),
       );
-
       // Create submissions for creator
       for (const creator of shortlistedCreators) {
         const board = await tx.board.findUnique({
@@ -2844,6 +2880,8 @@ export const sendAgreement = async (req: Request, res: Response) => {
       },
     });
 
+    console.log("Update Agreement", agreement)
+
     const shortlistedCreator = await prisma.shortListedCreator.findFirst({
       where: {
         AND: [
@@ -2861,6 +2899,20 @@ export const sendAgreement = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'This creator is not shortlisted.' });
     }
 
+    const campaign = await prisma.campaign.findUnique({
+      where: {
+        id: campaignId,
+      },
+      select: {
+        name: true,
+      },
+    });
+
+    if (!campaign) {
+      return res.status(404).json({ message: 'Campaign not found.' });
+    }
+
+
     // update shortlisted creator table
     await prisma.shortListedCreator.update({
       where: {
@@ -2870,6 +2922,21 @@ export const sendAgreement = async (req: Request, res: Response) => {
         isAgreementReady: true,
       },
     });
+
+      const { title, message } = notificationSignature(campaign.name);
+      const notification = await saveNotification({
+        userId: isUserExist.id,
+        title: title,
+        message: message,
+        entity: 'Agreement',
+        entityId: campaignId,
+      });
+
+      const socketId = clients.get(isUserExist.id);
+      if (socketId) {
+        io.to(socketId).emit('notification', notification);
+      }
+    
 
     return res.status(200).json({ message: 'Agreement has been sent.' });
   } catch (error) {

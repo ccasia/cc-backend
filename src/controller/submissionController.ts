@@ -117,6 +117,7 @@ export const agreementSubmission = async (req: Request, res: Response) => {
         submission.user.name as string,
       );
 
+      //for admins
       submission.campaign.campaignAdmin.forEach(async (item) => {
         const adminNotification = await saveNotification({
           userId: item.adminId,
@@ -258,9 +259,10 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
 
       const notification = await saveNotification({
         userId: userId,
-        title: `Agreement Rejected`,
+        title: `❌ Agreement Rejected`,
         message: `Please Resubmit Your Agreement Form for ${campaign?.name}`,
         entity: 'Agreement',
+        entityId: campaign?.id
       });
 
       io.to(clients.get(userId)).emit('notification', notification);
@@ -503,6 +505,7 @@ export const adminManageDraft = async (req: Request, res: Response) => {
 
       console.log(test);
 
+      //For Approve 
       const { title, message } = notificationApproveDraft(
         submission.campaign.name,
         MAP_TIMELINE[sub.submissionType.type],
@@ -513,6 +516,7 @@ export const adminManageDraft = async (req: Request, res: Response) => {
         title: title,
         message: message,
         entity: 'Draft',
+        creatorId: submission.userId,
         entityId: submission.campaignId,
       });
 
@@ -647,8 +651,6 @@ export const postingSubmission = async (req: Request, res: Response) => {
 
     const inReviewColumnId = await getColumnId({ userId: submission.userId, columnName: 'In Review' });
 
-    console.log('Data id', submissionId);
-    console.log('Data submisison', submission);
     await prisma.task.update({
       where: {
         id: submission.task?.id,
@@ -672,6 +674,7 @@ export const postingSubmission = async (req: Request, res: Response) => {
         message: adminMessage,
         title: adminTitle,
         entity: 'Post',
+        creatorId: submission.userId,
         entityId: submission.campaignId,
       });
 
@@ -773,8 +776,9 @@ export const adminManagePosting = async (req: Request, res: Response) => {
 
       const notification = await saveNotification({
         userId: submission.userId,
-        message: `Your posting has been approved for campaign ${submission.campaign.name}`,
+        message: ` ✅ Your posting has been approved for campaign ${submission.campaign.name}`,
         entity: Entity.Post,
+        entityId: submission.campaignId
       });
 
       io.to(clients.get(submission.userId)).emit('notification', notification);
@@ -801,7 +805,7 @@ export const adminManagePosting = async (req: Request, res: Response) => {
 
     const notification = await saveNotification({
       userId: submission.userId,
-      message: `Your posting has been rejected for campaign ${submission.campaign.name}. Feedback is provided.`,
+      message: `❌ Your posting has been rejected for campaign ${submission.campaign.name}. Feedback is provided.`,
       entity: Entity.Post,
     });
 
