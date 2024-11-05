@@ -32,12 +32,17 @@ export const getInvoicesByCreatorId = async (req: Request, res: Response) => {
         creatorId: userid,
       },
       include: {
-        campaign: true,
+        campaign: {
+          include: {
+            brand: true,
+            company: true,
+          },
+        },
       },
     });
-    res.status(200).json(invoices);
+    return res.status(200).json(invoices);
   } catch (error) {
-    res.status(500).json({ error: 'Something went wrong' });
+    return res.status(400).json(error);
   }
 };
 
@@ -207,3 +212,24 @@ export const updateInvoice = async (req: Request, res: Response) => {
 // create delete function
 
 // create update function
+
+export const creatorInvoice = async (req: Request, res: Response) => {
+  const { invoiceId } = req.params;
+
+  try {
+    const invoice = await prisma.invoice.findUnique({
+      where: {
+        id: invoiceId,
+      },
+      include: {
+        campaign: true,
+      },
+    });
+
+    if (!invoice) return res.status(404).json({ message: 'Invoice not found.' });
+
+    return res.status(200).json(invoice);
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};

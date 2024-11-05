@@ -2294,14 +2294,8 @@ export const saveCampaign = async (req: Request, res: Response) => {
   try {
     const bookmark = await prisma.bookMarkCampaign.create({
       data: {
-        user: {
-          connect: { id: userid as string },
-        },
-        campaign: {
-          connect: {
-            id: campaignId,
-          },
-        },
+        userId: userid as string,
+        campaignId: campaignId as string,
       },
       include: {
         campaign: true,
