@@ -538,7 +538,7 @@ model Notification {
   creatorId        String?
   threadId         String?
   pitchId          String?
-  threadId         String?  
+  invoiceId        String?  
   submissionId     String?
   campaign         Campaign?          @relation(fields: [campaignId], references: [id])
   pitch            Pitch?             @relation(fields: [pitchId], references: [id])
@@ -931,7 +931,6 @@ enum Entity {
   Metrcis
   Agreement
   Chat
-  Status
 }
 
 enum SubmissionEnum {

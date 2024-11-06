@@ -33,7 +33,7 @@ export const saveNotification = async ({
   type?: string;
   threadId?: string;
 }) => {
-  if (entity === 'Agreement' || entity === 'Draft' || entity === 'Timeline' || entity === 'Post'  ) {
+  if (entity === 'Agreement' || entity === 'Draft' || entity === 'Timeline' || entity === 'Post') {
     return prisma.notification.create({
       data: {
         message: message,
@@ -57,44 +57,30 @@ export const saveNotification = async ({
     });
   }
 
-  // if (entity === 'Chat' && entityId) {
-  //   // Verify campaign existence
-  //   const campaignExists = await prisma.campaign.findUnique({
-  //     where: { id: entityId },
-  //   });
 
-  //   if (!campaignExists) {
-  //     console.error(`Campaign with ID ${entityId} does not exist.`);
-  //     return; // Stop execution if the campaign does not exist
-  //   }
-
-  //   return prisma.notification.create({
-  //     data: {
-  //       message: message,
-  //       title: title,
-  //       entity: entity,
-  //       threadId: threadId,
-  //       campaign: {
-  //         connect: {
-  //           id: entityId,
-  //         },
-  //       },
-  //       userNotification: {
-  //         create: {
-  //           userId: userId,
-  //         },
-  //       },
-  //     },
-  //     include: {
-  //       userNotification: {
-  //         select: {
-  //           userId: true,
-  //         },
-  //       },
-  //     },
-  //   });
-  // }
-
+  if (entity === 'Invoice'){
+    return prisma.notification.create({
+      data: {
+        message: message,
+        title: title,
+        entity: entity,
+        threadId: threadId,
+        //invoiceId: invoiceId,
+        userNotification: {
+          create: {
+            userId: userId,
+          },
+        },
+      },
+      include: {
+        userNotification: {
+          select: {
+            userId: true,
+          },
+        },
+      },
+    });
+  }
   if (entity === 'Chat') {
     if (entityId) {
       // Case: Chat with a campaign, connect campaignId
