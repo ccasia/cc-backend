@@ -1,9 +1,24 @@
-const notificationCampaign = (campaignName: string) => {
+const notificationCampaignLive = (campaignName: string) => {
   return {
     title: 'Campaign is Live',
     message: `🚀 Campaign Live! The ${campaignName} is now live!`,
   };
 };
+
+const notificationAdminAssign = (campaignName: string) => {
+  return {
+    title: 'New Campaign Assigned',
+    message: `You have been assigned to Campaign ${campaignName}!`,
+  };
+};
+
+const notificationMaintenance = (campaignName: string) => {
+  return {
+    title: 'Campaign under Maintenance',
+    message: `🚀 Campaign ${campaignName}  is currently down for maintenance.`,
+  };
+};
+
 
 const notificationPitch = (campaignName: string, type: 'Admin' | 'Creator', creatorName?: string) => {
   if (type === 'Admin') {
@@ -19,46 +34,13 @@ const notificationPitch = (campaignName: string, type: 'Admin' | 'Creator', crea
 };
 
 //  Feedback on Draft
-const notificationDraftFeedback = (campaignName: string) => {
-  return {
-    title: '📝 Feedback on Draft',
-    message: ` 📝 Draft Feedback Available! Feedback on your draft for ${campaignName} is ready.`,
-  };
-};
 
-const notificationFinalDraft = (campaignName: string, type: 'Admin' | 'Creator', creatorName?: string) => {
+
+const notificationDraft = (campaignName: string, type: 'Admin' | 'Creator', creatorName?: string,  draft?: string) => {
   if (type === 'Admin') {
     return {
-      title: '📬 Final Draft Received!',
-      message: `📝 Final Draft Submitted! The final draft for ${campaignName} has been submitted by ${creatorName}.`,
-    };
-  }
-  return {
-    title: '📝 Draft Sent Successfully!',
-    message: `Your draft for the ${campaignName} has been sent. We’ll review it and let you know if any changes are needed`,
-  };
-};
-
-
-// const notificationDraft = (campaignName: string, type: 'Admin' | 'Creator', creatorName?: string,  draft?: string) => {
-//   if (type === 'Admin') {
-//     return {
-//       title: `📬 New ${draft}  Received!`,
-//       message: `A new ${draft} for the ${campaignName} has been submitted by ${creatorName}.`,
-//     };
-//   }
-//   return {
-//     title: '📝 Draft Sent Successfully!',
-//     message: `Your draft for the ${campaignName} has been sent. We’ll review it and let you know if any changes are needed`,
-//   };
-// };
-
-
-const notificationDraft = (campaignName: string, type: 'Admin' | 'Creator', creatorName?: string) => {
-  if (type === 'Admin') {
-    return {
-      title: `📬 New Submission of Draft Received!`,
-      message: `A new draft for the ${campaignName} has been submitted by ${creatorName}.`,
+      title: `📬 New Draft  Received!`,
+      message: `A new ${draft} for the ${campaignName} has been submitted by ${creatorName}.`,
     };
   }
   return {
@@ -143,6 +125,29 @@ const notificationCSMChat = (thread: string) => {
   };
 };
 
+const notificationInvoiceGenerate = (campaignName: string) => {
+  return {
+    title: `💰 Invoice Generated!`,
+    message: `An invoice for ${campaignName} has been generated. `,
+  };
+};
+
+const notificationInvoiceUpdate = (campaignName: string) => {
+  return {
+    title: ` ✏️ Invoice Updated!`,
+    message: `Your invoice for ${campaignName} has been edited by Finance Admin. `,
+  };
+};
+
+const notificationInvoiceStatus = (campaignName: string) => {
+  return {
+    title: `💰 Invoice Payment Status Updated`,
+    message: ` The payment status of your invoice for ${campaignName} has been updated. `,
+  };
+};
+
+
+
 
 
 const reminderDueDate = (
@@ -174,6 +179,9 @@ const reminderDueDate = (
 };
 
 export {
+  notificationCampaignLive,
+  notificationMaintenance,
+  notificationAdminAssign,
   notificationPitch,
   notificationDraft,
   notificationAgreement,
