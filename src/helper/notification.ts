@@ -193,5 +193,8 @@ export {
   notificationPosting,
   notificationCSMChat,
   notificationGroupChat,
+  notificationInvoiceGenerate,
+  notificationInvoiceStatus,
+  notificationInvoiceUpdate,
   reminderDueDate,
 };
