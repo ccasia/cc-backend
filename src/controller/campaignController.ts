@@ -33,7 +33,7 @@ import path from 'path';
 import { compress } from '@helper/compression';
 import { agreementInput } from '@helper/agreementInput';
 import { pdfConverter } from '@helper/pdfConverter';
-import { notificationPendingAgreement, notificationPitch, notificationSignature } from '@helper/notification';
+import { notificationPendingAgreement, notificationPitch, notificationSignature, notificationCampaignLive, notificationAdminAssign, notificationMaintenance } from '@helper/notification';
 import { deliveryConfirmation, shortlisted, tracking } from '@configs/nodemailer.config';
 
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
@@ -464,10 +464,12 @@ export const createCampaign = async (req: Request, res: Response) => {
             },
           });
 
+          const { title, message } = notificationAdminAssign(campaign.name);
           const data = await tx.notification.create({
             data: {
-              message: `You have been assigned to Campaign ${campaign.name}.`,
-              entity: Entity.Campaign,
+              title: title,
+              message: message,
+              entity: "Status",
               campaign: {
                 connect: {
                   id: campaign.id,
@@ -1205,11 +1207,6 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
           entityId: campaign?.id as string,
         });
 
-        // await saveNotification(
-        //   adminId,
-        //   `New Pitch By ${user?.name} for campaign ${campaign?.name}`,
-        //   Entity.Pitch,
-        // );
         io.to(clients.get(adminId)).emit('notification', notification);
       });
     }
@@ -1292,10 +1289,12 @@ export const changeCampaignStage = async (req: Request, res: Response) => {
 
     if (campaign?.shortlisted.length && campaign?.status === 'PAUSED') {
       campaign?.shortlisted?.map(async (value) => {
+        const { title, message } = notificationMaintenance(campaign.name);
+
         const data = await saveNotification({
           userId: value.userId as string,
-          title: 'Campaign Maintenance',
-          message: `Campaign ${campaign.name} is currently down for maintenance.`,
+          title: title,
+          message: message,
           entity: 'Status',
           entityId: campaign.id,
         });
@@ -1304,15 +1303,19 @@ export const changeCampaignStage = async (req: Request, res: Response) => {
     }
 
     if (campaign?.status === 'ACTIVE') {
-      campaign.campaignAdmin.forEach(async (admin) => {
+      for (const admin of campaign.campaignAdmin) {
+        const { title, message } = notificationCampaignLive(campaign.name);
+    
         const data = await saveNotification({
           userId: admin.adminId,
-          message: `${campaign.name} is now live!`,
+          title: title,
+          message: message,
           entity: 'Status',
           entityId: campaign.id,
         });
+    
         io.to(clients.get(admin.adminId)).emit('notification', data);
-      });
+      }
     }
 
     io.emit('campaignStatus', campaign);
@@ -1881,9 +1884,10 @@ export const changePitchStatus = async (req: Request, res: Response) => {
           // Sending email
           const user = existingPitch.user;
           const campaignName = existingPitch?.campaign?.name;
+          const campaignId = existingPitch?.campaign?.id;
           const creatorName = existingPitch?.user?.name;
 
-          shortlisted(user.email, campaignName, creatorName ?? 'Creator');
+          shortlisted(user.email, campaignName, creatorName ?? 'Creator', campaignId);
 
           const data = await saveNotification({
             userId: pitch.userId,
@@ -2435,7 +2439,9 @@ export const updateStatusLogistic = async (req: Request, res: Response) => {
 
     console.log('Status ', updated);
 
-    // deliveryConfirmation (updated.userId.email, )
+    // deliveryConfirmation 
+    deliveryConfirmation(logisticId.user.email, logisticId.campaign.name, logisticId.user.name ?? 'Creator');
+
 
     return res.status(200).json({ message: 'Logistic status updated successfully.' });
   } catch (error) {
