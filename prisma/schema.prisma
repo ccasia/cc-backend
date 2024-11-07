@@ -315,6 +315,7 @@ model Campaign {
   brandTone                     String?
   productName                   String?
   eventId                       String?
+  sheetId                       String?
   bookMarkCampaign              BookMarkCampaign[]
   brand                         Brand?                          @relation(fields: [brandId], references: [id])
   company                       Company?                        @relation(fields: [companyId], references: [id])
@@ -380,7 +381,7 @@ model CampaignBrief {
   startDate           DateTime
   endDate             DateTime
   interests           Json?
-  industries          Json?
+  industries          String?
   success             String?  @db.VarChar(255)
   socialMediaPlatform String[]
   videoAngle          String[]

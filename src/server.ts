@@ -19,6 +19,8 @@ import '@services/uploadVideo';
 import './helper/videoDraft';
 import './helper/processPitchVideo';
 import dotenv from 'dotenv';
+import '@services/google_sheets/sheets';
+import { accessGoogleSheetAPI } from '@services/google_sheets/sheets';
 
 dotenv.config();
 
