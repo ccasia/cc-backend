@@ -2454,8 +2454,6 @@ export const updateStatusLogistic = async (req: Request, res: Response) => {
       },
     });
 
-    console.log("stats", status)
-    console.log('Status ', updated);
 
     if (status === 'Product_has_been_received') {
       // Call deliveryConfirmation function

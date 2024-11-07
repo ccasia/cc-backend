@@ -746,7 +746,7 @@ export const creatorInvoice = (email: string, campaignName: string, creatorName:
         <h2 style="color: #686464; font-size: 24px; font-weight: bold; margin-top: 40px; margin-bottom: 40px;">Invoice Generated for ${campaignName}</h2>
         <img src="https://drive.google.com/uc?id=1lpDBTeil5asnkSW7B7T7_77EFpTQJcva" alt="Campaign Image" class="campaign-image" style="display: block; width: 100%; max-height: 300px; object-fit: cover; margin: 30px 0;">
         <p style="color: #686464; text-align: left; font-size: 14px; line-height: 1.6; font-family: 'Roboto', sans-serif;">Hi ${creatorName}, An invoice has been generated for your campaign.</p>
-        <a href="#" class="button" style="display: inline-block; padding: 15px 30px; background-color: #0874dc; text-decoration: none; border-radius: 6px; font-size: 16px; color: #ffffff; text-align: center; margin: 30px auto; display: block; font-weight: bold; transition: background-color 0.3s;">View Invoice</a>
+        <a href="${process.env.BASE_EMAIL_URL}/dashboard/invoiceCreator" class="button" style="display: inline-block; padding: 15px 30px; background-color: #0874dc; text-decoration: none; border-radius: 6px; font-size: 16px; color: #ffffff; text-align: center; margin: 30px auto; display: block; font-weight: bold; transition: background-color 0.3s;">View Invoice</a>
         <div class="separator" style="border-top: 1px solid #ddd; margin: 35px 0;"></div>
         <p id="slogan" style="color: #686464; font-size: 12px; padding-top: 0px; display: block; text-align: center; font-weight: bold; margin-bottom: 20px;">Where Brands and Creatives Co-create</p>
 

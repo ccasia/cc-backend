@@ -24,6 +24,7 @@ import {
 import { getColumnId } from './kanbanController';
 import {
   approvalOfDraft,
+  creatorInvoice,
   feedbackOnDraft,
   finalDraftDue,
   firstDraftDue,
@@ -695,22 +696,6 @@ export const postingSubmission = async (req: Request, res: Response) => {
 
     io.to(clients.get(submission.userId)).emit('notification', notification);
   
-    const { title: financeTitle, message: financeMessage } = notificationInvoiceGenerate(submission.campaign.name);
-
-
-    // for (const admin of submission.campaign.campaignAdmin.filter(
-    //   (admin) => admin.role.name === 'finance'
-    // )) {
-    //   const financeNotification = await saveNotification({
-    //     userId: admin.adminId,
-    //     message: financeMessage,
-    //     title: financeTitle,
-    //     entity: 'Invoice',
-    //     entityId: submission.campaignId,
-    //   });
-    //   io.to(clients.get(admin.adminId)).emit('notification', financeNotification);
-    // }
-
     return res.status(200).json({ message: 'Successfully submitted' });
   } catch (error) {
     return res.status(400).json(error);
@@ -803,7 +788,7 @@ export const adminManagePosting = async (req: Request, res: Response) => {
         },
       });
 
-      
+     
       const notification = await saveNotification({
         userId: submission.userId,
         message: ` ✅ Your posting has been approved for campaign ${submission.campaign.name}`,
@@ -841,6 +826,9 @@ export const adminManagePosting = async (req: Request, res: Response) => {
 
       io.to(clients.get(submission.userId)).emit('notification', Invoicenotification);
 
+
+       //Email 
+       creatorInvoice(submission.user.email, submission.campaign.name, submission.user.name ?? 'Creator');
 
       return res.status(200).json({ message: 'Successfully submitted' });
     }
