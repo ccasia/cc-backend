@@ -918,6 +918,7 @@ enum Priority {
 enum Entity {
   Campaign
   Live
+  Status
   User
   Pitch
   Shortlist
@@ -930,7 +931,6 @@ enum Entity {
   Metrcis
   Agreement
   Chat
-  Status
 }
 
 enum SubmissionEnum {

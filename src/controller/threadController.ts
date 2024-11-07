@@ -3,6 +3,8 @@ import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { markMessagesService, fetchMessagesFromThread, totalUnreadMessagesService } from '@services/threadService';
 import { clients, io } from '../server';
+import { notificationCSMChat, notificationGroupChat } from '@helper/notification';
+import { saveNotification } from './notificationController';
 
 const prisma = new PrismaClient();
 
@@ -240,11 +242,50 @@ export const sendMessageInThread = async (req: Request, res: Response) => {
           unreadMessages: true,
         },
       });
-
       return { data, message };
     });
-
+    
     const userIds = datas.data.UserThread.map((thread) => thread.user.id);
+
+  // Proceed only if the thread has an associated campaign
+  if (datas.data.campaign) {
+    const userIds = datas.data.UserThread.map((thread) => thread.user.id);
+    const { title, message: notificationMessage } = notificationGroupChat(
+      datas.data.campaign.name,
+      datas.data.title  
+    );
+
+    // Create notifications for all users in the thread, except the sender
+    for (const thread of datas.data.UserThread.filter((t) => t.user.id !== userId)) {
+      const notification = await saveNotification({
+        userId: thread.user.id,
+        message: notificationMessage,
+        title,
+        entity: 'Chat',
+        threadId: datas.data.id,
+        entityId: datas.data.campaign.id,
+      });
+
+      // Emit notification event for real-time updates
+      io.to(clients.get(thread.user.id)).emit('notification', notification);
+    }
+  }
+
+  if (!datas.data.campaign) {
+    const { title, message: notificationMessage } = notificationCSMChat(datas.data.title);
+  
+    for (const thread of datas.data.UserThread.filter((t) => t.user.id !== userId)) {
+      const notification = await saveNotification({
+        userId: thread.user.id,
+        message: notificationMessage,
+        title,
+        threadId: datas.data.id,
+        entity: 'Chat',
+      });
+  
+      io.to(clients.get(thread.user.id)).emit('notification', notification);
+    }
+  }
 
     const unreadMessages = await prisma.unreadMessage.groupBy({
       by: ['userId'],
@@ -259,7 +300,7 @@ export const sendMessageInThread = async (req: Request, res: Response) => {
     const senderInformation = datas.data.UserThread.find((elem) => elem.userId === userId);
 
     for (const thread of datas.data.UserThread.filter((elem) => elem.userId !== userId)) {
-      const count = unreadCountMap.get(thread.user.id) || 0; // default to 0 if no unread messages
+      const count = unreadCountMap.get(thread.user.id) || 0; 
 
       io.to(clients.get(thread.user.id)).emit('messageCount', { count, name: senderInformation?.user.name });
     }
@@ -277,6 +318,7 @@ export const sendMessageInThread = async (req: Request, res: Response) => {
 
     return res.status(201).json(datas.message);
   } catch (error) {
+    console.log(error);
     return res.status(400).json({ error: 'An error occurred while sending the message.' });
   }
 };

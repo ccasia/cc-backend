@@ -1,9 +1,24 @@
-const notificationCampaign = (campaignName: string) => {
+const notificationCampaignLive = (campaignName: string) => {
   return {
     title: 'Campaign is Live',
     message: `🚀 Campaign Live! The ${campaignName} is now live!`,
   };
 };
+
+const notificationAdminAssign = (campaignName: string) => {
+  return {
+    title: 'New Campaign Assigned',
+    message: `You have been assigned to Campaign ${campaignName}!`,
+  };
+};
+
+const notificationMaintenance = (campaignName: string) => {
+  return {
+    title: 'Campaign under Maintenance',
+    message: `🚀 Campaign ${campaignName}  is currently down for maintenance.`,
+  };
+};
+
 
 const notificationPitch = (campaignName: string, type: 'Admin' | 'Creator', creatorName?: string) => {
   if (type === 'Admin') {
@@ -18,11 +33,14 @@ const notificationPitch = (campaignName: string, type: 'Admin' | 'Creator', crea
   };
 };
 
-const notificationDraft = (campaignName: string, type: 'Admin' | 'Creator', creatorName?: string) => {
+//  Feedback on Draft
+
+
+const notificationDraft = (campaignName: string, type: 'Admin' | 'Creator', creatorName?: string,  draft?: string) => {
   if (type === 'Admin') {
     return {
-      title: '📬 New Draft Received!',
-      message: `A new draft for the ${campaignName} has been submitted by ${creatorName}.`,
+      title: `📬 New Draft  Received!`,
+      message: `A new ${draft} for the ${campaignName} has been submitted by ${creatorName}.`,
     };
   }
   return {
@@ -49,7 +67,7 @@ const notificationPendingAgreement = (campaignName: string) => {
 const notificationAgreement = (campaignName: string, type: 'Admin' | 'Creator', creatorName?: string) => {
   if (type === 'Admin') {
     return {
-      title: '📄 New Agreement Sent!',
+      title: '📄 New Agreement Received!',
       message: `An agreement for the ${campaignName} has been submitted by ${creatorName}. `,
     };
   }
@@ -68,7 +86,7 @@ const notificationApproveAgreement = (campaignName: string) => {
 
 const notificationApproveDraft = (campaignName: string, draft: string) => {
   return {
-    title: `✅ ${draft} Approved!`,
+    title: `✅ Draft Approved!`,
     message: `Your ${draft} for ${campaignName} has been approved. Great work!`,
   };
 };
@@ -92,6 +110,58 @@ const notificationPosting = (campaignName: string, type: 'Admin' | 'Creator', cr
     message: `Your post for the ${campaignName} has been successfully submitted. Thank you for your work!`,
   };
 };
+
+const notificationGroupChat = (campaignName: string, thread: string) => {
+  return {
+    title: `💬 New Message in ${thread} Chat!`,
+    message: `You have a new message in your group chat for ${campaignName} `,
+  };
+};
+
+const notificationCSMChat = (thread: string) => {
+  return {
+    title: `💬 New Private!`,
+    message: `You have a new message in your CSM chat for ${thread}. `,
+  };
+};
+
+const notificationLogisticDelivery = (campaignName: string) => {
+  return {
+    title: '📦 Logistics Delivered! ',
+    message: ` Your logistics for ${campaignName} have been delivered.`,
+  };
+};
+
+const notificationLogisticTracking = (campaignName: string, trackingNumber: string) => {
+  return {
+    title: ' 📦 Logistics Submitted! ',
+    message: `Your logistics for ${campaignName} have been submitted, with tracking number ${trackingNumber}`,
+  };
+};
+const notificationInvoiceGenerate = (campaignName: string) => {
+  return {
+    title: `💰 Invoice Generated!`,
+    message: `An invoice for ${campaignName} has been generated. `,
+  };
+};
+
+const notificationInvoiceUpdate = (campaignName: string) => {
+  return {
+    title: ` ✏️ Invoice Updated!`,
+    message: `Your invoice for ${campaignName} has been edited by Finance Admin. `,
+  };
+};
+
+const notificationInvoiceStatus = (campaignName: string) => {
+  return {
+    title: `💰 Invoice Payment Status Updated`,
+    message: ` The payment status of your invoice for ${campaignName} has been updated. `,
+  };
+};
+
+
+
+
 
 const reminderDueDate = (
   campaignName: string,
@@ -122,6 +192,9 @@ const reminderDueDate = (
 };
 
 export {
+  notificationCampaignLive,
+  notificationMaintenance,
+  notificationAdminAssign,
   notificationPitch,
   notificationDraft,
   notificationAgreement,
@@ -131,5 +204,12 @@ export {
   notificationApproveDraft,
   notificationRejectDraft,
   notificationPosting,
+  notificationCSMChat,
+  notificationGroupChat,
+  notificationLogisticDelivery,
+  notificationLogisticTracking,
+  notificationInvoiceGenerate,
+  notificationInvoiceStatus,
+  notificationInvoiceUpdate,
   reminderDueDate,
 };

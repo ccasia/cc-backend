@@ -1,6 +1,9 @@
 import { Request, Response } from 'express';
 
 import { InvoiceStatus, PrismaClient } from '@prisma/client';
+import { notificationInvoiceStatus, notificationInvoiceUpdate } from '@helper/notification';
+import { saveNotification } from './notificationController';
+import { clients, io } from '../server';
 
 const prisma = new PrismaClient();
 
@@ -176,9 +179,32 @@ export const updateInvoiceStatus = async (req: Request, res: Response) => {
       data: {
         status: status as InvoiceStatus,
       },
+      include: {
+        campaign: {
+          include: { campaignAdmin: true },
+        },
+        user: true,
+      },
     });
     res.status(200).json(invoice);
-  } catch (error) {
+
+    const { title, message } = notificationInvoiceStatus(invoice.campaign.name);
+
+    // Notify Finance Admins and Creator
+    for (const admin of invoice.campaign.campaignAdmin) {
+        const notification = await saveNotification({
+          userId: admin.adminId && invoice.user.id,
+          title,
+          message,
+          entity: 'Invoice',
+          entityId: invoice.campaignId,
+        });
+        io.to(clients.get(admin.adminId)).emit('notification', notification);
+      }
+    }
+
+    
+  catch (error) {
     res.status(500).json({ error: 'Something went wrong' });
   }
 };
@@ -202,8 +228,65 @@ export const updateInvoice = async (req: Request, res: Response) => {
         bankAcc: bankInfo,
         campaignId,
       },
+      include: {
+        campaign: {
+          include: {
+            campaignAdmin: {
+              include: {
+                admin: {
+                  include: {
+                    role: true, 
+                  },
+                },
+              },
+            },
+          },
+        },
+        user: true,
+      },
     });
     res.status(200).json(invoice);
+
+    const { title, message } = notificationInvoiceUpdate(invoice.campaign.name);
+
+    console.log ( "Invoice", invoice)
+    // Notify Finance Admins and Creator
+    for (const admin of invoice.campaign.campaignAdmin) {
+      if (admin.admin.role?.name === 'CSM') {  
+        try {
+          const notification = await saveNotification({
+            userId: admin.adminId,
+            title,
+            message,
+            entity: 'Invoice',
+            threadId: invoice.id,
+            // invoiceId: invoice.id,
+            entityId: invoice.campaignId,
+          });
+          //  console.log("Sending notification to admin:", admin.adminId, notification);
+          io.to(clients.get(admin.adminId)).emit('notification', notification);
+        } catch (error) {
+          console.error("Error notifying admin:", error);
+        }
+      }
+    }
+
+    try {
+      const creatorNotification = await saveNotification({
+        userId: invoice.creatorId,
+        title,
+        message,
+        entity: 'Invoice',
+        threadId: invoice.id,
+        // invoiceId: invoice.id,
+        entityId: invoice.campaignId,
+      });
+      //  console.log("Sending notification to creator:", invoice.creatorId, creatorNotification);
+      io.to(clients.get(invoice.creatorId)).emit('notification', creatorNotification);
+    } catch (error) {
+      console.error("Error notifying creator:", error);
+    }
+
   } catch (error) {
     //console.log(error);
     res.status(500).json({ error: 'Something went wrong' });
