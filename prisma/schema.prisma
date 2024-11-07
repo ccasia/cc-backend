@@ -538,7 +538,6 @@ model Notification {
   creatorId        String?
   threadId         String?
   pitchId          String?
-  invoiceId        String?  
   submissionId     String?
   campaign         Campaign?          @relation(fields: [campaignId], references: [id])
   pitch            Pitch?             @relation(fields: [pitchId], references: [id])

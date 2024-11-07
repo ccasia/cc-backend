@@ -125,6 +125,19 @@ const notificationCSMChat = (thread: string) => {
   };
 };
 
+const notificationLogisticDelivery = (campaignName: string) => {
+  return {
+    title: '📦 Logistics Delivered! ',
+    message: ` Your logistics for ${campaignName} have been delivered.`,
+  };
+};
+
+const notificationLogisticTracking = (campaignName: string, trackingNumber: string) => {
+  return {
+    title: ' 📦 Logistics Submitted! ',
+    message: `Your logistics for ${campaignName} have been submitted, with tracking number ${trackingNumber}`,
+  };
+};
 const notificationInvoiceGenerate = (campaignName: string) => {
   return {
     title: `💰 Invoice Generated!`,
@@ -193,6 +206,8 @@ export {
   notificationPosting,
   notificationCSMChat,
   notificationGroupChat,
+  notificationLogisticDelivery,
+  notificationLogisticTracking,
   notificationInvoiceGenerate,
   notificationInvoiceStatus,
   notificationInvoiceUpdate,

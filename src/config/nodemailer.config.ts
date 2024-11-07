@@ -52,7 +52,7 @@ export const AdminInvitaion = (email: string, confirmationCode: string) => {
           <h1 style="margin: 0 0 20px;">Welcome to Cult Creative Platform!</h1>
           <p style="margin: 0 0 20px;">You have been invited to join our system as an admin.</p>
           <p style="margin: 0 0 20px;">Please click on the following link to complete your registration:</p>
-          <a href="http://localhost/auth/jwt/adminForm?token=${confirmationCode}" style="display: inline-block; padding: 10px 20px; background-color: #007bff; color: #fff; text-decoration: none; border-radius: 5px;">Complete Registration</a>
+          <a href="${process.env.BASE_EMAIL_URL}/auth/jwt/adminForm?token=${confirmationCode}" style="display: inline-block; padding: 10px 20px; background-color: #007bff; color: #fff; text-decoration: none; border-radius: 5px;">Complete Registration</a>
           <p style="margin: 20px 0 0;">If you did not request this invitation, please ignore this email.</p>
         </div>
       </body>
@@ -589,7 +589,7 @@ export const postingSchedule = (email: string, campaignName: string, creatorName
     });
 };
 
-export const tracking = (email: string, campaignName: string, creatorName: string, trackingNumber: string) => {
+export const tracking = (email: string, campaignName: string, creatorName: string, trackingNumber: string, campaignId: string) => {
   transport
     .sendMail({
       from: user,
@@ -610,7 +610,7 @@ export const tracking = (email: string, campaignName: string, creatorName: strin
         <h2 style="color: #686464; font-size: 24px; font-weight: bold; margin-top: 40px; margin-bottom: 40px;">Logistics Submitted for ${campaignName}</h2>
         <img src="https://drive.google.com/uc?id=1lpDBTeil5asnkSW7B7T7_77EFpTQJcva" alt="Campaign Image" class="campaign-image" style="display: block; width: 100%; max-height: 300px; object-fit: cover; margin: 30px 0;">
         <p style="color: #686464; text-align: left; font-size: 14px; line-height: 1.6; font-family: 'Roboto', sans-serif;">Hi ${creatorName}, Your logistics have been submitted, tracking number ${trackingNumber}.</p>
-        <a href="#" class="button" style="display: inline-block; padding: 15px 30px; background-color: #0874dc; text-decoration: none; border-radius: 6px; font-size: 16px; color: #ffffff; text-align: center; margin: 30px auto; display: block; font-weight: bold; transition: background-color 0.3s;">View Campaign Details</a>
+        <a href="${process.env.BASE_EMAIL_URL}/dashboard/campaign/VUquQR/HJUboKDBwJi71KQ==/manage/detail/${campaignId}" class="button" style="display: inline-block; padding: 15px 30px; background-color: #0874dc; text-decoration: none; border-radius: 6px; font-size: 16px; color: #ffffff; text-align: center; margin: 30px auto; display: block; font-weight: bold; transition: background-color 0.3s;">View Campaign Details</a>
         <div class="separator" style="border-top: 1px solid #ddd; margin: 35px 0;"></div>
         <p id="slogan" style="color: #686464; font-size: 12px; padding-top: 0px; display: block; text-align: center; font-weight: bold; margin-bottom: 20px;">Where Brands and Creatives Co-create</p>
 
@@ -657,7 +657,7 @@ export const tracking = (email: string, campaignName: string, creatorName: strin
     });
 };
 
-export const deliveryConfirmation = (email: string, campaignName: string, creatorName: string) => {
+export const deliveryConfirmation = (email: string, campaignName: string, creatorName: string, campaignId: string) => {
   transport
     .sendMail({
       from: user,
@@ -678,7 +678,7 @@ export const deliveryConfirmation = (email: string, campaignName: string, creato
         <h2 style="color: #686464; font-size: 24px; font-weight: bold; margin-top: 40px; margin-bottom: 40px;">Logistics Delivered for ${campaignName}</h2>
         <img src="https://drive.google.com/uc?id=1lpDBTeil5asnkSW7B7T7_77EFpTQJcva" alt="Campaign Image" class="campaign-image" style="display: block; width: 100%; max-height: 300px; object-fit: cover; margin: 30px 0;">
         <p style="color: #686464; text-align: left; font-size: 14px; line-height: 1.6; font-family: 'Roboto', sans-serif;">Hi ${creatorName}, The logistics have been delivered.</p>
-        <a href="#" class="button" style="display: inline-block; padding: 15px 30px; background-color: #0874dc; text-decoration: none; border-radius: 6px; font-size: 16px; color: #ffffff; text-align: center; margin: 30px auto; display: block; font-weight: bold; transition: background-color 0.3s;">View Campaign Details</a>
+        <a href="${process.env.BASE_EMAIL_URL}/dashboard/campaign/VUquQR/HJUboKDBwJi71KQ==/manage/detail/${campaignId}" class="button" style="display: inline-block; padding: 15px 30px; background-color: #0874dc; text-decoration: none; border-radius: 6px; font-size: 16px; color: #ffffff; text-align: center; margin: 30px auto; display: block; font-weight: bold; transition: background-color 0.3s;">View Campaign Details</a>
         <div class="separator" style="border-top: 1px solid #ddd; margin: 35px 0;"></div>
         <p id="slogan" style="color: #686464; font-size: 12px; padding-top: 0px; display: block; text-align: center; font-weight: bold; margin-bottom: 20px;">Where Brands and Creatives Co-create</p>
 

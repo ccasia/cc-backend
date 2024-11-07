@@ -33,7 +33,7 @@ import path from 'path';
 import { compress } from '@helper/compression';
 import { agreementInput } from '@helper/agreementInput';
 import { pdfConverter } from '@helper/pdfConverter';
-import { notificationPendingAgreement, notificationPitch, notificationSignature, notificationCampaignLive, notificationAdminAssign, notificationMaintenance } from '@helper/notification';
+import { notificationPendingAgreement, notificationPitch, notificationSignature, notificationCampaignLive, notificationAdminAssign, notificationMaintenance, notificationLogisticTracking, notificationLogisticDelivery } from '@helper/notification';
 import { deliveryConfirmation, shortlisted, tracking } from '@configs/nodemailer.config';
 
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
@@ -2395,11 +2395,15 @@ export const createLogistics = async (req: Request, res: Response) => {
     console.log('Tracking', logistic);
 
     //Email for tracking logistics
-    tracking(logistic.user.email, logistic.campaign.name, logistic.user.name ?? 'Creator', logistic.trackingNumber);
+    tracking(logistic.user.email, logistic.campaign.name, logistic.user.name ?? 'Creator', logistic.trackingNumber, logistic.campaignId );
+
+    const { title, message } = notificationLogisticTracking(logistic.campaign.name, logistic.trackingNumber);
 
     const notification = await saveNotification({
       userId: userId,
-      message: `Hi ${logistic.user.name}, your logistics details for the ${logistic.campaign.name} campaign are now available. Please check the logistics section for shipping information and tracking details. If you have any questions, don't hesitate to reach out!`,
+      title,
+      message,
+      // message: `Hi ${logistic.user.name}, your logistics details for the ${logistic.campaign.name} campaign are now available. Please check the logistics section for shipping information and tracking details. If you have any questions, don't hesitate to reach out!`,
       entity: 'Logistic',
     });
 
@@ -2435,17 +2439,62 @@ export const updateStatusLogistic = async (req: Request, res: Response) => {
       data: {
         status: status as LogisticStatus,
       },
+      include: {
+        user: {
+          select: {
+            name: true,
+            email: true,
+          },
+        },
+        campaign: {
+          select: {
+            name: true,
+          },
+        },
+      },
     });
 
+    console.log("stats", status)
     console.log('Status ', updated);
 
-    // deliveryConfirmation 
-    deliveryConfirmation(logisticId.user.email, logisticId.campaign.name, logisticId.user.name ?? 'Creator');
+    if (status === 'Product_has_been_received') {
+      // Call deliveryConfirmation function
+      deliveryConfirmation(
+        updated.user.email,
+        updated.campaign.name,
+        updated.user.name ?? 'Creator',
+        updated.campaignId
+      );
+  
+      // Create and send the notification
+      const { title, message } = notificationLogisticDelivery(updated.campaign.name);
+      const notification = await saveNotification({
+        userId: updated.userId,
+        title,
+        message,
+        entity: 'Logistic',
+      });
+  
+      io.to(clients.get(updated.userId)).emit('notification', notification);
+    }
+    
+    // // deliveryConfirmation 
+    // deliveryConfirmation(updated.user.email, updated.campaign.name, updated.user.name ?? 'Creator', updated.campaignId);
 
+    // const { title, message } = notificationLogisticDelivery(updated.campaign.name,);
+
+    // const notification = await saveNotification({
+    //   userId: updated.userId,
+    //   title,
+    //   message,
+    //   entity: 'Logistic',
+    // });
+
+    // io.to(clients.get(updated.userId)).emit('notification', notification);
 
     return res.status(200).json({ message: 'Logistic status updated successfully.' });
   } catch (error) {
-    //console.log(error);
+    console.log(error);
     return res.status(400).json(error);
   }
 };
