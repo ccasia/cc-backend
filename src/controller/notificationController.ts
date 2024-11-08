@@ -1,7 +1,6 @@
 import { Entity, PrismaClient } from '@prisma/client';
 import { Request, Response } from 'express';
 
-
 const prisma = new PrismaClient();
 
 export enum Title {
@@ -57,8 +56,7 @@ export const saveNotification = async ({
     });
   }
 
-
-  if (entity === 'Invoice'){
+  if (entity === 'Invoice') {
     return prisma.notification.create({
       data: {
         message: message,
@@ -133,7 +131,7 @@ export const saveNotification = async ({
       });
     }
   }
-  
+
   if (entity && entityId) {
     return prisma.notification.create({
       data: {

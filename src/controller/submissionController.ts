@@ -264,7 +264,7 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
         title: `❌ Agreement Rejected`,
         message: `Please Resubmit Your Agreement Form for ${campaign?.name}`,
         entity: 'Agreement',
-        entityId: campaign?.id
+        entityId: campaign?.id,
       });
 
       io.to(clients.get(userId)).emit('notification', notification);
@@ -450,8 +450,7 @@ export const adminManageDraft = async (req: Request, res: Response) => {
       if (sub.submissionType.type === 'FIRST_DRAFT' && sub.status === 'APPROVED') {
         // Notify about final draft due
         approvalOfDraft(sub.user.email, submission.campaign.name, sub.user.name ?? 'Creator', sub.campaignId);
-       
-      } else if (sub.submissionType.type === 'FINAL_DRAFT' && sub.status === 'APPROVED', sub.campaignId) {
+      } else if ((sub.submissionType.type === 'FINAL_DRAFT' && sub.status === 'APPROVED', sub.campaignId)) {
         // Notify about final draft approval
         approvalOfDraft(sub.user.email, submission.campaign.name, sub.user.name ?? 'Creator', sub.campaignId);
       } else {
@@ -508,9 +507,14 @@ export const adminManageDraft = async (req: Request, res: Response) => {
       console.log(test);
 
       // Sending posting schedule
-      postingSchedule(submission.user.email, submission.campaign.name, submission.user.name ?? 'Creator', submission.campaign.id);
+      postingSchedule(
+        submission.user.email,
+        submission.campaign.name,
+        submission.user.name ?? 'Creator',
+        submission.campaign.id,
+      );
 
-      //For Approve 
+      //For Approve
       const { title, message } = notificationApproveDraft(
         submission.campaign.name,
         MAP_TIMELINE[sub.submissionType.type],
@@ -673,7 +677,7 @@ export const postingSubmission = async (req: Request, res: Response) => {
     );
 
     for (const admin of submission.campaign.campaignAdmin) {
-      console.log("Admin structure", admin)
+      console.log('Admin structure', admin);
       const notification = await saveNotification({
         userId: admin.adminId,
         message: adminMessage,
@@ -695,7 +699,7 @@ export const postingSubmission = async (req: Request, res: Response) => {
     });
 
     io.to(clients.get(submission.userId)).emit('notification', notification);
-  
+
     return res.status(200).json({ message: 'Successfully submitted' });
   } catch (error) {
     return res.status(400).json(error);
@@ -726,7 +730,7 @@ export const adminManagePosting = async (req: Request, res: Response) => {
               include: {
                 admin: {
                   include: {
-                    role: true, 
+                    role: true,
                   },
                 },
               },
@@ -788,12 +792,11 @@ export const adminManagePosting = async (req: Request, res: Response) => {
         },
       });
 
-     
       const notification = await saveNotification({
         userId: submission.userId,
         message: ` ✅ Your posting has been approved for campaign ${submission.campaign.name}`,
         entity: Entity.Post,
-        entityId: submission.campaignId
+        entityId: submission.campaignId,
       });
 
       io.to(clients.get(submission.userId)).emit('notification', notification);
@@ -803,8 +806,8 @@ export const adminManagePosting = async (req: Request, res: Response) => {
       // Notify each admin with the "Finance" role
       for (const admin of submission.campaign.campaignAdmin) {
         if (admin?.admin?.role?.name === 'Finance') {
-          console.log("Sending notification to Finance admin:", admin);
-      
+          console.log('Sending notification to Finance admin:', admin);
+
           const notification = await saveNotification({
             userId: admin.adminId,
             title,
@@ -812,7 +815,7 @@ export const adminManagePosting = async (req: Request, res: Response) => {
             entity: 'Invoice',
             entityId: submission.campaignId,
           });
-      
+
           io.to(clients.get(admin.adminId)).emit('notification', notification);
         }
       }
@@ -821,14 +824,13 @@ export const adminManagePosting = async (req: Request, res: Response) => {
         title,
         message,
         entity: 'Invoice',
-        entityId: submission.campaignId
+        entityId: submission.campaignId,
       });
 
       io.to(clients.get(submission.userId)).emit('notification', Invoicenotification);
 
-
-       //Email 
-       creatorInvoice(submission.user.email, submission.campaign.name, submission.user.name ?? 'Creator');
+      //Email
+      creatorInvoice(submission.user.email, submission.campaign.name, submission.user.name ?? 'Creator');
 
       return res.status(200).json({ message: 'Successfully submitted' });
     }

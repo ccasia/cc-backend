@@ -33,7 +33,16 @@ import path from 'path';
 import { compress } from '@helper/compression';
 import { agreementInput } from '@helper/agreementInput';
 import { pdfConverter } from '@helper/pdfConverter';
-import { notificationPendingAgreement, notificationPitch, notificationSignature, notificationCampaignLive, notificationAdminAssign, notificationMaintenance, notificationLogisticTracking, notificationLogisticDelivery } from '@helper/notification';
+import {
+  notificationPendingAgreement,
+  notificationPitch,
+  notificationSignature,
+  notificationCampaignLive,
+  notificationAdminAssign,
+  notificationMaintenance,
+  notificationLogisticTracking,
+  notificationLogisticDelivery,
+} from '@helper/notification';
 import { deliveryConfirmation, shortlisted, tracking } from '@configs/nodemailer.config';
 import { createNewSheetWithHeaderRows } from '@services/google_sheets/sheets';
 
@@ -470,31 +479,31 @@ export const createCampaign = async (req: Request, res: Response) => {
               },
             });
 
-          const { title, message } = notificationAdminAssign(campaign.name);
-          const data = await tx.notification.create({
-            data: {
-              title: title,
-              message: message,
-              entity: "Status",
-              campaign: {
-                connect: {
-                  id: campaign.id,
+            const { title, message } = notificationAdminAssign(campaign.name);
+            const data = await tx.notification.create({
+              data: {
+                title: title,
+                message: message,
+                entity: 'Status',
+                campaign: {
+                  connect: {
+                    id: campaign.id,
+                  },
+                },
+                userNotification: {
+                  create: {
+                    userId: admin.id,
+                  },
                 },
               },
-              userNotification: {
-                create: {
-                  userId: admin.id,
+              include: {
+                userNotification: {
+                  select: {
+                    userId: true,
+                  },
                 },
               },
-            },
-            include: {
-              userNotification: {
-                select: {
-                  userId: true,
-                },
-              },
-            },
-          });
+            });
 
             io.to(clients.get(admin.id)).emit('notification', data);
             return admins;
@@ -1168,7 +1177,6 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
         pitchId: pitch.id,
       });
 
-
       io.to(clients.get(user?.id)).emit('notification', newPitch);
 
       const admins = campaign?.campaignAdmin;
@@ -1282,7 +1290,7 @@ export const changeCampaignStage = async (req: Request, res: Response) => {
     if (campaign?.status === 'ACTIVE') {
       for (const admin of campaign.campaignAdmin) {
         const { title, message } = notificationCampaignLive(campaign.name);
-    
+
         const data = await saveNotification({
           userId: admin.adminId,
           title: title,
@@ -1290,7 +1298,7 @@ export const changeCampaignStage = async (req: Request, res: Response) => {
           entity: 'Status',
           entityId: campaign.id,
         });
-    
+
         io.to(clients.get(admin.adminId)).emit('notification', data);
       }
     }
@@ -1776,29 +1784,6 @@ export const changePitchStatus = async (req: Request, res: Response) => {
             submissionType: SubmissionType;
           };
 
-          // const submissions: Submission[] = await Promise.all(
-          //   timelines.map(async (timeline, index) => {
-          //     return await tx.submission.create({
-          //       data: {
-          //         dueDate: timeline.endDate,
-          //         campaignId: timeline.campaignId,
-          //         userId: pitch.userId as string,
-          //         status: index === 0 ? 'IN_PROGRESS' : 'NOT_STARTED',
-          //         submissionTypeId: timeline.submissionTypeId as string,
-          //         task: {
-          //           create: {
-          //             name: timeline.name,
-          //             position: index,
-          //             columnId: index === 0 ? columnInProgress.id : (columnToDo?.id as string),
-          //             priority: '',
-          //             status: index === 0 ? 'In Progress' : 'To Do',
-          //           },
-          //         },
-          //       },
-          //     });
-          //   }),
-          // );
-
           const submissions: SubmissionWithRelations[] = await Promise.all(
             timelines.map(async (timeline, index) => {
               return await tx.submission.create({
@@ -1844,20 +1829,6 @@ export const changePitchStatus = async (req: Request, res: Response) => {
             data: filteredDependencies,
           });
 
-          // await Promise.all(
-          //   submissions.map(async (item, i) => {
-          //     // Skip the first submission as it has no dependency
-          //     if (i > 0) {
-          //       await tx.submissionDependency.create({
-          //         data: {
-          //           submissionId: submissions[i].id,
-          //           dependentSubmissionId: submissions[i - 1].id,
-          //         },
-          //       });
-          //     }
-          //   }),
-          // );
-
           // Sending email
           const user = existingPitch.user;
           const campaignName = existingPitch?.campaign?.name;
@@ -1878,40 +1849,41 @@ export const changePitchStatus = async (req: Request, res: Response) => {
 
           if (socketId) {
             io.to(socketId).emit('notification', data);
+            io.to(socketId).emit('shortlisted', { message: 'shortlisted' });
           }
 
-            // Fetching admins for the campaign
-            const admins = await tx.campaignAdmin.findMany({
-              where: {
-                campaignId: pitch.campaignId,
-              },
-              include: {
-                admin: {
-                  include: {
-                    user: true,
-                  },
+          // Fetching admins for the campaign
+          const admins = await tx.campaignAdmin.findMany({
+            where: {
+              campaignId: pitch.campaignId,
+            },
+            include: {
+              admin: {
+                include: {
+                  user: true,
                 },
               },
+            },
+          });
+
+          // Send notifications to each admin
+          for (const admin of admins) {
+            const { title, message } = notificationPendingAgreement(pitch.campaign.name);
+            const notification = await saveNotification({
+              userId: admin.adminId,
+              title: title,
+              message: message,
+              entity: 'Pitch',
+              creatorId: pitch.userId,
+              entityId: pitch.campaignId,
             });
-  
-            // Send notifications to each admin
-            for (const admin of admins) {
-              const { title, message } = notificationPendingAgreement(pitch.campaign.name);
-              const notification = await saveNotification({
-                userId: admin.adminId, 
-                title: title,
-                message: message,
-                entity: 'Pitch',
-                creatorId: pitch.userId,
-                entityId: pitch.campaignId,
-              });
-  
-              const adminSocketId = clients.get(admin.admin.userId);
-              if (adminSocketId) {
-                io.to(adminSocketId).emit('notification', notification);
-              }
+
+            const adminSocketId = clients.get(admin.admin.userId);
+            if (adminSocketId) {
+              io.to(adminSocketId).emit('notification', notification);
             }
-            
+          }
+
           const campaign = await tx.campaign.findUnique({
             where: {
               id: pitch.campaignId,
@@ -1943,7 +1915,7 @@ export const changePitchStatus = async (req: Request, res: Response) => {
         },
         {
           timeout: 10000,
-        }
+        },
       );
     } else {
       const pitch = await prisma.pitch.update({
@@ -2214,7 +2186,6 @@ export const getCampaignLog = async (req: Request, res: Response) => {
 };
 
 export const uploadVideoTest = async (req: Request, res: Response) => {
-  const abortController = new AbortController();
   const { campaignId } = req.body;
   const { userid } = req.session;
 
@@ -2259,50 +2230,6 @@ export const uploadVideoTest = async (req: Request, res: Response) => {
   } catch (error) {
     return res.status(400).json(error);
   }
-  // res.on('close', async () => {
-  //   cancel = true;
-  //   // await fs.promises.unlink(path.resolve(__dirname, `../upload/${outputPath}`));
-  //   await fs.promises.unlink(outputPath);
-  //   abortController.abort();
-  // });
-
-  // try {
-  //   if (!cancel) {
-  //     const path: any = await compress(
-  //       (req.files as any).pitchVideo.tempFilePath,
-  //       outputPath,
-  //       (data: number) => {
-  //         io.to(clients.get(req.session.userid)).emit('video-upload', { campaignId: campaignId, progress: data });
-  //       },
-  //       abortController.signal,
-  //     );
-
-  // const size = await new Promise((resolve, reject) => {
-  //   fs.stat(path, (err, data) => {
-  //     if (err) {
-  //       reject();
-  //     }
-  //     resolve(data?.size);
-  //   });
-  // });
-
-  // const a = await uploadPitchVideo(
-  //   path,
-  //   outputPath,
-  //   'pitchVideo',
-  //   (data: number) => {
-  //     io.to(clients.get(req.session.userid)).emit('video-upload', { campaignId: campaignId, progress: data });
-  //   },
-  //   size as number,
-  // );
-
-  //     io.to(clients.get(req.session.userid)).emit('video-upload-done', { campaignId: campaignId });
-
-  //     return res.status(200).json({ publicUrl: a, message: 'Pitch video uploaded successfully.' });
-  //   }
-  // } catch (error) {
-  //   return res.status(400).json(error);
-  // }
 };
 
 export const saveCampaign = async (req: Request, res: Response) => {
@@ -2372,7 +2299,13 @@ export const createLogistics = async (req: Request, res: Response) => {
     console.log('Tracking', logistic);
 
     //Email for tracking logistics
-    tracking(logistic.user.email, logistic.campaign.name, logistic.user.name ?? 'Creator', logistic.trackingNumber, logistic.campaignId );
+    tracking(
+      logistic.user.email,
+      logistic.campaign.name,
+      logistic.user.name ?? 'Creator',
+      logistic.trackingNumber,
+      logistic.campaignId,
+    );
 
     const { title, message } = notificationLogisticTracking(logistic.campaign.name, logistic.trackingNumber);
 
@@ -2431,16 +2364,15 @@ export const updateStatusLogistic = async (req: Request, res: Response) => {
       },
     });
 
-
     if (status === 'Product_has_been_received') {
       // Call deliveryConfirmation function
       deliveryConfirmation(
         updated.user.email,
         updated.campaign.name,
         updated.user.name ?? 'Creator',
-        updated.campaignId
+        updated.campaignId,
       );
-  
+
       // Create and send the notification
       const { title, message } = notificationLogisticDelivery(updated.campaign.name);
       const notification = await saveNotification({
@@ -2449,11 +2381,11 @@ export const updateStatusLogistic = async (req: Request, res: Response) => {
         message,
         entity: 'Logistic',
       });
-  
+
       io.to(clients.get(updated.userId)).emit('notification', notification);
     }
-    
-    // // deliveryConfirmation 
+
+    // // deliveryConfirmation
     // deliveryConfirmation(updated.user.email, updated.campaign.name, updated.user.name ?? 'Creator', updated.campaignId);
 
     // const { title, message } = notificationLogisticDelivery(updated.campaign.name,);
@@ -2888,7 +2820,7 @@ export const sendAgreement = async (req: Request, res: Response) => {
       },
     });
 
-    console.log("Update Agreement", agreement)
+    console.log('Update Agreement', agreement);
 
     const shortlistedCreator = await prisma.shortListedCreator.findFirst({
       where: {
@@ -2920,7 +2852,6 @@ export const sendAgreement = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Campaign not found.' });
     }
 
-
     // update shortlisted creator table
     await prisma.shortListedCreator.update({
       where: {
@@ -2931,20 +2862,19 @@ export const sendAgreement = async (req: Request, res: Response) => {
       },
     });
 
-      const { title, message } = notificationSignature(campaign.name);
-      const notification = await saveNotification({
-        userId: isUserExist.id,
-        title: title,
-        message: message,
-        entity: 'Agreement',
-        entityId: campaignId,
-      });
+    const { title, message } = notificationSignature(campaign.name);
+    const notification = await saveNotification({
+      userId: isUserExist.id,
+      title: title,
+      message: message,
+      entity: 'Agreement',
+      entityId: campaignId,
+    });
 
-      const socketId = clients.get(isUserExist.id);
-      if (socketId) {
-        io.to(socketId).emit('notification', notification);
-      }
-    
+    const socketId = clients.get(isUserExist.id);
+    if (socketId) {
+      io.to(socketId).emit('notification', notification);
+    }
 
     return res.status(200).json({ message: 'Agreement has been sent.' });
   } catch (error) {

@@ -192,19 +192,16 @@ export const updateInvoiceStatus = async (req: Request, res: Response) => {
 
     // Notify Finance Admins and Creator
     for (const admin of invoice.campaign.campaignAdmin) {
-        const notification = await saveNotification({
-          userId: admin.adminId && invoice.user.id,
-          title,
-          message,
-          entity: 'Invoice',
-          entityId: invoice.campaignId,
-        });
-        io.to(clients.get(admin.adminId)).emit('notification', notification);
-      }
+      const notification = await saveNotification({
+        userId: admin.adminId && invoice.user.id,
+        title,
+        message,
+        entity: 'Invoice',
+        entityId: invoice.campaignId,
+      });
+      io.to(clients.get(admin.adminId)).emit('notification', notification);
     }
-
-    
-  catch (error) {
+  } catch (error) {
     res.status(500).json({ error: 'Something went wrong' });
   }
 };
@@ -235,7 +232,7 @@ export const updateInvoice = async (req: Request, res: Response) => {
               include: {
                 admin: {
                   include: {
-                    role: true, 
+                    role: true,
                   },
                 },
               },
@@ -249,10 +246,10 @@ export const updateInvoice = async (req: Request, res: Response) => {
 
     const { title, message } = notificationInvoiceUpdate(invoice.campaign.name);
 
-    console.log ( "Invoice", invoice)
+    console.log('Invoice', invoice);
     // Notify Finance Admins and Creator
     for (const admin of invoice.campaign.campaignAdmin) {
-      if (admin.admin.role?.name === 'CSM') {  
+      if (admin.admin.role?.name === 'CSM') {
         try {
           const notification = await saveNotification({
             userId: admin.adminId,
@@ -266,7 +263,7 @@ export const updateInvoice = async (req: Request, res: Response) => {
           //  console.log("Sending notification to admin:", admin.adminId, notification);
           io.to(clients.get(admin.adminId)).emit('notification', notification);
         } catch (error) {
-          console.error("Error notifying admin:", error);
+          console.error('Error notifying admin:', error);
         }
       }
     }
@@ -284,9 +281,8 @@ export const updateInvoice = async (req: Request, res: Response) => {
       //  console.log("Sending notification to creator:", invoice.creatorId, creatorNotification);
       io.to(clients.get(invoice.creatorId)).emit('notification', creatorNotification);
     } catch (error) {
-      console.error("Error notifying creator:", error);
+      console.error('Error notifying creator:', error);
     }
-
   } catch (error) {
     //console.log(error);
     res.status(500).json({ error: 'Something went wrong' });

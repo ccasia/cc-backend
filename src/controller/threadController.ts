@@ -244,48 +244,45 @@ export const sendMessageInThread = async (req: Request, res: Response) => {
       });
       return { data, message };
     });
-    
+
     const userIds = datas.data.UserThread.map((thread) => thread.user.id);
 
-  // Proceed only if the thread has an associated campaign
-  if (datas.data.campaign) {
-    const userIds = datas.data.UserThread.map((thread) => thread.user.id);
-    const { title, message: notificationMessage } = notificationGroupChat(
-      datas.data.campaign.name,
-      datas.data.title  
-    );
+    // Proceed only if the thread has an associated campaign
+    if (datas.data.campaign) {
+      const userIds = datas.data.UserThread.map((thread) => thread.user.id);
+      const { title, message: notificationMessage } = notificationGroupChat(datas.data.campaign.name, datas.data.title);
 
-    // Create notifications for all users in the thread, except the sender
-    for (const thread of datas.data.UserThread.filter((t) => t.user.id !== userId)) {
-      const notification = await saveNotification({
-        userId: thread.user.id,
-        message: notificationMessage,
-        title,
-        entity: 'Chat',
-        threadId: datas.data.id,
-        entityId: datas.data.campaign.id,
-      });
+      // Create notifications for all users in the thread, except the sender
+      for (const thread of datas.data.UserThread.filter((t) => t.user.id !== userId)) {
+        const notification = await saveNotification({
+          userId: thread.user.id,
+          message: notificationMessage,
+          title,
+          entity: 'Chat',
+          threadId: datas.data.id,
+          entityId: datas.data.campaign.id,
+        });
 
-      // Emit notification event for real-time updates
-      io.to(clients.get(thread.user.id)).emit('notification', notification);
+        // Emit notification event for real-time updates
+        io.to(clients.get(thread.user.id)).emit('notification', notification);
+      }
     }
-  }
 
-  if (!datas.data.campaign) {
-    const { title, message: notificationMessage } = notificationCSMChat(datas.data.title);
-  
-    for (const thread of datas.data.UserThread.filter((t) => t.user.id !== userId)) {
-      const notification = await saveNotification({
-        userId: thread.user.id,
-        message: notificationMessage,
-        title,
-        threadId: datas.data.id,
-        entity: 'Chat',
-      });
-  
-      io.to(clients.get(thread.user.id)).emit('notification', notification);
+    if (!datas.data.campaign) {
+      const { title, message: notificationMessage } = notificationCSMChat(datas.data.title);
+
+      for (const thread of datas.data.UserThread.filter((t) => t.user.id !== userId)) {
+        const notification = await saveNotification({
+          userId: thread.user.id,
+          message: notificationMessage,
+          title,
+          threadId: datas.data.id,
+          entity: 'Chat',
+        });
+
+        io.to(clients.get(thread.user.id)).emit('notification', notification);
+      }
     }
-  }
 
     const unreadMessages = await prisma.unreadMessage.groupBy({
       by: ['userId'],
@@ -300,7 +297,7 @@ export const sendMessageInThread = async (req: Request, res: Response) => {
     const senderInformation = datas.data.UserThread.find((elem) => elem.userId === userId);
 
     for (const thread of datas.data.UserThread.filter((elem) => elem.userId !== userId)) {
-      const count = unreadCountMap.get(thread.user.id) || 0; 
+      const count = unreadCountMap.get(thread.user.id) || 0;
 
       io.to(clients.get(thread.user.id)).emit('messageCount', { count, name: senderInformation?.user.name });
     }

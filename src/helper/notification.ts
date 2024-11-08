@@ -19,7 +19,6 @@ const notificationMaintenance = (campaignName: string) => {
   };
 };
 
-
 const notificationPitch = (campaignName: string, type: 'Admin' | 'Creator', creatorName?: string) => {
   if (type === 'Admin') {
     return {
@@ -35,8 +34,7 @@ const notificationPitch = (campaignName: string, type: 'Admin' | 'Creator', crea
 
 //  Feedback on Draft
 
-
-const notificationDraft = (campaignName: string, type: 'Admin' | 'Creator', creatorName?: string,  draft?: string) => {
+const notificationDraft = (campaignName: string, type: 'Admin' | 'Creator', creatorName?: string, draft?: string) => {
   if (type === 'Admin') {
     return {
       title: `📬 New Draft  Received!`,
@@ -158,10 +156,6 @@ const notificationInvoiceStatus = (campaignName: string) => {
     message: ` The payment status of your invoice for ${campaignName} has been updated. `,
   };
 };
-
-
-
-
 
 const reminderDueDate = (
   campaignName: string,
