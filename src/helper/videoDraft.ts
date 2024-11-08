@@ -173,6 +173,10 @@ const processVideo = async (
         );
 
         channel.ack(msg);
+
+        for (const item of content.admins) {
+          io.to(clients.get(item.admin.user.id)).emit('newSubmission');
+        }
       }
     });
   } catch (error) {

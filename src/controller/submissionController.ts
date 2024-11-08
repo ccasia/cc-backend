@@ -131,6 +131,7 @@ export const agreementSubmission = async (req: Request, res: Response) => {
         });
 
         io.to(clients.get(item.adminId)).emit('notification', adminNotification);
+        io.to(clients.get(item.adminId)).emit('newSubmission');
       });
     }
     return res.status(200).json({ message: 'Successfully submitted' });
@@ -325,6 +326,19 @@ export const draftSubmission = async (req: Request, res: Response) => {
       include: {
         submissionType: true,
         task: true,
+        campaign: {
+          select: {
+            campaignAdmin: {
+              select: {
+                admin: {
+                  select: {
+                    user: true,
+                  },
+                },
+              },
+            },
+          },
+        },
       },
     });
 
@@ -362,6 +376,7 @@ export const draftSubmission = async (req: Request, res: Response) => {
           fileName: `${submission?.id}_draft.mp4`,
           folder: submission?.submissionType.type,
           caption,
+          admins: submission.campaign.campaignAdmin,
         }),
       ),
       {
@@ -411,22 +426,6 @@ export const adminManageDraft = async (req: Request, res: Response) => {
               content: feedback,
               adminId: req.session.userid as string,
             },
-            // upsert: {
-            //   where: {
-            //     id: submission?.feedback?.[0]?.id,
-            //   },
-            //   update: {
-            //     content: feedback,
-            //     admin: {
-            //       connect: { id: req.session.userid },
-            //     },
-            //   },
-            //   create: {
-            //     type: 'COMMENT',
-            //     content: feedback,
-            //     adminId: req.session.userid as string,
-            //   },
-            // },
           },
         },
         include: {
@@ -504,8 +503,6 @@ export const adminManageDraft = async (req: Request, res: Response) => {
         },
       });
 
-      console.log(test);
-
       // Sending posting schedule
       postingSchedule(
         submission.user.email,
@@ -530,6 +527,7 @@ export const adminManageDraft = async (req: Request, res: Response) => {
       });
 
       io.to(sub.userId).emit('notification', notification);
+      io.to(sub.userId).emit('newFeedback');
 
       return res.status(200).json({ message: 'Succesfully submitted.' });
     } else {
@@ -548,24 +546,6 @@ export const adminManageDraft = async (req: Request, res: Response) => {
               admin: {
                 connect: { id: req.session.userid },
               },
-              // where: {
-              //   id: submission?.feedback?.id,
-              // },
-              // data: {
-              // reasons: reasons,
-              // content: feedback,
-              // admin: {
-              //   connect: { id: req.session.userid },
-              // },
-              // },
-              // create: {
-              //   type: 'REASON',
-              //   reasons: reasons,
-              //   content: feedback,
-              //   admin: {
-              //     connect: { id: req.session.userid },
-              //   },
-              // },
             },
           },
         },
@@ -629,7 +609,6 @@ export const adminManageDraft = async (req: Request, res: Response) => {
       return res.status(200).json({ message: 'Succesfully submitted.' });
     }
   } catch (error) {
-    console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -688,6 +667,7 @@ export const postingSubmission = async (req: Request, res: Response) => {
       });
 
       io.to(clients.get(admin.adminId)).emit('notification', notification);
+      io.to(clients.get(admin.adminId)).emit('newSubmission');
     }
 
     const notification = await saveNotification({
@@ -828,6 +808,7 @@ export const adminManagePosting = async (req: Request, res: Response) => {
       });
 
       io.to(clients.get(submission.userId)).emit('notification', Invoicenotification);
+      io.to(clients.get(submission.userId)).emit('newFeedback');
 
       //Email
       creatorInvoice(submission.user.email, submission.campaign.name, submission.user.name ?? 'Creator');
@@ -859,10 +840,10 @@ export const adminManagePosting = async (req: Request, res: Response) => {
     });
 
     io.to(clients.get(submission.userId)).emit('notification', notification);
+    io.to(clients.get(submission.userId)).emit('newFeedback');
 
     return res.status(200).json({ message: 'Successfully submitted' });
   } catch (error) {
-    console.log(error);
     return res.status(400).json(error);
   }
 };
