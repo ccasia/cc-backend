@@ -309,10 +309,10 @@ export const getSubmissionByCampaignCreatorId = async (req: Request, res: Respon
 
 export const draftSubmission = async (req: Request, res: Response) => {
   const { submissionId, caption } = JSON.parse(req.body.data);
-  const amqp = await amqplib.connect(process.env.RABBIT_MQ as string);
-  const channel = await amqp.createChannel();
-  await channel.assertQueue('draft');
   const userid = req.session.userid;
+
+  let amqp: amqplib.Connection | null = null;
+  let channel: amqplib.Channel | null = null;
 
   try {
     if (!(req.files as any).draftVideo) {
@@ -364,6 +364,10 @@ export const draftSubmission = async (req: Request, res: Response) => {
 
     await file.mv(filePath);
 
+    amqp = await amqplib.connect(process.env.RABBIT_MQ as string);
+    channel = await amqp.createChannel();
+    await channel.assertQueue('draft');
+
     channel.sendToQueue(
       'draft',
       Buffer.from(
@@ -384,12 +388,15 @@ export const draftSubmission = async (req: Request, res: Response) => {
       },
     );
 
-    await channel.close();
-    await amqp.close();
+    // await channel.close();
+    // await amqp.close();
 
     return res.status(200).json({ message: 'Video start processing' });
   } catch (error) {
     return res.status(400).json(error);
+  } finally {
+    if (channel) await channel.close();
+    if (amqp) await amqp.close();
   }
 };
 

@@ -158,6 +158,7 @@ const processVideo = async (
     await channel.assertQueue('draft', { durable: true });
     await channel.purgeQueue('draft');
     console.log('Video Draft Queue starting...');
+
     await channel.consume('draft', async (msg) => {
       if (msg !== null) {
         const content = JSON.parse(msg.content.toString());
