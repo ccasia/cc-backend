@@ -547,13 +547,21 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
   const id = req.session.userid;
   try {
     let campaigns;
-    const admin = await prisma.user.findUnique({
+    const user = await prisma.user.findUnique({
       where: {
         id: id,
       },
+      select: {
+        admin: {
+          select: {
+            mode: true,
+          },
+        },
+        id: true,
+      },
     });
 
-    if (admin?.role === 'superadmin') {
+    if (user?.admin?.mode === 'god') {
       campaigns = await prisma.campaign.findMany({
         include: {
           submission: {
@@ -588,7 +596,6 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
                 include: {
                   creator: {
                     include: {
-                      // industries: true,
                       interests: true,
                     },
                   },
@@ -622,7 +629,7 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
         where: {
           campaignAdmin: {
             some: {
-              adminId: admin?.id,
+              adminId: user?.id,
             },
           },
         },
@@ -690,7 +697,6 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
 
     return res.status(200).json(campaigns);
   } catch (error) {
-    console.log(error);
     return res.status(400).json(error);
   }
 };
