@@ -293,7 +293,11 @@ export const getSubmissionByCampaignCreatorId = async (req: Request, res: Respon
             type: true,
           },
         },
-        feedback: true,
+        feedback: {
+          include: {
+            admin: true
+          }
+        },
         dependentOn: true,
         dependencies: true,
       },
