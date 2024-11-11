@@ -3048,18 +3048,23 @@ export const getMyCampaigns = async (req: Request, res: Response) => {
       },
     });
 
-    const adjustedCampaigns = campaigns.map((campaign) => ({
-      ...campaign,
-      pitch: campaign.pitch.find((pitch) => pitch.userId === user.id) ?? null,
-      shortlisted: campaign.shortlisted.find((shortlisted) => shortlisted.userId === user.id) ?? null,
-      creatorAgreement: campaign.creatorAgreement.find((agreement) => agreement.userId === user.id) ?? null,
-      submission: campaign.submission.filter((submission) => submission.userId === user.id) ?? null,
-      totalCompletion:
-        (campaign.submission.filter((submission) => submission.userId === user.id && submission.status === 'APPROVED')
-          .length /
-          campaign.submission.filter((submission) => submission.userId === user.id).length) *
-          100 || null,
-    }));
+    const adjustedCampaigns = campaigns
+      .filter(
+        (item) =>
+          item.shortlisted.some((val) => val.userId === user.id) || item.pitch.some((val) => val.userId === user.id),
+      )
+      .map((campaign) => ({
+        ...campaign,
+        pitch: campaign.pitch.find((pitch) => pitch.userId === user.id) ?? null,
+        shortlisted: campaign.shortlisted.find((shortlisted) => shortlisted.userId === user.id) ?? null,
+        creatorAgreement: campaign.creatorAgreement.find((agreement) => agreement.userId === user.id) ?? null,
+        submission: campaign.submission.filter((submission) => submission.userId === user.id) ?? null,
+        totalCompletion:
+          (campaign.submission.filter((submission) => submission.userId === user.id && submission.status === 'APPROVED')
+            .length /
+            campaign.submission.filter((submission) => submission.userId === user.id).length) *
+            100 || null,
+      }));
 
     return res.status(200).json(adjustedCampaigns);
   } catch (error) {
