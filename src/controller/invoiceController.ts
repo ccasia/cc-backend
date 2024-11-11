@@ -6,6 +6,9 @@ import jwt, { Secret } from 'jsonwebtoken';
 import { Request, Response } from 'express';
 
 import { InvoiceStatus, PrismaClient } from '@prisma/client';
+import { notificationInvoiceStatus, notificationInvoiceUpdate } from '@helper/notification';
+import { saveNotification } from './notificationController';
+import { clients, io } from '../server';
 
 import { TokenSet } from 'openid-client';
 import { error } from 'console';
@@ -52,12 +55,17 @@ export const getInvoicesByCreatorId = async (req: Request, res: Response) => {
         creatorId: userid,
       },
       include: {
-        campaign: true,
+        campaign: {
+          include: {
+            brand: true,
+            company: true,
+          },
+        },
       },
     });
-    res.status(200).json(invoices);
+    return res.status(200).json(invoices);
   } catch (error) {
-    res.status(500).json({ error: 'Something went wrong' });
+    return res.status(400).json(error);
   }
 };
 
@@ -191,8 +199,28 @@ export const updateInvoiceStatus = async (req: Request, res: Response) => {
       data: {
         status: status as InvoiceStatus,
       },
+      include: {
+        campaign: {
+          include: { campaignAdmin: true },
+        },
+        user: true,
+      },
     });
     res.status(200).json(invoice);
+
+    const { title, message } = notificationInvoiceStatus(invoice.campaign.name);
+
+    // Notify Finance Admins and Creator
+    for (const admin of invoice.campaign.campaignAdmin) {
+      const notification = await saveNotification({
+        userId: admin.adminId && invoice.user.id,
+        title,
+        message,
+        entity: 'Invoice',
+        entityId: invoice.campaignId,
+      });
+      io.to(clients.get(admin.adminId)).emit('notification', notification);
+    }
   } catch (error) {
     res.status(500).json({ error: 'Something went wrong' });
   }
@@ -221,6 +249,19 @@ export const updateInvoice = async (req: Request, res: Response) => {
       include: {
         creator: true,
         user: true,
+        campaign: {
+          include: {
+            campaignAdmin: {
+              include: {
+                admin: {
+                  include: {
+                    role: true,
+                  },
+                },
+              },
+            },
+          },
+        },
       },
     });
 
@@ -257,6 +298,44 @@ export const updateInvoice = async (req: Request, res: Response) => {
       },
     });
     res.status(200).json(invoice);
+
+    const { title, message } = notificationInvoiceUpdate(invoice.campaign.name);
+
+    for (const admin of invoice.campaign.campaignAdmin) {
+      if (admin.admin.role?.name === 'CSM') {
+        try {
+          const notification = await saveNotification({
+            userId: admin.adminId,
+            title,
+            message,
+            entity: 'Invoice',
+            threadId: invoice.id,
+            // invoiceId: invoice.id,
+            entityId: invoice.campaignId,
+          });
+          //  console.log("Sending notification to admin:", admin.adminId, notification);
+          io.to(clients.get(admin.adminId)).emit('notification', notification);
+        } catch (error) {
+          console.error('Error notifying admin:', error);
+        }
+      }
+    }
+
+    try {
+      const creatorNotification = await saveNotification({
+        userId: invoice.creatorId,
+        title,
+        message,
+        entity: 'Invoice',
+        threadId: invoice.id,
+        // invoiceId: invoice.id,
+        entityId: invoice.campaignId,
+      });
+      //  console.log("Sending notification to creator:", invoice.creatorId, creatorNotification);
+      io.to(clients.get(invoice.creatorId)).emit('notification', creatorNotification);
+    } catch (error) {
+      console.error('Error notifying creator:', error);
+    }
   } catch (error) {
     console.log(error);
     res.status(500).json({ error: 'Something went wrong' });
@@ -517,5 +596,27 @@ export const createXeroInvoiceLocal = async (contactId: string, lineItems: any, 
     const response = await xero.accountingApi.createInvoices(xero.tenants[0].tenantId, { invoices: [invoice] });
   } catch (error) {
     console.log(error);
+  }
+};
+// create update function
+
+export const creatorInvoice = async (req: Request, res: Response) => {
+  const { invoiceId } = req.params;
+
+  try {
+    const invoice = await prisma.invoice.findUnique({
+      where: {
+        id: invoiceId,
+      },
+      include: {
+        campaign: true,
+      },
+    });
+
+    if (!invoice) return res.status(404).json({ message: 'Invoice not found.' });
+
+    return res.status(200).json(invoice);
+  } catch (error) {
+    return res.status(400).json(error);
   }
 };

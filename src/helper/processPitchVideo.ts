@@ -90,8 +90,6 @@ const processVideo = async (
     await channel.assertQueue('pitch', { durable: true });
     await channel.purgeQueue('pitch');
 
-    // channel.prefetch(2);
-
     console.log('Video Pitch Queue starting...');
     await channel.consume(
       'pitch',

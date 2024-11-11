@@ -14,23 +14,28 @@ import {
   getXero,
   xeroCallBack,
   getXeroContacts,
-  checkRefreshToken
+  checkRefreshToken,
 } from '@controllers/invoiceController';
-import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 import { checkAndRefreshAccessToken } from '@controllers/invoiceController';
+import { creatorInvoice } from '@controllers/invoiceController';
+import { isSuperAdmin } from '@middlewares/onlySuperadmin';
+import { isLoggedIn } from '@middlewares/onlyLogin';
 
 router.get('/zeroConnect', getXero);
 router.get('/xeroCallback', xeroCallBack);
 router.get('/getXeroContacts', checkAndRefreshAccessToken, getXeroContacts);
 router.get('/checkRefreshToken', checkRefreshToken);
+router.get('/:id', getInvoiceById);
 router.get('/', isSuperAdmin, getAllInvoices);
 router.get('/creator', getInvoicesByCreatorId);
 router.get('/getInvoicesByCampaignId/:id', getInvoicesByCampaignId);
-router.get('/:id', getInvoiceById);
-router.post('/create', createInvoice);
+
 router.get('/creator/:creatorId/campaign/:campaignId', getInvoiceByCreatorIdAndCampaignId);
+router.get('/creatorInvoice/:invoiceId', isLoggedIn, creatorInvoice);
+
+router.post('/create', createInvoice);
+
 router.patch('/updateStatus', updateInvoiceStatus);
 router.patch('/update', updateInvoice);
-
 
 export default router;

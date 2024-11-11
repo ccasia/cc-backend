@@ -17,12 +17,14 @@ import {
   notificationApproveAgreement,
   notificationApproveDraft,
   notificationDraft,
+  notificationInvoiceGenerate,
   notificationPosting,
   notificationRejectDraft,
 } from '@helper/notification';
 import { getColumnId } from './kanbanController';
 import {
   approvalOfDraft,
+  creatorInvoice,
   feedbackOnDraft,
   finalDraftDue,
   firstDraftDue,
@@ -117,6 +119,7 @@ export const agreementSubmission = async (req: Request, res: Response) => {
         submission.user.name as string,
       );
 
+      //for admins
       submission.campaign.campaignAdmin.forEach(async (item) => {
         const adminNotification = await saveNotification({
           userId: item.adminId,
@@ -128,6 +131,7 @@ export const agreementSubmission = async (req: Request, res: Response) => {
         });
 
         io.to(clients.get(item.adminId)).emit('notification', adminNotification);
+        io.to(clients.get(item.adminId)).emit('newSubmission');
       });
     }
     return res.status(200).json({ message: 'Successfully submitted' });
@@ -231,7 +235,7 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
 
       // Emailer for First Draft
       if (user) {
-        firstDraftDue(user.email, campaign?.name as string, user.name ?? 'Creator');
+        firstDraftDue(user.email, campaign?.name as string, user.name ?? 'Creator', campaign?.id as string);
       }
 
       io.to(clients.get(userId)).emit('notification', notification);
@@ -258,9 +262,10 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
 
       const notification = await saveNotification({
         userId: userId,
-        title: `Agreement Rejected`,
+        title: `❌ Agreement Rejected`,
         message: `Please Resubmit Your Agreement Form for ${campaign?.name}`,
         entity: 'Agreement',
+        entityId: campaign?.id,
       });
 
       io.to(clients.get(userId)).emit('notification', notification);
@@ -304,10 +309,10 @@ export const getSubmissionByCampaignCreatorId = async (req: Request, res: Respon
 
 export const draftSubmission = async (req: Request, res: Response) => {
   const { submissionId, caption } = JSON.parse(req.body.data);
-  const amqp = await amqplib.connect(process.env.RABBIT_MQ as string);
-  const channel = await amqp.createChannel();
-  await channel.assertQueue('draft');
   const userid = req.session.userid;
+
+  let amqp: amqplib.Connection | null = null;
+  let channel: amqplib.Channel | null = null;
 
   try {
     if (!(req.files as any).draftVideo) {
@@ -321,6 +326,19 @@ export const draftSubmission = async (req: Request, res: Response) => {
       include: {
         submissionType: true,
         task: true,
+        campaign: {
+          select: {
+            campaignAdmin: {
+              select: {
+                admin: {
+                  select: {
+                    user: true,
+                  },
+                },
+              },
+            },
+          },
+        },
       },
     });
 
@@ -346,6 +364,10 @@ export const draftSubmission = async (req: Request, res: Response) => {
 
     await file.mv(filePath);
 
+    amqp = await amqplib.connect(process.env.RABBIT_MQ as string);
+    channel = await amqp.createChannel();
+    await channel.assertQueue('draft');
+
     channel.sendToQueue(
       'draft',
       Buffer.from(
@@ -358,6 +380,7 @@ export const draftSubmission = async (req: Request, res: Response) => {
           fileName: `${submission?.id}_draft.mp4`,
           folder: submission?.submissionType.type,
           caption,
+          admins: submission.campaign.campaignAdmin,
         }),
       ),
       {
@@ -365,12 +388,15 @@ export const draftSubmission = async (req: Request, res: Response) => {
       },
     );
 
-    await channel.close();
-    await amqp.close();
+    // await channel.close();
+    // await amqp.close();
 
     return res.status(200).json({ message: 'Video start processing' });
   } catch (error) {
     return res.status(400).json(error);
+  } finally {
+    if (channel) await channel.close();
+    if (amqp) await amqp.close();
   }
 };
 
@@ -407,22 +433,6 @@ export const adminManageDraft = async (req: Request, res: Response) => {
               content: feedback,
               adminId: req.session.userid as string,
             },
-            // upsert: {
-            //   where: {
-            //     id: submission?.feedback?.[0]?.id,
-            //   },
-            //   update: {
-            //     content: feedback,
-            //     admin: {
-            //       connect: { id: req.session.userid },
-            //     },
-            //   },
-            //   create: {
-            //     type: 'COMMENT',
-            //     content: feedback,
-            //     adminId: req.session.userid as string,
-            //   },
-            // },
           },
         },
         include: {
@@ -445,14 +455,13 @@ export const adminManageDraft = async (req: Request, res: Response) => {
 
       if (sub.submissionType.type === 'FIRST_DRAFT' && sub.status === 'APPROVED') {
         // Notify about final draft due
-        approvalOfDraft(sub.user.email, submission.campaign.name, sub.user.name ?? 'Creator');
-        finalDraftDue(sub.user.email, submission.campaign.name, sub.user.name ?? 'Creator');
-      } else if (sub.submissionType.type === 'FINAL_DRAFT' && sub.status === 'APPROVED') {
+        approvalOfDraft(sub.user.email, submission.campaign.name, sub.user.name ?? 'Creator', sub.campaignId);
+      } else if ((sub.submissionType.type === 'FINAL_DRAFT' && sub.status === 'APPROVED', sub.campaignId)) {
         // Notify about final draft approval
-        approvalOfDraft(sub.user.email, submission.campaign.name, sub.user.name ?? 'Creator');
+        approvalOfDraft(sub.user.email, submission.campaign.name, sub.user.name ?? 'Creator', sub.campaignId);
       } else {
         // Fallback email if the draft is not approved
-        feedbackOnDraft(sub.user.email, submission.campaign.name, sub.user.name ?? 'Creator');
+        feedbackOnDraft(sub.user.email, submission.campaign.name, sub.user.name ?? 'Creator', sub.campaignId);
       }
 
       const posting = await prisma.submission.findFirst({
@@ -501,8 +510,15 @@ export const adminManageDraft = async (req: Request, res: Response) => {
         },
       });
 
-      console.log(test);
+      // Sending posting schedule
+      postingSchedule(
+        submission.user.email,
+        submission.campaign.name,
+        submission.user.name ?? 'Creator',
+        submission.campaign.id,
+      );
 
+      //For Approve
       const { title, message } = notificationApproveDraft(
         submission.campaign.name,
         MAP_TIMELINE[sub.submissionType.type],
@@ -513,10 +529,12 @@ export const adminManageDraft = async (req: Request, res: Response) => {
         title: title,
         message: message,
         entity: 'Draft',
+        creatorId: submission.userId,
         entityId: submission.campaignId,
       });
 
       io.to(sub.userId).emit('notification', notification);
+      io.to(sub.userId).emit('newFeedback');
 
       return res.status(200).json({ message: 'Succesfully submitted.' });
     } else {
@@ -535,24 +553,6 @@ export const adminManageDraft = async (req: Request, res: Response) => {
               admin: {
                 connect: { id: req.session.userid },
               },
-              // where: {
-              //   id: submission?.feedback?.id,
-              // },
-              // data: {
-              // reasons: reasons,
-              // content: feedback,
-              // admin: {
-              //   connect: { id: req.session.userid },
-              // },
-              // },
-              // create: {
-              //   type: 'REASON',
-              //   reasons: reasons,
-              //   content: feedback,
-              //   admin: {
-              //     connect: { id: req.session.userid },
-              //   },
-              // },
             },
           },
         },
@@ -616,7 +616,6 @@ export const adminManageDraft = async (req: Request, res: Response) => {
       return res.status(200).json({ message: 'Succesfully submitted.' });
     }
   } catch (error) {
-    console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -644,11 +643,8 @@ export const postingSubmission = async (req: Request, res: Response) => {
         task: true,
       },
     });
-
     const inReviewColumnId = await getColumnId({ userId: submission.userId, columnName: 'In Review' });
 
-    console.log('Data id', submissionId);
-    console.log('Data submisison', submission);
     await prisma.task.update({
       where: {
         id: submission.task?.id,
@@ -667,15 +663,18 @@ export const postingSubmission = async (req: Request, res: Response) => {
     );
 
     for (const admin of submission.campaign.campaignAdmin) {
+      console.log('Admin structure', admin);
       const notification = await saveNotification({
         userId: admin.adminId,
         message: adminMessage,
         title: adminTitle,
         entity: 'Post',
+        creatorId: submission.userId,
         entityId: submission.campaignId,
       });
 
       io.to(clients.get(admin.adminId)).emit('notification', notification);
+      io.to(clients.get(admin.adminId)).emit('newSubmission');
     }
 
     const notification = await saveNotification({
@@ -712,7 +711,19 @@ export const adminManagePosting = async (req: Request, res: Response) => {
             creatorAgreement: true,
           },
         },
-        campaign: true,
+        campaign: {
+          include: {
+            campaignAdmin: {
+              include: {
+                admin: {
+                  include: {
+                    role: true,
+                  },
+                },
+              },
+            },
+          },
+        },
         task: true,
       },
     });
@@ -768,16 +779,46 @@ export const adminManagePosting = async (req: Request, res: Response) => {
         },
       });
 
-      // Sending posting schedule
-      postingSchedule(submission.user.email, submission.campaign.name, submission.user.name ?? 'Creator');
-
       const notification = await saveNotification({
         userId: submission.userId,
-        message: `Your posting has been approved for campaign ${submission.campaign.name}`,
+        message: ` ✅ Your posting has been approved for campaign ${submission.campaign.name}`,
         entity: Entity.Post,
+        entityId: submission.campaignId,
       });
 
       io.to(clients.get(submission.userId)).emit('notification', notification);
+
+      const { title, message } = notificationInvoiceGenerate(submission.campaign.name);
+
+      // Notify each admin with the "Finance" role
+      for (const admin of submission.campaign.campaignAdmin) {
+        if (admin?.admin?.role?.name === 'Finance') {
+          console.log('Sending notification to Finance admin:', admin);
+
+          const notification = await saveNotification({
+            userId: admin.adminId,
+            title,
+            message,
+            entity: 'Invoice',
+            entityId: submission.campaignId,
+          });
+
+          io.to(clients.get(admin.adminId)).emit('notification', notification);
+        }
+      }
+      const Invoicenotification = await saveNotification({
+        userId: submission.userId,
+        title,
+        message,
+        entity: 'Invoice',
+        entityId: submission.campaignId,
+      });
+
+      io.to(clients.get(submission.userId)).emit('notification', Invoicenotification);
+      io.to(clients.get(submission.userId)).emit('newFeedback');
+
+      //Email
+      creatorInvoice(submission.user.email, submission.campaign.name, submission.user.name ?? 'Creator');
 
       return res.status(200).json({ message: 'Successfully submitted' });
     }
@@ -801,15 +842,15 @@ export const adminManagePosting = async (req: Request, res: Response) => {
 
     const notification = await saveNotification({
       userId: submission.userId,
-      message: `Your posting has been rejected for campaign ${submission.campaign.name}. Feedback is provided.`,
+      message: `❌ Your posting has been rejected for campaign ${submission.campaign.name}. Feedback is provided.`,
       entity: Entity.Post,
     });
 
     io.to(clients.get(submission.userId)).emit('notification', notification);
+    io.to(clients.get(submission.userId)).emit('newFeedback');
 
     return res.status(200).json({ message: 'Successfully submitted' });
   } catch (error) {
-    console.log(error);
     return res.status(400).json(error);
   }
 };

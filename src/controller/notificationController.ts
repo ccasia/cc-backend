@@ -19,6 +19,7 @@ export const saveNotification = async ({
   pitchId,
   creatorId,
   type,
+  threadId,
 }: {
   userId: string;
   campaignId?: string;
@@ -29,8 +30,9 @@ export const saveNotification = async ({
   title?: string;
   pitchId?: string;
   type?: string;
+  threadId?: string;
 }) => {
-  if (entity === 'Agreement' || entity === 'Draft') {
+  if (entity === 'Agreement' || entity === 'Draft' || entity === 'Timeline' || entity === 'Post') {
     return prisma.notification.create({
       data: {
         message: message,
@@ -52,6 +54,82 @@ export const saveNotification = async ({
         },
       },
     });
+  }
+
+  if (entity === 'Invoice') {
+    return prisma.notification.create({
+      data: {
+        message: message,
+        title: title,
+        entity: entity,
+        threadId: threadId,
+        //invoiceId: invoiceId,
+        userNotification: {
+          create: {
+            userId: userId,
+          },
+        },
+      },
+      include: {
+        userNotification: {
+          select: {
+            userId: true,
+          },
+        },
+      },
+    });
+  }
+  if (entity === 'Chat') {
+    if (entityId) {
+      // Case: Chat with a campaign, connect campaignId
+      return prisma.notification.create({
+        data: {
+          message: message,
+          title: title,
+          entity: entity,
+          threadId: threadId,
+          campaign: {
+            connect: {
+              id: entityId,
+            },
+          },
+          userNotification: {
+            create: {
+              userId: userId,
+            },
+          },
+        },
+        include: {
+          userNotification: {
+            select: {
+              userId: true,
+            },
+          },
+        },
+      });
+    } else {
+      // Case: Chat without a campaign, only use threadId
+      return prisma.notification.create({
+        data: {
+          message: message,
+          title: title,
+          entity: entity,
+          threadId: threadId,
+          userNotification: {
+            create: {
+              userId: userId,
+            },
+          },
+        },
+        include: {
+          userNotification: {
+            select: {
+              userId: true,
+            },
+          },
+        },
+      });
+    }
   }
 
   if (entity && entityId) {
