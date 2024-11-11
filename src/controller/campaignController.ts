@@ -2059,8 +2059,11 @@ export const getCampaignForCreatorById = async (req: Request, res: Response) => 
         pitch: true,
         shortlisted: true,
         invoice: true,
+        submission: true,
       },
     });
+
+    if (!campaign) return res.status(404).json({ message: 'No campaign found.' });
 
     const agreement = await prisma.creatorAgreement.findUnique({
       where: {
@@ -2070,7 +2073,17 @@ export const getCampaignForCreatorById = async (req: Request, res: Response) => 
         },
       },
     });
-    return res.status(200).json({ ...campaign, agreement });
+
+    const adjustedData = {
+      ...campaign,
+      totalCompletion:
+        (campaign.submission.filter((submission) => submission.userId === userid && submission.status === 'APPROVED')
+          .length /
+          campaign.submission.filter((submission) => submission.userId === userid).length) *
+          100 || null,
+    };
+
+    return res.status(200).json({ ...adjustedData, agreement });
   } catch (error) {
     return res.status(400).json(error);
   }
@@ -3026,6 +3039,10 @@ export const getMyCampaigns = async (req: Request, res: Response) => {
 
     const campaigns = await prisma.campaign.findMany({
       include: {
+        logistic: true,
+        brand: true,
+        company: true,
+        invoice: true,
         shortlisted: {
           where: {
             userId: user.id,
@@ -3037,7 +3054,16 @@ export const getMyCampaigns = async (req: Request, res: Response) => {
           },
         },
         campaignBrief: true,
-        campaignAdmin: true,
+        campaignAdmin: {
+          include: {
+            admin: {
+              include: {
+                user: true,
+                role: true,
+              },
+            },
+          },
+        },
         campaignRequirement: true,
         creatorAgreement: {
           where: {
@@ -3049,6 +3075,18 @@ export const getMyCampaigns = async (req: Request, res: Response) => {
             submissionType: true,
             dependencies: true,
             dependentOn: true,
+          },
+        },
+        campaignTimeline: {
+          where: {
+            AND: [
+              { for: 'creator' },
+              {
+                name: {
+                  not: 'Open For Pitch',
+                },
+              },
+            ],
           },
         },
       },
