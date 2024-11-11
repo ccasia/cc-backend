@@ -20,7 +20,7 @@ import {
 
 import amqplib from 'amqplib';
 
-import { uploadAgreementForm, uploadImage, uploadPitchVideo } from '@configs/cloudStorage.config';
+import { deleteContent, uploadAgreementForm, uploadImage, uploadPitchVideo } from '@configs/cloudStorage.config';
 import dayjs from 'dayjs';
 import { logChange } from '@services/campaignServices';
 import { saveNotification } from '@controllers/notificationController';
@@ -2208,7 +2208,7 @@ export const uploadVideoTest = async (req: Request, res: Response) => {
   const { campaignId } = req.body;
   const { userid } = req.session;
 
-  const fileName = `${userid}_pitch.mp4`;
+  const fileName = `${userid}_${campaignId}_pitch.mp4`;
 
   try {
     if (!(req.files as any).pitchVideo) {
@@ -3112,6 +3112,21 @@ export const getMyCampaigns = async (req: Request, res: Response) => {
 
     return res.status(200).json(adjustedCampaigns);
   } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const removePitchVideo = async (req: Request, res: Response) => {
+  const { userId, campaignId } = req.body;
+
+  try {
+    const fileName = `${userId}_${campaignId}_pitch.mp4`;
+
+    await deleteContent({ folderName: 'pitchVideo', fileName: fileName });
+
+    return res.status(200).json({ message: 'Pitch video is removed.' });
+  } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   }
 };

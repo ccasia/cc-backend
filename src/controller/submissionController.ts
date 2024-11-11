@@ -295,8 +295,8 @@ export const getSubmissionByCampaignCreatorId = async (req: Request, res: Respon
         },
         feedback: {
           include: {
-            admin: true
-          }
+            admin: true,
+          },
         },
         dependentOn: true,
         dependencies: true,
@@ -391,9 +391,6 @@ export const draftSubmission = async (req: Request, res: Response) => {
         persistent: true,
       },
     );
-
-    // await channel.close();
-    // await amqp.close();
 
     return res.status(200).json({ message: 'Video start processing' });
   } catch (error) {

@@ -252,3 +252,18 @@ export const uploadDigitalSignature = async ({
     throw new Error(`Error uploading file: ${err.message}`);
   }
 };
+
+export const deleteContent = async ({ fileName, folderName }: any) => {
+  const bucketName = process.env.BUCKET_NAME as string;
+  const destination = `${folderName}/${fileName}`;
+  try {
+    const file = storage.bucket(bucketName).file(destination);
+
+    // Delete the file
+    await file.delete();
+
+    console.log(`File ${fileName} deleted from bucket ${bucketName}.`);
+  } catch (error) {
+    throw new Error(error);
+  }
+};

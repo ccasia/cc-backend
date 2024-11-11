@@ -36,6 +36,7 @@ import {
   editCampaignImages,
   draftPitch,
   getMyCampaigns,
+  removePitchVideo,
 } from '@controllers/campaignController';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 
@@ -111,6 +112,7 @@ router.patch('/changeLogisticStatus', isSuperAdmin, updateStatusLogistic); //nee
 router.patch('/receiveLogistic', isLoggedIn, receiveLogistic);
 router.patch('/updateAmountAgreement', isLoggedIn, isSuperAdmin, updateAmountAgreement);
 router.patch('/sendAgreement', isLoggedIn, isSuperAdmin, sendAgreement);
+router.patch('/removePitchVideo', isLoggedIn, removePitchVideo);
 
 router.delete('/timelineType/:id', isSuperAdmin, deleteTimelineType);
 router.delete('/unsaveCampaign/:id', isLoggedIn, unSaveCampaign);
