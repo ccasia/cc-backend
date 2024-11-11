@@ -318,16 +318,16 @@ export const verifyAdmin = async (req: Request, res: Response) => {
     });
     return res.status(200).json({ message: 'Admin verified successfully', user });
   } catch (error: any) {
-    //console.log(error);
     if (error.name) {
-      return res.status(400).json({ error: 'Token expired. Please contact our admin.' });
+      return res.status(400).json({ message: 'Token expired. Please contact our admin.' });
     }
-    return res.status(500).json({ error: 'An error occurred while verifying the user' });
+    return res.status(500).json({ message: 'An error occurred while verifying the user' });
   }
 };
 
 export const resendVerifyTokenAdmin = async (req: Request, res: Response) => {
   const { token } = req.body;
+
   try {
     const admin = await prisma.admin.findFirst({
       where: {
@@ -336,7 +336,7 @@ export const resendVerifyTokenAdmin = async (req: Request, res: Response) => {
     });
 
     if (!admin) {
-      return res.status(404).json({ message: 'Invalid token' });
+      return res.status(404).json({ message: 'Invalid token.' });
     }
 
     const newToken = jwt.sign({ id: admin?.userId }, process.env.SESSION_SECRET as Secret, { expiresIn: '1h' });
@@ -631,9 +631,15 @@ export const getprofile = async (req: Request, res: Response) => {
         case 'banned':
           return res.status(400).json({ message: 'Account banned.' });
         case 'pending':
-          return res.status(202).json({ message: 'Accoung pending.' });
+          return res.status(400).json({ message: 'Accoung pending.' });
+        case 'blacklisted':
+          return res.status(400).json({ message: 'Account blacklisted.' });
+        case 'suspended':
+          return res.status(400).json({ message: 'Accoung suspended.' });
+        case 'spam':
+          return res.status(400).json({ message: 'Accoung spam.' });
         case 'rejected':
-          return res.status(403).json({ message: 'Account rejected.' });
+          return res.status(400).json({ message: 'Account rejected.' });
       }
 
       res.cookie('accessToken', accessToken, {
@@ -643,7 +649,6 @@ export const getprofile = async (req: Request, res: Response) => {
 
       return res.status(200).json({ user, accessToken });
     } catch (error) {
-      //console.log(error);
       return res.status(500).json({ message: 'Internal Server Error' });
     }
   });
@@ -677,7 +682,7 @@ export const login = async (req: Request, res: Response) => {
         },
         creator: {
           include: {
-            industries: true,
+            // industries: true,
             interests: true,
           },
         },
@@ -693,6 +698,12 @@ export const login = async (req: Request, res: Response) => {
         return res.status(400).json({ message: 'Account banned.' });
       case 'pending':
         return res.status(400).json({ message: 'Accoung pending.' });
+      case 'blacklisted':
+        return res.status(400).json({ message: 'Account blacklisted.' });
+      case 'suspended':
+        return res.status(400).json({ message: 'Accoung suspended.' });
+      case 'spam':
+        return res.status(400).json({ message: 'Accoung spam.' });
       case 'rejected':
         return res.status(400).json({ message: 'Account rejected.' });
     }
@@ -738,83 +749,100 @@ export const login = async (req: Request, res: Response) => {
 };
 
 export const updateProfileCreator = async (req: Request, res: Response) => {
-  const { name, email, phoneNumber, country, about, id, state, address } = JSON.parse(req.body.data);
+  const { name, email, phoneNumber, country, about, id, state, address, allergies, bodyMeasurement } = JSON.parse(
+    req.body.data,
+  );
+
+  // console.log(JSON.parse(req.body.data));
 
   try {
     const creator = await prisma.creator.findFirst({
       where: {
         userId: id,
       },
+      include: {
+        user: {
+          include: {
+            paymentForm: true,
+          },
+        },
+      },
     });
+
+    console.log(creator);
+
+    if (!creator) {
+      return res.status(404).json({ message: 'Creator not found' });
+    }
+
+    const updateData: any = {
+      state: state,
+      address: address,
+      mediaKit: {
+        upsert: {
+          where: {
+            creatorId: creator?.id,
+          },
+          update: {
+            about: about,
+          },
+          create: {
+            about: about,
+          },
+        },
+      },
+      user: {
+        update: {
+          name: name,
+          email: email,
+          phoneNumber: phoneNumber,
+          country: country,
+        },
+      },
+    };
 
     if (req.files) {
       const { image } = req?.files as any;
+      const { backgroundImage } = req?.files as any;
 
-      const url = await uploadProfileImage(image.tempFilePath, image.name, 'creator');
-      await prisma.creator.update({
-        where: {
-          userId: id,
-        },
-        data: {
-          state: state,
-          address: address,
-          mediaKit: {
-            upsert: {
-              where: {
-                creatorId: creator?.id,
-              },
-              update: {
-                about: about,
-              },
-              create: {
-                about: about,
-              },
-            },
-          },
-          user: {
-            update: {
-              name: name,
-              email: email,
-              photoURL: url,
-              phoneNumber: phoneNumber,
-              country: country,
-            },
-          },
-        },
-      });
-    } else {
-      await prisma.creator.update({
-        where: {
-          userId: id,
-        },
-        data: {
-          state: state,
-          address: address,
-          mediaKit: {
-            upsert: {
-              where: {
-                creatorId: creator?.id,
-              },
-              update: {
-                about: about,
-              },
-              create: {
-                about: about,
-              },
-            },
-          },
-          user: {
-            update: {
-              name: name,
-              email: email,
-              phoneNumber: phoneNumber,
-              country: country,
-            },
-          },
-        },
-      });
+      if (image) {
+        const url = await uploadProfileImage(image.tempFilePath, image.name, 'creator');
+        updateData.user.update.photoURL = url;
+      }
+
+      if (backgroundImage) {
+        const urlBackground = await uploadProfileImage(backgroundImage.tempFilePath, backgroundImage.name, 'creator');
+        updateData.user.update.photoBackgroundURL = urlBackground;
+      }
     }
-    return res.status(200).json({ message: 'Succesfully updated' });
+
+    await prisma.paymentForm.update({
+      where: {
+        userId: creator.userId,
+      },
+      data: {
+        bodyMeasurement: bodyMeasurement.toString(),
+        allergies: allergies.map((allergy: { name: string }) => allergy.name),
+      },
+    });
+
+    await prisma.creator.update({
+      where: {
+        userId: id,
+      },
+      data: {
+        ...updateData,
+      },
+      include: {
+        user: {
+          include: {
+            paymentForm: true,
+          },
+        },
+      },
+    });
+
+    return res.status(200).json({ message: 'Successfully updated' });
   } catch (error) {
     return res.status(400).json({ message: 'Error updating creator' });
   }

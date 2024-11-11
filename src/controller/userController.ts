@@ -1,5 +1,7 @@
 import { Request, Response } from 'express';
-import { AdminInvite } from '@configs/nodemailer.config';
+import { AdminInvite, forgetPasswordEmail } from '@configs/nodemailer.config';
+import jwt, { JwtPayload, Secret } from 'jsonwebtoken';
+import bcrypt from 'bcrypt';
 
 import {
   // createNewAdmin,
@@ -14,6 +16,7 @@ import {
 import { Storage } from '@google-cloud/storage';
 import { Entity, PrismaClient } from '@prisma/client';
 import { Title, saveNotification } from './notificationController';
+import { uploadProfileImage } from '@configs/cloudStorage.config';
 // import { serializePermission } from '@utils/serializePermission';
 
 const storage = new Storage({
@@ -33,28 +36,14 @@ export const updateProfileAdmin = async (req: Request, res: Response) => {
   try {
     if (files && files.image) {
       const { image } = files as any;
-      bucket.upload(image.tempFilePath, { destination: `profile/${image.name}` }, async (err, file) => {
-        if (err) {
-          return err;
-
-          // return res.status(500).json({ message: 'Error uploading image.' });
-        }
-        file?.makePublic(async (err) => {
-          if (err) {
-            return err;
-            // return res.status(500).json({ message: 'Error uploading image.' });
-          }
-          const publicURL = file.publicUrl();
-          await updateAdmin(req.body, publicURL);
-        });
-      });
+      const publicURL = await uploadProfileImage(image.tempFilePath, image.name, 'admin');
+      await updateAdmin(req.body, publicURL);
     } else {
       await updateAdmin(req.body);
     }
-    // saveNotification(req.body.userId, Title.Update, 'Profile Updated', Entity.User);
+
     return res.status(200).json({ message: 'Successfully updated' });
   } catch (error) {
-    //console.log(error);
     return res.status(400).json({ message: error });
   }
 };
@@ -179,8 +168,9 @@ export const createAdmin = async (req: Request, res: Response) => {
 };
 
 export const updateAdminInformation = async (req: Request, res: Response) => {
+  const photo = (req?.files as any)?.photoUrl;
   try {
-    const result = await updateNewAdmin(req.body);
+    const result = await updateNewAdmin(req.body, photo);
     res.status(200).json({ message: 'Successfully updated', result });
   } catch (error) {
     res.status(404).send(error);
@@ -218,6 +208,195 @@ export const getAllActiveAdmins = async (_req: Request, res: Response) => {
     });
 
     return res.status(200).json(admins);
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const forgetPassword = async (req: Request, res: Response) => {
+  const { email } = req.body;
+
+  try {
+    const user = await prisma.user.findFirst({
+      where: {
+        email: email,
+      },
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: 'No account registered with the email.' });
+    }
+
+    const token = jwt.sign({ email: user?.email }, process.env.ACCESSKEY as Secret, {
+      expiresIn: '5m',
+    });
+
+    await prisma.resetPasswordToken.upsert({
+      where: {
+        userId: user?.id,
+      },
+      update: {
+        token: token,
+      },
+      create: {
+        token: token,
+      },
+    });
+
+    forgetPasswordEmail(user?.email, token, user?.name || '');
+
+    return res.status(200).json({ message: 'Reset link has been sent to your email!' });
+  } catch (error) {
+    console.log(error);
+    return res.status(400).json(error);
+  }
+};
+
+export const checkForgetPasswordToken = async (req: Request, res: Response) => {
+  const params = req.params;
+  try {
+    if (!params.token) {
+      return res.status(404).json({ message: 'Token not found.' });
+    }
+
+    const forgetPasswordToken = await prisma.resetPasswordToken.findFirst({
+      where: {
+        token: params.token,
+      },
+    });
+
+    if (!forgetPasswordToken) {
+      return res.status(404).json({ message: 'Token not found.' });
+    }
+
+    const userDecode: any = jwt.verify(forgetPasswordToken.token as string, process.env.ACCESSKEY as string);
+
+    if (!userDecode) {
+      return res.status(404).json({ message: 'Token expired' });
+    }
+
+    const user = await prisma.user.findFirst({
+      where: {
+        email: userDecode?.email,
+      },
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+
+    return res.status(200).json({ message: 'User authenticated.', email: user?.email });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const changePassword = async (req: Request, res: Response) => {
+  const { token, password, confirmPassword } = req.body;
+
+  try {
+    if (password !== confirmPassword) {
+      return res.status(404).json({ message: 'Password must match.' });
+    }
+
+    const tokenDecoded: any = jwt.verify(token as string, process.env.ACCESSKEY as string);
+
+    const user = await prisma.user.findFirst({
+      where: {
+        email: tokenDecoded.email,
+      },
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    await prisma.user.update({
+      where: {
+        id: user.id,
+      },
+      data: {
+        password: hashedPassword,
+      },
+    });
+
+    return res.status(200).json({ message: 'Successfully changed password.' });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const getOverview = async (req: Request, res: Response) => {
+  const { userId } = req.params;
+  try {
+    const user = await prisma.user.findUnique({
+      where: {
+        id: userId,
+      },
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+
+    const campaigns = await prisma.campaign.findMany({
+      where: {
+        shortlisted: {
+          some: {
+            userId: user.id,
+            isCampaignDone: false,
+          },
+        },
+      },
+      include: {
+        campaignBrief: true,
+        submission: {
+          where: {
+            userId: user.id,
+          },
+          include: {
+            submissionType: {
+              select: {
+                type: true,
+              },
+            },
+          },
+        },
+        brand: true,
+        company: true,
+      },
+    });
+
+    const adjustedCampaigns = campaigns.map((campaign) => {
+      const submissions = campaign.submission;
+      let completed = 0;
+
+      submissions?.filter((submission) => {
+        if (
+          submission?.submissionType?.type === 'FIRST_DRAFT' &&
+          (submission?.status === 'CHANGES_REQUIRED' || submission?.status === 'APPROVED')
+        ) {
+          completed++;
+        } else if (submission?.status === 'APPROVED') {
+          completed++;
+        }
+      });
+
+      return {
+        campaignId: campaign?.id,
+        campaignName: campaign?.name,
+        campaignImages: campaign?.campaignBrief?.images,
+        brand: {
+          id: campaign?.brand?.id || campaign?.company?.id,
+          name: campaign?.brand?.name || campaign?.company?.name,
+        },
+        completed: (completed / 4) * 100,
+      };
+    });
+
+    return res.status(200).json(adjustedCampaigns);
   } catch (error) {
     return res.status(400).json(error);
   }

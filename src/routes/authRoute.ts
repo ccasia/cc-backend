@@ -32,7 +32,7 @@ import { isLoggedIn } from '@middlewares/onlyLogin';
 
 const router = Router();
 
-router.get('/', isLoggedIn, displayAll);
+// router.get('/', isLoggedIn, displayAll);
 router.post('/login', login);
 router.post('/logout', logout);
 router.patch('/changePassword', validateToken, changePassword);
@@ -49,9 +49,5 @@ router.get('/checkCreator', validateToken, checkCreator);
 router.put('/updateCreator', validateToken, updateCreator);
 router.patch('/updateProfileCreator', validateToken, updateProfileCreator);
 router.post('/registerFinanceUser', registerFinanceUser);
-
-router.get('/xeroCallback', xeroCallBack);
-router.get('/getXeroContacts', checkAndRefreshAccessToken, getXeroContacts);
-router.get('/checkRefreshToken', checkRefreshToken);
 
 export default router;

@@ -11,17 +11,49 @@ export enum Title {
 
 export const saveNotification = async ({
   userId,
+  campaignId,
   message,
   entity,
   entityId,
   title,
+  pitchId,
+  creatorId,
+  type,
 }: {
   userId: string;
+  campaignId?: string;
+  creatorId?: string;
   message: string;
   entity: Entity;
   entityId?: string;
   title?: string;
+  pitchId?: string;
+  type?: string;
 }) => {
+  if (entity === 'Agreement' || entity === 'Draft') {
+    return prisma.notification.create({
+      data: {
+        message: message,
+        title: title,
+        entity: entity,
+        campaignId: entityId,
+        creatorId: creatorId,
+        userNotification: {
+          create: {
+            userId: userId,
+          },
+        },
+      },
+      include: {
+        userNotification: {
+          select: {
+            userId: true,
+          },
+        },
+      },
+    });
+  }
+
   if (entity && entityId) {
     return prisma.notification.create({
       data: {
@@ -33,6 +65,52 @@ export const saveNotification = async ({
             id: entityId || '',
           },
         },
+        userNotification: {
+          create: {
+            userId: userId,
+          },
+        },
+      },
+      include: {
+        userNotification: {
+          select: {
+            userId: true,
+          },
+        },
+      },
+    });
+  }
+
+  if (pitchId && entity) {
+    return prisma.notification.create({
+      data: {
+        message: message,
+        title: title,
+        entity: entity,
+        pitchId: pitchId,
+        userNotification: {
+          create: {
+            userId: userId,
+          },
+        },
+      },
+      include: {
+        userNotification: {
+          select: {
+            userId: true,
+          },
+        },
+      },
+    });
+  }
+
+  if (creatorId && entity) {
+    return prisma.notification.create({
+      data: {
+        message: message,
+        title: title,
+        entity: entity,
+        creatorId: creatorId,
         userNotification: {
           create: {
             userId: userId,
@@ -81,6 +159,7 @@ export const getNotificationByUserId = async (req: Request, res: Response) => {
         notification: {
           include: {
             campaign: true,
+            pitch: true,
           },
         },
       },

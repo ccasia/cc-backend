@@ -4,6 +4,7 @@ import { Mode, Modules, PrismaClient } from '@prisma/client';
 import jwt, { Secret } from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
 import { createKanbanBoard } from '@controllers/kanbanController';
+import { uploadProfileImage } from '@configs/cloudStorage.config';
 
 const prisma = new PrismaClient();
 
@@ -40,7 +41,7 @@ export const updateAdmin = async (
         email,
         country,
         phoneNumber,
-        photoURL: publicURL || '',
+        photoURL: publicURL,
         status,
         admin: {
           update: {
@@ -172,6 +173,7 @@ export const getUser = async (id: string) => {
     },
     include: {
       paymentForm: true,
+      agreementTemplate: true,
       admin: {
         include: {
           adminPermissionModule: {
@@ -189,7 +191,7 @@ export const getUser = async (id: string) => {
       },
       creator: {
         include: {
-          industries: true,
+          // industries: true,
           interests: true,
           mediaKit: true,
         },
@@ -287,7 +289,7 @@ export const createNewAdmin = async (email: string, role: String) => {
       },
     });
 
-    const inviteToken = jwt.sign({ id: user?.id }, process.env.SESSION_SECRET as Secret, { expiresIn: '1h' });
+    const inviteToken = jwt.sign({ id: user?.id }, process.env.SESSION_SECRET as Secret, { expiresIn: '2m' });
 
     const admin = await prisma.admin.create({
       data: {
@@ -366,15 +368,20 @@ export const findUserByEmail = async (email: string) => {
   return user;
 };
 
-export const updateNewAdmin = async (adminData: any) => {
+export const updateNewAdmin = async (adminData: any, photo?: any) => {
   const {
     data: { name, country, phoneNumber, password },
     userId,
   } = adminData;
 
   const hashedPassword = await bcrypt.hash(password, 10);
+  let url: string;
 
   try {
+    if (photo) {
+      url = await uploadProfileImage(photo.tempFilePath, photo.name, 'admin');
+    }
+
     const res = await prisma.$transaction(async (tx) => {
       const user = await tx.user.update({
         where: {
@@ -386,6 +393,7 @@ export const updateNewAdmin = async (adminData: any) => {
           name,
           country,
           phoneNumber,
+          photoURL: url,
         },
       });
 
@@ -400,28 +408,6 @@ export const updateNewAdmin = async (adminData: any) => {
 
       return { user, admin };
     });
-    // const res = await prisma.$transaction([
-    //   prisma.user.update({
-    //     where: {
-    //       id: userId,
-    //     },
-    //     data: {
-    //       password: hashedPassword,
-    //       status: 'active',
-    //       name,
-    //       country,
-    //       phoneNumber,
-    //     },
-    //   }),
-    //   prisma.admin.update({
-    //     where: {
-    //       userId: userId,
-    //     },
-    //     data: {
-    //       inviteToken: null,
-    //     },
-    //   }),
-    // ]);
 
     await createKanbanBoard(res.user.id);
     return res;

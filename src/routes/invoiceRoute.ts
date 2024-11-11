@@ -12,13 +12,17 @@ import {
   updateInvoice,
   getAllInvoices,
   getXero,
+  xeroCallBack,
+  getXeroContacts,
+  checkRefreshToken
 } from '@controllers/invoiceController';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 import { checkAndRefreshAccessToken } from '@controllers/invoiceController';
 
-router.get('/zeroConnect', async (req, res) => {
-  console.log(req);
-});
+router.get('/zeroConnect', getXero);
+router.get('/xeroCallback', xeroCallBack);
+router.get('/getXeroContacts', checkAndRefreshAccessToken, getXeroContacts);
+router.get('/checkRefreshToken', checkRefreshToken);
 router.get('/', isSuperAdmin, getAllInvoices);
 router.get('/creator', getInvoicesByCreatorId);
 router.get('/getInvoicesByCampaignId/:id', getInvoicesByCampaignId);

@@ -9,7 +9,6 @@ import connectPgSimple from 'connect-pg-simple';
 import fileUpload from 'express-fileupload';
 import { PrismaClient } from '@prisma/client';
 import passport from 'passport';
-// import FacebookStrategy from 'passport-facebook';
 import '@configs/cronjob';
 import http from 'http';
 import { markMessagesAsSeen } from '@controllers/threadController';
@@ -18,7 +17,7 @@ import { isLoggedIn } from '@middlewares/onlyLogin';
 import { Server, Socket } from 'socket.io';
 import '@services/uploadVideo';
 import './helper/videoDraft';
-// import dotenvx from '@dotenvx/dotenvx';
+import './helper/processPitchVideo';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -41,6 +40,7 @@ app.use(
     // limits: { fileSize: 50 * 1024 * 1024 },
     useTempFiles: true,
     tempFileDir: '/tmp/',
+    // debug: true,
   }),
 );
 
@@ -82,12 +82,7 @@ declare module 'express-session' {
 const pgSession = connectPgSimple(session);
 
 const pgPool = new pg.Pool({
-  // user: 'afiqdanial',
   connectionString: process.env.DATABASE_URL,
-  // host: 'localhost',
-  // database: 'cult_creative',
-  // password: 'postgres',
-  // port: 5431,
 });
 
 const sessionMiddleware = session({

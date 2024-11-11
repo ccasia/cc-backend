@@ -33,6 +33,9 @@ import {
   creatorAgreements,
   updateAmountAgreement,
   sendAgreement,
+  editCampaignImages,
+  draftPitch,
+  getMyCampaigns,
 } from '@controllers/campaignController';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 
@@ -46,7 +49,7 @@ import {
 } from '@controllers/timelineController';
 import { isLoggedIn } from '@middlewares/onlyLogin';
 import { needPermissions } from '@middlewares/needPermissions';
-import { getAllTemplate } from '@controllers/templateController';
+import { createNewTemplate, getAllTemplate, getTemplatebyId } from '@controllers/templateController';
 
 const router = Router();
 
@@ -54,6 +57,7 @@ const router = Router();
 
 // Agreement Template
 router.get('/template', isSuperAdmin, getAllTemplate);
+router.get('/template/:id', getTemplatebyId);
 
 router.get('/getAllCampaignsByAdminID', isSuperAdmin, getAllCampaigns);
 
@@ -78,21 +82,22 @@ router.get('/getSubmissions', isSuperAdmin, getSubmission);
 router.get('/getCampaignLog/:id', getCampaignLog);
 router.get('/creatorAgreements/:campaignId', isLoggedIn, creatorAgreements);
 
+// For creator MyCampaigns
+router.get('/getMyCampaigns/:userId', isLoggedIn, getMyCampaigns);
+
 router.post('/updateOrCreateDefaultTimeline', updateOrCreateDefaultTimeline);
 router.post('/createCampaign', isSuperAdmin, createCampaign);
 // router.post('/rejectPitch', isSuperAdmin, rejectPitch);
 router.post('/createNewTimeline', isSuperAdmin, createNewTimeline);
 router.post('/createSingleTimelineType', isSuperAdmin, createSingleTimelineType);
-router.post(
-  '/uploadVideo',
-
-  uploadVideoTest,
-);
+router.post('/uploadVideo', isLoggedIn, uploadVideoTest);
 router.post('/saveCampaign', isLoggedIn, saveCampaign);
 router.post('/createLogistic', isLoggedIn, createLogistics);
 router.post('/shortlistCreator', isSuperAdmin, shortlistCreator);
+router.post('/template/:id', isSuperAdmin, createNewTemplate);
+router.post('/draftPitch', isLoggedIn, draftPitch);
 
-router.patch('/pitch', creatorMakePitch);
+router.patch('/pitch', isLoggedIn, creatorMakePitch);
 router.patch('/changeCampaignStage/:campaignId', changeCampaignStage);
 router.patch('/closeCampaign/:id', isSuperAdmin, closeCampaign);
 router.patch('/editCampaignInfo', isSuperAdmin, editCampaignInfo);
@@ -100,7 +105,8 @@ router.patch('/editCampaignBrandOrCompany', isSuperAdmin, editCampaignBrandOrCom
 router.patch('/editCampaignDosAndDonts', isSuperAdmin, editCampaignDosAndDonts);
 router.patch('/editCampaignRequirements', isSuperAdmin, editCampaignRequirements);
 router.patch('/editCampaignTimeline/:id', isSuperAdmin, editCampaignTimeline);
-router.patch('/changePitchStatus', changePitchStatus);
+router.patch('/editCampaignImages/:id', isSuperAdmin, editCampaignImages);
+router.patch('/changePitchStatus', isSuperAdmin, changePitchStatus);
 router.patch('/changeLogisticStatus', isSuperAdmin, updateStatusLogistic); //need permission later
 router.patch('/receiveLogistic', isLoggedIn, receiveLogistic);
 router.patch('/updateAmountAgreement', isLoggedIn, isSuperAdmin, updateAmountAgreement);

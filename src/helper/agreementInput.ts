@@ -37,9 +37,6 @@ export const agreementInput = async (data: {
   } = data;
 
   try {
-    // const paths = path.resolve(__dirname, '../form/agreement_template.docx');
-    // const content = fs.readFileSync(agreementFormUrl, 'binary');
-
     const response = await axios.get(agreementFormUrl, {
       responseType: 'arraybuffer',
     });
@@ -78,6 +75,6 @@ export const agreementInput = async (data: {
 
     return outputPath;
   } catch (error) {
-    return error;
+    throw new Error(error);
   }
 };

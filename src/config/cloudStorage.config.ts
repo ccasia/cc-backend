@@ -50,42 +50,24 @@ export const uploadImage = async (tempFilePath: string, fileName: string, folder
 };
 
 export const uploadProfileImage = async (tempFilePath: string, fileName: string, folderName: string) => {
-  const uploadPromise = new Promise<string>((resolve, reject) => {
-    storage.bucket(process.env.BUCKET_NAME as string).upload(
-      tempFilePath,
-      {
-        destination: `${folderName}/${fileName}`,
-        gzip: true,
-        metadata: {
-          cacheControl: 'public, max-age=31536000',
-        },
-      },
-      (err, file) => {
-        if (err) {
-          reject(err);
-          return;
-        }
-        // Making the file public and getting the public URL
-        // eslint-disable-next-line promise/no-promise-in-callback
-        file
-          ?.makePublic()
-          // eslint-disable-next-line promise/always-return
-          .then(() => {
-            const publicURL = `https://storage.googleapis.com/${process.env.BUCKET_NAME}/${folderName}/${fileName}`;
-            resolve(publicURL);
-          })
-          .catch((err) => {
-            reject(err);
-          });
-      },
-    );
-  });
-
   try {
-    const publicURL = await uploadPromise;
-    return publicURL;
+    const bucket = storage.bucket(process.env.BUCKET_NAME as string);
+    const destination = `${folderName}/${fileName}`;
+
+    await bucket.upload(tempFilePath, {
+      destination: destination,
+      metadata: {
+        cacheControl: 'public, max-age=31536000',
+      },
+    });
+
+    // Construct the URL manually
+    const publicUrl = `https://storage.googleapis.com/${process.env.BUCKET_NAME}/${destination}`;
+
+    return publicUrl;
   } catch (err) {
-    throw new Error(`Error uploading file: ${err}`);
+    console.error('Error uploading file:', err);
+    throw new Error(`Error uploading file: ${err.message}`);
   }
 };
 
@@ -135,7 +117,6 @@ export const uploadPitchVideo = async (
   folderName: string,
   progressCallback?: any,
   size?: number,
-  abortSignal?: AbortSignal,
 ) => {
   try {
     const bucketName = process.env.BUCKET_NAME as string;
@@ -159,11 +140,8 @@ export const uploadPitchVideo = async (
       },
     });
 
-    abortSignal?.addEventListener('abort', () => {
-      //console.log('ABORTING UPLOAD GCP');
-    });
-
     const publicURL = `https://storage.googleapis.com/${bucketName}/${destination}?v=${dayjs().format()}`;
+
     return publicURL;
   } catch (err) {
     throw new Error(`Error uploading file: ${err.message}`);
@@ -214,5 +192,63 @@ export const checkIfVideoExist = async (fileName: string, folderName: string) =>
     return false;
   } catch (error) {
     throw new Error('Error');
+  }
+};
+
+export const uploadAgreementTemplate = async ({
+  tempFilePath,
+  fileName,
+  folderName,
+}: {
+  tempFilePath: string;
+  fileName: string;
+  folderName: string;
+}) => {
+  try {
+    const bucketName = process.env.BUCKET_NAME as string;
+    const destination = `${folderName}/${fileName}`;
+
+    const [file] = await storage.bucket(bucketName).upload(tempFilePath, {
+      destination,
+      gzip: true,
+    });
+
+    // Make the file public
+    await file.makePublic();
+
+    // Construct the public URL
+    const publicURL = `https://storage.googleapis.com/${bucketName}/${destination}?v=${dayjs().format()}`;
+    return publicURL;
+  } catch (err) {
+    throw new Error(`Error uploading file: ${err.message}`);
+  }
+};
+
+export const uploadDigitalSignature = async ({
+  tempFilePath,
+  fileName,
+  folderName,
+}: {
+  tempFilePath: string;
+  fileName: string;
+  folderName: string;
+}) => {
+  try {
+    const bucketName = process.env.BUCKET_NAME as string;
+    const destination = `${folderName}/${fileName}`;
+
+    const [file] = await storage.bucket(bucketName).upload(tempFilePath, {
+      destination,
+      gzip: true,
+    });
+
+    // Make the file public
+    await file.makePublic();
+
+    // Construct the public URL
+    const publicURL = `https://storage.googleapis.com/${bucketName}/${destination}?v=${dayjs().format()}`;
+    return publicURL;
+  } catch (err) {
+    throw new Error(`Error uploading file: ${err.message}`);
   }
 };

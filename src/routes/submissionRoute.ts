@@ -13,6 +13,28 @@ import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 
 const router = Router();
 
+// router.get('/dependencies', async (req, res) => {
+//   try {
+//     const test = await prisma.submissionDependency.findMany({
+//       include: {
+//         submission: {
+//           include: {
+//             submissionType: true,
+//           },
+//         },
+//         dependentSubmission: {
+//           include: {
+//             submissionType: true,
+//           },
+//         },
+//       },
+//     });
+//     return res.status(200).json(test);
+//   } catch (error) {
+//     return res.status(404).json(error);
+//   }
+// });
+
 router.get('/', isLoggedIn, getSubmissionByCampaignCreatorId);
 
 router.post('/submitAgreement', isLoggedIn, agreementSubmission);

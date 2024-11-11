@@ -15,6 +15,7 @@ import {
   getBrand,
   editBrand,
   getOptions,
+  getBrandsByClientId,
 } from '@controllers/companyController';
 import { needPermissions } from '@middlewares/needPermissions';
 
@@ -25,6 +26,7 @@ router.get('/getCompanies', isSuperAdmin, getAllCompanies);
 router.get('/getBrands', isSuperAdmin, getAllBrands);
 router.get('/getOptions', isSuperAdmin, getOptions);
 router.get('/getBrand/:id', isSuperAdmin, getBrand);
+router.get('/getBrands/:id', isSuperAdmin, getBrandsByClientId);
 
 router.post('/createCompany', isSuperAdmin, createCompany);
 router.post('/createBrand', isSuperAdmin, createBrand);

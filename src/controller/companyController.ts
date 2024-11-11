@@ -5,7 +5,7 @@ import {
   handleCreateBrand,
   handleCreateCompany,
 } from '@services/companyService';
-import { PrismaClient } from '@prisma/client';
+import { Company, PrismaClient } from '@prisma/client';
 import { uploadCompanyLogo } from '@configs/cloudStorage.config';
 const prisma = new PrismaClient();
 
@@ -32,12 +32,16 @@ export const getAllCompanies = async (_req: Request, res: Response) => {
   try {
     const companies = await prisma.company.findMany({
       include: {
-        brand: true,
+        brand: {
+          include: {
+            campaign: true,
+          },
+        },
+        campaign: true,
       },
     });
     return res.status(200).json(companies);
   } catch (err) {
-    //console.log('DAWDAW', err);
     return res.status(400).json({ message: err });
   }
 };
@@ -80,10 +84,15 @@ export const getAllBrands = async (req: Request, res: Response) => {
 };
 
 export const createOneCompany = async (req: Request, res: Response) => {
-  //console.log(req.body);
+  const { name, email, phone, website } = req.body;
   try {
     const company = await prisma.company.create({
-      data: req.body,
+      data: {
+        name,
+        email,
+        phone,
+        website,
+      },
     });
     return res.status(201).json({ company });
   } catch (err) {
@@ -96,7 +105,7 @@ export const createOneBrand = async (req: Request, res: Response) => {
     name,
     email,
     phone,
-    company,
+    client,
     brandInstagram,
     brandTiktok,
     brandFacebook,
@@ -105,26 +114,29 @@ export const createOneBrand = async (req: Request, res: Response) => {
     name: string;
     email: string;
     phone: string;
-    registration_number: string;
     brandInstagram: string;
     brandTiktok: string;
     brandFacebook: string;
-    company: string;
-    brandIntersts: string[];
+    client: Company;
     brandIndustries: string[];
   } = req.body;
   try {
-    const companyInfo = await prisma.company.findFirst({
+    const existingClient = await prisma.company.findUnique({
       where: {
-        name: company,
+        id: client.id,
       },
     });
+
+    if (!existingClient) {
+      return res.status(404).json({ message: 'Client not found.' });
+    }
+
     const brand = await prisma.brand.create({
       data: {
         name: name,
         email: email,
         phone: phone,
-        companyId: companyInfo?.id as string,
+        companyId: existingClient.id,
         instagram: brandInstagram,
         facebook: brandFacebook,
         tiktok: brandTiktok,
@@ -132,7 +144,7 @@ export const createOneBrand = async (req: Request, res: Response) => {
       },
     });
 
-    return res.status(201).json({ brand });
+    return res.status(200).json({ brand, message: 'Brand created successfully.' });
   } catch (err) {
     return res.status(400).json({ message: err });
   }
@@ -297,6 +309,21 @@ export const getOptions = async (_req: Request, res: Response) => {
     });
 
     return res.status(200).json([...company, ...brand]);
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const getBrandsByClientId = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  try {
+    const brands = await prisma.brand.findMany({
+      where: {
+        companyId: id,
+      },
+    });
+
+    return res.status(200).json(brands);
   } catch (error) {
     return res.status(400).json(error);
   }

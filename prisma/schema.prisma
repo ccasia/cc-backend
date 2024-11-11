@@ -14,7 +14,6 @@ model User {
   createdAt          DateTime             @default(now())
   name               String?              @db.VarChar(255)
   photoURL           String?              @db.VarChar(255)
-  photoBackgroundURL String?              @db.VarChar(255)
   country            String?              @db.VarChar(100)
   phoneNumber        String?              @db.VarChar(100)
   updatedAt          DateTime             @updatedAt
@@ -23,42 +22,57 @@ model User {
   xeroRefreshToken   String?
   updateRefershToken DateTime?
   role               RoleEnum
+  photoBackgroundURL String?              @db.VarChar(255)
   admin              Admin?
+  adminSignature     AdminSignature?
+  agreementTemplate  AgreementTemplate?
+  Board              Board?
+  BookMarkCampaign   BookMarkCampaign[]
   campaignLogs       CampaignLog[]
   CampaignTaskAdmin  CampaignTaskAdmin[]
   creator            Creator?
+  creatorAgreement   CreatorAgreement[]
   feedback           Feedback[]
   finance            Finance?
+  invoices           Invoice[]
+  logistic           Logistic[]
   sentMessages       Message[]            @relation("UserMessages")
-  userNotification   UserNotification[]
+  paymentForm        PaymentForm?
   pitch              Pitch[]
+  notifications      Notification[]
+  seenMessages       SeenMessage[]
   shortlisted        ShortListedCreator[]
   submission         Submission[]
+  taskAssignee       TaskAssignee[]
+  unreadMessages     UnreadMessage[]
   event              Event?               @relation(fields: [eventId], references: [id])
+  userNotification   UserNotification[]
   UserThread         UserThread[]
   threads            Thread[]             @relation("UserThreads")
-  invoices           Invoice[]
-  BookMarkCampaign   BookMarkCampaign[]
-  logistic           Logistic[]
-  unreadMessages     UnreadMessage[]
-  seenMessages       SeenMessage[]
-  paymentForm        PaymentForm?
-  Board              Board?
-  taskAssignee       TaskAssignee[]
-  creatorAgreement   CreatorAgreement[]
+  resetPasswordToken ResetPasswordToken?
+  // Notification       Notification[]
+  // creatorNotification Notification[]       @relation("creator")
+}
+
+model ResetPasswordToken {
+  id        String   @id @unique @default(cuid())
+  token     String?
+  userId    String?  @unique
+  user      User?    @relation(references: [id], fields: [userId])
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
 }
 
 model Admin {
   id                    String                  @id @unique @default(cuid())
-  // designation           Designation?
   mode                  Mode                    @default(normal)
   inviteToken           String?                 @unique
   userId                String                  @unique
+  roleId                String?
+  role                  Role?                   @relation(fields: [roleId], references: [id])
   user                  User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
   adminPermissionModule AdminPermissionModule[]
   campaignAdmin         CampaignAdmin[]
-  role                  Role?                   @relation(fields: [roleId], references: [id])
-  roleId                String?
 }
 
 model Role {
@@ -66,8 +80,8 @@ model Role {
   name        String
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
-  permissions Permisions[] @relation("RolePermission")
   admin       Admin[]
+  permissions Permisions[] @relation("RolePermission")
 }
 
 model Permisions {
@@ -93,7 +107,7 @@ model Creator {
   languages       Json?
   userId          String      @unique
   user            User        @relation(fields: [userId], references: [id])
-  industries      Industry[]
+  industries      Json?
   interests       Interest[]
   invoices        Invoice[]
   mediaKit        MediaKit?
@@ -120,8 +134,8 @@ model Message {
   sender         User?           @relation("UserMessages", fields: [senderId], references: [id])
   thread         Thread?         @relation(fields: [threadId], references: [id])
   seenMessages   SeenMessage[]
-  unreadMessages UnreadMessage[]
   threadLatest   Thread?         @relation("LatestMessage")
+  unreadMessages UnreadMessage[]
 }
 
 model UnreadMessage {
@@ -130,8 +144,8 @@ model UnreadMessage {
   threadId  String
   messageId Int
   message   Message @relation(fields: [messageId], references: [id])
-  user      User    @relation(fields: [userId], references: [id])
   thread    Thread  @relation(fields: [threadId], references: [id])
+  user      User    @relation(fields: [userId], references: [id])
 
   @@unique([userId, threadId, messageId])
 }
@@ -140,8 +154,8 @@ model SeenMessage {
   id        Int     @id @default(autoincrement())
   userId    String
   messageId Int
-  user      User    @relation(fields: [userId], references: [id])
   message   Message @relation(fields: [messageId], references: [id])
+  user      User    @relation(fields: [userId], references: [id])
 
   @@unique([userId, messageId])
 }
@@ -151,33 +165,25 @@ model Thread {
   title           String
   description     String
   photoURL        String?         @db.VarChar(255)
-  users           User[]          @relation("UserThreads")
-  UserThread      UserThread[]
-  messages        Message[]
   isGroup         Boolean         @default(true)
-  unreadMessages  UnreadMessage[]
   campaignId      String?         @unique
-  campaign        Campaign?       @relation(fields: [campaignId], references: [id])
   latestMessageId Int?            @unique
+  messages        Message[]
+  campaign        Campaign?       @relation(fields: [campaignId], references: [id])
   latestMessage   Message?        @relation("LatestMessage", fields: [latestMessageId], references: [id])
+  unreadMessages  UnreadMessage[]
+  UserThread      UserThread[]
+  users           User[]          @relation("UserThreads")
 }
 
 model UserThread {
   userId   String
   threadId String
+  archived Boolean @default(false)
   thread   Thread  @relation(fields: [threadId], references: [id])
   user     User    @relation(fields: [userId], references: [id])
-  archived Boolean @default(false)
 
   @@id([userId, threadId])
-}
-
-model Industry {
-  id      String  @id @unique @default(cuid())
-  name    String?
-  rank    Int?
-  userId  String
-  creator Creator @relation(fields: [userId], references: [userId], onDelete: Cascade)
 }
 
 model Interest {
@@ -205,10 +211,8 @@ model Event {
   end         DateTime
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
-  user        User[]
-  // campaignId  String?   @unique
-  // campaign    Campaign? @relation(references: [id], fields: [campaignId])
   Campaign    Campaign[]
+  user        User[]
 }
 
 model session {
@@ -312,8 +316,11 @@ model Campaign {
   companyId                     String?
   brandTone                     String?
   productName                   String?
+  eventId                       String?
+  bookMarkCampaign              BookMarkCampaign?
   brand                         Brand?                          @relation(fields: [brandId], references: [id])
   company                       Company?                        @relation(fields: [companyId], references: [id])
+  event                         Event?                          @relation(fields: [eventId], references: [id])
   campaignAdmin                 CampaignAdmin[]
   campaignBrief                 CampaignBrief?
   campaignLogs                  CampaignLog[]
@@ -321,25 +328,22 @@ model Campaign {
   campaignSubmissionRequirement CampaignSubmissionRequirement[]
   campaignTasks                 CampaignTask[]
   campaignTimeline              CampaignTimeline[]
+  creatorAgreement              CreatorAgreement[]
+  invoice                       Invoice[]
+  logistic                      Logistic[]
+  notifications                 Notification[]
   pitch                         Pitch[]
   shortlisted                   ShortListedCreator[]
   submission                    Submission[]
   thread                        Thread?
-  invoice                       Invoice[]
-  notifications                 Notification[]
-  bookMarkCampaign              BookMarkCampaign?
-  logistic                      Logistic[]
-  creatorAgreement              CreatorAgreement[]
-  event                         Event?                          @relation(fields: [eventId], references: [id])
-  eventId                       String?
 }
 
 model BookMarkCampaign {
-  id         String    @id @unique @default(cuid())
+  id         String   @id @unique @default(cuid())
   userId     String
-  user       User      @relation(references: [id], fields: [userId])
-  campaignId String    @unique
-  campaign   Campaign? @relation(references: [id], fields: [campaignId])
+  campaignId String   @unique
+  campaign   Campaign @relation(fields: [campaignId], references: [id])
+  user       User     @relation(fields: [userId], references: [id])
 }
 
 model CampaignAdmin {
@@ -468,9 +472,9 @@ model Pitch {
   status       PitchStatus?   @default(pending)
   content      String         @default("test")
   createdAt    DateTime       @default(now())
+  Notification Notification[]
   campaign     Campaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   user         User           @relation(fields: [userId], references: [id])
-  Notification Notification[]
 
   @@unique([userId, campaignId])
 }
@@ -480,11 +484,11 @@ model ShortListedCreator {
   campaignId       String
   userId           String?
   shortlisted_date DateTime @default(now())
-  campaign         Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  user             User?    @relation(fields: [userId], references: [id])
   isAgreementReady Boolean? @default(false)
   isCampaignDone   Boolean? @default(false)
   isCreatorPaid    Boolean? @default(false)
+  campaign         Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  user             User?    @relation(fields: [userId], references: [id])
 
   @@unique([userId, campaignId])
   @@index([userId])
@@ -524,20 +528,24 @@ model CampaignTaskDependency {
   dependsOnCampaignTimeline CampaignTask @relation("DependsOnCampaignTask", fields: [dependsOnCampaignTaskId], references: [id], onDelete: Cascade)
 }
 
-// 
 model Notification {
   id               String             @id @unique @default(cuid())
   title            String?
   message          String
   createdAt        DateTime           @default(now())
   entity           Entity?
-  userNotification UserNotification[]
   campaignId       String?
+  creatorId        String?
   pitchId          String?
   submissionId     String?
-  campaign         Campaign?          @relation(references: [id], fields: [campaignId])
-  pitch            Pitch?             @relation(references: [id], fields: [pitchId])
-  submission       Submission?        @relation(references: [id], fields: [submissionId])
+  campaign         Campaign?          @relation(fields: [campaignId], references: [id])
+  pitch            Pitch?             @relation(fields: [pitchId], references: [id])
+  // creator          User?              @relation("creator", fields: [creatorId], references: [id])
+  submission       Submission?        @relation(fields: [submissionId], references: [id])
+  userNotification UserNotification[]
+
+  User   User?   @relation(fields: [userId], references: [id])
+  userId String?
 }
 
 model UserNotification {
@@ -566,17 +574,16 @@ model Submission {
   userId           String
   submissionTypeId String
   isReview         Boolean                @default(false)
-  feedback         Feedback?
+  startDate        DateTime?
+  endDate          DateTime?
+  feedback         Feedback[]
+  Notification     Notification[]
   campaign         Campaign               @relation(fields: [campaignId], references: [id])
   submissionType   SubmissionType         @relation(fields: [submissionTypeId], references: [id])
   user             User                   @relation(fields: [userId], references: [id])
   dependencies     SubmissionDependency[] @relation("Dependencies")
   dependentOn      SubmissionDependency[] @relation("DependentOn")
-  Notification     Notification[]
-
-  startDate DateTime?
-  endDate   DateTime?
-  task      Task?
+  task             Task?
 
   @@unique([userId, campaignId, submissionTypeId])
 }
@@ -618,7 +625,7 @@ model Feedback {
   content      String?
   type         FeedbackType?
   reasons      String[]
-  submissionId String        @unique
+  submissionId String
   adminId      String
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
@@ -639,11 +646,11 @@ model Invoice {
   updatedAt     DateTime      @updatedAt
   dueDate       DateTime
   createdBy     String
-  user          User          @relation(fields: [createdBy], references: [id])
   creatorId     String
-  creator       Creator       @relation(fields: [creatorId], references: [userId])
   campaignId    String
   campaign      Campaign      @relation(fields: [campaignId], references: [id])
+  user          User          @relation(fields: [createdBy], references: [id])
+  creator       Creator       @relation(fields: [creatorId], references: [userId])
 }
 
 model Logistic {
@@ -656,19 +663,111 @@ model Logistic {
   createdAt      DateTime       @default(now())
   userId         String
   campaignId     String
-  user           User           @relation(references: [id], fields: [userId])
-  campaign       Campaign       @relation(references: [id], fields: [campaignId])
+  campaign       Campaign       @relation(fields: [campaignId], references: [id])
+  user           User           @relation(fields: [userId], references: [id])
 }
 
 model PaymentForm {
   id                String   @id @unique @default(cuid())
   userId            String   @unique
-  user              User     @relation(references: [id], fields: [userId])
   icNumber          String
   bankName          String
   bankAccountNumber String
   bodyMeasurement   String?
   allergies         String[]
+  user              User     @relation(fields: [userId], references: [id])
+}
+
+model Board {
+  id        String    @id @unique @default(cuid())
+  name      String
+  createdAt DateTime  @default(now())
+  userId    String    @unique
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  columns   Columns[]
+}
+
+model Columns {
+  id        String   @id @unique @default(cuid())
+  name      String
+  position  Int      @default(autoincrement())
+  boardId   String
+  createdAt DateTime @default(now())
+  board     Board    @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  task      Task[]
+}
+
+model Task {
+  id           String         @id @unique @default(cuid())
+  name         String
+  description  String?
+  status       String?
+  position     Int
+  priority     String?
+  createdAt    DateTime       @default(now())
+  dueDate      DateTime?
+  labels       String[]
+  columnId     String
+  submissionId String?        @unique
+  column       Columns        @relation(fields: [columnId], references: [id], onDelete: Cascade)
+  submission   Submission?    @relation(fields: [submissionId], references: [id])
+  assignees    TaskAssignee[]
+}
+
+model TaskAssignee {
+  id         String   @id @unique @default(cuid())
+  assignedAt DateTime @default(now())
+  taskId     String
+  userId     String
+  task       Task     @relation(fields: [taskId], references: [id])
+  user       User     @relation(fields: [userId], references: [id])
+}
+
+model CreatorAgreement {
+  id           String   @id @unique @default(cuid())
+  agreementUrl String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  isSent       Boolean  @default(false)
+  amount       String?
+  userId       String
+  campaignId   String
+  version      Int?     @default(1)
+  campaign     Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, campaignId])
+}
+
+model Crawler {
+  id                 String   @id @unique @default(cuid())
+  followers          Int
+  engagement_rate    Int
+  avg_likes_per_post Int
+  top_contents       Json[]
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model AgreementTemplate {
+  id            String   @id @unique @default(cuid())
+  url           String?
+  adminName     String?
+  adminICNumber String?
+  signURL       String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  userId        String?  @unique
+  user          User?    @relation(fields: [userId], references: [id])
+}
+
+model AdminSignature {
+  id        String   @id @unique @default(cuid())
+  url       String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  userId    String?  @unique
+  user      User?    @relation(fields: [userId], references: [id])
 }
 
 enum LogisticStatus {
@@ -709,6 +808,9 @@ enum Status {
   pending
   banned
   rejected
+  blacklisted
+  suspended
+  spam
 }
 
 enum InvoiceStatus {
@@ -727,7 +829,6 @@ enum CampaignStatus {
   PAUSED
   COMPLETED
   CANCELLED
-  EXPIRED
   SCHEDULED
 }
 
@@ -775,6 +876,7 @@ enum PitchStatus {
   rejected
   filtered
   undecided
+  draft
 }
 
 enum DraftStatus {
@@ -813,6 +915,7 @@ enum Priority {
 
 enum Entity {
   Campaign
+  Live
   User
   Pitch
   Shortlist
@@ -838,85 +941,4 @@ enum SubmissionEnum {
 enum FeedbackType {
   COMMENT
   REASON
-}
-
-// Kanban Model
-
-model Board {
-  id        String    @id @unique @default(cuid())
-  name      String
-  createdAt DateTime  @default(now())
-  user      User      @relation(references: [id], fields: [userId], onDelete: Cascade)
-  userId    String    @unique
-  columns   Columns[]
-}
-
-model Columns {
-  id        String   @id @unique @default(cuid())
-  name      String
-  position  Int      @default(autoincrement())
-  boardId   String
-  board     Board?   @relation(references: [id], fields: [boardId], onDelete: Cascade)
-  createdAt DateTime @default(now())
-  task      Task[]
-}
-
-model Task {
-  id           String      @id @unique @default(cuid())
-  name         String
-  description  String?
-  status       String?
-  position     Int
-  priority     String?
-  createdAt    DateTime    @default(now())
-  dueDate      DateTime?
-  labels       String[]
-  columnId     String
-  column       Columns     @relation(fields: [columnId], references: [id], onDelete: Cascade)
-  submissionId String?     @unique
-  submission   Submission? @relation(references: [id], fields: [submissionId])
-
-  assignees TaskAssignee[]
-}
-
-model TaskAssignee {
-  id         String   @id @unique @default(cuid())
-  assignedAt DateTime @default(now())
-  taskId     String
-  task       Task     @relation(fields: [taskId], references: [id])
-  userId     String
-  user       User     @relation(fields: [userId], references: [id])
-}
-
-model CreatorAgreement {
-  id           String   @id @unique @default(cuid())
-  agreementUrl String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  isSent       Boolean  @default(false)
-  amount       String?
-  userId       String
-  campaignId   String
-  version      Int?     @default(1)
-  user         User     @relation(references: [id], fields: [userId], onDelete: Cascade)
-  campaign     Campaign @relation(references: [id], fields: [campaignId], onDelete: Cascade)
-
-  @@unique([userId, campaignId])
-}
-
-model Crawler {
-  id                 String   @id @unique @default(cuid())
-  followers          Int
-  engagement_rate    Int
-  avg_likes_per_post Int
-  top_contents       Json[]
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
-}
-
-model AgreementTemplate {
-  id        String   @id @unique @default(cuid())
-  url       String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
 }

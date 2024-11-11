@@ -29,9 +29,6 @@ const prisma = new PrismaClient();
 // };
 
 export const createInvoiceService = async (data: any, userId: any, amount: any) => {
-  // invoice number generator get it from frontend
-  //console.log('data invoice', data, userId, '\n\n\n');
-  console.log('AMUNTTTTT', amount);
   const generateRandomInvoiceNumber = () => {
     const randomNumber = Math.floor(1000 + Math.random() * 9000);
     return `INV-${randomNumber}`;
@@ -55,8 +52,8 @@ export const createInvoiceService = async (data: any, userId: any, amount: any) 
     description: 'posting on social media',
     service: 'Posting on social media',
     quantity: 1,
-    price: 200,
-    total: 200,
+    price: amount,
+    total: amount,
   };
 
   const invoiceFrom = {
@@ -87,7 +84,7 @@ export const createInvoiceService = async (data: any, userId: any, amount: any) 
         invoiceFrom: invoiceFrom,
         invoiceTo,
         task: item,
-        amount: parseFloat(amount) || 200.0,
+        amount: parseFloat(amount) || 0,
         bankAcc: bankInfo,
         campaignId: data.campaignId,
         creatorId: data.userId,
@@ -97,6 +94,6 @@ export const createInvoiceService = async (data: any, userId: any, amount: any) 
 
     return newInvoice;
   } catch (error) {
-    //console.log(error);
+    throw new Error(error);
   }
 };

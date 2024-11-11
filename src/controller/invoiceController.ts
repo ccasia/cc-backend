@@ -226,12 +226,17 @@ export const updateInvoice = async (req: Request, res: Response) => {
 
     let contactID: any;
 
+    if (invoice.creator.xeroContactId) {
+      contactID = invoice.creator.xeroContactId;
+      await createXeroInvoiceLocal(contactID, items, dueDate, req.body.contactId.type);
+    }
+
     if (status == 'approved' && Object.keys(req.body.contactId).length != 0) {
       await createXeroInvoiceLocal(
         req.body.contactId.contact.contactID,
         items,
         dueDate,
-        'AUTHORISED',
+
         req.body.contactId.type,
       );
       contactID = req.body.contactId.contact.contactID;
@@ -240,7 +245,7 @@ export const updateInvoice = async (req: Request, res: Response) => {
     if (status == 'approved' && req.body.newContact == true) {
       const contact: any = await createXeroContact(bankInfo, invoice.creator, invoice.user, invoiceFrom);
       contactID = contact[0].contactID;
-      await createXeroInvoiceLocal(contactID, items, dueDate, 'AUTHORISED', req.body.contactId.type);
+      await createXeroInvoiceLocal(contactID, items, dueDate, req.body.contactId.type);
     }
 
     await prisma.creator.update({
@@ -261,7 +266,7 @@ export const updateInvoice = async (req: Request, res: Response) => {
 export const getXero = async (req: Request, res: Response) => {
   try {
     const consentUrl: string = await xero.buildConsentUrl();
-    console.log("consentUrl" , consentUrl)
+    console.log('consentUrl', consentUrl);
     return res.status(200).json({ url: consentUrl });
     // res.redirect(consentUrl);
   } catch (err) {
@@ -439,7 +444,7 @@ export const checkAndRefreshAccessToken = async (req: Request, res: Response, ne
 };
 
 export const createXeroInvoice = async (req: Request, res: Response) => {
-  const { contactId, lineItems, invoiceType, dueDate, reference, status } = req.body;
+  const { contactId, lineItems, invoiceType, dueDate, reference } = req.body;
 
   if (!contactId || !lineItems || !invoiceType || !dueDate || !status) {
     return res.status(400).json({ error: 'Missing required fields' });
@@ -460,7 +465,7 @@ export const createXeroInvoice = async (req: Request, res: Response) => {
     dueDate: dueDate,
     lineItems: lineItemsArray,
     reference: reference,
-    status: status,
+    status: 'AUTHORISED' as any,
   };
   const response = await xero.accountingApi.createInvoices(xero.tenants[0].tenantId, { invoices: [invoice] });
 };
@@ -487,13 +492,7 @@ export const createXeroContact = async (bankInfo: any, creator: any, user: any, 
   return response.body.contacts;
 };
 
-export const createXeroInvoiceLocal = async (
-  contactId: string,
-  lineItems: any,
-  dueDate: any,
-  status: any,
-  invoiceType: any,
-) => {
+export const createXeroInvoiceLocal = async (contactId: string, lineItems: any, dueDate: any, invoiceType: any) => {
   try {
     const contact: Contact = { contactID: contactId };
     const where = 'Status=="ACTIVE"';
@@ -508,15 +507,14 @@ export const createXeroInvoiceLocal = async (
     }));
 
     const invoice: Invoice = {
-      type: invoiceType, // e.g., 'ACCREC' for Accounts Receivable
+      type: 'ACCREC' as any,
       contact: contact,
       dueDate: dueDate,
       lineItems: lineItemsArray,
-      status: status,
+      status: 'AUTHORISED' as any,
     };
 
     const response = await xero.accountingApi.createInvoices(xero.tenants[0].tenantId, { invoices: [invoice] });
-    console.log('invoices: ', response.body.invoices);
   } catch (error) {
     console.log(error);
   }
