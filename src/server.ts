@@ -20,7 +20,7 @@ import './helper/videoDraft';
 import './helper/processPitchVideo';
 import dotenv from 'dotenv';
 import '@services/google_sheets/sheets';
-import { accessGoogleSheetAPI } from '@services/google_sheets/sheets';
+import { accessGoogleSheetAPI, createNewRowData, getLastRow } from '@services/google_sheets/sheets';
 
 dotenv.config();
 
@@ -203,6 +203,26 @@ io.on('connection', (socket) => {
     });
   });
 });
+
+// app.get('/sheet', async (req, res) => {
+//   try {
+//     // const test = await getLastRow({ sheetId: 782541531 });
+//     // console.log(test);
+
+//     await createNewRowData({
+//       creatorInfo: {
+//         name: 'ADAS',
+//         videoLink: 'Das',
+//         email: 'dasd',
+//       },
+//       sheetId: 782541531,
+//     });
+
+//     return res.sendStatus(200);
+//   } catch (error) {
+//     return res.status(400).json(error);
+//   }
+// });
 
 server.listen(process.env.PORT, () => {
   //console.log(`Listening to port ${process.env.PORT}...`);

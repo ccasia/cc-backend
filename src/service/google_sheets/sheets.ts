@@ -9,7 +9,9 @@ interface Row {
   sheetId: number;
   creatorInfo: {
     name: string;
-    email: string;
+    username: string;
+    postingDate: string;
+    caption: string;
     videoLink: string;
   };
 }
@@ -57,12 +59,33 @@ export const createNewRowData = async ({ sheetId, creatorInfo }: Row) => {
     }
 
     const updatedRow = await existingSheet.addRow({
-      'Creator name': creatorInfo.name,
-      'Creator Email': creatorInfo.email,
+      Name: creatorInfo.name,
+      Username: creatorInfo.username,
       'Video Link': creatorInfo.videoLink,
+      'Posting Date': creatorInfo.postingDate,
+      Caption: creatorInfo.caption,
     });
 
     return updatedRow;
+  } catch (error) {
+    throw new Error(error);
+  }
+};
+
+export const getLastRow = async ({ sheetId }: { sheetId: number }) => {
+  try {
+    const doc = await accessGoogleSheetAPI();
+
+    const sheet = doc.sheetsById[sheetId];
+
+    const rows = await sheet.getRows();
+
+    const lastRowIndex = rows.length;
+
+    console.log(`Last row with data is at index: ${lastRowIndex}`);
+
+    console.log(lastRowIndex);
+    return lastRowIndex;
   } catch (error) {
     throw new Error(error);
   }

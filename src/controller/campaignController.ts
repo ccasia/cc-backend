@@ -232,7 +232,7 @@ export const createCampaign = async (req: Request, res: Response) => {
         // Create sheet in google sheet
         const data = await createNewSheetWithHeaderRows({
           title: campaignTitle,
-          rows: ['Creator name', 'Creator Email', 'Video Link', 'Feedback Form'],
+          rows: ['Name', 'Username', 'Video Link', 'Posting Date', 'Caption', 'Video Feedback', 'Others'],
         });
 
         // Create Campaign
@@ -2905,10 +2905,13 @@ export const sendAgreement = async (req: Request, res: Response) => {
     });
 
     const socketId = clients.get(isUserExist.id);
+
     if (socketId) {
       io.to(socketId).emit('notification', notification);
       io.to(socketId).emit('agreementReady');
     }
+
+    io.to(clients.get(isUserExist.id)).emit('agreementReady');
 
     return res.status(200).json({ message: 'Agreement has been sent.' });
   } catch (error) {
