@@ -22,6 +22,7 @@ import {
   notificationRejectDraft,
 } from '@helper/notification';
 import { getColumnId } from './kanbanController';
+
 import {
   approvalOfDraft,
   creatorInvoice,
@@ -293,13 +294,15 @@ export const getSubmissionByCampaignCreatorId = async (req: Request, res: Respon
             type: true,
           },
         },
-        feedback: true,
+        feedback: {
+          include: {
+            admin: true,
+          },
+        },
         dependentOn: true,
         dependencies: true,
       },
     });
-
-    //console.log(data);
 
     return res.status(200).json(data);
   } catch (error) {
@@ -387,9 +390,6 @@ export const draftSubmission = async (req: Request, res: Response) => {
         persistent: true,
       },
     );
-
-    // await channel.close();
-    // await amqp.close();
 
     return res.status(200).json({ message: 'Video start processing' });
   } catch (error) {

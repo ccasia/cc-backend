@@ -88,6 +88,7 @@ const processVideo = async (
     const conn = await amqplib.connect(process.env.RABBIT_MQ as string);
     const channel = await conn.createChannel();
     await channel.assertQueue('pitch', { durable: true });
+    // await channel.prefetch(2);
     await channel.purgeQueue('pitch');
 
     console.log('Video Pitch Queue starting...');
