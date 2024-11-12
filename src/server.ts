@@ -135,8 +135,6 @@ io.on('connection', (socket) => {
     clients.set(userId, socket.id);
   });
 
-  io.emit('pitchUpdate', { message: 'dasd' });
-
   socket.on('cancel-processing', (data) => {
     const { submissionId } = data;
     if (activeProcesses.has(submissionId)) {

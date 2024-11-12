@@ -13,7 +13,7 @@ Ffmpeg.setFfprobePath(ffprobePath.path);
 const processVideo = async (
   inputPath: string,
   outputPath: string,
-  progressCallback: (progress: number) => void,
+  // progressCallback: (progress: number) => void,
   userId: string,
   campaignId: string,
   fileName: string,
@@ -47,7 +47,8 @@ const processVideo = async (
           const duration = await getVideoDuration(inputPath);
           if (duration) {
             const percentComplete = (timemarkInSeconds / duration) * 100;
-            progressCallback(percentComplete);
+            io.to(clients.get(userId)).emit('video-upload', { campaignId: campaignId, progress: percentComplete });
+            // progressCallback(percentComplete);
           }
         }
       })
@@ -103,9 +104,9 @@ const processVideo = async (
             await processVideo(
               tempPath,
               outputPath,
-              (data: number) => {
-                io.to(clients.get(userId)).emit('video-upload', { campaignId: campaignId, progress: data });
-              },
+              // (data: number) => {
+              //   io.to(clients.get(userId)).emit('video-upload', { campaignId: campaignId, progress: data });
+              // },
               userId,
               campaignId,
               fileName,

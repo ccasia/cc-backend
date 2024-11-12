@@ -62,6 +62,7 @@
     "pizzip": "^3.1.7",
     "prisma": "^5.18.0",
     "socket.io": "^4.7.5",
+    "workerpool": "^9.2.0",
     "xero-node": "^9.3.0"
   },
   "devDependencies": {
@@ -85,6 +86,7 @@
     "@types/passport": "^1.0.16",
     "@types/passport-facebook": "^3.0.3",
     "@types/passport-jwt": "^4.0.1",
+    "@types/workerpool": "^6.4.7",
     "@types/ws": "^8.5.11",
     "@typescript-eslint/eslint-plugin": "^7.0.1",
     "@typescript-eslint/parser": "^7.0.1",
@@ -100,7 +102,7 @@
     "ts-node": "^10.9.2",
     "tsc-alias": "^1.8.8",
     "tsconfig-paths": "^4.2.0",
-    "typescript": "*"
+    "typescript": "^5.6.3"
   },
   "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
 }

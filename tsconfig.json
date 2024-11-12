@@ -34,8 +34,17 @@
       "noUnusedLocals": false, // Report errors on unused locals
       "noUnusedParameters": false, // Report errors on unused parameters
       "noImplicitReturns": false, // Report error when not all code paths in function return a value
-      "noFallthroughCasesInSwitch": true // Report errors for fallthrough cases in switch statement
+      "noFallthroughCasesInSwitch": true, // Report errors for fallthrough cases in switch statement
+      // "experimentalDecorators": true,
+      // "emitDecoratorMetadata": true,
+      // "sourceMap": true,
+      // "noEmitHelpers": true,
+      // "types": [
+      //   "node",
+      //   "express"
+      // ]
     },
+    
     "include": [
       "src/**/*", // Include all files in the src directory
     ],
@@ -46,5 +55,5 @@
     ],
     "ts-node": {
       "require": ["tsconfig-paths/register"]
-    }
+    },
   }

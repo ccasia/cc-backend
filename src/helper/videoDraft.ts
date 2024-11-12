@@ -1,5 +1,6 @@
 /* eslint-disable promise/always-return */
 
+import workerpool from 'workerpool';
 import Ffmpeg from 'fluent-ffmpeg';
 import ffmpegPath from '@ffmpeg-installer/ffmpeg';
 import ffprobePath from '@ffprobe-installer/ffprobe';
@@ -17,10 +18,10 @@ Ffmpeg.setFfmpegPath(ffmpegPath.path);
 Ffmpeg.setFfprobePath(ffprobePath.path);
 
 const prisma = new PrismaClient();
+const pool = workerpool.pool();
 
 const processVideo = async (
   videoData: any,
-  socket: any,
   inputPath: string,
   outputPath: string,
   submissionId: string,
@@ -36,17 +37,21 @@ const processVideo = async (
         '-c:v libx264',
         '-crf 26',
         '-pix_fmt yuv420p',
+        '-preset ultrafast',
         '-map 0:v:0', // Select the first video stream
         '-map 0:a:0?',
+        '-threads 4',
       ])
       .save(outputPath)
       .on('progress', (progress: any) => {
         activeProcesses.set(submissionId, command);
         const percentage = Math.round(progress.percent);
-        if (socket) {
-          socket
-            .to(clients.get(userid))
-            .emit('progress', { progress: percentage, submissionId: submissionId, name: 'Compression Start' });
+        if (io) {
+          io.to(clients.get(userid)).emit('progress', {
+            progress: percentage,
+            submissionId: submissionId,
+            name: 'Compression Start',
+          });
         }
       })
       .on('end', async () => {
@@ -64,10 +69,12 @@ const processVideo = async (
           fileName,
           folder,
           (data: number) => {
-            if (socket) {
-              socket
-                .to(clients.get(userid))
-                .emit('progress', { progress: data, submissionId: submissionId, name: 'Uploading Start' });
+            if (io) {
+              io.to(clients.get(userid)).emit('progress', {
+                progress: data,
+                submissionId: submissionId,
+                name: 'Uploading Start',
+              });
             }
           },
           size as number,
@@ -104,8 +111,8 @@ const processVideo = async (
           entityId: data.campaign.id,
         });
 
-        if (socket) {
-          socket.to(clients.get(data.userId)).emit('notification', notification);
+        if (io) {
+          io.to(clients.get(data.userId)).emit('notification', notification);
         }
 
         const { title: adminTitle, message: adminMessage } = notificationDraft(
@@ -124,14 +131,14 @@ const processVideo = async (
             entityId: data.campaignId,
           });
 
-          if (socket) {
-            socket.to(clients.get(item.adminId)).emit('notification', notification);
+          if (io) {
+            io.to(clients.get(item.adminId)).emit('notification', notification);
           }
         }
 
         activeProcesses.delete(submissionId);
-        if (socket) {
-          socket.to(clients.get(userid)).emit('progress', { submissionId, progress: 100 });
+        if (io) {
+          io.to(clients.get(userid)).emit('progress', { submissionId, progress: 100 });
         }
         fs.unlinkSync(inputPath);
         resolve();
@@ -157,15 +164,34 @@ const processVideo = async (
     const channel = await conn.createChannel();
     await channel.assertQueue('draft', { durable: true });
     await channel.purgeQueue('draft');
-    // await channel.prefetch(1);
+    await channel.prefetch(5);
     console.log('Video Draft Queue starting...');
 
     await channel.consume('draft', async (msg) => {
       if (msg !== null) {
-        const content = JSON.parse(msg.content.toString());
+        const content: any = JSON.parse(msg.content.toString());
+
+        // pool
+        //   .exec(processVideo, [
+        //     content,
+        //     content.inputPath,
+        //     content.outputPath,
+        //     content.submissionId,
+        //     content.fileName,
+        //     content.folder,
+        //     content.caption,
+        //   ])
+        //   .then(() => {
+        //     console.log(`Video processed successfully: ${content.submissionId}`);
+        //     channel.ack(msg); // Acknowledge the message after successful processing
+        //   })
+        //   .catch((error) => {
+        //     console.error(`Error processing video: ${error.message}`);
+        //     channel.nack(msg); // Requeue the message if there's an error
+        //   });
+
         await processVideo(
           content,
-          io,
           content.inputPath,
           content.outputPath,
           content.submissionId,
