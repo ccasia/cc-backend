@@ -753,8 +753,6 @@ export const updateProfileCreator = async (req: Request, res: Response) => {
     req.body.data,
   );
 
-  // console.log(JSON.parse(req.body.data));
-
   try {
     const creator = await prisma.creator.findFirst({
       where: {
@@ -768,8 +766,6 @@ export const updateProfileCreator = async (req: Request, res: Response) => {
         },
       },
     });
-
-    console.log(creator);
 
     if (!creator) {
       return res.status(404).json({ message: 'Creator not found' });
@@ -801,7 +797,7 @@ export const updateProfileCreator = async (req: Request, res: Response) => {
       },
     };
 
-    if (req.files) {
+    if (req.files && ((req.files as any).backgroundImage || (req.files as any).image)) {
       const { image } = req?.files as any;
       const { backgroundImage } = req?.files as any;
 
@@ -816,13 +812,22 @@ export const updateProfileCreator = async (req: Request, res: Response) => {
       }
     }
 
-    await prisma.paymentForm.update({
+    await prisma.paymentForm.upsert({
       where: {
-        userId: creator.userId,
+        userId: creator.user.id,
       },
-      data: {
+      update: {
         bodyMeasurement: bodyMeasurement.toString(),
         allergies: allergies.map((allergy: { name: string }) => allergy.name),
+      },
+      create: {
+        bodyMeasurement: bodyMeasurement.toString(),
+        allergies: allergies.map((allergy: { name: string }) => allergy.name),
+        user: {
+          connect: {
+            id: creator.user.id,
+          },
+        },
       },
     });
 
@@ -844,6 +849,7 @@ export const updateProfileCreator = async (req: Request, res: Response) => {
 
     return res.status(200).json({ message: 'Successfully updated' });
   } catch (error) {
+    console.log(error);
     return res.status(400).json({ message: 'Error updating creator' });
   }
 };

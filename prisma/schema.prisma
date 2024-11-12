@@ -676,9 +676,9 @@ model Logistic {
 model PaymentForm {
   id                String   @id @unique @default(cuid())
   userId            String   @unique
-  icNumber          String
-  bankName          String
-  bankAccountNumber String
+  icNumber          String?
+  bankName          String?
+  bankAccountNumber String?
   bodyMeasurement   String?
   allergies         String[]
   user              User     @relation(fields: [userId], references: [id])

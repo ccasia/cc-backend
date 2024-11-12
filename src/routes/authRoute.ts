@@ -33,21 +33,24 @@ import { isLoggedIn } from '@middlewares/onlyLogin';
 const router = Router();
 
 // router.get('/', isLoggedIn, displayAll);
+router.get('/me', isLoggedIn, getprofile);
+router.get('/verifyAdmin', verifyAdmin);
+router.get('/checkTokenValidity/:token', checkTokenValidity);
+router.get('/currentUser', validateToken, getCurrentUser);
+router.get('/checkCreator', validateToken, checkCreator);
+
 router.post('/login', login);
 router.post('/logout', logout);
-router.patch('/changePassword', validateToken, changePassword);
-router.get('/me', isLoggedIn, getprofile);
 router.post('/register', registerUser);
-router.get('/verifyAdmin', verifyAdmin);
 router.post('/resendVerifyToken', resendVerifyTokenAdmin);
-router.get('/checkTokenValidity/:token', checkTokenValidity);
 router.post('/verifyCreator', verifyCreator);
 router.post('/registerCreator', registerCreator);
 router.post('/registerSuperAdmin', registerSuperAdmin);
-router.get('/currentUser', validateToken, getCurrentUser);
-router.get('/checkCreator', validateToken, checkCreator);
-router.put('/updateCreator', validateToken, updateCreator);
-router.patch('/updateProfileCreator', validateToken, updateProfileCreator);
 router.post('/registerFinanceUser', registerFinanceUser);
+
+router.put('/updateCreator', validateToken, updateCreator);
+
+router.patch('/updateProfileCreator', validateToken, updateProfileCreator);
+router.patch('/changePassword', validateToken, changePassword);
 
 export default router;
