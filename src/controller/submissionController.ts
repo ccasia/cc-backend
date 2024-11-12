@@ -135,6 +135,17 @@ export const agreementSubmission = async (req: Request, res: Response) => {
         io.to(clients.get(item.adminId)).emit('newSubmission');
       });
     }
+
+    const allSuperadmins = await prisma.user.findMany({
+      where: {
+        role: 'superadmin',
+      },
+    });
+
+    for (const admin of allSuperadmins) {
+      io.to(clients.get(admin.id)).emit('newSubmission');
+    }
+
     return res.status(200).json({ message: 'Successfully submitted' });
   } catch (error) {
     return res.status(400).json(error);
@@ -709,6 +720,16 @@ export const postingSubmission = async (req: Request, res: Response) => {
     });
 
     io.to(clients.get(submission.userId)).emit('notification', notification);
+
+    const allSuperadmins = await prisma.user.findMany({
+      where: {
+        role: 'superadmin',
+      },
+    });
+
+    for (const admin of allSuperadmins) {
+      io.to(clients.get(admin.id)).emit('newSubmission');
+    }
 
     return res.status(200).json({ message: 'Successfully submitted' });
   } catch (error) {

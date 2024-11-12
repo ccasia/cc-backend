@@ -205,6 +205,16 @@ const processVideo = async (
         for (const item of content.admins) {
           io.to(clients.get(item.admin.user.id)).emit('newSubmission');
         }
+
+        const allSuperadmins = await prisma.user.findMany({
+          where: {
+            role: 'superadmin',
+          },
+        });
+
+        for (const admin of allSuperadmins) {
+          io.to(clients.get(admin.id)).emit('newSubmission');
+        }
       }
     });
   } catch (error) {
