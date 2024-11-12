@@ -251,6 +251,7 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
       }
 
       io.to(clients.get(userId)).emit('notification', notification);
+      io.to(clients.get(userId)).emit('newFeedback');
     } else if (data.status === 'reject') {
       const { feedback, campaignTaskId, submissionId, userId, submission: sub } = data;
 
