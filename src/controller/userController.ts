@@ -330,10 +330,26 @@ export const changePassword = async (req: Request, res: Response) => {
 
 export const getOverview = async (req: Request, res: Response) => {
   const { userId } = req.params;
+
   try {
     const user = await prisma.user.findUnique({
       where: {
         id: userId,
+      },
+      include: {
+        submission: {
+          where: {
+            status: 'IN_PROGRESS',
+          },
+          include: {
+            task: true,
+            campaign: {
+              include: {
+                campaignBrief: true,
+              },
+            },
+          },
+        },
       },
     });
 
@@ -396,7 +412,12 @@ export const getOverview = async (req: Request, res: Response) => {
       };
     });
 
-    return res.status(200).json(adjustedCampaigns);
+    const data = {
+      adjustedCampaigns,
+      tasks: user.submission,
+    };
+
+    return res.status(200).json(data);
   } catch (error) {
     return res.status(400).json(error);
   }

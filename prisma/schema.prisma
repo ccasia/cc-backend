@@ -541,6 +541,7 @@ model Notification {
   entity           Entity?
   campaignId       String?
   creatorId        String?
+  invoiceId        String?
   threadId         String?
   pitchId          String?
   submissionId     String?

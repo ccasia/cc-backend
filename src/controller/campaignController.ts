@@ -1920,7 +1920,7 @@ export const changePitchStatus = async (req: Request, res: Response) => {
           }
         },
         {
-          timeout: 10000,
+          timeout: 20000,
         },
       );
     } else {
@@ -2012,6 +2012,8 @@ export const changePitchStatus = async (req: Request, res: Response) => {
         });
       }
     }
+
+    io.to(clients.get(existingPitch.userId)).emit('pitchUpdate');
 
     return res.status(200).json({ message: 'Successfully changed.' });
   } catch (error) {
@@ -2853,8 +2855,6 @@ export const sendAgreement = async (req: Request, res: Response) => {
       },
     });
 
-    console.log('Update Agreement', agreement);
-
     const shortlistedCreator = await prisma.shortListedCreator.findFirst({
       where: {
         AND: [
@@ -2907,6 +2907,7 @@ export const sendAgreement = async (req: Request, res: Response) => {
     const socketId = clients.get(isUserExist.id);
     if (socketId) {
       io.to(socketId).emit('notification', notification);
+      io.to(socketId).emit('agreementReady');
     }
 
     return res.status(200).json({ message: 'Agreement has been sent.' });

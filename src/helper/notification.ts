@@ -136,6 +136,7 @@ const notificationLogisticTracking = (campaignName: string, trackingNumber: stri
     message: `Your logistics for ${campaignName} have been submitted, with tracking number ${trackingNumber}`,
   };
 };
+
 const notificationInvoiceGenerate = (campaignName: string) => {
   return {
     title: `💰 Invoice Generated!`,

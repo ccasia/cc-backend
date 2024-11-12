@@ -1,6 +1,6 @@
 import e, { Request, Response } from 'express';
 
-import { Entity, PrismaClient, SubmissionStatus } from '@prisma/client';
+import { Entity, Invoice, PrismaClient, SubmissionStatus } from '@prisma/client';
 import { uploadAgreementForm, uploadPitchVideo } from '@configs/cloudStorage.config';
 import { saveNotification } from './notificationController';
 import { clients, io } from '../server';
@@ -251,6 +251,18 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
           status: 'CHANGES_REQUIRED',
           isReview: true,
         },
+        include: {
+          task: true,
+        },
+      });
+
+      await prisma.task.update({
+        where: {
+          id: submission.task?.id,
+        },
+        data: {
+          columnId: inProgressColumn?.id,
+        },
       });
 
       await prisma.feedback.create({
@@ -270,6 +282,7 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
       });
 
       io.to(clients.get(userId)).emit('notification', notification);
+      io.to(clients.get(userId)).emit('newFeedback');
     }
 
     return res.status(200).json({ message: 'Successfully updated' });
@@ -533,8 +546,8 @@ export const adminManageDraft = async (req: Request, res: Response) => {
         entityId: submission.campaignId,
       });
 
-      io.to(sub.userId).emit('notification', notification);
-      io.to(sub.userId).emit('newFeedback');
+      io.to(clients.get(sub.userId)).emit('notification', notification);
+      io.to(clients.get(sub.userId)).emit('newFeedback');
 
       return res.status(200).json({ message: 'Succesfully submitted.' });
     } else {
@@ -565,38 +578,48 @@ export const adminManageDraft = async (req: Request, res: Response) => {
       });
 
       const doneColumnId = await getColumnId({ userId: sub.userId, columnName: 'Done' });
-
-      await prisma.task.update({
-        where: {
-          id: sub.task?.id,
-        },
-        data: {
-          columnId: doneColumnId,
-        },
-      });
-
-      const finalDraft = await prisma.submission.update({
-        where: {
-          id: sub.dependencies[0].submissionId as string,
-        },
-        data: {
-          status: 'IN_PROGRESS',
-        },
-        include: {
-          task: true,
-        },
-      });
-
       const inProgressColumnId = await getColumnId({ userId: sub.userId, columnName: 'In Progress' });
 
-      await prisma.task.update({
-        where: {
-          id: finalDraft.task?.id,
-        },
-        data: {
-          columnId: inProgressColumnId,
-        },
-      });
+      if (sub.submissionType.type === 'FIRST_DRAFT') {
+        await prisma.task.update({
+          where: {
+            id: sub.task?.id,
+          },
+          data: {
+            columnId: doneColumnId,
+          },
+        });
+
+        const finalDraft = await prisma.submission.update({
+          where: {
+            id: sub.dependencies[0].submissionId as string,
+          },
+          data: {
+            status: 'IN_PROGRESS',
+          },
+          include: {
+            task: true,
+          },
+        });
+
+        await prisma.task.update({
+          where: {
+            id: finalDraft.task?.id,
+          },
+          data: {
+            columnId: inProgressColumnId,
+          },
+        });
+      } else if (sub.submissionType.type === 'FINAL_DRAFT') {
+        await prisma.task.update({
+          where: {
+            id: sub.task?.id,
+          },
+          data: {
+            columnId: inProgressColumnId,
+          },
+        });
+      }
 
       const { title, message } = notificationRejectDraft(
         submission.campaign.name,
@@ -611,7 +634,8 @@ export const adminManageDraft = async (req: Request, res: Response) => {
         entityId: submission.campaignId,
       });
 
-      io.to(sub.userId).emit('notification', notification);
+      io.to(clients.get(sub.userId)).emit('notification', notification);
+      io.to(clients.get(sub.userId)).emit('newFeedback');
 
       return res.status(200).json({ message: 'Succesfully submitted.' });
     }
@@ -663,7 +687,6 @@ export const postingSubmission = async (req: Request, res: Response) => {
     );
 
     for (const admin of submission.campaign.campaignAdmin) {
-      console.log('Admin structure', admin);
       const notification = await saveNotification({
         userId: admin.adminId,
         message: adminMessage,
@@ -758,7 +781,9 @@ export const adminManagePosting = async (req: Request, res: Response) => {
         (elem) => elem.campaignId === submission.campaign.id,
       )?.amount;
 
-      const generatedInvoice = status === 'APPROVED' ? createInvoiceService(submission, userId, invoiceAmount) : null;
+      const invoice: Invoice = await createInvoiceService(submission, userId, invoiceAmount);
+
+      // const generatedInvoice = status === 'APPROVED' ? createInvoiceService(submission, userId, invoiceAmount) : null;
 
       const shortlistedCreator = await prisma.shortListedCreator.findFirst({
         where: {
@@ -799,6 +824,7 @@ export const adminManagePosting = async (req: Request, res: Response) => {
             userId: admin.adminId,
             title,
             message,
+            invoiceId: invoice?.id,
             entity: 'Invoice',
             entityId: submission.campaignId,
           });
@@ -806,10 +832,12 @@ export const adminManagePosting = async (req: Request, res: Response) => {
           io.to(clients.get(admin.adminId)).emit('notification', notification);
         }
       }
+
       const Invoicenotification = await saveNotification({
         userId: submission.userId,
         title,
         message,
+        invoiceId: invoice?.id,
         entity: 'Invoice',
         entityId: submission.campaignId,
       });

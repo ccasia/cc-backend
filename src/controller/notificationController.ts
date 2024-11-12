@@ -20,6 +20,7 @@ export const saveNotification = async ({
   creatorId,
   type,
   threadId,
+  invoiceId,
 }: {
   userId: string;
   campaignId?: string;
@@ -31,6 +32,7 @@ export const saveNotification = async ({
   pitchId?: string;
   type?: string;
   threadId?: string;
+  invoiceId?: string;
 }) => {
   if (entity === 'Agreement' || entity === 'Draft' || entity === 'Timeline' || entity === 'Post') {
     return prisma.notification.create({
@@ -63,7 +65,7 @@ export const saveNotification = async ({
         title: title,
         entity: entity,
         threadId: threadId,
-        //invoiceId: invoiceId,
+        invoiceId: invoiceId,
         userNotification: {
           create: {
             userId: userId,
@@ -79,6 +81,7 @@ export const saveNotification = async ({
       },
     });
   }
+
   if (entity === 'Chat') {
     if (entityId) {
       // Case: Chat with a campaign, connect campaignId
