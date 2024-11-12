@@ -834,6 +834,7 @@ export const adminManagePosting = async (req: Request, res: Response) => {
       });
 
       io.to(clients.get(submission.userId)).emit('notification', notification);
+      io.to(clients.get(submission.userId)).emit('newFeedback');
 
       const { title, message } = notificationInvoiceGenerate(submission.campaign.name);
 
@@ -865,7 +866,6 @@ export const adminManagePosting = async (req: Request, res: Response) => {
       });
 
       io.to(clients.get(submission.userId)).emit('notification', Invoicenotification);
-      io.to(clients.get(submission.userId)).emit('newFeedback');
 
       //Email
       creatorInvoice(submission.user.email, submission.campaign.name, submission.user.name ?? 'Creator');
