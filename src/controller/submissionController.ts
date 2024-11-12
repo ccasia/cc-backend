@@ -22,6 +22,7 @@ import {
   notificationRejectDraft,
 } from '@helper/notification';
 import { getColumnId } from './kanbanController';
+
 import {
   approvalOfDraft,
   creatorInvoice,
@@ -302,8 +303,6 @@ export const getSubmissionByCampaignCreatorId = async (req: Request, res: Respon
         dependencies: true,
       },
     });
-
-    //console.log(data);
 
     return res.status(200).json(data);
   } catch (error) {

@@ -2059,7 +2059,11 @@ export const getCampaignForCreatorById = async (req: Request, res: Response) => 
         pitch: true,
         shortlisted: true,
         invoice: true,
-        submission: true,
+        submission: {
+          include: {
+            submissionType: true,
+          },
+        },
       },
     });
 
@@ -2077,10 +2081,20 @@ export const getCampaignForCreatorById = async (req: Request, res: Response) => 
     const adjustedData = {
       ...campaign,
       totalCompletion:
-        (campaign.submission.filter((submission) => submission.userId === userid && submission.status === 'APPROVED')
-          .length /
+        (campaign.submission.filter(
+          (submission) =>
+            submission.userId === userid &&
+            (submission.status === 'APPROVED' ||
+              submission.submissionType.type === 'FIRST_DRAFT' ||
+              submission.status === 'CHANGES_REQUIRED'),
+        ).length /
           campaign.submission.filter((submission) => submission.userId === userid).length) *
           100 || null,
+      // totalCompletion:
+      //   (campaign.submission.filter((submission) => submission.userId === userid && submission.status === 'APPROVED')
+      //     .length /
+      //     campaign.submission.filter((submission) => submission.userId === userid).length) *
+      //     100 || null,
     };
 
     return res.status(200).json({ ...adjustedData, agreement });
@@ -3092,6 +3106,20 @@ export const getMyCampaigns = async (req: Request, res: Response) => {
       },
     });
 
+    const checkCondition = (submission: any) => {
+      console.log(submission);
+      if (submission.userId === user.id) {
+        return submission;
+        // if (
+        //   // (submission.submissionType.type === 'FIRST_DRAFT' &&
+        //   //   (submission.status === 'APPROVED' || submission.status === 'CHANGES_REQUIRED')) ||
+        //   submission.status === 'APPROVED'
+        // ) {
+        //   return submission;
+        // }
+      }
+    };
+
     const adjustedCampaigns = campaigns
       .filter(
         (item) =>
@@ -3104,10 +3132,25 @@ export const getMyCampaigns = async (req: Request, res: Response) => {
         creatorAgreement: campaign.creatorAgreement.find((agreement) => agreement.userId === user.id) ?? null,
         submission: campaign.submission.filter((submission) => submission.userId === user.id) ?? null,
         totalCompletion:
-          (campaign.submission.filter((submission) => submission.userId === user.id && submission.status === 'APPROVED')
-            .length /
+          (campaign.submission.filter(
+            (submission) =>
+              submission.userId === userId &&
+              (submission.status === 'APPROVED' ||
+                submission.submissionType.type === 'FIRST_DRAFT' ||
+                submission.status === 'CHANGES_REQUIRED'),
+          ).length /
             campaign.submission.filter((submission) => submission.userId === user.id).length) *
             100 || null,
+        // totalCompletion:
+        //   (campaign.submission.filter(
+        //     (submission) =>
+        //       submission.userId === user.id &&
+        //       // ((submission.submissionType.type === 'FIRST_DRAFT' && submission.status === 'APPROVED') ||
+        //       //   submission.status === 'CHANGES_REQUIRED') &&
+        //       submission.status === 'APPROVED',
+        //   ).length /
+        //     campaign.submission.filter((submission) => submission.userId === user.id).length) *
+        //     100 || null,
       }));
 
     return res.status(200).json(adjustedCampaigns);
@@ -3126,7 +3169,6 @@ export const removePitchVideo = async (req: Request, res: Response) => {
 
     return res.status(200).json({ message: 'Pitch video is removed.' });
   } catch (error) {
-    console.log(error);
     return res.status(400).json(error);
   }
 };
