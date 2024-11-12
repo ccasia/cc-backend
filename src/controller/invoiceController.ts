@@ -24,7 +24,7 @@ const xero = new XeroClient({
   clientId: client_id,
   clientSecret: client_secret,
   redirectUris: [redirectUrl],
-  scopes: scopes.split(' '),
+  scopes: scopes?.split(' '),
 });
 
 export const getAllInvoices = async (req: Request, res: Response) => {
@@ -49,6 +49,7 @@ export const getAllInvoices = async (req: Request, res: Response) => {
 // get invoices by creator id
 export const getInvoicesByCreatorId = async (req: Request, res: Response) => {
   const userid = req.session.userid;
+  console.log(userid);
   try {
     const invoices = await prisma.invoice.findMany({
       where: {
@@ -65,6 +66,7 @@ export const getInvoicesByCreatorId = async (req: Request, res: Response) => {
     });
     return res.status(200).json(invoices);
   } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -355,6 +357,7 @@ export const getXero = async (req: Request, res: Response) => {
 };
 
 export const xeroCallBack = async (req: Request, res: Response) => {
+  console.log(req);
   try {
     const user = await prisma.user.findUnique({
       where: {
@@ -387,9 +390,10 @@ export const xeroCallBack = async (req: Request, res: Response) => {
       },
     });
 
-    res.status(200).json({ token: decodedAccessToken || null }); // Send the token response back to the client
+    return res.status(200).json({ token: decodedAccessToken || null }); // Send the token response back to the client
   } catch (err) {
     console.log(err);
+    return res.status(400).json(error);
   }
 };
 
@@ -439,7 +443,7 @@ export const checkRefreshToken = async (req: Request, res: Response) => {
     }
     const lastRefreshToken: any = new Date(user.updateRefershToken || new Date());
 
-    let tokenStatus = lastRefreshToken >= new Date();
+    const tokenStatus = lastRefreshToken >= new Date();
 
     return res.status(200).json({ tokenStatus: true, lastRefreshToken });
   } catch (error) {

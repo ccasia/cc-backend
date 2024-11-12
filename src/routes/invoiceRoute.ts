@@ -25,9 +25,9 @@ router.get('/zeroConnect', getXero);
 router.get('/xeroCallback', xeroCallBack);
 router.get('/getXeroContacts', checkAndRefreshAccessToken, getXeroContacts);
 router.get('/checkRefreshToken', checkRefreshToken);
+router.get('/creator', getInvoicesByCreatorId);
 router.get('/:id', getInvoiceById);
 router.get('/', isSuperAdmin, getAllInvoices);
-router.get('/creator', getInvoicesByCreatorId);
 router.get('/getInvoicesByCampaignId/:id', getInvoicesByCampaignId);
 
 router.get('/creator/:creatorId/campaign/:campaignId', getInvoiceByCreatorIdAndCampaignId);

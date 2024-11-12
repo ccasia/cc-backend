@@ -24,7 +24,7 @@ import {
   xeroCallBack,
   getXeroContacts,
   checkAndRefreshAccessToken,
-  checkRefreshToken
+  checkRefreshToken,
 } from '@controllers/invoiceController';
 import { validateToken } from '@utils/jwtHelper';
 // import { needPermissions } from '@middlewares/needPermissions';

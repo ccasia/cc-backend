@@ -1,7 +1,4 @@
-import {
-  XeroAccessToken,
-  XeroIdToken,
-} from 'xero-node';
+import { XeroAccessToken, XeroIdToken } from 'xero-node';
 
 declare module 'express-session' {
   interface Session {
