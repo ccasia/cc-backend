@@ -1,21 +1,21 @@
 const notificationCampaignLive = (campaignName: string) => {
   return {
-    title: 'Campaign is Live',
-    message: `🚀 Campaign Live! The ${campaignName} is now live!`,
+    title: '🚀 Campaign is Live',
+    message: `Campaign Live! The ${campaignName} is now live!`,
   };
 };
 
 const notificationAdminAssign = (campaignName: string) => {
   return {
-    title: 'New Campaign Assigned',
+    title: '🚀 New Campaign Assigned',
     message: `You have been assigned to Campaign ${campaignName}!`,
   };
 };
 
 const notificationMaintenance = (campaignName: string) => {
   return {
-    title: 'Campaign under Maintenance',
-    message: `🚀 Campaign ${campaignName}  is currently down for maintenance.`,
+    title: '⚙️ Campaign under Maintenance',
+    message: `Campaign ${campaignName}  is currently down for maintenance.`,
   };
 };
 
@@ -49,16 +49,16 @@ const notificationDraft = (campaignName: string, type: 'Admin' | 'Creator', crea
 
 const notificationSignature = (campaignName: string) => {
   return {
-    title: ' Agreement Due for Signature and Upload',
-    message: `📄 Agreement Pending. The agreement for ${campaignName} is ready for signature.`,
+    title: '📄 Agreement Due for Signature and Upload',
+    message: ` Agreement Pending. The agreement for ${campaignName} is ready for signature.`,
   };
 };
 
 //
 const notificationPendingAgreement = (campaignName: string) => {
   return {
-    title: 'Shortlisted Creators Pending Agreement Generation',
-    message: `📝 Shortlisted Creators Pending! Shortlisted creators are pending agreement generation for ${campaignName}.`,
+    title: '📝 Shortlisted Creators Pending Agreement Generation',
+    message: ` Shortlisted Creators Pending! Shortlisted creators are pending agreement generation for ${campaignName}.`,
   };
 };
 
@@ -77,7 +77,7 @@ const notificationAgreement = (campaignName: string, type: 'Admin' | 'Creator', 
 
 const notificationApproveAgreement = (campaignName: string) => {
   return {
-    title: '✅ Agreement Approved!',
+    title: '🥳 Agreement Approved!',
     message: `Your agreement for the ${campaignName} has been approved. You’re all set to move forward!`,
   };
 };
@@ -119,7 +119,7 @@ const notificationGroupChat = (campaignName: string, thread: string) => {
 const notificationCSMChat = (thread: string) => {
   return {
     title: `💬 New Private!`,
-    message: `You have a new message in your CSM chat for ${thread}. `,
+    message: `You have a new message in your CSM chat. `,
   };
 };
 
