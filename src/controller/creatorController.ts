@@ -505,8 +505,8 @@ export const updateSocialMedia = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'No creator found.' });
     }
 
-    if (user.creator?.socialMediaUpdateCount) {
-      const { tiktok, instagram } = user.creator?.socialMediaUpdateCount as any;
+    if (user.creator?.socialMediaData) {
+      const { tiktok, instagram } = user.creator?.socialMediaData as any;
 
       if (tiktok > 2 && instagram > 2) {
         return res.status(400).json({ message: 'Limit reach. Contact our admin.' });

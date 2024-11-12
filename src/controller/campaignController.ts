@@ -3157,6 +3157,9 @@ export const getMyCampaigns = async (req: Request, res: Response) => {
   } catch (error) {
     return res.status(400).json(error);
   }
+// <<<<<<< xeroApi
+// };
+// =======
 };
 
 export const removePitchVideo = async (req: Request, res: Response) => {
