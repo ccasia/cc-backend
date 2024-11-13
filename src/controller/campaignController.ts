@@ -733,10 +733,12 @@ export const getCampaignById = async (req: Request, res: Response) => {
           select: {
             admin: {
               select: {
+                role: true,
                 user: {
                   select: {
                     id: true,
                     name: true,
+                    role: true,
                   },
                 },
               },
@@ -3176,6 +3178,65 @@ export const removePitchVideo = async (req: Request, res: Response) => {
 
     return res.status(200).json({ message: 'Pitch video is removed.' });
   } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const editCampaignAdmin = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const {
+    data: { admins },
+  } = req.body;
+
+  console.log(req.body);
+
+  try {
+    const campaign = await prisma.campaign.findUnique({
+      where: {
+        id: id,
+      },
+      include: {
+        campaignAdmin: true,
+      },
+    });
+
+    if (!campaign) return res.status(404).json({ message: 'Campaign not found.' });
+
+    const adjustedAdmins: any = await Promise.all(
+      admins.map(async (admin: any) => {
+        const data = await prisma.admin.findFirst({
+          where: {
+            userId: admin.id,
+          },
+        });
+        return data;
+      }),
+    );
+
+    console.log(adjustedAdmins);
+
+    await prisma.campaignAdmin.deleteMany({
+      where: {
+        campaignId: campaign?.id,
+      },
+    });
+
+    await prisma.campaign.update({
+      where: {
+        id: campaign?.id,
+      },
+      data: {
+        campaignAdmin: {
+          create: adjustedAdmins.map((admin: any) => ({
+            adminId: admin.userId,
+          })),
+        },
+      },
+    });
+
+    return res.status(200).json({ message: 'Update Success.' });
+  } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   }
 };
