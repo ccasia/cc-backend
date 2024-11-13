@@ -13,7 +13,6 @@ import {
   editCampaignDosAndDonts,
   editCampaignRequirements,
   editCampaignTimeline,
-  getFirstDraft,
   changePitchStatus,
   getCampaignsByCreatorId,
   getCampaignForCreatorById,
@@ -72,7 +71,7 @@ router.get('/getCampaignById/:id', isSuperAdmin, getCampaignById);
 router.get('/getAllActiveCampaign', getAllActiveCampaign);
 router.get('/matchCampaignWithCreator', isLoggedIn, matchCampaignWithCreator);
 router.get('/pitch/:id', getPitchById);
-router.get('/firstDraft', getFirstDraft);
+// router.get('/firstDraft', getFirstDraft);
 router.get('/timelineType', isSuperAdmin, getTimelineType);
 router.get('/defaultTimeline', isSuperAdmin, getDefaultTimeline);
 router.get('/getCampaignsBySessionId', isLoggedIn, getCampaignsByCreatorId);

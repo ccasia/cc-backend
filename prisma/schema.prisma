@@ -369,7 +369,7 @@ model CampaignRequirement {
   geoLocation     String[]
   language        String[]
   creator_persona String[]
-  user_persona    String   @db.VarChar(255)
+  user_persona    String
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   campaignId      String   @unique
@@ -378,15 +378,15 @@ model CampaignRequirement {
 
 model CampaignBrief {
   id                  String   @id @unique @default(cuid())
-  title               String   @db.VarChar(255)
-  objectives          String?  @db.VarChar(255)
+  title               String
+  objectives          String?
   images              Json?
-  agreementFrom       String   @db.VarChar(255)
+  agreementFrom       String
   startDate           DateTime
   endDate             DateTime
   interests           Json?
   industries          String?
-  success             String?  @db.VarChar(255)
+  success             String?
   socialMediaPlatform String[]
   videoAngle          String[]
   campaigns_do        Json?

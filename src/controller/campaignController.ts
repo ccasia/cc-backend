@@ -1261,59 +1261,90 @@ export const getCampaignsByCreatorId = async (req: Request, res: Response) => {
 export const changeCampaignStage = async (req: Request, res: Response) => {
   const { status } = req.body;
   const { campaignId } = req.params;
-
+  let updatedCampaign: any;
   try {
-    const campaign = await prisma.campaign.update({
+    const campaign = await prisma.campaign.findUnique({
       where: {
         id: campaignId,
       },
-      data: {
-        status: status,
-      },
       include: {
-        campaignAdmin: true,
-        shortlisted: {
-          include: {
-            user: true,
-          },
-        },
+        campaignBrief: { select: { startDate: true } },
       },
     });
 
-    if (campaign?.shortlisted.length && campaign?.status === 'PAUSED') {
-      campaign?.shortlisted?.map(async (value) => {
-        const { title, message } = notificationMaintenance(campaign.name);
+    if (!campaign) return res.status(404).json({ message: 'Campaign not found.' });
+
+    if (dayjs(campaign.campaignBrief?.startDate).isAfter(dayjs(), 'date')) {
+      updatedCampaign = await prisma.campaign.update({
+        where: {
+          id: campaignId,
+        },
+        data: {
+          status: 'SCHEDULED',
+        },
+        include: {
+          campaignAdmin: true,
+          shortlisted: {
+            include: {
+              user: true,
+            },
+          },
+        },
+      });
+    } else {
+      updatedCampaign = await prisma.campaign.update({
+        where: {
+          id: campaignId,
+        },
+        data: {
+          status: status,
+        },
+        include: {
+          campaignAdmin: true,
+          shortlisted: {
+            include: {
+              user: true,
+            },
+          },
+        },
+      });
+    }
+
+    if (updatedCampaign?.shortlisted.length > 0 && updatedCampaign?.status === 'PAUSED') {
+      updatedCampaign?.shortlisted?.map(async (value: { userId: string }) => {
+        const { title, message } = notificationMaintenance(updatedCampaign.name);
 
         const data = await saveNotification({
           userId: value.userId as string,
           title: title,
           message: message,
           entity: 'Status',
-          entityId: campaign.id,
+          entityId: updatedCampaign.id,
         });
+
         io.to(clients.get(value.userId)).emit('notification', data);
       });
     }
 
-    if (campaign?.status === 'ACTIVE') {
-      for (const admin of campaign.campaignAdmin) {
-        const { title, message } = notificationCampaignLive(campaign.name);
+    if (updatedCampaign?.status === 'ACTIVE') {
+      for (const admin of updatedCampaign.campaignAdmin) {
+        const { title, message } = notificationCampaignLive(updatedCampaign.name);
 
         const data = await saveNotification({
           userId: admin.adminId,
           title: title,
           message: message,
           entity: 'Status',
-          entityId: campaign.id,
+          entityId: updatedCampaign.id,
         });
 
         io.to(clients.get(admin.adminId)).emit('notification', data);
       }
     }
 
-    io.emit('campaignStatus', campaign);
+    io.emit('campaignStatus', updatedCampaign);
 
-    return res.status(200).json({ message: 'Campaign stage changed successfully.', status: campaign?.status });
+    return res.status(200).json({ message: 'Campaign stage changed successfully.', status: updatedCampaign?.status });
   } catch (error) {
     return res.status(400).json(error);
   }
@@ -1523,11 +1554,18 @@ export const editCampaignTimeline = async (req: Request, res: Response) => {
         campaignBrief: true,
         campaignAdmin: true,
         campaignTasks: true,
+        shortlisted: true,
       },
     });
 
     if (!campaign) {
       return res.status(404).json({ message: 'Campaign not found.' });
+    }
+
+    if (dayjs(campaignStartDate).isAfter(dayjs(), 'date') && campaign.shortlisted.length > 0) {
+      return res
+        .status(404)
+        .json({ message: 'Failed to change campaign start date because there is existing shortlisted creators.' });
     }
 
     const data = await Promise.all(
@@ -1562,29 +1600,6 @@ export const editCampaignTimeline = async (req: Request, res: Response) => {
       }),
     );
 
-    // await Promise.all(
-    //   data.map(async (item: any) => {
-    //     // //console.log(item);
-    //     const isExist = await prisma.campaignTask.findUnique({
-    //       where: {
-    //         id: item.campaignTasks.id,
-    //       },
-    //     });
-
-    //     if (isExist) {
-    //       await prisma.campaignTask.update({
-    //         where: {
-    //           id: item.campaignTasks.id,
-    //         },
-    //         data: {
-    //           startDate: dayjs(item.startDate) as any,
-    //           endDate: dayjs(item.endDate) as any,
-    //         },
-    //       });
-    //     }
-    //   }),
-    // );
-
     await prisma.campaignBrief.update({
       where: {
         campaignId: campaign.id,
@@ -1595,69 +1610,12 @@ export const editCampaignTimeline = async (req: Request, res: Response) => {
       },
     });
 
-    // Promise.all(
-    //   data.map(async (item: any) => {
-    //     await prisma.campaignTask.update({
-    //       where: {
-    //         campaignTimelineId: item.id,
-    //       },
-    //       data: {
-    //         startDate: dayjs(item.startDate) as any,
-    //         endDate: dayjs(item.endDate) as any,
-    //       },
-    //     });
-    //   }),
-    // );
-
-    // for (const item of timeline) {
-    //   const a = await prisma.campaignTimeline.update({
-    //     where: {
-    //       id: item.id,
-    //     },
-    //     data: {
-    //       name: item.timeline_type?.name,
-    //       for: item?.for,
-    //       duration: parseInt(item.duration),
-    //       startDate: dayjs(item?.startDate) as any,
-    //       endDate: dayjs(item?.endDate) as any,
-    //       campaignId: campaign?.id,
-    //       order: index + 1,
-    //     },
-    //   });
-    // }
-
-    // campaign?.campaignAdmin?.forEach((admin: any) => {
-    //   timelines
-    //     .filter((elem: any) => elem.for === 'admin')
-    //     .forEach(async (item: any) => {
-    //       await assignTask(admin?.adminId, campaign?.id, item?.id);
-    //     });
-    // });
-
     const message = 'Updated timeline';
     logChange(message, id, req);
     return res.status(200).json({ message: message });
   } catch (error) {
-    //console.log(error);
     return res.status(400).json(error);
   }
-};
-
-// Get First Draft by user id and campaign id
-export const getFirstDraft = async (req: Request, res: Response) => {
-  // const { creatorId, campaignId } = req.query;
-  // try {
-  //   const firstDraft = await prisma.firstDraft.findMany({
-  //     where: {
-  //       creatorId: creatorId as any,
-  //       campaignId: campaignId as any,
-  //     },
-  //   });
-  //   return res.status(200).json(firstDraft);
-  // } catch (error) {
-  //   //console.log(error);
-  //   return res.status(400).json(error);
-  // }
 };
 
 export const changePitchStatus = async (req: Request, res: Response) => {
