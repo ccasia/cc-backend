@@ -50,8 +50,6 @@ model User {
   UserThread         UserThread[]
   threads            Thread[]             @relation("UserThreads")
   resetPasswordToken ResetPasswordToken?
-  // Notification       Notification[]
-  // creatorNotification Notification[]       @relation("creator")
 }
 
 model ResetPasswordToken {
@@ -381,6 +379,7 @@ model CampaignBrief {
   title               String
   objectives          String?
   images              Json?
+  otherAttachments    String[]
   agreementFrom       String
   startDate           DateTime
   endDate             DateTime

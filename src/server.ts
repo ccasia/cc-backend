@@ -204,26 +204,6 @@ io.on('connection', (socket) => {
   });
 });
 
-// app.get('/sheet', async (req, res) => {
-//   try {
-//     // const test = await getLastRow({ sheetId: 782541531 });
-//     // console.log(test);
-
-//     await createNewRowData({
-//       creatorInfo: {
-//         name: 'ADAS',
-//         videoLink: 'Das',
-//         email: 'dasd',
-//       },
-//       sheetId: 782541531,
-//     });
-
-//     return res.sendStatus(200);
-//   } catch (error) {
-//     return res.status(400).json(error);
-//   }
-// });
-
 server.listen(process.env.PORT, () => {
   //console.log(`Listening to port ${process.env.PORT}...`);
   //console.log(`${process.env.NODE_ENV} stage is running...`);

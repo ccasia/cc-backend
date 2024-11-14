@@ -253,6 +253,35 @@ export const uploadDigitalSignature = async ({
   }
 };
 
+export const uploadAttachments = async ({
+  tempFilePath,
+  fileName,
+  folderName,
+}: {
+  tempFilePath: string;
+  fileName: string;
+  folderName: string;
+}) => {
+  try {
+    const bucketName = process.env.BUCKET_NAME as string;
+    const destination = `${folderName}/${fileName}`;
+
+    const [file] = await storage.bucket(bucketName).upload(tempFilePath, {
+      destination,
+      gzip: true,
+    });
+
+    // Make the file public
+    await file.makePublic();
+
+    // Construct the public URL
+    const publicURL = `https://storage.googleapis.com/${bucketName}/${destination}?v=${dayjs().format()}`;
+    return publicURL;
+  } catch (err) {
+    throw new Error(`Error uploading file: ${err.message}`);
+  }
+};
+
 export const deleteContent = async ({ fileName, folderName }: any) => {
   const bucketName = process.env.BUCKET_NAME as string;
   const destination = `${folderName}/${fileName}`;

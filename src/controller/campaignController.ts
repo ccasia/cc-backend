@@ -20,7 +20,13 @@ import {
 
 import amqplib from 'amqplib';
 
-import { deleteContent, uploadAgreementForm, uploadImage, uploadPitchVideo } from '@configs/cloudStorage.config';
+import {
+  deleteContent,
+  uploadAgreementForm,
+  uploadAttachments,
+  uploadImage,
+  uploadPitchVideo,
+} from '@configs/cloudStorage.config';
 import dayjs from 'dayjs';
 import { logChange } from '@services/campaignServices';
 import { saveNotification } from '@controllers/notificationController';
@@ -105,6 +111,7 @@ interface Campaign {
   socialMediaPlatform: string[];
   videoAngle: string[];
   agreementForm: string;
+  otherAttachments?: string[];
 }
 
 const MAPPING: Record<string, string> = {
@@ -178,10 +185,12 @@ export const createCampaign = async (req: Request, res: Response) => {
     brandTone,
     productName,
     agreementForm,
+    otherAttachments,
   }: Campaign = JSON.parse(req.body.data);
 
   try {
     const publicURL: any = [];
+    const otherAttachments: string[] = [];
 
     // Handle Campaign Images
     if (req.files && req.files.campaignImages) {
@@ -198,13 +207,28 @@ export const createCampaign = async (req: Request, res: Response) => {
       }
     }
 
-    // let agreementFormURL = '';
+    if (req.files && req.files.otherAttachments) {
+      const attachments: any = (req.files as any).otherAttachments as [];
 
-    // Handle Campaign Agreement
-    // if (req.files && req.files.agreementForm) {
-    //   const form = (req.files as any).agreementForm;
-    //   agreementFormURL = await uploadAgreementForm(form.tempFilePath, form.name, 'agreementForm');
-    // }
+      if (attachments.length) {
+        for (const item of attachments as any) {
+          const url: string = await uploadAttachments({
+            tempFilePath: item.tempFilePath,
+            fileName: item.name,
+            folderName: 'otherAttachments',
+          });
+          otherAttachments.push(url);
+        }
+      } else {
+        const url: string = await uploadAttachments({
+          tempFilePath: attachments.tempFilePath,
+          fileName: attachments.name,
+          folderName: 'otherAttachments',
+        });
+        otherAttachments.push(url);
+      }
+    }
+
     // Handle All processes
     await prisma.$transaction(
       async (tx) => {
@@ -222,18 +246,11 @@ export const createCampaign = async (req: Request, res: Response) => {
           }),
         );
 
-        // // Find Brand
-        // const brand: any = await tx.brand.findUnique({
-        //   where: {
-        //     id: campaignBrand.id,
-        //   },
-        // });
-
         // Create sheet in google sheet
-        const data = await createNewSheetWithHeaderRows({
-          title: campaignTitle,
-          rows: ['Name', 'Username', 'Video Link', 'Posting Date', 'Caption', 'Video Feedback', 'Others'],
-        });
+        // const data = await createNewSheetWithHeaderRows({
+        //   title: campaignTitle,
+        //   rows: ['Name', 'Username', 'Video Link', 'Posting Date', 'Caption', 'Video Feedback', 'Others'],
+        // });
 
         // Create Campaign
         const campaign = await tx.campaign.create({
@@ -243,12 +260,13 @@ export const createCampaign = async (req: Request, res: Response) => {
             status: campaignStage as CampaignStatus,
             brandTone: brandTone,
             productName: productName,
-            sheetId: data.sheetId.toString(),
+            // sheetId: data.sheetId.toString(),
             campaignBrief: {
               create: {
                 title: campaignTitle,
                 objectives: campaignObjectives,
                 images: publicURL.map((image: any) => image) || '',
+                otherAttachments: otherAttachments,
                 agreementFrom: agreementForm,
                 startDate: dayjs(campaignStartDate) as any,
                 endDate: dayjs(campaignEndDate) as any,
@@ -3146,8 +3164,6 @@ export const editCampaignAdmin = async (req: Request, res: Response) => {
     data: { admins },
   } = req.body;
 
-  console.log(req.body);
-
   try {
     const campaign = await prisma.campaign.findUnique({
       where: {
@@ -3171,8 +3187,6 @@ export const editCampaignAdmin = async (req: Request, res: Response) => {
       }),
     );
 
-    console.log(adjustedAdmins);
-
     await prisma.campaignAdmin.deleteMany({
       where: {
         campaignId: campaign?.id,
@@ -3194,7 +3208,68 @@ export const editCampaignAdmin = async (req: Request, res: Response) => {
 
     return res.status(200).json({ message: 'Update Success.' });
   } catch (error) {
-    console.log(error);
+    return res.status(400).json(error);
+  }
+};
+
+export const editCampaignAttachments = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { otherAttachments: currentAttachments } = req.body;
+  const otherAttachments: string[] = [];
+
+  try {
+    const campaign = await prisma.campaign.findUnique({
+      where: {
+        id: id,
+      },
+      include: {
+        campaignAdmin: true,
+      },
+    });
+
+    if (!campaign) return res.status(404).json({ message: 'Campaign not found.' });
+
+    if (req.files && req.files.otherAttachments) {
+      const attachments: any = (req.files as any).otherAttachments as [];
+
+      if (attachments.length) {
+        for (const item of attachments as any) {
+          const url: string = await uploadAttachments({
+            tempFilePath: item.tempFilePath,
+            fileName: item.name,
+            folderName: 'otherAttachments',
+          });
+          otherAttachments.push(url);
+        }
+      } else {
+        const url: string = await uploadAttachments({
+          tempFilePath: attachments.tempFilePath,
+          fileName: attachments.name,
+          folderName: 'otherAttachments',
+        });
+        otherAttachments.push(url);
+      }
+    }
+
+    if (currentAttachments) {
+      if (Array.isArray(currentAttachments)) {
+        otherAttachments.push(...currentAttachments);
+      } else {
+        otherAttachments.push(currentAttachments);
+      }
+    }
+
+    await prisma.campaignBrief.update({
+      where: {
+        campaignId: campaign.id,
+      },
+      data: {
+        otherAttachments: otherAttachments,
+      },
+    });
+
+    return res.status(200).json({ message: 'Update Success.' });
+  } catch (error) {
     return res.status(400).json(error);
   }
 };
