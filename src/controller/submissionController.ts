@@ -362,7 +362,7 @@ export const draftSubmission = async (req: Request, res: Response) => {
         },
         campaign: {
           select: {
-            sheetId: true,
+            // sheetId: true,
             campaignAdmin: {
               select: {
                 admin: {
@@ -423,18 +423,18 @@ export const draftSubmission = async (req: Request, res: Response) => {
       },
     );
 
-    if (submission.campaign.sheetId && submission.submissionType.type === 'FIRST_DRAFT') {
-      await createNewRowData({
-        creatorInfo: {
-          name: submission.user.name,
-          username: submission.user.creator?.instagram,
-          postingDate: dayjs().format('dd MMM'),
-          caption: caption,
-          videoLink: `https://storage.googleapis.com/${process.env.BUCKET_NAME as string}/${submission?.submissionType.type}/${`${submission?.id}_draft.mp4`}?v=${dayjs().format()}`,
-        } as any,
-        sheetId: parseInt(submission.campaign.sheetId),
-      });
-    }
+    // if (submission.campaign.sheetId && submission.submissionType.type === 'FIRST_DRAFT') {
+    //   await createNewRowData({
+    //     creatorInfo: {
+    //       name: submission.user.name,
+    //       username: submission.user.creator?.instagram,
+    //       postingDate: dayjs().format('dd MMM'),
+    //       caption: caption,
+    //       videoLink: `https://storage.googleapis.com/${process.env.BUCKET_NAME as string}/${submission?.submissionType.type}/${`${submission?.id}_draft.mp4`}?v=${dayjs().format()}`,
+    //     } as any,
+    //     sheetId: parseInt(submission.campaign.sheetId),
+    //   });
+    // }
 
     return res.status(200).json({ message: 'Video start processing' });
   } catch (error) {

@@ -381,6 +381,7 @@ export const updateCreatorForm = async (req: Request, res: Response) => {
 export const crawlCreator = async (req: Request, res: Response) => {
   const { identifier, platform } = req.body;
 
+  // Check if identifier OR platform is undefined
   if (!identifier || !platform) {
     return res.status(400).json({ error: 'Missing identifier or platform' });
   }

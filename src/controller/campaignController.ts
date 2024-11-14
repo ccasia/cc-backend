@@ -50,7 +50,7 @@ import {
   notificationLogisticDelivery,
 } from '@helper/notification';
 import { deliveryConfirmation, shortlisted, tracking } from '@configs/nodemailer.config';
-import { createNewSheetWithHeaderRows } from '@services/google_sheets/sheets';
+import { createNewSheetWithHeaderRows, createNewSpreadSheet } from '@services/google_sheets/sheets';
 
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
 Ffmpeg.setFfprobePath(ffprobePath.path);
@@ -165,7 +165,6 @@ export const createCampaign = async (req: Request, res: Response) => {
     client,
     campaignStartDate,
     campaignEndDate,
-    campaignInterests,
     campaignObjectives,
     socialMediaPlatform,
     videoAngle,
@@ -246,6 +245,8 @@ export const createCampaign = async (req: Request, res: Response) => {
           }),
         );
 
+        const url: string = await createNewSpreadSheet({ title: campaignTitle });
+
         // Create sheet in google sheet
         // const data = await createNewSheetWithHeaderRows({
         //   title: campaignTitle,
@@ -260,6 +261,7 @@ export const createCampaign = async (req: Request, res: Response) => {
             status: campaignStage as CampaignStatus,
             brandTone: brandTone,
             productName: productName,
+            spreadSheetURL: url,
             // sheetId: data.sheetId.toString(),
             campaignBrief: {
               create: {

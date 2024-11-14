@@ -26,6 +26,7 @@ export const accessGoogleSheetAPI = async () => {
     });
 
     const doc = new GoogleSpreadsheet('1k-0MzP1vQUltu_DacbwzagmHi-_J2924g7NN5J6ptBM', serviceAccountAuth);
+
     await doc.loadInfo();
 
     return doc;
@@ -86,6 +87,29 @@ export const getLastRow = async ({ sheetId }: { sheetId: number }) => {
 
     console.log(lastRowIndex);
     return lastRowIndex;
+  } catch (error) {
+    throw new Error(error);
+  }
+};
+
+export const createNewSpreadSheet = async ({ title }: { title: string }) => {
+  try {
+    const { GoogleSpreadsheet } = await import('google-spreadsheet');
+    const serviceAccountAuth = new JWT({
+      email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
+      key: process.env.GOOGLE_PRIVATE_KEY,
+      scopes: ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive.file'],
+    });
+
+    const doc = await GoogleSpreadsheet.createNewSpreadsheetDocument(serviceAccountAuth, { title: title || 'Default' });
+
+    // Testing purpose
+    await doc.share('afiq@nexea.co');
+    // await doc.share('atiqah@cultcreative.asia');
+
+    const url = `https://docs.google.com/spreadsheets/d/${doc.spreadsheetId}/`;
+
+    return url;
   } catch (error) {
     throw new Error(error);
   }

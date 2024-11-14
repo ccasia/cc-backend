@@ -317,7 +317,7 @@ model Campaign {
   brandTone                     String?
   productName                   String?
   eventId                       String?
-  sheetId                       String?
+  // sheetId                       String?
   bookMarkCampaign              BookMarkCampaign[]
   brand                         Brand?                          @relation(fields: [brandId], references: [id])
   company                       Company?                        @relation(fields: [companyId], references: [id])
@@ -337,6 +337,7 @@ model Campaign {
   shortlisted                   ShortListedCreator[]
   submission                    Submission[]
   thread                        Thread?
+  spreadSheetURL                String?
 }
 
 model BookMarkCampaign {
