@@ -717,6 +717,7 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
 
     return res.status(200).json(campaigns);
   } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -3271,6 +3272,35 @@ export const editCampaignAttachments = async (req: Request, res: Response) => {
     });
 
     return res.status(200).json({ message: 'Update Success.' });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const createNewSpreadSheets = async (req: Request, res: Response) => {
+  const { campaignId } = req.body;
+  console.log(campaignId);
+  try {
+    const campaign = await prisma.campaign.findUnique({
+      where: {
+        id: campaignId,
+      },
+    });
+
+    if (!campaign) return res.status(404).json({ message: 'Campaign not found.' });
+
+    const url = await createNewSpreadSheet({ title: campaign.name });
+
+    const data = await prisma.campaign.update({
+      where: {
+        id: campaign.id,
+      },
+      data: {
+        spreadSheetURL: url,
+      },
+    });
+
+    return res.status(200).json({ message: 'Spreadsheet is created', url: data.spreadSheetURL });
   } catch (error) {
     return res.status(400).json(error);
   }

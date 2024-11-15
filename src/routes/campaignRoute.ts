@@ -38,6 +38,7 @@ import {
   removePitchVideo,
   editCampaignAdmin,
   editCampaignAttachments,
+  createNewSpreadSheets,
 } from '@controllers/campaignController';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 
@@ -98,6 +99,7 @@ router.post('/createLogistic', isLoggedIn, createLogistics);
 router.post('/shortlistCreator', isSuperAdmin, shortlistCreator);
 router.post('/template/:id', isSuperAdmin, createNewTemplate);
 router.post('/draftPitch', isLoggedIn, draftPitch);
+router.post('/spreadsheet', isLoggedIn, isSuperAdmin, createNewSpreadSheets);
 
 router.patch('/pitch', isLoggedIn, creatorMakePitch);
 router.patch('/changeCampaignStage/:campaignId', changeCampaignStage);
