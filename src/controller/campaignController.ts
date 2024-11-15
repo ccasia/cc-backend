@@ -619,7 +619,7 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
                       interests: true,
                     },
                   },
-                  // creatorAgreement: true,
+
                   paymentForm: true,
                 },
               },
