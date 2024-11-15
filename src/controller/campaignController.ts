@@ -112,6 +112,7 @@ interface Campaign {
   videoAngle: string[];
   agreementForm: string;
   otherAttachments?: string[];
+  referencesLinks?: string[];
 }
 
 const MAPPING: Record<string, string> = {
@@ -185,6 +186,7 @@ export const createCampaign = async (req: Request, res: Response) => {
     productName,
     agreementForm,
     otherAttachments,
+    referencesLinks,
   }: Campaign = JSON.parse(req.body.data);
 
   try {
@@ -262,13 +264,13 @@ export const createCampaign = async (req: Request, res: Response) => {
             brandTone: brandTone,
             productName: productName,
             spreadSheetURL: url,
-            // sheetId: data.sheetId.toString(),
             campaignBrief: {
               create: {
                 title: campaignTitle,
                 objectives: campaignObjectives,
                 images: publicURL.map((image: any) => image) || '',
                 otherAttachments: otherAttachments,
+                referencesLinks: referencesLinks?.map((link: any) => link.value) || [],
                 agreementFrom: agreementForm,
                 startDate: dayjs(campaignStartDate) as any,
                 endDate: dayjs(campaignEndDate) as any,
@@ -3301,6 +3303,37 @@ export const createNewSpreadSheets = async (req: Request, res: Response) => {
     });
 
     return res.status(200).json({ message: 'Spreadsheet is created', url: data.spreadSheetURL });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const editCampaignReference = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { referencesLinks } = req.body;
+
+  try {
+    const campaign = await prisma.campaign.findUnique({
+      where: {
+        id: id,
+      },
+      include: {
+        campaignAdmin: true,
+      },
+    });
+
+    if (!campaign) return res.status(404).json({ message: 'Campaign not found.' });
+
+    await prisma.campaignBrief.update({
+      where: {
+        campaignId: campaign.id,
+      },
+      data: {
+        referencesLinks: referencesLinks?.map((link: any) => link.value) || [],
+      },
+    });
+
+    return res.status(200).json({ message: 'Update Success.' });
   } catch (error) {
     return res.status(400).json(error);
   }

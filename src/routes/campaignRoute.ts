@@ -39,6 +39,7 @@ import {
   editCampaignAdmin,
   editCampaignAttachments,
   createNewSpreadSheets,
+  editCampaignReference,
 } from '@controllers/campaignController';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 
@@ -112,6 +113,7 @@ router.patch('/editCampaignTimeline/:id', isSuperAdmin, editCampaignTimeline);
 router.patch('/editCampaignImages/:id', isSuperAdmin, editCampaignImages);
 router.patch('/editCampaignAdmins/:id', isSuperAdmin, editCampaignAdmin);
 router.patch('/editCampaignAttachments/:id', isSuperAdmin, editCampaignAttachments);
+router.patch('/editCampaignReference/:id', isSuperAdmin, editCampaignReference);
 router.patch('/changePitchStatus', isSuperAdmin, changePitchStatus);
 router.patch('/changeLogisticStatus', isSuperAdmin, updateStatusLogistic); //need permission later
 router.patch('/receiveLogistic', isLoggedIn, receiveLogistic);

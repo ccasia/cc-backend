@@ -381,6 +381,7 @@ model CampaignBrief {
   objectives          String?
   images              Json?
   otherAttachments    String[]
+  referencesLinks     String[]
   agreementFrom       String
   startDate           DateTime
   endDate             DateTime
