@@ -269,6 +269,36 @@ export const markAllAsRead = async (req: Request, res: Response) => {
   }
 };
 
+export const markAsRead = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { userid } = req.session; 
+
+
+  try {
+    const userNotification = await prisma.userNotification.findUnique({
+      where: { id },
+    });
+
+    if (!userNotification || userNotification.userId !== userid) {
+      return res.status(404).json({ error: 'UserNotification record not found or unauthorized.' });
+    }
+
+    const updatedNotification = await prisma.userNotification.update({
+      where: { id }, 
+      data: {
+        read: true,
+        readAt: new Date(),
+      },
+    });
+
+    console.log(`Notification with ID ${id} marked as read for user ${userid}.`);
+    return res.status(200).json({ message: 'Notification marked as read', notification: updatedNotification });
+  } catch (error) {
+    console.error('Error marking notification as read:', error);
+    return res.status(400).json({ error: 'Error marking notification as read' });
+  }
+};
+
 export const archiveAll = async (req: Request, res: Response) => {
   const { userid } = req.session;
   try {
