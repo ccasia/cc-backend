@@ -271,8 +271,7 @@ export const markAllAsRead = async (req: Request, res: Response) => {
 
 export const markAsRead = async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { userid } = req.session; 
-
+  const { userid } = req.session;
 
   try {
     const userNotification = await prisma.userNotification.findUnique({
@@ -284,7 +283,7 @@ export const markAsRead = async (req: Request, res: Response) => {
     }
 
     const updatedNotification = await prisma.userNotification.update({
-      where: { id }, 
+      where: { id },
       data: {
         read: true,
         readAt: new Date(),

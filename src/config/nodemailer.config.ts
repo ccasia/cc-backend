@@ -181,7 +181,13 @@ export const creatorVerificationEmail = (email: string, confirmationToken: strin
 
 // Creator Notifications
 
-export const shortlisted = (email: string, campaignName: string, creatorName: string, campaignId: string, campaignImage: string) => {
+export const shortlisted = (
+  email: string,
+  campaignName: string,
+  creatorName: string,
+  campaignId: string,
+  campaignImage: string,
+) => {
   transport
     .sendMail({
       from: user,
@@ -200,7 +206,7 @@ export const shortlisted = (email: string, campaignName: string, creatorName: st
             <img src="https://drive.google.com/uc?id=13ICuo00aWLG8XUikZ_6vSP7ej_CFQdjQ" alt="Company Logo" class="logo" style="max-width: 150px; margin-right: 30px;">
       </div>
         <h2 style="color: #686464; font-size: 24px; font-weight: bold; margin-top: 40px; margin-bottom: 40px;">🎉 You’ve Been Shortlisted for ${campaignName}</h2>
-        <img src=${campaignImage ??  "https://drive.google.com/uc?id=1lpDBTeil5asnkSW7B7T7_77EFpTQJcva"} alt="Campaign Image" class="campaign-image" style="display: block; width: 100%; max-height: 300px; object-fit: cover; margin: 30px 0;">
+        <img src=${campaignImage ?? 'https://drive.google.com/uc?id=1lpDBTeil5asnkSW7B7T7_77EFpTQJcva'} alt="Campaign Image" class="campaign-image" style="display: block; width: 100%; max-height: 300px; object-fit: cover; margin: 30px 0;">
         <p style="color: #686464; text-align: left; font-size: 14px; line-height: 1.6; font-family: 'Roboto', sans-serif;">Hi ${creatorName}, Congrats! You've been shortlisted for <a href="#" style="color: #0874dc;">${campaignName}</a>. Stay tuned for updates!</p>
         <a href="${process.env.BASE_EMAIL_URL}/dashboard/campaign/VUquQR/HJUboKDBwJi71KQ==/manage/detail/${campaignId}" class="button" style="display: inline-block; padding: 15px 30px; background-color: #0874dc; text-decoration: none; border-radius: 6px; font-size: 16px; color: #ffffff; text-align: center; margin: 30px auto; display: block; font-weight: bold; transition: background-color 0.3s;">View Campaign Details</a>
         <div class="separator" style="border-top: 1px solid #ddd; margin: 35px 0;"></div>
