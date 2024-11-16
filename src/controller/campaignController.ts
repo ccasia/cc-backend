@@ -2806,6 +2806,7 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
 
 export const sendAgreement = async (req: Request, res: Response) => {
   const { user, id: agreementId, agreementUrl, campaignId } = req.body;
+
   try {
     const isUserExist = await prisma.user.findUnique({
       where: {
@@ -2881,6 +2882,7 @@ export const sendAgreement = async (req: Request, res: Response) => {
     });
 
     const { title, message } = notificationSignature(campaign.name);
+
     const notification = await saveNotification({
       userId: isUserExist.id,
       title: title,
@@ -2893,7 +2895,6 @@ export const sendAgreement = async (req: Request, res: Response) => {
 
     if (socketId) {
       io.to(socketId).emit('notification', notification);
-      io.to(socketId).emit('agreementReady');
     }
 
     io.to(clients.get(isUserExist.id)).emit('agreementReady');
