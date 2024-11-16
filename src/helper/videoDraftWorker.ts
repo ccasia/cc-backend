@@ -157,14 +157,10 @@ const processVideo = async (
   try {
     const conn = await amqplib.connect(process.env.RABBIT_MQ as string);
     const channel = await conn.createChannel();
-
     await channel.assertQueue('draft', { durable: true });
     await channel.purgeQueue('draft');
-
     await channel.prefetch(1);
-    console.log('Consumer 2 Starting...');
-
-    const startUsage = process.cpuUsage();
+    console.log('Consumer 1 Starting...');
 
     await channel.consume('draft', async (msg) => {
       if (msg !== null) {
@@ -181,10 +177,6 @@ const processVideo = async (
         );
 
         channel.ack(msg);
-
-        const endUsage = process.cpuUsage(startUsage);
-
-        console.log(`CPU Usage: ${endUsage.user} microseconds (user) / ${endUsage.system} microseconds (system)`);
 
         for (const item of content.admins) {
           io.to(clients.get(item.admin.user.id)).emit('newSubmission');

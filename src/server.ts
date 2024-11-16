@@ -17,6 +17,7 @@ import { isLoggedIn } from '@middlewares/onlyLogin';
 import { Server, Socket } from 'socket.io';
 import '@services/uploadVideo';
 import './helper/videoDraft';
+import './helper/videoDraftWorker';
 import './helper/processPitchVideo';
 import dotenv from 'dotenv';
 import '@services/google_sheets/sheets';
@@ -26,6 +27,7 @@ import {
   createNewSpreadSheet,
   getLastRow,
 } from '@services/google_sheets/sheets';
+import { status } from '@dotenvx/dotenvx';
 
 dotenv.config();
 
@@ -134,6 +136,7 @@ app.get('/users', isLoggedIn, async (_req, res) => {
 
 export const clients = new Map();
 export const activeProcesses = new Map();
+export const queue = new Map();
 
 io.on('connection', (socket) => {
   socket.on('register', (userId) => {
@@ -142,12 +145,22 @@ io.on('connection', (socket) => {
 
   socket.on('cancel-processing', (data) => {
     const { submissionId } = data;
+
     if (activeProcesses.has(submissionId)) {
       const command = activeProcesses.get(submissionId);
       command.kill('SIGKILL'); // Terminate the FFmpeg process
       activeProcesses.delete(submissionId);
-      //console.log(`Processing for video ${submissionId} has been cancelled.`);
+
       socket.emit('progress', { submissionId, progress: 0 }); // Reset progress
+    }
+  });
+
+  socket.on('checkQueue', (data) => {
+    if (activeProcesses.has(data?.submissionId)) {
+      const item = activeProcesses.get(data.submissionId);
+      if (item?.status === 'queue') {
+        socket.emit('statusQueue', { status: 'queue' });
+      }
     }
   });
 

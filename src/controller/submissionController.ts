@@ -3,7 +3,7 @@ import e, { Request, Response } from 'express';
 import { Entity, Invoice, PrismaClient, SubmissionStatus } from '@prisma/client';
 import { uploadAgreementForm, uploadPitchVideo } from '@configs/cloudStorage.config';
 import { saveNotification } from './notificationController';
-import { clients, io } from '../server';
+import { activeProcesses, clients, io } from '../server';
 import Ffmpeg from 'fluent-ffmpeg';
 import FfmpegPath from '@ffmpeg-installer/ffmpeg';
 import amqplib from 'amqplib';
@@ -401,6 +401,7 @@ export const draftSubmission = async (req: Request, res: Response) => {
 
     amqp = await amqplib.connect(process.env.RABBIT_MQ as string);
     channel = await amqp.createChannel();
+
     await channel.assertQueue('draft');
 
     channel.sendToQueue(
@@ -422,6 +423,8 @@ export const draftSubmission = async (req: Request, res: Response) => {
         persistent: true,
       },
     );
+
+    activeProcesses.set(submissionId, { status: 'queue' });
 
     // if (submission.campaign.sheetId && submission.submissionType.type === 'FIRST_DRAFT') {
     //   await createNewRowData({

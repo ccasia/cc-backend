@@ -6,6 +6,8 @@ RUN apk add --no-cache \
     ttf-dejavu \
     fontconfig \
     && rm -rf /var/cache/apk/*
+RUN apk update && \
+    apk add --no-cache ffmpeg
 WORKDIR /app
 COPY package.json ./
 COPY yarn.lock ./
@@ -14,6 +16,7 @@ FROM base AS development
 ENV NODE_ENV=development
 RUN yarn install --production=false
 RUN mkdir -p /app/src/pdf
+
 COPY . .
 RUN yarn global add prisma
 RUN npx prisma generate
