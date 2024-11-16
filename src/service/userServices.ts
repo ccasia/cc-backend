@@ -197,20 +197,7 @@ export const getUser = async (id: string) => {
           },
         },
         pitch: true,
-        shortlisted: {
-          where: {
-            isCampaignDone: true,
-          },
-          include: {
-            campaign: {
-              include: {
-                brand: true,
-                company: true,
-                campaignBrief: true,
-              },
-            },
-          },
-        },
+        shortlisted: true,
       },
     });
 

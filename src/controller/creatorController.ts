@@ -541,3 +541,37 @@ export const updateSocialMedia = async (req: Request, res: Response) => {
     return res.status(400).json(error);
   }
 };
+
+export const getPartnerships = async (req: Request, res: Response) => {
+  const { id } = req.params;
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: {
+        id: id,
+      },
+      include: {
+        shortlisted: {
+          where: {
+            isCampaignDone: true,
+          },
+          include: {
+            campaign: {
+              include: {
+                campaignBrief: true,
+                brand: true,
+                company: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!user) return res.status(404).json({ message: 'User not found.' });
+
+    return res.status(200).json(user);
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
