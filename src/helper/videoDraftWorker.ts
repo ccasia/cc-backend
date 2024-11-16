@@ -63,79 +63,81 @@ const processVideo = async (
             resolve(data.size);
           });
         });
-        // const publicURL = await uploadPitchVideo(
-        //   outputPath,
-        //   fileName,
-        //   folder,
-        //   (data: number) => {
-        //     if (io) {
-        //       io.to(clients.get(userid)).emit('progress', {
-        //         progress: data,
-        //         submissionId: submissionId,
-        //         name: 'Uploading Start',
-        //       });
-        //     }
-        //   },
-        //   size as number,
-        // );
-        // const data = await prisma.submission.update({
-        //   where: {
-        //     id: submissionId,
-        //   },
-        //   data: {
-        //     content: publicURL,
-        //     caption: caption,
-        //     status: 'PENDING_REVIEW',
-        //     submissionDate: dayjs().format(),
-        //   },
-        //   include: {
-        //     submissionType: true,
-        //     campaign: {
-        //       include: {
-        //         campaignAdmin: true,
-        //       },
-        //     },
-        //     user: true,
-        //   },
-        // });
 
-        // const { title, message } = notificationDraft(data.campaign.name, 'Creator');
+        const publicURL = await uploadPitchVideo(
+          outputPath,
+          fileName,
+          folder,
+          (data: number) => {
+            if (io) {
+              io.to(clients.get(userid)).emit('progress', {
+                progress: data,
+                submissionId: submissionId,
+                name: 'Uploading Start',
+              });
+            }
+          },
+          size as number,
+        );
 
-        // const notification = await saveNotification({
-        //   userId: data.userId,
-        //   message: message,
-        //   title: title,
-        //   entity: 'Draft',
-        //   entityId: data.campaign.id,
-        // });
+        const data = await prisma.submission.update({
+          where: {
+            id: submissionId,
+          },
+          data: {
+            content: publicURL,
+            caption: caption,
+            status: 'PENDING_REVIEW',
+            submissionDate: dayjs().format(),
+          },
+          include: {
+            submissionType: true,
+            campaign: {
+              include: {
+                campaignAdmin: true,
+              },
+            },
+            user: true,
+          },
+        });
 
-        // if (io) {
-        //   io.to(clients.get(data.userId)).emit('notification', notification);
-        // }
+        const { title, message } = notificationDraft(data.campaign.name, 'Creator');
 
-        // const { title: adminTitle, message: adminMessage } = notificationDraft(
-        //   data.campaign.name,
-        //   'Admin',
-        //   data.user.name as string,
-        // );
+        const notification = await saveNotification({
+          userId: data.userId,
+          message: message,
+          title: title,
+          entity: 'Draft',
+          entityId: data.campaign.id,
+        });
 
-        // for (const item of data.campaign.campaignAdmin) {
-        //   const notification = await saveNotification({
-        //     userId: item.adminId,
-        //     message: adminMessage,
-        //     creatorId: userid,
-        //     title: adminTitle,
-        //     entity: 'Draft',
-        //     entityId: data.campaignId,
-        //   });
-        //   if (io) {
-        //     io.to(clients.get(item.adminId)).emit('notification', notification);
-        //   }
-        // }
-        // activeProcesses.delete(submissionId);
-        // if (io) {
-        //   io.to(clients.get(userid)).emit('progress', { submissionId, progress: 100 });
-        // }
+        if (io) {
+          io.to(clients.get(data.userId)).emit('notification', notification);
+        }
+
+        const { title: adminTitle, message: adminMessage } = notificationDraft(
+          data.campaign.name,
+          'Admin',
+          data.user.name as string,
+        );
+
+        for (const item of data.campaign.campaignAdmin) {
+          const notification = await saveNotification({
+            userId: item.adminId,
+            message: adminMessage,
+            creatorId: userid,
+            title: adminTitle,
+            entity: 'Draft',
+            entityId: data.campaignId,
+          });
+          if (io) {
+            io.to(clients.get(item.adminId)).emit('notification', notification);
+          }
+        }
+        activeProcesses.delete(submissionId);
+        if (io) {
+          io.to(clients.get(userid)).emit('progress', { submissionId, progress: 100 });
+        }
         fs.unlinkSync(inputPath);
         resolve();
       })
