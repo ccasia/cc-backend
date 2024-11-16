@@ -167,41 +167,57 @@ export const updateAdmin = async (
 };
 
 export const getUser = async (id: string) => {
-  const user = await prisma.user.findUnique({
-    where: {
-      id,
-    },
-    include: {
-      paymentForm: true,
-      agreementTemplate: true,
-      admin: {
-        include: {
-          adminPermissionModule: {
-            select: {
-              permission: true,
-              module: true,
+  try {
+    const user = await prisma.user.findUnique({
+      where: {
+        id,
+      },
+      include: {
+        paymentForm: true,
+        agreementTemplate: true,
+        admin: {
+          include: {
+            adminPermissionModule: {
+              select: {
+                permission: true,
+                module: true,
+              },
+            },
+            role: {
+              include: {
+                permissions: true,
+              },
             },
           },
-          role: {
-            include: {
-              permissions: true,
+        },
+        creator: {
+          include: {
+            interests: true,
+            mediaKit: true,
+          },
+        },
+        pitch: true,
+        shortlisted: {
+          where: {
+            isCampaignDone: true,
+          },
+          include: {
+            campaign: {
+              include: {
+                brand: true,
+                company: true,
+                campaignBrief: true,
+              },
             },
           },
         },
       },
-      creator: {
-        include: {
-          // industries: true,
-          interests: true,
-          mediaKit: true,
-        },
-      },
-      pitch: true,
-      shortlisted: true,
-    },
-  });
+    });
 
-  return user;
+    return user;
+  } catch (error) {
+    throw new Error(error);
+  }
 };
 
 export const handleGetAdmins = async (userid: string) => {

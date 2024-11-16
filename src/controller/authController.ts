@@ -590,7 +590,6 @@ export const updateCreator = async (req: Request, res: Response) => {
 
     return res.status(200).json({ name: creator.user.name });
   } catch (error) {
-    console.error('Error updating creator:', error);
     return res.status(400).json({ message: 'Error updating creator', error: error.message });
   }
 };

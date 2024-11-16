@@ -231,6 +231,7 @@ export const getCreatorFullInfoById = async (req: Request, res: Response) => {
 
 export const getCreatorFullInfoByIdPublic = async (req: Request, res: Response) => {
   const { id } = req.params;
+
   try {
     const user = await prisma.user.findUnique({
       where: {
@@ -287,7 +288,6 @@ export const getCreatorFullInfoByIdPublic = async (req: Request, res: Response) 
 
     return res.status(200).json({ user });
   } catch (error) {
-    console.error('Error fetching user data:', error);
     return res.status(400).json({ message: 'Error fetching user data', error });
   }
 };
