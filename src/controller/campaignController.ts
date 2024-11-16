@@ -1824,7 +1824,9 @@ export const changePitchStatus = async (req: Request, res: Response) => {
           const campaignId = existingPitch?.campaign?.id;
           const creatorName = existingPitch?.user?.name;
 
-          shortlisted(user.email, campaignName, creatorName ?? 'Creator', campaignId);
+          const image: any = pitch?.campaign?.campaignBrief?.images;
+
+          shortlisted(user.email, campaignName, creatorName ?? 'Creator', campaignId, image[0]);
 
           const data = await saveNotification({
             userId: pitch.userId,
