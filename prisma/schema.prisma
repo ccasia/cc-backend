@@ -24,7 +24,7 @@ model User {
   role               RoleEnum
   photoBackgroundURL String?              @db.VarChar(255)
   admin              Admin?
-  adminSignature     AdminSignature?
+  // adminSignature     AdminSignature?
   agreementTemplate  AgreementTemplate?
   Board              Board?
   BookMarkCampaign   BookMarkCampaign[]
@@ -338,6 +338,8 @@ model Campaign {
   submission                    Submission[]
   thread                        Thread?
   spreadSheetURL                String?
+  agreementTemplate             AgreementTemplate?              @relation(fields: [agreementTemplateId], references: [id])
+  agreementTemplateId           String?
 }
 
 model BookMarkCampaign {
@@ -382,7 +384,7 @@ model CampaignBrief {
   images              Json?
   otherAttachments    String[]
   referencesLinks     String[]
-  agreementFrom       String
+  agreementFrom       String?
   startDate           DateTime
   endDate             DateTime
   interests           Json?
@@ -758,25 +760,36 @@ model Crawler {
 }
 
 model AgreementTemplate {
-  id            String   @id @unique @default(cuid())
+  id            String     @id @unique @default(cuid())
   url           String?
   adminName     String?
   adminICNumber String?
   signURL       String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  userId        String?  @unique
-  user          User?    @relation(fields: [userId], references: [id])
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  userId        String?    @unique
+  user          User?      @relation(fields: [userId], references: [id])
+  isDefault     Boolean?   @default(false)
+  campaign      Campaign[]
 }
 
-model AdminSignature {
-  id        String   @id @unique @default(cuid())
-  url       String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  userId    String?  @unique
-  user      User?    @relation(fields: [userId], references: [id])
-}
+// model campaignAgreement {
+//   campaignId          String
+//   agreementTemplateId String
+//   campaign            Campaign[]
+//   agreementTemplate   AgreementTemplate[]
+
+//   @@id([campaignId, agreementTemplateId])
+// }
+
+// model AdminSignature {
+//   id        String   @id @unique @default(cuid())
+//   url       String
+//   createdAt DateTime @default(now())
+//   updatedAt DateTime @updatedAt
+//   userId    String?  @unique
+//   user      User?    @relation(fields: [userId], references: [id])
+// }
 
 enum LogisticStatus {
   Product_is_being_packaged

@@ -100,7 +100,7 @@ interface Campaign {
   adminManager: [];
   campaignStage: string;
   campaignImages: image[];
-  agreementFrom: image;
+  agreementFrom: { id: string };
   defaultTimeline: timeline;
   status: string;
   adminId: string;
@@ -110,7 +110,7 @@ interface Campaign {
   productName: string;
   socialMediaPlatform: string[];
   videoAngle: string[];
-  agreementForm: string;
+  // agreementForm: { id: string };
   otherAttachments?: string[];
   referencesLinks?: string[];
 }
@@ -184,10 +184,11 @@ export const createCampaign = async (req: Request, res: Response) => {
     timeline,
     brandTone,
     productName,
-    agreementForm,
-    otherAttachments,
+    agreementFrom,
     referencesLinks,
   }: Campaign = JSON.parse(req.body.data);
+
+  // console.log(JSON.parse(req.body.data));
 
   try {
     const publicURL: any = [];
@@ -264,6 +265,11 @@ export const createCampaign = async (req: Request, res: Response) => {
             brandTone: brandTone,
             productName: productName,
             spreadSheetURL: url,
+            agreementTemplate: {
+              connect: {
+                id: agreementFrom.id,
+              },
+            },
             campaignBrief: {
               create: {
                 title: campaignTitle,
@@ -271,7 +277,7 @@ export const createCampaign = async (req: Request, res: Response) => {
                 images: publicURL.map((image: any) => image) || '',
                 otherAttachments: otherAttachments,
                 referencesLinks: referencesLinks?.map((link: any) => link.value) || [],
-                agreementFrom: agreementForm,
+                // agreementFrom: agreementForm,
                 startDate: dayjs(campaignStartDate) as any,
                 endDate: dayjs(campaignEndDate) as any,
                 industries: campaignIndustries,
@@ -586,6 +592,7 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
     if (user?.admin?.mode === 'god') {
       campaigns = await prisma.campaign.findMany({
         include: {
+          agreementTemplate: true,
           submission: {
             include: {
               submissionType: true,
@@ -738,13 +745,13 @@ export const getCampaignById = async (req: Request, res: Response) => {
         campaignTimeline: true,
         campaignBrief: true,
         campaignRequirement: true,
+        agreementTemplate: true,
         pitch: {
           include: {
             user: {
               include: {
                 creator: {
                   include: {
-                    // industries: true,
                     interests: true,
                   },
                 },
@@ -2805,7 +2812,7 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
 };
 
 export const sendAgreement = async (req: Request, res: Response) => {
-  const { user, id: agreementId, agreementUrl, campaignId } = req.body;
+  const { user, id: agreementId, campaignId } = req.body;
 
   try {
     const isUserExist = await prisma.user.findUnique({
@@ -2864,6 +2871,7 @@ export const sendAgreement = async (req: Request, res: Response) => {
       },
       select: {
         name: true,
+        agreementTemplate: true,
       },
     });
 

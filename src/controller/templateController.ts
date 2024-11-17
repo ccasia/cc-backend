@@ -1,5 +1,6 @@
 import { uploadAgreementTemplate, uploadDigitalSignature } from '@configs/cloudStorage.config';
 import { PrismaClient } from '@prisma/client';
+import { randomUUID } from 'crypto';
 import dayjs from 'dayjs';
 import { Request, Response } from 'express';
 
@@ -45,6 +46,7 @@ export const createNewTemplate = async (req: Request, res: Response) => {
   const { id } = req.params;
   const { signedAgreement, signatureImage } = req.files as any;
   const { name, icNumber, campaignId } = JSON.parse(req.body.data);
+  const uniqueId = randomUUID();
 
   try {
     const user = await prisma.user.findUnique({
@@ -64,47 +66,28 @@ export const createNewTemplate = async (req: Request, res: Response) => {
     const url = await uploadAgreementTemplate({
       tempFilePath: signedAgreement.tempFilePath,
       folderName: 'agreementTemplate',
-      fileName: `${user.name}-template.pdf`,
+      fileName: `${uniqueId}-template.pdf`,
     });
 
     const signedUrl = await uploadDigitalSignature({
       tempFilePath: signatureImage.tempFilePath,
       folderName: 'digitalSignature',
-      fileName: `${name}-template.png`,
+      fileName: `${uniqueId}-template.png`,
     });
 
-    await prisma.agreementTemplate.upsert({
-      where: {
-        userId: user.id,
-      },
-      update: {
+    await prisma.agreementTemplate.create({
+      data: {
         url: url,
         signURL: signedUrl,
         adminName: name,
         adminICNumber: icNumber,
-      },
-      create: {
-        userId: user.id,
-        url: url,
-        signURL: signedUrl,
-        adminName: name,
-        adminICNumber: icNumber,
+        campaign: campaignId && { connect: { id: campaignId } },
       },
     });
-
-    if (campaignId) {
-      await prisma.campaignBrief.update({
-        where: {
-          campaignId: campaignId,
-        },
-        data: {
-          agreementFrom: url,
-        },
-      });
-    }
 
     return res.status(200).json({ message: 'Successfully created.', templateURL: url });
   } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   }
 };
