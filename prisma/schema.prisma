@@ -317,7 +317,7 @@ model Campaign {
   brandTone                     String?
   productName                   String?
   eventId                       String?
-  // sheetId                       String?
+  isSeededCampaign              Boolean                         @default(false)
   bookMarkCampaign              BookMarkCampaign[]
   brand                         Brand?                          @relation(fields: [brandId], references: [id])
   company                       Company?                        @relation(fields: [companyId], references: [id])

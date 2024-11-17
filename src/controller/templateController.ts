@@ -8,7 +8,11 @@ const prisma = new PrismaClient();
 
 export const getAllTemplate = async (req: Request, res: Response) => {
   try {
-    const templates = await prisma.agreementTemplate.findMany();
+    const templates = await prisma.agreementTemplate.findMany({
+      include: {
+        campaign: true,
+      },
+    });
 
     return res.status(200).json(templates);
   } catch (error) {
