@@ -29,6 +29,7 @@ const prisma = new PrismaClient();
 // };
 
 export const createInvoiceService = async (data: any, userId: any, amount: any) => {
+  console.log(data, userId, amount);
   const generateRandomInvoiceNumber = () => {
     const randomNumber = Math.floor(1000 + Math.random() * 9000);
     return `INV-${randomNumber}`;
