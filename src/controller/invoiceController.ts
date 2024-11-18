@@ -180,7 +180,8 @@ export const createInvoice = async (req: Request, res: Response) => {
         bankAcc: bankInfo,
         campaignId: campaignId,
         creatorId: creatorIdInfo,
-        createdBy: userid as string,
+        adminId: userid,
+        // createdBy: userid as string,
       },
     });
     res.status(201).json(invoice);

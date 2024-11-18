@@ -107,7 +107,7 @@ export const createInvoiceService = async (data: any, userId: any, amount: any) 
             task: item,
             amount: parseFloat(amount) || 0,
             bankAcc: bankInfo,
-            createdBy: userId,
+            adminId: userId,
             creator: {
               connect: {
                 userId: data.userId,
