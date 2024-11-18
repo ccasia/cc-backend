@@ -110,6 +110,7 @@ interface Campaign {
   productName: string;
   socialMediaPlatform: string[];
   videoAngle: string[];
+  campaignType: string;
   // agreementForm: { id: string };
   otherAttachments?: string[];
   referencesLinks?: string[];
@@ -186,6 +187,7 @@ export const createCampaign = async (req: Request, res: Response) => {
     productName,
     agreementFrom,
     referencesLinks,
+    campaignType,
   }: Campaign = JSON.parse(req.body.data);
 
   // console.log(JSON.parse(req.body.data));
@@ -248,7 +250,7 @@ export const createCampaign = async (req: Request, res: Response) => {
           }),
         );
 
-        const url: string = await createNewSpreadSheet({ title: campaignTitle });
+        // const url: string = await createNewSpreadSheet({ title: campaignTitle });
 
         // Create sheet in google sheet
         // const data = await createNewSheetWithHeaderRows({
@@ -260,11 +262,12 @@ export const createCampaign = async (req: Request, res: Response) => {
         const campaign = await tx.campaign.create({
           data: {
             name: campaignTitle,
+            campaignType: campaignType,
             description: campaignDescription,
             status: campaignStage as CampaignStatus,
             brandTone: brandTone,
             productName: productName,
-            spreadSheetURL: url,
+            // spreadSheetURL: url,
             agreementTemplate: {
               connect: {
                 id: agreementFrom.id,
@@ -277,7 +280,6 @@ export const createCampaign = async (req: Request, res: Response) => {
                 images: publicURL.map((image: any) => image) || '',
                 otherAttachments: otherAttachments,
                 referencesLinks: referencesLinks?.map((link: any) => link.value) || [],
-                // agreementFrom: agreementForm,
                 startDate: dayjs(campaignStartDate) as any,
                 endDate: dayjs(campaignEndDate) as any,
                 industries: campaignIndustries,
@@ -304,64 +306,63 @@ export const createCampaign = async (req: Request, res: Response) => {
         });
 
         // Create submission requirement
-        const submissionTypes = await tx.submissionType.findMany({
-          where: {
-            NOT: {
-              type: 'OTHER',
-            },
-          },
-        });
+        // const submissionTypes = await tx.submissionType.findMany({
+        //   where: {
+        //     NOT: {
+        //       type: 'OTHER',
+        //     },
+        //   },
+        // });
 
-        const defaultRequirements = submissionTypes.map((item) => ({
-          submissionTypeId: item.id,
-          order:
-            item.type === 'AGREEMENT_FORM' ? 1 : item.type === 'FIRST_DRAFT' ? 2 : item.type === 'FINAL_DRAFT' ? 3 : 4,
-          campaignId: campaign.id,
-          startDate:
-            item.type === 'AGREEMENT_FORM'
-              ? dayjs(timeline.find((item: any) => item.timeline_type.name === 'First Draft').startDate).toDate()
-              : item.type === 'FIRST_DRAFT'
-                ? dayjs(timeline.find((item: any) => item.timeline_type.name === 'Agreement').startDate).toDate()
-                : item.type === 'FINAL_DRAFT'
-                  ? dayjs(timeline.find((item: any) => item.timeline_type.name === 'Final Draft').startDate).toDate()
-                  : dayjs(timeline.find((item: any) => item.timeline_type.name === 'Posting').startDate).toDate(),
-          endDate:
-            item.type === 'AGREEMENT_FORM'
-              ? dayjs(timeline.find((item: any) => item.timeline_type.name === 'First Draft').endDate).toDate()
-              : item.type === 'FIRST_DRAFT'
-                ? dayjs(timeline.find((item: any) => item.timeline_type.name === 'Agreement').endDate).toDate()
-                : item.type === 'FINAL_DRAFT'
-                  ? dayjs(timeline.find((item: any) => item.timeline_type.name === 'Final Draft').endDate).toDate()
-                  : dayjs(timeline.find((item: any) => item.timeline_type.name === 'Posting').endDate).toDate(),
-        }));
+        // const defaultRequirements = submissionTypes.map((item) => ({
+        //   submissionTypeId: item.id,
+        //   order:
+        //     item.type === 'AGREEMENT_FORM' ? 1 : item.type === 'FIRST_DRAFT' ? 2 : item.type === 'FINAL_DRAFT' ? 3 : 4,
+        //   campaignId: campaign.id,
+        //   startDate:
+        //     item.type === 'AGREEMENT_FORM'
+        //       ? dayjs(timeline.find((item: any) => item.timeline_type.name === 'First Draft').startDate).toDate()
+        //       : item.type === 'FIRST_DRAFT'
+        //         ? dayjs(timeline.find((item: any) => item.timeline_type.name === 'Agreement').startDate).toDate()
+        //         : item.type === 'FINAL_DRAFT'
+        //           ? dayjs(timeline.find((item: any) => item.timeline_type.name === 'Final Draft').startDate).toDate()
+        //           : dayjs(timeline.find((item: any) => item.timeline_type.name === 'Posting').startDate).toDate(),
+        //   endDate:
+        //     item.type === 'AGREEMENT_FORM'
+        //       ? dayjs(timeline.find((item: any) => item.timeline_type.name === 'First Draft').endDate).toDate()
+        //       : item.type === 'FIRST_DRAFT'
+        //         ? dayjs(timeline.find((item: any) => item.timeline_type.name === 'Agreement').endDate).toDate()
+        //         : item.type === 'FINAL_DRAFT'
+        //           ? dayjs(timeline.find((item: any) => item.timeline_type.name === 'Final Draft').endDate).toDate()
+        //           : dayjs(timeline.find((item: any) => item.timeline_type.name === 'Posting').endDate).toDate(),
+        // }));
 
-        defaultRequirements.forEach(async (item) => {
-          await tx.campaignSubmissionRequirement.create({
-            data: {
-              campaignId: campaign.id,
-              submissionTypeId: item.submissionTypeId,
-              startDate: item.startDate,
-              endDate: item.endDate,
-              order: item.order,
-            },
-          });
-        });
+        // defaultRequirements.forEach(async (item) => {
+        //   await tx.campaignSubmissionRequirement.create({
+        //     data: {
+        //       campaignId: campaign.id,
+        //       submissionTypeId: item.submissionTypeId,
+        //       startDate: item.startDate,
+        //       endDate: item.endDate,
+        //       order: item.order,
+        //     },
+        //   });
+        // });
 
         // Create Campaign Timeline
         const timelines: CampaignTimeline[] = await Promise.all(
           timeline.map(async (item: any, index: number) => {
             const submission = await tx.submissionType.findFirst({
               where: {
-                type:
-                  item.timeline_type.name === 'First Draft'
-                    ? 'FIRST_DRAFT'
-                    : item.timeline_type.name === 'Agreement'
-                      ? 'AGREEMENT_FORM'
-                      : item.timeline_type.name === 'Final Draft'
-                        ? 'FINAL_DRAFT'
-                        : item.timeline_type.name === 'Posting'
-                          ? 'POSTING'
-                          : 'OTHER',
+                type: item.timeline_type.name.includes('First Draft')
+                  ? 'FIRST_DRAFT'
+                  : item.timeline_type.name.includes('Agreement')
+                    ? 'AGREEMENT_FORM'
+                    : item.timeline_type.name.includes('Final Draft')
+                      ? 'FINAL_DRAFT'
+                      : item.timeline_type.name.includes('Posting')
+                        ? 'POSTING'
+                        : 'OTHER',
               },
             });
 
@@ -378,6 +379,7 @@ export const createCampaign = async (req: Request, res: Response) => {
                 },
               });
             }
+
             return tx.campaignTimeline.create({
               data: {
                 for: item.for,
@@ -415,31 +417,6 @@ export const createCampaign = async (req: Request, res: Response) => {
             },
           });
         }
-
-        // if (!brand) {
-        //   const company = await tx.company.findUnique({
-        //     where: {
-        //       id: campaignBrand.id,
-        //     },
-        //   });
-        //   await tx.campaign.update({
-        //     where: {
-        //       id: campaign.id,
-        //     },
-        //     data: {
-        //       company: { connect: { id: company?.id } },
-        //     },
-        //   });
-        // } else {
-        //   await tx.campaign.update({
-        //     where: {
-        //       id: campaign.id,
-        //     },
-        //     data: {
-        //       brand: { connect: { id: campaignBrand.id } },
-        //     },
-        //   });
-        // }
 
         if (!campaign || !campaign.id) {
           throw new Error('Campaign creation failed or campaign ID is missing');
@@ -1675,6 +1652,9 @@ export const changePitchStatus = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Pitch not found.' });
     }
 
+    if (!existingPitch.user.creator?.isFormCompleted)
+      return res.status(404).json({ message: 'Payment form not completed.' });
+
     if (status === 'approved') {
       await prisma.$transaction(
         async (tx) => {
@@ -1787,7 +1767,6 @@ export const changePitchStatus = async (req: Request, res: Response) => {
                   dueDate: timeline.endDate,
                   campaignId: timeline.campaignId,
                   userId: pitch.userId as string,
-                  // status: index === 0 ? 'IN_PROGRESS' : 'NOT_STARTED',
                   status: timeline.submissionType?.type === 'AGREEMENT_FORM' ? 'IN_PROGRESS' : 'NOT_STARTED',
                   submissionTypeId: timeline.submissionTypeId as string,
                   task: {

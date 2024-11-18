@@ -317,7 +317,7 @@ model Campaign {
   brandTone                     String?
   productName                   String?
   eventId                       String?
-  campaignType                  String?                         @default("normal")
+  campaignType                  String?                         @default("normal") //normal | ugc | seeded
   bookMarkCampaign              BookMarkCampaign[]
   brand                         Brand?                          @relation(fields: [brandId], references: [id])
   company                       Company?                        @relation(fields: [companyId], references: [id])

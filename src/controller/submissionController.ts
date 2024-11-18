@@ -451,15 +451,52 @@ export const draftSubmission = async (req: Request, res: Response) => {
 export const adminManageDraft = async (req: Request, res: Response) => {
   const { submissionId, feedback, type, reasons, userId } = req.body;
 
+  // {
+  //   schedule: {
+  //     endDate: 'Sun, 17 Nov 2024 16:00:00 GMT',
+  //     startDate: 'Sun, 17 Nov 2024 16:00:00 GMT'
+  //   },
+  //   feedback: 'Thank you for submitting.',
+  //   type: 'approve',
+  //   reasons: [],
+  //   submissionId: 'cm3mk7875002rve2wiw5tqtjm',
+  //   userId: 'cm233xksh000012cncofkwjo5'
+  // }
+
   try {
-    const submission = await prisma.submission.findUnique({
+    let submission: any = await prisma.submission.findUnique({
       where: {
         id: submissionId,
       },
+      // include: {
+      //   feedback: true,
+      //   campaign: true,
+      //   user: true,
+      // },
       include: {
         feedback: true,
-        campaign: true,
-        user: true,
+        user: {
+          include: {
+            creator: true,
+            paymentForm: true,
+            creatorAgreement: true,
+          },
+        },
+        campaign: {
+          include: {
+            campaignAdmin: {
+              include: {
+                admin: {
+                  include: {
+                    role: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+        submissionType: true,
+        task: true,
       },
     });
 
@@ -468,7 +505,7 @@ export const adminManageDraft = async (req: Request, res: Response) => {
     }
 
     if (type === 'approve') {
-      const sub = await prisma.submission.update({
+      submission = await prisma.submission.update({
         where: {
           id: submission?.id,
         },
@@ -484,92 +521,159 @@ export const adminManageDraft = async (req: Request, res: Response) => {
           },
         },
         include: {
-          user: true,
+          user: {
+            include: {
+              creator: true,
+              paymentForm: true,
+              creatorAgreement: true,
+            },
+          },
+          campaign: {
+            include: {
+              campaignAdmin: {
+                include: {
+                  admin: {
+                    include: {
+                      role: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
           submissionType: true,
           task: true,
         },
       });
 
-      const doneColumnId = await getColumnId({ userId: sub.userId, columnName: 'Done' });
+      const doneColumnId = await getColumnId({ userId: submission.userId, columnName: 'Done' });
 
       await prisma.task.update({
         where: {
-          id: sub.task?.id,
+          id: submission.task?.id,
         },
         data: {
           columnId: doneColumnId,
         },
       });
 
-      if (sub.submissionType.type === 'FIRST_DRAFT' && sub.status === 'APPROVED') {
+      if (submission.submissionType.type === 'FIRST_DRAFT' && submission.status === 'APPROVED') {
         // Notify about final draft due
-        approvalOfDraft(sub.user.email, submission.campaign.name, sub.user.name ?? 'Creator', sub.campaignId);
-      } else if ((sub.submissionType.type === 'FINAL_DRAFT' && sub.status === 'APPROVED', sub.campaignId)) {
+        approvalOfDraft(
+          submission.user.email,
+          submission.campaign.name,
+          submission.user.name ?? 'Creator',
+          submission.campaignId,
+        );
+      } else if (
+        (submission.submissionType.type === 'FINAL_DRAFT' && submission.status === 'APPROVED', submission.campaignId)
+      ) {
         // Notify about final draft approval
-        approvalOfDraft(sub.user.email, submission.campaign.name, sub.user.name ?? 'Creator', sub.campaignId);
+        approvalOfDraft(
+          submission.user.email,
+          submission.campaign.name,
+          submission.user.name ?? 'Creator',
+          submission.campaignId,
+        );
       } else {
         // Fallback email if the draft is not approved
-        feedbackOnDraft(sub.user.email, submission.campaign.name, sub.user.name ?? 'Creator', sub.campaignId);
+        feedbackOnDraft(
+          submission.user.email,
+          submission.campaign.name,
+          submission.user.name ?? 'Creator',
+          submission.campaignId,
+        );
       }
 
-      const posting = await prisma.submission.findFirst({
-        where: {
-          AND: [
-            { userId: sub.userId },
-            { campaignId: submission.campaignId },
-            {
-              submissionType: {
-                type: {
-                  equals: 'POSTING',
+      // Generate invoice after draft is approve if campaign is ugc
+      if (submission.campaign.campaignType == 'ugc') {
+        const invoiceAmount = submission.user.creatorAgreement.find(
+          (elem: any) => elem.campaignId === submission.campaign.id,
+        )?.amount;
+
+        const invoice: Invoice = await createInvoiceService(submission, userId, invoiceAmount);
+
+        const shortlistedCreator = await prisma.shortListedCreator.findFirst({
+          where: {
+            AND: [{ userId: submission.userId }, { campaignId: submission.campaignId }],
+          },
+        });
+
+        if (!shortlistedCreator) {
+          return res.status(404).json({ message: 'Shortlisted creator not found.' });
+        }
+
+        await prisma.shortListedCreator.update({
+          where: {
+            id: shortlistedCreator.id,
+          },
+          data: {
+            isCampaignDone: true,
+          },
+        });
+      }
+
+      // Condition if campaign is normal, then execute standard process, else no need
+      if (submission.campaign.campaignType === 'normal') {
+        const posting = await prisma.submission.findFirst({
+          where: {
+            AND: [
+              { userId: submission.userId },
+              { campaignId: submission.campaignId },
+              {
+                submissionType: {
+                  type: {
+                    equals: 'POSTING',
+                  },
                 },
               },
-            },
-          ],
-        },
-        include: {
-          task: true,
-        },
-      });
+            ],
+          },
+          include: {
+            task: true,
+          },
+        });
 
-      if (!posting) {
-        return res.status(404).json({ message: 'Submission called posting not found.' });
+        if (!posting) {
+          return res.status(404).json({ message: 'Submission called posting not found.' });
+        }
+
+        const inProgressColumnId = await getColumnId({ userId: posting.userId, columnName: 'In Progress' });
+
+        await prisma.task.update({
+          where: {
+            id: posting.task?.id,
+          },
+          data: {
+            columnId: inProgressColumnId,
+          },
+        });
+
+        const test = await prisma.submission.update({
+          where: {
+            id: posting.id,
+          },
+          data: {
+            status: 'IN_PROGRESS',
+            startDate: dayjs(req.body.schedule.startDate).format(),
+            endDate: dayjs(req.body.schedule.endDate).format(),
+            dueDate: dayjs(req.body.schedule.endDate).format(),
+          },
+        });
+
+        // Sending posting schedule
+        postingSchedule(
+          submission.user.email,
+          submission.campaign.name,
+          submission.user.name ?? 'Creator',
+          submission.campaign.id,
+        );
       }
-
-      const inProgressColumnId = await getColumnId({ userId: posting.userId, columnName: 'In Progress' });
-
-      await prisma.task.update({
-        where: {
-          id: posting.task?.id,
-        },
-        data: {
-          columnId: inProgressColumnId,
-        },
-      });
-
-      const test = await prisma.submission.update({
-        where: {
-          id: posting.id,
-        },
-        data: {
-          status: 'IN_PROGRESS',
-          startDate: dayjs(req.body.schedule.startDate).format(),
-          endDate: dayjs(req.body.schedule.endDate).format(),
-          dueDate: dayjs(req.body.schedule.endDate).format(),
-        },
-      });
-
-      // Sending posting schedule
-      postingSchedule(
-        submission.user.email,
-        submission.campaign.name,
-        submission.user.name ?? 'Creator',
-        submission.campaign.id,
-      );
 
       //For Approve
       const { title, message } = notificationApproveDraft(
         submission.campaign.name,
-        MAP_TIMELINE[sub.submissionType.type],
+        MAP_TIMELINE[submission.submissionType.type],
       );
 
       const notification = await saveNotification({
@@ -581,8 +685,8 @@ export const adminManageDraft = async (req: Request, res: Response) => {
         entityId: submission.campaignId,
       });
 
-      io.to(clients.get(sub.userId)).emit('notification', notification);
-      io.to(clients.get(sub.userId)).emit('newFeedback');
+      io.to(clients.get(submission.userId)).emit('notification', notification);
+      io.to(clients.get(submission.userId)).emit('newFeedback');
 
       return res.status(200).json({ message: 'Succesfully submitted.' });
     } else {
@@ -864,8 +968,6 @@ export const adminManagePosting = async (req: Request, res: Response) => {
       // Notify each admin with the "Finance" role
       for (const admin of submission.campaign.campaignAdmin) {
         if (admin?.admin?.role?.name === 'Finance') {
-          console.log('Sending notification to Finance admin:', admin);
-
           const notification = await saveNotification({
             userId: admin.adminId,
             title,
