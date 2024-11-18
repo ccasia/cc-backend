@@ -136,6 +136,8 @@ model Message {
   seenMessages   SeenMessage[]
   threadLatest   Thread?         @relation("LatestMessage")
   unreadMessages UnreadMessage[]
+  file           String?
+  fileType       String?
 }
 
 model UnreadMessage {

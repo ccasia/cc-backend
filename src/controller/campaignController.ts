@@ -550,6 +550,7 @@ export const createCampaign = async (req: Request, res: Response) => {
 // Campaign Info for Admin
 export const getAllCampaigns = async (req: Request, res: Response) => {
   const id = req.session.userid;
+
   try {
     let campaigns;
 
@@ -591,7 +592,11 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
             include: {
               admin: {
                 include: {
-                  user: true,
+                  user: {
+                    include: {
+                      agreementTemplate: true,
+                    },
+                  },
                 },
               },
             },
@@ -662,7 +667,11 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
             include: {
               admin: {
                 include: {
-                  user: true,
+                  user: {
+                    include: {
+                      agreementTemplate: true,
+                    },
+                  },
                 },
               },
             },
@@ -2472,10 +2481,7 @@ export const shortlistCreator = async (req: Request, res: Response) => {
           ),
         );
 
-        // Generating a pdf with creator information
         for (const creator of data) {
-          // const url = await generateAgreement(creator, campaignInfo);
-
           // Create creator agreement
           await tx.creatorAgreement.create({
             data: {
