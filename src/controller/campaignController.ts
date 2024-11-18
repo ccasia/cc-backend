@@ -552,6 +552,7 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
   const id = req.session.userid;
   try {
     let campaigns;
+
     const user = await prisma.user.findUnique({
       where: {
         id: id,
@@ -640,6 +641,7 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
           },
         },
         include: {
+          agreementTemplate: true,
           submission: {
             include: {
               submissionType: true,
@@ -703,7 +705,6 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
 
     return res.status(200).json(campaigns);
   } catch (error) {
-    console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -2781,8 +2782,6 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
         amount: paymentAmount,
       },
     });
-
-    // await fs.promises.unlink(pdfPath);
 
     return res.status(200).json({ message: 'Payment amount Updated.' });
   } catch (error) {
