@@ -50,7 +50,7 @@ model User {
   UserThread         UserThread[]
   threads            Thread[]             @relation("UserThreads")
   resetPasswordToken ResetPasswordToken?
-  invoice            Invoice[]
+  invoice            Invoice[]            @relation("CreatedBy")
 }
 
 model ResetPasswordToken {
@@ -658,12 +658,12 @@ model Invoice {
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
   dueDate       DateTime
-  adminId       String?
   creatorId     String
   campaignId    String
   campaign      Campaign      @relation(fields: [campaignId], references: [id])
-  user          User?         @relation(fields: [adminId], references: [id])
+  user          User?         @relation("CreatedBy", fields: [adminId], references: [id])
   creator       Creator       @relation(fields: [creatorId], references: [userId])
+  adminId       String?
 }
 
 model Logistic {
