@@ -107,8 +107,12 @@ export const createInvoiceService = async (data: any, userId: any, amount: any) 
             task: item,
             amount: parseFloat(amount) || 0,
             bankAcc: bankInfo,
-            creatorId: data.userId,
-            createdBy: userId as string,
+            createdBy: userId,
+            creator: {
+              connect: {
+                userId: data.userId,
+              },
+            },
           },
         },
       },
@@ -119,7 +123,6 @@ export const createInvoiceService = async (data: any, userId: any, amount: any) 
 
     return invoice.find((item) => item.creatorId === data.user.id);
   } catch (error) {
-    console.log(error);
     throw new Error(error);
   }
 };

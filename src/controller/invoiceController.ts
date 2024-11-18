@@ -203,7 +203,7 @@ export const updateInvoiceStatus = async (req: Request, res: Response) => {
       },
       include: {
         campaign: {
-          include: { campaignAdmin: true },
+          include: { campaignAdmin: { include: { admin: true } } },
         },
         user: true,
       },
@@ -215,7 +215,7 @@ export const updateInvoiceStatus = async (req: Request, res: Response) => {
     // Notify Finance Admins and Creator
     for (const admin of invoice.campaign.campaignAdmin) {
       const notification = await saveNotification({
-        userId: admin.adminId && invoice.user.id,
+        userId: admin.admin.userId,
         title,
         message,
         entity: 'Invoice',

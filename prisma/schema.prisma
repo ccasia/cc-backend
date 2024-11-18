@@ -34,7 +34,7 @@ model User {
   creatorAgreement   CreatorAgreement[]
   feedback           Feedback[]
   finance            Finance?
-  invoices           Invoice[]
+  // invoices           Invoice[]
   logistic           Logistic[]
   sentMessages       Message[]            @relation("UserMessages")
   paymentForm        PaymentForm?
@@ -50,6 +50,7 @@ model User {
   UserThread         UserThread[]
   threads            Thread[]             @relation("UserThreads")
   resetPasswordToken ResetPasswordToken?
+  invoice            Invoice[]
 }
 
 model ResetPasswordToken {
@@ -657,11 +658,11 @@ model Invoice {
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
   dueDate       DateTime
-  createdBy     String
+  createdBy     String?
   creatorId     String
   campaignId    String
   campaign      Campaign      @relation(fields: [campaignId], references: [id])
-  user          User          @relation(fields: [createdBy], references: [id])
+  user          User?         @relation(fields: [createdBy], references: [id])
   creator       Creator       @relation(fields: [creatorId], references: [userId])
 }
 
