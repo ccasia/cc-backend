@@ -591,7 +591,7 @@ export const adminManageDraft = async (req: Request, res: Response) => {
           (elem: any) => elem.campaignId === submission.campaign.id,
         )?.amount;
 
-        const invoice: Invoice = await createInvoiceService(submission, userId, invoiceAmount);
+        const invoice = await createInvoiceService(submission, userId, invoiceAmount);
 
         const shortlistedCreator = await prisma.shortListedCreator.findFirst({
           where: {
@@ -779,7 +779,6 @@ export const adminManageDraft = async (req: Request, res: Response) => {
       return res.status(200).json({ message: 'Succesfully submitted.' });
     }
   } catch (error) {
-    console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -931,7 +930,7 @@ export const adminManagePosting = async (req: Request, res: Response) => {
         (elem) => elem.campaignId === submission.campaign.id,
       )?.amount;
 
-      const invoice: Invoice = await createInvoiceService(submission, userId, invoiceAmount);
+      const invoice = await createInvoiceService(submission, userId, invoiceAmount);
 
       // const generatedInvoice = status === 'APPROVED' ? createInvoiceService(submission, userId, invoiceAmount) : null;
 

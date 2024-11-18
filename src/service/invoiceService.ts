@@ -1,4 +1,4 @@
-import { Event, PrismaClient, InvoiceStatus } from '@prisma/client';
+import { Event, PrismaClient, InvoiceStatus, Invoice } from '@prisma/client';
 import dayjs from 'dayjs';
 
 const prisma = new PrismaClient();
@@ -76,24 +76,49 @@ export const createInvoiceService = async (data: any, userId: any, amount: any) 
   };
 
   try {
-    const newInvoice = await prisma.invoice.create({
+    // const newInvoice: Invoice = await prisma.invoice.create({
+    //   data: {
+    //     invoiceNumber: generateRandomInvoiceNumber(),
+    //     createdAt: data.updatedAt,
+    //     dueDate: new Date(dayjs(data.updatedAt).add(15, 'day').format()),
+    //     status: 'draft' as InvoiceStatus,
+    //     invoiceFrom: invoiceFrom,
+    //     invoiceTo,
+    //     task: item,
+    //     amount: parseFloat(amount) || 0,
+    //     bankAcc: bankInfo,
+    //     creatorId: data.userId,
+    //     createdBy: userId as string,
+    //   },
+    // });
+
+    const { invoice } = await prisma.campaign.update({
+      where: {
+        id: data.campaignId,
+      },
       data: {
-        invoiceNumber: generateRandomInvoiceNumber(),
-        createdAt: data.updatedAt,
-        dueDate: new Date(dayjs(data.updatedAt).add(15, 'day').format()),
-        status: 'draft' as InvoiceStatus,
-        invoiceFrom: invoiceFrom,
-        invoiceTo,
-        task: item,
-        amount: parseFloat(amount) || 0,
-        bankAcc: bankInfo,
-        campaignId: data.campaignId,
-        creatorId: data.userId,
-        createdBy: userId as string,
+        invoice: {
+          create: {
+            invoiceNumber: generateRandomInvoiceNumber(),
+            createdAt: data.updatedAt,
+            dueDate: new Date(dayjs(data.updatedAt).add(15, 'day').format()),
+            status: 'draft' as InvoiceStatus,
+            invoiceFrom: invoiceFrom,
+            invoiceTo,
+            task: item,
+            amount: parseFloat(amount) || 0,
+            bankAcc: bankInfo,
+            creatorId: data.userId,
+            createdBy: userId as string,
+          },
+        },
+      },
+      include: {
+        invoice: true,
       },
     });
 
-    return newInvoice;
+    return invoice.find((item) => item.creatorId === data.user.id);
   } catch (error) {
     throw new Error(error);
   }
