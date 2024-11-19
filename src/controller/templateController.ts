@@ -16,7 +16,6 @@ export const getAllTemplate = async (req: Request, res: Response) => {
 
     return res.status(200).json(templates);
   } catch (error) {
-    console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -80,7 +79,7 @@ export const createNewTemplate = async (req: Request, res: Response) => {
       fileName: `${uniqueId}-template.png`,
     });
 
-    await prisma.agreementTemplate.create({
+    const data = await prisma.agreementTemplate.create({
       data: {
         url: url,
         signURL: signedUrl,
@@ -90,7 +89,7 @@ export const createNewTemplate = async (req: Request, res: Response) => {
       },
     });
 
-    return res.status(200).json({ message: 'Successfully created.', templateURL: url });
+    return res.status(200).json({ message: 'Successfully created.', templateURL: url, agreementTemplate: data });
   } catch (error) {
     console.log(error);
     return res.status(400).json(error);
