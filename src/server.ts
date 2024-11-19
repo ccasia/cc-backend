@@ -11,8 +11,8 @@ import { PrismaClient } from '@prisma/client';
 import passport from 'passport';
 import '@configs/cronjob';
 import http from 'http';
-import { markMessagesAsSeen } from '@controllers/threadController';
-import { handleSendMessage, fetchMessagesFromThread } from '@services/threadService';
+import { markMessagesAsSeen, sendMessageInThread } from '@controllers/threadController';
+import { fetchMessagesFromThread } from '@services/threadService';
 import { isLoggedIn } from '@middlewares/onlyLogin';
 import { Server, Socket } from 'socket.io';
 import '@services/uploadVideo';
@@ -184,9 +184,41 @@ io.on('connection', (socket) => {
     }
   });
   // Sends message and saves to database
+  // socket.on('sendMessage', async (message) => {
+    
+  //    await handleSendMessage(message, io);
+  //   // if (message) {
+  //   //   io.to(message.threadId).emit('latestMessage', message);
+  //   //   console.log("Latest Message", message);
+  //   // }
+  //   // io.to(message.threadId).emit('latestMessage', message);
+  //   // console.log("Latest Message", message)
+  // });
+
   socket.on('sendMessage', async (message) => {
-    await handleSendMessage(message, io);
-    io.to(message.threadId).emit('latestMessage', message);
+    const { senderId, threadId, content, file, fileType } = message;
+
+    // Simulate the `req` (Request) and `res` (Response) objects used in sendMessageInThread
+    const req = {
+      body: { threadId, content },
+      session: { userid: senderId },
+      files: file ? { file } : null,  
+    } as Partial<Request>;
+  
+    const res = {
+      status: (code: number) => ({
+        json: (data: any) => {
+          console.log('Message sent successfully:');
+        },
+      }),
+    } as unknown as Response;
+  
+    try {
+      // Call sendMessageInThread directly
+      await sendMessageInThread(req as Request, res);
+    } catch (error) {
+      console.error('Error sending message:', error);
+    }
   });
 
   socket.on('markMessagesAsSeen', async ({ threadId, userId }) => {
