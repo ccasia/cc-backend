@@ -24,7 +24,6 @@ model User {
   role               RoleEnum
   photoBackgroundURL String?              @db.VarChar(255)
   admin              Admin?
-  // adminSignature     AdminSignature?
   agreementTemplate  AgreementTemplate?
   Board              Board?
   BookMarkCampaign   BookMarkCampaign[]
@@ -34,7 +33,6 @@ model User {
   creatorAgreement   CreatorAgreement[]
   feedback           Feedback[]
   finance            Finance?
-  // invoices           Invoice[]
   logistic           Logistic[]
   sentMessages       Message[]            @relation("UserMessages")
   paymentForm        PaymentForm?
@@ -146,7 +144,7 @@ model UnreadMessage {
   userId    String
   threadId  String
   messageId Int
-  message   Message @relation(fields: [messageId], references: [id])
+  message   Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
   thread    Thread  @relation(fields: [threadId], references: [id])
   user      User    @relation(fields: [userId], references: [id])
 
@@ -157,7 +155,7 @@ model SeenMessage {
   id        Int     @id @default(autoincrement())
   userId    String
   messageId Int
-  message   Message @relation(fields: [messageId], references: [id])
+  message   Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
   user      User    @relation(fields: [userId], references: [id])
 
   @@unique([userId, messageId])
@@ -358,7 +356,7 @@ model BookMarkCampaign {
 model CampaignAdmin {
   adminId    String
   campaignId String
-  admin      Admin    @relation(fields: [adminId], references: [userId])
+  admin      Admin    @relation(fields: [adminId], references: [userId], onDelete: Cascade)
   campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
   @@id([adminId, campaignId])

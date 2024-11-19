@@ -15,10 +15,10 @@ import { error } from 'console';
 
 const prisma = new PrismaClient();
 
-const client_id: string = process.env.XeroCLientID as string;
-const client_secret: string = process.env.XeroClientSecret as string;
-const redirectUrl: string = process.env.XeroRedirectUrl as string;
-const scopes: string = process.env.XeroScopes as string;
+const client_id: string = process.env.XERO_CLIENT_ID as string;
+const client_secret: string = process.env.XERO_CLIENT_SECRET as string;
+const redirectUrl: string = process.env.XERO_REDIRECT_URL as string;
+const scopes: string = process.env.XERO_SCOPES as string;
 
 const xero = new XeroClient({
   clientId: client_id,
@@ -31,6 +31,11 @@ export const getAllInvoices = async (req: Request, res: Response) => {
   try {
     const invoices = await prisma.invoice.findMany({
       include: {
+        creator: {
+          include: {
+            user: true,
+          },
+        },
         user: {
           include: {
             creator: true,
@@ -49,7 +54,7 @@ export const getAllInvoices = async (req: Request, res: Response) => {
 // get invoices by creator id
 export const getInvoicesByCreatorId = async (req: Request, res: Response) => {
   const userid = req.session.userid;
-  console.log(userid);
+
   try {
     const invoices = await prisma.invoice.findMany({
       where: {
@@ -350,7 +355,6 @@ export const getXero = async (req: Request, res: Response) => {
     const consentUrl: string = await xero.buildConsentUrl();
     console.log('consentUrl', consentUrl);
     return res.status(200).json({ url: consentUrl });
-    // res.redirect(consentUrl);
   } catch (err) {
     console.error('Error generating consent URL:', err);
     return res.status(500).json({ error: 'Failed to generate consent URL' });
