@@ -250,7 +250,7 @@ export const createCampaign = async (req: Request, res: Response) => {
           }),
         );
 
-        // const url: string = await createNewSpreadSheet({ title: campaignTitle });
+        const url: string = await createNewSpreadSheet({ title: campaignTitle });
 
         // Create sheet in google sheet
         // const data = await createNewSheetWithHeaderRows({
@@ -267,7 +267,7 @@ export const createCampaign = async (req: Request, res: Response) => {
             status: campaignStage as CampaignStatus,
             brandTone: brandTone,
             productName: productName,
-            // spreadSheetURL: url,
+            spreadSheetURL: url,
             agreementTemplate: {
               connect: {
                 id: agreementFrom.id,

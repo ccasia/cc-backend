@@ -103,9 +103,12 @@ export const createNewSpreadSheet = async ({ title }: { title: string }) => {
 
     const doc = await GoogleSpreadsheet.createNewSpreadsheetDocument(serviceAccountAuth, { title: title || 'Default' });
 
+    const sheet = doc.sheetsByIndex[0];
+    sheet.setHeaderRow(['Name', 'Username', 'Video Link', 'Posting Date', 'Caption', 'Video Feedback', 'Others']);
+
     // Testing purpose
-    await doc.share('afiq@nexea.co');
-    // await doc.share('atiqah@cultcreative.asia');
+    // await doc.share('afiq@nexea.co');
+    await doc.share('atiqah@cultcreative.asia');
 
     const url = `https://docs.google.com/spreadsheets/d/${doc.spreadsheetId}/`;
 
