@@ -50,7 +50,7 @@ import {
   notificationLogisticDelivery,
 } from '@helper/notification';
 import { deliveryConfirmation, shortlisted, tracking } from '@configs/nodemailer.config';
-import { createNewSheetWithHeaderRows, createNewSpreadSheet } from '@services/google_sheets/sheets';
+import { createNewSpreadSheet } from '@services/google_sheets/sheets';
 
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
 Ffmpeg.setFfprobePath(ffprobePath.path);
@@ -251,12 +251,6 @@ export const createCampaign = async (req: Request, res: Response) => {
         );
 
         const url: string = await createNewSpreadSheet({ title: campaignTitle });
-
-        // Create sheet in google sheet
-        // const data = await createNewSheetWithHeaderRows({
-        //   title: campaignTitle,
-        //   rows: ['Name', 'Username', 'Video Link', 'Posting Date', 'Caption', 'Video Feedback', 'Others'],
-        // });
 
         // Create Campaign
         const campaign = await tx.campaign.create({
@@ -2887,9 +2881,8 @@ export const sendAgreement = async (req: Request, res: Response) => {
 
     if (socketId) {
       io.to(socketId).emit('notification', notification);
+      io.to(clients.get(isUserExist.id)).emit('agreementReady');
     }
-
-    io.to(clients.get(isUserExist.id)).emit('agreementReady');
 
     return res.status(200).json({ message: 'Agreement has been sent.' });
   } catch (error) {
