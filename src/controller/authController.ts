@@ -194,7 +194,7 @@ export const registerCreator = async (req: Request, res: Response) => {
       },
     });
     // Chagne later for production
-    const token = jwt.sign({ id: user.id }, process.env.ACCESSKEY as Secret, { expiresIn: '2m' });
+    const token = jwt.sign({ id: user.id }, process.env.ACCESSKEY as Secret, { expiresIn: '15m' });
 
     creatorVerificationEmail(user.email, token);
 
