@@ -19,12 +19,20 @@ export const validateToken = (req: any, res: Response, next: NextFunction) => {
 };
 
 export const verifyToken = (token: string) => {
-  if (!token) return;
+  if (!token) {
+    throw new Error('Token is required');
+  }
 
   try {
     const validToken = verify(token, process.env.ACCESSKEY as string);
     return validToken;
   } catch (err) {
-    return err;
+    if (err.name === 'TokenExpiredError') {
+      throw new Error('Token has expired. Please request a new one.');
+    }
+    if (err.name === 'JsonWebTokenError') {
+      throw new Error('Invalid token.');
+    }
+    throw new Error('Error verifying token.');
   }
 };
