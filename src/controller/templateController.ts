@@ -11,6 +11,7 @@ export const getAllTemplate = async (req: Request, res: Response) => {
     const templates = await prisma.agreementTemplate.findMany({
       include: {
         campaign: true,
+        user: true,
       },
     });
 
@@ -86,12 +87,12 @@ export const createNewTemplate = async (req: Request, res: Response) => {
         adminName: name,
         adminICNumber: icNumber,
         campaign: campaignId && { connect: { id: campaignId } },
+        user: { connect: { id: user.id } },
       },
     });
 
     return res.status(200).json({ message: 'Successfully created.', templateURL: url, agreementTemplate: data });
   } catch (error) {
-    console.log(error);
     return res.status(400).json(error);
   }
 };

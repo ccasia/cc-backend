@@ -24,7 +24,7 @@ model User {
   role               RoleEnum
   photoBackgroundURL String?              @db.VarChar(255)
   admin              Admin?
-  agreementTemplate  AgreementTemplate?
+  agreementTemplate  AgreementTemplate[]
   Board              Board?
   BookMarkCampaign   BookMarkCampaign[]
   campaignLogs       CampaignLog[]
@@ -768,7 +768,7 @@ model AgreementTemplate {
   signURL       String?
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
-  userId        String?    @unique
+  userId        String?
   user          User?      @relation(fields: [userId], references: [id])
   isDefault     Boolean?   @default(false)
   campaign      Campaign[]
