@@ -194,7 +194,7 @@ export const registerCreator = async (req: Request, res: Response) => {
       },
     });
 
-    const token = jwt.sign({ id: user.id }, process.env.ACCESSKEY as Secret, { expiresIn: '2m' });
+    const token = jwt.sign({ id: user.id }, process.env.ACCESSKEY as Secret, { expiresIn: '15m' });
 
     creatorVerificationEmail(user.email, token);
 
@@ -857,7 +857,7 @@ export const resendVerificationLinkCreator = async (req: Request, res: Response)
 
     if (!user) return res.status(404).json({ message: 'User is not registered.' });
 
-    const newToken = jwt.sign({ id: user.id }, process.env.ACCESSKEY as Secret, { expiresIn: '2m' });
+    const newToken = jwt.sign({ id: user.id }, process.env.ACCESSKEY as Secret, { expiresIn: '15m' });
 
     creatorVerificationEmail(user.email, newToken);
 
