@@ -49,6 +49,7 @@ model User {
   threads            Thread[]             @relation("UserThreads")
   resetPasswordToken ResetPasswordToken?
   invoice            Invoice[]            @relation("CreatedBy")
+  rawFootage         Boolean              @default(false)
 }
 
 model ResetPasswordToken {

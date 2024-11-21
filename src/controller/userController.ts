@@ -67,6 +67,7 @@ export const getAdmins = async (req: Request, res: Response) => {
           phoneNumber: true,
           country: true,
           email: true,
+          photoURL: true,
           admin: {
             include: {
               adminPermissionModule: {
