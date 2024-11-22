@@ -1,7 +1,7 @@
 /* eslint-disable no-unused-vars */
 import jwt, { JwtPayload, Secret } from 'jsonwebtoken';
 import { Employment, PrismaClient, RoleEnum, Prisma } from '@prisma/client';
-import { Request, Response } from 'express';
+import { Request, response, Response } from 'express';
 import { AdminInvitaion, AdminInvite, creatorVerificationEmail } from '@configs/nodemailer.config';
 import bcrypt from 'bcryptjs';
 import { handleChangePassword } from '@services/authServices';
@@ -9,6 +9,7 @@ import { getUser } from '@services/userServices';
 import { verifyToken } from '@utils/jwtHelper';
 import { uploadImage, uploadProfileImage } from '@configs/cloudStorage.config';
 import { createKanbanBoard } from './kanbanController';
+import axios from 'axios';
 
 const prisma = new PrismaClient();
 
@@ -21,6 +22,8 @@ interface CreatorRequestData {
   name: string;
   email: string;
   password: string;
+  confirmPassword: string;
+  recaptcha: string;
 }
 
 interface InterestData {
@@ -161,45 +164,65 @@ export const registerSuperAdmin = async (req: Request, res: Response) => {
 
 // Function to register creator
 export const registerCreator = async (req: Request, res: Response) => {
-  const { name, email, password }: CreatorRequestData = req.body.email;
+  const { name, email, password, confirmPassword, recaptcha }: CreatorRequestData = req.body;
+
+  if (!recaptcha) {
+    return res.status(400).json({ success: false, message: 'Token is missing.' });
+  }
+
+  if (password !== confirmPassword) return res.status(400).json({ message: "Password don't match." });
 
   try {
-    const search = await prisma.user.findFirst({
-      where: {
-        email,
+    const secretKey = process.env.RECAPTCHA_SECRETKEY;
+
+    const response = await axios.post(`https://www.google.com/recaptcha/api/siteverify`, null, {
+      params: {
+        secret: secretKey,
+        response: recaptcha,
       },
     });
 
-    if (search) {
-      return res.status(400).json({ message: 'Email already exists' });
+    if (response.data.success) {
+      const search = await prisma.user.findFirst({
+        where: {
+          email,
+        },
+      });
+
+      if (search) {
+        return res.status(400).json({ message: 'Email already exists' });
+      }
+
+      const hashedPassword = await bcrypt.hash(password, 10);
+
+      const user = await prisma.user.create({
+        data: {
+          email,
+          password: hashedPassword,
+          role: 'creator',
+          name: name,
+        },
+      });
+
+      const data = await prisma.creator.create({
+        data: {
+          userId: user.id,
+        },
+        include: {
+          user: true,
+        },
+      });
+      // Chagne later for production
+      const token = jwt.sign({ id: user.id }, process.env.ACCESSKEY as Secret, { expiresIn: '15m' });
+
+      creatorVerificationEmail(user.email, token);
+
+      return res.status(201).json({ user: data.user.email });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    const user = await prisma.user.create({
-      data: {
-        email,
-        password: hashedPassword,
-        role: 'creator',
-        name: name,
-      },
-    });
-
-    const data = await prisma.creator.create({
-      data: {
-        userId: user.id,
-      },
-      include: {
-        user: true,
-      },
-    });
-    // Chagne later for production
-    const token = jwt.sign({ id: user.id }, process.env.ACCESSKEY as Secret, { expiresIn: '15m' });
-
-    creatorVerificationEmail(user.email, token);
-
-    return res.status(201).json({ user: data.user.email });
+    return res.status(400).json({ success: false, message: 'Verification failed.' });
   } catch (error) {
+    console.log(error);
     return res.status(400).send(error);
   }
 };
