@@ -87,6 +87,7 @@ export const changePassword = async (req: Request, res: Response) => {
   const { oldPassword, newPassword, confirmNewPassword } = req.body;
 
   const { id } = req.user as any;
+
   try {
     const user = await prisma.user.findFirst({
       where: {

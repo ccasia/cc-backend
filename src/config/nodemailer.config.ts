@@ -11,9 +11,9 @@ const transport = nodemailer.createTransport({
     user: user,
     pass: pass,
   },
-  tls: {
-    rejectUnauthorized: false,
-  },
+  //   tls: {
+  //     rejectUnauthorized: false,
+  //   },
 });
 
 // const mailOptions = {
@@ -254,7 +254,7 @@ export const shortlisted = (
           `,
     })
     .catch((err) => {
-        console.log(err)
+      console.log(err);
       return err;
     });
 };
@@ -395,7 +395,13 @@ export const feedbackOnDraft = (email: string, campaignName: string, creatorName
     });
 };
 
-export const finalDraftDue = (email: string, campaignName: string, creatorName: string, campaignId: string, campaignImage: string) => {
+export const finalDraftDue = (
+  email: string,
+  campaignName: string,
+  creatorName: string,
+  campaignId: string,
+  campaignImage: string,
+) => {
   transport
     .sendMail({
       from: user,
@@ -463,7 +469,13 @@ export const finalDraftDue = (email: string, campaignName: string, creatorName: 
     });
 };
 
-export const approvalOfDraft = (email: string, campaignName: string, creatorName: string, campaignId: string, campaignImage: string) => {
+export const approvalOfDraft = (
+  email: string,
+  campaignName: string,
+  creatorName: string,
+  campaignId: string,
+  campaignImage: string,
+) => {
   transport
     .sendMail({
       from: user,
@@ -531,7 +543,13 @@ export const approvalOfDraft = (email: string, campaignName: string, creatorName
     });
 };
 
-export const postingSchedule = (email: string, campaignName: string, creatorName: string, campaignId: string, campaignImage: string) => {
+export const postingSchedule = (
+  email: string,
+  campaignName: string,
+  creatorName: string,
+  campaignId: string,
+  campaignImage: string,
+) => {
   transport
     .sendMail({
       from: user,
@@ -674,7 +692,13 @@ export const tracking = (
     });
 };
 
-export const deliveryConfirmation = (email: string, campaignName: string, creatorName: string, campaignId: string, campaignImage: string) => {
+export const deliveryConfirmation = (
+  email: string,
+  campaignName: string,
+  creatorName: string,
+  campaignId: string,
+  campaignImage: string,
+) => {
   transport
     .sendMail({
       from: user,

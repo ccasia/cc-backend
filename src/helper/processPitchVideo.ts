@@ -101,16 +101,7 @@ const processVideo = async (
             const secs = msg.content.toString().split('.').length - 1;
             const { outputPath, tempPath, userId, campaignId, fileName } = JSON.parse(msg.content.toString());
 
-            await processVideo(
-              tempPath,
-              outputPath,
-              // (data: number) => {
-              //   io.to(clients.get(userId)).emit('video-upload', { campaignId: campaignId, progress: data });
-              // },
-              userId,
-              campaignId,
-              fileName,
-            );
+            await processVideo(tempPath, outputPath, userId, campaignId, fileName);
 
             channel.ack(msg);
           } catch (error) {
