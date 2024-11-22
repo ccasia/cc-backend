@@ -18,6 +18,7 @@ import {
   checkTokenValidity,
   updateProfileCreator,
   registerFinanceUser,
+  resendVerificationLinkCreator,
 } from '@controllers/authController';
 import {
   getXero,
@@ -47,6 +48,7 @@ router.post('/verifyCreator', verifyCreator);
 router.post('/registerCreator', registerCreator);
 router.post('/registerSuperAdmin', registerSuperAdmin);
 router.post('/registerFinanceUser', registerFinanceUser);
+router.post('/resendVerificationLinkCreator', resendVerificationLinkCreator);
 
 router.put('/updateCreator', validateToken, updateCreator);
 

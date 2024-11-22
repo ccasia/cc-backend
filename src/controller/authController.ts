@@ -171,7 +171,7 @@ export const registerCreator = async (req: Request, res: Response) => {
     });
 
     if (search) {
-      return res.status(400).json({ message: 'User already exists' });
+      return res.status(400).json({ message: 'Email already exists' });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -193,8 +193,8 @@ export const registerCreator = async (req: Request, res: Response) => {
         user: true,
       },
     });
-
-    const token = jwt.sign({ id: user.id }, process.env.ACCESSKEY as Secret);
+    // Chagne later for production
+    const token = jwt.sign({ id: user.id }, process.env.ACCESSKEY as Secret, { expiresIn: '15m' });
 
     creatorVerificationEmail(user.email, token);
 
@@ -272,7 +272,7 @@ export const sendEmail = async (req: Request, res: Response) => {
     AdminInvitaion(email, adminToken);
     return res.status(200).json({ message: 'Email sent' });
   } catch (error) {
-    //console.log(error);
+    return res.status(400).json(error);
   }
 };
 
@@ -376,8 +376,9 @@ export const checkTokenValidity = async (req: Request, res: Response) => {
 
 export const verifyCreator = async (req: Request, res: Response) => {
   const { token } = req.body;
+
   try {
-    const result = await verifyToken(token);
+    const result = verifyToken(token);
 
     if (!result) {
       return res.status(400).json({ message: 'Unauthorized' });
@@ -396,15 +397,6 @@ export const verifyCreator = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Not found.' });
     }
 
-    // await prisma.user.update({
-    //   where: {
-    //     id: creator.id,
-    //   },
-    //   data: {
-    //     status: 'pending',
-    //   },
-    // });
-
     const accessToken = jwt.sign({ id: creator.id }, process.env.ACCESSKEY as Secret, {
       expiresIn: '4h',
     });
@@ -419,6 +411,7 @@ export const verifyCreator = async (req: Request, res: Response) => {
       maxAge: 60 * 60 * 24 * 1000, // 1 Day
       httpOnly: true,
     });
+
     res.cookie('accessToken', accessToken, {
       maxAge: 60 * 60 * 4 * 1000, // 1 Day
       httpOnly: true,
@@ -426,6 +419,7 @@ export const verifyCreator = async (req: Request, res: Response) => {
 
     return res.status(200).json({ message: 'Your are verified!', user: creator, accessToken });
   } catch (error) {
+    if (error.message) return res.status(400).json({ message: error.message, tokenExpired: true });
     return res.status(400).json({ message: 'Error verifying creator' });
   }
 };
@@ -844,5 +838,31 @@ export const updateProfileCreator = async (req: Request, res: Response) => {
   } catch (error) {
     console.log(error);
     return res.status(400).json({ message: 'Error updating creator' });
+  }
+};
+
+export const resendVerificationLinkCreator = async (req: Request, res: Response) => {
+  const { token } = req.body;
+
+  try {
+    const decode = jwt.decode(token);
+
+    if (!decode) return res.status(400).json({ message: 'Token is invalid' });
+
+    const user = await prisma.user.findUnique({
+      where: {
+        id: (decode as any).id,
+      },
+    });
+
+    if (!user) return res.status(404).json({ message: 'User is not registered.' });
+
+    const newToken = jwt.sign({ id: user.id }, process.env.ACCESSKEY as Secret, { expiresIn: '15m' });
+
+    creatorVerificationEmail(user.email, newToken);
+
+    return res.status(200).json({ message: 'New verification link has been sent.' });
+  } catch (error) {
+    return res.status(400).json(error);
   }
 };

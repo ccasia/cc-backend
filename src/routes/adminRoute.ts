@@ -7,4 +7,6 @@ const router = Router();
 
 router.delete('/:id', needPermissions(['delete:admin']), isSuperAdmin, deleteAdminById);
 
+// router.post('/creator', isSuperAdmin, createCreatorAccount);
+
 export default router;

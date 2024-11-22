@@ -261,12 +261,12 @@ export const createAdminForm = async (data: AdminForm) => {
         status: 'pending',
       },
     });
+
     const inviteToken = jwt.sign({ id: user?.id }, process.env.SESSION_SECRET as Secret, { expiresIn: '1h' });
 
     const admin = await prisma.admin.create({
       data: {
         userId: user.id,
-
         inviteToken,
       },
     });
@@ -292,7 +292,7 @@ export const createNewAdmin = async (email: string, role: String) => {
       },
     });
 
-    const inviteToken = jwt.sign({ id: user?.id }, process.env.SESSION_SECRET as Secret, { expiresIn: '2m' });
+    const inviteToken = jwt.sign({ id: user?.id }, process.env.SESSION_SECRET as Secret, { expiresIn: '5m' });
 
     const admin = await prisma.admin.create({
       data: {

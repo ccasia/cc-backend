@@ -148,11 +148,23 @@ export const createThread = async (req: Request, res: Response) => {
         where: {
           isGroup: false,
           campaignId: null,
-          UserThread: {
-            every: {
-              OR: [{ userId: userIds[0] }, { userId: userIds[1] }],
+          // Change this
+          AND: [
+            {
+              UserThread: {
+                some: {
+                  userId: userIds[0],
+                },
+              },
             },
-          },
+            {
+              UserThread: {
+                some: {
+                  userId: userIds[1],
+                },
+              },
+            },
+          ],
         },
       });
 
@@ -164,6 +176,7 @@ export const createThread = async (req: Request, res: Response) => {
       return res.status(500).json({ error: 'An error occurred while checking for existing single chat.' });
     }
   }
+
   try {
     const thread = await prisma.thread.create({
       data: {
@@ -183,11 +196,10 @@ export const createThread = async (req: Request, res: Response) => {
         campaign: true,
       },
     });
-    res.status(201).json(thread);
-    //console.log(thread);
+    return res.status(201).json(thread);
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'An error occurred while creating the thread.' });
+    console.log(error);
+    return res.status(500).json({ error: 'An error occurred while creating the thread.' });
   }
 };
 

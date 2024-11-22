@@ -21,12 +21,7 @@ import './helper/videoDraftWorker';
 import './helper/processPitchVideo';
 import dotenv from 'dotenv';
 import '@services/google_sheets/sheets';
-import {
-  accessGoogleSheetAPI,
-  createNewRowData,
-  createNewSpreadSheet,
-  getLastRow,
-} from '@services/google_sheets/sheets';
+import { accessGoogleSheetAPI, createNewRowData, createNewSpreadSheet } from '@services/google_sheets/sheets';
 import { status } from '@dotenvx/dotenvx';
 
 dotenv.config();
