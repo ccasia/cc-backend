@@ -10,22 +10,22 @@ import {
   firstDraftDue,
   postingSchedule,
   shortlisted,
-  trackingNumber,
+  // trackingNumber,
 } from '../cc-backend/src/config/nodemailer.config';
 
-shortlisted('email@gmail.com', 'Design Better', 'Afiq');
+// shortlisted('email@gmail.com', 'Design Better', 'Afiq', '1234567890', 'kkk');
 // firstDraftDue("email@gmail.com", "Design Better", "Afiq")
 // feedbackOnDraft("email@gmail.com", "Design Better", "Afiq")
 // finalDraftDue("email@gmail.com", "Design Better", "Afiq")
-// approvalOfDraft("email@gmail.com", "Design Better", "Afiq")
+// approvalOfDraft("email@gmail.com", "Design Better", "Afiq", "12323", "kkk")
 // postingSchedule("email@gmail.com", "Design Better", "Afiq")
 // trackingNumber("email@gmail.com", "Design Better", "Afiq", "12345678910")
 // deliveryConfirmation("email@gmail.com", "Design Better", "Afiq")
-// creatorInvoice("email@gmail.com", "Design Better", "Afiq")
+// creatorInvoice("email@gmail.com", "Design Better", "Afiq", "aaa")
 // csmAdminInvoice("email@gmail.com", "Design Better", "Administrator")
 // financeAdminInvoice("novagaming991@gmail.com", "Design Better", "Administrator")
 
-//console.log('Email Sent!');
+// console.log('Email Sent!');
 
 // Design Better is a placeholder Campaign
 // Uncomment to test

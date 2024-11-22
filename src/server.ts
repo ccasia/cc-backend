@@ -217,6 +217,54 @@ io.on('connection', (socket) => {
   });
 });
 
+// Testing chunk upload API
+
+// app.post('/upload-chunk', async (req: Request, res: Response) => {
+//   try {
+//     const { fileName, chunkIndex, totalChunks } = req.body;
+//     const tempDir = path.join(__dirname, 'temp', fileName);
+//     const chunkPath = path.join(tempDir, `chunk-${chunkIndex}`);
+
+//     await fs.mkdir(tempDir, { recursive: true });
+
+//     await fs.copyFile((req.files as any).chunk.tempFilePath, chunkPath);
+
+//     await fs.unlink((req.files as any).chunk.tempFilePath);
+
+//     const uploadedChunks = await fs.readdir(tempDir);
+
+//     if (uploadedChunks.length === parseInt(totalChunks)) {
+//       const finalFilePath = path.join(__dirname, 'uploads', fileName);
+
+//       await fs.mkdir(path.join(__dirname, 'uploads'), { recursive: true });
+
+//       const writeStream = ps.createWriteStream(finalFilePath);
+//       for (let i = 0; i < totalChunks; i++) {
+//         const chunkData = await fs.readFile(path.join(tempDir, `chunk-${i}`));
+//         writeStream.write(chunkData);
+//       }
+//       writeStream.end();
+
+//       await fs.rm(tempDir, { force: true, recursive: true });
+
+//       console.log(`File ${fileName} reassembled successfully`);
+//       // await fs.unlink(path.join(__dirname, 'uploads', fileName));
+//       const amqp = await amqplib.connect(process.env.RABBIT_MQ as string);
+//       const channel = amqp.createChannel();
+//       (await channel).assertQueue('test');
+
+//       (await channel).sendToQueue(
+//         'test',
+//         Buffer.from(JSON.stringify({ path: path.join(__dirname, 'uploads', fileName) })),
+//       );
+//     }
+
+//     res.status(200).send('Chunk uploaded successfully');
+//   } catch (error) {
+//     return res.status(400).json(error);
+//   }
+// });
+
 server.listen(process.env.PORT, () => {
   //console.log(`Listening to port ${process.env.PORT}...`);
   //console.log(`${process.env.NODE_ENV} stage is running...`);

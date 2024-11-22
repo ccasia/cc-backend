@@ -532,6 +532,7 @@ export const adminManageDraft = async (req: Request, res: Response) => {
           },
           campaign: {
             include: {
+              campaignBrief: true,
               campaignAdmin: {
                 include: {
                   admin: {
@@ -566,6 +567,7 @@ export const adminManageDraft = async (req: Request, res: Response) => {
           submission.campaign.name,
           submission.user.name ?? 'Creator',
           submission.campaignId,
+          submission.campaign.campaignBrief.images[0],
         );
       } else if (
         (submission.submissionType.type === 'FINAL_DRAFT' && submission.status === 'APPROVED', submission.campaignId)
@@ -576,6 +578,7 @@ export const adminManageDraft = async (req: Request, res: Response) => {
           submission.campaign.name,
           submission.user.name ?? 'Creator',
           submission.campaignId,
+          submission.campaign.campaignBrief.images[0],
         );
       } else {
         // Fallback email if the draft is not approved
@@ -633,6 +636,15 @@ export const adminManageDraft = async (req: Request, res: Response) => {
           },
           include: {
             task: true,
+            campaign: {
+              select: {
+                campaignBrief: {
+                  select: {
+                    images: true,
+                  },
+                },
+              },
+            },
           },
         });
 
@@ -663,12 +675,15 @@ export const adminManageDraft = async (req: Request, res: Response) => {
           },
         });
 
+        const images: any = posting.campaign.campaignBrief?.images;
+
         // Sending posting schedule
         postingSchedule(
           submission.user.email,
           submission.campaign.name,
           submission.user.name ?? 'Creator',
           submission.campaign.id,
+          images[0],
         );
       }
 
@@ -888,6 +903,7 @@ export const adminManagePosting = async (req: Request, res: Response) => {
         },
         campaign: {
           include: {
+            campaignBrief: true,
             campaignAdmin: {
               include: {
                 admin: {
@@ -995,8 +1011,10 @@ export const adminManagePosting = async (req: Request, res: Response) => {
 
       io.to(clients.get(submission.userId)).emit('notification', Invoicenotification);
 
+      const images: any = submission?.campaign?.campaignBrief?.images;
+
       //Email
-      creatorInvoice(submission.user.email, submission.campaign.name, submission.user.name ?? 'Creator');
+      creatorInvoice(submission.user.email, submission.campaign.name, submission.user.name ?? 'Creator', images[0]);
 
       return res.status(200).json({ message: 'Successfully submitted' });
     }

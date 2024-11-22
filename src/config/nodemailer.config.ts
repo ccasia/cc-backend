@@ -11,6 +11,9 @@ const transport = nodemailer.createTransport({
     user: user,
     pass: pass,
   },
+  //   tls: {
+  //     rejectUnauthorized: false,
+  //   },
 });
 
 // const mailOptions = {
@@ -251,6 +254,7 @@ export const shortlisted = (
           `,
     })
     .catch((err) => {
+      console.log(err);
       return err;
     });
 };
@@ -391,7 +395,13 @@ export const feedbackOnDraft = (email: string, campaignName: string, creatorName
     });
 };
 
-export const finalDraftDue = (email: string, campaignName: string, creatorName: string, campaignId: string) => {
+export const finalDraftDue = (
+  email: string,
+  campaignName: string,
+  creatorName: string,
+  campaignId: string,
+  campaignImage: string,
+) => {
   transport
     .sendMail({
       from: user,
@@ -410,7 +420,7 @@ export const finalDraftDue = (email: string, campaignName: string, creatorName: 
             <img src="https://drive.google.com/uc?id=13ICuo00aWLG8XUikZ_6vSP7ej_CFQdjQ" alt="Company Logo" class="logo" style="max-width: 150px; margin-right: 30px;">
       </div>
         <h2 style="color: #686464; font-size: 24px; font-weight: bold; margin-top: 40px; margin-bottom: 40px;">Final Draft for ${campaignName} Due Soon</h2>
-        <img src="https://drive.google.com/uc?id=1lpDBTeil5asnkSW7B7T7_77EFpTQJcva" alt="Campaign Image" class="campaign-image" style="display: block; width: 100%; max-height: 300px; object-fit: cover; margin: 30px 0;">
+        <img src="${campaignImage}" alt="Campaign Image" class="campaign-image" style="display: block; width: 100%; max-height: 300px; object-fit: cover; margin: 30px 0;">
         <p style="color: #686464; text-align: left; font-size: 14px; line-height: 1.6; font-family: 'Roboto', sans-serif;">Hi ${creatorName}, A reminder that your final draft is due soon.</p>
         <a href="${process.env.BASE_EMAIL_URL}/dashboard/campaign/VUquQR/HJUboKDBwJi71KQ==/manage/detail/${campaignId}" class="button" style="display: inline-block; padding: 15px 30px; background-color: #0874dc; text-decoration: none; border-radius: 6px; font-size: 16px; color: #ffffff; text-align: center; margin: 30px auto; display: block; font-weight: bold; transition: background-color 0.3s;">View Campaign Details</a>
         <div class="separator" style="border-top: 1px solid #ddd; margin: 35px 0;"></div>
@@ -459,7 +469,13 @@ export const finalDraftDue = (email: string, campaignName: string, creatorName: 
     });
 };
 
-export const approvalOfDraft = (email: string, campaignName: string, creatorName: string, campaignId: string) => {
+export const approvalOfDraft = (
+  email: string,
+  campaignName: string,
+  creatorName: string,
+  campaignId: string,
+  campaignImage: string,
+) => {
   transport
     .sendMail({
       from: user,
@@ -469,7 +485,7 @@ export const approvalOfDraft = (email: string, campaignName: string, creatorName
       <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Your Draft for ${campaignName} Is Approved!</title>
+      <title>Good news—they loved your draft 🤩</title>
       </head>
       
       <body style="margin: 0; padding: 20px; background-color: #f5f5f7; font-family: Arial, sans-serif;">
@@ -477,10 +493,10 @@ export const approvalOfDraft = (email: string, campaignName: string, creatorName
       <div class="header" style="display: flex; align-items: center; margin-bottom: 30px;">
             <img src="https://drive.google.com/uc?id=13ICuo00aWLG8XUikZ_6vSP7ej_CFQdjQ" alt="Company Logo" class="logo" style="max-width: 150px; margin-right: 30px;">
       </div>
-        <h2 style="color: #686464; font-size: 24px; font-weight: bold; margin-top: 40px; margin-bottom: 40px;">Your Draft for ${campaignName} Is Approved!</h2>
-        <img src="https://drive.google.com/uc?id=1lpDBTeil5asnkSW7B7T7_77EFpTQJcva" alt="Campaign Image" class="campaign-image" style="display: block; width: 100%; max-height: 300px; object-fit: cover; margin: 30px 0;">
-        <p style="color: #686464; text-align: left; font-size: 14px; line-height: 1.6; font-family: 'Roboto', sans-serif;">Hi ${creatorName}, Great news! Your draft has been approved.</p>
-        <a href="${process.env.BASE_EMAIL_URL}/dashboard/campaign/VUquQR/HJUboKDBwJi71KQ==/manage/detail/${campaignId}" class="button" style="display: inline-block; padding: 15px 30px; background-color: #0874dc; text-decoration: none; border-radius: 6px; font-size: 16px; color: #ffffff; text-align: center; margin: 30px auto; display: block; font-weight: bold; transition: background-color 0.3s;">View Campaign Details</a>
+      <h2 style="color: #686464; font-size: 24px; font-weight: bold; margin-top: 40px; margin-bottom: 40px;">Good news—they loved your draft 🤩</h2>
+        <img src="${campaignImage}" alt="Campaign Image" class="campaign-image" style="display: block; width: 100%; max-height: 300px; object-fit: cover; margin: 30px 0;">
+        <p style="color: #686464; text-align: left; font-size: 14px; line-height: 1.6; font-family: 'Roboto', sans-serif;">Hey ${creatorName},</p>
+        <p style="color: #686464; text-align: left; font-size: 14px; line-height: 1.6; font-family: 'Roboto', sans-serif;">Your draft has been approved. Keep up the good work!</p>
         <div class="separator" style="border-top: 1px solid #ddd; margin: 35px 0;"></div>
         <p id="slogan" style="color: #686464; font-size: 12px; padding-top: 0px; display: block; text-align: center; font-weight: bold; margin-bottom: 20px;">Where Brands and Creatives Co-create</p>
 
@@ -527,7 +543,13 @@ export const approvalOfDraft = (email: string, campaignName: string, creatorName
     });
 };
 
-export const postingSchedule = (email: string, campaignName: string, creatorName: string, campaignId: string) => {
+export const postingSchedule = (
+  email: string,
+  campaignName: string,
+  creatorName: string,
+  campaignId: string,
+  campaignImage: string,
+) => {
   transport
     .sendMail({
       from: user,
@@ -546,7 +568,7 @@ export const postingSchedule = (email: string, campaignName: string, creatorName
             <img src="https://drive.google.com/uc?id=13ICuo00aWLG8XUikZ_6vSP7ej_CFQdjQ" alt="Company Logo" class="logo" style="max-width: 150px; margin-right: 30px;">
       </div>
         <h2 style="color: #686464; font-size: 24px; font-weight: bold; margin-top: 40px; margin-bottom: 40px;">New Posting Schedule for ${campaignName}</h2>
-        <img src="https://drive.google.com/uc?id=1lpDBTeil5asnkSW7B7T7_77EFpTQJcva" alt="Campaign Image" class="campaign-image" style="display: block; width: 100%; max-height: 300px; object-fit: cover; margin: 30px 0;">
+        <img src="${campaignImage}" alt="Campaign Image" class="campaign-image" style="display: block; width: 100%; max-height: 300px; object-fit: cover; margin: 30px 0;">
         <p style="color: #686464; text-align: left; font-size: 14px; line-height: 1.6; font-family: 'Roboto', sans-serif;">Hi ${creatorName}, The posting schedule is now available.</p>
         <a href="${process.env.BASE_EMAIL_URL}/dashboard/campaign/VUquQR/HJUboKDBwJi71KQ==/manage/detail/${campaignId}" class="button" style="display: inline-block; padding: 15px 30px; background-color: #0874dc; text-decoration: none; border-radius: 6px; font-size: 16px; color: #ffffff; text-align: center; margin: 30px auto; display: block; font-weight: bold; transition: background-color 0.3s;">View Campaign Details</a>
         <div class="separator" style="border-top: 1px solid #ddd; margin: 35px 0;"></div>
@@ -601,6 +623,7 @@ export const tracking = (
   creatorName: string,
   trackingNumber: string,
   campaignId: string,
+  campaignImage: string,
 ) => {
   transport
     .sendMail({
@@ -620,7 +643,7 @@ export const tracking = (
             <img src="https://drive.google.com/uc?id=13ICuo00aWLG8XUikZ_6vSP7ej_CFQdjQ" alt="Company Logo" class="logo" style="max-width: 150px; margin-right: 30px;">
       </div>
         <h2 style="color: #686464; font-size: 24px; font-weight: bold; margin-top: 40px; margin-bottom: 40px;">Logistics Submitted for ${campaignName}</h2>
-        <img src="https://drive.google.com/uc?id=1lpDBTeil5asnkSW7B7T7_77EFpTQJcva" alt="Campaign Image" class="campaign-image" style="display: block; width: 100%; max-height: 300px; object-fit: cover; margin: 30px 0;">
+        <img src="${campaignImage}" alt="Campaign Image" class="campaign-image" style="display: block; width: 100%; max-height: 300px; object-fit: cover; margin: 30px 0;">
         <p style="color: #686464; text-align: left; font-size: 14px; line-height: 1.6; font-family: 'Roboto', sans-serif;">Hi ${creatorName}, Your logistics have been submitted, tracking number ${trackingNumber}.</p>
         <a href="${process.env.BASE_EMAIL_URL}/dashboard/campaign/VUquQR/HJUboKDBwJi71KQ==/manage/detail/${campaignId}" class="button" style="display: inline-block; padding: 15px 30px; background-color: #0874dc; text-decoration: none; border-radius: 6px; font-size: 16px; color: #ffffff; text-align: center; margin: 30px auto; display: block; font-weight: bold; transition: background-color 0.3s;">View Campaign Details</a>
         <div class="separator" style="border-top: 1px solid #ddd; margin: 35px 0;"></div>
@@ -669,7 +692,13 @@ export const tracking = (
     });
 };
 
-export const deliveryConfirmation = (email: string, campaignName: string, creatorName: string, campaignId: string) => {
+export const deliveryConfirmation = (
+  email: string,
+  campaignName: string,
+  creatorName: string,
+  campaignId: string,
+  campaignImage: string,
+) => {
   transport
     .sendMail({
       from: user,
@@ -688,7 +717,7 @@ export const deliveryConfirmation = (email: string, campaignName: string, creato
             <img src="https://drive.google.com/uc?id=13ICuo00aWLG8XUikZ_6vSP7ej_CFQdjQ" alt="Company Logo" class="logo" style="max-width: 150px; margin-right: 30px;">
       </div>
         <h2 style="color: #686464; font-size: 24px; font-weight: bold; margin-top: 40px; margin-bottom: 40px;">Logistics Delivered for ${campaignName}</h2>
-        <img src="https://drive.google.com/uc?id=1lpDBTeil5asnkSW7B7T7_77EFpTQJcva" alt="Campaign Image" class="campaign-image" style="display: block; width: 100%; max-height: 300px; object-fit: cover; margin: 30px 0;">
+        <img src="${campaignImage}" alt="Campaign Image" class="campaign-image" style="display: block; width: 100%; max-height: 300px; object-fit: cover; margin: 30px 0;">
         <p style="color: #686464; text-align: left; font-size: 14px; line-height: 1.6; font-family: 'Roboto', sans-serif;">Hi ${creatorName}, The logistics have been delivered.</p>
         <a href="${process.env.BASE_EMAIL_URL}/dashboard/campaign/VUquQR/HJUboKDBwJi71KQ==/manage/detail/${campaignId}" class="button" style="display: inline-block; padding: 15px 30px; background-color: #0874dc; text-decoration: none; border-radius: 6px; font-size: 16px; color: #ffffff; text-align: center; margin: 30px auto; display: block; font-weight: bold; transition: background-color 0.3s;">View Campaign Details</a>
         <div class="separator" style="border-top: 1px solid #ddd; margin: 35px 0;"></div>
@@ -737,12 +766,12 @@ export const deliveryConfirmation = (email: string, campaignName: string, creato
     });
 };
 
-export const creatorInvoice = (email: string, campaignName: string, creatorName: string) => {
+export const creatorInvoice = (email: string, campaignName: string, creatorName: string, campaignImage: string) => {
   transport
     .sendMail({
       from: user,
       to: email,
-      subject: `Invoice Generated for ${campaignName}`,
+      subject: `Your Invoice for ${campaignName} Is Ready!`,
       html: `
       <head>
       <meta charset="UTF-8">
@@ -755,10 +784,10 @@ export const creatorInvoice = (email: string, campaignName: string, creatorName:
       <div class="header" style="display: flex; align-items: center; margin-bottom: 30px;">
             <img src="https://drive.google.com/uc?id=13ICuo00aWLG8XUikZ_6vSP7ej_CFQdjQ" alt="Company Logo" class="logo" style="max-width: 150px; margin-right: 30px;">
       </div>
-        <h2 style="color: #686464; font-size: 24px; font-weight: bold; margin-top: 40px; margin-bottom: 40px;">Invoice Generated for ${campaignName}</h2>
-        <img src="https://drive.google.com/uc?id=1lpDBTeil5asnkSW7B7T7_77EFpTQJcva" alt="Campaign Image" class="campaign-image" style="display: block; width: 100%; max-height: 300px; object-fit: cover; margin: 30px 0;">
-        <p style="color: #686464; text-align: left; font-size: 14px; line-height: 1.6; font-family: 'Roboto', sans-serif;">Hi ${creatorName}, An invoice has been generated for your campaign.</p>
-        <a href="${process.env.BASE_EMAIL_URL}/dashboard/invoiceCreator" class="button" style="display: inline-block; padding: 15px 30px; background-color: #0874dc; text-decoration: none; border-radius: 6px; font-size: 16px; color: #ffffff; text-align: center; margin: 30px auto; display: block; font-weight: bold; transition: background-color 0.3s;">View Invoice</a>
+        <h2 style="color: #686464; font-size: 24px; font-weight: bold; margin-top: 40px; margin-bottom: 40px;">You'll Be Getting Paid Soon 💰</h2>
+        <img src="${campaignImage}" alt="Campaign Image" class="campaign-image" style="display: block; width: 100%; max-height: 300px; object-fit: cover; margin: 30px 0;">
+        <p style="color: #686464; text-align: left; font-size: 14px; line-height: 1.6; font-family: 'Roboto', sans-serif;">Hey ${creatorName},</p>
+        <p style="color: #686464; text-align: left; font-size: 14px; line-height: 1.6; font-family: 'Roboto', sans-serif;">Get excited, an invoice has been generated for your campaign!</p>
         <div class="separator" style="border-top: 1px solid #ddd; margin: 35px 0;"></div>
         <p id="slogan" style="color: #686464; font-size: 12px; padding-top: 0px; display: block; text-align: center; font-weight: bold; margin-bottom: 20px;">Where Brands and Creatives Co-create</p>
 
@@ -807,7 +836,7 @@ export const creatorInvoice = (email: string, campaignName: string, creatorName:
 
 // Admin Notifications
 
-export const csmAdminInvoice = (email: string, campaignName: string, adminName: string) => {
+export const csmAdminInvoice = (email: string, campaignName: string, adminName: string, campaignImage: string) => {
   transport
     .sendMail({
       from: user,
@@ -826,7 +855,7 @@ export const csmAdminInvoice = (email: string, campaignName: string, adminName: 
             <img src="https://drive.google.com/uc?id=13ICuo00aWLG8XUikZ_6vSP7ej_CFQdjQ" alt="Company Logo" class="logo" style="max-width: 150px; margin-right: 30px;">
       </div>
         <h2 style="color: #686464; font-size: 24px; font-weight: bold; margin-top: 40px; margin-bottom: 40px;">Invoice Generated for ${campaignName}</h2>
-        <img src="https://drive.google.com/uc?id=1lpDBTeil5asnkSW7B7T7_77EFpTQJcva" alt="Campaign Image" class="campaign-image" style="display: block; width: 100%; max-height: 300px; object-fit: cover; margin: 30px 0;">
+        <img src="${campaignImage}" alt="Campaign Image" class="campaign-image" style="display: block; width: 100%; max-height: 300px; object-fit: cover; margin: 30px 0;">
         <p style="color: #686464; text-align: left; font-size: 14px; line-height: 1.6; font-family: 'Roboto', sans-serif;">Hi ${adminName}, An invoice has been generated.</p>
         <a href="#" class="button" style="display: inline-block; padding: 15px 30px; background-color: #0874dc; text-decoration: none; border-radius: 6px; font-size: 16px; color: #ffffff; text-align: center; margin: 30px auto; display: block; font-weight: bold; transition: background-color 0.3s;">View Invoice on Dashboard</a>
         <div class="separator" style="border-top: 1px solid #ddd; margin: 35px 0;"></div>
@@ -875,7 +904,7 @@ export const csmAdminInvoice = (email: string, campaignName: string, adminName: 
     });
 };
 
-export const financeAdminInvoice = (email: string, campaignName: string, adminName: string) => {
+export const financeAdminInvoice = (email: string, campaignName: string, adminName: string, campaignImage: string) => {
   transport
     .sendMail({
       from: user,
@@ -894,7 +923,7 @@ export const financeAdminInvoice = (email: string, campaignName: string, adminNa
             <img src="https://drive.google.com/uc?id=13ICuo00aWLG8XUikZ_6vSP7ej_CFQdjQ" alt="Company Logo" class="logo" style="max-width: 150px; margin-right: 30px;">
       </div>
         <h2 style="color: #686464; font-size: 24px; font-weight: bold; margin-top: 40px; margin-bottom: 40px;">New Invoice Generated for ${campaignName}</h2>
-        <img src="https://drive.google.com/uc?id=1lpDBTeil5asnkSW7B7T7_77EFpTQJcva" alt="Campaign Image" class="campaign-image" style="display: block; width: 100%; max-height: 300px; object-fit: cover; margin: 30px 0;">
+        <img src="${campaignImage}" alt="Campaign Image" class="campaign-image" style="display: block; width: 100%; max-height: 300px; object-fit: cover; margin: 30px 0;">
         <p style="color: #686464; text-align: left; font-size: 14px; line-height: 1.6; font-family: 'Roboto', sans-serif;">Hi ${adminName}, A new invoice has been generated.</p>
         <a href="#" class="button" style="display: inline-block; padding: 15px 30px; background-color: #0874dc; text-decoration: none; border-radius: 6px; font-size: 16px; color: #ffffff; text-align: center; margin: 30px auto; display: block; font-weight: bold; transition: background-color 0.3s;">View Invoice on Dashboard</a>
         <div class="separator" style="border-top: 1px solid #ddd; margin: 35px 0;"></div>
