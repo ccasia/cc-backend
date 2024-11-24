@@ -119,7 +119,7 @@ export const handleCreateBrand = async ({
     });
 
     if (brandExist) {
-      throw new Error('Brand already exists');
+      throw new Error('An account with this email and phone number already exists.');
     }
 
     // check if company exists
@@ -152,7 +152,6 @@ export const handleCreateBrand = async ({
 
     return brand;
   } catch (error: any) {
-    //console.log(error);
     throw new Error(error.message);
   }
 };
