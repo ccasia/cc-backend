@@ -24,7 +24,7 @@ model User {
   role               RoleEnum
   photoBackgroundURL String?              @db.VarChar(255)
   admin              Admin?
-  agreementTemplate  AgreementTemplate?
+  agreementTemplate  AgreementTemplate[]
   Board              Board?
   BookMarkCampaign   BookMarkCampaign[]
   campaignLogs       CampaignLog[]
@@ -49,6 +49,7 @@ model User {
   threads            Thread[]             @relation("UserThreads")
   resetPasswordToken ResetPasswordToken?
   invoice            Invoice[]            @relation("CreatedBy")
+  rawFootage         Boolean              @default(false)
 }
 
 model ResetPasswordToken {
@@ -768,7 +769,7 @@ model AgreementTemplate {
   signURL       String?
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
-  userId        String?    @unique
+  userId        String?
   user          User?      @relation(fields: [userId], references: [id])
   isDefault     Boolean?   @default(false)
   campaign      Campaign[]

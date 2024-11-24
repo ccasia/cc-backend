@@ -6,7 +6,7 @@ interface NewSheetWithRows {
 }
 
 interface Row {
-  sheetId: number;
+  spreadSheetId: string;
   creatorInfo: {
     name: string;
     username: string;
@@ -16,7 +16,7 @@ interface Row {
   };
 }
 
-export const accessGoogleSheetAPI = async () => {
+export const accessGoogleSheetAPI = async (docId: string) => {
   try {
     const { GoogleSpreadsheet } = await import('google-spreadsheet');
     const serviceAccountAuth = new JWT({
@@ -25,7 +25,7 @@ export const accessGoogleSheetAPI = async () => {
       scopes: ['https://www.googleapis.com/auth/spreadsheets'],
     });
 
-    const doc = new GoogleSpreadsheet('1k-0MzP1vQUltu_DacbwzagmHi-_J2924g7NN5J6ptBM', serviceAccountAuth);
+    const doc = new GoogleSpreadsheet(docId, serviceAccountAuth);
 
     await doc.loadInfo();
 
@@ -36,30 +36,34 @@ export const accessGoogleSheetAPI = async () => {
 };
 
 // Create Campaign = Sheet
-export const createNewSheetWithHeaderRows = async ({ title, rows }: NewSheetWithRows) => {
-  try {
-    const sheet = await accessGoogleSheetAPI();
+// export const createNewSheetWithHeaderRows = async ({ title, rows }: NewSheetWithRows) => {
+//   try {
+//     // const sheet = await accessGoogleSheetAPI();
 
-    const newSheet = await sheet.addSheet({ headerValues: rows, title: title });
+//     const newSheet = await sheet.addSheet({ headerValues: rows, title: title });
 
-    return newSheet;
-  } catch (error) {
-    throw new Error(error);
-  }
-};
+//     return newSheet;
+//   } catch (error) {
+//     throw new Error(error);
+//   }
+// };
 
 // Insert shortlisted creator => row
-export const createNewRowData = async ({ sheetId, creatorInfo }: Row) => {
+export const createNewRowData = async ({ spreadSheetId, creatorInfo }: Row) => {
   try {
-    const sheet = await accessGoogleSheetAPI();
+    const sheet = await accessGoogleSheetAPI(spreadSheetId);
 
-    const existingSheet = sheet.sheetsById[sheetId];
-
-    if (!existingSheet) {
+    if (!sheet) {
       throw new Error('Sheet not found.');
     }
 
-    const updatedRow = await existingSheet.addRow({
+    const currentSheet = sheet.sheetsByIndex[0];
+
+    if (!currentSheet) {
+      throw new Error('Sheet not found.');
+    }
+
+    const updatedRow = await currentSheet.addRow({
       Name: creatorInfo.name,
       Username: creatorInfo.username,
       'Video Link': creatorInfo.videoLink,
@@ -73,24 +77,24 @@ export const createNewRowData = async ({ sheetId, creatorInfo }: Row) => {
   }
 };
 
-export const getLastRow = async ({ sheetId }: { sheetId: number }) => {
-  try {
-    const doc = await accessGoogleSheetAPI();
+// export const getLastRow = async ({ sheetId }: { sheetId: number }) => {
+//   try {
+//     const doc = await accessGoogleSheetAPI();
 
-    const sheet = doc.sheetsById[sheetId];
+//     const sheet = doc.sheetsById[sheetId];
 
-    const rows = await sheet.getRows();
+//     const rows = await sheet.getRows();
 
-    const lastRowIndex = rows.length;
+//     const lastRowIndex = rows.length;
 
-    console.log(`Last row with data is at index: ${lastRowIndex}`);
+//     console.log(`Last row with data is at index: ${lastRowIndex}`);
 
-    console.log(lastRowIndex);
-    return lastRowIndex;
-  } catch (error) {
-    throw new Error(error);
-  }
-};
+//     console.log(lastRowIndex);
+//     return lastRowIndex;
+//   } catch (error) {
+//     throw new Error(error);
+//   }
+// };
 
 export const createNewSpreadSheet = async ({ title }: { title: string }) => {
   try {

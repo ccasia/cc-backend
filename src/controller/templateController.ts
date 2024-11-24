@@ -11,12 +11,12 @@ export const getAllTemplate = async (req: Request, res: Response) => {
     const templates = await prisma.agreementTemplate.findMany({
       include: {
         campaign: true,
+        user: true,
       },
     });
 
     return res.status(200).json(templates);
   } catch (error) {
-    console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -80,19 +80,19 @@ export const createNewTemplate = async (req: Request, res: Response) => {
       fileName: `${uniqueId}-template.png`,
     });
 
-    await prisma.agreementTemplate.create({
+    const data = await prisma.agreementTemplate.create({
       data: {
         url: url,
         signURL: signedUrl,
         adminName: name,
         adminICNumber: icNumber,
         campaign: campaignId && { connect: { id: campaignId } },
+        user: { connect: { id: user.id } },
       },
     });
 
-    return res.status(200).json({ message: 'Successfully created.', templateURL: url });
+    return res.status(200).json({ message: 'Successfully created.', templateURL: url, agreementTemplate: data });
   } catch (error) {
-    console.log(error);
     return res.status(400).json(error);
   }
 };

@@ -21,13 +21,9 @@ import './helper/videoDraftWorker';
 import './helper/processPitchVideo';
 import dotenv from 'dotenv';
 import '@services/google_sheets/sheets';
-import {
-  accessGoogleSheetAPI,
-  createNewRowData,
-  createNewSpreadSheet,
-  getLastRow,
-} from '@services/google_sheets/sheets';
+import { accessGoogleSheetAPI, createNewRowData, createNewSpreadSheet } from '@services/google_sheets/sheets';
 import { status } from '@dotenvx/dotenvx';
+import path from 'path';
 
 dotenv.config();
 
@@ -41,6 +37,7 @@ export const io = new Server(server, {
   },
 });
 
+app.use('/public', express.static('public'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
@@ -253,6 +250,54 @@ io.on('connection', (socket) => {
     });
   });
 });
+
+// Testing chunk upload API
+
+// app.post('/upload-chunk', async (req: Request, res: Response) => {
+//   try {
+//     const { fileName, chunkIndex, totalChunks } = req.body;
+//     const tempDir = path.join(__dirname, 'temp', fileName);
+//     const chunkPath = path.join(tempDir, `chunk-${chunkIndex}`);
+
+//     await fs.mkdir(tempDir, { recursive: true });
+
+//     await fs.copyFile((req.files as any).chunk.tempFilePath, chunkPath);
+
+//     await fs.unlink((req.files as any).chunk.tempFilePath);
+
+//     const uploadedChunks = await fs.readdir(tempDir);
+
+//     if (uploadedChunks.length === parseInt(totalChunks)) {
+//       const finalFilePath = path.join(__dirname, 'uploads', fileName);
+
+//       await fs.mkdir(path.join(__dirname, 'uploads'), { recursive: true });
+
+//       const writeStream = ps.createWriteStream(finalFilePath);
+//       for (let i = 0; i < totalChunks; i++) {
+//         const chunkData = await fs.readFile(path.join(tempDir, `chunk-${i}`));
+//         writeStream.write(chunkData);
+//       }
+//       writeStream.end();
+
+//       await fs.rm(tempDir, { force: true, recursive: true });
+
+//       console.log(`File ${fileName} reassembled successfully`);
+//       // await fs.unlink(path.join(__dirname, 'uploads', fileName));
+//       const amqp = await amqplib.connect(process.env.RABBIT_MQ as string);
+//       const channel = amqp.createChannel();
+//       (await channel).assertQueue('test');
+
+//       (await channel).sendToQueue(
+//         'test',
+//         Buffer.from(JSON.stringify({ path: path.join(__dirname, 'uploads', fileName) })),
+//       );
+//     }
+
+//     res.status(200).send('Chunk uploaded successfully');
+//   } catch (error) {
+//     return res.status(400).json(error);
+//   }
+// });
 
 server.listen(process.env.PORT, () => {
   //console.log(`Listening to port ${process.env.PORT}...`);

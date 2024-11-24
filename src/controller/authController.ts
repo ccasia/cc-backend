@@ -1,7 +1,7 @@
 /* eslint-disable no-unused-vars */
 import jwt, { JwtPayload, Secret } from 'jsonwebtoken';
 import { Employment, PrismaClient, RoleEnum, Prisma } from '@prisma/client';
-import { Request, Response } from 'express';
+import { Request, response, Response } from 'express';
 import { AdminInvitaion, AdminInvite, creatorVerificationEmail } from '@configs/nodemailer.config';
 import bcrypt from 'bcryptjs';
 import { handleChangePassword } from '@services/authServices';
@@ -9,6 +9,7 @@ import { getUser } from '@services/userServices';
 import { verifyToken } from '@utils/jwtHelper';
 import { uploadImage, uploadProfileImage } from '@configs/cloudStorage.config';
 import { createKanbanBoard } from './kanbanController';
+import axios from 'axios';
 
 const prisma = new PrismaClient();
 
@@ -21,6 +22,8 @@ interface CreatorRequestData {
   name: string;
   email: string;
   password: string;
+  confirmPassword: string;
+  recaptcha: string;
 }
 
 interface InterestData {
@@ -84,6 +87,7 @@ export const changePassword = async (req: Request, res: Response) => {
   const { oldPassword, newPassword, confirmNewPassword } = req.body;
 
   const { id } = req.user as any;
+
   try {
     const user = await prisma.user.findFirst({
       where: {
@@ -161,45 +165,65 @@ export const registerSuperAdmin = async (req: Request, res: Response) => {
 
 // Function to register creator
 export const registerCreator = async (req: Request, res: Response) => {
-  const { name, email, password }: CreatorRequestData = req.body.email;
+  const { name, email, password, confirmPassword, recaptcha }: CreatorRequestData = req.body;
+
+  if (!recaptcha) {
+    return res.status(400).json({ success: false, message: 'Token is missing.' });
+  }
+
+  if (password !== confirmPassword) return res.status(400).json({ message: "Password don't match." });
 
   try {
-    const search = await prisma.user.findFirst({
-      where: {
-        email,
+    const secretKey = process.env.RECAPTCHA_SECRETKEY;
+
+    const response = await axios.post(`https://www.google.com/recaptcha/api/siteverify`, null, {
+      params: {
+        secret: secretKey,
+        response: recaptcha,
       },
     });
 
-    if (search) {
-      return res.status(400).json({ message: 'User already exists' });
+    if (response.data.success) {
+      const search = await prisma.user.findFirst({
+        where: {
+          email,
+        },
+      });
+
+      if (search) {
+        return res.status(400).json({ message: 'Email already exists' });
+      }
+
+      const hashedPassword = await bcrypt.hash(password, 10);
+
+      const user = await prisma.user.create({
+        data: {
+          email,
+          password: hashedPassword,
+          role: 'creator',
+          name: name,
+        },
+      });
+
+      const data = await prisma.creator.create({
+        data: {
+          userId: user.id,
+        },
+        include: {
+          user: true,
+        },
+      });
+      // Chagne later for production
+      const token = jwt.sign({ id: user.id }, process.env.ACCESSKEY as Secret, { expiresIn: '15m' });
+
+      creatorVerificationEmail(user.email, token);
+
+      return res.status(201).json({ user: data.user.email });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    const user = await prisma.user.create({
-      data: {
-        email,
-        password: hashedPassword,
-        role: 'creator',
-        name: name,
-      },
-    });
-
-    const data = await prisma.creator.create({
-      data: {
-        userId: user.id,
-      },
-      include: {
-        user: true,
-      },
-    });
-
-    const token = jwt.sign({ id: user.id }, process.env.ACCESSKEY as Secret);
-
-    creatorVerificationEmail(user.email, token);
-
-    return res.status(201).json({ user: data.user.email });
+    return res.status(400).json({ success: false, message: 'Verification failed.' });
   } catch (error) {
+    console.log(error);
     return res.status(400).send(error);
   }
 };
@@ -272,7 +296,7 @@ export const sendEmail = async (req: Request, res: Response) => {
     AdminInvitaion(email, adminToken);
     return res.status(200).json({ message: 'Email sent' });
   } catch (error) {
-    //console.log(error);
+    return res.status(400).json(error);
   }
 };
 
@@ -376,8 +400,9 @@ export const checkTokenValidity = async (req: Request, res: Response) => {
 
 export const verifyCreator = async (req: Request, res: Response) => {
   const { token } = req.body;
+
   try {
-    const result = await verifyToken(token);
+    const result = verifyToken(token);
 
     if (!result) {
       return res.status(400).json({ message: 'Unauthorized' });
@@ -396,15 +421,6 @@ export const verifyCreator = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Not found.' });
     }
 
-    // await prisma.user.update({
-    //   where: {
-    //     id: creator.id,
-    //   },
-    //   data: {
-    //     status: 'pending',
-    //   },
-    // });
-
     const accessToken = jwt.sign({ id: creator.id }, process.env.ACCESSKEY as Secret, {
       expiresIn: '4h',
     });
@@ -419,6 +435,7 @@ export const verifyCreator = async (req: Request, res: Response) => {
       maxAge: 60 * 60 * 24 * 1000, // 1 Day
       httpOnly: true,
     });
+
     res.cookie('accessToken', accessToken, {
       maxAge: 60 * 60 * 4 * 1000, // 1 Day
       httpOnly: true,
@@ -426,6 +443,7 @@ export const verifyCreator = async (req: Request, res: Response) => {
 
     return res.status(200).json({ message: 'Your are verified!', user: creator, accessToken });
   } catch (error) {
+    if (error.message) return res.status(400).json({ message: error.message, tokenExpired: true });
     return res.status(400).json({ message: 'Error verifying creator' });
   }
 };
@@ -844,5 +862,31 @@ export const updateProfileCreator = async (req: Request, res: Response) => {
   } catch (error) {
     console.log(error);
     return res.status(400).json({ message: 'Error updating creator' });
+  }
+};
+
+export const resendVerificationLinkCreator = async (req: Request, res: Response) => {
+  const { token } = req.body;
+
+  try {
+    const decode = jwt.decode(token);
+
+    if (!decode) return res.status(400).json({ message: 'Token is invalid' });
+
+    const user = await prisma.user.findUnique({
+      where: {
+        id: (decode as any).id,
+      },
+    });
+
+    if (!user) return res.status(404).json({ message: 'User is not registered.' });
+
+    const newToken = jwt.sign({ id: user.id }, process.env.ACCESSKEY as Secret, { expiresIn: '15m' });
+
+    creatorVerificationEmail(user.email, newToken);
+
+    return res.status(200).json({ message: 'New verification link has been sent.' });
+  } catch (error) {
+    return res.status(400).json(error);
   }
 };

@@ -20,7 +20,7 @@ router.get('/forget-password-token/:token', checkForgetPasswordToken);
 router.get('/overview/:userId', isLoggedIn, getOverview);
 // router.get('/getAdmins', isSuperAdmin, getAllActiveAdmins);
 
-router.post('/admins', inviteAdmin);
+router.post('/admins', isSuperAdmin, inviteAdmin);
 router.post('/createAdmin', isSuperAdmin, createAdmin);
 router.post('/forget-password', forgetPassword);
 

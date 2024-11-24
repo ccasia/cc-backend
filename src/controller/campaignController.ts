@@ -50,7 +50,7 @@ import {
   notificationLogisticDelivery,
 } from '@helper/notification';
 import { deliveryConfirmation, shortlisted, tracking } from '@configs/nodemailer.config';
-import { createNewSheetWithHeaderRows, createNewSpreadSheet } from '@services/google_sheets/sheets';
+import { createNewSpreadSheet } from '@services/google_sheets/sheets';
 
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
 Ffmpeg.setFfprobePath(ffprobePath.path);
@@ -251,12 +251,6 @@ export const createCampaign = async (req: Request, res: Response) => {
         );
 
         const url: string = await createNewSpreadSheet({ title: campaignTitle });
-
-        // Create sheet in google sheet
-        // const data = await createNewSheetWithHeaderRows({
-        //   title: campaignTitle,
-        //   rows: ['Name', 'Username', 'Video Link', 'Posting Date', 'Caption', 'Video Feedback', 'Others'],
-        // });
 
         // Create Campaign
         const campaign = await tx.campaign.create({
@@ -2308,11 +2302,15 @@ export const createLogistics = async (req: Request, res: Response) => {
       },
       include: {
         user: true,
-        campaign: true,
+        campaign: {
+          include: {
+            campaignBrief: true,
+          },
+        },
       },
     });
 
-    console.log('Tracking', logistic);
+    const image: any = logistic?.campaign?.campaignBrief?.images;
 
     //Email for tracking logistics
     tracking(
@@ -2321,6 +2319,7 @@ export const createLogistics = async (req: Request, res: Response) => {
       logistic.user.name ?? 'Creator',
       logistic.trackingNumber,
       logistic.campaignId,
+      image[0],
     );
 
     const { title, message } = notificationLogisticTracking(logistic.campaign.name, logistic.trackingNumber);
@@ -2375,10 +2374,17 @@ export const updateStatusLogistic = async (req: Request, res: Response) => {
         campaign: {
           select: {
             name: true,
+            campaignBrief: {
+              select: {
+                images: true,
+              },
+            },
           },
         },
       },
     });
+
+    const images: any = updated.campaign.campaignBrief?.images;
 
     if (status === 'Product_has_been_received') {
       // Call deliveryConfirmation function
@@ -2387,6 +2393,7 @@ export const updateStatusLogistic = async (req: Request, res: Response) => {
         updated.campaign.name,
         updated.user.name ?? 'Creator',
         updated.campaignId,
+        images[0],
       );
 
       // Create and send the notification
@@ -2621,7 +2628,13 @@ export const shortlistCreator = async (req: Request, res: Response) => {
               message: `Congratulations! You've been shortlisted for the ${campaign?.name} campaign.`,
               entity: 'Shortlist',
             });
+
+            const image: any = campaign.campaignBrief?.images;
+
+            shortlisted(creator.user.email, campaign.name, creator.user.name ?? 'Creator', campaign.id, image[0]);
+
             const socketId = clients.get(creator.userId);
+
             if (socketId) {
               io.to(socketId).emit('notification', data);
             } else {
@@ -2887,9 +2900,8 @@ export const sendAgreement = async (req: Request, res: Response) => {
 
     if (socketId) {
       io.to(socketId).emit('notification', notification);
+      io.to(clients.get(isUserExist.id)).emit('agreementReady');
     }
-
-    io.to(clients.get(isUserExist.id)).emit('agreementReady');
 
     return res.status(200).json({ message: 'Agreement has been sent.' });
   } catch (error) {

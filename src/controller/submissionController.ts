@@ -362,7 +362,7 @@ export const draftSubmission = async (req: Request, res: Response) => {
         },
         campaign: {
           select: {
-            // sheetId: true,
+            spreadSheetURL: true,
             campaignAdmin: {
               select: {
                 admin: {
@@ -426,18 +426,20 @@ export const draftSubmission = async (req: Request, res: Response) => {
 
     activeProcesses.set(submissionId, { status: 'queue' });
 
-    // if (submission.campaign.sheetId && submission.submissionType.type === 'FIRST_DRAFT') {
-    //   await createNewRowData({
-    //     creatorInfo: {
-    //       name: submission.user.name,
-    //       username: submission.user.creator?.instagram,
-    //       postingDate: dayjs().format('dd MMM'),
-    //       caption: caption,
-    //       videoLink: `https://storage.googleapis.com/${process.env.BUCKET_NAME as string}/${submission?.submissionType.type}/${`${submission?.id}_draft.mp4`}?v=${dayjs().format()}`,
-    //     } as any,
-    //     sheetId: parseInt(submission.campaign.sheetId),
-    //   });
-    // }
+    if (submission.campaign.spreadSheetURL) {
+      const spreadSheetId = submission.campaign.spreadSheetURL.split('/d/')[1].split('/')[0];
+
+      await createNewRowData({
+        creatorInfo: {
+          name: submission.user.name,
+          username: submission.user.creator?.instagram,
+          postingDate: dayjs().format('LL'),
+          caption: caption,
+          videoLink: `https://storage.googleapis.com/${process.env.BUCKET_NAME as string}/${submission?.submissionType.type}/${`${submission?.id}_draft.mp4`}?v=${dayjs().format()}`,
+        } as any,
+        spreadSheetId: spreadSheetId,
+      });
+    }
 
     return res.status(200).json({ message: 'Video start processing' });
   } catch (error) {
@@ -530,6 +532,7 @@ export const adminManageDraft = async (req: Request, res: Response) => {
           },
           campaign: {
             include: {
+              campaignBrief: true,
               campaignAdmin: {
                 include: {
                   admin: {
@@ -564,6 +567,7 @@ export const adminManageDraft = async (req: Request, res: Response) => {
           submission.campaign.name,
           submission.user.name ?? 'Creator',
           submission.campaignId,
+          submission.campaign.campaignBrief.images[0],
         );
       } else if (
         (submission.submissionType.type === 'FINAL_DRAFT' && submission.status === 'APPROVED', submission.campaignId)
@@ -574,6 +578,7 @@ export const adminManageDraft = async (req: Request, res: Response) => {
           submission.campaign.name,
           submission.user.name ?? 'Creator',
           submission.campaignId,
+          submission.campaign.campaignBrief.images[0],
         );
       } else {
         // Fallback email if the draft is not approved
@@ -631,6 +636,15 @@ export const adminManageDraft = async (req: Request, res: Response) => {
           },
           include: {
             task: true,
+            campaign: {
+              select: {
+                campaignBrief: {
+                  select: {
+                    images: true,
+                  },
+                },
+              },
+            },
           },
         });
 
@@ -661,12 +675,15 @@ export const adminManageDraft = async (req: Request, res: Response) => {
           },
         });
 
+        const images: any = posting.campaign.campaignBrief?.images;
+
         // Sending posting schedule
         postingSchedule(
           submission.user.email,
           submission.campaign.name,
           submission.user.name ?? 'Creator',
           submission.campaign.id,
+          images[0],
         );
       }
 
@@ -886,6 +903,7 @@ export const adminManagePosting = async (req: Request, res: Response) => {
         },
         campaign: {
           include: {
+            campaignBrief: true,
             campaignAdmin: {
               include: {
                 admin: {
@@ -993,8 +1011,10 @@ export const adminManagePosting = async (req: Request, res: Response) => {
 
       io.to(clients.get(submission.userId)).emit('notification', Invoicenotification);
 
+      const images: any = submission?.campaign?.campaignBrief?.images;
+
       //Email
-      creatorInvoice(submission.user.email, submission.campaign.name, submission.user.name ?? 'Creator');
+      creatorInvoice(submission.user.email, submission.campaign.name, submission.user.name ?? 'Creator', images[0]);
 
       return res.status(200).json({ message: 'Successfully submitted' });
     }
