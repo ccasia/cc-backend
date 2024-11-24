@@ -57,6 +57,7 @@ export const totalUnreadMessagesService = async (userId: string) => {
   }
 };
 
+
 // export const handleSendMessage = async (message: any, io: any) => {
 //   const { senderId, threadId, content, role, name, photoURL } = message;
 
@@ -116,18 +117,18 @@ export const totalUnreadMessagesService = async (userId: string) => {
 // };
 
 
-export const handleFetchMessagesFromThread = async (threadId: any) => {
-  try {
-    // Fetch old messages using the service
-    const oldMessages = await fetchMessagesFromThread(threadId);
-    return oldMessages;
-  } catch (error) {
-    console.error('Error fetching messages:', error);
-    throw new Error('Failed to fetch messages');
-  }
-};
+// export const handleFetchMessagesFromThread = async (threadId: any) => {
+//   try {
+//     // Fetch old messages using the service
+//     const oldMessages = await fetchMessagesFromThread(threadId);
+//     return oldMessages;
+//   } catch (error) {
+//     console.error('Error fetching messages:', error);
+//     throw new Error('Failed to fetch messages');
+//   }
+// };
 
-// Function to get all messages from a thread
+// // Function to get all messages from a thread
 export const fetchMessagesFromThread = async (threadId: string) => {
   try {
     const messages = await prisma.message.findMany({

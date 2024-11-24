@@ -282,8 +282,34 @@ export const sendMessageInThread = async (req: Request, res: Response) => {
           unreadMessages: true,
         },
       });
+
+      const unreadMessageData = data.UserThread
+        .filter((thread) => thread.user.id !== userId)
+        .map((thread) => ({
+          userId: thread.user.id,
+          threadId,
+          messageId: message.id,
+        }));
+
+      console.log("Data to create for unread messages:", unreadMessageData);
+
+      if (unreadMessageData.length > 0) {
+        try {
+          await tx.unreadMessage.createMany({
+            data: unreadMessageData,
+          });
+          console.log("Unread messages created successfully");
+        } catch (error) {
+          console.error("Error creating unread messages:", error);
+        }
+      }
+
+      console.log ( " Unread data", unreadMessageData)
+
       return { data, message };
     });
+
+   
 
     io.to(threadId).emit('message', {
       senderId: userId,
@@ -353,12 +379,19 @@ export const sendMessageInThread = async (req: Request, res: Response) => {
       },
     });
 
+    console.log("UnreadMessage aggregation result:", unreadMessages);
+
     const unreadCountMap = new Map(unreadMessages.map((count) => [count.userId, count._count]));
     const senderInformation = datas.data.UserThread.find((elem) => elem.userId === userId);
 
     for (const thread of datas.data.UserThread.filter((elem) => elem.userId !== userId)) {
       const count = unreadCountMap.get(thread.user.id) || 0;
 
+      console.log('Emitting messageCount:', {
+        count,
+        name: senderInformation?.user.name,
+      });
+      
       io.to(clients.get(thread.user.id)).emit('messageCount', { count, name: senderInformation?.user.name });
     }
 
@@ -439,6 +472,7 @@ export const getTotalUnreadMessageCount = async (req: Request, res: Response) =>
     res.status(500).json({ error: 'An error occurred while fetching total unread message count.' });
   }
 };
+
 
 // Mark a message as read
 export const markMessagesAsSeen = async (req: Request, res: Response) => {

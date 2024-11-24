@@ -11,4 +11,5 @@ router.patch('/:id/mark-read', markAsRead);
 // router.post('/approveOrReject', approveOrReject);
 // router.get('/:id/notification', getAllNotification);
 
+
 export default router;
