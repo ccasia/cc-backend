@@ -23,6 +23,7 @@ import dotenv from 'dotenv';
 import '@services/google_sheets/sheets';
 import { accessGoogleSheetAPI, createNewRowData, createNewSpreadSheet } from '@services/google_sheets/sheets';
 import { status } from '@dotenvx/dotenvx';
+import path from 'path';
 
 dotenv.config();
 
@@ -36,6 +37,7 @@ export const io = new Server(server, {
   },
 });
 
+app.use('/public', express.static('public'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
