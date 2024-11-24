@@ -177,22 +177,22 @@ export const creatorVerificationEmail = (email: string, confirmationToken: strin
           <tr style="text-align: center;">
               <td align="center" style="padding: 0 10px;">
                   <a href="https://www.instagram.com/cultcreativeasia/" target="_blank" style="text-decoration: none;">
-                      <img src="${process.env.BASE_EMAIL_URL}/api/public/icon/insta.png" alt="Instagram" style="width: 25px; height: auto;">
+                      <img src="${process.env.BASE_EMAIL_URL}/api/icon/insta.png" alt="Instagram" style="width: 25px; height: auto;">
                   </a>
               </td>
               <td align="center" style="padding: 0 10px;">
                   <a href="https://www.youtube.com/@cultcreativeapp" target="_blank" style="text-decoration: none;">
-                      <img src="${process.env.BASE_EMAIL_URL}/api/public/icon/youtube.png" alt="YouTube" style="width: 25px; height: auto;">
+                      <img src="${process.env.BASE_EMAIL_URL}/api/icon/youtube.png" alt="YouTube" style="width: 25px; height: auto;">
                   </a>
               </td>
               <td align="center" style="padding: 0 10px;">
                   <a href="https://www.facebook.com/CultCreativeAsia/" target="_blank" style="text-decoration: none;">
-                      <img src="${process.env.BASE_EMAIL_URL}/api/public/icon/facebook.png" alt="Facebook" style="width: 25px; height: auto;">
+                      <img src="${process.env.BASE_EMAIL_URL}/api/icon/facebook.png" alt="Facebook" style="width: 25px; height: auto;">
                   </a>
               </td>
               <td align="center" style="padding: 0 10px;">
                   <a href="https://www.cultcreative.asia" target="_blank" style="text-decoration: none;">
-                      <img src="${process.env.BASE_EMAIL_URL}/api/public/icon/browser.png" alt="Website" style="width: 25px; height: auto;">
+                      <img src="${process.env.BASE_EMAIL_URL}/api/icon/browser.png" alt="Website" style="width: 25px; height: auto;">
                   </a>
               </td>
           </tr>
@@ -200,7 +200,7 @@ export const creatorVerificationEmail = (email: string, confirmationToken: strin
 
       <div class="footer" style="font-size: 12px; color: #686464; text-align: left; margin-top: 40px; padding: 0 20px; position: relative;">
           <a href="https://www.cultcreative.asia" target="_blank" style="text-decoration: none;">
-              <img src="${process.env.BASE_EMAIL_URL}/api/public/icon/logo.png" alt="Footer Logo" style="max-width: 60px; display: block;">
+              <img src="${process.env.BASE_EMAIL_URL}/api/icon/logo.png" alt="Footer Logo" style="max-width: 60px; display: block;">
           </a>
           <p id="company-reg" style="color: #686464; font-size: 11px; padding-top: 0px;">202001018157 (1374477-W) <br> 2024 &copy; Cult Creative. All Rights Reserved.</p>
           <p>If you have any questions, please email us at <a href="mailto:hello@cultcreative.asia" style="color: #0874dc; font-weight: bold; font-size: 12px; text-decoration: none;">hello@cultcreative.asia</a> or send us a text on <a href="https://api.whatsapp.com/send/?phone=60162678757&text&type=phone_number&app_absent=0" style="color: #0874dc; font-weight: bold; font-size: 12px; text-decoration: none;">Whatsapp at +60162678757</a>.</p>
