@@ -49,8 +49,6 @@ model User {
   userNotification   UserNotification[]
   UserThread         UserThread[]
   threads            Thread[]             @relation("UserThreads")
-  resetPasswordToken ResetPasswordToken?
-  invoice            Invoice[]            @relation("CreatedBy")
 }
 
 model ResetPasswordToken {
@@ -343,10 +341,8 @@ model Campaign {
   shortlisted                   ShortListedCreator[]
   submission                    Submission[]
   thread                        Thread?
-  spreadSheetURL                String?
-  agreementTemplate             AgreementTemplate?              @relation(fields: [agreementTemplateId], references: [id])
-  agreementTemplateId           String?
-  rawFootage                    Boolean                         @default(false)
+
+  rawFootage Boolean @default(false)
 }
 
 model BookMarkCampaign {
@@ -775,7 +771,6 @@ model AgreementTemplate {
   userId        String?
   user          User?      @relation(fields: [userId], references: [id])
   isDefault     Boolean?   @default(false)
-  user          User?      @relation(fields: [userId], references: [id])
   campaign      Campaign[]
 }
 
