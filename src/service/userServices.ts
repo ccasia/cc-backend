@@ -253,7 +253,7 @@ export const createAdminForm = async (data: AdminForm) => {
     const user = await prisma.user.create({
       data: {
         name,
-        email,
+        email: email.toLowerCase(),
         phoneNumber,
         password: '',
         country,
@@ -365,7 +365,7 @@ export const createNewAdmin = async (email: string, role: String) => {
 export const findUserByEmail = async (email: string) => {
   const user = await prisma.user.findUnique({
     where: {
-      email: email,
+      email: email.toLowerCase(),
     },
   });
   return user;
