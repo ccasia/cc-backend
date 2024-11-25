@@ -23,6 +23,7 @@ import dotenv from 'dotenv';
 import '@services/google_sheets/sheets';
 import { accessGoogleSheetAPI, createNewRowData, createNewSpreadSheet } from '@services/google_sheets/sheets';
 import { status } from '@dotenvx/dotenvx';
+import path from 'path';
 
 dotenv.config();
 
@@ -36,6 +37,7 @@ export const io = new Server(server, {
   },
 });
 
+app.use(express.static('public'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
@@ -72,15 +74,6 @@ declare module 'express-session' {
     xeroActiveTenants: any;
   }
 }
-
-// you have to create a table in PostgreSQL to store the session
-// the following command will create the table in PostgreSQL
-//  you have to key in the command on each build
-//  CREATE TABLE session (
-//   sid VARCHAR(255) PRIMARY KEY NOT NULL,
-//   sess JSON NOT NULL,
-//   expire TIMESTAMP WITH TIME ZONE NOT NULL
-// );
 
 // store session in PostgreSQL
 const pgSession = connectPgSimple(session);

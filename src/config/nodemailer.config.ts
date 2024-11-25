@@ -102,79 +102,112 @@ export const creatorVerificationEmail = (email: string, confirmationToken: strin
       subject: 'Your Cult Creative Sign in Link',
       html: `
       <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Email Template</title>
-      <style>
-        /* Reset styles */
-        body, h1, p {
-          margin: 0;
-          padding: 0;
-        }
-    
-        body {
-          font-family: Arial, sans-serif;
-          background-color: #f4f4f4;
-          padding: 20px;
-        }
-    
-        .container {
-          max-width: 300px;
-          margin: 0 auto;
-          background-color: #ffffff;
-          padding: 20px;
-          border-radius: 10px;
-          box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-        }
-    
-        h1 {
-          color: #333333;
-          margin-bottom: 20px;
-        }
-    
-        p {
-          color: #666666;
-          margin-bottom: 20px;
-          text-align:center;
-          font-size: 13px;
-        }
-    
-        .button {
-          display: inline-block;
-          padding: 10px 20px;
-          background-color: #000000;
-          text-decoration: none;
-          border-radius: 5px;
-          font-size: 13px;
-          width: 80%;
-        }
-        
-        .title{
-            font-weight: bold;
-            text-align: center;
-        }
-        
-        .btn-container{
-            text-align: center;
-            margin: 20px 0;
-            width: 100%;
-        }
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Email Template</title>
+    <style>
+      /* Reset styles */
+      body, h1, p {
+        margin: 0;
+        padding: 0;
+      }
+  
+      body {
+        font-family: Arial, sans-serif;
+        background-color: #f4f4f4;
+        padding: 20px;
+      }
+  
+      .container {
+        max-width: 300px;
+        margin: 0 auto;
+        background-color: #ffffff;
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+      }
+  
+      h1 {
+        color: #333333;
+        margin-bottom: 20px;
+      }
+  
+      p {
+        color: #666666;
+        margin-bottom: 20px;
+        text-align:center;
+        font-size: 13px;
+      }
+  
+      .button {
+        display: inline-block;
+        padding: 10px 20px;
+        background-color: #000000;
+        text-decoration: none;
+        border-radius: 5px;
+        font-size: 13px;
+        width: 80%;
+      }
+      
+      .title{
+          font-weight: bold;
+          text-align: center;
+      }
+      
+      .btn-container{
+          text-align: center;
+          margin: 20px 0;
+          width: 100%;
+      }
 
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <h2 class="title">Cult Creative</h1>
-        <hr />
-        <p>To use Cult Creative Platform, click the verification button. This helps keep your account secure.</p>
-        <div class="btn-container">
-        <a href="${process.env.BASE_EMAIL_URL}/auth/verify/${confirmationToken}" class="button" style="color: white;">Verify my account</a>
-        </div>        
-        <p>You're receiving this email because you have an account in Cult Creative Platform. If you are not sure why you're receiving this, please contact us by replying to this email.</p>
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h2 class="title">Cult Creative</h1>
+      <hr />
+      <p>To use Cult Creative Platform, click the verification button. This helps keep your account secure.</p>
+      <div class="btn-container">
+      <a href="${process.env.BASE_EMAIL_URL}/auth/verify/${confirmationToken}" class="button" style="color: white;">Verify my account</a>
+      </div>        
+      <p>You're receiving this email because you have an account in Cult Creative Platform. If you are not sure why you're receiving this, please contact us by replying to this email.</p>
+      <p id="slogan" style="color: #686464; font-size: 12px; padding-top: 0px; display: block; text-align: center; font-weight: bold; margin-bottom: 20px;">Where Brands and Creatives Co-create</p>
+
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="margin-bottom: 20px;">
+          <tr style="text-align: center;">
+              <td align="center" style="padding: 0 10px;">
+                  <a href="https://www.instagram.com/cultcreativeasia/" target="_blank" style="text-decoration: none;">
+                      <img src="https://drive.google.com/uc?id=1WTjbjcjJ7JW_gC5rL426nLs_EmZi98Qp" alt="Instagram" style="width: 25px; height: auto;">
+                  </a>
+              </td>
+              <td align="center" style="padding: 0 10px;">
+                  <a href="https://www.youtube.com/@cultcreativeapp" target="_blank" style="text-decoration: none;">
+                      <img src="https://drive.google.com/uc?id=18P3sGw7JTbeHIZVYA1XB_psp9bZvngHr" alt="YouTube" style="width: 25px; height: auto;">
+                  </a>
+              </td>
+              <td align="center" style="padding: 0 10px;">
+                  <a href="https://www.facebook.com/CultCreativeAsia/" target="_blank" style="text-decoration: none;">
+                      <img src="https://drive.google.com/uc?id=15qY40yjw3Jeh5BoKUkjj6730RsolyK9E" alt="Facebook" style="width: 25px; height: auto;">
+                  </a>
+              </td>
+              <td align="center" style="padding: 0 10px;">
+                  <a href="https://www.cultcreative.asia" target="_blank" style="text-decoration: none;">
+                      <img src="https://drive.google.com/uc?id=1yt8fs0K1om0wsHD8LWFFysovkeIMgmg2" alt="Website" style="width: 25px; height: auto;">
+                  </a>
+              </td>
+          </tr>
+      </table>
+
+      <div class="footer" style="font-size: 12px; color: #686464; text-align: left; margin-top: 40px; padding: 0 20px; position: relative;">
+          <a href="https://www.cultcreative.asia" target="_blank" style="text-decoration: none;">
+              <img src="https://drive.google.com/uc?id=13ICuo00aWLG8XUikZ_6vSP7ej_CFQdjQ" alt="Footer Logo" style="max-width: 60px; display: block;">
+          </a>
+          <p id="company-reg" style="color: #686464; font-size: 11px; padding-top: 0px;">202001018157 (1374477-W) <br> 2024 &copy; Cult Creative. All Rights Reserved.</p>
+          <p>If you have any questions, please email us at <a href="mailto:hello@cultcreative.asia" style="color: #0874dc; font-weight: bold; font-size: 12px; text-decoration: none;">hello@cultcreative.asia</a> or send us a text on <a href="https://api.whatsapp.com/send/?phone=60162678757&text&type=phone_number&app_absent=0" style="color: #0874dc; font-weight: bold; font-size: 12px; text-decoration: none;">Whatsapp at +60162678757</a>.</p>
       </div>
-    </body>
-    </html>
-    
+    </div>
+  </body>
+  </html>
           `,
     })
     .catch((err) => {
@@ -277,9 +310,9 @@ export const firstDraftDue = (email: string, campaignName: string, creatorName: 
       <div class="header" style="display: flex; align-items: center; margin-bottom: 30px;">
             <img src="https://drive.google.com/uc?id=13ICuo00aWLG8XUikZ_6vSP7ej_CFQdjQ" alt="Company Logo" class="logo" style="max-width: 150px; margin-right: 30px;">
       </div>
-        <h2 style="color: #686464; font-size: 24px; font-weight: bold; margin-top: 40px; margin-bottom: 40px;">First Draft for ${campaignName} Due Soon</h2>
+        <h2 style="color: #686464; font-size: 24px; font-weight: bold; margin-top: 40px; margin-bottom: 40px;">We Can't Wait To See Your Masterpiece 🎨</h2>
         <img src="https://drive.google.com/uc?id=1lpDBTeil5asnkSW7B7T7_77EFpTQJcva" alt="Campaign Image" class="campaign-image" style="display: block; width: 100%; max-height: 300px; object-fit: cover; margin: 30px 0;">
-        <p style="color: #686464; text-align: left; font-size: 14px; line-height: 1.6; font-family: 'Roboto', sans-serif;">Hi ${creatorName}, Reminder: your first draft is due soon!</p>
+        <p style="color: #686464; text-align: left; font-size: 14px; line-height: 1.6; font-family: 'Roboto', sans-serif;">Hey ${creatorName}, Your first draft is due soon—don't forget to submit it on the platform!</p>
         <a href="${process.env.BASE_EMAIL_URL}/dashboard/campaign/VUquQR/HJUboKDBwJi71KQ==/manage/detail/${campaignId}" class="button" style="display: inline-block; padding: 15px 30px; background-color: #0874dc; text-decoration: none; border-radius: 6px; font-size: 16px; color: #ffffff; text-align: center; margin: 30px auto; display: block; font-weight: bold; transition: background-color 0.3s;">View Campaign Details</a>
         <div class="separator" style="border-top: 1px solid #ddd; margin: 35px 0;"></div>
         <p id="slogan" style="color: #686464; font-size: 12px; padding-top: 0px; display: block; text-align: center; font-weight: bold; margin-bottom: 20px;">Where Brands and Creatives Co-create</p>
@@ -567,9 +600,9 @@ export const postingSchedule = (
       <div class="header" style="display: flex; align-items: center; margin-bottom: 30px;">
             <img src="https://drive.google.com/uc?id=13ICuo00aWLG8XUikZ_6vSP7ej_CFQdjQ" alt="Company Logo" class="logo" style="max-width: 150px; margin-right: 30px;">
       </div>
-        <h2 style="color: #686464; font-size: 24px; font-weight: bold; margin-top: 40px; margin-bottom: 40px;">New Posting Schedule for ${campaignName}</h2>
+        <h2 style="color: #686464; font-size: 24px; font-weight: bold; margin-top: 40px; margin-bottom: 40px;">Are You Ready To Post? 👀</h2>
         <img src="${campaignImage}" alt="Campaign Image" class="campaign-image" style="display: block; width: 100%; max-height: 300px; object-fit: cover; margin: 30px 0;">
-        <p style="color: #686464; text-align: left; font-size: 14px; line-height: 1.6; font-family: 'Roboto', sans-serif;">Hi ${creatorName}, The posting schedule is now available.</p>
+        <p style="color: #686464; text-align: left; font-size: 14px; line-height: 1.6; font-family: 'Roboto', sans-serif;">Hey ${creatorName}, Your posting schedule is now available. Check it out on the platform!</p>
         <a href="${process.env.BASE_EMAIL_URL}/dashboard/campaign/VUquQR/HJUboKDBwJi71KQ==/manage/detail/${campaignId}" class="button" style="display: inline-block; padding: 15px 30px; background-color: #0874dc; text-decoration: none; border-radius: 6px; font-size: 16px; color: #ffffff; text-align: center; margin: 30px auto; display: block; font-weight: bold; transition: background-color 0.3s;">View Campaign Details</a>
         <div class="separator" style="border-top: 1px solid #ddd; margin: 35px 0;"></div>
         <p id="slogan" style="color: #686464; font-size: 12px; padding-top: 0px; display: block; text-align: center; font-weight: bold; margin-bottom: 20px;">Where Brands and Creatives Co-create</p>

@@ -186,7 +186,7 @@ export const registerCreator = async (req: Request, res: Response) => {
     if (response.data.success) {
       const search = await prisma.user.findFirst({
         where: {
-          email,
+          email: email.toLowerCase(),
         },
       });
 
@@ -198,7 +198,7 @@ export const registerCreator = async (req: Request, res: Response) => {
 
       const user = await prisma.user.create({
         data: {
-          email,
+          email: email.toLowerCase(),
           password: hashedPassword,
           role: 'creator',
           name: name,
@@ -672,7 +672,7 @@ export const login = async (req: Request, res: Response) => {
   try {
     const data = await prisma.user.findFirst({
       where: {
-        email,
+        email: email.toLowerCase(),
       },
       include: {
         paymentForm: true,
@@ -693,7 +693,6 @@ export const login = async (req: Request, res: Response) => {
         },
         creator: {
           include: {
-            // industries: true,
             interests: true,
           },
         },

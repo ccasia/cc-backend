@@ -51,7 +51,6 @@ model User {
   threads            Thread[]             @relation("UserThreads")
   resetPasswordToken ResetPasswordToken?
   invoice            Invoice[]            @relation("CreatedBy")
-  rawFootage         Boolean              @default(false)
 }
 
 model ResetPasswordToken {
@@ -344,6 +343,10 @@ model Campaign {
   shortlisted                   ShortListedCreator[]
   submission                    Submission[]
   thread                        Thread?
+  spreadSheetURL                String?
+  agreementTemplate             AgreementTemplate?              @relation(fields: [agreementTemplateId], references: [id])
+  agreementTemplateId           String?
+  rawFootage                    Boolean                         @default(false)
 }
 
 model BookMarkCampaign {
