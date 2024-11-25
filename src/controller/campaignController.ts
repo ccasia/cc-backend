@@ -626,7 +626,11 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
               campaignTaskAdmin: true,
             },
           },
-          logistic: true,
+          logistic: {
+            include: {
+              user: true,
+            },
+          },
           creatorAgreement: true,
         },
       });

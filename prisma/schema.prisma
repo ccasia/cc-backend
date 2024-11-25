@@ -19,10 +19,10 @@ model User {
   updatedAt          DateTime             @updatedAt
   status             Status               @default(pending)
   eventId            String?
-  xeroRefreshToken   String?
-  updateRefershToken DateTime?
   role               RoleEnum
   photoBackgroundURL String?              @db.VarChar(255)
+  updateRefershToken DateTime?
+  xeroRefreshToken   String?
   admin              Admin?
   agreementTemplate  AgreementTemplate[]
   Board              Board?
@@ -33,11 +33,13 @@ model User {
   creatorAgreement   CreatorAgreement[]
   feedback           Feedback[]
   finance            Finance?
+  invoice            Invoice[]            @relation("CreatedBy")
   logistic           Logistic[]
   sentMessages       Message[]            @relation("UserMessages")
+  notifications      Notification[]
   paymentForm        PaymentForm?
   pitch              Pitch[]
-  notifications      Notification[]
+  resetPasswordToken ResetPasswordToken?
   seenMessages       SeenMessage[]
   shortlisted        ShortListedCreator[]
   submission         Submission[]
@@ -55,9 +57,9 @@ model ResetPasswordToken {
   id        String   @id @unique @default(cuid())
   token     String?
   userId    String?  @unique
-  user      User?    @relation(references: [id], fields: [userId])
   used      Boolean  @default(false)
   createdAt DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id])
 }
 
 model Admin {
@@ -99,19 +101,19 @@ model Creator {
   birthDate              DateTime?
   instagram              String?     @db.VarChar(100)
   tiktok                 String?     @db.VarChar(100)
-  xeroContactId          String?
   employment             Employment? @default(others)
   languages              Json?
   userId                 String      @unique
-  user                   User        @relation(fields: [userId], references: [id])
+  socialMediaData        Json?
+  isFormCompleted        Boolean?
+  socialMediaUpdateCount Json?
+  allowToChange          Boolean     @default(false)
   industries             Json?
+  xeroContactId          String?
+  user                   User        @relation(fields: [userId], references: [id])
   interests              Interest[]
   invoices               Invoice[]
   mediaKit               MediaKit?
-  allowToChange          Boolean     @default(false)
-  socialMediaUpdateCount Json?
-  socialMediaData        Json?
-  isFormCompleted        Boolean?
 }
 
 model MediaKit {
@@ -130,13 +132,13 @@ model Message {
   createdAt      DateTime        @default(now())
   threadId       String?
   senderId       String?
+  file           String?
+  fileType       String?
   sender         User?           @relation("UserMessages", fields: [senderId], references: [id])
   thread         Thread?         @relation(fields: [threadId], references: [id])
   seenMessages   SeenMessage[]
   threadLatest   Thread?         @relation("LatestMessage")
   unreadMessages UnreadMessage[]
-  file           String?
-  fileType       String?
 }
 
 model UnreadMessage {
@@ -318,8 +320,11 @@ model Campaign {
   brandTone                     String?
   productName                   String?
   eventId                       String?
-  campaignType                  String?                         @default("normal") //normal | ugc | seeded
+  agreementTemplateId           String?
+  spreadSheetURL                String?
+  campaignType                  String?                         @default("normal")
   bookMarkCampaign              BookMarkCampaign[]
+  agreementTemplate             AgreementTemplate?              @relation(fields: [agreementTemplateId], references: [id])
   brand                         Brand?                          @relation(fields: [brandId], references: [id])
   company                       Company?                        @relation(fields: [companyId], references: [id])
   event                         Event?                          @relation(fields: [eventId], references: [id])
@@ -384,8 +389,6 @@ model CampaignBrief {
   title               String
   objectives          String?
   images              Json?
-  otherAttachments    String[]
-  referencesLinks     String[]
   agreementFrom       String?
   startDate           DateTime
   endDate             DateTime
@@ -399,6 +402,8 @@ model CampaignBrief {
   updatedAt           DateTime @updatedAt
   createdAt           DateTime @default(now())
   campaignId          String   @unique
+  otherAttachments    String[]
+  referencesLinks     String[]
   campaign            Campaign @relation(fields: [campaignId], references: [id])
 }
 
@@ -545,19 +550,17 @@ model Notification {
   createdAt        DateTime           @default(now())
   entity           Entity?
   campaignId       String?
-  creatorId        String?
-  invoiceId        String?
-  threadId         String?
   pitchId          String?
   submissionId     String?
+  creatorId        String?
+  userId           String?
+  threadId         String?
+  invoiceId        String?
   campaign         Campaign?          @relation(fields: [campaignId], references: [id])
   pitch            Pitch?             @relation(fields: [pitchId], references: [id])
-  // creator          User?              @relation("creator", fields: [creatorId], references: [id])
   submission       Submission?        @relation(fields: [submissionId], references: [id])
+  User             User?              @relation(fields: [userId], references: [id])
   userNotification UserNotification[]
-
-  User   User?   @relation(fields: [userId], references: [id])
-  userId String?
 }
 
 model UserNotification {
@@ -659,10 +662,10 @@ model Invoice {
   dueDate       DateTime
   creatorId     String
   campaignId    String
-  campaign      Campaign      @relation(fields: [campaignId], references: [id])
-  user          User?         @relation("CreatedBy", fields: [adminId], references: [id])
-  creator       Creator       @relation(fields: [creatorId], references: [userId])
   adminId       String?
+  user          User?         @relation("CreatedBy", fields: [adminId], references: [id])
+  campaign      Campaign      @relation(fields: [campaignId], references: [id])
+  creator       Creator       @relation(fields: [creatorId], references: [userId])
 }
 
 model Logistic {
@@ -772,26 +775,9 @@ model AgreementTemplate {
   userId        String?
   user          User?      @relation(fields: [userId], references: [id])
   isDefault     Boolean?   @default(false)
+  user          User?      @relation(fields: [userId], references: [id])
   campaign      Campaign[]
 }
-
-// model campaignAgreement {
-//   campaignId          String
-//   agreementTemplateId String
-//   campaign            Campaign[]
-//   agreementTemplate   AgreementTemplate[]
-
-//   @@id([campaignId, agreementTemplateId])
-// }
-
-// model AdminSignature {
-//   id        String   @id @unique @default(cuid())
-//   url       String
-//   createdAt DateTime @default(now())
-//   updatedAt DateTime @updatedAt
-//   userId    String?  @unique
-//   user      User?    @relation(fields: [userId], references: [id])
-// }
 
 enum LogisticStatus {
   Product_is_being_packaged
@@ -938,8 +924,6 @@ enum Priority {
 
 enum Entity {
   Campaign
-  Live
-  Status
   User
   Pitch
   Shortlist
@@ -952,6 +936,8 @@ enum Entity {
   Metrcis
   Agreement
   Chat
+  Live
+  Status
 }
 
 enum SubmissionEnum {
