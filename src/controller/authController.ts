@@ -672,7 +672,7 @@ export const login = async (req: Request, res: Response) => {
   try {
     const data = await prisma.user.findFirst({
       where: {
-        email: email,
+        email: email.toLowerCase(),
       },
       include: {
         paymentForm: true,
