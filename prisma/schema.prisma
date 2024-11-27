@@ -232,7 +232,7 @@ model Company {
   logo                String?
   about               String?
   objectives          Json?
-  registration_number String?    @unique
+  registration_number String?    @db.VarChar(150)
   createdAt           DateTime   @default(now())
   updatedAt           DateTime   @updatedAt
   brand               Brand[]
