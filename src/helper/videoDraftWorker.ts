@@ -161,7 +161,7 @@ const processVideo = async (
     const channel = await conn.createChannel();
     await channel.assertQueue('draft', { durable: true });
     await channel.purgeQueue('draft');
-    await channel.prefetch(1);
+    // await channel.prefetch(1);
     console.log('Consumer 1 Starting...');
 
     await channel.consume('draft', async (msg) => {
