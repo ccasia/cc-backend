@@ -681,7 +681,6 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
                 include: {
                   creator: {
                     include: {
-                      // industries: true,
                       interests: true,
                     },
                   },
@@ -720,17 +719,122 @@ export const getCampaignById = async (req: Request, res: Response) => {
   const { id } = req.params;
 
   try {
-    const campaign = await prisma.campaign.findUnique({
+    // const campaign = await prisma.campaign.findUnique({
+    //   where: {
+    //     id: id,
+    //   },
+    //   include: {
+    //     brand: true,
+    //     company: true,
+    //     campaignTimeline: true,
+    //     campaignBrief: true,
+    //     campaignRequirement: true,
+    //     agreementTemplate: true,
+    //     pitch: {
+    //       include: {
+    //         user: {
+    //           include: {
+    //             creator: {
+    //               include: {
+    //                 interests: true,
+    //               },
+    //             },
+    //           },
+    //         },
+    //       },
+    //     },
+    //     campaignAdmin: {
+    //       select: {
+    //         admin: {
+    //           select: {
+    //             role: true,
+    //             user: {
+    //               select: {
+    //                 id: true,
+    //                 name: true,
+    //                 role: true,
+    //               },
+    //             },
+    //           },
+    //         },
+    //       },
+    //     },
+    //     shortlisted: {
+    //       select: {
+    //         user: {
+    //           include: {
+    //             creator: true,
+    //           },
+    //         },
+    //         userId: true,
+    //       },
+    //     },
+    // campaignSubmissionRequirement: {
+    //   include: {
+    //     submissionType: {
+    //       select: {
+    //         type: true,
+    //       },
+    //     },
+    //   },
+    // },
+    //     submission: {
+    //       include: {
+    //         submissionType: true,
+    //         dependencies: true,
+    //         dependentOn: true,
+    //       },
+    //     },
+    //     logistic: true,
+    //   },
+    // });
+
+    const campaign = await prisma.campaign.findFirst({
       where: {
         id: id,
       },
       include: {
+        agreementTemplate: true,
+        submission: {
+          include: {
+            submissionType: true,
+            dependencies: true,
+            dependentOn: true,
+          },
+        },
         brand: true,
         company: true,
         campaignTimeline: true,
         campaignBrief: true,
         campaignRequirement: true,
-        agreementTemplate: true,
+        campaignLogs: {
+          include: {
+            admin: true,
+          },
+        },
+        campaignAdmin: {
+          include: {
+            admin: {
+              include: {
+                role: true,
+                user: {
+                  include: {
+                    agreementTemplate: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+        campaignSubmissionRequirement: {
+          include: {
+            submissionType: {
+              select: {
+                type: true,
+              },
+            },
+          },
+        },
         pitch: {
           include: {
             user: {
@@ -738,22 +842,6 @@ export const getCampaignById = async (req: Request, res: Response) => {
                 creator: {
                   include: {
                     interests: true,
-                  },
-                },
-              },
-            },
-          },
-        },
-        campaignAdmin: {
-          select: {
-            admin: {
-              select: {
-                role: true,
-                user: {
-                  select: {
-                    id: true,
-                    name: true,
-                    role: true,
                   },
                 },
               },
@@ -770,23 +858,14 @@ export const getCampaignById = async (req: Request, res: Response) => {
             userId: true,
           },
         },
-        campaignSubmissionRequirement: {
+        campaignTasks: {
           include: {
-            submissionType: {
-              select: {
-                type: true,
-              },
-            },
-          },
-        },
-        submission: {
-          include: {
-            submissionType: true,
-            dependencies: true,
-            dependentOn: true,
+            campaignTaskAdmin: true,
           },
         },
         logistic: true,
+
+        creatorAgreement: true,
       },
     });
     return res.status(200).json(campaign);
@@ -3345,6 +3424,36 @@ export const editCampaignReference = async (req: Request, res: Response) => {
     });
 
     return res.status(200).json({ message: 'Update Success.' });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const linkNewAgreement = async (req: Request, res: Response) => {
+  const { template, campaignId } = req.body;
+  try {
+    const campaign = await prisma.campaign.findUnique({
+      where: {
+        id: campaignId,
+      },
+    });
+
+    if (!campaign) {
+      return res.status(404).json({ message: 'Campaign not found.' });
+    }
+
+    await prisma.campaign.update({
+      where: {
+        id: campaign.id,
+      },
+      data: {
+        agreementTemplate: {
+          connect: { id: template?.id },
+        },
+      },
+    });
+
+    return res.status(200).json({ message: 'Successfully linked new agreeement' });
   } catch (error) {
     return res.status(400).json(error);
   }

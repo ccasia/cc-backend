@@ -96,3 +96,11 @@ export const createNewTemplate = async (req: Request, res: Response) => {
     return res.status(400).json(error);
   }
 };
+
+// export const getTemplateByUserId = async (req: Request, res: Response) => {
+//   const { userId } = req.params;
+//   try {
+//   } catch (error) {
+//     return res.status(400).json(error);
+//   }
+// };

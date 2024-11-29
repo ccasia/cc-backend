@@ -40,6 +40,7 @@ import {
   editCampaignAttachments,
   createNewSpreadSheets,
   editCampaignReference,
+  linkNewAgreement,
 } from '@controllers/campaignController';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 
@@ -70,7 +71,7 @@ router.get('/getClientByCampID/:id', getCampaignById);
 // router.get('/getCampaignByIdInvoice/:id' , getCampaignById);
 router.get('/getAllActiveCampaign', getAllActiveCampaign);
 router.get('/getAllCampaignsFinance', getAllCampaignsFinance);
-router.get('/getCampaignById/:id', isSuperAdmin, getCampaignById);
+// router.get('/getCampaignById/:id', isSuperAdmin, getCampaignById);
 router.get('/getAllActiveCampaign', getAllActiveCampaign);
 router.get('/matchCampaignWithCreator', isLoggedIn, matchCampaignWithCreator);
 router.get('/pitch/:id', getPitchById);
@@ -119,6 +120,7 @@ router.patch('/receiveLogistic', isLoggedIn, receiveLogistic);
 router.patch('/updateAmountAgreement', isLoggedIn, isSuperAdmin, updateAmountAgreement);
 router.patch('/sendAgreement', isLoggedIn, isSuperAdmin, sendAgreement);
 router.patch('/removePitchVideo', isLoggedIn, removePitchVideo);
+router.patch('/linkNewAgreement', isLoggedIn, isSuperAdmin, linkNewAgreement);
 
 router.delete('/timelineType/:id', isSuperAdmin, deleteTimelineType);
 router.delete('/unsaveCampaign/:id', isLoggedIn, unSaveCampaign);
