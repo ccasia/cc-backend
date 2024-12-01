@@ -3458,3 +3458,290 @@ export const linkNewAgreement = async (req: Request, res: Response) => {
     return res.status(400).json(error);
   }
 };
+
+interface RequestQuery {
+  status: string;
+  page: number;
+  limit: number;
+  userId: string;
+}
+
+export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: Response) => {
+  const { userId } = req.params;
+  const { status, limit = 9, cursor } = req.query;
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: {
+        id: userId,
+      },
+      select: {
+        admin: {
+          select: {
+            mode: true,
+          },
+        },
+        id: true,
+      },
+    });
+
+    if (!user) return res.status(404).json({ message: 'User not found.' });
+
+    if (user.admin?.mode === 'god') {
+      const campaigns: any = await prisma.campaign.findMany({
+        take: Number(limit),
+        ...(cursor && {
+          skip: 1,
+          cursor: { id: cursor as string },
+        }),
+        where: {
+          ...(status && {
+            status: status as CampaignStatus,
+          }),
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+        include: {
+          agreementTemplate: true,
+          submission: {
+            include: {
+              submissionType: true,
+              dependencies: true,
+            },
+          },
+          brand: true,
+          company: true,
+          campaignTimeline: true,
+          campaignBrief: true,
+          campaignRequirement: true,
+          campaignLogs: {
+            include: {
+              admin: true,
+            },
+          },
+          campaignAdmin: {
+            include: {
+              admin: {
+                include: {
+                  user: {
+                    include: {
+                      agreementTemplate: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+          campaignSubmissionRequirement: true,
+          pitch: {
+            include: {
+              user: {
+                include: {
+                  creator: {
+                    include: {
+                      interests: true,
+                    },
+                  },
+
+                  paymentForm: true,
+                },
+              },
+            },
+          },
+          shortlisted: {
+            select: {
+              user: {
+                include: {
+                  creator: true,
+                },
+              },
+              userId: true,
+            },
+          },
+          campaignTasks: {
+            include: {
+              campaignTaskAdmin: true,
+            },
+          },
+          logistic: {
+            include: {
+              user: true,
+            },
+          },
+          creatorAgreement: true,
+        },
+      });
+
+      const totalActiveCampaigns = campaigns.filter((campaign: Campaign) => campaign.status === 'ACTIVE').length;
+      const totalComletedCampaigns = campaigns.filter((campaign: Campaign) => campaign.status === 'COMPLETED').length;
+
+      if (campaigns.length == 0) {
+        return res.status(200).json({
+          campaigns: [],
+          metaData: {
+            lastCursor: null,
+            hasNextPage: false,
+          },
+        });
+      }
+
+      const lastCursor = campaigns.length > Number(limit) - 1 ? campaigns[Number(limit) - 1].id : null;
+
+      const data = {
+        data: {
+          campaigns,
+          totalCampaigns: campaigns?.length,
+          totalActiveCampaigns,
+          totalComletedCampaigns,
+        },
+        metaData: {
+          lastCursor: lastCursor,
+        },
+      };
+
+      return res.status(200).json(data);
+    }
+
+    const campaigns = await prisma.campaign.findMany({
+      take: Number(limit),
+      ...(cursor && {
+        skip: 1,
+        cursor: { id: cursor as string },
+      }),
+      where: {
+        ...(status
+          ? {
+              AND: [
+                {
+                  campaignAdmin: {
+                    some: {
+                      adminId: user.id,
+                    },
+                  },
+                },
+                {
+                  status: status as any,
+                },
+              ],
+            }
+          : {
+              campaignAdmin: {
+                some: {
+                  adminId: user.id,
+                },
+              },
+            }),
+      },
+      include: {
+        agreementTemplate: true,
+        submission: {
+          include: {
+            submissionType: true,
+            dependencies: true,
+          },
+        },
+        brand: true,
+        company: true,
+        campaignTimeline: true,
+        campaignBrief: true,
+        campaignRequirement: true,
+        campaignLogs: {
+          include: {
+            admin: true,
+          },
+        },
+        campaignAdmin: {
+          include: {
+            admin: {
+              include: {
+                user: {
+                  include: {
+                    agreementTemplate: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+        campaignSubmissionRequirement: true,
+        pitch: {
+          include: {
+            user: {
+              include: {
+                creator: {
+                  include: {
+                    interests: true,
+                  },
+                },
+
+                paymentForm: true,
+              },
+            },
+          },
+        },
+        shortlisted: {
+          select: {
+            user: {
+              include: {
+                creator: true,
+              },
+            },
+            userId: true,
+          },
+        },
+        campaignTasks: {
+          include: {
+            campaignTaskAdmin: true,
+          },
+        },
+        logistic: {
+          include: {
+            user: true,
+          },
+        },
+        creatorAgreement: true,
+      },
+    });
+
+    const totalActiveCampaigns = campaigns.filter((campaign) => campaign.status === 'ACTIVE').length;
+
+    const totalComletedCampaigns = campaigns.filter((campaign) => campaign.status === 'COMPLETED').length;
+
+    if (campaigns.length == 0) {
+      return res.status(200).json({
+        data: {
+          campaigns: [],
+        },
+        metaData: {
+          lastCursor: null,
+          hasNextPage: false,
+        },
+      });
+    }
+
+    const lastCursor = campaigns.length > Number(limit) - 1 ? campaigns[Number(limit) - 1].id : null;
+
+    const data = {
+      data: {
+        campaigns,
+        totalCampaigns: campaigns?.length,
+        totalActiveCampaigns,
+        totalComletedCampaigns,
+      },
+      metaData: {
+        lastCursor: lastCursor,
+      },
+    };
+
+    // return res.status(200).json({
+    //   campaigns,
+    //   totalCampaigns: campaigns?.length,
+    //   totalActiveCampaigns,
+    //   totalComletedCampaigns,
+    // });
+    return res.status(200).json(data);
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
