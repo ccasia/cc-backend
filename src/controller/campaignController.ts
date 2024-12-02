@@ -876,9 +876,32 @@ export const getCampaignById = async (req: Request, res: Response) => {
 
 export const matchCampaignWithCreator = async (req: Request, res: Response) => {
   const { userid } = req.session;
+  const { cursor, take = 10 } = req.query;
 
   try {
+    const user = await prisma.user.findUnique({
+      where: {
+        id: userid,
+      },
+      include: {
+        creator: {
+          include: {
+            interests: true,
+          },
+        },
+      },
+    });
+
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
     let campaigns = await prisma.campaign.findMany({
+      take: Number(take),
+      ...(cursor && {
+        skip: 1,
+        cursor: {
+          id: cursor as string,
+        },
+      }),
       where: {
         status: 'ACTIVE',
       },
@@ -895,100 +918,101 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       },
     });
 
+    if (campaigns?.length === 0) {
+      const data = {
+        data: {
+          campaigns: [],
+        },
+        metaData: {
+          lastCursor: null,
+          hasNextPage: false,
+        },
+      };
+
+      return res.status(200).json(data);
+    }
+
     campaigns = campaigns.filter(
       (campaign) => campaign.campaignTimeline.find((timeline) => timeline.name === 'Open For Pitch')?.status === 'OPEN',
     );
 
-    const user = await prisma.user.findUnique({
-      where: {
-        id: userid,
-      },
-      include: {
-        creator: {
-          include: {
-            interests: true,
-          },
-        },
-      },
-    });
+    // const matchCampaign = (user: any, campaign: any) => {
+    //   const lang2 = user?.creator?.languages.includes('Chinese')
+    //     ? // eslint-disable-next-line no-unsafe-optional-chaining
+    //       [...user?.creator?.languages, 'Chinese']
+    //     : // eslint-disable-next-line no-unsafe-optional-chaining
+    //       [...user?.creator?.languages];
+    //   let newGender2 = '';
+    //   if (user?.creator.pronounce === 'he/him') {
+    //     newGender2 = 'male';
+    //   } else if (user?.creator.pronounce === 'she/her') {
+    //     newGender2 = 'female';
+    //   } else {
+    //     newGender2 = 'nonbinary';
+    //   }
 
-    const matchCampaign = (user: any, campaign: any) => {
-      const lang2 = user?.creator?.languages.includes('Chinese')
-        ? // eslint-disable-next-line no-unsafe-optional-chaining
-          [...user?.creator?.languages, 'Chinese']
-        : // eslint-disable-next-line no-unsafe-optional-chaining
-          [...user?.creator?.languages];
-      let newGender2 = '';
-      if (user?.creator.pronounce === 'he/him') {
-        newGender2 = 'male';
-      } else if (user?.creator.pronounce === 'she/her') {
-        newGender2 = 'female';
-      } else {
-        newGender2 = 'nonbinary';
-      }
+    //   const match = {
+    //     languages: false,
+    //     interests: false,
+    //     gender: false,
+    //     age: false,
+    //   };
 
-      const match = {
-        languages: false,
-        interests: false,
-        gender: false,
-        age: false,
-      };
+    //   function hasCommonElement(arr1: string[], arr2: string[]): boolean {
+    //     return arr1?.some((value) => arr2.includes(value));
+    //   }
 
-      function hasCommonElement(arr1: string[], arr2: string[]): boolean {
-        return arr1?.some((value) => arr2.includes(value));
-      }
+    //   const languagesMatch = hasCommonElement(campaign?.campaignRequirement?.language || [], lang2);
 
-      const languagesMatch = hasCommonElement(campaign?.campaignRequirement?.language || [], lang2);
+    //   if (languagesMatch) {
+    //     match.languages = true;
+    //   }
 
-      if (languagesMatch) {
-        match.languages = true;
-      }
+    //   if (campaign?.campaignRequirement?.gender.includes(newGender2)) {
+    //     match.gender = true;
+    //   }
 
-      if (campaign?.campaignRequirement?.gender.includes(newGender2)) {
-        match.gender = true;
-      }
+    //   // age
+    //   const birthDate = new Date(user?.creator?.birthDate);
+    //   const today = new Date();
 
-      // age
-      const birthDate = new Date(user?.creator?.birthDate);
-      const today = new Date();
+    //   let age = today.getFullYear() - birthDate.getFullYear();
+    //   const monthDifference = today.getMonth() - birthDate.getMonth();
 
-      let age = today.getFullYear() - birthDate.getFullYear();
-      const monthDifference = today.getMonth() - birthDate.getMonth();
+    //   if (monthDifference < 0 || (monthDifference === 0 && today.getDate() < birthDate.getDate())) {
+    //     age--;
+    //   }
 
-      if (monthDifference < 0 || (monthDifference === 0 && today.getDate() < birthDate.getDate())) {
-        age--;
-      }
+    //   function isAgeInRange(age: number, ranges: string[]): boolean {
+    //     return ranges?.some((range) => {
+    //       const [min, max] = range.split('-').map(Number);
+    //       return age >= min && age <= max;
+    //     });
+    //   }
+    //   const finalAge = isAgeInRange(age, campaign?.campaignRequirement?.age);
 
-      function isAgeInRange(age: number, ranges: string[]): boolean {
-        return ranges?.some((range) => {
-          const [min, max] = range.split('-').map(Number);
-          return age >= min && age <= max;
-        });
-      }
-      const finalAge = isAgeInRange(age, campaign?.campaignRequirement?.age);
+    //   if (finalAge) {
+    //     match.age = true;
+    //   }
 
-      if (finalAge) {
-        match.age = true;
-      }
+    //   const interestArr = user?.creator?.interests.map((item: any) => item.name.toLowerCase());
+    //   function hasCommonElement2(arr1: string[], arr2: string[]): boolean {
+    //     return arr1.some((value) => arr2.includes(value));
+    //   }
 
-      const interestArr = user?.creator?.interests.map((item: any) => item.name.toLowerCase());
-      function hasCommonElement2(arr1: string[], arr2: string[]): boolean {
-        return arr1.some((value) => arr2.includes(value));
-      }
+    //   const interestsMatch = hasCommonElement2(campaign?.campaignRequirement?.creator_persona || [], interestArr);
 
-      const interestsMatch = hasCommonElement2(campaign?.campaignRequirement?.creator_persona || [], interestArr);
+    //   if (interestsMatch) {
+    //     match.interests = true;
+    //   }
 
-      if (interestsMatch) {
-        match.interests = true;
-      }
+    //   function allMatchTrue(match: any): boolean {
+    //     return Object.values(match).every((value) => value === true);
+    //   }
 
-      function allMatchTrue(match: any): boolean {
-        return Object.values(match).every((value) => value === true);
-      }
-
-      const finalMatch = allMatchTrue(match);
-      return finalMatch;
-    };
+    //   const finalMatch = allMatchTrue(match);
+    //   return finalMatch;
+    // };
 
     const calculateInterestMatchingPercentage = (creatorInterests: Interest[], creatorPerona: []) => {
       const totalInterests = creatorPerona.length;
@@ -1054,22 +1078,6 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       return interestMatch * interestWeight + requirementMatch * requirementWeight;
     };
 
-    // const getPercentageMatch = (user: any, campaign: any) => {
-    //   const creatorInterest = user?.creator?.interests.map((item: any) => item.name.toLowerCase());
-    //   const campInterest = campaign?.campaignBrief?.interests.map((e: string) => e.toLowerCase());
-
-    //   function getMatchingElements(arr1: string[], arr2: string[]): string[] {
-    //     return arr1.filter((value) => arr2.includes(value));
-    //   }
-
-    //   const matchedInterests = getMatchingElements(creatorInterest, campInterest);
-    //   const percantage = (matchedInterests.length / campInterest.length) * 100;
-
-    //   return percantage;
-    // };
-
-    // const matchedCampaign = campaigns?.filter((item) => matchCampaign(user, item));
-
     const matchedCampaignWithPercentage = campaigns.map((item) => {
       const interestPercentage = calculateInterestMatchingPercentage(
         user?.creator?.interests as never,
@@ -1090,7 +1098,19 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
 
     const sortedMatchedCampaigns = matchedCampaignWithPercentage.sort((a, b) => b.percentageMatch - a.percentageMatch);
 
-    return res.status(200).json(sortedMatchedCampaigns);
+    const lastCursor = campaigns.length > Number(take) - 1 ? campaigns[Number(take) - 1]?.id : null;
+
+    const data = {
+      data: {
+        campaigns: sortedMatchedCampaigns,
+      },
+      metaData: {
+        lastCursor: lastCursor,
+        hasNextPage: true,
+      },
+    };
+
+    return res.status(200).json(data);
   } catch (error) {
     return res.status(400).json(error);
   }
