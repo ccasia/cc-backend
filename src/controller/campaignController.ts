@@ -3578,7 +3578,9 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
 
       if (campaigns.length == 0) {
         return res.status(200).json({
-          campaigns: [],
+          data: {
+            campaigns: [],
+          },
           metaData: {
             lastCursor: null,
             hasNextPage: false,
@@ -3734,12 +3736,6 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
       },
     };
 
-    // return res.status(200).json({
-    //   campaigns,
-    //   totalCampaigns: campaigns?.length,
-    //   totalActiveCampaigns,
-    //   totalComletedCampaigns,
-    // });
     return res.status(200).json(data);
   } catch (error) {
     return res.status(400).json(error);
