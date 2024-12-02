@@ -32,6 +32,7 @@ import {
   postingSchedule,
 } from '@configs/nodemailer.config';
 import { createNewRowData } from '@services/google_sheets/sheets';
+import { createNewTask } from '@services/kanbanService';
 
 Ffmpeg.setFfmpegPath(FfmpegPath.path);
 // Ffmpeg.setFfmpegPath(FfmpegProbe.path);
@@ -51,7 +52,16 @@ export const agreementSubmission = async (req: Request, res: Response) => {
           user: true,
           campaign: {
             include: {
-              campaignAdmin: true,
+              campaignAdmin: {
+                select: {
+                  adminId: true,
+                  admin: {
+                    select: {
+                      userId: true,
+                    },
+                  },
+                },
+              },
             },
           },
           task: true,
@@ -123,6 +133,28 @@ export const agreementSubmission = async (req: Request, res: Response) => {
 
       //for admins
       submission.campaign.campaignAdmin.forEach(async (item) => {
+        // get column ID
+        const board = await prisma.board.findUnique({
+          where: {
+            userId: item.admin.userId,
+          },
+          include: {
+            columns: true,
+          },
+        });
+
+        if (board) {
+          // Assuming we get second column
+          const column = board.columns[1];
+          await createNewTask({
+            submissionId: submission.id,
+            name: 'Testing',
+            userId: item.admin.userId,
+            position: 1,
+            columnId: column.id,
+          });
+        }
+
         const adminNotification = await saveNotification({
           userId: item.adminId,
           entity: 'Agreement',

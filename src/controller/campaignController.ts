@@ -509,24 +509,24 @@ export const createCampaign = async (req: Request, res: Response) => {
           }),
         );
 
-        await Promise.all(
-          filterTimelines.map((item) =>
-            tx.campaignTask.create({
-              data: {
-                campaignTimelineId: item.id,
-                campaignId: item.campaignId,
-                task: item.name,
-                status: 'IN_PROGRESS',
-                dueDate: dayjs(item.endDate).format(),
-                campaignTaskAdmin: {
-                  create: test.map((admin: any) => ({
-                    userId: admin.adminId,
-                  })),
-                },
-              },
-            }),
-          ),
-        );
+        // await Promise.all(
+        //   filterTimelines.map((item) =>
+        //     tx.campaignTask.create({
+        //       data: {
+        //         campaignTimelineId: item.id,
+        //         campaignId: item.campaignId,
+        //         task: item.name,
+        //         status: 'IN_PROGRESS',
+        //         dueDate: dayjs(item.endDate).format(),
+        //         campaignTaskAdmin: {
+        //           create: test.map((admin: any) => ({
+        //             userId: admin.adminId,
+        //           })),
+        //         },
+        //       },
+        //     }),
+        //   ),
+        // );
 
         logChange('Created', campaign.id, req);
         return res.status(200).json({ campaign, message: 'Campaign created successfully.' });

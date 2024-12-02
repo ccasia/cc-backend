@@ -4,7 +4,7 @@ import { Columns } from '@types';
 
 const prisma = new PrismaClient();
 
-const COLUMNS = ['To Do', 'In Progress', 'Done'];
+export const COLUMNS = ['To Do', 'In Progress', 'Done'];
 const CREATOR_COLUMNS = ['To Do', 'In Progress', 'In Review', 'Done'];
 
 export const getKanbanBoard = async (req: Request, res: Response) => {
