@@ -876,11 +876,22 @@ export const getCampaignById = async (req: Request, res: Response) => {
 
 export const matchCampaignWithCreator = async (req: Request, res: Response) => {
   const { userid } = req.session;
+  const { search } = req.query;
 
   try {
     let campaigns = await prisma.campaign.findMany({
       where: {
-        status: 'ACTIVE',
+        AND: [
+          { status: 'ACTIVE' },
+          {
+            ...(search && {
+              name: {
+                contains: search as string,
+                mode: 'insensitive',
+              },
+            }),
+          },
+        ],
       },
       include: {
         campaignBrief: true,
