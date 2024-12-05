@@ -41,6 +41,7 @@ import {
   createNewSpreadSheets,
   editCampaignReference,
   linkNewAgreement,
+  getAllCampaignsByAdminId,
 } from '@controllers/campaignController';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 
@@ -89,6 +90,9 @@ router.get('/creatorAgreements/:campaignId', isLoggedIn, creatorAgreements);
 
 // For creator MyCampaigns
 router.get('/getMyCampaigns/:userId', isLoggedIn, getMyCampaigns);
+
+// Get Campaigns by Admin ID
+router.get('/getAllCampaignsByAdminId/:userId', getAllCampaignsByAdminId);
 
 router.post('/updateOrCreateDefaultTimeline', updateOrCreateDefaultTimeline);
 router.post('/createCampaign', isSuperAdmin, createCampaign);
