@@ -19,6 +19,7 @@
     "prod:prev": "node dist/server.js",
     "studio": "npx prisma studio",
     "create-timeline": "ts-node prisma/createTimeline.ts",
+    "update-kanban": "ts-node prisma/updateBoardAdmin.ts",
     "try": "ts-node src/config/nodemailer.config.ts"
   },
   "dependencies": {
