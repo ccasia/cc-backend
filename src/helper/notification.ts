@@ -37,8 +37,8 @@ const notificationPitch = (campaignName: string, type: 'Admin' | 'Creator', crea
 const notificationDraft = (campaignName: string, type: 'Admin' | 'Creator', creatorName?: string, draft?: string) => {
   if (type === 'Admin') {
     return {
-      title: `📬 New Draft  Received!`,
-      message: `A new ${draft} for the ${campaignName} has been submitted by ${creatorName}.`,
+      title: `📬 New Draft Received!`,
+      message: `A new draft for the ${campaignName} has been submitted by ${creatorName}.`,
     };
   }
   return {
