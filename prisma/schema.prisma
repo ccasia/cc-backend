@@ -584,7 +584,7 @@ model Submission {
   user             User                   @relation(fields: [userId], references: [id])
   dependencies     SubmissionDependency[] @relation("Dependencies")
   dependentOn      SubmissionDependency[] @relation("DependentOn")
-  task             Task?
+  task             Task[]
 
   @@unique([userId, campaignId, submissionTypeId])
 }
@@ -699,20 +699,20 @@ model Columns {
 }
 
 model Task {
-  id           String      @id @unique @default(cuid())
+  id           String         @id @unique @default(cuid())
   name         String
   description  String?
   status       String?
   position     Int
   priority     String?
-  createdAt    DateTime    @default(now())
+  createdAt    DateTime       @default(now())
   dueDate      DateTime?
   labels       String[]
   columnId     String
-  submissionId String?     @unique
-  column       Columns     @relation(fields: [columnId], references: [id], onDelete: Cascade)
-  submission   Submission? @relation(fields: [submissionId], references: [id])
-  assignees TaskAssignee[]
+  submissionId String?
+  column       Columns        @relation(fields: [columnId], references: [id], onDelete: Cascade)
+  submission   Submission?    @relation(fields: [submissionId], references: [id])
+  assignees    TaskAssignee[]
 }
 
 model TaskAssignee {
@@ -937,9 +937,3 @@ enum FeedbackType {
   COMMENT
   REASON
 }
-
-
-
-
-
-

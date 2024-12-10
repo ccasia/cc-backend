@@ -2068,13 +2068,42 @@ export const changePitchStatus = async (req: Request, res: Response) => {
         },
       });
 
-      for (const submission of submissions) {
-        await prisma.task.delete({
+      const board = await prisma.board.findUnique({
+        where: {
+          userId: pitch?.userId,
+        },
+        include: {
+          columns: {
+            include: {
+              task: true,
+            },
+          },
+        },
+      });
+
+      if (board) {
+        await prisma.task.deleteMany({
           where: {
-            id: submission.task?.id,
+            column: {
+              boardId: board.id,
+            },
           },
         });
       }
+
+      // const toDoColumn = board.columns.find((item) => item.name === 'To Do');
+      // const inProgressColumn = board.columns.find((item) => item.name === 'In Progress');
+
+      //   for (const submission of submissions) {
+      //     // const task = toDoColumn?.task.find((item) => item.submissionId === submission.id);
+
+      //     await prisma.task.delete({
+      //       where: {
+      //         id: submission.task?.id,
+      //       },
+      //     });
+      //   }
+      // }
 
       const agreement = await prisma.creatorAgreement.findFirst({
         where: {
