@@ -506,19 +506,17 @@ model ShortListedCreator {
 }
 
 model CampaignTask {
-  id                     String                   @id @unique @default(cuid())
-  task                   String?
-  campaignTimelineId     String
-  campaignId             String
-  status                 TaskStatus               @default(NOT_STARTED)
-  createdAt              DateTime                 @default(now())
-  updatedAd              DateTime                 @updatedAt
-  dueDate                DateTime?
-  campaign               Campaign                 @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  timeline               CampaignTimeline         @relation(fields: [campaignTimelineId], references: [id], onDelete: Cascade)
-  campaignTaskAdmin      CampaignTaskAdmin[]
-  campaignTaskDependency CampaignTaskDependency[] @relation("CampaignTask")
-  dependsOnCampaignTask  CampaignTaskDependency[] @relation("DependsOnCampaignTask")
+  id                 String              @id @unique @default(cuid())
+  task               String?
+  campaignTimelineId String
+  campaignId         String
+  status             TaskStatus          @default(NOT_STARTED)
+  createdAt          DateTime            @default(now())
+  updatedAd          DateTime            @updatedAt
+  dueDate            DateTime?
+  campaign           Campaign            @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  timeline           CampaignTimeline    @relation(fields: [campaignTimelineId], references: [id], onDelete: Cascade)
+  campaignTaskAdmin  CampaignTaskAdmin[]
 }
 
 model CampaignTaskAdmin {
@@ -529,14 +527,6 @@ model CampaignTaskAdmin {
   user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, campaignTaskId])
-}
-
-model CampaignTaskDependency {
-  id                        String       @id @unique @default(cuid())
-  campaignTaskId            String
-  dependsOnCampaignTaskId   String
-  campaignTimeline          CampaignTask @relation("CampaignTask", fields: [campaignTaskId], references: [id], onDelete: Cascade)
-  dependsOnCampaignTimeline CampaignTask @relation("DependsOnCampaignTask", fields: [dependsOnCampaignTaskId], references: [id], onDelete: Cascade)
 }
 
 model Notification {
@@ -594,7 +584,7 @@ model Submission {
   user             User                   @relation(fields: [userId], references: [id])
   dependencies     SubmissionDependency[] @relation("Dependencies")
   dependentOn      SubmissionDependency[] @relation("DependentOn")
-  task             Task?
+  task             Task[]
 
   @@unique([userId, campaignId, submissionTypeId])
 }
@@ -719,7 +709,7 @@ model Task {
   dueDate      DateTime?
   labels       String[]
   columnId     String
-  submissionId String?        @unique
+  submissionId String?
   column       Columns        @relation(fields: [columnId], references: [id], onDelete: Cascade)
   submission   Submission?    @relation(fields: [submissionId], references: [id])
   assignees    TaskAssignee[]

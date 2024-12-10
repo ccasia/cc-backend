@@ -14,6 +14,7 @@ import { spawn } from 'child_process';
 
 import dayjs from 'dayjs';
 import { notificationDraft } from './notification';
+import { createNewTask, getTaskId, updateTask } from '@services/kanbanService';
 
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
 Ffmpeg.setFfprobePath(ffprobePath.path);
@@ -63,6 +64,7 @@ const processVideo = async (
             resolve(data.size);
           });
         });
+
         const publicURL = await uploadPitchVideo(
           outputPath,
           fileName,
@@ -93,7 +95,25 @@ const processVideo = async (
             submissionType: true,
             campaign: {
               include: {
-                campaignAdmin: true,
+                campaignAdmin: {
+                  select: {
+                    adminId: true,
+                    admin: {
+                      select: {
+                        user: {
+                          select: {
+                            Board: {
+                              include: {
+                                columns: true,
+                              },
+                            },
+                            id: true,
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
               },
             },
             user: true,
@@ -129,15 +149,48 @@ const processVideo = async (
             entity: 'Draft',
             entityId: data.campaignId,
           });
+
+          if (item.admin.user.Board) {
+            const actionNeededColumn = item.admin.user.Board.columns.find((item) => item.name === 'Actions Needed');
+
+            const taskInDone = await getTaskId({
+              boardId: item.admin.user.Board.id,
+              submissionId: data.id,
+              columnName: 'Done',
+            });
+
+            if (actionNeededColumn) {
+              if (taskInDone) {
+                await updateTask({
+                  taskId: taskInDone.id,
+                  toColumnId: actionNeededColumn.id,
+                  userId: item.admin.user.id,
+                });
+              } else {
+                await createNewTask({
+                  submissionId: data.id,
+                  name: 'Draft Submission',
+                  userId: item.admin.user.id,
+                  position: 1,
+                  columnId: actionNeededColumn.id,
+                });
+              }
+            }
+          }
+
           if (io) {
             io.to(clients.get(item.adminId)).emit('notification', notification);
           }
         }
+
         activeProcesses.delete(submissionId);
+
         if (io) {
           io.to(clients.get(userid)).emit('progress', { submissionId, progress: 100 });
         }
+
         fs.unlinkSync(inputPath);
+
         resolve();
       })
       .on('error', (err) => {

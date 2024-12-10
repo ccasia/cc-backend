@@ -32,6 +32,7 @@ import {
   postingSchedule,
 } from '@configs/nodemailer.config';
 import { createNewRowData } from '@services/google_sheets/sheets';
+import { createNewTask, getTaskId, updateTask } from '@services/kanbanService';
 
 Ffmpeg.setFfmpegPath(FfmpegPath.path);
 // Ffmpeg.setFfmpegPath(FfmpegProbe.path);
@@ -51,7 +52,16 @@ export const agreementSubmission = async (req: Request, res: Response) => {
           user: true,
           campaign: {
             include: {
-              campaignAdmin: true,
+              campaignAdmin: {
+                select: {
+                  adminId: true,
+                  admin: {
+                    select: {
+                      userId: true,
+                    },
+                  },
+                },
+              },
             },
           },
           task: true,
@@ -84,7 +94,11 @@ export const agreementSubmission = async (req: Request, res: Response) => {
           userId: submission.userId,
         },
         include: {
-          columns: true,
+          columns: {
+            include: {
+              task: true,
+            },
+          },
         },
       });
 
@@ -93,10 +107,13 @@ export const agreementSubmission = async (req: Request, res: Response) => {
       }
 
       const inReviewColumn = boards.columns.find((column) => column.name === 'In Review');
+      const inProgressColumn = boards.columns.find((column) => column.name === 'In Progress');
+
+      const task = inProgressColumn?.task.find((item) => item.submissionId === submission.id);
 
       await prisma.task.update({
         where: {
-          id: submission.task?.id,
+          id: task?.id,
         },
         data: {
           columnId: inReviewColumn?.id,
@@ -122,7 +139,47 @@ export const agreementSubmission = async (req: Request, res: Response) => {
       );
 
       //for admins
-      submission.campaign.campaignAdmin.forEach(async (item) => {
+      for (const item of submission.campaign.campaignAdmin) {
+        // get column ID
+        const board = await prisma.board.findUnique({
+          where: {
+            userId: item.admin.userId,
+          },
+          include: {
+            columns: true,
+          },
+        });
+
+        if (board) {
+          const actionNeededColumn = board.columns.find((item) => item.name === 'Actions Needed');
+          const agreementTask = await getTaskId({ boardId: board.id, submissionId: submission.id, columnName: 'Done' });
+
+          if (actionNeededColumn) {
+            if (!agreementTask) {
+              await createNewTask({
+                submissionId: submission.id,
+                name: 'Agreement Submission',
+                userId: item.admin.userId,
+                position: 1,
+                columnId: actionNeededColumn.id,
+              });
+            } else {
+              await prisma.task.update({
+                where: {
+                  id: agreementTask.id,
+                },
+                data: {
+                  column: {
+                    connect: {
+                      id: actionNeededColumn.id,
+                    },
+                  },
+                },
+              });
+            }
+          }
+        }
+
         const adminNotification = await saveNotification({
           userId: item.adminId,
           entity: 'Agreement',
@@ -134,7 +191,7 @@ export const agreementSubmission = async (req: Request, res: Response) => {
 
         io.to(clients.get(item.adminId)).emit('notification', adminNotification);
         io.to(clients.get(item.adminId)).emit('newSubmission');
-      });
+      }
     }
 
     const allSuperadmins = await prisma.user.findMany({
@@ -149,6 +206,7 @@ export const agreementSubmission = async (req: Request, res: Response) => {
 
     return res.status(200).json({ message: 'Successfully submitted' });
   } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -164,14 +222,34 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
       where: {
         id: campaignId,
       },
+      include: {
+        campaignAdmin: {
+          include: {
+            admin: {
+              select: {
+                userId: true,
+              },
+            },
+          },
+        },
+      },
     });
 
+    if (!campaign) {
+      return res.status(404).json({ message: 'Campaign not found' });
+    }
+
+    // Creator Board
     const boards = await prisma.board.findFirst({
       where: {
         userId: userId,
       },
       include: {
-        columns: true,
+        columns: {
+          include: {
+            task: true,
+          },
+        },
       },
     });
 
@@ -180,6 +258,8 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
     }
 
     const doneColumn = boards.columns.find((column) => column.name === 'Done');
+    const inReviewColumn = boards.columns.find((column) => column.name === 'In Review');
+    const toDoColumn = boards.columns.find((column) => column.name === 'To Do');
     const inProgressColumn = boards.columns.find((column) => column.name === 'In Progress');
 
     if (status === 'approve') {
@@ -193,17 +273,31 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
         },
         include: {
           task: true,
+          campaign: {
+            include: {
+              campaignAdmin: {
+                select: {
+                  adminId: true,
+                  admin: true,
+                },
+              },
+            },
+          },
         },
       });
 
-      await prisma.task.update({
-        where: {
-          id: agreementSubs.task?.id,
-        },
-        data: {
-          columnId: doneColumn?.id,
-        },
-      });
+      const taskInReviewColumn = inReviewColumn?.task?.find((item) => item.submissionId === agreementSubs.id);
+
+      if (taskInReviewColumn) {
+        await prisma.task.update({
+          where: {
+            id: taskInReviewColumn.id,
+          },
+          data: {
+            columnId: doneColumn?.id,
+          },
+        });
+      }
 
       const user = await prisma.user.findUnique({
         where: {
@@ -227,14 +321,53 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
         },
       });
 
-      await prisma.task.update({
-        where: {
-          id: submission.task?.id,
-        },
-        data: {
-          columnId: inProgressColumn?.id,
-        },
-      });
+      // find by column
+      const inProgressTask = submission.task.find((item) => item.columnId === toDoColumn?.id);
+
+      if (inProgressTask) {
+        await prisma.task.update({
+          where: {
+            id: inProgressTask.id,
+          },
+          data: {
+            columnId: inProgressColumn?.id,
+          },
+        });
+      }
+
+      for (const item of agreementSubs.campaign.campaignAdmin) {
+        // get column ID
+        const board = await prisma.board.findUnique({
+          where: {
+            userId: item.admin.userId,
+          },
+          include: {
+            columns: {
+              include: {
+                task: true,
+              },
+            },
+          },
+        });
+
+        if (board) {
+          const doneColumn = board.columns.find((item) => item.name === 'Done');
+
+          const taskInActionsNeededColumn = await getTaskId({
+            boardId: board.id,
+            submissionId: agreementSubs.id,
+            columnName: 'Actions Needed',
+          });
+
+          if (taskInActionsNeededColumn) {
+            await updateTask({
+              taskId: taskInActionsNeededColumn.id,
+              toColumnId: doneColumn?.id as string,
+              userId: item.admin.userId,
+            });
+          }
+        }
+      }
 
       const { title, message } = notificationApproveAgreement(campaign?.name as string);
 
@@ -266,17 +399,76 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
         },
         include: {
           task: true,
+          campaign: {
+            select: {
+              campaignAdmin: {
+                select: {
+                  admin: {
+                    select: {
+                      user: {
+                        select: {
+                          Board: true,
+                          id: true,
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
         },
       });
 
-      await prisma.task.update({
-        where: {
-          id: submission.task?.id,
-        },
-        data: {
-          columnId: inProgressColumn?.id,
-        },
+      // For creator from In Review to In progress
+      const taskInReviewColumn = await getTaskId({
+        boardId: boards.id,
+        submissionId: submission.id,
+        columnName: 'In Review',
       });
+
+      if (inProgressColumn && taskInReviewColumn) {
+        await updateTask({
+          taskId: taskInReviewColumn.id,
+          toColumnId: inProgressColumn?.id,
+          userId: submission.userId,
+        });
+      }
+
+      // For admin from Actions Needed to Done
+      for (const item of submission.campaign.campaignAdmin) {
+        // get column ID
+        const board = await prisma.board.findUnique({
+          where: {
+            userId: item.admin.user.id,
+          },
+          include: {
+            columns: {
+              include: {
+                task: true,
+              },
+            },
+          },
+        });
+
+        if (board) {
+          const doneColumn = board.columns.find((item) => item.name === 'Done');
+
+          const taskInActionsNeededColumn = await getTaskId({
+            boardId: board.id,
+            submissionId: submission.id,
+            columnName: 'Actions Needed',
+          });
+
+          if (taskInActionsNeededColumn) {
+            await updateTask({
+              taskId: taskInActionsNeededColumn.id,
+              toColumnId: doneColumn?.id as string,
+              userId: item.admin.user.id,
+            });
+          }
+        }
+      }
 
       await prisma.feedback.create({
         data: {
@@ -358,6 +550,7 @@ export const draftSubmission = async (req: Request, res: Response) => {
         user: {
           include: {
             creator: true,
+            Board: true,
           },
         },
         campaign: {
@@ -383,14 +576,25 @@ export const draftSubmission = async (req: Request, res: Response) => {
 
     const inReviewColumn = await getColumnId({ userId: userid, columnName: 'In Review' });
 
-    await prisma.task.update({
-      where: {
-        id: submission.task?.id,
-      },
-      data: {
-        columnId: inReviewColumn,
-      },
-    });
+    // Move task creator from in progress to in review
+    if (submission.user.Board) {
+      const taskInProgress = await getTaskId({
+        columnName: 'In Progress',
+        boardId: submission.user.Board.id,
+        submissionId: submission.id,
+      });
+
+      if (taskInProgress) {
+        await prisma.task.update({
+          where: {
+            id: taskInProgress.id,
+          },
+          data: {
+            columnId: inReviewColumn,
+          },
+        });
+      }
+    }
 
     const file = (req.files as any).draftVideo;
 
@@ -453,28 +657,11 @@ export const draftSubmission = async (req: Request, res: Response) => {
 export const adminManageDraft = async (req: Request, res: Response) => {
   const { submissionId, feedback, type, reasons, userId } = req.body;
 
-  // {
-  //   schedule: {
-  //     endDate: 'Sun, 17 Nov 2024 16:00:00 GMT',
-  //     startDate: 'Sun, 17 Nov 2024 16:00:00 GMT'
-  //   },
-  //   feedback: 'Thank you for submitting.',
-  //   type: 'approve',
-  //   reasons: [],
-  //   submissionId: 'cm3mk7875002rve2wiw5tqtjm',
-  //   userId: 'cm233xksh000012cncofkwjo5'
-  // }
-
   try {
-    let submission: any = await prisma.submission.findUnique({
+    const submission = await prisma.submission.findUnique({
       where: {
         id: submissionId,
       },
-      // include: {
-      //   feedback: true,
-      //   campaign: true,
-      //   user: true,
-      // },
       include: {
         feedback: true,
         user: {
@@ -491,10 +678,17 @@ export const adminManageDraft = async (req: Request, res: Response) => {
                 admin: {
                   include: {
                     role: true,
+                    user: {
+                      select: {
+                        Board: true,
+                        id: true,
+                      },
+                    },
                   },
                 },
               },
             },
+            campaignBrief: true,
           },
         },
         submissionType: true,
@@ -507,7 +701,7 @@ export const adminManageDraft = async (req: Request, res: Response) => {
     }
 
     if (type === 'approve') {
-      submission = await prisma.submission.update({
+      const approveSubmission = await prisma.submission.update({
         where: {
           id: submission?.id,
         },
@@ -528,6 +722,7 @@ export const adminManageDraft = async (req: Request, res: Response) => {
               creator: true,
               paymentForm: true,
               creatorAgreement: true,
+              Board: true,
             },
           },
           campaign: {
@@ -551,23 +746,37 @@ export const adminManageDraft = async (req: Request, res: Response) => {
 
       const doneColumnId = await getColumnId({ userId: submission.userId, columnName: 'Done' });
 
-      await prisma.task.update({
-        where: {
-          id: submission.task?.id,
-        },
-        data: {
-          columnId: doneColumnId,
-        },
-      });
+      // Move task from column In Review to Done
+      if (approveSubmission.user.Board) {
+        const task = await getTaskId({
+          boardId: approveSubmission?.user.Board.id,
+          submissionId: approveSubmission.id,
+          columnName: 'In Review',
+        });
+
+        if (task) {
+          await prisma.task.update({
+            where: {
+              id: task.id,
+            },
+            data: {
+              columnId: doneColumnId,
+            },
+          });
+        }
+      }
+
+      const image: any = submission?.campaign?.campaignBrief?.images || [];
 
       if (submission.submissionType.type === 'FIRST_DRAFT' && submission.status === 'APPROVED') {
         // Notify about final draft due
+
         approvalOfDraft(
           submission.user.email,
           submission.campaign.name,
           submission.user.name ?? 'Creator',
           submission.campaignId,
-          submission.campaign.campaignBrief.images[0],
+          image[0],
         );
       } else if (
         (submission.submissionType.type === 'FINAL_DRAFT' && submission.status === 'APPROVED', submission.campaignId)
@@ -578,7 +787,7 @@ export const adminManageDraft = async (req: Request, res: Response) => {
           submission.campaign.name,
           submission.user.name ?? 'Creator',
           submission.campaignId,
-          submission.campaign.campaignBrief.images[0],
+          image[0],
         );
       } else {
         // Fallback email if the draft is not approved
@@ -590,7 +799,7 @@ export const adminManageDraft = async (req: Request, res: Response) => {
         );
       }
 
-      // Generate invoice after draft is approve if campaign is ugc
+      // Generate invoice after draft is approve if campaign is ugc and No posting submission
       if (submission.campaign.campaignType == 'ugc') {
         const invoiceAmount = submission.user.creatorAgreement.find(
           (elem: any) => elem.campaignId === submission.campaign.id,
@@ -635,6 +844,19 @@ export const adminManageDraft = async (req: Request, res: Response) => {
             ],
           },
           include: {
+            user: {
+              include: {
+                Board: {
+                  include: {
+                    columns: {
+                      include: {
+                        task: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
             task: true,
             campaign: {
               select: {
@@ -653,17 +875,22 @@ export const adminManageDraft = async (req: Request, res: Response) => {
         }
 
         const inProgressColumnId = await getColumnId({ userId: posting.userId, columnName: 'In Progress' });
+        const toDoColumn = posting.user.Board?.columns.find((item) => item.name === 'To Do');
 
-        await prisma.task.update({
-          where: {
-            id: posting.task?.id,
-          },
-          data: {
-            columnId: inProgressColumnId,
-          },
-        });
+        const task = toDoColumn?.task.find((item) => item.submissionId === posting.id);
 
-        const test = await prisma.submission.update({
+        if (task) {
+          await prisma.task.update({
+            where: {
+              id: task?.id,
+            },
+            data: {
+              columnId: inProgressColumnId,
+            },
+          });
+        }
+
+        await prisma.submission.update({
           where: {
             id: posting.id,
           },
@@ -685,6 +912,34 @@ export const adminManageDraft = async (req: Request, res: Response) => {
           submission.campaign.id,
           images[0],
         );
+      }
+
+      // Move from column Actions Needed to Done
+      for (const item of submission.campaign.campaignAdmin) {
+        if (item.admin.user.Board) {
+          const taskInActionsNeeded = await getTaskId({
+            boardId: item.admin.user.Board?.id,
+            columnName: 'Actions Needed',
+            submissionId: approveSubmission.id,
+          });
+
+          const columnDone = await getColumnId({
+            userId: item.admin.userId,
+            boardId: item.admin.user.Board.id,
+            columnName: 'Done',
+          });
+
+          if (taskInActionsNeeded) {
+            await prisma.task.update({
+              where: {
+                id: taskInActionsNeeded.id,
+              },
+              data: {
+                column: { connect: { id: columnDone } },
+              },
+            });
+          }
+        }
       }
 
       //For Approve
@@ -726,7 +981,29 @@ export const adminManageDraft = async (req: Request, res: Response) => {
           },
         },
         include: {
-          user: true,
+          user: {
+            include: {
+              Board: true,
+            },
+          },
+          campaign: {
+            select: {
+              campaignAdmin: {
+                select: {
+                  admin: {
+                    select: {
+                      user: {
+                        select: {
+                          Board: true,
+                          id: true,
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
           submissionType: true,
           dependencies: true,
           task: true,
@@ -734,19 +1011,34 @@ export const adminManageDraft = async (req: Request, res: Response) => {
       });
 
       const doneColumnId = await getColumnId({ userId: sub.userId, columnName: 'Done' });
+      const inReviewId = await getColumnId({ userId: sub.userId, columnName: 'In Review' });
       const inProgressColumnId = await getColumnId({ userId: sub.userId, columnName: 'In Progress' });
+      const toDoColumnId = await getColumnId({ userId: sub.userId, columnName: 'To Do' });
+
+      const inReviewColumn = await prisma.columns.findUnique({
+        where: {
+          id: inReviewId,
+        },
+        include: {
+          task: true,
+        },
+      });
+
+      const taskInReview = inReviewColumn?.task.find((item) => item.submissionId === sub.id);
 
       if (sub.submissionType.type === 'FIRST_DRAFT') {
-        await prisma.task.update({
-          where: {
-            id: sub.task?.id,
-          },
-          data: {
-            columnId: doneColumnId,
-          },
-        });
+        if (taskInReview) {
+          await prisma.task.update({
+            where: {
+              id: taskInReview.id,
+            },
+            data: {
+              columnId: doneColumnId,
+            },
+          });
+        }
 
-        const finalDraft = await prisma.submission.update({
+        const finalDraftSubmission = await prisma.submission.update({
           where: {
             id: sub.dependencies[0].submissionId as string,
           },
@@ -755,26 +1047,81 @@ export const adminManageDraft = async (req: Request, res: Response) => {
           },
           include: {
             task: true,
+            user: {
+              include: {
+                Board: true,
+              },
+            },
           },
         });
 
-        await prisma.task.update({
-          where: {
-            id: finalDraft.task?.id,
-          },
-          data: {
-            columnId: inProgressColumnId,
-          },
-        });
+        if (finalDraftSubmission.user.Board) {
+          const finalDraft = await getTaskId({
+            boardId: finalDraftSubmission.user.Board.id,
+            submissionId: finalDraftSubmission.id,
+            columnName: 'To Do',
+          });
+
+          if (finalDraft) {
+            await prisma.task.update({
+              where: {
+                id: finalDraft?.id,
+              },
+              data: {
+                columnId: inProgressColumnId,
+              },
+            });
+          }
+        }
       } else if (sub.submissionType.type === 'FINAL_DRAFT') {
-        await prisma.task.update({
-          where: {
-            id: sub.task?.id,
-          },
-          data: {
-            columnId: inProgressColumnId,
-          },
+        // Move task from column In Review to In progress
+        const finalDraftTaskId = await getTaskId({
+          boardId: sub?.user?.Board?.id as any,
+          submissionId: sub.id,
+          columnName: 'In Review',
         });
+
+        await updateTask({
+          taskId: finalDraftTaskId as any,
+          toColumnId: inProgressColumnId as any,
+          userId: sub.userId,
+        });
+      }
+
+      // Manage task draft kanban for admin
+      for (const item of sub.campaign.campaignAdmin) {
+        if (item.admin.user.Board) {
+          const task = await getTaskId({
+            boardId: item.admin.user.Board?.id,
+            submissionId: sub.id,
+            columnName: 'Actions Needed',
+          });
+
+          if (task) {
+            await prisma.task.delete({
+              where: {
+                id: task.id,
+              },
+            });
+          }
+
+          // const doneColumn = await getColumnId({
+          //   userId: item.admin.user.id,
+          //   boardId: item.admin.user.Board.id,
+          //   columnName: 'Done',
+          // });
+
+          // if (task) {
+          //   await prisma.task.update({
+          //     where: {
+          //       id: task.id,
+          //     },
+          //     data: {
+          //       column: { connect: { id: doneColumn } },
+          //     },
+          //   });
+          // }
+        }
       }
 
       const { title, message } = notificationRejectDraft(
@@ -796,7 +1143,6 @@ export const adminManageDraft = async (req: Request, res: Response) => {
       return res.status(200).json({ message: 'Succesfully submitted.' });
     }
   } catch (error) {
-    console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -816,19 +1162,39 @@ export const postingSubmission = async (req: Request, res: Response) => {
       },
       include: {
         campaign: {
-          include: {
-            campaignAdmin: true,
+          select: {
+            campaignAdmin: {
+              select: {
+                adminId: true,
+                admin: {
+                  select: {
+                    user: {
+                      select: {
+                        Board: true,
+                        id: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            name: true,
           },
         },
         user: true,
         task: true,
       },
     });
-    const inReviewColumnId = await getColumnId({ userId: submission.userId, columnName: 'In Review' });
 
+    const inReviewColumnId = await getColumnId({ userId: submission.userId, columnName: 'In Review' });
+    const inProgress = await getColumnId({ userId: submission.userId, columnName: 'In Progress' });
+
+    const taskInProgress = submission.task.find((item) => item.columnId === inProgress);
+
+    // Move from column In Progress to In review
     await prisma.task.update({
       where: {
-        id: submission.task?.id,
+        id: taskInProgress?.id,
       },
       data: {
         columnId: inReviewColumnId,
@@ -852,6 +1218,24 @@ export const postingSubmission = async (req: Request, res: Response) => {
         creatorId: submission.userId,
         entityId: submission.campaignId,
       });
+
+      if (admin?.admin.user.Board) {
+        const column = await getColumnId({
+          userId: admin.admin.user.id,
+          boardId: admin.admin.user.Board.id,
+          columnName: 'Actions Needed',
+        });
+
+        if (column) {
+          await createNewTask({
+            submissionId: submission.id,
+            name: 'Posting Submission',
+            columnId: column,
+            userId: admin.admin.user.id,
+            position: 0,
+          });
+        }
+      }
 
       io.to(clients.get(admin.adminId)).emit('notification', notification);
       io.to(clients.get(admin.adminId)).emit('newSubmission');
@@ -899,6 +1283,7 @@ export const adminManagePosting = async (req: Request, res: Response) => {
             creator: true,
             paymentForm: true,
             creatorAgreement: true,
+            Board: true,
           },
         },
         campaign: {
@@ -907,8 +1292,14 @@ export const adminManagePosting = async (req: Request, res: Response) => {
             campaignAdmin: {
               include: {
                 admin: {
-                  include: {
+                  select: {
                     role: true,
+                    user: {
+                      select: {
+                        Board: true,
+                        id: true,
+                      },
+                    },
                   },
                 },
               },
@@ -934,11 +1325,16 @@ export const adminManagePosting = async (req: Request, res: Response) => {
         },
       });
 
-      const doneColumnId = await getColumnId({ userId: submission.userId, columnName: 'Done' });
+      const inReviewColumn = await getColumnId({ userId: submission?.userId, columnName: 'In Review' });
 
+      const doneColumnId = await getColumnId({ userId: submission?.userId, columnName: 'Done' });
+
+      const taskInReview = submission.task.find((item) => item.columnId === inReviewColumn);
+
+      // Move from column in review to Done
       await prisma.task.update({
         where: {
-          id: submission.task?.id,
+          id: taskInReview?.id,
         },
         data: {
           columnId: doneColumnId,
@@ -950,8 +1346,6 @@ export const adminManagePosting = async (req: Request, res: Response) => {
       )?.amount;
 
       const invoice = await createInvoiceService(submission, userId, invoiceAmount);
-
-      // const generatedInvoice = status === 'APPROVED' ? createInvoiceService(submission, userId, invoiceAmount) : null;
 
       const shortlistedCreator = await prisma.shortListedCreator.findFirst({
         where: {
@@ -998,6 +1392,31 @@ export const adminManagePosting = async (req: Request, res: Response) => {
 
           io.to(clients.get(admin.adminId)).emit('notification', notification);
         }
+
+        if (admin.admin.user.Board) {
+          const task = await getTaskId({
+            boardId: admin.admin.user.Board?.id,
+            submissionId: submission.id,
+            columnName: 'Actions Needed',
+          });
+
+          const doneColumn = await getColumnId({
+            userId: admin.admin.user.id,
+            boardId: admin.admin.user.Board.id,
+            columnName: 'Done',
+          });
+
+          if (task) {
+            await prisma.task.update({
+              where: {
+                id: task.id,
+              },
+              data: {
+                column: { connect: { id: doneColumn } },
+              },
+            });
+          }
+        }
       }
 
       const Invoicenotification = await saveNotification({
@@ -1021,7 +1440,7 @@ export const adminManagePosting = async (req: Request, res: Response) => {
 
     await prisma.submission.update({
       where: {
-        id: submissionId,
+        id: submission.id,
       },
       data: {
         status: 'REJECTED',
@@ -1036,6 +1455,43 @@ export const adminManagePosting = async (req: Request, res: Response) => {
       },
     });
 
+    // Move creator task from column In Review to In Progress
+    if (submission.user.Board) {
+      const taskInReview = await getTaskId({
+        boardId: submission.user.Board.id,
+        submissionId: submission.id,
+        columnName: 'In Review',
+      });
+
+      const inProgressColumn: any = await getColumnId({
+        userId: submission.userId,
+        boardId: submission.user.Board.id,
+        columnName: 'In Progress',
+      });
+
+      if (taskInReview) {
+        await updateTask({ taskId: taskInReview?.id, toColumnId: inProgressColumn, userId: submission.userId });
+      }
+    }
+
+    for (const item of submission.campaign.campaignAdmin) {
+      if (item.admin.user.Board) {
+        const taskInActionsNeeded = await getTaskId({
+          boardId: item.admin.user.Board.id,
+          columnName: 'Actions Needed',
+          submissionId: submission.id,
+        });
+
+        if (taskInActionsNeeded) {
+          await prisma.task.delete({
+            where: {
+              id: taskInActionsNeeded.id,
+            },
+          });
+        }
+      }
+    }
+
     const notification = await saveNotification({
       userId: submission.userId,
       message: `❌ Your posting has been rejected for campaign ${submission.campaign.name}. Feedback is provided.`,
@@ -1047,7 +1503,6 @@ export const adminManagePosting = async (req: Request, res: Response) => {
 
     return res.status(200).json({ message: 'Successfully submitted' });
   } catch (error) {
-    console.log(error);
     return res.status(400).json(error);
   }
 };

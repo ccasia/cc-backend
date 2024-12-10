@@ -209,6 +209,7 @@ export const getCreatorFullInfoById = async (req: Request, res: Response) => {
         id: id,
       },
       include: {
+        paymentForm: true,
         creator: {
           include: {
             interests: true,

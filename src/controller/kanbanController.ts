@@ -4,7 +4,7 @@ import { Columns } from '@types';
 
 const prisma = new PrismaClient();
 
-const COLUMNS = ['To Do', 'In Progress', 'Done'];
+export const ADMIN_COLUMNS = ['To Do', 'Actions Needed', 'Done'];
 const CREATOR_COLUMNS = ['To Do', 'In Progress', 'In Review', 'Done'];
 
 export const getKanbanBoard = async (req: Request, res: Response) => {
@@ -21,6 +21,7 @@ export const getKanbanBoard = async (req: Request, res: Response) => {
               include: {
                 submission: {
                   include: {
+                    user: true,
                     feedback: true,
                     campaign: {
                       include: {
@@ -332,7 +333,7 @@ export const createKanbanBoard = async (userId: string, type?: any) => {
         });
       });
     } else {
-      columns = COLUMNS.map(async (column, index) => {
+      columns = ADMIN_COLUMNS.map(async (column, index) => {
         await prisma.columns.create({
           data: {
             name: column,
@@ -356,7 +357,7 @@ export const getColumnId = async ({
 }: {
   userId?: string;
   boardId?: string;
-  columnName: 'To Do' | 'In Progress' | 'In Review' | 'Done';
+  columnName: 'To Do' | 'In Progress' | 'In Review' | 'Done' | 'Actions Needed';
 }) => {
   const board = await prisma.board.findFirst({
     where: {

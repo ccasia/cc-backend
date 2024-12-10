@@ -509,24 +509,24 @@ export const createCampaign = async (req: Request, res: Response) => {
           }),
         );
 
-        await Promise.all(
-          filterTimelines.map((item) =>
-            tx.campaignTask.create({
-              data: {
-                campaignTimelineId: item.id,
-                campaignId: item.campaignId,
-                task: item.name,
-                status: 'IN_PROGRESS',
-                dueDate: dayjs(item.endDate).format(),
-                campaignTaskAdmin: {
-                  create: test.map((admin: any) => ({
-                    userId: admin.adminId,
-                  })),
-                },
-              },
-            }),
-          ),
-        );
+        // await Promise.all(
+        //   filterTimelines.map((item) =>
+        //     tx.campaignTask.create({
+        //       data: {
+        //         campaignTimelineId: item.id,
+        //         campaignId: item.campaignId,
+        //         task: item.name,
+        //         status: 'IN_PROGRESS',
+        //         dueDate: dayjs(item.endDate).format(),
+        //         campaignTaskAdmin: {
+        //           create: test.map((admin: any) => ({
+        //             userId: admin.adminId,
+        //           })),
+        //         },
+        //       },
+        //     }),
+        //   ),
+        // );
 
         logChange('Created', campaign.id, req);
         return res.status(200).json({ campaign, message: 'Campaign created successfully.' });
@@ -876,10 +876,32 @@ export const getCampaignById = async (req: Request, res: Response) => {
 
 export const matchCampaignWithCreator = async (req: Request, res: Response) => {
   const { userid } = req.session;
-  const { search } = req.query;
+  const { cursor, take = 10, search } = req.query;
 
   try {
+    const user = await prisma.user.findUnique({
+      where: {
+        id: userid,
+      },
+      include: {
+        creator: {
+          include: {
+            interests: true,
+          },
+        },
+      },
+    });
+
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
     let campaigns = await prisma.campaign.findMany({
+      take: Number(take),
+      ...(cursor && {
+        skip: 1,
+        cursor: {
+          id: cursor as string,
+        },
+      }),
       where: {
         AND: [
           { status: 'ACTIVE' },
@@ -906,100 +928,101 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       },
     });
 
+    if (campaigns?.length === 0) {
+      const data = {
+        data: {
+          campaigns: [],
+        },
+        metaData: {
+          lastCursor: null,
+          hasNextPage: false,
+        },
+      };
+
+      return res.status(200).json(data);
+    }
+
     campaigns = campaigns.filter(
       (campaign) => campaign.campaignTimeline.find((timeline) => timeline.name === 'Open For Pitch')?.status === 'OPEN',
     );
 
-    const user = await prisma.user.findUnique({
-      where: {
-        id: userid,
-      },
-      include: {
-        creator: {
-          include: {
-            interests: true,
-          },
-        },
-      },
-    });
+    // const matchCampaign = (user: any, campaign: any) => {
+    //   const lang2 = user?.creator?.languages.includes('Chinese')
+    //     ? // eslint-disable-next-line no-unsafe-optional-chaining
+    //       [...user?.creator?.languages, 'Chinese']
+    //     : // eslint-disable-next-line no-unsafe-optional-chaining
+    //       [...user?.creator?.languages];
+    //   let newGender2 = '';
+    //   if (user?.creator.pronounce === 'he/him') {
+    //     newGender2 = 'male';
+    //   } else if (user?.creator.pronounce === 'she/her') {
+    //     newGender2 = 'female';
+    //   } else {
+    //     newGender2 = 'nonbinary';
+    //   }
 
-    const matchCampaign = (user: any, campaign: any) => {
-      const lang2 = user?.creator?.languages.includes('Chinese')
-        ? // eslint-disable-next-line no-unsafe-optional-chaining
-          [...user?.creator?.languages, 'Chinese']
-        : // eslint-disable-next-line no-unsafe-optional-chaining
-          [...user?.creator?.languages];
-      let newGender2 = '';
-      if (user?.creator.pronounce === 'he/him') {
-        newGender2 = 'male';
-      } else if (user?.creator.pronounce === 'she/her') {
-        newGender2 = 'female';
-      } else {
-        newGender2 = 'nonbinary';
-      }
+    //   const match = {
+    //     languages: false,
+    //     interests: false,
+    //     gender: false,
+    //     age: false,
+    //   };
 
-      const match = {
-        languages: false,
-        interests: false,
-        gender: false,
-        age: false,
-      };
+    //   function hasCommonElement(arr1: string[], arr2: string[]): boolean {
+    //     return arr1?.some((value) => arr2.includes(value));
+    //   }
 
-      function hasCommonElement(arr1: string[], arr2: string[]): boolean {
-        return arr1?.some((value) => arr2.includes(value));
-      }
+    //   const languagesMatch = hasCommonElement(campaign?.campaignRequirement?.language || [], lang2);
 
-      const languagesMatch = hasCommonElement(campaign?.campaignRequirement?.language || [], lang2);
+    //   if (languagesMatch) {
+    //     match.languages = true;
+    //   }
 
-      if (languagesMatch) {
-        match.languages = true;
-      }
+    //   if (campaign?.campaignRequirement?.gender.includes(newGender2)) {
+    //     match.gender = true;
+    //   }
 
-      if (campaign?.campaignRequirement?.gender.includes(newGender2)) {
-        match.gender = true;
-      }
+    //   // age
+    //   const birthDate = new Date(user?.creator?.birthDate);
+    //   const today = new Date();
 
-      // age
-      const birthDate = new Date(user?.creator?.birthDate);
-      const today = new Date();
+    //   let age = today.getFullYear() - birthDate.getFullYear();
+    //   const monthDifference = today.getMonth() - birthDate.getMonth();
 
-      let age = today.getFullYear() - birthDate.getFullYear();
-      const monthDifference = today.getMonth() - birthDate.getMonth();
+    //   if (monthDifference < 0 || (monthDifference === 0 && today.getDate() < birthDate.getDate())) {
+    //     age--;
+    //   }
 
-      if (monthDifference < 0 || (monthDifference === 0 && today.getDate() < birthDate.getDate())) {
-        age--;
-      }
+    //   function isAgeInRange(age: number, ranges: string[]): boolean {
+    //     return ranges?.some((range) => {
+    //       const [min, max] = range.split('-').map(Number);
+    //       return age >= min && age <= max;
+    //     });
+    //   }
+    //   const finalAge = isAgeInRange(age, campaign?.campaignRequirement?.age);
 
-      function isAgeInRange(age: number, ranges: string[]): boolean {
-        return ranges?.some((range) => {
-          const [min, max] = range.split('-').map(Number);
-          return age >= min && age <= max;
-        });
-      }
-      const finalAge = isAgeInRange(age, campaign?.campaignRequirement?.age);
+    //   if (finalAge) {
+    //     match.age = true;
+    //   }
 
-      if (finalAge) {
-        match.age = true;
-      }
+    //   const interestArr = user?.creator?.interests.map((item: any) => item.name.toLowerCase());
+    //   function hasCommonElement2(arr1: string[], arr2: string[]): boolean {
+    //     return arr1.some((value) => arr2.includes(value));
+    //   }
 
-      const interestArr = user?.creator?.interests.map((item: any) => item.name.toLowerCase());
-      function hasCommonElement2(arr1: string[], arr2: string[]): boolean {
-        return arr1.some((value) => arr2.includes(value));
-      }
+    //   const interestsMatch = hasCommonElement2(campaign?.campaignRequirement?.creator_persona || [], interestArr);
 
-      const interestsMatch = hasCommonElement2(campaign?.campaignRequirement?.creator_persona || [], interestArr);
+    //   if (interestsMatch) {
+    //     match.interests = true;
+    //   }
 
-      if (interestsMatch) {
-        match.interests = true;
-      }
+    //   function allMatchTrue(match: any): boolean {
+    //     return Object.values(match).every((value) => value === true);
+    //   }
 
-      function allMatchTrue(match: any): boolean {
-        return Object.values(match).every((value) => value === true);
-      }
-
-      const finalMatch = allMatchTrue(match);
-      return finalMatch;
-    };
+    //   const finalMatch = allMatchTrue(match);
+    //   return finalMatch;
+    // };
 
     const calculateInterestMatchingPercentage = (creatorInterests: Interest[], creatorPerona: []) => {
       const totalInterests = creatorPerona.length;
@@ -1065,22 +1088,6 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       return interestMatch * interestWeight + requirementMatch * requirementWeight;
     };
 
-    // const getPercentageMatch = (user: any, campaign: any) => {
-    //   const creatorInterest = user?.creator?.interests.map((item: any) => item.name.toLowerCase());
-    //   const campInterest = campaign?.campaignBrief?.interests.map((e: string) => e.toLowerCase());
-
-    //   function getMatchingElements(arr1: string[], arr2: string[]): string[] {
-    //     return arr1.filter((value) => arr2.includes(value));
-    //   }
-
-    //   const matchedInterests = getMatchingElements(creatorInterest, campInterest);
-    //   const percantage = (matchedInterests.length / campInterest.length) * 100;
-
-    //   return percantage;
-    // };
-
-    // const matchedCampaign = campaigns?.filter((item) => matchCampaign(user, item));
-
     const matchedCampaignWithPercentage = campaigns.map((item) => {
       const interestPercentage = calculateInterestMatchingPercentage(
         user?.creator?.interests as never,
@@ -1101,7 +1108,19 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
 
     const sortedMatchedCampaigns = matchedCampaignWithPercentage.sort((a, b) => b.percentageMatch - a.percentageMatch);
 
-    return res.status(200).json(sortedMatchedCampaigns);
+    const lastCursor = campaigns.length > Number(take) - 1 ? campaigns[Number(take) - 1]?.id : null;
+
+    const data = {
+      data: {
+        campaigns: sortedMatchedCampaigns,
+      },
+      metaData: {
+        lastCursor: lastCursor,
+        hasNextPage: true,
+      },
+    };
+
+    return res.status(200).json(data);
   } catch (error) {
     return res.status(400).json(error);
   }
@@ -2059,13 +2078,42 @@ export const changePitchStatus = async (req: Request, res: Response) => {
         },
       });
 
-      for (const submission of submissions) {
-        await prisma.task.delete({
+      const board = await prisma.board.findUnique({
+        where: {
+          userId: pitch?.userId,
+        },
+        include: {
+          columns: {
+            include: {
+              task: true,
+            },
+          },
+        },
+      });
+
+      if (board) {
+        await prisma.task.deleteMany({
           where: {
-            id: submission.task?.id,
+            column: {
+              boardId: board.id,
+            },
           },
         });
       }
+
+      // const toDoColumn = board.columns.find((item) => item.name === 'To Do');
+      // const inProgressColumn = board.columns.find((item) => item.name === 'In Progress');
+
+      //   for (const submission of submissions) {
+      //     // const task = toDoColumn?.task.find((item) => item.submissionId === submission.id);
+
+      //     await prisma.task.delete({
+      //       where: {
+      //         id: submission.task?.id,
+      //       },
+      //     });
+      //   }
+      // }
 
       const agreement = await prisma.creatorAgreement.findFirst({
         where: {
@@ -3465,6 +3513,289 @@ export const linkNewAgreement = async (req: Request, res: Response) => {
     });
 
     return res.status(200).json({ message: 'Successfully linked new agreeement' });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+interface RequestQuery {
+  status: string;
+  page: number;
+  limit: number;
+  userId: string;
+}
+
+export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: Response) => {
+  const { userId } = req.params;
+  const { status, limit = 9, cursor } = req.query;
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: {
+        id: userId,
+      },
+      select: {
+        admin: {
+          select: {
+            mode: true,
+          },
+        },
+        id: true,
+      },
+    });
+
+    if (!user) return res.status(404).json({ message: 'User not found.' });
+
+    if (user.admin?.mode === 'god') {
+      const campaigns: any = await prisma.campaign.findMany({
+        take: Number(limit),
+        ...(cursor && {
+          skip: 1,
+          cursor: { id: cursor as string },
+        }),
+        where: {
+          ...(status && {
+            status: status as CampaignStatus,
+          }),
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+        include: {
+          agreementTemplate: true,
+          submission: {
+            include: {
+              submissionType: true,
+              dependencies: true,
+            },
+          },
+          brand: true,
+          company: true,
+          campaignTimeline: true,
+          campaignBrief: true,
+          campaignRequirement: true,
+          campaignLogs: {
+            include: {
+              admin: true,
+            },
+          },
+          campaignAdmin: {
+            include: {
+              admin: {
+                include: {
+                  user: {
+                    include: {
+                      agreementTemplate: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+          campaignSubmissionRequirement: true,
+          pitch: {
+            include: {
+              user: {
+                include: {
+                  creator: {
+                    include: {
+                      interests: true,
+                    },
+                  },
+
+                  paymentForm: true,
+                },
+              },
+            },
+          },
+          shortlisted: {
+            select: {
+              user: {
+                include: {
+                  creator: true,
+                },
+              },
+              userId: true,
+            },
+          },
+          campaignTasks: {
+            include: {
+              campaignTaskAdmin: true,
+            },
+          },
+          logistic: {
+            include: {
+              user: true,
+            },
+          },
+          creatorAgreement: true,
+        },
+      });
+
+      const totalActiveCampaigns = campaigns.filter((campaign: Campaign) => campaign.status === 'ACTIVE').length;
+      const totalComletedCampaigns = campaigns.filter((campaign: Campaign) => campaign.status === 'COMPLETED').length;
+
+      if (campaigns.length == 0) {
+        return res.status(200).json({
+          data: {
+            campaigns: [],
+          },
+          metaData: {
+            lastCursor: null,
+            hasNextPage: false,
+          },
+        });
+      }
+
+      const lastCursor = campaigns.length > Number(limit) - 1 ? campaigns[Number(limit) - 1].id : null;
+
+      const data = {
+        data: {
+          campaigns,
+          totalCampaigns: campaigns?.length,
+          totalActiveCampaigns,
+          totalComletedCampaigns,
+        },
+        metaData: {
+          lastCursor: lastCursor,
+        },
+      };
+
+      return res.status(200).json(data);
+    }
+
+    const campaigns = await prisma.campaign.findMany({
+      take: Number(limit),
+      ...(cursor && {
+        skip: 1,
+        cursor: { id: cursor as string },
+      }),
+      where: {
+        ...(status
+          ? {
+              AND: [
+                {
+                  campaignAdmin: {
+                    some: {
+                      adminId: user.id,
+                    },
+                  },
+                },
+                {
+                  status: status as any,
+                },
+              ],
+            }
+          : {
+              campaignAdmin: {
+                some: {
+                  adminId: user.id,
+                },
+              },
+            }),
+      },
+      include: {
+        agreementTemplate: true,
+        submission: {
+          include: {
+            submissionType: true,
+            dependencies: true,
+          },
+        },
+        brand: true,
+        company: true,
+        campaignTimeline: true,
+        campaignBrief: true,
+        campaignRequirement: true,
+        campaignLogs: {
+          include: {
+            admin: true,
+          },
+        },
+        campaignAdmin: {
+          include: {
+            admin: {
+              include: {
+                user: {
+                  include: {
+                    agreementTemplate: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+        campaignSubmissionRequirement: true,
+        pitch: {
+          include: {
+            user: {
+              include: {
+                creator: {
+                  include: {
+                    interests: true,
+                  },
+                },
+
+                paymentForm: true,
+              },
+            },
+          },
+        },
+        shortlisted: {
+          select: {
+            user: {
+              include: {
+                creator: true,
+              },
+            },
+            userId: true,
+          },
+        },
+        campaignTasks: {
+          include: {
+            campaignTaskAdmin: true,
+          },
+        },
+        logistic: {
+          include: {
+            user: true,
+          },
+        },
+        creatorAgreement: true,
+      },
+    });
+
+    const totalActiveCampaigns = campaigns.filter((campaign) => campaign.status === 'ACTIVE').length;
+
+    const totalComletedCampaigns = campaigns.filter((campaign) => campaign.status === 'COMPLETED').length;
+
+    if (campaigns.length == 0) {
+      return res.status(200).json({
+        data: {
+          campaigns: [],
+        },
+        metaData: {
+          lastCursor: null,
+          hasNextPage: false,
+        },
+      });
+    }
+
+    const lastCursor = campaigns.length > Number(limit) - 1 ? campaigns[Number(limit) - 1].id : null;
+
+    const data = {
+      data: {
+        campaigns,
+        totalCampaigns: campaigns?.length,
+        totalActiveCampaigns,
+        totalComletedCampaigns,
+      },
+      metaData: {
+        lastCursor: lastCursor,
+      },
+    };
+
+    return res.status(200).json(data);
   } catch (error) {
     return res.status(400).json(error);
   }
