@@ -15,6 +15,7 @@ import { spawn } from 'child_process';
 import dayjs from 'dayjs';
 import { notificationDraft } from './notification';
 import { createNewTask, getTaskId, updateTask } from '@services/kanbanService';
+import { createNewRowData } from '@services/google_sheets/sheets';
 
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
 Ffmpeg.setFfprobePath(ffprobePath.path);
@@ -116,9 +117,28 @@ const processVideo = async (
                 },
               },
             },
-            user: true,
+            user: {
+              include: {
+                creator: true,
+              },
+            },
           },
         });
+
+        if (data.campaign.spreadSheetURL) {
+          const spreadSheetId = data.campaign.spreadSheetURL.split('/d/')[1].split('/')[0];
+
+          await createNewRowData({
+            creatorInfo: {
+              name: data.user.name,
+              username: data.user.creator?.instagram,
+              postingDate: dayjs().format('LL'),
+              caption: caption,
+              videoLink: `https://storage.googleapis.com/${process.env.BUCKET_NAME as string}/${data?.submissionType.type}/${`${data?.id}_draft.mp4`}?v=${dayjs().format()}`,
+            } as any,
+            spreadSheetId: spreadSheetId,
+          });
+        }
 
         const { title, message } = notificationDraft(data.campaign.name, 'Creator');
 

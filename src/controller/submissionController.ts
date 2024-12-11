@@ -630,20 +630,20 @@ export const draftSubmission = async (req: Request, res: Response) => {
 
     activeProcesses.set(submissionId, { status: 'queue' });
 
-    if (submission.campaign.spreadSheetURL) {
-      const spreadSheetId = submission.campaign.spreadSheetURL.split('/d/')[1].split('/')[0];
+    // if (submission.campaign.spreadSheetURL) {
+    //   const spreadSheetId = submission.campaign.spreadSheetURL.split('/d/')[1].split('/')[0];
 
-      await createNewRowData({
-        creatorInfo: {
-          name: submission.user.name,
-          username: submission.user.creator?.instagram,
-          postingDate: dayjs().format('LL'),
-          caption: caption,
-          videoLink: `https://storage.googleapis.com/${process.env.BUCKET_NAME as string}/${submission?.submissionType.type}/${`${submission?.id}_draft.mp4`}?v=${dayjs().format()}`,
-        } as any,
-        spreadSheetId: spreadSheetId,
-      });
-    }
+    //   await createNewRowData({
+    //     creatorInfo: {
+    //       name: submission.user.name,
+    //       username: submission.user.creator?.instagram,
+    //       postingDate: dayjs().format('LL'),
+    //       caption: caption,
+    //       videoLink: `https://storage.googleapis.com/${process.env.BUCKET_NAME as string}/${submission?.submissionType.type}/${`${submission?.id}_draft.mp4`}?v=${dayjs().format()}`,
+    //     } as any,
+    //     spreadSheetId: spreadSheetId,
+    //   });
+    // }
 
     return res.status(200).json({ message: 'Video start processing' });
   } catch (error) {
