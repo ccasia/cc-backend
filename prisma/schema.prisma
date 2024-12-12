@@ -115,13 +115,14 @@ model Creator {
 }
 
 model MediaKit {
-  id        String   @id @unique @default(cuid())
-  photoUrl  String?
-  name      String?
-  about     String?
-  interests String[]
-  creatorId String   @unique
-  creator   Creator  @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  id          String  @id @unique @default(cuid())
+  displayName String?
+  // photoUrl  String?
+  // name      String?
+  about       String?
+  // interests String[]
+  creatorId   String  @unique
+  creator     Creator @relation(fields: [creatorId], references: [id], onDelete: Cascade)
 }
 
 model Message {

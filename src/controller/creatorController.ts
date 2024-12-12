@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import https from 'https';
 import { Entity, PrismaClient } from '@prisma/client';
-import { uploadAgreementForm } from '@configs/cloudStorage.config';
+import { uploadAgreementForm, uploadProfileImage } from '@configs/cloudStorage.config';
 import { Title, saveNotification } from './notificationController';
 import { clients, io } from '../server';
 
@@ -131,7 +131,7 @@ export const updateCreator = async (req: Request, res: Response) => {
 };
 
 export const updateMediaKit = async (req: Request, res: Response) => {
-  const { name, about, interests, creatorId } = req.body;
+  const { displayName, about, interests, creatorId } = JSON.parse(req.body.data);
 
   try {
     const creator = await prisma.creator.findUnique({
@@ -141,6 +141,20 @@ export const updateMediaKit = async (req: Request, res: Response) => {
 
     if (!creator) {
       return res.status(404).json({ message: 'Creator not found' });
+    }
+
+    if ((req.files as any)?.profilePhoto) {
+      const image = (req.files as any).profilePhoto;
+      const profilePhotoURL = await uploadProfileImage(image.tempFilePath, image.name, 'creator');
+
+      await prisma.user.update({
+        where: {
+          id: creator.userId,
+        },
+        data: {
+          photoURL: profilePhotoURL,
+        },
+      });
     }
 
     const creatorInterests = creator.interests.map((interest: any) => interest.name);
@@ -156,7 +170,7 @@ export const updateMediaKit = async (req: Request, res: Response) => {
 
     const newInterests = interests.filter((interest: string) => !creatorInterests.includes(interest));
 
-    const addedInterst = await prisma.interest.createMany({
+    await prisma.interest.createMany({
       data: newInterests.map((interest: string) => ({
         name: interest,
         rank: 5,
@@ -169,20 +183,18 @@ export const updateMediaKit = async (req: Request, res: Response) => {
         creatorId: creatorId,
       },
       update: {
-        name: name,
         about: about,
-        interests: interests,
+        displayName: displayName || '',
       },
       create: {
-        name: name,
         about: about,
-        interests: interests,
         creatorId: creatorId as string,
+        displayName: displayName || '',
       },
     });
+
     return res.status(200).json({ message: 'Successfully updated', mediaKit });
   } catch (error) {
-    //console.log(error);
     return res.status(400).json(error);
   }
 };
