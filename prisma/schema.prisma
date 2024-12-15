@@ -49,6 +49,7 @@ model User {
   userNotification   UserNotification[]
   UserThread         UserThread[]
   threads            Thread[]             @relation("UserThreads")
+  bugs               Bugs[]
 }
 
 model ResetPasswordToken {
@@ -763,6 +764,24 @@ model AgreementTemplate {
   user          User?      @relation(fields: [userId], references: [id])
   isDefault     Boolean?   @default(false)
   campaign      Campaign[]
+}
+
+model Bugs {
+  id               String       @id @unique @default(cuid())
+  title            String
+  description      String?
+  priority         BugsPriority @default(LOW)
+  stepsToReproduce String
+  attachment       String?
+  createdAt        DateTime     @default(now())
+  userId           String?
+  user             User?         @relation(references: [id], fields: [userId])
+}
+
+enum BugsPriority {
+  LOW
+  MEDIUM
+  HIGH
 }
 
 enum LogisticStatus {

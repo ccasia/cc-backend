@@ -77,25 +77,6 @@ export const createNewRowData = async ({ spreadSheetId, creatorInfo }: Row) => {
   }
 };
 
-// export const getLastRow = async ({ sheetId }: { sheetId: number }) => {
-//   try {
-//     const doc = await accessGoogleSheetAPI();
-
-//     const sheet = doc.sheetsById[sheetId];
-
-//     const rows = await sheet.getRows();
-
-//     const lastRowIndex = rows.length;
-
-//     console.log(`Last row with data is at index: ${lastRowIndex}`);
-
-//     console.log(lastRowIndex);
-//     return lastRowIndex;
-//   } catch (error) {
-//     throw new Error(error);
-//   }
-// };
-
 export const createNewSpreadSheet = async ({ title }: { title: string }) => {
   try {
     const { GoogleSpreadsheet } = await import('google-spreadsheet');
@@ -117,6 +98,52 @@ export const createNewSpreadSheet = async ({ title }: { title: string }) => {
     const url = `https://docs.google.com/spreadsheets/d/${doc.spreadsheetId}/`;
 
     return url;
+  } catch (error) {
+    throw new Error(error);
+  }
+};
+
+export const createNewBugRowData = async ({
+  spreadSheetId,
+  data,
+}: {
+  spreadSheetId: string;
+  data: {
+    createdAt: string;
+    email?: string;
+    name?: string;
+    bugTitle: string;
+    bugDescription?: string;
+    stepsToReproduce: string;
+    attachment?: string;
+    priority: string;
+  };
+}) => {
+  try {
+    const sheet = await accessGoogleSheetAPI(spreadSheetId);
+
+    if (!sheet) {
+      throw new Error('Sheet not found.');
+    }
+
+    const currentSheet = sheet.sheetsByTitle['Bugs'];
+
+    if (!currentSheet) {
+      throw new Error('Sheet not found.');
+    }
+
+    const updatedRow = await currentSheet.addRow({
+      Timestamp: data.createdAt,
+      'Email Address': data.email || '',
+      Name: data.name || '',
+      'Bug Title': data.bugTitle,
+      'Bug Description': data.bugDescription || '',
+      'Steps To Reproduce': data.stepsToReproduce,
+      Attachments: data.attachment || '',
+      Priority: data.priority,
+    });
+
+    return updatedRow;
   } catch (error) {
     throw new Error(error);
   }
