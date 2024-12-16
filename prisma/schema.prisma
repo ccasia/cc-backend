@@ -768,21 +768,18 @@ model AgreementTemplate {
 
 model Bugs {
   id               String       @id @unique @default(cuid())
-  title            String
-  description      String?
-  priority         BugsPriority @default(LOW)
   stepsToReproduce String
   attachment       String?
   createdAt        DateTime     @default(now())
   userId           String?
-  user             User?         @relation(references: [id], fields: [userId])
+  user             User?        @relation(references: [id], fields: [userId])
 }
 
-enum BugsPriority {
-  LOW
-  MEDIUM
-  HIGH
-}
+// enum BugsPriority {
+//   LOW
+//   MEDIUM
+//   HIGH
+// }
 
 enum LogisticStatus {
   Product_is_being_packaged

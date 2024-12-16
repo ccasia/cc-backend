@@ -1,5 +1,5 @@
 import { uploadImage } from '@configs/cloudStorage.config';
-import { Bugs, BugsPriority, PrismaClient } from '@prisma/client';
+import { Bugs, PrismaClient } from '@prisma/client';
 import { createNewBugRowData } from '@services/google_sheets/sheets';
 import dayjs from 'dayjs';
 import { Request, Response } from 'express';
@@ -7,21 +7,15 @@ import { Request, Response } from 'express';
 const prisma = new PrismaClient();
 
 export const createNewBug = async (req: Request, res: Response) => {
-  const { title, description, priority, stepsToReproduce } = JSON.parse(req.body.data);
+  const { stepsToReproduce } = JSON.parse(req.body.data);
   const { userid } = req.session;
 
   try {
     const data: {
-      title: string;
-      description: string;
-      priority: string;
       stepsToReproduce: string;
       attachment?: string;
       userId?: string;
     } = {
-      title,
-      description,
-      priority: priority.toUpperCase() as BugsPriority,
       stepsToReproduce,
     };
 
@@ -53,17 +47,13 @@ export const createNewBug = async (req: Request, res: Response) => {
         email: user?.email,
         name: user?.name || '',
         createdAt: dayjs(item.createdAt).format('LLL'),
-        bugTitle: item.title,
-        bugDescription: item.description || '',
         stepsToReproduce: item.stepsToReproduce,
         attachment: item.attachment || '',
-        priority: item.priority,
       },
     });
 
     return res.status(200).json({ message: 'Bug is successfully reported.' });
   } catch (error) {
-    console.log(error);
     return res.status(400).json(error);
   }
 };

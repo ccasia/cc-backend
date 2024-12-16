@@ -112,11 +112,8 @@ export const createNewBugRowData = async ({
     createdAt: string;
     email?: string;
     name?: string;
-    bugTitle: string;
-    bugDescription?: string;
     stepsToReproduce: string;
     attachment?: string;
-    priority: string;
   };
 }) => {
   try {
@@ -136,11 +133,8 @@ export const createNewBugRowData = async ({
       Timestamp: data.createdAt,
       'Email Address': data.email || '',
       Name: data.name || '',
-      'Bug Title': data.bugTitle,
-      'Bug Description': data.bugDescription || '',
-      'Steps To Reproduce': data.stepsToReproduce,
+      'Please describe the issue you are facing in detail.': data.stepsToReproduce,
       Attachments: data.attachment || '',
-      Priority: data.priority,
     });
 
     return updatedRow;
