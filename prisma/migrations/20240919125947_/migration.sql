@@ -681,6 +681,7 @@ CREATE TABLE "PaymentForm" (
     "icNumber" TEXT NOT NULL,
     "bankName" TEXT NOT NULL,
     "bankAccountNumber" TEXT NOT NULL,
+    "bankAccountName" TEXT NOT NULL,
     "bodyMeasurement" TEXT,
     "allergies" TEXT[],
 
