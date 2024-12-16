@@ -16,6 +16,7 @@ import {
   getCreatorFullInfoByIdPublic,
   updateSocialMedia,
   getPartnerships,
+  getSocialMediaData,
 } from '@controllers/creatorController';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 // import { needPermissions } from '@middlewares/needPermissions';
@@ -33,6 +34,7 @@ router.get('/creator/:id/social-media', getCreatorSocialMediaDataById);
 router.get('/getPartnerships/:id', isLoggedIn, getPartnerships);
 
 router.post('/crawl', crawlCreator);
+router.post('/social', getSocialMediaData);
 
 router.patch('/updateSocialMediaUsername', isLoggedIn, updateSocialMedia);
 router.patch('/update-creator', isLoggedIn, updateCreator);

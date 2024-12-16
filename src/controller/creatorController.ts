@@ -4,6 +4,7 @@ import { Entity, PrismaClient } from '@prisma/client';
 import { uploadAgreementForm, uploadProfileImage } from '@configs/cloudStorage.config';
 import { Title, saveNotification } from './notificationController';
 import { clients, io } from '../server';
+import axios from 'axios';
 
 const prisma = new PrismaClient();
 
@@ -584,6 +585,37 @@ export const getPartnerships = async (req: Request, res: Response) => {
     if (!user) return res.status(404).json({ message: 'User not found.' });
 
     return res.status(200).json(user);
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const getSocialMediaData = async (req: Request, res: Response) => {
+  const { platform, username, contenturl } = req.body;
+  const BASE_URL = `https://stg.api.fair-indonesia.com/api/client/campaign-insight`;
+  const BEARER = 'AtLrQ+Od&KKyxIr+E$4S*2nFS';
+
+  try {
+    if (!platform) return res.status(404).json({ message: 'Please provide a social platform.' });
+
+    const data = await axios.get(BASE_URL, {
+      headers: {
+        Accept: 'application/json, text/plain, */*',
+        Authorization: BEARER,
+        'Content-Type': 'application/json',
+      },
+      params: {
+        platform: platform,
+        ...(username && {
+          username,
+        }),
+        ...(contenturl && {
+          contenturl,
+        }),
+      },
+    });
+
+    return res.status(200).json(data?.data);
   } catch (error) {
     return res.status(400).json(error);
   }
