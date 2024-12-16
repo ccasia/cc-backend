@@ -615,7 +615,9 @@ export const getSocialMediaData = async (req: Request, res: Response) => {
       },
     });
 
-    return res.status(200).json(data?.data);
+    return res
+      .status(200)
+      .json({ data: data?.data?.data, platform: platform, contenturl: contenturl, username: username });
   } catch (error) {
     return res.status(400).json(error);
   }
