@@ -24,8 +24,17 @@ import '@services/google_sheets/sheets';
 import { accessGoogleSheetAPI, createNewRowData, createNewSpreadSheet } from '@services/google_sheets/sheets';
 import { status } from '@dotenvx/dotenvx';
 import path from 'path';
+import fse from 'fs-extra';
+
+import Ffmpeg from 'fluent-ffmpeg';
+import FfmpegPath from '@ffmpeg-installer/ffmpeg';
+
+Ffmpeg.setFfmpegPath(FfmpegPath.path);
 
 dotenv.config();
+
+const uploadPath = path.join(__dirname, 'uploads');
+const uploadPathChunks = path.join(__dirname, 'chunks');
 
 const app: Application = express();
 const server = http.createServer(app);
@@ -210,49 +219,84 @@ io.on('connection', (socket) => {
   });
 });
 
-// Testing chunk upload API
+// app.post('/upload', async (req: Request, res: Response) => {
+//   if (!req.files) return res.status(404).json({ message: 'No video file uploaded' });
 
-// app.post('/upload-chunk', async (req: Request, res: Response) => {
 //   try {
-//     const { fileName, chunkIndex, totalChunks } = req.body;
-//     const tempDir = path.join(__dirname, 'temp', fileName);
-//     const chunkPath = path.join(tempDir, `chunk-${chunkIndex}`);
+//     const chunkNumber = Number(req.body.chunk);
+//     const totalChunks = Number(req.body.totalChunk);
+//     const fileName = (req.files as any).video.name.replace(/\s+/, '');
 
-//     await fs.mkdir(tempDir, { recursive: true });
+//     await fse.mkdir(uploadPathChunks, { recursive: true });
+//     await fse.mkdir(uploadPath, { recursive: true });
 
-//     await fs.copyFile((req.files as any).chunk.tempFilePath, chunkPath);
+//     await fse.copyFile(
+//       (req.files as any).video.tempFilePath,
+//       path.join(uploadPathChunks, `${fileName}.part-${chunkNumber}`),
+//     );
 
-//     await fs.unlink((req.files as any).chunk.tempFilePath);
+//     const uploadedChunks = fse.readdirSync(uploadPathChunks).filter((file) => file.startsWith(fileName));
 
-//     const uploadedChunks = await fs.readdir(tempDir);
+//     if (uploadedChunks.length === totalChunks) {
+//       const writeStream = fse.createWriteStream(path.join(uploadPath, fileName));
 
-//     if (uploadedChunks.length === parseInt(totalChunks)) {
-//       const finalFilePath = path.join(__dirname, 'uploads', fileName);
-
-//       await fs.mkdir(path.join(__dirname, 'uploads'), { recursive: true });
-
-//       const writeStream = ps.createWriteStream(finalFilePath);
 //       for (let i = 0; i < totalChunks; i++) {
-//         const chunkData = await fs.readFile(path.join(tempDir, `chunk-${i}`));
-//         writeStream.write(chunkData);
+//         const chunkPath = path.join(uploadPathChunks, `${fileName}.part-${i}`);
+
+//         const data = await fse.readFile(chunkPath);
+//         writeStream.write(data);
+//         await fse.unlink(chunkPath);
 //       }
+
 //       writeStream.end();
 
-//       await fs.rm(tempDir, { force: true, recursive: true });
+//       const inputPath = path.join(uploadPath, fileName);
+//       // const outputPath = path.join(uploadPath, `compressed-${fileName}`);
+//       // const compressedPath = `./${inputPath.split('.').slice(0, -1).join('.')}-compressed.mp4`;
+//       const compressedPath = path.join(uploadPath, `${fileName.split('.').slice(0, -1).join('.')}-compressed.mp4`);
 
-//       console.log(`File ${fileName} reassembled successfully`);
-//       // await fs.unlink(path.join(__dirname, 'uploads', fileName));
-//       const amqp = await amqplib.connect(process.env.RABBIT_MQ as string);
-//       const channel = amqp.createChannel();
-//       (await channel).assertQueue('test');
+//       Ffmpeg.ffprobe(inputPath, (err, metadata) => {
+//         if (err) {
+//           console.error('FFprobe error:', err);
+//           return res.status(400).json({ success: false, message: 'Invalid input file' });
+//         }
+//         console.log('FFprobe metadata:', metadata);
+//       });
 
-//       (await channel).sendToQueue(
-//         'test',
-//         Buffer.from(JSON.stringify({ path: path.join(__dirname, 'uploads', fileName) })),
-//       );
+//       Ffmpeg(inputPath)
+//         .output(compressedPath)
+//         .outputOptions([
+//           '-c:v libx264',
+//           '-crf 26',
+//           '-pix_fmt yuv420p',
+//           '-preset ultrafast',
+//           '-map 0:v:0',
+//           '-map 0:a:0?',
+//           '-threads 4',
+//         ])
+//         .on('progress', (data) => {
+//           console.log(data);
+//         })
+//         .on('end', () => {
+//           // fse.unlinkSync(inputPath); // Optionally delete the original merged file
+//           res.json({
+//             success: true,
+//             message: 'File uploaded, merged, and compressed successfully',
+//             compressedPath,
+//           });
+//         })
+//         .on('error', (err) => {
+//           console.error('FFmpeg error:', err);
+//           res.status(500).json({
+//             success: false,
+//             message: 'Compression failed',
+//             error: err.message,
+//           });
+//         })
+//         .run();
+//     } else {
+//       return res.status(201).json({ message: 'next chunk' });
 //     }
-
-//     res.status(200).send('Chunk uploaded successfully');
 //   } catch (error) {
 //     return res.status(400).json(error);
 //   }
