@@ -14,6 +14,8 @@ router.get('/oauth/tiktok', isLoggedIn, redirectTiktok);
 router.get('/tiktok/callback', async (req: Request, res: Response) => {
   const code = req.query.code;
 
+  console.log('Code', code);
+
   try {
     // Exchange code for access token
     const tokenResponse = await axios.post(
@@ -31,6 +33,8 @@ router.get('/tiktok/callback', async (req: Request, res: Response) => {
     );
 
     const { access_token } = tokenResponse.data;
+
+    console.log('Access token', access_token);
 
     // Get user info
     const userInfoResponse = await axios.get('https://open.tiktokapis.com/v2/user/info/', {
