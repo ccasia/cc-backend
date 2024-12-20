@@ -34,6 +34,8 @@ router.get('/tiktok/callback', async (req: Request, res: Response) => {
       },
     );
 
+    console.log(tokenResponse.data);
+
     const { access_token, refresh_token } = tokenResponse.data;
 
     const encryptedAccessToken = encryptToken(access_token);
