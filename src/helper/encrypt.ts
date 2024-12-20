@@ -4,7 +4,7 @@ const secretKey: string = process.env.ENCRYPTION_KEY as string;
 
 export const encryptToken = (token: string): any => {
   const iv = crypto.randomBytes(16);
-  const cipher = crypto.createCipheriv('aes-128-ctr', Buffer.from(secretKey, 'hex'), iv);
+  const cipher = crypto.createCipheriv('aes-256-ctr', Buffer.from(secretKey, 'hex'), iv);
   console.log('cypher', cipher);
   const encryptedToken = Buffer.concat([cipher.update(token), cipher.final()]);
 
