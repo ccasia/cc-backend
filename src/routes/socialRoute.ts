@@ -14,8 +14,6 @@ router.get('/oauth/tiktok', isLoggedIn, redirectTiktok);
 router.get('/tiktok/callback', async (req: Request, res: Response) => {
   const code = req.query.code;
 
-  console.log('Code', code);
-
   try {
     // Exchange code for access token
     const tokenResponse = await axios.post(
@@ -34,8 +32,6 @@ router.get('/tiktok/callback', async (req: Request, res: Response) => {
 
     const { access_token } = tokenResponse.data;
 
-    console.log('Access token', access_token);
-
     // Get user info
     const userInfoResponse = await axios.get('https://open.tiktokapis.com/v2/user/info/', {
       params: {
@@ -44,11 +40,22 @@ router.get('/tiktok/callback', async (req: Request, res: Response) => {
       headers: { Authorization: `Bearer ${access_token}` },
     });
 
+    const videoInfoResponse = await axios.post(
+      'https://open.tiktokapis.com/v2/video/list/',
+      { max_count: 20 },
+      {
+        params: {
+          fields: 'cover_image_url, id, title',
+        },
+        headers: { Authorization: `Bearer ${access_token}`, 'Content-Type': 'application/json' },
+      },
+    );
+
     const userInfo = userInfoResponse.data;
 
-    console.log(userInfo);
+    const videoInfo = videoInfoResponse.data;
 
-    res.json({ user: userInfo });
+    res.json({ user: userInfo, video: videoInfo });
   } catch (error) {
     console.error('Error during TikTok OAuth:', error.response?.data || error.message);
     res.status(500).send('Error during TikTok OAuth');
