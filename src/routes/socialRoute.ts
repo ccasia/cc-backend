@@ -1,7 +1,9 @@
 import { redirectTiktok } from '@controllers/socialController';
+import { encryptToken } from '@helper/encrypt';
 import { isLoggedIn } from '@middlewares/onlyLogin';
 import axios from 'axios';
 import { Router, Request, Response } from 'express';
+import { prisma } from 'src/prisma/prisma';
 
 const router = Router();
 
@@ -30,7 +32,19 @@ router.get('/tiktok/callback', async (req: Request, res: Response) => {
       },
     );
 
-    const { access_token } = tokenResponse.data;
+    const { access_token, refresh_token } = tokenResponse.data;
+
+    const encryptedAccessToken = encryptToken(access_token);
+    const encryptedRefreshToken = encryptToken(refresh_token);
+
+    await prisma.creator.update({
+      where: {
+        userId: req.session.userid,
+      },
+      data: {
+        tiktokToken: JSON.stringify({ encryptedAccessToken, encryptedRefreshToken }),
+      },
+    });
 
     // Get user info
     const userInfoResponse = await axios.get('https://open.tiktokapis.com/v2/user/info/', {

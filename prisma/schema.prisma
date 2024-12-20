@@ -113,6 +113,8 @@ model Creator {
   interests              Interest[]
   invoices               Invoice[]
   mediaKit               MediaKit?
+  tiktokToken            Json?
+  instagramToken         Json?
 }
 
 model MediaKit {
@@ -676,6 +678,7 @@ model PaymentForm {
   icNumber          String?
   bankName          String?
   bankAccountNumber String?
+  bankAccountName   String?
   bodyMeasurement   String?
   allergies         String[]
   user              User     @relation(fields: [userId], references: [id])
@@ -767,12 +770,12 @@ model AgreementTemplate {
 }
 
 model Bugs {
-  id               String       @id @unique @default(cuid())
+  id               String   @id @unique @default(cuid())
   stepsToReproduce String
   attachment       String?
-  createdAt        DateTime     @default(now())
+  createdAt        DateTime @default(now())
   userId           String?
-  user             User?        @relation(references: [id], fields: [userId])
+  user             User?    @relation(references: [id], fields: [userId])
 }
 
 // enum BugsPriority {
