@@ -13,7 +13,7 @@ export const redirectTiktok = (req: Request, res: Response) => {
   let url = 'https://www.tiktok.com/v2/auth/authorize/';
 
   url += '?client_key=' + CLIENT_KEY;
-  url += '&scope=user.info.basic,user.info.profile,user.info.stats';
+  url += '&scope=user.info.basic,user.info.profile,user.info.stats, video.list';
   url += '&response_type=code';
   url += '&redirect_uri=' + TIKTOK_REDIRECT_URI;
   url += '&state=' + csrfState;
