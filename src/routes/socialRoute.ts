@@ -38,6 +38,9 @@ router.get('/tiktok/callback', async (req: Request, res: Response) => {
 
     // Get user info
     const userInfoResponse = await axios.get('https://open.tiktokapis.com/v2/user/info/', {
+      params: {
+        fields: 'open_id, union_id, display_name, avatar_url',
+      },
       headers: { Authorization: `Bearer ${access_token}` },
     });
 
