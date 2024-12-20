@@ -1,15 +1,17 @@
 import { redirectTiktok } from '@controllers/socialController';
 import { encryptToken } from '@helper/encrypt';
 import { isLoggedIn } from '@middlewares/onlyLogin';
+import { PrismaClient } from '@prisma/client';
 import axios from 'axios';
 import { Router, Request, Response } from 'express';
-import { prisma } from 'src/prisma/prisma';
 
 const router = Router();
 
 const CLIENT_KEY = 'sbawx99tuchkscwygv';
 const CLIENT_SECRET = 'oIjGT7T8WJPWwL2POjTyYI75WRwVj8nh';
 const TIKTOK_REDIRECT_URI = `https://staging.cultcreativeasia.com/api/social/tiktok/callback`;
+
+const prisma = new PrismaClient();
 
 router.get('/oauth/tiktok', isLoggedIn, redirectTiktok);
 
