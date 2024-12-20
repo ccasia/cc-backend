@@ -7,7 +7,7 @@ const router = Router();
 
 const CLIENT_KEY = 'sbawx99tuchkscwygv';
 const CLIENT_SECRET = 'oIjGT7T8WJPWwL2POjTyYI75WRwVj8nh';
-const TIKTOK_REDIRECT_URI = `https://localhost/api/social/tiktok/callback`;
+const TIKTOK_REDIRECT_URI = `https://staging.cultcreativeasia.com/api/social/tiktok/callback`;
 
 router.get('/oauth/tiktok', isLoggedIn, redirectTiktok);
 

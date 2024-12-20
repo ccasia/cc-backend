@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 
-const TIKTOK_REDIRECT_URI = `https://localhost/api/social/tiktok/callback`;
+const TIKTOK_REDIRECT_URI = `https://staging.cultcreativeasia.com/api/social/tiktok/callback`;
 const CLIENT_KEY = 'sbawx99tuchkscwygv';
 
 const CODE_VERIFIER = 'your_unique_code_verifier';
@@ -16,6 +16,9 @@ export const redirectTiktok = (req: Request, res: Response) => {
   url += '&scope=user.info.basic,user.info.profile,user.info.stats';
   url += '&response_type=code';
   url += '&redirect_uri=' + TIKTOK_REDIRECT_URI;
+  url += '&state=' + csrfState;
+  url += '&code_challenge=' + CODE_VERIFIER;
+  url += '&code_challenge_method=S256';
 
   res.send(url);
 };
