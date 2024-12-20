@@ -44,7 +44,7 @@ router.get('/tiktok/callback', async (req: Request, res: Response) => {
         userId: req.session.userid,
       },
       data: {
-        tiktokToken: JSON.stringify({ encryptedAccessToken, encryptedRefreshToken }),
+        tiktokToken: { encryptedAccessToken, encryptedRefreshToken },
       },
     });
 
