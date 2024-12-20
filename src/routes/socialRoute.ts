@@ -39,6 +39,9 @@ router.get('/tiktok/callback', async (req: Request, res: Response) => {
     const encryptedAccessToken = encryptToken(access_token);
     const encryptedRefreshToken = encryptToken(refresh_token);
 
+    console.log('EAT', encryptedAccessToken);
+    console.log('ERT', encryptedRefreshToken);
+
     await prisma.creator.update({
       where: {
         userId: req.session.userid,
