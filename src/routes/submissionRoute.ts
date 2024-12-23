@@ -4,6 +4,7 @@ import {
   adminManageDraft,
   adminManagePosting,
   agreementSubmission,
+  changePostingDate,
   draftSubmission,
   getSubmissionByCampaignCreatorId,
   postingSubmission,
@@ -44,5 +45,6 @@ router.post('/postSubmission', isLoggedIn, postingSubmission);
 router.patch('/adminManageAgreementSubmission', isSuperAdmin, adminManageAgreementSubmission);
 router.patch('/adminManageDraft', isSuperAdmin, adminManageDraft);
 router.patch('/adminManagePosting', isSuperAdmin, adminManagePosting);
+router.patch('/posting', isLoggedIn, isSuperAdmin, changePostingDate);
 
 export default router;

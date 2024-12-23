@@ -1509,3 +1509,24 @@ export const adminManagePosting = async (req: Request, res: Response) => {
     return res.status(400).json(error);
   }
 };
+
+export const changePostingDate = async (req: Request, res: Response) => {
+  const { startDate, endDate, submissionId } = req.body;
+
+  try {
+    const data = await prisma.submission.update({
+      where: {
+        id: submissionId,
+      },
+      data: {
+        startDate: startDate,
+        endDate: endDate,
+        dueDate: endDate,
+      },
+    });
+
+    return res.status(200).json({ message: 'Posting date changed successfully.' });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
