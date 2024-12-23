@@ -306,7 +306,7 @@ export const getCreatorFullInfoByIdPublic = async (req: Request, res: Response) 
 };
 
 export const updatePaymentForm = async (req: Request, res: Response) => {
-  const { bankName, bankNumber, icPassportNumber }: any = req.body;
+  const { bankName, bankAccName, bankNumber, icPassportNumber }: any = req.body;
 
   try {
     const data = await prisma.paymentForm.upsert({
@@ -316,12 +316,14 @@ export const updatePaymentForm = async (req: Request, res: Response) => {
       update: {
         icNumber: icPassportNumber.toString(),
         bankAccountNumber: bankNumber.toString(),
+        bankAccountName: bankAccName.toString(),
         bankName: bankName?.bank,
       },
       create: {
         user: { connect: { id: req.session.userid } },
         icNumber: icPassportNumber.toString(),
         bankAccountNumber: bankNumber.toString(),
+        bankAccountName: bankAccName.toString(),
         bankName: bankName?.bank,
       },
     });
@@ -336,7 +338,7 @@ export const updateCreatorForm = async (req: Request, res: Response) => {
   //   const { fullName, address, icNumber, bankName, accountNumber } = req.body;
   //   const userId = req.session.userid as string;
 
-  const { fullName, address, icNumber, bankName, accountNumber, userId } = req.body;
+  const { fullName, address, icNumber, bankName, accountName, accountNumber, userId } = req.body;
 
   try {
     const user = await prisma.user.findUnique({
@@ -360,7 +362,7 @@ export const updateCreatorForm = async (req: Request, res: Response) => {
         name: fullName,
         creator: {
           update: {
-            address: address,
+            // address: address,
             isFormCompleted: true,
           },
         },
@@ -372,11 +374,13 @@ export const updateCreatorForm = async (req: Request, res: Response) => {
             update: {
               bankName: bankName,
               bankAccountNumber: accountNumber,
+              bankAccountName: accountName,
               icNumber: icNumber,
             },
             create: {
               bankName: bankName,
               bankAccountNumber: accountNumber,
+              bankAccountName: accountName,
               icNumber: icNumber,
             },
           },

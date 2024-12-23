@@ -675,6 +675,7 @@ model PaymentForm {
   userId            String   @unique
   icNumber          String?
   bankName          String?
+  bankAccountName   String?
   bankAccountNumber String?
   bodyMeasurement   String?
   allergies         String[]

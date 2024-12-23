@@ -134,6 +134,7 @@ const generateAgreement = async (creator: any, campaign: any) => {
       now_date: dayjs().format('ddd LL'),
       creatorAccNumber: creator?.paymentForm.bankAccountNumber,
       creatorBankName: creator?.paymentForm?.bankName,
+      creatorBankAccName: creator?.paymentForm?.bankAccountName,
       agreementFormUrl: campaign?.campaignBrief?.agreementFrom,
       version: 1,
     });
