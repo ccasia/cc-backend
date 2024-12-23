@@ -3756,6 +3756,7 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
 
 export const removeCreatorFromCampaign = async (req: Request, res: Response) => {
   const { creatorId, campaignId } = req.body;
+
   try {
     const user = await prisma.user.findUnique({
       where: {
@@ -3809,6 +3810,36 @@ export const removeCreatorFromCampaign = async (req: Request, res: Response) => 
           },
         },
       });
+
+      await tx.creatorAgreement.delete({
+        where: {
+          userId_campaignId: {
+            userId: user.id,
+            campaignId: campaign.id,
+          },
+        },
+      });
+
+      const invoice = await tx.invoice.findFirst({
+        where: {
+          AND: [
+            {
+              creatorId: user.id,
+            },
+            {
+              campaignId: campaign.id,
+            },
+          ],
+        },
+      });
+
+      if (invoice) {
+        await tx.invoice.delete({
+          where: {
+            id: invoice.id,
+          },
+        });
+      }
     });
 
     return res.status(200).json({ message: 'Successfully withdraw' });
