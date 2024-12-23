@@ -633,7 +633,7 @@ model Feedback {
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
   admin        User          @relation(fields: [adminId], references: [id])
-  submission   Submission    @relation(fields: [submissionId], references: [id])
+  submission   Submission    @relation(fields: [submissionId], references: [id], onDelete: Cascade)
 }
 
 model Invoice {
@@ -714,7 +714,7 @@ model Task {
   columnId     String
   submissionId String?
   column       Columns        @relation(fields: [columnId], references: [id], onDelete: Cascade)
-  submission   Submission?    @relation(fields: [submissionId], references: [id])
+  submission   Submission?    @relation(fields: [submissionId], references: [id], onDelete: Cascade)
   assignees    TaskAssignee[]
 }
 

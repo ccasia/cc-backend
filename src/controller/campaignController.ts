@@ -1,5 +1,7 @@
 import { Request, Response } from 'express';
 import {
+  Admin,
+  CampaignAdmin,
   CampaignBrief,
   CampaignRequirement,
   CampaignStatus,
@@ -510,26 +512,7 @@ export const createCampaign = async (req: Request, res: Response) => {
           }),
         );
 
-        // await Promise.all(
-        //   filterTimelines.map((item) =>
-        //     tx.campaignTask.create({
-        //       data: {
-        //         campaignTimelineId: item.id,
-        //         campaignId: item.campaignId,
-        //         task: item.name,
-        //         status: 'IN_PROGRESS',
-        //         dueDate: dayjs(item.endDate).format(),
-        //         campaignTaskAdmin: {
-        //           create: test.map((admin: any) => ({
-        //             userId: admin.adminId,
-        //           })),
-        //         },
-        //       },
-        //     }),
-        //   ),
-        // );
-
-        logChange('Created', campaign.id, req);
+        logChange('Campaign Created', campaign.id, req);
         return res.status(200).json({ campaign, message: 'Campaign created successfully.' });
       },
       {
@@ -3238,6 +3221,7 @@ export const removePitchVideo = async (req: Request, res: Response) => {
 
 export const editCampaignAdmin = async (req: Request, res: Response) => {
   const { id } = req.params;
+
   const {
     data: { admins },
   } = req.body;
@@ -3249,6 +3233,7 @@ export const editCampaignAdmin = async (req: Request, res: Response) => {
       },
       include: {
         campaignAdmin: true,
+        thread: true,
       },
     });
 
@@ -3263,6 +3248,25 @@ export const editCampaignAdmin = async (req: Request, res: Response) => {
         });
         return data;
       }),
+    );
+
+    const existingAdmins = await prisma.campaignAdmin.findMany({
+      where: {
+        campaignId: campaign.id,
+      },
+      select: {
+        admin: {
+          select: { userId: true },
+        },
+      },
+    });
+
+    const filteredExistingAdmins = existingAdmins.map((item) => item?.admin?.userId); //map to admin id
+
+    const newAdmins: any[] = admins.filter((admin: { id: string }) => !filteredExistingAdmins.includes(admin.id));
+
+    const removedAdmins: any[] = existingAdmins.filter((admin) =>
+      admins.every((item: any) => item.id !== admin.admin.userId),
     );
 
     await prisma.campaignAdmin.deleteMany({
@@ -3284,8 +3288,33 @@ export const editCampaignAdmin = async (req: Request, res: Response) => {
       },
     });
 
+    if (newAdmins.length > 0) {
+      newAdmins.forEach(async (admin) => {
+        await prisma.userThread.create({
+          data: {
+            userId: admin.id,
+            threadId: campaign.thread?.id!,
+          },
+        });
+      });
+    }
+
+    if (removedAdmins.length > 0) {
+      removedAdmins.forEach(async (admin) => {
+        await prisma.userThread.delete({
+          where: {
+            userId_threadId: {
+              userId: admin.admin.userId,
+              threadId: campaign?.thread?.id!,
+            },
+          },
+        });
+      });
+    }
+
     return res.status(200).json({ message: 'Update Success.' });
   } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -3721,6 +3750,70 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
 
     return res.status(200).json(data);
   } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const removeCreatorFromCampaign = async (req: Request, res: Response) => {
+  const { creatorId, campaignId } = req.body;
+  try {
+    const user = await prisma.user.findUnique({
+      where: {
+        id: creatorId,
+      },
+    });
+
+    if (!user) return res.status(404).json({ message: 'No user found.' });
+
+    const campaign = await prisma.campaign.findUnique({
+      where: {
+        id: campaignId,
+      },
+      include: {
+        thread: true,
+      },
+    });
+
+    if (!campaign) return res.status(404).json({ message: 'No campaign found.' });
+
+    const threadId = campaign?.thread?.id;
+
+    await prisma.$transaction(async (tx) => {
+      await tx.shortListedCreator.delete({
+        where: {
+          userId_campaignId: {
+            userId: user.id,
+            campaignId: campaign.id,
+          },
+        },
+      });
+
+      await tx.submission.deleteMany({
+        where: {
+          AND: [
+            {
+              userId: user.id,
+            },
+            {
+              campaignId: campaign.id,
+            },
+          ],
+        },
+      });
+
+      await tx.userThread.delete({
+        where: {
+          userId_threadId: {
+            userId: user.id,
+            threadId: threadId!,
+          },
+        },
+      });
+    });
+
+    return res.status(200).json({ message: 'Successfully withdraw' });
+  } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   }
 };
