@@ -223,6 +223,7 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
         id: campaignId,
       },
       include: {
+        campaignBrief: true,
         campaignAdmin: {
           include: {
             admin: {
@@ -379,9 +380,11 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
         entityId: campaign?.id,
       });
 
+      const image = (campaign.campaignBrief as any).images[0];
+
       // Emailer for First Draft
       if (user) {
-        firstDraftDue(user.email, campaign?.name as string, user.name ?? 'Creator', campaign?.id as string);
+        firstDraftDue(user.email, campaign?.name as string, user.name ?? 'Creator', campaign?.id as string, image);
       }
 
       io.to(clients.get(userId)).emit('notification', notification);
