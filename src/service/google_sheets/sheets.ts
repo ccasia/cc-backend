@@ -123,7 +123,7 @@ export const createNewBugRowData = async ({
       throw new Error('Sheet not found.');
     }
 
-    const currentSheet = sheet.sheetsByTitle['Bugs'];
+    const currentSheet = sheet.sheetsByTitle['Platform Creator Bugs'];
 
     if (!currentSheet) {
       throw new Error('Sheet not found.');
