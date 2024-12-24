@@ -75,6 +75,7 @@ new CronJob(
     submissions.map(async (submission) => {
       const startTrigger = dayjs(submission.dueDate).subtract(2, 'day');
       const today = dayjs();
+
       if (
         !submission.content &&
         (startTrigger.isBefore(today, 'date') || startTrigger.isSame(today, 'date')) &&
@@ -88,9 +89,10 @@ new CronJob(
 
         const data = await saveNotification({
           userId: submission.userId,
-          entity: 'Timeline',
+          entity: Entity.Agreement,
           message: message,
           title: title,
+          entityId: submission.campaignId,
         });
 
         io.to(clients.get(submission.userId)).emit('notification', data);
