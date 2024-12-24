@@ -89,7 +89,7 @@ new CronJob(
 
         const data = await saveNotification({
           userId: submission.userId,
-          entity: Entity.Agreement,
+          entity: 'Timeline',
           message: message,
           title: title,
           entityId: submission.campaignId,
