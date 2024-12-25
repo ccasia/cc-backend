@@ -638,7 +638,7 @@ model Feedback {
 
 model Invoice {
   id            String        @id @unique @default(cuid())
-  invoiceNumber String
+  invoiceNumber String        @unique
   amount        Float
   status        InvoiceStatus @default(draft)
   task          Json?
@@ -768,12 +768,12 @@ model AgreementTemplate {
 }
 
 model Bugs {
-  id               String       @id @unique @default(cuid())
+  id               String   @id @unique @default(cuid())
   stepsToReproduce String
   attachment       String?
-  createdAt        DateTime     @default(now())
+  createdAt        DateTime @default(now())
   userId           String?
-  user             User?        @relation(references: [id], fields: [userId])
+  user             User?    @relation(references: [id], fields: [userId])
 }
 
 // enum BugsPriority {
