@@ -13,6 +13,8 @@ import { clients, io } from '../server';
 import { TokenSet } from 'openid-client';
 import { error } from 'console';
 
+import fs from 'fs-extra';
+
 const prisma = new PrismaClient();
 
 const client_id: string = process.env.XERO_CLIENT_ID as string;
@@ -26,6 +28,22 @@ const xero = new XeroClient({
   redirectUris: [redirectUrl],
   scopes: scopes?.split(' '),
 });
+
+// invoice type definition
+interface invoiceData {
+  invoiceId: string;
+  invoiceNumber: string;
+  createDate: Date;
+  dueDate: Date;
+  status: InvoiceStatus;
+  invoiceFrom: any;
+  invoiceTo: object;
+  items: object[];
+  totalAmount: number;
+  bankInfo: object;
+  createdBy: string;
+  campaignId: string;
+}
 
 export const getAllInvoices = async (req: Request, res: Response) => {
   try {
@@ -134,22 +152,6 @@ export const getInvoiceByCreatorIdAndCampaignId = async (req: Request, res: Resp
   }
 };
 
-// invoice type definition
-interface invoiceData {
-  invoiceId: string;
-  invoiceNumber: string;
-  createDate: Date;
-  dueDate: Date;
-  status: InvoiceStatus;
-  invoiceFrom: any;
-  invoiceTo: object;
-  items: object[];
-  totalAmount: number;
-  bankInfo: object;
-  createdBy: string;
-  campaignId: string;
-}
-
 // create invoices
 export const createInvoice = async (req: Request, res: Response) => {
   // get user id from session
@@ -169,7 +171,6 @@ export const createInvoice = async (req: Request, res: Response) => {
   }: invoiceData = req.body;
   const item: object = items[0];
   const creatorIdInfo = invoiceFrom.id;
-  const creator = await prisma.creator.findMany();
 
   try {
     const invoice = await prisma.invoice.create({
@@ -186,13 +187,11 @@ export const createInvoice = async (req: Request, res: Response) => {
         campaignId: campaignId,
         creatorId: creatorIdInfo,
         adminId: userid,
-        // createdBy: userid as string,
       },
     });
-    res.status(201).json(invoice);
+    return res.status(201).json(invoice);
   } catch (error) {
-    //console.log(error);
-    res.status(500).json({ error: 'Something went wrong' });
+    return res.status(400).json(error);
   }
 };
 
@@ -273,22 +272,44 @@ export const updateInvoice = async (req: Request, res: Response) => {
     });
 
     let contactID: any;
+    let invoiceData: any;
 
     if (invoice.creator.xeroContactId) {
       contactID = invoice.creator.xeroContactId;
-      await createXeroInvoiceLocal(contactID, items, dueDate, req.body.contactId.type);
+      invoiceData = await createXeroInvoiceLocal(
+        contactID,
+        items,
+        dueDate,
+        invoice.campaign.name,
+        invoice.invoiceNumber,
+      );
     }
 
     if (status == 'approved' && Object.keys(req.body.contactId).length !== 0) {
-      await createXeroInvoiceLocal(invoice.creator.xeroContactId as string, items, dueDate, req.body.contactId.type);
+      invoiceData = await createXeroInvoiceLocal(
+        invoice.creator.xeroContactId as string,
+        items,
+        dueDate,
+        invoice.campaign.name,
+        invoice.invoiceNumber,
+      );
       contactID = invoice.creator.xeroContactId;
     }
 
     if (status == 'approved' && req.body.newContact) {
       const contact: any = await createXeroContact(bankInfo, invoice.creator, invoice.user, invoiceFrom);
       contactID = contact[0].contactID;
-      await createXeroInvoiceLocal(contactID, items, dueDate, req.body.contactId.type);
+      invoiceData = await createXeroInvoiceLocal(
+        contactID,
+        items,
+        dueDate,
+        invoice.campaign.name,
+        invoice.invoiceNumber,
+      );
     }
+
+    // Attach invoice PDF in xero
+    // await attachInvoicePDF(xero.tenants[0].tenantId);
 
     await prisma.creator.update({
       where: {
@@ -330,12 +351,11 @@ export const updateInvoice = async (req: Request, res: Response) => {
       // invoiceId: invoice.id,
       entityId: invoice.campaignId,
     });
-    //  console.log("Sending notification to creator:", invoice.creatorId, creatorNotification);
+
     io.to(clients.get(invoice.creatorId)).emit('notification', creatorNotification);
 
     return res.status(200).json(invoice);
   } catch (error) {
-    console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -539,6 +559,7 @@ export const createXeroInvoice = async (req: Request, res: Response) => {
     reference: reference,
     status: 'AUTHORISED' as any,
   };
+
   const response = await xero.accountingApi.createInvoices(xero.tenants[0].tenantId, { invoices: [invoice] });
 };
 
@@ -564,14 +585,23 @@ export const createXeroContact = async (bankInfo: any, creator: any, user: any, 
   return response.body.contacts;
 };
 
-export const createXeroInvoiceLocal = async (contactId: string, lineItems: any, dueDate: any, invoiceType: any) => {
+export const createXeroInvoiceLocal = async (
+  contactId: string,
+  lineItems: any,
+  dueDate: any,
+  campaignName: string,
+  invoiceNumber: string,
+) => {
   try {
     const contact: Contact = { contactID: contactId };
+
     const where = 'Status=="ACTIVE"';
+
     const accounts: any = await xero.accountingApi.getAccounts(xero.tenants[0].tenantId, undefined, where);
-    console.log('accounts.body.accounts[0]', accounts.body.accounts[0]);
+
     const lineItemsArray: LineItem[] = lineItems.map((item: any) => ({
       accountID: accounts.body.accounts[0].accountID,
+      accountCode: '50930',
       description: item.description,
       quantity: item.quantity,
       unitAmount: item.total,
@@ -584,14 +614,16 @@ export const createXeroInvoiceLocal = async (contactId: string, lineItems: any, 
       dueDate: dueDate,
       lineItems: lineItemsArray,
       status: 'AUTHORISED' as any,
+      invoiceNumber: invoiceNumber || 'N/A',
+      reference: campaignName || 'N/A',
     };
 
-    const response = await xero.accountingApi.createInvoices(xero.tenants[0].tenantId, { invoices: [invoice] });
+    const response: any = await xero.accountingApi.createInvoices(xero.tenants[0].tenantId, { invoices: [invoice] });
+    return response;
   } catch (error) {
-    console.log(error);
+    throw new Error(error);
   }
 };
-// create update function
 
 export const creatorInvoice = async (req: Request, res: Response) => {
   const { invoiceId } = req.params;
@@ -611,5 +643,23 @@ export const creatorInvoice = async (req: Request, res: Response) => {
     return res.status(200).json(invoice);
   } catch (error) {
     return res.status(400).json(error);
+  }
+};
+
+export const attachInvoicePDF = async (tenantId: string, invoiceId: string, fileName: string, filePath: string) => {
+  try {
+    const fileStream = fs.createReadStream(filePath);
+
+    const data = await xero.accountingApi.createInvoiceAttachmentByFileName(
+      tenantId,
+      invoiceId,
+      fileName,
+      fileStream,
+      true,
+    );
+
+    return data;
+  } catch (error) {
+    throw new Error(error);
   }
 };

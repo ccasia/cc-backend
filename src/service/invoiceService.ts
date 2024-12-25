@@ -28,11 +28,33 @@ const prisma = new PrismaClient();
 //   campaignId: string;
 // };
 
+async function generateUniqueInvoiceNumber() {
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const randomNumber = Math.floor(1000 + Math.random() * 9000); // Ensures 4 digits
+    const invoiceNumber = `INV-${randomNumber}`;
+
+    // Check if the invoice number already exists
+    const existingInvoice = await prisma.invoice.findUnique({
+      where: { invoiceNumber },
+    });
+
+    if (!existingInvoice) {
+      // Return the unique invoice number
+      return invoiceNumber;
+    }
+
+    // If the number exists, retry
+  }
+}
+
 export const createInvoiceService = async (data: any, userId: any, amount: any) => {
-  const generateRandomInvoiceNumber = () => {
-    const randomNumber = Math.floor(1000 + Math.random() * 9000);
-    return `INV-${randomNumber}`;
-  };
+  // const generateRandomInvoiceNumber = () => {
+  //   const randomNumber = Math.floor(1000 + Math.random() * 9000);
+  //   return `INV-${randomNumber}`;
+  // };
+
+  const invoiceNumber = await generateUniqueInvoiceNumber();
 
   const invoiceTo = {
     id: '1',
@@ -49,7 +71,7 @@ export const createInvoiceService = async (data: any, userId: any, amount: any) 
   // get item from aggremant form
   const item = {
     title: 'Posting on social media',
-    description: 'posting on social media',
+    description: 'Posting on social media',
     service: 'Posting on social media',
     quantity: 1,
     price: amount,
@@ -76,22 +98,6 @@ export const createInvoiceService = async (data: any, userId: any, amount: any) 
   };
 
   try {
-    // const newInvoice: Invoice = await prisma.invoice.create({
-    //   data: {
-    //     invoiceNumber: generateRandomInvoiceNumber(),
-    //     createdAt: data.updatedAt,
-    //     dueDate: new Date(dayjs(data.updatedAt).add(15, 'day').format()),
-    //     status: 'draft' as InvoiceStatus,
-    //     invoiceFrom: invoiceFrom,
-    //     invoiceTo,
-    //     task: item,
-    //     amount: parseFloat(amount) || 0,
-    //     bankAcc: bankInfo,
-    //     creatorId: data.userId,
-    //     createdBy: userId as string,
-    //   },
-    // });
-
     const { invoice } = await prisma.campaign.update({
       where: {
         id: data.campaignId,
@@ -99,7 +105,7 @@ export const createInvoiceService = async (data: any, userId: any, amount: any) 
       data: {
         invoice: {
           create: {
-            invoiceNumber: generateRandomInvoiceNumber(),
+            invoiceNumber: invoiceNumber,
             createdAt: data.updatedAt,
             dueDate: new Date(dayjs(data.updatedAt).add(28, 'day').format()),
             status: 'draft' as InvoiceStatus,
