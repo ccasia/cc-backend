@@ -1084,11 +1084,13 @@ export const adminManageDraft = async (req: Request, res: Response) => {
           columnName: 'In Review',
         });
 
-        await updateTask({
-          taskId: finalDraftTaskId as any,
-          toColumnId: inProgressColumnId as any,
-          userId: sub.userId,
-        });
+        if (finalDraftTaskId) {
+          await updateTask({
+            taskId: finalDraftTaskId.id as any,
+            toColumnId: inProgressColumnId as any,
+            userId: sub.userId,
+          });
+        }
       }
 
       // Manage task draft kanban for admin
@@ -1107,23 +1109,6 @@ export const adminManageDraft = async (req: Request, res: Response) => {
               },
             });
           }
-
-          // const doneColumn = await getColumnId({
-          //   userId: item.admin.user.id,
-          //   boardId: item.admin.user.Board.id,
-          //   columnName: 'Done',
-          // });
-
-          // if (task) {
-          //   await prisma.task.update({
-          //     where: {
-          //       id: task.id,
-          //     },
-          //     data: {
-          //       column: { connect: { id: doneColumn } },
-          //     },
-          //   });
-          // }
         }
       }
 
@@ -1146,6 +1131,7 @@ export const adminManageDraft = async (req: Request, res: Response) => {
       return res.status(200).json({ message: 'Succesfully submitted.' });
     }
   } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   }
 };
