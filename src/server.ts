@@ -136,6 +136,7 @@ export const activeProcesses = new Map();
 export const queue = new Map();
 
 io.on('connection', (socket) => {
+  io.emit('onlineUsers', { onlineUsers: clients.size });
   socket.on('register', (userId) => {
     clients.set(userId, socket.id);
   });
@@ -217,9 +218,9 @@ io.on('connection', (socket) => {
     clients.forEach((value, key) => {
       if (value === socket.id) {
         clients.delete(key);
-        //console.log(`Removed user ${key} from clients map`);
       }
     });
+    io.emit('onlineUsers', { onlineUsers: clients.size });
   });
 });
 
