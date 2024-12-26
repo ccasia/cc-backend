@@ -309,7 +309,7 @@ export const updatePaymentForm = async (req: Request, res: Response) => {
   const { bankName, bankAccName, bankNumber, icPassportNumber }: any = req.body;
 
   try {
-    const data = await prisma.paymentForm.upsert({
+    const paymentForm = await prisma.paymentForm.upsert({
       where: {
         userId: req.session.userid as string,
       },
@@ -325,6 +325,15 @@ export const updatePaymentForm = async (req: Request, res: Response) => {
         bankAccountNumber: bankNumber.toString(),
         bankAccountName: bankAccName.toString(),
         bankName: bankName?.bank,
+      },
+    });
+
+    await prisma.creator.update({
+      where: {
+        userId: paymentForm.userId,
+      },
+      data: {
+        isFormCompleted: true,
       },
     });
 
