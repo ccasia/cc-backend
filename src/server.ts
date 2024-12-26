@@ -140,6 +140,10 @@ io.on('connection', (socket) => {
     clients.set(userId, socket.id);
   });
 
+  socket.on('online-user', () => {
+    io.emit('onlineUsers', { onlineUsers: clients.size });
+  });
+
   socket.on('cancel-processing', (data) => {
     const { submissionId } = data;
 
