@@ -2616,7 +2616,7 @@ export const shortlistCreator = async (req: Request, res: Response) => {
               return await tx.submission.create({
                 data: {
                   dueDate: timeline.endDate,
-                  campaignId: timeline.campaignId,
+                  campaignId: campaign.id,
                   userId: creator.userId as string,
                   // status: index === 0 ? 'IN_PROGRESS' : 'NOT_STARTED',
                   status: timeline.submissionType?.type === 'AGREEMENT_FORM' ? 'IN_PROGRESS' : 'NOT_STARTED',
