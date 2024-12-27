@@ -2719,6 +2719,7 @@ export const shortlistCreator = async (req: Request, res: Response) => {
 
     return res.status(200).json({ message: 'Successfully shortlisted' });
   } catch (error) {
+    console.log('SHORTLIST ERROR', error);
     return res.status(400).json(error);
   }
 };
