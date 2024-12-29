@@ -18,7 +18,7 @@ export const decryptToken = (encryptedData: { iv: string; content: string }) => 
 
   const key = crypto.createHash('sha256').update(secretKey).digest();
 
-  const decipher = crypto.createDecipheriv('aes-256-ctr', key, Buffer.from(iv, 'hex'));
+  const decipher = crypto.createDecipheriv('aes-256-cbc', key, Buffer.from(iv, 'hex'));
   const decryptedToken = Buffer.concat([decipher.update(Buffer.from(content, 'hex')), decipher.final()]);
   return decryptedToken.toString();
 };
