@@ -1,7 +1,7 @@
 import { redirectTiktok } from '@controllers/socialController';
 import { encryptToken, decryptToken } from '@helper/encrypt';
 import { isLoggedIn } from '@middlewares/onlyLogin';
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import axios from 'axios';
 import { Router, Request, Response } from 'express';
 
@@ -86,14 +86,13 @@ router.get('/tiktok', async (req: Request, res: Response) => {
       where: {
         userId: userId,
       },
-      include: {
-        tiktokToken: true,
-      },
     });
 
     if (!user) return res.status(404).json({ message: 'Creator not found.' });
 
-    const access_token = decryptToken(user?.tiktokToken?.encryptedAccessToken);
+    const tiktokToken = (user?.tiktokToken as any)?.encryptedAccessToken;
+
+    const access_token = decryptToken(tiktokToken);
 
     //  Get user info
     const userInfoResponse = await axios.get('https://open.tiktokapis.com/v2/user/info/', {
