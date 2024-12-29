@@ -92,7 +92,11 @@ router.get('/tiktok', async (req: Request, res: Response) => {
 
     const tiktokToken = (user?.tiktokToken as any)?.encryptedAccessToken;
 
+    console.log('TIKTOKTOKEN', tiktokToken);
+
     const access_token = decryptToken(tiktokToken);
+
+    console.log('ACCESSTOKEN', access_token);
 
     //  Get user info
     const userInfoResponse = await axios.get('https://open.tiktokapis.com/v2/user/info/', {
