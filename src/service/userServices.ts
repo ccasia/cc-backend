@@ -194,6 +194,8 @@ export const getUser = async (id: string) => {
           include: {
             interests: true,
             mediaKit: true,
+            tiktokToken: true,
+            instagramToken: true,
           },
         },
         pitch: true,

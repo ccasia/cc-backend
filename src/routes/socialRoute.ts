@@ -1,5 +1,5 @@
 import { redirectTiktok } from '@controllers/socialController';
-import { encryptToken } from '@helper/encrypt';
+import { encryptToken, decryptToken } from '@helper/encrypt';
 import { isLoggedIn } from '@middlewares/onlyLogin';
 import { PrismaClient } from '@prisma/client';
 import axios from 'axios';
@@ -34,15 +34,10 @@ router.get('/tiktok/callback', async (req: Request, res: Response) => {
       },
     );
 
-    console.log(tokenResponse.data);
-
     const { access_token, refresh_token } = tokenResponse.data;
 
     const encryptedAccessToken = encryptToken(access_token);
     const encryptedRefreshToken = encryptToken(refresh_token);
-
-    console.log('EAT', encryptedAccessToken);
-    console.log('ERT', encryptedRefreshToken);
 
     await prisma.creator.update({
       where: {
@@ -54,6 +49,53 @@ router.get('/tiktok/callback', async (req: Request, res: Response) => {
     });
 
     // Get user info
+    // const userInfoResponse = await axios.get('https://open.tiktokapis.com/v2/user/info/', {
+    //   params: {
+    //     fields: 'open_id, union_id, display_name, avatar_url, following_count, follower_count, likes_count',
+    //   },
+    //   headers: { Authorization: `Bearer ${access_token}` },
+    // });
+
+    // const videoInfoResponse = await axios.post(
+    //   'https://open.tiktokapis.com/v2/video/list/',
+    //   { max_count: 20 },
+    //   {
+    //     params: {
+    //       fields: 'cover_image_url, id, title',
+    //     },
+    //     headers: { Authorization: `Bearer ${access_token}`, 'Content-Type': 'application/json' },
+    //   },
+    // );
+
+    // const userInfo = userInfoResponse.data;
+
+    // const videoInfo = videoInfoResponse.data;
+
+    res.redirect('https://staging.cultcreativeasia.com/dashboard/user/profile');
+    // res.json({ user: userInfo, video: videoInfo });
+  } catch (error) {
+    console.error('Error during TikTok OAuth:', error.response?.data || error.message);
+    res.status(500).send('Error during TikTok OAuth');
+  }
+});
+
+router.get('/tiktok', async (req: Request, res: Response) => {
+  const userId = req.session.userid;
+  try {
+    const user = await prisma.creator.findFirst({
+      where: {
+        userId: userId,
+      },
+      include: {
+        tiktokToken: true,
+      },
+    });
+
+    if (!user) return res.status(404).json({ message: 'Creator not found.' });
+
+    const access_token = decryptToken(user?.tiktokToken?.encryptedAccessToken);
+
+    //  Get user info
     const userInfoResponse = await axios.get('https://open.tiktokapis.com/v2/user/info/', {
       params: {
         fields: 'open_id, union_id, display_name, avatar_url, following_count, follower_count, likes_count',
@@ -76,10 +118,9 @@ router.get('/tiktok/callback', async (req: Request, res: Response) => {
 
     const videoInfo = videoInfoResponse.data;
 
-    res.json({ user: userInfo, video: videoInfo });
+    return res.json({ userInfo, videoInfo });
   } catch (error) {
-    console.error('Error during TikTok OAuth:', error.response?.data || error.message);
-    res.status(500).send('Error during TikTok OAuth');
+    return res.status(400).json(error);
   }
 });
 
