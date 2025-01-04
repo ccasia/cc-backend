@@ -92,12 +92,12 @@ app.use(
     secret: process.env.SESSION_SECRET as string,
     resave: false,
     saveUninitialized: false,
-    proxy: true,
+    proxy: process.env.NODE_ENV === 'production',
     cookie: {
       secure: process.env.NODE_ENV === 'production',
       // maxAge: 24 * 60 * 60 * 1000, //expires in 24hours
       httpOnly: true,
-      maxAge: 5 * 60 * 1000, //expires in 5secs
+      maxAge: 60 * 1000, //expires in 5secs
     },
     store: new PrismaSessionStore(new PrismaClient(), {
       checkPeriod: 2 * 60 * 1000,
