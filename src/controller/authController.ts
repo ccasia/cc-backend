@@ -454,6 +454,7 @@ export const logout = async (req: Request, res: Response) => {
     if (err) {
       return res.status(400).json({ message: 'Error logging out' });
     }
+    res.clearCookie('connect.sid');
     res.clearCookie('userid');
     res.clearCookie('accessToken');
     return res.status(200).json({ message: 'Logged out' });
@@ -608,61 +609,77 @@ export const updateCreator = async (req: Request, res: Response) => {
 
 // Function to get user's information
 export const getprofile = async (req: Request, res: Response) => {
-  const refreshToken = req.session.refreshToken as string;
+  const userId = req.session.userid as string;
 
-  if (!refreshToken) {
-    req.session.destroy((err) => {
-      if (err) {
-        return res.status(400).json({ message: 'Error logging out' });
-      }
-      res.clearCookie('userid');
-      res.clearCookie('accessToken');
-      return res.status(401).json('You are not authenticated');
-    });
-    return;
+  if (!userId) {
+    return res.status(401).json({ message: 'Unauthorized', sessionExpired: true });
   }
 
-  jwt.verify(refreshToken, process.env.REFRESHKEY as string, async (err: any, decode: any) => {
-    if (err) return res.status(403).json({ message: 'Forbidden' });
+  const user = await getUser(userId);
 
-    try {
-      const user = await getUser(decode.id);
+  if (!user) return res.status(401).json({ message: 'Unauthorized' });
 
-      if (!user) return res.status(401).json({ message: 'Unauthorized' });
+  switch (user?.status) {
+    case 'banned':
+      return res.status(400).json({ message: 'Account banned.' });
+    case 'pending':
+      return res.status(400).json({ message: 'Accoung pending.' });
+    case 'blacklisted':
+      return res.status(400).json({ message: 'Account blacklisted.' });
+    case 'suspended':
+      return res.status(400).json({ message: 'Accoung suspended.' });
+    case 'spam':
+      return res.status(400).json({ message: 'Accoung spam.' });
+    case 'rejected':
+      return res.status(400).json({ message: 'Account rejected.' });
+  }
 
-      const accessToken = jwt.sign({ id: user.id }, process.env.ACCESSKEY as Secret, {
-        expiresIn: '4h',
-      });
+  return res.status(200).json({ user });
 
-      if (user?.role === 'creator' && user?.status === 'pending') {
-        return res.status(202).json({ message: 'Accoung pending.', user, accessToken });
-      }
-
-      switch (user?.status) {
-        case 'banned':
-          return res.status(400).json({ message: 'Account banned.' });
-        case 'pending':
-          return res.status(400).json({ message: 'Accoung pending.' });
-        case 'blacklisted':
-          return res.status(400).json({ message: 'Account blacklisted.' });
-        case 'suspended':
-          return res.status(400).json({ message: 'Accoung suspended.' });
-        case 'spam':
-          return res.status(400).json({ message: 'Accoung spam.' });
-        case 'rejected':
-          return res.status(400).json({ message: 'Account rejected.' });
-      }
-
-      res.cookie('accessToken', accessToken, {
-        maxAge: 60 * 60 * 4 * 1000, // 1 Day
-        httpOnly: true,
-      });
-
-      return res.status(200).json({ user, accessToken });
-    } catch (error) {
-      return res.status(500).json({ message: 'Internal Server Error' });
-    }
-  });
+  // if (!refreshToken) {
+  //   return req.session.destroy((err) => {
+  //     if (err) {
+  //       return res.status(400).json({ message: 'Error logging out' });
+  //     }
+  //     res.clearCookie('userid');
+  //     res.clearCookie('accessToken');
+  //     return res.status(401).json({ sessionExpired: true });
+  //   });
+  // }
+  // jwt.verify(refreshToken, process.env.REFRESHKEY as string, async (err: any, decode: any) => {
+  //   if (err) return res.status(403).json({ message: 'Forbidden' });
+  //   try {
+  // const user = await getUser(decode.id);
+  //     if (!user) return res.status(401).json({ message: 'Unauthorized' });
+  //     const accessToken = jwt.sign({ id: user.id }, process.env.ACCESSKEY as Secret, {
+  //       expiresIn: '4h',
+  //     });
+  //     if (user?.role === 'creator' && user?.status === 'pending') {
+  //       return res.status(202).json({ message: 'Accoung pending.', user, accessToken });
+  //     }
+  //     switch (user?.status) {
+  //       case 'banned':
+  //         return res.status(400).json({ message: 'Account banned.' });
+  //       case 'pending':
+  //         return res.status(400).json({ message: 'Accoung pending.' });
+  //       case 'blacklisted':
+  //         return res.status(400).json({ message: 'Account blacklisted.' });
+  //       case 'suspended':
+  //         return res.status(400).json({ message: 'Accoung suspended.' });
+  //       case 'spam':
+  //         return res.status(400).json({ message: 'Accoung spam.' });
+  //       case 'rejected':
+  //         return res.status(400).json({ message: 'Account rejected.' });
+  //     }
+  //     res.cookie('accessToken', accessToken, {
+  //       maxAge: 60 * 60 * 4 * 1000, // 1 Day
+  //       httpOnly: true,
+  //     });
+  //     return res.status(200).json({ user, accessToken });
+  //   } catch (error) {
+  //     return res.status(500).json({ message: 'Internal Server Error' });
+  //   }
+  // });
 };
 
 // Login for both creator and admin
@@ -754,6 +771,7 @@ export const login = async (req: Request, res: Response) => {
       accessToken: accessToken,
     });
   } catch (error) {
+    console.log(error);
     return res.send(error);
   }
 };

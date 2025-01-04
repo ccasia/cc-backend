@@ -20,21 +20,13 @@ import {
   registerFinanceUser,
   resendVerificationLinkCreator,
 } from '@controllers/authController';
-import {
-  getXero,
-  xeroCallBack,
-  getXeroContacts,
-  checkAndRefreshAccessToken,
-  checkRefreshToken,
-} from '@controllers/invoiceController';
+
 import { validateToken } from '@utils/jwtHelper';
-// import { needPermissions } from '@middlewares/needPermissions';
-import { isLoggedIn } from '@middlewares/onlyLogin';
 
 const router = Router();
 
 // router.get('/', isLoggedIn, displayAll);
-router.get('/me', isLoggedIn, getprofile);
+router.get('/me', getprofile);
 router.get('/verifyAdmin', verifyAdmin);
 router.get('/checkTokenValidity/:token', checkTokenValidity);
 router.get('/currentUser', validateToken, getCurrentUser);
