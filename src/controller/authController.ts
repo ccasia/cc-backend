@@ -618,7 +618,6 @@ export const getprofile = async (req: Request, res: Response) => {
       }
       res.clearCookie('userid');
       res.clearCookie('accessToken');
-      return res.status(401).json({ sessionExpired: true });
     });
     return res.status(401).json({ message: 'Unauthorized', sessionExpired: true });
   }
