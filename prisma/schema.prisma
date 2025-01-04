@@ -218,10 +218,17 @@ model Event {
   user        User[]
 }
 
-model session {
-  sid    String   @id @unique @default(cuid())
-  sess   Json
-  expire DateTime
+// model session {
+//   sid    String   @id @unique @default(cuid())
+//   sess   Json
+//   expire DateTime
+// }
+
+model Session {
+  id        String   @id
+  sid       String   @unique
+  data      String
+  expiresAt DateTime
 }
 
 model Company {
@@ -568,6 +575,7 @@ model Submission {
   id               String                 @id @default(cuid())
   content          String?
   caption          String?
+  videos           String[]
   campaignId       String
   status           SubmissionStatus       @default(IN_PROGRESS)
   createdAt        DateTime               @default(now())
@@ -579,6 +587,7 @@ model Submission {
   isReview         Boolean                @default(false)
   startDate        DateTime?
   endDate          DateTime?
+  rawFootages      String[]
   feedback         Feedback[]
   Notification     Notification[]
   campaign         Campaign               @relation(fields: [campaignId], references: [id])
