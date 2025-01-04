@@ -92,6 +92,7 @@ app.use(
     secret: process.env.SESSION_SECRET as string,
     resave: false,
     saveUninitialized: false,
+    proxy: true,
     cookie: {
       secure: process.env.NODE_ENV === 'production',
       // maxAge: 24 * 60 * 60 * 1000, //expires in 24hours
