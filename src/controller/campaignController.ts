@@ -3481,7 +3481,9 @@ interface RequestQuery {
 
 export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: Response) => {
   const { userId } = req.params;
-  const { status, limit = 9, cursor } = req.query;
+  // const { status, limit = 9, cursor } = req.query;
+  const { cursor, limit = 10, search, status } = req.query;
+  console.log(cursor);
 
   try {
     const user = await prisma.user.findUnique({
@@ -3508,9 +3510,21 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
           cursor: { id: cursor as string },
         }),
         where: {
-          ...(status && {
-            status: status as CampaignStatus,
-          }),
+          AND: [
+            {
+              ...(status && {
+                status: status as CampaignStatus,
+              }),
+            },
+            {
+              ...(search && {
+                name: {
+                  contains: search as string,
+                  mode: 'insensitive',
+                },
+              }),
+            },
+          ],
         },
         orderBy: {
           createdAt: 'desc',
@@ -3625,29 +3639,51 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
         cursor: { id: cursor as string },
       }),
       where: {
-        ...(status
-          ? {
-              AND: [
-                {
-                  campaignAdmin: {
-                    some: {
-                      adminId: user.id,
-                    },
-                  },
-                },
-                {
-                  status: status as any,
-                },
-              ],
-            }
-          : {
-              campaignAdmin: {
-                some: {
-                  adminId: user.id,
-                },
+        AND: [
+          {
+            campaignAdmin: {
+              some: {
+                adminId: user.id,
+              },
+            },
+          },
+          {
+            ...(status && { status: status as any }),
+          },
+          {
+            ...(search && {
+              name: {
+                contains: search as string,
+                mode: 'insensitive',
               },
             }),
+          },
+        ],
       },
+      // where: {
+      //   ...(status
+      //     ? {
+      //         AND: [
+      //           {
+      //             campaignAdmin: {
+      //               some: {
+      //                 adminId: user.id,
+      //               },
+      //             },
+      //           },
+      //           {
+      //             status: status as any,
+      //           },
+      //         ],
+      //       }
+      //     : {
+      //         campaignAdmin: {
+      //           some: {
+      //             adminId: user.id,
+      //           },
+      //         },
+      //       }),
+      // },
       include: {
         agreementTemplate: true,
         submission: {
