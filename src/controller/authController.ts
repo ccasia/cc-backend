@@ -612,13 +612,8 @@ export const getprofile = async (req: Request, res: Response) => {
   const userId = req.session.userid as string;
 
   if (!userId) {
-    req.session.destroy((err) => {
-      if (err) {
-        return res.status(400).json({ message: 'Error logging out' });
-      }
-      res.clearCookie('userid');
-      res.clearCookie('accessToken');
-    });
+    res.clearCookie('accessToken');
+    res.clearCookie('userid');
     return res.status(401).json({ message: 'Unauthorized', sessionExpired: true });
   }
 
