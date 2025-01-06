@@ -43,6 +43,7 @@ interface invoiceData {
   bankInfo: object;
   createdBy: string;
   campaignId: string;
+  xeroContactId?: string;
 }
 
 export const getAllInvoices = async (req: Request, res: Response) => {
@@ -234,8 +235,18 @@ export const updateInvoiceStatus = async (req: Request, res: Response) => {
 };
 
 export const updateInvoice = async (req: Request, res: Response) => {
-  const { invoiceId, dueDate, status, invoiceFrom, invoiceTo, items, totalAmount, campaignId, bankInfo }: invoiceData =
-    req.body;
+  const {
+    invoiceId,
+    dueDate,
+    status,
+    invoiceFrom,
+    invoiceTo,
+    items,
+    totalAmount,
+    campaignId,
+    bankInfo,
+    xeroContactId,
+  }: invoiceData = req.body;
 
   try {
     const invoice = await prisma.invoice.update({
@@ -285,16 +296,16 @@ export const updateInvoice = async (req: Request, res: Response) => {
       );
     }
 
-    if (status == 'approved' && Object.keys(req.body.contactId).length !== 0) {
-      invoiceData = await createXeroInvoiceLocal(
-        invoice.creator.xeroContactId as string,
-        items,
-        dueDate,
-        invoice.campaign.name,
-        invoice.invoiceNumber,
-      );
-      contactID = invoice.creator.xeroContactId;
-    }
+    // if (status == 'approved' && xeroContactId) {
+    //   invoiceData = await createXeroInvoiceLocal(
+    //     invoice.creator.xeroContactId as string,
+    //     items,
+    //     dueDate,
+    //     invoice.campaign.name,
+    //     invoice.invoiceNumber,
+    //   );
+    //   contactID = invoice.creator.xeroContactId;
+    // }
 
     if (status == 'approved' && req.body.newContact) {
       const contact: any = await createXeroContact(bankInfo, invoice.creator, invoice.user, invoiceFrom);
@@ -356,6 +367,7 @@ export const updateInvoice = async (req: Request, res: Response) => {
 
     return res.status(200).json(invoice);
   } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   }
 };
