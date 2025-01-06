@@ -109,8 +109,9 @@ router.get('/tiktok', async (req: Request, res: Response) => {
 router.get('/auth/facebook', (req: Request, res: Response) => {
   const scopes =
     'email,public_profile,pages_show_list,business_management,instagram_basic,instagram_manage_comments,instagram_manage_insights,pages_read_engagement';
-  const facebookLoginUrl = `https://www.facebook.com/v21.0/dialog/oauth?client_id=${FACEBOOK_APP_ID}&redirect_uri=${REDIRECT_URI}&scope=${scopes}`;
+  const facebookLoginUrl = `https://www.facebook.com/v21.0/dialog/oauth?client_id=${FACEBOOK_APP_ID}&redirect_uri=${REDIRECT_URI}&scope=${scopes}&config_id=1804107983668617`;
   // res.redirect(facebookLoginUrl);
+  // ('1804107983668617');
   res.send(facebookLoginUrl);
 });
 
