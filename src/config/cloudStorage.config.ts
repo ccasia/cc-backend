@@ -4,7 +4,7 @@ import fs from 'fs';
 
 const pathToJSONKey = `${__dirname}/test-cs.json`;
 
-const storage = new Storage({
+export const storage = new Storage({
   keyFilename: pathToJSONKey,
 });
 

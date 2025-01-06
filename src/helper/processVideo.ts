@@ -37,7 +37,7 @@ import { io } from 'src/server';
         // await new Promise<void>((resolve, reject) => {
         readStream
           .pipe(blobStream)
-          .on('error', (err) => {
+          .on('error', (err: any) => {
             console.error('Error uploading to GCS:', err);
             // reject('Failed to upload file.');
           })
