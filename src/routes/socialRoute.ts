@@ -106,7 +106,7 @@ router.get('/tiktok', async (req: Request, res: Response) => {
   }
 });
 
-router.get('/auth/facebook/callback', (req: Request, res: Response) => {
+router.get('/auth/facebook', (req: Request, res: Response) => {
   const scopes =
     'pages_show_list,business_management,instagram_basic,instagram_manage_comments,instagram_manage_insights,pages_read_engagement';
   const facebookLoginUrl = `https://www.facebook.com/v21.0/dialog/oauth?client_id=${FACEBOOK_APP_ID}&redirect_uri=${REDIRECT_URI}&scope=${scopes}`;
