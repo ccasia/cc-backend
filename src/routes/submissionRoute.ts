@@ -11,6 +11,7 @@ import {
 } from '@controllers/submissionController';
 import { isLoggedIn } from '@middlewares/onlyLogin';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
+import { generateInvoice } from '@controllers/invoiceController';
 
 const router = Router();
 
@@ -41,6 +42,7 @@ router.get('/', isLoggedIn, getSubmissionByCampaignCreatorId);
 router.post('/submitAgreement', isLoggedIn, agreementSubmission);
 router.post('/draftSubmission', isLoggedIn, draftSubmission);
 router.post('/postSubmission', isLoggedIn, postingSubmission);
+router.post('/generateInvoice', isSuperAdmin, generateInvoice);
 
 router.patch('/adminManageAgreementSubmission', isSuperAdmin, adminManageAgreementSubmission);
 router.patch('/adminManageDraft', isSuperAdmin, adminManageDraft);

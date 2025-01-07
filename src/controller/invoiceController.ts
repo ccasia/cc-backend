@@ -5,8 +5,14 @@ import jwt, { Secret } from 'jsonwebtoken';
 
 import { Request, Response } from 'express';
 
+import { creatorInvoice as emailCreatorInvoice } from '@configs/nodemailer.config';
+
 import { InvoiceStatus, PrismaClient } from '@prisma/client';
-import { notificationInvoiceStatus, notificationInvoiceUpdate } from '@helper/notification';
+import {
+  notificationInvoiceGenerate,
+  notificationInvoiceStatus,
+  notificationInvoiceUpdate,
+} from '@helper/notification';
 import { saveNotification } from './notificationController';
 import { clients, io } from '../server';
 
@@ -14,6 +20,7 @@ import { TokenSet } from 'openid-client';
 import { error } from 'console';
 
 import fs from 'fs-extra';
+import { createInvoiceService } from '@services/invoiceService';
 
 const prisma = new PrismaClient();
 
@@ -146,10 +153,11 @@ export const getInvoiceByCreatorIdAndCampaignId = async (req: Request, res: Resp
         campaignId: campaignId,
       },
     });
-    res.status(200).json(invoice);
+
+    return res.status(200).json(invoice);
   } catch (error) {
     //console.log(error);
-    res.status(500).json({ error: 'Something went wrong' });
+    return res.status(500).json({ error: 'Something went wrong' });
   }
 };
 
@@ -673,5 +681,84 @@ export const attachInvoicePDF = async (tenantId: string, invoiceId: string, file
     return data;
   } catch (error) {
     throw new Error(error);
+  }
+};
+
+export const generateInvoice = async (req: Request, res: Response) => {
+  const { userId, campaignId } = req.body;
+  try {
+    const creator = await prisma.shortListedCreator.findFirst({
+      where: {
+        campaignId: campaignId,
+        userId: userId,
+      },
+      select: {
+        campaign: {
+          select: {
+            id: true,
+            campaignBrief: true,
+            name: true,
+          },
+        },
+        isCampaignDone: true,
+        user: {
+          select: {
+            paymentForm: true,
+            id: true,
+            name: true,
+            email: true,
+            creatorAgreement: true,
+            creator: true,
+          },
+        },
+      },
+    });
+
+    if (!creator) return res.status(404).json({ message: 'Data not found' });
+
+    const invoice = await prisma.invoice.findFirst({
+      where: {
+        campaignId: campaignId,
+        creatorId: userId,
+      },
+    });
+
+    if (invoice) return res.status(400).json({ message: 'Invoice has been generated for this campaign' });
+
+    if (creator.isCampaignDone && !invoice) {
+      const invoiceAmount = creator?.user?.creatorAgreement.find(
+        (elem) => elem.campaignId === creator.campaign.id,
+      )?.amount;
+
+      const invoice = await createInvoiceService(
+        { ...creator, userId: creator.user?.id, campaignId: creator.campaign.id },
+        req.session.userid,
+        invoiceAmount,
+      );
+
+      const images: any = creator.campaign.campaignBrief?.images;
+
+      emailCreatorInvoice(
+        creator?.user?.email as any,
+        creator.campaign.name,
+        creator?.user?.name ?? 'Creator',
+        images[0],
+      );
+
+      const { title, message } = notificationInvoiceGenerate(creator.campaign.name);
+
+      await saveNotification({
+        userId: creator.user?.id as any,
+        title,
+        message,
+        invoiceId: invoice?.id,
+        entity: 'Invoice',
+        entityId: creator.campaign.id,
+      });
+      return res.status(200).json({ message: 'Invoice has been successfully generated.' });
+    }
+  } catch (error) {
+    console.log(error);
+    return res.status(400).json(error);
   }
 };
