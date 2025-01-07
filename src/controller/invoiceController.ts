@@ -736,6 +736,18 @@ export const generateInvoice = async (req: Request, res: Response) => {
         invoiceAmount,
       );
 
+      await prisma.shortListedCreator.update({
+        where: {
+          userId_campaignId: {
+            userId: creator?.user?.id as string,
+            campaignId: creator.campaign.id as string,
+          },
+        },
+        data: {
+          isCampaignDone: true,
+        },
+      });
+
       const images: any = creator.campaign.campaignBrief?.images;
 
       emailCreatorInvoice(
