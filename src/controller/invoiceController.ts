@@ -714,8 +714,6 @@ export const generateInvoice = async (req: Request, res: Response) => {
       },
     });
 
-    console.log('creator', creator);
-
     if (!creator) return res.status(404).json({ message: 'Data not found' });
 
     const invoice = await prisma.invoice.findFirst({
@@ -725,11 +723,9 @@ export const generateInvoice = async (req: Request, res: Response) => {
       },
     });
 
-    console.log('invoice', invoice);
-
     if (invoice) return res.status(400).json({ message: 'Invoice has been generated for this campaign' });
 
-    if (creator.isCampaignDone && !invoice) {
+    if (!creator.isCampaignDone && !invoice) {
       const invoiceAmount = creator?.user?.creatorAgreement.find(
         (elem) => elem.campaignId === creator.campaign.id,
       )?.amount;
