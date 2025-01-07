@@ -82,6 +82,62 @@ export const deleteCreator = async (req: Request, res: Response) => {
         },
       }),
 
+      prisma.invoice.deleteMany({
+        where: {
+          creatorId: id,
+        },
+      }),
+
+      prisma.pitch.deleteMany({
+        where: {
+          userId: id,
+        },
+      }),
+
+      prisma.userNotification.deleteMany({
+        where: {
+          userId: id,
+        },
+      }),
+
+      prisma.notification.deleteMany({
+        where: {
+          userId: id,
+        },
+      }),
+
+      prisma.unreadMessage.deleteMany({
+        where: {
+          userId: id,
+        },
+      }),
+
+      prisma.seenMessage.deleteMany({
+        where: {
+          userId: id,
+        },
+      }),
+
+      prisma.paymentForm.deleteMany({
+        where: {
+          userId: id,
+        },
+      }),
+
+      prisma.userThread.deleteMany({
+        where: { userId: id },
+      }),
+
+      prisma.creatorAgreement.deleteMany({
+        where: {
+          userId: id,
+        },
+      }),
+
+      prisma.submission.deleteMany({
+        where: { userId: id },
+      }),
+
       prisma.creator.delete({
         where: {
           userId: id,
@@ -100,7 +156,7 @@ export const deleteCreator = async (req: Request, res: Response) => {
 
     res.status(200).json('Creator deleted successfully');
   } catch (error) {
-    //console.log(error);
+    console.log(error);
     res.status(400).json({ message: error });
   }
 };
