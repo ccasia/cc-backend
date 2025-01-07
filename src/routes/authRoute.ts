@@ -34,7 +34,7 @@ import { isLoggedIn } from '@middlewares/onlyLogin';
 const router = Router();
 
 // router.get('/', isLoggedIn, displayAll);
-router.get('/me', isLoggedIn, getprofile);
+router.get('/me', getprofile);
 router.get('/verifyAdmin', verifyAdmin);
 router.get('/checkTokenValidity/:token', checkTokenValidity);
 router.get('/currentUser', validateToken, getCurrentUser);
