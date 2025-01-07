@@ -118,6 +118,12 @@ export const deleteCreator = async (req: Request, res: Response) => {
         },
       }),
 
+      prisma.bookMarkCampaign.deleteMany({
+        where: {
+          userId: id,
+        },
+      }),
+
       prisma.paymentForm.deleteMany({
         where: {
           userId: id,
