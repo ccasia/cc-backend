@@ -43,6 +43,7 @@ export const createNewBug = async (req: Request, res: Response) => {
 
     await createNewBugRowData({
       spreadSheetId: '129mwFlatr5pMDTi3VxVzgx0hGhkOyUVvq4M_jAWieCc',
+      sheetByTitle: user.role === 'creator' ? 'Platform Creator Bugs' : 'Platform Admin Bugs',
       data: {
         email: user?.email,
         name: user?.name || '',

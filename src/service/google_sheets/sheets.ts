@@ -105,9 +105,11 @@ export const createNewSpreadSheet = async ({ title }: { title: string }) => {
 
 export const createNewBugRowData = async ({
   spreadSheetId,
+  sheetByTitle,
   data,
 }: {
   spreadSheetId: string;
+  sheetByTitle: 'Platform Creator Bugs' | 'Platform Admin Bugs';
   data: {
     createdAt: string;
     email?: string;
@@ -123,7 +125,7 @@ export const createNewBugRowData = async ({
       throw new Error('Sheet not found.');
     }
 
-    const currentSheet = sheet.sheetsByTitle['Platform Creator Bugs'];
+    const currentSheet = sheet.sheetsByTitle[sheetByTitle];
 
     if (!currentSheet) {
       throw new Error('Sheet not found.');
