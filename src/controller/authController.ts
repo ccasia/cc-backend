@@ -625,13 +625,13 @@ export const getprofile = async (req: Request, res: Response) => {
     case 'banned':
       return res.status(400).json({ message: 'Account banned.' });
     case 'pending':
-      return res.status(400).json({ message: 'Accoung pending.' });
+      return res.status(400).json({ message: 'Account pending.' });
     case 'blacklisted':
       return res.status(400).json({ message: 'Account blacklisted.' });
     case 'suspended':
-      return res.status(400).json({ message: 'Accoung suspended.' });
+      return res.status(400).json({ message: 'Account suspended.' });
     case 'spam':
-      return res.status(400).json({ message: 'Accoung spam.' });
+      return res.status(400).json({ message: 'Account spam.' });
     case 'rejected':
       return res.status(400).json({ message: 'Account rejected.' });
   }
@@ -657,19 +657,19 @@ export const getprofile = async (req: Request, res: Response) => {
   //       expiresIn: '4h',
   //     });
   //     if (user?.role === 'creator' && user?.status === 'pending') {
-  //       return res.status(202).json({ message: 'Accoung pending.', user, accessToken });
+  //       return res.status(202).json({ message: 'Account pending.', user, accessToken });
   //     }
   //     switch (user?.status) {
   //       case 'banned':
   //         return res.status(400).json({ message: 'Account banned.' });
   //       case 'pending':
-  //         return res.status(400).json({ message: 'Accoung pending.' });
+  //         return res.status(400).json({ message: 'Account pending.' });
   //       case 'blacklisted':
   //         return res.status(400).json({ message: 'Account blacklisted.' });
   //       case 'suspended':
-  //         return res.status(400).json({ message: 'Accoung suspended.' });
+  //         return res.status(400).json({ message: 'Account suspended.' });
   //       case 'spam':
-  //         return res.status(400).json({ message: 'Accoung spam.' });
+  //         return res.status(400).json({ message: 'Account spam.' });
   //       case 'rejected':
   //         return res.status(400).json({ message: 'Account rejected.' });
   //     }
@@ -726,13 +726,13 @@ export const login = async (req: Request, res: Response) => {
       case 'banned':
         return res.status(400).json({ message: 'Account banned.' });
       case 'pending':
-        return res.status(400).json({ message: 'Accoung pending.' });
+        return res.status(400).json({ message: 'Account pending.' });
       case 'blacklisted':
         return res.status(400).json({ message: 'Account blacklisted.' });
       case 'suspended':
-        return res.status(400).json({ message: 'Accoung suspended.' });
+        return res.status(400).json({ message: 'Account suspended.' });
       case 'spam':
-        return res.status(400).json({ message: 'Accoung spam.' });
+        return res.status(400).json({ message: 'Account spam.' });
       case 'rejected':
         return res.status(400).json({ message: 'Account rejected.' });
     }
