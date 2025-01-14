@@ -99,7 +99,7 @@ router.post('/updateOrCreateDefaultTimeline', updateOrCreateDefaultTimeline);
 router.post('/createCampaign', isSuperAdmin, createCampaign);
 router.post('/createNewTimeline', isSuperAdmin, createNewTimeline);
 router.post('/createSingleTimelineType', isSuperAdmin, createSingleTimelineType);
-router.post('/uploadVideo', isLoggedIn, uploadVideoTest);
+router.post('/uploadVideo', uploadVideoTest);
 router.post('/saveCampaign', isLoggedIn, saveCampaign);
 router.post('/createLogistic', isLoggedIn, createLogistics);
 router.post('/shortlistCreator', isSuperAdmin, shortlistCreator);
