@@ -71,8 +71,6 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
 export const tiktokData = async (req: Request, res: Response) => {
   const { userId } = req.params;
 
-  console.log(req.params);
-
   try {
     const user = await prisma.user.findUnique({
       where: {
@@ -82,6 +80,8 @@ export const tiktokData = async (req: Request, res: Response) => {
         creator: true,
       },
     });
+
+    console.log(user);
 
     if (!user) return res.status(404).json({ message: 'User not found.' });
 
