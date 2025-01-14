@@ -103,7 +103,8 @@ export const tiktokData = async (req: Request, res: Response) => {
       { max_count: 20 },
       {
         params: {
-          fields: 'cover_image_url, id, title, video_description, duration, embed_link, embed_html',
+          fields:
+            'cover_image_url, id, title, video_description, duration, embed_link, embed_html, like_count, comment_count, share_count, view_count',
         },
         headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
       },
