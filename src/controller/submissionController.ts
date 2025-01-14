@@ -577,8 +577,6 @@ export const draftSubmission = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Submission not found' });
     }
 
-    const inReviewColumn = await getColumnId({ userId: userid, columnName: 'In Review' });
-
     // Move task creator from in progress to in review
     if (submission.user.Board) {
       const taskInProgress = await getTaskId({
@@ -587,7 +585,9 @@ export const draftSubmission = async (req: Request, res: Response) => {
         submissionId: submission.id,
       });
 
-      if (taskInProgress) {
+      const inReviewColumn = await getColumnId({ userId: userid, columnName: 'In Review' });
+
+      if (taskInProgress && inReviewColumn) {
         await prisma.task.update({
           where: {
             id: taskInProgress.id,
