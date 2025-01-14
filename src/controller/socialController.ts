@@ -70,6 +70,9 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
 // Get Tiktok Data
 export const tiktokData = async (req: Request, res: Response) => {
   const { userId } = req.params;
+
+  console.log(req.params);
+
   try {
     const user = await prisma.user.findUnique({
       where: {
