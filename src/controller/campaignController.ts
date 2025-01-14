@@ -2257,6 +2257,8 @@ export const uploadVideoTest = async (req: Request, res: Response) => {
 
     const file = (req.files as any).pitchVideo;
 
+    console.log(file);
+
     const filePath = `/tmp/${fileName}`;
     const compressedFilePath = `/tmp/${userid}_compressed.mp4`;
 
@@ -2264,7 +2266,7 @@ export const uploadVideoTest = async (req: Request, res: Response) => {
 
     const amqp = await amqplib.connect(process.env.RABBIT_MQ as string);
     const channel = await amqp.createChannel();
-    await channel.assertQueue('pitch');
+    await channel.assertQueue('pitch', { durable: true });
 
     channel.sendToQueue(
       'pitch',
