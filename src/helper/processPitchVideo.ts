@@ -13,7 +13,6 @@ Ffmpeg.setFfprobePath(ffprobePath.path);
 const processVideo = async (
   inputPath: string,
   outputPath: string,
-  // progressCallback: (progress: number) => void,
   userId: string,
   campaignId: string,
   fileName: string,
@@ -48,7 +47,6 @@ const processVideo = async (
           if (duration) {
             const percentComplete = (timemarkInSeconds / duration) * 100;
             io.to(clients.get(userId)).emit('video-upload', { campaignId: campaignId, progress: percentComplete });
-            // progressCallback(percentComplete);
           }
         }
       })
@@ -89,16 +87,18 @@ const processVideo = async (
     const conn = await amqplib.connect(process.env.RABBIT_MQ as string);
     const channel = await conn.createChannel();
     await channel.assertQueue('pitch', { durable: true });
-    // await channel.prefetch(2);
+
     await channel.purgeQueue('pitch');
 
     console.log('Video Pitch Queue starting...');
+
     await channel.consume(
       'pitch',
       async (msg) => {
         if (msg !== null) {
           try {
             const secs = msg.content.toString().split('.').length - 1;
+            console.log('Receiving...', JSON.parse(msg.content.toString()));
             const { outputPath, tempPath, userId, campaignId, fileName } = JSON.parse(msg.content.toString());
 
             await processVideo(tempPath, outputPath, userId, campaignId, fileName);

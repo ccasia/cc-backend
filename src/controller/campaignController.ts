@@ -2257,6 +2257,8 @@ export const uploadVideoTest = async (req: Request, res: Response) => {
 
     const file = (req.files as any).pitchVideo;
 
+    console.log(file);
+
     const filePath = `/tmp/${fileName}`;
     const compressedFilePath = `/tmp/${userid}_compressed.mp4`;
 
@@ -2264,26 +2266,51 @@ export const uploadVideoTest = async (req: Request, res: Response) => {
 
     const amqp = await amqplib.connect(process.env.RABBIT_MQ as string);
     const channel = await amqp.createChannel();
-    await channel.assertQueue('pitch');
+    // await channel.assertQueue('pitch', { durable: true });
 
-    channel.sendToQueue(
-      'pitch',
-      Buffer.from(
-        JSON.stringify({
-          tempPath: filePath,
-          outputPath: compressedFilePath,
-          userId: userid,
-          campaignId: campaignId,
-          fileName: fileName,
-        }),
-      ),
-      {
-        persistent: true,
-      },
-    );
+    // channel.sendToQueue(
+    //   'pitch',
+    //   Buffer.from(
+    //     JSON.stringify({
+    //       tempPath: filePath,
+    //       outputPath: compressedFilePath,
+    //       userId: userid,
+    //       campaignId: campaignId,
+    //       fileName: fileName,
+    //     }),
+    //   ),
+    //   {
+    //     persistent: true,
+    //   },
+    // );
 
-    await channel.close();
-    await amqp.close();
+    // await channel.close();
+    // await amqp.close();
+
+    try {
+      await channel.assertQueue('pitch', { durable: true });
+
+      channel.sendToQueue(
+        'pitch',
+        Buffer.from(
+          JSON.stringify({
+            tempPath: filePath,
+            outputPath: compressedFilePath,
+            userId: userid,
+            campaignId: campaignId,
+            fileName: fileName,
+          }),
+        ),
+        { persistent: true },
+      );
+
+      return res.status(200).json({ message: 'Pitch video started processing' });
+    } catch (queueError) {
+      return res.status(500).json({ message: 'Failed to send message to queue.', error: queueError });
+    } finally {
+      await channel.close();
+      await amqp.close();
+    }
 
     return res.status(200).json({ message: 'Pitch video start processing' });
   } catch (error) {
