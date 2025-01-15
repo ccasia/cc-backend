@@ -96,7 +96,8 @@ app.use(
     proxy: process.env.NODE_ENV === 'production',
     cookie: {
       secure: process.env.NODE_ENV === 'production',
-      maxAge: 24 * 60 * 60 * 1000, //expires in 24hours
+      // maxAge: 24 * 60 * 60 * 1000, //expires in 24hours
+      maxAge: 60 * 1000,
       httpOnly: true,
     },
     store: new PrismaSessionStore(new PrismaClient(), {
