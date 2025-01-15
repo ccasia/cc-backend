@@ -759,7 +759,8 @@ export const login = async (req: Request, res: Response) => {
     session.photoURL = data.photoURL || '';
 
     res.cookie('userid', data.id, {
-      maxAge: 60 * 60 * 24 * 1000, // 1 Day
+      // maxAge: 60 * 60 * 24 * 1000, // 1 Day
+      maxAge: 60 * 1000,
       httpOnly: true,
     });
 
