@@ -821,6 +821,7 @@ enum Resources {
 
 enum Mode {
   god
+  advanced
   normal
 }
 
