@@ -546,7 +546,7 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
       },
     });
 
-    if (user?.admin?.mode === 'god') {
+    if (user?.admin?.mode === 'god' || user?.admin?.mode === 'advanced') {
       campaigns = await prisma.campaign.findMany({
         include: {
           agreementTemplate: true,
@@ -3529,7 +3529,7 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
 
     if (!user) return res.status(404).json({ message: 'User not found.' });
 
-    if (user.admin?.mode === 'god') {
+    if (user.admin?.mode === 'god' || user.admin?.mode === 'advanced') {
       const campaigns: any = await prisma.campaign.findMany({
         take: Number(limit),
         ...(cursor && {
