@@ -113,8 +113,6 @@ model Creator {
   interests              Interest[]
   invoices               Invoice[]
   mediaKit               MediaKit?
-  tiktokData             Json?
-  instagramData          Json?
 }
 
 model MediaKit {
@@ -220,10 +218,17 @@ model Event {
   user        User[]
 }
 
-model session {
-  sid    String   @id @unique @default(cuid())
-  sess   Json
-  expire DateTime
+// model session {
+//   sid    String   @id @unique @default(cuid())
+//   sess   Json
+//   expire DateTime
+// }
+
+model Session {
+  id        String   @id
+  sid       String   @unique
+  data      String
+  expiresAt DateTime
 }
 
 model Company {
@@ -570,6 +575,7 @@ model Submission {
   id               String                 @id @default(cuid())
   content          String?
   caption          String?
+  videos           String[]
   campaignId       String
   status           SubmissionStatus       @default(IN_PROGRESS)
   createdAt        DateTime               @default(now())
@@ -581,6 +587,7 @@ model Submission {
   isReview         Boolean                @default(false)
   startDate        DateTime?
   endDate          DateTime?
+  rawFootages      String[]
   feedback         Feedback[]
   Notification     Notification[]
   campaign         Campaign               @relation(fields: [campaignId], references: [id])
@@ -635,12 +642,12 @@ model Feedback {
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
   admin        User          @relation(fields: [adminId], references: [id])
-  submission   Submission    @relation(fields: [submissionId], references: [id])
+  submission   Submission    @relation(fields: [submissionId], references: [id], onDelete: Cascade)
 }
 
 model Invoice {
   id            String        @id @unique @default(cuid())
-  invoiceNumber String
+  invoiceNumber String        @unique
   amount        Float
   status        InvoiceStatus @default(draft)
   task          Json?
@@ -677,8 +684,8 @@ model PaymentForm {
   userId            String   @unique
   icNumber          String?
   bankName          String?
-  bankAccountNumber String?
   bankAccountName   String?
+  bankAccountNumber String?
   bodyMeasurement   String?
   allergies         String[]
   user              User     @relation(fields: [userId], references: [id])
@@ -716,7 +723,7 @@ model Task {
   columnId     String
   submissionId String?
   column       Columns        @relation(fields: [columnId], references: [id], onDelete: Cascade)
-  submission   Submission?    @relation(fields: [submissionId], references: [id])
+  submission   Submission?    @relation(fields: [submissionId], references: [id], onDelete: Cascade)
   assignees    TaskAssignee[]
 }
 
@@ -814,6 +821,7 @@ enum Resources {
 
 enum Mode {
   god
+  advanced
   normal
 }
 
