@@ -113,6 +113,7 @@ model Creator {
   interests              Interest[]
   invoices               Invoice[]
   mediaKit               MediaKit?
+  tiktokData             Json?
 }
 
 model MediaKit {
