@@ -815,6 +815,7 @@ enum Resources {
 enum Mode {
   god
   normal
+  advanced
 }
 
 enum Status {
