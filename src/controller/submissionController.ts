@@ -1,7 +1,7 @@
 import e, { Request, Response } from 'express';
 
 import { Entity, Invoice, PrismaClient, SubmissionStatus } from '@prisma/client';
-import { uploadAgreementForm, uploadPitchVideo } from '@configs/cloudStorage.config';
+import { storage, uploadAgreementForm, uploadPitchVideo } from '@configs/cloudStorage.config';
 import { saveNotification } from './notificationController';
 import { activeProcesses, clients, io } from '../server';
 import Ffmpeg from 'fluent-ffmpeg';
@@ -9,6 +9,7 @@ import FfmpegPath from '@ffmpeg-installer/ffmpeg';
 import amqplib from 'amqplib';
 import dayjs from 'dayjs';
 import { MAP_TIMELINE } from '@constants/map-timeline';
+import fse from 'fs-extra';
 
 import { createInvoiceService } from '../service/invoiceService';
 
@@ -509,6 +510,7 @@ export const getSubmissionByCampaignCreatorId = async (req: Request, res: Respon
         campaignId: campaignId as string,
       },
       include: {
+        video: true,
         submissionType: {
           select: {
             id: true,
@@ -531,131 +533,162 @@ export const getSubmissionByCampaignCreatorId = async (req: Request, res: Respon
   }
 };
 
-export const draftSubmission = async (req: Request, res: Response) => {
-  const { submissionId, caption } = JSON.parse(req.body.data);
-  const userid = req.session.userid;
+// export const draftSubmission = async (req: Request, res: Response) => {
+//   const { submissionId, caption } = JSON.parse(req.body.data);
+//   const userid = req.session.userid;
 
-  let amqp: amqplib.Connection | null = null;
-  let channel: amqplib.Channel | null = null;
+//   // let amqp: amqplib.Connection | null = null;
+//   // let channel: amqplib.Channel | null = null;
+//   const urls: string[] = [];
 
-  try {
-    if (!(req.files as any).draftVideo) {
-      return res.status(404).json({ message: 'Video not found.' });
-    }
+//   console.log(req.files);
 
-    const submission = await prisma.submission.findUnique({
-      where: {
-        id: submissionId,
-      },
-      include: {
-        submissionType: true,
-        task: true,
-        user: {
-          include: {
-            creator: true,
-            Board: true,
-          },
-        },
-        campaign: {
-          select: {
-            spreadSheetURL: true,
-            campaignAdmin: {
-              select: {
-                admin: {
-                  select: {
-                    user: true,
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-    });
+//   // try {
+//   //   if (!(req.files as any).draftVideo) {
+//   //     return res.status(404).json({ message: 'Video not found.' });
+//   //   }
 
-    if (!submission) {
-      return res.status(404).json({ message: 'Submission not found' });
-    }
+//   //   const submission = await prisma.submission.findUnique({
+//   //     where: {
+//   //       id: submissionId,
+//   //     },
+//   //     include: {
+//   //       submissionType: true,
+//   //       task: true,
+//   //       user: {
+//   //         include: {
+//   //           creator: true,
+//   //           Board: true,
+//   //         },
+//   //       },
+//   //       campaign: {
+//   //         select: {
+//   //           spreadSheetURL: true,
+//   //           campaignAdmin: {
+//   //             select: {
+//   //               admin: {
+//   //                 select: {
+//   //                   user: true,
+//   //                 },
+//   //               },
+//   //             },
+//   //           },
+//   //         },
+//   //       },
+//   //     },
+//   //   });
 
-    const inReviewColumn = await getColumnId({ userId: userid, columnName: 'In Review' });
+//   //   if (!submission) {
+//   //     return res.status(404).json({ message: 'Submission not found' });
+//   //   }
 
-    // Move task creator from in progress to in review
-    if (submission.user.Board) {
-      const taskInProgress = await getTaskId({
-        columnName: 'In Progress',
-        boardId: submission.user.Board.id,
-        submissionId: submission.id,
-      });
+//   //   await prisma.submission.update({
+//   //     where: {
+//   //       id: submission.id,
+//   //     },
+//   //     data: {
+//   //       caption: caption,
+//   //       status: 'ON_HOLD',
+//   //     },
+//   //   });
 
-      if (taskInProgress) {
-        await prisma.task.update({
-          where: {
-            id: taskInProgress.id,
-          },
-          data: {
-            columnId: inReviewColumn,
-          },
-        });
-      }
-    }
+//   //   amqp = await amqplib.connect(process.env.RABBIT_MQ as string);
+//   //   channel = await amqp.createChannel();
+//   //   await channel.assertQueue('draft', { durable: true });
 
-    const file = (req.files as any).draftVideo;
+//   //   // Move task creator from in progress to in review
+//   //   if (submission.user.Board) {
+//   //     const taskInProgress = await getTaskId({
+//   //       columnName: 'In Progress',
+//   //       boardId: submission.user.Board.id,
+//   //       submissionId: submission.id,
+//   //     });
 
-    const filePath = `/tmp/${submissionId}`;
-    const compressedFilePath = `/tmp/${submissionId}_compressed.mp4`;
+//   //     const inReviewColumn = await getColumnId({ userId: userid, columnName: 'In Review' });
 
-    await file.mv(filePath);
+//   //     if (taskInProgress && inReviewColumn) {
+//   //       await prisma.task.update({
+//   //         where: {
+//   //           id: taskInProgress.id,
+//   //         },
+//   //         data: {
+//   //           columnId: inReviewColumn,
+//   //         },
+//   //       });
+//   //     }
+//   //   }
 
-    amqp = await amqplib.connect(process.env.RABBIT_MQ as string);
-    channel = await amqp.createChannel();
+//   //   // const rawFootages = (req.files as any).rawFootages;
+//   //   const files: [] | any = (req.files as any).draftVideo;
 
-    await channel.assertQueue('draft');
+//   //   if (Array.isArray(files)) {
+//   //     for (const file of files as any) {
+//   //       const filePath = `/tmp/${submissionId}_${file.name}`;
+//   //       const compressedFilePath = `/tmp/${submissionId}_${submissionId}_${file.name}_compressed.mp4`;
+//   //       await file.mv(filePath);
 
-    channel.sendToQueue(
-      'draft',
-      Buffer.from(
-        JSON.stringify({
-          ...file,
-          userid,
-          inputPath: filePath,
-          outputPath: compressedFilePath,
-          submissionId: submission?.id,
-          fileName: `${submission?.id}_draft.mp4`,
-          folder: submission?.submissionType.type,
-          caption,
-          admins: submission.campaign.campaignAdmin,
-        }),
-      ),
-      {
-        persistent: true,
-      },
-    );
+//   //       if (channel) {
+//   //         channel.sendToQueue(
+//   //           'draft',
+//   //           Buffer.from(
+//   //             JSON.stringify({
+//   //               ...file,
+//   //               userid,
+//   //               inputPath: filePath,
+//   //               outputPath: compressedFilePath,
+//   //               submissionId: submission?.id,
+//   //               fileName: `${submission?.id}_draft.mp4`,
+//   //               folder: submission?.submissionType.type,
+//   //               caption,
+//   //               admins: submission.campaign.campaignAdmin,
+//   //             }),
+//   //           ),
+//   //           {
+//   //             persistent: true,
+//   //           },
+//   //         );
+//   //       }
+//   //     }
 
-    activeProcesses.set(submissionId, { status: 'queue' });
+//   //     activeProcesses.set(submissionId, { totalVideos: files.length });
+//   //   } else {
+//   //     const filePath = `/tmp/${submissionId}_${files.name}`;
+//   //     const compressedFilePath = `/tmp/${submissionId}_${submissionId}_${files.name}_compressed.mp4`;
+//   //     await files.mv(filePath);
 
-    // if (submission.campaign.spreadSheetURL) {
-    //   const spreadSheetId = submission.campaign.spreadSheetURL.split('/d/')[1].split('/')[0];
+//   //     if (channel) {
+//   //       channel.sendToQueue(
+//   //         'draft',
+//   //         Buffer.from(
+//   //           JSON.stringify({
+//   //             ...files,
+//   //             userid,
+//   //             inputPath: filePath,
+//   //             outputPath: compressedFilePath,
+//   //             submissionId: submission?.id,
+//   //             fileName: `${submission?.id}_draft.mp4`,
+//   //             folder: submission?.submissionType.type,
+//   //             caption,
+//   //             admins: submission.campaign.campaignAdmin,
+//   //           }),
+//   //         ),
+//   //         {
+//   //           persistent: true,
+//   //         },
+//   //       );
+//   //     }
 
-    //   await createNewRowData({
-    //     creatorInfo: {
-    //       name: submission.user.name,
-    //       username: submission.user.creator?.instagram,
-    //       postingDate: dayjs().format('LL'),
-    //       caption: caption,
-    //       videoLink: `https://storage.googleapis.com/${process.env.BUCKET_NAME as string}/${submission?.submissionType.type}/${`${submission?.id}_draft.mp4`}?v=${dayjs().format()}`,
-    //     } as any,
-    //     spreadSheetId: spreadSheetId,
-    //   });
-    // }
+//   //     activeProcesses.set(submissionId, { totalVideos: 1 });
+//   //   }
 
-    return res.status(200).json({ message: 'Video start processing' });
-  } catch (error) {
-    return res.status(400).json(error);
-  } finally {
-    if (channel) await channel.close();
-    if (amqp) await amqp.close();
-  }
-};
+//   //   return res.status(200).json({ message: 'Draft video start processing' });
+//   // } catch (error) {
+//   //   return res.status(400).json(error);
+//   // } finally {
+//   //   if (channel) await channel.close();
+//   //   if (amqp) await amqp.close();
+//   // }
+// };
 
 export const adminManageDraft = async (req: Request, res: Response) => {
   const { submissionId, feedback, type, reasons, userId } = req.body;
@@ -1131,7 +1164,6 @@ export const adminManageDraft = async (req: Request, res: Response) => {
       return res.status(200).json({ message: 'Succesfully submitted.' });
     }
   } catch (error) {
-    console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -1514,5 +1546,155 @@ export const changePostingDate = async (req: Request, res: Response) => {
     return res.status(200).json({ message: 'Posting date changed successfully.' });
   } catch (error) {
     return res.status(400).json(error);
+  }
+};
+
+// export const generateInvoice = async (req: Request, res: Response) => {
+//   const { userId, campaignId } = req.body;
+//   try {
+//     const creator = await prisma.shortListedCreator.findFirst({
+//       where: {
+//         campaignId: campaignId,
+//         userId: userId,
+//       },
+//       select: {
+//         campaign: {
+//           select: {
+//             id: true,
+//             campaignBrief: true,
+//             name: true,
+//           },
+//         },
+//         isCampaignDone: true,
+//         user: {
+//           select: {
+//             paymentForm: true,
+//             id: true,
+//             name: true,
+//             email: true,
+//             creatorAgreement: true,
+//             creator: true,
+//           },
+//         },
+//       },
+//     });
+
+//     if (!creator) return res.status(404).json({ message: 'Data not found' });
+
+//     const invoice = await prisma.invoice.findFirst({
+//       where: {
+//         campaignId: campaignId,
+//         creatorId: userId,
+//       },
+//     });
+
+//     if (invoice) return res.status(400).json({ message: 'Invoice has been generated for this campaign' });
+
+//     if (creator.isCampaignDone && !invoice) {
+//       const invoiceAmount = creator?.user?.creatorAgreement.find(
+//         (elem) => elem.campaignId === creator.campaign.id,
+//       )?.amount;
+
+//       const invoice = await createInvoiceService(
+//         { ...creator, userId: creator.user?.id, campaignId: creator.campaign.id },
+//         req.session.userid,
+//         invoiceAmount,
+//       );
+
+//       const images: any = creator.campaign.campaignBrief?.images;
+
+//       creatorInvoice(creator?.user?.email as any, creator.campaign.name, creator?.user?.name ?? 'Creator', images[0]);
+
+//       const { title, message } = notificationInvoiceGenerate(creator.campaign.name);
+
+//       await saveNotification({
+//         userId: creator.user?.id as any,
+//         title,
+//         message,
+//         invoiceId: invoice?.id,
+//         entity: 'Invoice',
+//         entityId: creator.campaign.id,
+//       });
+//       return res.status(200).json({ message: 'Invoice has been successfully generated.' });
+//     }
+//   } catch (error) {
+//     console.log(error);
+//     return res.status(400).json(error);
+//   }
+// };
+
+export const draftSubmission = async (req: Request, res: Response) => {
+  const { submissionId, caption } = JSON.parse(req.body.data);
+  const draftData: any = req.body.draftData;
+  const userid = req.session.userid;
+
+  let amqp: amqplib.Connection | null = null;
+  let channel: amqplib.Channel | null = null;
+
+  const urls: string[] = [];
+  const videos: any[] = [];
+  const draftsData: any[] = [];
+
+  try {
+    const draftVideo = (req.files as any)?.draftVideo;
+
+    if (!Array.isArray(draftVideo) || !Array.isArray(draftData)) {
+      //One video
+      videos.push(draftVideo);
+      draftsData.push(JSON.parse(draftData));
+    } else {
+      //more than one video
+      videos.push(...draftVideo);
+      const newData = draftData.map((item) => JSON.parse(item));
+      draftsData.push(...newData);
+    }
+
+    if (!videos.length) return res.status(404).json({ message: 'No video found.' });
+
+    amqp = await amqplib.connect(process.env.RABBIT_MQ as string);
+    channel = await amqp.createChannel();
+    await channel.assertQueue('testingDraft', { durable: true });
+
+    const submission = await prisma.submission.update({
+      where: {
+        id: submissionId,
+      },
+      data: {
+        status: 'ON_HOLD',
+        caption,
+      },
+    });
+
+    for (const video of videos) {
+      const videoId = draftsData.find((item: any) => item.name === video.name)?.id;
+
+      const vid = await prisma.video.create({
+        data: {
+          submission: {
+            connect: {
+              id: submission.id,
+            },
+          },
+          status: 'Processing',
+        },
+      });
+
+      const videoData = {
+        ...video,
+        socketId: videoId,
+        id: vid.id,
+      };
+
+      channel?.sendToQueue('testingDraft', Buffer.from(JSON.stringify({ video: videoData, submission, caption })), {
+        persistent: true,
+      });
+    }
+
+    return res.status(201).json({ message: 'Video start processing.' });
+  } catch (error) {
+    return res.status(400).json(error);
+  } finally {
+    if (channel) await channel.close();
+    if (amqp) await amqp.close();
   }
 };
