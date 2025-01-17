@@ -16,7 +16,7 @@ import { handleSendMessage, fetchMessagesFromThread } from '@services/threadServ
 import { isLoggedIn } from '@middlewares/onlyLogin';
 import { Server } from 'socket.io';
 import '@services/uploadVideo';
-import './helper/videoProcess';
+import './helper/test';
 import '@helper/processPitchVideo';
 import './helper/videoDraft';
 // import './helper/videoDraftWorker';
