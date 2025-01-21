@@ -144,6 +144,12 @@ export const deleteCreator = async (req: Request, res: Response) => {
         where: { userId: id },
       }),
 
+      prisma.logistic.deleteMany({
+        where: {
+          userId: id,
+        },
+      }),
+
       prisma.creator.delete({
         where: {
           userId: id,
