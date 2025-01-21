@@ -1599,37 +1599,93 @@ export const editCampaignTimeline = async (req: Request, res: Response) => {
         .json({ message: 'Failed to change campaign start date because there is existing shortlisted creators.' });
     }
 
-    const data = await Promise.all(
-      timeline.map(async (item: any, index: number) => {
-        const result = await prisma.campaignTimeline.upsert({
+    for (const [index, item] of timeline.entries()) {
+      let submissionType;
+
+      if (item.timeline_type.name === 'Agreement') {
+        submissionType = await prisma.submissionType.findFirst({
           where: {
-            id: item?.id || item?.timeline_type.id,
-          },
-          update: {
-            name: item?.timeline_type.name,
-            for: item?.for,
-            duration: parseInt(item.duration),
-            startDate: dayjs(item?.startDate) as any,
-            endDate: dayjs(item?.endDate) as any,
-            campaignId: campaign?.id,
-            order: index + 1,
-          },
-          create: {
-            name: item?.timeline_type.name,
-            for: item?.for,
-            duration: parseInt(item.duration),
-            startDate: dayjs(item?.startDate) as any,
-            endDate: dayjs(item?.endDate) as any,
-            campaignId: campaign?.id,
-            order: index + 1,
-          },
-          include: {
-            campaignTasks: true,
+            type: 'AGREEMENT_FORM',
           },
         });
-        return result;
-      }),
-    );
+      } else if (item.timeline_type.name === 'First Draft') {
+        submissionType = await prisma.submissionType.findFirst({
+          where: {
+            type: 'FIRST_DRAFT',
+          },
+        });
+      } else if (item.timeline_type.name === 'Final Draft') {
+        submissionType = await prisma.submissionType.findFirst({
+          where: {
+            type: 'FINAL_DRAFT',
+          },
+        });
+      } else if (item.timeline_type.name === 'Posting') {
+        submissionType = await prisma.submissionType.findFirst({
+          where: {
+            type: 'POSTING',
+          },
+        });
+      }
+
+      await prisma.campaignTimeline.upsert({
+        where: {
+          id: item?.id || item?.timeline_type.id,
+        },
+        update: {
+          name: item?.timeline_type.name,
+          for: item?.for,
+          duration: parseInt(item.duration),
+          startDate: dayjs(item?.startDate) as any,
+          endDate: dayjs(item?.endDate) as any,
+          campaignId: campaign?.id,
+          order: index + 1,
+          submissionTypeId: submissionType?.id,
+        },
+        create: {
+          name: item?.timeline_type.name,
+          for: item?.for,
+          duration: parseInt(item.duration),
+          startDate: dayjs(item?.startDate) as any,
+          endDate: dayjs(item?.endDate) as any,
+          campaignId: campaign?.id,
+          order: index + 1,
+          submissionTypeId: submissionType?.id,
+        },
+      });
+    }
+
+    // const data = await Promise.all(
+    //   timeline.map(async (item: any, index: number) => {
+    //     const result = await prisma.campaignTimeline.upsert({
+    //       where: {
+    //         id: item?.id || item?.timeline_type.id,
+    //       },
+    //       update: {
+    //         name: item?.timeline_type.name,
+    //         for: item?.for,
+    //         duration: parseInt(item.duration),
+    //         startDate: dayjs(item?.startDate) as any,
+    //         endDate: dayjs(item?.endDate) as any,
+    //         campaignId: campaign?.id,
+    //         order: index + 1,
+    //       },
+    //       create: {
+    //         name: item?.timeline_type.name,
+    //         for: item?.for,
+    //         duration: parseInt(item.duration),
+    //         startDate: dayjs(item?.startDate) as any,
+    //         endDate: dayjs(item?.endDate) as any,
+    //         campaignId: campaign?.id,
+    //         order: index + 1,
+    //       },
+    //       include: {
+    //         campaignTasks: true,
+    //       },
+    //     });
+    //     return result;
+    //   }),
+    // );
 
     await prisma.campaignBrief.update({
       where: {
