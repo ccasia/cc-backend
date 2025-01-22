@@ -16,6 +16,7 @@ import { handleSendMessage, fetchMessagesFromThread } from '@services/threadServ
 import { isLoggedIn } from '@middlewares/onlyLogin';
 import { Server } from 'socket.io';
 import '@services/uploadVideo';
+// import './helper/test';
 import '@helper/processPitchVideo';
 import './helper/videoDraft';
 import './helper/videoDraftWorker';
@@ -25,6 +26,7 @@ import dotenv from 'dotenv';
 import '@services/google_sheets/sheets';
 import path from 'path';
 import fse from 'fs-extra';
+// import './helper/videoProcess';
 
 import { PrismaSessionStore } from '@quixo3/prisma-session-store';
 

@@ -479,6 +479,28 @@ export const checkCreator = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Creator not found' });
     }
 
+    // if (creator.user.status === 'pending') {
+    //   await prisma.user.update({
+    //     where: { id: creator.user.id },
+    //     data: {
+    //       creator: {
+    //         update: {
+    //           isInfoCompleted: false,
+    //         },
+    //       },
+    //     },
+    //   });
+    // }
+
+    await prisma.user.update({
+      where: {
+        id: creator.userId,
+      },
+      data: {
+        status: 'active',
+      },
+    });
+
     return res.status(200).json({ creator });
   } catch (error) {
     return res.status(400).json({ message: 'Error fetching creator' });
@@ -617,26 +639,30 @@ export const getprofile = async (req: Request, res: Response) => {
     return res.status(401).json({ message: 'Unauthorized', sessionExpired: true });
   }
 
-  const user = await getUser(userId);
+  try {
+    const user = await getUser(userId);
 
-  if (!user) return res.status(401).json({ message: 'Unauthorized' });
+    if (!user) return res.status(401).json({ message: 'Unauthorized' });
 
-  switch (user?.status) {
-    case 'banned':
-      return res.status(400).json({ message: 'Account banned.' });
-    case 'pending':
-      return res.status(400).json({ message: 'Account pending.' });
-    case 'blacklisted':
-      return res.status(400).json({ message: 'Account blacklisted.' });
-    case 'suspended':
-      return res.status(400).json({ message: 'Account suspended.' });
-    case 'spam':
-      return res.status(400).json({ message: 'Account spam.' });
-    case 'rejected':
-      return res.status(400).json({ message: 'Account rejected.' });
+    switch (user?.status) {
+      case 'banned':
+        return res.status(400).json({ message: 'Account banned.' });
+      case 'pending':
+        return res.status(400).json({ message: 'Account pending.', role: user.role });
+      case 'blacklisted':
+        return res.status(400).json({ message: 'Account blacklisted.' });
+      case 'suspended':
+        return res.status(400).json({ message: 'Account suspended.' });
+      case 'spam':
+        return res.status(400).json({ message: 'Account spam.' });
+      case 'rejected':
+        return res.status(400).json({ message: 'Account rejected.' });
+    }
+
+    return res.status(200).json({ user });
+  } catch (error) {
+    return res.status(404).json(error);
   }
-
-  return res.status(200).json({ user });
 
   // if (!refreshToken) {
   //   return req.session.destroy((err) => {
