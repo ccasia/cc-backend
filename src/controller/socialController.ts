@@ -154,6 +154,7 @@ export const handleDisconnectTiktok = async (req: Request, res: Response) => {
 
     return res.status(200).json({ message: 'TikTok account disconnected successfully' });
   } catch (error) {
+    console.log(error);
     return res.status(404).json(error);
   }
 };
