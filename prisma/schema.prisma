@@ -350,6 +350,7 @@ model Campaign {
   shortlisted                   ShortListedCreator[]
   submission                    Submission[]
   thread                        Thread?
+  publicAccess                  PublicAccess[]
 
   rawFootage Boolean @default(false)
 }
@@ -806,6 +807,17 @@ model Bugs {
 //   MEDIUM
 //   HIGH
 // }
+
+model PublicAccess {
+  id          Int       @id @default(autoincrement())
+  campaignId  String
+  password    String
+  expiryDate  DateTime
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  campaign    Campaign  @relation(fields: [campaignId], references: [id])
+}
 
 enum LogisticStatus {
   Product_is_being_packaged
