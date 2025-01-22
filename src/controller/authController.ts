@@ -479,6 +479,19 @@ export const checkCreator = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Creator not found' });
     }
 
+    if (creator.user.status === 'pending') {
+      await prisma.user.update({
+        where: { id: creator.user.id },
+        data: {
+          creator: {
+            update: {
+              isInfoCompleted: false,
+            },
+          },
+        },
+      });
+    }
+
     await prisma.user.update({
       where: {
         id: creator.userId,
