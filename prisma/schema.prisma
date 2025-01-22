@@ -105,7 +105,6 @@ model Creator {
   userId                 String      @unique
   socialMediaData        Json?
   isFormCompleted        Boolean?
-  isInfoCompleted        Boolean?    @default(true)
   socialMediaUpdateCount Json?
   allowToChange          Boolean     @default(false)
   industries             Json?
