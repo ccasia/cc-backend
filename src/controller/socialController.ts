@@ -129,7 +129,7 @@ export const handleDisconnectTiktok = async (req: Request, res: Response) => {
       },
     });
 
-    if (!creator || !creator.isTiktokConnected || !creator.tiktokData)
+    if (!creator || !creator.isTiktokConnected)
       return res.status(404).json({ message: 'Creator not linked to TikTok' });
 
     const accessToken = decryptToken((creator?.tiktokData as any)?.access_token);
