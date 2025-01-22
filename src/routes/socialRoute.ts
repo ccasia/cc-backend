@@ -1,4 +1,9 @@
-import { redirectTiktokAfterAuth, tiktokAuthentication, tiktokData } from '@controllers/socialController';
+import {
+  handleDisconnectTiktok,
+  redirectTiktokAfterAuth,
+  tiktokAuthentication,
+  tiktokData,
+} from '@controllers/socialController';
 import { Router, Request, Response } from 'express';
 import { isLoggedIn } from '@middlewares/onlyLogin';
 import { PrismaClient } from '@prisma/client';
@@ -55,5 +60,7 @@ router.get('/auth/facebook/callback', async (req, res) => {
     res.status(500).send('Error authenticating with Facebook');
   }
 });
+
+router.post('/tiktok/disconnect', isLoggedIn, handleDisconnectTiktok);
 
 export default router;
