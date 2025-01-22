@@ -105,6 +105,7 @@ model Creator {
   userId                 String      @unique
   socialMediaData        Json?
   isFormCompleted        Boolean?
+  isInfoCompleted        Boolean?
   socialMediaUpdateCount Json?
   allowToChange          Boolean     @default(false)
   industries             Json?
@@ -596,8 +597,24 @@ model Submission {
   dependencies     SubmissionDependency[] @relation("Dependencies")
   dependentOn      SubmissionDependency[] @relation("DependentOn")
   task             Task[]
+  video            Video[]
 
   @@unique([userId, campaignId, submissionTypeId])
+}
+
+model Video {
+  id           String      @id @default(cuid())
+  url          String?
+  status       VideoStatus @default(Uploaded)
+  submissionId String?
+  submission   Submission? @relation(fields: [submissionId], references: [id])
+}
+
+enum VideoStatus {
+  Uploaded
+  Processing
+  Published
+  Rejected
 }
 
 model SubmissionDependency {
