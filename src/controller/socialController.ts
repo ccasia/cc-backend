@@ -129,6 +129,8 @@ export const handleDisconnectTiktok = async (req: Request, res: Response) => {
       },
     });
 
+    console.log(creator);
+
     if (!creator || !creator.isTiktokConnected)
       return res.status(404).json({ message: 'Creator not linked to TikTok' });
 
