@@ -19,7 +19,7 @@ import '@services/uploadVideo';
 // import './helper/test';
 import '@helper/processPitchVideo';
 import './helper/videoDraft';
-// import './helper/videoDraftWorker';
+import './helper/videoDraftWorker';
 // import './helper/processPitchVideo';
 // import './helper/processRawFootages';
 import dotenv from 'dotenv';
