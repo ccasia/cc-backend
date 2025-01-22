@@ -57,6 +57,7 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
       },
       data: {
         tiktokData: { ...tokenResponse.data, access_token: encryptedAccessToken, refresh_token: encryptedRefreshToken },
+        isTiktokConnected: true,
       },
     });
 
@@ -116,6 +117,44 @@ export const tiktokData = async (req: Request, res: Response) => {
   } catch (error) {
     console.log(error);
     return res.status(400).json(error);
+  }
+};
+
+export const handleDisconnectTiktok = async (req: Request, res: Response) => {
+  const { userId } = req.body;
+  try {
+    const creator = await prisma.creator.findFirst({
+      where: {
+        userId: userId,
+      },
+    });
+
+    if (!creator || !creator.isTiktokConnected || !creator.tiktokData)
+      return res.status(404).json({ message: 'Creator not linked to TikTok' });
+
+    const accessToken = decryptToken((creator?.tiktokData as any)?.access_token);
+
+    if (!accessToken) return res.status(404).json({ message: 'Access token not found.' });
+
+    const response = await axios.post('https://open.tiktokapis.com/v2/oauth/revoke/', {
+      client_key: process.env.TIKTOK_CLIENT_KEY,
+      client_secret: process.env.TIKTOK_CLIENT_SECRET,
+      token: accessToken,
+    });
+
+    await prisma.creator.update({
+      where: {
+        userId: creator.userId,
+      },
+      data: {
+        isTiktokConnected: false,
+        tiktokData: {},
+      },
+    });
+
+    return res.status(200).json({ message: 'TikTok account disconnected successfully' });
+  } catch (error) {
+    return res.status(404).json(error);
   }
 };
 

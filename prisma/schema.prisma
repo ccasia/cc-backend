@@ -113,6 +113,8 @@ model Creator {
   interests              Interest[]
   invoices               Invoice[]
   mediaKit               MediaKit?
+  isTiktokConnected      Boolean     @default(false)
+  isFacebookConnected    Boolean     @default(false)
   tiktokData             Json?
   instagramData          Json?
 }
