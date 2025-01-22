@@ -134,6 +134,8 @@ export const handleDisconnectTiktok = async (req: Request, res: Response) => {
 
     const accessToken = decryptToken((creator?.tiktokData as any)?.access_token);
 
+    console.log(accessToken);
+
     if (!accessToken) return res.status(404).json({ message: 'Access token not found.' });
 
     const response = await axios.post('https://open.tiktokapis.com/v2/oauth/revoke/', {
@@ -141,6 +143,8 @@ export const handleDisconnectTiktok = async (req: Request, res: Response) => {
       client_secret: process.env.TIKTOK_CLIENT_SECRET,
       token: accessToken,
     });
+
+    console.log(response);
 
     await prisma.creator.update({
       where: {
