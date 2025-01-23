@@ -385,14 +385,14 @@ export const updatePaymentForm = async (req: Request, res: Response) => {
         icNumber: icPassportNumber.toString(),
         bankAccountNumber: bankNumber.toString(),
         bankAccountName: bankAccName.toString(),
-        bankName: bankName?.bank,
+        bankName: bankName,
       },
       create: {
         user: { connect: { id: req.session.userid } },
         icNumber: icPassportNumber.toString(),
         bankAccountNumber: bankNumber.toString(),
         bankAccountName: bankAccName.toString(),
-        bankName: bankName?.bank,
+        bankName: bankName,
       },
     });
 
