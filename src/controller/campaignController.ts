@@ -1007,13 +1007,17 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       );
 
       const overallMatchingPercentage = calculateOverallMatchingPercentage(interestPercentage, requirementPercentage);
+
       return {
         ...item,
         percentageMatch: overallMatchingPercentage,
       };
     });
 
-    const sortedMatchedCampaigns = matchedCampaignWithPercentage.sort((a, b) => b.percentageMatch - a.percentageMatch);
+    // const sortedMatchedCampaigns = matchedCampaignWithPercentage.sort((a, b) => b.percentageMatch - a.percentageMatch);
+    const sortedMatchedCampaigns = matchedCampaignWithPercentage.sort((a, b) => {
+      return dayjs(a.createdAt).isBefore(b.createdAt, 'date') ? 1 : -1;
+    });
 
     const lastCursor = campaigns.length > Number(take) - 1 ? campaigns[Number(take) - 1]?.id : null;
 
