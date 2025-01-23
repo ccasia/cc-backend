@@ -911,6 +911,9 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
         shortlisted: true,
         logistic: true,
       },
+      orderBy: {
+        createdAt: 'desc',
+      },
     });
 
     if (campaigns?.length === 0) {
