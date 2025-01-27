@@ -29,7 +29,7 @@ export const uploadImage = async (tempFilePath: string, fileName: string, folder
           ?.makePublic()
           // eslint-disable-next-line promise/always-return
           .then(() => {
-            const publicURL = `https://storage.googleapis.com/${process.env.BUCKET_NAME}/${folderName}/${fileName}`;
+            const publicURL = `https://storage.googleapis.com/${process.env.BUCKET_NAME}/${folderName}/${fileName}?v=${dayjs().format()}`;
             resolve(publicURL);
           })
           .catch((err) => {
