@@ -24,6 +24,7 @@ model User {
   updateRefershToken DateTime?
   xeroRefreshToken   String?
   admin              Admin?
+  client             Client?  
   agreementTemplate  AgreementTemplate[]
   Board              Board?
   BookMarkCampaign   BookMarkCampaign[]
@@ -72,6 +73,17 @@ model Admin {
   adminPermissionModule AdminPermissionModule[]
   campaignAdmin         CampaignAdmin[]
 }
+
+model Client {
+  id          String   @id @unique @default(cuid())
+  //  companyName String   @db.VarChar(255)
+  //  address     String?  @db.VarChar(255)
+  //  phone       String?  @db.VarChar(100)
+  //  website     String?  @db.VarChar(255)
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
 
 model Role {
   id          String       @id @unique @default(cuid())
@@ -350,8 +362,13 @@ model Campaign {
   shortlisted                   ShortListedCreator[]
   submission                    Submission[]
   thread                        Thread?
+  publicAccess                  PublicAccess[]
 
   rawFootage Boolean @default(false)
+  photos     Boolean @default(false)  
+
+  rawFootages RawFootage[]  
+  photosData  Photo[] 
 }
 
 model BookMarkCampaign {
@@ -587,7 +604,7 @@ model Submission {
   isReview         Boolean                @default(false)
   startDate        DateTime?
   endDate          DateTime?
-  rawFootages      String[]
+  //  rawFootages      String[]
   feedback         Feedback[]
   Notification     Notification[]
   campaign         Campaign               @relation(fields: [campaignId], references: [id])
@@ -597,6 +614,8 @@ model Submission {
   dependentOn      SubmissionDependency[] @relation("DependentOn")
   task             Task[]
   video            Video[]
+  rawFootages      RawFootage[]          
+  photos           Photo[]   
 
   @@unique([userId, campaignId, submissionTypeId])
 }
@@ -615,6 +634,25 @@ enum VideoStatus {
   Published
   Rejected
 }
+
+model RawFootage {
+  id           String    @id @default(cuid())
+  url          String    
+  campaignId  String
+  campaign    Campaign   @relation(fields: [campaignId], references: [id])
+  submissionId String?
+  submission   Submission? @relation(fields: [submissionId], references: [id])
+}
+
+model Photo {
+  id           String    @id @default(cuid())
+  url          String   
+  campaignId  String
+  campaign    Campaign   @relation(fields: [campaignId], references: [id])
+  submissionId String?
+  submission   Submission? @relation(fields: [submissionId], references: [id])
+}
+
 
 model SubmissionDependency {
   id                    String      @id @default(cuid())
@@ -806,6 +844,17 @@ model Bugs {
 //   MEDIUM
 //   HIGH
 // }
+
+model PublicAccess {
+  id          Int       @id @default(autoincrement())
+  campaignId  String
+  password    String
+  expiryDate  DateTime
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  campaign    Campaign  @relation(fields: [campaignId], references: [id])
+}
 
 enum LogisticStatus {
   Product_is_being_packaged

@@ -78,6 +78,13 @@ interface timeline {
   posting: number;
 }
 
+interface RawFootage {
+  url: string; 
+}
+
+interface Photo {
+  url: string;
+}
 interface Campaign {
   campaignInterests: string[];
   campaignIndustries: string;
@@ -116,6 +123,8 @@ interface Campaign {
   // agreementForm: { id: string };
   otherAttachments?: string[];
   referencesLinks?: string[];
+  rawFootage: boolean;  
+  photos: boolean;
 }
 
 const MAPPING: Record<string, string> = {
@@ -191,6 +200,8 @@ export const createCampaign = async (req: Request, res: Response) => {
     agreementFrom,
     referencesLinks,
     campaignType,
+    rawFootage,  
+    photos,
   }: Campaign = JSON.parse(req.body.data);
 
   // console.log(JSON.parse(req.body.data));
@@ -265,6 +276,8 @@ export const createCampaign = async (req: Request, res: Response) => {
             brandTone: brandTone,
             productName: productName,
             spreadSheetURL: url,
+            rawFootage: rawFootage || false,  
+            photos: photos || false, 
             agreementTemplate: {
               connect: {
                 id: agreementFrom.id,
