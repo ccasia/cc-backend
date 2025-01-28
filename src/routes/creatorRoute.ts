@@ -10,7 +10,7 @@ import {
   getCreatorFullInfoById,
   updatePaymentForm,
   updateCreatorForm,
-  crawlCreator,
+  // crawlCreator,
   getCreatorSocialMediaData,
   getCreatorSocialMediaDataById,
   getCreatorFullInfoByIdPublic,
@@ -32,7 +32,7 @@ router.get('/getCreatorSocialMediaData', getCreatorSocialMediaData);
 router.get('/creator/:id/social-media', getCreatorSocialMediaDataById);
 router.get('/getPartnerships/:id', isLoggedIn, getPartnerships);
 
-router.post('/crawl', crawlCreator);
+// router.post('/crawl', crawlCreator);
 
 router.patch('/updateSocialMediaUsername', isLoggedIn, updateSocialMedia);
 router.patch('/update-creator', isLoggedIn, updateCreator);
