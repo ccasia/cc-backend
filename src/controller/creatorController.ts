@@ -472,70 +472,70 @@ export const updateCreatorForm = async (req: Request, res: Response) => {
   }
 };
 
-export const crawlCreator = async (req: Request, res: Response) => {
-  const { identifier, platform } = req.body;
+// export const crawlCreator = async (req: Request, res: Response) => {
+//   const { identifier, platform } = req.body;
 
-  // Check if identifier OR platform is undefined
-  if (!identifier || !platform) {
-    return res.status(400).json({ error: 'Missing identifier or platform' });
-  }
+//   // Check if identifier OR platform is undefined
+//   if (!identifier || !platform) {
+//     return res.status(400).json({ error: 'Missing identifier or platform' });
+//   }
 
-  const options = {
-    hostname: 'api.fair-indonesia.com',
-    path: '/api/client/analyzer',
-    method: 'POST',
-    headers: {
-      Accept: 'application/json, text/plain, */*',
-      Authorization: 'IPMmEy81BL20jvkwd2zO',
-      'Content-Type': 'application/json',
-      Origin: 'https://www.fair-indonesia.com',
-    },
-  };
+//   const options = {
+//     hostname: 'api.fair-indonesia.com',
+//     path: '/api/client/analyzer',
+//     method: 'POST',
+//     headers: {
+//       Accept: 'application/json, text/plain, */*',
+//       Authorization: 'IPMmEy81BL20jvkwd2zO',
+//       'Content-Type': 'application/json',
+//       Origin: 'https://www.fair-indonesia.com',
+//     },
+//   };
 
-  const data = JSON.stringify({ identifier, platform });
+//   const data = JSON.stringify({ identifier, platform });
 
-  try {
-    const result = await new Promise((resolve, reject) => {
-      const apiRequest = https.request(options, (apiResponse) => {
-        let responseData = '';
+//   try {
+//     const result = await new Promise((resolve, reject) => {
+//       const apiRequest = https.request(options, (apiResponse) => {
+//         let responseData = '';
 
-        apiResponse.on('data', (chunk) => {
-          responseData += chunk;
-        });
+//         apiResponse.on('data', (chunk) => {
+//           responseData += chunk;
+//         });
 
-        apiResponse.on('end', () => {
-          // Check if statusCode is defined before using it
-          if (apiResponse.statusCode && apiResponse.statusCode >= 200 && apiResponse.statusCode < 300) {
-            try {
-              const parsedData = JSON.parse(responseData);
-              resolve(parsedData);
-            } catch (error) {
-              console.error('Error parsing response:', error);
-              reject(new Error(`Invalid JSON response: ${responseData}`));
-            }
-          } else {
-            const statusCode = apiResponse.statusCode || 'unknown';
-            reject(new Error(`API request failed with status ${statusCode}: ${responseData}`));
-          }
-        });
-      });
+//         apiResponse.on('end', () => {
+//           // Check if statusCode is defined before using it
+//           if (apiResponse.statusCode && apiResponse.statusCode >= 200 && apiResponse.statusCode < 300) {
+//             try {
+//               const parsedData = JSON.parse(responseData);
+//               resolve(parsedData);
+//             } catch (error) {
+//               console.error('Error parsing response:', error);
+//               reject(new Error(`Invalid JSON response: ${responseData}`));
+//             }
+//           } else {
+//             const statusCode = apiResponse.statusCode || 'unknown';
+//             reject(new Error(`API request failed with status ${statusCode}: ${responseData}`));
+//           }
+//         });
+//       });
 
-      apiRequest.on('error', (error) => {
-        console.error('Error making request:', error);
-        reject(new Error(`Error making request: ${error.message}`));
-      });
+//       apiRequest.on('error', (error) => {
+//         console.error('Error making request:', error);
+//         reject(new Error(`Error making request: ${error.message}`));
+//       });
 
-      apiRequest.write(data);
-      apiRequest.end();
-    });
+//       apiRequest.write(data);
+//       apiRequest.end();
+//     });
 
-    res.status(200).json(result);
-  } catch (error) {
-    console.log(error);
-    console.error('Unexpected error:', error);
-    res.status(500).json({ error: 'Unexpected error', details: error.message });
-  }
-};
+//     res.status(200).json(result);
+//   } catch (error) {
+//     console.log(error);
+//     console.error('Unexpected error:', error);
+//     res.status(500).json({ error: 'Unexpected error', details: error.message });
+//   }
+// };
 
 export const getCreatorSocialMediaData = async (req: Request, res: Response) => {
   try {
@@ -586,6 +586,7 @@ export const getCreatorSocialMediaDataById = async (req: Request, res: Response)
 export const updateSocialMedia = async (req: Request, res: Response) => {
   const { userid } = req.session;
   const { tiktok: tiktokUsername, instagram: instagramUsername } = req.body;
+
   try {
     const user = await prisma.user.findUnique({
       where: {
