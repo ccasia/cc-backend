@@ -5,12 +5,14 @@ import Ffmpeg from 'fluent-ffmpeg';
 import ffmpegPath from '@ffmpeg-installer/ffmpeg';
 import ffprobePath from '@ffprobe-installer/ffprobe';
 import fs from 'fs';
-import { uploadPitchVideo } from '@configs/cloudStorage.config';
+import { uploadPitchVideo, uploadImage } from '@configs/cloudStorage.config';
 import amqplib from 'amqplib';
 import { activeProcesses, clients, io } from '../server';
 import { Entity, PrismaClient } from '@prisma/client';
 import { saveNotification } from '@controllers/notificationController';
 import { spawn } from 'child_process';
+import path from 'path';
+
 
 import dayjs from 'dayjs';
 import { notificationDraft } from './notification';
@@ -244,15 +246,80 @@ const processVideo = async (
       if (msg !== null) {
         const content: any = JSON.parse(msg.content.toString());
 
+      // Process draft video
+      if (content.filePaths.video) {
         await processVideo(
           content,
-          content.inputPath,
-          content.outputPath,
+          content.filePaths.video.inputPath,
+          content.filePaths.video.outputPath,
           content.submissionId,
-          content.fileName,
+          content.filePaths.video.fileName,
           content.folder,
-          content.caption,
+          content.caption
         );
+      }
+  
+      if (content.filePaths.rawFootages && content.filePaths.rawFootages.length > 0) {
+        for (const rawFootagePath of content.filePaths.rawFootages) {
+          const rawFootageFileName = `${content.submissionId}_${path.basename(rawFootagePath)}`;
+          const rawFootagePublicURL = await uploadPitchVideo(
+            rawFootagePath,
+            rawFootageFileName,
+            content.folder
+          );
+      
+          console.log("✅ Raw footage uploaded successfully:", rawFootagePublicURL); 
+      
+          // Create a new RawFootage entry in the database
+          await prisma.rawFootage.create({
+            data: {
+              url: rawFootagePublicURL,
+              submissionId: content.submissionId,
+              campaignId: content.campaignId,
+            },
+          });
+      
+          console.log("✅ Raw footage entry created in the DB.");
+        }
+      } else {
+        console.log("❌ No raw footages found for processing.");
+      }
+        
+         // 🚀 Process and save photos
+         if (content.filePaths.photos && content.filePaths.photos.length > 0) {
+          for (const photoPath of content.filePaths.photos) {
+            const photoFileName = `${content.submissionId}_${path.basename(photoPath)}`;
+            const photoPublicURL = await uploadImage(photoPath, photoFileName, content.folder);
+
+            console.log("✅ Photo uploaded successfully:", photoPublicURL);
+
+            // Save photo URL to database
+            await prisma.photo.create({
+              data: {
+                url: photoPublicURL,
+                submissionId: content.submissionId,
+                campaignId: content.campaignId,
+              },
+            });
+
+            console.log("✅ Photo entry created in the DB.");
+          }
+        } else {
+          console.log("❌ No photos found for processing.");
+        }
+        
+
+        // old process logic 
+        
+        // await processVideo(
+        //   content,
+        //   content.inputPath,
+        //   content.outputPath,
+        //   content.submissionId,
+        //   content.fileName,
+        //   content.folder,
+        //   content.caption,
+        // );
 
         channel.ack(msg);
 
