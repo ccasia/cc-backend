@@ -32,7 +32,7 @@ router.post('/createCompany', isSuperAdmin, createCompany);
 router.post('/createBrand', isSuperAdmin, createBrand);
 router.post('/createOneCompany', isSuperAdmin, createOneCompany);
 router.post('/createOneBrand', isSuperAdmin, createOneBrand);
-router.post('/createCompany', isSuperAdmin, createCompany);
+// router.post('/createCompany', isSuperAdmin, createCompany);
 router.post('/createBrand', isSuperAdmin, createBrand);
 
 router.patch('/editCompany', isSuperAdmin, editCompany);

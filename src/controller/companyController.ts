@@ -24,6 +24,9 @@ export const createCompany = async (req: Request, res: Response) => {
     }
     return res.status(201).json({ company, message: 'A new company has been created' });
   } catch (error) {
+    if (error.message.includes('Company already exists')) {
+      return res.status(400).json({ message: 'Company already exists' });
+    }
     return res.status(400).json(error);
   }
 };
