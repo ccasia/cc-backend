@@ -522,6 +522,8 @@ export const getSubmissionByCampaignCreatorId = async (req: Request, res: Respon
         },
         dependentOn: true,
         dependencies: true,
+        rawFootages: true, 
+        photos: true, 
       },
     });
 
@@ -533,6 +535,7 @@ export const getSubmissionByCampaignCreatorId = async (req: Request, res: Respon
 
 export const draftSubmission = async (req: Request, res: Response) => {
   const { submissionId, caption } = JSON.parse(req.body.data);
+  //  const draftData: any = req.body.draftData;
   const userid = req.session.userid;
 
   let amqp: amqplib.Connection | null = null;
@@ -540,15 +543,22 @@ export const draftSubmission = async (req: Request, res: Response) => {
 
   try {
     const files = req.files as any;
-    const draftVideo = files?.draftVideo;
+    //const draftVideo = files?.draftVideo;
     const rawFootages = files?.rawFootage; 
     const photos = files?.photos; 
 
+    const draftVideos = Array.isArray(files?.draftVideo) ? 
+    files.draftVideo 
+    : files?.draftVideo 
+    ? [files.draftVideo] 
+    : [];
+
+    
     console.log("Received files:", files);
 
     // Ensure draftVideo is always present
     if (!files.draftVideo) {
-      return res.status(404).json({ message: 'Draft video is required.' });
+      return res.status(404).json({ message: 'UGC video is required.' });
     }
 
     const submission = await prisma.submission.findUnique({
@@ -616,15 +626,33 @@ export const draftSubmission = async (req: Request, res: Response) => {
 
     const filePaths: any = {};
 
-    if (draftVideo) {
-      filePaths.video = {
-        inputPath: `/tmp/${submissionId}`,
-        outputPath: `/tmp/${submissionId}_compressed.mp4`,
-        fileName: `${submission?.id}_draft.mp4`,
-      };
-      await draftVideo.mv(filePaths.video.inputPath);
-    }
+    // if (draftVideo) {
+    //   filePaths.video = {
+    //     inputPath: `/tmp/${submissionId}`,
+    //     outputPath: `/tmp/${submissionId}_compressed.mp4`,
+    //     fileName: `${submission?.id}_draft.mp4`,
+    //   };
+    //   await draftVideo.mv(filePaths.video.inputPath);
+    // }
 
+    if (draftVideos.length > 0) {
+      filePaths.video = [];
+    
+      for (const draftVideo of draftVideos) {
+        const draftVideoPath = `/tmp/${submissionId}_${draftVideo.name}`;
+    
+        // Move the draft video to the desired path
+        await draftVideo.mv(draftVideoPath);
+    
+        // Add to filePaths.video array
+        filePaths.video.push({
+          inputPath: draftVideoPath,
+          outputPath: `/tmp/${submissionId}_${draftVideo.name}_compressed.mp4`,
+          fileName: `${submissionId}_${draftVideo.name}`,
+        });
+      }
+    }
+    
     if (rawFootages && rawFootages.length > 0) {
       filePaths.rawFootages = [];
       
@@ -666,7 +694,7 @@ export const draftSubmission = async (req: Request, res: Response) => {
       admins: submission.campaign.campaignAdmin,
       filePaths,
     }, null, 2));
-    
+
     channel.sendToQueue(
       'draft',
       Buffer.from(
