@@ -89,7 +89,7 @@ const processVideo = async (
             id: submissionId,
           },
           data: {
-            content: publicURL,
+            // content: publicURL,
             caption: caption,
             status: 'PENDING_REVIEW',
             submissionDate: dayjs().format(),
@@ -211,7 +211,12 @@ const processVideo = async (
           io.to(clients.get(userid)).emit('progress', { submissionId, progress: 100 });
         }
 
-        fs.unlinkSync(inputPath);
+        // fs.unlinkSync(inputPath);
+        if (fs.existsSync(inputPath)) {
+          fs.unlinkSync(inputPath);
+        } else {
+          console.warn(`File not found: ${inputPath}`);
+        }
 
         resolve();
       })
@@ -237,6 +242,7 @@ const processVideo = async (
     await channel.assertQueue('draft', { durable: true });
     await channel.purgeQueue('draft');
 
+
     // await channel.prefetch(1);
     console.log('Consumer 2 Starting...');
 
@@ -246,19 +252,52 @@ const processVideo = async (
       if (msg !== null) {
         const content: any = JSON.parse(msg.content.toString());
 
-      // Process draft video
-      if (content.filePaths.video) {
-        await processVideo(
-          content,
-          content.filePaths.video.inputPath,
-          content.filePaths.video.outputPath,
-          content.submissionId,
-          content.filePaths.video.fileName,
-          content.folder,
-          content.caption
-        );
+      // Process draft video 
+      // if (content.filePaths.video) {
+      //   await processVideo(
+      //     content,
+      //     content.filePaths.video.inputPath,
+      //     content.filePaths.video.outputPath,
+      //     content.submissionId,
+      //     content.filePaths.video.fileName,
+      //     content.folder,
+      //     content.caption
+      //   );
+      // }
+
+      // For videos
+      if (content.filePaths.video && content.filePaths.video.length > 0) {
+        for (const videoFile of content.filePaths.video) {
+          await processVideo(
+            content,
+            videoFile.inputPath,
+            videoFile.outputPath,
+            content.submissionId,
+            videoFile.fileName,
+            content.folder,
+            content.caption
+          );
+      
+          // Upload processed video
+          const videoPublicURL = await uploadPitchVideo(videoFile.outputPath, videoFile.fileName, content.folder);
+      
+          console.log("✅ Draft video uploaded successfully:", videoPublicURL);
+      
+          // Save to database under Submission.video field
+          await prisma.video.create({
+            data: {
+              url: videoPublicURL,
+              submissionId: content.submissionId,
+            },
+          });
+      
+          console.log("✅ Draft video entry created in the DB.");
+        }
+      } else {
+        console.log("❌ No draft videos found for processing.");
       }
-  
+      
+      //For Raw Footages
       if (content.filePaths.rawFootages && content.filePaths.rawFootages.length > 0) {
         for (const rawFootagePath of content.filePaths.rawFootages) {
           const rawFootageFileName = `${content.submissionId}_${path.basename(rawFootagePath)}`;
@@ -285,7 +324,8 @@ const processVideo = async (
         console.log("❌ No raw footages found for processing.");
       }
         
-         // 🚀 Process and save photos
+
+         // For photos 
          if (content.filePaths.photos && content.filePaths.photos.length > 0) {
           for (const photoPath of content.filePaths.photos) {
             const photoFileName = `${content.submissionId}_${path.basename(photoPath)}`;
@@ -310,7 +350,7 @@ const processVideo = async (
         
 
         // old process logic 
-        
+
         // await processVideo(
         //   content,
         //   content.inputPath,
