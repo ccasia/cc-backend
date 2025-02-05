@@ -2,6 +2,8 @@ import { decryptToken, encryptToken } from '@helper/encrypt';
 import axios from 'axios';
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
+import dayjs from 'dayjs';
+import { getInstagramBusinesssAccountId, getInstagramUserData, getPageId } from '@services/socialMediaService';
 
 // const CODE_VERIFIER = 'your_unique_code_verifier';
 // const CODE_CHALLENGE = 'SHA256_hash_of_code_verifier';
@@ -9,7 +11,7 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 // Connect account
-export const tiktokAuthentication = (req: Request, res: Response) => {
+export const tiktokAuthentication = (_req: Request, res: Response) => {
   const csrfState = Math.random().toString(36).substring(2);
   res.cookie('csrfState', csrfState, { maxAge: 60000 });
 
@@ -165,4 +167,94 @@ export const handleDisconnectTiktok = async (req: Request, res: Response) => {
   }
 };
 
-// Revoke access
+export const facebookAuthentication = (_req: Request, res: Response) => {
+  const scopes = 'email,public_profile,pages_show_list,business_management,instagram_basic';
+  const facebookLoginUrl = `https://www.facebook.com/v22.0/dialog/oauth?client_id=${process.env.FACEBOOK_APP_ID}&redirect_uri=${process.env.REDIRECT_URI}&response_type=code&scope=${scopes}&config_id=1804107983668617`;
+
+  res.send(facebookLoginUrl);
+};
+
+export const redirectFacebookAuth = async (req: Request, res: Response) => {
+  const code = req.query.code; // Facebook sends the code here
+
+  try {
+    if (!code || !req.session.userid) return res.status(400).json({ message: 'Bad requests' });
+
+    // Exchange the code for an access token
+    const response = await axios.get('https://graph.facebook.com/v22.0/oauth/access_token', {
+      params: {
+        client_id: process.env.FACEBOOK_APP_ID,
+        client_secret: process.env.FACEBOOK_CLIENT_SECRET,
+        redirect_uri: process.env.REDIRECT_URI,
+        code: code,
+      },
+    });
+
+    const { access_token } = response.data;
+
+    // 60 days expiry
+    const longLivedToken = await axios.get('https://graph.facebook.com/v22.0/oauth/access_token', {
+      params: {
+        grant_type: 'fb_exchange_token',
+        client_id: process.env.FACEBOOK_APP_ID,
+        client_secret: process.env.FACEBOOK_CLIENT_SECRET,
+        fb_exchange_token: access_token,
+      },
+    });
+
+    await prisma.creator.update({
+      where: {
+        userId: req.session.userid,
+      },
+      data: {
+        instagramData: {
+          access_token: {
+            value: encryptToken(longLivedToken?.data?.access_token),
+            expiresAt: dayjs(longLivedToken?.data?.expires_in).format(),
+          },
+        },
+      },
+    });
+
+    // // Get User Info using the Access Token
+    // const userInfo = await axios.get('https://graph.facebook.com/me', {
+    //   params: {
+    //     access_token: access_token,
+    //     fields: 'id,name,email,picture', // You can choose which fields you want
+    //   },
+    // });
+
+    // You can store the user info in the session or database here
+    res.redirect('https://staging.cultcreativeasia.com/dashboard/user/profile');
+  } catch (error) {
+    res.status(400).send('Error authenticating with Facebook');
+  }
+};
+
+export const getUserInstagramData = async (req: Request, res: Response) => {
+  try {
+    const data = await prisma.creator.findFirst({
+      where: {
+        userId: req.session.userid,
+      },
+    });
+
+    const instagramData = data?.instagramData as any;
+    const accessToken = decryptToken(instagramData?.access_token?.value);
+
+    const pageId = await getPageId(decryptToken(instagramData?.access_token?.value));
+
+    const instagramAccountId = await getInstagramBusinesssAccountId(accessToken, pageId);
+
+    const userData = await getInstagramUserData(accessToken, instagramAccountId, [
+      'followers_count',
+      'follows_count',
+      'media',
+      'media_count',
+    ]);
+
+    return res.send(userData);
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
