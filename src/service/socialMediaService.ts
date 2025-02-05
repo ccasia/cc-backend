@@ -31,7 +31,7 @@ export const getInstagramBusinesssAccountId = async (accessToken: string, pageId
 
     if (!response?.data?.instagram_business_account) throw new Error('No Instargram account is connected to the page');
 
-    const instagramAccountId = response?.data?.data?.instagram_business_account?.id;
+    const instagramAccountId = response?.data?.instagram_business_account?.id;
 
     return instagramAccountId;
   } catch (error) {
