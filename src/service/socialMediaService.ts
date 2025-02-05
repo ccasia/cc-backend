@@ -75,7 +75,7 @@ export const getInstagramMediaData = async (
       },
     });
 
-    return response;
+    return response.data;
   } catch (error) {
     throw new Error(error);
   }
