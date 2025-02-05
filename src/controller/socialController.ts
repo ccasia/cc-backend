@@ -169,7 +169,7 @@ export const handleDisconnectTiktok = async (req: Request, res: Response) => {
 
 export const facebookAuthentication = (_req: Request, res: Response) => {
   const scopes = 'email,public_profile,pages_show_list,business_management,instagram_basic';
-  const facebookLoginUrl = `https://www.facebook.com/v22.0/dialog/oauth?client_id=${process.env.FACEBOOK_APP_ID}&redirect_uri=${process.env.REDIRECT_URI}&response_type=code&scope=${scopes}&config_id=1804107983668617`;
+  const facebookLoginUrl = `https://www.facebook.com/v22.0/dialog/oauth?client_id=${process.env.FACEBOOK_APP_ID}&redirect_uri=${process.env.FACEBOOK_REDIRECT_URI}&response_type=code&scope=${scopes}&config_id=1804107983668617`;
 
   res.send(facebookLoginUrl);
 };
