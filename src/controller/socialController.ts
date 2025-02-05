@@ -185,7 +185,7 @@ export const redirectFacebookAuth = async (req: Request, res: Response) => {
       params: {
         client_id: process.env.FACEBOOK_APP_ID,
         client_secret: process.env.FACEBOOK_CLIENT_SECRET,
-        redirect_uri: process.env.REDIRECT_URI,
+        redirect_uri: process.env.FACEBOOK_REDIRECT_URI,
         code: code,
       },
     });
