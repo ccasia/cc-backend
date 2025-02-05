@@ -51,6 +51,7 @@ export const getInstagramUserData = async (
   try {
     const response = await axios.get(`https://graph.facebook.com/${instagramId}`, {
       params: {
+        access_token: accessToken,
         fields: fields.toString(),
       },
     });
