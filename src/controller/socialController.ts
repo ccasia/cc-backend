@@ -213,6 +213,7 @@ export const redirectFacebookAuth = async (req: Request, res: Response) => {
             expiresAt: dayjs(longLivedToken?.data?.expires_in).format(),
           },
         },
+        isFacebookConnected: true,
       },
     });
 
