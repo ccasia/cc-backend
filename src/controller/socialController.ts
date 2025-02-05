@@ -288,6 +288,7 @@ export const getUserInstagramData = async (req: Request, res: Response) => {
           'media_url',
           'thumbnail_url',
           'caption',
+          'permalink',
         ]),
       ),
     );

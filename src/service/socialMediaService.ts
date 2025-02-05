@@ -1,5 +1,6 @@
 import axios from 'axios';
 
+// Function to get Page ID
 export const getPageId = async (accessToken: string): Promise<string> => {
   try {
     const response = await axios.get('https://graph.facebook.com/me/accounts', {
@@ -18,6 +19,7 @@ export const getPageId = async (accessToken: string): Promise<string> => {
   }
 };
 
+// Function to get business account id
 export const getInstagramBusinesssAccountId = async (accessToken: string, pageId: string): Promise<string> => {
   try {
     const response = await axios.get(`https://graph.facebook.com/${pageId}`, {
@@ -39,6 +41,7 @@ export const getInstagramBusinesssAccountId = async (accessToken: string, pageId
   }
 };
 
+// Function to get instagram's user data in general
 export const getInstagramUserData = async (
   accessToken: string,
   instagramId: string,
@@ -62,10 +65,11 @@ export const getInstagramUserData = async (
   }
 };
 
+// Function to get instagram's user media data
 export const getInstagramMediaData = async (
   accessToken: string,
   mediaId: string,
-  fields: ('like_count' | 'media_url' | 'media_type' | 'comments_count' | 'thumbnail_url' | 'caption')[],
+  fields: ('like_count' | 'media_url' | 'media_type' | 'comments_count' | 'thumbnail_url' | 'caption' | 'permalink')[],
 ) => {
   try {
     const response = await axios.get(`https://graph.facebook.com/${mediaId}`, {
