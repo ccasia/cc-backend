@@ -255,6 +255,7 @@ export const getUserInstagramData = async (req: Request, res: Response) => {
 
     return res.send(userData);
   } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   }
 };
