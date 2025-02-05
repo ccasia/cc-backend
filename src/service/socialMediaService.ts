@@ -61,3 +61,22 @@ export const getInstagramUserData = async (
     throw new Error(error);
   }
 };
+
+export const getInstagramMediaData = async (
+  accessToken: string,
+  mediaId: string,
+  fields: ('like_count' | 'media_url' | 'media_type' | 'comments_count' | 'thumbnail_url')[],
+) => {
+  try {
+    const response = await axios.get(`https://graph.facebook.com/${mediaId}`, {
+      params: {
+        access_token: accessToken,
+        fields: fields.toString(),
+      },
+    });
+
+    return response;
+  } catch (error) {
+    throw new Error(error);
+  }
+};

@@ -3,7 +3,12 @@ import axios from 'axios';
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import dayjs from 'dayjs';
-import { getInstagramBusinesssAccountId, getInstagramUserData, getPageId } from '@services/socialMediaService';
+import {
+  getInstagramBusinesssAccountId,
+  getInstagramMediaData,
+  getInstagramUserData,
+  getPageId,
+} from '@services/socialMediaService';
 
 // const CODE_VERIFIER = 'your_unique_code_verifier';
 // const CODE_CHALLENGE = 'SHA256_hash_of_code_verifier';
@@ -234,6 +239,7 @@ export const redirectFacebookAuth = async (req: Request, res: Response) => {
 
 export const getUserInstagramData = async (req: Request, res: Response) => {
   const userId = req.session.userid || req.params.userId;
+  const userContents = [];
 
   try {
     const data = await prisma.creator.findFirst({
@@ -249,14 +255,28 @@ export const getUserInstagramData = async (req: Request, res: Response) => {
 
     const instagramAccountId = await getInstagramBusinesssAccountId(accessToken, pageId);
 
-    const userData = await getInstagramUserData(accessToken, instagramAccountId, [
+    const userData: any = await getInstagramUserData(accessToken, instagramAccountId, [
       'followers_count',
       'follows_count',
       'media',
       'media_count',
     ]);
 
-    const compiledData = { user: userData };
+    const userMedia = userData.media.data;
+
+    for (const media of userMedia) {
+      const response = await getInstagramMediaData(accessToken, media.id, [
+        'comments_count',
+        'like_count',
+        'media_type',
+        'media_url',
+        'thumbnail_url',
+      ]);
+
+      userContents.push(response);
+    }
+
+    const compiledData = { user: userData, contents: userContents };
 
     return res.status(200).json(compiledData);
   } catch (error) {
