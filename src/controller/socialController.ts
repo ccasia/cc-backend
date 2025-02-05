@@ -252,7 +252,7 @@ export const getUserInstagramData = async (req: Request, res: Response) => {
 
     const accessToken = decryptToken(instagramData?.access_token?.value);
 
-    const pageId = await getPageId(decryptToken(instagramData?.access_token?.value));
+    const pageId = await getPageId(accessToken);
 
     const instagramAccountId = await getInstagramBusinesssAccountId(accessToken, pageId);
 
@@ -263,23 +263,37 @@ export const getUserInstagramData = async (req: Request, res: Response) => {
       'media_count',
     ]);
 
-    const userMedia = userData.media.data;
+    const userMedia = userData.media.data || [];
 
-    for (const media of userMedia) {
-      const response = await getInstagramMediaData(accessToken, media.id, [
-        'comments_count',
-        'like_count',
-        'media_type',
-        'media_url',
-        'thumbnail_url',
-      ]);
+    // for (const media of userMedia) {
+    //   const response = await getInstagramMediaData(accessToken, media.id, [
+    //     'comments_count',
+    //     'like_count',
+    //     'media_type',
+    //     'media_url',
+    //     'thumbnail_url',
+    //   ]);
 
-      console.log(response);
+    //   console.log(response);
 
-      // userContents.push(response);
-    }
+    //   // userContents.push(response);
+    // }
 
-    const compiledData = { user: userData, contents: { test: '' } };
+    const userContents = await Promise.all(
+      userMedia.map((media: { id: string }) =>
+        getInstagramMediaData(accessToken, media.id, [
+          'comments_count',
+          'like_count',
+          'media_type',
+          'media_url',
+          'thumbnail_url',
+        ]),
+      ),
+    );
+
+    console.log(userContents);
+
+    const compiledData = { user: userData, contents: userContents };
 
     return res.status(200).json(compiledData);
   } catch (error) {
