@@ -287,11 +287,10 @@ export const getUserInstagramData = async (req: Request, res: Response) => {
           'media_type',
           'media_url',
           'thumbnail_url',
+          'caption',
         ]),
       ),
     );
-
-    console.log(userContents);
 
     const compiledData = { user: userData, contents: userContents };
 
