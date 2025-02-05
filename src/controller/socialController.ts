@@ -249,6 +249,7 @@ export const getUserInstagramData = async (req: Request, res: Response) => {
     });
 
     const instagramData = data?.instagramData as any;
+
     const accessToken = decryptToken(instagramData?.access_token?.value);
 
     const pageId = await getPageId(decryptToken(instagramData?.access_token?.value));
@@ -273,10 +274,12 @@ export const getUserInstagramData = async (req: Request, res: Response) => {
         'thumbnail_url',
       ]);
 
-      userContents.push(response);
+      console.log(response);
+
+      // userContents.push(response);
     }
 
-    const compiledData = { user: userData, contents: userContents };
+    const compiledData = { user: userData, contents: { test: '' } };
 
     return res.status(200).json(compiledData);
   } catch (error) {
