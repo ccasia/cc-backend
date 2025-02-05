@@ -233,10 +233,12 @@ export const redirectFacebookAuth = async (req: Request, res: Response) => {
 };
 
 export const getUserInstagramData = async (req: Request, res: Response) => {
+  const userId = req.session.userid || req.params.userId;
+
   try {
     const data = await prisma.creator.findFirst({
       where: {
-        userId: req.session.userid,
+        userId: userId,
       },
     });
 
@@ -254,7 +256,9 @@ export const getUserInstagramData = async (req: Request, res: Response) => {
       'media_count',
     ]);
 
-    return res.send(userData);
+    const compiledData = { user: userData };
+
+    return res.status(200).json(compiledData);
   } catch (error) {
     console.log(error);
     return res.status(400).json(error);

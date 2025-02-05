@@ -24,7 +24,7 @@ router.get('/auth/facebook', facebookAuthentication);
 
 router.get('/auth/facebook/callback', redirectFacebookAuth);
 
-router.get('/instagram', isLoggedIn, getUserInstagramData);
+router.get('/instagram/:userId', isLoggedIn, getUserInstagramData);
 
 router.post('/tiktok/disconnect', isLoggedIn, handleDisconnectTiktok);
 
