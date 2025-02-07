@@ -1,5 +1,5 @@
 import e, { Request, Response } from 'express';
-
+import fs from 'fs';  
 import { Entity, Invoice, PrismaClient, SubmissionStatus } from '@prisma/client';
 import { uploadAgreementForm, uploadPitchVideo } from '@configs/cloudStorage.config';
 import { saveNotification } from './notificationController';
@@ -522,6 +522,9 @@ export const getSubmissionByCampaignCreatorId = async (req: Request, res: Respon
         },
         dependentOn: true,
         dependencies: true,
+        rawFootages: true,
+        photos: true,
+        video: true,
       },
     });
 
@@ -533,14 +536,30 @@ export const getSubmissionByCampaignCreatorId = async (req: Request, res: Respon
 
 export const draftSubmission = async (req: Request, res: Response) => {
   const { submissionId, caption } = JSON.parse(req.body.data);
+  //  const draftData: any = req.body.draftData;
   const userid = req.session.userid;
 
   let amqp: amqplib.Connection | null = null;
   let channel: amqplib.Channel | null = null;
 
   try {
-    if (!(req.files as any).draftVideo) {
-      return res.status(404).json({ message: 'Video not found.' });
+    const files = req.files as any;
+    //const draftVideo = files?.draftVideo;
+    const rawFootages = files?.rawFootage; 
+    const photos = files?.photos; 
+
+    const draftVideos = Array.isArray(files?.draftVideo) ? 
+    files.draftVideo 
+    : files?.draftVideo 
+    ? [files.draftVideo] 
+    : [];
+
+    
+    console.log("Received files:", files);
+
+    // Ensure draftVideo is always present
+    if (!files.draftVideo) {
+      return res.status(404).json({ message: 'UGC video is required.' });
     }
 
     const submission = await prisma.submission.findUnique({
@@ -599,37 +618,100 @@ export const draftSubmission = async (req: Request, res: Response) => {
       }
     }
 
-    const file = (req.files as any).draftVideo;
+    // const file = (req.files as any).draftVideo;
 
-    const filePath = `/tmp/${submissionId}`;
-    const compressedFilePath = `/tmp/${submissionId}_compressed.mp4`;
+    // const filePath = `/tmp/${submissionId}`;
+    // const compressedFilePath = `/tmp/${submissionId}_compressed.mp4`;
 
-    await file.mv(filePath);
+    // await file.mv(filePath);
+
+    const filePaths: any = {};
+
+    // if (draftVideo) {
+    //   filePaths.video = {
+    //     inputPath: `/tmp/${submissionId}`,
+    //     outputPath: `/tmp/${submissionId}_compressed.mp4`,
+    //     fileName: `${submission?.id}_draft.mp4`,
+    //   };
+    //   await draftVideo.mv(filePaths.video.inputPath);
+    // }
+
+    if (draftVideos.length > 0) {
+      filePaths.video = [];
+    
+      for (const draftVideo of draftVideos) {
+        const draftVideoPath = `/tmp/${submissionId}_${draftVideo.name}`;
+    
+        // Move the draft video to the desired path
+        await draftVideo.mv(draftVideoPath);
+    
+        // Add to filePaths.video array
+        filePaths.video.push({
+          inputPath: draftVideoPath,
+          outputPath: `/tmp/${submissionId}_${draftVideo.name}_compressed.mp4`,
+          fileName: `${submissionId}_${draftVideo.name}`,
+        });
+      }
+    }
+    
+    if (rawFootages && rawFootages.length > 0) {
+      filePaths.rawFootages = [];
+      
+      for (const rawFootage of rawFootages) {
+        const rawFootagePath = `/tmp/${submissionId}_${rawFootage.name}`;
+        
+        // Move the raw footage to the desired path
+        await rawFootage.mv(rawFootagePath);
+        
+        // Add the raw footage path to the filePaths array
+        filePaths.rawFootages.push(rawFootagePath);
+        
+        // Check if the raw footage file exists
+      }
+    } 
+
+
+    if (photos && photos.length > 0) {
+      filePaths.photos = [];
+      for (const photo of photos) {
+        const photoPath = `/tmp/${submissionId}_${photo.name}`;
+        await photo.mv(photoPath);
+        filePaths.photos.push(photoPath);
+      }
+    }
 
     amqp = await amqplib.connect(process.env.RABBIT_MQ as string);
     channel = await amqp.createChannel();
 
     await channel.assertQueue('draft');
 
+    // console.log("submission", submission)
+    console.log("📤 Sending to RabbitMQ:", JSON.stringify({
+      userid,
+      submissionId: submission?.id,
+      campaignId: submission?.campaignId,
+      folder: submission?.submissionType.type,
+      caption,
+      admins: submission.campaign.campaignAdmin,
+      filePaths,
+    }, null, 2));
+
     channel.sendToQueue(
       'draft',
       Buffer.from(
         JSON.stringify({
-          ...file,
           userid,
-          inputPath: filePath,
-          outputPath: compressedFilePath,
           submissionId: submission?.id,
-          fileName: `${submission?.id}_draft.mp4`,
+          campaignId: submission?.campaignId,
           folder: submission?.submissionType.type,
           caption,
           admins: submission.campaign.campaignAdmin,
+          filePaths,
         }),
       ),
-      {
-        persistent: true,
-      },
+      { persistent: true }
     );
+
 
     activeProcesses.set(submissionId, { status: 'queue' });
 
