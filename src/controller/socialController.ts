@@ -312,6 +312,7 @@ export const handleDisconnectFacebook = async (req: Request, res: Response) => {
     const response = await axios.get(`https://graph.facebook.com/me`, {
       params: {
         fields: 'id',
+        access_token: accessToken,
       },
     });
 
