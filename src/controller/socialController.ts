@@ -68,7 +68,7 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
       },
     });
 
-    res.redirect(process.env.TIKTOK_REDIRECT_URI as string);
+    res.redirect(process.env.REDIRECT_CLIENT as string);
   } catch (error) {
     console.error('Error during TikTok OAuth:', error.response?.data || error.message);
     res.status(500).send('Error during TikTok OAuth');
@@ -221,7 +221,7 @@ export const redirectFacebookAuth = async (req: Request, res: Response) => {
     // });
 
     // You can store the user info in the session or database here
-    res.redirect(process.env.FACEBOOK_REDIRECT_URI as string);
+    res.redirect(process.env.REDIRECT_CLIENT as string);
   } catch (error) {
     res.status(400).send('Error authenticating with Facebook');
   }
