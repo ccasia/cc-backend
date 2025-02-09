@@ -1,6 +1,7 @@
 import {
   facebookAuthentication,
   getUserInstagramData,
+  handleDisconnectFacebook,
   handleDisconnectTiktok,
   redirectFacebookAuth,
   redirectTiktokAfterAuth,
@@ -27,5 +28,7 @@ router.get('/auth/facebook/callback', redirectFacebookAuth);
 router.get('/instagram/:userId', isLoggedIn, getUserInstagramData);
 
 router.post('/tiktok/disconnect', isLoggedIn, handleDisconnectTiktok);
+
+router.post('/facebook/disconnect', isLoggedIn, handleDisconnectFacebook);
 
 export default router;

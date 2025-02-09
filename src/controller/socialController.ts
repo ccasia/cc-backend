@@ -68,7 +68,7 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
       },
     });
 
-    res.redirect('https://staging.cultcreativeasia.com/dashboard/user/profile');
+    res.redirect(process.env.TIKTOK_REDIRECT_URI as string);
   } catch (error) {
     console.error('Error during TikTok OAuth:', error.response?.data || error.message);
     res.status(500).send('Error during TikTok OAuth');
@@ -88,8 +88,6 @@ export const tiktokData = async (req: Request, res: Response) => {
         creator: true,
       },
     });
-
-    console.log(user);
 
     if (!user) return res.status(404).json({ message: 'User not found.' });
 
@@ -122,7 +120,6 @@ export const tiktokData = async (req: Request, res: Response) => {
 
     return res.status(200).json(data);
   } catch (error) {
-    console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -136,14 +133,10 @@ export const handleDisconnectTiktok = async (req: Request, res: Response) => {
       },
     });
 
-    console.log(creator);
-
     if (!creator || !creator.isTiktokConnected)
-      return res.status(404).json({ message: 'Creator not linked to TikTok' });
+      return res.status(404).json({ message: 'Creator is not linked to TikTok' });
 
     const accessToken = decryptToken((creator?.tiktokData as any)?.access_token);
-
-    console.log(accessToken);
 
     if (!accessToken) return res.status(404).json({ message: 'Access token not found.' });
 
@@ -152,8 +145,6 @@ export const handleDisconnectTiktok = async (req: Request, res: Response) => {
       client_secret: process.env.TIKTOK_CLIENT_SECRET,
       token: accessToken,
     });
-
-    console.log(response);
 
     await prisma.creator.update({
       where: {
@@ -167,7 +158,6 @@ export const handleDisconnectTiktok = async (req: Request, res: Response) => {
 
     return res.status(200).json({ message: 'TikTok account disconnected successfully' });
   } catch (error) {
-    console.log(error);
     return res.status(404).json(error);
   }
 };
@@ -231,7 +221,7 @@ export const redirectFacebookAuth = async (req: Request, res: Response) => {
     // });
 
     // You can store the user info in the session or database here
-    res.redirect('https://staging.cultcreativeasia.com/dashboard/user/profile');
+    res.redirect(process.env.FACEBOOK_REDIRECT_URI as string);
   } catch (error) {
     res.status(400).send('Error authenticating with Facebook');
   }
@@ -253,6 +243,7 @@ export const getUserInstagramData = async (req: Request, res: Response) => {
     const accessToken = decryptToken(instagramData?.access_token?.value);
 
     const pageId = await getPageId(accessToken);
+    console.log(pageId);
 
     const instagramAccountId = await getInstagramBusinesssAccountId(accessToken, pageId);
 
@@ -299,5 +290,44 @@ export const getUserInstagramData = async (req: Request, res: Response) => {
   } catch (error) {
     console.log(error);
     return res.status(400).json(error);
+  }
+};
+
+export const handleDisconnectFacebook = async (req: Request, res: Response) => {
+  const { userId } = req.body;
+  try {
+    const creator = await prisma.creator.findFirst({
+      where: {
+        userId: userId,
+      },
+    });
+
+    if (!creator || !creator.isFacebookConnected)
+      return res.status(404).json({ message: 'Creator is not linked to Instagram' });
+
+    const accessToken = decryptToken((creator?.instagramData as any)?.access_token?.value);
+
+    if (!accessToken) return res.status(404).json({ message: 'Access token not found.' });
+
+    await axios.delete('https://graph.facebook.com/me/permissions', {
+      params: {
+        access_token: accessToken,
+      },
+    });
+
+    await prisma.creator.update({
+      where: {
+        userId: creator.userId,
+      },
+      data: {
+        isFacebookConnected: false,
+        instagramData: {},
+      },
+    });
+
+    return res.status(200).json({ message: 'Instagram account disconnected successfully' });
+  } catch (error) {
+    console.log(error);
+    return res.status(404).json(error);
   }
 };
