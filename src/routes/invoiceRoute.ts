@@ -15,6 +15,7 @@ import {
   xeroCallBack,
   getXeroContacts,
   checkRefreshToken,
+  deleteInvoice,
 } from '@controllers/invoiceController';
 import { checkAndRefreshAccessToken } from '@controllers/invoiceController';
 import { creatorInvoice } from '@controllers/invoiceController';
@@ -37,5 +38,7 @@ router.post('/create', createInvoice);
 
 router.patch('/updateStatus', updateInvoiceStatus);
 router.patch('/update', checkAndRefreshAccessToken, updateInvoice);
+
+router.delete('/:id', isSuperAdmin, deleteInvoice);
 
 export default router;

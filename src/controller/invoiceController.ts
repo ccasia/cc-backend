@@ -774,3 +774,19 @@ export const generateInvoice = async (req: Request, res: Response) => {
     return res.status(400).json(error);
   }
 };
+
+export const deleteInvoice = async (req: Request, res: Response) => {
+  const { id } = req.params;
+
+  try {
+    const invoice = await prisma.invoice.findUnique({ where: { id: id } });
+
+    if (!invoice) return res.status(404).json({ message: 'Invoice not found' });
+
+    await prisma.invoice.delete({ where: { id: id } });
+
+    return res.status(200).json({ message: 'Successfully deleted' });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
