@@ -309,7 +309,13 @@ export const handleDisconnectFacebook = async (req: Request, res: Response) => {
 
     if (!accessToken) return res.status(404).json({ message: 'Access token not found.' });
 
-    await axios.delete('https://graph.facebook.com/me/permissions', {
+    const response = await axios.get(`https://graph.facebook.com/me`, {
+      params: {
+        fields: 'id',
+      },
+    });
+
+    await axios.delete(`https://graph.facebook.com/${response?.data?.id}/permissions`, {
       params: {
         access_token: accessToken,
       },
