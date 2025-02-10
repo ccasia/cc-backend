@@ -2929,6 +2929,8 @@ export const shortlistCreator = async (req: Request, res: Response) => {
               }),
             );
 
+            console.log(submissions);
+
             // Create dependencies
             const agreement = submissions.find((s) => s.submissionType?.type === 'AGREEMENT_FORM');
             const draft = submissions.find((s) => s.submissionType?.type === 'FIRST_DRAFT');
