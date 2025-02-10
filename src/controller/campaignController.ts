@@ -2902,7 +2902,7 @@ export const shortlistCreator = async (req: Request, res: Response) => {
               submissionType: SubmissionType;
             };
 
-            const submissions: SubmissionWithRelations[] = await Promise.all(
+            const submissions: any[] = await Promise.all(
               timelines.map(async (timeline, index) => {
                 return await tx.submission.create({
                   data: {
