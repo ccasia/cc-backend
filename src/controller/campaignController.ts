@@ -2904,6 +2904,7 @@ export const shortlistCreator = async (req: Request, res: Response) => {
 
             const submissions: any[] = await Promise.all(
               timelines.map(async (timeline, index) => {
+                console.log(timeline);
                 return await tx.submission.create({
                   data: {
                     dueDate: timeline.endDate,
@@ -2928,8 +2929,6 @@ export const shortlistCreator = async (req: Request, res: Response) => {
                 });
               }),
             );
-
-            console.log(submissions);
 
             // Create dependencies
             const agreement = submissions.find((s) => s.submissionType?.type === 'AGREEMENT_FORM');
