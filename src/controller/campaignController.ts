@@ -2843,128 +2843,128 @@ export const shortlistCreator = async (req: Request, res: Response) => {
           console.log(timelines);
 
           // Fetch all creators in one query
-          // const creatorIds = creators.map((c: any) => c.id);
+          const creatorIds = creators.map((c: any) => c.id);
 
-          // const creatorData = await tx.user.findMany({
-          //   where: { id: { in: creatorIds } },
-          //   include: { creator: true, paymentForm: true },
-          // });
+          const creatorData = await tx.user.findMany({
+            where: { id: { in: creatorIds } },
+            include: { creator: true, paymentForm: true },
+          });
 
-          // // Bulk create agreements
-          // await tx.creatorAgreement.createMany({
-          //   data: creatorData.map((creator) => ({
-          //     userId: creator.id,
-          //     campaignId: campaign.id,
-          //     agreementUrl: '',
-          //   })),
-          // });
+          // Bulk create agreements
+          await tx.creatorAgreement.createMany({
+            data: creatorData.map((creator) => ({
+              userId: creator.id,
+              campaignId: campaign.id,
+              agreementUrl: '',
+            })),
+          });
 
-          // // Bulk create shortlisted creators
-          // const shortlistedCreators = await tx.shortListedCreator.createMany({
-          //   data: creatorData.map((creator) => ({
-          //     userId: creator.id,
-          //     campaignId,
-          //   })),
-          // });
+          // Bulk create shortlisted creators
+          const shortlistedCreators = await tx.shortListedCreator.createMany({
+            data: creatorData.map((creator) => ({
+              userId: creator.id,
+              campaignId,
+            })),
+          });
 
-          // // Fetch all boards in one query
-          // const boards = await tx.board.findMany({
-          //   where: { userId: { in: creatorIds } },
-          //   include: { columns: true },
-          // });
+          // Fetch all boards in one query
+          const boards = await tx.board.findMany({
+            where: { userId: { in: creatorIds } },
+            include: { columns: true },
+          });
 
-          // for (const creator of creatorData) {
-          //   const board = boards.find((b) => b.userId === creator.id);
-          //   if (!board) throw new Error(`Board not found for user ${creator.id}`);
+          for (const creator of creatorData) {
+            const board = boards.find((b) => b.userId === creator.id);
+            if (!board) throw new Error(`Board not found for user ${creator.id}`);
 
-          //   const columnToDo = board.columns.find((c) => c.name.includes('To Do'));
-          //   const columnInProgress = board.columns.find((c) => c.name.includes('In Progress'));
-          //   if (!columnToDo || !columnInProgress) throw new Error('Columns not found.');
+            const columnToDo = board.columns.find((c) => c.name.includes('To Do'));
+            const columnInProgress = board.columns.find((c) => c.name.includes('In Progress'));
+            if (!columnToDo || !columnInProgress) throw new Error('Columns not found.');
 
-          //   type SubmissionWithRelations = Submission & {
-          //     submissionType: SubmissionType;
-          //   };
+            type SubmissionWithRelations = Submission & {
+              submissionType: SubmissionType;
+            };
 
-          //   const submissions: any[] = await Promise.all(
-          //     timelines.map(async (timeline, index) => {
-          //       return await tx.submission.create({
-          //         data: {
-          //           dueDate: timeline.endDate,
-          //           campaignId: campaign.id,
-          //           userId: creator.id as string,
-          //           // status: index === 0 ? 'IN_PROGRESS' : 'NOT_STARTED',
-          //           status: timeline.submissionType?.type === 'AGREEMENT_FORM' ? 'IN_PROGRESS' : 'NOT_STARTED',
-          //           submissionTypeId: timeline.submissionTypeId as string,
-          //           task: {
-          //             create: {
-          //               name: timeline.name,
-          //               position: index,
-          //               columnId: timeline.submissionType?.type ? columnInProgress.id : (columnToDo?.id as string),
-          //               priority: '',
-          //               status: timeline.submissionType?.type ? 'In Progress' : 'To Do',
-          //             },
-          //           },
-          //         },
-          //         include: {
-          //           submissionType: true,
-          //         },
-          //       });
-          //     }),
-          //   );
+            const submissions: any[] = await Promise.all(
+              timelines.map(async (timeline, index) => {
+                return await tx.submission.create({
+                  data: {
+                    dueDate: timeline.endDate,
+                    campaignId: campaign.id,
+                    userId: creator.id as string,
+                    // status: index === 0 ? 'IN_PROGRESS' : 'NOT_STARTED',
+                    status: timeline.submissionType?.type === 'AGREEMENT_FORM' ? 'IN_PROGRESS' : 'NOT_STARTED',
+                    submissionTypeId: timeline.submissionTypeId as string,
+                    task: {
+                      create: {
+                        name: timeline.name,
+                        position: index,
+                        columnId: timeline.submissionType?.type ? columnInProgress.id : (columnToDo?.id as string),
+                        priority: '',
+                        status: timeline.submissionType?.type ? 'In Progress' : 'To Do',
+                      },
+                    },
+                  },
+                  include: {
+                    submissionType: true,
+                  },
+                });
+              }),
+            );
 
-          //   // Create dependencies
-          //   const agreement = submissions.find((s) => s.submissionType?.type === 'AGREEMENT_FORM');
-          //   const draft = submissions.find((s) => s.submissionType?.type === 'FIRST_DRAFT');
-          //   const finalDraft = submissions.find((s) => s.submissionType?.type === 'FINAL_DRAFT');
-          //   const posting = submissions.find((s) => s.submissionType?.type === 'POSTING');
+            // Create dependencies
+            const agreement = submissions.find((s) => s.submissionType?.type === 'AGREEMENT_FORM');
+            const draft = submissions.find((s) => s.submissionType?.type === 'FIRST_DRAFT');
+            const finalDraft = submissions.find((s) => s.submissionType?.type === 'FINAL_DRAFT');
+            const posting = submissions.find((s) => s.submissionType?.type === 'POSTING');
 
-          //   const dependencies = [
-          //     { submissionId: draft?.id, dependentSubmissionId: agreement?.id },
-          //     { submissionId: finalDraft?.id, dependentSubmissionId: draft?.id },
-          //     { submissionId: posting?.id, dependentSubmissionId: finalDraft?.id },
-          //   ].filter((dep) => dep.submissionId && dep.dependentSubmissionId);
+            const dependencies = [
+              { submissionId: draft?.id, dependentSubmissionId: agreement?.id },
+              { submissionId: finalDraft?.id, dependentSubmissionId: draft?.id },
+              { submissionId: posting?.id, dependentSubmissionId: finalDraft?.id },
+            ].filter((dep) => dep.submissionId && dep.dependentSubmissionId);
 
-          //   if (dependencies.length) await tx.submissionDependency.createMany({ data: dependencies });
-          // }
+            if (dependencies.length) await tx.submissionDependency.createMany({ data: dependencies });
+          }
 
-          // // Notify admins & creators
-          // const admins = await tx.campaignAdmin.findMany({
-          //   where: { campaignId },
-          //   include: { admin: { include: { user: true } } },
-          // });
+          // Notify admins & creators
+          const admins = await tx.campaignAdmin.findMany({
+            where: { campaignId },
+            include: { admin: { include: { user: true } } },
+          });
 
-          // for (const creator of creatorData) {
-          //   const notification = await saveNotification({
-          //     userId: creator.id,
-          //     entityId: campaignId,
-          //     message: `Congratulations! You've been shortlisted for the ${campaign.name} campaign.`,
-          //     entity: 'Shortlist',
-          //   });
+          for (const creator of creatorData) {
+            const notification = await saveNotification({
+              userId: creator.id,
+              entityId: campaignId,
+              message: `Congratulations! You've been shortlisted for the ${campaign.name} campaign.`,
+              entity: 'Shortlist',
+            });
 
-          //   const image: any = campaign.campaignBrief?.images;
-          //   shortlisted(creator.email, campaign.name, creator.name ?? 'Creator', campaign.id, image[0]);
+            const image: any = campaign.campaignBrief?.images;
+            shortlisted(creator.email, campaign.name, creator.name ?? 'Creator', campaign.id, image[0]);
 
-          //   const socketId = clients.get(creator.id);
-          //   if (socketId) io.to(socketId).emit('notification', notification);
+            const socketId = clients.get(creator.id);
+            if (socketId) io.to(socketId).emit('notification', notification);
 
-          //   if (!campaign.thread) throw new Error('Campaign thread not found');
+            if (!campaign.thread) throw new Error('Campaign thread not found');
 
-          //   const isThreadExist = await tx.userThread.findFirst({
-          //     where: {
-          //       threadId: campaign.thread.id,
-          //       userId: creator.id as string,
-          //     },
-          //   });
+            const isThreadExist = await tx.userThread.findFirst({
+              where: {
+                threadId: campaign.thread.id,
+                userId: creator.id as string,
+              },
+            });
 
-          //   if (!isThreadExist) {
-          //     await tx.userThread.create({
-          //       data: {
-          //         threadId: campaign.thread.id,
-          //         userId: creator.id as string,
-          //       },
-          //     });
-          //   }
-          // }
+            if (!isThreadExist) {
+              await tx.userThread.create({
+                data: {
+                  threadId: campaign.thread.id,
+                  userId: creator.id as string,
+                },
+              });
+            }
+          }
         } catch (error) {
           console.error('Transaction error:', error);
           throw error;
