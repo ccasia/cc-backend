@@ -2820,176 +2820,299 @@ export const shortlistCreator = async (req: Request, res: Response) => {
     //   },
     // );
 
-    await prisma.$transaction(
-      async (tx) => {
-        try {
-          const campaign = await tx.campaign.findUnique({
-            where: { id: campaignId },
-            include: { thread: true, campaignBrief: true },
-          });
+    // await prisma.$transaction(
+    //   async (tx) => {
+    //     try {
+    //       const campaign = await tx.campaign.findUnique({
+    //         where: { id: campaignId },
+    //         include: { thread: true, campaignBrief: true },
+    //       });
 
-          if (!campaign) throw new Error('Campaign not found.');
+    //       if (!campaign) throw new Error('Campaign not found.');
 
-          const timelines = await tx.campaignTimeline.findMany({
-            where: {
-              campaignId: campaign.id,
-              for: 'creator',
-              name: { not: 'Open For Pitch' },
-            },
-            include: { submissionType: true },
-            orderBy: { order: 'asc' },
-          });
+    //       const timelines = await tx.campaignTimeline.findMany({
+    //         where: {
+    //           campaignId: campaign.id,
+    //           for: 'creator',
+    //           name: { not: 'Open For Pitch' },
+    //         },
+    //         include: { submissionType: true },
+    //         orderBy: { order: 'asc' },
+    //       });
 
-          // Fetch all creators in one query
-          const creatorIds = creators.map((c: any) => c.id);
-          const creatorData = await tx.user.findMany({
-            where: { id: { in: creatorIds } },
-            include: { creator: true, paymentForm: true },
-          });
+    //       // Fetch all creators in one query
+    //       const creatorIds = creators.map((c: any) => c.id);
 
-          // Bulk create agreements
-          await tx.creatorAgreement.createMany({
-            data: creatorData.map((creator) => ({
-              userId: creator.id,
-              campaignId: campaign.id,
-              agreementUrl: '',
-            })),
-          });
+    //       const creatorData = await tx.user.findMany({
+    //         where: { id: { in: creatorIds } },
+    //         include: { creator: true, paymentForm: true },
+    //       });
 
-          // Bulk create shortlisted creators
-          const shortlistedCreators = await tx.shortListedCreator.createMany({
-            data: creatorData.map((creator) => ({
-              userId: creator.id,
-              campaignId,
-            })),
-          });
+    //       // Bulk create agreements
+    //       await tx.creatorAgreement.createMany({
+    //         data: creatorData.map((creator) => ({
+    //           userId: creator.id,
+    //           campaignId: campaign.id,
+    //           agreementUrl: '',
+    //         })),
+    //       });
 
-          // Fetch all boards in one query
-          const boards = await tx.board.findMany({
-            where: { userId: { in: creatorIds } },
-            include: { columns: true },
-          });
+    //       // Bulk create shortlisted creators
+    //       const shortlistedCreators = await tx.shortListedCreator.createMany({
+    //         data: creatorData.map((creator) => ({
+    //           userId: creator.id,
+    //           campaignId,
+    //         })),
+    //       });
 
-          for (const creator of creatorData) {
-            const board = boards.find((b) => b.userId === creator.id);
-            if (!board) throw new Error(`Board not found for user ${creator.id}`);
+    //       // Fetch all boards in one query
+    //       const boards = await tx.board.findMany({
+    //         where: { userId: { in: creatorIds } },
+    //         include: { columns: true },
+    //       });
 
-            const columnToDo = board.columns.find((c) => c.name.includes('To Do'));
-            const columnInProgress = board.columns.find((c) => c.name.includes('In Progress'));
-            if (!columnToDo || !columnInProgress) throw new Error('Columns not found.');
+    //       for (const creator of creatorData) {
+    //         const board = boards.find((b) => b.userId === creator.id);
+    //         if (!board) throw new Error(`Board not found for user ${creator.id}`);
 
-            // Bulk create submissions
-            // const submissions = await tx.submission.createMany({
-            //   data: timelines.map((timeline, index) => ({
-            //     dueDate: timeline.endDate,
-            //     campaignId: campaign.id,
-            //     userId: creator.id,
-            //     status: timeline.submissionType?.type === 'AGREEMENT_FORM' ? 'IN_PROGRESS' : 'NOT_STARTED',
-            //     submissionTypeId: timeline.submissionTypeId,
-            //     task: {
-            //       create: {
-            //         name: timeline.name,
-            //         position: index,
-            //         columnId: timeline.submissionType?.type ? columnInProgress.id : columnToDo.id,
-            //         priority: '',
-            //         status: timeline.submissionType?.type ? 'In Progress' : 'To Do',
-            //       },
-            //     },
-            //   })),
-            // });
+    //         const columnToDo = board.columns.find((c) => c.name.includes('To Do'));
+    //         const columnInProgress = board.columns.find((c) => c.name.includes('In Progress'));
+    //         if (!columnToDo || !columnInProgress) throw new Error('Columns not found.');
 
-            type SubmissionWithRelations = Submission & {
-              submissionType: SubmissionType;
-            };
+    //         type SubmissionWithRelations = Submission & {
+    //           submissionType: SubmissionType;
+    //         };
 
-            const submissions: any[] = await Promise.all(
-              timelines.map(async (timeline, index) => {
-                console.log(timeline);
-                return await tx.submission.create({
-                  data: {
-                    dueDate: timeline.endDate,
-                    campaignId: campaign.id,
-                    userId: creator.id as string,
-                    // status: index === 0 ? 'IN_PROGRESS' : 'NOT_STARTED',
-                    status: timeline.submissionType?.type === 'AGREEMENT_FORM' ? 'IN_PROGRESS' : 'NOT_STARTED',
-                    submissionTypeId: timeline.submissionTypeId as string,
-                    task: {
-                      create: {
-                        name: timeline.name,
-                        position: index,
-                        columnId: timeline.submissionType?.type ? columnInProgress.id : (columnToDo?.id as string),
-                        priority: '',
-                        status: timeline.submissionType?.type ? 'In Progress' : 'To Do',
-                      },
-                    },
-                  },
-                  include: {
-                    submissionType: true,
-                  },
-                });
-              }),
-            );
+    //         const submissions: any[] = await Promise.all(
+    //           timelines.map(async (timeline, index) => {
+    //             console.log(timeline);
+    //             return await tx.submission.create({
+    //               data: {
+    //                 dueDate: timeline.endDate,
+    //                 campaignId: campaign.id,
+    //                 userId: creator.id as string,
+    //                 // status: index === 0 ? 'IN_PROGRESS' : 'NOT_STARTED',
+    //                 status: timeline.submissionType?.type === 'AGREEMENT_FORM' ? 'IN_PROGRESS' : 'NOT_STARTED',
+    //                 submissionTypeId: timeline.submissionTypeId as string,
+    //                 task: {
+    //                   create: {
+    //                     name: timeline.name,
+    //                     position: index,
+    //                     columnId: timeline.submissionType?.type ? columnInProgress.id : (columnToDo?.id as string),
+    //                     priority: '',
+    //                     status: timeline.submissionType?.type ? 'In Progress' : 'To Do',
+    //                   },
+    //                 },
+    //               },
+    //               include: {
+    //                 submissionType: true,
+    //               },
+    //             });
+    //           }),
+    //         );
 
-            // Create dependencies
-            const agreement = submissions.find((s) => s.submissionType?.type === 'AGREEMENT_FORM');
-            const draft = submissions.find((s) => s.submissionType?.type === 'FIRST_DRAFT');
-            const finalDraft = submissions.find((s) => s.submissionType?.type === 'FINAL_DRAFT');
-            const posting = submissions.find((s) => s.submissionType?.type === 'POSTING');
+    //         // Create dependencies
+    //         const agreement = submissions.find((s) => s.submissionType?.type === 'AGREEMENT_FORM');
+    //         const draft = submissions.find((s) => s.submissionType?.type === 'FIRST_DRAFT');
+    //         const finalDraft = submissions.find((s) => s.submissionType?.type === 'FINAL_DRAFT');
+    //         const posting = submissions.find((s) => s.submissionType?.type === 'POSTING');
 
-            const dependencies = [
-              { submissionId: draft?.id, dependentSubmissionId: agreement?.id },
-              { submissionId: finalDraft?.id, dependentSubmissionId: draft?.id },
-              { submissionId: posting?.id, dependentSubmissionId: finalDraft?.id },
-            ].filter((dep) => dep.submissionId && dep.dependentSubmissionId);
+    //         const dependencies = [
+    //           { submissionId: draft?.id, dependentSubmissionId: agreement?.id },
+    //           { submissionId: finalDraft?.id, dependentSubmissionId: draft?.id },
+    //           { submissionId: posting?.id, dependentSubmissionId: finalDraft?.id },
+    //         ].filter((dep) => dep.submissionId && dep.dependentSubmissionId);
 
-            if (dependencies.length) await tx.submissionDependency.createMany({ data: dependencies });
-          }
+    //         if (dependencies.length) await tx.submissionDependency.createMany({ data: dependencies });
+    //       }
 
-          // Notify admins & creators
-          const admins = await tx.campaignAdmin.findMany({
-            where: { campaignId },
-            include: { admin: { include: { user: true } } },
-          });
+    //       // Notify admins & creators
+    //       const admins = await tx.campaignAdmin.findMany({
+    //         where: { campaignId },
+    //         include: { admin: { include: { user: true } } },
+    //       });
 
-          for (const creator of creatorData) {
-            const notification = await saveNotification({
-              userId: creator.id,
-              entityId: campaignId,
-              message: `Congratulations! You've been shortlisted for the ${campaign.name} campaign.`,
-              entity: 'Shortlist',
-            });
+    //       for (const creator of creatorData) {
+    //         const notification = await saveNotification({
+    //           userId: creator.id,
+    //           entityId: campaignId,
+    //           message: `Congratulations! You've been shortlisted for the ${campaign.name} campaign.`,
+    //           entity: 'Shortlist',
+    //         });
 
-            const image: any = campaign.campaignBrief?.images;
-            shortlisted(creator.email, campaign.name, creator.name ?? 'Creator', campaign.id, image[0]);
+    //         const image: any = campaign.campaignBrief?.images;
+    //         shortlisted(creator.email, campaign.name, creator.name ?? 'Creator', campaign.id, image[0]);
 
-            const socketId = clients.get(creator.id);
-            if (socketId) io.to(socketId).emit('notification', notification);
+    //         const socketId = clients.get(creator.id);
+    //         if (socketId) io.to(socketId).emit('notification', notification);
 
-            if (!campaign.thread) throw new Error('Campaign thread not found');
+    //         if (!campaign.thread) throw new Error('Campaign thread not found');
 
-            const isThreadExist = await tx.userThread.findFirst({
-              where: {
-                threadId: campaign.thread.id,
-                userId: creator.id as string,
-              },
-            });
+    //         const isThreadExist = await tx.userThread.findFirst({
+    //           where: {
+    //             threadId: campaign.thread.id,
+    //             userId: creator.id as string,
+    //           },
+    //         });
 
-            if (!isThreadExist) {
-              await tx.userThread.create({
-                data: {
-                  threadId: campaign.thread.id,
-                  userId: creator.id as string,
-                },
-              });
-            }
-          }
-        } catch (error) {
-          console.error('Transaction error:', error);
-          throw error;
-        }
+    //         if (!isThreadExist) {
+    //           await tx.userThread.create({
+    //             data: {
+    //               threadId: campaign.thread.id,
+    //               userId: creator.id as string,
+    //             },
+    //           });
+    //         }
+    //       }
+    //     } catch (error) {
+    //       console.error('Transaction error:', error);
+    //       throw error;
+    //     }
+    //   },
+    //   { timeout: 10000 },
+    // );
+
+    const campaign = await prisma.campaign.findUnique({
+      where: { id: campaignId },
+      include: { thread: true, campaignBrief: true },
+    });
+
+    if (!campaign) throw new Error('Campaign not found.');
+
+    const timelines = await prisma.campaignTimeline.findMany({
+      where: {
+        campaignId: campaign.id,
+        for: 'creator',
+        name: { not: 'Open For Pitch' },
       },
-      { timeout: 10000 },
-    );
+      include: { submissionType: true },
+      orderBy: { order: 'asc' },
+    });
+
+    // Fetch all creators in one query
+    const creatorIds = creators.map((c: any) => c.id);
+
+    const creatorData = await prisma.user.findMany({
+      where: { id: { in: creatorIds } },
+      include: { creator: true, paymentForm: true },
+    });
+
+    // Bulk create agreements
+    await prisma.creatorAgreement.createMany({
+      data: creatorData.map((creator) => ({
+        userId: creator.id,
+        campaignId: campaign.id,
+        agreementUrl: '',
+      })),
+    });
+
+    // Bulk create shortlisted creators
+    const shortlistedCreators = await prisma.shortListedCreator.createMany({
+      data: creatorData.map((creator) => ({
+        userId: creator.id,
+        campaignId,
+      })),
+    });
+
+    // Fetch all boards in one query
+    const boards = await prisma.board.findMany({
+      where: { userId: { in: creatorIds } },
+      include: { columns: true },
+    });
+
+    for (const creator of creatorData) {
+      const board = boards.find((b) => b.userId === creator.id);
+      if (!board) throw new Error(`Board not found for user ${creator.id}`);
+
+      const columnToDo = board.columns.find((c) => c.name.includes('To Do'));
+      const columnInProgress = board.columns.find((c) => c.name.includes('In Progress'));
+      if (!columnToDo || !columnInProgress) throw new Error('Columns not found.');
+
+      type SubmissionWithRelations = Submission & {
+        submissionType: SubmissionType;
+      };
+
+      const submissions: any[] = await Promise.all(
+        timelines.map(async (timeline, index) => {
+          console.log(timeline);
+          return await prisma.submission.create({
+            data: {
+              dueDate: timeline.endDate,
+              campaignId: campaign.id,
+              userId: creator.id as string,
+              // status: index === 0 ? 'IN_PROGRESS' : 'NOT_STARTED',
+              status: timeline.submissionType?.type === 'AGREEMENT_FORM' ? 'IN_PROGRESS' : 'NOT_STARTED',
+              submissionTypeId: timeline.submissionTypeId as string,
+              task: {
+                create: {
+                  name: timeline.name,
+                  position: index,
+                  columnId: timeline.submissionType?.type ? columnInProgress.id : (columnToDo?.id as string),
+                  priority: '',
+                  status: timeline.submissionType?.type ? 'In Progress' : 'To Do',
+                },
+              },
+            },
+            include: {
+              submissionType: true,
+            },
+          });
+        }),
+      );
+
+      // Create dependencies
+      const agreement = submissions.find((s) => s.submissionType?.type === 'AGREEMENT_FORM');
+      const draft = submissions.find((s) => s.submissionType?.type === 'FIRST_DRAFT');
+      const finalDraft = submissions.find((s) => s.submissionType?.type === 'FINAL_DRAFT');
+      const posting = submissions.find((s) => s.submissionType?.type === 'POSTING');
+
+      const dependencies = [
+        { submissionId: draft?.id, dependentSubmissionId: agreement?.id },
+        { submissionId: finalDraft?.id, dependentSubmissionId: draft?.id },
+        { submissionId: posting?.id, dependentSubmissionId: finalDraft?.id },
+      ].filter((dep) => dep.submissionId && dep.dependentSubmissionId);
+
+      if (dependencies.length) await prisma.submissionDependency.createMany({ data: dependencies });
+    }
+
+    // Notify admins & creators
+    const admins = await prisma.campaignAdmin.findMany({
+      where: { campaignId },
+      include: { admin: { include: { user: true } } },
+    });
+
+    for (const creator of creatorData) {
+      const notification = await saveNotification({
+        userId: creator.id,
+        entityId: campaignId,
+        message: `Congratulations! You've been shortlisted for the ${campaign.name} campaign.`,
+        entity: 'Shortlist',
+      });
+
+      const image: any = campaign.campaignBrief?.images;
+      shortlisted(creator.email, campaign.name, creator.name ?? 'Creator', campaign.id, image[0]);
+
+      const socketId = clients.get(creator.id);
+      if (socketId) io.to(socketId).emit('notification', notification);
+
+      if (!campaign.thread) throw new Error('Campaign thread not found');
+
+      const isThreadExist = await prisma.userThread.findFirst({
+        where: {
+          threadId: campaign.thread.id,
+          userId: creator.id as string,
+        },
+      });
+
+      if (!isThreadExist) {
+        await prisma.userThread.create({
+          data: {
+            threadId: campaign.thread.id,
+            userId: creator.id as string,
+          },
+        });
+      }
+    }
 
     return res.status(200).json({ message: 'Successfully shortlisted' });
   } catch (error) {
