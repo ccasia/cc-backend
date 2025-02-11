@@ -53,7 +53,7 @@ import {
 } from '@helper/notification';
 import { deliveryConfirmation, shortlisted, tracking } from '@configs/nodemailer.config';
 import { createNewSpreadSheet } from '@services/google_sheets/sheets';
-import { applyCreditCampiagn } from '@services/packageService';
+// import { applyCreditCampiagn } from '@services/packageService';
 
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
 Ffmpeg.setFfprobePath(ffprobePath.path);
@@ -207,8 +207,6 @@ export const createCampaign = async (req: Request, res: Response) => {
     campaignCredits,
   }: Campaign = JSON.parse(req.body.data);
 
-  // console.log(JSON.parse(req.body.data));
-
   try {
     const publicURL: any = [];
     const otherAttachments: string[] = [];
@@ -267,14 +265,25 @@ export const createCampaign = async (req: Request, res: Response) => {
           }),
         );
 
+        const exitingClient = await tx.company.findUnique({
+          where: { id: client.id },
+          include: {
+            PackagesClient: {
+              where: {
+                status: 'active',
+              },
+            },
+          },
+        });
+
         const url: string = await createNewSpreadSheet({ title: campaignTitle });
 
-        const existingCampaign = await prisma.campaign.findUnique({ where: { campaignId: campaignId } });
+        // const existingCampaign = await prisma.campaign.findUnique({ where: { campaignId: campaignId } });
 
         // Create Campaign
         const campaign = await tx.campaign.create({
           data: {
-            // campaignId: existingCampaign ? existingCampaign?.campaignId?.split('C')[1] + 1 : campaignId,
+            campaignId: campaignId,
             name: campaignTitle,
             campaignType: campaignType,
             description: campaignDescription,
@@ -316,6 +325,11 @@ export const createCampaign = async (req: Request, res: Response) => {
                 user_persona: audienceUserPersona,
               },
             },
+            // packagesClient: {
+            //   connect: {
+            //     id: exitingClient?.PackagesClient[0].id,
+            //   },
+            // },
           },
           include: {
             campaignBrief: true,
@@ -459,7 +473,7 @@ export const createCampaign = async (req: Request, res: Response) => {
 
         const filterTimelines = timelines.filter((timeline) => timeline.for === 'admin');
 
-        const test = await Promise.all(
+        await Promise.all(
           admins.map(async (admin: any) => {
             const existing = await tx.campaignAdmin.findUnique({
               where: {
@@ -500,9 +514,11 @@ export const createCampaign = async (req: Request, res: Response) => {
                 allDay: false,
               },
             });
-            await  applyCreditCampiagn(client.id ,campaignCredits)
+
+            // await applyCreditCampiagn(client.id, campaignCredits);
 
             const { title, message } = notificationAdminAssign(campaign.name);
+
             const data = await tx.notification.create({
               data: {
                 title: title,
@@ -544,6 +560,7 @@ export const createCampaign = async (req: Request, res: Response) => {
       },
     );
   } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -726,76 +743,6 @@ export const getCampaignById = async (req: Request, res: Response) => {
   const { id } = req.params;
 
   try {
-    // const campaign = await prisma.campaign.findUnique({
-    //   where: {
-    //     id: id,
-    //   },
-    //   include: {
-    //     brand: true,
-    //     company: true,
-    //     campaignTimeline: true,
-    //     campaignBrief: true,
-    //     campaignRequirement: true,
-    //     agreementTemplate: true,
-    //     pitch: {
-    //       include: {
-    //         user: {
-    //           include: {
-    //             creator: {
-    //               include: {
-    //                 interests: true,
-    //               },
-    //             },
-    //           },
-    //         },
-    //       },
-    //     },
-    //     campaignAdmin: {
-    //       select: {
-    //         admin: {
-    //           select: {
-    //             role: true,
-    //             user: {
-    //               select: {
-    //                 id: true,
-    //                 name: true,
-    //                 role: true,
-    //               },
-    //             },
-    //           },
-    //         },
-    //       },
-    //     },
-    //     shortlisted: {
-    //       select: {
-    //         user: {
-    //           include: {
-    //             creator: true,
-    //           },
-    //         },
-    //         userId: true,
-    //       },
-    //     },
-    // campaignSubmissionRequirement: {
-    //   include: {
-    //     submissionType: {
-    //       select: {
-    //         type: true,
-    //       },
-    //     },
-    //   },
-    // },
-    //     submission: {
-    //       include: {
-    //         submissionType: true,
-    //         dependencies: true,
-    //         dependentOn: true,
-    //       },
-    //     },
-    //     logistic: true,
-    //   },
-    // });
-
     const campaign = await prisma.campaign.findFirst({
       where: {
         id: id,
@@ -810,7 +757,16 @@ export const getCampaignById = async (req: Request, res: Response) => {
           },
         },
         brand: true,
-        company: true,
+        company: {
+          include: {
+            pic: true,
+            PackagesClient: {
+              where: {
+                status: 'active',
+              },
+            },
+          },
+        },
         campaignTimeline: true,
         campaignBrief: true,
         campaignRequirement: true,

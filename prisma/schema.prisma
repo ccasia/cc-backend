@@ -395,6 +395,13 @@ model Campaign {
   
   rawFootages RawFootage[]  
   photosData  Photo[] 
+
+  //rawFootage                    Boolean                         @default(false)
+  //photos                        Boolean                         @default(false)
+  //rawFootages                   RawFootage[]
+  //photosData                    Photo[]
+  // packagesClient                PackagesClient?                 @relation(fields: [packagesClientId], references: [id])
+  // packagesClientId              String?                         @unique
 }
 
 model BookMarkCampaign {
@@ -865,6 +872,7 @@ model Bugs {
 
 model Packages {
   id              String           @id @unique @default(cuid())
+  packageId       String?          @unique
   type            PackageType
   valueMYR        Int
   valueSGD        Int
@@ -874,11 +882,11 @@ model Packages {
 }
 
 model PackagesClient {
-  id               String        @id @unique @default(cuid())
+  id               String         @id @unique @default(cuid())
   packageId        String
-  package          Packages      @relation(fields: [packageId], references: [id])
-  companyId        String        @unique
-  company          Company       @relation(fields: [companyId], references: [id])
+  companyId        String         @unique
+  package          Packages       @relation(fields: [packageId], references: [id])
+  company          Company        @relation(fields: [companyId], references: [id])
   type             PackageType
   currency         Currencies
   value            Int
@@ -889,9 +897,11 @@ model PackagesClient {
   invoiceDate      DateTime?
   Remarks          Json?
   invoiceLink      String?
-  createdAt        DateTime      @default(now())
+  createdAt        DateTime       @default(now())
   expiryDate       DateTime?
-  states           pakcageStatus
+  status           pakcageStatus?
+
+  // campaign Campaign?
 }
 
 enum PackageType {

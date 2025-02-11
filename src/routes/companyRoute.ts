@@ -16,6 +16,7 @@ import {
   editBrand,
   getOptions,
   getBrandsByClientId,
+  handleLinkNewPackage,
 } from '@controllers/companyController';
 import { needPermissions } from '@middlewares/needPermissions';
 
@@ -37,6 +38,7 @@ router.post('/createBrand', isSuperAdmin, createBrand);
 
 router.patch('/editCompany', isSuperAdmin, editCompany);
 router.patch('/editBrand', isSuperAdmin, editBrand);
+router.patch('/linkPackage/:companyId', isSuperAdmin, handleLinkNewPackage);
 
 router.delete('/deleteCompany/:id', isSuperAdmin, deleteCompany);
 

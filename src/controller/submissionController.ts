@@ -525,6 +525,7 @@ export const getSubmissionByCampaignCreatorId = async (req: Request, res: Respon
         rawFootages: true, 
         photos: true, 
         publicFeedback: true, 
+        video: true,
       },
     });
 
@@ -535,83 +536,126 @@ export const getSubmissionByCampaignCreatorId = async (req: Request, res: Respon
 };
 
 export const draftSubmission = async (req: Request, res: Response) => {
-  const { submissionId, caption } = JSON.parse(req.body.data);
-  //  const draftData: any = req.body.draftData;
-  const userid = req.session.userid;
+//   const { submissionId, caption } = JSON.parse(req.body.data);
+//   //  const draftData: any = req.body.draftData;
+//   const userid = req.session.userid;
 
-  let amqp: amqplib.Connection | null = null;
-  let channel: amqplib.Channel | null = null;
+//   let amqp: amqplib.Connection | null = null;
+//   let channel: amqplib.Channel | null = null;
 
-  try {
-    const files = req.files as any;
-    //const draftVideo = files?.draftVideo;
-    const rawFootages = files?.rawFootage; 
-    const photos = files?.photos; 
+//   try {
+//     const files = req.files as any;
+//     //const draftVideo = files?.draftVideo;
+//     const rawFootages = files?.rawFootage; 
+//     const photos = files?.photos; 
 
-    const draftVideos = Array.isArray(files?.draftVideo) ? 
-    files.draftVideo 
-    : files?.draftVideo 
-    ? [files.draftVideo] 
-    : [];
+//     const draftVideos = Array.isArray(files?.draftVideo) ? 
+//     files.draftVideo 
+//     : files?.draftVideo 
+//     ? [files.draftVideo] 
+//     : [];
 
     
-    console.log("Received files:", files);
+//     console.log("Received files:", files);
 
-    const submission = await prisma.submission.findUnique({
-      where: {
-        id: submissionId,
-      },
-      include: {
-        submissionType: true,
-        task: true,
-        user: {
-          include: {
-            creator: true,
-            Board: true,
-          },
+//     const submission = await prisma.submission.findUnique({
+//       where: {
+//         id: submissionId,
+//       },
+//       include: {
+//         submissionType: true,
+//         task: true,
+//         user: {
+//           include: {
+//             creator: true,
+//             Board: true,
+//           },
+  try {
+    const { submissionId, caption } = JSON.parse(req.body.data);
+    const files = req.files as any;
+
+    // Handle multiple draft videos
+    const draftVideos = Array.isArray(files?.draftVideo) ? 
+      files.draftVideo 
+      : files?.draftVideo 
+      ? [files.draftVideo] 
+      : [];
+
+    // Handle multiple raw footages
+    const rawFootages = Array.isArray(files?.rawFootage) ?
+      files.rawFootage
+      : files?.rawFootage
+      ? [files.rawFootage]
+      : [];
+
+    // Handle multiple photos
+    const photos = Array.isArray(files?.photos) ?
+      files.photos
+      : files?.photos
+      ? [files.photos]
+      : [];
+
+    const userid = req.session.userid;
+
+    let amqp: amqplib.Connection | null = null;
+    let channel: amqplib.Channel | null = null;
+
+    try {
+      const submission = await prisma.submission.findUnique({
+        where: {
+          id: submissionId,
         },
-        campaign: {
-          select: {
-            spreadSheetURL: true,
-            campaignAdmin: {
-              select: {
-                admin: {
-                  select: {
-                    user: true,
+        include: {
+          submissionType: true,
+          task: true,
+          user: {
+            include: {
+              creator: true,
+              Board: true,
+            },
+          },
+          campaign: {
+            select: {
+              spreadSheetURL: true,
+              campaignAdmin: {
+                select: {
+                  admin: {
+                    select: {
+                      user: true,
+                    },
                   },
                 },
               },
             },
           },
         },
-      },
-    });
-
-    if (!submission) {
-      return res.status(404).json({ message: 'Submission not found' });
-    }
-
-    const inReviewColumn = await getColumnId({ userId: userid, columnName: 'In Review' });
-
-    // Move task creator from in progress to in review
-    if (submission.user.Board) {
-      const taskInProgress = await getTaskId({
-        columnName: 'In Progress',
-        boardId: submission.user.Board.id,
-        submissionId: submission.id,
       });
 
-      if (taskInProgress) {
-        await prisma.task.update({
-          where: {
-            id: taskInProgress.id,
-          },
-          data: {
-            columnId: inReviewColumn,
-          },
-        });
+      if (!submission) {
+        return res.status(404).json({ message: 'Submission not found' });
       }
-    }
+
+      const inReviewColumn = await getColumnId({ userId: userid, columnName: 'In Review' });
+
+      // Move task creator from in progress to in review
+      if (submission.user.Board) {
+        const taskInProgress = await getTaskId({
+          columnName: 'In Progress',
+          boardId: submission.user.Board.id,
+          submissionId: submission.id,
+        });
+
+        if (taskInProgress) {
+          await prisma.task.update({
+            where: {
+              id: taskInProgress.id,
+            },
+            data: {
+              columnId: inReviewColumn,
+            },
+          });
+        }
+      }
 
     // const file = (req.files as any).draftVideo;
 
@@ -620,114 +664,204 @@ export const draftSubmission = async (req: Request, res: Response) => {
 
     // await file.mv(filePath);
 
-    const filePaths: any = {};
+//     const filePaths: any = {};
 
 
-    if (draftVideos && draftVideos.length > 0) {
-      filePaths.video = [];
+//     if (draftVideos && draftVideos.length > 0) {
+//       filePaths.video = [];
     
-      for (const draftVideo of draftVideos) {
-        const draftVideoPath = `/tmp/${submissionId}_${draftVideo.name}`;
+//       for (const draftVideo of draftVideos) {
+//         const draftVideoPath = `/tmp/${submissionId}_${draftVideo.name}`;
     
-        // Move the draft video to the desired path
-        await draftVideo.mv(draftVideoPath);
+//         // Move the draft video to the desired path
+//         await draftVideo.mv(draftVideoPath);
     
-        // Add to filePaths.video array
-        filePaths.video.push({
-          inputPath: draftVideoPath,
-          outputPath: `/tmp/${submissionId}_${draftVideo.name.replace('.mp4','')}_compressed.mp4`,
-          fileName: `${submissionId}_${draftVideo.name}`,
-        });
-      }
-    }
+//         // Add to filePaths.video array
+//         filePaths.video.push({
+//           inputPath: draftVideoPath,
+//           outputPath: `/tmp/${submissionId}_${draftVideo.name.replace('.mp4','')}_compressed.mp4`,
+//           fileName: `${submissionId}_${draftVideo.name}`,
+//         });
+//       }
+//     }
  
-    if (rawFootages) {
-      console.log("Raw Footages received:", rawFootages);
+//     if (rawFootages) {
+//       console.log("Raw Footages received:", rawFootages);
     
-      const rawFootageArray = Array.isArray(rawFootages) ? rawFootages : [rawFootages];
+//       const rawFootageArray = Array.isArray(rawFootages) ? rawFootages : [rawFootages];
     
-      if (rawFootageArray.length > 0) {
-        filePaths.rawFootages = [];
+//       if (rawFootageArray.length > 0) {
+//         filePaths.rawFootages = [];
     
-        for (const rawFootage of rawFootageArray) {
-          const rawFootagePath = `/tmp/${submissionId}_${rawFootage.name}`;
-          try {
-            await rawFootage.mv(rawFootagePath);
-            filePaths.rawFootages.push(rawFootagePath);
-          } catch (err) {
-            console.error("Error moving file:", err);
+//         for (const rawFootage of rawFootageArray) {
+//           const rawFootagePath = `/tmp/${submissionId}_${rawFootage.name}`;
+//           try {
+//             await rawFootage.mv(rawFootagePath);
+//             filePaths.rawFootages.push(rawFootagePath);
+//           } catch (err) {
+//             console.error("Error moving file:", err);
+//           }
+//         }
+//       }
+//     }
+    
+
+
+//     if (photos && photos.length > 0) {
+//       filePaths.photos = [];
+//       for (const photo of photos) {
+//         const photoPath = `/tmp/${submissionId}_${photo.name}`;
+//         await photo.mv(photoPath);
+//         filePaths.photos.push(photoPath);
+//       }
+//     }
+
+//     amqp = await amqplib.connect(process.env.RABBIT_MQ as string);
+//     channel = await amqp.createChannel();
+
+//     await channel.assertQueue('draft');
+
+//     // console.log("submission", submission)
+//     console.log("📤 Sending to RabbitMQ:", JSON.stringify({
+//       userid,
+//       submissionId: submission?.id,
+//       campaignId: submission?.campaignId,
+//       folder: submission?.submissionType.type,
+//       caption,
+//       admins: submission.campaign.campaignAdmin,
+//       filePaths,
+//     }, null, 2));
+
+//     channel.sendToQueue(
+//       'draft',
+//       Buffer.from(
+//         JSON.stringify({
+//           userid,
+//           submissionId: submission?.id,
+//           campaignId: submission?.campaignId,
+//           folder: submission?.submissionType.type,
+//           caption,
+//           admins: submission.campaign.campaignAdmin,
+//           filePaths,
+//         }),
+//       ),
+//       { persistent: true }
+//     );
+
+
+//     activeProcesses.set(submissionId, { status: 'queue' });
+      const filePaths: any = {};
+
+      if (draftVideos && draftVideos.length > 0) {
+        filePaths.video = [];
+      
+        for (const draftVideo of draftVideos) {
+          const draftVideoPath = `/tmp/${submissionId}_${draftVideo.name}`;
+      
+          // Move the draft video to the desired path
+          await draftVideo.mv(draftVideoPath);
+      
+          // Add to filePaths.video array
+          filePaths.video.push({
+            inputPath: draftVideoPath,
+            outputPath: `/tmp/${submissionId}_${draftVideo.name.replace('.mp4','')}_compressed.mp4`,
+            fileName: `${submissionId}_${draftVideo.name}`,
+          });
+        }
+      }
+   
+      if (rawFootages) {
+        console.log("Raw Footages received:", rawFootages);
+      
+        const rawFootageArray = Array.isArray(rawFootages) ? rawFootages : [rawFootages];
+      
+        if (rawFootageArray.length > 0) {
+          filePaths.rawFootages = [];
+      
+          for (const rawFootage of rawFootageArray) {
+            const rawFootagePath = `/tmp/${submissionId}_${rawFootage.name}`;
+            try {
+              await rawFootage.mv(rawFootagePath);
+              filePaths.rawFootages.push(rawFootagePath);
+            } catch (err) {
+              console.error("Error moving file:", err);
+            }
           }
         }
       }
-    }
-    
+      
 
 
-    if (photos && photos.length > 0) {
-      filePaths.photos = [];
-      for (const photo of photos) {
-        const photoPath = `/tmp/${submissionId}_${photo.name}`;
-        await photo.mv(photoPath);
-        filePaths.photos.push(photoPath);
+      if (photos && photos.length > 0) {
+        filePaths.photos = [];
+        for (const photo of photos) {
+          const photoPath = `/tmp/${submissionId}_${photo.name}`;
+          await photo.mv(photoPath);
+          filePaths.photos.push(photoPath);
+        }
       }
+
+      amqp = await amqplib.connect(process.env.RABBIT_MQ as string);
+      channel = await amqp.createChannel();
+
+      await channel.assertQueue('draft');
+
+      // console.log("submission", submission)
+      console.log("📤 Sending to RabbitMQ:", JSON.stringify({
+        userid,
+        submissionId,
+        campaignId: submission?.campaignId,
+        folder: submission?.submissionType.type,
+        caption,
+        admins: submission.campaign.campaignAdmin,
+        filePaths,
+      }, null, 2));
+
+      channel.sendToQueue(
+        'draft',
+        Buffer.from(
+          JSON.stringify({
+            userid,
+            submissionId,
+            campaignId: submission?.campaignId,
+            folder: submission?.submissionType.type,
+            caption,
+            admins: submission.campaign.campaignAdmin,
+            filePaths,
+          }),
+        ),
+        { persistent: true }
+      );
+
+
+      activeProcesses.set(submissionId, { status: 'queue' });
+
+      // if (submission.campaign.spreadSheetURL) {
+      //   const spreadSheetId = submission.campaign.spreadSheetURL.split('/d/')[1].split('/')[0];
+
+      //   await createNewRowData({
+      //     creatorInfo: {
+      //       name: submission.user.name,
+      //       username: submission.user.creator?.instagram,
+      //       postingDate: dayjs().format('LL'),
+      //       caption: caption,
+      //       videoLink: `https://storage.googleapis.com/${process.env.BUCKET_NAME as string}/${submission?.submissionType.type}/${`${submission?.id}_draft.mp4`}?v=${dayjs().format()}`,
+      //     } as any,
+      //     spreadSheetId: spreadSheetId,
+      //   });
+      // }
+
+      return res.status(200).json({ message: 'Video start processing' });
+    } catch (error) {
+      console.error('Draft submission error:', error);
+      return res.status(400).json({ message: 'Failed to process submission', error });
+    } finally {
+      if (channel) await channel.close();
+      if (amqp) await amqp.close();
     }
-
-    amqp = await amqplib.connect(process.env.RABBIT_MQ as string);
-    channel = await amqp.createChannel();
-
-    await channel.assertQueue('draft');
-
-    // console.log("submission", submission)
-    console.log("📤 Sending to RabbitMQ:", JSON.stringify({
-      userid,
-      submissionId: submission?.id,
-      campaignId: submission?.campaignId,
-      folder: submission?.submissionType.type,
-      caption,
-      admins: submission.campaign.campaignAdmin,
-      filePaths,
-    }, null, 2));
-
-    channel.sendToQueue(
-      'draft',
-      Buffer.from(
-        JSON.stringify({
-          userid,
-          submissionId: submission?.id,
-          campaignId: submission?.campaignId,
-          folder: submission?.submissionType.type,
-          caption,
-          admins: submission.campaign.campaignAdmin,
-          filePaths,
-        }),
-      ),
-      { persistent: true }
-    );
-
-
-    activeProcesses.set(submissionId, { status: 'queue' });
-
-    // if (submission.campaign.spreadSheetURL) {
-    //   const spreadSheetId = submission.campaign.spreadSheetURL.split('/d/')[1].split('/')[0];
-
-    //   await createNewRowData({
-    //     creatorInfo: {
-    //       name: submission.user.name,
-    //       username: submission.user.creator?.instagram,
-    //       postingDate: dayjs().format('LL'),
-    //       caption: caption,
-    //       videoLink: `https://storage.googleapis.com/${process.env.BUCKET_NAME as string}/${submission?.submissionType.type}/${`${submission?.id}_draft.mp4`}?v=${dayjs().format()}`,
-    //     } as any,
-    //     spreadSheetId: spreadSheetId,
-    //   });
-    // }
-
-    return res.status(200).json({ message: 'Video start processing' });
   } catch (error) {
-    return res.status(400).json(error);
-  } finally {
-    if (channel) await channel.close();
-    if (amqp) await amqp.close();
+    console.error('Draft submission error:', error);
+    return res.status(400).json({ message: 'Failed to process submission', error });
   }
 };
 
