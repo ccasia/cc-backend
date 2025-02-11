@@ -124,6 +124,10 @@ model Creator {
   interests              Interest[]
   invoices               Invoice[]
   mediaKit               MediaKit?
+  isTiktokConnected      Boolean     @default(false)
+  isFacebookConnected    Boolean     @default(false)
+  tiktokData             Json?
+  instagramData          Json?
 }
 
 model MediaKit {
@@ -390,11 +394,11 @@ model Campaign {
   publicAccess                  PublicAccess[]
 
   rawFootage Boolean @default(false)
-  photos     Boolean @default(false)  
-  ads        Boolean @default(false)  
-  
-  rawFootages RawFootage[]  
-  photosData  Photo[] 
+  photos     Boolean @default(false)
+  ads        Boolean @default(false)
+
+  rawFootages RawFootage[]
+  photosData  Photo[]
 
   //rawFootage                    Boolean                         @default(false)
   //photos                        Boolean                         @default(false)
@@ -646,9 +650,10 @@ model Submission {
   dependentOn      SubmissionDependency[] @relation("DependentOn")
   task             Task[]
   video            Video[]
-  rawFootages      RawFootage[]          
-  photos           Photo[]   
-  publicFeedback PublicFeedback[]
+  rawFootages      RawFootage[]
+  photos           Photo[]
+  publicFeedback   PublicFeedback[]
+
   @@unique([userId, campaignId, submissionTypeId])
 }
 
@@ -668,10 +673,10 @@ enum VideoStatus {
 }
 
 model RawFootage {
-  id           String    @id @default(cuid())
-  url          String    
-  campaignId  String?
-  campaign    Campaign?   @relation(fields: [campaignId], references: [id])
+  id           String      @id @default(cuid())
+  url          String
+  campaignId   String?
+  campaign     Campaign?   @relation(fields: [campaignId], references: [id])
   submissionId String?
   submission   Submission? @relation(fields: [submissionId], references: [id])
 }
@@ -771,6 +776,7 @@ model PaymentForm {
   bankName          String?
   bankAccountName   String?
   bankAccountNumber String?
+  // bankAccountName   String?
   bodyMeasurement   String?
   allergies         String[]
   user              User     @relation(fields: [userId], references: [id])
@@ -931,14 +937,14 @@ model PublicAccess {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  campaign    Campaign  @relation(fields: [campaignId], references: [id])
+  campaign Campaign @relation(fields: [campaignId], references: [id])
 }
 
 model PublicFeedback {
   id           String        @id @unique @default(cuid())
   content      String?
   type         FeedbackType?
-  reasons      String[]      // Optional field for reasons (if required)
+  reasons      String[] // Optional field for reasons (if required)
   submissionId String
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt

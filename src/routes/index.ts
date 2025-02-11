@@ -17,6 +17,7 @@ import kanbanRoute from './kanbanRoute';
 import bugRoute from './bugRoute';
 import accessRoute from './accessRoute';
 import packagesRoute from './packageRoutes';
+import socialRoute from './socialRoute';
 
 export const router = express.Router();
 
@@ -38,3 +39,4 @@ router.use('/kanban', kanbanRoute);
 router.use('/bug', bugRoute);
 router.use('/public', accessRoute);
 router.use('/packages', packagesRoute);
+router.use('/social', socialRoute);
