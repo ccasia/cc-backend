@@ -524,6 +524,7 @@ export const getSubmissionByCampaignCreatorId = async (req: Request, res: Respon
         dependencies: true,
         rawFootages: true, 
         photos: true, 
+        publicFeedback: true, 
       },
     });
 
@@ -555,11 +556,6 @@ export const draftSubmission = async (req: Request, res: Response) => {
 
     
     console.log("Received files:", files);
-
-    // Ensure draftVideo is always present
-    if (!files.draftVideo) {
-      return res.status(404).json({ message: 'UGC video is required.' });
-    }
 
     const submission = await prisma.submission.findUnique({
       where: {
@@ -626,16 +622,8 @@ export const draftSubmission = async (req: Request, res: Response) => {
 
     const filePaths: any = {};
 
-    // if (draftVideo) {
-    //   filePaths.video = {
-    //     inputPath: `/tmp/${submissionId}`,
-    //     outputPath: `/tmp/${submissionId}_compressed.mp4`,
-    //     fileName: `${submission?.id}_draft.mp4`,
-    //   };
-    //   await draftVideo.mv(filePaths.video.inputPath);
-    // }
 
-    if (draftVideos.length > 0) {
+    if (draftVideos && draftVideos.length > 0) {
       filePaths.video = [];
     
       for (const draftVideo of draftVideos) {
@@ -647,27 +635,32 @@ export const draftSubmission = async (req: Request, res: Response) => {
         // Add to filePaths.video array
         filePaths.video.push({
           inputPath: draftVideoPath,
-          outputPath: `/tmp/${submissionId}_${draftVideo.name}_compressed.mp4`,
+          outputPath: `/tmp/${submissionId}_${draftVideo.name.replace('.mp4','')}_compressed.mp4`,
           fileName: `${submissionId}_${draftVideo.name}`,
         });
       }
     }
+ 
+    if (rawFootages) {
+      console.log("Raw Footages received:", rawFootages);
     
-    if (rawFootages && rawFootages.length > 0) {
-      filePaths.rawFootages = [];
-      
-      for (const rawFootage of rawFootages) {
-        const rawFootagePath = `/tmp/${submissionId}_${rawFootage.name}`;
-        
-        // Move the raw footage to the desired path
-        await rawFootage.mv(rawFootagePath);
-        
-        // Add the raw footage path to the filePaths array
-        filePaths.rawFootages.push(rawFootagePath);
-        
-        // Check if the raw footage file exists
+      const rawFootageArray = Array.isArray(rawFootages) ? rawFootages : [rawFootages];
+    
+      if (rawFootageArray.length > 0) {
+        filePaths.rawFootages = [];
+    
+        for (const rawFootage of rawFootageArray) {
+          const rawFootagePath = `/tmp/${submissionId}_${rawFootage.name}`;
+          try {
+            await rawFootage.mv(rawFootagePath);
+            filePaths.rawFootages.push(rawFootagePath);
+          } catch (err) {
+            console.error("Error moving file:", err);
+          }
+        }
       }
-    } 
+    }
+    
 
 
     if (photos && photos.length > 0) {
@@ -748,6 +741,7 @@ export const adminManageDraft = async (req: Request, res: Response) => {
       },
       include: {
         feedback: true,
+        publicFeedback: true,
         user: {
           include: {
             creator: true,

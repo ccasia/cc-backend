@@ -56,7 +56,7 @@ import {
   updateOrCreateDefaultTimeline,
 } from '@controllers/timelineController';
 import { isLoggedIn } from '@middlewares/onlyLogin';
-import { needPermissions } from '@middlewares/needPermissions';
+// import { needPermissions } from '@middlewares/needPermissions';
 import { createNewTemplate, getAllTemplate, getTemplatebyId } from '@controllers/templateController';
 
 const router = Router();
@@ -88,10 +88,10 @@ router.get('/getCampaignsBySessionId', isLoggedIn, getCampaignsByCreatorId);
 router.get('/getCampaignForCreatorById/:id', isLoggedIn, getCampaignForCreatorById);
 router.get('/getCampaignPitch', isLoggedIn, getCampaignPitchForCreator);
 router.get('/getLogistics', isSuperAdmin, getLogisticById);
-router.get('/getSubmissions', isSuperAdmin, getSubmission);
+router.get('/getSubmissions',  getSubmission);
 // router.get('/pitch/:campaignId', getPitchByCampaignId);
 router.get('/getCampaignLog/:id', getCampaignLog);
-router.get('/creatorAgreements/:campaignId', isLoggedIn, creatorAgreements);
+router.get('/creatorAgreements/:campaignId',  creatorAgreements);
 
 // For creator MyCampaigns
 router.get('/getMyCampaigns/:userId', isLoggedIn, getMyCampaigns);
