@@ -71,6 +71,7 @@
     "xero-node": "^9.3.0"
   },
   "devDependencies": {
+    "@faker-js/faker": "^9.4.0",
     "@types/amqplib": "^0.10.5",
     "@types/bcrypt": "^5.0.2",
     "@types/connect-pg-simple": "^7.0.3",
