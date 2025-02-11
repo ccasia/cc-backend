@@ -388,10 +388,16 @@ model Campaign {
   submission                    Submission[]
   thread                        Thread?
   publicAccess                  PublicAccess[]
-  rawFootage                    Boolean                         @default(false)
-  photos                        Boolean                         @default(false)
-  rawFootages                   RawFootage[]
-  photosData                    Photo[]
+  rawFootage Boolean @default(false)
+  photos     Boolean @default(false)  
+  ads        Boolean @default(false)
+
+  rawFootages RawFootage[]  
+  photosData  Photo[] 
+  //rawFootage                    Boolean                         @default(false)
+  //photos                        Boolean                         @default(false)
+  //rawFootages                   RawFootage[]
+  //photosData                    Photo[]
   // packagesClient                PackagesClient?                 @relation(fields: [packagesClientId], references: [id])
   // packagesClientId              String?                         @unique
 }

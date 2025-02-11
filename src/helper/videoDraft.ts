@@ -5,12 +5,14 @@ import Ffmpeg from 'fluent-ffmpeg';
 import ffmpegPath from '@ffmpeg-installer/ffmpeg';
 import ffprobePath from '@ffprobe-installer/ffprobe';
 import fs from 'fs';
-import { uploadPitchVideo } from '@configs/cloudStorage.config';
+import { uploadPitchVideo, uploadImage } from '@configs/cloudStorage.config';
 import amqplib from 'amqplib';
 import { activeProcesses, clients, io } from '../server';
 import { Entity, PrismaClient } from '@prisma/client';
 import { saveNotification } from '@controllers/notificationController';
 import { spawn } from 'child_process';
+import path from 'path';
+
 
 import dayjs from 'dayjs';
 import { notificationDraft } from './notification';
@@ -22,6 +24,12 @@ Ffmpeg.setFfprobePath(ffprobePath.path);
 
 const prisma = new PrismaClient();
 const pool = workerpool.pool();
+
+interface VideoFile {
+  inputPath: string;
+  outputPath: string;
+  fileName: string;
+}
 
 const processVideo = async (
   videoData: any,
@@ -35,12 +43,12 @@ const processVideo = async (
   return new Promise<void>((resolve, reject) => {
     const userid = videoData.userid;
     const command = Ffmpeg(inputPath)
-      .outputOptions([
+    .outputOptions([
         '-c:v libx264',
         '-crf 26',
         '-pix_fmt yuv420p',
         '-preset ultrafast',
-        '-map 0:v:0', // Select the first video stream
+        '-map 0:v:0', 
         '-map 0:a:0?',
         '-threads 4',
       ])
@@ -53,6 +61,9 @@ const processVideo = async (
             progress: percentage,
             submissionId: submissionId,
             name: 'Compression Start',
+            fileName: fileName,
+            fileSize: fs.statSync(inputPath).size,
+            fileType: path.extname(fileName)
           });
         }
       })
@@ -65,31 +76,32 @@ const processVideo = async (
             resolve(data.size);
           });
         });
+        
 
-        const publicURL = await uploadPitchVideo(
-          outputPath,
-          fileName,
-          folder,
-          (data: number) => {
-            if (io) {
-              io.to(clients.get(userid)).emit('progress', {
-                progress: data,
-                submissionId: submissionId,
-                name: 'Uploading Start',
-              });
-            }
-          },
-          size as number,
-        );
+        // const publicURL = await uploadPitchVideo(
+        //   outputPath,
+        //   fileName,
+        //   folder,
+        //   (data: number) => {
+        //     if (io) {
+        //       io.to(clients.get(userid)).emit('progress', {
+        //         progress: data,
+        //         submissionId: submissionId,
+        //         name: 'Uploading Start',
+        //       });
+        //     }
+        //   },
+        //   size as number,
+        // );
 
         const data = await prisma.submission.update({
           where: {
             id: submissionId,
           },
           data: {
-            content: publicURL,
+            // content: publicURL,
             caption: caption,
-            status: 'PENDING_REVIEW',
+            //  status: 'PENDING_REVIEW',
             submissionDate: dayjs().format(),
           },
           include: {
@@ -209,7 +221,12 @@ const processVideo = async (
           io.to(clients.get(userid)).emit('progress', { submissionId, progress: 100 });
         }
 
-        fs.unlinkSync(inputPath);
+        // fs.unlinkSync(inputPath);
+        if (fs.existsSync(inputPath)) {
+          fs.unlinkSync(inputPath);
+        } else {
+          console.warn(`File not found: ${inputPath}`);
+        }
 
         resolve();
       })
@@ -231,51 +248,175 @@ const processVideo = async (
   try {
     const conn = await amqplib.connect(process.env.RABBIT_MQ as string);
     const channel = await conn.createChannel();
-
     await channel.assertQueue('draft', { durable: true });
     await channel.purgeQueue('draft');
-
-    // await channel.prefetch(1);
+    
     console.log('Consumer 2 Starting...');
-
     const startUsage = process.cpuUsage();
 
     await channel.consume('draft', async (msg) => {
       if (msg !== null) {
         const content: any = JSON.parse(msg.content.toString());
+        console.log("message content", content);
 
-        await processVideo(
-          content,
-          content.inputPath,
-          content.outputPath,
-          content.submissionId,
-          content.fileName,
-          content.folder,
-          content.caption,
-        );
+        try {
+          // For videos
+          if (content.filePaths.video && content.filePaths.video.length > 0) {
+            const videoPromises = content.filePaths.video.map(async (videoFile: VideoFile) => {
+              // Process video
+              await processVideo(
+                content,
+                videoFile.inputPath,
+                videoFile.outputPath,
+                content.submissionId,
+                videoFile.fileName,
+                content.folder,
+                content.caption
+              );
 
-        channel.ack(msg);
+              // Upload processed video
+              const videoPublicURL = await uploadPitchVideo(
+                videoFile.outputPath, 
+                videoFile.fileName, 
+                content.folder
+              );
 
-        const endUsage = process.cpuUsage(startUsage);
+              console.log("✅ Draft video uploaded successfully:", videoPublicURL);
 
-        console.log(`CPU Usage: ${endUsage.user} microseconds (user) / ${endUsage.system} microseconds (system)`);
+              // Save to database
+              await prisma.video.create({
+                data: {
+                  url: videoPublicURL,
+                  submissionId: content.submissionId,
+                },
+              });
+            });
 
-        for (const item of content.admins) {
-          io.to(clients.get(item.admin.user.id)).emit('newSubmission');
-        }
+            // Wait for all videos to be processed
+            await Promise.all(videoPromises);
+          }
 
-        const allSuperadmins = await prisma.user.findMany({
-          where: {
-            role: 'superadmin',
-          },
-        });
+          //For Raw Footages
+          if (content.filePaths.rawFootages && content.filePaths.rawFootages.length > 0) {
+            for (const rawFootagePath of content.filePaths.rawFootages) {
+              const rawFootageFileName = `${content.submissionId}_${path.basename(rawFootagePath)}`;
+              const rawFootagePublicURL = await uploadPitchVideo(
+                rawFootagePath,
+                rawFootageFileName,
+                content.folder
+              );
 
-        for (const admin of allSuperadmins) {
-          io.to(clients.get(admin.id)).emit('newSubmission');
+              console.log("✅ Raw footage uploaded successfully:", rawFootagePublicURL);
+
+              // Create a new RawFootage entry in the database
+              await prisma.rawFootage.create({
+                data: {
+                  url: rawFootagePublicURL,
+                  submissionId: content.submissionId,
+                  campaignId: content.campaignId,
+                },
+              });
+
+              console.log("✅ Raw footage entry created in the DB.");
+            }
+          } else {
+            console.log("❌ No raw footages found for processing.");
+          }
+
+
+          // For photos 
+          if (content.filePaths.photos && content.filePaths.photos.length > 0) {
+            for (const photoPath of content.filePaths.photos) {
+              const photoFileName = `${content.submissionId}_${path.basename(photoPath)}`;
+              const photoPublicURL = await uploadImage(photoPath, photoFileName, content.folder);
+
+              console.log("✅ Photo uploaded successfully:", photoPublicURL);
+
+              // Save photo URL to database
+              await prisma.photo.create({
+                data: {
+                  url: photoPublicURL,
+                  submissionId: content.submissionId,
+                  campaignId: content.campaignId,
+                },
+              });
+
+              console.log("✅ Photo entry created in the DB.");
+            }
+          } else {
+            console.log("❌ No photos found for processing.");
+          }
+
+          // Check submission requirements and update status
+          const submission = await prisma.submission.findUnique({
+            where: { id: content.submissionId },
+            select: {
+              video: true,
+              rawFootages: true,
+              photos: true,
+              campaign: {
+                select: {
+                  rawFootage: true,
+                  photos: true,
+                },
+              },
+            },
+          });
+
+          if (submission) {
+            const { video, rawFootages, photos, campaign } = submission;
+
+            const hasVideo = video.length > 0;
+            const hasRawFootage = campaign.rawFootage ? rawFootages.length > 0 : true;
+            const hasPhotos = campaign.photos ? photos.length > 0 : true;
+
+            // Update status only if all required deliverables are present
+            if (hasVideo && hasRawFootage && hasPhotos) {
+              await prisma.submission.update({
+                where: { id: content.submissionId },
+                data: {
+                  status: 'PENDING_REVIEW',
+                  submissionDate: dayjs().format(),
+                },
+              });
+            } else {
+              // Keep status as IN_PROGRESS if not all deliverables are present
+              await prisma.submission.update({
+                where: { id: content.submissionId },
+                data: {
+                  status: 'IN_PROGRESS',
+                },
+              });
+            }
+          }
+
+          channel.ack(msg);
+
+          const endUsage = process.cpuUsage(startUsage);
+
+          console.log(`CPU Usage: ${endUsage.user} microseconds (user) / ${endUsage.system} microseconds (system)`);
+
+          for (const item of content.admins) {
+            io.to(clients.get(item.admin.user.id)).emit('newSubmission');
+          }
+
+          const allSuperadmins = await prisma.user.findMany({
+            where: {
+              role: 'superadmin',
+            },
+          });
+
+          for (const admin of allSuperadmins) {
+            io.to(clients.get(admin.id)).emit('newSubmission');
+          }
+        } catch (error) {
+          console.error('Error processing submission:', error);
+          channel.ack(msg);
         }
       }
     });
   } catch (error) {
-    throw new Error(error);
+    console.error('Worker error:', error);
+    throw error;
   }
 })();

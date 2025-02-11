@@ -11,6 +11,7 @@ import { activeProcesses, clients, io } from '../server';
 import { Entity, PrismaClient } from '@prisma/client';
 import { saveNotification } from '@controllers/notificationController';
 import { spawn } from 'child_process';
+import path from 'path';
 
 import dayjs from 'dayjs';
 import { notificationDraft } from './notification';
@@ -236,34 +237,156 @@ const processVideo = async (
       if (msg !== null) {
         const content: any = JSON.parse(msg.content.toString());
 
-        await processVideo(
-          content,
-          content.inputPath,
-          content.outputPath,
-          content.submissionId,
-          content.fileName,
-          content.folder,
-          content.caption,
-        );
+        try {
+          // Process videos if present
+          if (content.filePaths?.video && content.filePaths.video.length > 0) {
+            for (const videoFile of content.filePaths.video) {
+              await processVideo(
+                content,
+                videoFile.inputPath,
+                videoFile.outputPath,
+                content.submissionId,
+                videoFile.fileName,
+                content.folder,
+                content.caption,
+              );
 
-        channel.ack(msg);
+              const videoPublicURL = await uploadPitchVideo(
+                videoFile.outputPath,
+                videoFile.fileName,
+                content.folder
+              );
 
-        for (const item of content.admins) {
-          io.to(clients.get(item.admin.user.id)).emit('newSubmission');
-        }
+              await prisma.video.create({
+                data: {
+                  url: videoPublicURL,
+                  submissionId: content.submissionId,
+                },
+              });
+            }
 
-        const allSuperadmins = await prisma.user.findMany({
-          where: {
-            role: 'superadmin',
-          },
-        });
+            // Update submission status to IN_PROGRESS after video upload
+            await prisma.submission.update({
+              where: {
+                id: content.submissionId,
+              },
+              data: {
+                content: content.caption,
+                status: 'IN_PROGRESS',
+                submissionDate: dayjs().format(),
+              },
+            });
+          }
 
-        for (const admin of allSuperadmins) {
-          io.to(clients.get(admin.id)).emit('newSubmission');
+          // Process raw footage if present
+          if (content.filePaths?.rawFootages && content.filePaths.rawFootages.length > 0) {
+            for (const rawFootagePath of content.filePaths.rawFootages) {
+              const rawFootageFileName = path.basename(rawFootagePath);
+              const rawFootagePublicURL = await uploadPitchVideo(
+                rawFootagePath,
+                rawFootageFileName,
+                content.folder
+              );
+
+              await prisma.rawFootage.create({
+                data: {
+                  url: rawFootagePublicURL,
+                  submissionId: content.submissionId,
+                  campaignId: content.campaignId,
+                },
+              });
+            }
+          }
+
+          // Process photos if present
+          if (content.filePaths?.photos && content.filePaths.photos.length > 0) {
+            for (const photoPath of content.filePaths.photos) {
+              const photoFileName = path.basename(photoPath);
+              const photoPublicURL = await uploadPitchVideo(
+                photoPath,
+                photoFileName,
+                content.folder
+              );
+
+              await prisma.photo.create({
+                data: {
+                  url: photoPublicURL,
+                  submissionId: content.submissionId,
+                  campaignId: content.campaignId,
+                },
+              });
+            }
+
+            // Update submission status to IN_PROGRESS after photo upload
+            await prisma.submission.update({
+              where: {
+                id: content.submissionId,
+              },
+              data: {
+                status: 'IN_PROGRESS',
+                submissionDate: dayjs().format(),
+              },
+            });
+          }
+
+          // Check if all required deliverables are uploaded
+          const submission = await prisma.submission.findUnique({
+            where: { id: content.submissionId },
+            include: {
+              video: true,
+              photos: true,
+              rawFootages: true,
+              campaign: {
+                select: {
+                  rawFootage: true,
+                  photos: true
+                }
+              }
+            }
+          });
+
+          // Check if all required media is uploaded
+          const hasRequiredVideo = (submission?.video ?? []).length > 0;
+          const hasRequiredRawFootage = !submission?.campaign?.rawFootage || (submission?.rawFootages ?? []).length > 0;
+          const hasRequiredPhotos = !submission?.campaign?.photos || (submission?.photos ?? []).length > 0;
+
+          // Update to PENDING_REVIEW only if all required media is present
+          if (hasRequiredVideo && hasRequiredRawFootage && hasRequiredPhotos) {
+            await prisma.submission.update({
+              where: { id: content.submissionId },
+              data: {
+                status: 'PENDING_REVIEW',
+                submissionDate: dayjs().format(),
+              },
+            });
+          }
+
+          channel.ack(msg);
+
+          // Notify admins
+          for (const item of content.admins) {
+            io.to(clients.get(item.admin.user.id)).emit('newSubmission');
+          }
+
+          const allSuperadmins = await prisma.user.findMany({
+            where: {
+              role: 'superadmin',
+            },
+          });
+
+          for (const admin of allSuperadmins) {
+            io.to(clients.get(admin.id)).emit('newSubmission');
+          }
+        } catch (processingError) {
+          console.error('Error processing content:', processingError);
+         
+          channel.ack(msg);
+          
         }
       }
     });
   } catch (error) {
+    console.error('Video Draft Worker Error:', error);
     throw new Error(error);
   }
 })();
