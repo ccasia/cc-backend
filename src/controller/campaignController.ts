@@ -53,6 +53,7 @@ import {
 } from '@helper/notification';
 import { deliveryConfirmation, shortlisted, tracking } from '@configs/nodemailer.config';
 import { createNewSpreadSheet } from '@services/google_sheets/sheets';
+import { applyCreditCampiagn } from '@services/packageService';
 
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
 Ffmpeg.setFfprobePath(ffprobePath.path);
@@ -86,6 +87,7 @@ interface Photo {
   url: string;
 }
 interface Campaign {
+  campaignId?: string;
   campaignInterests: string[];
   campaignIndustries: string;
   campaignBrand: {
@@ -125,6 +127,7 @@ interface Campaign {
   referencesLinks?: string[];
   rawFootage: boolean;
   photos: boolean;
+  campaignCredits: number;
 }
 
 const MAPPING: Record<string, string> = {
@@ -150,8 +153,6 @@ const generateAgreement = async (creator: any, campaign: any) => {
       version: 1,
     });
 
-    console.log(agreementsPath);
-
     // const pdfPath = await pdfConverter(
     //   agreementsPath,
     //   path.resolve(__dirname, `../form/pdf/${creator.name.split(' ').join('_')}.pdf`),
@@ -173,6 +174,7 @@ const generateAgreement = async (creator: any, campaign: any) => {
 
 export const createCampaign = async (req: Request, res: Response) => {
   const {
+    campaignId,
     campaignTitle,
     campaignBrand,
     hasBrand,
@@ -202,6 +204,7 @@ export const createCampaign = async (req: Request, res: Response) => {
     campaignType,
     rawFootage,
     photos,
+    campaignCredits,
   }: Campaign = JSON.parse(req.body.data);
 
   // console.log(JSON.parse(req.body.data));
@@ -266,9 +269,12 @@ export const createCampaign = async (req: Request, res: Response) => {
 
         const url: string = await createNewSpreadSheet({ title: campaignTitle });
 
+        const existingCampaign = await prisma.campaign.findUnique({ where: { campaignId: campaignId } });
+
         // Create Campaign
         const campaign = await tx.campaign.create({
           data: {
+            // campaignId: existingCampaign ? existingCampaign?.campaignId?.split('C')[1] + 1 : campaignId,
             name: campaignTitle,
             campaignType: campaignType,
             description: campaignDescription,
@@ -278,6 +284,7 @@ export const createCampaign = async (req: Request, res: Response) => {
             spreadSheetURL: url,
             rawFootage: rawFootage || false,
             photos: photos || false,
+            campaignCredits,
             agreementTemplate: {
               connect: {
                 id: agreementFrom.id,
@@ -493,6 +500,7 @@ export const createCampaign = async (req: Request, res: Response) => {
                 allDay: false,
               },
             });
+            await  applyCreditCampiagn(client.id ,campaignCredits)
 
             const { title, message } = notificationAdminAssign(campaign.name);
             const data = await tx.notification.create({
@@ -526,6 +534,9 @@ export const createCampaign = async (req: Request, res: Response) => {
         );
 
         logChange('Campaign Created', campaign.id, req);
+        if (io) {
+          io.emit('campaign');
+        }
         return res.status(200).json({ campaign, message: 'Campaign created successfully.' });
       },
       {
@@ -533,7 +544,6 @@ export const createCampaign = async (req: Request, res: Response) => {
       },
     );
   } catch (error) {
-    console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -3246,10 +3256,11 @@ export const editCampaignImages = async (req: Request, res: Response) => {
         const url = await uploadImage(images.tempFilePath, images.name, 'campaign');
         newImages.push(url);
       }
+
       if (campaignImages) {
         newImages.push(campaignImages);
       }
-      console.log('NEW', newImages);
+
       await prisma.campaignBrief.update({
         where: {
           campaignId: campaign?.campaignId,
@@ -3259,7 +3270,6 @@ export const editCampaignImages = async (req: Request, res: Response) => {
         },
       });
     } else {
-      console.log('OLD', campaignImages);
       await prisma.campaignBrief.update({
         where: {
           campaignId: campaign?.campaignId,
@@ -4138,6 +4148,15 @@ export const removeCreatorFromCampaign = async (req: Request, res: Response) => 
     return res.status(200).json({ message: 'Successfully withdraw' });
   } catch (error) {
     console.log(error);
+    return res.status(400).json(error);
+  }
+};
+
+export const getCampaignsTotal = async (req: Request, res: Response) => {
+  try {
+    const campaigns = await prisma.campaign.count();
+    return res.status(200).json(campaigns);
+  } catch (error) {
     return res.status(400).json(error);
   }
 };
