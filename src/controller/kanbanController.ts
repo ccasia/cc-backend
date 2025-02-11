@@ -396,5 +396,7 @@ export const getColumnId = async ({
 
   const id = board.columns.find((column) => column.name === columnName)?.id;
 
+  if (!id) return null;
+
   return id;
 };

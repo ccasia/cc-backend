@@ -153,7 +153,7 @@ export const getTaskId = async ({ boardId, submissionId, columnName }: Task) => 
 
     const column = board.columns[0]; // Since we're filtering by `columnName`, it should be the first (and only) result.
 
-    if (!column) throw new Error(`Column "${columnName}" not found`);
+    if (!column) return null;
 
     const task = column.task[0]; // Assuming `submissionId` also ensures a single result.
 

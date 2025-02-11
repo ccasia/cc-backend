@@ -251,11 +251,7 @@ const processVideo = async (
                 content.caption,
               );
 
-              const videoPublicURL = await uploadPitchVideo(
-                videoFile.outputPath,
-                videoFile.fileName,
-                content.folder
-              );
+              const videoPublicURL = await uploadPitchVideo(videoFile.outputPath, videoFile.fileName, content.folder);
 
               await prisma.video.create({
                 data: {
@@ -282,11 +278,7 @@ const processVideo = async (
           if (content.filePaths?.rawFootages && content.filePaths.rawFootages.length > 0) {
             for (const rawFootagePath of content.filePaths.rawFootages) {
               const rawFootageFileName = path.basename(rawFootagePath);
-              const rawFootagePublicURL = await uploadPitchVideo(
-                rawFootagePath,
-                rawFootageFileName,
-                content.folder
-              );
+              const rawFootagePublicURL = await uploadPitchVideo(rawFootagePath, rawFootageFileName, content.folder);
 
               await prisma.rawFootage.create({
                 data: {
@@ -302,11 +294,7 @@ const processVideo = async (
           if (content.filePaths?.photos && content.filePaths.photos.length > 0) {
             for (const photoPath of content.filePaths.photos) {
               const photoFileName = path.basename(photoPath);
-              const photoPublicURL = await uploadPitchVideo(
-                photoPath,
-                photoFileName,
-                content.folder
-              );
+              const photoPublicURL = await uploadPitchVideo(photoPath, photoFileName, content.folder);
 
               await prisma.photo.create({
                 data: {
@@ -333,16 +321,17 @@ const processVideo = async (
           const submission = await prisma.submission.findUnique({
             where: { id: content.submissionId },
             include: {
+              submissionType: true,
               video: true,
               photos: true,
               rawFootages: true,
               campaign: {
                 select: {
                   rawFootage: true,
-                  photos: true
-                }
-              }
-            }
+                  photos: true,
+                },
+              },
+            },
           });
 
           // Check if all required media is uploaded
@@ -351,7 +340,10 @@ const processVideo = async (
           const hasRequiredPhotos = !submission?.campaign?.photos || (submission?.photos ?? []).length > 0;
 
           // Update to PENDING_REVIEW only if all required media is present
-          if (hasRequiredVideo && hasRequiredRawFootage && hasRequiredPhotos) {
+          if (
+            (hasRequiredVideo && hasRequiredRawFootage && hasRequiredPhotos) ||
+            submission?.submissionType.type === 'FINAL_DRAFT'
+          ) {
             await prisma.submission.update({
               where: { id: content.submissionId },
               data: {
@@ -379,9 +371,8 @@ const processVideo = async (
           }
         } catch (processingError) {
           console.error('Error processing content:', processingError);
-         
+
           channel.ack(msg);
-          
         }
       }
     });
