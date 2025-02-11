@@ -13,6 +13,7 @@ import {
 const prisma = new PrismaClient();
 
 interface DefalutPackage {
+  packageId?: string;
   type: PackageType;
   valueSGD: number;
   valueMYR: number;
@@ -27,6 +28,7 @@ interface DefalutPackage {
 
 const pakcagesArray: DefalutPackage[] = [
   {
+    packageId: 'P01',
     type: 'Trail',
     valueMYR: 2800,
     valueSGD: 3100,
@@ -34,6 +36,7 @@ const pakcagesArray: DefalutPackage[] = [
     validityPeriod: 1,
   },
   {
+    packageId: 'P02',
     type: 'Basic',
     valueMYR: 8000,
     valueSGD: 8900,
@@ -41,6 +44,7 @@ const pakcagesArray: DefalutPackage[] = [
     validityPeriod: 2,
   },
   {
+    packageId: 'P03',
     type: 'Essential',
     valueMYR: 15000,
     valueSGD: 17500,
@@ -48,6 +52,7 @@ const pakcagesArray: DefalutPackage[] = [
     validityPeriod: 3,
   },
   {
+    packageId: 'P04',
     type: 'Pro',
     valueMYR: 23000,
     valueSGD: 29000,
@@ -70,6 +75,7 @@ export const createPackages = async (req: Request, res: Response) => {
       pakcagesArray.map(async (item) => {
         await prisma.packages.create({
           data: {
+            packageId: item.packageId,
             type: item.type,
             valueMYR: item.valueMYR,
             valueSGD: item.valueSGD,
@@ -106,6 +112,7 @@ export const editDefaultPackage = async (req: Request, res: Response) => {
     res.status(500).send('error editing package');
   }
 };
+
 // create function to fetch all packages
 export const fetchAllPackages = async (req: Request, res: Response) => {
   try {
@@ -116,6 +123,7 @@ export const fetchAllPackages = async (req: Request, res: Response) => {
     res.status(500).send('error fetching packages');
   }
 };
+
 // create function to create client package
 export const createClientPackage = async (req: Request, res: Response) => {
   const { clientId, packageId, invoiceDate, remarks, invoiceLink } = req.body;
@@ -130,6 +138,7 @@ export const createClientPackage = async (req: Request, res: Response) => {
     res.status(500).send('error creating client package');
   }
 };
+
 // create function to edit client package
 // this will cause error due to type error
 export const editClientPackageCont = async (req: Request, res: Response) => {
@@ -145,6 +154,7 @@ export const editClientPackageCont = async (req: Request, res: Response) => {
     res.status(500).send('error editing package');
   }
 };
+
 // create function to get client package
 export const getClientPackageCont = async (req: Request, res: Response) => {
   const { clinetId } = req.body;
@@ -163,7 +173,6 @@ export const getClientPackageCont = async (req: Request, res: Response) => {
 export const clientPackageHistory = async (req: Request, res: Response) => {
   const { id } = req.params;
 
-  
   if (!id) {
     throw new Error('incorrect information please check package data');
   }
@@ -176,20 +185,20 @@ export const clientPackageHistory = async (req: Request, res: Response) => {
     });
 
     const currentDate = new Date();
-    for (let item of clientPackage) {
+    for (const item of clientPackage) {
       const dateVal = new Date(item.invoiceDate as Date);
       const validityPeriodInMs = item.validityPeriod * 24 * 60 * 60 * 1000; // Convert validity period to milliseconds
       const expirationDate = new Date(dateVal.getTime() + validityPeriodInMs);
 
       // Check if the current date is after the expiration date
-      if (currentDate > expirationDate && item.states !== 'inactive') {
+      if (currentDate > expirationDate && item.status !== 'inactive') {
         // Update the package status to 'inactive'
         await prisma.packagesClient.update({
           where: {
             id: item.id,
           },
           data: {
-            states: 'inactive',
+            status: 'inactive',
           },
         });
       }
@@ -206,6 +215,7 @@ export const clientPackageHistory = async (req: Request, res: Response) => {
     console.log(error);
   }
 };
+
 // create function to create custom package
 export const createCustomPackageCont = async (req: Request, res: Response) => {
   const { clientId, packageId, data, currency } = req.body;

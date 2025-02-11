@@ -66,39 +66,52 @@ export const handleCreateCompany = async (
     // check if company already exists
     const id = await generateCustomId(type);
 
-    const companyExist = await prisma.company.findFirst({
-      where: {
-        OR: [
-          {
-            email: companyEmail,
+    const company = await prisma.$transaction(async (tx) => {
+      const companyExist = await tx.company.findFirst({
+        where: {
+          OR: [
+            {
+              email: companyEmail,
+            },
+            {
+              phone: companyPhone,
+            },
+            {
+              registration_number: companyRegistrationNumber,
+            },
+          ],
+        },
+      });
+
+      if (companyExist) {
+        throw new Error('Company already exists');
+      }
+
+      const company = await tx.company.create({
+        data: {
+          clientId: id,
+          name: companyName,
+          email: companyEmail,
+          phone: companyPhone,
+          address: companyAddress,
+          website: companyWebsite,
+          about: companyAbout,
+          registration_number: companyRegistrationNumber,
+          logo: publicURL as string,
+          pic: {
+            create: {
+              name: personInChargeName,
+              designation: personInChargeDesignation,
+            },
           },
-          {
-            phone: companyPhone,
-          },
-          {
-            registration_number: companyRegistrationNumber,
-          },
-        ],
-      },
+        },
+      });
+
+      return company;
     });
 
-    if (companyExist) {
-      throw new Error('Company already exists');
-    }
+    if (!company) throw new Error('Company Failed to create');
 
-    const company = await prisma.company.create({
-      data: {
-        name: companyName,
-        email: companyEmail,
-        phone: companyPhone,
-        address: companyAddress,
-        website: companyWebsite,
-        about: companyAbout,
-        registration_number: companyRegistrationNumber,
-        logo: publicURL as string,
-      },
-    });
-    console.log('package id', packageId);
     await createClientPackageDefault(
       packageId,
       company.id,
@@ -185,16 +198,21 @@ export const handleCreateBrand = async ({
 };
 
 export const generateCustomId = async (type: any) => {
-  const lastUser = await prisma.company.findFirst({
-    orderBy: { createdAt: 'desc' }, // Get the latest ID
-  });
-
   const firstLetter = type === 'agency' ? 'A' : 'DC';
+
+  const lastUser = await prisma.company.findFirst({
+    where: {
+      clientId: {
+        startsWith: firstLetter,
+      },
+    },
+    orderBy: { updatedAt: 'desc' }, // Get the latest ID
+  });
 
   let nextId = `${firstLetter}01`; // Default if no user exists
 
-  if (lastUser?.id) {
-    const lastNumber = parseInt(lastUser?.id.slice(1), 10); // Extract number part
+  if (lastUser?.clientId && lastUser?.clientId.includes(firstLetter)) {
+    const lastNumber = parseInt(lastUser?.clientId.slice(type === 'agency' ? 1 : 2), 10); // Extract number part
     const nextNumber = lastNumber + 1;
     nextId = `${firstLetter}${nextNumber.toString().padStart(2, '0')}`; // Format to A01, A02, etc.
   }
