@@ -53,6 +53,7 @@ import {
 } from '@helper/notification';
 import { deliveryConfirmation, shortlisted, tracking } from '@configs/nodemailer.config';
 import { createNewSpreadSheet } from '@services/google_sheets/sheets';
+import { applyCreditCampiagn } from '@services/packageService';
 
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
 Ffmpeg.setFfprobePath(ffprobePath.path);
@@ -79,13 +80,14 @@ interface timeline {
 }
 
 interface RawFootage {
-  url: string; 
+  url: string;
 }
 
 interface Photo {
   url: string;
 }
 interface Campaign {
+  campaignId?: string;
   campaignInterests: string[];
   campaignIndustries: string;
   campaignBrand: {
@@ -123,8 +125,9 @@ interface Campaign {
   // agreementForm: { id: string };
   otherAttachments?: string[];
   referencesLinks?: string[];
-  rawFootage: boolean;  
+  rawFootage: boolean;
   photos: boolean;
+  campaignCredits: number;
 }
 
 const MAPPING: Record<string, string> = {
@@ -150,8 +153,6 @@ const generateAgreement = async (creator: any, campaign: any) => {
       version: 1,
     });
 
-    console.log(agreementsPath);
-
     // const pdfPath = await pdfConverter(
     //   agreementsPath,
     //   path.resolve(__dirname, `../form/pdf/${creator.name.split(' ').join('_')}.pdf`),
@@ -173,6 +174,7 @@ const generateAgreement = async (creator: any, campaign: any) => {
 
 export const createCampaign = async (req: Request, res: Response) => {
   const {
+    campaignId,
     campaignTitle,
     campaignBrand,
     hasBrand,
@@ -200,8 +202,9 @@ export const createCampaign = async (req: Request, res: Response) => {
     agreementFrom,
     referencesLinks,
     campaignType,
-    rawFootage,  
+    rawFootage,
     photos,
+    campaignCredits,
   }: Campaign = JSON.parse(req.body.data);
 
   // console.log(JSON.parse(req.body.data));
@@ -266,9 +269,12 @@ export const createCampaign = async (req: Request, res: Response) => {
 
         const url: string = await createNewSpreadSheet({ title: campaignTitle });
 
+        const existingCampaign = await prisma.campaign.findUnique({ where: { campaignId: campaignId } });
+
         // Create Campaign
         const campaign = await tx.campaign.create({
           data: {
+            // campaignId: existingCampaign ? existingCampaign?.campaignId?.split('C')[1] + 1 : campaignId,
             name: campaignTitle,
             campaignType: campaignType,
             description: campaignDescription,
@@ -276,8 +282,9 @@ export const createCampaign = async (req: Request, res: Response) => {
             brandTone: brandTone,
             productName: productName,
             spreadSheetURL: url,
-            rawFootage: rawFootage || false,  
-            photos: photos || false, 
+            rawFootage: rawFootage || false,
+            photos: photos || false,
+            campaignCredits,
             agreementTemplate: {
               connect: {
                 id: agreementFrom.id,
@@ -493,6 +500,7 @@ export const createCampaign = async (req: Request, res: Response) => {
                 allDay: false,
               },
             });
+            await  applyCreditCampiagn(client.id ,campaignCredits)
 
             const { title, message } = notificationAdminAssign(campaign.name);
             const data = await tx.notification.create({
@@ -526,6 +534,9 @@ export const createCampaign = async (req: Request, res: Response) => {
         );
 
         logChange('Campaign Created', campaign.id, req);
+        if (io) {
+          io.emit('campaign');
+        }
         return res.status(200).json({ campaign, message: 'Campaign created successfully.' });
       },
       {
@@ -533,7 +544,6 @@ export const createCampaign = async (req: Request, res: Response) => {
       },
     );
   } catch (error) {
-    console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -924,6 +934,9 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
         shortlisted: true,
         logistic: true,
       },
+      orderBy: {
+        createdAt: 'desc',
+      },
     });
 
     if (campaigns?.length === 0) {
@@ -1020,13 +1033,17 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       );
 
       const overallMatchingPercentage = calculateOverallMatchingPercentage(interestPercentage, requirementPercentage);
+
       return {
         ...item,
         percentageMatch: overallMatchingPercentage,
       };
     });
 
-    const sortedMatchedCampaigns = matchedCampaignWithPercentage.sort((a, b) => b.percentageMatch - a.percentageMatch);
+    // const sortedMatchedCampaigns = matchedCampaignWithPercentage.sort((a, b) => b.percentageMatch - a.percentageMatch);
+    const sortedMatchedCampaigns = matchedCampaignWithPercentage.sort((a, b) => {
+      return dayjs(a.createdAt).isBefore(b.createdAt, 'date') ? 1 : -1;
+    });
 
     const lastCursor = campaigns.length > Number(take) - 1 ? campaigns[Number(take) - 1]?.id : null;
 
@@ -2578,222 +2595,374 @@ export const shortlistCreator = async (req: Request, res: Response) => {
   const { newVal: creators, campaignId } = req.body;
 
   try {
+    // await prisma.$transaction(
+    //   async (tx) => {
+    //     const campaign = await tx.campaign.findUnique({
+    //       where: {
+    //         id: campaignId,
+    //       },
+    //       include: {
+    //         thread: true,
+    //         campaignBrief: true,
+    //       },
+    //     });
+
+    //     if (!campaign) {
+    //       return res.status(404).json({ message: 'Campaign not found.' });
+    //     }
+
+    //     const timelines = await tx.campaignTimeline.findMany({
+    //       where: {
+    //         AND: [
+    //           {
+    //             campaignId: campaign.id,
+    //           },
+    //           {
+    //             for: 'creator',
+    //           },
+    //           {
+    //             name: {
+    //               not: 'Open For Pitch',
+    //             },
+    //           },
+    //         ],
+    //       },
+    //       include: {
+    //         submissionType: true,
+    //       },
+    //       orderBy: {
+    //         order: 'asc',
+    //       },
+    //     });
+
+    //     // Find creator information by creator id
+    //     const data = await Promise.all(
+    //       creators.map((creator: Creator) =>
+    //         tx.user.findUnique({
+    //           where: {
+    //             id: creator.id,
+    //           },
+    //           include: {
+    //             creator: true,
+    //             paymentForm: true,
+    //           },
+    //         }),
+    //       ),
+    //     );
+
+    //     for (const creator of data) {
+    //       // Create creator agreement
+    //       await tx.creatorAgreement.create({
+    //         data: {
+    //           userId: creator.id as string,
+    //           campaignId: campaign?.id as any,
+    //           agreementUrl: '',
+    //         },
+    //       });
+    //     }
+
+    //     // Create a shortlisted creator data
+    //     const shortlistedCreators = await Promise.all(
+    //       creators.map(async (creator: any) => {
+    //         return await tx.shortListedCreator.create({
+    //           data: {
+    //             userId: creator.id,
+    //             campaignId: campaignId,
+    //           },
+    //           include: {
+    //             user: true,
+    //           },
+    //         });
+    //       }),
+    //     );
+    //     // Create submissions for creator
+    //     for (const creator of shortlistedCreators) {
+    //       const board = await tx.board.findUnique({
+    //         where: {
+    //           userId: creator.userId,
+    //         },
+    //         include: {
+    //           columns: true,
+    //         },
+    //       });
+
+    //       if (!board) {
+    //         throw new Error('Board not found.');
+    //       }
+
+    //       const columnToDo = await tx.columns.findFirst({
+    //         where: {
+    //           AND: [
+    //             { boardId: board?.id },
+    //             {
+    //               name: {
+    //                 contains: 'To Do',
+    //               },
+    //             },
+    //           ],
+    //         },
+    //       });
+
+    //       const columnInProgress = await tx.columns.findFirst({
+    //         where: {
+    //           AND: [
+    //             { boardId: board?.id },
+    //             {
+    //               name: {
+    //                 contains: 'In Progress',
+    //               },
+    //             },
+    //           ],
+    //         },
+    //       });
+
+    //       if (!columnToDo || !columnInProgress) {
+    //         throw new Error('Column not found.');
+    //       }
+
+    // type SubmissionWithRelations = Submission & {
+    //   submissionType: SubmissionType;
+    // };
+
+    // const submissions: SubmissionWithRelations[] = await Promise.all(
+    //   timelines.map(async (timeline, index) => {
+    //     return await tx.submission.create({
+    //       data: {
+    //         dueDate: timeline.endDate,
+    //         campaignId: campaign.id,
+    //         userId: creator.userId as string,
+    //         // status: index === 0 ? 'IN_PROGRESS' : 'NOT_STARTED',
+    //         status: timeline.submissionType?.type === 'AGREEMENT_FORM' ? 'IN_PROGRESS' : 'NOT_STARTED',
+    //         submissionTypeId: timeline.submissionTypeId as string,
+    //         task: {
+    //           create: {
+    //             name: timeline.name,
+    //             position: index,
+    //             columnId: timeline.submissionType?.type ? columnInProgress.id : (columnToDo?.id as string),
+    //             priority: '',
+    //             status: timeline.submissionType?.type ? 'In Progress' : 'To Do',
+    //           },
+    //         },
+    //       },
+    //       include: {
+    //         submissionType: true,
+    //       },
+    //     });
+    //   }),
+    // );
+
+    //       const agreement = submissions.find((submission) => submission?.submissionType.type === 'AGREEMENT_FORM');
+    //       const draft = submissions.find((submission) => submission?.submissionType.type === 'FIRST_DRAFT');
+    //       const finalDraft = submissions.find((submission) => submission?.submissionType.type === 'FINAL_DRAFT');
+    //       const posting = submissions.find((submission) => submission?.submissionType.type === 'POSTING');
+
+    //       const dependencies = [
+    //         { submissionId: draft?.id, dependentSubmissionId: agreement?.id },
+    //         { submissionId: finalDraft?.id, dependentSubmissionId: draft?.id },
+    //         { submissionId: posting?.id, dependentSubmissionId: finalDraft?.id },
+    //       ];
+
+    //       const filteredDependencies = dependencies.filter((dep) => dep.submissionId && dep.dependentSubmissionId);
+
+    //       await tx.submissionDependency.createMany({
+    //         data: filteredDependencies,
+    //       });
+    //     }
+
+    //     const admins = await tx.campaignAdmin.findMany({
+    //       where: {
+    //         campaignId: campaignId,
+    //       },
+    //       include: {
+    //         admin: {
+    //           include: {
+    //             user: true,
+    //           },
+    //         },
+    //       },
+    //     });
+
+    //     await Promise.all(
+    //       shortlistedCreators.map(async (creator: any) => {
+    //         const data = await saveNotification({
+    //           userId: creator.userId as string,
+    //           entityId: campaignId as string,
+    //           message: `Congratulations! You've been shortlisted for the ${campaign?.name} campaign.`,
+    //           entity: 'Shortlist',
+    //         });
+
+    //         const image: any = campaign.campaignBrief?.images;
+
+    //         shortlisted(creator.user.email, campaign.name, creator.user.name ?? 'Creator', campaign.id, image[0]);
+
+    //         const socketId = clients.get(creator.userId);
+
+    //         if (socketId) {
+    //           io.to(socketId).emit('notification', data);
+    //         } else {
+    //           console.log(`User with ID ${creator.userId} is not connected.`);
+    //         }
+
+    //         if (!campaign || !campaign.thread) {
+    //           return res.status(404).json({ message: 'Campaign or thread not found' });
+    //         }
+
+    // const isThreadExist = await tx.userThread.findFirst({
+    //   where: {
+    //     threadId: campaign.thread.id,
+    //     userId: creator.userId as string,
+    //   },
+    // });
+
+    //         if (!isThreadExist) {
+    //           await tx.userThread.create({
+    //             data: {
+    //               threadId: campaign.thread.id,
+    //               userId: creator.userId as string,
+    //             },
+    //           });
+    //         }
+    //       }),
+    //     );
+    //   },
+    //   {
+    //     timeout: 10000,
+    //   },
+    // );
+
     await prisma.$transaction(
       async (tx) => {
-        const campaign = await tx.campaign.findUnique({
-          where: {
-            id: campaignId,
-          },
-          include: {
-            thread: true,
-            campaignBrief: true,
-          },
-        });
+        try {
+          const campaign = await tx.campaign.findUnique({
+            where: { id: campaignId },
+            include: { thread: true, campaignBrief: true },
+          });
 
-        if (!campaign) {
-          return res.status(404).json({ message: 'Campaign not found.' });
-        }
+          if (!campaign) throw new Error('Campaign not found.');
 
-        const timelines = await tx.campaignTimeline.findMany({
-          where: {
-            AND: [
-              {
-                campaignId: campaign.id,
-              },
-              {
-                for: 'creator',
-              },
-              {
-                name: {
-                  not: 'Open For Pitch',
-                },
-              },
-            ],
-          },
-          include: {
-            submissionType: true,
-          },
-          orderBy: {
-            order: 'asc',
-          },
-        });
+          const timelines = await tx.campaignTimeline.findMany({
+            where: {
+              campaignId: campaign.id,
+              for: 'creator',
+              name: { not: 'Open For Pitch' },
+            },
+            include: { submissionType: true },
+            orderBy: { order: 'asc' },
+          });
 
-        // Find creator information by creator id
-        const data = await Promise.all(
-          creators.map((creator: Creator) =>
-            tx.user.findUnique({
-              where: {
-                id: creator.id,
-              },
-              include: {
-                creator: true,
-                paymentForm: true,
-              },
-            }),
-          ),
-        );
+          console.log(timelines);
 
-        for (const creator of data) {
-          // Create creator agreement
-          await tx.creatorAgreement.create({
-            data: {
-              userId: creator.id as string,
-              campaignId: campaign?.id as any,
+          // Fetch all creators in one query
+          const creatorIds = creators.map((c: any) => c.id);
+
+          const creatorData = await tx.user.findMany({
+            where: { id: { in: creatorIds } },
+            include: { creator: true, paymentForm: true },
+          });
+
+          // Bulk create agreements
+          await tx.creatorAgreement.createMany({
+            data: creatorData.map((creator) => ({
+              userId: creator.id,
+              campaignId: campaign.id,
               agreementUrl: '',
-            },
-          });
-        }
-
-        // Create a shortlisted creator data
-        const shortlistedCreators = await Promise.all(
-          creators.map(async (creator: any) => {
-            return await tx.shortListedCreator.create({
-              data: {
-                userId: creator.id,
-                campaignId: campaignId,
-              },
-              include: {
-                user: true,
-              },
-            });
-          }),
-        );
-        // Create submissions for creator
-        for (const creator of shortlistedCreators) {
-          const board = await tx.board.findUnique({
-            where: {
-              userId: creator.userId,
-            },
-            include: {
-              columns: true,
-            },
+            })),
           });
 
-          if (!board) {
-            throw new Error('Board not found.');
-          }
-
-          const columnToDo = await tx.columns.findFirst({
-            where: {
-              AND: [
-                { boardId: board?.id },
-                {
-                  name: {
-                    contains: 'To Do',
-                  },
-                },
-              ],
-            },
+          // Bulk create shortlisted creators
+          const shortlistedCreators = await tx.shortListedCreator.createMany({
+            data: creatorData.map((creator) => ({
+              userId: creator.id,
+              campaignId,
+            })),
           });
 
-          const columnInProgress = await tx.columns.findFirst({
-            where: {
-              AND: [
-                { boardId: board?.id },
-                {
-                  name: {
-                    contains: 'In Progress',
-                  },
-                },
-              ],
-            },
+          // Fetch all boards in one query
+          const boards = await tx.board.findMany({
+            where: { userId: { in: creatorIds } },
+            include: { columns: true },
           });
 
-          if (!columnToDo || !columnInProgress) {
-            throw new Error('Column not found.');
-          }
+          for (const creator of creatorData) {
+            const board = boards.find((b) => b.userId === creator.id);
+            if (!board) throw new Error(`Board not found for user ${creator.id}`);
 
-          type SubmissionWithRelations = Submission & {
-            submissionType: SubmissionType;
-          };
+            const columnToDo = board.columns.find((c) => c.name.includes('To Do'));
+            const columnInProgress = board.columns.find((c) => c.name.includes('In Progress'));
+            if (!columnToDo || !columnInProgress) throw new Error('Columns not found.');
 
-          const submissions: SubmissionWithRelations[] = await Promise.all(
-            timelines.map(async (timeline, index) => {
-              return await tx.submission.create({
-                data: {
-                  dueDate: timeline.endDate,
-                  campaignId: campaign.id,
-                  userId: creator.userId as string,
-                  // status: index === 0 ? 'IN_PROGRESS' : 'NOT_STARTED',
-                  status: timeline.submissionType?.type === 'AGREEMENT_FORM' ? 'IN_PROGRESS' : 'NOT_STARTED',
-                  submissionTypeId: timeline.submissionTypeId as string,
-                  task: {
-                    create: {
-                      name: timeline.name,
-                      position: index,
-                      columnId: timeline.submissionType?.type ? columnInProgress.id : (columnToDo?.id as string),
-                      priority: '',
-                      status: timeline.submissionType?.type ? 'In Progress' : 'To Do',
+            type SubmissionWithRelations = Submission & {
+              submissionType: SubmissionType;
+            };
+
+            const submissions: any[] = await Promise.all(
+              timelines.map(async (timeline, index) => {
+                return await tx.submission.create({
+                  data: {
+                    dueDate: timeline.endDate,
+                    campaignId: campaign.id,
+                    userId: creator.id as string,
+                    // status: index === 0 ? 'IN_PROGRESS' : 'NOT_STARTED',
+                    status: timeline.submissionType?.type === 'AGREEMENT_FORM' ? 'IN_PROGRESS' : 'NOT_STARTED',
+                    submissionTypeId: timeline.submissionTypeId as string,
+                    task: {
+                      create: {
+                        name: timeline.name,
+                        position: index,
+                        columnId: timeline.submissionType?.type ? columnInProgress.id : (columnToDo?.id as string),
+                        priority: '',
+                        status: timeline.submissionType?.type ? 'In Progress' : 'To Do',
+                      },
                     },
                   },
-                },
-                include: {
-                  submissionType: true,
-                },
-              });
-            }),
-          );
+                  include: {
+                    submissionType: true,
+                  },
+                });
+              }),
+            );
 
-          const agreement = submissions.find((submission) => submission?.submissionType.type === 'AGREEMENT_FORM');
-          const draft = submissions.find((submission) => submission?.submissionType.type === 'FIRST_DRAFT');
-          const finalDraft = submissions.find((submission) => submission?.submissionType.type === 'FINAL_DRAFT');
-          const posting = submissions.find((submission) => submission?.submissionType.type === 'POSTING');
+            // Create dependencies
+            const agreement = submissions.find((s) => s.submissionType?.type === 'AGREEMENT_FORM');
+            const draft = submissions.find((s) => s.submissionType?.type === 'FIRST_DRAFT');
+            const finalDraft = submissions.find((s) => s.submissionType?.type === 'FINAL_DRAFT');
+            const posting = submissions.find((s) => s.submissionType?.type === 'POSTING');
 
-          const dependencies = [
-            { submissionId: draft?.id, dependentSubmissionId: agreement?.id },
-            { submissionId: finalDraft?.id, dependentSubmissionId: draft?.id },
-            { submissionId: posting?.id, dependentSubmissionId: finalDraft?.id },
-          ];
+            const dependencies = [
+              { submissionId: draft?.id, dependentSubmissionId: agreement?.id },
+              { submissionId: finalDraft?.id, dependentSubmissionId: draft?.id },
+              { submissionId: posting?.id, dependentSubmissionId: finalDraft?.id },
+            ].filter((dep) => dep.submissionId && dep.dependentSubmissionId);
 
-          const filteredDependencies = dependencies.filter((dep) => dep.submissionId && dep.dependentSubmissionId);
+            if (dependencies.length) await tx.submissionDependency.createMany({ data: dependencies });
+          }
 
-          await tx.submissionDependency.createMany({
-            data: filteredDependencies,
+          // Notify admins & creators
+          const admins = await tx.campaignAdmin.findMany({
+            where: { campaignId },
+            include: { admin: { include: { user: true } } },
           });
-        }
 
-        const admins = await tx.campaignAdmin.findMany({
-          where: {
-            campaignId: campaignId,
-          },
-          include: {
-            admin: {
-              include: {
-                user: true,
-              },
-            },
-          },
-        });
-
-        await Promise.all(
-          shortlistedCreators.map(async (creator: any) => {
-            const data = await saveNotification({
-              userId: creator.userId as string,
-              entityId: campaignId as string,
-              message: `Congratulations! You've been shortlisted for the ${campaign?.name} campaign.`,
+          for (const creator of creatorData) {
+            const notification = await saveNotification({
+              userId: creator.id,
+              entityId: campaignId,
+              message: `Congratulations! You've been shortlisted for the ${campaign.name} campaign.`,
               entity: 'Shortlist',
             });
 
             const image: any = campaign.campaignBrief?.images;
+            shortlisted(creator.email, campaign.name, creator.name ?? 'Creator', campaign.id, image[0]);
 
-            shortlisted(creator.user.email, campaign.name, creator.user.name ?? 'Creator', campaign.id, image[0]);
+            const socketId = clients.get(creator.id);
+            if (socketId) io.to(socketId).emit('notification', notification);
 
-            const socketId = clients.get(creator.userId);
-
-            if (socketId) {
-              io.to(socketId).emit('notification', data);
-            } else {
-              console.log(`User with ID ${creator.userId} is not connected.`);
-            }
-
-            if (!campaign || !campaign.thread) {
-              return res.status(404).json({ message: 'Campaign or thread not found' });
-            }
+            if (!campaign.thread) throw new Error('Campaign thread not found');
 
             const isThreadExist = await tx.userThread.findFirst({
               where: {
                 threadId: campaign.thread.id,
-                userId: creator.userId as string,
+                userId: creator.id as string,
               },
             });
 
@@ -2801,16 +2970,17 @@ export const shortlistCreator = async (req: Request, res: Response) => {
               await tx.userThread.create({
                 data: {
                   threadId: campaign.thread.id,
-                  userId: creator.userId as string,
+                  userId: creator.id as string,
                 },
               });
             }
-          }),
-        );
+          }
+        } catch (error) {
+          console.error('Transaction error:', error);
+          throw error;
+        }
       },
-      {
-        timeout: 10000,
-      },
+      { timeout: 10000 },
     );
 
     return res.status(200).json({ message: 'Successfully shortlisted' });
@@ -3086,10 +3256,11 @@ export const editCampaignImages = async (req: Request, res: Response) => {
         const url = await uploadImage(images.tempFilePath, images.name, 'campaign');
         newImages.push(url);
       }
+
       if (campaignImages) {
         newImages.push(campaignImages);
       }
-      console.log('NEW', newImages);
+
       await prisma.campaignBrief.update({
         where: {
           campaignId: campaign?.campaignId,
@@ -3099,7 +3270,6 @@ export const editCampaignImages = async (req: Request, res: Response) => {
         },
       });
     } else {
-      console.log('OLD', campaignImages);
       await prisma.campaignBrief.update({
         where: {
           campaignId: campaign?.campaignId,
@@ -3978,6 +4148,15 @@ export const removeCreatorFromCampaign = async (req: Request, res: Response) => 
     return res.status(200).json({ message: 'Successfully withdraw' });
   } catch (error) {
     console.log(error);
+    return res.status(400).json(error);
+  }
+};
+
+export const getCampaignsTotal = async (req: Request, res: Response) => {
+  try {
+    const campaigns = await prisma.campaign.count();
+    return res.status(200).json(campaigns);
+  } catch (error) {
     return res.status(400).json(error);
   }
 };

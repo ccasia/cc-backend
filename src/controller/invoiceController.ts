@@ -21,6 +21,7 @@ import { error } from 'console';
 
 import fs from 'fs-extra';
 import { createInvoiceService } from '@services/invoiceService';
+import { decreamentCreditCampiagn } from '@services/packageService';
 
 const prisma = new PrismaClient();
 
@@ -748,6 +749,7 @@ export const generateInvoice = async (req: Request, res: Response) => {
         },
       });
 
+      await decreamentCreditCampiagn(campaignId);
       const images: any = creator.campaign.campaignBrief?.images;
 
       emailCreatorInvoice(
@@ -771,6 +773,22 @@ export const generateInvoice = async (req: Request, res: Response) => {
     }
   } catch (error) {
     console.log(error);
+    return res.status(400).json(error);
+  }
+};
+
+export const deleteInvoice = async (req: Request, res: Response) => {
+  const { id } = req.params;
+
+  try {
+    const invoice = await prisma.invoice.findUnique({ where: { id: id } });
+
+    if (!invoice) return res.status(404).json({ message: 'Invoice not found' });
+
+    await prisma.invoice.delete({ where: { id: id } });
+
+    return res.status(200).json({ message: 'Successfully deleted' });
+  } catch (error) {
     return res.status(400).json(error);
   }
 };

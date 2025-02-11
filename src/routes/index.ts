@@ -16,6 +16,7 @@ import threadRoute from './threadRoute';
 import kanbanRoute from './kanbanRoute';
 import bugRoute from './bugRoute';
 import accessRoute from './accessRoute';
+import packagesRoute from './packageRoutes';
 
 export const router = express.Router();
 
@@ -36,3 +37,4 @@ router.use('/invoice', invoiceRoute);
 router.use('/kanban', kanbanRoute);
 router.use('/bug', bugRoute);
 router.use('/public', accessRoute );
+router.use('/packages', packagesRoute);
