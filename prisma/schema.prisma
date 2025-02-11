@@ -366,6 +366,7 @@ model Campaign {
 
   rawFootage Boolean @default(false)
   photos     Boolean @default(false)  
+  ads        Boolean @default(false)
 
   rawFootages RawFootage[]  
   photosData  Photo[] 
