@@ -20,7 +20,8 @@
     "studio": "npx prisma studio",
     "create-timeline": "ts-node prisma/createTimeline.ts",
     "update-kanban": "ts-node prisma/updateBoardAdmin.ts",
-    "try": "ts-node src/config/nodemailer.config.ts"
+    "try": "ts-node src/config/nodemailer.config.ts",
+    "db-push": "npx prisma db push && docker exec -it cc-backend npx prisma db push"
   },
   "dependencies": {
     "@dotenvx/dotenvx": "^1.9.0",
@@ -71,6 +72,7 @@
     "xero-node": "^9.3.0"
   },
   "devDependencies": {
+    "@faker-js/faker": "^9.4.0",
     "@types/amqplib": "^0.10.5",
     "@types/bcrypt": "^5.0.2",
     "@types/connect-pg-simple": "^7.0.3",

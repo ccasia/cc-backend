@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { createClientPackageDefault } from './packageService';
 
 const prisma = new PrismaClient();
 
@@ -9,8 +10,16 @@ interface companyForm {
   companyAddress: string;
   companyWebsite: string;
   companyAbout: string;
-  companyObjectives: string[];
   companyRegistrationNumber: string;
+  personInChargeName: string;
+  personInChargeDesignation: string;
+  type: any;
+  packageId: string;
+  currency?: any;
+  invoiceDate?: any;
+  packageValue?: any;
+  packageValidityPeriod?: any;
+  pakcageTotalCredits?: any;
 }
 
 interface brandForm {
@@ -40,48 +49,80 @@ export const handleCreateCompany = async (
     companyAddress,
     companyWebsite,
     companyAbout,
-    companyObjectives,
     companyRegistrationNumber,
+    type,
+    personInChargeName,
+    personInChargeDesignation,
+    currency,
+    packageId,
+    invoiceDate,
+    packageValue,
+    packageValidityPeriod,
+    pakcageTotalCredits,
   }: companyForm,
   publicURL?: string,
 ) => {
   try {
     // check if company already exists
-    const companyExist = await prisma.company.findFirst({
-      where: {
-        OR: [
-          {
-            email: companyEmail,
+    const id = await generateCustomId(type);
+
+    const company = await prisma.$transaction(async (tx) => {
+      const companyExist = await tx.company.findFirst({
+        where: {
+          OR: [
+            {
+              email: companyEmail,
+            },
+            {
+              phone: companyPhone,
+            },
+            {
+              registration_number: companyRegistrationNumber,
+            },
+          ],
+        },
+      });
+
+      if (companyExist) {
+        throw new Error('Company already exists');
+      }
+
+      const company = await tx.company.create({
+        data: {
+          clientId: id,
+          name: companyName,
+          email: companyEmail,
+          phone: companyPhone,
+          address: companyAddress,
+          website: companyWebsite,
+          about: companyAbout,
+          registration_number: companyRegistrationNumber,
+          logo: publicURL as string,
+          pic: {
+            create: {
+              name: personInChargeName,
+              designation: personInChargeDesignation,
+            },
           },
-          {
-            phone: companyPhone,
-          },
-          {
-            registration_number: companyRegistrationNumber,
-          },
-        ],
-      },
+        },
+      });
+
+      return company;
     });
 
-    if (companyExist) {
-      throw new Error('Company already exists');
-    }
+    if (!company) throw new Error('Company Failed to create');
 
-    const company = await prisma.company.create({
-      data: {
-        name: companyName,
-        email: companyEmail,
-        phone: companyPhone,
-        address: companyAddress,
-        website: companyWebsite,
-        about: companyAbout,
-        objectives: companyObjectives,
-        registration_number: companyRegistrationNumber,
-        logo: publicURL as string,
-      },
-    });
+    await createClientPackageDefault(
+      packageId,
+      company.id,
+      currency,
+      invoiceDate,
+      packageValue,
+      packageValidityPeriod,
+      pakcageTotalCredits,
+    );
 
-    return { company };
+    return company;
   } catch (error: any) {
     throw new Error(error.message);
   }
@@ -156,6 +197,25 @@ export const handleCreateBrand = async ({
   }
 };
 
-// for creating supBrand
+export const generateCustomId = async (type: any) => {
+  const firstLetter = type === 'agency' ? 'A' : 'DC';
 
-// for creating supsupbrand
+  const lastUser = await prisma.company.findFirst({
+    where: {
+      clientId: {
+        startsWith: firstLetter,
+      },
+    },
+    orderBy: { updatedAt: 'desc' }, // Get the latest ID
+  });
+
+  let nextId = `${firstLetter}01`; // Default if no user exists
+
+  if (lastUser?.clientId && lastUser?.clientId.includes(firstLetter)) {
+    const lastNumber = parseInt(lastUser?.clientId.slice(type === 'agency' ? 1 : 2), 10); // Extract number part
+    const nextNumber = lastNumber + 1;
+    nextId = `${firstLetter}${nextNumber.toString().padStart(2, '0')}`; // Format to A01, A02, etc.
+  }
+
+  return nextId;
+};

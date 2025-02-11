@@ -43,6 +43,7 @@ import {
   linkNewAgreement,
   getAllCampaignsByAdminId,
   removeCreatorFromCampaign,
+  getCampaignsTotal,
 } from '@controllers/campaignController';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 
@@ -63,6 +64,9 @@ const router = Router();
 // create isFinance permission later
 
 // Agreement Template
+
+router.get('/total', isSuperAdmin, getCampaignsTotal);
+
 router.get('/template', isSuperAdmin, getAllTemplate);
 router.get('/template/:id', getTemplatebyId);
 

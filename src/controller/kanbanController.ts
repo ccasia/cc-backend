@@ -26,6 +26,21 @@ export const getKanbanBoard = async (req: Request, res: Response) => {
                     campaign: {
                       include: {
                         campaignTimeline: true,
+                        campaignBrief: {
+                          select: {
+                            images: true,
+                          },
+                        },
+                        company: {
+                          select: {
+                            name: true,
+                          },
+                        },
+                        brand: {
+                          select: {
+                            name: true,
+                          },
+                        },
                       },
                     },
                     submissionType: true,
