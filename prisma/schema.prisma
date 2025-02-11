@@ -243,10 +243,10 @@ model Session {
 }
 
 model Company {
-  id                  String       @id @unique @default(cuid())
+  id                  String           @id @unique @default(cuid())
   name                String
   email               String?
-  clientId            String?      @unique @default(cuid())
+  clientId            String?          @unique @default(cuid())
   type                CompanyType?
   phone               String?
   website             String?
@@ -254,12 +254,13 @@ model Company {
   logo                String?
   about               String?
   objectives          Json?
-  registration_number String?      @db.VarChar(150)
-  createdAt           DateTime     @default(now())
-  updatedAt           DateTime     @updatedAt
+  registration_number String?          @db.VarChar(150)
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
   brand               Brand[]
   campaign            Campaign[]
   pic                 Pic[]
+  PackagesClient      PackagesClient[]
 
   @@index([clientId])
 }
@@ -860,6 +861,50 @@ model Bugs {
   user             User?    @relation(references: [id], fields: [userId])
 }
 
+model Packages {
+  id              String           @id @unique @default(cuid())
+  type            PackageType
+  valueMYR        Int
+  valueSGD        Int
+  totalUGCCredits Int
+  validityPeriod  Int
+  PackagesClient  PackagesClient[]
+}
+
+model PackagesClient {
+  id               String        @id @unique @default(cuid())
+  packageId        String
+  package          Packages      @relation(fields: [packageId], references: [id])
+  companyId        String        @unique
+  company          Company       @relation(fields: [companyId], references: [id])
+  type             PackageType
+  currency         Currencies
+  value            Int
+  totalUGCCredits  Int
+  creditsUtilized  Int?
+  availableCredits Int?
+  validityPeriod   Int
+  invoiceDate      DateTime?
+  Remarks          Json?
+  invoiceLink      String?
+  createdAt        DateTime      @default(now())
+  expiryDate       DateTime?
+  states           pakcageStatus
+}
+
+enum PackageType {
+  Trail
+  Basic
+  Essential
+  Pro
+  Custom
+}
+
+enum Currencies {
+  MYR
+  SGD
+}
+
 // enum BugsPriority {
 //   LOW
 //   MEDIUM
@@ -1050,4 +1095,10 @@ enum SubmissionEnum {
 enum FeedbackType {
   COMMENT
   REASON
+}
+
+enum pakcageStatus {
+  active
+  inactive
+  expired
 }

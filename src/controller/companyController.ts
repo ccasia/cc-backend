@@ -13,7 +13,6 @@ const prisma = new PrismaClient();
 export const createCompany = async (req: Request, res: Response) => {
   const data = JSON.parse(req.body.data);
   const companyLogo = (req.files as { companyLogo: object })?.companyLogo as { tempFilePath: string; name: string };
-
   try {
     let company;
     if (!companyLogo) {
@@ -41,6 +40,7 @@ export const getAllCompanies = async (_req: Request, res: Response) => {
           },
         },
         campaign: true,
+        PackagesClient:true
       },
     });
     return res.status(200).json(companies);

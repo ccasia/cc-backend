@@ -1,4 +1,5 @@
-import { CompanyType, PrismaClient } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
+import { createClientPackageDefault } from './packageService';
 
 const prisma = new PrismaClient();
 
@@ -9,10 +10,16 @@ interface companyForm {
   companyAddress: string;
   companyWebsite: string;
   companyAbout: string;
-  type: CompanyType;
   companyRegistrationNumber: string;
   personInChargeName: string;
   personInChargeDesignation: string;
+  type: any;
+  packageId: string;
+  currency?: any;
+  invoiceDate?: any;
+  packageValue?: any;
+  packageValidityPeriod?: any;
+  pakcageTotalCredits?: any;
 }
 
 interface brandForm {
@@ -46,6 +53,12 @@ export const handleCreateCompany = async (
     type,
     personInChargeName,
     personInChargeDesignation,
+    currency,
+    packageId,
+    invoiceDate,
+    packageValue,
+    packageValidityPeriod,
+    pakcageTotalCredits,
   }: companyForm,
   publicURL?: string,
 ) => {
@@ -83,16 +96,18 @@ export const handleCreateCompany = async (
         about: companyAbout,
         registration_number: companyRegistrationNumber,
         logo: publicURL as string,
-        type: type,
-        clientId: id,
-        pic: {
-          create: {
-            designation: personInChargeDesignation,
-            name: personInChargeName,
-          },
-        },
       },
     });
+    console.log('package id', packageId);
+    await createClientPackageDefault(
+      packageId,
+      company.id,
+      currency,
+      invoiceDate,
+      packageValue,
+      packageValidityPeriod,
+      pakcageTotalCredits,
+    );
 
     return company;
   } catch (error: any) {
@@ -169,7 +184,7 @@ export const handleCreateBrand = async ({
   }
 };
 
-export const generateCustomId = async (type: CompanyType) => {
+export const generateCustomId = async (type: any) => {
   const lastUser = await prisma.company.findFirst({
     orderBy: { createdAt: 'desc' }, // Get the latest ID
   });
@@ -178,8 +193,8 @@ export const generateCustomId = async (type: CompanyType) => {
 
   let nextId = `${firstLetter}01`; // Default if no user exists
 
-  if (lastUser?.clientId) {
-    const lastNumber = parseInt(lastUser?.clientId.slice(1), 10); // Extract number part
+  if (lastUser?.id) {
+    const lastNumber = parseInt(lastUser?.id.slice(1), 10); // Extract number part
     const nextNumber = lastNumber + 1;
     nextId = `${firstLetter}${nextNumber.toString().padStart(2, '0')}`; // Format to A01, A02, etc.
   }

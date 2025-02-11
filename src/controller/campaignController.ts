@@ -53,6 +53,7 @@ import {
 } from '@helper/notification';
 import { deliveryConfirmation, shortlisted, tracking } from '@configs/nodemailer.config';
 import { createNewSpreadSheet } from '@services/google_sheets/sheets';
+import { applyCreditCampiagn } from '@services/packageService';
 
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
 Ffmpeg.setFfprobePath(ffprobePath.path);
@@ -283,6 +284,7 @@ export const createCampaign = async (req: Request, res: Response) => {
             spreadSheetURL: url,
             rawFootage: rawFootage || false,
             photos: photos || false,
+            campaignCredits,
             agreementTemplate: {
               connect: {
                 id: agreementFrom.id,
@@ -498,6 +500,7 @@ export const createCampaign = async (req: Request, res: Response) => {
                 allDay: false,
               },
             });
+            await  applyCreditCampiagn(client.id ,campaignCredits)
 
             const { title, message } = notificationAdminAssign(campaign.name);
             const data = await tx.notification.create({
