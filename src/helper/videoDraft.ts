@@ -250,7 +250,6 @@ const processVideo = async (
     const channel = await conn.createChannel();
     await channel.assertQueue('draft', { durable: true });
     await channel.purgeQueue('draft');
-    
     console.log('Consumer 2 Starting...');
     const startUsage = process.cpuUsage();
 
@@ -292,6 +291,114 @@ const processVideo = async (
               });
             });
 
+      // Process draft video 
+      // if (content.filePaths.video) {
+      //   await processVideo(
+      //     content,
+      //     content.filePaths.video.inputPath,
+      //     content.filePaths.video.outputPath,
+      //     content.submissionId,
+      //     content.filePaths.video.fileName,
+      //     content.folder,
+      //     content.caption
+      //   );
+      // }
+
+      // For videos
+      if (content.filePaths.video && content.filePaths.video.length > 0) {
+        for (const videoFile of content.filePaths.video) {
+          await processVideo(
+            content,
+            videoFile.inputPath,
+            videoFile.outputPath,
+            content.submissionId,
+            videoFile.fileName,
+            content.folder,
+            content.caption
+          );
+      
+          // Upload processed video
+          const videoPublicURL = await uploadPitchVideo(videoFile.outputPath, videoFile.fileName, content.folder);
+      
+          console.log("✅ Draft video uploaded successfully:", videoPublicURL);
+      
+          // Save to database under Submission.video field
+          await prisma.video.create({
+            data: {
+              url: videoPublicURL,
+              submissionId: content.submissionId,
+            },
+          });
+      
+          console.log("✅ Draft video entry created in the DB.");
+        }
+      } else {
+        console.log("❌ No draft videos found for processing.");
+      }
+      
+      //For Raw Footages
+      if (content.filePaths.rawFootages && content.filePaths.rawFootages.length > 0) {
+        for (const rawFootagePath of content.filePaths.rawFootages) {
+          const rawFootageFileName = `${content.submissionId}_${path.basename(rawFootagePath)}`;
+          const rawFootagePublicURL = await uploadPitchVideo(
+            rawFootagePath,
+            rawFootageFileName,
+            content.folder
+          );
+      
+          console.log("✅ Raw footage uploaded successfully:", rawFootagePublicURL); 
+      
+          // Create a new RawFootage entry in the database
+          await prisma.rawFootage.create({
+            data: {
+              url: rawFootagePublicURL,
+              submissionId: content.submissionId,
+              campaignId: content.campaignId,
+            },
+          });
+      
+          console.log("✅ Raw footage entry created in the DB.");
+        }
+      } else {
+        console.log("❌ No raw footages found for processing.");
+      }
+        
+
+         // For photos 
+         if (content.filePaths.photos && content.filePaths.photos.length > 0) {
+          for (const photoPath of content.filePaths.photos) {
+            const photoFileName = `${content.submissionId}_${path.basename(photoPath)}`;
+            const photoPublicURL = await uploadImage(photoPath, photoFileName, content.folder);
+
+            console.log("✅ Photo uploaded successfully:", photoPublicURL);
+
+            // Save photo URL to database
+            await prisma.photo.create({
+              data: {
+                url: photoPublicURL,
+                submissionId: content.submissionId,
+                campaignId: content.campaignId,
+              },
+            });
+
+            console.log("✅ Photo entry created in the DB.");
+          }
+        } else {
+          console.log("❌ No photos found for processing.");
+        }
+        
+
+        // old process logic 
+
+        // await processVideo(
+        //   content,
+        //   content.inputPath,
+        //   content.outputPath,
+        //   content.submissionId,
+        //   content.fileName,
+        //   content.folder,
+        //   content.caption,
+        // );
             // Wait for all videos to be processed
             await Promise.all(videoPromises);
           }

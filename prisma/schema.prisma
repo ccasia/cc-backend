@@ -388,12 +388,14 @@ model Campaign {
   submission                    Submission[]
   thread                        Thread?
   publicAccess                  PublicAccess[]
+
   rawFootage Boolean @default(false)
   photos     Boolean @default(false)  
-  ads        Boolean @default(false)
-
+  ads        Boolean @default(false)  
+  
   rawFootages RawFootage[]  
   photosData  Photo[] 
+
   //rawFootage                    Boolean                         @default(false)
   //photos                        Boolean                         @default(false)
   //rawFootages                   RawFootage[]
@@ -635,7 +637,6 @@ model Submission {
   isReview         Boolean                @default(false)
   startDate        DateTime?
   endDate          DateTime?
-  //  rawFootages      String[]
   feedback         Feedback[]
   Notification     Notification[]
   campaign         Campaign               @relation(fields: [campaignId], references: [id])
@@ -645,9 +646,9 @@ model Submission {
   dependentOn      SubmissionDependency[] @relation("DependentOn")
   task             Task[]
   video            Video[]
-  rawFootages      RawFootage[]
-  photos           Photo[]
-
+  rawFootages      RawFootage[]          
+  photos           Photo[]   
+  publicFeedback PublicFeedback[]
   @@unique([userId, campaignId, submissionTypeId])
 }
 
@@ -667,10 +668,10 @@ enum VideoStatus {
 }
 
 model RawFootage {
-  id           String      @id @default(cuid())
-  url          String
-  campaignId   String
-  campaign     Campaign    @relation(fields: [campaignId], references: [id])
+  id           String    @id @default(cuid())
+  url          String    
+  campaignId  String?
+  campaign    Campaign?   @relation(fields: [campaignId], references: [id])
   submissionId String?
   submission   Submission? @relation(fields: [submissionId], references: [id])
 }
@@ -930,7 +931,18 @@ model PublicAccess {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  campaign Campaign @relation(fields: [campaignId], references: [id])
+  campaign    Campaign  @relation(fields: [campaignId], references: [id])
+}
+
+model PublicFeedback {
+  id           String        @id @unique @default(cuid())
+  content      String?
+  type         FeedbackType?
+  reasons      String[]      // Optional field for reasons (if required)
+  submissionId String
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  submission   Submission    @relation(fields: [submissionId], references: [id], onDelete: Cascade)
 }
 
 enum LogisticStatus {
@@ -1106,6 +1118,7 @@ enum SubmissionEnum {
 enum FeedbackType {
   COMMENT
   REASON
+  REQUEST
 }
 
 enum pakcageStatus {

@@ -524,6 +524,7 @@ export const getSubmissionByCampaignCreatorId = async (req: Request, res: Respon
         dependencies: true,
         rawFootages: true, 
         photos: true, 
+        publicFeedback: true, 
         video: true,
       },
     });
@@ -535,6 +536,40 @@ export const getSubmissionByCampaignCreatorId = async (req: Request, res: Respon
 };
 
 export const draftSubmission = async (req: Request, res: Response) => {
+//   const { submissionId, caption } = JSON.parse(req.body.data);
+//   //  const draftData: any = req.body.draftData;
+//   const userid = req.session.userid;
+
+//   let amqp: amqplib.Connection | null = null;
+//   let channel: amqplib.Channel | null = null;
+
+//   try {
+//     const files = req.files as any;
+//     //const draftVideo = files?.draftVideo;
+//     const rawFootages = files?.rawFootage; 
+//     const photos = files?.photos; 
+
+//     const draftVideos = Array.isArray(files?.draftVideo) ? 
+//     files.draftVideo 
+//     : files?.draftVideo 
+//     ? [files.draftVideo] 
+//     : [];
+
+    
+//     console.log("Received files:", files);
+
+//     const submission = await prisma.submission.findUnique({
+//       where: {
+//         id: submissionId,
+//       },
+//       include: {
+//         submissionType: true,
+//         task: true,
+//         user: {
+//           include: {
+//             creator: true,
+//             Board: true,
+//           },
   try {
     const { submissionId, caption } = JSON.parse(req.body.data);
     const files = req.files as any;
@@ -622,6 +657,99 @@ export const draftSubmission = async (req: Request, res: Response) => {
         }
       }
 
+    // const file = (req.files as any).draftVideo;
+
+    // const filePath = `/tmp/${submissionId}`;
+    // const compressedFilePath = `/tmp/${submissionId}_compressed.mp4`;
+
+    // await file.mv(filePath);
+
+//     const filePaths: any = {};
+
+
+//     if (draftVideos && draftVideos.length > 0) {
+//       filePaths.video = [];
+    
+//       for (const draftVideo of draftVideos) {
+//         const draftVideoPath = `/tmp/${submissionId}_${draftVideo.name}`;
+    
+//         // Move the draft video to the desired path
+//         await draftVideo.mv(draftVideoPath);
+    
+//         // Add to filePaths.video array
+//         filePaths.video.push({
+//           inputPath: draftVideoPath,
+//           outputPath: `/tmp/${submissionId}_${draftVideo.name.replace('.mp4','')}_compressed.mp4`,
+//           fileName: `${submissionId}_${draftVideo.name}`,
+//         });
+//       }
+//     }
+ 
+//     if (rawFootages) {
+//       console.log("Raw Footages received:", rawFootages);
+    
+//       const rawFootageArray = Array.isArray(rawFootages) ? rawFootages : [rawFootages];
+    
+//       if (rawFootageArray.length > 0) {
+//         filePaths.rawFootages = [];
+    
+//         for (const rawFootage of rawFootageArray) {
+//           const rawFootagePath = `/tmp/${submissionId}_${rawFootage.name}`;
+//           try {
+//             await rawFootage.mv(rawFootagePath);
+//             filePaths.rawFootages.push(rawFootagePath);
+//           } catch (err) {
+//             console.error("Error moving file:", err);
+//           }
+//         }
+//       }
+//     }
+    
+
+
+//     if (photos && photos.length > 0) {
+//       filePaths.photos = [];
+//       for (const photo of photos) {
+//         const photoPath = `/tmp/${submissionId}_${photo.name}`;
+//         await photo.mv(photoPath);
+//         filePaths.photos.push(photoPath);
+//       }
+//     }
+
+//     amqp = await amqplib.connect(process.env.RABBIT_MQ as string);
+//     channel = await amqp.createChannel();
+
+//     await channel.assertQueue('draft');
+
+//     // console.log("submission", submission)
+//     console.log("📤 Sending to RabbitMQ:", JSON.stringify({
+//       userid,
+//       submissionId: submission?.id,
+//       campaignId: submission?.campaignId,
+//       folder: submission?.submissionType.type,
+//       caption,
+//       admins: submission.campaign.campaignAdmin,
+//       filePaths,
+//     }, null, 2));
+
+//     channel.sendToQueue(
+//       'draft',
+//       Buffer.from(
+//         JSON.stringify({
+//           userid,
+//           submissionId: submission?.id,
+//           campaignId: submission?.campaignId,
+//           folder: submission?.submissionType.type,
+//           caption,
+//           admins: submission.campaign.campaignAdmin,
+//           filePaths,
+//         }),
+//       ),
+//       { persistent: true }
+//     );
+
+
+//     activeProcesses.set(submissionId, { status: 'queue' });
       const filePaths: any = {};
 
       if (draftVideos && draftVideos.length > 0) {
@@ -747,6 +875,7 @@ export const adminManageDraft = async (req: Request, res: Response) => {
       },
       include: {
         feedback: true,
+        publicFeedback: true,
         user: {
           include: {
             creator: true,

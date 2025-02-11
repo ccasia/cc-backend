@@ -37,7 +37,7 @@ const router = Router();
 //   }
 // });
 
-router.get('/', isLoggedIn, getSubmissionByCampaignCreatorId);
+router.get('/', getSubmissionByCampaignCreatorId);
 
 router.post('/submitAgreement', isLoggedIn, agreementSubmission);
 router.post('/draftSubmission', isLoggedIn, draftSubmission);
