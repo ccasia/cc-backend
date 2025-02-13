@@ -104,6 +104,8 @@ export const getInstagramAccessToken = async (code: string) => {
       },
     );
 
+    console.log(res);
+
     const longLivedToken = await axios.get('https://graph.instagram.com/access_token', {
       params: {
         grant_type: 'ig_exchange_token',
@@ -112,12 +114,16 @@ export const getInstagramAccessToken = async (code: string) => {
       },
     });
 
+    console.log(longLivedToken);
+
     const data = {
       user_id: res.data.user_id,
       permissions: res.data.permissions,
       access_token: longLivedToken.data.access_token,
       expires_in: longLivedToken.data.expires_in,
     };
+
+    console.log(data);
 
     return data;
   } catch (error) {
