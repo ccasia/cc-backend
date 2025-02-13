@@ -54,6 +54,37 @@ router.post('/generateInvoice', async (req, res) => {
       where: {
         id: submissionId,
       },
+      include: {
+        user: {
+          include: {
+            creator: true,
+            paymentForm: true,
+            creatorAgreement: true,
+            Board: true,
+          },
+        },
+        campaign: {
+          include: {
+            campaignBrief: true,
+            campaignAdmin: {
+              include: {
+                admin: {
+                  select: {
+                    role: true,
+                    user: {
+                      select: {
+                        Board: true,
+                        id: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        task: true,
+      },
     });
 
     if (!submission) return res.status(404).json({ message: 'Invoice not found' });
