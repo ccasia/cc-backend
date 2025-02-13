@@ -141,8 +141,11 @@ export const getInstagramOverviewService = async (accessToken: string) => {
       },
     });
 
+    console.log(res);
+
     return res.data;
   } catch (error) {
+    console.log(error);
     throw new Error(error);
   }
 };
@@ -160,8 +163,11 @@ export const getAllMediaObject = async (
       },
     });
 
+    console.log(res);
+
     return res.data;
   } catch (error) {
+    console.log(error);
     throw new Error(error);
   }
 };
