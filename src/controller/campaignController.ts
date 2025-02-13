@@ -269,7 +269,7 @@ export const createCampaign = async (req: Request, res: Response) => {
 
         const url: string = await createNewSpreadSheet({ title: campaignTitle });
 
-        const existingCampaign = await prisma.campaign.findUnique({ where: { campaignId: campaignId } });
+        // const existingCampaign = await prisma.campaign.findUnique({ where: { campaignId: campaignId } });
 
         // Create Campaign
         const campaign = await tx.campaign.create({
@@ -500,7 +500,7 @@ export const createCampaign = async (req: Request, res: Response) => {
                 allDay: false,
               },
             });
-            await  applyCreditCampiagn(client.id ,campaignCredits)
+            await applyCreditCampiagn(client.id, campaignCredits);
 
             const { title, message } = notificationAdminAssign(campaign.name);
             const data = await tx.notification.create({
