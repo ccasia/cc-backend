@@ -386,32 +386,9 @@ export const getInstagramOverview = async (req: Request, res: Response) => {
 
     const overview = await getInstagramOverviewService((user.instagramData as any).access_token);
 
-    const medias: [] = await getAllMediaObject(insta.access_token, insta.user_id);
+    const medias = await getAllMediaObject(insta.access_token, insta.user_id);
 
-    return res.status(200).json({ overview, medias });
-  } catch (error) {
-    console.log(error);
-    return res.status(400).json(error);
-  }
-};
-
-export const getInstagramMedia = async (req: Request, res: Response) => {
-  const userId = req.params.userId || req.session.userid;
-
-  try {
-    const creator = await prisma.creator.findFirst({
-      where: {
-        userId: userId as string,
-      },
-    });
-
-    if (!creator) return res.status(404).json({ message: 'User not found' });
-
-    const insta = creator?.instagramData as any;
-
-    const medias: [] = await getAllMediaObject(insta.access_tokenm, insta.user_id);
-
-    return res.status(200).json(medias);
+    return res.status(200).json({ user: { ...overview }, instagram: [...medias.data] });
   } catch (error) {
     return res.status(400).json(error);
   }
