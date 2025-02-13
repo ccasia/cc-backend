@@ -127,6 +127,7 @@ export const getInstagramAccessToken = async (code: string) => {
 
     return data;
   } catch (error) {
+    console.log(error);
     throw new Error(error);
   }
 };
