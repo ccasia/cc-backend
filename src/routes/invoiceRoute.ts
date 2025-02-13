@@ -22,7 +22,10 @@ import { creatorInvoice } from '@controllers/invoiceController';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 import { isLoggedIn } from '@middlewares/onlyLogin';
 import { createInvoiceService } from '@services/invoiceService';
-import { prisma } from 'src/prisma/prisma';
+// import { prisma } from 'src/prisma/prisma';
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
 
 router.get('/zeroConnect', isSuperAdmin, getXero);
 router.get('/xeroCallback', xeroCallBack);
