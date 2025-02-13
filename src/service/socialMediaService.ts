@@ -137,7 +137,7 @@ export const getInstagramOverviewService = async (accessToken: string) => {
     const res = await axios.get('https://graph.instagram.com/v22.0/me', {
       params: {
         access_token: accessToken,
-        fields: 'ser_id,followers_count,follows_count,media_count',
+        fields: 'user_id,followers_count,follows_count,media_count',
       },
     });
 
