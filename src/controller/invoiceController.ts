@@ -21,6 +21,7 @@ import { error } from 'console';
 
 import fs from 'fs-extra';
 import { createInvoiceService } from '@services/invoiceService';
+import { decreamentCreditCampiagn } from '@services/packageService';
 
 const prisma = new PrismaClient();
 
@@ -748,6 +749,7 @@ export const generateInvoice = async (req: Request, res: Response) => {
         },
       });
 
+      await decreamentCreditCampiagn(campaignId);
       const images: any = creator.campaign.campaignBrief?.images;
 
       emailCreatorInvoice(

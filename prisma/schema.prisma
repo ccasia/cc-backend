@@ -24,7 +24,7 @@ model User {
   updateRefershToken DateTime?
   xeroRefreshToken   String?
   admin              Admin?
-  client             Client?  
+  client             Client?
   agreementTemplate  AgreementTemplate[]
   Board              Board?
   BookMarkCampaign   BookMarkCampaign[]
@@ -75,15 +75,14 @@ model Admin {
 }
 
 model Client {
-  id          String   @id @unique @default(cuid())
+  id     String @id @unique @default(cuid())
   //  companyName String   @db.VarChar(255)
   //  address     String?  @db.VarChar(255)
   //  phone       String?  @db.VarChar(100)
   //  website     String?  @db.VarChar(255)
-  userId      String   @unique
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
-
 
 model Role {
   id          String       @id @unique @default(cuid())
@@ -244,20 +243,43 @@ model Session {
 }
 
 model Company {
-  id                  String     @id @unique @default(cuid())
+  id                  String           @id @unique @default(cuid())
   name                String
   email               String?
+  clientId            String?          @unique @default(cuid())
+  type                CompanyType?
   phone               String?
   website             String?
   address             String?
   logo                String?
   about               String?
   objectives          Json?
-  registration_number String?    @db.VarChar(150)
-  createdAt           DateTime   @default(now())
-  updatedAt           DateTime   @updatedAt
+  registration_number String?          @db.VarChar(150)
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
   brand               Brand[]
   campaign            Campaign[]
+  pic                 Pic[]
+  PackagesClient      PackagesClient[]
+
+  @@index([clientId])
+}
+
+enum CompanyType {
+  agency
+  directClient
+}
+
+model Pic {
+  id          String   @id @unique @default(cuid())
+  name        String
+  designation String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  company     Company? @relation(fields: [companyId], references: [id])
+  companyId   String?
+  brand       Brand?   @relation(fields: [brandId], references: [id])
+  brandId     String?
 }
 
 model Brand {
@@ -280,6 +302,7 @@ model Brand {
   company      Company    @relation(fields: [companyId], references: [id])
   campaign     Campaign[]
   supBrand     SupBrand[]
+  pic          Pic[]
 }
 
 model SupBrand {
@@ -329,11 +352,13 @@ model SupSupBrand {
 
 model Campaign {
   id                            String                          @id @unique @default(cuid())
+  campaignId                    String?                         @unique
   name                          String
   description                   String
   status                        CampaignStatus                  @default(SCHEDULED)
   createdAt                     DateTime                        @default(now())
   updatedAt                     DateTime                        @updatedAt
+  campaignCredits               Int?
   brandId                       String?
   companyId                     String?
   brandTone                     String?
@@ -363,12 +388,10 @@ model Campaign {
   submission                    Submission[]
   thread                        Thread?
   publicAccess                  PublicAccess[]
-
-  rawFootage Boolean @default(false)
-  photos     Boolean @default(false)  
-
-  rawFootages RawFootage[]  
-  photosData  Photo[] 
+  rawFootage                    Boolean                         @default(false)
+  photos                        Boolean                         @default(false)
+  rawFootages                   RawFootage[]
+  photosData                    Photo[]
 }
 
 model BookMarkCampaign {
@@ -614,8 +637,8 @@ model Submission {
   dependentOn      SubmissionDependency[] @relation("DependentOn")
   task             Task[]
   video            Video[]
-  rawFootages      RawFootage[]          
-  photos           Photo[]   
+  rawFootages      RawFootage[]
+  photos           Photo[]
 
   @@unique([userId, campaignId, submissionTypeId])
 }
@@ -636,23 +659,22 @@ enum VideoStatus {
 }
 
 model RawFootage {
-  id           String    @id @default(cuid())
-  url          String    
-  campaignId  String
-  campaign    Campaign   @relation(fields: [campaignId], references: [id])
+  id           String      @id @default(cuid())
+  url          String
+  campaignId   String
+  campaign     Campaign    @relation(fields: [campaignId], references: [id])
   submissionId String?
   submission   Submission? @relation(fields: [submissionId], references: [id])
 }
 
 model Photo {
-  id           String    @id @default(cuid())
-  url          String   
-  campaignId  String
-  campaign    Campaign   @relation(fields: [campaignId], references: [id])
+  id           String      @id @default(cuid())
+  url          String
+  campaignId   String
+  campaign     Campaign    @relation(fields: [campaignId], references: [id])
   submissionId String?
   submission   Submission? @relation(fields: [submissionId], references: [id])
 }
-
 
 model SubmissionDependency {
   id                    String      @id @default(cuid())
@@ -839,6 +861,50 @@ model Bugs {
   user             User?    @relation(references: [id], fields: [userId])
 }
 
+model Packages {
+  id              String           @id @unique @default(cuid())
+  type            PackageType
+  valueMYR        Int
+  valueSGD        Int
+  totalUGCCredits Int
+  validityPeriod  Int
+  PackagesClient  PackagesClient[]
+}
+
+model PackagesClient {
+  id               String        @id @unique @default(cuid())
+  packageId        String
+  package          Packages      @relation(fields: [packageId], references: [id])
+  companyId        String        @unique
+  company          Company       @relation(fields: [companyId], references: [id])
+  type             PackageType
+  currency         Currencies
+  value            Int
+  totalUGCCredits  Int
+  creditsUtilized  Int?
+  availableCredits Int?
+  validityPeriod   Int
+  invoiceDate      DateTime?
+  Remarks          Json?
+  invoiceLink      String?
+  createdAt        DateTime      @default(now())
+  expiryDate       DateTime?
+  states           pakcageStatus
+}
+
+enum PackageType {
+  Trail
+  Basic
+  Essential
+  Pro
+  Custom
+}
+
+enum Currencies {
+  MYR
+  SGD
+}
+
 // enum BugsPriority {
 //   LOW
 //   MEDIUM
@@ -846,14 +912,14 @@ model Bugs {
 // }
 
 model PublicAccess {
-  id          Int       @id @default(autoincrement())
-  campaignId  String
-  password    String
-  expiryDate  DateTime
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id         Int      @id @default(autoincrement())
+  campaignId String
+  password   String
+  expiryDate DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
-  campaign    Campaign  @relation(fields: [campaignId], references: [id])
+  campaign Campaign @relation(fields: [campaignId], references: [id])
 }
 
 enum LogisticStatus {
@@ -1029,4 +1095,10 @@ enum SubmissionEnum {
 enum FeedbackType {
   COMMENT
   REASON
+}
+
+enum pakcageStatus {
+  active
+  inactive
+  expired
 }

@@ -1,5 +1,4 @@
-import { PrismaClient, SubmissionEnum } from '@prisma/client';
-import bcrypt from 'bcryptjs';
+import { PrismaClient, SubmissionEnum, PackageType } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
@@ -39,6 +38,44 @@ const scopes = [
   { name: 'update:metrics', description: 'Update existing metrics' },
   { name: 'delete:metrics', description: 'Remove metrics' },
   { name: 'list:agreements', description: 'View all agreements' },
+];
+
+const pakcagesArray: any[] = [
+  {
+    type: 'Trail',
+    valueMYR: 2800,
+    valueSGD: 3100,
+    totalCredits: 5,
+    validityPeriod: 1,
+  },
+  {
+    type: 'Basic',
+    valueMYR: 8000,
+    valueSGD: 8900,
+    totalCredits: 15,
+    validityPeriod: 2,
+  },
+  {
+    type: 'Essential',
+    valueMYR: 15000,
+    valueSGD: 17500,
+    totalCredits: 30,
+    validityPeriod: 3,
+  },
+  {
+    type: 'Pro',
+    valueMYR: 23000,
+    valueSGD: 29000,
+    totalCredits: 50,
+    validityPeriod: 5,
+  },
+  {
+    type: 'Custom',
+    valueMYR: 0,
+    valueSGD: 0,
+    totalCredits: 0,
+    validityPeriod: 0,
+  },
 ];
 
 const csmRoles = {
@@ -126,6 +163,21 @@ async function main() {
       },
     },
   });
+
+  // seed Packages
+  await Promise.all(
+    pakcagesArray.map(async (item) => {
+      await prisma.packages.create({
+        data: {
+          type: item.type,
+          valueMYR: item.valueMYR,
+          valueSGD: item.valueSGD,
+          totalUGCCredits: item.totalCredits,
+          validityPeriod: item.validityPeriod,
+        },
+      });
+    }),
+  );
 
   // Create Growth Role
   const growthPermissions = growthRole.permissions;

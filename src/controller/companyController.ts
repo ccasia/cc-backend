@@ -13,7 +13,6 @@ const prisma = new PrismaClient();
 export const createCompany = async (req: Request, res: Response) => {
   const data = JSON.parse(req.body.data);
   const companyLogo = (req.files as { companyLogo: object })?.companyLogo as { tempFilePath: string; name: string };
-
   try {
     let company;
     if (!companyLogo) {
@@ -24,6 +23,9 @@ export const createCompany = async (req: Request, res: Response) => {
     }
     return res.status(201).json({ company, message: 'A new company has been created' });
   } catch (error) {
+    if (error.message.includes('Company already exists')) {
+      return res.status(400).json({ message: 'Company already exists' });
+    }
     return res.status(400).json(error);
   }
 };
@@ -38,6 +40,7 @@ export const getAllCompanies = async (_req: Request, res: Response) => {
           },
         },
         campaign: true,
+        PackagesClient:true
       },
     });
     return res.status(200).json(companies);

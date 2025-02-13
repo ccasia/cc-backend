@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { createClientPackageDefault } from './packageService';
 
 const prisma = new PrismaClient();
 
@@ -9,8 +10,16 @@ interface companyForm {
   companyAddress: string;
   companyWebsite: string;
   companyAbout: string;
-  companyObjectives: string[];
   companyRegistrationNumber: string;
+  personInChargeName: string;
+  personInChargeDesignation: string;
+  type: any;
+  packageId: string;
+  currency?: any;
+  invoiceDate?: any;
+  packageValue?: any;
+  packageValidityPeriod?: any;
+  pakcageTotalCredits?: any;
 }
 
 interface brandForm {
@@ -40,13 +49,23 @@ export const handleCreateCompany = async (
     companyAddress,
     companyWebsite,
     companyAbout,
-    companyObjectives,
     companyRegistrationNumber,
+    type,
+    personInChargeName,
+    personInChargeDesignation,
+    currency,
+    packageId,
+    invoiceDate,
+    packageValue,
+    packageValidityPeriod,
+    pakcageTotalCredits,
   }: companyForm,
   publicURL?: string,
 ) => {
   try {
     // check if company already exists
+    const id = await generateCustomId(type);
+
     const companyExist = await prisma.company.findFirst({
       where: {
         OR: [
@@ -75,13 +94,22 @@ export const handleCreateCompany = async (
         address: companyAddress,
         website: companyWebsite,
         about: companyAbout,
-        objectives: companyObjectives,
         registration_number: companyRegistrationNumber,
         logo: publicURL as string,
       },
     });
+    console.log('package id', packageId);
+    await createClientPackageDefault(
+      packageId,
+      company.id,
+      currency,
+      invoiceDate,
+      packageValue,
+      packageValidityPeriod,
+      pakcageTotalCredits,
+    );
 
-    return { company };
+    return company;
   } catch (error: any) {
     throw new Error(error.message);
   }
@@ -156,6 +184,20 @@ export const handleCreateBrand = async ({
   }
 };
 
-// for creating supBrand
+export const generateCustomId = async (type: any) => {
+  const lastUser = await prisma.company.findFirst({
+    orderBy: { createdAt: 'desc' }, // Get the latest ID
+  });
 
-// for creating supsupbrand
+  const firstLetter = type === 'agency' ? 'A' : 'DC';
+
+  let nextId = `${firstLetter}01`; // Default if no user exists
+
+  if (lastUser?.id) {
+    const lastNumber = parseInt(lastUser?.id.slice(1), 10); // Extract number part
+    const nextNumber = lastNumber + 1;
+    nextId = `${firstLetter}${nextNumber.toString().padStart(2, '0')}`; // Format to A01, A02, etc.
+  }
+
+  return nextId;
+};
