@@ -246,7 +246,7 @@ model Company {
   id                  String           @id @unique @default(cuid())
   name                String
   email               String?
-  clientId            String?          @unique @default(cuid())
+  clientId            String?
   type                CompanyType?
   phone               String?
   website             String?
@@ -352,7 +352,7 @@ model SupSupBrand {
 
 model Campaign {
   id                            String                          @id @unique @default(cuid())
-  campaignId                    String?                         @unique
+  campaignId                    String?
   name                          String
   description                   String
   status                        CampaignStatus                  @default(SCHEDULED)
