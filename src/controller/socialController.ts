@@ -172,6 +172,8 @@ export const facebookAuthentication = (_req: Request, res: Response) => {
 export const redirectFacebookAuth = async (req: Request, res: Response) => {
   const code = req.query.code; // Facebook sends the code here
 
+  console.log(req);
+
   try {
     if (!code || !req.session.userid) return res.status(400).json({ message: 'Bad requests' });
 
