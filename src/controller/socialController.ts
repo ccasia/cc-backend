@@ -346,7 +346,7 @@ export const instagramCallback = async (req: Request, res: Response) => {
   const code = req.query.code;
   const userId = req.session.userid;
 
-  console.log(req);
+  // console.log(req);
 
   if (!code) return res.status(404).json({ message: 'Code not found.' });
   if (!userId) return res.status(404).json({ message: 'Session Expired. Please log in again.' });
@@ -390,6 +390,7 @@ export const getInstagramOverview = async (req: Request, res: Response) => {
 
     return res.status(200).json({ overview, medias });
   } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   }
 };
