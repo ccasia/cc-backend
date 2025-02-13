@@ -4,8 +4,11 @@ import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import dayjs from 'dayjs';
 import {
+  getAllMediaObject,
+  getInstagramAccessToken,
   getInstagramBusinesssAccountId,
   getInstagramMediaData,
+  getInstagramOverviewService,
   getInstagramUserData,
   getPageId,
 } from '@services/socialMediaService';
@@ -172,8 +175,6 @@ export const facebookAuthentication = (_req: Request, res: Response) => {
 export const redirectFacebookAuth = async (req: Request, res: Response) => {
   const code = req.query.code; // Facebook sends the code here
 
-  console.log(req);
-
   try {
     if (!code || !req.session.userid) return res.status(400).json({ message: 'Bad requests' });
 
@@ -338,5 +339,79 @@ export const handleDisconnectFacebook = async (req: Request, res: Response) => {
   } catch (error) {
     console.log(error);
     return res.status(404).json(error);
+  }
+};
+
+export const instagramCallback = async (req: Request, res: Response) => {
+  const code = req.query.code;
+  const userId = req.session.userid;
+
+  console.log(req);
+
+  if (!code) return res.status(404).json({ message: 'Code not found.' });
+  if (!userId) return res.status(404).json({ message: 'Session Expired. Please log in again.' });
+
+  try {
+    const data = await getInstagramAccessToken(code as string);
+
+    await prisma.creator.update({
+      where: {
+        userId: userId,
+      },
+      data: {
+        instagramData: data,
+        isFacebookConnected: true,
+      },
+    });
+
+    return res.status(200).redirect(process.env.REDIRECT_CLIENT as string);
+  } catch (error) {
+    console.log('CALLBACK ERROR', error);
+    return res.status(400).json(error);
+  }
+};
+
+export const getInstagramOverview = async (req: Request, res: Response) => {
+  const userId = req.params.userId || req.session.userid;
+  try {
+    const user = await prisma.creator.findUnique({
+      where: {
+        userId: userId as string,
+      },
+    });
+
+    if (!user) return res.status(404).json({ message: 'User not found.' });
+
+    const insta = user?.instagramData as any;
+
+    const overview = await getInstagramOverviewService((user.instagramData as any).access_token);
+
+    const medias: [] = await getAllMediaObject(insta.access_tokenm, insta.user_id);
+
+    return res.status(200).json({ overview, medias });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const getInstagramMedia = async (req: Request, res: Response) => {
+  const userId = req.params.userId || req.session.userid;
+
+  try {
+    const creator = await prisma.creator.findFirst({
+      where: {
+        userId: userId as string,
+      },
+    });
+
+    if (!creator) return res.status(404).json({ message: 'User not found' });
+
+    const insta = creator?.instagramData as any;
+
+    const medias: [] = await getAllMediaObject(insta.access_tokenm, insta.user_id);
+
+    return res.status(200).json(medias);
+  } catch (error) {
+    return res.status(400).json(error);
   }
 };

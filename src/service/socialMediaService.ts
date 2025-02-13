@@ -84,3 +84,77 @@ export const getInstagramMediaData = async (
     throw new Error(error);
   }
 };
+
+export const getInstagramAccessToken = async (code: string) => {
+  if (!code) throw new Error('Code not found');
+  try {
+    const res = await axios.post(
+      'https://api.instagram.com/oauth/access_token',
+      {
+        client_id: process.env.INSTAGRAM_CLIENT_ID,
+        client_secret: process.env.INSTAGRAM_CLIENT_SECRET,
+        redirect_uri: process.env.INSTAGRAM_AUTH_CALLBACK,
+        grant_type: 'authorization_code',
+        code: code, // The code received from the authorization server
+      },
+      {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+      },
+    );
+
+    const longLivedToken = await axios.get('https://graph.instagram.com/access_token', {
+      params: {
+        grant_type: 'ig_exchange_token',
+        client_secret: process.env.INSTAGRAM_CLIENT_SECRET,
+        access_token: res.data.access_token,
+      },
+    });
+
+    const data = {
+      user_id: res.data.user_id,
+      permissions: res.data.permissions,
+      access_token: longLivedToken.data.access_token,
+      expires_in: longLivedToken.data.expires_in,
+    };
+
+    return data;
+  } catch (error) {
+    throw new Error(error);
+  }
+};
+
+export const getInstagramOverviewService = async (accessToken: string) => {
+  try {
+    const res = await axios.get('https://graph.instagram.com/v22.0/me', {
+      params: {
+        access_token: accessToken,
+        fields: 'ser_id,followers_count,follows_count,media_count',
+      },
+    });
+
+    return res.data;
+  } catch (error) {
+    throw new Error(error);
+  }
+};
+
+export const getAllMediaObject = async (
+  accessToken: string,
+  instaUserId: string,
+  fields = ['comments_count', 'like_count', 'media_type', 'media_url', 'thumbnail_url', 'caption', 'permalink'],
+) => {
+  try {
+    const res = await axios.get(`https://graph.instagram.com/v22.0/${instaUserId}/media`, {
+      params: {
+        access_token: accessToken,
+        fields: fields.toString(),
+      },
+    });
+
+    return res.data;
+  } catch (error) {
+    throw new Error(error);
+  }
+};
