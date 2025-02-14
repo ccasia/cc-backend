@@ -414,11 +414,11 @@ export const removeInstagramPermissions = async (req: Request, res: Response) =>
 
     if (!creator) return res.status(404).json({ message: 'User not found' });
 
-    const insta: InstagramData = creator.instagramData as unknown as InstagramData;
+    // const insta: InstagramData = creator.instagramData as unknown as InstagramData;
 
-    const access_token = decryptToken(insta.encryptedToken);
+    // const access_token = decryptToken(insta.encryptedToken);
 
-    await revokeInstagramPermission(access_token);
+    // await revokeInstagramPermission(access_token);
 
     await prisma.creator.update({
       where: {
