@@ -1,3 +1,4 @@
+import { encryptToken } from '@helper/encrypt';
 import axios from 'axios';
 
 // Function to get Page ID
@@ -104,8 +105,6 @@ export const getInstagramAccessToken = async (code: string) => {
       },
     );
 
-    console.log(res);
-
     const longLivedToken = await axios.get('https://graph.instagram.com/access_token', {
       params: {
         grant_type: 'ig_exchange_token',
@@ -114,20 +113,17 @@ export const getInstagramAccessToken = async (code: string) => {
       },
     });
 
-    console.log(longLivedToken);
+    const encrypToken = await encryptToken(longLivedToken.data.access_token);
 
     const data = {
       user_id: res.data.user_id,
       permissions: res.data.permissions,
-      access_token: longLivedToken.data.access_token,
+      encryptedToken: encrypToken,
       expires_in: longLivedToken.data.expires_in,
     };
 
-    console.log(data);
-
     return data;
   } catch (error) {
-    console.log(error);
     throw new Error(error);
   }
 };
@@ -162,6 +158,32 @@ export const getAllMediaObject = async (
 
     return res.data;
   } catch (error) {
+    throw new Error(error);
+  }
+};
+
+export const revokeInstagramPermission = async (accessToken: string, permissions?: string[]) => {
+  try {
+    if (permissions) {
+      const res = await axios.delete('https://graph.instagram.com/v22.0/me/permissions', {
+        params: {
+          access_token: accessToken,
+          permission: permissions.toString(),
+        },
+      });
+
+      return res.data;
+    }
+
+    const res = await axios.delete('https://graph.instagram.com/v22.0/me/permissions', {
+      params: {
+        access_token: accessToken,
+      },
+    });
+
+    return res.data;
+  } catch (error) {
+    console.log(error);
     throw new Error(error);
   }
 };

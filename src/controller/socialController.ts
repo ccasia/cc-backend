@@ -11,12 +11,20 @@ import {
   getInstagramOverviewService,
   getInstagramUserData,
   getPageId,
+  revokeInstagramPermission,
 } from '@services/socialMediaService';
 
 // const CODE_VERIFIER = 'your_unique_code_verifier';
 // const CODE_CHALLENGE = 'SHA256_hash_of_code_verifier';
 
 const prisma = new PrismaClient();
+
+interface InstagramData {
+  user_id: string;
+  permissions: string[];
+  encryptedToken: { iv: string; content: string };
+  expires_in: string;
+}
 
 // Connect account
 export const tiktokAuthentication = (_req: Request, res: Response) => {
@@ -346,8 +354,6 @@ export const instagramCallback = async (req: Request, res: Response) => {
   const code = req.query.code;
   const userId = req.session.userid;
 
-  // console.log(req);
-
   if (!code) return res.status(404).json({ message: 'Code not found.' });
   if (!userId) return res.status(404).json({ message: 'Session Expired. Please log in again.' });
 
@@ -366,7 +372,6 @@ export const instagramCallback = async (req: Request, res: Response) => {
 
     return res.status(200).redirect(process.env.REDIRECT_CLIENT as string);
   } catch (error) {
-    console.log('CALLBACK ERROR', error);
     return res.status(400).json(error);
   }
 };
@@ -384,14 +389,50 @@ export const getInstagramOverview = async (req: Request, res: Response) => {
 
     const insta = user?.instagramData as any;
 
-    const overview = await getInstagramOverviewService((user.instagramData as any).access_token);
+    const access_token = decryptToken(insta.encryptedToken);
 
-    const medias = await getAllMediaObject(insta.access_token, insta.user_id);
+    const overview = await getInstagramOverviewService(access_token);
+
+    const medias = await getAllMediaObject(access_token, insta.user_id);
 
     const data = { user: { ...overview }, contents: [...medias.data] };
 
     return res.status(200).json(data);
   } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const removeInstagramPermissions = async (req: Request, res: Response) => {
+  const { userId, permissions } = req.params;
+  try {
+    const creator = await prisma.creator.findFirst({
+      where: {
+        userId: userId,
+      },
+    });
+
+    if (!creator) return res.status(404).json({ message: 'User not found' });
+
+    const insta: InstagramData = creator.instagramData as unknown as InstagramData;
+
+    const access_token = decryptToken(insta.encryptedToken);
+
+    await revokeInstagramPermission(access_token);
+
+    await prisma.creator.update({
+      where: {
+        id: creator.id,
+      },
+      data: {
+        isFacebookConnected: false,
+        instagramData: {},
+      },
+    });
+
+    return res.status(200).json({ message: 'Successfully revoke permission' });
+  } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   }
 };

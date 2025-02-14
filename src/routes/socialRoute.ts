@@ -7,6 +7,7 @@ import {
   instagramCallback,
   redirectFacebookAuth,
   redirectTiktokAfterAuth,
+  removeInstagramPermissions,
   tiktokAuthentication,
   tiktokData,
 } from '@controllers/socialController';
@@ -36,5 +37,7 @@ router.post('/facebook/disconnect', isLoggedIn, handleDisconnectFacebook);
 router.get('/auth/instagram/callback', instagramCallback);
 
 router.get('/instagram/overview/:userId', isLoggedIn, getInstagramOverview);
+
+router.delete('/instagram/permissions/:userId', isLoggedIn, removeInstagramPermissions);
 
 export default router;
