@@ -1,51 +1,23 @@
 import { Request, Response } from 'express';
 
-import {
-  generateCustomId,
-  // handleCreateCompany,
-  handleCreateBrand,
-  handleCreateCompany,
-} from '@services/companyService';
+import { createNewCompany, generateCustomId, handleCreateBrand } from '@services/companyService';
 import { Company, PrismaClient } from '@prisma/client';
 import { uploadCompanyLogo } from '@configs/cloudStorage.config';
-import dayjs from 'dayjs';
-const prisma = new PrismaClient();
 
-// {
-//   invoiceDate: '2025-02-10T16:00:00.000Z',
-//   packageValidityPeriod: 2,
-//   pakcageTotalCredits: '15',
-//   packageValue: '8000',
-//   packageId: 'P02',
-//   packageType: 'Basic',
-//   currency: 'MYR',
-//   companyName: 'Testing',
-//   companyEmail: 'Testing@gmail.com',
-//   companyPhone: '12312312',
-//   companyAddress: 'Testing',
-//   companyWebsite: 'Testing',
-//   companyAbout: 'Testing',
-//   companyRegistrationNumber: 'Testing123',
-//   type: 'agency',
-//   personInChargeName: 'TestingName',
-//   personInChargeDesignation: 'TestingDesignation'
-// }
+const prisma = new PrismaClient();
 
 // for creating new company with brand
 export const createCompany = async (req: Request, res: Response) => {
   const data = JSON.parse(req.body.data);
 
   const companyLogo = (req.files as { companyLogo: object })?.companyLogo as { tempFilePath: string; name: string };
-
+  let publicURL: string | null = '';
   try {
-    let company;
-
-    if (!companyLogo) {
-      company = await handleCreateCompany(data);
-    } else {
-      const publicURL = await uploadCompanyLogo(companyLogo.tempFilePath, companyLogo.name);
-      company = await handleCreateCompany(data, publicURL);
+    if (companyLogo) {
+      publicURL = await uploadCompanyLogo(companyLogo.tempFilePath, companyLogo.name);
     }
+
+    const company = await createNewCompany(data, publicURL);
 
     return res.status(201).json({ company, message: 'A new company has been created' });
   } catch (error) {
@@ -66,8 +38,14 @@ export const getAllCompanies = async (_req: Request, res: Response) => {
             campaign: true,
           },
         },
+        pic: true,
+        subscriptions: {
+          include: {
+            package: true,
+            customPackage: true,
+          },
+        },
         campaign: true,
-        PackagesClient: true,
       },
     });
     return res.status(200).json(companies);
@@ -381,25 +359,25 @@ export const handleLinkNewPackage = async (req: Request, res: Response) => {
         await tx.company.update({ where: { id: company.id }, data: { clientId: id } });
       }
 
-      const currentPackage = await tx.packages.findFirst({ where: { id: data.packageId } });
+      // const currentPackage = await tx.packages.findFirst({ where: { id: data.packageId } });
 
-      if (!currentPackage) throw new Error('Package not found');
+      // if (!currentPackage) throw new Error('Package not found');
 
-      await tx.packagesClient.create({
-        data: {
-          packageId: currentPackage.id,
-          companyId: company.id,
-          type: currentPackage.type,
-          currency: data.currency,
-          value: data.packageValue,
-          totalUGCCredits: data.totalUGCCredits,
-          creditsUtilized: 0,
-          availableCredits: data.totalUGCCredits,
-          validityPeriod: data.validityPeriod,
-          invoiceDate: dayjs(data.invoiceDate).format(''),
-          status: 'active',
-        },
-      });
+      // await tx.packagesClient.create({
+      //   data: {
+      //     packageId: currentPackage.id,
+      //     companyId: company.id,
+      //     type: currentPackage.type,
+      //     currency: data.currency,
+      //     value: data.packageValue,
+      //     totalUGCCredits: data.totalUGCCredits,
+      //     creditsUtilized: 0,
+      //     availableCredits: data.totalUGCCredits,
+      //     validityPeriod: data.validityPeriod,
+      //     invoiceDate: dayjs(data.invoiceDate).format(''),
+      //     status: 'active',
+      //   },
+      // });
     });
 
     return res.status(200).json({ message: 'Successfully created' });

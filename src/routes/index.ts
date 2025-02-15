@@ -38,5 +38,5 @@ router.use('/invoice', invoiceRoute);
 router.use('/kanban', kanbanRoute);
 router.use('/bug', bugRoute);
 router.use('/public', accessRoute);
-router.use('/packages', packagesRoute);
+router.use('/package', packagesRoute);
 router.use('/social', socialRoute);

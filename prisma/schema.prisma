@@ -247,10 +247,10 @@ model Session {
 }
 
 model Company {
-  id                  String           @id @unique @default(cuid())
+  id                  String         @id @unique @default(cuid())
   name                String
   email               String?
-  clientId            String?          @unique @default(cuid())
+  clientId            String?        @unique @default(cuid())
   type                CompanyType?
   phone               String?
   website             String?
@@ -258,13 +258,13 @@ model Company {
   logo                String?
   about               String?
   objectives          Json?
-  registration_number String?          @db.VarChar(150)
-  createdAt           DateTime         @default(now())
-  updatedAt           DateTime         @updatedAt
+  registration_number String?        @db.VarChar(150)
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
   brand               Brand[]
   campaign            Campaign[]
   pic                 Pic[]
-  PackagesClient      PackagesClient[]
+  subscriptions       Subscription[]
 
   @@index([clientId])
 }
@@ -876,39 +876,93 @@ model Bugs {
   user             User?    @relation(references: [id], fields: [userId])
 }
 
-model Packages {
-  id              String           @id @unique @default(cuid())
-  packageId       String?          @unique
-  type            PackageType
-  valueMYR        Int
-  valueSGD        Int
-  totalUGCCredits Int
-  validityPeriod  Int
-  PackagesClient  PackagesClient[]
+model Subscription {
+  id              String             @id @unique @default(cuid())
+  subscriptionId  String?            @unique
+  companyId       String?
+  packageId       String?
+  customPackageId String?
+  currency        String?
+  company         Company?           @relation(references: [id], fields: [companyId])
+  creditsUsed     Int
+  totalCredits    Int?
+  packagePrice    Float?
+  status          SubscriptionStatus @default(ACTIVE)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  package         Package?           @relation(fields: [packageId], references: [id])
+  customPackage   CustomPackage?     @relation(fields: [customPackageId], references: [id])
+  expiredAt       DateTime
 }
 
-model PackagesClient {
-  id               String         @id @unique @default(cuid())
-  packageId        String
-  companyId        String         @unique
-  package          Packages       @relation(fields: [packageId], references: [id])
-  company          Company        @relation(fields: [companyId], references: [id])
-  type             PackageType
-  currency         Currencies
-  value            Int
-  totalUGCCredits  Int
-  creditsUtilized  Int?
-  availableCredits Int?
-  validityPeriod   Int
-  invoiceDate      DateTime?
-  Remarks          Json?
-  invoiceLink      String?
-  createdAt        DateTime       @default(now())
-  expiryDate       DateTime?
-  status           pakcageStatus?
+// model SubsciptionHistory {
+//   id String @id @unique @default(cuid())
+//   subsciptionId 
+// }
 
-  // campaign Campaign?
+model CustomPackage {
+  id String @id @unique @default(cuid())
+
+  customName           String
+  customCredits        Int
+  customValidityPeriod Int
+  customPrice          Float
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+  subscriptions        Subscription[]
 }
+
+enum SubscriptionStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
+
+model Package {
+  id             String         @id @unique @default(cuid())
+  name           String?
+  credits        Int
+  validityPeriod Int
+  subscriptions  Subscription[]
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  prices         Price[]
+}
+
+model Price {
+  id        Int      @id @default(autoincrement())
+  packageId String
+  package   Package  @relation(fields: [packageId], references: [id])
+  currency  String
+  amount    Float
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([packageId, currency]) // Ensure each package has only one price per currency
+}
+
+// model PackagesClient {
+//   id               String         @id @unique @default(cuid())
+//   packageId        String
+//   companyId        String         @unique
+//   package          Packages       @relation(fields: [packageId], references: [id])
+//   company          Company        @relation(fields: [companyId], references: [id])
+//   type             PackageType
+//   currency         Currencies
+//   value            Int
+//   totalUGCCredits  Int
+//   creditsUtilized  Int?
+//   availableCredits Int?
+//   validityPeriod   Int
+//   invoiceDate      DateTime?
+//   Remarks          Json?
+//   invoiceLink      String?
+//   createdAt        DateTime       @default(now())
+//   expiryDate       DateTime?
+//   status           pakcageStatus?
+
+//   // campaign Campaign?
+// }
 
 enum PackageType {
   Trail
@@ -922,12 +976,6 @@ enum Currencies {
   MYR
   SGD
 }
-
-// enum BugsPriority {
-//   LOW
-//   MEDIUM
-//   HIGH
-// }
 
 model PublicAccess {
   id         Int      @id @default(autoincrement())
