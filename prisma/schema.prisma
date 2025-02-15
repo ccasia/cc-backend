@@ -727,6 +727,7 @@ model Feedback {
   content      String?
   type         FeedbackType?
   reasons      String[]
+  videosToUpdate  String[]      
   submissionId String
   adminId      String
   createdAt    DateTime      @default(now())
@@ -734,6 +735,7 @@ model Feedback {
   admin        User          @relation(fields: [adminId], references: [id])
   submission   Submission    @relation(fields: [submissionId], references: [id], onDelete: Cascade)
 }
+
 
 model Invoice {
   id            String        @id @unique @default(cuid())
