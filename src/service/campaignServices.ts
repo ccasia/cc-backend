@@ -31,6 +31,19 @@ export const deductCredits = async (campaignId: string, userId: string, tx: Pris
         id: campaignId,
       },
       include: {
+        brand: {
+          select: {
+            company: {
+              select: {
+                subscriptions: {
+                  where: {
+                    status: 'ACTIVE',
+                  },
+                },
+              },
+            },
+          },
+        },
         company: {
           select: {
             id: true,
@@ -52,9 +65,10 @@ export const deductCredits = async (campaignId: string, userId: string, tx: Pris
 
     if (!campaign || !user) throw new Error('Data not found');
     if (!campaign.campaignCredits) throw new Error('Campaign credits not found');
-    if (!campaign?.company?.subscriptions) throw new Error('Company not linked to a package');
+    if (!campaign?.company?.subscriptions || !campaign.brand?.company.subscriptions)
+      throw new Error('Company not linked to a package');
 
-    const subscription = campaign.company.subscriptions[0];
+    const subscription = campaign.company.subscriptions[0] || campaign.brand?.company.subscriptions[0];
 
     const submission = await tx.submission.findMany({
       where: {
