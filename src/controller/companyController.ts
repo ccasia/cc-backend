@@ -57,16 +57,41 @@ export const getAllCompanies = async (_req: Request, res: Response) => {
 export const getCompanyById = async (req: Request, res: Response) => {
   const { id } = req.params;
   try {
-    const companies = await prisma.company.findUnique({
+    const company = await prisma.company.findUnique({
       where: {
         id: id,
       },
       include: {
-        brand: true,
+        brand: {
+          include: {
+            campaign: true,
+          },
+        },
+        pic: true,
+        subscriptions: {
+          include: {
+            package: true,
+            customPackage: true,
+          },
+        },
+        campaign: {
+          include: {
+            campaignBrief: {
+              select: {
+                industries: true,
+                startDate: true,
+              },
+            },
+          },
+        },
       },
     });
-    return res.status(200).json(companies);
+
+    if (!company) return res.status(404).json({ message: 'Company not found' });
+
+    return res.status(200).json(company);
   } catch (err) {
+    // console.log(err);
     return res.status(400).json({ message: err });
   }
 };
@@ -383,6 +408,17 @@ export const handleLinkNewPackage = async (req: Request, res: Response) => {
     return res.status(200).json({ message: 'Successfully created' });
   } catch (error) {
     console.log(error);
+    return res.status(400).json(error);
+  }
+};
+
+export const getUniqueClientId = async (req: Request, res: Response) => {
+  const { type } = req.query;
+  try {
+    const id = await generateCustomId(type);
+
+    return res.status(200).json(id);
+  } catch (error) {
     return res.status(400).json(error);
   }
 };
