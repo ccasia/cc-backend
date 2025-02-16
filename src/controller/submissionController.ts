@@ -536,34 +536,30 @@ export const getSubmissionByCampaignCreatorId = async (req: Request, res: Respon
 };
 
 export const draftSubmission = async (req: Request, res: Response) => {
-  try {
-    const { submissionId, caption } = JSON.parse(req.body.data);
-    const files = req.files as any;
-    
-//   const { submissionId, caption } = JSON.parse(req.body.data);
-//   const files = req.files as any;
+  // try {
+  const { submissionId, caption } = JSON.parse(req.body.data);
+  const files = req.files as any;
+
+  //   const { submissionId, caption } = JSON.parse(req.body.data);
+  //   const files = req.files as any;
 
   try {
     // Handle multiple draft videos
-    const draftVideos = Array.isArray(files?.draftVideo) ? 
-      files.draftVideo 
-      : files?.draftVideo 
-      ? [files.draftVideo] 
-      : [];
+    const draftVideos = Array.isArray(files?.draftVideo)
+      ? files.draftVideo
+      : files?.draftVideo
+        ? [files.draftVideo]
+        : [];
 
     // Handle multiple raw footages
-    const rawFootages = Array.isArray(files?.rawFootage) ?
-      files.rawFootage
+    const rawFootages = Array.isArray(files?.rawFootage)
+      ? files.rawFootage
       : files?.rawFootage
-      ? [files.rawFootage]
-      : [];
+        ? [files.rawFootage]
+        : [];
 
     // Handle multiple photos
-    const photos = Array.isArray(files?.photos) ?
-      files.photos
-      : files?.photos
-      ? [files.photos]
-      : [];
+    const photos = Array.isArray(files?.photos) ? files.photos : files?.photos ? [files.photos] : [];
 
     const userid = req.session.userid;
 
@@ -631,10 +627,10 @@ export const draftSubmission = async (req: Request, res: Response) => {
 
       if (draftVideos && draftVideos.length > 0) {
         filePaths.video = [];
-      
+
         for (const draftVideo of draftVideos) {
           const draftVideoPath = `/tmp/${submissionId}_${draftVideo.name}`;
-      
+
           // Move the draft video to the desired path
           await draftVideo.mv(draftVideoPath);
           console.log('Draft video moved to:', draftVideoPath);
@@ -642,33 +638,31 @@ export const draftSubmission = async (req: Request, res: Response) => {
           // Add to filePaths.video array
           filePaths.video.push({
             inputPath: draftVideoPath,
-            outputPath: `/tmp/${submissionId}_${draftVideo.name.replace('.mp4','')}_compressed.mp4`,
+            outputPath: `/tmp/${submissionId}_${draftVideo.name.replace('.mp4', '')}_compressed.mp4`,
             fileName: `${submissionId}_${draftVideo.name}`,
           });
         }
       }
-   
+
       if (rawFootages) {
-        console.log("Raw Footages received:", rawFootages);
-      
+        console.log('Raw Footages received:', rawFootages);
+
         const rawFootageArray = Array.isArray(rawFootages) ? rawFootages : [rawFootages];
-      
+
         if (rawFootageArray.length > 0) {
           filePaths.rawFootages = [];
-      
+
           for (const rawFootage of rawFootageArray) {
             const rawFootagePath = `/tmp/${submissionId}_${rawFootage.name}`;
             try {
               await rawFootage.mv(rawFootagePath);
               filePaths.rawFootages.push(rawFootagePath);
             } catch (err) {
-              console.error("Error moving file:", err);
+              console.error('Error moving file:', err);
             }
           }
         }
       }
-      
-
 
       if (photos && photos.length > 0) {
         filePaths.photos = [];
@@ -687,16 +681,23 @@ export const draftSubmission = async (req: Request, res: Response) => {
       await channel.assertQueue('draft');
 
       // console.log("submission", submission)
-      console.log("📤 Sending to RabbitMQ:", JSON.stringify({
-        userid,
-        submissionId,
-        campaignId: submission?.campaignId,
-        folder: submission?.submissionType.type,
-        caption,
-        admins: submission.campaign.campaignAdmin,
-        filePaths,
-      }, null, 2));
-      
+      console.log(
+        '📤 Sending to RabbitMQ:',
+        JSON.stringify(
+          {
+            userid,
+            submissionId,
+            campaignId: submission?.campaignId,
+            folder: submission?.submissionType.type,
+            caption,
+            admins: submission.campaign.campaignAdmin,
+            filePaths,
+          },
+          null,
+          2,
+        ),
+      );
+
       channel.sendToQueue(
         'draft',
         Buffer.from(
@@ -710,26 +711,10 @@ export const draftSubmission = async (req: Request, res: Response) => {
             filePaths,
           }),
         ),
-        { persistent: true }
+        { persistent: true },
       );
 
-
       activeProcesses.set(submissionId, { status: 'queue' });
-
-      // if (submission.campaign.spreadSheetURL) {
-      //   const spreadSheetId = submission.campaign.spreadSheetURL.split('/d/')[1].split('/')[0];
-
-      //   await createNewRowData({
-      //     creatorInfo: {
-      //       name: submission.user.name,
-      //       username: submission.user.creator?.instagram,
-      //       postingDate: dayjs().format('LL'),
-      //       caption: caption,
-      //       videoLink: `https://storage.googleapis.com/${process.env.BUCKET_NAME as string}/${submission?.submissionType.type}/${`${submission?.id}_draft.mp4`}?v=${dayjs().format()}`,
-      //     } as any,
-      //     spreadSheetId: spreadSheetId,
-      //   });
-      // }
 
       return res.status(200).json({ message: 'Video start processing' });
     } catch (error) {
@@ -744,6 +729,129 @@ export const draftSubmission = async (req: Request, res: Response) => {
     return res.status(400).json({ message: 'Failed to process submission', error });
   }
 };
+
+export const postingSubmission = async (req: Request, res: Response) => {
+  const { submissionId, postingLink } = req.body;
+
+  try {
+    const submission = await prisma.submission.update({
+      where: {
+        id: submissionId,
+      },
+      data: {
+        content: postingLink,
+        status: 'PENDING_REVIEW',
+        submissionDate: dayjs().format(),
+      },
+      include: {
+        campaign: {
+          select: {
+            campaignAdmin: {
+              select: {
+                adminId: true,
+                admin: {
+                  select: {
+                    user: {
+                      select: {
+                        Board: true,
+                        id: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            name: true,
+          },
+        },
+        user: true,
+        task: true,
+      },
+    });
+
+    const inReviewColumnId = await getColumnId({ userId: submission.userId, columnName: 'In Review' });
+    const inProgress = await getColumnId({ userId: submission.userId, columnName: 'In Progress' });
+
+    const taskInProgress = submission.task.find((item) => item.columnId === inProgress);
+
+    // Move from column In Progress to In review
+    if (inReviewColumnId) {
+      await prisma.task.update({
+        where: {
+          id: taskInProgress?.id,
+        },
+        data: {
+          columnId: inReviewColumnId,
+        },
+      });
+    }
+
+    const { title, message } = notificationPosting(submission.campaign.name, 'Creator');
+
+    const { title: adminTitle, message: adminMessage } = notificationPosting(
+      submission.campaign.name,
+      'Admin',
+      submission.user.name as string,
+    );
+
+    for (const admin of submission.campaign.campaignAdmin) {
+      const notification = await saveNotification({
+        userId: admin.adminId,
+        message: adminMessage,
+        title: adminTitle,
+        entity: 'Post',
+        creatorId: submission.userId,
+        entityId: submission.campaignId,
+      });
+
+      if (admin?.admin.user.Board) {
+        const column = await getColumnId({
+          userId: admin.admin.user.id,
+          boardId: admin.admin.user.Board.id,
+          columnName: 'Actions Needed',
+        });
+
+        if (column) {
+          await createNewTask({
+            submissionId: submission.id,
+            name: 'Posting Submission',
+            columnId: column,
+            userId: admin.admin.user.id,
+            position: 0,
+          });
+        }
+      }
+
+      io.to(clients.get(admin.adminId)).emit('notification', notification);
+      io.to(clients.get(admin.adminId)).emit('newSubmission');
+    }
+
+    const notification = await saveNotification({
+      userId: submission.userId,
+      message: message,
+      title: title,
+      entity: 'Post',
+      entityId: submission.campaignId,
+    });
+
+    io.to(clients.get(submission.userId)).emit('notification', notification);
+
+    const allSuperadmins = await prisma.user.findMany({
+      where: {
+        role: 'superadmin',
+      },
+    });
+
+    for (const admin of allSuperadmins) {
+      io.to(clients.get(admin.id)).emit('newSubmission');
+    }
+
+    return res.status(200).json({ message: 'Successfully submitted' });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
 export const adminManageDraft = async (req: Request, res: Response) => {
   const { submissionId, feedback, type, reasons, userId, videosToUpdate } = req.body;
 
@@ -791,23 +899,22 @@ export const adminManageDraft = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Submission not found' });
     }
 
+    //     await prisma.$transaction(async (prisma) => {
+    //       if (type === 'approve') {
+    //         const approveSubmission = await prisma.submission.update({
+    //           where: {
+    //             id: submission?.id,
+    //           },
+    //           data: {
+    //             status: 'APPROVED',
+    //             isReview: true,
+    //             feedback: feedback && {
+    //               create: {
+    //                 type: 'COMMENT',
+    //                 content: feedback,
 
-//     await prisma.$transaction(async (prisma) => {
-//       if (type === 'approve') {
-//         const approveSubmission = await prisma.submission.update({
-//           where: {
-//             id: submission?.id,
-//           },
-//           data: {
-//             status: 'APPROVED',
-//             isReview: true,
-//             feedback: feedback && {
-//               create: {
-//                 type: 'COMMENT',
-//                 content: feedback,
-
-//                 adminId: req.session.userid as string,
-//               },
+    //                 adminId: req.session.userid as string,
+    //               },
 
     await prisma.$transaction(
       async (prisma) => {
@@ -1094,43 +1201,24 @@ export const adminManageDraft = async (req: Request, res: Response) => {
           io.to(clients.get(submission.userId)).emit('notification', notification);
           io.to(clients.get(submission.userId)).emit('newFeedback');
 
-
-        return res.status(200).json({ message: 'Succesfully submitted.' });
-      } else {
-        const sub = await prisma.submission.update({
-          where: {
-            id: submissionId,
-          },
-          data: {
-            status: 'CHANGES_REQUIRED',
-            isReview: true,
-            feedback: {
-              create: {
-                type: 'REASON',
-                reasons: reasons,
-                videosToUpdate: videosToUpdate || [], 
-                content: feedback,
-                admin: {
-                  connect: { id: req.session.userid },
-
-//           return res.status(200).json({ message: 'Succesfully submitted.' });
-//         } else {
-//           const sub = await prisma.submission.update({
-//             where: {
-//               id: submissionId,
-//             },
-//             data: {
-//               status: 'CHANGES_REQUIRED',
-//               isReview: true,
-//               feedback: {
-//                 create: {
-//                   type: 'REASON',
-//                   reasons: reasons,
-//                   content: feedback,
-//                   admin: {
-//                     connect: { id: req.session.userid },
-//                   },
-
+          return res.status(200).json({ message: 'Succesfully submitted.' });
+        } else {
+          const sub = await prisma.submission.update({
+            where: {
+              id: submissionId,
+            },
+            data: {
+              status: 'CHANGES_REQUIRED',
+              isReview: true,
+              feedback: {
+                create: {
+                  type: 'REASON',
+                  reasons: reasons,
+                  videosToUpdate: videosToUpdate || [],
+                  content: feedback,
+                  admin: {
+                    connect: { id: req.session.userid },
+                  },
                 },
               },
             },
@@ -1595,7 +1683,6 @@ export const adminManagePosting = async (req: Request, res: Response) => {
           where: { id: submission.id },
           data: { status: status as SubmissionStatus, isReview: true },
         });
-
 
         await deductCredits(approvedSubmission.campaignId, approvedSubmission.userId, tx as PrismaClient);
 
