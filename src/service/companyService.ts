@@ -368,4 +368,36 @@ export const createNewCompany = async (data: CompanyForm, publicURL?: string) =>
   }
 };
 
-// export const
+export const getRemainingCredits = async (clientId: string) => {
+  try {
+    const client = await prisma.company.findUnique({
+      where: {
+        id: clientId,
+      },
+      include: {
+        subscriptions: {
+          where: { status: 'ACTIVE' },
+          include: {
+            customPackage: true,
+            package: true,
+          },
+        },
+        campaign: true,
+      },
+    });
+
+    if (!client) return null;
+
+    const totalCreditsUsed = client.campaign.reduce((sum, campaign) => sum + (campaign?.campaignCredits || 0), 0);
+
+    const activeSubscription = client.subscriptions[0];
+
+    if (!activeSubscription || typeof activeSubscription.totalCredits !== 'number') {
+      throw new Error('No active subscription or invalid total credits');
+    }
+
+    return activeSubscription.totalCredits - totalCreditsUsed;
+  } catch (error) {
+    throw new Error(error);
+  }
+};

@@ -1,8 +1,14 @@
 import { Request, Response } from 'express';
 
-import { createNewCompany, generateCustomId, handleCreateBrand } from '@services/companyService';
-import { Company, PrismaClient } from '@prisma/client';
+import {
+  createNewCompany,
+  generateCustomId,
+  generateSubscriptionCustomId,
+  handleCreateBrand,
+} from '@services/companyService';
+import { Company, CustomPackage, Package, PrismaClient } from '@prisma/client';
 import { uploadCompanyLogo } from '@configs/cloudStorage.config';
+import dayjs from 'dayjs';
 
 const prisma = new PrismaClient();
 
@@ -363,6 +369,9 @@ export const getBrandsByClientId = async (req: Request, res: Response) => {
 export const handleLinkNewPackage = async (req: Request, res: Response) => {
   const { companyId } = req.params;
   const data = req.body;
+  const { invoiceDate, validityPeriod, currency, packageId, packageType, totalUGCCredits, packageValue } = data;
+
+  console.log(data);
 
   if (!companyId) return res.status(404).json({ message: 'Company ID not found.' });
 
@@ -380,29 +389,61 @@ export const handleLinkNewPackage = async (req: Request, res: Response) => {
 
       if (!company.clientId) {
         const id = await generateCustomId(type.type);
-        console.log(id);
         await tx.company.update({ where: { id: company.id }, data: { clientId: id } });
       }
 
-      // const currentPackage = await tx.packages.findFirst({ where: { id: data.packageId } });
+      const id: string = await generateSubscriptionCustomId();
 
-      // if (!currentPackage) throw new Error('Package not found');
+      const expiredAt = dayjs(invoiceDate).add(parseInt(validityPeriod), 'months').format();
+      const subscriptionData = {
+        creditsUsed: 0,
+        expiredAt,
+        subscriptionId: id,
+        currency: currency,
+      };
 
-      // await tx.packagesClient.create({
-      //   data: {
-      //     packageId: currentPackage.id,
-      //     companyId: company.id,
-      //     type: currentPackage.type,
-      //     currency: data.currency,
-      //     value: data.packageValue,
-      //     totalUGCCredits: data.totalUGCCredits,
-      //     creditsUtilized: 0,
-      //     availableCredits: data.totalUGCCredits,
-      //     validityPeriod: data.validityPeriod,
-      //     invoiceDate: dayjs(data.invoiceDate).format(''),
-      //     status: 'active',
-      //   },
-      // });
+      let customPackage: CustomPackage | null = null;
+      let fixedPackage: Package | null = null;
+
+      // Parallelize independent operations
+      if (packageType === 'Custom') {
+        customPackage = await tx.customPackage.create({
+          data: {
+            customName: packageType,
+            customCredits: parseInt(totalUGCCredits),
+            customPrice: parseFloat(packageValue),
+            customValidityPeriod: parseInt(validityPeriod),
+          },
+        });
+      }
+
+      if (packageId) {
+        fixedPackage = await tx.package.findUnique({
+          where: { id: packageId },
+        });
+      }
+
+      if (packageType !== 'Custom' && !fixedPackage) {
+        throw new Error('Fixed package not found');
+      }
+
+      await tx.subscription.create({
+        data: {
+          companyId: company.id,
+          ...(packageType === 'Custom'
+            ? {
+                customPackageId: customPackage!.id,
+                totalCredits: customPackage?.customCredits,
+                packagePrice: customPackage?.customPrice,
+              }
+            : {
+                packageId: fixedPackage!.id,
+                totalCredits: fixedPackage?.credits,
+                packagePrice: parseFloat(packageValue),
+              }),
+          ...subscriptionData,
+        },
+      });
     });
 
     return res.status(200).json({ message: 'Successfully created' });
