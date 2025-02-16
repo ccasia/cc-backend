@@ -371,14 +371,16 @@ export const handleLinkNewPackage = async (req: Request, res: Response) => {
   const data = req.body;
   const { invoiceDate, validityPeriod, currency, packageId, packageType, totalUGCCredits, packageValue } = data;
 
-  console.log(data);
-
   if (!companyId) return res.status(404).json({ message: 'Company ID not found.' });
 
   try {
     await prisma.$transaction(async (tx) => {
       let type;
-      const company = await tx.company.findUnique({ where: { id: companyId }, include: { brand: true } });
+      const company = await tx.company.findUnique({
+        where: { id: companyId },
+        include: { brand: true, subscriptions: { include: { customPackage: true, package: true } } },
+      });
+
       if (!company) throw new Error('Company not found');
 
       if (!company.type && company.brand.length) {
@@ -393,8 +395,14 @@ export const handleLinkNewPackage = async (req: Request, res: Response) => {
       }
 
       const id: string = await generateSubscriptionCustomId();
-
       const expiredAt = dayjs(invoiceDate).add(parseInt(validityPeriod), 'months').format();
+
+      const subscription = company.subscriptions.find((sub) => sub.status === 'ACTIVE');
+
+      if (subscription) {
+        throw new Error('Package is still active. Please deactivate or complete the package before proceeding.');
+      }
+
       const subscriptionData = {
         creditsUsed: 0,
         expiredAt,
@@ -448,8 +456,7 @@ export const handleLinkNewPackage = async (req: Request, res: Response) => {
 
     return res.status(200).json({ message: 'Successfully created' });
   } catch (error) {
-    console.log(error);
-    return res.status(400).json(error);
+    return res.status(400).json(error?.message);
   }
 };
 
