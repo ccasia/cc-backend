@@ -1020,37 +1020,7 @@ export const adminManageDraft = async (req: Request, res: Response) => {
 
             await deductCredits(approveSubmission.campaignId, approveSubmission.userId, prisma as PrismaClient);
 
-            // await deductCredits(submission.campaignId, submission.userId);
-
-            const company = await prisma.company.findUnique({
-              where: {
-                id: submission.campaign.companyId as any,
-              },
-              // include: {
-              //   PackagesClient: {
-              //     where: {
-              //       status: 'active',
-              //     },
-              //   },
-              // },
-            });
-            // if (company?.PackagesClient.length) {
-            //   await prisma.packagesClient.update({
-            //     where: {
-            //       id: company?.PackagesClient[0].id,
-            //     },
-            //     data: {
-            //       creditsUtilized: {
-            //         increment: 1,
-            //       },
-            //       availableCredits: {
-            //         decrement: 1,
-            //       },
-            //     },
-            //   });
-            // }
-
-            const invoice = await createInvoiceService(submission, userId, invoiceAmount);
+            await createInvoiceService(submission, userId, invoiceAmount);
 
             const shortlistedCreator = await prisma.shortListedCreator.findFirst({
               where: {

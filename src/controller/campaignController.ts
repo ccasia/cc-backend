@@ -553,7 +553,9 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
               dependencies: true,
             },
           },
-          brand: true,
+          brand: {
+            include: { company: { include: { subscriptions: { include: { package: true, customPackage: true } } } } },
+          },
           company: true,
           campaignTimeline: true,
           campaignBrief: true,
@@ -632,7 +634,7 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
               dependencies: true,
             },
           },
-          brand: true,
+          brand: { include: { company: { include: { subscriptions: true } } } },
           company: true,
           campaignTimeline: true,
           campaignBrief: true,
@@ -713,7 +715,9 @@ export const getCampaignById = async (req: Request, res: Response) => {
             dependentOn: true,
           },
         },
-        brand: true,
+        brand: {
+          include: { company: { include: { subscriptions: { include: { package: true, customPackage: true } } } } },
+        },
         company: {
           include: {
             pic: true,
@@ -841,7 +845,7 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
         campaignBrief: true,
         campaignRequirement: true,
         campaignTimeline: true,
-        brand: true,
+        brand: { include: { company: { include: { subscriptions: true } } } },
         company: true,
         pitch: true,
         bookMarkCampaign: true,
@@ -987,7 +991,7 @@ export const getAllActiveCampaign = async (_req: Request, res: Response) => {
         campaignBrief: true,
         campaignRequirement: true,
         campaignTimeline: true,
-        brand: true,
+        brand: { include: { company: { include: { subscriptions: true } } } },
         company: true,
         pitch: true,
         shortlisted: true,
@@ -1017,7 +1021,7 @@ export const getAllCampaignsFinance = async (req: Request, res: Response) => {
   try {
     const campaigns = await prisma.campaign.findMany({
       include: {
-        brand: true,
+        brand: { include: { company: { include: { subscriptions: true } } } },
         company: true,
         campaignTimeline: true,
         campaignBrief: true,
@@ -1206,7 +1210,7 @@ export const getCampaignsByCreatorId = async (req: Request, res: Response) => {
             creatorAgreement: true,
             logistic: true,
             company: true,
-            brand: true,
+            brand: { include: { company: { include: { subscriptions: true } } } },
             campaignBrief: true,
             campaignRequirement: true,
             campaignTimeline: true,
@@ -2080,7 +2084,7 @@ export const getCampaignForCreatorById = async (req: Request, res: Response) => 
         },
         campaignBrief: true,
         campaignRequirement: true,
-        brand: true,
+        brand: { include: { company: { include: { subscriptions: true } } } },
         company: true,
         pitch: true,
         shortlisted: true,
@@ -2161,7 +2165,7 @@ export const getCampaignPitchForCreator = async (req: Request, res: Response) =>
             campaignRequirement: true,
             campaignAdmin: true,
             company: true,
-            brand: true,
+            brand: { include: { company: { include: { subscriptions: true } } } },
             campaignBrief: {
               select: {
                 images: true,
@@ -3276,7 +3280,7 @@ export const getMyCampaigns = async (req: Request, res: Response) => {
     const campaigns = await prisma.campaign.findMany({
       include: {
         logistic: true,
-        brand: true,
+        brand: { include: { company: { include: { subscriptions: true } } } },
         company: true,
         invoice: true,
         shortlisted: {
@@ -3715,7 +3719,7 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
               dependencies: true,
             },
           },
-          brand: true,
+          brand: { include: { company: { include: { subscriptions: true } } } },
           company: true,
           campaignTimeline: true,
           campaignBrief: true,
@@ -3870,7 +3874,7 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
             dependencies: true,
           },
         },
-        brand: true,
+        brand: { include: { company: { include: { subscriptions: true } } } },
         company: true,
         campaignTimeline: true,
         campaignBrief: true,

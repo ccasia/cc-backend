@@ -65,10 +65,10 @@ export const deductCredits = async (campaignId: string, userId: string, tx: Pris
 
     if (!campaign || !user) throw new Error('Data not found');
     if (!campaign.campaignCredits) throw new Error('Campaign credits not found');
-    if (!campaign?.company?.subscriptions || !campaign.brand?.company.subscriptions)
+    if (!(campaign?.company?.subscriptions?.length || campaign?.brand?.company?.subscriptions?.length))
       throw new Error('Company not linked to a package');
 
-    const subscription = campaign.company.subscriptions[0] || campaign.brand?.company.subscriptions[0];
+    const subscription = campaign?.company?.subscriptions[0] || campaign.brand?.company.subscriptions[0];
 
     const submission = await tx.submission.findMany({
       where: {
@@ -106,7 +106,7 @@ export const deductCredits = async (campaignId: string, userId: string, tx: Pris
 
     await tx.subscription.update({
       where: {
-        id: subscription.id,
+        id: subscription?.id,
       },
       data: {
         creditsUsed: {

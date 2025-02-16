@@ -70,7 +70,16 @@ export const getCompanyById = async (req: Request, res: Response) => {
       include: {
         brand: {
           include: {
-            campaign: true,
+            campaign: {
+              include: {
+                campaignBrief: {
+                  select: {
+                    industries: true,
+                    startDate: true,
+                  },
+                },
+              },
+            },
           },
         },
         pic: true,
