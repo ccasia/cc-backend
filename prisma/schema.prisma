@@ -357,7 +357,7 @@ model SupSupBrand {
 
 model Campaign {
   id                            String                          @id @unique @default(cuid())
-  campaignId                    String?                         @unique
+  campaignId                    String?
   name                          String
   description                   String
   status                        CampaignStatus                  @default(SCHEDULED)
