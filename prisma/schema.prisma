@@ -277,6 +277,7 @@ enum CompanyType {
 model Pic {
   id          String   @id @unique @default(cuid())
   name        String
+  email       String?
   designation String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -363,6 +364,8 @@ model Campaign {
   createdAt                     DateTime                        @default(now())
   updatedAt                     DateTime                        @updatedAt
   campaignCredits               Int?
+  creditsPending                Int?
+  creditsUtilized               Int?
   brandId                       String?
   companyId                     String?
   brandTone                     String?
@@ -399,13 +402,6 @@ model Campaign {
 
   rawFootages RawFootage[]
   photosData  Photo[]
-
-  //rawFootage                    Boolean                         @default(false)
-  //photos                        Boolean                         @default(false)
-  //rawFootages                   RawFootage[]
-  //photosData                    Photo[]
-  // packagesClient                PackagesClient?                 @relation(fields: [packagesClientId], references: [id])
-  // packagesClientId              String?                         @unique
 }
 
 model BookMarkCampaign {

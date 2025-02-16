@@ -1,8 +1,14 @@
 import { Request, Response } from 'express';
 
-import { createNewCompany, generateCustomId, handleCreateBrand } from '@services/companyService';
-import { Company, PrismaClient } from '@prisma/client';
+import {
+  createNewCompany,
+  generateCustomId,
+  generateSubscriptionCustomId,
+  handleCreateBrand,
+} from '@services/companyService';
+import { Company, CustomPackage, Package, PrismaClient } from '@prisma/client';
 import { uploadCompanyLogo } from '@configs/cloudStorage.config';
+import dayjs from 'dayjs';
 
 const prisma = new PrismaClient();
 
@@ -57,16 +63,41 @@ export const getAllCompanies = async (_req: Request, res: Response) => {
 export const getCompanyById = async (req: Request, res: Response) => {
   const { id } = req.params;
   try {
-    const companies = await prisma.company.findUnique({
+    const company = await prisma.company.findUnique({
       where: {
         id: id,
       },
       include: {
-        brand: true,
+        brand: {
+          include: {
+            campaign: true,
+          },
+        },
+        pic: true,
+        subscriptions: {
+          include: {
+            package: true,
+            customPackage: true,
+          },
+        },
+        campaign: {
+          include: {
+            campaignBrief: {
+              select: {
+                industries: true,
+                startDate: true,
+              },
+            },
+          },
+        },
       },
     });
-    return res.status(200).json(companies);
+
+    if (!company) return res.status(404).json({ message: 'Company not found' });
+
+    return res.status(200).json(company);
   } catch (err) {
+    // console.log(err);
     return res.status(400).json({ message: err });
   }
 };
@@ -338,13 +369,18 @@ export const getBrandsByClientId = async (req: Request, res: Response) => {
 export const handleLinkNewPackage = async (req: Request, res: Response) => {
   const { companyId } = req.params;
   const data = req.body;
+  const { invoiceDate, validityPeriod, currency, packageId, packageType, totalUGCCredits, packageValue } = data;
 
   if (!companyId) return res.status(404).json({ message: 'Company ID not found.' });
 
   try {
     await prisma.$transaction(async (tx) => {
       let type;
-      const company = await tx.company.findUnique({ where: { id: companyId }, include: { brand: true } });
+      const company = await tx.company.findUnique({
+        where: { id: companyId },
+        include: { brand: true, subscriptions: { include: { customPackage: true, package: true } } },
+      });
+
       if (!company) throw new Error('Company not found');
 
       if (!company.type && company.brand.length) {
@@ -355,34 +391,82 @@ export const handleLinkNewPackage = async (req: Request, res: Response) => {
 
       if (!company.clientId) {
         const id = await generateCustomId(type.type);
-        console.log(id);
         await tx.company.update({ where: { id: company.id }, data: { clientId: id } });
       }
 
-      // const currentPackage = await tx.packages.findFirst({ where: { id: data.packageId } });
+      const id: string = await generateSubscriptionCustomId();
+      const expiredAt = dayjs(invoiceDate).add(parseInt(validityPeriod), 'months').format();
 
-      // if (!currentPackage) throw new Error('Package not found');
+      const subscription = company.subscriptions.find((sub) => sub.status === 'ACTIVE');
 
-      // await tx.packagesClient.create({
-      //   data: {
-      //     packageId: currentPackage.id,
-      //     companyId: company.id,
-      //     type: currentPackage.type,
-      //     currency: data.currency,
-      //     value: data.packageValue,
-      //     totalUGCCredits: data.totalUGCCredits,
-      //     creditsUtilized: 0,
-      //     availableCredits: data.totalUGCCredits,
-      //     validityPeriod: data.validityPeriod,
-      //     invoiceDate: dayjs(data.invoiceDate).format(''),
-      //     status: 'active',
-      //   },
-      // });
+      if (subscription) {
+        throw new Error('Package is still active. Please deactivate or complete the package before proceeding.');
+      }
+
+      const subscriptionData = {
+        creditsUsed: 0,
+        expiredAt,
+        subscriptionId: id,
+        currency: currency,
+      };
+
+      let customPackage: CustomPackage | null = null;
+      let fixedPackage: Package | null = null;
+
+      // Parallelize independent operations
+      if (packageType === 'Custom') {
+        customPackage = await tx.customPackage.create({
+          data: {
+            customName: packageType,
+            customCredits: parseInt(totalUGCCredits),
+            customPrice: parseFloat(packageValue),
+            customValidityPeriod: parseInt(validityPeriod),
+          },
+        });
+      }
+
+      if (packageId) {
+        fixedPackage = await tx.package.findUnique({
+          where: { id: packageId },
+        });
+      }
+
+      if (packageType !== 'Custom' && !fixedPackage) {
+        throw new Error('Fixed package not found');
+      }
+
+      await tx.subscription.create({
+        data: {
+          companyId: company.id,
+          ...(packageType === 'Custom'
+            ? {
+                customPackageId: customPackage!.id,
+                totalCredits: customPackage?.customCredits,
+                packagePrice: customPackage?.customPrice,
+              }
+            : {
+                packageId: fixedPackage!.id,
+                totalCredits: fixedPackage?.credits,
+                packagePrice: parseFloat(packageValue),
+              }),
+          ...subscriptionData,
+        },
+      });
     });
 
     return res.status(200).json({ message: 'Successfully created' });
   } catch (error) {
-    console.log(error);
+    return res.status(400).json(error?.message);
+  }
+};
+
+export const getUniqueClientId = async (req: Request, res: Response) => {
+  const { type } = req.query;
+  try {
+    const id = await generateCustomId(type);
+
+    return res.status(200).json(id);
+  } catch (error) {
     return res.status(400).json(error);
   }
 };

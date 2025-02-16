@@ -18,6 +18,7 @@ import bugRoute from './bugRoute';
 import accessRoute from './accessRoute';
 import packagesRoute from './packageRoutes';
 import socialRoute from './socialRoute';
+import subscriptionRoute from './subscriptionRoute';
 
 export const router = express.Router();
 
@@ -40,3 +41,4 @@ router.use('/bug', bugRoute);
 router.use('/public', accessRoute);
 router.use('/package', packagesRoute);
 router.use('/social', socialRoute);
+router.use('/subscription', subscriptionRoute);

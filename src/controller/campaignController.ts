@@ -53,6 +53,7 @@ import {
 } from '@helper/notification';
 import { deliveryConfirmation, shortlisted, tracking } from '@configs/nodemailer.config';
 import { createNewSpreadSheet } from '@services/google_sheets/sheets';
+import { getRemainingCredits } from '@services/companyService';
 // import { applyCreditCampiagn } from '@services/packageService';
 
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
@@ -137,40 +138,40 @@ const MAPPING: Record<string, string> = {
   POSTING: 'Posting',
 };
 
-const generateAgreement = async (creator: any, campaign: any) => {
-  try {
-    const agreementsPath = await agreementInput({
-      date: dayjs().format('ddd LL'),
-      creatorName: creator.name as string,
-      icNumber: creator?.paymentForm.icNumber,
-      address: creator.creator.address,
-      agreement_endDate: dayjs().add(1, 'M').format('ddd LL'),
-      now_date: dayjs().format('ddd LL'),
-      creatorAccNumber: creator?.paymentForm.bankAccountNumber,
-      creatorBankName: creator?.paymentForm?.bankName,
-      creatorBankAccName: creator?.paymentForm?.bankAccountName,
-      agreementFormUrl: campaign?.campaignBrief?.agreementFrom,
-      version: 1,
-    });
+// const generateAgreement = async (creator: any, campaign: any) => {
+//   try {
+//     const agreementsPath = await agreementInput({
+//       date: dayjs().format('ddd LL'),
+//       creatorName: creator.name as string,
+//       icNumber: creator?.paymentForm.icNumber,
+//       address: creator.creator.address,
+//       agreement_endDate: dayjs().add(1, 'M').format('ddd LL'),
+//       now_date: dayjs().format('ddd LL'),
+//       creatorAccNumber: creator?.paymentForm.bankAccountNumber,
+//       creatorBankName: creator?.paymentForm?.bankName,
+//       creatorBankAccName: creator?.paymentForm?.bankAccountName,
+//       agreementFormUrl: campaign?.campaignBrief?.agreementFrom,
+//       version: 1,
+//     });
 
-    // const pdfPath = await pdfConverter(
-    //   agreementsPath,
-    //   path.resolve(__dirname, `../form/pdf/${creator.name.split(' ').join('_')}.pdf`),
-    // );
+//     // const pdfPath = await pdfConverter(
+//     //   agreementsPath,
+//     //   path.resolve(__dirname, `../form/pdf/${creator.name.split(' ').join('_')}.pdf`),
+//     // );
 
-    // const url = await uploadAgreementForm(
-    //   pdfPath,
-    //   `${creator.name.split(' ').join('_')}-${campaign.name}.pdf`,
-    //   'creatorAgreements',
-    // );
+//     // const url = await uploadAgreementForm(
+//     //   pdfPath,
+//     //   `${creator.name.split(' ').join('_')}-${campaign.name}.pdf`,
+//     //   'creatorAgreements',
+//     // );
 
-    // await fs.promises.unlink(pdfPath);
+//     // await fs.promises.unlink(pdfPath);
 
-    // return url;
-  } catch (error) {
-    throw new Error(error);
-  }
-};
+//     // return url;
+//   } catch (error) {
+//     throw new Error(error);
+//   }
+// };
 
 export const createCampaign = async (req: Request, res: Response) => {
   const {
@@ -265,20 +266,25 @@ export const createCampaign = async (req: Request, res: Response) => {
           }),
         );
 
-        const exitingClient = await tx.company.findUnique({
+        const existingClient = await tx.company.findUnique({
           where: { id: client.id },
-          include: {
-            PackagesClient: {
-              where: {
-                status: 'active',
-              },
-            },
-          },
         });
 
-        const url: string = await createNewSpreadSheet({ title: campaignTitle });
+        if (!existingClient) throw new Error('Company not found');
 
-        // const existingCampaign = await prisma.campaign.findUnique({ where: { campaignId: campaignId } });
+        const availableCredits = await getRemainingCredits(existingClient.id);
+
+        // Ensure availableCredits is a valid number
+        if (availableCredits === null || typeof availableCredits !== 'number') {
+          throw new Error('Unable to retrieve available credits for the client');
+        }
+
+        // Check if campaignCredits exceed availableCredits
+        if (campaignCredits > availableCredits) {
+          throw new Error('Not enough credits to create the campaign');
+        }
+
+        const url: string = await createNewSpreadSheet({ title: campaignTitle });
 
         // Create Campaign
         const campaign = await tx.campaign.create({
@@ -291,9 +297,12 @@ export const createCampaign = async (req: Request, res: Response) => {
             brandTone: brandTone,
             productName: productName,
             spreadSheetURL: url,
+
             rawFootage: rawFootage || false,
             photos: photos || false,
             campaignCredits,
+            creditsPending: campaignCredits,
+            creditsUtilized: 0,
             agreementTemplate: {
               connect: {
                 id: agreementFrom.id,
@@ -325,60 +334,11 @@ export const createCampaign = async (req: Request, res: Response) => {
                 user_persona: audienceUserPersona,
               },
             },
-            // packagesClient: {
-            //   connect: {
-            //     id: exitingClient?.PackagesClient[0].id,
-            //   },
-            // },
           },
           include: {
             campaignBrief: true,
           },
         });
-
-        // Create submission requirement
-        // const submissionTypes = await tx.submissionType.findMany({
-        //   where: {
-        //     NOT: {
-        //       type: 'OTHER',
-        //     },
-        //   },
-        // });
-
-        // const defaultRequirements = submissionTypes.map((item) => ({
-        //   submissionTypeId: item.id,
-        //   order:
-        //     item.type === 'AGREEMENT_FORM' ? 1 : item.type === 'FIRST_DRAFT' ? 2 : item.type === 'FINAL_DRAFT' ? 3 : 4,
-        //   campaignId: campaign.id,
-        //   startDate:
-        //     item.type === 'AGREEMENT_FORM'
-        //       ? dayjs(timeline.find((item: any) => item.timeline_type.name === 'First Draft').startDate).toDate()
-        //       : item.type === 'FIRST_DRAFT'
-        //         ? dayjs(timeline.find((item: any) => item.timeline_type.name === 'Agreement').startDate).toDate()
-        //         : item.type === 'FINAL_DRAFT'
-        //           ? dayjs(timeline.find((item: any) => item.timeline_type.name === 'Final Draft').startDate).toDate()
-        //           : dayjs(timeline.find((item: any) => item.timeline_type.name === 'Posting').startDate).toDate(),
-        //   endDate:
-        //     item.type === 'AGREEMENT_FORM'
-        //       ? dayjs(timeline.find((item: any) => item.timeline_type.name === 'First Draft').endDate).toDate()
-        //       : item.type === 'FIRST_DRAFT'
-        //         ? dayjs(timeline.find((item: any) => item.timeline_type.name === 'Agreement').endDate).toDate()
-        //         : item.type === 'FINAL_DRAFT'
-        //           ? dayjs(timeline.find((item: any) => item.timeline_type.name === 'Final Draft').endDate).toDate()
-        //           : dayjs(timeline.find((item: any) => item.timeline_type.name === 'Posting').endDate).toDate(),
-        // }));
-
-        // defaultRequirements.forEach(async (item) => {
-        //   await tx.campaignSubmissionRequirement.create({
-        //     data: {
-        //       campaignId: campaign.id,
-        //       submissionTypeId: item.submissionTypeId,
-        //       startDate: item.startDate,
-        //       endDate: item.endDate,
-        //       order: item.order,
-        //     },
-        //   });
-        // });
 
         // Create Campaign Timeline
         const timelines: CampaignTimeline[] = await Promise.all(
@@ -427,7 +387,7 @@ export const createCampaign = async (req: Request, res: Response) => {
         );
 
         // Connect to brand
-        if (hasBrand) {
+        if (campaignBrand) {
           // connect with brand
           await tx.campaign.update({
             where: {
@@ -470,8 +430,6 @@ export const createCampaign = async (req: Request, res: Response) => {
             campaign: true,
           },
         });
-
-        const filterTimelines = timelines.filter((timeline) => timeline.for === 'admin');
 
         await Promise.all(
           admins.map(async (admin: any) => {
@@ -561,8 +519,7 @@ export const createCampaign = async (req: Request, res: Response) => {
       },
     );
   } catch (error) {
-    console.log(error);
-    return res.status(400).json(error);
+    return res.status(400).json(error?.message);
   }
 };
 
@@ -761,9 +718,10 @@ export const getCampaignById = async (req: Request, res: Response) => {
         company: {
           include: {
             pic: true,
-            PackagesClient: {
-              where: {
-                status: 'active',
+            subscriptions: {
+              include: {
+                customPackage: true,
+                package: true,
               },
             },
           },
@@ -2806,8 +2764,6 @@ export const shortlistCreator = async (req: Request, res: Response) => {
             include: { submissionType: true },
             orderBy: { order: 'asc' },
           });
-
-          console.log(timelines);
 
           // Fetch all creators in one query
           const creatorIds = creators.map((c: any) => c.id);
