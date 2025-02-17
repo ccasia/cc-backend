@@ -297,7 +297,6 @@ export const createCampaign = async (req: Request, res: Response) => {
             brandTone: brandTone,
             productName: productName,
             spreadSheetURL: url,
-
             rawFootage: rawFootage || false,
             photos: photos || false,
             campaignCredits,

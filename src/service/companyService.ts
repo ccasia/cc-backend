@@ -229,7 +229,7 @@ export const generateCustomId = async (type: any) => {
         startsWith: firstLetter,
       },
     },
-    orderBy: { updatedAt: 'desc' }, // Get the latest ID
+    orderBy: { clientId: 'desc' }, // Get the latest ID
   });
 
   let nextId = `${firstLetter}01`; // Default if no user exists

@@ -899,23 +899,6 @@ export const adminManageDraft = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Submission not found' });
     }
 
-    //     await prisma.$transaction(async (prisma) => {
-    //       if (type === 'approve') {
-    //         const approveSubmission = await prisma.submission.update({
-    //           where: {
-    //             id: submission?.id,
-    //           },
-    //           data: {
-    //             status: 'APPROVED',
-    //             isReview: true,
-    //             feedback: feedback && {
-    //               create: {
-    //                 type: 'COMMENT',
-    //                 content: feedback,
-
-    //                 adminId: req.session.userid as string,
-    //               },
-
     await prisma.$transaction(
       async (prisma) => {
         if (type === 'approve') {
@@ -959,6 +942,7 @@ export const adminManageDraft = async (req: Request, res: Response) => {
               },
               submissionType: true,
               task: true,
+              video: true,
             },
           });
 
@@ -1018,7 +1002,9 @@ export const adminManageDraft = async (req: Request, res: Response) => {
               (elem: any) => elem.campaignId === submission.campaign.id,
             )?.amount;
 
-            await deductCredits(approveSubmission.campaignId, approveSubmission.userId, prisma as PrismaClient);
+            if (submission.campaign.campaignCredits !== null) {
+              await deductCredits(approveSubmission.campaignId, approveSubmission.userId, prisma as PrismaClient);
+            }
 
             await createInvoiceService(submission, userId, invoiceAmount);
 
@@ -1654,7 +1640,9 @@ export const adminManagePosting = async (req: Request, res: Response) => {
           data: { status: status as SubmissionStatus, isReview: true },
         });
 
-        await deductCredits(approvedSubmission.campaignId, approvedSubmission.userId, tx as PrismaClient);
+        if (submission.campaign.campaignCredits !== null) {
+          await deductCredits(approvedSubmission.campaignId, approvedSubmission.userId, tx as PrismaClient);
+        }
 
         if (taskInReview && doneColumnId) {
           await tx.task.update({

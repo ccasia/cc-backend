@@ -473,6 +473,7 @@ export const getUniqueClientId = async (req: Request, res: Response) => {
   const { type } = req.query;
   try {
     const id = await generateCustomId(type);
+    console.log(id);
 
     return res.status(200).json(id);
   } catch (error) {
