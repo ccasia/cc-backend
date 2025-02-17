@@ -156,8 +156,11 @@ export const getAllMediaObject = async (
       },
     });
 
+    console.log(res.data);
+
     return res.data;
   } catch (error) {
+    console.log(error);
     throw new Error(error);
   }
 };
