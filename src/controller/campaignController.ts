@@ -474,6 +474,7 @@ export const createCampaign = async (req: Request, res: Response) => {
             });
 
             // await applyCreditCampiagn(client.id, campaignCredits);
+            // await applyCreditCampiagn(client.id, campaignCredits);
 
             const { title, message } = notificationAdminAssign(campaign.name);
 
@@ -518,6 +519,7 @@ export const createCampaign = async (req: Request, res: Response) => {
       },
     );
   } catch (error) {
+    console.log(error);
     return res.status(400).json(error?.message);
   }
 };
