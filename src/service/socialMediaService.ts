@@ -149,7 +149,7 @@ export const getAllMediaObject = async (
   fields = ['comments_count', 'like_count', 'media_type', 'media_url', 'thumbnail_url', 'caption', 'permalink'],
 ) => {
   try {
-    const res = await axios.get(`https://graph.instagram.com/v22.0/${instaUserId}/media`, {
+    const res = await axios.get(`https://graph.instagram.com/v22.0/me/media`, {
       params: {
         access_token: accessToken,
         fields: fields.toString(),
