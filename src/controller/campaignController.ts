@@ -544,6 +544,7 @@ export const createCampaign = async (req: Request, res: Response) => {
       },
     );
   } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   }
 };
