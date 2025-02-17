@@ -153,14 +153,12 @@ export const getAllMediaObject = async (
       params: {
         access_token: accessToken,
         fields: fields.toString(),
+        limit: 60,
       },
     });
 
-    console.log(res.data);
-
     return res.data;
   } catch (error) {
-    console.log(error);
     throw new Error(error);
   }
 };
@@ -189,4 +187,11 @@ export const revokeInstagramPermission = async (accessToken: string, permissions
     console.log(error);
     throw new Error(error);
   }
+};
+
+export const calculateAverageLikes = (medias: [{ like_count: number }]) => {
+  const totalLikes = medias.reduce((acc, curr) => acc + curr.like_count, 0);
+  const numberOfPosts = medias.length;
+
+  return ((totalLikes / numberOfPosts) * 100).toFixed() || 0;
 };
