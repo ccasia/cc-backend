@@ -193,5 +193,5 @@ export const calculateAverageLikes = (medias: [{ like_count: number }]) => {
   const totalLikes = medias.reduce((acc, curr) => acc + curr.like_count, 0);
   const numberOfPosts = medias.length;
 
-  return ((totalLikes / numberOfPosts) * 100).toFixed() || 0;
+  return Math.round((totalLikes / numberOfPosts) * 100) || 0;
 };
