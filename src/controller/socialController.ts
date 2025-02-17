@@ -393,13 +393,9 @@ export const getInstagramOverview = async (req: Request, res: Response) => {
 
     const overview = await getInstagramOverviewService(access_token);
 
-    console.log(overview);
-
-    const medias = await getAllMediaObject(access_token, insta.user_id);
+    const medias = await getAllMediaObject(access_token, overview.user_id);
 
     const data = { user: { ...overview }, contents: [...medias.data] };
-
-    console.log(data);
 
     return res.status(200).json(data);
   } catch (error) {
