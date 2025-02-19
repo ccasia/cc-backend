@@ -597,31 +597,31 @@ export const draftSubmission = async (req: Request, res: Response) => {
         },
       });
 
-      if (!submission) {
-        return res.status(404).json({ message: 'Submission not found' });
-      }
+    if (!submission) {
+      return res.status(404).json({ message: 'Submission not found' });
+    }
 
+    // Move task creator from in progress to in review
+    if (submission.user.Board) {
       const inReviewColumn = await getColumnId({ userId: userid, columnName: 'In Review' });
 
-      // Move task creator from in progress to in review
-      if (submission.user.Board) {
-        const taskInProgress = await getTaskId({
-          columnName: 'In Progress',
-          boardId: submission.user.Board.id,
-          submissionId: submission.id,
-        });
+      const taskInProgress = await getTaskId({
+        columnName: 'In Progress',
+        boardId: submission.user.Board.id,
+        submissionId: submission.id,
+      });
 
-        if (taskInProgress) {
-          await prisma.task.update({
-            where: {
-              id: taskInProgress.id,
-            },
-            data: {
-              //  columnId: inReviewColumn,
-            },
-          });
-        }
+      if (taskInProgress && inReviewColumn) {
+        await prisma.task.update({
+          where: {
+            id: taskInProgress.id,
+          },
+          data: {
+            columnId: inReviewColumn,
+          },
+        });
       }
+    }
 
       const filePaths: any = {};
 
@@ -714,141 +714,15 @@ export const draftSubmission = async (req: Request, res: Response) => {
         { persistent: true },
       );
 
-      activeProcesses.set(submissionId, { status: 'queue' });
+    activeProcesses.set(submissionId, { status: 'queue' });
 
-      return res.status(200).json({ message: 'Video start processing' });
-    } catch (error) {
-      console.error('Draft submission error:', error);
-      return res.status(400).json({ message: 'Failed to process submission', error });
-    } finally {
-      if (channel) await channel.close();
-      if (amqp) await amqp.close();
-    }
+    return res.status(200).json({ message: 'Video start processing' });
   } catch (error) {
-    console.error('Draft submission error:', error);
-    return res.status(400).json({ message: 'Failed to process submission', error });
-  }
-};
-
-export const postingSubmission = async (req: Request, res: Response) => {
-  const { submissionId, postingLink } = req.body;
-
-  try {
-    const submission = await prisma.submission.update({
-      where: {
-        id: submissionId,
-      },
-      data: {
-        content: postingLink,
-        status: 'PENDING_REVIEW',
-        submissionDate: dayjs().format(),
-      },
-      include: {
-        campaign: {
-          select: {
-            campaignAdmin: {
-              select: {
-                adminId: true,
-                admin: {
-                  select: {
-                    user: {
-                      select: {
-                        Board: true,
-                        id: true,
-                      },
-                    },
-                  },
-                },
-              },
-            },
-            name: true,
-          },
-        },
-        user: true,
-        task: true,
-      },
-    });
-
-    const inReviewColumnId = await getColumnId({ userId: submission.userId, columnName: 'In Review' });
-    const inProgress = await getColumnId({ userId: submission.userId, columnName: 'In Progress' });
-
-    const taskInProgress = submission.task.find((item) => item.columnId === inProgress);
-
-    // Move from column In Progress to In review
-    if (inReviewColumnId) {
-      await prisma.task.update({
-        where: {
-          id: taskInProgress?.id,
-        },
-        data: {
-          columnId: inReviewColumnId,
-        },
-      });
-    }
-
-    const { title, message } = notificationPosting(submission.campaign.name, 'Creator');
-
-    const { title: adminTitle, message: adminMessage } = notificationPosting(
-      submission.campaign.name,
-      'Admin',
-      submission.user.name as string,
-    );
-
-    for (const admin of submission.campaign.campaignAdmin) {
-      const notification = await saveNotification({
-        userId: admin.adminId,
-        message: adminMessage,
-        title: adminTitle,
-        entity: 'Post',
-        creatorId: submission.userId,
-        entityId: submission.campaignId,
-      });
-
-      if (admin?.admin.user.Board) {
-        const column = await getColumnId({
-          userId: admin.admin.user.id,
-          boardId: admin.admin.user.Board.id,
-          columnName: 'Actions Needed',
-        });
-
-        if (column) {
-          await createNewTask({
-            submissionId: submission.id,
-            name: 'Posting Submission',
-            columnId: column,
-            userId: admin.admin.user.id,
-            position: 0,
-          });
-        }
-      }
-
-      io.to(clients.get(admin.adminId)).emit('notification', notification);
-      io.to(clients.get(admin.adminId)).emit('newSubmission');
-    }
-
-    const notification = await saveNotification({
-      userId: submission.userId,
-      message: message,
-      title: title,
-      entity: 'Post',
-      entityId: submission.campaignId,
-    });
-
-    io.to(clients.get(submission.userId)).emit('notification', notification);
-
-    const allSuperadmins = await prisma.user.findMany({
-      where: {
-        role: 'superadmin',
-      },
-    });
-
-    for (const admin of allSuperadmins) {
-      io.to(clients.get(admin.id)).emit('newSubmission');
-    }
-
-    return res.status(200).json({ message: 'Successfully submitted' });
-  } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
+  } finally {
+    if (channel) await channel.close();
+    if (amqp) await amqp.close();
   }
 };
 

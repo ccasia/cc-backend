@@ -229,6 +229,7 @@ const processVideo = async (
         resolve();
       })
       .on('error', (err) => {
+        console.log(err);
         if (err.message.includes('ffmpeg was killed')) {
           // Handle known errors
           resolve();
