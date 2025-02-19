@@ -207,9 +207,11 @@ const processVideo = async (
           io.to(clients.get(userid)).emit('progress', { submissionId, progress: 100 });
         }
         fs.unlinkSync(inputPath);
+        fs.unlinkSync(outputPath);
         resolve();
       })
       .on('error', (err) => {
+        console.log(err);
         if (err.message.includes('ffmpeg was killed')) {
           // Handle known errors
           resolve();

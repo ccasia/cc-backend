@@ -579,13 +579,14 @@ export const draftSubmission = async (req: Request, res: Response) => {
 
     // Move task creator from in progress to in review
     if (submission.user.Board) {
+      const inReviewColumn = await getColumnId({ userId: userid, columnName: 'In Review' });
+
       const taskInProgress = await getTaskId({
         columnName: 'In Progress',
         boardId: submission.user.Board.id,
         submissionId: submission.id,
       });
 
-      const inReviewColumn = await getColumnId({ userId: userid, columnName: 'In Review' });
 
       if (taskInProgress && inReviewColumn) {
         await prisma.task.update({
@@ -633,23 +634,9 @@ export const draftSubmission = async (req: Request, res: Response) => {
 
     activeProcesses.set(submissionId, { status: 'queue' });
 
-    // if (submission.campaign.spreadSheetURL) {
-    //   const spreadSheetId = submission.campaign.spreadSheetURL.split('/d/')[1].split('/')[0];
-
-    //   await createNewRowData({
-    //     creatorInfo: {
-    //       name: submission.user.name,
-    //       username: submission.user.creator?.instagram,
-    //       postingDate: dayjs().format('LL'),
-    //       caption: caption,
-    //       videoLink: `https://storage.googleapis.com/${process.env.BUCKET_NAME as string}/${submission?.submissionType.type}/${`${submission?.id}_draft.mp4`}?v=${dayjs().format()}`,
-    //     } as any,
-    //     spreadSheetId: spreadSheetId,
-    //   });
-    // }
-
     return res.status(200).json({ message: 'Video start processing' });
   } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   } finally {
     if (channel) await channel.close();
