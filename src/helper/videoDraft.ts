@@ -5,7 +5,7 @@ import Ffmpeg from 'fluent-ffmpeg';
 import ffmpegPath from '@ffmpeg-installer/ffmpeg';
 import ffprobePath from '@ffprobe-installer/ffprobe';
 import fs from 'fs';
-import { uploadPitchVideo,uploadImage } from '@configs/cloudStorage.config';
+import { uploadPitchVideo, uploadImage } from '@configs/cloudStorage.config';
 import amqplib from 'amqplib';
 import { activeProcesses, clients, io } from '../server';
 import { Entity, PrismaClient } from '@prisma/client';
@@ -42,12 +42,12 @@ const processVideo = async (
   return new Promise<void>((resolve, reject) => {
     const userid = videoData.userid;
     const command = Ffmpeg(inputPath)
-    .outputOptions([
+      .outputOptions([
         '-c:v libx264',
         '-crf 26',
         '-pix_fmt yuv420p',
         '-preset ultrafast',
-        '-map 0:v:0', 
+        '-map 0:v:0',
         '-map 0:a:0?',
         '-threads 4',
       ])
@@ -75,7 +75,7 @@ const processVideo = async (
             resolve(data.size);
           });
         });
-        
+
         // const publicURL = await uploadPitchVideo(
         //   outputPath,
         //   fileName,
@@ -226,6 +226,8 @@ const processVideo = async (
           console.warn(`File not found: ${inputPath}`);
         }
 
+        fs.unlinkSync(outputPath);
+
         resolve();
       })
       .on('error', (err) => {
@@ -273,13 +275,9 @@ const processVideo = async (
               );
 
               // Upload processed video
-              const videoPublicURL = await uploadPitchVideo(
-                videoFile.outputPath, 
-                videoFile.fileName, 
-                content.folder
-              );
+              const videoPublicURL = await uploadPitchVideo(videoFile.outputPath, videoFile.fileName, content.folder);
 
-              console.log("✅ Draft video uploaded successfully:", videoPublicURL);
+              console.log('✅ Draft video uploaded successfully:', videoPublicURL);
 
               // Save to database
               await prisma.video.create({
@@ -298,13 +296,9 @@ const processVideo = async (
           if (content.filePaths.rawFootages && content.filePaths.rawFootages.length > 0) {
             for (const rawFootagePath of content.filePaths.rawFootages) {
               const rawFootageFileName = `${content.submissionId}_${path.basename(rawFootagePath)}`;
-              const rawFootagePublicURL = await uploadPitchVideo(
-                rawFootagePath,
-                rawFootageFileName,
-                content.folder
-              );
+              const rawFootagePublicURL = await uploadPitchVideo(rawFootagePath, rawFootageFileName, content.folder);
 
-              console.log("✅ Raw footage uploaded successfully:", rawFootagePublicURL);
+              console.log('✅ Raw footage uploaded successfully:', rawFootagePublicURL);
 
               // Create a new RawFootage entry in the database
               await prisma.rawFootage.create({
@@ -315,20 +309,19 @@ const processVideo = async (
                 },
               });
 
-              console.log("✅ Raw footage entry created in the DB.");
+              console.log('✅ Raw footage entry created in the DB.');
             }
           } else {
-            console.log("❌ No raw footages found for processing.");
+            console.log('❌ No raw footages found for processing.');
           }
 
-
-          // For photos 
+          // For photos
           if (content.filePaths.photos && content.filePaths.photos.length > 0) {
             for (const photoPath of content.filePaths.photos) {
               const photoFileName = `${content.submissionId}_${path.basename(photoPath)}`;
               const photoPublicURL = await uploadImage(photoPath, photoFileName, content.folder);
 
-              console.log("✅ Photo uploaded successfully:", photoPublicURL);
+              console.log('✅ Photo uploaded successfully:', photoPublicURL);
 
               // Save photo URL to database
               await prisma.photo.create({
@@ -339,10 +332,10 @@ const processVideo = async (
                 },
               });
 
-              console.log("✅ Photo entry created in the DB.");
+              console.log('✅ Photo entry created in the DB.');
             }
           } else {
-            console.log("❌ No photos found for processing.");
+            console.log('❌ No photos found for processing.');
           }
 
           // Check submission requirements and update status
@@ -373,13 +366,13 @@ const processVideo = async (
               const hasVideo = video.length > 0;
               const hasRawFootage = campaign.rawFootage ? rawFootages.length > 0 : true;
               const hasPhotos = campaign.photos ? photos.length > 0 : true;
-          
+
               allDeliverablesSent = hasVideo && hasRawFootage && hasPhotos;
             } else if (submissionTypeName === 'FINAL_DRAFT') {
               // For final draft, only video submission is needed
               allDeliverablesSent = video.length > 0;
             }
-          
+
             // Update submission status based on deliverable checks
             if (allDeliverablesSent) {
               await prisma.submission.update({
