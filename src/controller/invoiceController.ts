@@ -820,6 +820,7 @@ export const attachInvoicePDF = async (tenantId: string, invoiceId: string, file
 
 export const generateInvoice = async (req: Request, res: Response) => {
   const { userId, campaignId } = req.body;
+
   try {
     const creator = await prisma.shortListedCreator.findFirst({
       where: {

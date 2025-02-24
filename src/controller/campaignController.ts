@@ -268,6 +268,7 @@ export const createCampaign = async (req: Request, res: Response) => {
 
         const existingClient = await tx.company.findUnique({
           where: { id: client.id },
+          include: { subscriptions: { where: { status: 'ACTIVE' } } },
         });
 
         if (!existingClient) throw new Error('Company not found');
@@ -299,9 +300,6 @@ export const createCampaign = async (req: Request, res: Response) => {
             spreadSheetURL: url,
             rawFootage: rawFootage || false,
             photos: photos || false,
-            campaignCredits,
-            creditsPending: campaignCredits,
-            creditsUtilized: 0,
             agreementTemplate: {
               connect: {
                 id: agreementFrom.id,
@@ -331,6 +329,14 @@ export const createCampaign = async (req: Request, res: Response) => {
                 language: audienceLanguage,
                 creator_persona: audienceCreatorPersona,
                 user_persona: audienceUserPersona,
+              },
+            },
+            campaignCredits,
+            creditsPending: campaignCredits,
+            creditsUtilized: 0,
+            subscription: {
+              connect: {
+                id: existingClient.subscriptions[0].id,
               },
             },
           },
@@ -508,6 +514,7 @@ export const createCampaign = async (req: Request, res: Response) => {
         );
 
         logChange('Campaign Created', campaign.id, req);
+
         if (io) {
           io.emit('campaign');
         }
@@ -518,7 +525,6 @@ export const createCampaign = async (req: Request, res: Response) => {
       },
     );
   } catch (error) {
-    console.log(error);
     return res.status(400).json(error?.message);
   }
 };

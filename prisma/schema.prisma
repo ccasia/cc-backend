@@ -361,12 +361,11 @@ model Campaign {
   name                          String
   description                   String
   status                        CampaignStatus                  @default(SCHEDULED)
-  createdAt                     DateTime                        @default(now())
-  updatedAt                     DateTime                        @updatedAt
   campaignCredits               Int?
   creditsPending                Int?
   creditsUtilized               Int?
   brandId                       String?
+  subscriptionId                String?
   companyId                     String?
   brandTone                     String?
   productName                   String?
@@ -379,6 +378,7 @@ model Campaign {
   brand                         Brand?                          @relation(fields: [brandId], references: [id])
   company                       Company?                        @relation(fields: [companyId], references: [id])
   event                         Event?                          @relation(fields: [eventId], references: [id])
+  subscription                  Subscription?                   @relation(fields: [subscriptionId], references: [id])
   campaignAdmin                 CampaignAdmin[]
   campaignBrief                 CampaignBrief?
   campaignLogs                  CampaignLog[]
@@ -402,6 +402,9 @@ model Campaign {
 
   rawFootages RawFootage[]
   photosData  Photo[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model BookMarkCampaign {
@@ -719,19 +722,18 @@ model SubmissionType {
 }
 
 model Feedback {
-  id           String        @id @unique @default(cuid())
-  content      String?
-  type         FeedbackType?
-  reasons      String[]
-  videosToUpdate  String[]      
-  submissionId String
-  adminId      String
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  admin        User          @relation(fields: [adminId], references: [id])
-  submission   Submission    @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  id             String        @id @unique @default(cuid())
+  content        String?
+  type           FeedbackType?
+  reasons        String[]
+  videosToUpdate String[]
+  submissionId   String
+  adminId        String
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  admin          User          @relation(fields: [adminId], references: [id])
+  submission     Submission    @relation(fields: [submissionId], references: [id], onDelete: Cascade)
 }
-
 
 model Invoice {
   id            String        @id @unique @default(cuid())
@@ -891,12 +893,8 @@ model Subscription {
   package         Package?           @relation(fields: [packageId], references: [id])
   customPackage   CustomPackage?     @relation(fields: [customPackageId], references: [id])
   expiredAt       DateTime
+  campaign        Campaign[]
 }
-
-// model SubsciptionHistory {
-//   id String @id @unique @default(cuid())
-//   subsciptionId 
-// }
 
 model CustomPackage {
   id String @id @unique @default(cuid())

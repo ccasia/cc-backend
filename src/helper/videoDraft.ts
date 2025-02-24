@@ -55,7 +55,7 @@ const processVideo = async (
       .save(outputPath)
       .on('progress', (progress) => {
         activeProcesses.set(submissionId, command);
-        const percentage = Math.round(progress.percent);
+        const percentage = Math.round(progress.percent as number);
         if (io) {
           io.to(clients.get(userid)).emit('progress', {
             progress: percentage,
@@ -68,30 +68,15 @@ const processVideo = async (
         }
       })
       .on('end', async () => {
-        const size = await new Promise((resolve, reject) => {
-          fs.stat(outputPath, (err, data) => {
-            if (err) {
-              reject();
-            }
-            resolve(data.size);
-          });
-        });
-
-        // const publicURL = await uploadPitchVideo(
-        //   outputPath,
-        //   fileName,
-        //   folder,
-        //   (data: number) => {
-        //     if (io) {
-        //       io.to(clients.get(userid)).emit('progress', {
-        //         progress: data,
-        //         submissionId: submissionId,
-        //         name: 'Uploading Start',
-        //       });
+        const size = await fs.promises.stat(outputPath);
+        // const size = await new Promise((resolve, reject) => {
+        //   fs.stat(outputPath, (err, data) => {
+        //     if (err) {
+        //       reject();
         //     }
-        //   },
-        //   size as number,
-        // );
+        //     resolve(data.size);
+        //   });
+        // });
 
         const data = await prisma.submission.update({
           where: {
@@ -127,84 +112,85 @@ const processVideo = async (
                   },
                 },
               },
-              user: { include: { creator: true } },
             },
+            user: { include: { creator: true } },
+          },
+        });
+
+        if (data.campaign.spreadSheetURL) {
+          const spreadSheetId = data.campaign.spreadSheetURL.split('/d/')[1].split('/')[0];
+          await createNewRowData({
+            creatorInfo: {
+              name: data.user.name as string,
+              username: data.user.creator?.instagram as string,
+              postingDate: dayjs().format('LL'),
+              caption,
+              videoLink: `https://storage.googleapis.com/${process.env.BUCKET_NAME}/${data?.submissionType.type}/${data?.id}_draft.mp4?v=${dayjs().toISOString()}`,
+            },
+            spreadSheetId,
           });
+        }
 
-          if (data.campaign.spreadSheetURL) {
-            const spreadSheetId = data.campaign.spreadSheetURL.split('/d/')[1].split('/')[0];
-            await createNewRowData({
-              creatorInfo: {
-                name: data.user.name as string,
-                username: data.user.creator?.instagram as string,
-                postingDate: dayjs().format('LL'),
-                caption,
-                videoLink: `https://storage.googleapis.com/${process.env.BUCKET_NAME}/${data?.submissionType.type}/${data?.id}_draft.mp4?v=${dayjs().toISOString()}`,
-              },
-              spreadSheetId,
-            });
-          }
+        const { title, message } = notificationDraft(data.campaign.name, 'Creator');
 
-          const { title, message } = notificationDraft(data.campaign.name, 'Creator');
+        const notification = await saveNotification({
+          userId: data.userId,
+          message: message,
+          title: title,
+          entity: 'Draft',
+          entityId: data.campaign.id,
+        });
 
+        io?.to(clients.get(data.userId)).emit('notification', notification);
+
+        const { title: adminTitle, message: adminMessage } = notificationDraft(
+          data.campaign.name,
+          'Admin',
+          data.user.name as string,
+        );
+
+        for (const item of data.campaign.campaignAdmin) {
           const notification = await saveNotification({
-            userId: data.userId,
-            message: message,
-            title: title,
+            userId: item.adminId,
+            message: adminMessage,
+            creatorId: userid,
+            title: adminTitle,
             entity: 'Draft',
-            entityId: data.campaign.id,
+            entityId: data.campaignId,
           });
 
-          io?.to(clients.get(data.userId)).emit('notification', notification);
+          if (item.admin.user.Board) {
+            const actionNeededColumn = item.admin.user.Board.columns.find((item) => item.name === 'Actions Needed');
 
-          const { title: adminTitle, message: adminMessage } = notificationDraft(
-            data.campaign.name,
-            'Admin',
-            data.user.name as string,
-          );
-
-          for (const item of data.campaign.campaignAdmin) {
-            const notification = await saveNotification({
-              userId: item.adminId,
-              message: adminMessage,
-              creatorId: userid,
-              title: adminTitle,
-              entity: 'Draft',
-              entityId: data.campaignId,
+            const taskInDone = await getTaskId({
+              boardId: item.admin.user.Board.id,
+              submissionId: data.id,
+              columnName: 'Done',
             });
 
-            if (item.admin.user.Board) {
-              const actionNeededColumn = item.admin.user.Board.columns.find((item) => item.name === 'Actions Needed');
-
-              const taskInDone = await getTaskId({
-                boardId: item.admin.user.Board.id,
-                submissionId: data.id,
-                columnName: 'Done',
-              });
-
-              if (actionNeededColumn) {
-                if (taskInDone) {
-                  await updateTask({
-                    taskId: taskInDone.id,
-                    toColumnId: actionNeededColumn.id,
-                    userId: item.admin.user.id,
-                  });
-                } else {
-                  await createNewTask({
-                    submissionId: data.id,
-                    name: 'Draft Submission',
-                    userId: item.admin.user.id,
-                    position: 1,
-                    columnId: actionNeededColumn.id,
-                  });
-                }
+            if (actionNeededColumn) {
+              if (taskInDone) {
+                await updateTask({
+                  taskId: taskInDone.id,
+                  toColumnId: actionNeededColumn.id,
+                  userId: item.admin.user.id,
+                });
+              } else {
+                await createNewTask({
+                  submissionId: data.id,
+                  name: 'Draft Submission',
+                  userId: item.admin.user.id,
+                  position: 1,
+                  columnId: actionNeededColumn.id,
+                });
               }
             }
-
-            if (io) {
-              io.to(clients.get(item.adminId)).emit('notification', notification);
-            }
           }
+
+          if (io) {
+            io.to(clients.get(item.adminId)).emit('notification', notification);
+          }
+        }
 
         activeProcesses.delete(submissionId);
 
@@ -238,13 +224,12 @@ const processVideo = async (
     const channel = await conn.createChannel();
     await channel.assertQueue('draft', { durable: true });
     await channel.purgeQueue('draft');
-    console.log('Consumer 2 Starting...');
+    console.log('Consumer 1 Starting...');
     const startUsage = process.cpuUsage();
 
     await channel.consume('draft', async (msg) => {
       if (msg !== null) {
         const content: any = JSON.parse(msg.content.toString());
-        //  console.log("message content", content);
 
         try {
           // For videos
@@ -263,8 +248,6 @@ const processVideo = async (
 
               // Upload processed video
               const videoPublicURL = await uploadPitchVideo(videoFile.outputPath, videoFile.fileName, content.folder);
-
-              console.log('✅ Draft video uploaded successfully:', videoPublicURL);
 
               // Save to database
               await prisma.video.create({
