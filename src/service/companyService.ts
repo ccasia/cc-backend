@@ -388,13 +388,15 @@ export const getRemainingCredits = async (clientId: string) => {
 
     if (!client) return null;
 
-    const totalCreditsUsed = client.campaign.reduce((sum, campaign) => sum + (campaign?.campaignCredits || 0), 0);
-
     const activeSubscription = client.subscriptions[0];
 
     if (!activeSubscription || typeof activeSubscription.totalCredits !== 'number') {
       throw new Error('No active subscription or invalid total credits');
     }
+
+    const totalCreditsUsed = client.campaign
+      .filter((campaign) => campaign.subscriptionId !== null && campaign.subscriptionId === activeSubscription.id)
+      .reduce((sum, campaign) => sum + (campaign?.campaignCredits || 0), 0);
 
     return activeSubscription.totalCredits - totalCreditsUsed;
   } catch (error) {

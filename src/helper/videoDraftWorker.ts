@@ -31,7 +31,7 @@ interface VideoFile {
 }
 
 const processVideo = async (
-  videoData: any,
+  content: any,
   inputPath: string,
   outputPath: string,
   submissionId: string,
@@ -40,7 +40,8 @@ const processVideo = async (
   caption: string,
 ) => {
   return new Promise<void>((resolve, reject) => {
-    const { userid, inputPath, outputPath, submissionId, fileName, folder, caption } = videoData;
+    const { userid } = content;
+    // const { userid, inputPath, outputPath, submissionId, fileName, folder, caption } = videoData;
     const command = Ffmpeg(inputPath)
       .outputOptions([
         '-c:v libx264',
@@ -68,24 +69,12 @@ const processVideo = async (
         }
       })
       .on('end', async () => {
-        const size = await fs.promises.stat(outputPath);
-        // const size = await new Promise((resolve, reject) => {
-        //   fs.stat(outputPath, (err, data) => {
-        //     if (err) {
-        //       reject();
-        //     }
-        //     resolve(data.size);
-        //   });
-        // });
-
         const data = await prisma.submission.update({
           where: {
             id: submissionId,
           },
           data: {
-            //  content: publicURL,
             caption: caption,
-            //  status: 'PENDING_REVIEW',
             submissionDate: dayjs().format(),
           },
           include: {
@@ -125,7 +114,9 @@ const processVideo = async (
               username: data.user.creator?.instagram as string,
               postingDate: dayjs().format('LL'),
               caption,
-              videoLink: `https://storage.googleapis.com/${process.env.BUCKET_NAME}/${data?.submissionType.type}/${data?.id}_draft.mp4?v=${dayjs().toISOString()}`,
+              videoLink: `https://storage.googleapis.com/${process.env.BUCKET_NAME}/${data?.submissionType.type}/${
+                data?.id
+              }_draft.mp4?v=${dayjs().toISOString()}`,
             },
             spreadSheetId,
           });
@@ -195,7 +186,10 @@ const processVideo = async (
         activeProcesses.delete(submissionId);
 
         if (io) {
-          io.to(clients.get(userid)).emit('progress', { submissionId, progress: 100 });
+          io.to(clients.get(userid)).emit('progress', {
+            submissionId,
+            progress: 100,
+          });
         }
 
         // fs.unlinkSync(inputPath);
@@ -204,8 +198,6 @@ const processVideo = async (
         } else {
           console.warn(`File not found: ${inputPath}`);
         }
-
-        fs.unlinkSync(outputPath);
 
         resolve();
       })
@@ -224,17 +216,18 @@ const processVideo = async (
     const channel = await conn.createChannel();
     await channel.assertQueue('draft', { durable: true });
     await channel.purgeQueue('draft');
-    console.log('Consumer 2 Starting...');
+    console.log('Consumer 1 Starting...');
     const startUsage = process.cpuUsage();
 
     await channel.consume('draft', async (msg) => {
       if (msg !== null) {
         const content: any = JSON.parse(msg.content.toString());
+        const { filePaths } = content;
 
         try {
           // For videos
-          if (content.filePaths.video && content.filePaths.video.length > 0) {
-            const videoPromises = content.filePaths.video.map(async (videoFile: VideoFile) => {
+          if (filePaths?.video?.length) {
+            const videoPromises = filePaths.video.map(async (videoFile: VideoFile) => {
               // Process video
               await processVideo(
                 content,
@@ -246,8 +239,24 @@ const processVideo = async (
                 content.caption,
               );
 
+              const { size } = await fs.promises.stat(videoFile.outputPath);
+
               // Upload processed video
-              const videoPublicURL = await uploadPitchVideo(videoFile.outputPath, videoFile.fileName, content.folder);
+              const videoPublicURL = await uploadPitchVideo(
+                videoFile.outputPath,
+                videoFile.fileName,
+                content.folder,
+                (data: number) => {
+                  io?.to(clients.get(content.userid)!).emit('progress', {
+                    progress: data,
+                    submissionId: content.submissionId,
+                    name: 'Uploading Start',
+                  });
+                },
+                size,
+              );
+
+              await fs.promises.unlink(videoFile.outputPath);
 
               // Save to database
               await prisma.video.create({
@@ -263,8 +272,8 @@ const processVideo = async (
           }
 
           //For Raw Footages
-          if (content.filePaths.rawFootages && content.filePaths.rawFootages.length > 0) {
-            for (const rawFootagePath of content.filePaths.rawFootages) {
+          if (filePaths?.rawFootages?.length) {
+            for (const rawFootagePath of filePaths.rawFootages) {
               const rawFootageFileName = `${content.submissionId}_${path.basename(rawFootagePath)}`;
               const rawFootagePublicURL = await uploadPitchVideo(rawFootagePath, rawFootageFileName, content.folder);
 
@@ -281,13 +290,11 @@ const processVideo = async (
 
               console.log('✅ Raw footage entry created in the DB.');
             }
-          } else {
-            console.log('❌ No raw footages found for processing.');
           }
 
           // For photos
-          if (content.filePaths.photos && content.filePaths.photos.length > 0) {
-            for (const photoPath of content.filePaths.photos) {
+          if (filePaths?.photos?.length) {
+            for (const photoPath of filePaths.photos) {
               const photoFileName = `${content.submissionId}_${path.basename(photoPath)}`;
               const photoPublicURL = await uploadImage(photoPath, photoFileName, content.folder);
 
@@ -302,10 +309,10 @@ const processVideo = async (
                 },
               });
 
+              await fs.promises.unlink(photoPath);
+
               console.log('✅ Photo entry created in the DB.');
             }
-          } else {
-            console.log('❌ No photos found for processing.');
           }
 
           // Check submission requirements and update status
@@ -316,6 +323,7 @@ const processVideo = async (
               rawFootages: true,
               photos: true,
               submissionType: true,
+              userId: true,
               campaign: {
                 select: {
                   rawFootage: true,
@@ -359,6 +367,10 @@ const processVideo = async (
                   status: 'IN_PROGRESS',
                 },
               });
+            }
+
+            if (io) {
+              io.to(clients.get(submission.userId)).emit('updateSubmission');
             }
           }
 
