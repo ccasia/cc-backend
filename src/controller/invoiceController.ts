@@ -414,7 +414,9 @@ export const updateInvoice = async (req: Request, res: Response) => {
           campaignId,
         },
         include: {
-          creator: true,
+          creator: {
+            include: { user: { select: { email: true } } },
+          },
           user: true,
           campaign: {
             include: {
@@ -435,31 +437,38 @@ export const updateInvoice = async (req: Request, res: Response) => {
       let contactID: any;
       let invoiceData: any;
 
-      if (!newContact) {
-        contactID = invoice.creator.xeroContactId;
+      const contact = await getContactFromXero(invoice?.creator?.user?.email as string);
+
+      if (contact) {
+        contactID = contact;
       } else {
         const contact: any = await createXeroContact(bankInfo, invoice.creator, invoice.user, invoiceFrom);
         contactID = contact[0].contactID;
-
-        await tx.creator.update({
-          where: {
-            id: invoice.creator.id,
-          },
-          data: {
-            xeroContactId: contactID,
-          },
-        });
       }
 
-      // if (invoice.creator.xeroContactId) {
+      await tx.creator.update({
+        where: {
+          id: invoice.creator.id,
+        },
+        data: {
+          xeroContactId: contactID,
+        },
+      });
+
+      // if (!newContact) {
       //   contactID = invoice.creator.xeroContactId;
-      //   invoiceData = await createXeroInvoiceLocal(
-      //     contactID,
-      //     items,
-      //     dueDate,
-      //     invoice.campaign.name,
-      //     invoice.invoiceNumber,
-      //   );
+      // } else {
+      //   const contact: any = await createXeroContact(bankInfo, invoice.creator, invoice.user, invoiceFrom);
+      //   contactID = contact[0].contactID;
+
+      //   await tx.creator.update({
+      //     where: {
+      //       id: invoice.creator.id,
+      //     },
+      //     data: {
+      //       xeroContactId: contactID,
+      //     },
+      //   });
       // }
 
       if (status == 'approved') {
@@ -510,6 +519,7 @@ export const updateInvoice = async (req: Request, res: Response) => {
 
     return res.status(200).json(invoice);
   } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -734,9 +744,12 @@ export const createXeroContact = async (bankInfo: any, creator: any, user: any, 
     bankAccountDetails: bankInfo.accountNumber,
   };
 
-  const response = await xero.accountingApi.createContacts(xero.tenants[0].tenantId, { contacts: [contact] });
-
-  return response.body.contacts;
+  try {
+    const response = await xero.accountingApi.createContacts(xero.tenants[0].tenantId, { contacts: [contact] });
+    return response.body.contacts;
+  } catch (error) {
+    return error;
+  }
 };
 
 export const createXeroInvoiceLocal = async (
@@ -923,5 +936,23 @@ export const deleteInvoice = async (req: Request, res: Response) => {
     return res.status(200).json({ message: 'Successfully deleted' });
   } catch (error) {
     return res.status(400).json(error);
+  }
+};
+
+const getContactFromXero = async (contactEmail: string) => {
+  try {
+    const res = await xero.accountingApi.getContacts(
+      xero.tenants[0].tenantId,
+      undefined,
+      `EmailAddress=="${contactEmail}"`,
+    );
+
+    if (res.body.contacts?.length) {
+      return res?.body?.contacts[0].contactID;
+    }
+
+    return null;
+  } catch (error) {
+    throw new Error(error);
   }
 };
