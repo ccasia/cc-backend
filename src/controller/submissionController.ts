@@ -587,7 +587,6 @@ export const draftSubmission = async (req: Request, res: Response) => {
         submissionId: submission.id,
       });
 
-
       if (taskInProgress && inReviewColumn) {
         await prisma.task.update({
           where: {
@@ -1243,245 +1242,245 @@ export const postingSubmission = async (req: Request, res: Response) => {
   }
 };
 
-export const adminManagePosting = async (req: Request, res: Response) => {
-  const { status, submissionId } = req.body;
+// export const adminManagePosting = async (req: Request, res: Response) => {
+//   const { status, submissionId } = req.body;
 
-  const userId = req.session.userid;
+//   const userId = req.session.userid;
 
-  try {
-    const submission = await prisma.submission.findUnique({
-      where: {
-        id: submissionId,
-      },
-      include: {
-        user: {
-          include: {
-            creator: true,
-            paymentForm: true,
-            creatorAgreement: true,
-            Board: true,
-          },
-        },
-        campaign: {
-          include: {
-            campaignBrief: true,
-            campaignAdmin: {
-              include: {
-                admin: {
-                  select: {
-                    role: true,
-                    user: {
-                      select: {
-                        Board: true,
-                        id: true,
-                      },
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
-        task: true,
-      },
-    });
+//   try {
+//     const submission = await prisma.submission.findUnique({
+//       where: {
+//         id: submissionId,
+//       },
+//       include: {
+//         user: {
+//           include: {
+//             creator: true,
+//             paymentForm: true,
+//             creatorAgreement: true,
+//             Board: true,
+//           },
+//         },
+//         campaign: {
+//           include: {
+//             campaignBrief: true,
+//             campaignAdmin: {
+//               include: {
+//                 admin: {
+//                   select: {
+//                     role: true,
+//                     user: {
+//                       select: {
+//                         Board: true,
+//                         id: true,
+//                       },
+//                     },
+//                   },
+//                 },
+//               },
+//             },
+//           },
+//         },
+//         task: true,
+//       },
+//     });
 
-    if (!submission) {
-      return res.status(404).json({ message: 'Submission not found.' });
-    }
+//     if (!submission) {
+//       return res.status(404).json({ message: 'Submission not found.' });
+//     }
 
-    if (status === 'APPROVED') {
-      await prisma.submission.update({
-        where: {
-          id: submission.id,
-        },
-        data: {
-          status: status as SubmissionStatus,
-          isReview: true,
-        },
-      });
+//     if (status === 'APPROVED') {
+//       await prisma.submission.update({
+//         where: {
+//           id: submission.id,
+//         },
+//         data: {
+//           status: status as SubmissionStatus,
+//           isReview: true,
+//         },
+//       });
 
-      const inReviewColumn = await getColumnId({ userId: submission?.userId, columnName: 'In Review' });
+//       const inReviewColumn = await getColumnId({ userId: submission?.userId, columnName: 'In Review' });
 
-      const doneColumnId = await getColumnId({ userId: submission?.userId, columnName: 'Done' });
+//       const doneColumnId = await getColumnId({ userId: submission?.userId, columnName: 'Done' });
 
-      const taskInReview = submission.task.find((item) => item.columnId === inReviewColumn);
+//       const taskInReview = submission.task.find((item) => item.columnId === inReviewColumn);
 
-      // Move from column in review to Done
-      await prisma.task.update({
-        where: {
-          id: taskInReview?.id,
-        },
-        data: {
-          columnId: doneColumnId,
-        },
-      });
+//       // Move from column in review to Done
+//       await prisma.task.update({
+//         where: {
+//           id: taskInReview?.id,
+//         },
+//         data: {
+//           columnId: doneColumnId,
+//         },
+//       });
 
-      const invoiceAmount = submission.user.creatorAgreement.find(
-        (elem) => elem.campaignId === submission.campaign.id,
-      )?.amount;
+//       const invoiceAmount = submission.user.creatorAgreement.find(
+//         (elem) => elem.campaignId === submission.campaign.id,
+//       )?.amount;
 
-      const invoice = await createInvoiceService(submission, userId, invoiceAmount);
+//       const invoice = await createInvoiceService(submission, userId, invoiceAmount);
 
-      const shortlistedCreator = await prisma.shortListedCreator.findFirst({
-        where: {
-          AND: [{ userId: submission.userId }, { campaignId: submission.campaignId }],
-        },
-      });
+//       const shortlistedCreator = await prisma.shortListedCreator.findFirst({
+//         where: {
+//           AND: [{ userId: submission.userId }, { campaignId: submission.campaignId }],
+//         },
+//       });
 
-      if (!shortlistedCreator) {
-        return res.status(404).json({ message: 'Shortlisted creator not found.' });
-      }
+//       if (!shortlistedCreator) {
+//         return res.status(404).json({ message: 'Shortlisted creator not found.' });
+//       }
 
-      await prisma.shortListedCreator.update({
-        where: {
-          id: shortlistedCreator.id,
-        },
-        data: {
-          isCampaignDone: true,
-        },
-      });
+//       await prisma.shortListedCreator.update({
+//         where: {
+//           id: shortlistedCreator.id,
+//         },
+//         data: {
+//           isCampaignDone: true,
+//         },
+//       });
 
-      const notification = await saveNotification({
-        userId: submission.userId,
-        message: ` ✅ Your posting has been approved for campaign ${submission.campaign.name}`,
-        entity: Entity.Post,
-        entityId: submission.campaignId,
-      });
+//       const notification = await saveNotification({
+//         userId: submission.userId,
+//         message: ` ✅ Your posting has been approved for campaign ${submission.campaign.name}`,
+//         entity: Entity.Post,
+//         entityId: submission.campaignId,
+//       });
 
-      io.to(clients.get(submission.userId)).emit('notification', notification);
-      io.to(clients.get(submission.userId)).emit('newFeedback');
+//       io.to(clients.get(submission.userId)).emit('notification', notification);
+//       io.to(clients.get(submission.userId)).emit('newFeedback');
 
-      const { title, message } = notificationInvoiceGenerate(submission.campaign.name);
+//       const { title, message } = notificationInvoiceGenerate(submission.campaign.name);
 
-      // Notify each admin with the "Finance" role
-      for (const admin of submission.campaign.campaignAdmin) {
-        if (admin?.admin?.role?.name === 'Finance') {
-          const notification = await saveNotification({
-            userId: admin.adminId,
-            title,
-            message,
-            invoiceId: invoice?.id,
-            entity: 'Invoice',
-            entityId: submission.campaignId,
-          });
+//       // Notify each admin with the "Finance" role
+//       for (const admin of submission.campaign.campaignAdmin) {
+//         if (admin?.admin?.role?.name === 'Finance') {
+//           const notification = await saveNotification({
+//             userId: admin.adminId,
+//             title,
+//             message,
+//             invoiceId: invoice?.id,
+//             entity: 'Invoice',
+//             entityId: submission.campaignId,
+//           });
 
-          io.to(clients.get(admin.adminId)).emit('notification', notification);
-        }
+//           io.to(clients.get(admin.adminId)).emit('notification', notification);
+//         }
 
-        if (admin.admin.user.Board) {
-          const task = await getTaskId({
-            boardId: admin.admin.user.Board?.id,
-            submissionId: submission.id,
-            columnName: 'Actions Needed',
-          });
+//         if (admin.admin.user.Board) {
+//           const task = await getTaskId({
+//             boardId: admin.admin.user.Board?.id,
+//             submissionId: submission.id,
+//             columnName: 'Actions Needed',
+//           });
 
-          const doneColumn = await getColumnId({
-            userId: admin.admin.user.id,
-            boardId: admin.admin.user.Board.id,
-            columnName: 'Done',
-          });
+//           const doneColumn = await getColumnId({
+//             userId: admin.admin.user.id,
+//             boardId: admin.admin.user.Board.id,
+//             columnName: 'Done',
+//           });
 
-          if (task) {
-            await prisma.task.update({
-              where: {
-                id: task.id,
-              },
-              data: {
-                column: { connect: { id: doneColumn } },
-              },
-            });
-          }
-        }
-      }
+//           if (task) {
+//             await prisma.task.update({
+//               where: {
+//                 id: task.id,
+//               },
+//               data: {
+//                 column: { connect: { id: doneColumn } },
+//               },
+//             });
+//           }
+//         }
+//       }
 
-      const Invoicenotification = await saveNotification({
-        userId: submission.userId,
-        title,
-        message,
-        invoiceId: invoice?.id,
-        entity: 'Invoice',
-        entityId: submission.campaignId,
-      });
+//       const Invoicenotification = await saveNotification({
+//         userId: submission.userId,
+//         title,
+//         message,
+//         invoiceId: invoice?.id,
+//         entity: 'Invoice',
+//         entityId: submission.campaignId,
+//       });
 
-      io.to(clients.get(submission.userId)).emit('notification', Invoicenotification);
+//       io.to(clients.get(submission.userId)).emit('notification', Invoicenotification);
 
-      const images: any = submission?.campaign?.campaignBrief?.images;
+//       const images: any = submission?.campaign?.campaignBrief?.images;
 
-      //Email
-      creatorInvoice(submission.user.email, submission.campaign.name, submission.user.name ?? 'Creator', images[0]);
+//       //Email
+//       creatorInvoice(submission.user.email, submission.campaign.name, submission.user.name ?? 'Creator', images[0]);
 
-      return res.status(200).json({ message: 'Successfully submitted' });
-    }
+//       return res.status(200).json({ message: 'Successfully submitted' });
+//     }
 
-    await prisma.submission.update({
-      where: {
-        id: submission.id,
-      },
-      data: {
-        status: 'REJECTED',
-        isReview: true,
-        feedback: {
-          create: {
-            content: req.body.feedback,
-            type: 'REASON',
-            adminId: userId as string,
-          },
-        },
-      },
-    });
+//     await prisma.submission.update({
+//       where: {
+//         id: submission.id,
+//       },
+//       data: {
+//         status: 'REJECTED',
+//         isReview: true,
+//         feedback: {
+//           create: {
+//             content: req.body.feedback,
+//             type: 'REASON',
+//             adminId: userId as string,
+//           },
+//         },
+//       },
+//     });
 
-    // Move creator task from column In Review to In Progress
-    if (submission.user.Board) {
-      const taskInReview = await getTaskId({
-        boardId: submission.user.Board.id,
-        submissionId: submission.id,
-        columnName: 'In Review',
-      });
+//     // Move creator task from column In Review to In Progress
+//     if (submission.user.Board) {
+//       const taskInReview = await getTaskId({
+//         boardId: submission.user.Board.id,
+//         submissionId: submission.id,
+//         columnName: 'In Review',
+//       });
 
-      const inProgressColumn: any = await getColumnId({
-        userId: submission.userId,
-        boardId: submission.user.Board.id,
-        columnName: 'In Progress',
-      });
+//       const inProgressColumn: any = await getColumnId({
+//         userId: submission.userId,
+//         boardId: submission.user.Board.id,
+//         columnName: 'In Progress',
+//       });
 
-      if (taskInReview) {
-        await updateTask({ taskId: taskInReview?.id, toColumnId: inProgressColumn, userId: submission.userId });
-      }
-    }
+//       if (taskInReview) {
+//         await updateTask({ taskId: taskInReview?.id, toColumnId: inProgressColumn, userId: submission.userId });
+//       }
+//     }
 
-    for (const item of submission.campaign.campaignAdmin) {
-      if (item.admin.user.Board) {
-        const taskInActionsNeeded = await getTaskId({
-          boardId: item.admin.user.Board.id,
-          columnName: 'Actions Needed',
-          submissionId: submission.id,
-        });
+//     for (const item of submission.campaign.campaignAdmin) {
+//       if (item.admin.user.Board) {
+//         const taskInActionsNeeded = await getTaskId({
+//           boardId: item.admin.user.Board.id,
+//           columnName: 'Actions Needed',
+//           submissionId: submission.id,
+//         });
 
-        if (taskInActionsNeeded) {
-          await prisma.task.delete({
-            where: {
-              id: taskInActionsNeeded.id,
-            },
-          });
-        }
-      }
-    }
+//         if (taskInActionsNeeded) {
+//           await prisma.task.delete({
+//             where: {
+//               id: taskInActionsNeeded.id,
+//             },
+//           });
+//         }
+//       }
+//     }
 
-    const notification = await saveNotification({
-      userId: submission.userId,
-      message: `❌ Your posting has been rejected for campaign ${submission.campaign.name}. Feedback is provided.`,
-      entity: Entity.Post,
-    });
+//     const notification = await saveNotification({
+//       userId: submission.userId,
+//       message: `❌ Your posting has been rejected for campaign ${submission.campaign.name}. Feedback is provided.`,
+//       entity: Entity.Post,
+//     });
 
-    io.to(clients.get(submission.userId)).emit('notification', notification);
-    io.to(clients.get(submission.userId)).emit('newFeedback');
+//     io.to(clients.get(submission.userId)).emit('notification', notification);
+//     io.to(clients.get(submission.userId)).emit('newFeedback');
 
-    return res.status(200).json({ message: 'Successfully submitted' });
-  } catch (error) {
-    return res.status(400).json(error);
-  }
-};
+//     return res.status(200).json({ message: 'Successfully submitted' });
+//   } catch (error) {
+//     return res.status(400).json(error);
+//   }
+// };
 
 export const changePostingDate = async (req: Request, res: Response) => {
   const { startDate, endDate, submissionId } = req.body;
@@ -1501,5 +1500,182 @@ export const changePostingDate = async (req: Request, res: Response) => {
     return res.status(200).json({ message: 'Posting date changed successfully.' });
   } catch (error) {
     return res.status(400).json(error);
+  }
+};
+
+export const adminManagePosting = async (req: Request, res: Response) => {
+  const { status, submissionId } = req.body;
+  const userId = req.session.userid;
+
+  try {
+    const submission = await prisma.submission.findUnique({
+      where: { id: submissionId },
+      include: {
+        user: {
+          include: { creator: true, paymentForm: true, creatorAgreement: true, Board: true },
+        },
+        campaign: {
+          include: {
+            campaignBrief: true,
+            campaignAdmin: {
+              include: {
+                admin: {
+                  select: {
+                    role: true,
+                    user: { select: { Board: true, id: true } },
+                  },
+                },
+              },
+            },
+          },
+        },
+        task: true,
+      },
+    });
+
+    if (!submission) {
+      return res.status(404).json({ message: 'Submission not found.' });
+    }
+
+    const inReviewColumn = await getColumnId({ userId: submission?.userId, columnName: 'In Review' });
+    const doneColumnId = await getColumnId({ userId: submission?.userId, columnName: 'Done' });
+    const taskInReview = submission.task.find((item) => item.columnId === inReviewColumn);
+
+    await prisma.$transaction(async (tx) => {
+      if (status === 'APPROVED') {
+        const approvedSubmission = await tx.submission.update({
+          where: { id: submission.id },
+          data: { status: status as SubmissionStatus, isReview: true },
+          include: {
+            user: {
+              include: {
+                creator: true,
+                paymentForm: true,
+                creatorAgreement: true,
+                Board: true,
+              },
+            },
+            campaign: {
+              include: {
+                campaignBrief: true,
+                campaignAdmin: {
+                  include: {
+                    admin: {
+                      select: {
+                        role: true,
+                        user: {
+                          select: {
+                            Board: true,
+                            id: true,
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            task: true,
+          },
+        });
+
+        if (taskInReview && doneColumnId) {
+          await tx.task.update({
+            where: { id: taskInReview.id },
+            data: { columnId: doneColumnId },
+          });
+        }
+
+        const invoiceAmount = approvedSubmission.user.creatorAgreement.find(
+          (elem) => elem.campaignId === submission.campaign.id,
+        )?.amount;
+
+        await createInvoiceService(approvedSubmission, userId, invoiceAmount);
+
+        const shortlistedCreator = await tx.shortListedCreator.findFirst({
+          where: { userId: approvedSubmission.userId, campaignId: submission.campaignId },
+        });
+
+        if (!shortlistedCreator) {
+          throw new Error('Shortlisted creator not found.');
+        }
+
+        await tx.shortListedCreator.update({
+          where: { id: shortlistedCreator.id },
+          data: { isCampaignDone: true },
+        });
+
+        await saveNotification({
+          userId: submission.userId,
+          message: ` ✅ Your posting has been approved for campaign ${submission.campaign.name}`,
+          entity: Entity.Post,
+          entityId: submission.campaignId,
+        });
+      } else {
+        await tx.submission.update({
+          where: { id: submission.id },
+          data: {
+            status: 'REJECTED',
+            isReview: true,
+            feedback: {
+              create: { content: req.body.feedback, type: 'REASON', adminId: userId },
+            },
+          },
+        });
+
+        if (submission.user.Board) {
+          const inProgressColumn = await getColumnId({
+            userId: submission.userId,
+            boardId: submission.user.Board.id,
+            columnName: 'In Progress',
+          });
+
+          const taskInReview = await getTaskId({
+            boardId: submission.user.Board.id,
+            submissionId: submission.id,
+            columnName: 'In Review',
+          });
+
+          if (taskInReview) {
+            await updateTask({
+              taskId: taskInReview.id,
+              toColumnId: inProgressColumn as any,
+              userId: submission.userId,
+            });
+          }
+        }
+
+        for (const item of submission.campaign.campaignAdmin) {
+          if (item.admin.user.Board) {
+            const taskInActionsNeeded = await getTaskId({
+              boardId: item.admin.user.Board.id,
+              columnName: 'Actions Needed',
+              submissionId: submission.id,
+            });
+
+            if (taskInActionsNeeded) {
+              await prisma.task.delete({
+                where: {
+                  id: taskInActionsNeeded.id,
+                },
+              });
+            }
+          }
+        }
+
+        const notification = await saveNotification({
+          userId: submission.userId,
+          message: `❌ Your posting has been rejected for campaign ${submission.campaign.name}. Feedback is provided.`,
+          entity: Entity.Post,
+        });
+
+        io.to(clients.get(submission.userId)).emit('notification', notification);
+        io.to(clients.get(submission.userId)).emit('newFeedback');
+      }
+    });
+
+    return res.status(200).json({ message: 'Successfully submitted' });
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
   }
 };
