@@ -1623,6 +1623,52 @@ export const adminManagePosting = async (req: Request, res: Response) => {
         const approvedSubmission = await tx.submission.update({
           where: { id: submission.id },
           data: { status: status as SubmissionStatus, isReview: true },
+          include: {
+            user: {
+              include: {
+                creator: true,
+                paymentForm: true,
+                creatorAgreement: true,
+                Board: true,
+              },
+            },
+            campaign: {
+              include: {
+                campaignBrief: true,
+                campaignAdmin: {
+                  include: {
+                    admin: {
+                      select: {
+                        role: true,
+                        user: {
+                          select: {
+                            Board: true,
+                            id: true,
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            task: true,
+          },
+        });
+
+    if (!submission) {
+      return res.status(404).json({ message: 'Submission not found.' });
+    }
+
+    const inReviewColumn = await getColumnId({ userId: submission?.userId, columnName: 'In Review' });
+    const doneColumnId = await getColumnId({ userId: submission?.userId, columnName: 'Done' });
+    const taskInReview = submission.task.find((item) => item.columnId === inReviewColumn);
+
+    await prisma.$transaction(async (tx) => {
+      if (status === 'APPROVED') {
+        const approvedSubmission = await tx.submission.update({
+          where: { id: submission.id },
+          data: { status: status as SubmissionStatus, isReview: true },
         });
 
         if (submission.campaign.campaignCredits !== null) {
@@ -1640,10 +1686,10 @@ export const adminManagePosting = async (req: Request, res: Response) => {
           (elem) => elem.campaignId === submission.campaign.id,
         )?.amount;
 
-        const invoice = await createInvoiceService(submission, userId, invoiceAmount);
+        await createInvoiceService(approvedSubmission, userId, invoiceAmount);
 
         const shortlistedCreator = await tx.shortListedCreator.findFirst({
-          where: { userId: submission.userId, campaignId: submission.campaignId },
+          where: { userId: approvedSubmission.userId, campaignId: submission.campaignId },
         });
 
         if (!shortlistedCreator) {

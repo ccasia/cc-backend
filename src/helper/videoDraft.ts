@@ -40,7 +40,7 @@ const processVideo = async (
   caption: string,
 ) => {
   return new Promise<void>((resolve, reject) => {
-    const userid = videoData.userid;
+    const { userid, inputPath, outputPath, submissionId, fileName, folder, caption } = videoData;
     const command = Ffmpeg(inputPath)
       .outputOptions([
         '-c:v libx264',
@@ -48,11 +48,12 @@ const processVideo = async (
         '-pix_fmt yuv420p',
         '-preset ultrafast',
         '-map 0:v:0',
+        '-map 0:v:0',
         '-map 0:a:0?',
         '-threads 4',
       ])
       .save(outputPath)
-      .on('progress', (progress: any) => {
+      .on('progress', (progress) => {
         activeProcesses.set(submissionId, command);
         const percentage = Math.round(progress.percent);
         if (io) {
@@ -126,92 +127,84 @@ const processVideo = async (
                   },
                 },
               },
+              user: { include: { creator: true } },
             },
-            user: {
-              include: {
-                creator: true,
+          });
+
+          if (data.campaign.spreadSheetURL) {
+            const spreadSheetId = data.campaign.spreadSheetURL.split('/d/')[1].split('/')[0];
+            await createNewRowData({
+              creatorInfo: {
+                name: data.user.name as string,
+                username: data.user.creator?.instagram as string,
+                postingDate: dayjs().format('LL'),
+                caption,
+                videoLink: `https://storage.googleapis.com/${process.env.BUCKET_NAME}/${data?.submissionType.type}/${data?.id}_draft.mp4?v=${dayjs().toISOString()}`,
               },
-            },
-          },
-        });
+              spreadSheetId,
+            });
+          }
 
-        if (data.campaign.spreadSheetURL) {
-          const spreadSheetId = data.campaign.spreadSheetURL.split('/d/')[1].split('/')[0];
+          const { title, message } = notificationDraft(data.campaign.name, 'Creator');
 
-          await createNewRowData({
-            creatorInfo: {
-              name: data.user.name,
-              username: data.user.creator?.instagram,
-              postingDate: dayjs().format('LL'),
-              caption: caption,
-              videoLink: `https://storage.googleapis.com/${process.env.BUCKET_NAME as string}/${data?.submissionType.type}/${`${data?.id}_draft.mp4`}?v=${dayjs().format()}`,
-            } as any,
-            spreadSheetId: spreadSheetId,
-          });
-        }
-
-        const { title, message } = notificationDraft(data.campaign.name, 'Creator');
-
-        const notification = await saveNotification({
-          userId: data.userId,
-          message: message,
-          title: title,
-          entity: 'Draft',
-          entityId: data.campaign.id,
-        });
-
-        if (io) {
-          io.to(clients.get(data.userId)).emit('notification', notification);
-        }
-
-        const { title: adminTitle, message: adminMessage } = notificationDraft(
-          data.campaign.name,
-          'Admin',
-          data.user.name as string,
-        );
-
-        for (const item of data.campaign.campaignAdmin) {
           const notification = await saveNotification({
-            userId: item.adminId,
-            message: adminMessage,
-            creatorId: userid,
-            title: adminTitle,
+            userId: data.userId,
+            message: message,
+            title: title,
             entity: 'Draft',
-            entityId: data.campaignId,
+            entityId: data.campaign.id,
           });
 
-          if (item.admin.user.Board) {
-            const actionNeededColumn = item.admin.user.Board.columns.find((item) => item.name === 'Actions Needed');
+          io?.to(clients.get(data.userId)).emit('notification', notification);
 
-            const taskInDone = await getTaskId({
-              boardId: item.admin.user.Board.id,
-              submissionId: data.id,
-              columnName: 'Done',
+          const { title: adminTitle, message: adminMessage } = notificationDraft(
+            data.campaign.name,
+            'Admin',
+            data.user.name as string,
+          );
+
+          for (const item of data.campaign.campaignAdmin) {
+            const notification = await saveNotification({
+              userId: item.adminId,
+              message: adminMessage,
+              creatorId: userid,
+              title: adminTitle,
+              entity: 'Draft',
+              entityId: data.campaignId,
             });
 
-            if (actionNeededColumn) {
-              if (taskInDone) {
-                await updateTask({
-                  taskId: taskInDone.id,
-                  toColumnId: actionNeededColumn.id,
-                  userId: item.admin.user.id,
-                });
-              } else {
-                await createNewTask({
-                  submissionId: data.id,
-                  name: 'Draft Submission',
-                  userId: item.admin.user.id,
-                  position: 1,
-                  columnId: actionNeededColumn.id,
-                });
+            if (item.admin.user.Board) {
+              const actionNeededColumn = item.admin.user.Board.columns.find((item) => item.name === 'Actions Needed');
+
+              const taskInDone = await getTaskId({
+                boardId: item.admin.user.Board.id,
+                submissionId: data.id,
+                columnName: 'Done',
+              });
+
+              if (actionNeededColumn) {
+                if (taskInDone) {
+                  await updateTask({
+                    taskId: taskInDone.id,
+                    toColumnId: actionNeededColumn.id,
+                    userId: item.admin.user.id,
+                  });
+                } else {
+                  await createNewTask({
+                    submissionId: data.id,
+                    name: 'Draft Submission',
+                    userId: item.admin.user.id,
+                    position: 1,
+                    columnId: actionNeededColumn.id,
+                  });
+                }
               }
             }
-          }
 
-          if (io) {
-            io.to(clients.get(item.adminId)).emit('notification', notification);
+            if (io) {
+              io.to(clients.get(item.adminId)).emit('notification', notification);
+            }
           }
-        }
 
         activeProcesses.delete(submissionId);
 
@@ -231,15 +224,9 @@ const processVideo = async (
         resolve();
       })
       .on('error', (err) => {
-        console.log(err);
-        if (err.message.includes('ffmpeg was killed')) {
-          // Handle known errors
-          resolve();
-        } else {
-          console.error('Error processing video:', err);
-          activeProcesses.delete(submissionId); // Clean up the map
-          reject(err); // Reject for non-cancellation errors
-        }
+        console.error('Error processing video:', err);
+        activeProcesses.delete(submissionId);
+        reject(err);
         fs.unlinkSync(inputPath);
       });
   });
@@ -247,7 +234,7 @@ const processVideo = async (
 
 (async () => {
   try {
-    const conn = await amqplib.connect(process.env.RABBIT_MQ as string);
+    const conn = await amqplib.connect(process.env.RABBIT_MQ!);
     const channel = await conn.createChannel();
     await channel.assertQueue('draft', { durable: true });
     await channel.purgeQueue('draft');
