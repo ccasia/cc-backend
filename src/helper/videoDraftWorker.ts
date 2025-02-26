@@ -1,6 +1,3 @@
-/* eslint-disable promise/always-return */
-
-import workerpool from 'workerpool';
 import Ffmpeg from 'fluent-ffmpeg';
 import ffmpegPath from '@ffmpeg-installer/ffmpeg';
 import ffprobePath from '@ffprobe-installer/ffprobe';
@@ -8,9 +5,8 @@ import fs from 'fs';
 import { uploadPitchVideo } from '@configs/cloudStorage.config';
 import amqplib from 'amqplib';
 import { activeProcesses, clients, io } from '../server';
-import { Entity, PrismaClient } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 import { saveNotification } from '@controllers/notificationController';
-import { spawn } from 'child_process';
 import dayjs from 'dayjs';
 import { notificationDraft } from './notification';
 import { createNewTask, getTaskId, updateTask } from '@services/kanbanService';
@@ -20,7 +16,6 @@ Ffmpeg.setFfmpegPath(ffmpegPath.path);
 Ffmpeg.setFfprobePath(ffprobePath.path);
 
 const prisma = new PrismaClient();
-const pool = workerpool.pool();
 
 interface VideoData {
   userid: string;
@@ -50,25 +45,32 @@ const processVideo = async (videoData: VideoData): Promise<void> => {
       .on('progress', (progress) => {
         activeProcesses.set(submissionId, command);
         const percentage = Math.round(progress.percent || 0);
-        io?.to(clients.get(userid)!).emit('progress', {
-          progress: percentage,
-          submissionId,
-          name: 'Compression Start',
-        });
+        const socket = clients.get(userid);
+        if (socket) {
+          io?.to(socket).emit('progress', {
+            progress: percentage,
+            submissionId,
+            name: 'Compression Start',
+          });
+        }
       })
       .on('end', async () => {
         try {
           const size = (await fs.promises.stat(outputPath)).size;
+
           const publicURL = await uploadPitchVideo(
             outputPath,
             fileName,
             folder,
             (data: number) => {
-              io?.to(clients.get(userid)!).emit('progress', {
-                progress: data,
-                submissionId,
-                name: 'Uploading Start',
-              });
+              const socket = clients.get(userid);
+              if (socket) {
+                io?.to(socket).emit('progress', {
+                  progress: data,
+                  submissionId,
+                  name: 'Uploading Start',
+                });
+              }
             },
             size,
           );
@@ -112,16 +114,15 @@ const processVideo = async (videoData: VideoData): Promise<void> => {
           }
 
           const { title, message } = notificationDraft(data.campaign.name, 'Creator');
-
           const notification = await saveNotification({
             userId: data.userId,
-            message: message,
-            title: title,
+            message,
+            title,
             entity: 'Draft',
             entityId: data.campaign.id,
           });
 
-          io?.to(clients.get(data.userId)).emit('notification', notification);
+          io?.to(clients.get(data.userId))?.emit('notification', notification);
 
           const { title: adminTitle, message: adminMessage } = notificationDraft(
             data.campaign.name,
@@ -140,15 +141,15 @@ const processVideo = async (videoData: VideoData): Promise<void> => {
             });
 
             if (item.admin.user.Board) {
-              const actionNeededColumn = item.admin.user.Board.columns.find((item) => item.name === 'Actions Needed');
-
-              const taskInDone = await getTaskId({
-                boardId: item.admin.user.Board.id,
-                submissionId: data.id,
-                columnName: 'Done',
-              });
+              const actionNeededColumn = item.admin.user.Board.columns.find((col) => col.name === 'Actions Needed');
 
               if (actionNeededColumn) {
+                const taskInDone = await getTaskId({
+                  boardId: item.admin.user.Board.id,
+                  submissionId: data.id,
+                  columnName: 'Done',
+                });
+
                 if (taskInDone) {
                   await updateTask({
                     taskId: taskInDone.id,
@@ -167,15 +168,15 @@ const processVideo = async (videoData: VideoData): Promise<void> => {
               }
             }
 
-            if (io) {
-              io.to(clients.get(item.adminId)).emit('notification', notification);
-            }
+            io?.to(clients.get(item.adminId))?.emit('notification', notification);
           }
 
           activeProcesses.delete(submissionId);
-          io?.to(clients.get(userid)!).emit('progress', { submissionId, progress: 100 });
+          io?.to(clients.get(userid))?.emit('progress', { submissionId, progress: 100 });
+
           await fs.promises.unlink(inputPath);
           await fs.promises.unlink(outputPath);
+
           resolve();
         } catch (error) {
           reject(error);
@@ -184,8 +185,10 @@ const processVideo = async (videoData: VideoData): Promise<void> => {
       .on('error', (err) => {
         console.error('Error processing video:', err);
         activeProcesses.delete(submissionId);
+        if (inputPath) {
+          fs.unlinkSync(inputPath);
+        }
         reject(err);
-        fs.unlinkSync(inputPath);
       });
   });
 };
@@ -197,29 +200,19 @@ const processVideo = async (videoData: VideoData): Promise<void> => {
     await channel.assertQueue('draft', { durable: true });
     await channel.purgeQueue('draft');
     console.log('Consumer 1 Starting...');
-    const startUsage = process.cpuUsage();
 
     await channel.consume('draft', async (msg) => {
       if (msg) {
-        const content: VideoData = JSON.parse(msg.content.toString());
-        await processVideo(content);
-        channel.ack(msg);
+        const startUsage = process.cpuUsage();
+        try {
+          const content: VideoData = JSON.parse(msg.content.toString());
+          await processVideo(content);
+          channel.ack(msg);
+        } catch (error) {
+          console.error('Error processing video:', error);
+        }
         const endUsage = process.cpuUsage(startUsage);
-        console.log(`CPU Usage: ${endUsage.user} microseconds (user) / ${endUsage.system} microseconds (system)`);
-
-        for (const item of content.admins) {
-          io.to(clients.get(item.admin.user.id)!).emit('newSubmission');
-        }
-
-        const allSuperadmins = await prisma.user.findMany({
-          where: {
-            role: 'superadmin',
-          },
-        });
-
-        for (const admin of allSuperadmins) {
-          io.to(clients.get(admin.id)).emit('newSubmission');
-        }
+        console.log(`CPU Usage: ${endUsage.user} µs (user) / ${endUsage.system} µs (system)`);
       }
     });
   } catch (error) {
