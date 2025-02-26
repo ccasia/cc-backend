@@ -44,6 +44,7 @@ import {
   getAllCampaignsByAdminId,
   removeCreatorFromCampaign,
   getCampaignsTotal,
+  shortlistCreatorV2,
 } from '@controllers/campaignController';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 
@@ -111,6 +112,7 @@ router.post('/template/:id', isSuperAdmin, createNewTemplate);
 router.post('/draftPitch', isLoggedIn, draftPitch);
 router.post('/spreadsheet', isLoggedIn, isSuperAdmin, createNewSpreadSheets);
 router.post('/removeCreatorFromCampaign', isLoggedIn, isSuperAdmin, removeCreatorFromCampaign);
+router.post('/v2/shortlistCreator', isSuperAdmin, shortlistCreatorV2);
 
 router.patch('/pitch', isLoggedIn, creatorMakePitch);
 router.patch('/changeCampaignStage/:campaignId', changeCampaignStage);
