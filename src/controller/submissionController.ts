@@ -587,7 +587,6 @@ export const draftSubmission = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Submission not found' });
     }
 
-
     await prisma.submission.update({
       where: { id: submissionId },
       data: {
@@ -698,7 +697,18 @@ export const draftSubmission = async (req: Request, res: Response) => {
 };
 
 export const adminManageDraft = async (req: Request, res: Response) => {
-  const { submissionId, feedback, footageFeedback, photoFeedback, type, reasons, userId, videosToUpdate, rawFootageToUpdate, photosToUpdate } = req.body;
+  const {
+    submissionId,
+    feedback,
+    footageFeedback,
+    photoFeedback,
+    type,
+    reasons,
+    userId,
+    videosToUpdate,
+    rawFootageToUpdate,
+    photosToUpdate,
+  } = req.body;
 
   try {
     const submission = await prisma.submission.findUnique({

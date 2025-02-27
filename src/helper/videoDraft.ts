@@ -69,130 +69,17 @@ const processVideo = async (
         }
       })
       .on('end', async () => {
-        const data = await prisma.submission.update({
-          where: {
-            id: submissionId,
-          },
-          data: {
-            caption: caption,
-            submissionDate: dayjs().format(),
-          },
-          include: {
-            submissionType: true,
-            campaign: {
-              include: {
-                campaignAdmin: {
-                  select: {
-                    adminId: true,
-                    admin: {
-                      select: {
-                        user: {
-                          select: {
-                            Board: {
-                              include: {
-                                columns: true,
-                              },
-                            },
-                            id: true,
-                          },
-                        },
-                      },
-                    },
-                  },
-                },
-              },
-            },
-            user: { include: { creator: true } },
-          },
-        });
-
-        if (data.campaign.spreadSheetURL) {
-          const spreadSheetId = data.campaign.spreadSheetURL.split('/d/')[1].split('/')[0];
-          await createNewRowData({
-            creatorInfo: {
-              name: data.user.name as string,
-              username: data.user.creator?.instagram as string,
-              postingDate: dayjs().format('LL'),
-              caption,
-              videoLink: `https://storage.googleapis.com/${process.env.BUCKET_NAME}/${data?.submissionType.type}/${
-                data?.id
-              }_draft.mp4?v=${dayjs().toISOString()}`,
-            },
-            spreadSheetId,
-          });
-        }
-
-        const { title, message } = notificationDraft(data.campaign.name, 'Creator');
-
-        const notification = await saveNotification({
-          userId: data.userId,
-          message: message,
-          title: title,
-          entity: 'Draft',
-          entityId: data.campaign.id,
-        });
-
-        io?.to(clients.get(data.userId)).emit('notification', notification);
-
-        const { title: adminTitle, message: adminMessage } = notificationDraft(
-          data.campaign.name,
-          'Admin',
-          data.user.name as string,
-        );
-
-        for (const item of data.campaign.campaignAdmin) {
-          const notification = await saveNotification({
-            userId: item.adminId,
-            message: adminMessage,
-            creatorId: userid,
-            title: adminTitle,
-            entity: 'Draft',
-            entityId: data.campaignId,
-          });
-
-          if (item.admin.user.Board) {
-            const actionNeededColumn = item.admin.user.Board.columns.find((item) => item.name === 'Actions Needed');
-
-            const taskInDone = await getTaskId({
-              boardId: item.admin.user.Board.id,
-              submissionId: data.id,
-              columnName: 'Done',
-            });
-
-            if (actionNeededColumn) {
-              if (taskInDone) {
-                await updateTask({
-                  taskId: taskInDone.id,
-                  toColumnId: actionNeededColumn.id,
-                  userId: item.admin.user.id,
-                });
-              } else {
-                await createNewTask({
-                  submissionId: data.id,
-                  name: 'Draft Submission',
-                  userId: item.admin.user.id,
-                  position: 1,
-                  columnId: actionNeededColumn.id,
-                });
-              }
-            }
-          }
-
-          if (io) {
-            io.to(clients.get(item.adminId)).emit('notification', notification);
-          }
-        }
-
-        activeProcesses.delete(submissionId);
-
         if (io) {
           io.to(clients.get(userid)).emit('progress', {
-            submissionId,
             progress: 100,
+            submissionId: submissionId,
+            name: 'Compression Start',
+            fileName: fileName,
+            fileSize: fs.statSync(inputPath).size,
+            fileType: path.extname(fileName),
           });
         }
 
-        // fs.unlinkSync(inputPath);
         if (fs.existsSync(inputPath)) {
           fs.unlinkSync(inputPath);
         } else {
@@ -227,7 +114,9 @@ const processVideo = async (
         try {
           // For videos
           if (filePaths?.video?.length) {
-            const videoPromises = filePaths.video.map(async (videoFile: VideoFile) => {
+            const videoPromises = filePaths.video.map(async (videoFile: VideoFile, index: any) => {
+              console.log(`Processing video ${videoFile.fileName}`);
+
               // Process video
               await processVideo(
                 content,
@@ -241,16 +130,22 @@ const processVideo = async (
 
               const { size } = await fs.promises.stat(videoFile.outputPath);
 
-              // Upload processed video
+              // // Upload processed video
               const videoPublicURL = await uploadPitchVideo(
                 videoFile.outputPath,
                 videoFile.fileName,
                 content.folder,
                 (data: number) => {
                   io?.to(clients.get(content.userid)!).emit('progress', {
-                    progress: data,
+                    // progress: data,
+                    // submissionId: content.submissionId,
+                    // name: 'Uploading Start',
+                    progress: Math.ceil(data),
                     submissionId: content.submissionId,
                     name: 'Uploading Start',
+                    fileName: videoFile.fileName,
+                    fileSize: fs.statSync(videoFile.outputPath).size,
+                    fileType: path.extname(videoFile.fileName),
                   });
                 },
                 size,
@@ -269,6 +164,122 @@ const processVideo = async (
 
             // Wait for all videos to be processed
             await Promise.all(videoPromises);
+
+            const data = await prisma.submission.update({
+              where: {
+                id: content.submissionId,
+              },
+              data: {
+                caption: content.caption,
+                submissionDate: dayjs().format(),
+              },
+              include: {
+                submissionType: true,
+                campaign: {
+                  include: {
+                    campaignAdmin: {
+                      select: {
+                        adminId: true,
+                        admin: {
+                          select: {
+                            user: {
+                              select: {
+                                Board: {
+                                  include: {
+                                    columns: true,
+                                  },
+                                },
+                                id: true,
+                              },
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+                user: { include: { creator: true } },
+              },
+            });
+
+            if (data.campaign.spreadSheetURL) {
+              const spreadSheetId = data.campaign.spreadSheetURL.split('/d/')[1].split('/')[0];
+              await createNewRowData({
+                creatorInfo: {
+                  name: data.user.name as string,
+                  username: data.user.creator?.instagram as string,
+                  postingDate: dayjs().format('LL'),
+                  caption: content.caption,
+                  videoLink: `https://storage.googleapis.com/${process.env.BUCKET_NAME}/${data?.submissionType.type}/${
+                    data?.id
+                  }_draft.mp4?v=${dayjs().toISOString()}`,
+                },
+                spreadSheetId,
+              });
+            }
+
+            const { title, message } = notificationDraft(data.campaign.name, 'Creator');
+
+            const notification = await saveNotification({
+              userId: data.userId,
+              message: message,
+              title: title,
+              entity: 'Draft',
+              entityId: data.campaign.id,
+            });
+
+            io?.to(clients.get(data.userId)).emit('notification', notification);
+
+            const { title: adminTitle, message: adminMessage } = notificationDraft(
+              data.campaign.name,
+              'Admin',
+              data.user.name as string,
+            );
+
+            for (const item of data.campaign.campaignAdmin) {
+              const notification = await saveNotification({
+                userId: item.adminId,
+                message: adminMessage,
+                creatorId: content.userId,
+                title: adminTitle,
+                entity: 'Draft',
+                entityId: data.campaignId,
+              });
+
+              if (item.admin.user.Board) {
+                const actionNeededColumn = item.admin.user.Board.columns.find((item) => item.name === 'Actions Needed');
+
+                const taskInDone = await getTaskId({
+                  boardId: item.admin.user.Board.id,
+                  submissionId: data.id,
+                  columnName: 'Done',
+                });
+
+                if (actionNeededColumn) {
+                  if (taskInDone) {
+                    await updateTask({
+                      taskId: taskInDone.id,
+                      toColumnId: actionNeededColumn.id,
+                      userId: item.admin.user.id,
+                    });
+                  } else {
+                    await createNewTask({
+                      submissionId: data.id,
+                      name: 'Draft Submission',
+                      userId: item.admin.user.id,
+                      position: 1,
+                      columnId: actionNeededColumn.id,
+                    });
+                  }
+                }
+              }
+
+              if (io) {
+                io.to(clients.get(item.adminId)).emit('notification', notification);
+              }
+            }
+
+            activeProcesses.delete(content.submissionId);
           }
 
           //For Raw Footages
@@ -374,7 +385,7 @@ const processVideo = async (
             }
           }
 
-          channel.ack(msg);
+          // channel.ack(msg);
 
           const endUsage = process.cpuUsage(startUsage);
 
@@ -395,6 +406,7 @@ const processVideo = async (
           }
         } catch (error) {
           console.error('Error processing submission:', error);
+        } finally {
           channel.ack(msg);
         }
       }
