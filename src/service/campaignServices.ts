@@ -54,6 +54,7 @@ export const deductCredits = async (campaignId: string, userId: string, tx: Pris
             },
           },
         },
+        shortlisted: true,
       },
     });
 
@@ -87,6 +88,7 @@ export const deductCredits = async (campaignId: string, userId: string, tx: Pris
     });
 
     const filterSubmission = submission.filter((submission) => submission.video.length)[0];
+    const ugcVideos = campaign.shortlisted.find((x) => x.userId === userId)?.ugcVideos;
 
     const data = await tx.campaign.update({
       where: {
@@ -94,10 +96,12 @@ export const deductCredits = async (campaignId: string, userId: string, tx: Pris
       },
       data: {
         creditsUtilized: {
-          increment: filterSubmission.video.length,
+          // increment: filterSubmission.video.length,
+          increment: ugcVideos ?? 0,
         },
         creditsPending: {
-          decrement: filterSubmission.video.length,
+          // decrement: filterSubmission.video.length,
+          decrement: ugcVideos ?? 0,
         },
       },
     });
@@ -110,7 +114,7 @@ export const deductCredits = async (campaignId: string, userId: string, tx: Pris
       },
       data: {
         creditsUsed: {
-          increment: filterSubmission.video.length,
+          increment: ugcVideos ?? 0,
         },
       },
     });
