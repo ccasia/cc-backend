@@ -33,6 +33,7 @@ import {
 import { createNewRowData } from '@services/google_sheets/sheets';
 import { createNewTask, getTaskId, updateTask } from '@services/kanbanService';
 import { deductCredits } from '@services/campaignServices';
+import { getCreatorInvoiceLists } from '@services/submissionService';
 
 Ffmpeg.setFfmpegPath(FfmpegPath.path);
 // Ffmpeg.setFfmpegPath(FfmpegProbe.path);
@@ -861,7 +862,9 @@ export const adminManageDraft = async (req: Request, res: Response) => {
               await deductCredits(approveSubmission.campaignId, approveSubmission.userId, prisma as PrismaClient);
             }
 
-            await createInvoiceService(submission, userId, invoiceAmount);
+            const invoiceItems = await getCreatorInvoiceLists(approveSubmission.id, prisma as PrismaClient);
+
+            await createInvoiceService(submission, userId, invoiceAmount, invoiceItems);
 
             const shortlistedCreator = await prisma.shortListedCreator.findFirst({
               where: {

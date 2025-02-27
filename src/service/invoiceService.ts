@@ -48,7 +48,12 @@ async function generateUniqueInvoiceNumber() {
   }
 }
 
-export const createInvoiceService = async (data: any, userId: any, amount: any) => {
+export const createInvoiceService = async (
+  data: any,
+  userId: any,
+  amount: any,
+  invoiceItems?: { type: string; count: number }[],
+) => {
   const invoiceNumber = await generateUniqueInvoiceNumber();
 
   const invoiceTo = {
@@ -119,6 +124,9 @@ export const createInvoiceService = async (data: any, userId: any, amount: any) 
                 userId: data.userId,
               },
             },
+            ...(invoiceItems?.length && {
+              deliverables: JSON.stringify(invoiceItems),
+            }),
           },
         },
       },
