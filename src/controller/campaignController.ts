@@ -1662,7 +1662,7 @@ export const editCampaignTimeline = async (req: Request, res: Response) => {
 };
 
 export const changePitchStatus = async (req: Request, res: Response) => {
-  const { status, pitchId } = req.body;
+  const { status, pitchId, totalUGCVideos } = req.body;
 
   try {
     const existingPitch = await prisma.pitch.findUnique({
@@ -1722,6 +1722,7 @@ export const changePitchStatus = async (req: Request, res: Response) => {
             data: {
               userId: pitch?.userId,
               campaignId: pitch?.campaignId,
+              ugcVideos: parseInt(totalUGCVideos),
             },
           });
 
@@ -4066,6 +4067,17 @@ export const removeCreatorFromCampaign = async (req: Request, res: Response) => 
             id: invoice.id,
           },
         });
+      }
+
+      const pitch = await tx.pitch.findFirst({
+        where: {
+          userId: user.id,
+          campaignId: campaign.id,
+        },
+      });
+
+      if (pitch) {
+        await tx.pitch.delete({ where: { id: pitch.id } });
       }
     });
 
