@@ -601,8 +601,9 @@ export const draftSubmission = async (req: Request, res: Response) => {
 
     const file = (req.files as any).draftVideo;
 
-    const filePath = `/tmp/${submissionId}`;
-    const compressedFilePath = `/tmp/${submissionId}_compressed.mp4`;
+    const uniqueFileName = `${submissionId}_${Date.now()}.mp4`;
+    const filePath = `/tmp/${uniqueFileName}`;
+    const compressedFilePath = `/tmp/${uniqueFileName}_compressed.mp4`;
 
     await file.mv(filePath);
 
@@ -615,7 +616,7 @@ export const draftSubmission = async (req: Request, res: Response) => {
       'draft',
       Buffer.from(
         JSON.stringify({
-          ...file,
+          // ...file,
           userid,
           inputPath: filePath,
           outputPath: compressedFilePath,
@@ -631,7 +632,7 @@ export const draftSubmission = async (req: Request, res: Response) => {
       },
     );
 
-    activeProcesses.set(submissionId, { status: 'queue' });
+    // activeProcesses.set(submissionId, { status: 'queue' });
 
     return res.status(200).json({ message: 'Video start processing' });
   } catch (error) {

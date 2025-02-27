@@ -18,7 +18,7 @@ import { Server } from 'socket.io';
 import '@services/uploadVideo';
 import '@helper/processPitchVideo';
 import './helper/videoDraft';
-// import './helper/videoDraftWorker';
+import './helper/videoDraftWorker';
 import dotenv from 'dotenv';
 import '@services/google_sheets/sheets';
 import path from 'path';
@@ -104,33 +104,6 @@ app.use(
     }),
   }),
 );
-
-// store session in PostgreSQL
-// const pgSession = connectPgSimple(session);
-
-// const pgPool = new pg.Pool({
-//   connectionString: process.env.DATABASE_URL,
-// });
-
-// const sessionMiddleware = session({
-// secret: process.env.SESSION_SECRET as string,
-// resave: false,
-// saveUninitialized: false,
-// cookie: {
-//   secure: process.env.NODE_ENV === 'production',
-//   maxAge: 24 * 60 * 60 * 1000, //expires in 24hours
-// },
-//   store: new pgSession({
-//     pool: pgPool,
-//     tableName: 'session',
-//   }),
-// });
-
-// app.use(sessionMiddleware);
-
-// io.use((socket: Socket, next: any) => {
-//   return sessionMiddleware(socket.request as any, {} as any, next as any);
-// });
 
 app.use(router);
 

@@ -28,8 +28,8 @@ interface VideoData {
   admins: { admin: { user: { id: string } } }[];
 }
 
-const processVideo = async (videoData: VideoData): Promise<void> => {
-  return new Promise<void>((resolve, reject) => {
+const processVideo = async (videoData: VideoData): Promise<string> => {
+  return new Promise<string>((resolve, reject) => {
     const { userid, inputPath, outputPath, submissionId, fileName, folder, caption } = videoData;
     const command = Ffmpeg(inputPath)
       .outputOptions([
@@ -56,18 +56,171 @@ const processVideo = async (videoData: VideoData): Promise<void> => {
       })
       .on('end', async () => {
         try {
-          const size = (await fs.promises.stat(outputPath)).size;
+          // const size = (await fs.promises.stat(outputPath)).size;
+
+          // const publicURL = await uploadPitchVideo(
+          //   outputPath,
+          //   fileName,
+          //   folder,
+          //   (data: number) => {
+          //     const socket = clients.get(userid);
+          //     if (socket) {
+          //       io?.to(socket).emit('progress', {
+          //         progress: data,
+          //         submissionId,
+          //         name: 'Uploading Start',
+          //       });
+          //     }
+          //   },
+          //   size,
+          // );
+
+          // const data = await prisma.submission.update({
+          //   where: { id: submissionId },
+          //   data: {
+          //     content: publicURL,
+          //     caption,
+          //     status: 'PENDING_REVIEW',
+          //     submissionDate: dayjs().toISOString(),
+          //   },
+          //   include: {
+          //     submissionType: true,
+          //     campaign: {
+          //       include: {
+          //         campaignAdmin: {
+          //           select: {
+          //             adminId: true,
+          //             admin: { include: { user: { include: { Board: { include: { columns: true } } } } } },
+          //           },
+          //         },
+          //       },
+          //     },
+          //     user: { include: { creator: true } },
+          //   },
+          // });
+
+          // if (data.campaign.spreadSheetURL) {
+          //   const spreadSheetId = data.campaign.spreadSheetURL.split('/d/')[1].split('/')[0];
+          //   await createNewRowData({
+          //     creatorInfo: {
+          //       name: data.user.name as string,
+          //       username: data.user.creator?.instagram as string,
+          //       postingDate: dayjs().format('LL'),
+          //       caption,
+          //       videoLink: `https://storage.googleapis.com/${process.env.BUCKET_NAME}/${data?.submissionType.type}/${data?.id}_draft.mp4?v=${dayjs().toISOString()}`,
+          //     },
+          //     spreadSheetId,
+          //   });
+          // }
+
+          // const { title, message } = notificationDraft(data.campaign.name, 'Creator');
+
+          // const notification = await saveNotification({
+          //   userId: data.userId,
+          //   message,
+          //   title,
+          //   entity: 'Draft',
+          //   entityId: data.campaign.id,
+          // });
+
+          // io?.to(clients.get(data.userId))?.emit('notification', notification);
+
+          // const { title: adminTitle, message: adminMessage } = notificationDraft(
+          //   data.campaign.name,
+          //   'Admin',
+          //   data.user.name as string,
+          // );
+
+          // for (const item of data.campaign.campaignAdmin) {
+          //   const notification = await saveNotification({
+          //     userId: item.adminId,
+          //     message: adminMessage,
+          //     creatorId: userid,
+          //     title: adminTitle,
+          //     entity: 'Draft',
+          //     entityId: data.campaignId,
+          //   });
+
+          //   if (item.admin.user.Board) {
+          //     const actionNeededColumn = item.admin.user.Board.columns.find((col) => col.name === 'Actions Needed');
+
+          //     if (actionNeededColumn) {
+          //       const taskInDone = await getTaskId({
+          //         boardId: item.admin.user.Board.id,
+          //         submissionId: data.id,
+          //         columnName: 'Done',
+          //       });
+
+          //       if (taskInDone) {
+          //         await updateTask({
+          //           taskId: taskInDone.id,
+          //           toColumnId: actionNeededColumn.id,
+          //           userId: item.admin.user.id,
+          //         });
+          //       } else {
+          //         await createNewTask({
+          //           submissionId: data.id,
+          //           name: 'Draft Submission',
+          //           userId: item.admin.user.id,
+          //           position: 1,
+          //           columnId: actionNeededColumn.id,
+          //         });
+          //       }
+          //     }
+          //   }
+
+          //   io?.to(clients.get(item.adminId))?.emit('notification', notification);
+          // }
+
+          // activeProcesses.delete(submissionId);
+          // io?.to(clients.get(userid))?.emit('progress', { submissionId, progress: 100 });
+
+          // await fs.promises.unlink(inputPath);
+          // await fs.promises.unlink(outputPath);
+
+          resolve(outputPath);
+        } catch (error) {
+          reject(error);
+        }
+      })
+      .on('error', (err) => {
+        console.error('Error processing video:', err);
+        activeProcesses.delete(submissionId);
+        if (inputPath) {
+          fs.unlinkSync(inputPath);
+        }
+        reject(err);
+      });
+  });
+};
+
+(async () => {
+  try {
+    const conn = await amqplib.connect(process.env.RABBIT_MQ!);
+    const channel = await conn.createChannel();
+    await channel.assertQueue('draft', { durable: true });
+    await channel.purgeQueue('draft');
+
+    await channel.consume('draft', async (msg) => {
+      if (msg) {
+        const startUsage = process.cpuUsage();
+        try {
+          const content: VideoData = JSON.parse(msg.content.toString());
+
+          const compressedPath = await processVideo(content);
+
+          const size = (await fs.promises.stat(compressedPath)).size;
 
           const publicURL = await uploadPitchVideo(
-            outputPath,
-            fileName,
-            folder,
+            compressedPath,
+            content.fileName,
+            content.folder,
             (data: number) => {
-              const socket = clients.get(userid);
+              const socket = clients.get(content.userid);
               if (socket) {
                 io?.to(socket).emit('progress', {
                   progress: data,
-                  submissionId,
+                  submissionId: content.submissionId,
                   name: 'Uploading Start',
                 });
               }
@@ -76,10 +229,10 @@ const processVideo = async (videoData: VideoData): Promise<void> => {
           );
 
           const data = await prisma.submission.update({
-            where: { id: submissionId },
+            where: { id: content.submissionId },
             data: {
               content: publicURL,
-              caption,
+              caption: content.caption,
               status: 'PENDING_REVIEW',
               submissionDate: dayjs().toISOString(),
             },
@@ -99,6 +252,8 @@ const processVideo = async (videoData: VideoData): Promise<void> => {
             },
           });
 
+          io?.to(clients.get(content.userid))?.emit('progress', { submissionId: content.submissionId, progress: 100 });
+
           if (data.campaign.spreadSheetURL) {
             const spreadSheetId = data.campaign.spreadSheetURL.split('/d/')[1].split('/')[0];
             await createNewRowData({
@@ -106,7 +261,7 @@ const processVideo = async (videoData: VideoData): Promise<void> => {
                 name: data.user.name as string,
                 username: data.user.creator?.instagram as string,
                 postingDate: dayjs().format('LL'),
-                caption,
+                caption: content.caption,
                 videoLink: `https://storage.googleapis.com/${process.env.BUCKET_NAME}/${data?.submissionType.type}/${data?.id}_draft.mp4?v=${dayjs().toISOString()}`,
               },
               spreadSheetId,
@@ -114,6 +269,7 @@ const processVideo = async (videoData: VideoData): Promise<void> => {
           }
 
           const { title, message } = notificationDraft(data.campaign.name, 'Creator');
+
           const notification = await saveNotification({
             userId: data.userId,
             message,
@@ -134,7 +290,7 @@ const processVideo = async (videoData: VideoData): Promise<void> => {
             const notification = await saveNotification({
               userId: item.adminId,
               message: adminMessage,
-              creatorId: userid,
+              creatorId: content.userid,
               title: adminTitle,
               entity: 'Draft',
               entityId: data.campaignId,
@@ -171,42 +327,12 @@ const processVideo = async (videoData: VideoData): Promise<void> => {
             io?.to(clients.get(item.adminId))?.emit('notification', notification);
           }
 
-          activeProcesses.delete(submissionId);
-          io?.to(clients.get(userid))?.emit('progress', { submissionId, progress: 100 });
+          activeProcesses.delete(content.submissionId);
+          // io?.to(clients.get(content.userid))?.emit('progress', { submissionId: content.submissionId, progress: 100 });
 
-          await fs.promises.unlink(inputPath);
-          await fs.promises.unlink(outputPath);
+          await fs.promises.unlink(content.inputPath);
+          await fs.promises.unlink(content.outputPath);
 
-          resolve();
-        } catch (error) {
-          reject(error);
-        }
-      })
-      .on('error', (err) => {
-        console.error('Error processing video:', err);
-        activeProcesses.delete(submissionId);
-        if (inputPath) {
-          fs.unlinkSync(inputPath);
-        }
-        reject(err);
-      });
-  });
-};
-
-(async () => {
-  try {
-    const conn = await amqplib.connect(process.env.RABBIT_MQ!);
-    const channel = await conn.createChannel();
-    await channel.assertQueue('draft', { durable: true });
-    await channel.purgeQueue('draft');
-    console.log('Consumer 1 Starting...');
-
-    await channel.consume('draft', async (msg) => {
-      if (msg) {
-        const startUsage = process.cpuUsage();
-        try {
-          const content: VideoData = JSON.parse(msg.content.toString());
-          await processVideo(content);
           channel.ack(msg);
         } catch (error) {
           console.error('Error processing video:', error);
