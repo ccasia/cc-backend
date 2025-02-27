@@ -125,7 +125,7 @@ export const createInvoiceService = async (
               },
             },
             ...(invoiceItems?.length && {
-              deliverables: JSON.stringify(invoiceItems),
+              deliverables: invoiceItems,
             }),
           },
         },
