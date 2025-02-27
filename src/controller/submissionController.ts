@@ -718,7 +718,6 @@ export const adminManageDraft = async (req: Request, res: Response) => {
       },
       include: {
         feedback: true,
-        // publicFeedback: true,
         user: {
           include: {
             creator: true,

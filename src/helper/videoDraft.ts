@@ -8,7 +8,7 @@ import fs from 'fs';
 import { uploadPitchVideo, uploadImage } from '@configs/cloudStorage.config';
 import amqplib from 'amqplib';
 import { activeProcesses, clients, io } from '../server';
-import { Entity, PrismaClient } from '@prisma/client';
+import { Entity, PrismaClient, Submission } from '@prisma/client';
 import { saveNotification } from '@controllers/notificationController';
 import { spawn } from 'child_process';
 import path from 'path';
@@ -97,6 +97,100 @@ const processVideo = async (
   });
 };
 
+// const checkCurrentSubmission = async (submission: any) => {
+//   if (submission) {
+//     const { video, rawFootages, photos, campaign, submissionType } = submission;
+//     const submissionTypeName = submissionType?.type;
+
+// let allDeliverablesSent = false;
+
+// if (submissionTypeName === 'FIRST_DRAFT') {
+//   // Check if all deliverables are submitted
+//   const hasVideo = video.length > 0;
+//   const hasRawFootage = campaign.rawFootage ? rawFootages.length > 0 : true;
+//   const hasPhotos = campaign.photos ? photos.length > 0 : true;
+
+//   allDeliverablesSent = hasVideo && hasRawFootage && hasPhotos;
+// } else if (submissionTypeName === 'FINAL_DRAFT') {
+//   // For final draft, only video submission is needed
+//   allDeliverablesSent = video.length > 0;
+// }
+
+// // Update submission status based on deliverable checks
+// if (allDeliverablesSent) {
+//   await prisma.submission.update({
+//     where: { id: submission.id },
+//     data: {
+//       status: 'PENDING_REVIEW',
+//       submissionDate: dayjs().format(),
+//     },
+//   });
+// } else {
+//   await prisma.submission.update({
+//     where: { id: submission.id },
+//     data: {
+//       status: 'IN_PROGRESS',
+//     },
+//   });
+// }
+
+// if (io) {
+//   io.to(clients.get(submission.userId)).emit('updateSubmission');
+// }
+//   }
+// };
+
+const checkCurrentSubmission = async (submissionId: string) => {
+  const submission = await prisma.submission.findUnique({
+    where: { id: submissionId },
+    include: { submissionType: true, campaign: true },
+  });
+
+  if (!submission) throw new Error('Submission not found');
+
+  const [videos, rawFootages, photos] = await Promise.all([
+    prisma.video.count({ where: { submissionId } }),
+    prisma.rawFootage.count({ where: { submissionId } }),
+    prisma.photo.count({ where: { submissionId } }),
+  ]);
+
+  let allDeliverablesSent = false;
+
+  if (submission?.submissionType.type === 'FIRST_DRAFT') {
+    // Check if all deliverables are submitted
+    const hasVideo = videos > 0;
+    const hasRawFootage = submission.campaign.rawFootage ? rawFootages > 0 : true;
+    const hasPhotos = submission.campaign.photos ? photos > 0 : true;
+
+    allDeliverablesSent = hasVideo && hasRawFootage && hasPhotos;
+  } else if (submission?.submissionType.type === 'FINAL_DRAFT') {
+    // For final draft, only video submission is needed
+    allDeliverablesSent = videos > 0;
+  }
+
+  // Update submission status based on deliverable checks
+  if (allDeliverablesSent) {
+    await prisma.submission.update({
+      where: { id: submission.id },
+      data: {
+        status: 'PENDING_REVIEW',
+        submissionDate: dayjs().format(),
+      },
+    });
+  } else {
+    await prisma.submission.update({
+      where: { id: submission.id },
+      data: {
+        status: 'IN_PROGRESS',
+      },
+    });
+  }
+
+  if (io) {
+    io.to(clients.get(submission.userId)).emit('updateSubmission');
+  }
+};
+
 (async () => {
   try {
     const conn = await amqplib.connect(process.env.RABBIT_MQ!);
@@ -112,6 +206,26 @@ const processVideo = async (
         const { filePaths } = content;
 
         try {
+          const submission = await prisma.submission.findUnique({
+            where: { id: content.submissionId },
+            select: {
+              id: true,
+              video: true,
+              rawFootages: true,
+              photos: true,
+              submissionType: true,
+              userId: true,
+              campaign: {
+                select: {
+                  rawFootage: true,
+                  photos: true,
+                },
+              },
+            },
+          });
+
+          if (!submission) throw new Error('Submission not found');
+
           // For videos
           if (filePaths?.video?.length) {
             const videoPromises = filePaths.video.map(async (videoFile: VideoFile, index: any) => {
@@ -122,7 +236,7 @@ const processVideo = async (
                 content,
                 videoFile.inputPath,
                 videoFile.outputPath,
-                content.submissionId,
+                submission.id,
                 videoFile.fileName,
                 content.folder,
                 content.caption,
@@ -138,10 +252,10 @@ const processVideo = async (
                 (data: number) => {
                   io?.to(clients.get(content.userid)!).emit('progress', {
                     // progress: data,
-                    // submissionId: content.submissionId,
+                    // submissionId: submission.id,
                     // name: 'Uploading Start',
                     progress: Math.ceil(data),
-                    submissionId: content.submissionId,
+                    submissionId: submission.id,
                     name: 'Uploading Start',
                     fileName: videoFile.fileName,
                     fileSize: fs.statSync(videoFile.outputPath).size,
@@ -157,7 +271,7 @@ const processVideo = async (
               await prisma.video.create({
                 data: {
                   url: videoPublicURL,
-                  submissionId: content.submissionId,
+                  submissionId: submission.id,
                 },
               });
             });
@@ -167,7 +281,7 @@ const processVideo = async (
 
             const data = await prisma.submission.update({
               where: {
-                id: content.submissionId,
+                id: submission.id,
               },
               data: {
                 caption: content.caption,
@@ -279,113 +393,80 @@ const processVideo = async (
               }
             }
 
-            activeProcesses.delete(content.submissionId);
+            activeProcesses.delete(submission.id);
           }
 
           //For Raw Footages
           if (filePaths?.rawFootages?.length) {
-            for (const rawFootagePath of filePaths.rawFootages) {
-              const rawFootageFileName = `${content.submissionId}_${path.basename(rawFootagePath)}`;
-              const rawFootagePublicURL = await uploadPitchVideo(rawFootagePath, rawFootageFileName, content.folder);
+            await Promise.all(
+              filePaths.rawFootages.map(async (rawFootagePath: any) => {
+                const rawFootageFileName = `${submission.id}_${path.basename(rawFootagePath)}`;
+                const rawFootagePublicURL = await uploadPitchVideo(rawFootagePath, rawFootageFileName, content.folder);
+                await prisma.rawFootage.create({
+                  data: { url: rawFootagePublicURL, submissionId: submission.id, campaignId: content.campaignId },
+                });
+              }),
+            );
 
-              console.log('✅ Raw footage uploaded successfully:', rawFootagePublicURL);
+            // for (const rawFootagePath of filePaths.rawFootages) {
+            //   const rawFootageFileName = `${submission.id}_${path.basename(rawFootagePath)}`;
+            //   const rawFootagePublicURL = await uploadPitchVideo(rawFootagePath, rawFootageFileName, content.folder);
 
-              // Create a new RawFootage entry in the database
-              await prisma.rawFootage.create({
-                data: {
-                  url: rawFootagePublicURL,
-                  submissionId: content.submissionId,
-                  campaignId: content.campaignId,
-                },
-              });
+            //   console.log('✅ Raw footage uploaded successfully:', rawFootagePublicURL);
 
-              console.log('✅ Raw footage entry created in the DB.');
-            }
+            //   // Create a new RawFootage entry in the database
+            //   await prisma.rawFootage.create({
+            //     data: {
+            //       url: rawFootagePublicURL,
+            //       submissionId: submission.id,
+            //       campaignId: content.campaignId,
+            //     },
+            //   });
+
+            //   console.log('✅ Raw footage entry created in the DB.');
+            // }
           }
 
           // For photos
           if (filePaths?.photos?.length) {
-            for (const photoPath of filePaths.photos) {
-              const photoFileName = `${content.submissionId}_${path.basename(photoPath)}`;
-              const photoPublicURL = await uploadImage(photoPath, photoFileName, content.folder);
+            await Promise.all(
+              filePaths.photos.map(async (photoPath: any) => {
+                const photoFileName = `${submission.id}_${path.basename(photoPath)}`;
+                const photoPublicURL = await uploadImage(photoPath, photoFileName, content.folder);
+                await prisma.photo.create({
+                  data: {
+                    url: photoPublicURL,
+                    submissionId: submission.id,
+                    campaignId: content.campaignId,
+                  },
+                });
+                await fs.promises.unlink(photoPath);
+                console.log('✅ Photo entry created in the DB.');
+              }),
+            );
 
-              console.log('✅ Photo uploaded successfully:', photoPublicURL);
+            // for (const photoPath of filePaths.photos) {
+            //   const photoFileName = `${submission.id}_${path.basename(photoPath)}`;
+            //   const photoPublicURL = await uploadImage(photoPath, photoFileName, content.folder);
 
-              // Save photo URL to database
-              await prisma.photo.create({
-                data: {
-                  url: photoPublicURL,
-                  submissionId: content.submissionId,
-                  campaignId: content.campaignId,
-                },
-              });
+            //   console.log('✅ Photo uploaded successfully:', photoPublicURL);
 
-              await fs.promises.unlink(photoPath);
+            //   // Save photo URL to database
+            //   await prisma.photo.create({
+            //     data: {
+            //       url: photoPublicURL,
+            //       submissionId: submission.id,
+            //       campaignId: content.campaignId,
+            //     },
+            //   });
 
-              console.log('✅ Photo entry created in the DB.');
-            }
+            //   await fs.promises.unlink(photoPath);
+
+            //   console.log('✅ Photo entry created in the DB.');
+            // }
           }
 
-          // Check submission requirements and update status
-          const submission = await prisma.submission.findUnique({
-            where: { id: content.submissionId },
-            select: {
-              video: true,
-              rawFootages: true,
-              photos: true,
-              submissionType: true,
-              userId: true,
-              campaign: {
-                select: {
-                  rawFootage: true,
-                  photos: true,
-                },
-              },
-            },
-          });
-
-          if (submission) {
-            const { video, rawFootages, photos, campaign, submissionType } = submission;
-            const submissionTypeName = submissionType?.type;
-
-            let allDeliverablesSent = false;
-
-            if (submissionTypeName === 'FIRST_DRAFT') {
-              // Check if all deliverables are submitted
-              const hasVideo = video.length > 0;
-              const hasRawFootage = campaign.rawFootage ? rawFootages.length > 0 : true;
-              const hasPhotos = campaign.photos ? photos.length > 0 : true;
-
-              allDeliverablesSent = hasVideo && hasRawFootage && hasPhotos;
-            } else if (submissionTypeName === 'FINAL_DRAFT') {
-              // For final draft, only video submission is needed
-              allDeliverablesSent = video.length > 0;
-            }
-
-            // Update submission status based on deliverable checks
-            if (allDeliverablesSent) {
-              await prisma.submission.update({
-                where: { id: content.submissionId },
-                data: {
-                  status: 'PENDING_REVIEW',
-                  submissionDate: dayjs().format(),
-                },
-              });
-            } else {
-              await prisma.submission.update({
-                where: { id: content.submissionId },
-                data: {
-                  status: 'IN_PROGRESS',
-                },
-              });
-            }
-
-            if (io) {
-              io.to(clients.get(submission.userId)).emit('updateSubmission');
-            }
-          }
-
-          // channel.ack(msg);
+          await checkCurrentSubmission(submission.id);
 
           const endUsage = process.cpuUsage(startUsage);
 
