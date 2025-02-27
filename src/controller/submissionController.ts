@@ -524,7 +524,7 @@ export const getSubmissionByCampaignCreatorId = async (req: Request, res: Respon
         dependencies: true,
         rawFootages: true,
         photos: true,
-        publicFeedback: true,
+        // publicFeedback: true,
         video: true,
       },
     });
@@ -536,7 +536,7 @@ export const getSubmissionByCampaignCreatorId = async (req: Request, res: Respon
 };
 
 export const draftSubmission = async (req: Request, res: Response) => {
-  const { submissionId, caption } = JSON.parse(req.body.data);
+  const { submissionId, caption, photosDriveLink, rawFootagesDriveLink } = JSON.parse(req.body.data);
   const files = req.files as any;
   const userid = req.session.userid;
 
@@ -586,6 +586,15 @@ export const draftSubmission = async (req: Request, res: Response) => {
     if (!submission) {
       return res.status(404).json({ message: 'Submission not found' });
     }
+
+
+    await prisma.submission.update({
+      where: { id: submissionId },
+      data: {
+        photosDriveLink,
+        rawFootagesDriveLink,
+      },
+    });
 
     // Move task creator from in progress to in review
     if (submission?.user?.Board) {
@@ -689,7 +698,7 @@ export const draftSubmission = async (req: Request, res: Response) => {
 };
 
 export const adminManageDraft = async (req: Request, res: Response) => {
-  const { submissionId, feedback, type, reasons, userId, videosToUpdate } = req.body;
+  const { submissionId, feedback, footageFeedback, photoFeedback, type, reasons, userId, videosToUpdate, rawFootageToUpdate, photosToUpdate } = req.body;
 
   try {
     const submission = await prisma.submission.findUnique({
@@ -698,7 +707,7 @@ export const adminManageDraft = async (req: Request, res: Response) => {
       },
       include: {
         feedback: true,
-        publicFeedback: true,
+        // publicFeedback: true,
         user: {
           include: {
             creator: true,
@@ -1007,7 +1016,11 @@ export const adminManageDraft = async (req: Request, res: Response) => {
                   type: 'REASON',
                   reasons: reasons,
                   videosToUpdate: videosToUpdate || [],
+                  rawFootageToUpdate: rawFootageToUpdate || [],
+                  photosToUpdate: photosToUpdate || [],
                   content: feedback,
+                  rawFootageContent: footageFeedback,
+                  photoContent: photoFeedback,
                   admin: {
                     connect: { id: req.session.userid },
                   },

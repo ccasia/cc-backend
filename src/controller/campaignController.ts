@@ -3262,7 +3262,7 @@ export const draftPitch = async (req: Request, res: Response) => {
       });
     }
 
-    return res.status(200).json({ message: 'Pitch has been draft.' });
+    return res.status(200).json({ message: 'Pitch has been saved as draft.' });
   } catch (error) {
     return res.status(400).json(error);
   }
