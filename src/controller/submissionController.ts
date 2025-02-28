@@ -610,7 +610,7 @@ export const draftSubmission = async (req: Request, res: Response) => {
     amqp = await amqplib.connect(process.env.RABBIT_MQ as string);
     channel = await amqp.createChannel();
 
-    await channel.assertQueue('draft');
+    await channel.assertQueue('draft', { durable: true });
 
     channel.sendToQueue(
       'draft',
@@ -632,15 +632,14 @@ export const draftSubmission = async (req: Request, res: Response) => {
       },
     );
 
+    await channel.close();
+    await amqp.close();
     // activeProcesses.set(submissionId, { status: 'queue' });
 
     return res.status(200).json({ message: 'Video start processing' });
   } catch (error) {
     console.log(error);
     return res.status(400).json(error);
-  } finally {
-    if (channel) await channel.close();
-    if (amqp) await amqp.close();
   }
 };
 
