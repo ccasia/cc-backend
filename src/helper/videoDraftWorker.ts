@@ -334,15 +334,18 @@ const processVideo = async (videoData: VideoData): Promise<string> => {
           await fs.promises.unlink(content.inputPath);
           await fs.promises.unlink(content.outputPath);
 
-          channel.ack(msg);
+          // channel.ack(msg);
         } catch (error) {
           console.error('Error processing video:', error);
+        } finally {
+          channel.ack(msg);
         }
         const endUsage = process.cpuUsage(startUsage);
         console.log(`CPU Usage: ${endUsage.user} µs (user) / ${endUsage.system} µs (system)`);
       }
     });
   } catch (error) {
+    console.log(error);
     console.error('Error in message queue consumer:', error);
   }
 })();
