@@ -431,6 +431,7 @@ const processVideo = async (videoData: VideoData): Promise<string> => {
     const channel = await conn.createChannel();
     await channel.assertQueue('draft', { durable: true });
     await channel.purgeQueue('draft');
+    console.log('Worker 2 is running');
 
     await channel.consume('draft', async (msg) => {
       if (msg) {
