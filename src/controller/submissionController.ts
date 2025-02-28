@@ -612,7 +612,7 @@ export const draftSubmission = async (req: Request, res: Response) => {
 
     await channel.assertQueue('draft', { durable: true });
 
-    channel.sendToQueue(
+    const isSent = channel.sendToQueue(
       'draft',
       Buffer.from(
         JSON.stringify({
@@ -631,6 +631,12 @@ export const draftSubmission = async (req: Request, res: Response) => {
         persistent: true,
       },
     );
+
+    if (isSent) {
+      console.log('Message successfully sent!');
+    } else {
+      console.log('Failed to send message.');
+    }
 
     await channel.close();
     await amqp.close();
