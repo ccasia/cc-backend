@@ -607,7 +607,7 @@ export const draftSubmission = async (req: Request, res: Response) => {
 
     await file.mv(filePath);
 
-    amqp = await amqplib.connect(process.env.RABBIT_MQ as string);
+    amqp = await amqplib.connect(process.env.RABBIT_MQ!);
     channel = await amqp.createChannel();
 
     await channel.assertQueue('draft', { durable: true });
