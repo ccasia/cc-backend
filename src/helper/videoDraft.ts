@@ -388,7 +388,6 @@ const checkCurrentSubmission = async (submissionId: string) => {
               await fs.promises.unlink(videoFile.outputPath);
 
               if (requestChangeVideos.length) {
-                console.log('TEST1');
                 await Promise.all(
                   requestChangeVideos.map((video) =>
                     prisma.video.update({
@@ -404,7 +403,6 @@ const checkCurrentSubmission = async (submissionId: string) => {
                   ),
                 );
               } else {
-                console.log('TEST2');
                 await prisma.video.create({
                   data: {
                     url: videoPublicURL,
@@ -538,18 +536,62 @@ const checkCurrentSubmission = async (submissionId: string) => {
 
           //For Raw Footages
           if (filePaths?.rawFootages?.length) {
+            const requestChangeRawFootages = await prisma.rawFootage.findMany({
+              where: {
+                userId: submission.userId,
+                campaignId: submission.campaignId,
+                status: 'REVISION_REQUESTED',
+              },
+            });
+
             await Promise.all(
               filePaths.rawFootages.map(async (rawFootagePath: any) => {
                 const rawFootageFileName = `${submission.id}_${path.basename(rawFootagePath)}`;
-                const rawFootagePublicURL = await uploadPitchVideo(rawFootagePath, rawFootageFileName, content.folder);
-                await prisma.rawFootage.create({
-                  data: {
-                    url: rawFootagePublicURL,
-                    submissionId: submission.id,
-                    campaignId: content.campaignId,
-                    userId: submission.userId,
+
+                const { size } = await fs.promises.stat(rawFootagePath);
+
+                const rawFootagePublicURL = await uploadPitchVideo(
+                  rawFootagePath,
+                  rawFootageFileName,
+                  content.folder,
+                  (data: number) => {
+                    io?.to(clients.get(content.userid)!).emit('progress', {
+                      progress: Math.ceil(data),
+                      submissionId: submission.id,
+                      name: 'Uploading Start',
+                      fileName: rawFootageFileName,
+                      fileSize: fs.statSync(rawFootagePath).size,
+                      fileType: path.extname(rawFootagePath),
+                    });
                   },
-                });
+                  size,
+                );
+
+                if (requestChangeRawFootages.length) {
+                  await Promise.all(
+                    requestChangeRawFootages.map((photo) =>
+                      prisma.rawFootage.update({
+                        where: { id: photo.id },
+                        data: {
+                          url: rawFootagePublicURL,
+                          submissionId: submission.id,
+                          campaignId: content.campaignId,
+                          userId: submission.userId,
+                          status: 'PENDING',
+                        },
+                      }),
+                    ),
+                  );
+                } else {
+                  await prisma.rawFootage.create({
+                    data: {
+                      url: rawFootagePublicURL,
+                      submissionId: submission.id,
+                      campaignId: content.campaignId,
+                      userId: submission.userId,
+                    },
+                  });
+                }
               }),
             );
           }
@@ -568,6 +610,7 @@ const checkCurrentSubmission = async (submissionId: string) => {
               filePaths.photos.map(async (photoPath: any) => {
                 const photoFileName = `${submission.id}_${path.basename(photoPath)}`;
                 const photoPublicURL = await uploadImage(photoPath, photoFileName, content.folder);
+
                 if (requestChangePhotos.length) {
                   await Promise.all(
                     requestChangePhotos.map((photo) =>
