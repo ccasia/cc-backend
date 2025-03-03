@@ -51,6 +51,9 @@ model User {
   UserThread         UserThread[]
   threads            Thread[]             @relation("UserThreads")
   bugs               Bugs[]
+  video              Video[]
+  rawFootage         RawFootage[]
+  photo              Photo[]
 }
 
 model ResetPasswordToken {
@@ -405,6 +408,7 @@ model Campaign {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  video     Video[]
 }
 
 model BookMarkCampaign {
@@ -660,11 +664,45 @@ model Submission {
 }
 
 model Video {
-  id           String      @id @default(cuid())
+  id           String         @id @default(cuid())
   url          String?
-  status       VideoStatus @default(Uploaded)
+  status       FeedbackStatus @default(PENDING)
+  campaignId   String?
+  campaign     Campaign?      @relation(fields: [campaignId], references: [id])
+  userId       String?
+  user         User?          @relation(fields: [userId], references: [id])
   submissionId String?
-  submission   Submission? @relation(fields: [submissionId], references: [id])
+  submission   Submission?    @relation(fields: [submissionId], references: [id])
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime?      @updatedAt
+}
+
+model RawFootage {
+  id           String         @id @default(cuid())
+  url          String
+  campaignId   String?
+  campaign     Campaign?      @relation(fields: [campaignId], references: [id])
+  userId       String?
+  user         User?          @relation(fields: [userId], references: [id])
+  status       FeedbackStatus @default(PENDING)
+  submissionId String?
+  submission   Submission?    @relation(fields: [submissionId], references: [id])
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime?      @updatedAt
+}
+
+model Photo {
+  id           String         @id @default(cuid())
+  url          String
+  campaignId   String?
+  campaign     Campaign?      @relation(fields: [campaignId], references: [id])
+  userId       String?
+  user         User?          @relation(fields: [userId], references: [id])
+  status       FeedbackStatus @default(PENDING)
+  submissionId String?
+  submission   Submission?    @relation(fields: [submissionId], references: [id])
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime?      @updatedAt
 }
 
 enum VideoStatus {
@@ -674,22 +712,11 @@ enum VideoStatus {
   Rejected
 }
 
-model RawFootage {
-  id           String      @id @default(cuid())
-  url          String
-  campaignId   String?
-  campaign     Campaign?   @relation(fields: [campaignId], references: [id])
-  submissionId String?
-  submission   Submission? @relation(fields: [submissionId], references: [id])
-}
-
-model Photo {
-  id           String      @id @default(cuid())
-  url          String
-  campaignId   String
-  campaign     Campaign    @relation(fields: [campaignId], references: [id])
-  submissionId String?
-  submission   Submission? @relation(fields: [submissionId], references: [id])
+enum FeedbackStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  REVISION_REQUESTED
 }
 
 model SubmissionDependency {

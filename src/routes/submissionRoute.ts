@@ -2,10 +2,13 @@ import { Router } from 'express';
 import {
   adminManageAgreementSubmission,
   adminManageDraft,
+  adminManagePhotos,
   adminManagePosting,
+  adminManageVideos,
   agreementSubmission,
   changePostingDate,
   draftSubmission,
+  getDeliverables,
   getSubmissionByCampaignCreatorId,
   postingSubmission,
 } from '@controllers/submissionController';
@@ -15,29 +18,8 @@ import { generateInvoice } from '@controllers/invoiceController';
 
 const router = Router();
 
-// router.get('/dependencies', async (req, res) => {
-//   try {
-//     const test = await prisma.submissionDependency.findMany({
-//       include: {
-//         submission: {
-//           include: {
-//             submissionType: true,
-//           },
-//         },
-//         dependentSubmission: {
-//           include: {
-//             submissionType: true,
-//           },
-//         },
-//       },
-//     });
-//     return res.status(200).json(test);
-//   } catch (error) {
-//     return res.status(404).json(error);
-//   }
-// });
-
 router.get('/', getSubmissionByCampaignCreatorId);
+router.get('/deliverables/:userId/:campaignId', isLoggedIn, getDeliverables);
 
 router.post('/submitAgreement', isLoggedIn, agreementSubmission);
 router.post('/draftSubmission', isLoggedIn, draftSubmission);
@@ -48,5 +30,7 @@ router.patch('/adminManageAgreementSubmission', isSuperAdmin, adminManageAgreeme
 router.patch('/adminManageDraft', isSuperAdmin, adminManageDraft);
 router.patch('/adminManagePosting', isSuperAdmin, adminManagePosting);
 router.patch('/posting', isLoggedIn, isSuperAdmin, changePostingDate);
+router.patch('/managePhotos', isSuperAdmin, adminManagePhotos);
+router.patch('/manageVideos', isSuperAdmin, adminManageVideos);
 
 export default router;

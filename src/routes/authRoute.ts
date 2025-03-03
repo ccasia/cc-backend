@@ -33,6 +33,7 @@ router.get('/currentUser', validateToken, getCurrentUser);
 router.get('/checkCreator', validateToken, checkCreator);
 
 router.post('/login', login);
+
 router.post('/logout', logout);
 router.post('/register', registerUser);
 router.post('/resendVerifyToken', resendVerifyTokenAdmin);

@@ -87,7 +87,6 @@ export const deductCredits = async (campaignId: string, userId: string, tx: Pris
       },
     });
 
-    const filterSubmission = submission.filter((submission) => submission.video.length)[0];
     const ugcVideos = campaign.shortlisted.find((x) => x.userId === userId)?.ugcVideos;
 
     const data = await tx.campaign.update({

@@ -97,75 +97,183 @@ const processVideo = async (
   });
 };
 
-// const checkCurrentSubmission = async (submission: any) => {
-//   if (submission) {
-//     const { video, rawFootages, photos, campaign, submissionType } = submission;
-//     const submissionTypeName = submissionType?.type;
-
-// let allDeliverablesSent = false;
-
-// if (submissionTypeName === 'FIRST_DRAFT') {
-//   // Check if all deliverables are submitted
-//   const hasVideo = video.length > 0;
-//   const hasRawFootage = campaign.rawFootage ? rawFootages.length > 0 : true;
-//   const hasPhotos = campaign.photos ? photos.length > 0 : true;
-
-//   allDeliverablesSent = hasVideo && hasRawFootage && hasPhotos;
-// } else if (submissionTypeName === 'FINAL_DRAFT') {
-//   // For final draft, only video submission is needed
-//   allDeliverablesSent = video.length > 0;
-// }
-
-// // Update submission status based on deliverable checks
-// if (allDeliverablesSent) {
-//   await prisma.submission.update({
-//     where: { id: submission.id },
-//     data: {
-//       status: 'PENDING_REVIEW',
-//       submissionDate: dayjs().format(),
+// const checkCurrentSubmission = async (submissionId: string) => {
+//   const submission = await prisma.submission.findUnique({
+//     where: { id: submissionId },
+//     include: {
+//       submissionType: true,
+//       campaign: true,
+//       feedback: true,
+//       video: true,
+//       rawFootages: true,
+//       photos: true,
+//       dependentOn: {
+//         select: {
+//           dependentSubmission: {
+//             select: {
+//               feedback: true,
+//               video: true,
+//               rawFootages: true,
+//               photos: true,
+//             },
+//           },
+//         },
+//       },
 //     },
 //   });
-// } else {
-//   await prisma.submission.update({
-//     where: { id: submission.id },
-//     data: {
-//       status: 'IN_PROGRESS',
+
+//   if (!submission) throw new Error('Submission not found');
+
+//   const user = await prisma.shortListedCreator.findFirst({
+//     where: {
+//       userId: submission?.userId,
+//       campaignId: submission?.campaignId,
+//     },
+//     select: {
+//       ugcVideos: true,
 //     },
 //   });
-// }
 
-// if (io) {
-//   io.to(clients.get(submission.userId)).emit('updateSubmission');
-// }
+//   if (!user) throw new Error('UGC Credits is not assigned to this creator');
+
+//   const [videos, rawFootages, photos] = await Promise.all([
+//     prisma.video.count({ where: { submissionId } }),
+//     prisma.rawFootage.count({ where: { submissionId } }),
+//     prisma.photo.count({ where: { submissionId } }),
+//   ]);
+
+//   let allDeliverablesSent = false;
+
+//   if (submission?.submissionType.type === 'FIRST_DRAFT') {
+//     const hasVideo = videos === user.ugcVideos;
+//     const hasRawFootage = submission.campaign.rawFootage ? rawFootages > 0 : true;
+//     const hasPhotos = submission.campaign.photos ? photos > 0 : true;
+
+//     allDeliverablesSent = hasVideo && hasRawFootage && hasPhotos;
+//   } else if (submission?.submissionType.type === 'FINAL_DRAFT') {
+//     const rawFootageFeedbacks = submission.rawFootages.filter((x) => x.status === 'PENDING').length || 0;
+//     const videoFeedbacks =
+//       submission.video.filter((x) => x.status === 'PENDING' || x.status === 'APPROVED').length || 0;
+//     const photoFeedbacks =
+//       submission.photos.filter((x) => x.status === 'PENDING' || x.status === 'APPROVED').length || 0;
+
+//     const hasVideos = submission.video.length === videoFeedbacks;
+//     const hasRawFootage = submission.campaign.rawFootage ? submission.rawFootages.length === rawFootageFeedbacks : true;
+
+//     const hasPhotos = submission.campaign.photos ? submission.photos.length === photoFeedbacks : true;
+
+//     allDeliverablesSent = hasVideos && hasRawFootage && hasPhotos;
+//   }
+
+//   // Update submission status based on deliverable checks
+//   if (allDeliverablesSent) {
+//     await prisma.submission.update({
+//       where: { id: submission.id },
+//       data: {
+//         status: 'PENDING_REVIEW',
+//         submissionDate: dayjs().format(),
+//       },
+//     });
+//   } else {
+//     // if(submission.submissionType.type === 'FINAL_DRAFT' && submission.status === "CHANGES_REQUIRED")
+//     await prisma.submission.update({
+//       where: { id: submission.id },
+//       data: {
+//         status: 'IN_PROGRESS',
+//       },
+//     });
+//   }
+
+//   if (io) {
+//     io.to(clients.get(submission.userId)).emit('updateSubmission');
 //   }
 // };
 
 const checkCurrentSubmission = async (submissionId: string) => {
   const submission = await prisma.submission.findUnique({
     where: { id: submissionId },
-    include: { submissionType: true, campaign: true },
+    include: {
+      submissionType: true,
+      campaign: true,
+      feedback: true,
+      video: true,
+      rawFootages: true,
+      photos: true,
+      dependentOn: {
+        select: {
+          dependentSubmission: {
+            select: {
+              feedback: true,
+              video: true,
+              rawFootages: true,
+              photos: true,
+            },
+          },
+        },
+      },
+    },
   });
 
   if (!submission) throw new Error('Submission not found');
 
+  const user = await prisma.shortListedCreator.findFirst({
+    where: {
+      userId: submission?.userId,
+      campaignId: submission?.campaignId,
+    },
+    select: {
+      ugcVideos: true,
+    },
+  });
+
+  if (!user) throw new Error('UGC Credits is not assigned to this creator');
+
   const [videos, rawFootages, photos] = await Promise.all([
-    prisma.video.count({ where: { submissionId } }),
-    prisma.rawFootage.count({ where: { submissionId } }),
-    prisma.photo.count({ where: { submissionId } }),
+    prisma.video.count({ where: { userId: submission.userId, campaignId: submission.campaignId } }),
+    prisma.rawFootage.count({ where: { userId: submission.userId, campaignId: submission.campaignId } }),
+    prisma.photo.count({ where: { userId: submission.userId, campaignId: submission.campaignId } }),
   ]);
 
   let allDeliverablesSent = false;
 
   if (submission?.submissionType.type === 'FIRST_DRAFT') {
-    // Check if all deliverables are submitted
-    const hasVideo = videos > 0;
+    const hasVideo = videos === user.ugcVideos;
     const hasRawFootage = submission.campaign.rawFootage ? rawFootages > 0 : true;
     const hasPhotos = submission.campaign.photos ? photos > 0 : true;
 
     allDeliverablesSent = hasVideo && hasRawFootage && hasPhotos;
   } else if (submission?.submissionType.type === 'FINAL_DRAFT') {
-    // For final draft, only video submission is needed
-    allDeliverablesSent = videos > 0;
+    const [videosWithRevision, rawFootagesWithRevision, photosWithRevision] = await Promise.all([
+      prisma.video.count({
+        where: {
+          userId: submission.userId,
+          campaignId: submission.campaignId,
+          status: 'REVISION_REQUESTED',
+        },
+      }),
+      prisma.rawFootage.count({
+        where: {
+          userId: submission.userId,
+          campaignId: submission.campaignId,
+          status: 'REVISION_REQUESTED',
+        },
+      }),
+      prisma.photo.count({
+        where: {
+          userId: submission.userId,
+          campaignId: submission.campaignId,
+          status: 'REVISION_REQUESTED',
+        },
+      }),
+    ]);
+
+    const hasVideos = videosWithRevision === 0;
+
+    const hasRawFootage = submission.campaign.rawFootage ? rawFootagesWithRevision === 0 : true;
+
+    const hasPhotos = submission.campaign.photos ? photosWithRevision === 0 : true;
+
+    allDeliverablesSent = hasVideos && hasRawFootage && hasPhotos;
   }
 
   // Update submission status based on deliverable checks
@@ -209,6 +317,8 @@ const checkCurrentSubmission = async (submissionId: string) => {
           const submission = await prisma.submission.findUnique({
             where: { id: content.submissionId },
             select: {
+              campaignId: true,
+              status: true,
               id: true,
               video: true,
               rawFootages: true,
@@ -221,10 +331,23 @@ const checkCurrentSubmission = async (submissionId: string) => {
                   photos: true,
                 },
               },
+              feedback: {
+                select: {
+                  videosToUpdate: true,
+                },
+              },
             },
           });
 
           if (!submission) throw new Error('Submission not found');
+
+          const requestChangeVideos = await prisma.video.findMany({
+            where: {
+              userId: submission.userId,
+              campaignId: submission.campaignId,
+              status: 'REVISION_REQUESTED',
+            },
+          });
 
           // For videos
           if (filePaths?.video?.length) {
@@ -251,9 +374,6 @@ const checkCurrentSubmission = async (submissionId: string) => {
                 content.folder,
                 (data: number) => {
                   io?.to(clients.get(content.userid)!).emit('progress', {
-                    // progress: data,
-                    // submissionId: submission.id,
-                    // name: 'Uploading Start',
                     progress: Math.ceil(data),
                     submissionId: submission.id,
                     name: 'Uploading Start',
@@ -267,13 +387,33 @@ const checkCurrentSubmission = async (submissionId: string) => {
 
               await fs.promises.unlink(videoFile.outputPath);
 
-              // Save to database
-              await prisma.video.create({
-                data: {
-                  url: videoPublicURL,
-                  submissionId: submission.id,
-                },
-              });
+              if (requestChangeVideos.length) {
+                console.log('TEST1');
+                await Promise.all(
+                  requestChangeVideos.map((video) =>
+                    prisma.video.update({
+                      where: { id: video.id },
+                      data: {
+                        url: videoPublicURL,
+                        submissionId: submission.id,
+                        campaignId: content.campaignId,
+                        userId: submission.userId,
+                        status: 'PENDING',
+                      },
+                    }),
+                  ),
+                );
+              } else {
+                console.log('TEST2');
+                await prisma.video.create({
+                  data: {
+                    url: videoPublicURL,
+                    submissionId: submission.id,
+                    campaignId: submission.campaignId,
+                    userId: submission.userId,
+                  },
+                });
+              }
             });
 
             // Wait for all videos to be processed
@@ -403,67 +543,60 @@ const checkCurrentSubmission = async (submissionId: string) => {
                 const rawFootageFileName = `${submission.id}_${path.basename(rawFootagePath)}`;
                 const rawFootagePublicURL = await uploadPitchVideo(rawFootagePath, rawFootageFileName, content.folder);
                 await prisma.rawFootage.create({
-                  data: { url: rawFootagePublicURL, submissionId: submission.id, campaignId: content.campaignId },
+                  data: {
+                    url: rawFootagePublicURL,
+                    submissionId: submission.id,
+                    campaignId: content.campaignId,
+                    userId: submission.userId,
+                  },
                 });
               }),
             );
-
-            // for (const rawFootagePath of filePaths.rawFootages) {
-            //   const rawFootageFileName = `${submission.id}_${path.basename(rawFootagePath)}`;
-            //   const rawFootagePublicURL = await uploadPitchVideo(rawFootagePath, rawFootageFileName, content.folder);
-
-            //   console.log('✅ Raw footage uploaded successfully:', rawFootagePublicURL);
-
-            //   // Create a new RawFootage entry in the database
-            //   await prisma.rawFootage.create({
-            //     data: {
-            //       url: rawFootagePublicURL,
-            //       submissionId: submission.id,
-            //       campaignId: content.campaignId,
-            //     },
-            //   });
-
-            //   console.log('✅ Raw footage entry created in the DB.');
-            // }
           }
 
           // For photos
           if (filePaths?.photos?.length) {
+            const requestChangePhotos = await prisma.photo.findMany({
+              where: {
+                userId: submission.userId,
+                campaignId: submission.campaignId,
+                status: 'REVISION_REQUESTED',
+              },
+            });
+
             await Promise.all(
               filePaths.photos.map(async (photoPath: any) => {
                 const photoFileName = `${submission.id}_${path.basename(photoPath)}`;
                 const photoPublicURL = await uploadImage(photoPath, photoFileName, content.folder);
-                await prisma.photo.create({
-                  data: {
-                    url: photoPublicURL,
-                    submissionId: submission.id,
-                    campaignId: content.campaignId,
-                  },
-                });
+                if (requestChangePhotos.length) {
+                  await Promise.all(
+                    requestChangePhotos.map((photo) =>
+                      prisma.photo.update({
+                        where: { id: photo.id },
+                        data: {
+                          url: photoPublicURL,
+                          submissionId: submission.id,
+                          campaignId: content.campaignId,
+                          userId: submission.userId,
+                          status: 'PENDING',
+                        },
+                      }),
+                    ),
+                  );
+                } else {
+                  await prisma.photo.create({
+                    data: {
+                      url: photoPublicURL,
+                      submissionId: submission.id,
+                      campaignId: content.campaignId,
+                      userId: submission.userId,
+                    },
+                  });
+                }
                 await fs.promises.unlink(photoPath);
                 console.log('✅ Photo entry created in the DB.');
               }),
             );
-
-            // for (const photoPath of filePaths.photos) {
-            //   const photoFileName = `${submission.id}_${path.basename(photoPath)}`;
-            //   const photoPublicURL = await uploadImage(photoPath, photoFileName, content.folder);
-
-            //   console.log('✅ Photo uploaded successfully:', photoPublicURL);
-
-            //   // Save photo URL to database
-            //   await prisma.photo.create({
-            //     data: {
-            //       url: photoPublicURL,
-            //       submissionId: submission.id,
-            //       campaignId: content.campaignId,
-            //     },
-            //   });
-
-            //   await fs.promises.unlink(photoPath);
-
-            //   console.log('✅ Photo entry created in the DB.');
-            // }
           }
 
           await checkCurrentSubmission(submission.id);
