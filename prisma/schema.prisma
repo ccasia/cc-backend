@@ -856,6 +856,7 @@ model Bugs {
   id               String   @id @unique @default(cuid())
   stepsToReproduce String
   attachment       String?
+  campaignName     String?
   createdAt        DateTime @default(now())
   userId           String?
   user             User?    @relation(references: [id], fields: [userId])
