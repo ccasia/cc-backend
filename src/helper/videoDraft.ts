@@ -311,6 +311,7 @@ const checkCurrentSubmission = async (submissionId: string) => {
     await channel.consume('draft', async (msg) => {
       if (msg !== null) {
         const content: any = JSON.parse(msg.content.toString());
+        console.log('RECIEVED', content);
         const { filePaths } = content;
 
         try {
