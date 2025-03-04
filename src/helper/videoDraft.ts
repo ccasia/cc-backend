@@ -556,6 +556,7 @@ const checkCurrentSubmission = async (submissionId: string) => {
                   rawFootageFileName,
                   content.folder,
                   (data: number) => {
+                    console.log('PROGRESS', data);
                     io?.to(clients.get(content.userid)!).emit('progress', {
                       progress: Math.ceil(data),
                       submissionId: submission.id,
