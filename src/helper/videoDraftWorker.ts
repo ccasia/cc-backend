@@ -67,7 +67,7 @@ const processVideo = async (videoData: VideoData): Promise<string> => {
 
 (async () => {
   try {
-    const conn = await amqplib.connect('amqp://myuser:mypassword@34.1.203.152/nexea');
+    const conn = await amqplib.connect(process.env.RABBIT_MQ!);
     const channel = await conn.createChannel();
     await channel.assertQueue('draft', { durable: true });
     // await channel.purgeQueue('draft');
