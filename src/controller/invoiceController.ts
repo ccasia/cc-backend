@@ -415,7 +415,7 @@ export const updateInvoice = async (req: Request, res: Response) => {
         },
         include: {
           creator: {
-            include: { user: { select: { email: true } } },
+            include: { user: { select: { email: true, name: true } } },
           },
           user: true,
           campaign: {
@@ -437,7 +437,9 @@ export const updateInvoice = async (req: Request, res: Response) => {
       let contactID: any;
       let invoiceData: any;
 
-      const contact = await getContactFromXero(invoice?.creator?.user?.email as string);
+      const contact = await getContactFromXero(invoice?.creator?.user?.name as string);
+
+      console.log('Found', contact);
 
       if (contact) {
         contactID = contact;
@@ -939,13 +941,9 @@ export const deleteInvoice = async (req: Request, res: Response) => {
   }
 };
 
-const getContactFromXero = async (contactEmail: string) => {
+const getContactFromXero = async (contactName: string) => {
   try {
-    const res = await xero.accountingApi.getContacts(
-      xero.tenants[0].tenantId,
-      undefined,
-      `EmailAddress=="${contactEmail}"`,
-    );
+    const res = await xero.accountingApi.getContacts(xero.tenants[0].tenantId, undefined, `Name=="${contactName}"`);
 
     if (res.body.contacts?.length) {
       return res?.body?.contacts[0].contactID;
