@@ -304,146 +304,152 @@ const processVideo = async (videoData: VideoData): Promise<string> => {
     // await channel.purgeQueue('draft');
     console.log('Worker 2 is running');
 
-    await channel.consume('draft', async (msg) => {
-      if (!msg) return;
-      const startUsage = process.cpuUsage();
+    await channel.consume(
+      'draft',
+      async (msg) => {
+        if (!msg) return;
+        const startUsage = process.cpuUsage();
 
-      try {
-        const content: VideoData = JSON.parse(msg.content.toString());
+        try {
+          const content: VideoData = JSON.parse(msg.content.toString());
 
-        console.log('Receive', content.fileName);
+          console.log('Receive', content.fileName);
 
-        const compressedPath = await processVideo(content);
+          const compressedPath = await processVideo(content);
 
-        console.log('Processing Done');
-        const size = (await fs.promises.stat(compressedPath)).size;
+          console.log('Processing Done');
+          const size = (await fs.promises.stat(compressedPath)).size;
 
-        const publicURL = await uploadPitchVideo(
-          compressedPath,
-          content.fileName,
-          content.folder,
-          (data: number) => {
-            const socket = clients.get(content.userid);
-            if (socket) {
-              io
-                ?.to(socket)
-                .emit('progress', { progress: data, submissionId: content.submissionId, name: 'Uploading Start' });
-            }
-          },
-          size,
-        );
+          const publicURL = await uploadPitchVideo(
+            compressedPath,
+            content.fileName,
+            content.folder,
+            (data: number) => {
+              const socket = clients.get(content.userid);
+              if (socket) {
+                io
+                  ?.to(socket)
+                  .emit('progress', { progress: data, submissionId: content.submissionId, name: 'Uploading Start' });
+              }
+            },
+            size,
+          );
 
-        console.log('Uploading Done');
+          console.log('Uploading Done');
 
-        const data = await prisma.submission.update({
-          where: { id: content.submissionId },
-          data: {
-            content: publicURL,
-            caption: content.caption,
-            status: 'PENDING_REVIEW',
-            submissionDate: dayjs().toISOString(),
-          },
-          include: {
-            submissionType: true,
-            campaign: {
-              include: {
-                campaignAdmin: {
-                  select: {
-                    adminId: true,
-                    admin: { include: { user: { include: { Board: { include: { columns: true } } } } } },
+          const data = await prisma.submission.update({
+            where: { id: content.submissionId },
+            data: {
+              content: publicURL,
+              caption: content.caption,
+              status: 'PENDING_REVIEW',
+              submissionDate: dayjs().toISOString(),
+            },
+            include: {
+              submissionType: true,
+              campaign: {
+                include: {
+                  campaignAdmin: {
+                    select: {
+                      adminId: true,
+                      admin: { include: { user: { include: { Board: { include: { columns: true } } } } } },
+                    },
                   },
                 },
               },
+              user: { include: { creator: true } },
             },
-            user: { include: { creator: true } },
-          },
-        });
-
-        io?.to(clients.get(content.userid))?.emit('progress', { submissionId: content.submissionId, progress: 100 });
-
-        if (data.campaign.spreadSheetURL) {
-          const spreadSheetId = data.campaign.spreadSheetURL.split('/d/')[1].split('/')[0];
-          await createNewRowData({
-            creatorInfo: {
-              name: data.user.name as string,
-              username: data.user.creator?.instagram as string,
-              postingDate: dayjs().format('LL'),
-              caption: content.caption,
-              videoLink: `https://storage.googleapis.com/${process.env.BUCKET_NAME}/${data?.submissionType.type}/${data?.id}_draft.mp4?v=${dayjs().toISOString()}`,
-            },
-            spreadSheetId,
-          });
-        }
-
-        const { title, message } = notificationDraft(data.campaign.name, 'Creator');
-
-        const notification = await saveNotification({
-          userId: data.userId,
-          message,
-          title,
-          entity: 'Draft',
-          entityId: data.campaign.id,
-        });
-
-        io?.to(clients.get(data.userId))?.emit('notification', notification);
-
-        const { title: adminTitle, message: adminMessage } = notificationDraft(
-          data.campaign.name,
-          'Admin',
-          data.user.name as string,
-        );
-
-        for (const item of data.campaign.campaignAdmin) {
-          const notification = await saveNotification({
-            userId: item.adminId,
-            message: adminMessage,
-            creatorId: content.userid,
-            title: adminTitle,
-            entity: 'Draft',
-            entityId: data.campaignId,
           });
 
-          if (item.admin.user.Board) {
-            const actionNeededColumn = item.admin.user.Board.columns.find((col) => col.name === 'Actions Needed');
+          io?.to(clients.get(content.userid))?.emit('progress', { submissionId: content.submissionId, progress: 100 });
 
-            if (actionNeededColumn) {
-              const taskInDone = await getTaskId({
-                boardId: item.admin.user.Board.id,
-                submissionId: data.id,
-                columnName: 'Done',
-              });
-
-              if (taskInDone) {
-                await updateTask({
-                  taskId: taskInDone.id,
-                  toColumnId: actionNeededColumn.id,
-                  userId: item.admin.user.id,
-                });
-              } else {
-                await createNewTask({
-                  submissionId: data.id,
-                  name: 'Draft Submission',
-                  userId: item.admin.user.id,
-                  position: 1,
-                  columnId: actionNeededColumn.id,
-                });
-              }
-            }
+          if (data.campaign.spreadSheetURL) {
+            const spreadSheetId = data.campaign.spreadSheetURL.split('/d/')[1].split('/')[0];
+            await createNewRowData({
+              creatorInfo: {
+                name: data.user.name as string,
+                username: data.user.creator?.instagram as string,
+                postingDate: dayjs().format('LL'),
+                caption: content.caption,
+                videoLink: `https://storage.googleapis.com/${process.env.BUCKET_NAME}/${data?.submissionType.type}/${data?.id}_draft.mp4?v=${dayjs().toISOString()}`,
+              },
+              spreadSheetId,
+            });
           }
 
-          io?.to(clients.get(item.adminId))?.emit('notification', notification);
-        }
+          const { title, message } = notificationDraft(data.campaign.name, 'Creator');
 
-        await fs.promises.unlink(content.inputPath).catch(console.error);
-        await fs.promises.unlink(content.outputPath).catch(console.error);
-      } catch (error) {
-        console.error('Error processing video:', error);
-      } finally {
-        channel.ack(msg);
-        const endUsage = process.cpuUsage(startUsage);
-        console.log(`CPU Usage: ${endUsage.user} µs (user) / ${endUsage.system} µs (system)`);
-      }
-    });
+          const notification = await saveNotification({
+            userId: data.userId,
+            message,
+            title,
+            entity: 'Draft',
+            entityId: data.campaign.id,
+          });
+
+          io?.to(clients.get(data.userId))?.emit('notification', notification);
+
+          const { title: adminTitle, message: adminMessage } = notificationDraft(
+            data.campaign.name,
+            'Admin',
+            data.user.name as string,
+          );
+
+          for (const item of data.campaign.campaignAdmin) {
+            const notification = await saveNotification({
+              userId: item.adminId,
+              message: adminMessage,
+              creatorId: content.userid,
+              title: adminTitle,
+              entity: 'Draft',
+              entityId: data.campaignId,
+            });
+
+            if (item.admin.user.Board) {
+              const actionNeededColumn = item.admin.user.Board.columns.find((col) => col.name === 'Actions Needed');
+
+              if (actionNeededColumn) {
+                const taskInDone = await getTaskId({
+                  boardId: item.admin.user.Board.id,
+                  submissionId: data.id,
+                  columnName: 'Done',
+                });
+
+                if (taskInDone) {
+                  await updateTask({
+                    taskId: taskInDone.id,
+                    toColumnId: actionNeededColumn.id,
+                    userId: item.admin.user.id,
+                  });
+                } else {
+                  await createNewTask({
+                    submissionId: data.id,
+                    name: 'Draft Submission',
+                    userId: item.admin.user.id,
+                    position: 1,
+                    columnId: actionNeededColumn.id,
+                  });
+                }
+              }
+            }
+
+            io?.to(clients.get(item.adminId))?.emit('notification', notification);
+          }
+
+          await fs.promises.unlink(content.inputPath).catch(console.error);
+          await fs.promises.unlink(content.outputPath).catch(console.error);
+        } catch (error) {
+          console.error('Error processing video:', error);
+        } finally {
+          channel.ack(msg);
+          const endUsage = process.cpuUsage(startUsage);
+          console.log(`CPU Usage: ${endUsage.user} µs (user) / ${endUsage.system} µs (system)`);
+        }
+      },
+      {
+        noAck: false,
+      },
+    );
   } catch (error) {
     console.error('Error in message queue consumer:', error);
   }
