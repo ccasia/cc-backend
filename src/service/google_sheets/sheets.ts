@@ -42,20 +42,6 @@ export const accessGoogleSheetAPI = async (docId: string) => {
   }
 };
 
-// Create Campaign = Sheet
-// export const createNewSheetWithHeaderRows = async ({ title, rows }: NewSheetWithRows) => {
-//   try {
-//     // const sheet = await accessGoogleSheetAPI();
-
-//     const newSheet = await sheet.addSheet({ headerValues: rows, title: title });
-
-//     return newSheet;
-//   } catch (error) {
-//     throw new Error(error);
-//   }
-// };
-
-// Insert shortlisted creator => row
 export const createNewRowData = async ({ spreadSheetId, creatorInfo }: Row) => {
   try {
     const sheet = await accessGoogleSheetAPI(spreadSheetId);

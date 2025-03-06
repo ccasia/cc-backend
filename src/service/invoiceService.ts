@@ -1,5 +1,12 @@
 import { Event, PrismaClient, InvoiceStatus, Invoice } from '@prisma/client';
 import dayjs from 'dayjs';
+import { accessGoogleSheetAPI } from './google_sheets/sheets';
+
+import utc from 'dayjs/plugin/utc';
+import timezone from 'dayjs/plugin/timezone';
+
+dayjs.extend(utc);
+dayjs.extend(timezone);
 
 const prisma = new PrismaClient();
 
@@ -133,6 +140,50 @@ export const createInvoiceService = async (data: any, userId: any, amount: any) 
     });
 
     return invoice.find((item) => item.creatorId === data.user.id);
+  } catch (error) {
+    throw new Error(error);
+  }
+};
+
+export const sendToSpreadSheet = async (
+  data: {
+    createdAt: string;
+    name: string;
+    icNumber: string;
+    bankName: string;
+    campaignName: string;
+    bankAccountNumber: string;
+    amount: number;
+  },
+  spreadSheetId: string,
+  sheetByTitle: string,
+) => {
+  try {
+    const sheet = await accessGoogleSheetAPI(spreadSheetId);
+
+    if (!sheet) {
+      throw new Error('Sheet not found.');
+    }
+
+    const currentSheet = sheet.sheetsByTitle[sheetByTitle];
+
+    if (!currentSheet) {
+      throw new Error('Sheet not found.');
+    }
+
+    const updatedRow = await currentSheet.addRow({
+      'Date Created': dayjs(data.createdAt).tz('Asia/Kuala_Lumpur').format('LLL'),
+      'Creator Name': data.name || '',
+      'IC Number': data.icNumber || '',
+      'Campaign Name': data.campaignName || '',
+      'Bank Name': data.bankName || '',
+      'Bank Account Number': data.bankAccountNumber || '',
+      Amount: new Intl.NumberFormat('en-MY', { minimumFractionDigits: 2 }).format(data.amount),
+    });
+
+    console.log(updatedRow);
+
+    return updatedRow;
   } catch (error) {
     throw new Error(error);
   }

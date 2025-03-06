@@ -20,8 +20,9 @@ import { TokenSet } from 'openid-client';
 import { error } from 'console';
 
 import fs from 'fs-extra';
-import { createInvoiceService } from '@services/invoiceService';
-import { decreamentCreditCampiagn } from '@services/packageService';
+import { createInvoiceService, sendToSpreadSheet } from '@services/invoiceService';
+import dayjs from 'dayjs';
+// import { decreamentCreditCampiagn } from '@services/packageService';
 
 const prisma = new PrismaClient();
 
@@ -393,7 +394,6 @@ export const updateInvoice = async (req: Request, res: Response) => {
     totalAmount,
     campaignId,
     bankInfo,
-    xeroContactId,
     newContact,
   }: invoiceData = req.body;
 
@@ -415,7 +415,15 @@ export const updateInvoice = async (req: Request, res: Response) => {
         },
         include: {
           creator: {
-            include: { user: { select: { email: true, name: true } } },
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  paymentForm: true,
+                },
+              },
+            },
           },
           user: true,
           campaign: {
@@ -457,23 +465,21 @@ export const updateInvoice = async (req: Request, res: Response) => {
         },
       });
 
-      // if (!newContact) {
-      //   contactID = invoice.creator.xeroContactId;
-      // } else {
-      //   const contact: any = await createXeroContact(bankInfo, invoice.creator, invoice.user, invoiceFrom);
-      //   contactID = contact[0].contactID;
-
-      //   await tx.creator.update({
-      //     where: {
-      //       id: invoice.creator.id,
-      //     },
-      //     data: {
-      //       xeroContactId: contactID,
-      //     },
-      //   });
-      // }
-
       if (status == 'approved') {
+        await sendToSpreadSheet(
+          {
+            createdAt: dayjs().format(''),
+            name: invoice.creator.user?.name as string,
+            icNumber: invoice.creator.user.paymentForm?.icNumber as string,
+            bankName: invoice.creator.user.paymentForm?.bankAccountName as string,
+            bankAccountNumber: invoice.creator.user.paymentForm?.bankAccountNumber as string,
+            campaignName: invoice.campaign.name,
+            amount: invoice.amount,
+          },
+          '1brQQXJpdd7A2ipS7dK1B-Y2pGwe7QNgbcFSMh26ZA48',
+          'Invoices',
+        );
+
         invoiceData = await createXeroInvoiceLocal(
           contactID,
           items,
@@ -897,7 +903,7 @@ export const generateInvoice = async (req: Request, res: Response) => {
         },
       });
 
-      await decreamentCreditCampiagn(campaignId);
+      // await decreamentCreditCampiagn(campaignId);
       const images: any = creator.campaign.campaignBrief?.images;
 
       emailCreatorInvoice(
