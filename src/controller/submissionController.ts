@@ -595,8 +595,8 @@ export const draftSubmission = async (req: Request, res: Response) => {
     await prisma.submission.update({
       where: { id: submissionId },
       data: {
-        photosDriveLink,
-        rawFootagesDriveLink,
+        ...(photosDriveLink && { photosDriveLink }),
+        ...(rawFootagesDriveLink && { rawFootagesDriveLink }),
       },
     });
 
@@ -694,6 +694,7 @@ export const draftSubmission = async (req: Request, res: Response) => {
 
     return res.status(200).json({ message: 'Video start processing' });
   } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   } finally {
     if (channel) await channel.close();
@@ -701,19 +702,645 @@ export const draftSubmission = async (req: Request, res: Response) => {
   }
 };
 
+// export const adminManageDraft = async (req: Request, res: Response) => {
+//   const { submissionId, feedback, type, reasons, userId, videosToUpdate, rawFootageToUpdate, photosToUpdate } =
+//     req.body;
+
+//   try {
+//     const submission = await prisma.submission.findUnique({
+//       where: {
+//         id: submissionId,
+//       },
+//       include: {
+//         feedback: true,
+//         user: {
+//           include: {
+//             creator: true,
+//             paymentForm: true,
+//             creatorAgreement: true,
+//           },
+//         },
+//         campaign: {
+//           include: {
+//             campaignAdmin: {
+//               include: {
+//                 admin: {
+//                   include: {
+//                     role: true,
+//                     user: {
+//                       select: {
+//                         Board: true,
+//                         id: true,
+//                       },
+//                     },
+//                   },
+//                 },
+//               },
+//             },
+//             campaignBrief: true,
+//           },
+//         },
+//         submissionType: true,
+//         task: true,
+//       },
+//     });
+
+//     if (!submission) {
+//       return res.status(404).json({ message: 'Submission not found' });
+//     }
+
+//     await prisma.$transaction(
+//       async (prisma) => {
+//         if (type === 'approve') {
+//           const approveSubmission = await prisma.submission.update({
+//             where: {
+//               id: submission?.id,
+//             },
+//             data: {
+//               status: 'APPROVED',
+//               isReview: true,
+//               feedback: feedback && {
+//                 create: {
+//                   type: 'COMMENT',
+//                   content: feedback,
+//                   adminId: req.session.userid as string,
+//                 },
+//               },
+//             },
+//             include: {
+//               user: {
+//                 include: {
+//                   creator: true,
+//                   paymentForm: true,
+//                   creatorAgreement: true,
+//                   Board: true,
+//                 },
+//               },
+//               campaign: {
+//                 include: {
+//                   campaignBrief: true,
+//                   campaignAdmin: {
+//                     include: {
+//                       admin: {
+//                         include: {
+//                           role: true,
+//                         },
+//                       },
+//                     },
+//                   },
+//                 },
+//               },
+//               submissionType: true,
+//               task: true,
+//               video: true,
+//             },
+//           });
+
+//           if (videosToUpdate?.length) {
+//             await prisma.video.updateMany({
+//               where: { id: { in: videosToUpdate } },
+//               data: {
+//                 status: 'APPROVED',
+//               },
+//             });
+//           }
+
+//           if (rawFootageToUpdate?.length) {
+//             await prisma.video.updateMany({
+//               where: { id: { in: rawFootageToUpdate } },
+//               data: {
+//                 status: 'APPROVED',
+//               },
+//             });
+//           }
+
+//           if (photosToUpdate?.length) {
+//             await prisma.video.updateMany({
+//               where: { id: { in: photosToUpdate } },
+//               data: {
+//                 status: 'APPROVED',
+//               },
+//             });
+//           }
+
+//           const doneColumnId = await getColumnId({ userId: submission.userId, columnName: 'Done' });
+
+//           if (approveSubmission.user.Board) {
+//             const task = await getTaskId({
+//               boardId: approveSubmission?.user.Board.id,
+//               submissionId: approveSubmission.id,
+//               columnName: 'In Review',
+//             });
+
+//             if (task && doneColumnId) {
+//               await prisma.task.update({
+//                 where: {
+//                   id: task.id,
+//                 },
+//                 data: {
+//                   columnId: doneColumnId,
+//                 },
+//               });
+//             }
+//           }
+
+//           const image: any = submission?.campaign?.campaignBrief?.images || [];
+
+//           if (submission.submissionType.type === 'FIRST_DRAFT' && submission.status === 'APPROVED') {
+//             approvalOfDraft(
+//               submission.user.email,
+//               submission.campaign.name,
+//               submission.user.name ?? 'Creator',
+//               submission.campaignId,
+//               image[0],
+//             );
+//           } else if (
+//             (submission.submissionType.type === 'FINAL_DRAFT' && submission.status === 'APPROVED',
+//             submission.campaignId)
+//           ) {
+//             approvalOfDraft(
+//               submission.user.email,
+//               submission.campaign.name,
+//               submission.user.name ?? 'Creator',
+//               submission.campaignId,
+//               image[0],
+//             );
+//           } else {
+//             feedbackOnDraft(
+//               submission.user.email,
+//               submission.campaign.name,
+//               submission.user.name ?? 'Creator',
+//               submission.campaignId,
+//             );
+//           }
+
+//           if (submission.campaign.campaignType == 'ugc') {
+//             const invoiceAmount = submission.user.creatorAgreement.find(
+//               (elem: any) => elem.campaignId === submission.campaign.id,
+//             )?.amount;
+
+//             if (submission.campaign.campaignCredits !== null) {
+//               await deductCredits(approveSubmission.campaignId, approveSubmission.userId, prisma as PrismaClient);
+//             }
+
+//             const invoiceItems = await getCreatorInvoiceLists(approveSubmission.id, prisma as PrismaClient);
+
+//             await createInvoiceService(submission, userId, invoiceAmount, invoiceItems);
+
+//             const shortlistedCreator = await prisma.shortListedCreator.findFirst({
+//               where: {
+//                 AND: [{ userId: submission.userId }, { campaignId: submission.campaignId }],
+//               },
+//             });
+
+//             if (!shortlistedCreator) {
+//               throw new Error('Shortlisted creator not found.');
+//             }
+
+//             await prisma.shortListedCreator.update({
+//               where: {
+//                 id: shortlistedCreator.id,
+//               },
+//               data: {
+//                 isCampaignDone: true,
+//               },
+//             });
+//           }
+
+//           if (submission.campaign.campaignType === 'normal') {
+//             const posting = await prisma.submission.findFirst({
+//               where: {
+//                 AND: [
+//                   { userId: submission.userId },
+//                   { campaignId: submission.campaignId },
+//                   {
+//                     submissionType: {
+//                       type: {
+//                         equals: 'POSTING',
+//                       },
+//                     },
+//                   },
+//                 ],
+//               },
+//               include: {
+//                 user: {
+//                   include: {
+//                     Board: {
+//                       include: {
+//                         columns: {
+//                           include: {
+//                             task: true,
+//                           },
+//                         },
+//                       },
+//                     },
+//                   },
+//                 },
+//                 task: true,
+//                 campaign: {
+//                   select: {
+//                     campaignBrief: {
+//                       select: {
+//                         images: true,
+//                       },
+//                     },
+//                   },
+//                 },
+//               },
+//             });
+
+//             if (!posting) {
+//               throw new Error('Submission called posting not found.');
+//             }
+
+//             const inProgressColumnId = await getColumnId({ userId: posting.userId, columnName: 'In Progress' });
+//             const toDoColumn = posting.user.Board?.columns.find((item) => item.name === 'To Do');
+
+//             const task = toDoColumn?.task.find((item) => item.submissionId === posting.id);
+
+//             if (task && inProgressColumnId) {
+//               await prisma.task.update({
+//                 where: {
+//                   id: task?.id,
+//                 },
+//                 data: {
+//                   columnId: inProgressColumnId,
+//                 },
+//               });
+//             }
+
+//             await prisma.submission.update({
+//               where: {
+//                 id: posting.id,
+//               },
+//               data: {
+//                 status: 'IN_PROGRESS',
+//                 startDate: dayjs(req.body.schedule.startDate).format(),
+//                 endDate: dayjs(req.body.schedule.endDate).format(),
+//                 dueDate: dayjs(req.body.schedule.endDate).format(),
+//               },
+//             });
+
+//             const images: any = posting.campaign.campaignBrief?.images;
+
+//             postingSchedule(
+//               submission.user.email,
+//               submission.campaign.name,
+//               submission.user.name ?? 'Creator',
+//               submission.campaign.id,
+//               images[0],
+//             );
+//           }
+
+//           for (const item of submission.campaign.campaignAdmin) {
+//             if (item.admin.user.Board) {
+//               const taskInActionsNeeded = await getTaskId({
+//                 boardId: item.admin.user.Board?.id,
+//                 columnName: 'Actions Needed',
+//                 submissionId: approveSubmission.id,
+//               });
+
+//               const columnDone = await getColumnId({
+//                 userId: item.admin.userId,
+//                 boardId: item.admin.user.Board.id,
+//                 columnName: 'Done',
+//               });
+
+//               if (taskInActionsNeeded && columnDone) {
+//                 await prisma.task.update({
+//                   where: {
+//                     id: taskInActionsNeeded.id,
+//                   },
+//                   data: {
+//                     column: { connect: { id: columnDone } },
+//                   },
+//                 });
+//               }
+//             }
+//           }
+
+//           const { title, message } = notificationApproveDraft(
+//             submission.campaign.name,
+//             MAP_TIMELINE[submission.submissionType.type],
+//           );
+
+//           const notification = await saveNotification({
+//             userId: submission.userId,
+//             title: title,
+//             message: message,
+//             entity: 'Draft',
+//             creatorId: submission.userId,
+//             entityId: submission.campaignId,
+//           });
+
+//           io.to(clients.get(submission.userId)).emit('notification', notification);
+//           io.to(clients.get(submission.userId)).emit('newFeedback');
+
+//           return res.status(200).json({ message: 'Succesfully submitted.' });
+//         } else {
+//           const sub = await prisma.submission.update({
+//             where: {
+//               id: submissionId,
+//             },
+//             data: {
+//               status: 'CHANGES_REQUIRED',
+//               isReview: true,
+//               feedback: {
+//                 create: {
+//                   type: 'REASON',
+//                   reasons: reasons,
+//                   // videosToUpdate: videosToUpdate || [],
+//                   // rawFootageToUpdate: rawFootageToUpdate || [],
+//                   // photosToUpdate: photosToUpdate || [],
+//                   content: feedback,
+//                   // rawFootageContent: footageFeedback,
+//                   // photoContent: photoFeedback,
+//                   admin: {
+//                     connect: { id: req.session.userid },
+//                   },
+//                 },
+//               },
+//             },
+//             include: {
+//               user: {
+//                 include: {
+//                   Board: true,
+//                 },
+//               },
+//               campaign: {
+//                 select: {
+//                   campaignAdmin: {
+//                     select: {
+//                       admin: {
+//                         select: {
+//                           user: {
+//                             select: {
+//                               Board: true,
+//                               id: true,
+//                             },
+//                           },
+//                         },
+//                       },
+//                     },
+//                   },
+//                   rawFootage: true,
+//                   photos: true,
+//                 },
+//               },
+//               submissionType: true,
+//               dependencies: true,
+//               task: true,
+//               video: true,
+//               rawFootages: true,
+//               photos: true,
+//             },
+//           });
+
+//           const finalDraft = await prisma.submission.findFirst({
+//             where: {
+//               campaignId: sub.campaignId,
+//               userId: sub.userId,
+//               submissionType: {
+//                 type: 'FINAL_DRAFT',
+//               },
+//             },
+//           });
+
+//           if (!finalDraft) throw new Error('Final Draft not found');
+
+//           const currentVideos = sub.video.map((x) => x.id);
+
+//           const revisionVideos = currentVideos.filter((id) => videosToUpdate?.includes(id));
+//           const approvedVideos = currentVideos.filter((id) => !videosToUpdate?.includes(id));
+
+//           if (revisionVideos.length) {
+//             await prisma.video.updateMany({
+//               where: { id: { in: revisionVideos } },
+//               data: {
+//                 status: 'REVISION_REQUESTED',
+//               },
+//             });
+//           }
+
+//           if (approvedVideos.length) {
+//             await prisma.video.updateMany({
+//               where: { id: { in: approvedVideos } },
+//               data: {
+//                 status: 'APPROVED',
+//               },
+//             });
+//           }
+
+//           if (submission.submissionType.type === 'FIRST_DRAFT') {
+//             await prisma.video.createMany({
+//               data: sub.video.map((vid) => ({
+//                 url: vid.url,
+//                 status: vid.status === 'REVISION_REQUESTED' ? 'REVISION_REQUESTED' : 'APPROVED',
+//                 submissionId: finalDraft.id,
+//               })),
+//             });
+//           }
+
+//           if (sub.campaign.rawFootage) {
+//             const currentRawFootages = sub.rawFootages.map((x) => x.id);
+
+//             const revisionRawFootages = currentRawFootages.filter((id) => rawFootageToUpdate?.includes(id));
+//             const approvedRawFootages = currentRawFootages.filter((id) => !rawFootageToUpdate?.includes(id));
+
+//             if (revisionRawFootages?.length) {
+//               await prisma.rawFootage.updateMany({
+//                 where: { id: { in: revisionRawFootages } },
+//                 data: {
+//                   status: 'REVISION_REQUESTED',
+//                 },
+//               });
+//             }
+
+//             if (approvedRawFootages?.length) {
+//               await prisma.rawFootage.updateMany({
+//                 where: { id: { in: approvedRawFootages } },
+//                 data: {
+//                   status: 'APPROVED',
+//                 },
+//               });
+//             }
+
+//             if (submission.submissionType.type === 'FIRST_DRAFT') {
+//               await prisma.rawFootage.createMany({
+//                 data: sub.rawFootages.map((vid) => ({
+//                   url: vid.url,
+//                   status: vid.status as FeedbackStatus,
+//                   submissionId: finalDraft.id,
+//                 })),
+//               });
+//             }
+//           }
+
+//           if (sub.campaign.photos) {
+//             const currentPhoto = sub.photos.map((x) => x.id);
+
+//             const revisionPhotos = currentPhoto.filter((id) => photosToUpdate?.includes(id));
+//             const approvedPhotos = currentPhoto.filter((id) => !photosToUpdate?.includes(id));
+
+//             if (revisionPhotos?.length) {
+//               await prisma.photo.updateMany({
+//                 where: { id: { in: revisionPhotos } },
+//                 data: {
+//                   status: 'REVISION_REQUESTED',
+//                 },
+//               });
+//             }
+
+//             if (approvedPhotos?.length) {
+//               await prisma.photo.updateMany({
+//                 where: { id: { in: approvedPhotos } },
+//                 data: {
+//                   status: 'APPROVED',
+//                 },
+//               });
+//             }
+
+//             if (submission.submissionType.type === 'FIRST_DRAFT') {
+//               await prisma.photo.createMany({
+//                 data: sub.photos.map((vid) => ({
+//                   url: vid.url,
+//                   status: vid.status as FeedbackStatus,
+//                   submissionId: finalDraft.id,
+//                   campaignId: vid.campaignId,
+//                 })),
+//               });
+//             }
+//           }
+
+//           const doneColumnId = await getColumnId({ userId: sub.userId, columnName: 'Done' });
+//           const inReviewId = await getColumnId({ userId: sub.userId, columnName: 'In Review' });
+//           const inProgressColumnId = await getColumnId({ userId: sub.userId, columnName: 'In Progress' });
+//           const toDoColumnId = await getColumnId({ userId: sub.userId, columnName: 'To Do' });
+
+//           if (inReviewId) {
+//             const inReviewColumn = await prisma.columns.findUnique({
+//               where: {
+//                 id: inReviewId,
+//               },
+//               include: {
+//                 task: true,
+//               },
+//             });
+//             const taskInReview = inReviewColumn?.task.find((item) => item.submissionId === sub.id);
+
+//             if (sub.submissionType.type === 'FIRST_DRAFT') {
+//               if (taskInReview && doneColumnId) {
+//                 await prisma.task.update({
+//                   where: {
+//                     id: taskInReview.id,
+//                   },
+//                   data: {
+//                     columnId: doneColumnId,
+//                   },
+//                 });
+//               }
+
+//               const finalDraftSubmission = await prisma.submission.update({
+//                 where: {
+//                   id: sub.dependencies[0].submissionId as string,
+//                 },
+//                 data: {
+//                   status: 'IN_PROGRESS',
+//                 },
+//                 include: {
+//                   task: true,
+//                   user: {
+//                     include: {
+//                       Board: true,
+//                     },
+//                   },
+//                 },
+//               });
+
+//               if (finalDraftSubmission.user.Board) {
+//                 const finalDraft = await getTaskId({
+//                   boardId: finalDraftSubmission.user.Board.id,
+//                   submissionId: finalDraftSubmission.id,
+//                   columnName: 'To Do',
+//                 });
+
+//                 if (finalDraft && inProgressColumnId) {
+//                   await prisma.task.update({
+//                     where: {
+//                       id: finalDraft?.id,
+//                     },
+//                     data: {
+//                       columnId: inProgressColumnId,
+//                     },
+//                   });
+//                 }
+//               }
+//             }
+//           } else if (sub.submissionType.type === 'FINAL_DRAFT') {
+//             const finalDraftTaskId = await getTaskId({
+//               boardId: sub?.user?.Board?.id as any,
+//               submissionId: sub.id,
+//               columnName: 'In Review',
+//             });
+
+//             if (finalDraftTaskId) {
+//               await updateTask({
+//                 taskId: finalDraftTaskId.id as any,
+//                 toColumnId: inProgressColumnId as any,
+//                 userId: sub.userId,
+//               });
+//             }
+//           }
+
+//           for (const item of sub.campaign.campaignAdmin) {
+//             if (item.admin.user.Board) {
+//               const task = await getTaskId({
+//                 boardId: item.admin.user.Board?.id,
+//                 submissionId: sub.id,
+//                 columnName: 'Actions Needed',
+//               });
+
+//               if (task) {
+//                 await prisma.task.delete({
+//                   where: {
+//                     id: task.id,
+//                   },
+//                 });
+//               }
+//             }
+//           }
+
+//           const { title, message } = notificationRejectDraft(
+//             submission.campaign.name,
+//             MAP_TIMELINE[sub.submissionType.type],
+//           );
+
+//           const notification = await saveNotification({
+//             userId: sub.userId,
+//             message: message,
+//             title: title,
+//             entity: 'Draft',
+//             entityId: submission.campaignId,
+//           });
+
+//           io.to(clients.get(sub.userId)).emit('notification', notification);
+//           io.to(clients.get(sub.userId)).emit('newFeedback');
+
+//           return res.status(200).json({ message: 'Succesfully submitted.' });
+//         }
+//       },
+//       {
+//         isolationLevel: 'RepeatableRead',
+//       },
+//     );
+//   } catch (error) {
+//     console.log(error);
+//     return res.status(400).json(error?.message);
+//   }
+// };
+
 export const adminManageDraft = async (req: Request, res: Response) => {
-  const {
-    submissionId,
-    feedback,
-    footageFeedback,
-    photoFeedback,
-    type,
-    reasons,
-    userId,
-    videosToUpdate,
-    rawFootageToUpdate,
-    photosToUpdate,
-  } = req.body;
+  const { submissionId, feedback, type, reasons, userId } = req.body;
 
   try {
     const submission = await prisma.submission.findUnique({
@@ -758,593 +1385,436 @@ export const adminManageDraft = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Submission not found' });
     }
 
-    await prisma.$transaction(
-      async (prisma) => {
-        if (type === 'approve') {
-          const approveSubmission = await prisma.submission.update({
-            where: {
-              id: submission?.id,
+    if (type === 'approve') {
+      const approveSubmission = await prisma.submission.update({
+        where: {
+          id: submission?.id,
+        },
+        data: {
+          status: 'APPROVED',
+          isReview: true,
+          feedback: feedback && {
+            create: {
+              type: 'COMMENT',
+              content: feedback,
+              adminId: req.session.userid as string,
             },
-            data: {
-              status: 'APPROVED',
-              isReview: true,
-              feedback: feedback && {
-                create: {
-                  type: 'COMMENT',
-                  content: feedback,
-                  adminId: req.session.userid as string,
-                },
-              },
-            },
+          },
+        },
+        include: {
+          user: {
             include: {
-              user: {
-                include: {
-                  creator: true,
-                  paymentForm: true,
-                  creatorAgreement: true,
-                  Board: true,
-                },
-              },
-              campaign: {
-                include: {
-                  campaignBrief: true,
-                  campaignAdmin: {
-                    include: {
-                      admin: {
-                        include: {
-                          role: true,
-                        },
-                      },
-                    },
-                  },
-                },
-              },
-              submissionType: true,
-              task: true,
-              video: true,
+              creator: true,
+              paymentForm: true,
+              creatorAgreement: true,
+              Board: true,
             },
-          });
-
-          if (videosToUpdate?.length) {
-            await prisma.video.updateMany({
-              where: { id: { in: videosToUpdate } },
-              data: {
-                status: 'APPROVED',
-              },
-            });
-          }
-
-          if (rawFootageToUpdate?.length) {
-            await prisma.video.updateMany({
-              where: { id: { in: rawFootageToUpdate } },
-              data: {
-                status: 'APPROVED',
-              },
-            });
-          }
-
-          if (photosToUpdate?.length) {
-            await prisma.video.updateMany({
-              where: { id: { in: photosToUpdate } },
-              data: {
-                status: 'APPROVED',
-              },
-            });
-          }
-
-          const doneColumnId = await getColumnId({ userId: submission.userId, columnName: 'Done' });
-
-          if (approveSubmission.user.Board) {
-            const task = await getTaskId({
-              boardId: approveSubmission?.user.Board.id,
-              submissionId: approveSubmission.id,
-              columnName: 'In Review',
-            });
-
-            if (task && doneColumnId) {
-              await prisma.task.update({
-                where: {
-                  id: task.id,
-                },
-                data: {
-                  columnId: doneColumnId,
-                },
-              });
-            }
-          }
-
-          const image: any = submission?.campaign?.campaignBrief?.images || [];
-
-          if (submission.submissionType.type === 'FIRST_DRAFT' && submission.status === 'APPROVED') {
-            approvalOfDraft(
-              submission.user.email,
-              submission.campaign.name,
-              submission.user.name ?? 'Creator',
-              submission.campaignId,
-              image[0],
-            );
-          } else if (
-            (submission.submissionType.type === 'FINAL_DRAFT' && submission.status === 'APPROVED',
-            submission.campaignId)
-          ) {
-            approvalOfDraft(
-              submission.user.email,
-              submission.campaign.name,
-              submission.user.name ?? 'Creator',
-              submission.campaignId,
-              image[0],
-            );
-          } else {
-            feedbackOnDraft(
-              submission.user.email,
-              submission.campaign.name,
-              submission.user.name ?? 'Creator',
-              submission.campaignId,
-            );
-          }
-
-          if (submission.campaign.campaignType == 'ugc') {
-            const invoiceAmount = submission.user.creatorAgreement.find(
-              (elem: any) => elem.campaignId === submission.campaign.id,
-            )?.amount;
-
-            if (submission.campaign.campaignCredits !== null) {
-              await deductCredits(approveSubmission.campaignId, approveSubmission.userId, prisma as PrismaClient);
-            }
-
-            const invoiceItems = await getCreatorInvoiceLists(approveSubmission.id, prisma as PrismaClient);
-
-            await createInvoiceService(submission, userId, invoiceAmount, invoiceItems);
-
-            const shortlistedCreator = await prisma.shortListedCreator.findFirst({
-              where: {
-                AND: [{ userId: submission.userId }, { campaignId: submission.campaignId }],
-              },
-            });
-
-            if (!shortlistedCreator) {
-              throw new Error('Shortlisted creator not found.');
-            }
-
-            await prisma.shortListedCreator.update({
-              where: {
-                id: shortlistedCreator.id,
-              },
-              data: {
-                isCampaignDone: true,
-              },
-            });
-          }
-
-          if (submission.campaign.campaignType === 'normal') {
-            const posting = await prisma.submission.findFirst({
-              where: {
-                AND: [
-                  { userId: submission.userId },
-                  { campaignId: submission.campaignId },
-                  {
-                    submissionType: {
-                      type: {
-                        equals: 'POSTING',
-                      },
-                    },
-                  },
-                ],
-              },
-              include: {
-                user: {
-                  include: {
-                    Board: {
-                      include: {
-                        columns: {
-                          include: {
-                            task: true,
-                          },
-                        },
-                      },
-                    },
-                  },
-                },
-                task: true,
-                campaign: {
-                  select: {
-                    campaignBrief: {
-                      select: {
-                        images: true,
-                      },
-                    },
-                  },
-                },
-              },
-            });
-
-            if (!posting) {
-              throw new Error('Submission called posting not found.');
-            }
-
-            const inProgressColumnId = await getColumnId({ userId: posting.userId, columnName: 'In Progress' });
-            const toDoColumn = posting.user.Board?.columns.find((item) => item.name === 'To Do');
-
-            const task = toDoColumn?.task.find((item) => item.submissionId === posting.id);
-
-            if (task && inProgressColumnId) {
-              await prisma.task.update({
-                where: {
-                  id: task?.id,
-                },
-                data: {
-                  columnId: inProgressColumnId,
-                },
-              });
-            }
-
-            await prisma.submission.update({
-              where: {
-                id: posting.id,
-              },
-              data: {
-                status: 'IN_PROGRESS',
-                startDate: dayjs(req.body.schedule.startDate).format(),
-                endDate: dayjs(req.body.schedule.endDate).format(),
-                dueDate: dayjs(req.body.schedule.endDate).format(),
-              },
-            });
-
-            const images: any = posting.campaign.campaignBrief?.images;
-
-            postingSchedule(
-              submission.user.email,
-              submission.campaign.name,
-              submission.user.name ?? 'Creator',
-              submission.campaign.id,
-              images[0],
-            );
-          }
-
-          for (const item of submission.campaign.campaignAdmin) {
-            if (item.admin.user.Board) {
-              const taskInActionsNeeded = await getTaskId({
-                boardId: item.admin.user.Board?.id,
-                columnName: 'Actions Needed',
-                submissionId: approveSubmission.id,
-              });
-
-              const columnDone = await getColumnId({
-                userId: item.admin.userId,
-                boardId: item.admin.user.Board.id,
-                columnName: 'Done',
-              });
-
-              if (taskInActionsNeeded && columnDone) {
-                await prisma.task.update({
-                  where: {
-                    id: taskInActionsNeeded.id,
-                  },
-                  data: {
-                    column: { connect: { id: columnDone } },
-                  },
-                });
-              }
-            }
-          }
-
-          const { title, message } = notificationApproveDraft(
-            submission.campaign.name,
-            MAP_TIMELINE[submission.submissionType.type],
-          );
-
-          const notification = await saveNotification({
-            userId: submission.userId,
-            title: title,
-            message: message,
-            entity: 'Draft',
-            creatorId: submission.userId,
-            entityId: submission.campaignId,
-          });
-
-          io.to(clients.get(submission.userId)).emit('notification', notification);
-          io.to(clients.get(submission.userId)).emit('newFeedback');
-
-          return res.status(200).json({ message: 'Succesfully submitted.' });
-        } else {
-          const sub = await prisma.submission.update({
-            where: {
-              id: submissionId,
-            },
-            data: {
-              status: 'CHANGES_REQUIRED',
-              isReview: true,
-              feedback: {
-                create: {
-                  type: 'REASON',
-                  reasons: reasons,
-                  // videosToUpdate: videosToUpdate || [],
-                  // rawFootageToUpdate: rawFootageToUpdate || [],
-                  // photosToUpdate: photosToUpdate || [],
-                  content: feedback,
-                  // rawFootageContent: footageFeedback,
-                  // photoContent: photoFeedback,
+          },
+          campaign: {
+            include: {
+              campaignBrief: true,
+              campaignAdmin: {
+                include: {
                   admin: {
-                    connect: { id: req.session.userid },
+                    include: {
+                      role: true,
+                    },
                   },
                 },
               },
             },
-            include: {
-              user: {
-                include: {
-                  Board: true,
+          },
+          submissionType: true,
+          task: true,
+        },
+      });
+
+      const doneColumnId = await getColumnId({ userId: submission.userId, columnName: 'Done' });
+
+      // Move task from column In Review to Done
+      if (approveSubmission.user.Board) {
+        const task = await getTaskId({
+          boardId: approveSubmission?.user.Board.id,
+          submissionId: approveSubmission.id,
+          columnName: 'In Review',
+        });
+
+        if (task && doneColumnId) {
+          await prisma.task.update({
+            where: {
+              id: task.id,
+            },
+            data: {
+              columnId: doneColumnId,
+            },
+          });
+        }
+      }
+
+      const image: any = submission?.campaign?.campaignBrief?.images || [];
+
+      if (submission.submissionType.type === 'FIRST_DRAFT' && submission.status === 'APPROVED') {
+        // Notify about final draft due
+
+        approvalOfDraft(
+          submission.user.email,
+          submission.campaign.name,
+          submission.user.name ?? 'Creator',
+          submission.campaignId,
+          image[0],
+        );
+      } else if (
+        (submission.submissionType.type === 'FINAL_DRAFT' && submission.status === 'APPROVED', submission.campaignId)
+      ) {
+        // Notify about final draft approval
+        approvalOfDraft(
+          submission.user.email,
+          submission.campaign.name,
+          submission.user.name ?? 'Creator',
+          submission.campaignId,
+          image[0],
+        );
+      } else {
+        // Fallback email if the draft is not approved
+        feedbackOnDraft(
+          submission.user.email,
+          submission.campaign.name,
+          submission.user.name ?? 'Creator',
+          submission.campaignId,
+        );
+      }
+
+      // Generate invoice after draft is approve if campaign is ugc and No posting submission
+      if (submission.campaign.campaignType == 'ugc') {
+        const invoiceAmount = submission.user.creatorAgreement.find(
+          (elem: any) => elem.campaignId === submission.campaign.id,
+        )?.amount;
+
+        const invoice = await createInvoiceService(submission, userId, invoiceAmount);
+
+        const shortlistedCreator = await prisma.shortListedCreator.findFirst({
+          where: {
+            AND: [{ userId: submission.userId }, { campaignId: submission.campaignId }],
+          },
+        });
+
+        if (!shortlistedCreator) {
+          return res.status(404).json({ message: 'Shortlisted creator not found.' });
+        }
+
+        await prisma.shortListedCreator.update({
+          where: {
+            id: shortlistedCreator.id,
+          },
+          data: {
+            isCampaignDone: true,
+          },
+        });
+      }
+
+      // Condition if campaign is normal, then execute standard process, else no need
+      if (submission.campaign.campaignType === 'normal') {
+        const posting = await prisma.submission.findFirst({
+          where: {
+            AND: [
+              { userId: submission.userId },
+              { campaignId: submission.campaignId },
+              {
+                submissionType: {
+                  type: {
+                    equals: 'POSTING',
+                  },
                 },
               },
-              campaign: {
+            ],
+          },
+          include: {
+            user: {
+              include: {
+                Board: {
+                  include: {
+                    columns: {
+                      include: {
+                        task: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            task: true,
+            campaign: {
+              select: {
+                campaignBrief: {
+                  select: {
+                    images: true,
+                  },
+                },
+              },
+            },
+          },
+        });
+
+        if (!posting) {
+          return res.status(404).json({ message: 'Submission called posting not found.' });
+        }
+
+        const inProgressColumnId = await getColumnId({ userId: posting.userId, columnName: 'In Progress' });
+        const toDoColumn = posting.user.Board?.columns.find((item) => item.name === 'To Do');
+
+        const task = toDoColumn?.task.find((item) => item.submissionId === posting.id);
+
+        if (task && inProgressColumnId) {
+          await prisma.task.update({
+            where: {
+              id: task?.id,
+            },
+            data: {
+              columnId: inProgressColumnId,
+            },
+          });
+        }
+
+        await prisma.submission.update({
+          where: {
+            id: posting.id,
+          },
+          data: {
+            status: 'IN_PROGRESS',
+            startDate: dayjs(req.body.schedule.startDate).format(),
+            endDate: dayjs(req.body.schedule.endDate).format(),
+            dueDate: dayjs(req.body.schedule.endDate).format(),
+          },
+        });
+
+        const images: any = posting.campaign.campaignBrief?.images;
+
+        // Sending posting schedule
+        postingSchedule(
+          submission.user.email,
+          submission.campaign.name,
+          submission.user.name ?? 'Creator',
+          submission.campaign.id,
+          images[0],
+        );
+      }
+
+      // Move from column Actions Needed to Done
+      for (const item of submission.campaign.campaignAdmin) {
+        if (item.admin.user.Board) {
+          const taskInActionsNeeded = await getTaskId({
+            boardId: item.admin.user.Board?.id,
+            columnName: 'Actions Needed',
+            submissionId: approveSubmission.id,
+          });
+
+          const columnDone = await getColumnId({
+            userId: item.admin.userId,
+            boardId: item.admin.user.Board.id,
+            columnName: 'Done',
+          });
+
+          if (taskInActionsNeeded && columnDone) {
+            await prisma.task.update({
+              where: {
+                id: taskInActionsNeeded.id,
+              },
+              data: {
+                column: { connect: { id: columnDone } },
+              },
+            });
+          }
+        }
+      }
+
+      //For Approve
+      const { title, message } = notificationApproveDraft(
+        submission.campaign.name,
+        MAP_TIMELINE[submission.submissionType.type],
+      );
+
+      const notification = await saveNotification({
+        userId: submission.userId,
+        title: title,
+        message: message,
+        entity: 'Draft',
+        creatorId: submission.userId,
+        entityId: submission.campaignId,
+      });
+
+      io.to(clients.get(submission.userId)).emit('notification', notification);
+      io.to(clients.get(submission.userId)).emit('newFeedback');
+
+      return res.status(200).json({ message: 'Succesfully submitted.' });
+    } else {
+      const sub = await prisma.submission.update({
+        where: {
+          id: submissionId,
+        },
+        data: {
+          status: 'CHANGES_REQUIRED',
+          isReview: true,
+          feedback: {
+            create: {
+              type: 'REASON',
+              reasons: reasons,
+              content: feedback,
+              admin: {
+                connect: { id: req.session.userid },
+              },
+            },
+          },
+        },
+        include: {
+          user: {
+            include: {
+              Board: true,
+            },
+          },
+          campaign: {
+            select: {
+              campaignAdmin: {
                 select: {
-                  campaignAdmin: {
+                  admin: {
                     select: {
-                      admin: {
+                      user: {
                         select: {
-                          user: {
-                            select: {
-                              Board: true,
-                              id: true,
-                            },
-                          },
+                          Board: true,
+                          id: true,
                         },
                       },
                     },
                   },
-                  rawFootage: true,
-                  photos: true,
                 },
               },
-              submissionType: true,
-              dependencies: true,
-              task: true,
-              video: true,
-              rawFootages: true,
-              photos: true,
             },
-          });
+          },
+          submissionType: true,
+          dependencies: true,
+          task: true,
+        },
+      });
 
-          const finalDraft = await prisma.submission.findFirst({
+      const doneColumnId = await getColumnId({ userId: sub.userId, columnName: 'Done' });
+      const inReviewId = await getColumnId({ userId: sub.userId, columnName: 'In Review' });
+      const inProgressColumnId = await getColumnId({ userId: sub.userId, columnName: 'In Progress' });
+      const toDoColumnId = await getColumnId({ userId: sub.userId, columnName: 'To Do' });
+
+      const inReviewColumn = await prisma.columns.findUnique({
+        where: {
+          id: inReviewId!,
+        },
+        include: {
+          task: true,
+        },
+      });
+
+      const taskInReview = inReviewColumn?.task.find((item) => item.submissionId === sub.id);
+
+      if (sub.submissionType.type === 'FIRST_DRAFT') {
+        if (taskInReview && doneColumnId) {
+          await prisma.task.update({
             where: {
-              campaignId: sub.campaignId,
-              userId: sub.userId,
-              submissionType: {
-                type: 'FINAL_DRAFT',
-              },
+              id: taskInReview.id,
+            },
+            data: {
+              columnId: doneColumnId,
             },
           });
+        }
 
-          if (!finalDraft) throw new Error('Final Draft not found');
-
-          const currentVideos = sub.video.map((x) => x.id);
-
-          const revisionVideos = currentVideos.filter((id) => videosToUpdate?.includes(id));
-          const approvedVideos = currentVideos.filter((id) => !videosToUpdate?.includes(id));
-
-          if (revisionVideos.length) {
-            await prisma.video.updateMany({
-              where: { id: { in: revisionVideos } },
-              data: {
-                status: 'REVISION_REQUESTED',
-              },
-            });
-          }
-
-          if (approvedVideos.length) {
-            await prisma.video.updateMany({
-              where: { id: { in: approvedVideos } },
-              data: {
-                status: 'APPROVED',
-              },
-            });
-          }
-
-          if (submission.submissionType.type === 'FIRST_DRAFT') {
-            await prisma.video.createMany({
-              data: sub.video.map((vid) => ({
-                url: vid.url,
-                status: vid.status === 'REVISION_REQUESTED' ? 'REVISION_REQUESTED' : 'APPROVED',
-                submissionId: finalDraft.id,
-              })),
-            });
-          }
-
-          if (sub.campaign.rawFootage) {
-            const currentRawFootages = sub.rawFootages.map((x) => x.id);
-
-            const revisionRawFootages = currentRawFootages.filter((id) => rawFootageToUpdate?.includes(id));
-            const approvedRawFootages = currentRawFootages.filter((id) => !rawFootageToUpdate?.includes(id));
-
-            if (revisionRawFootages?.length) {
-              await prisma.rawFootage.updateMany({
-                where: { id: { in: revisionRawFootages } },
-                data: {
-                  status: 'REVISION_REQUESTED',
-                },
-              });
-            }
-
-            if (approvedRawFootages?.length) {
-              await prisma.rawFootage.updateMany({
-                where: { id: { in: approvedRawFootages } },
-                data: {
-                  status: 'APPROVED',
-                },
-              });
-            }
-
-            if (submission.submissionType.type === 'FIRST_DRAFT') {
-              await prisma.rawFootage.createMany({
-                data: sub.rawFootages.map((vid) => ({
-                  url: vid.url,
-                  status: vid.status as FeedbackStatus,
-                  submissionId: finalDraft.id,
-                })),
-              });
-            }
-          }
-
-          if (sub.campaign.photos) {
-            const currentPhoto = sub.photos.map((x) => x.id);
-
-            const revisionPhotos = currentPhoto.filter((id) => photosToUpdate?.includes(id));
-            const approvedPhotos = currentPhoto.filter((id) => !photosToUpdate?.includes(id));
-
-            if (revisionPhotos?.length) {
-              await prisma.photo.updateMany({
-                where: { id: { in: revisionPhotos } },
-                data: {
-                  status: 'REVISION_REQUESTED',
-                },
-              });
-            }
-
-            if (approvedPhotos?.length) {
-              await prisma.photo.updateMany({
-                where: { id: { in: approvedPhotos } },
-                data: {
-                  status: 'APPROVED',
-                },
-              });
-            }
-
-            if (submission.submissionType.type === 'FIRST_DRAFT') {
-              await prisma.photo.createMany({
-                data: sub.photos.map((vid) => ({
-                  url: vid.url,
-                  status: vid.status as FeedbackStatus,
-                  submissionId: finalDraft.id,
-                  campaignId: vid.campaignId,
-                })),
-              });
-            }
-          }
-
-          const doneColumnId = await getColumnId({ userId: sub.userId, columnName: 'Done' });
-          const inReviewId = await getColumnId({ userId: sub.userId, columnName: 'In Review' });
-          const inProgressColumnId = await getColumnId({ userId: sub.userId, columnName: 'In Progress' });
-          const toDoColumnId = await getColumnId({ userId: sub.userId, columnName: 'To Do' });
-
-          if (inReviewId) {
-            const inReviewColumn = await prisma.columns.findUnique({
-              where: {
-                id: inReviewId,
-              },
+        const finalDraftSubmission = await prisma.submission.update({
+          where: {
+            id: sub.dependencies[0].submissionId as string,
+          },
+          data: {
+            status: 'IN_PROGRESS',
+          },
+          include: {
+            task: true,
+            user: {
               include: {
-                task: true,
+                Board: true,
               },
-            });
-            const taskInReview = inReviewColumn?.task.find((item) => item.submissionId === sub.id);
+            },
+          },
+        });
 
-            if (sub.submissionType.type === 'FIRST_DRAFT') {
-              if (taskInReview && doneColumnId) {
-                await prisma.task.update({
-                  where: {
-                    id: taskInReview.id,
-                  },
-                  data: {
-                    columnId: doneColumnId,
-                  },
-                });
-              }
-
-              const finalDraftSubmission = await prisma.submission.update({
-                where: {
-                  id: sub.dependencies[0].submissionId as string,
-                },
-                data: {
-                  status: 'IN_PROGRESS',
-                },
-                include: {
-                  task: true,
-                  user: {
-                    include: {
-                      Board: true,
-                    },
-                  },
-                },
-              });
-
-              if (finalDraftSubmission.user.Board) {
-                const finalDraft = await getTaskId({
-                  boardId: finalDraftSubmission.user.Board.id,
-                  submissionId: finalDraftSubmission.id,
-                  columnName: 'To Do',
-                });
-
-                if (finalDraft && inProgressColumnId) {
-                  await prisma.task.update({
-                    where: {
-                      id: finalDraft?.id,
-                    },
-                    data: {
-                      columnId: inProgressColumnId,
-                    },
-                  });
-                }
-              }
-            }
-          } else if (sub.submissionType.type === 'FINAL_DRAFT') {
-            const finalDraftTaskId = await getTaskId({
-              boardId: sub?.user?.Board?.id as any,
-              submissionId: sub.id,
-              columnName: 'In Review',
-            });
-
-            if (finalDraftTaskId) {
-              await updateTask({
-                taskId: finalDraftTaskId.id as any,
-                toColumnId: inProgressColumnId as any,
-                userId: sub.userId,
-              });
-            }
-          }
-
-          for (const item of sub.campaign.campaignAdmin) {
-            if (item.admin.user.Board) {
-              const task = await getTaskId({
-                boardId: item.admin.user.Board?.id,
-                submissionId: sub.id,
-                columnName: 'Actions Needed',
-              });
-
-              if (task) {
-                await prisma.task.delete({
-                  where: {
-                    id: task.id,
-                  },
-                });
-              }
-            }
-          }
-
-          const { title, message } = notificationRejectDraft(
-            submission.campaign.name,
-            MAP_TIMELINE[sub.submissionType.type],
-          );
-
-          const notification = await saveNotification({
-            userId: sub.userId,
-            message: message,
-            title: title,
-            entity: 'Draft',
-            entityId: submission.campaignId,
+        if (finalDraftSubmission.user.Board) {
+          const finalDraft = await getTaskId({
+            boardId: finalDraftSubmission.user.Board.id,
+            submissionId: finalDraftSubmission.id,
+            columnName: 'To Do',
           });
 
-          io.to(clients.get(sub.userId)).emit('notification', notification);
-          io.to(clients.get(sub.userId)).emit('newFeedback');
-
-          return res.status(200).json({ message: 'Succesfully submitted.' });
+          if (finalDraft) {
+            await prisma.task.update({
+              where: {
+                id: finalDraft?.id,
+              },
+              data: {
+                columnId: inProgressColumnId!,
+              },
+            });
+          }
         }
-      },
-      {
-        isolationLevel: 'RepeatableRead',
-      },
-    );
+      } else if (sub.submissionType.type === 'FINAL_DRAFT') {
+        // Move task from column In Review to In progress
+        const finalDraftTaskId = await getTaskId({
+          boardId: sub?.user?.Board?.id as any,
+          submissionId: sub.id,
+          columnName: 'In Review',
+        });
+
+        if (finalDraftTaskId) {
+          await updateTask({
+            taskId: finalDraftTaskId.id as any,
+            toColumnId: inProgressColumnId as any,
+            userId: sub.userId,
+          });
+        }
+      }
+
+      // Manage task draft kanban for admin
+      for (const item of sub.campaign.campaignAdmin) {
+        if (item.admin.user.Board) {
+          const task = await getTaskId({
+            boardId: item.admin.user.Board?.id,
+            submissionId: sub.id,
+            columnName: 'Actions Needed',
+          });
+
+          if (task) {
+            await prisma.task.delete({
+              where: {
+                id: task.id,
+              },
+            });
+          }
+        }
+      }
+
+      const { title, message } = notificationRejectDraft(
+        submission.campaign.name,
+        MAP_TIMELINE[sub.submissionType.type],
+      );
+
+      const notification = await saveNotification({
+        userId: sub.userId,
+        message: message,
+        title: title,
+        entity: 'Draft',
+        entityId: submission.campaignId,
+      });
+
+      io.to(clients.get(sub.userId)).emit('notification', notification);
+      io.to(clients.get(sub.userId)).emit('newFeedback');
+
+      return res.status(200).json({ message: 'Succesfully submitted.' });
+    }
   } catch (error) {
     console.log(error);
-    return res.status(400).json(error?.message);
+    return res.status(400).json(error);
   }
 };
 
@@ -1690,6 +2160,11 @@ export const adminManagePhotos = async (req: Request, res: Response) => {
         submissionType: true,
         userId: true,
         status: true,
+        feedback: {
+          orderBy: {
+            createdAt: 'desc',
+          },
+        },
       },
     });
 
@@ -1704,24 +2179,43 @@ export const adminManagePhotos = async (req: Request, res: Response) => {
       },
     });
 
-    await prisma.submission.update({
-      where: {
-        id: submission.id,
-      },
-      data: {
-        ...(submission.status !== 'CHANGES_REQUIRED' && {
-          status: 'CHANGES_REQUIRED',
-        }),
-        feedback: {
-          create: {
-            photoContent: photoFeedback,
-            adminId: req.session.userid,
-            photosToUpdate: photos,
-            type: 'REQUEST',
+    if (submission.status === 'CHANGES_REQUIRED' && submission.feedback.length) {
+      // get existing feedbacks
+      const feedbackId = submission.feedback[0].id;
+
+      await prisma.feedback.update({
+        where: {
+          id: feedbackId,
+        },
+        data: {
+          photoContent: photoFeedback,
+          submissionId: submission.id,
+          adminId: req.session.userid,
+          photosToUpdate: {
+            push: photos,
           },
         },
-      },
-    });
+      });
+    } else {
+      await prisma.submission.update({
+        where: {
+          id: submission.id,
+        },
+        data: {
+          ...(submission.status !== 'CHANGES_REQUIRED' && {
+            status: 'CHANGES_REQUIRED',
+          }),
+          feedback: {
+            create: {
+              photoContent: photoFeedback,
+              adminId: req.session.userid,
+              photosToUpdate: photos,
+              type: 'REQUEST',
+            },
+          },
+        },
+      });
+    }
 
     await handleKanbanSubmission(submission.id);
 
@@ -2047,6 +2541,11 @@ export const adminManageVideos = async (req: Request, res: Response) => {
               Board: true,
             },
           },
+          feedback: {
+            orderBy: {
+              createdAt: 'desc',
+            },
+          },
         },
       });
 
@@ -2072,24 +2571,43 @@ export const adminManageVideos = async (req: Request, res: Response) => {
         },
       });
 
-      await tx.submission.update({
-        where: {
-          id: submission.id,
-        },
-        data: {
-          ...(submission.status !== 'CHANGES_REQUIRED' && {
-            status: 'CHANGES_REQUIRED',
-          }),
-          feedback: {
-            create: {
-              content: feedback,
-              reasons: reasons,
-              adminId: req.session.userid,
-              videosToUpdate: videos,
+      if (submission.status === 'CHANGES_REQUIRED' && submission.feedback.length) {
+        // get existing feedbacks
+        const feedbackId = submission.feedback[0].id;
+
+        await tx.feedback.update({
+          where: {
+            id: feedbackId,
+          },
+          data: {
+            content: feedback,
+            reasons: reasons,
+            submissionId: submission.id,
+            videosToUpdate: {
+              push: videos,
             },
           },
-        },
-      });
+        });
+      } else {
+        await tx.submission.update({
+          where: {
+            id: submission.id,
+          },
+          data: {
+            ...(submission.status !== 'CHANGES_REQUIRED' && {
+              status: 'CHANGES_REQUIRED',
+            }),
+            feedback: {
+              create: {
+                content: feedback,
+                reasons: reasons,
+                adminId: req.session.userid,
+                videosToUpdate: videos,
+              },
+            },
+          },
+        });
+      }
 
       await handleKanbanSubmission(submission.id);
 
@@ -2156,6 +2674,7 @@ export const adminManageRawFootages = async (req: Request, res: Response) => {
         submissionType: true,
         userId: true,
         status: true,
+        feedback: true,
       },
     });
 
@@ -2170,24 +2689,62 @@ export const adminManageRawFootages = async (req: Request, res: Response) => {
       },
     });
 
-    await prisma.submission.update({
-      where: {
-        id: submission.id,
-      },
-      data: {
-        ...(submission.status !== 'CHANGES_REQUIRED' && {
-          status: 'CHANGES_REQUIRED',
-        }),
-        feedback: {
-          create: {
-            rawFootageContent: rawFootageContent,
-            adminId: req.session.userid,
-            rawFootageToUpdate: rawFootages,
-            type: 'REQUEST',
+    if (submission.status === 'CHANGES_REQUIRED' && submission.feedback.length) {
+      // get existing feedbacks
+      const feedbackId = submission.feedback[0].id;
+
+      await prisma.feedback.update({
+        where: {
+          id: feedbackId,
+        },
+        data: {
+          rawFootageContent: rawFootageContent,
+          submissionId: submission.id,
+          adminId: req.session.userid,
+          rawFootageToUpdate: {
+            push: rawFootages,
           },
         },
-      },
-    });
+      });
+    } else {
+      await prisma.submission.update({
+        where: {
+          id: submission.id,
+        },
+        data: {
+          ...(submission.status !== 'CHANGES_REQUIRED' && {
+            status: 'CHANGES_REQUIRED',
+          }),
+          feedback: {
+            create: {
+              rawFootageContent: rawFootageContent,
+              adminId: req.session.userid,
+              rawFootageToUpdate: rawFootages,
+              type: 'REQUEST',
+            },
+          },
+        },
+      });
+    }
+
+    // await prisma.submission.update({
+    //   where: {
+    //     id: submission.id,
+    //   },
+    //   data: {
+    //     ...(submission.status !== 'CHANGES_REQUIRED' && {
+    //       status: 'CHANGES_REQUIRED',
+    //     }),
+    //     feedback: {
+    //       create: {
+    //         rawFootageContent: rawFootageContent,
+    //         adminId: req.session.userid,
+    //         rawFootageToUpdate: rawFootages,
+    //         type: 'REQUEST',
+    //       },
+    //     },
+    //   },
+    // });
 
     await handleKanbanSubmission(submission.id);
 

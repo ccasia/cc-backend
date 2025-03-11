@@ -399,16 +399,17 @@ model Campaign {
   thread                        Thread?
   publicAccess                  PublicAccess[]
 
-  rawFootage Boolean @default(false)
-  photos     Boolean @default(false)
-  ads        Boolean @default(false)
+  rawFootage   Boolean @default(false)
+  photos       Boolean @default(false)
+  ads          Boolean @default(false)
+  crossPosting Boolean @default(false)
 
   rawFootages RawFootage[]
   photosData  Photo[]
+  video       Video[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  video     Video[]
 }
 
 model BookMarkCampaign {
@@ -704,6 +705,10 @@ model Photo {
   createdAt    DateTime       @default(now())
   updatedAt    DateTime?      @updatedAt
 }
+
+// model DeliverableFeedback {
+//   id String @id @unique @default(cuid())
+// }
 
 enum VideoStatus {
   Uploaded

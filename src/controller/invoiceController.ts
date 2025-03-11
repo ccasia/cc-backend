@@ -20,7 +20,8 @@ import { TokenSet } from 'openid-client';
 import { error } from 'console';
 
 import fs from 'fs-extra';
-import { createInvoiceService } from '@services/invoiceService';
+import { createInvoiceService, sendToSpreadSheet } from '@services/invoiceService';
+import dayjs from 'dayjs';
 // import { decreamentCreditCampiagn } from '@services/packageService';
 
 const prisma = new PrismaClient();
@@ -393,7 +394,6 @@ export const updateInvoice = async (req: Request, res: Response) => {
     totalAmount,
     campaignId,
     bankInfo,
-    xeroContactId,
     newContact,
   }: invoiceData = req.body;
 
@@ -414,7 +414,17 @@ export const updateInvoice = async (req: Request, res: Response) => {
           campaignId,
         },
         include: {
-          creator: true,
+          creator: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  paymentForm: true,
+                },
+              },
+            },
+          },
           user: true,
           campaign: {
             include: {
@@ -451,18 +461,21 @@ export const updateInvoice = async (req: Request, res: Response) => {
         });
       }
 
-      // if (invoice.creator.xeroContactId) {
-      //   contactID = invoice.creator.xeroContactId;
-      //   invoiceData = await createXeroInvoiceLocal(
-      //     contactID,
-      //     items,
-      //     dueDate,
-      //     invoice.campaign.name,
-      //     invoice.invoiceNumber,
-      //   );
-      // }
-
       if (status == 'approved') {
+        await sendToSpreadSheet(
+          {
+            createdAt: dayjs().format(''),
+            name: invoice.creator.user?.name as string,
+            icNumber: invoice.creator.user.paymentForm?.icNumber as string,
+            bankName: invoice.creator.user.paymentForm?.bankAccountName as string,
+            bankAccountNumber: invoice.creator.user.paymentForm?.bankAccountNumber as string,
+            campaignName: invoice.campaign.name,
+            amount: invoice.amount,
+          },
+          '1VClmvYJV9R4HqjADhGA6KYIR9KCFoXTag5SMVSL4rFc',
+          'Invoices',
+        );
+
         invoiceData = await createXeroInvoiceLocal(
           contactID,
           items,
@@ -510,6 +523,7 @@ export const updateInvoice = async (req: Request, res: Response) => {
 
     return res.status(200).json(invoice);
   } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   }
 };

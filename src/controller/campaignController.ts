@@ -128,6 +128,8 @@ interface Campaign {
   referencesLinks?: string[];
   rawFootage: boolean;
   photos: boolean;
+  crossPosting: boolean;
+  ads: boolean;
   campaignCredits: number;
 }
 
@@ -205,6 +207,8 @@ export const createCampaign = async (req: Request, res: Response) => {
     campaignType,
     rawFootage,
     photos,
+    crossPosting,
+    ads,
     campaignCredits,
   }: Campaign = JSON.parse(req.body.data);
 
@@ -299,7 +303,9 @@ export const createCampaign = async (req: Request, res: Response) => {
             productName: productName,
             spreadSheetURL: url,
             rawFootage: rawFootage || false,
+            ads: ads || false,
             photos: photos || false,
+            crossPosting: crossPosting || false,
             agreementTemplate: {
               connect: {
                 id: agreementFrom.id,
