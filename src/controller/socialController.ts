@@ -582,13 +582,28 @@ export const removeInstagramPermissions = async (req: Request, res: Response) =>
 
     // await revokeInstagramPermission(access_token);
 
-    await prisma.creator.update({
+    const updatedCreator = await prisma.creator.update({
       where: {
         id: creator.id,
       },
       data: {
         isFacebookConnected: false,
         instagramData: {},
+      },
+      select: {
+        instagramUser: true,
+      },
+    });
+
+    await prisma.instagramVideo.deleteMany({
+      where: {
+        instagramUserId: updatedCreator.instagramUser?.id,
+      },
+    });
+
+    await prisma.instagramUser.delete({
+      where: {
+        id: updatedCreator.instagramUser?.id,
       },
     });
 
