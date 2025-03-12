@@ -75,10 +75,21 @@ export const getCreatorByID = async (req: Request, res: Response) => {
           include: {
             interests: true,
             mediaKit: true,
+            instagramUser: {
+              include: { instagramVideo: true },
+            },
+            tiktokUser: {
+              include: {
+                tiktokVideo: true,
+              },
+            },
           },
         },
       },
     });
+
+    if (!creator) return res.status(404).json({ message: 'Creator not found' });
+
     return res.status(200).json(creator);
   } catch (error) {
     return res.status(400).json({ error });
