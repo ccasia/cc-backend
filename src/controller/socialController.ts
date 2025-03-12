@@ -555,11 +555,11 @@ export const getInstagramOverview = async (req: Request, res: Response) => {
 
     // const medias = await getAllMediaObject(access_token, overview.user_id);
 
-    // const average_like = calculateAverageLikes(medias.data);
+    const average_like = calculateAverageLikes((user.instagramUser as any).instagramVideo);
 
     // const data = { user: { ...overview, average_like }, contents: [...medias.data] };
 
-    return res.status(200).json(user);
+    return res.status(200).json({ ...user, average_like });
   } catch (error) {
     return res.status(400).json(error);
   }
