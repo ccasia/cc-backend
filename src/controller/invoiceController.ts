@@ -471,7 +471,7 @@ export const updateInvoice = async (req: Request, res: Response) => {
             createdAt: dayjs().format(''),
             name: invoice.creator.user?.name as string,
             icNumber: invoice.creator.user.paymentForm?.icNumber as string,
-            bankName: invoice.creator.user.paymentForm?.bankAccountName as string,
+            bankName: invoice.creator.user.paymentForm?.bankName as string,
             bankAccountNumber: invoice.creator.user.paymentForm?.bankAccountNumber as string,
             campaignName: invoice.campaign.name,
             amount: invoice.amount,
