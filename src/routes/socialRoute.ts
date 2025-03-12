@@ -11,10 +11,8 @@ import {
   tiktokAuthentication,
   tiktokData,
 } from '@controllers/socialController';
-import { Router, Request, Response } from 'express';
+import { Router } from 'express';
 import { isLoggedIn } from '@middlewares/onlyLogin';
-import { PrismaClient } from '@prisma/client';
-import axios from 'axios';
 
 const router = Router();
 
