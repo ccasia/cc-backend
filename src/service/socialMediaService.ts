@@ -146,7 +146,7 @@ export const getInstagramOverviewService = async (accessToken: string) => {
 export const getAllMediaObject = async (
   accessToken: string,
   instaUserId: string,
-  fields = ['comments_count', 'like_count', 'media_type', 'media_url', 'thumbnail_url', 'caption', 'permalink'],
+  fields = ['id', 'comments_count', 'like_count', 'media_type', 'media_url', 'thumbnail_url', 'caption', 'permalink'],
 ) => {
   try {
     const res = await axios.get(`https://graph.instagram.com/v22.0/me/media`, {
@@ -157,7 +157,13 @@ export const getAllMediaObject = async (
       },
     });
 
-    return res.data;
+    const videos = res.data.data;
+
+    // sort but highest like_count
+    let sortedVideos: any[] = videos?.sort((a: any, b: any) => a.like_count > b.like_count);
+    sortedVideos = sortedVideos.slice(0, 5);
+
+    return sortedVideos;
   } catch (error) {
     throw new Error(error);
   }

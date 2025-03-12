@@ -132,7 +132,8 @@ model Creator {
   tiktokData             Json?
   instagramData          Json?
 
-  tiktokUser TiktokUser?
+  tiktokUser    TiktokUser?
+  instagramUser InstagramUser?
 }
 
 model TiktokUser {
@@ -170,6 +171,44 @@ model TiktokVideo {
 
   tiktokUserId String?
   tiktokUser   TiktokUser? @relation(references: [id], fields: [tiktokUserId])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model InstagramUser {
+  id String @id @unique @default(cuid())
+
+  creatorId String  @unique
+  creator   Creator @relation(references: [id], fields: [creatorId])
+
+  user_id         String? @unique
+  followers_count Int?
+  follows_count   Int?
+  media_count     Int?
+  username        String?
+
+  instagramVideo InstagramVideo[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model InstagramVideo {
+  id String @id @unique @default(cuid())
+
+  video_id String? @unique
+
+  comments_count Int?
+  like_count     Int?
+  media_type     String?
+  media_url      String?
+  thumbnail_url  String?
+  caption        String?
+  permalink      String?
+
+  instagramUserId String?
+  instagramUser   InstagramUser? @relation(fields: [instagramUserId], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

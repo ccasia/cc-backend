@@ -235,19 +235,34 @@ export const handleDisconnectTiktok = async (req: Request, res: Response) => {
 
     if (!accessToken) return res.status(404).json({ message: 'Access token not found.' });
 
-    const response = await axios.post('https://open.tiktokapis.com/v2/oauth/revoke/', {
+    await axios.post('https://open.tiktokapis.com/v2/oauth/revoke/', {
       client_key: process.env.TIKTOK_CLIENT_KEY,
       client_secret: process.env.TIKTOK_CLIENT_SECRET,
       token: accessToken,
     });
 
-    await prisma.creator.update({
+    const updatedCreator = await prisma.creator.update({
       where: {
         userId: creator.userId,
       },
       data: {
         isTiktokConnected: false,
         tiktokData: {},
+      },
+      include: {
+        tiktokUser: true,
+      },
+    });
+
+    await prisma.tiktokVideo.deleteMany({
+      where: {
+        tiktokUserId: updatedCreator.tiktokUser?.id,
+      },
+    });
+
+    await prisma.tiktokUser.delete({
+      where: {
+        creatorId: creator.id,
       },
     });
 
@@ -444,7 +459,9 @@ export const instagramCallback = async (req: Request, res: Response) => {
   try {
     const data = await getInstagramAccessToken(code as string);
 
-    await prisma.creator.update({
+    const access_token = decryptToken(data.encryptedToken);
+
+    const creator = await prisma.creator.update({
       where: {
         userId: userId,
       },
@@ -453,6 +470,58 @@ export const instagramCallback = async (req: Request, res: Response) => {
         isFacebookConnected: true,
       },
     });
+
+    const overview = await getInstagramOverviewService(access_token);
+
+    const instagramUser = await prisma.instagramUser.upsert({
+      where: {
+        creatorId: creator.id,
+      },
+      update: {
+        user_id: overview.user_id,
+        followers_count: overview.followers_count,
+        follows_count: overview.follows_count,
+        media_count: overview.media_count,
+        username: overview.username,
+      },
+      create: {
+        user_id: overview.user_id,
+        followers_count: overview.followers_count,
+        follows_count: overview.follows_count,
+        media_count: overview.media_count,
+        username: overview.username,
+        creatorId: creator.id,
+      },
+    });
+
+    const medias = await getAllMediaObject(access_token, overview.user_id);
+
+    for (const media of medias) {
+      await prisma.instagramVideo.upsert({
+        where: {
+          video_id: media.id,
+        },
+        update: {
+          comments_count: media.comments_count,
+          like_count: media.like_count,
+          media_type: media.media_type,
+          media_url: media.media_url,
+          thumbnail_url: media.thumbnail_url,
+          caption: media.caption,
+          permalink: media.permalink,
+        },
+        create: {
+          comments_count: media.comments_count,
+          like_count: media.like_count,
+          media_type: media.media_type,
+          media_url: media.media_url,
+          thumbnail_url: media.thumbnail_url,
+          caption: media.caption,
+          permalink: media.permalink,
+          instagramUserId: instagramUser.id,
+        },
+      });
+    }
 
     return res.status(200).redirect(process.env.REDIRECT_CLIENT as string);
   } catch (error) {
@@ -467,23 +536,30 @@ export const getInstagramOverview = async (req: Request, res: Response) => {
       where: {
         userId: userId as string,
       },
+      select: {
+        instagramUser: {
+          include: {
+            instagramVideo: true,
+          },
+        },
+      },
     });
 
     if (!user) return res.status(404).json({ message: 'User not found.' });
 
-    const insta = user?.instagramData as any;
+    // const insta = user?.instagramData as any;
 
-    const access_token = decryptToken(insta.encryptedToken);
+    // const access_token = decryptToken(insta.encryptedToken);
 
-    const overview = await getInstagramOverviewService(access_token);
+    // const overview = await getInstagramOverviewService(access_token);
 
-    const medias = await getAllMediaObject(access_token, overview.user_id);
+    // const medias = await getAllMediaObject(access_token, overview.user_id);
 
-    const average_like = calculateAverageLikes(medias.data);
+    // const average_like = calculateAverageLikes(medias.data);
 
-    const data = { user: { ...overview, average_like }, contents: [...medias.data] };
+    // const data = { user: { ...overview, average_like }, contents: [...medias.data] };
 
-    return res.status(200).json(data);
+    return res.status(200).json(user);
   } catch (error) {
     return res.status(400).json(error);
   }
