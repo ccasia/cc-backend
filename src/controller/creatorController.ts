@@ -37,9 +37,23 @@ export const getCreators = async (_req: Request, res: Response) => {
         status: true,
         email: true,
         role: true,
-        creator: true,
+        creator: {
+          include: {
+            instagramUser: {
+              include: {
+                instagramVideo: true,
+              },
+            },
+            tiktokUser: {
+              include: {
+                tiktokVideo: true,
+              },
+            },
+          },
+        },
       },
     });
+
     return res.status(200).json(creators);
   } catch (error) {
     return res.status(400).json({ message: error });
