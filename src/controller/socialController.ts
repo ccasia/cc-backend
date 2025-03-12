@@ -558,7 +558,7 @@ export const getInstagramOverview = async (req: Request, res: Response) => {
     const average_like = calculateAverageLikes((user.instagramUser as any).instagramVideo);
 
     // const data = { user: { ...overview, average_like }, contents: [...medias.data] };
-    const data = Object.assign(user, average_like);
+    const data = Object.assign(user, { average_like });
 
     return res.status(200).json(data);
   } catch (error) {
