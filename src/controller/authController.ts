@@ -64,9 +64,11 @@ export const registerUser = async (req: Request, res: Response) => {
         email,
       },
     });
+
     if (search) {
       return res.status(400).json({ message: 'User already exists' });
     }
+
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const data = await prisma.user.create({
@@ -553,6 +555,7 @@ export const updateCreator = async (req: Request, res: Response) => {
 
   try {
     let parsedBirthDate: Date | undefined;
+
     if (birthDate) {
       parsedBirthDate = new Date(birthDate);
       if (isNaN(parsedBirthDate.getTime())) {
@@ -562,6 +565,7 @@ export const updateCreator = async (req: Request, res: Response) => {
 
     // Parse socialMediaData if it's a string
     let parsedSocialMediaData = socialMediaData;
+
     if (typeof socialMediaData === 'string') {
       try {
         parsedSocialMediaData = JSON.parse(socialMediaData);
@@ -612,6 +616,7 @@ export const updateCreator = async (req: Request, res: Response) => {
             }
           : {}),
         socialMediaData: parsedSocialMediaData, // Store as JSON object
+        isOnBoardingFormCompleted: true,
       },
       include: {
         interests: true,

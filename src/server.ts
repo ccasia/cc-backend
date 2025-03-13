@@ -32,6 +32,7 @@ import Ffmpeg from 'fluent-ffmpeg';
 import FfmpegPath from '@ffmpeg-installer/ffmpeg';
 import { storage } from '@configs/cloudStorage.config';
 import dayjs from 'dayjs';
+import passport from 'passport';
 
 Ffmpeg.setFfmpegPath(FfmpegPath.path);
 
@@ -106,6 +107,9 @@ app.use(
     }),
   }),
 );
+
+app.use(passport.initialize());
+app.use(passport.session());
 
 app.use(router);
 

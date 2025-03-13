@@ -9,8 +9,9 @@ datasource db {
 
 model User {
   id                 String               @id @unique @default(cuid())
+  googleId           String?              @unique
   email              String               @unique @db.VarChar(255)
-  password           String               @db.VarChar(255)
+  password           String?              @db.VarChar(255)
   createdAt          DateTime             @default(now())
   name               String?              @db.VarChar(255)
   photoURL           String?              @db.VarChar(255)
@@ -131,6 +132,8 @@ model Creator {
   isFacebookConnected    Boolean     @default(false)
   tiktokData             Json?
   instagramData          Json?
+
+  isOnBoardingFormCompleted Boolean?
 
   tiktokUser    TiktokUser?
   instagramUser InstagramUser?
