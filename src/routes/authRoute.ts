@@ -45,7 +45,7 @@ router.get('/google/callback', passport.authenticate('google', { session: true }
   const session = req.session;
   session.userid = user.id;
 
-  res.redirect(`http://localhost/dashboard`);
+  res.redirect(`${process.env.BACKEND_URL}/dashboard`);
 });
 
 router.post('/login', login);
