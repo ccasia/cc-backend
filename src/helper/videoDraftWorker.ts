@@ -80,11 +80,11 @@ const processVideo = async (
           });
         }
 
-        if (fs.existsSync(inputPath)) {
-          fs.unlinkSync(inputPath);
-        } else {
-          console.warn(`File not found: ${inputPath}`);
-        }
+        // if (fs.existsSync(inputPath)) {
+        //   fs.unlinkSync(inputPath);
+        // } else {
+        //   console.warn(`File not found: ${inputPath}`);
+        // }
 
         resolve();
       })
@@ -92,7 +92,7 @@ const processVideo = async (
         console.error('Error processing video:', err);
         activeProcesses.delete(submissionId);
         reject(err);
-        fs.unlinkSync(inputPath);
+        // fs.unlinkSync(inputPath);
       });
   });
 };
@@ -321,7 +321,7 @@ async function deleteFileIfExists(filePath: string) {
                   size,
                 );
 
-                await deleteFileIfExists(videoFile.outputPath);
+                // await deleteFileIfExists(videoFile.outputPath);
 
                 // await fs.promises.unlink(videoFile.outputPath);
 
@@ -570,7 +570,7 @@ async function deleteFileIfExists(filePath: string) {
                       },
                     });
                   }
-                  await fs.promises.unlink(photoPath);
+                  // await fs.promises.unlink(photoPath);
 
                   console.log('✅ Photo entry created in the DB.');
                   return photoPublicURL;
