@@ -216,6 +216,20 @@ const checkCurrentSubmission = async (submissionId: string) => {
   }
 };
 
+async function deleteFileIfExists(filePath: string) {
+  try {
+    await fs.promises.access(filePath); // Check if file exists
+    await fs.promises.unlink(filePath); // Delete the file
+    console.log(`Deleted: ${filePath}`);
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      console.log(`File does not exist: ${filePath}`);
+    } else {
+      console.error(`Error deleting file: ${error.message}`);
+    }
+  }
+}
+
 (async () => {
   try {
     const conn = await amqplib.connect(process.env.RABBIT_MQ!);
@@ -306,7 +320,9 @@ const checkCurrentSubmission = async (submissionId: string) => {
                   size,
                 );
 
-                await fs.promises.unlink(videoFile.outputPath);
+                await deleteFileIfExists(videoFile.outputPath);
+
+                // await fs.promises.unlink(videoFile.outputPath);
 
                 if (!requestChangeVideos.length) {
                   await prisma.video.create({
