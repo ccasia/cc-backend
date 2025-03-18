@@ -558,6 +558,12 @@ export const draftSubmission = async (req: Request, res: Response) => {
   let channel: amqplib.Channel | null = null;
 
   try {
+    amqp = await amqplib.connect(process.env.RABBITMQ!);
+
+    channel = await amqp.createChannel();
+
+    await channel.assertQueue('draft', { durable: true });
+
     const submission = await prisma.submission.findUnique({
       where: {
         id: submissionId,
@@ -665,14 +671,10 @@ export const draftSubmission = async (req: Request, res: Response) => {
         const photoPath = `/tmp/${submissionId}_${photo.name}`;
         await photo.mv(photoPath);
         filePaths.get('photos').push(photoPath);
-        // filePaths.set('photos', [...currentPhoto, photoPath]);
       }
     }
 
-    amqp = await amqplib.connect(process.env.RABBIT_MQ as string);
-    channel = await amqp.createChannel();
-
-    await channel.assertQueue('draft');
+    // amqp = await amqplib.connect(process.env.RABBIT_MQ as string);
 
     channel.sendToQueue(
       'draft',
@@ -691,6 +693,9 @@ export const draftSubmission = async (req: Request, res: Response) => {
     );
 
     activeProcesses.set(submissionId, { status: 'queue' });
+
+    // await channel.close();
+    // await amqp.close();
 
     return res.status(200).json({ message: 'Video start processing' });
   } catch (error) {
@@ -2165,6 +2170,7 @@ export const adminManagePhotos = async (req: Request, res: Response) => {
             createdAt: 'desc',
           },
         },
+        campaignId: true,
       },
     });
 
@@ -2172,6 +2178,8 @@ export const adminManagePhotos = async (req: Request, res: Response) => {
 
     await prisma.photo.updateMany({
       where: {
+        campaignId: submission.campaignId,
+        userId: submission.userId,
         id: { in: photos },
       },
       data: {
@@ -2553,8 +2561,9 @@ export const adminManageVideos = async (req: Request, res: Response) => {
 
       await tx.video.updateMany({
         where: {
+          userId: submission.userId,
+          campaignId: submission.campaignId,
           id: { in: videos },
-          // submissionId: submission.id,
         },
         data: {
           status: 'REVISION_REQUESTED',
@@ -2563,8 +2572,9 @@ export const adminManageVideos = async (req: Request, res: Response) => {
 
       await tx.video.updateMany({
         where: {
+          userId: submission.userId,
+          campaignId: submission.campaignId,
           id: { notIn: videos },
-          // submissionId: submission.id,
         },
         data: {
           status: 'APPROVED',
@@ -2675,6 +2685,7 @@ export const adminManageRawFootages = async (req: Request, res: Response) => {
         userId: true,
         status: true,
         feedback: true,
+        campaignId: true,
       },
     });
 
@@ -2682,6 +2693,8 @@ export const adminManageRawFootages = async (req: Request, res: Response) => {
 
     await prisma.rawFootage.updateMany({
       where: {
+        campaignId: submission.campaignId,
+        userId: submission.userId,
         id: { in: rawFootages },
       },
       data: {

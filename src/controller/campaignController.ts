@@ -4023,6 +4023,27 @@ export const removeCreatorFromCampaign = async (req: Request, res: Response) => 
         },
       });
 
+      await tx.video.deleteMany({
+        where: {
+          userId: user.id,
+          campaignId: campaign.id,
+        },
+      });
+
+      await tx.photo.deleteMany({
+        where: {
+          userId: user.id,
+          campaignId: campaign.id,
+        },
+      });
+
+      await tx.rawFootage.deleteMany({
+        where: {
+          userId: user.id,
+          campaignId: campaign.id,
+        },
+      });
+
       await tx.submission.deleteMany({
         where: {
           AND: [

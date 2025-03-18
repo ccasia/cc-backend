@@ -18,8 +18,8 @@ import { Server } from 'socket.io';
 import '@services/uploadVideo';
 
 import '@helper/processPitchVideo';
-import './helper/videoDraft';
-import './helper/videoDraftWorker';
+// import './helper/videoDraft';
+// import './helper/videoDraftWorker';
 
 import dotenv from 'dotenv';
 import '@services/google_sheets/sheets';
@@ -33,6 +33,9 @@ import FfmpegPath from '@ffmpeg-installer/ffmpeg';
 import { storage } from '@configs/cloudStorage.config';
 import dayjs from 'dayjs';
 import passport from 'passport';
+import { draftConsumer } from '@helper/videoDraftWorker';
+
+import amqplib from 'amqplib';
 
 Ffmpeg.setFfmpegPath(FfmpegPath.path);
 
@@ -331,91 +334,31 @@ app.post('/video', async (req: Request, res: Response) => {
   }
 });
 
-// app.post('/uploadDraft', async (req: Request, res: Response) => {
-//   const { submissionId } = JSON.parse(req.body.data);
+app.post('/sendMessage', async (req: Request, res: Response) => {
+  let amqp: any;
+  let con: any;
+  try {
+    amqp = await amqplib.connect(process.env.RABBIT_MQ!);
 
-//   try {
-//     if (!(req.files as any).draftVideo) {
-//       return res.status(404).json({ message: 'Video not found.' });
-//     }
+    con = await amqp.createChannel();
+    await con.assertQueue('draft', { durable: true });
 
-//     const { tempFilePath, name, size } = (req.files as any).draftVideo;
-//     const destination = `video/${name}?v${dayjs().format()}`;
+    con.sendToQueue('draft', Buffer.from(JSON.stringify({ name: req.body.username })), { persistent: true });
 
-//     const outputPath: any = await compressVideo(tempFilePath, name, submissionId);
-
-//     await bucket.upload(outputPath, {
-//       destination: destination,
-//       contentType: 'video/mp4',
-//       onUploadProgress: (data) => {
-//         if (size) {
-//           const progress = (data.bytesWritten / size) * 100;
-//           // console.log(Math.round(progress));
-//           return Math.round(progress);
-//         }
-//       },
-//     });
-
-//     const publicURL = `https://storage.googleapis.com/${process.env.BUCKET_NAME}/${destination}?v=${dayjs().format()}`;
-
-//     await prisma.submission.update({
-//       where: {
-//         id: submissionId,
-//       },
-//       data: {
-//         videos: {
-//           push: publicURL,
-//         },
-//         status: 'ON_HOLD',
-//       },
-//     });
-
-//     fse.unlinkSync(outputPath);
-//     return res.status(200).json({ message: 'Done' });
-//   } catch (error) {
-//     return res.status(400).json(error);
-//   }
-// });
-
-// function compressVideo(filePath: string, filename: string, videoId: string) {
-//   return new Promise((resolve, reject) => {
-//     const outputFilePath = path.join(__dirname, './uploads', 'compressed-' + filename);
-
-//     Ffmpeg(filePath)
-//       .output(outputFilePath)
-//       // .videoCodec('libx264')
-//       .audioCodec('aac')
-//       .outputOptions([
-//         '-c:v libx264',
-//         '-crf 26',
-//         '-pix_fmt yuv420p',
-//         '-preset ultrafast',
-//         '-map 0:v:0', // Select the first video stream
-//         '-map 0:a:0?',
-//         '-threads 4',
-//       ])
-//       .on('progress', (progress) => {
-//         console.log(progress);
-//         // Emit real-time progress updates to the client
-//         io.emit('compressionProgress', {
-//           videoId: videoId,
-//           progress: progress.percent,
-//         });
-//       })
-//       .on('end', () => {
-//         console.log('End');
-//         // Delete the original video after compression
-//         fse.unlinkSync(filePath);
-//         resolve(outputFilePath);
-//       })
-//       .on('error', (err) => {
-//         reject(err);
-//       })
-//       .run();
-//   });
-// }
+    return res.status(200).json({ message: 'Send Sucessfully' });
+  } catch (error) {
+    return res.status(400).json(error);
+  } finally {
+    if (con) await con.close();
+    if (amqp) await amqp.close();
+  }
+});
 
 server.listen(process.env.PORT, () => {
   console.log(`Listening to port ${process.env.PORT}...`);
   console.log(`${process.env.NODE_ENV} stage is running...`);
+
+  for (let i = 0; i < 2; i++) {
+    draftConsumer();
+  }
 });
