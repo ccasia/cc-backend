@@ -231,7 +231,6 @@ async function deleteFileIfExists(filePath: string) {
 
 export const draftConsumer = async () => {
   try {
-    // const conn = await amqplib.connect(`amqp://myuser:mypassword@34.1.203.152:5672`);
     const conn = await amqplib.connect(process.env.RABBIT_MQ!);
     const channel = await conn.createChannel();
     await channel.assertQueue('draft', { durable: true });
@@ -634,7 +633,7 @@ export const draftConsumer = async () => {
 
 // (async () => {
 //   try {
-//     const conn = await amqplib.connect(`amqp://staging:staging@34.1.203.152:5672/nexea`);
+
 //     const channel = await conn.createChannel();
 //     await channel.assertQueue('draft', { durable: true });
 //     // await channel.purgeQueue('draft');
