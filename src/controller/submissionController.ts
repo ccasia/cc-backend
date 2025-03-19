@@ -558,7 +558,7 @@ export const draftSubmission = async (req: Request, res: Response) => {
   let channel: amqplib.Channel | null = null;
 
   try {
-    amqp = await amqplib.connect(process.env.RABBITMQ!);
+    amqp = await amqplib.connect(`amqp://myuser:mypassword@34.1.203.152:5672/nexea`);
 
     channel = await amqp.createChannel();
 
