@@ -18,7 +18,7 @@ import { Server } from 'socket.io';
 import '@services/uploadVideo';
 
 import '@helper/processPitchVideo';
-// import './helper/videoDraft';
+import './helper/videoDraft';
 import './helper/videoDraftWorker';
 
 import dotenv from 'dotenv';
