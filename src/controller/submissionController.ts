@@ -558,7 +558,7 @@ export const draftSubmission = async (req: Request, res: Response) => {
   let channel: amqplib.Channel | null = null;
 
   try {
-    amqp = await amqplib.connect(`amqp://myuser:mypassword@34.1.203.152:5672/nexea`);
+    amqp = await amqplib.connect(process.env.RABBIT_MQ!);
 
     channel = await amqp.createChannel();
 
@@ -691,6 +691,8 @@ export const draftSubmission = async (req: Request, res: Response) => {
       ),
       { persistent: true },
     );
+
+    console.log('SENDING TO', process.env.RABBIT_MQ);
 
     activeProcesses.set(submissionId, { status: 'queue' });
 
