@@ -19,7 +19,7 @@ import '@services/uploadVideo';
 
 import '@helper/processPitchVideo';
 // import './helper/videoDraft';
-// import './helper/videoDraftWorker';
+import './helper/videoDraftWorker';
 
 import dotenv from 'dotenv';
 import '@services/google_sheets/sheets';
@@ -33,7 +33,7 @@ import FfmpegPath from '@ffmpeg-installer/ffmpeg';
 import { storage } from '@configs/cloudStorage.config';
 import dayjs from 'dayjs';
 import passport from 'passport';
-import { draftConsumer } from '@helper/videoDraftWorker';
+// import { draftConsumer } from '@helper/videoDraftWorker';
 
 import amqplib from 'amqplib';
 
@@ -358,7 +358,9 @@ server.listen(process.env.PORT, () => {
   console.log(`Listening to port ${process.env.PORT}...`);
   console.log(`${process.env.NODE_ENV} stage is running...`);
 
-  for (let i = 0; i < 2; i++) {
-    draftConsumer();
-  }
+  // draftConsumer();
+
+  // for (let i = 0; i < 2; i++) {
+  //   draftConsumer();
+  // }
 });
