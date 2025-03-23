@@ -45,6 +45,7 @@ import {
   removeCreatorFromCampaign,
   getCampaignsTotal,
   shortlistCreatorV2,
+  getAllPitches,
 } from '@controllers/campaignController';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 
@@ -82,6 +83,7 @@ router.get('/getAllCampaignsFinance', getAllCampaignsFinance);
 router.get('/getAllActiveCampaign', getAllActiveCampaign);
 router.get('/matchCampaignWithCreator', isLoggedIn, matchCampaignWithCreator);
 router.get('/pitch/:id', getPitchById);
+router.get('/pitches', getAllPitches);
 // router.get('/firstDraft', getFirstDraft);
 router.get('/timelineType', isSuperAdmin, getTimelineType);
 router.get('/defaultTimeline', isSuperAdmin, getDefaultTimeline);

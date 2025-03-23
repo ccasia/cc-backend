@@ -51,6 +51,7 @@ export const getCreators = async (_req: Request, res: Response) => {
             },
           },
         },
+        shortlisted: true,
       },
     });
 
