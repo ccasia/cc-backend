@@ -30,7 +30,7 @@ import {
   uploadPitchVideo,
 } from '@configs/cloudStorage.config';
 import dayjs from 'dayjs';
-import { logChange } from '@services/campaignServices';
+import { logChange, logAdminChange } from '@services/campaignServices';
 import { saveNotification } from '@controllers/notificationController';
 import { clients, io } from '../server';
 import fs from 'fs';
@@ -256,7 +256,6 @@ export const createCampaign = async (req: Request, res: Response) => {
     // Handle All processes
     await prisma.$transaction(
       async (tx) => {
-        // Find All Admins
         const admins = await Promise.all(
           adminManager.map(async (admin) => {
             return await tx.user.findUnique({
@@ -269,7 +268,6 @@ export const createCampaign = async (req: Request, res: Response) => {
             });
           }),
         );
-
         const existingClient = await tx.company.findUnique({
           where: { id: client.id },
           include: { subscriptions: { where: { status: 'ACTIVE' } } },
@@ -520,6 +518,12 @@ export const createCampaign = async (req: Request, res: Response) => {
         );
 
         logChange('Campaign Created', campaign.id, req);
+        
+        // const adminId = req.session.userid;
+        // if (adminId) {
+        //   const adminLogMessage = `Created campaign ${campaign.name} `;
+        //   logAdminChange(adminLogMessage, adminId, req); 
+        // }
 
         if (io) {
           io.emit('campaign');
@@ -1203,6 +1207,31 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
   }
 };
 
+export const getAllPitches = async (req: Request, res: Response) => {
+  try {
+    const pitches = await prisma.pitch.findMany({
+      include: {
+        campaign: true,
+        user: true,
+        admin: {
+          include: {
+            user: true,
+          },
+        },
+      },
+    });
+
+    if (!pitches || pitches.length === 0) {
+      return res.status(404).json({ message: "No pitches found." });
+    }
+
+    return res.status(200).json({ pitches });
+  } catch (error) {
+    console.error("Error:", error);
+    return res.status(500).json({ message: "Server Error", error: error.message });
+  }
+};
+
 export const getCampaignsByCreatorId = async (req: Request, res: Response) => {
   const { userid } = req.session;
   try {
@@ -1409,7 +1438,7 @@ export const getPitchById = async (req: Request, res: Response) => {
 
 export const editCampaignInfo = async (req: Request, res: Response) => {
   const { id, name, description, campaignInterests, campaignIndustries } = req.body;
-
+  const adminId = req.session.userid; 
   try {
     const updatedCampaign = await prisma.campaign.update({
       where: {
@@ -1433,6 +1462,12 @@ export const editCampaignInfo = async (req: Request, res: Response) => {
 
     const message = 'Updated campaign info';
     logChange(message, id, req);
+    
+    
+    // if (adminId) {
+    //   const adminLogMessage = `Updated campaign info for campaign - ${name}`;
+    //   logAdminChange(adminLogMessage, adminId, req); 
+    // }
     return res.status(200).json({ message: message, ...updatedCampaign, ...updatedCampaignBrief });
   } catch (error) {
     return res.status(400).json(error);
@@ -1470,6 +1505,12 @@ export const editCampaignBrandOrCompany = async (req: Request, res: Response) =>
 
     const message = `Updated ${brand ? 'brand' : 'company'}`;
     logChange(message, updatedCampaign.id, req);
+
+    // const adminId = req.session.userid; 
+    // if (adminId) {
+    //   const adminLogMessage = `Updated ${brand ? 'brand' : 'company'} for campaign ID: ${id}`;
+    //   logAdminChange(adminLogMessage, adminId, req); 
+    // }
     return res.status(200).json({ message: message, ...updatedCampaign });
   } catch (error) {
     return res.status(400).json(error);
@@ -1492,6 +1533,11 @@ export const editCampaignDosAndDonts = async (req: Request, res: Response) => {
 
     const message = 'Dos and don’ts updated successfully.';
     logChange(message, campaignId, req);
+    // const adminId = req.session.userid; 
+    // if (adminId) {
+    //   //const adminLogMessage = `Admin updated ${brand ? 'brand' : 'company'} for campaign ID: ${id}`;
+    //   logAdminChange(message, adminId, req); 
+    // }
     return res.status(200).json({ message: message, ...updatedCampaignBrief });
   } catch (error) {
     return res.status(400).json(error);
@@ -1526,6 +1572,10 @@ export const editCampaignRequirements = async (req: Request, res: Response) => {
 
     const message = 'Campaign requirements updated successfully.';
     logChange(message, campaignId, req);
+    
+    // const adminmessage = 'Update Campaign requirements '
+    // const adminId = req.session.userid; 
+    // logAdminChange(adminmessage, adminId, req )
     return res.status(200).json({ message: message, newRequirement: updatedCampaignRequirement });
   } catch (error) {
     return res.status(400).json(error);
@@ -1661,6 +1711,9 @@ export const editCampaignTimeline = async (req: Request, res: Response) => {
 
     const message = 'Updated timeline';
     logChange(message, id, req);
+
+    // const adminId = req.session.userid; 
+    // logAdminChange(message, adminId, req )
     return res.status(200).json({ message: message });
   } catch (error) {
     return res.status(400).json(error);
@@ -1669,8 +1722,9 @@ export const editCampaignTimeline = async (req: Request, res: Response) => {
 
 export const changePitchStatus = async (req: Request, res: Response) => {
   const { status, pitchId, totalUGCVideos } = req.body;
+  const adminId= req.session.userid;
 
-  try {
+  try { 
     const existingPitch = await prisma.pitch.findUnique({
       where: {
         id: pitchId,
@@ -1706,6 +1760,8 @@ export const changePitchStatus = async (req: Request, res: Response) => {
             },
             data: {
               status: status,
+              completedAt: status === 'approved' ? new Date() : null,
+              approvedByAdminId: adminId,
             },
             include: {
               campaign: {
@@ -2057,6 +2113,8 @@ export const changePitchStatus = async (req: Request, res: Response) => {
     }
 
     io.to(clients.get(existingPitch.userId)).emit('pitchUpdate');
+    // const message = `Updated pitch status for ${pitchId} in campaign ${pitchId.campaign.name} ` 
+    // logAdminChange(message, adminId, req )
 
     return res.status(200).json({ message: 'Successfully changed.' });
   } catch (error) {
