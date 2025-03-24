@@ -546,6 +546,8 @@ export const getAllSubmissions = async (req: Request, res: Response) => {
       },
     });
 
+
+    // formatting before sending data to frontend
     const formattedSubmissions = submissions.map((submission) => ({
       id: submission.id,
       type: submission.submissionType.type,
