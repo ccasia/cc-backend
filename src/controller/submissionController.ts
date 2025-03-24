@@ -551,9 +551,13 @@ export const getAllSubmissions = async (req: Request, res: Response) => {
       type: submission.submissionType.type,
       status: submission.status,
       createdAt: submission.createdAt,
-      completedAt: submission.completedAt, // Assuming endDate represents completion time
+      submissionDate: submission.submissionDate,
+      completedAt: submission.completedAt, 
       turnaroundTime: submission.completedAt
         ? Math.round((new Date(submission.completedAt).getTime() - new Date(submission.createdAt).getTime()) / 1000)
+        : null,
+      draftTurnaroundTime: submission.completedAt && submission.submissionDate
+        ? Math.round((new Date(submission.completedAt).getTime() - new Date(submission.submissionDate).getTime()) / 1000)
         : null,
       user: submission.user,
       feedback: submission.feedback,
@@ -1465,6 +1469,8 @@ export const adminManageDraft = async (req: Request, res: Response) => {
         data: {
           status: 'APPROVED',
           isReview: true,
+          completedAt: new Date(),
+          approvedByAdminId: req.session.userid as string,
           feedback: feedback && {
             create: {
               type: 'COMMENT',
@@ -1726,6 +1732,8 @@ export const adminManageDraft = async (req: Request, res: Response) => {
         data: {
           status: 'CHANGES_REQUIRED',
           isReview: true,
+          completedAt: new Date(),
+          approvedByAdminId: req.session.userid as string,
           feedback: {
             create: {
               type: 'REASON',
@@ -2277,6 +2285,8 @@ export const adminManagePhotos = async (req: Request, res: Response) => {
           id: submission.id,
         },
         data: {
+          completedAt: new Date(),
+          approvedByAdminId: req.session.userid as string,
           ...(submission.status !== 'CHANGES_REQUIRED' && {
             status: 'CHANGES_REQUIRED',
           }),
@@ -2318,6 +2328,8 @@ export const adminManageVideos = async (req: Request, res: Response) => {
           data: {
             status: 'APPROVED',
             isReview: true,
+            completedAt: new Date(),
+            approvedByAdminId: req.session.userid as string,
             feedback: feedback && {
               create: {
                 type: 'COMMENT',
@@ -2674,6 +2686,8 @@ export const adminManageVideos = async (req: Request, res: Response) => {
             ...(submission.status !== 'CHANGES_REQUIRED' && {
               status: 'CHANGES_REQUIRED',
             }),
+            completedAt: new Date(),
+            approvedByAdminId: req.session.userid as string,
             feedback: {
               create: {
                 content: feedback,
