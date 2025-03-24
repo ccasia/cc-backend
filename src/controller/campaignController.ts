@@ -1232,6 +1232,59 @@ export const getAllPitches = async (req: Request, res: Response) => {
   }
 };
 
+export const getAllCreatorAgreements = async (req: Request, res: Response) => {
+  try {
+    // Fetch all creator agreements with related User, Campaign, and Admin information
+    const creatorAgreements = await prisma.creatorAgreement.findMany({
+      include: {
+        user: {  
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        campaign: {  
+          select: {
+            id: true,
+            name: true,          
+          },
+        },
+        admin: { 
+          select: {
+            user: {
+              select: {
+                name: true,
+                email: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    
+    const formattedCreatorAgreements = creatorAgreements.map((agreement) => ({
+      id: agreement.id,
+      agreementUrl: agreement.agreementUrl,
+      createdAt: agreement.createdAt,
+      completedAt: agreement.completedAt,
+      turnaroundTime: agreement.completedAt
+        ? Math.round((new Date(agreement.completedAt).getTime() - new Date(agreement.createdAt).getTime()) / 1000) // Calculate turnaround time in seconds
+        : null,
+      user: agreement.user,
+      campaign: agreement.campaign,
+      approvedByAdmin: agreement.admin?.user,  
+    }));
+
+    // Return the formatted creator agreements
+    return res.status(200).json(formattedCreatorAgreements);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: 'Internal Server Error', error: error.message });
+  }
+};
+
+
 export const getCampaignsByCreatorId = async (req: Request, res: Response) => {
   const { userid } = req.session;
   try {
@@ -3116,6 +3169,8 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
 export const sendAgreement = async (req: Request, res: Response) => {
   const { user, id: agreementId, campaignId } = req.body;
 
+  const adminId = req.session.userid;
+
   try {
     const isUserExist = await prisma.user.findUnique({
       where: {
@@ -3147,6 +3202,8 @@ export const sendAgreement = async (req: Request, res: Response) => {
       },
       data: {
         isSent: true,
+        completedAt: new Date(), 
+        approvedByAdminId: adminId,
       },
     });
 
@@ -4369,3 +4426,6 @@ export const shortlistCreatorV2 = async (req: Request, res: Response) => {
     return res.status(400).json(error);
   }
 };
+
+
+

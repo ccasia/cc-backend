@@ -46,6 +46,7 @@ import {
   getCampaignsTotal,
   shortlistCreatorV2,
   getAllPitches,
+  getAllCreatorAgreements,
 } from '@controllers/campaignController';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 
@@ -83,7 +84,8 @@ router.get('/getAllCampaignsFinance', getAllCampaignsFinance);
 router.get('/getAllActiveCampaign', getAllActiveCampaign);
 router.get('/matchCampaignWithCreator', isLoggedIn, matchCampaignWithCreator);
 router.get('/pitch/:id', getPitchById);
-router.get('/pitches', getAllPitches);
+
+
 // router.get('/firstDraft', getFirstDraft);
 router.get('/timelineType', isSuperAdmin, getTimelineType);
 router.get('/defaultTimeline', isSuperAdmin, getDefaultTimeline);
@@ -96,6 +98,9 @@ router.get('/getSubmissions', getSubmission);
 router.get('/getCampaignLog/:id', getCampaignLog);
 router.get('/creatorAgreements/:campaignId', creatorAgreements);
 
+// For Analytics 
+router.get('/pitches', getAllPitches);
+router.get('/getCreatorAgreements', getAllCreatorAgreements)
 // For creator MyCampaigns
 router.get('/getMyCampaigns/:userId', isLoggedIn, getMyCampaigns);
 

@@ -79,6 +79,7 @@ model Admin {
   adminLogs             AdminLog[]              @relation("AdminToAdminLog")
   approvedPitches       Pitch[]                 @relation("ApprovedByAdmin")
   approvedSubmissions   Submission[]            @relation("ApprovedByAdmin") 
+  completedAgreements   CreatorAgreement[]      @relation("CompletedByAdmin")
 }
 
 model Client {
@@ -976,9 +977,12 @@ model CreatorAgreement {
   amount       String?
   userId       String
   campaignId   String
+  completedAt  DateTime?
+  approvedByAdminId String? 
   version      Int?     @default(1)
   campaign     Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  admin        Admin?   @relation(fields: [approvedByAdminId], references: [userId], name: "CompletedByAdmin")
 
   @@unique([userId, campaignId])
 }
