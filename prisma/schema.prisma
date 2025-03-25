@@ -76,6 +76,10 @@ model Admin {
   user                  User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
   adminPermissionModule AdminPermissionModule[]
   campaignAdmin         CampaignAdmin[]
+  adminLogs             AdminLog[]              @relation("AdminToAdminLog")
+  approvedPitches       Pitch[]                 @relation("ApprovedByAdmin")
+  approvedSubmissions   Submission[]            @relation("ApprovedByAdmin") 
+  completedAgreements   CreatorAgreement[]      @relation("CompletedByAdmin")
 }
 
 model Client {
@@ -626,6 +630,14 @@ model CampaignLog {
   campaign   Campaign @relation(fields: [campaignId], references: [id])
 }
 
+model AdminLog {
+  id        String   @id @unique @default(cuid())
+  createdAt DateTime @default(now())
+  message   String
+  adminId   String?  // Nullable for past actions
+  admin     Admin?   @relation("AdminToAdminLog", fields: [adminId], references: [userId], onDelete: Cascade) 
+}
+
 model Pitch {
   id           String         @id @unique @default(cuid())
   type         PitchType
@@ -634,10 +646,12 @@ model Pitch {
   status       PitchStatus?   @default(pending)
   content      String         @default("test")
   createdAt    DateTime       @default(now())
+  completedAt  DateTime?
+  approvedByAdminId String? 
   Notification Notification[]
   campaign     Campaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   user         User           @relation(fields: [userId], references: [id])
-
+  admin        Admin?         @relation(fields: [approvedByAdminId], references: [userId], name: "ApprovedByAdmin")
   @@unique([userId, campaignId])
 }
 
@@ -725,6 +739,8 @@ model Submission {
   updatedAt            DateTime               @updatedAt
   submissionDate       DateTime?
   dueDate              DateTime?
+  completedAt          DateTime? 
+  approvedByAdminId    String? 
   userId               String
   submissionTypeId     String
   isReview             Boolean                @default(false)
@@ -735,6 +751,7 @@ model Submission {
   campaign             Campaign               @relation(fields: [campaignId], references: [id])
   submissionType       SubmissionType         @relation(fields: [submissionTypeId], references: [id])
   user                 User                   @relation(fields: [userId], references: [id])
+  admin                Admin?                 @relation(fields: [approvedByAdminId], references: [userId], name: "ApprovedByAdmin")
   dependencies         SubmissionDependency[] @relation("Dependencies")
   dependentOn          SubmissionDependency[] @relation("DependentOn")
   task                 Task[]
@@ -960,9 +977,12 @@ model CreatorAgreement {
   amount       String?
   userId       String
   campaignId   String
+  completedAt  DateTime?
+  approvedByAdminId String? 
   version      Int?     @default(1)
   campaign     Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  admin        Admin?   @relation(fields: [approvedByAdminId], references: [userId], name: "CompletedByAdmin")
 
   @@unique([userId, campaignId])
 }

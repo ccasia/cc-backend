@@ -23,6 +23,35 @@ export const logChange = async (message: string, campaignId: string, req: Reques
   }
 };
 
+export const logAdminChange = async (message: string, adminId: string, req: Request) => {
+  if (adminId === undefined) {
+    throw new Error('Admin ID is undefined');
+  }
+
+  try {
+    // Fetch the admin's name from the User table (using adminId)
+    const admin = await prisma.user.findUnique({
+      where: { id: adminId },
+      select: { name: true },
+    });
+
+    if (!admin) {
+      throw new Error('Admin not found');
+    }
+
+    
+    await prisma.adminLog.create({
+      data: {
+        message: `${admin.name} performed action: ${message}`,  // Add admin's name to the message
+        adminId: adminId,   
+      },
+    });
+  } catch (error) {
+    return error;  
+  }
+};
+
+
 export const deductCredits = async (campaignId: string, userId: string, tx: PrismaClient) => {
   try {
     // return await prisma.$transaction(async (tx) => {
@@ -57,6 +86,7 @@ export const deductCredits = async (campaignId: string, userId: string, tx: Pris
         shortlisted: true,
       },
     });
+    
 
     const user = await tx.user.findUnique({
       where: {

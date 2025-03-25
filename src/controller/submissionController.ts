@@ -276,6 +276,8 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
         data: {
           status: 'APPROVED',
           isReview: true,
+          completedAt: new Date(),
+          approvedByAdminId: req.session.userid as string,
         },
         include: {
           task: true,
@@ -404,6 +406,8 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
         data: {
           status: 'CHANGES_REQUIRED',
           isReview: true,
+          completedAt: new Date(),
+          approvedByAdminId: req.session.userid as string,
         },
         include: {
           task: true,
@@ -503,6 +507,73 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
     return res.status(400).json(error);
   }
 };
+
+export const getAllSubmissions = async (req: Request, res: Response) => {
+  try {
+    const submissions = await prisma.submission.findMany({
+      include: {
+        submissionType: {
+          select: {
+            type: true,
+          },
+        },
+        feedback: {
+          include: {
+            admin: true,
+          },
+        },
+        dependentOn: true,
+        dependencies: true,
+        rawFootages: true,
+        photos: true,
+        video: true,
+        user: {
+          select: {
+            name: true,
+            email: true,
+          },
+        },
+        admin: { 
+          select: {
+            user: {
+              select: {
+                name: true,
+                email: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+
+    // formatting before sending data to frontend
+    const formattedSubmissions = submissions.map((submission) => ({
+      id: submission.id,
+      type: submission.submissionType.type,
+      status: submission.status,
+      createdAt: submission.createdAt,
+      submissionDate: submission.submissionDate,
+      completedAt: submission.completedAt, 
+      turnaroundTime: submission.completedAt
+        ? Math.round((new Date(submission.completedAt).getTime() - new Date(submission.createdAt).getTime()) / 1000)
+        : null,
+      draftTurnaroundTime: submission.completedAt && submission.submissionDate
+        ? Math.round((new Date(submission.completedAt).getTime() - new Date(submission.submissionDate).getTime()) / 1000)
+        : null,
+      user: submission.user,
+      feedback: submission.feedback,
+      approvedByAdmin: submission.admin?.user,
+      
+    }));
+
+    return res.status(200).json({ submissions: formattedSubmissions });
+  } catch (error) {
+    console.error("Error fetching submissions:", error);
+    return res.status(500).json({ message: "Failed to retrieve submissions", error });
+  }
+};
+
 
 export const getSubmissionByCampaignCreatorId = async (req: Request, res: Response) => {
   const { creatorId, campaignId } = req.query;
@@ -1400,6 +1471,8 @@ export const adminManageDraft = async (req: Request, res: Response) => {
         data: {
           status: 'APPROVED',
           isReview: true,
+          completedAt: new Date(),
+          approvedByAdminId: req.session.userid as string,
           feedback: feedback && {
             create: {
               type: 'COMMENT',
@@ -1661,6 +1734,8 @@ export const adminManageDraft = async (req: Request, res: Response) => {
         data: {
           status: 'CHANGES_REQUIRED',
           isReview: true,
+          completedAt: new Date(),
+          approvedByAdminId: req.session.userid as string,
           feedback: {
             create: {
               type: 'REASON',
@@ -2212,6 +2287,8 @@ export const adminManagePhotos = async (req: Request, res: Response) => {
           id: submission.id,
         },
         data: {
+          completedAt: new Date(),
+          approvedByAdminId: req.session.userid as string,
           ...(submission.status !== 'CHANGES_REQUIRED' && {
             status: 'CHANGES_REQUIRED',
           }),
@@ -2253,6 +2330,8 @@ export const adminManageVideos = async (req: Request, res: Response) => {
           data: {
             status: 'APPROVED',
             isReview: true,
+            completedAt: new Date(),
+            approvedByAdminId: req.session.userid as string,
             feedback: feedback && {
               create: {
                 type: 'COMMENT',
@@ -2609,6 +2688,8 @@ export const adminManageVideos = async (req: Request, res: Response) => {
             ...(submission.status !== 'CHANGES_REQUIRED' && {
               status: 'CHANGES_REQUIRED',
             }),
+            completedAt: new Date(),
+            approvedByAdminId: req.session.userid as string,
             feedback: {
               create: {
                 content: feedback,

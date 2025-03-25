@@ -123,7 +123,11 @@ app.get('/', (_req: Request, res: Response) => {
 app.get('/users', isLoggedIn, async (_req, res) => {
   const prisma = new PrismaClient();
   try {
-    const users = await prisma.user.findMany();
+    const users = await prisma.user.findMany({
+      include: {
+        pitch: true,
+      },
+    });
     res.send(users);
   } catch (error) {
     //console.log(error);

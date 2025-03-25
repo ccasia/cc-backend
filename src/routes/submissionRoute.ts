@@ -9,6 +9,7 @@ import {
   agreementSubmission,
   changePostingDate,
   draftSubmission,
+  getAllSubmissions,
   getDeliverables,
   getSubmissionByCampaignCreatorId,
   postingSubmission,
@@ -20,6 +21,7 @@ import { generateInvoice } from '@controllers/invoiceController';
 const router = Router();
 
 router.get('/', getSubmissionByCampaignCreatorId);
+router.get('/getAllsubmission', getAllSubmissions);
 router.get('/deliverables/:userId/:campaignId', isLoggedIn, getDeliverables);
 
 router.post('/submitAgreement', isLoggedIn, agreementSubmission);
