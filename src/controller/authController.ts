@@ -463,6 +463,16 @@ export const verifyCreator = async (req: Request, res: Response) => {
     if (!creator) {
       return res.status(404).json({ message: 'Not found.' });
     }
+    
+    // Update user status to active
+    await prisma.user.update({
+      where: {
+        id: creator.id
+      },
+      data: {
+        status: 'active'
+      }
+    });
 
     const accessToken = jwt.sign({ id: creator.id }, process.env.ACCESSKEY as Secret, {
       expiresIn: '4h',
@@ -657,7 +667,7 @@ export const updateCreator = async (req: Request, res: Response) => {
             }
           : {}),
         socialMediaData: parsedSocialMediaData, // Store as JSON object
-        isOnBoardingFormCompleted: true,
+        // isOnBoardingFormCompleted: true,
       },
       include: {
         interests: true,
