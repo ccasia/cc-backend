@@ -100,7 +100,7 @@ router.get('/creatorAgreements/:campaignId', creatorAgreements);
 
 // For Analytics 
 router.get('/pitches', getAllPitches);
-router.get('/getCreatorAgreements', getAllCreatorAgreements)
+router.get('/getCreatorAgreements', isSuperAdmin, getAllCreatorAgreements)
 // For creator MyCampaigns
 router.get('/getMyCampaigns/:userId', isLoggedIn, getMyCampaigns);
 
