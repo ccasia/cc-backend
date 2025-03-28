@@ -257,6 +257,9 @@ export const registerCreator = async (req: Request, res: Response) => {
         return { user, creator };
       });
 
+      // Create kanban board for the new creator
+      await createKanbanBoard(result.user.id, 'creator');
+
       // Send verification email
       const token = jwt.sign({ id: result.user.id }, process.env.ACCESSKEY as Secret, { expiresIn: '15m' });
       creatorVerificationEmail(result.user.email, token);
@@ -473,6 +476,17 @@ export const verifyCreator = async (req: Request, res: Response) => {
         status: 'active'
       }
     });
+
+    // Create kanban board if it doesn't exist yet
+    const board = await prisma.board.findFirst({
+      where: {
+        userId: creator.id
+      }
+    });
+
+    if (!board) {
+      await createKanbanBoard(creator.id, 'creator');
+    }
 
     const accessToken = jwt.sign({ id: creator.id }, process.env.ACCESSKEY as Secret, {
       expiresIn: '4h',
