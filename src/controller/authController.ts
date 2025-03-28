@@ -22,7 +22,7 @@ interface CreatorRequestData {
   name: string;
   email: string;
   password: string;
-  confirmPassword: string;
+  // confirmPassword: string;
   recaptcha: string;
 }
 
@@ -114,7 +114,7 @@ export const changePassword = async (req: Request, res: Response) => {
     const latestPassword = await bcrypt.hash(newPassword, 10);
 
     await handleChangePassword({ userId: id, latestPassword: latestPassword });
-    return res.status(200).json({ message: 'Successfully changed password' });
+    return res.status(200).json({ message: 'Password updated successfully!' });
   } catch (error) {
     return res.status(400).send('Error');
   }
@@ -167,17 +167,17 @@ export const registerSuperAdmin = async (req: Request, res: Response) => {
 
 // Function to register creator
 export const registerCreator = async (req: Request, res: Response) => {
-  const { name, email, password, confirmPassword, recaptcha }: CreatorRequestData = req.body;
+  const { name, email, password, recaptcha, creatorData } = req.body;
+
+  console.log('Backend received registration data:', { name, email, password: '***', recaptcha: '***', creatorData });
 
   if (!recaptcha) {
     return res.status(400).json({ success: false, message: 'Token is missing.' });
   }
 
-  if (password !== confirmPassword) return res.status(400).json({ message: "Password don't match." });
-
   try {
+    // Verify recaptcha
     const secretKey = process.env.RECAPTCHA_SECRETKEY;
-
     const response = await axios.post(`https://www.google.com/recaptcha/api/siteverify`, null, {
       params: {
         secret: secretKey,
@@ -198,35 +198,76 @@ export const registerCreator = async (req: Request, res: Response) => {
 
       const hashedPassword = await bcrypt.hash(password, 10);
 
-      const user = await prisma.user.create({
-        data: {
-          email: email.toLowerCase(),
-          password: hashedPassword,
-          role: 'creator',
-          name: name,
-        },
-      });
+      // Create user and creator in a transaction
+      const result = await prisma.$transaction(async (tx) => {
+        // Create user
+        const user = await tx.user.create({
+          data: {
+            email: email.toLowerCase(),
+            password: hashedPassword,
+            role: 'creator',
+            name: name,
+            phoneNumber: creatorData?.phone || '',
+            country: creatorData?.Nationality || '',
+          },
+        });
 
-      const data = await prisma.creator.create({
-        data: {
+        // Create creator with profile data
+        const creatorObj: any = {
           userId: user.id,
-        },
-        include: {
-          user: true,
-        },
+        };
+
+        if (creatorData) {
+          Object.assign(creatorObj, {
+            instagram: creatorData.instagram || '',
+            pronounce: creatorData.pronounce || '',
+            location: creatorData.location || '',
+            birthDate: creatorData.birthDate ? new Date(creatorData.birthDate) : null,
+            employment: creatorData.employment || 'fulltime',
+            tiktok: creatorData.tiktok || '',
+            languages: creatorData.languages || [],
+          });
+        }
+
+        const creator = await tx.creator.create({
+          data: creatorObj,
+          include: {
+            user: true,
+          },
+        });
+
+        // Create interests if provided
+        if (creatorData?.interests && creatorData.interests.length > 0) {
+          // Handle both formats: array of strings or array of objects
+          const interestsToCreate = creatorData.interests.map((interest: any) => {
+            const interestName = typeof interest === 'string' ? interest : interest.name;
+            return {
+              name: interestName,
+              userId: user.id,
+            };
+          });
+
+          if (interestsToCreate.length > 0) {
+            await tx.interest.createMany({
+              data: interestsToCreate,
+            });
+          }
+        }
+
+        return { user, creator };
       });
-      // Chagne later for production
-      const token = jwt.sign({ id: user.id }, process.env.ACCESSKEY as Secret, { expiresIn: '15m' });
 
-      creatorVerificationEmail(user.email, token);
+      // Send verification email
+      const token = jwt.sign({ id: result.user.id }, process.env.ACCESSKEY as Secret, { expiresIn: '15m' });
+      creatorVerificationEmail(result.user.email, token);
 
-      return res.status(201).json({ user: data.user.email });
+      return res.status(201).json({ user: result.user.email });
     }
 
     return res.status(400).json({ success: false, message: 'Verification failed.' });
   } catch (error) {
-    console.log(error);
-    return res.status(400).send(error);
+    console.error('Creator registration error:', error);
+    return res.status(400).json({ message: 'Error registering creator', error: error.message });
   }
 };
 
@@ -811,9 +852,21 @@ export const login = async (req: Request, res: Response) => {
 };
 
 export const updateProfileCreator = async (req: Request, res: Response) => {
-  const { name, email, phoneNumber, country, about, id, state, address, allergies, bodyMeasurement } = JSON.parse(
-    req.body.data,
-  );
+  const { 
+    name, 
+    email, 
+    phoneNumber, 
+    country, 
+    about, 
+    id, 
+    state, 
+    address, 
+    allergies, 
+    bodyMeasurement,
+    pronounce,
+    interests,
+    removePhoto,
+  } = JSON.parse(req.body.data);
 
   try {
     const creator = await prisma.creator.findFirst({
@@ -826,6 +879,7 @@ export const updateProfileCreator = async (req: Request, res: Response) => {
             paymentForm: true,
           },
         },
+        interests: true,
       },
     });
 
@@ -833,13 +887,30 @@ export const updateProfileCreator = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Creator not found' });
     }
 
+    await prisma.interest.deleteMany({
+      where: {
+        userId: creator.userId,
+      },
+    });
+
+    // Then create new interests separately
+    if (interests && interests.length > 0) {
+      await prisma.interest.createMany({
+        data: interests.map((interest: { name: string }) => ({
+          name: interest.name,
+          userId: creator.userId,
+        })),
+      });
+    }
+
     const updateData: any = {
-      state: state,
-      address: address,
+      state,
+      address,
+      pronounce,
       mediaKit: {
         upsert: {
           where: {
-            creatorId: creator?.id,
+            creatorId: creator.id,
           },
           update: {
             about: about,
@@ -851,14 +922,16 @@ export const updateProfileCreator = async (req: Request, res: Response) => {
       },
       user: {
         update: {
-          name: name,
-          email: email,
-          phoneNumber: phoneNumber,
-          country: country,
+          name,
+          email,
+          phoneNumber,
+          country,
+          ...(removePhoto ? { photoURL: null } : {}),
         },
       },
     };
 
+    // Handle file uploads if present
     if (req.files && ((req.files as any).backgroundImage || (req.files as any).image)) {
       const { image } = req?.files as any;
       const { backgroundImage } = req?.files as any;
@@ -874,6 +947,7 @@ export const updateProfileCreator = async (req: Request, res: Response) => {
       }
     }
 
+    // Update payment form
     await prisma.paymentForm.upsert({
       where: {
         userId: creator.user.id,
@@ -893,26 +967,32 @@ export const updateProfileCreator = async (req: Request, res: Response) => {
       },
     });
 
-    await prisma.creator.update({
+    // Update creator
+    const updatedCreator = await prisma.creator.update({
       where: {
         userId: id,
       },
-      data: {
-        ...updateData,
-      },
+      data: updateData,
       include: {
         user: {
           include: {
             paymentForm: true,
           },
         },
+        interests: true,
       },
     });
 
-    return res.status(200).json({ message: 'Successfully updated' });
+    return res.status(200).json({ 
+      message: 'Profile updated successfully!',
+      creator: updatedCreator 
+    });
   } catch (error) {
-    console.log(error);
-    return res.status(400).json({ message: 'Error updating creator' });
+    console.error('Error updating creator:', error);
+    return res.status(400).json({ 
+      message: 'Error updating creator',
+      error: error.message 
+    });
   }
 };
 
