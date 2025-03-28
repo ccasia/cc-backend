@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { Entity, FeedbackStatus, PrismaClient, SubmissionStatus } from '@prisma/client';
+import { Entity, FeedbackStatus, PrismaClient, SubmissionStatus, } from '@prisma/client';
 import { uploadAgreementForm, uploadPitchVideo } from '@configs/cloudStorage.config';
 import { saveNotification } from './notificationController';
 import { activeProcesses, clients, io } from '../server';
@@ -8,7 +8,7 @@ import FfmpegPath from '@ffmpeg-installer/ffmpeg';
 import amqplib from 'amqplib';
 import dayjs from 'dayjs';
 import { MAP_TIMELINE } from '@constants/map-timeline';
-
+import { logAdminChange } from '@services/campaignServices';
 import { createInvoiceService } from '../service/invoiceService';
 
 import {
@@ -21,6 +21,7 @@ import {
   notificationRejectDraft,
 } from '@helper/notification';
 import { getColumnId } from './kanbanController';
+
 
 import {
   approvalOfDraft,
@@ -219,6 +220,8 @@ export const agreementSubmission = async (req: Request, res: Response) => {
 export const adminManageAgreementSubmission = async (req: Request, res: Response) => {
   const data = req.body;
 
+  const adminId = req.session.userid;
+
   const { campaignId, userId, status, submissionId } = data;
   const nextSubmissionId = data?.submission?.dependencies[0]?.submissionId;
 
@@ -293,6 +296,7 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
           },
         },
       });
+
 
       const taskInReviewColumn = inReviewColumn?.task?.find((item) => item.submissionId === agreementSubs.id);
 
@@ -376,6 +380,12 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
           }
         }
       }
+
+      // Admin logs for Approve 
+        if (adminId) {
+                const message = `Approved agreement in campaign - ${campaign.name} `;
+                logAdminChange(message, adminId, req); 
+              }
 
       const { title, message } = notificationApproveAgreement(campaign?.name as string);
 
@@ -490,6 +500,12 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
         },
       });
 
+      //Reject Log
+      if (adminId) {
+        const message = `Rejected agreement in campaign - ${campaign.name} `;
+        logAdminChange(message, adminId, req); 
+      }
+
       const notification = await saveNotification({
         userId: userId,
         title: `❌ Agreement Rejected`,
@@ -560,6 +576,9 @@ export const getAllSubmissions = async (req: Request, res: Response) => {
         : null,
       draftTurnaroundTime: submission.completedAt && submission.submissionDate
         ? Math.round((new Date(submission.completedAt).getTime() - new Date(submission.submissionDate).getTime()) / 1000)
+        : null,
+      creatorsubmissionTime: submission.createdAt  && submission.submissionDate
+        ? Math.round((new Date(submission.submissionDate).getTime() - new Date(submission.createdAt).getTime()) / 1000)
         : null,
       user: submission.user,
       feedback: submission.feedback,

@@ -1990,6 +1990,10 @@ export const changePitchStatus = async (req: Request, res: Response) => {
 
           shortlisted(user.email, campaignName, creatorName ?? 'Creator', campaignId, image[0]);
 
+           
+          const message = `Approved a sent pitch by  ${existingPitch.user.name} in campaign - ${pitch.campaign.name} ` 
+          logAdminChange(message, adminId, req )
+
           const data = await saveNotification({
             userId: pitch.userId,
             entityId: pitch.campaign.id as string,
@@ -2187,13 +2191,14 @@ export const changePitchStatus = async (req: Request, res: Response) => {
           },
         });
       }
+      const message = `Rejected a pitch sent by  ${existingPitch.user.name} for campaign - ${pitch.campaign.name} ` 
+      logAdminChange(message, adminId, req )
+  
     }
 
     io.to(clients.get(existingPitch.userId)).emit('pitchUpdate');
    
-    const message = `Updated pitch status for ${pitchId} in campaign ${pitchId.campaign.name} ` 
-    logAdminChange(message, adminId, req )
-
+   
     return res.status(200).json({ message: 'Successfully changed.' });
   } catch (error) {
     console.log(error);
@@ -3671,7 +3676,7 @@ export const editCampaignAdmin = async (req: Request, res: Response) => {
         });
       });
     }
-    
+
         if (adminId) {
           const adminLogMessage = `Updated Admins list in ${campaign.name} `;
           logAdminChange(adminLogMessage, adminId, req); 
