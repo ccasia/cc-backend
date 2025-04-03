@@ -301,7 +301,7 @@ const processVideo = async (videoData: VideoData): Promise<string> => {
     const conn = await amqplib.connect(process.env.RABBIT_MQ!);
     const channel = await conn.createChannel();
     await channel.assertQueue('draft', { durable: true });
-    // await channel.purgeQueue('draft');
+    await channel.purgeQueue('draft');
     console.log('Worker 2 is running');
 
     await channel.consume(
