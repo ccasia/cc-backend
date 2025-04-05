@@ -6,6 +6,7 @@ import {
   generateSubscriptionCustomId,
   handleCreateBrand,
 } from '@services/companyService';
+import { logAdminChange } from '@services/campaignServices';
 import { Company, CustomPackage, Package, PrismaClient } from '@prisma/client';
 import { uploadCompanyLogo } from '@configs/cloudStorage.config';
 import dayjs from 'dayjs';
@@ -15,6 +16,7 @@ const prisma = new PrismaClient();
 // for creating new company with brand
 export const createCompany = async (req: Request, res: Response) => {
   const data = JSON.parse(req.body.data);
+  const adminId = req.session.userid;
 
   const companyLogo = (req.files as { companyLogo: object })?.companyLogo as { tempFilePath: string; name: string };
   let publicURL: string | null = '';
@@ -25,6 +27,8 @@ export const createCompany = async (req: Request, res: Response) => {
 
     const company = await createNewCompany(data, publicURL);
 
+    const adminLogMessage = `Created A New company ${company.name} `;
+    logAdminChange(adminLogMessage, adminId, req); 
     return res.status(201).json({ company, message: 'A new company has been created' });
   } catch (error) {
     console.log(error);
@@ -112,8 +116,12 @@ export const getCompanyById = async (req: Request, res: Response) => {
 };
 
 export const createBrand = async (req: Request, res: Response) => {
+  const adminId = req.session.userid;
+
   try {
     const brand = await handleCreateBrand(req.body);
+    const adminLogMessage = `Created A New Brand ${brand.name} `;
+    logAdminChange(adminLogMessage, adminId, req); 
     return res.status(200).json({ brand, message: 'Brand is successfully created!' });
   } catch (err) {
     return res.status(400).json({ message: err?.message });
@@ -198,6 +206,8 @@ export const createOneBrand = async (req: Request, res: Response) => {
 
 export const deleteCompany = async (req: Request, res: Response) => {
   const { id } = req.params;
+  const adminId = req.session.userid;
+  
   try {
     const company = await prisma.company.findUnique({
       where: {
@@ -214,7 +224,9 @@ export const deleteCompany = async (req: Request, res: Response) => {
           id: id,
         },
       });
-      return res.status(200).json({ message: 'Sucessfully remove company' });
+      const adminLogMessage = `Removed Company - ${company.name} `;
+      logAdminChange(adminLogMessage, adminId, req); 
+      return res.status(200).json({ message: 'Sucessfully remove company 2' });
     }
 
     if (company) {
@@ -230,6 +242,8 @@ export const deleteCompany = async (req: Request, res: Response) => {
           id: id,
         },
       });
+      const adminLogMessage = `Removed Company - ${company.name} `;
+      logAdminChange(adminLogMessage, adminId, req); 
       return res.status(200).json({ message: 'Sucessfully remove company' });
     }
   } catch (error) {
@@ -249,6 +263,8 @@ export const editCompany = async (req: Request, res: Response) => {
     companyObjectives,
     companyRegistrationNumber,
   } = JSON.parse(req.body.data);
+  const adminId = req.session.userid;
+  
   try {
     let logoURL = '';
 
@@ -275,6 +291,9 @@ export const editCompany = async (req: Request, res: Response) => {
       },
       data: updateCompanyData,
     });
+
+    const adminLogMessage = `Updated Company - ${updatedCompany.name} `;
+    logAdminChange(adminLogMessage, adminId, req); 
 
     return res.status(200).json({ message: 'Succesfully updated', ...updatedCompany });
   } catch (error) {

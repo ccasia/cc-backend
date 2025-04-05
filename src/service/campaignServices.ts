@@ -43,6 +43,7 @@ export const logAdminChange = async (message: string, adminId: string, req: Requ
       data: {
         message: `${admin.name} performed action: ${message}`,  
         adminId: adminId,   
+        performedBy: admin.name,
       },
     });
   } catch (error) {

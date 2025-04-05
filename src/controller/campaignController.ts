@@ -1418,13 +1418,13 @@ export const changeCampaignStage = async (req: Request, res: Response) => {
           entity: 'Status',
           entityId: updatedCampaign.id,
         });
-
-        if (adminId) {
-          const adminLogMessage = `Resumed the campaign - ${campaign.name} `;
-          logAdminChange(adminLogMessage, adminId, req); 
-        }
         io.to(clients.get(admin.adminId)).emit('notification', data);
       }
+    }
+
+    if (updatedCampaign?.status === 'ACTIVE') {
+      const adminLogMessage = `Resumed the campaign - ${campaign.name} `;
+      logAdminChange(adminLogMessage, adminId, req); 
     }
 
     io.emit('campaignStatus', updatedCampaign);
@@ -2527,6 +2527,8 @@ export const createLogistics = async (req: Request, res: Response) => {
     creatorId: userId,
   } = req.body;
 
+  const adminId = req.session.userid;
+
   try {
     const logistic = await prisma.logistic.create({
       data: {
@@ -2570,6 +2572,9 @@ export const createLogistics = async (req: Request, res: Response) => {
 
     io.to(clients.get(userId)).emit('notification', notification);
 
+    const adminLogMessage = `Created New Logistic for campaign - ${logistic.campaign.name} `;
+    logAdminChange(adminLogMessage, adminId, req); 
+
     return res.status(200).json({ message: 'Logistics created successfully.' });
   } catch (error) {
     //console.log(error);
@@ -2589,6 +2594,8 @@ export const getLogisticById = async (req: Request, res: Response) => {
 export const updateStatusLogistic = async (req: Request, res: Response) => {
   // eslint-disable-next-line prefer-const
   let { logisticId, status } = req.body;
+  const adminId = req.session.userid;
+
   if (status === 'Pending Delivery Confirmation') {
     status = status.split(' ').join('_');
   }
@@ -2658,6 +2665,9 @@ export const updateStatusLogistic = async (req: Request, res: Response) => {
 
     // io.to(clients.get(updated.userId)).emit('notification', notification);
 
+    const adminLogMessage = `Updated Logistic status for campaign - ${updated.campaign.name} `;
+    logAdminChange(adminLogMessage, adminId, req); 
+
     return res.status(200).json({ message: 'Logistic status updated successfully.' });
   } catch (error) {
     console.log(error);
@@ -2667,6 +2677,8 @@ export const updateStatusLogistic = async (req: Request, res: Response) => {
 
 export const shortlistCreator = async (req: Request, res: Response) => {
   const { newVal: creators, campaignId } = req.body;
+
+  const adminId = req.session.userid;
 
   try {
     // await prisma.$transaction(
@@ -3055,7 +3067,9 @@ export const shortlistCreator = async (req: Request, res: Response) => {
       { timeout: 10000 },
     );
 
-
+    
+    const adminLogMessage = `Creator Shortlisted for Campaign - ${campaignId.name} `;
+    logAdminChange(adminLogMessage, adminId, req); 
 
     return res.status(200).json({ message: 'Successfully shortlisted' });
   } catch (error) {
@@ -3353,6 +3367,9 @@ export const editCampaignImages = async (req: Request, res: Response) => {
         newImages.push(campaignImages);
       }
 
+      // const adminLogMessage = `Added A New Campaign Image To - ${campaign.title}`;
+      // logAdminChange(adminLogMessage, adminId, req);
+
       await prisma.campaignBrief.update({
         where: {
           campaignId: campaign?.campaignId,
@@ -3370,10 +3387,11 @@ export const editCampaignImages = async (req: Request, res: Response) => {
           images: [campaignImages].flat(),
         },
       });
+    
     }
 
     if (adminId) {
-      const adminLogMessage = `Changed Images in ${campaign.title} `;
+      const adminLogMessage = `Updated Campaign Images In ${campaign.title} `;
       logAdminChange(adminLogMessage, adminId, req); 
     }
 
@@ -3693,6 +3711,7 @@ export const editCampaignAttachments = async (req: Request, res: Response) => {
   const { id } = req.params;
   const { otherAttachments: currentAttachments } = req.body;
   const otherAttachments: string[] = [];
+  const adminId = req.session.userid;
 
   try {
     const campaign = await prisma.campaign.findUnique({
@@ -3744,6 +3763,9 @@ export const editCampaignAttachments = async (req: Request, res: Response) => {
         otherAttachments: otherAttachments,
       },
     });
+
+    const adminLogMessage = `Updated Other Attachments in - ${campaign.name}`;
+    logAdminChange(adminLogMessage, adminId, req);
 
     return res.status(200).json({ message: 'Update Success.' });
   } catch (error) {
@@ -4174,6 +4196,7 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
 
 export const removeCreatorFromCampaign = async (req: Request, res: Response) => {
   const { creatorId, campaignId } = req.body;
+  const adminId = req.session.userid;
 
   try {
     const user = await prisma.user.findUnique({
@@ -4291,6 +4314,10 @@ export const removeCreatorFromCampaign = async (req: Request, res: Response) => 
         await tx.pitch.delete({ where: { id: pitch.id } });
       }
     });
+
+
+    const adminLogMessage = `Withdrew Creator "${user.name}" From - ${campaign.name} `;
+    logAdminChange(adminLogMessage, adminId, req); 
 
     return res.status(200).json({ message: 'Successfully withdraw' });
   } catch (error) {
