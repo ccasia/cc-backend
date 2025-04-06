@@ -327,6 +327,7 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
         },
         data: {
           status: 'IN_PROGRESS',
+          nextsubmissionDate: new Date(),
         },
         include: {
           task: true,
@@ -571,14 +572,18 @@ export const getAllSubmissions = async (req: Request, res: Response) => {
       createdAt: submission.createdAt,
       submissionDate: submission.submissionDate,
       completedAt: submission.completedAt, 
+      nextsubmission: submission.nextsubmissionDate,
       turnaroundTime: submission.completedAt
         ? Math.round((new Date(submission.completedAt).getTime() - new Date(submission.createdAt).getTime()) / 1000)
         : null,
       draftTurnaroundTime: submission.completedAt && submission.submissionDate
         ? Math.round((new Date(submission.completedAt).getTime() - new Date(submission.submissionDate).getTime()) / 1000)
         : null,
-      creatorsubmissionTime: submission.createdAt  && submission.submissionDate
+      creatorAgreementTime: submission.createdAt  && submission.submissionDate
         ? Math.round((new Date(submission.submissionDate).getTime() - new Date(submission.createdAt).getTime()) / 1000)
+        : null,
+      creatorDrafTime: submission.nextsubmissionDate  && submission.submissionDate
+        ? Math.round((new Date(submission.submissionDate).getTime() - new Date(submission.nextsubmissionDate).getTime()) / 1000)
         : null,
       user: submission.user,
       feedback: submission.feedback,
@@ -1830,6 +1835,7 @@ export const adminManageDraft = async (req: Request, res: Response) => {
           },
           data: {
             status: 'IN_PROGRESS',
+            nextsubmissionDate: new Date(),
           },
           include: {
             task: true,
@@ -2104,7 +2110,12 @@ export const adminManagePosting = async (req: Request, res: Response) => {
       if (status === 'APPROVED') {
         const approvedSubmission = await tx.submission.update({
           where: { id: submission.id },
-          data: { status: status as SubmissionStatus, isReview: true },
+          data: { 
+          status: status as SubmissionStatus, 
+          isReview: true, 
+          completedAt: new Date(),
+          approvedByAdminId: userId as string,
+        },
           include: {
             user: {
               include: {
@@ -2339,6 +2350,8 @@ export const adminManagePhotos = async (req: Request, res: Response) => {
 export const adminManageVideos = async (req: Request, res: Response) => {
   const { videos, submissionId, feedback, reasons, type } = req.body;
 
+  console.log("type", type)
+  console.log("type", submissionId)
   try {
     if (type && type === 'approve') {
       await prisma.$transaction(async (tx) => {
@@ -2556,12 +2569,14 @@ export const adminManageVideos = async (req: Request, res: Response) => {
             });
           }
 
+          // For posting 
           await tx.submission.update({
             where: {
               id: posting.id,
             },
             data: {
               status: 'IN_PROGRESS',
+              nextsubmissionDate: new Date(),
               startDate: dayjs(req.body.schedule.startDate).format(),
               endDate: dayjs(req.body.schedule.endDate).format(),
               dueDate: dayjs(req.body.schedule.endDate).format(),
@@ -2708,6 +2723,7 @@ export const adminManageVideos = async (req: Request, res: Response) => {
               status: 'CHANGES_REQUIRED',
             }),
             completedAt: new Date(),
+            nextsubmissionDate: new Date(),
             approvedByAdminId: req.session.userid as string,
             feedback: {
               create: {
