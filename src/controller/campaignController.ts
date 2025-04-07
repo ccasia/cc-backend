@@ -1222,13 +1222,13 @@ export const getAllPitches = async (req: Request, res: Response) => {
     });
 
     if (!pitches || pitches.length === 0) {
-      return res.status(404).json({ message: "No pitches found." });
+      return res.status(404).json({ message: 'No pitches found.' });
     }
 
     return res.status(200).json({ pitches });
   } catch (error) {
-    console.error("Error:", error);
-    return res.status(500).json({ message: "Server Error", error: error.message });
+    console.error('Error:', error);
+    return res.status(500).json({ message: 'Server Error', error: error.message });
   }
 };
 
@@ -1237,19 +1237,19 @@ export const getAllCreatorAgreements = async (req: Request, res: Response) => {
     // Fetch all creator agreements with related User, Campaign, and Admin information
     const creatorAgreements = await prisma.creatorAgreement.findMany({
       include: {
-        user: {  
+        user: {
           select: {
             id: true,
             name: true,
           },
         },
-        campaign: {  
+        campaign: {
           select: {
             id: true,
-            name: true,          
+            name: true,
           },
         },
-        admin: { 
+        admin: {
           select: {
             user: {
               select: {
@@ -1262,7 +1262,6 @@ export const getAllCreatorAgreements = async (req: Request, res: Response) => {
       },
     });
 
-    
     const formattedCreatorAgreements = creatorAgreements.map((agreement) => ({
       id: agreement.id,
       agreementUrl: agreement.agreementUrl,
@@ -1273,7 +1272,7 @@ export const getAllCreatorAgreements = async (req: Request, res: Response) => {
         : null,
       user: agreement.user,
       campaign: agreement.campaign,
-      approvedByAdmin: agreement.admin?.user,  
+      approvedByAdmin: agreement.admin?.user,
     }));
 
     // Return the formatted creator agreements
@@ -1283,7 +1282,6 @@ export const getAllCreatorAgreements = async (req: Request, res: Response) => {
     return res.status(500).json({ message: 'Internal Server Error', error: error.message });
   }
 };
-
 
 export const getCampaignsByCreatorId = async (req: Request, res: Response) => {
   const { userid } = req.session;
@@ -1507,7 +1505,7 @@ export const getPitchById = async (req: Request, res: Response) => {
 
 export const editCampaignInfo = async (req: Request, res: Response) => {
   const { id, name, description, campaignInterests, campaignIndustries } = req.body;
-  const adminId = req.session.userid; 
+  const adminId = req.session.userid;
   try {
     const updatedCampaign = await prisma.campaign.update({
       where: {
@@ -1799,9 +1797,9 @@ export const editCampaignTimeline = async (req: Request, res: Response) => {
 
 export const changePitchStatus = async (req: Request, res: Response) => {
   const { status, pitchId, totalUGCVideos } = req.body;
-  const adminId= req.session.userid;
+  const adminId = req.session.userid;
 
-  try { 
+  try {
     const existingPitch = await prisma.pitch.findUnique({
       where: {
         id: pitchId,
@@ -2246,6 +2244,9 @@ export const getCampaignForCreatorById = async (req: Request, res: Response) => 
         shortlisted: true,
         invoice: true,
         submission: {
+          where: {
+            userId: userid,
+          },
           include: {
             submissionType: true,
           },
@@ -2264,24 +2265,69 @@ export const getCampaignForCreatorById = async (req: Request, res: Response) => 
       },
     });
 
+    const submissions = campaign.submission;
+    let completed = 0;
+    let totalSubmissions = 0;
+
+    submissions?.forEach((submission) => {
+      if (
+        submission.status === 'APPROVED' ||
+        (submission.submissionType?.type === 'FIRST_DRAFT' && submission.status === 'CHANGES_REQUIRED')
+      ) {
+        completed++;
+      }
+    });
+
+    const isChangesRequired =
+      campaign.submission.find((submission) => submission.submissionType.type === 'FIRST_DRAFT')?.status ===
+      'CHANGES_REQUIRED';
+
+    totalSubmissions = campaign.campaignType === 'ugc' ? (isChangesRequired ? 3 : 2) : isChangesRequired ? 4 : 3;
+
     const adjustedData = {
       ...campaign,
-      totalCompletion:
-        (campaign.submission.filter(
-          (submission) =>
-            submission.userId === userid &&
-            (submission.status === 'APPROVED' ||
-              submission.submissionType.type === 'FIRST_DRAFT' ||
-              submission.status === 'CHANGES_REQUIRED'),
-        ).length /
-          campaign.submission.filter((submission) => submission.userId === userid).length) *
-          100 || null,
+      totalCompletion: ((completed / totalSubmissions) * 100).toFixed(),
       // totalCompletion:
-      //   (campaign.submission.filter((submission) => submission.userId === userid && submission.status === 'APPROVED')
-      //     .length /
+      //   (campaign.submission.filter(
+      //     (submission) =>
+      //       submission.userId === userid &&
+      //       (submission.status === 'APPROVED' ||
+      //         submission.submissionType.type === 'FIRST_DRAFT' ||
+      //         submission.status === 'CHANGES_REQUIRED'),
+      //   ).length /
       //     campaign.submission.filter((submission) => submission.userId === userid).length) *
       //     100 || null,
     };
+
+    // const adjustedCampaigns = campaigns.map((campaign) => {
+    //   const submissions = campaign.submission;
+    //   let completed = 0;
+    //   let totalSubmissions = 0;
+
+    //   submissions?.forEach((submission) => {
+    //     if (
+    //       submission.status === 'APPROVED' ||
+    //       (submission.submissionType?.type === 'FIRST_DRAFT' && submission.status === 'CHANGES_REQUIRED')
+    //     ) {
+    //       completed++;
+    //     }
+    //   });
+
+    //   const isChangesRequired =
+    //     campaign.submission.find((submission) => submission.submissionType.type === 'FIRST_DRAFT')?.status ===
+    //     'CHANGES_REQUIRED';
+
+    //   totalSubmissions = campaign.campaignType === 'ugc' ? (isChangesRequired ? 3 : 2) : isChangesRequired ? 4 : 3;
+
+    //   return {
+    //     ...campaign,
+    //     pitch: campaign.pitch.find((pitch) => pitch.userId === user.id) ?? null,
+    //     shortlisted: campaign.shortlisted.find((shortlisted) => shortlisted.userId === user.id) ?? null,
+    //     creatorAgreement: campaign.creatorAgreement.find((agreement) => agreement.userId === user.id) ?? null,
+    //     submission: campaign.submission.filter((submission) => submission.userId === user.id) ?? null,
+    //     totalCompletion: ((completed / totalSubmissions) * 100).toFixed(),
+    //   };
+    // });
 
     return res.status(200).json({ ...adjustedData, agreement });
   } catch (error) {
@@ -3255,7 +3301,7 @@ export const sendAgreement = async (req: Request, res: Response) => {
       },
       data: {
         isSent: true,
-        completedAt: new Date(), 
+        completedAt: new Date(),
         approvedByAdminId: adminId,
       },
     });
@@ -3477,6 +3523,24 @@ export const getMyCampaigns = async (req: Request, res: Response) => {
     if (!user) return res.status(404).json({ message: 'User not found.' });
 
     const campaigns = await prisma.campaign.findMany({
+      where: {
+        OR: [
+          {
+            shortlisted: {
+              some: {
+                userId: user.id,
+              },
+            },
+          },
+          {
+            pitch: {
+              some: {
+                userId: user.id,
+              },
+            },
+          },
+        ],
+      },
       include: {
         logistic: true,
         brand: { include: { company: { include: { subscriptions: true } } } },
@@ -3504,12 +3568,16 @@ export const getMyCampaigns = async (req: Request, res: Response) => {
           },
         },
         campaignRequirement: true,
+
         creatorAgreement: {
           where: {
             userId: user.id,
           },
         },
         submission: {
+          where: {
+            userId: user.id,
+          },
           include: {
             submissionType: true,
             dependencies: true,
@@ -3531,60 +3599,72 @@ export const getMyCampaigns = async (req: Request, res: Response) => {
       },
     });
 
-    const checkCondition = (submission: any) => {
-      console.log(submission);
-      if (submission.userId === user.id) {
-        return submission;
-        // if (
-        //   // (submission.submissionType.type === 'FIRST_DRAFT' &&
-        //   //   (submission.status === 'APPROVED' || submission.status === 'CHANGES_REQUIRED')) ||
-        //   submission.status === 'APPROVED'
-        // ) {
-        //   return submission;
-        // }
-      }
-    };
+    // const checkCondition = (submission: any) => {
+    //   console.log(submission);
+    //   if (submission.userId === user.id) {
+    //     return submission;
+    //     // if (
+    //     //   // (submission.submissionType.type === 'FIRST_DRAFT' &&
+    //     //   //   (submission.status === 'APPROVED' || submission.status === 'CHANGES_REQUIRED')) ||
+    //     //   submission.status === 'APPROVED'
+    //     // ) {
+    //     //   return submission;
+    //     // }
+    //   }
+    // };
 
-    const adjustedCampaigns = campaigns
-      .filter(
-        (item) =>
-          item.shortlisted.some((val) => val.userId === user.id) || item.pitch.some((val) => val.userId === user.id),
-      )
-      .map((campaign) => ({
+    // const adjustedCampaigns = campaigns.map((campaign) => ({
+    //   ...campaign,
+    //   pitch: campaign.pitch.find((pitch) => pitch.userId === user.id) ?? null,
+    //   shortlisted: campaign.shortlisted.find((shortlisted) => shortlisted.userId === user.id) ?? null,
+    //   creatorAgreement: campaign.creatorAgreement.find((agreement) => agreement.userId === user.id) ?? null,
+    //   submission: campaign.submission.filter((submission) => submission.userId === user.id) ?? null,
+    //   totalCompletion:
+    //     (campaign.submission.filter(
+    //       (submission) =>
+    //         submission.userId === userId &&
+    //         (submission.status === 'APPROVED' ||
+    //           submission.submissionType.type === 'FIRST_DRAFT' ||
+    //           submission.status === 'CHANGES_REQUIRED'),
+    //     ).length /
+    //       campaign.submission.filter((submission) => submission.userId === user.id).length) *
+    //       100 || null,
+    // }));
+
+    const adjustedCampaigns = campaigns.map((campaign) => {
+      const submissions = campaign.submission;
+      let completed = 0;
+      let totalSubmissions = 0;
+
+      submissions?.forEach((submission) => {
+        if (
+          submission.status === 'APPROVED' ||
+          (submission.submissionType?.type === 'FIRST_DRAFT' && submission.status === 'CHANGES_REQUIRED')
+        ) {
+          completed++;
+        }
+      });
+
+      const isChangesRequired =
+        campaign.submission.find((submission) => submission.submissionType.type === 'FIRST_DRAFT')?.status ===
+        'CHANGES_REQUIRED';
+
+      totalSubmissions = campaign.campaignType === 'ugc' ? (isChangesRequired ? 3 : 2) : isChangesRequired ? 4 : 3;
+
+      return {
         ...campaign,
         pitch: campaign.pitch.find((pitch) => pitch.userId === user.id) ?? null,
         shortlisted: campaign.shortlisted.find((shortlisted) => shortlisted.userId === user.id) ?? null,
         creatorAgreement: campaign.creatorAgreement.find((agreement) => agreement.userId === user.id) ?? null,
         submission: campaign.submission.filter((submission) => submission.userId === user.id) ?? null,
-        totalCompletion:
-          (campaign.submission.filter(
-            (submission) =>
-              submission.userId === userId &&
-              (submission.status === 'APPROVED' ||
-                submission.submissionType.type === 'FIRST_DRAFT' ||
-                submission.status === 'CHANGES_REQUIRED'),
-          ).length /
-            campaign.submission.filter((submission) => submission.userId === user.id).length) *
-            100 || null,
-        // totalCompletion:
-        //   (campaign.submission.filter(
-        //     (submission) =>
-        //       submission.userId === user.id &&
-        //       // ((submission.submissionType.type === 'FIRST_DRAFT' && submission.status === 'APPROVED') ||
-        //       //   submission.status === 'CHANGES_REQUIRED') &&
-        //       submission.status === 'APPROVED',
-        //   ).length /
-        //     campaign.submission.filter((submission) => submission.userId === user.id).length) *
-        //     100 || null,
-      }));
+        totalCompletion: ((completed / totalSubmissions) * 100).toFixed(),
+      };
+    });
 
     return res.status(200).json(adjustedCampaigns);
   } catch (error) {
     return res.status(400).json(error);
   }
-  // <<<<<<< xeroApi
-  // };
-  // =======
 };
 
 export const removePitchVideo = async (req: Request, res: Response) => {
@@ -4522,6 +4602,3 @@ export const shortlistCreatorV2 = async (req: Request, res: Response) => {
     return res.status(400).json(error);
   }
 };
-
-
-

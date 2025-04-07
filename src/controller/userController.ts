@@ -409,17 +409,32 @@ export const getOverview = async (req: Request, res: Response) => {
     const adjustedCampaigns = campaigns.map((campaign) => {
       const submissions = campaign.submission;
       let completed = 0;
+      let totalSubmissions = 0;
+      let lastUpdate = '';
 
-      submissions?.filter((submission) => {
+      submissions?.forEach((submission) => {
         if (
-          submission?.submissionType?.type === 'FIRST_DRAFT' &&
-          (submission?.status === 'CHANGES_REQUIRED' || submission?.status === 'APPROVED')
+          submission.status === 'APPROVED' ||
+          (submission.submissionType?.type === 'FIRST_DRAFT' && submission.status === 'CHANGES_REQUIRED')
         ) {
-          completed++;
-        } else if (submission?.status === 'APPROVED') {
           completed++;
         }
       });
+
+      const isChangesRequired =
+        campaign.submission.find((submission) => submission.submissionType.type === 'FIRST_DRAFT')?.status ===
+        'CHANGES_REQUIRED';
+
+      totalSubmissions = campaign.campaignType === 'ugc' ? (isChangesRequired ? 3 : 2) : isChangesRequired ? 4 : 3;
+
+      const pendingReviewSubmission = submissions.find((submission) => submission.status === 'PENDING_REVIEW');
+      const inProgressSubmission = submissions.find((submission) => submission.status === 'IN_PROGRESS');
+
+      if (pendingReviewSubmission) {
+        lastUpdate = 'Awaiting client approval.';
+      } else if (inProgressSubmission) {
+        lastUpdate = `${submissionMapping[inProgressSubmission.submissionType.type]} is ready for submission`;
+      }
 
       return {
         campaignId: campaign?.id,
@@ -429,7 +444,8 @@ export const getOverview = async (req: Request, res: Response) => {
           id: campaign?.brand?.id || campaign?.company?.id,
           name: campaign?.brand?.name || campaign?.company?.name,
         },
-        completed: (completed / 4) * 100,
+        completed: ((completed / totalSubmissions) * 100).toFixed(),
+        lastUpdate: lastUpdate,
       };
     });
 
@@ -442,4 +458,11 @@ export const getOverview = async (req: Request, res: Response) => {
   } catch (error) {
     return res.status(400).json(error);
   }
+};
+
+const submissionMapping: any = {
+  AGREEMENT_FORM: 'Agreement',
+  FIRST_DRAFT: 'Draft',
+  FINAL_DRAFT: 'Draft',
+  POSTING: 'Posting',
 };
