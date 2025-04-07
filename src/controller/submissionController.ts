@@ -533,7 +533,7 @@ export const getAllSubmissions = async (req: Request, res: Response) => {
             email: true,
           },
         },
-        admin: { 
+        admin: {
           select: {
             user: {
               select: {
@@ -546,7 +546,6 @@ export const getAllSubmissions = async (req: Request, res: Response) => {
       },
     });
 
-
     // formatting before sending data to frontend
     const formattedSubmissions = submissions.map((submission) => ({
       id: submission.id,
@@ -554,26 +553,27 @@ export const getAllSubmissions = async (req: Request, res: Response) => {
       status: submission.status,
       createdAt: submission.createdAt,
       submissionDate: submission.submissionDate,
-      completedAt: submission.completedAt, 
+      completedAt: submission.completedAt,
       turnaroundTime: submission.completedAt
         ? Math.round((new Date(submission.completedAt).getTime() - new Date(submission.createdAt).getTime()) / 1000)
         : null,
-      draftTurnaroundTime: submission.completedAt && submission.submissionDate
-        ? Math.round((new Date(submission.completedAt).getTime() - new Date(submission.submissionDate).getTime()) / 1000)
-        : null,
+      draftTurnaroundTime:
+        submission.completedAt && submission.submissionDate
+          ? Math.round(
+              (new Date(submission.completedAt).getTime() - new Date(submission.submissionDate).getTime()) / 1000,
+            )
+          : null,
       user: submission.user,
       feedback: submission.feedback,
       approvedByAdmin: submission.admin?.user,
-      
     }));
 
     return res.status(200).json({ submissions: formattedSubmissions });
   } catch (error) {
-    console.error("Error fetching submissions:", error);
-    return res.status(500).json({ message: "Failed to retrieve submissions", error });
+    console.error('Error fetching submissions:', error);
+    return res.status(500).json({ message: 'Failed to retrieve submissions', error });
   }
 };
-
 
 export const getSubmissionByCampaignCreatorId = async (req: Request, res: Response) => {
   const { creatorId, campaignId } = req.query;
@@ -747,7 +747,7 @@ export const draftSubmission = async (req: Request, res: Response) => {
 
     // amqp = await amqplib.connect(process.env.RABBIT_MQ as string);
 
-    channel.sendToQueue(
+    const isSent = channel.sendToQueue(
       'draft',
       Buffer.from(
         JSON.stringify({

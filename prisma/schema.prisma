@@ -8,10 +8,12 @@ datasource db {
 }
 
 model User {
-  id                 String               @id @unique @default(cuid())
-  googleId           String?              @unique
-  email              String               @unique @db.VarChar(255)
-  password           String?              @db.VarChar(255)
+  id       String  @id @unique @default(cuid())
+  googleId String? @unique
+
+  email    String  @unique @db.VarChar(255)
+  password String? @db.VarChar(255)
+
   createdAt          DateTime             @default(now())
   name               String?              @db.VarChar(255)
   photoURL           String?              @db.VarChar(255)
@@ -78,7 +80,7 @@ model Admin {
   campaignAdmin         CampaignAdmin[]
   adminLogs             AdminLog[]              @relation("AdminToAdminLog")
   approvedPitches       Pitch[]                 @relation("ApprovedByAdmin")
-  approvedSubmissions   Submission[]            @relation("ApprovedByAdmin") 
+  approvedSubmissions   Submission[]            @relation("ApprovedByAdmin")
   completedAgreements   CreatorAgreement[]      @relation("CompletedByAdmin")
 }
 
@@ -156,9 +158,10 @@ model TiktokUser {
   follower_count  Int?
   likes_count     Int?
 
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-  tiktokVideo TiktokVideo[]
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  tiktokVideo    TiktokVideo[]
+  InstagramVideo InstagramVideo[]
 }
 
 model TiktokVideo {
@@ -215,11 +218,99 @@ model InstagramVideo {
   permalink      String?
 
   instagramUserId String?
-  instagramUser   InstagramUser? @relation(fields: [instagramUserId], references: [id])
+  // instagramUser   InstagramUser? @relation(fields: [instagramUserId], references: [id])
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  isTiktokConnected   Boolean  @default(false)
+  isFacebookConnected Boolean  @default(false)
+  tiktokData          Json?
+  instagramData       Json?
+
+  isOnBoardingFormCompleted Boolean?
+
+  tiktokUser    TiktokUser?    @relation(fields: [tiktokUserId], references: [id])
+  instagramUser InstagramUser? @relation(fields: [instagramUserId], references: [id])
+  tiktokUserId  String?
 }
+
+// model TiktokUser {
+//   id String @id @unique @default(cuid())
+
+//   creatorId String  @unique
+//   creator   Creator @relation(references: [id], fields: [creatorId])
+
+//   display_name String?
+//   avatar_url   String?
+
+//   following_count Int?
+//   follower_count  Int?
+//   likes_count     Int?
+
+//   createdAt   DateTime      @default(now())
+//   updatedAt   DateTime      @updatedAt
+//   tiktokVideo TiktokVideo[]
+// }
+
+// model TiktokVideo {
+//   id              String  @id @unique @default(cuid())
+//   video_id        String? @unique
+//   cover_image_url String?
+//   title           String?
+//   description     String?
+//   duration        Float?
+//   embed_link      String?
+//   embed_html      String?
+
+//   like_count    Int?
+//   comment_count Int?
+//   share_count   Int?
+//   view_count    Int?
+
+//   tiktokUserId String?
+//   tiktokUser   TiktokUser? @relation(references: [id], fields: [tiktokUserId])
+
+//   createdAt DateTime @default(now())
+//   updatedAt DateTime @updatedAt
+// }
+
+// model InstagramUser {
+//   id String @id @unique @default(cuid())
+
+//   creatorId String  @unique
+//   creator   Creator @relation(references: [id], fields: [creatorId])
+
+//   user_id         String? @unique
+//   followers_count Int?
+//   follows_count   Int?
+//   media_count     Int?
+//   username        String?
+
+//   instagramVideo InstagramVideo[]
+
+//   createdAt DateTime @default(now())
+//   updatedAt DateTime @updatedAt
+// }
+
+// model InstagramVideo {
+//   id String @id @unique @default(cuid())
+
+//   video_id String? @unique
+
+//   comments_count Int?
+//   like_count     Int?
+//   media_type     String?
+//   media_url      String?
+//   thumbnail_url  String?
+//   caption        String?
+//   permalink      String?
+
+//   instagramUserId String?
+//   instagramUser   InstagramUser? @relation(fields: [instagramUserId], references: [id])
+
+//   createdAt DateTime @default(now())
+//   updatedAt DateTime @updatedAt
+// }
 
 model MediaKit {
   id          String  @id @unique @default(cuid())
@@ -338,10 +429,12 @@ model Session {
 }
 
 model Company {
-  id                  String         @id @unique @default(cuid())
+  // id                  String         @id @unique @default(cuid())
+  id                  String       @id @unique @default(cuid())
   name                String
   email               String?
-  clientId            String?        @unique @default(cuid())
+  // clientId            String?        @unique @default(cuid())
+  clientId            String?      @unique @default(cuid())
   type                CompanyType?
   phone               String?
   website             String?
@@ -349,13 +442,14 @@ model Company {
   logo                String?
   about               String?
   objectives          Json?
-  registration_number String?        @db.VarChar(150)
-  createdAt           DateTime       @default(now())
-  updatedAt           DateTime       @updatedAt
-  brand               Brand[]
-  campaign            Campaign[]
-  pic                 Pic[]
-  subscriptions       Subscription[]
+  registration_number String?      @db.VarChar(150)
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  brand         Brand[]
+  campaign      Campaign[]
+  pic           Pic[]
+  subscriptions Subscription[]
 
   @@index([clientId])
 }
@@ -447,29 +541,32 @@ model SupSupBrand {
 }
 
 model Campaign {
-  id                            String                          @id @unique @default(cuid())
-  campaignId                    String?
-  name                          String
-  description                   String
-  status                        CampaignStatus                  @default(SCHEDULED)
-  campaignCredits               Int?
-  creditsPending                Int?
-  creditsUtilized               Int?
-  brandId                       String?
-  subscriptionId                String?
-  companyId                     String?
-  brandTone                     String?
-  productName                   String?
-  eventId                       String?
-  agreementTemplateId           String?
-  spreadSheetURL                String?
-  campaignType                  String?                         @default("normal")
-  bookMarkCampaign              BookMarkCampaign[]
-  agreementTemplate             AgreementTemplate?              @relation(fields: [agreementTemplateId], references: [id])
-  brand                         Brand?                          @relation(fields: [brandId], references: [id])
-  company                       Company?                        @relation(fields: [companyId], references: [id])
-  event                         Event?                          @relation(fields: [eventId], references: [id])
-  subscription                  Subscription?                   @relation(fields: [subscriptionId], references: [id])
+  id              String         @id @unique @default(cuid())
+  campaignId      String?
+  name            String
+  description     String
+  status          CampaignStatus @default(SCHEDULED)
+  campaignCredits Int?
+  creditsPending  Int?
+  creditsUtilized Int?
+
+  brandId        String?
+  subscriptionId String?
+
+  companyId           String?
+  brandTone           String?
+  productName         String?
+  eventId             String?
+  agreementTemplateId String?
+  spreadSheetURL      String?
+  campaignType        String?            @default("normal")
+  bookMarkCampaign    BookMarkCampaign[]
+  agreementTemplate   AgreementTemplate? @relation(fields: [agreementTemplateId], references: [id])
+  brand               Brand?             @relation(fields: [brandId], references: [id])
+  company             Company?           @relation(fields: [companyId], references: [id])
+  event               Event?             @relation(fields: [eventId], references: [id])
+  subscription        Subscription?      @relation(fields: [subscriptionId], references: [id])
+
   campaignAdmin                 CampaignAdmin[]
   campaignBrief                 CampaignBrief?
   campaignLogs                  CampaignLog[]
@@ -634,24 +731,25 @@ model AdminLog {
   id        String   @id @unique @default(cuid())
   createdAt DateTime @default(now())
   message   String
-  adminId   String?  // Nullable for past actions
-  admin     Admin?   @relation("AdminToAdminLog", fields: [adminId], references: [userId], onDelete: Cascade) 
+  adminId   String? // Nullable for past actions
+  admin     Admin?   @relation("AdminToAdminLog", fields: [adminId], references: [userId], onDelete: Cascade)
 }
 
 model Pitch {
-  id           String         @id @unique @default(cuid())
-  type         PitchType
-  campaignId   String
-  userId       String
-  status       PitchStatus?   @default(pending)
-  content      String         @default("test")
-  createdAt    DateTime       @default(now())
-  completedAt  DateTime?
-  approvedByAdminId String? 
-  Notification Notification[]
-  campaign     Campaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  user         User           @relation(fields: [userId], references: [id])
-  admin        Admin?         @relation(fields: [approvedByAdminId], references: [userId], name: "ApprovedByAdmin")
+  id                String         @id @unique @default(cuid())
+  type              PitchType
+  campaignId        String
+  userId            String
+  status            PitchStatus?   @default(pending)
+  content           String         @default("test")
+  createdAt         DateTime       @default(now())
+  completedAt       DateTime?
+  approvedByAdminId String?
+  Notification      Notification[]
+  campaign          Campaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  user              User           @relation(fields: [userId], references: [id])
+  admin             Admin?         @relation(fields: [approvedByAdminId], references: [userId], name: "ApprovedByAdmin")
+
   @@unique([userId, campaignId])
 }
 
@@ -739,8 +837,8 @@ model Submission {
   updatedAt            DateTime               @updatedAt
   submissionDate       DateTime?
   dueDate              DateTime?
-  completedAt          DateTime? 
-  approvedByAdminId    String? 
+  completedAt          DateTime?
+  approvedByAdminId    String?
   userId               String
   submissionTypeId     String
   isReview             Boolean                @default(false)
@@ -780,31 +878,33 @@ model Video {
 }
 
 model RawFootage {
-  id           String         @id @default(cuid())
-  url          String
-  campaignId   String?
-  campaign     Campaign?      @relation(fields: [campaignId], references: [id])
-  userId       String?
-  user         User?          @relation(fields: [userId], references: [id])
-  status       FeedbackStatus @default(PENDING)
+  id         String         @id @default(cuid())
+  url        String
+  campaignId String?
+  campaign   Campaign?      @relation(fields: [campaignId], references: [id])
+  userId     String?
+  user       User?          @relation(fields: [userId], references: [id])
+  status     FeedbackStatus @default(PENDING)
+
   submissionId String?
-  submission   Submission?    @relation(fields: [submissionId], references: [id])
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime?      @updatedAt
+  submission   Submission? @relation(fields: [submissionId], references: [id])
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime?   @updatedAt
 }
 
 model Photo {
-  id           String         @id @default(cuid())
-  url          String
-  campaignId   String?
-  campaign     Campaign?      @relation(fields: [campaignId], references: [id])
-  userId       String?
-  user         User?          @relation(fields: [userId], references: [id])
-  status       FeedbackStatus @default(PENDING)
+  id         String         @id @default(cuid())
+  url        String
+  campaignId String?
+  campaign   Campaign?      @relation(fields: [campaignId], references: [id])
+  userId     String?
+  user       User?          @relation(fields: [userId], references: [id])
+  status     FeedbackStatus @default(PENDING)
+
   submissionId String?
-  submission   Submission?    @relation(fields: [submissionId], references: [id])
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime?      @updatedAt
+  submission   Submission? @relation(fields: [submissionId], references: [id])
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime?   @updatedAt
 }
 
 // model DeliverableFeedback {
@@ -824,6 +924,24 @@ enum FeedbackStatus {
   REJECTED
   REVISION_REQUESTED
 }
+
+// model DeliverableFeedback {
+//   id String @id @unique @default(cuid())
+// }
+
+// enum VideoStatus {
+//   Uploaded
+//   Processing
+//   Published
+//   Rejected
+// }
+
+// enum FeedbackStatus {
+//   PENDING
+//   APPROVED
+//   REJECTED
+//   REVISION_REQUESTED
+// }
 
 model SubmissionDependency {
   id                    String      @id @default(cuid())
@@ -918,6 +1036,7 @@ model PaymentForm {
   bankAccountName   String?
   bankAccountNumber String?
   // bankAccountName   String?
+  // bankAccountName   String?
   bodyMeasurement   String?
   allergies         String[]
   user              User     @relation(fields: [userId], references: [id])
@@ -969,20 +1088,20 @@ model TaskAssignee {
 }
 
 model CreatorAgreement {
-  id           String   @id @unique @default(cuid())
-  agreementUrl String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  isSent       Boolean  @default(false)
-  amount       String?
-  userId       String
-  campaignId   String
-  completedAt  DateTime?
-  approvedByAdminId String? 
-  version      Int?     @default(1)
-  campaign     Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  admin        Admin?   @relation(fields: [approvedByAdminId], references: [userId], name: "CompletedByAdmin")
+  id                String    @id @unique @default(cuid())
+  agreementUrl      String
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  isSent            Boolean   @default(false)
+  amount            String?
+  userId            String
+  campaignId        String
+  completedAt       DateTime?
+  approvedByAdminId String?
+  version           Int?      @default(1)
+  campaign          Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  admin             Admin?    @relation(fields: [approvedByAdminId], references: [userId], name: "CompletedByAdmin")
 
   @@unique([userId, campaignId])
 }
@@ -1015,6 +1134,7 @@ model Bugs {
   id               String   @id @unique @default(cuid())
   stepsToReproduce String
   attachment       String?
+  campaignName     String?
   createdAt        DateTime @default(now())
   userId           String?
   user             User?    @relation(references: [id], fields: [userId])
@@ -1104,6 +1224,58 @@ model Price {
 //   // campaign Campaign?
 // }
 
+// enum SubscriptionStatus {
+//   ACTIVE
+//   EXPIRED
+//   CANCELLED
+// }
+
+// model Package {
+//   id             String         @id @unique @default(cuid())
+//   name           String?
+//   credits        Int
+//   validityPeriod Int
+//   subscriptions  Subscription[]
+//   createdAt      DateTime       @default(now())
+//   updatedAt      DateTime       @updatedAt
+//   prices         Price[]
+// }
+
+// model Price {
+//   id        Int      @id @default(autoincrement())
+//   packageId String
+//   package   Package  @relation(fields: [packageId], references: [id])
+//   currency  String
+//   amount    Float
+//   createdAt DateTime @default(now())
+//   updatedAt DateTime @updatedAt
+
+//   @@unique([packageId, currency]) // Ensure each package has only one price per currency
+// }
+
+// model PackagesClient {
+//   id               String         @id @unique @default(cuid())
+//   packageId        String
+//   companyId        String         @unique
+//   package          Packages       @relation(fields: [packageId], references: [id])
+//   company          Company        @relation(fields: [companyId], references: [id])
+//   type             PackageType
+//   currency         Currencies
+//   value            Int
+//   totalUGCCredits  Int
+//   creditsUtilized  Int?
+//   availableCredits Int?
+//   validityPeriod   Int
+//   invoiceDate      DateTime?
+//   Remarks          Json?
+//   invoiceLink      String?
+//   createdAt        DateTime       @default(now())
+//   expiryDate       DateTime?
+//   status           pakcageStatus?
+
+//   // campaign Campaign?
+// }
+
 enum PackageType {
   Trail
   Basic
@@ -1138,6 +1310,17 @@ model PublicFeedback {
   updatedAt    DateTime      @updatedAt
   submission   Submission    @relation(fields: [submissionId], references: [id], onDelete: Cascade)
 }
+
+// model PublicFeedback {
+//   id           String        @id @unique @default(cuid())
+//   content      String?
+//   type         FeedbackType?
+//   reasons      String[] // Optional field for reasons (if required)
+//   submissionId String
+//   createdAt    DateTime      @default(now())
+//   updatedAt    DateTime      @updatedAt
+//   submission   Submission    @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+// }
 
 enum LogisticStatus {
   Product_is_being_packaged

@@ -7,7 +7,7 @@ import { Request, Response } from 'express';
 const prisma = new PrismaClient();
 
 export const createNewBug = async (req: Request, res: Response) => {
-  const { stepsToReproduce } = JSON.parse(req.body.data);
+  const { stepsToReproduce, campaignName } = JSON.parse(req.body.data);
   const { userid } = req.session;
 
   try {
@@ -38,7 +38,7 @@ export const createNewBug = async (req: Request, res: Response) => {
     }
 
     const item = await prisma.bugs.create({
-      data: data as Bugs,
+      data: { ...data, campaignName: campaignName } as Bugs,
     });
 
     await createNewBugRowData({
@@ -47,6 +47,7 @@ export const createNewBug = async (req: Request, res: Response) => {
       data: {
         email: user?.email,
         name: user?.name || '',
+        campaignName: campaignName || '',
         createdAt: dayjs(item.createdAt).format('LLL'),
         stepsToReproduce: item.stepsToReproduce,
         attachment: item.attachment || '',
@@ -55,6 +56,7 @@ export const createNewBug = async (req: Request, res: Response) => {
 
     return res.status(200).json({ message: 'Bug is successfully reported.' });
   } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   }
 };
