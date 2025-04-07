@@ -518,11 +518,11 @@ export const createCampaign = async (req: Request, res: Response) => {
         );
 
         logChange('Campaign Created', campaign.id, req);
-        
+
         // const adminId = req.session.userid;
         // if (adminId) {
         //   const adminLogMessage = `Created campaign ${campaign.name} `;
-        //   logAdminChange(adminLogMessage, adminId, req); 
+        //   logAdminChange(adminLogMessage, adminId, req);
         // }
 
         if (io) {
@@ -1222,13 +1222,13 @@ export const getAllPitches = async (req: Request, res: Response) => {
     });
 
     if (!pitches || pitches.length === 0) {
-      return res.status(404).json({ message: "No pitches found." });
+      return res.status(404).json({ message: 'No pitches found.' });
     }
 
     return res.status(200).json({ pitches });
   } catch (error) {
-    console.error("Error:", error);
-    return res.status(500).json({ message: "Server Error", error: error.message });
+    console.error('Error:', error);
+    return res.status(500).json({ message: 'Server Error', error: error.message });
   }
 };
 
@@ -1237,19 +1237,19 @@ export const getAllCreatorAgreements = async (req: Request, res: Response) => {
     // Fetch all creator agreements with related User, Campaign, and Admin information
     const creatorAgreements = await prisma.creatorAgreement.findMany({
       include: {
-        user: {  
+        user: {
           select: {
             id: true,
             name: true,
           },
         },
-        campaign: {  
+        campaign: {
           select: {
             id: true,
-            name: true,          
+            name: true,
           },
         },
-        admin: { 
+        admin: {
           select: {
             user: {
               select: {
@@ -1262,7 +1262,6 @@ export const getAllCreatorAgreements = async (req: Request, res: Response) => {
       },
     });
 
-    
     const formattedCreatorAgreements = creatorAgreements.map((agreement) => ({
       id: agreement.id,
       agreementUrl: agreement.agreementUrl,
@@ -1273,7 +1272,7 @@ export const getAllCreatorAgreements = async (req: Request, res: Response) => {
         : null,
       user: agreement.user,
       campaign: agreement.campaign,
-      approvedByAdmin: agreement.admin?.user,  
+      approvedByAdmin: agreement.admin?.user,
     }));
 
     // Return the formatted creator agreements
@@ -1283,7 +1282,6 @@ export const getAllCreatorAgreements = async (req: Request, res: Response) => {
     return res.status(500).json({ message: 'Internal Server Error', error: error.message });
   }
 };
-
 
 export const getCampaignsByCreatorId = async (req: Request, res: Response) => {
   const { userid } = req.session;
@@ -1491,7 +1489,7 @@ export const getPitchById = async (req: Request, res: Response) => {
 
 export const editCampaignInfo = async (req: Request, res: Response) => {
   const { id, name, description, campaignInterests, campaignIndustries } = req.body;
-  const adminId = req.session.userid; 
+  const adminId = req.session.userid;
   try {
     const updatedCampaign = await prisma.campaign.update({
       where: {
@@ -1515,11 +1513,10 @@ export const editCampaignInfo = async (req: Request, res: Response) => {
 
     const message = 'Updated campaign info';
     logChange(message, id, req);
-    
-    
+
     // if (adminId) {
     //   const adminLogMessage = `Updated campaign info for campaign - ${name}`;
-    //   logAdminChange(adminLogMessage, adminId, req); 
+    //   logAdminChange(adminLogMessage, adminId, req);
     // }
     return res.status(200).json({ message: message, ...updatedCampaign, ...updatedCampaignBrief });
   } catch (error) {
@@ -1559,10 +1556,10 @@ export const editCampaignBrandOrCompany = async (req: Request, res: Response) =>
     const message = `Updated ${brand ? 'brand' : 'company'}`;
     logChange(message, updatedCampaign.id, req);
 
-    // const adminId = req.session.userid; 
+    // const adminId = req.session.userid;
     // if (adminId) {
     //   const adminLogMessage = `Updated ${brand ? 'brand' : 'company'} for campaign ID: ${id}`;
-    //   logAdminChange(adminLogMessage, adminId, req); 
+    //   logAdminChange(adminLogMessage, adminId, req);
     // }
     return res.status(200).json({ message: message, ...updatedCampaign });
   } catch (error) {
@@ -1586,10 +1583,10 @@ export const editCampaignDosAndDonts = async (req: Request, res: Response) => {
 
     const message = 'Dos and don’ts updated successfully.';
     logChange(message, campaignId, req);
-    // const adminId = req.session.userid; 
+    // const adminId = req.session.userid;
     // if (adminId) {
     //   //const adminLogMessage = `Admin updated ${brand ? 'brand' : 'company'} for campaign ID: ${id}`;
-    //   logAdminChange(message, adminId, req); 
+    //   logAdminChange(message, adminId, req);
     // }
     return res.status(200).json({ message: message, ...updatedCampaignBrief });
   } catch (error) {
@@ -1625,9 +1622,9 @@ export const editCampaignRequirements = async (req: Request, res: Response) => {
 
     const message = 'Campaign requirements updated successfully.';
     logChange(message, campaignId, req);
-    
+
     // const adminmessage = 'Update Campaign requirements '
-    // const adminId = req.session.userid; 
+    // const adminId = req.session.userid;
     // logAdminChange(adminmessage, adminId, req )
     return res.status(200).json({ message: message, newRequirement: updatedCampaignRequirement });
   } catch (error) {
@@ -1765,7 +1762,7 @@ export const editCampaignTimeline = async (req: Request, res: Response) => {
     const message = 'Updated timeline';
     logChange(message, id, req);
 
-    // const adminId = req.session.userid; 
+    // const adminId = req.session.userid;
     // logAdminChange(message, adminId, req )
     return res.status(200).json({ message: message });
   } catch (error) {
@@ -1775,9 +1772,9 @@ export const editCampaignTimeline = async (req: Request, res: Response) => {
 
 export const changePitchStatus = async (req: Request, res: Response) => {
   const { status, pitchId, totalUGCVideos } = req.body;
-  const adminId= req.session.userid;
+  const adminId = req.session.userid;
 
-  try { 
+  try {
     const existingPitch = await prisma.pitch.findUnique({
       where: {
         id: pitchId,
@@ -2166,7 +2163,7 @@ export const changePitchStatus = async (req: Request, res: Response) => {
     }
 
     io.to(clients.get(existingPitch.userId)).emit('pitchUpdate');
-    // const message = `Updated pitch status for ${pitchId} in campaign ${pitchId.campaign.name} ` 
+    // const message = `Updated pitch status for ${pitchId} in campaign ${pitchId.campaign.name} `
     // logAdminChange(message, adminId, req )
 
     return res.status(200).json({ message: 'Successfully changed.' });
@@ -3250,7 +3247,7 @@ export const sendAgreement = async (req: Request, res: Response) => {
       },
       data: {
         isSent: true,
-        completedAt: new Date(), 
+        completedAt: new Date(),
         approvedByAdminId: adminId,
       },
     });
@@ -4508,6 +4505,3 @@ export const shortlistCreatorV2 = async (req: Request, res: Response) => {
     return res.status(400).json(error);
   }
 };
-
-
-
