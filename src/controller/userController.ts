@@ -394,6 +394,7 @@ export const getOverview = async (req: Request, res: Response) => {
       const submissions = campaign.submission;
       let completed = 0;
       let totalSubmissions = 0;
+      let lastUpdate = '';
 
       submissions?.forEach((submission) => {
         if (
@@ -410,6 +411,15 @@ export const getOverview = async (req: Request, res: Response) => {
 
       totalSubmissions = campaign.campaignType === 'ugc' ? (isChangesRequired ? 3 : 2) : isChangesRequired ? 4 : 3;
 
+      const pendingReviewSubmission = submissions.find((submission) => submission.status === 'PENDING_REVIEW');
+      const inProgressSubmission = submissions.find((submission) => submission.status === 'IN_PROGRESS');
+
+      if (pendingReviewSubmission) {
+        lastUpdate = 'Awaiting client approval.';
+      } else if (inProgressSubmission) {
+        lastUpdate = `${submissionMapping[inProgressSubmission.submissionType.type]} is ready for submission`;
+      }
+
       return {
         campaignId: campaign?.id,
         campaignName: campaign?.name,
@@ -419,6 +429,7 @@ export const getOverview = async (req: Request, res: Response) => {
           name: campaign?.brand?.name || campaign?.company?.name,
         },
         completed: ((completed / totalSubmissions) * 100).toFixed(),
+        lastUpdate: lastUpdate,
       };
     });
 
@@ -431,4 +442,11 @@ export const getOverview = async (req: Request, res: Response) => {
   } catch (error) {
     return res.status(400).json(error);
   }
+};
+
+const submissionMapping: any = {
+  AGREEMENT_FORM: 'Agreement',
+  FIRST_DRAFT: 'Draft',
+  FINAL_DRAFT: 'Draft',
+  POSTING: 'Posting',
 };
