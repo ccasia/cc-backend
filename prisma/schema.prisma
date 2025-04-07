@@ -9,8 +9,9 @@ datasource db {
 
 model User {
   id                 String               @id @unique @default(cuid())
+  googleId           String?              @unique
   email              String               @unique @db.VarChar(255)
-  password           String               @db.VarChar(255)
+  password           String?              @db.VarChar(255)
   createdAt          DateTime             @default(now())
   name               String?              @db.VarChar(255)
   photoURL           String?              @db.VarChar(255)
@@ -51,6 +52,9 @@ model User {
   UserThread         UserThread[]
   threads            Thread[]             @relation("UserThreads")
   bugs               Bugs[]
+  video              Video[]
+  rawFootage         RawFootage[]
+  photo              Photo[]
 }
 
 model ResetPasswordToken {
@@ -72,6 +76,10 @@ model Admin {
   user                  User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
   adminPermissionModule AdminPermissionModule[]
   campaignAdmin         CampaignAdmin[]
+  adminLogs             AdminLog[]              @relation("AdminToAdminLog")
+  approvedPitches       Pitch[]                 @relation("ApprovedByAdmin")
+  approvedSubmissions   Submission[]            @relation("ApprovedByAdmin")
+  completedAgreements   CreatorAgreement[]      @relation("CompletedByAdmin")
 }
 
 model Client {
@@ -124,6 +132,93 @@ model Creator {
   interests              Interest[]
   invoices               Invoice[]
   mediaKit               MediaKit?
+  isTiktokConnected      Boolean     @default(false)
+  isFacebookConnected    Boolean     @default(false)
+  tiktokData             Json?
+  instagramData          Json?
+
+  isOnBoardingFormCompleted Boolean?
+
+  tiktokUser    TiktokUser?
+  instagramUser InstagramUser?
+}
+
+model TiktokUser {
+  id String @id @unique @default(cuid())
+
+  creatorId String  @unique
+  creator   Creator @relation(references: [id], fields: [creatorId])
+
+  display_name String?
+  avatar_url   String?
+
+  following_count Int?
+  follower_count  Int?
+  likes_count     Int?
+
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  tiktokVideo TiktokVideo[]
+}
+
+model TiktokVideo {
+  id              String  @id @unique @default(cuid())
+  video_id        String? @unique
+  cover_image_url String?
+  title           String?
+  description     String?
+  duration        Float?
+  embed_link      String?
+  embed_html      String?
+
+  like_count    Int?
+  comment_count Int?
+  share_count   Int?
+  view_count    Int?
+
+  tiktokUserId String?
+  tiktokUser   TiktokUser? @relation(references: [id], fields: [tiktokUserId])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model InstagramUser {
+  id String @id @unique @default(cuid())
+
+  creatorId String  @unique
+  creator   Creator @relation(references: [id], fields: [creatorId])
+
+  user_id         String? @unique
+  followers_count Int?
+  follows_count   Int?
+  media_count     Int?
+  username        String?
+
+  instagramVideo InstagramVideo[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model InstagramVideo {
+  id String @id @unique @default(cuid())
+
+  video_id String? @unique
+
+  comments_count Int?
+  like_count     Int?
+  media_type     String?
+  media_url      String?
+  thumbnail_url  String?
+  caption        String?
+  permalink      String?
+
+  instagramUserId String?
+  instagramUser   InstagramUser? @relation(fields: [instagramUserId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model MediaKit {
@@ -243,10 +338,10 @@ model Session {
 }
 
 model Company {
-  id                  String           @id @unique @default(cuid())
+  id                  String         @id @unique @default(cuid())
   name                String
   email               String?
-  clientId            String?
+  clientId            String?        @unique @default(cuid())
   type                CompanyType?
   phone               String?
   website             String?
@@ -254,13 +349,13 @@ model Company {
   logo                String?
   about               String?
   objectives          Json?
-  registration_number String?          @db.VarChar(150)
-  createdAt           DateTime         @default(now())
-  updatedAt           DateTime         @updatedAt
+  registration_number String?        @db.VarChar(150)
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
   brand               Brand[]
   campaign            Campaign[]
   pic                 Pic[]
-  PackagesClient      PackagesClient[]
+  subscriptions       Subscription[]
 
   @@index([clientId])
 }
@@ -273,6 +368,7 @@ enum CompanyType {
 model Pic {
   id          String   @id @unique @default(cuid())
   name        String
+  email       String?
   designation String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -356,10 +452,11 @@ model Campaign {
   name                          String
   description                   String
   status                        CampaignStatus                  @default(SCHEDULED)
-  createdAt                     DateTime                        @default(now())
-  updatedAt                     DateTime                        @updatedAt
   campaignCredits               Int?
+  creditsPending                Int?
+  creditsUtilized               Int?
   brandId                       String?
+  subscriptionId                String?
   companyId                     String?
   brandTone                     String?
   productName                   String?
@@ -372,6 +469,7 @@ model Campaign {
   brand                         Brand?                          @relation(fields: [brandId], references: [id])
   company                       Company?                        @relation(fields: [companyId], references: [id])
   event                         Event?                          @relation(fields: [eventId], references: [id])
+  subscription                  Subscription?                   @relation(fields: [subscriptionId], references: [id])
   campaignAdmin                 CampaignAdmin[]
   campaignBrief                 CampaignBrief?
   campaignLogs                  CampaignLog[]
@@ -388,10 +486,18 @@ model Campaign {
   submission                    Submission[]
   thread                        Thread?
   publicAccess                  PublicAccess[]
-  rawFootage                    Boolean                         @default(false)
-  photos                        Boolean                         @default(false)
-  rawFootages                   RawFootage[]
-  photosData                    Photo[]
+
+  rawFootage   Boolean @default(false)
+  photos       Boolean @default(false)
+  ads          Boolean @default(false)
+  crossPosting Boolean @default(false)
+
+  rawFootages RawFootage[]
+  photosData  Photo[]
+  video       Video[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model BookMarkCampaign {
@@ -524,17 +630,28 @@ model CampaignLog {
   campaign   Campaign @relation(fields: [campaignId], references: [id])
 }
 
+model AdminLog {
+  id        String   @id @unique @default(cuid())
+  createdAt DateTime @default(now())
+  message   String
+  adminId   String? // Nullable for past actions
+  admin     Admin?   @relation("AdminToAdminLog", fields: [adminId], references: [userId], onDelete: Cascade)
+}
+
 model Pitch {
-  id           String         @id @unique @default(cuid())
-  type         PitchType
-  campaignId   String
-  userId       String
-  status       PitchStatus?   @default(pending)
-  content      String         @default("test")
-  createdAt    DateTime       @default(now())
-  Notification Notification[]
-  campaign     Campaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  user         User           @relation(fields: [userId], references: [id])
+  id                String         @id @unique @default(cuid())
+  type              PitchType
+  campaignId        String
+  userId            String
+  status            PitchStatus?   @default(pending)
+  content           String         @default("test")
+  createdAt         DateTime       @default(now())
+  completedAt       DateTime?
+  approvedByAdminId String?
+  Notification      Notification[]
+  campaign          Campaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  user              User           @relation(fields: [userId], references: [id])
+  admin             Admin?         @relation(fields: [approvedByAdminId], references: [userId], name: "ApprovedByAdmin")
 
   @@unique([userId, campaignId])
 }
@@ -547,6 +664,7 @@ model ShortListedCreator {
   isAgreementReady Boolean? @default(false)
   isCampaignDone   Boolean? @default(false)
   isCreatorPaid    Boolean? @default(false)
+  ugcVideos        Int?
   campaign         Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   user             User?    @relation(fields: [userId], references: [id])
 
@@ -612,44 +730,87 @@ model UserNotification {
 }
 
 model Submission {
-  id               String                 @id @default(cuid())
-  content          String?
-  caption          String?
-  videos           String[]
-  campaignId       String
-  status           SubmissionStatus       @default(IN_PROGRESS)
-  createdAt        DateTime               @default(now())
-  updatedAt        DateTime               @updatedAt
-  submissionDate   DateTime?
-  dueDate          DateTime?
-  userId           String
-  submissionTypeId String
-  isReview         Boolean                @default(false)
-  startDate        DateTime?
-  endDate          DateTime?
-  //  rawFootages      String[]
-  feedback         Feedback[]
-  Notification     Notification[]
-  campaign         Campaign               @relation(fields: [campaignId], references: [id])
-  submissionType   SubmissionType         @relation(fields: [submissionTypeId], references: [id])
-  user             User                   @relation(fields: [userId], references: [id])
-  dependencies     SubmissionDependency[] @relation("Dependencies")
-  dependentOn      SubmissionDependency[] @relation("DependentOn")
-  task             Task[]
-  video            Video[]
-  rawFootages      RawFootage[]
-  photos           Photo[]
+  id                   String                 @id @default(cuid())
+  content              String?
+  caption              String?
+  videos               String[]
+  campaignId           String
+  status               SubmissionStatus       @default(IN_PROGRESS)
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+  submissionDate       DateTime?
+  dueDate              DateTime?
+  completedAt          DateTime?
+  approvedByAdminId    String?
+  userId               String
+  submissionTypeId     String
+  isReview             Boolean                @default(false)
+  startDate            DateTime?
+  endDate              DateTime?
+  feedback             Feedback[]
+  Notification         Notification[]
+  campaign             Campaign               @relation(fields: [campaignId], references: [id])
+  submissionType       SubmissionType         @relation(fields: [submissionTypeId], references: [id])
+  user                 User                   @relation(fields: [userId], references: [id])
+  admin                Admin?                 @relation(fields: [approvedByAdminId], references: [userId], name: "ApprovedByAdmin")
+  dependencies         SubmissionDependency[] @relation("Dependencies")
+  dependentOn          SubmissionDependency[] @relation("DependentOn")
+  task                 Task[]
+  video                Video[]
+  rawFootages          RawFootage[]
+  photos               Photo[]
+  publicFeedback       PublicFeedback[]
+  photosDriveLink      String?
+  rawFootagesDriveLink String?
 
   @@unique([userId, campaignId, submissionTypeId])
 }
 
 model Video {
-  id           String      @id @default(cuid())
+  id           String         @id @default(cuid())
   url          String?
-  status       VideoStatus @default(Uploaded)
+  status       FeedbackStatus @default(PENDING)
+  campaignId   String?
+  campaign     Campaign?      @relation(fields: [campaignId], references: [id])
+  userId       String?
+  user         User?          @relation(fields: [userId], references: [id])
   submissionId String?
-  submission   Submission? @relation(fields: [submissionId], references: [id])
+  submission   Submission?    @relation(fields: [submissionId], references: [id])
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime?      @updatedAt
 }
+
+model RawFootage {
+  id           String         @id @default(cuid())
+  url          String
+  campaignId   String?
+  campaign     Campaign?      @relation(fields: [campaignId], references: [id])
+  userId       String?
+  user         User?          @relation(fields: [userId], references: [id])
+  status       FeedbackStatus @default(PENDING)
+  submissionId String?
+  submission   Submission?    @relation(fields: [submissionId], references: [id])
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime?      @updatedAt
+}
+
+model Photo {
+  id           String         @id @default(cuid())
+  url          String
+  campaignId   String?
+  campaign     Campaign?      @relation(fields: [campaignId], references: [id])
+  userId       String?
+  user         User?          @relation(fields: [userId], references: [id])
+  status       FeedbackStatus @default(PENDING)
+  submissionId String?
+  submission   Submission?    @relation(fields: [submissionId], references: [id])
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime?      @updatedAt
+}
+
+// model DeliverableFeedback {
+//   id String @id @unique @default(cuid())
+// }
 
 enum VideoStatus {
   Uploaded
@@ -658,22 +819,11 @@ enum VideoStatus {
   Rejected
 }
 
-model RawFootage {
-  id           String      @id @default(cuid())
-  url          String
-  campaignId   String
-  campaign     Campaign    @relation(fields: [campaignId], references: [id])
-  submissionId String?
-  submission   Submission? @relation(fields: [submissionId], references: [id])
-}
-
-model Photo {
-  id           String      @id @default(cuid())
-  url          String
-  campaignId   String
-  campaign     Campaign    @relation(fields: [campaignId], references: [id])
-  submissionId String?
-  submission   Submission? @relation(fields: [submissionId], references: [id])
+enum FeedbackStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  REVISION_REQUESTED
 }
 
 model SubmissionDependency {
@@ -709,16 +859,21 @@ model SubmissionType {
 }
 
 model Feedback {
-  id           String        @id @unique @default(cuid())
-  content      String?
-  type         FeedbackType?
-  reasons      String[]
-  submissionId String
-  adminId      String
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  admin        User          @relation(fields: [adminId], references: [id])
-  submission   Submission    @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  id                 String        @id @unique @default(cuid())
+  content            String?
+  rawFootageContent  String?
+  photoContent       String?
+  type               FeedbackType?
+  reasons            String[]
+  videosToUpdate     String[]
+  rawFootageToUpdate String[]
+  photosToUpdate     String[]
+  submissionId       String
+  adminId            String
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+  admin              User          @relation(fields: [adminId], references: [id])
+  submission         Submission    @relation(fields: [submissionId], references: [id], onDelete: Cascade)
 }
 
 model Invoice {
@@ -730,6 +885,7 @@ model Invoice {
   bankAcc       Json?
   invoiceFrom   Json?
   invoiceTo     Json?
+  deliverables  Json?
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
   dueDate       DateTime
@@ -762,6 +918,7 @@ model PaymentForm {
   bankName          String?
   bankAccountName   String?
   bankAccountNumber String?
+  // bankAccountName   String?
   bodyMeasurement   String?
   allergies         String[]
   user              User     @relation(fields: [userId], references: [id])
@@ -813,17 +970,20 @@ model TaskAssignee {
 }
 
 model CreatorAgreement {
-  id           String   @id @unique @default(cuid())
-  agreementUrl String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  isSent       Boolean  @default(false)
-  amount       String?
-  userId       String
-  campaignId   String
-  version      Int?     @default(1)
-  campaign     Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                String    @id @unique @default(cuid())
+  agreementUrl      String
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  isSent            Boolean   @default(false)
+  amount            String?
+  userId            String
+  campaignId        String
+  completedAt       DateTime?
+  approvedByAdminId String?
+  version           Int?      @default(1)
+  campaign          Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  admin             Admin?    @relation(fields: [approvedByAdminId], references: [userId], name: "CompletedByAdmin")
 
   @@unique([userId, campaignId])
 }
@@ -862,36 +1022,89 @@ model Bugs {
   user             User?    @relation(references: [id], fields: [userId])
 }
 
-model Packages {
-  id              String           @id @unique @default(cuid())
-  type            PackageType
-  valueMYR        Int
-  valueSGD        Int
-  totalUGCCredits Int
-  validityPeriod  Int
-  PackagesClient  PackagesClient[]
+model Subscription {
+  id              String             @id @unique @default(cuid())
+  subscriptionId  String?            @unique
+  companyId       String?
+  packageId       String?
+  customPackageId String?
+  currency        String?
+  company         Company?           @relation(references: [id], fields: [companyId])
+  creditsUsed     Int
+  totalCredits    Int?
+  packagePrice    Float?
+  status          SubscriptionStatus @default(ACTIVE)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  package         Package?           @relation(fields: [packageId], references: [id])
+  customPackage   CustomPackage?     @relation(fields: [customPackageId], references: [id])
+  expiredAt       DateTime
+  campaign        Campaign[]
 }
 
-model PackagesClient {
-  id               String        @id @unique @default(cuid())
-  packageId        String
-  package          Packages      @relation(fields: [packageId], references: [id])
-  companyId        String        @unique
-  company          Company       @relation(fields: [companyId], references: [id])
-  type             PackageType
-  currency         Currencies
-  value            Int
-  totalUGCCredits  Int
-  creditsUtilized  Int?
-  availableCredits Int?
-  validityPeriod   Int
-  invoiceDate      DateTime?
-  Remarks          Json?
-  invoiceLink      String?
-  createdAt        DateTime      @default(now())
-  expiryDate       DateTime?
-  states           pakcageStatus
+model CustomPackage {
+  id String @id @unique @default(cuid())
+
+  customName           String
+  customCredits        Int
+  customValidityPeriod Int
+  customPrice          Float
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+  subscriptions        Subscription[]
 }
+
+enum SubscriptionStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
+
+model Package {
+  id             String         @id @unique @default(cuid())
+  name           String?
+  credits        Int
+  validityPeriod Int
+  subscriptions  Subscription[]
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  prices         Price[]
+}
+
+model Price {
+  id        Int      @id @default(autoincrement())
+  packageId String
+  package   Package  @relation(fields: [packageId], references: [id])
+  currency  String
+  amount    Float
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([packageId, currency]) // Ensure each package has only one price per currency
+}
+
+// model PackagesClient {
+//   id               String         @id @unique @default(cuid())
+//   packageId        String
+//   companyId        String         @unique
+//   package          Packages       @relation(fields: [packageId], references: [id])
+//   company          Company        @relation(fields: [companyId], references: [id])
+//   type             PackageType
+//   currency         Currencies
+//   value            Int
+//   totalUGCCredits  Int
+//   creditsUtilized  Int?
+//   availableCredits Int?
+//   validityPeriod   Int
+//   invoiceDate      DateTime?
+//   Remarks          Json?
+//   invoiceLink      String?
+//   createdAt        DateTime       @default(now())
+//   expiryDate       DateTime?
+//   status           pakcageStatus?
+
+//   // campaign Campaign?
+// }
 
 enum PackageType {
   Trail
@@ -906,12 +1119,6 @@ enum Currencies {
   SGD
 }
 
-// enum BugsPriority {
-//   LOW
-//   MEDIUM
-//   HIGH
-// }
-
 model PublicAccess {
   id         Int      @id @default(autoincrement())
   campaignId String
@@ -921,6 +1128,17 @@ model PublicAccess {
   updatedAt  DateTime @updatedAt
 
   campaign Campaign @relation(fields: [campaignId], references: [id])
+}
+
+model PublicFeedback {
+  id           String        @id @unique @default(cuid())
+  content      String?
+  type         FeedbackType?
+  reasons      String[] // Optional field for reasons (if required)
+  submissionId String
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  submission   Submission    @relation(fields: [submissionId], references: [id], onDelete: Cascade)
 }
 
 enum LogisticStatus {
@@ -1096,6 +1314,7 @@ enum SubmissionEnum {
 enum FeedbackType {
   COMMENT
   REASON
+  REQUEST
 }
 
 enum pakcageStatus {

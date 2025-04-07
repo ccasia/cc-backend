@@ -1,5 +1,5 @@
 import { PrismaClient } from '@prisma/client';
-import { createClientPackageDefault } from './packageService';
+// import { createClientPackageDefault } from './packageService';
 
 const prisma = new PrismaClient();
 
@@ -99,15 +99,15 @@ export const handleCreateCompany = async (
       },
     });
     console.log('package id', packageId);
-    await createClientPackageDefault(
-      packageId,
-      company.id,
-      currency,
-      invoiceDate,
-      packageValue,
-      packageValidityPeriod,
-      pakcageTotalCredits,
-    );
+    // await createClientPackageDefault(
+    //   packageId,
+    //   company.id,
+    //   currency,
+    //   invoiceDate,
+    //   packageValue,
+    //   packageValidityPeriod,
+    //   pakcageTotalCredits,
+    // );
 
     return company;
   } catch (error: any) {

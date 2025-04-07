@@ -40,7 +40,7 @@ export const getAllCompanies = async (_req: Request, res: Response) => {
           },
         },
         campaign: true,
-        PackagesClient:true
+        // PackagesClient:true
       },
     });
     return res.status(200).json(companies);
