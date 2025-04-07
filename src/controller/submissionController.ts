@@ -2349,9 +2349,6 @@ export const adminManagePhotos = async (req: Request, res: Response) => {
 
 export const adminManageVideos = async (req: Request, res: Response) => {
   const { videos, submissionId, feedback, reasons, type } = req.body;
-
-  console.log("type", type)
-  console.log("type", submissionId)
   try {
     if (type && type === 'approve') {
       await prisma.$transaction(async (tx) => {
@@ -2713,6 +2710,7 @@ export const adminManageVideos = async (req: Request, res: Response) => {
             },
           },
         });
+        
       } else {
         await tx.submission.update({
           where: {
