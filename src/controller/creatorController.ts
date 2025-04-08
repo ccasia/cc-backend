@@ -697,3 +697,46 @@ export const getPartnerships = async (req: Request, res: Response) => {
     return res.status(400).json(error);
   }
 };
+
+export const updateCreatorPreference = async (req: Request, res: Response) => {
+  const { languages, interests } = req.body;
+
+  const { id } = req.params;
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: {
+        id: id,
+      },
+    });
+
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    await prisma.creator.update({
+      where: {
+        userId: user.id,
+      },
+      data: {
+        languages: languages,
+      },
+    });
+
+    await prisma.interest.deleteMany({
+      where: {
+        userId: user.id,
+      },
+    });
+
+    await prisma.interest.createMany({
+      data: interests.map((interest: string) => ({
+        name: interest,
+        rank: 5,
+        userId: user.id,
+      })),
+    });
+
+    return res.status(200).json({ message: 'Successfully updated' });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};

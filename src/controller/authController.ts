@@ -997,6 +997,7 @@ export const updateProfileCreator = async (req: Request, res: Response) => {
         userId: id,
       },
       data: updateData,
+
       include: {
         user: {
           include: {
