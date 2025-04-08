@@ -38,19 +38,17 @@ export const logAdminChange = async (message: string, adminId: string, req: Requ
       throw new Error('Admin not found');
     }
 
-    
     await prisma.adminLog.create({
       data: {
-        message: `${message}`,  
-        adminId: adminId,   
+        message: `${message}`,
+        adminId: adminId,
         performedBy: admin.name,
       },
     });
   } catch (error) {
-    return error;  
+    return error;
   }
 };
-
 
 export const deductCredits = async (campaignId: string, userId: string, tx: PrismaClient) => {
   try {
@@ -86,7 +84,6 @@ export const deductCredits = async (campaignId: string, userId: string, tx: Pris
         shortlisted: true,
       },
     });
-    
 
     const user = await tx.user.findUnique({
       where: {
