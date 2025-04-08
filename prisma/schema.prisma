@@ -1035,8 +1035,7 @@ model PaymentForm {
   bankName          String?
   bankAccountName   String?
   bankAccountNumber String?
-  // bankAccountName   String?
-  // bankAccountName   String?
+  countryOfBank     String?
   bodyMeasurement   String?
   allergies         String[]
   user              User     @relation(fields: [userId], references: [id])

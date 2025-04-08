@@ -401,7 +401,7 @@ export const getCreatorFullInfoByIdPublic = async (req: Request, res: Response) 
 };
 
 export const updatePaymentForm = async (req: Request, res: Response) => {
-  const { bankName, bankAccName, bankNumber, icPassportNumber }: any = req.body;
+  const { bankName, bankAccName, bankNumber, icPassportNumber, countryOfBank }: any = req.body;
 
   try {
     const paymentForm = await prisma.paymentForm.upsert({
@@ -413,6 +413,7 @@ export const updatePaymentForm = async (req: Request, res: Response) => {
         bankAccountNumber: bankNumber.toString(),
         bankAccountName: bankAccName.toString(),
         bankName: bankName,
+        countryOfBank: countryOfBank,
       },
       create: {
         user: { connect: { id: req.session.userid } },
@@ -420,6 +421,7 @@ export const updatePaymentForm = async (req: Request, res: Response) => {
         bankAccountNumber: bankNumber.toString(),
         bankAccountName: bankAccName.toString(),
         bankName: bankName,
+        countryOfBank: countryOfBank,
       },
     });
 
