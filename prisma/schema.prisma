@@ -728,11 +728,12 @@ model CampaignLog {
 }
 
 model AdminLog {
-  id        String   @id @unique @default(cuid())
-  createdAt DateTime @default(now())
-  message   String
-  adminId   String? // Nullable for past actions
-  admin     Admin?   @relation("AdminToAdminLog", fields: [adminId], references: [userId], onDelete: Cascade)
+  id          String   @id @unique @default(cuid())
+  createdAt   DateTime @default(now())
+  message     String
+  performedBy String? 
+  adminId     String?  // Nullable for past actions
+  admin       Admin?   @relation("AdminToAdminLog", fields: [adminId], references: [userId], onDelete: Cascade) 
 }
 
 model Pitch {
@@ -837,8 +838,9 @@ model Submission {
   updatedAt            DateTime               @updatedAt
   submissionDate       DateTime?
   dueDate              DateTime?
-  completedAt          DateTime?
-  approvedByAdminId    String?
+  completedAt          DateTime? 
+  nextsubmissionDate   DateTime?
+  approvedByAdminId    String? 
   userId               String
   submissionTypeId     String
   isReview             Boolean                @default(false)

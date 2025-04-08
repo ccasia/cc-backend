@@ -29,7 +29,6 @@ export const logAdminChange = async (message: string, adminId: string, req: Requ
   }
 
   try {
-    // Fetch the admin's name from the User table (using adminId)
     const admin = await prisma.user.findUnique({
       where: { id: adminId },
       select: { name: true },
@@ -42,8 +41,9 @@ export const logAdminChange = async (message: string, adminId: string, req: Requ
     
     await prisma.adminLog.create({
       data: {
-        message: `${admin.name} performed action: ${message}`,  // Add admin's name to the message
+        message: `${message}`,  
         adminId: adminId,   
+        performedBy: admin.name,
       },
     });
   } catch (error) {

@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { Entity, FeedbackStatus, PrismaClient, SubmissionStatus } from '@prisma/client';
+import { Entity, FeedbackStatus, PrismaClient, SubmissionStatus, } from '@prisma/client';
 import { uploadAgreementForm, uploadPitchVideo } from '@configs/cloudStorage.config';
 import { saveNotification } from './notificationController';
 import { activeProcesses, clients, io } from '../server';
@@ -8,7 +8,7 @@ import FfmpegPath from '@ffmpeg-installer/ffmpeg';
 import amqplib from 'amqplib';
 import dayjs from 'dayjs';
 import { MAP_TIMELINE } from '@constants/map-timeline';
-
+import { logAdminChange } from '@services/campaignServices';
 import { createInvoiceService } from '../service/invoiceService';
 
 import {
@@ -21,6 +21,7 @@ import {
   notificationRejectDraft,
 } from '@helper/notification';
 import { getColumnId } from './kanbanController';
+
 
 import {
   approvalOfDraft,
@@ -219,6 +220,8 @@ export const agreementSubmission = async (req: Request, res: Response) => {
 export const adminManageAgreementSubmission = async (req: Request, res: Response) => {
   const data = req.body;
 
+  const adminId = req.session.userid;
+
   const { campaignId, userId, status, submissionId } = data;
   const nextSubmissionId = data?.submission?.dependencies[0]?.submissionId;
 
@@ -294,6 +297,7 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
         },
       });
 
+
       const taskInReviewColumn = inReviewColumn?.task?.find((item) => item.submissionId === agreementSubs.id);
 
       if (taskInReviewColumn) {
@@ -323,6 +327,7 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
         },
         data: {
           status: 'IN_PROGRESS',
+          nextsubmissionDate: new Date(),
         },
         include: {
           task: true,
@@ -376,6 +381,12 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
           }
         }
       }
+
+      // Admin logs for Approve 
+        if (adminId) {
+                const message = `Approved agreement in campaign - ${campaign.name} `;
+                logAdminChange(message, adminId, req); 
+              }
 
       const { title, message } = notificationApproveAgreement(campaign?.name as string);
 
@@ -490,6 +501,12 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
         },
       });
 
+      //Reject Log
+      if (adminId) {
+        const message = `Rejected agreement in campaign - ${campaign.name} `;
+        logAdminChange(message, adminId, req); 
+      }
+
       const notification = await saveNotification({
         userId: userId,
         title: `❌ Agreement Rejected`,
@@ -553,16 +570,20 @@ export const getAllSubmissions = async (req: Request, res: Response) => {
       status: submission.status,
       createdAt: submission.createdAt,
       submissionDate: submission.submissionDate,
-      completedAt: submission.completedAt,
+      completedAt: submission.completedAt, 
+      nextsubmission: submission.nextsubmissionDate,
       turnaroundTime: submission.completedAt
         ? Math.round((new Date(submission.completedAt).getTime() - new Date(submission.createdAt).getTime()) / 1000)
         : null,
-      draftTurnaroundTime:
-        submission.completedAt && submission.submissionDate
-          ? Math.round(
-              (new Date(submission.completedAt).getTime() - new Date(submission.submissionDate).getTime()) / 1000,
-            )
-          : null,
+      draftTurnaroundTime: submission.completedAt && submission.submissionDate
+        ? Math.round((new Date(submission.completedAt).getTime() - new Date(submission.submissionDate).getTime()) / 1000)
+        : null,
+      creatorAgreementTime: submission.createdAt  && submission.submissionDate
+        ? Math.round((new Date(submission.submissionDate).getTime() - new Date(submission.createdAt).getTime()) / 1000)
+        : null,
+      creatorDrafTime: submission.nextsubmissionDate  && submission.submissionDate
+        ? Math.round((new Date(submission.submissionDate).getTime() - new Date(submission.nextsubmissionDate).getTime()) / 1000)
+        : null,
       user: submission.user,
       feedback: submission.feedback,
       approvedByAdmin: submission.admin?.user,
@@ -1811,6 +1832,7 @@ export const adminManageDraft = async (req: Request, res: Response) => {
           },
           data: {
             status: 'IN_PROGRESS',
+            nextsubmissionDate: new Date(),
           },
           include: {
             task: true,
@@ -2085,7 +2107,12 @@ export const adminManagePosting = async (req: Request, res: Response) => {
       if (status === 'APPROVED') {
         const approvedSubmission = await tx.submission.update({
           where: { id: submission.id },
-          data: { status: status as SubmissionStatus, isReview: true },
+          data: { 
+          status: status as SubmissionStatus, 
+          isReview: true, 
+          completedAt: new Date(),
+          approvedByAdminId: userId as string,
+        },
           include: {
             user: {
               include: {
@@ -2319,7 +2346,6 @@ export const adminManagePhotos = async (req: Request, res: Response) => {
 
 export const adminManageVideos = async (req: Request, res: Response) => {
   const { videos, submissionId, feedback, reasons, type } = req.body;
-
   try {
     if (type && type === 'approve') {
       await prisma.$transaction(async (tx) => {
@@ -2537,12 +2563,14 @@ export const adminManageVideos = async (req: Request, res: Response) => {
             });
           }
 
+          // For posting 
           await tx.submission.update({
             where: {
               id: posting.id,
             },
             data: {
               status: 'IN_PROGRESS',
+              nextsubmissionDate: new Date(),
               startDate: dayjs(req.body.schedule.startDate).format(),
               endDate: dayjs(req.body.schedule.endDate).format(),
               dueDate: dayjs(req.body.schedule.endDate).format(),
@@ -2670,7 +2698,7 @@ export const adminManageVideos = async (req: Request, res: Response) => {
           where: {
             id: feedbackId,
           },
-          data: {
+          data: { 
             content: feedback,
             reasons: reasons,
             submissionId: submission.id,
@@ -2679,6 +2707,7 @@ export const adminManageVideos = async (req: Request, res: Response) => {
             },
           },
         });
+        
       } else {
         await tx.submission.update({
           where: {
