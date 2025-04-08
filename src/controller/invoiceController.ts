@@ -6,6 +6,7 @@ import jwt, { Secret } from 'jsonwebtoken';
 import { Request, Response } from 'express';
 
 import { creatorInvoice as emailCreatorInvoice } from '@configs/nodemailer.config';
+import { logAdminChange } from '@services/campaignServices';
 
 import { InvoiceStatus, PrismaClient } from '@prisma/client';
 import {
@@ -201,6 +202,9 @@ export const createInvoice = async (req: Request, res: Response) => {
         adminId: userid,
       },
     });
+
+    const message = `Invoice generated in campaign - ${invoice.campaignId} ` 
+    logAdminChange(message, userid, req );
     return res.status(201).json(invoice);
   } catch (error) {
     return res.status(400).json(error);
@@ -506,6 +510,12 @@ export const updateInvoice = async (req: Request, res: Response) => {
           }
         }
 
+        const adminId = req.session.userid;
+        if (adminId) {
+          const adminLogMessage = `Updated Invoice for - "${invoice.creator.user?.name}" `;
+          logAdminChange(adminLogMessage, adminId, req); 
+        }
+
         const creatorNotification = await saveNotification({
           userId: invoice.creatorId,
           title,
@@ -517,7 +527,6 @@ export const updateInvoice = async (req: Request, res: Response) => {
 
         io.to(clients.get(invoice.creatorId)).emit('notification', creatorNotification);
       }
-
       return invoice;
     });
 
@@ -906,6 +915,13 @@ export const generateInvoice = async (req: Request, res: Response) => {
         creator?.user?.name ?? 'Creator',
         images[0],
       );
+
+      
+      const adminId = req.session.userid;
+      if (adminId) {
+        const adminLogMessage = `Generated Invoice for - "${creator.user?.name}" `;
+        logAdminChange(adminLogMessage, adminId, req); 
+      }
 
       const { title, message } = notificationInvoiceGenerate(creator.campaign.name);
 
