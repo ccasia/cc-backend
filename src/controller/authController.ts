@@ -1012,7 +1012,16 @@ export const updateProfileCreator = async (req: Request, res: Response) => {
       message: 'Profile updated successfully!',
       creator: updatedCreator,
     });
+    return res.status(200).json({
+      message: 'Profile updated successfully!',
+      creator: updatedCreator,
+    });
   } catch (error) {
+    console.error('Error updating creator:', error);
+    return res.status(400).json({
+      message: 'Error updating creator',
+      error: error.message,
+    });
     console.error('Error updating creator:', error);
     return res.status(400).json({
       message: 'Error updating creator',

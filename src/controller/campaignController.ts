@@ -518,11 +518,11 @@ export const createCampaign = async (req: Request, res: Response) => {
         );
 
         logChange('Campaign Created', campaign.id, req);
-        
+
         const adminId = req.session.userid;
         if (adminId) {
           const adminLogMessage = `Created campaign - "${campaign.name}" `;
-          logAdminChange(adminLogMessage, adminId, req); 
+          logAdminChange(adminLogMessage, adminId, req);
         }
 
         if (io) {
@@ -1422,7 +1422,7 @@ export const changeCampaignStage = async (req: Request, res: Response) => {
 
     if (updatedCampaign?.status === 'ACTIVE') {
       const adminLogMessage = `Resumed the campaign - ${campaign.name} `;
-      logAdminChange(adminLogMessage, adminId, req); 
+      logAdminChange(adminLogMessage, adminId, req);
     }
 
     io.emit('campaignStatus', updatedCampaign);
@@ -1461,7 +1461,7 @@ export const closeCampaign = async (req: Request, res: Response) => {
 
     if (adminId) {
       const adminLogMessage = `Closed campaign ${campaign.name} `;
-      logAdminChange(adminLogMessage, adminId, req); 
+      logAdminChange(adminLogMessage, adminId, req);
     }
 
     return res.status(200).json({ message: 'Campaign closed successfully.' });
@@ -1529,11 +1529,10 @@ export const editCampaignInfo = async (req: Request, res: Response) => {
 
     const message = 'Updated campaign info';
     logChange(message, id, req);
-    
-    
+
     if (adminId) {
       const adminLogMessage = `Updated campaign info for campaign - ${name}`;
-      logAdminChange(adminLogMessage, adminId, req); 
+      logAdminChange(adminLogMessage, adminId, req);
     }
     return res.status(200).json({ message: message, ...updatedCampaign, ...updatedCampaignBrief });
   } catch (error) {
@@ -1573,10 +1572,10 @@ export const editCampaignBrandOrCompany = async (req: Request, res: Response) =>
     const message = `Updated ${brand ? 'brand' : 'company'}`;
     logChange(message, updatedCampaign.id, req);
 
-    const adminId = req.session.userid; 
+    const adminId = req.session.userid;
     if (adminId) {
       const adminLogMessage = `Updated ${brand ? 'brand' : 'company'}`;
-      logAdminChange(adminLogMessage, adminId, req); 
+      logAdminChange(adminLogMessage, adminId, req);
     }
     return res.status(200).json({ message: message, ...updatedCampaign });
   } catch (error) {
@@ -1600,10 +1599,10 @@ export const editCampaignDosAndDonts = async (req: Request, res: Response) => {
 
     const message = 'Dos and don’ts updated successfully.';
     logChange(message, campaignId, req);
-    const adminId = req.session.userid; 
+    const adminId = req.session.userid;
     if (adminId) {
       const adminLogMessage = `Updated do's and don’ts.`;
-      logAdminChange(adminLogMessage, adminId, req); 
+      logAdminChange(adminLogMessage, adminId, req);
     }
     return res.status(200).json({ message: message, ...updatedCampaignBrief });
   } catch (error) {
@@ -1623,7 +1622,6 @@ export const editCampaignRequirements = async (req: Request, res: Response) => {
   } = req.body;
 
   try {
-    
     const updatedCampaignRequirement = await prisma.campaignRequirement.update({
       where: {
         campaignId: campaignId,
@@ -1637,16 +1635,16 @@ export const editCampaignRequirements = async (req: Request, res: Response) => {
         user_persona: audienceUserPersona,
       },
       include: {
-        campaign: { select: { name: true } }, 
+        campaign: { select: { name: true } },
       },
     });
 
     const message = 'Campaign requirements updated successfully.';
     logChange(message, campaignId, req);
-    
-    const adminmessage = `Update Campaign requirements for campaign - ${updatedCampaignRequirement.campaign.name} `
-    const adminId = req.session.userid; 
-    logAdminChange(adminmessage, adminId, req )
+
+    const adminmessage = `Update Campaign requirements for campaign - ${updatedCampaignRequirement.campaign.name} `;
+    const adminId = req.session.userid;
+    logAdminChange(adminmessage, adminId, req);
 
     return res.status(200).json({ message: message, newRequirement: updatedCampaignRequirement });
   } catch (error) {
@@ -1787,7 +1785,7 @@ export const editCampaignTimeline = async (req: Request, res: Response) => {
     const adminId = req.session.userid;
     if (adminId) {
       const adminLogMessage = `Updated timeline for ${campaign.name} `;
-      logAdminChange(adminLogMessage, adminId, req); 
+      logAdminChange(adminLogMessage, adminId, req);
     }
     return res.status(200).json({ message: message });
   } catch (error) {
@@ -1988,9 +1986,8 @@ export const changePitchStatus = async (req: Request, res: Response) => {
 
           shortlisted(user.email, campaignName, creatorName ?? 'Creator', campaignId, image[0]);
 
-           
-          const message = `Approved a sent pitch by  ${existingPitch.user.name} in campaign - ${pitch.campaign.name} ` 
-          logAdminChange(message, adminId, req )
+          const message = `Approved a sent pitch by  ${existingPitch.user.name} in campaign - ${pitch.campaign.name} `;
+          logAdminChange(message, adminId, req);
 
           const data = await saveNotification({
             userId: pitch.userId,
@@ -2189,14 +2186,12 @@ export const changePitchStatus = async (req: Request, res: Response) => {
           },
         });
       }
-      const message = `Rejected a pitch sent by  ${existingPitch.user.name} for campaign - ${pitch.campaign.name} ` 
-      logAdminChange(message, adminId, req )
-  
+      const message = `Rejected a pitch sent by  ${existingPitch.user.name} for campaign - ${pitch.campaign.name} `;
+      logAdminChange(message, adminId, req);
     }
 
     io.to(clients.get(existingPitch.userId)).emit('pitchUpdate');
-   
-   
+
     return res.status(200).json({ message: 'Successfully changed.' });
   } catch (error) {
     console.log(error);
@@ -2619,7 +2614,7 @@ export const createLogistics = async (req: Request, res: Response) => {
     io.to(clients.get(userId)).emit('notification', notification);
 
     const adminLogMessage = `Created New Logistic for campaign - ${logistic.campaign.name} `;
-    logAdminChange(adminLogMessage, adminId, req); 
+    logAdminChange(adminLogMessage, adminId, req);
 
     return res.status(200).json({ message: 'Logistics created successfully.' });
   } catch (error) {
@@ -2712,7 +2707,7 @@ export const updateStatusLogistic = async (req: Request, res: Response) => {
     // io.to(clients.get(updated.userId)).emit('notification', notification);
 
     const adminLogMessage = `Updated Logistic status for campaign - ${updated.campaign.name} `;
-    logAdminChange(adminLogMessage, adminId, req); 
+    logAdminChange(adminLogMessage, adminId, req);
 
     return res.status(200).json({ message: 'Logistic status updated successfully.' });
   } catch (error) {
@@ -3113,9 +3108,8 @@ export const shortlistCreator = async (req: Request, res: Response) => {
       { timeout: 10000 },
     );
 
-    
     const adminLogMessage = `Creator Shortlisted for Campaign - ${campaignId.name} `;
-    logAdminChange(adminLogMessage, adminId, req); 
+    logAdminChange(adminLogMessage, adminId, req);
 
     return res.status(200).json({ message: 'Successfully shortlisted' });
   } catch (error) {
@@ -3169,7 +3163,7 @@ export const creatorAgreements = async (req: Request, res: Response) => {
 export const updateAmountAgreement = async (req: Request, res: Response) => {
   const { paymentAmount, user, campaignId, id: agreementId } = JSON.parse(req.body.data);
 
-  const adminId = req.session.userid
+  const adminId = req.session.userid;
 
   let agreementForm;
 
@@ -3256,7 +3250,7 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
 
     if (adminId) {
       const adminLogMessage = `Updated agreement for ${creator.name} `;
-      logAdminChange(adminLogMessage, adminId, req); 
+      logAdminChange(adminLogMessage, adminId, req);
     }
 
     return res.status(200).json({ message: 'Payment amount Updated.' });
@@ -3349,7 +3343,7 @@ export const sendAgreement = async (req: Request, res: Response) => {
 
     if (adminId) {
       const adminLogMessage = `Sent Agreement  to ${user.name} in campaign - ${campaign.name} `;
-      logAdminChange(adminLogMessage, adminId, req); 
+      logAdminChange(adminLogMessage, adminId, req);
     }
 
     const { title, message } = notificationSignature(campaign.name);
@@ -3433,12 +3427,11 @@ export const editCampaignImages = async (req: Request, res: Response) => {
           images: [campaignImages].flat(),
         },
       });
-    
     }
 
     if (adminId) {
       const adminLogMessage = `Updated Campaign Images In ${campaign.title} `;
-      logAdminChange(adminLogMessage, adminId, req); 
+      logAdminChange(adminLogMessage, adminId, req);
     }
 
     return res.status(200).json({ message: 'Image are updated.' });
@@ -3599,6 +3592,19 @@ export const getMyCampaigns = async (req: Request, res: Response) => {
       },
     });
 
+    // const checkCondition = (submission: any) => {
+    //   console.log(submission);
+    //   if (submission.userId === user.id) {
+    //     return submission;
+    //     // if (
+    //     //   // (submission.submissionType.type === 'FIRST_DRAFT' &&
+    //     //   //   (submission.status === 'APPROVED' || submission.status === 'CHANGES_REQUIRED')) ||
+    //     //   submission.status === 'APPROVED'
+    //     // ) {
+    //     //   return submission;
+    //     // }
+    //   }
+    // };
     // const checkCondition = (submission: any) => {
     //   console.log(submission);
     //   if (submission.userId === user.id) {
@@ -3788,10 +3794,10 @@ export const editCampaignAdmin = async (req: Request, res: Response) => {
       });
     }
 
-        if (adminId) {
-          const adminLogMessage = `Updated Admins list in ${campaign.name} `;
-          logAdminChange(adminLogMessage, adminId, req); 
-        }  
+    if (adminId) {
+      const adminLogMessage = `Updated Admins list in ${campaign.name} `;
+      logAdminChange(adminLogMessage, adminId, req);
+    }
 
     return res.status(200).json({ message: 'Update Success.' });
   } catch (error) {
@@ -3923,7 +3929,7 @@ export const editCampaignReference = async (req: Request, res: Response) => {
 
     if (adminId) {
       const Message = `Updated reference links in campaign - ${campaign.name}`;
-      logAdminChange(Message, adminId, req); 
+      logAdminChange(Message, adminId, req);
     }
     return res.status(200).json({ message: 'Update Success.' });
   } catch (error) {
@@ -3959,7 +3965,7 @@ export const linkNewAgreement = async (req: Request, res: Response) => {
 
     if (adminId) {
       const adminLogMessage = `Linked/Updated Agreement to - "${campaign.name}" `;
-      logAdminChange(adminLogMessage, adminId, req); 
+      logAdminChange(adminLogMessage, adminId, req);
     }
 
     return res.status(200).json({ message: 'Successfully linked new agreeement' });
@@ -4408,9 +4414,8 @@ export const removeCreatorFromCampaign = async (req: Request, res: Response) => 
       }
     });
 
-
     const adminLogMessage = `Withdrew Creator "${user.name}" From - ${campaign.name} `;
-    logAdminChange(adminLogMessage, adminId, req); 
+    logAdminChange(adminLogMessage, adminId, req);
 
     return res.status(200).json({ message: 'Successfully withdraw' });
   } catch (error) {
