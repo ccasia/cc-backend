@@ -2701,7 +2701,7 @@ export const adminManageVideos = async (req: Request, res: Response) => {
           where: {
             id: feedbackId,
           },
-          data: {
+          data: { 
             content: feedback,
             reasons: reasons,
             submissionId: submission.id,
@@ -2721,7 +2721,6 @@ export const adminManageVideos = async (req: Request, res: Response) => {
               status: 'CHANGES_REQUIRED',
             }),
             completedAt: new Date(),
-            nextsubmissionDate: new Date(),
             approvedByAdminId: req.session.userid as string,
             feedback: {
               create: {

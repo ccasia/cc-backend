@@ -41,7 +41,7 @@ export const logAdminChange = async (message: string, adminId: string, req: Requ
     
     await prisma.adminLog.create({
       data: {
-        message: `${admin.name} performed action: ${message}`,  
+        message: `${message}`,  
         adminId: adminId,   
         performedBy: admin.name,
       },
