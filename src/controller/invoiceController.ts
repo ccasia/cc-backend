@@ -904,6 +904,7 @@ export const generateInvoice = async (req: Request, res: Response) => {
       });
 
       // await decreamentCreditCampiagn(campaignId);
+      // await decreamentCreditCampiagn(campaignId);
       const images: any = creator.campaign.campaignBrief?.images;
 
       emailCreatorInvoice(

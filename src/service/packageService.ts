@@ -1,9 +1,26 @@
 // import { Prisma, PackageType, PrismaClient } from '@prisma/client';
 // import dayjs from 'dayjs';
 // import { Currencies } from 'xero-node';
+// import { Prisma, PackageType, PrismaClient } from '@prisma/client';
+// import dayjs from 'dayjs';
+// import { Currencies } from 'xero-node';
 
 // const prisma = new PrismaClient();
+// const prisma = new PrismaClient();
 
+// interface DefalutPackage {
+//   type: PackageType;
+//   valueSGD: number;
+//   valueMYR: number;
+//   totalCredits: number;
+//   creditsUtilized?: number;
+//   availableCredits?: number;
+//   validityPeriod: number;
+//   invoiceDate?: Date;
+//   remarks?: any;
+//   invoiceLink?: string;
+//   packageId?: string;
+// }
 // interface DefalutPackage {
 //   type: PackageType;
 //   valueSGD: number;
@@ -73,7 +90,78 @@
 //     console.log(error);
 //   }
 // };
+// // create function to create defalut packages
+// const createDefualtPackage = async ({ type, valueMYR, valueSGD, totalCredits, validityPeriod }: DefalutPackage) => {
+//   if (!type || !valueMYR || !valueSGD || !totalCredits || !validityPeriod) {
+//     throw new Error('All fields are required');
+//   }
+//   try {
+//     const createdPackage = await prisma.packages.create({
+//       data: {
+//         type,
+//         valueMYR,
+//         valueSGD,
+//         totalUGCCredits: totalCredits,
+//         validityPeriod,
+//       },
+//     });
+//     return createdPackage;
+//   } catch (error) {
+//     console.log(error);
+//   }
+// };
+// // function to edit default packages
+// const editDefalutPackage = async (
+//   packageId: string,
+//   { type, valueMYR, valueSGD, totalCredits, creditsUtilized, availableCredits, validityPeriod }: DefalutPackage,
+// ) => {
+//   if (!packageId) {
+//     throw new Error('incorrect information please check package data');
+//   }
+//   try {
+//     const editedPackage = await prisma.packages.update({
+//       where: {
+//         id: packageId,
+//       },
+//       data: {
+//         type,
+//         valueMYR,
+//         valueSGD,
+//         totalUGCCredits: totalCredits,
+//         validityPeriod,
+//       },
+//     });
+//     return editedPackage;
+//   } catch (error) {
+//     console.log(error);
+//   }
+// };
+// // function to fetch all defalut packages
+// const fetchAllDefalutPackages = async () => {
+//   try {
+//     const packages = await prisma.packages.findMany();
+//     return packages;
+//   } catch (error) {
+//     console.log(error);
+//   }
+// };
 
+// // function to copy default pakage information to user package on clinet creation or adding
+// const createClientPackageDefault = async (
+//   packageId: string,
+//   companyId: string,
+//   currency: any,
+//   invoiceDate?: Date,
+//   packageValue?: any,
+//   packageValidityPeriod?: any,
+//   pakcageTotalCredits?: any,
+//   remarks?: any,
+//   invoiceLink?: string,
+// ) => {
+//   try {
+//     if (!packageId) {
+//       throw new Error('incorrect information please check package data');
+//     }
 // // function to copy default pakage information to user package on clinet creation or adding
 // const createClientPackageDefault = async (
 //   packageId: string,
@@ -239,7 +327,46 @@
 //           id: packageId,
 //         },
 //       });
+// const getPackagesHistory = async (clientId: string) => {
+//   if (!clientId) {
+//     throw new Error('incorrect information please check package data');
+//   }
+//   console.log('pakcage history page');
+//   try {
+//     const clientPackage = await prisma.packagesClient.findMany();
+//     return clientPackage;
+//   } catch (error) {
+//     console.log(error);
+//   }
+// };
+// // create a function to take package type and create the client package by fetching the package by type also it handles the custom package creting by recieving json object with all the required data for the pacakge
+// const createCustomPackage = async (
+//   clientId: string,
+//   packageId: string,
+//   currency: any,
+//   {
+//     valueMYR,
+//     valueSGD,
+//     totalCredits,
+//     creditsUtilized,
+//     availableCredits,
+//     validityPeriod,
+//     invoiceDate,
+//     invoiceLink,
+//     remarks,
+//   }: DefalutPackage,
+// ) => {
+//   try {
+//     return await prisma.$transaction(async (tx) => {
+//       const defaultPackage = await tx.packages.findUnique({
+//         where: {
+//           id: packageId,
+//         },
+//       });
 
+//       if (!defaultPackage || defaultPackage.type !== 'Custom') {
+//         throw new Error('no packages found');
+//       }
 //       if (!defaultPackage || defaultPackage.type !== 'Custom') {
 //         throw new Error('no packages found');
 //       }
@@ -249,7 +376,15 @@
 //           id: clientId,
 //         },
 //       });
+//       const getBrand = await tx.brand.findUnique({
+//         where: {
+//           id: clientId,
+//         },
+//       });
 
+//       if (!getBrand) {
+//         throw new Error('Brand information is incorrect');
+//       }
 //       if (!getBrand) {
 //         throw new Error('Brand information is incorrect');
 //       }
@@ -333,7 +468,43 @@
 //   if (!campiagnId) {
 //     throw new Error('missing campiagn Information');
 //   }
+// // add funtion to decremnt one ugc credit from campiagn credits
+// const decreamentCreditCampiagn = async (campiagnId: string) => {
+//   if (!campiagnId) {
+//     throw new Error('missing campiagn Information');
+//   }
 
+//   try {
+//     const updatedCampiagn = await prisma.campaign.update({
+//       where: {
+//         id: campiagnId,
+//         status: 'ACTIVE',
+//       },
+//       data: {
+//         campaignCredits: {
+//           decrement: 1,
+//         },
+//       },
+//     });
+//     return updatedCampiagn;
+//   } catch (error) {
+//     console.log(error);
+//   }
+// };
+
+// export {
+//   createDefualtPackage,
+//   editDefalutPackage,
+//   fetchAllDefalutPackages,
+//   createClientPackageDefault,
+//   editClientPackage,
+//   getClientPackage,
+//   createCustomPackage,
+//   decreamentOneCreadit,
+//   getPackagesHistory,
+//   applyCreditCampiagn,
+//   decreamentCreditCampiagn,
+// };
 //   try {
 //     const updatedCampiagn = await prisma.campaign.update({
 //       where: {

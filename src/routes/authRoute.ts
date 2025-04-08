@@ -44,7 +44,7 @@ router.post('/resendVerificationLinkCreator', resendVerificationLinkCreator);
 
 router.put('/updateCreator', validateToken, updateCreator);
 
-router.patch('/updateProfileCreator', validateToken, updateProfileCreator);
+router.patch('/updateProfileCreator', updateProfileCreator);
 router.patch('/changePassword', validateToken, changePassword);
 
 export default router;

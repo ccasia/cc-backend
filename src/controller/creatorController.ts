@@ -42,6 +42,7 @@ export const getCreators = async (_req: Request, res: Response) => {
     });
     return res.status(200).json(creators);
   } catch (error) {
+    console.log(error);
     return res.status(400).json({ message: error });
   }
 };
@@ -374,7 +375,7 @@ export const getCreatorFullInfoByIdPublic = async (req: Request, res: Response) 
 };
 
 export const updatePaymentForm = async (req: Request, res: Response) => {
-  const { bankName, bankAccName, bankNumber, icPassportNumber }: any = req.body;
+  const { bankName, bankAccName, bankNumber, icPassportNumber, countryOfBank }: any = req.body;
 
   try {
     const paymentForm = await prisma.paymentForm.upsert({
@@ -386,6 +387,7 @@ export const updatePaymentForm = async (req: Request, res: Response) => {
         bankAccountNumber: bankNumber.toString(),
         bankAccountName: bankAccName.toString(),
         bankName: bankName,
+        countryOfBank: countryOfBank,
       },
       create: {
         user: { connect: { id: req.session.userid } },
@@ -393,6 +395,7 @@ export const updatePaymentForm = async (req: Request, res: Response) => {
         bankAccountNumber: bankNumber.toString(),
         bankAccountName: bankAccName.toString(),
         bankName: bankName,
+        countryOfBank: countryOfBank,
       },
     });
 
@@ -666,6 +669,49 @@ export const getPartnerships = async (req: Request, res: Response) => {
     if (!user) return res.status(404).json({ message: 'User not found.' });
 
     return res.status(200).json(user);
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const updateCreatorPreference = async (req: Request, res: Response) => {
+  const { languages, interests } = req.body;
+
+  const { id } = req.params;
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: {
+        id: id,
+      },
+    });
+
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    await prisma.creator.update({
+      where: {
+        userId: user.id,
+      },
+      data: {
+        languages: languages,
+      },
+    });
+
+    await prisma.interest.deleteMany({
+      where: {
+        userId: user.id,
+      },
+    });
+
+    await prisma.interest.createMany({
+      data: interests.map((interest: string) => ({
+        name: interest,
+        rank: 5,
+        userId: user.id,
+      })),
+    });
+
+    return res.status(200).json({ message: 'Successfully updated' });
   } catch (error) {
     return res.status(400).json(error);
   }

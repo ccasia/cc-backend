@@ -421,6 +421,27 @@ export const verifyCreator = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Not found.' });
     }
 
+    // Update user status to active
+    await prisma.user.update({
+      where: {
+        id: creator.id,
+      },
+      data: {
+        status: 'active',
+      },
+    });
+
+    // Create kanban board if it doesn't exist yet
+    const board = await prisma.board.findFirst({
+      where: {
+        userId: creator.id,
+      },
+    });
+
+    if (!board) {
+      await createKanbanBoard(creator.id, 'creator');
+    }
+
     const accessToken = jwt.sign({ id: creator.id }, process.env.ACCESSKEY as Secret, {
       expiresIn: '4h',
     });
@@ -806,9 +827,21 @@ export const login = async (req: Request, res: Response) => {
 };
 
 export const updateProfileCreator = async (req: Request, res: Response) => {
-  const { name, email, phoneNumber, country, about, id, state, address, allergies, bodyMeasurement } = JSON.parse(
-    req.body.data,
-  );
+  const {
+    name,
+    email,
+    phoneNumber,
+    country,
+    about,
+    id,
+    state,
+    address,
+    allergies,
+    bodyMeasurement,
+    pronounce,
+    interests,
+    removePhoto,
+  } = JSON.parse(req.body.data);
 
   try {
     const creator = await prisma.creator.findFirst({
@@ -888,13 +921,12 @@ export const updateProfileCreator = async (req: Request, res: Response) => {
       },
     });
 
-    await prisma.creator.update({
+    const updatedCreator = await prisma.creator.update({
       where: {
         userId: id,
       },
-      data: {
-        ...updateData,
-      },
+      data: updateData,
+
       include: {
         user: {
           include: {
@@ -904,10 +936,16 @@ export const updateProfileCreator = async (req: Request, res: Response) => {
       },
     });
 
-    return res.status(200).json({ message: 'Successfully updated' });
+    return res.status(200).json({
+      message: 'Profile updated successfully!',
+      creator: updatedCreator,
+    });
   } catch (error) {
-    console.log(error);
-    return res.status(400).json({ message: 'Error updating creator' });
+    console.error('Error updating creator:', error);
+    return res.status(400).json({
+      message: 'Error updating creator',
+      error: error.message,
+    });
   }
 };
 
