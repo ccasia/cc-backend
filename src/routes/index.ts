@@ -16,7 +16,9 @@ import threadRoute from './threadRoute';
 import kanbanRoute from './kanbanRoute';
 import bugRoute from './bugRoute';
 import accessRoute from './accessRoute';
-// import packagesRoute from './packageRoutes';
+import packagesRoute from './packageRoutes';
+import socialRoute from './socialRoute';
+import subscriptionRoute from './subscriptionRoute';
 
 export const router = express.Router();
 
@@ -37,4 +39,6 @@ router.use('/invoice', invoiceRoute);
 router.use('/kanban', kanbanRoute);
 router.use('/bug', bugRoute);
 router.use('/public', accessRoute);
-// router.use('/packages', packagesRoute);
+router.use('/package', packagesRoute);
+router.use('/social', socialRoute);
+router.use('/subscription', subscriptionRoute);

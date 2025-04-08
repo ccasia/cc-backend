@@ -1,5 +1,7 @@
-// import { Prisma, PackageType, PrismaClient } from '@prisma/client';
-// import { Request, Response } from 'express';
+import { PrismaClient } from '@prisma/client';
+import { Request, Response } from 'express';
+
+const prisma = new PrismaClient();
 
 // import {
 //   editDefalutPackage,
@@ -10,9 +12,9 @@
 //   createCustomPackage,
 //   getPackagesHistory,
 // } from '@services/packageService';
-// const prisma = new PrismaClient();
 
 // interface DefalutPackage {
+//   packageId?: string;
 //   type: PackageType;
 //   valueSGD: number;
 //   valueMYR: number;
@@ -27,6 +29,7 @@
 
 // const pakcagesArray: DefalutPackage[] = [
 //   {
+//     packageId: 'P01',
 //     type: 'Trail',
 //     valueMYR: 2800,
 //     valueSGD: 3100,
@@ -34,6 +37,7 @@
 //     validityPeriod: 1,
 //   },
 //   {
+//     packageId: 'P02',
 //     type: 'Basic',
 //     valueMYR: 8000,
 //     valueSGD: 8900,
@@ -41,6 +45,7 @@
 //     validityPeriod: 2,
 //   },
 //   {
+//     packageId: 'P03',
 //     type: 'Essential',
 //     valueMYR: 15000,
 //     valueSGD: 17500,
@@ -48,6 +53,7 @@
 //     validityPeriod: 3,
 //   },
 //   {
+//     packageId: 'P04',
 //     type: 'Pro',
 //     valueMYR: 23000,
 //     valueSGD: 29000,
@@ -70,6 +76,7 @@
 //       pakcagesArray.map(async (item) => {
 //         await prisma.packages.create({
 //           data: {
+//             packageId: item.packageId,
 //             type: item.type,
 //             valueMYR: item.valueMYR,
 //             valueSGD: item.valueSGD,
@@ -106,6 +113,7 @@
 //     res.status(500).send('error editing package');
 //   }
 // };
+
 // // create function to fetch all packages
 // export const fetchAllPackages = async (req: Request, res: Response) => {
 //   try {
@@ -116,6 +124,7 @@
 //     res.status(500).send('error fetching packages');
 //   }
 // };
+
 // // create function to create client package
 // export const createClientPackage = async (req: Request, res: Response) => {
 //   const { clientId, packageId, invoiceDate, remarks, invoiceLink } = req.body;
@@ -130,6 +139,7 @@
 //     res.status(500).send('error creating client package');
 //   }
 // };
+
 // // create function to edit client package
 // // this will cause error due to type error
 // export const editClientPackageCont = async (req: Request, res: Response) => {
@@ -145,6 +155,7 @@
 //     res.status(500).send('error editing package');
 //   }
 // };
+
 // // create function to get client package
 // export const getClientPackageCont = async (req: Request, res: Response) => {
 //   const { clinetId } = req.body;
@@ -175,20 +186,20 @@
 //     });
 
 //     const currentDate = new Date();
-//     for (let item of clientPackage) {
+//     for (const item of clientPackage) {
 //       const dateVal = new Date(item.invoiceDate as Date);
 //       const validityPeriodInMs = item.validityPeriod * 24 * 60 * 60 * 1000; // Convert validity period to milliseconds
 //       const expirationDate = new Date(dateVal.getTime() + validityPeriodInMs);
 
 //       // Check if the current date is after the expiration date
-//       if (currentDate > expirationDate && item.states !== 'inactive') {
+//       if (currentDate > expirationDate && item.status !== 'inactive') {
 //         // Update the package status to 'inactive'
 //         await prisma.packagesClient.update({
 //           where: {
 //             id: item.id,
 //           },
 //           data: {
-//             states: 'inactive',
+//             status: 'inactive',
 //           },
 //         });
 //       }
@@ -205,6 +216,7 @@
 //     console.log(error);
 //   }
 // };
+
 // // create function to create custom package
 // export const createCustomPackageCont = async (req: Request, res: Response) => {
 //   const { clientId, packageId, data, currency } = req.body;
@@ -219,3 +231,82 @@
 //     res.status(500).send('error creating custom package');
 //   }
 // };
+
+export const getAllPackages = async (req: Request, res: Response) => {
+  try {
+    const packages = await prisma.package.findMany({
+      include: {
+        prices: true,
+      },
+    });
+
+    return res.status(200).json(packages);
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const createPackage = async (req: Request, res: Response) => {
+  const { packageName, priceMYR, priceSGD, totalUGCCredits, validityPeriod } = req.body;
+
+  try {
+    await prisma.package.create({
+      data: {
+        name: packageName,
+        prices: {
+          create: [
+            {
+              currency: 'MYR',
+              amount: parseFloat(priceMYR),
+            },
+            {
+              currency: 'SGD',
+              amount: parseFloat(priceSGD),
+            },
+          ],
+        },
+        credits: totalUGCCredits,
+        validityPeriod: validityPeriod,
+      },
+    });
+
+    return res.status(200).json({ message: 'New package successfully created' });
+  } catch (error) {
+    console.log(error);
+    return res.status(400).json(error);
+  }
+};
+
+export const updatePackage = async (req: Request, res: Response) => {
+  const { name, price, currency, credits, validityPeriod } = req.body;
+  const { id } = req.params;
+
+  try {
+    const currentPackage = await prisma.package.findUnique({
+      where: { id: id },
+    });
+
+    if (!currentPackage) return res.status(404).json({ message: 'Package not found' });
+
+    await prisma.package.update({
+      where: {
+        id: currentPackage.id,
+      },
+      data: {
+        name: name,
+        prices: {
+          create: {
+            currency: currency,
+            amount: price,
+          },
+        },
+        credits: credits,
+        validityPeriod: validityPeriod,
+      },
+    });
+
+    return res.status(200).json({ message: 'Package successfully updated' });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};

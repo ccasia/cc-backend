@@ -182,23 +182,13 @@
 //     return await prisma.$transaction(async (tx) => {
 //       const defaultPackage = await tx.packages.findUnique({
 //         where: {
-//           id: packageId,
+//           packageId: packageId,
 //         },
 //       });
 
 //       if (!defaultPackage) {
-//         throw new Error('no packages found');
+//         throw new Error('Package not found');
 //       }
-
-//       // const getBrand = await tx.brand.findUnique({
-//       //   where: {
-//       //     id: clientId,
-//       //   },
-//       // });
-
-//       // if (!getBrand) {
-//       //   throw new Error('Brand information is incorrect');
-//       // }
 
 //       if (defaultPackage.type === 'Custom') {
 //         const createClientPackage = await tx.packagesClient.create({
@@ -215,11 +205,11 @@
 //             Remarks: remarks || null,
 //             invoiceLink: invoiceLink || null,
 //             packageId: defaultPackage.id,
-//             states: 'active',
+//             status: 'active',
 //           },
 //         });
 //       } else {
-//         const createClientPackage = await tx.packagesClient.create({
+//         await tx.packagesClient.create({
 //           data: {
 //             companyId: companyId,
 //             type: defaultPackage.type as PackageType,
@@ -233,7 +223,7 @@
 //             Remarks: remarks || null,
 //             invoiceLink: invoiceLink || null,
 //             packageId: defaultPackage.id,
-//             states: 'active',
+//             status: 'active',
 //           },
 //         });
 //       }
@@ -254,7 +244,7 @@
 //     const editedPackage = await prisma.packagesClient.update({
 //       where: {
 //         companyId: clientId,
-//         states: 'active',
+//         status: 'active',
 //       },
 //       data: {
 //         type: 'Custom',
@@ -273,6 +263,7 @@
 //     console.log(error);
 //   }
 // };
+
 // // function to get client package
 // const getClientPackage = async (clientId: string) => {
 //   if (!clientId) {
@@ -282,7 +273,7 @@
 //     const clientPackage = await prisma.packagesClient.findUnique({
 //       where: {
 //         companyId: clientId,
-//         states: 'active',
+//         status: 'active',
 //       },
 //     });
 //     return clientPackage;
@@ -403,7 +394,7 @@
 //           invoiceLink: invoiceLink || null,
 //           companyId: getBrand.id,
 //           packageId: defaultPackage.id,
-//           states: 'active',
+//           status: 'active',
 //         },
 //       });
 //     });
@@ -421,7 +412,7 @@
 //     const clientPackage = await prisma.packagesClient.update({
 //       where: {
 //         companyId: clientId,
-//         states: 'active',
+//         status: 'active',
 //       },
 //       data: {
 //         creditsUtilized: {
@@ -437,8 +428,9 @@
 //     console.log(error);
 //   }
 // };
+
 // // add function to check if the package is expired or not
-// const decreamentOneCreadit = async (clientId: string, pakcageId: string) => {
+// const decreamentOneCreadit = async (clientId: string, pakcageId: string, campaignId: string) => {
 //   try {
 //     if (!clientId) {
 //       throw new Error('incorrect information please check package data');
@@ -447,7 +439,7 @@
 //       where: {
 //         companyId: clientId,
 //         packageId: pakcageId,
-//         states: 'active',
+//         status: 'active',
 //       },
 //       data: {
 //         creditsUtilized: {

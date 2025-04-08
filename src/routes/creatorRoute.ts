@@ -24,10 +24,10 @@ import { isLoggedIn } from '@middlewares/onlyLogin';
 
 const router = Router();
 
-router.get('/getAllCreators', isSuperAdmin, getCreators);
+router.get('/getAllCreators', getCreators);
 router.get('/getMediaKit', isSuperAdmin, getMediaKit);
 router.get('/getCreatorByID/:id', isSuperAdmin, getCreatorByID);
-router.get('/getCreatorFullInfoById/:id', isSuperAdmin, getCreatorFullInfoById);
+router.get('/getCreatorFullInfoById/:id', getCreatorFullInfoById);
 router.get('/public/getCreatorFullInfoById/:id', getCreatorFullInfoByIdPublic);
 router.get('/getCreatorSocialMediaData', getCreatorSocialMediaData);
 router.get('/creator/:id/social-media', getCreatorSocialMediaDataById);

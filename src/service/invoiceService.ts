@@ -55,12 +55,12 @@ async function generateUniqueInvoiceNumber() {
   }
 }
 
-export const createInvoiceService = async (data: any, userId: any, amount: any) => {
-  // const generateRandomInvoiceNumber = () => {
-  //   const randomNumber = Math.floor(1000 + Math.random() * 9000);
-  //   return `INV-${randomNumber}`;
-  // };
-
+export const createInvoiceService = async (
+  data: any,
+  userId: any,
+  amount: any,
+  invoiceItems?: { type: string; count: number }[],
+) => {
   const invoiceNumber = await generateUniqueInvoiceNumber();
 
   const invoiceTo = {
@@ -128,9 +128,12 @@ export const createInvoiceService = async (data: any, userId: any, amount: any) 
             },
             creator: {
               connect: {
-                userId: data.userId,
+                userId: data.user.id,
               },
             },
+            ...(invoiceItems?.length && {
+              deliverables: invoiceItems,
+            }),
           },
         },
       },

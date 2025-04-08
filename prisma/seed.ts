@@ -164,20 +164,20 @@ async function main() {
     },
   });
 
-  // seed Packages
-  await Promise.all(
-    pakcagesArray.map(async (item) => {
-      await prisma.packages.create({
-        data: {
-          type: item.type,
-          valueMYR: item.valueMYR,
-          valueSGD: item.valueSGD,
-          totalUGCCredits: item.totalCredits,
-          validityPeriod: item.validityPeriod,
-        },
-      });
-    }),
-  );
+  // // seed Packages
+  // await Promise.all(
+  //   pakcagesArray.map(async (item) => {
+  //     await prisma.packages.create({
+  //       data: {
+  //         type: item.type,
+  //         valueMYR: item.valueMYR,
+  //         valueSGD: item.valueSGD,
+  //         totalUGCCredits: item.totalCredits,
+  //         validityPeriod: item.validityPeriod,
+  //       },
+  //     });
+  //   }),
+  // );
 
   // Create Growth Role
   const growthPermissions = growthRole.permissions;

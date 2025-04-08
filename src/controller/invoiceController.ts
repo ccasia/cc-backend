@@ -6,6 +6,7 @@ import jwt, { Secret } from 'jsonwebtoken';
 import { Request, Response } from 'express';
 
 import { creatorInvoice as emailCreatorInvoice } from '@configs/nodemailer.config';
+import { logAdminChange } from '@services/campaignServices';
 
 import { InvoiceStatus, PrismaClient } from '@prisma/client';
 import {
@@ -201,6 +202,9 @@ export const createInvoice = async (req: Request, res: Response) => {
         adminId: userid,
       },
     });
+
+    const message = `Invoice generated in campaign - ${invoice.campaignId} ` 
+    logAdminChange(message, userid, req );
     return res.status(201).json(invoice);
   } catch (error) {
     return res.status(400).json(error);
@@ -445,25 +449,21 @@ export const updateInvoice = async (req: Request, res: Response) => {
       let contactID: any;
       let invoiceData: any;
 
-      const contact = await getContactFromXero(invoice?.creator?.user?.name as string);
-
-      console.log('Found', contact);
-
-      if (contact) {
-        contactID = contact;
+      if (!newContact) {
+        contactID = invoice.creator.xeroContactId;
       } else {
         const contact: any = await createXeroContact(bankInfo, invoice.creator, invoice.user, invoiceFrom);
         contactID = contact[0].contactID;
-      }
 
-      await tx.creator.update({
-        where: {
-          id: invoice.creator.id,
-        },
-        data: {
-          xeroContactId: contactID,
-        },
-      });
+        await tx.creator.update({
+          where: {
+            id: invoice.creator.id,
+          },
+          data: {
+            xeroContactId: contactID,
+          },
+        });
+      }
 
       if (status == 'approved') {
         await sendToSpreadSheet(
@@ -471,12 +471,12 @@ export const updateInvoice = async (req: Request, res: Response) => {
             createdAt: dayjs().format(''),
             name: invoice.creator.user?.name as string,
             icNumber: invoice.creator.user.paymentForm?.icNumber as string,
-            bankName: invoice.creator.user.paymentForm?.bankName as string,
+            bankName: invoice.creator.user.paymentForm?.bankAccountName as string,
             bankAccountNumber: invoice.creator.user.paymentForm?.bankAccountNumber as string,
             campaignName: invoice.campaign.name,
             amount: invoice.amount,
           },
-          '1brQQXJpdd7A2ipS7dK1B-Y2pGwe7QNgbcFSMh26ZA48',
+          '1VClmvYJV9R4HqjADhGA6KYIR9KCFoXTag5SMVSL4rFc',
           'Invoices',
         );
 
@@ -510,6 +510,12 @@ export const updateInvoice = async (req: Request, res: Response) => {
           }
         }
 
+        const adminId = req.session.userid;
+        if (adminId) {
+          const adminLogMessage = `Updated Invoice for - "${invoice.creator.user?.name}" `;
+          logAdminChange(adminLogMessage, adminId, req); 
+        }
+
         const creatorNotification = await saveNotification({
           userId: invoice.creatorId,
           title,
@@ -521,7 +527,6 @@ export const updateInvoice = async (req: Request, res: Response) => {
 
         io.to(clients.get(invoice.creatorId)).emit('notification', creatorNotification);
       }
-
       return invoice;
     });
 
@@ -841,6 +846,7 @@ export const attachInvoicePDF = async (tenantId: string, invoiceId: string, file
 
 export const generateInvoice = async (req: Request, res: Response) => {
   const { userId, campaignId } = req.body;
+
   try {
     const creator = await prisma.shortListedCreator.findFirst({
       where: {
@@ -913,6 +919,13 @@ export const generateInvoice = async (req: Request, res: Response) => {
         creator?.user?.name ?? 'Creator',
         images[0],
       );
+
+      
+      const adminId = req.session.userid;
+      if (adminId) {
+        const adminLogMessage = `Generated Invoice for - "${creator.user?.name}" `;
+        logAdminChange(adminLogMessage, adminId, req); 
+      }
 
       const { title, message } = notificationInvoiceGenerate(creator.campaign.name);
 

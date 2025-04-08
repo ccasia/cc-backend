@@ -16,9 +16,11 @@ import { handleSendMessage, fetchMessagesFromThread } from '@services/threadServ
 import { isLoggedIn } from '@middlewares/onlyLogin';
 import { Server } from 'socket.io';
 import '@services/uploadVideo';
+
 import '@helper/processPitchVideo';
 import './helper/videoDraft';
 import './helper/videoDraftWorker';
+
 import dotenv from 'dotenv';
 import '@services/google_sheets/sheets';
 import path from 'path';
@@ -30,6 +32,10 @@ import Ffmpeg from 'fluent-ffmpeg';
 import FfmpegPath from '@ffmpeg-installer/ffmpeg';
 import { storage } from '@configs/cloudStorage.config';
 import dayjs from 'dayjs';
+import passport from 'passport';
+// import { draftConsumer } from '@helper/videoDraftWorker';
+
+import amqplib from 'amqplib';
 
 Ffmpeg.setFfmpegPath(FfmpegPath.path);
 
@@ -105,6 +111,9 @@ app.use(
   }),
 );
 
+app.use(passport.initialize());
+app.use(passport.session());
+
 app.use(router);
 
 app.get('/', (_req: Request, res: Response) => {
@@ -114,7 +123,11 @@ app.get('/', (_req: Request, res: Response) => {
 app.get('/users', isLoggedIn, async (_req, res) => {
   const prisma = new PrismaClient();
   try {
-    const users = await prisma.user.findMany();
+    const users = await prisma.user.findMany({
+      include: {
+        pitch: true,
+      },
+    });
     res.send(users);
   } catch (error) {
     //console.log(error);
@@ -227,89 +240,6 @@ io.on('connection', (socket) => {
   });
 });
 
-// app.post('/upload', async (req: Request, res: Response) => {
-//   if (!req.files) return res.status(404).json({ message: 'No video file uploaded' });
-
-//   try {
-//     const chunkNumber = Number(req.body.chunk);
-//     const totalChunks = Number(req.body.totalChunk);
-//     const fileName = (req.files as any).video.name.replace(/\s+/, '');
-
-//     await fse.mkdir(uploadPathChunks, { recursive: true });
-//     await fse.mkdir(uploadPath, { recursive: true });
-
-//     await fse.copyFile(
-//       (req.files as any).video.tempFilePath,
-//       path.join(uploadPathChunks, `${fileName}.part-${chunkNumber}`),
-//     );
-
-//     const uploadedChunks = fse.readdirSync(uploadPathChunks).filter((file) => file.startsWith(fileName));
-
-//     if (uploadedChunks.length === totalChunks) {
-//       const writeStream = fse.createWriteStream(path.join(uploadPath, fileName));
-
-//       for (let i = 0; i < totalChunks; i++) {
-//         const chunkPath = path.join(uploadPathChunks, `${fileName}.part-${i}`);
-
-//         const data = await fse.readFile(chunkPath);
-//         writeStream.write(data);
-//         await fse.unlink(chunkPath);
-//       }
-
-//       writeStream.end();
-
-//       const inputPath = path.join(uploadPath, fileName);
-//       // const outputPath = path.join(uploadPath, `compressed-${fileName}`);
-//       // const compressedPath = `./${inputPath.split('.').slice(0, -1).join('.')}-compressed.mp4`;
-//       const compressedPath = path.join(uploadPath, `${fileName.split('.').slice(0, -1).join('.')}-compressed.mp4`);
-
-//       Ffmpeg.ffprobe(inputPath, (err, metadata) => {
-//         if (err) {
-//           console.error('FFprobe error:', err);
-//           return res.status(400).json({ success: false, message: 'Invalid input file' });
-//         }
-//         console.log('FFprobe metadata:', metadata);
-//       });
-
-//       Ffmpeg(inputPath)
-//         .output(compressedPath)
-//         .outputOptions([
-//           '-c:v libx264',
-//           '-crf 26',
-//           '-pix_fmt yuv420p',
-//           '-preset ultrafast',
-//           '-map 0:v:0',
-//           '-map 0:a:0?',
-//           '-threads 4',
-//         ])
-//         .on('progress', (data) => {
-//           console.log(data);
-//         })
-//         .on('end', () => {
-//           // fse.unlinkSync(inputPath); // Optionally delete the original merged file
-//           res.json({
-//             success: true,
-//             message: 'File uploaded, merged, and compressed successfully',
-//             compressedPath,
-//           });
-//         })
-//         .on('error', (err) => {
-//           console.error('FFmpeg error:', err);
-//           res.status(500).json({
-//             success: false,
-//             message: 'Compression failed',
-//             error: err.message,
-//           });
-//         })
-//         .run();
-//     } else {
-//       return res.status(201).json({ message: 'next chunk' });
-//     }
-//   } catch (error) {
-//     return res.status(400).json(error);
-//   }
-// });
-
 const bucket = storage.bucket(process.env.BUCKET_NAME as string);
 
 app.post('/video', async (req: Request, res: Response) => {
@@ -408,91 +338,33 @@ app.post('/video', async (req: Request, res: Response) => {
   }
 });
 
-// app.post('/uploadDraft', async (req: Request, res: Response) => {
-//   const { submissionId } = JSON.parse(req.body.data);
+app.post('/sendMessage', async (req: Request, res: Response) => {
+  let amqp: any;
+  let con: any;
+  try {
+    amqp = await amqplib.connect(process.env.RABBIT_MQ!);
 
-//   try {
-//     if (!(req.files as any).draftVideo) {
-//       return res.status(404).json({ message: 'Video not found.' });
-//     }
+    con = await amqp.createChannel();
+    await con.assertQueue('draft', { durable: true });
 
-//     const { tempFilePath, name, size } = (req.files as any).draftVideo;
-//     const destination = `video/${name}?v${dayjs().format()}`;
+    con.sendToQueue('draft', Buffer.from(JSON.stringify({ name: req.body.username })), { persistent: true });
 
-//     const outputPath: any = await compressVideo(tempFilePath, name, submissionId);
-
-//     await bucket.upload(outputPath, {
-//       destination: destination,
-//       contentType: 'video/mp4',
-//       onUploadProgress: (data) => {
-//         if (size) {
-//           const progress = (data.bytesWritten / size) * 100;
-//           // console.log(Math.round(progress));
-//           return Math.round(progress);
-//         }
-//       },
-//     });
-
-//     const publicURL = `https://storage.googleapis.com/${process.env.BUCKET_NAME}/${destination}?v=${dayjs().format()}`;
-
-//     await prisma.submission.update({
-//       where: {
-//         id: submissionId,
-//       },
-//       data: {
-//         videos: {
-//           push: publicURL,
-//         },
-//         status: 'ON_HOLD',
-//       },
-//     });
-
-//     fse.unlinkSync(outputPath);
-//     return res.status(200).json({ message: 'Done' });
-//   } catch (error) {
-//     return res.status(400).json(error);
-//   }
-// });
-
-// function compressVideo(filePath: string, filename: string, videoId: string) {
-//   return new Promise((resolve, reject) => {
-//     const outputFilePath = path.join(__dirname, './uploads', 'compressed-' + filename);
-
-//     Ffmpeg(filePath)
-//       .output(outputFilePath)
-//       // .videoCodec('libx264')
-//       .audioCodec('aac')
-//       .outputOptions([
-//         '-c:v libx264',
-//         '-crf 26',
-//         '-pix_fmt yuv420p',
-//         '-preset ultrafast',
-//         '-map 0:v:0', // Select the first video stream
-//         '-map 0:a:0?',
-//         '-threads 4',
-//       ])
-//       .on('progress', (progress) => {
-//         console.log(progress);
-//         // Emit real-time progress updates to the client
-//         io.emit('compressionProgress', {
-//           videoId: videoId,
-//           progress: progress.percent,
-//         });
-//       })
-//       .on('end', () => {
-//         console.log('End');
-//         // Delete the original video after compression
-//         fse.unlinkSync(filePath);
-//         resolve(outputFilePath);
-//       })
-//       .on('error', (err) => {
-//         reject(err);
-//       })
-//       .run();
-//   });
-// }
+    return res.status(200).json({ message: 'Send Sucessfully' });
+  } catch (error) {
+    return res.status(400).json(error);
+  } finally {
+    if (con) await con.close();
+    if (amqp) await amqp.close();
+  }
+});
 
 server.listen(process.env.PORT, () => {
   console.log(`Listening to port ${process.env.PORT}...`);
   console.log(`${process.env.NODE_ENV} stage is running...`);
+
+  // draftConsumer();
+
+  // for (let i = 0; i < 2; i++) {
+  //   draftConsumer();
+  // }
 });

@@ -1,4 +1,5 @@
-import { PrismaClient } from '@prisma/client';
+import { CustomPackage, Package, PrismaClient, Subscription } from '@prisma/client';
+import dayjs from 'dayjs';
 // import { createClientPackageDefault } from './packageService';
 
 const prisma = new PrismaClient();
@@ -40,80 +41,115 @@ interface brandForm {
   companyId: string;
 }
 
-// for creating new company with brand
-export const handleCreateCompany = async (
-  {
-    companyName,
-    companyEmail,
-    companyPhone,
-    companyAddress,
-    companyWebsite,
-    companyAbout,
-    companyRegistrationNumber,
-    type,
-    personInChargeName,
-    personInChargeDesignation,
-    currency,
-    packageId,
-    invoiceDate,
-    packageValue,
-    packageValidityPeriod,
-    pakcageTotalCredits,
-  }: companyForm,
-  publicURL?: string,
-) => {
-  try {
-    // check if company already exists
-    const id = await generateCustomId(type);
+interface CompanyForm {
+  invoiceDate: string;
+  validityPeriod: string;
+  totalUGCCredits: string;
+  packageValue: string;
+  packageType: string;
+  currency: string;
+  companyName: string;
+  companyEmail: string;
+  companyPhone: string;
+  companyAddress: string;
+  companyWebsite: string;
+  companyAbout: string;
+  companyRegistrationNumber: string;
+  type: 'directClient' | 'agency';
+  personInChargeName: string;
+  personInChargeDesignation: string;
+  personInChargeEmail?: string;
+  packageId?: string;
+  companyID: string;
+}
 
-    const companyExist = await prisma.company.findFirst({
-      where: {
-        OR: [
-          {
-            email: companyEmail,
-          },
-          {
-            phone: companyPhone,
-          },
-          {
-            registration_number: companyRegistrationNumber,
-          },
-        ],
-      },
-    });
+// // for creating new company with brand
+// export const handleCreateCompany = async (
+//   {
+//     companyName,
+//     companyEmail,
+//     companyPhone,
+//     companyAddress,
+//     companyWebsite,
+//     companyAbout,
+//     companyRegistrationNumber,
+//     type,
+//     personInChargeName,
+//     personInChargeDesignation,
+//     currency,
+//     packageId,
+//     invoiceDate,
+//     packageValue,
+//     packageValidityPeriod,
+//     pakcageTotalCredits,
+//   }: companyForm,
+//   publicURL?: string,
+// ) => {
+//   try {
+//     // check if company already exists
+//     const id = await generateCustomId(type);
 
-    if (companyExist) {
-      throw new Error('Company already exists');
-    }
+//     const company = await prisma.$transaction(async (tx) => {
+//       const companyExist = await tx.company.findFirst({
+//         where: {
+//           OR: [
+//             {
+//               email: companyEmail,
+//             },
+//             {
+//               phone: companyPhone,
+//             },
+//             {
+//               registration_number: companyRegistrationNumber,
+//             },
+//           ],
+//         },
+//       });
 
-    const company = await prisma.company.create({
-      data: {
-        name: companyName,
-        email: companyEmail,
-        phone: companyPhone,
-        address: companyAddress,
-        website: companyWebsite,
-        about: companyAbout,
-        registration_number: companyRegistrationNumber,
-        logo: publicURL as string,
-      },
-    });
-    console.log('package id', packageId);
-    // await createClientPackageDefault(
-    //   packageId,
-    //   company.id,
-    //   currency,
-    //   invoiceDate,
-    //   packageValue,
-    //   packageValidityPeriod,
-    //   pakcageTotalCredits,
-    // );
+//       if (companyExist) {
+//         throw new Error('Company already exists');
+//       }
 
-    return company;
-  } catch (error: any) {
-    throw new Error(error.message);
-  }
-};
+//       const company = await tx.company.create({
+//         data: {
+//           clientId: id,
+//           name: companyName,
+//           email: companyEmail,
+//           phone: companyPhone,
+//           address: companyAddress,
+//           website: companyWebsite,
+//           about: companyAbout,
+//           registration_number: companyRegistrationNumber,
+//           logo: publicURL as string,
+//           pic: {
+//             create: {
+//               name: personInChargeName,
+//               designation: personInChargeDesignation,
+//             },
+//           },
+//         },
+//       });
+
+//       return company;
+//     });
+
+//     if (!company) throw new Error('Company Failed to create');
+
+//     // await createClientPackageDefault(
+//     //   packageId,
+//     //   company.id,
+//     //   currency,
+//     //   invoiceDate,
+//     //   packageValue,
+//     //   packageValidityPeriod,
+//     //   pakcageTotalCredits,
+//     // );
+
+//     return company;
+//   } catch (error: any) {
+//     throw new Error(error.message);
+//   }
+// };
 
 // for creating new brand without company
 // send company id to create brand
@@ -185,19 +221,185 @@ export const handleCreateBrand = async ({
 };
 
 export const generateCustomId = async (type: any) => {
-  const lastUser = await prisma.company.findFirst({
-    orderBy: { createdAt: 'desc' }, // Get the latest ID
-  });
-
   const firstLetter = type === 'agency' ? 'A' : 'DC';
+
+  const lastUser = await prisma.company.findFirst({
+    where: {
+      clientId: {
+        startsWith: firstLetter,
+      },
+    },
+    orderBy: { clientId: 'desc' }, // Get the latest ID
+  });
 
   let nextId = `${firstLetter}01`; // Default if no user exists
 
-  if (lastUser?.id) {
-    const lastNumber = parseInt(lastUser?.id.slice(1), 10); // Extract number part
+  if (lastUser?.clientId && lastUser?.clientId.includes(firstLetter)) {
+    const lastNumber = parseInt(lastUser?.clientId.slice(type === 'agency' ? 1 : 2), 10); // Extract number part
     const nextNumber = lastNumber + 1;
     nextId = `${firstLetter}${nextNumber.toString().padStart(2, '0')}`; // Format to A01, A02, etc.
   }
 
   return nextId;
+};
+
+export const generateSubscriptionCustomId = async () => {
+  const lastSubscription = await prisma.subscription.findFirst({
+    orderBy: {
+      subscriptionId: 'desc',
+    },
+    select: {
+      subscriptionId: true,
+    },
+  });
+
+  let newIdNumber = 1; // Default if no records exist
+  if (lastSubscription && lastSubscription.subscriptionId) {
+    const lastNumber = parseInt(lastSubscription.subscriptionId.replace('P', ''), 10);
+    newIdNumber = lastNumber + 1;
+  }
+
+  return `P${newIdNumber.toString().padStart(4, '0')}`;
+};
+
+// New versions
+export const createNewCompany = async (data: CompanyForm, publicURL?: string) => {
+  const {
+    invoiceDate,
+    validityPeriod,
+    totalUGCCredits,
+    packageType,
+    packageValue,
+    companyName,
+    companyAbout,
+    companyAddress,
+    companyEmail,
+    companyPhone,
+    companyRegistrationNumber,
+    companyWebsite,
+    type,
+    personInChargeDesignation,
+    personInChargeName,
+    personInChargeEmail,
+    packageId,
+    currency,
+    companyID,
+  } = data;
+
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const id: string = await generateSubscriptionCustomId();
+      const clientId = await generateCustomId(type);
+      const expiredAt = dayjs(invoiceDate).add(parseInt(validityPeriod), 'months').format();
+      const subscriptionData = {
+        creditsUsed: 0,
+        expiredAt,
+        subscriptionId: id,
+        currency: currency,
+      };
+
+      let customPackage: CustomPackage | null = null;
+      let fixedPackage: Package | null = null;
+
+      // Parallelize independent operations
+      if (packageType === 'Custom') {
+        customPackage = await tx.customPackage.create({
+          data: {
+            customName: packageType,
+            customCredits: parseInt(totalUGCCredits),
+            customPrice: parseFloat(packageValue),
+            customValidityPeriod: parseInt(validityPeriod),
+          },
+        });
+      }
+
+      if (packageId) {
+        fixedPackage = await tx.package.findUnique({
+          where: { id: packageId },
+        });
+      }
+
+      if (packageType !== 'Custom' && !fixedPackage) {
+        throw new Error('Fixed package not found');
+      }
+
+      const company = await tx.company.create({
+        data: {
+          type,
+          clientId: companyID,
+          name: companyName,
+          about: companyAbout,
+          address: companyAddress,
+          email: companyEmail,
+          phone: companyPhone,
+          registration_number: companyRegistrationNumber,
+          website: companyWebsite,
+          logo: publicURL,
+          pic: {
+            create: {
+              name: personInChargeName,
+              designation: personInChargeDesignation,
+              email: personInChargeEmail,
+            },
+          },
+          subscriptions: {
+            create: {
+              ...(packageType === 'Custom'
+                ? {
+                    customPackageId: customPackage!.id,
+                    totalCredits: customPackage?.customCredits,
+                    packagePrice: customPackage?.customPrice,
+                  }
+                : {
+                    packageId: fixedPackage!.id,
+                    totalCredits: fixedPackage?.credits,
+                    packagePrice: parseFloat(packageValue),
+                  }),
+              ...subscriptionData,
+            },
+          },
+        },
+      });
+
+      return company;
+    });
+  } catch (error) {
+    throw new Error(`Failed to create company: ${error.message}`);
+  }
+};
+
+export const getRemainingCredits = async (clientId: string) => {
+  try {
+    const client = await prisma.company.findUnique({
+      where: {
+        id: clientId,
+      },
+      include: {
+        subscriptions: {
+          where: { status: 'ACTIVE' },
+          include: {
+            customPackage: true,
+            package: true,
+          },
+        },
+        campaign: true,
+      },
+    });
+
+    if (!client) return null;
+
+    const activeSubscription = client.subscriptions[0];
+
+    if (!activeSubscription || typeof activeSubscription.totalCredits !== 'number') {
+      throw new Error('No active subscription or invalid total credits');
+    }
+
+    const totalCreditsUsed = client.campaign
+      .filter((campaign) => campaign.subscriptionId !== null && campaign.subscriptionId === activeSubscription.id)
+      .reduce((sum, campaign) => sum + (campaign?.campaignCredits || 0), 0);
+
+    return activeSubscription.totalCredits - totalCreditsUsed;
+  } catch (error) {
+    throw new Error(error);
+  }
 };

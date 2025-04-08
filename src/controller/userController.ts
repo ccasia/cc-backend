@@ -92,6 +92,22 @@ export const getAdmins = async (req: Request, res: Response) => {
   }
 };
 
+export const getAdminLogs = async (req: Request, res: Response) => {
+  const { adminId } = req.params;
+
+  try {
+    const logs = await prisma.adminLog.findMany({
+      where: { adminId },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return res.status(200).json(logs);
+  } catch (error) {
+    return res.status(500).json({ error: 'Failed to fetch admin logs' });
+  }
+};
+
+
 // export const approveOrReject = async (req: Request, res: Response) => {
 //   const { approve } = req.body;
 
@@ -445,8 +461,8 @@ export const getOverview = async (req: Request, res: Response) => {
 };
 
 const submissionMapping: any = {
-  AGREEMENT_FORM: 'Agreeement',
-  FINAL_DRAFT: 'Draft',
+  AGREEMENT_FORM: 'Agreement',
   FIRST_DRAFT: 'Draft',
+  FINAL_DRAFT: 'Draft',
   POSTING: 'Posting',
 };

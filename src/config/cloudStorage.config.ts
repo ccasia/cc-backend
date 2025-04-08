@@ -1,5 +1,6 @@
 import { Storage, TransferManager } from '@google-cloud/storage';
 import dayjs from 'dayjs';
+import fs from 'fs';
 
 const pathToJSONKey = `${__dirname}/test-cs.json`;
 
@@ -109,38 +110,94 @@ export const uploadCompanyLogo = async (tempFilePath: string, fileName: string) 
   }
 };
 
+// export const uploadPitchVideo = async (
+//   tempFilePath: string,
+//   fileName: string,
+//   folderName: string,
+//   progressCallback?: any,
+//   size?: number,
+// ) => {
+//   try {
+//     const bucketName = process.env.BUCKET_NAME as string;
+//     const destination = `${folderName}/${fileName}`;
+
+//     await checkIfVideoExist(fileName, folderName);
+
+//     // Upload the file to the specified bucket
+//     const [file] = await storage.bucket(bucketName).upload(tempFilePath, {
+//       destination,
+//       gzip: true,
+//       resumable: true,
+//       metadata: {
+//         contentType: 'video/mp4',
+//       },
+//       onUploadProgress: (event) => {
+//         console.log(event.bytesWritten, size);
+//         if (size) {
+//           if (event.bytesWritten === size) {
+//             progressCallback(100);
+//           } else {
+//             const progress = (event.bytesWritten / size) * 100;
+//             progressCallback(progress);
+//           }
+//         }
+//       },
+//     });
+
+//     const publicURL = `https://storage.googleapis.com/${bucketName}/${destination}?v=${dayjs().format()}`;
+
+//     return publicURL;
+//   } catch (err) {
+//     throw new Error(`Error uploading file: ${err.message}`);
+//   }
+// };
+
 export const uploadPitchVideo = async (
   tempFilePath: string,
   fileName: string,
   folderName: string,
-  progressCallback?: any,
+  progressCallback?: (progress: number) => void,
   size?: number,
-) => {
+): Promise<string> => {
   try {
     const bucketName = process.env.BUCKET_NAME as string;
     const destination = `${folderName}/${fileName}`;
 
     await checkIfVideoExist(fileName, folderName);
 
-    // Upload the file to the specified bucket
-    const [file] = await storage.bucket(bucketName).upload(tempFilePath, {
-      destination,
-      gzip: true,
+    const bucket = storage.bucket(bucketName);
+    const file = bucket.file(destination);
+
+    // Create read and write streams
+    const readStream = fs.createReadStream(tempFilePath);
+    const writeStream = file.createWriteStream({
       resumable: true,
-      metadata: {
-        contentType: 'video/mp4',
-      },
-      onUploadProgress: (event) => {
-        if (size) {
-          const progress = (event.bytesWritten / size) * 100;
-          progressCallback(progress);
-        }
-      },
+      metadata: { contentType: 'video/mp4' },
     });
 
-    const publicURL = `https://storage.googleapis.com/${bucketName}/${destination}?v=${dayjs().format()}`;
+    let uploadedBytes = 0;
 
-    return publicURL;
+    // Track progress
+    readStream.on('data', (chunk) => {
+      uploadedBytes += chunk.length;
+      if (size) {
+        const progress = ((uploadedBytes / size) * 100).toFixed(2);
+        if (progressCallback) progressCallback(Number(progress));
+      }
+    });
+
+    readStream.pipe(writeStream);
+
+    return new Promise((resolve, reject) => {
+      writeStream.on('finish', () => {
+        const publicURL = `https://storage.googleapis.com/${bucketName}/${destination}?v=${dayjs().format()}`;
+        resolve(publicURL);
+      });
+
+      writeStream.on('error', (err) => {
+        reject(new Error(`Error uploading file: ${err.message}`));
+      });
+    });
   } catch (err) {
     throw new Error(`Error uploading file: ${err.message}`);
   }

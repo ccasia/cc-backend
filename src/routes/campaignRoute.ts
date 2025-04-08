@@ -44,6 +44,9 @@ import {
   getAllCampaignsByAdminId,
   removeCreatorFromCampaign,
   getCampaignsTotal,
+  shortlistCreatorV2,
+  getAllPitches,
+  getAllCreatorAgreements,
 } from '@controllers/campaignController';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 
@@ -56,7 +59,7 @@ import {
   updateOrCreateDefaultTimeline,
 } from '@controllers/timelineController';
 import { isLoggedIn } from '@middlewares/onlyLogin';
-import { needPermissions } from '@middlewares/needPermissions';
+// import { needPermissions } from '@middlewares/needPermissions';
 import { createNewTemplate, getAllTemplate, getTemplatebyId } from '@controllers/templateController';
 
 const router = Router();
@@ -81,6 +84,8 @@ router.get('/getAllCampaignsFinance', getAllCampaignsFinance);
 router.get('/getAllActiveCampaign', getAllActiveCampaign);
 router.get('/matchCampaignWithCreator', isLoggedIn, matchCampaignWithCreator);
 router.get('/pitch/:id', getPitchById);
+
+
 // router.get('/firstDraft', getFirstDraft);
 router.get('/timelineType', isSuperAdmin, getTimelineType);
 router.get('/defaultTimeline', isSuperAdmin, getDefaultTimeline);
@@ -88,11 +93,14 @@ router.get('/getCampaignsBySessionId', isLoggedIn, getCampaignsByCreatorId);
 router.get('/getCampaignForCreatorById/:id', isLoggedIn, getCampaignForCreatorById);
 router.get('/getCampaignPitch', isLoggedIn, getCampaignPitchForCreator);
 router.get('/getLogistics', isSuperAdmin, getLogisticById);
-router.get('/getSubmissions', isSuperAdmin, getSubmission);
+router.get('/getSubmissions', getSubmission);
 // router.get('/pitch/:campaignId', getPitchByCampaignId);
 router.get('/getCampaignLog/:id', getCampaignLog);
-router.get('/creatorAgreements/:campaignId', isLoggedIn, creatorAgreements);
+router.get('/creatorAgreements/:campaignId', creatorAgreements);
 
+// For Analytics 
+router.get('/pitches', getAllPitches);
+router.get('/getCreatorAgreements', isSuperAdmin, getAllCreatorAgreements)
 // For creator MyCampaigns
 router.get('/getMyCampaigns/:userId', isLoggedIn, getMyCampaigns);
 
@@ -111,6 +119,7 @@ router.post('/template/:id', isSuperAdmin, createNewTemplate);
 router.post('/draftPitch', isLoggedIn, draftPitch);
 router.post('/spreadsheet', isLoggedIn, isSuperAdmin, createNewSpreadSheets);
 router.post('/removeCreatorFromCampaign', isLoggedIn, isSuperAdmin, removeCreatorFromCampaign);
+router.post('/v2/shortlistCreator', isSuperAdmin, shortlistCreatorV2);
 
 router.patch('/pitch', isLoggedIn, creatorMakePitch);
 router.patch('/changeCampaignStage/:campaignId', changeCampaignStage);
