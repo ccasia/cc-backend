@@ -1,4 +1,11 @@
+import dayjs from 'dayjs';
 import { JWT } from 'google-auth-library';
+
+import utc from 'dayjs/plugin/utc';
+import timezone from 'dayjs/plugin/timezone';
+
+dayjs.extend(utc);
+dayjs.extend(timezone);
 
 interface NewSheetWithRows {
   title: string;
@@ -100,6 +107,7 @@ export const createNewBugRowData = async ({
     createdAt: string;
     email?: string;
     name?: string;
+    campaignName?: string;
     stepsToReproduce: string;
     attachment?: string;
   };
@@ -118,9 +126,10 @@ export const createNewBugRowData = async ({
     }
 
     const updatedRow = await currentSheet.addRow({
-      Timestamp: data.createdAt,
+      Timestamp: dayjs(data.createdAt).tz('Asia/Kuala_Lumpur').format('LLL'),
       'Email Address': data.email || '',
       Name: data.name || '',
+      Campaign: data.campaignName || '',
       'Please describe the issue you are facing in detail.': data.stepsToReproduce,
       Attachments: data.attachment || '',
     });

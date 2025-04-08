@@ -16,6 +16,7 @@ import {
   getCreatorFullInfoByIdPublic,
   updateSocialMedia,
   getPartnerships,
+  updateCreatorPreference,
 } from '@controllers/creatorController';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 // import { needPermissions } from '@middlewares/needPermissions';
@@ -39,6 +40,7 @@ router.patch('/update-creator', isLoggedIn, updateCreator);
 router.patch('/update-media-kit', isLoggedIn, updateMediaKit);
 router.patch('/updatePaymentForm', isLoggedIn, updatePaymentForm);
 router.patch('/updateCreatorForm', isLoggedIn, updateCreatorForm);
+router.patch('/updatePreference/:id', isLoggedIn, updateCreatorPreference);
 
 router.delete('/delete/:id', isSuperAdmin, deleteCreator);
 

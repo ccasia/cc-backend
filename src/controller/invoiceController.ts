@@ -757,9 +757,12 @@ export const createXeroContact = async (bankInfo: any, creator: any, user: any, 
     bankAccountDetails: bankInfo.accountNumber,
   };
 
-  const response = await xero.accountingApi.createContacts(xero.tenants[0].tenantId, { contacts: [contact] });
-
-  return response.body.contacts;
+  try {
+    const response = await xero.accountingApi.createContacts(xero.tenants[0].tenantId, { contacts: [contact] });
+    return response.body.contacts;
+  } catch (error) {
+    return error;
+  }
 };
 
 export const createXeroInvoiceLocal = async (
@@ -907,6 +910,7 @@ export const generateInvoice = async (req: Request, res: Response) => {
       });
 
       // await decreamentCreditCampiagn(campaignId);
+      // await decreamentCreditCampiagn(campaignId);
       const images: any = creator.campaign.campaignBrief?.images;
 
       emailCreatorInvoice(
@@ -954,5 +958,19 @@ export const deleteInvoice = async (req: Request, res: Response) => {
     return res.status(200).json({ message: 'Successfully deleted' });
   } catch (error) {
     return res.status(400).json(error);
+  }
+};
+
+const getContactFromXero = async (contactName: string) => {
+  try {
+    const res = await xero.accountingApi.getContacts(xero.tenants[0].tenantId, undefined, `Name=="${contactName}"`);
+
+    if (res.body.contacts?.length) {
+      return res?.body?.contacts[0].contactID;
+    }
+
+    return null;
+  } catch (error) {
+    throw new Error(error);
   }
 };

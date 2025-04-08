@@ -466,22 +466,22 @@ export const verifyCreator = async (req: Request, res: Response) => {
     if (!creator) {
       return res.status(404).json({ message: 'Not found.' });
     }
-    
+
     // Update user status to active
     await prisma.user.update({
       where: {
-        id: creator.id
+        id: creator.id,
       },
       data: {
-        status: 'active'
-      }
+        status: 'active',
+      },
     });
 
     // Create kanban board if it doesn't exist yet
     const board = await prisma.board.findFirst({
       where: {
-        userId: creator.id
-      }
+        userId: creator.id,
+      },
     });
 
     if (!board) {
@@ -876,16 +876,16 @@ export const login = async (req: Request, res: Response) => {
 };
 
 export const updateProfileCreator = async (req: Request, res: Response) => {
-  const { 
-    name, 
-    email, 
-    phoneNumber, 
-    country, 
-    about, 
-    id, 
-    state, 
-    address, 
-    allergies, 
+  const {
+    name,
+    email,
+    phoneNumber,
+    country,
+    about,
+    id,
+    state,
+    address,
+    allergies,
     bodyMeasurement,
     pronounce,
     interests,
@@ -997,6 +997,7 @@ export const updateProfileCreator = async (req: Request, res: Response) => {
         userId: id,
       },
       data: updateData,
+
       include: {
         user: {
           include: {
@@ -1007,15 +1008,15 @@ export const updateProfileCreator = async (req: Request, res: Response) => {
       },
     });
 
-    return res.status(200).json({ 
+    return res.status(200).json({
       message: 'Profile updated successfully!',
-      creator: updatedCreator 
+      creator: updatedCreator,
     });
   } catch (error) {
     console.error('Error updating creator:', error);
-    return res.status(400).json({ 
+    return res.status(400).json({
       message: 'Error updating creator',
-      error: error.message 
+      error: error.message,
     });
   }
 };

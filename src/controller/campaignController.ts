@@ -3612,6 +3612,19 @@ export const getMyCampaigns = async (req: Request, res: Response) => {
     //     // }
     //   }
     // };
+    // const checkCondition = (submission: any) => {
+    //   console.log(submission);
+    //   if (submission.userId === user.id) {
+    //     return submission;
+    //     // if (
+    //     //   // (submission.submissionType.type === 'FIRST_DRAFT' &&
+    //     //   //   (submission.status === 'APPROVED' || submission.status === 'CHANGES_REQUIRED')) ||
+    //     //   submission.status === 'APPROVED'
+    //     // ) {
+    //     //   return submission;
+    //     // }
+    //   }
+    // };
 
     // const adjustedCampaigns = campaigns.map((campaign) => ({
     //   ...campaign,
