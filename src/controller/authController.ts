@@ -890,6 +890,7 @@ export const updateProfileCreator = async (req: Request, res: Response) => {
     pronounce,
     interests,
     removePhoto,
+    city,
   } = JSON.parse(req.body.data);
 
   try {
@@ -950,6 +951,7 @@ export const updateProfileCreator = async (req: Request, res: Response) => {
           email,
           phoneNumber,
           country,
+          city,
           ...(removePhoto ? { photoURL: null } : {}),
         },
       },
