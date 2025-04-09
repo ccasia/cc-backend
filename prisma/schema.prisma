@@ -18,6 +18,7 @@ model User {
   name               String?              @db.VarChar(255)
   photoURL           String?              @db.VarChar(255)
   country            String?              @db.VarChar(100)
+  city               String?              @db.VarChar(100)
   phoneNumber        String?              @db.VarChar(100)
   updatedAt          DateTime             @updatedAt
   status             Status               @default(pending)
@@ -234,93 +235,14 @@ model InstagramVideo {
   tiktokUserId  String?
 }
 
-// model TiktokUser {
-//   id String @id @unique @default(cuid())
-
-//   creatorId String  @unique
-//   creator   Creator @relation(references: [id], fields: [creatorId])
-
-//   display_name String?
-//   avatar_url   String?
-
-//   following_count Int?
-//   follower_count  Int?
-//   likes_count     Int?
-
-//   createdAt   DateTime      @default(now())
-//   updatedAt   DateTime      @updatedAt
-//   tiktokVideo TiktokVideo[]
-// }
-
-// model TiktokVideo {
-//   id              String  @id @unique @default(cuid())
-//   video_id        String? @unique
-//   cover_image_url String?
-//   title           String?
-//   description     String?
-//   duration        Float?
-//   embed_link      String?
-//   embed_html      String?
-
-//   like_count    Int?
-//   comment_count Int?
-//   share_count   Int?
-//   view_count    Int?
-
-//   tiktokUserId String?
-//   tiktokUser   TiktokUser? @relation(references: [id], fields: [tiktokUserId])
-
-//   createdAt DateTime @default(now())
-//   updatedAt DateTime @updatedAt
-// }
-
-// model InstagramUser {
-//   id String @id @unique @default(cuid())
-
-//   creatorId String  @unique
-//   creator   Creator @relation(references: [id], fields: [creatorId])
-
-//   user_id         String? @unique
-//   followers_count Int?
-//   follows_count   Int?
-//   media_count     Int?
-//   username        String?
-
-//   instagramVideo InstagramVideo[]
-
-//   createdAt DateTime @default(now())
-//   updatedAt DateTime @updatedAt
-// }
-
-// model InstagramVideo {
-//   id String @id @unique @default(cuid())
-
-//   video_id String? @unique
-
-//   comments_count Int?
-//   like_count     Int?
-//   media_type     String?
-//   media_url      String?
-//   thumbnail_url  String?
-//   caption        String?
-//   permalink      String?
-
-//   instagramUserId String?
-//   instagramUser   InstagramUser? @relation(fields: [instagramUserId], references: [id])
-
-//   createdAt DateTime @default(now())
-//   updatedAt DateTime @updatedAt
-// }
-
 model MediaKit {
   id          String  @id @unique @default(cuid())
   displayName String?
-  // photoUrl  String?
-  // name      String?
-  about       String?
-  // interests String[]
-  creatorId   String  @unique
-  creator     Creator @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+
+  about String?
+
+  creatorId String  @unique
+  creator   Creator @relation(fields: [creatorId], references: [id], onDelete: Cascade)
 }
 
 model Message {
