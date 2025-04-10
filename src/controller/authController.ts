@@ -53,6 +53,7 @@ interface CreatorUpdateData {
   pronounce: string;
   tiktok: string;
   socialMediaData: Prisma.InputJsonValue;
+  city: string;
 }
 
 export const registerUser = async (req: Request, res: Response) => {
@@ -209,6 +210,7 @@ export const registerCreator = async (req: Request, res: Response) => {
             name: name,
             phoneNumber: creatorData?.phone || '',
             country: creatorData?.Nationality || '',
+            city: creatorData?.city || '',
           },
         });
 
@@ -616,6 +618,7 @@ export const updateCreator = async (req: Request, res: Response) => {
     birthDate,
     Nationality,
     socialMediaData,
+    city,
   }: CreatorUpdateData = req.body;
 
   try {
@@ -664,6 +667,7 @@ export const updateCreator = async (req: Request, res: Response) => {
             phoneNumber: phone,
             country: Nationality,
             status: 'active',
+            city: city,
           },
         },
         instagram,
