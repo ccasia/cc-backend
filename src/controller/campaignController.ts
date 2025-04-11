@@ -1857,7 +1857,7 @@ export const changePitchStatus = async (req: Request, res: Response) => {
             data: {
               userId: pitch?.userId,
               campaignId: pitch?.campaignId,
-              ugcVideos: parseInt(totalUGCVideos),
+              ugcVideos: totalUGCVideos ? parseInt(totalUGCVideos) : null,
             },
           });
 

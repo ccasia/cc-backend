@@ -85,7 +85,6 @@ router.get('/getAllActiveCampaign', getAllActiveCampaign);
 router.get('/matchCampaignWithCreator', isLoggedIn, matchCampaignWithCreator);
 router.get('/pitch/:id', getPitchById);
 
-
 // router.get('/firstDraft', getFirstDraft);
 router.get('/timelineType', isSuperAdmin, getTimelineType);
 router.get('/defaultTimeline', isSuperAdmin, getDefaultTimeline);
@@ -98,9 +97,9 @@ router.get('/getSubmissions', getSubmission);
 router.get('/getCampaignLog/:id', getCampaignLog);
 router.get('/creatorAgreements/:campaignId', creatorAgreements);
 
-// For Analytics 
+// For Analytics
 router.get('/pitches', getAllPitches);
-router.get('/getCreatorAgreements', isSuperAdmin, getAllCreatorAgreements)
+router.get('/getCreatorAgreements', isSuperAdmin, getAllCreatorAgreements);
 // For creator MyCampaigns
 router.get('/getMyCampaigns/:userId', isLoggedIn, getMyCampaigns);
 
