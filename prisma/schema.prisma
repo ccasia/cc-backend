@@ -515,6 +515,8 @@ model Campaign {
   photosData  Photo[]
   video       Video[]
 
+  isKWSPCampaign Boolean? @default(false)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }

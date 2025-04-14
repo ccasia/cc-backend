@@ -847,6 +847,7 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       }),
       where: {
         // status: 'ACTIVE',
+
         AND: [
           { status: 'ACTIVE' },
           {
@@ -1504,7 +1505,7 @@ export const getPitchById = async (req: Request, res: Response) => {
 };
 
 export const editCampaignInfo = async (req: Request, res: Response) => {
-  const { id, name, description, campaignInterests, campaignIndustries } = req.body;
+  const { id, name, description, campaignInterests, campaignIndustries, isKWSPCampaign } = req.body;
   const adminId = req.session.userid;
   try {
     const updatedCampaign = await prisma.campaign.update({
@@ -1514,6 +1515,7 @@ export const editCampaignInfo = async (req: Request, res: Response) => {
       data: {
         name: name,
         description: description,
+        isKWSPCampaign,
       },
     });
 
