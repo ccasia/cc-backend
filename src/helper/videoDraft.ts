@@ -626,18 +626,19 @@ async function deleteFileIfExists(filePath: string) {
 
               if (data.campaign.spreadSheetURL) {
                 const spreadSheetId = data.campaign.spreadSheetURL.split('/d/')[1].split('/')[0];
-                await createNewRowData({
-                  creatorInfo: {
-                    name: data.user.name as string,
-                    username: data.user.creator?.instagram as string,
-                    postingDate: dayjs().format('LL'),
-                    caption: content.caption,
-                    videoLink: `https://storage.googleapis.com/${process.env.BUCKET_NAME}/${data?.submissionType.type}/${
-                      data?.id
-                    }_draft.mp4?v=${dayjs().toISOString()}`,
-                  },
-                  spreadSheetId,
-                });
+
+                for (const item of url) {
+                  await createNewRowData({
+                    creatorInfo: {
+                      name: data.user.name as string,
+                      username: data.user.creator?.instagram as string,
+                      postingDate: dayjs().format('LL'),
+                      caption: content.caption,
+                      videoLink: item,
+                    },
+                    spreadSheetId,
+                  });
+                }
               }
 
               const { title, message } = notificationDraft(data.campaign.name, 'Creator');
