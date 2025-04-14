@@ -19,7 +19,7 @@ import '@services/uploadVideo';
 
 import '@helper/processPitchVideo';
 import './helper/videoDraft';
-// import './helper/videoDraftWorker';
+import './helper/videoDraftWorker';
 
 import dotenv from 'dotenv';
 import '@services/google_sheets/sheets';
