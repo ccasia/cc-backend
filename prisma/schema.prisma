@@ -682,6 +682,7 @@ model ShortListedCreator {
   id               String   @id @default(cuid())
   campaignId       String
   userId           String?
+  currency         String?
   shortlisted_date DateTime @default(now())
   isAgreementReady Boolean? @default(false)
   isCampaignDone   Boolean? @default(false)
