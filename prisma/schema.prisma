@@ -687,6 +687,8 @@ model ShortListedCreator {
   isCampaignDone   Boolean? @default(false)
   isCreatorPaid    Boolean? @default(false)
   ugcVideos        Int?
+  amount           Int?
+  currency         String?
   campaign         Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   user             User?    @relation(fields: [userId], references: [id])
 
