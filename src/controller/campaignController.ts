@@ -2923,11 +2923,10 @@ export const creatorAgreements = async (req: Request, res: Response) => {
                 campaignId: campaignId,
               },
             },
-            },
           },
         },
       },
-    );
+    });
 
     return res.status(200).json(agreements);
   } catch (error) {
@@ -2936,15 +2935,10 @@ export const creatorAgreements = async (req: Request, res: Response) => {
 };
 
 export const updateAmountAgreement = async (req: Request, res: Response) => {
-  // Add currency to the destructured data
-  const { paymentAmount, currency, user, campaignId, id: agreementId } = JSON.parse(req.body.data);
-
-  const adminId = req.session.userid;
-
-  let agreementForm;
-
   try {
-    if (req?.files && (req?.files as any)?.agreementForm) agreementForm = (req?.files as any)?.agreementForm;
+    const { paymentAmount, currency, user, campaignId, id: agreementId } = JSON.parse(req.body.data);
+    
+    console.log('Received update data:', { paymentAmount, currency, campaignId, agreementId });
 
     const creator = await prisma.user.findUnique({
       where: {
@@ -2973,61 +2967,65 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Campaign not found' });
     }
 
-    const agreement = await prisma.creatorAgreement.findUnique({
-      where: {
-        id: agreementId,
-      },
-    });
-
-    if (!agreement) {
-      return res.status(404).json({ message: 'Agreement not found.' });
-    }
-
-    // Add currency to the update
+    // Update shortlisted creator first
     await prisma.shortListedCreator.updateMany({
       where: {
         userId: creator.id,
-        campaignId: campaign.id,
+        campaignId: campaignId,
       },
       data: {
         amount: parseInt(paymentAmount),
-        currency: currency  
+        currency: currency
       },
     });
 
-    // Rest of your existing code remains exactly the same...
+    let url = '';
+    if (req?.files && (req?.files as any)?.agreementForm) {
+      // Generate and upload new agreement file
+      url = await uploadAgreementForm(
+        (req?.files as any)?.agreementForm.tempFilePath,
+        `${creator.id}-${campaign.name}-${Date.now()}.pdf`,
+        'creatorAgreements',
+      );
+    }
 
-    const url = await uploadAgreementForm(
-      agreementForm.tempFilePath,
-      `${creator.id?.split(' ').join('_')}-${campaign.name}.pdf`,
-      'creatorAgreements',
-    );
-
-    // ... rest of your existing code
-
-    // Create creator agreement
-    await prisma.creatorAgreement.update({
+    // Update creator agreement with new data
+    const updatedAgreement = await prisma.creatorAgreement.update({
       where: {
         id: agreementId,
       },
       data: {
         userId: creator.id,
-        campaignId: campaign.id,
-        agreementUrl: url,
+        campaignId: campaignId,
+        ...(url && { agreementUrl: url }), // Only update URL if new file was uploaded
         updatedAt: dayjs().format(),
-        amount: paymentAmount,
+        amount: paymentAmount, // Remove parseInt since amount should be string
+        currency: currency,
+      },
+      include: {
+        user: {
+          include: {
+            creator: true,
+            paymentForm: true,
+            shortlisted: {
+              where: {
+                campaignId: campaignId,
+              },
+            },
+          },
+        },
       },
     });
 
-    if (adminId) {
-      const adminLogMessage = `Updated agreement for ${creator.name} `;
-      logAdminChange(adminLogMessage, adminId, req);
-    }
+    console.log('Updated agreement:', updatedAgreement);
 
-    return res.status(200).json({ message: 'Payment amount Updated.' });
+    return res.status(200).json({
+      message: 'Agreement updated successfully',
+      agreement: updatedAgreement
+    });
   } catch (error) {
-    console.log(error);
-    return res.status(500).json({ message: 'Error updating agreement amount' });
+    console.error('Error in updateAmountAgreement:', error);
+    return res.status(500).json({ message: 'Error updating agreement', error: error.message });
   }
 };
 

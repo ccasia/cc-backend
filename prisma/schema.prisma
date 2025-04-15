@@ -682,13 +682,13 @@ model ShortListedCreator {
   id               String   @id @default(cuid())
   campaignId       String
   userId           String?
+  currency         String?
   shortlisted_date DateTime @default(now())
   isAgreementReady Boolean? @default(false)
   isCampaignDone   Boolean? @default(false)
   isCreatorPaid    Boolean? @default(false)
   ugcVideos        Int?
   amount           Int?
-  currency         String?
   campaign         Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   user             User?    @relation(fields: [userId], references: [id])
 
@@ -1021,6 +1021,7 @@ model CreatorAgreement {
   updatedAt         DateTime  @updatedAt
   isSent            Boolean   @default(false)
   amount            String?
+  currency          String?
   userId            String
   campaignId        String
   completedAt       DateTime?
