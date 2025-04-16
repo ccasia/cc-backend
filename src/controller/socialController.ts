@@ -67,6 +67,8 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
 
     const { access_token, refresh_token } = tokenResponse.data;
 
+    console.log(tokenResponse.data);
+
     const encryptedAccessToken = encryptToken(access_token);
     const encryptedRefreshToken = encryptToken(refresh_token);
 
@@ -102,6 +104,7 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
       );
 
       const userData = userInfoResponse.data.data.user;
+
       const videos = videoInfoResponse.data.data.videos;
 
       await prisma.tiktokUser.upsert({
@@ -117,6 +120,11 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
         },
         create: {
           creatorId: creator.id,
+          display_name: userData.display_name,
+          avatar_url: userData.avatar_url,
+          following_count: userData.following_count,
+          follower_count: userData.follower_count,
+          likes_count: userData.likes_count,
         },
       });
 
