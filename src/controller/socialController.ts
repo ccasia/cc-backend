@@ -91,6 +91,8 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
         headers: { Authorization: `Bearer ${access_token}` },
       });
 
+      console.log(userInfoResponse);
+
       const videoInfoResponse = await axios.post(
         'https://open.tiktokapis.com/v2/video/list/',
         { max_count: 20 },
