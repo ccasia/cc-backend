@@ -105,8 +105,6 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
 
       const userData = userInfoResponse.data.data.user;
 
-      console.log(userData);
-
       const videos = videoInfoResponse.data.data.videos;
 
       await prisma.tiktokUser.upsert({
