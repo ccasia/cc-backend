@@ -4,6 +4,7 @@ import { Entity, PrismaClient } from '@prisma/client';
 import { uploadAgreementForm, uploadProfileImage } from '@configs/cloudStorage.config';
 import { Title, saveNotification } from './notificationController';
 import { clients, io } from '../server';
+import { updateInvoices } from '@services/invoiceService';
 
 const prisma = new PrismaClient();
 
@@ -404,6 +405,37 @@ export const updatePaymentForm = async (req: Request, res: Response) => {
   const { bankName, bankAccName, bankNumber, icPassportNumber, countryOfBank }: any = req.body;
 
   try {
+    const existingPaymentForm = await prisma.paymentForm.findFirst({
+      where: {
+        userId: req.session.userid,
+      },
+      include: {
+        user: {
+          select: {
+            name: true,
+            email: true,
+            id: true,
+          },
+        },
+      },
+    });
+    // {"payTo":"Dan","bankName":"Affin Bank Berhad","accountName":"asdasdasd","accountEmail":"debis60817@lxheir.com","accountNumber":"131231231"}
+    if (!existingPaymentForm) return res.status(404).json({ message: 'Payment form not found' });
+
+    if (existingPaymentForm?.status === 'rejected') {
+      const { name, email } = existingPaymentForm.user;
+
+      const bankAcc = {
+        payTo: bankAccName || '',
+        bankName: bankName || '',
+        accountName: bankAccName || '',
+        accountEmail: email || '',
+        accountNumber: bankNumber || '',
+      };
+
+      await updateInvoices({ userId: existingPaymentForm.user?.id || '', bankAcc: bankAcc });
+    }
+
     const paymentForm = await prisma.paymentForm.upsert({
       where: {
         userId: req.session.userid as string,
@@ -414,6 +446,7 @@ export const updatePaymentForm = async (req: Request, res: Response) => {
         bankAccountName: bankAccName.toString(),
         bankName: bankName,
         countryOfBank: countryOfBank,
+        status: 'approved',
       },
       create: {
         user: { connect: { id: req.session.userid } },

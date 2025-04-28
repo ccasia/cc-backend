@@ -21,7 +21,7 @@ import { TokenSet } from 'openid-client';
 import { error } from 'console';
 
 import fs from 'fs-extra';
-import { createInvoiceService, sendToSpreadSheet } from '@services/invoiceService';
+import { createInvoiceService, rejectInvoice, sendToSpreadSheet } from '@services/invoiceService';
 import dayjs from 'dayjs';
 // import { decreamentCreditCampiagn } from '@services/packageService';
 
@@ -55,6 +55,8 @@ interface invoiceData {
   campaignId: string;
   xeroContactId?: string;
   newContact?: boolean;
+  otherReason?: string;
+  reason?: string;
 }
 
 export const getAllInvoices = async (req: Request, res: Response) => {
@@ -135,14 +137,39 @@ export const getInvoiceById = async (req: Request, res: Response) => {
         id: id,
       },
       include: {
-        creator: true,
-        campaign: true,
+        creator: {
+          include: {
+            user: {
+              include: {
+                paymentForm: true,
+              },
+            },
+          },
+        },
+        campaign: {
+          select: {
+            id: true,
+            name: true,
+            company: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+            brand: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
         user: true,
       },
     });
     res.status(200).json(invoice);
   } catch (error) {
-    res.status(500).json({ error: 'Something went wrong' });
+    res.status(400).json(error);
   }
 };
 
@@ -203,8 +230,8 @@ export const createInvoice = async (req: Request, res: Response) => {
       },
     });
 
-    const message = `Invoice generated in campaign - ${invoice.campaignId} ` 
-    logAdminChange(message, userid, req );
+    const message = `Invoice generated in campaign - ${invoice.campaignId} `;
+    logAdminChange(message, userid, req);
     return res.status(201).json(invoice);
   } catch (error) {
     return res.status(400).json(error);
@@ -387,6 +414,168 @@ export const updateInvoiceStatus = async (req: Request, res: Response) => {
 //   }
 // };
 
+// export const updateInvoice = async (req: Request, res: Response) => {
+//   const {
+//     invoiceId,
+//     dueDate,
+//     status,
+//     invoiceFrom,
+//     invoiceTo,
+//     items,
+//     totalAmount,
+//     campaignId,
+//     bankInfo,
+//     newContact,
+//     reason,
+//   }: invoiceData = req.body;
+
+//   try {
+//     const invoice = await prisma.$transaction(async (tx) => {
+//       const invoice = await tx.invoice.update({
+//         where: {
+//           id: invoiceId,
+//         },
+//         data: {
+//           dueDate,
+//           status: status as InvoiceStatus,
+//           invoiceFrom,
+//           invoiceTo,
+//           task: items[0],
+//           amount: totalAmount,
+//           bankAcc: bankInfo,
+//           campaignId,
+//         },
+//         include: {
+//           creator: {
+//             include: {
+//               user: {
+//                 select: {
+//                   id: true,
+//                   name: true,
+//                   paymentForm: true,
+//                 },
+//               },
+//             },
+//           },
+//           user: true,
+//           campaign: {
+//             include: {
+//               campaignAdmin: {
+//                 include: {
+//                   admin: {
+//                     include: {
+//                       role: true,
+//                     },
+//                   },
+//                 },
+//               },
+//             },
+//           },
+//         },
+//       });
+
+//       let contactID: any;
+//       let invoiceData: any;
+
+//       if (!newContact) {
+//         contactID = invoice.creator.xeroContactId;
+//       } else {
+//         const contact: any = await createXeroContact(bankInfo, invoice.creator, invoice.user, invoiceFrom);
+//         contactID = contact[0].contactID;
+
+//         await tx.creator.update({
+//           where: {
+//             id: invoice.creator.id,
+//           },
+//           data: {
+//             xeroContactId: contactID,
+//           },
+//         });
+//       }
+
+//       if (status == 'approved') {
+//         await sendToSpreadSheet(
+//           {
+//             createdAt: dayjs().format(''),
+//             name: invoice.creator.user?.name as string,
+//             icNumber: invoice.creator.user.paymentForm?.icNumber as string,
+//             bankName: invoice.creator.user.paymentForm?.bankAccountName as string,
+//             bankAccountNumber: invoice.creator.user.paymentForm?.bankAccountNumber as string,
+//             campaignName: invoice.campaign.name,
+//             amount: invoice.amount,
+//           },
+//           '1VClmvYJV9R4HqjADhGA6KYIR9KCFoXTag5SMVSL4rFc',
+//           'Invoices',
+//         );
+
+//         invoiceData = await createXeroInvoiceLocal(
+//           contactID,
+//           items,
+//           dueDate,
+//           invoice.campaign.name,
+//           invoice.invoiceNumber,
+//         );
+
+//         const { title, message } = notificationInvoiceUpdate(invoice.campaign.name);
+
+//         for (const admin of invoice.campaign.campaignAdmin) {
+//           if (admin.admin.role?.name === 'CSM') {
+//             try {
+//               const notification = await saveNotification({
+//                 userId: admin.adminId,
+//                 title,
+//                 message,
+//                 entity: 'Invoice',
+//                 threadId: invoice.id,
+//                 // invoiceId: invoice.id,
+//                 entityId: invoice.campaignId,
+//               });
+//               //  console.log("Sending notification to admin:", admin.adminId, notification);
+//               io.to(clients.get(admin.adminId)).emit('notification', notification);
+//             } catch (error) {
+//               console.error('Error notifying admin:', error);
+//             }
+//           }
+//         }
+
+//         const adminId = req.session.userid;
+
+//         if (adminId) {
+//           const adminLogMessage = `Updated Invoice for - "${invoice.creator.user?.name}" `;
+//           logAdminChange(adminLogMessage, adminId, req);
+//         }
+
+//         const creatorNotification = await saveNotification({
+//           userId: invoice.creatorId,
+//           title,
+//           message,
+//           entity: 'Invoice',
+//           threadId: invoice.id,
+//           entityId: invoice.campaignId,
+//         });
+
+//         io.to(clients.get(invoice.creatorId)).emit('notification', creatorNotification);
+//       }
+
+//       if (status === 'rejected') {
+//         await rejectInvoice({
+//           userId: invoice?.user?.id,
+//           tx: tx as PrismaClient,
+//           reason: reason as string,
+//           campaignName: invoice.campaign.name,
+//         });
+//       }
+
+//       return invoice;
+//     });
+
+//     return res.status(200).json(invoice);
+//   } catch (error) {
+//     console.log(error);
+//     return res.status(400).json(error);
+//   }
+// };
+
 export const updateInvoice = async (req: Request, res: Response) => {
   const {
     invoiceId,
@@ -399,14 +588,13 @@ export const updateInvoice = async (req: Request, res: Response) => {
     campaignId,
     bankInfo,
     newContact,
+    reason,
   }: invoiceData = req.body;
 
   try {
     const invoice = await prisma.$transaction(async (tx) => {
-      const invoice = await tx.invoice.update({
-        where: {
-          id: invoiceId,
-        },
+      const updatedInvoice = await tx.invoice.update({
+        where: { id: invoiceId },
         data: {
           dueDate,
           status: status as InvoiceStatus,
@@ -420,13 +608,7 @@ export const updateInvoice = async (req: Request, res: Response) => {
         include: {
           creator: {
             include: {
-              user: {
-                select: {
-                  id: true,
-                  name: true,
-                  paymentForm: true,
-                },
-              },
+              user: { select: { id: true, name: true, paymentForm: true } },
             },
           },
           user: true,
@@ -434,11 +616,7 @@ export const updateInvoice = async (req: Request, res: Response) => {
             include: {
               campaignAdmin: {
                 include: {
-                  admin: {
-                    include: {
-                      role: true,
-                    },
-                  },
+                  admin: { include: { role: true } },
                 },
               },
             },
@@ -446,94 +624,97 @@ export const updateInvoice = async (req: Request, res: Response) => {
         },
       });
 
-      let contactID: any;
-      let invoiceData: any;
+      const creatorUser = updatedInvoice.creator.user;
+      const creatorPaymentForm = creatorUser?.paymentForm;
+      const campaign = updatedInvoice.campaign;
 
-      if (!newContact) {
-        contactID = invoice.creator.xeroContactId;
-      } else {
-        const contact: any = await createXeroContact(bankInfo, invoice.creator, invoice.user, invoiceFrom);
-        contactID = contact[0].contactID;
+      let contactID = updatedInvoice.creator.xeroContactId;
+
+      if (newContact) {
+        const [contact] = await createXeroContact(bankInfo, updatedInvoice.creator, updatedInvoice.user, invoiceFrom);
+        contactID = contact.contactID;
 
         await tx.creator.update({
-          where: {
-            id: invoice.creator.id,
-          },
-          data: {
-            xeroContactId: contactID,
-          },
+          where: { id: updatedInvoice.creator.id },
+          data: { xeroContactId: contactID },
         });
       }
 
-      if (status == 'approved') {
+      if (status === 'approved') {
         await sendToSpreadSheet(
           {
-            createdAt: dayjs().format(''),
-            name: invoice.creator.user?.name as string,
-            icNumber: invoice.creator.user.paymentForm?.icNumber as string,
-            bankName: invoice.creator.user.paymentForm?.bankAccountName as string,
-            bankAccountNumber: invoice.creator.user.paymentForm?.bankAccountNumber as string,
-            campaignName: invoice.campaign.name,
-            amount: invoice.amount,
+            createdAt: dayjs().format('YYYY-MM-DD'),
+            name: creatorUser?.name || '',
+            icNumber: creatorPaymentForm?.icNumber || '',
+            bankName: creatorPaymentForm?.bankAccountName || '',
+            bankAccountNumber: creatorPaymentForm?.bankAccountNumber || '',
+            campaignName: campaign.name,
+            amount: updatedInvoice.amount,
           },
           '1VClmvYJV9R4HqjADhGA6KYIR9KCFoXTag5SMVSL4rFc',
           'Invoices',
         );
 
-        invoiceData = await createXeroInvoiceLocal(
-          contactID,
-          items,
-          dueDate,
-          invoice.campaign.name,
-          invoice.invoiceNumber,
-        );
+        if (contactID) {
+          await createXeroInvoiceLocal(contactID, items, dueDate, campaign.name, updatedInvoice.invoiceNumber);
+        }
 
-        const { title, message } = notificationInvoiceUpdate(invoice.campaign.name);
+        const { title, message } = notificationInvoiceUpdate(campaign.name);
 
-        for (const admin of invoice.campaign.campaignAdmin) {
-          if (admin.admin.role?.name === 'CSM') {
-            try {
+        // Notify CSM admins
+        await Promise.all(
+          campaign.campaignAdmin
+            .filter((admin) => admin.admin.role?.name === 'CSM')
+            .map(async (admin) => {
               const notification = await saveNotification({
                 userId: admin.adminId,
                 title,
                 message,
                 entity: 'Invoice',
-                threadId: invoice.id,
-                // invoiceId: invoice.id,
-                entityId: invoice.campaignId,
+                threadId: updatedInvoice.id,
+                entityId: updatedInvoice.campaignId,
               });
-              //  console.log("Sending notification to admin:", admin.adminId, notification);
+
               io.to(clients.get(admin.adminId)).emit('notification', notification);
-            } catch (error) {
-              console.error('Error notifying admin:', error);
-            }
-          }
-        }
+            }),
+        );
 
         const adminId = req.session.userid;
         if (adminId) {
-          const adminLogMessage = `Updated Invoice for - "${invoice.creator.user?.name}" `;
-          logAdminChange(adminLogMessage, adminId, req); 
+          const adminLogMessage = `Updated Invoice for - "${creatorUser?.name}"`;
+          logAdminChange(adminLogMessage, adminId, req);
         }
 
+        // Notify creator
         const creatorNotification = await saveNotification({
-          userId: invoice.creatorId,
+          userId: updatedInvoice.creatorId,
           title,
           message,
           entity: 'Invoice',
-          threadId: invoice.id,
-          entityId: invoice.campaignId,
+          threadId: updatedInvoice.id,
+          entityId: updatedInvoice.campaignId,
         });
 
-        io.to(clients.get(invoice.creatorId)).emit('notification', creatorNotification);
+        io.to(clients.get(updatedInvoice.creatorId)).emit('notification', creatorNotification);
       }
-      return invoice;
+
+      if (status === 'rejected') {
+        await rejectInvoice({
+          userId: updatedInvoice?.creator?.user?.id,
+          tx,
+          reason: reason || '',
+          campaignName: campaign.name,
+        });
+      }
+
+      return updatedInvoice;
     });
 
     return res.status(200).json(invoice);
   } catch (error) {
-    console.log(error);
-    return res.status(400).json(error);
+    console.error(error);
+    const message = error instanceof Error ? error.message : 'Unknown error occurred';
+    return res.status(400).json({ error: message });
   }
 };
 
@@ -920,11 +1101,10 @@ export const generateInvoice = async (req: Request, res: Response) => {
         images[0],
       );
 
-      
       const adminId = req.session.userid;
       if (adminId) {
         const adminLogMessage = `Generated Invoice for - "${creator.user?.name}" `;
-        logAdminChange(adminLogMessage, adminId, req); 
+        logAdminChange(adminLogMessage, adminId, req);
       }
 
       const { title, message } = notificationInvoiceGenerate(creator.campaign.name);

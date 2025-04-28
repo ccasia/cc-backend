@@ -1,9 +1,12 @@
-import { Event, PrismaClient, InvoiceStatus, Invoice } from '@prisma/client';
+import { Event, PrismaClient, InvoiceStatus, Invoice, Prisma } from '@prisma/client';
 import dayjs from 'dayjs';
 import { accessGoogleSheetAPI } from './google_sheets/sheets';
 
 import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
+import { saveNotification } from '@controllers/notificationController';
+import { sendEmail } from '@controllers/authController';
+import { rejectInvoiceEmail } from '@configs/nodemailer.config';
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -189,5 +192,80 @@ export const sendToSpreadSheet = async (
     return updatedRow;
   } catch (error) {
     throw new Error(error);
+  }
+};
+
+export const rejectInvoice = async ({
+  userId,
+  tx,
+  reason,
+  campaignName,
+}: {
+  userId?: string;
+  tx: Prisma.TransactionClient; // Better typing
+  reason: string;
+  campaignName: string;
+}): Promise<void> => {
+  if (!userId) throw new Error('User Id not found');
+
+  try {
+    const payment = await tx.paymentForm.update({
+      where: { userId: userId },
+      data: {
+        status: 'rejected',
+        reason: reason || '',
+      },
+      select: {
+        reason: true,
+        user: { select: { email: true } },
+      },
+    });
+
+    await saveNotification({
+      userId,
+      message: `Your invoice for ${campaignName} has been rejected due to ${reason}. Please amend Payment Details to get paid!`,
+      entity: 'PaymentForm',
+      title: '⚠️ Invoice Rejected',
+    });
+
+    await rejectInvoiceEmail(payment?.user?.email, campaignName, payment?.reason || '');
+  } catch (error) {
+    throw error instanceof Error ? error : new Error(String(error));
+  }
+};
+
+export const updateInvoices = async ({ bankAcc, userId }: { bankAcc: any; userId: string }): Promise<void> => {
+  if (!userId) throw new Error('Creator ID not found');
+
+  try {
+    const invoices = await prisma.invoice.findMany({
+      where: {
+        creatorId: userId,
+        status: {
+          in: ['rejected', 'draft'],
+        },
+      },
+    });
+
+    await Promise.all(
+      invoices.map(async (invoice) => {
+        await prisma.invoice.update({
+          where: {
+            id: invoice.id,
+          },
+          data: {
+            bankAcc: bankAcc,
+            status: 'draft',
+          },
+        });
+      }),
+    );
+
+    console.log('DONE');
+  } catch (error) {
+    if (error instanceof Error) {
+      throw error;
+    }
+    throw new Error(String(error));
   }
 };
