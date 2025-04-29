@@ -139,3 +139,43 @@ export const createNewBugRowData = async ({
     throw new Error(error);
   }
 };
+
+export const createNewKWSPRowData = async ({
+  spreadSheetId,
+  sheetByTitle,
+  data,
+}: {
+  spreadSheetId: string;
+  sheetByTitle: string;
+  data: {
+    fullName: string;
+    nricPassport: string;
+    date: string;
+    email: string;
+  };
+}) => {
+  try {
+    const sheet = await accessGoogleSheetAPI(spreadSheetId);
+
+    if (!sheet) {
+      throw new Error('Sheet not found.');
+    }
+
+    const currentSheet = sheet.sheetsByTitle[sheetByTitle];
+
+    if (!currentSheet) {
+      throw new Error('Sheet not found.');
+    }
+
+    const updatedRow = await currentSheet.addRow({
+      'Full Name': data.fullName,
+      'NRIC/Passport Number': `'${data.nricPassport}`,
+      'Date': data.date,
+      'Email': data.email,
+    });
+
+    return updatedRow;
+  } catch (error) {
+    throw new Error(error);
+  }
+};

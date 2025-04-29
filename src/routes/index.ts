@@ -19,6 +19,7 @@ import accessRoute from './accessRoute';
 import packagesRoute from './packageRoutes';
 import socialRoute from './socialRoute';
 import subscriptionRoute from './subscriptionRoute';
+import kwspRoute from './kwspRoute';
 
 export const router = express.Router();
 
@@ -42,3 +43,4 @@ router.use('/public', accessRoute);
 router.use('/package', packagesRoute);
 router.use('/social', socialRoute);
 router.use('/subscription', subscriptionRoute);
+router.use('/kwsp', kwspRoute);
