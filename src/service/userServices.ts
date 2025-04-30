@@ -198,6 +198,11 @@ export const getUser = async (id: string) => {
         },
         pitch: true,
         shortlisted: true,
+        _count: {
+          select: {
+            UserThread: true,
+          },
+        },
       },
     });
 

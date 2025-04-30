@@ -18,11 +18,13 @@ import {
   getBrandsByClientId,
   handleLinkNewPackage,
   getUniqueClientId,
+  clientOverview,
 } from '@controllers/companyController';
 import { needPermissions } from '@middlewares/needPermissions';
 
 const router = Router();
 
+router.get('/', isSuperAdmin, clientOverview);
 router.get('/getCompany/:id', isSuperAdmin, getCompanyById);
 router.get('/getCompanies', isSuperAdmin, getAllCompanies);
 router.get('/getBrands', isSuperAdmin, getAllBrands);

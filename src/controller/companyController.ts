@@ -28,7 +28,7 @@ export const createCompany = async (req: Request, res: Response) => {
     const company = await createNewCompany(data, publicURL);
 
     const adminLogMessage = `Created A New company ${company.name} `;
-    logAdminChange(adminLogMessage, adminId, req); 
+    logAdminChange(adminLogMessage, adminId, req);
     return res.status(201).json({ company, message: 'A new company has been created' });
   } catch (error) {
     console.log(error);
@@ -121,7 +121,7 @@ export const createBrand = async (req: Request, res: Response) => {
   try {
     const brand = await handleCreateBrand(req.body);
     const adminLogMessage = `Created A New Brand ${brand.name} `;
-    logAdminChange(adminLogMessage, adminId, req); 
+    logAdminChange(adminLogMessage, adminId, req);
     return res.status(200).json({ brand, message: 'Brand is successfully created!' });
   } catch (err) {
     return res.status(400).json({ message: err?.message });
@@ -207,7 +207,7 @@ export const createOneBrand = async (req: Request, res: Response) => {
 export const deleteCompany = async (req: Request, res: Response) => {
   const { id } = req.params;
   const adminId = req.session.userid;
-  
+
   try {
     const company = await prisma.company.findUnique({
       where: {
@@ -225,7 +225,7 @@ export const deleteCompany = async (req: Request, res: Response) => {
         },
       });
       const adminLogMessage = `Removed Company - ${company.name} `;
-      logAdminChange(adminLogMessage, adminId, req); 
+      logAdminChange(adminLogMessage, adminId, req);
       return res.status(200).json({ message: 'Sucessfully remove company 2' });
     }
 
@@ -243,7 +243,7 @@ export const deleteCompany = async (req: Request, res: Response) => {
         },
       });
       const adminLogMessage = `Removed Company - ${company.name} `;
-      logAdminChange(adminLogMessage, adminId, req); 
+      logAdminChange(adminLogMessage, adminId, req);
       return res.status(200).json({ message: 'Sucessfully remove company' });
     }
   } catch (error) {
@@ -264,7 +264,7 @@ export const editCompany = async (req: Request, res: Response) => {
     companyRegistrationNumber,
   } = JSON.parse(req.body.data);
   const adminId = req.session.userid;
-  
+
   try {
     let logoURL = '';
 
@@ -293,7 +293,7 @@ export const editCompany = async (req: Request, res: Response) => {
     });
 
     const adminLogMessage = `Updated Company - ${updatedCompany.name} `;
-    logAdminChange(adminLogMessage, adminId, req); 
+    logAdminChange(adminLogMessage, adminId, req);
 
     return res.status(200).json({ message: 'Succesfully updated', ...updatedCompany });
   } catch (error) {
@@ -495,6 +495,15 @@ export const getUniqueClientId = async (req: Request, res: Response) => {
     console.log(id);
 
     return res.status(200).json(id);
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const clientOverview = async (req: Request, res: Response) => {
+  try {
+    const clients = await prisma.company.count();
+    return res.status(200).json(clients);
   } catch (error) {
     return res.status(400).json(error);
   }

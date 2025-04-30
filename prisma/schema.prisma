@@ -58,6 +58,10 @@ model User {
   video              Video[]
   rawFootage         RawFootage[]
   photo              Photo[]
+  isActive           Boolean              @default(true)
+  isVerified         Boolean              @default(false)
+  isKWSPCampaign     Boolean?             @default(false)
+  hasSubmittedKWSP   Boolean              @default(false)
 }
 
 model ResetPasswordToken {
@@ -957,8 +961,8 @@ model Logistic {
 }
 
 model PaymentForm {
-  id                String   @id @unique @default(cuid())
-  userId            String   @unique
+  id                String             @id @unique @default(cuid())
+  userId            String             @unique
   icNumber          String?
   bankName          String?
   bankAccountName   String?
@@ -966,7 +970,9 @@ model PaymentForm {
   countryOfBank     String?
   bodyMeasurement   String?
   allergies         String[]
-  user              User     @relation(fields: [userId], references: [id])
+  status            PaymentFormStatus? @default(approved)
+  reason            String?
+  user              User               @relation(fields: [userId], references: [id])
 }
 
 model Board {
@@ -1129,81 +1135,6 @@ model Price {
   @@unique([packageId, currency]) // Ensure each package has only one price per currency
 }
 
-// model PackagesClient {
-//   id               String         @id @unique @default(cuid())
-//   packageId        String
-//   companyId        String         @unique
-//   package          Packages       @relation(fields: [packageId], references: [id])
-//   company          Company        @relation(fields: [companyId], references: [id])
-//   type             PackageType
-//   currency         Currencies
-//   value            Int
-//   totalUGCCredits  Int
-//   creditsUtilized  Int?
-//   availableCredits Int?
-//   validityPeriod   Int
-//   invoiceDate      DateTime?
-//   Remarks          Json?
-//   invoiceLink      String?
-//   createdAt        DateTime       @default(now())
-//   expiryDate       DateTime?
-//   status           pakcageStatus?
-
-//   // campaign Campaign?
-// }
-
-// enum SubscriptionStatus {
-//   ACTIVE
-//   EXPIRED
-//   CANCELLED
-// }
-
-// model Package {
-//   id             String         @id @unique @default(cuid())
-//   name           String?
-//   credits        Int
-//   validityPeriod Int
-//   subscriptions  Subscription[]
-//   createdAt      DateTime       @default(now())
-//   updatedAt      DateTime       @updatedAt
-//   prices         Price[]
-// }
-
-// model Price {
-//   id        Int      @id @default(autoincrement())
-//   packageId String
-//   package   Package  @relation(fields: [packageId], references: [id])
-//   currency  String
-//   amount    Float
-//   createdAt DateTime @default(now())
-//   updatedAt DateTime @updatedAt
-
-//   @@unique([packageId, currency]) // Ensure each package has only one price per currency
-// }
-
-// model PackagesClient {
-//   id               String         @id @unique @default(cuid())
-//   packageId        String
-//   companyId        String         @unique
-//   package          Packages       @relation(fields: [packageId], references: [id])
-//   company          Company        @relation(fields: [companyId], references: [id])
-//   type             PackageType
-//   currency         Currencies
-//   value            Int
-//   totalUGCCredits  Int
-//   creditsUtilized  Int?
-//   availableCredits Int?
-//   validityPeriod   Int
-//   invoiceDate      DateTime?
-//   Remarks          Json?
-//   invoiceLink      String?
-//   createdAt        DateTime       @default(now())
-//   expiryDate       DateTime?
-//   status           pakcageStatus?
-
-//   // campaign Campaign?
-// }
-
 enum PackageType {
   Trail
   Basic
@@ -1238,17 +1169,6 @@ model PublicFeedback {
   updatedAt    DateTime      @updatedAt
   submission   Submission    @relation(fields: [submissionId], references: [id], onDelete: Cascade)
 }
-
-// model PublicFeedback {
-//   id           String        @id @unique @default(cuid())
-//   content      String?
-//   type         FeedbackType?
-//   reasons      String[] // Optional field for reasons (if required)
-//   submissionId String
-//   createdAt    DateTime      @default(now())
-//   updatedAt    DateTime      @updatedAt
-//   submission   Submission    @relation(fields: [submissionId], references: [id], onDelete: Cascade)
-// }
 
 enum LogisticStatus {
   Product_is_being_packaged
@@ -1302,6 +1222,7 @@ enum InvoiceStatus {
   pending_approval
   pending_payment
   approved
+  rejected
 }
 
 enum CampaignStatus {
@@ -1410,6 +1331,7 @@ enum Entity {
   Chat
   Live
   Status
+  PaymentForm
 }
 
 enum SubmissionEnum {
@@ -1430,4 +1352,9 @@ enum pakcageStatus {
   active
   inactive
   expired
+}
+
+enum PaymentFormStatus {
+  rejected
+  approved
 }
