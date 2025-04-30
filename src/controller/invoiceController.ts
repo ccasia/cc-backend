@@ -729,7 +729,6 @@ export const getXero = async (req: Request, res: Response) => {
 };
 
 export const xeroCallBack = async (req: Request, res: Response) => {
-  console.log(req.url);
   try {
     const user = await prisma.user.findUnique({
       where: {
@@ -768,15 +767,6 @@ export const xeroCallBack = async (req: Request, res: Response) => {
     return res.status(400).json(error);
   }
 };
-
-// {
-//   id_token: 'eyJhbGciOiJSUzI1NiIsImtpZCI6IjFDQUY4RTY2NzcyRDZEQzAyOEQ2NzI2RkQwMjYxNTgxNTcwRUZDMTkiLCJ0eXAiOiJKV1QiLCJ4NXQiOiJISy1PWm5jdGJjQW8xbkp2MENZVmdWY09fQmsifQ.eyJuYmYiOjE3NDU5OTM1NDEsImV4cCI6MTc0NTk5Mzg0MSwiaXNzIjoiaHR0cHM6Ly9pZGVudGl0eS54ZXJvLmNvbSIsImF1ZCI6IkVEMTAxRTJBQUZBMjQyNzBCODVBMUZFMjNDMUQ4OEUxIiwiaWF0IjoxNzQ1OTkzNTQxLCJhdF9oYXNoIjoiX3hpS0VLNHJWT3RGSlllNFJHbWU1QSIsInNpZCI6IjE4Y2I0NjAxYTg3ODRmMDFhM2I4Njc4ZWRlMGY0YjZkIiwic3ViIjoiZGRkMmI5MzJkZGViNWEyMjk1YWJhZmJlNjE3N2U2ZTQiLCJhdXRoX3RpbWUiOjE3NDU5OTM1MzEsInhlcm9fdXNlcmlkIjoiYjA2YzY4ZDgtZGM1ZC00YWZhLTg3ZjUtNWYwYzU3MWI0NTgxIiwiZ2xvYmFsX3Nlc3Npb25faWQiOiIxOGNiNDYwMWE4Nzg0ZjAxYTNiODY3OGVkZTBmNGI2ZCIsInByZWZlcnJlZF91c2VybmFtZSI6ImF0aXFAY3VsdGNyZWF0aXZlLmFzaWEiLCJlbWFpbCI6ImF0aXFAY3VsdGNyZWF0aXZlLmFzaWEiLCJnaXZlbl9uYW1lIjoiTnVyIEF0aXFhaCIsImZhbWlseV9uYW1lIjoiWmFpbnVsIiwibmFtZSI6Ik51ciBBdGlxYWggWmFpbnVsIiwiYW1yIjpbInB3ZCJdfQ.AqiCqFQ-vcG-ZBJ1EAa7EN9L7XfSldDEBXpGA6OEtMvjp7cmT66g7xNExQfp-nwLfxLnRFxiDiXB-2PROx6LNNyLvA4TNRmggPdnGnEoxcMsVJO-FHRNHxy98JrlSd1QvmpLPUS_sEWVT_c89MJch1UpCrLUR8Bsymitm4slYXpCNEAoNbRGQSXzT9XTSeKCv7FxdinhrdYlDo_w6H_YhL7w9Fitc2ocITqaAGS_3tackOKtfbNEaI1_Ho4z6dBbmv83SAJEwCG8MAzN5c1ji4XGEffec23Y9at_oxS333PePgB5RxfXPFLx8x7cLfrvL2wITUNDWmDQrwMrX51dig',
-//   access_token: 'eyJhbGciOiJSUzI1NiIsImtpZCI6IjFDQUY4RTY2NzcyRDZEQzAyOEQ2NzI2RkQwMjYxNTgxNTcwRUZDMTkiLCJ0eXAiOiJKV1QiLCJ4NXQiOiJISy1PWm5jdGJjQW8xbkp2MENZVmdWY09fQmsifQ.eyJuYmYiOjE3NDU5OTM1NDEsImV4cCI6MTc0NTk5NTM0MSwiaXNzIjoiaHR0cHM6Ly9pZGVudGl0eS54ZXJvLmNvbSIsImF1ZCI6Imh0dHBzOi8vaWRlbnRpdHkueGVyby5jb20vcmVzb3VyY2VzIiwiY2xpZW50X2lkIjoiRUQxMDFFMkFBRkEyNDI3MEI4NUExRkUyM0MxRDg4RTEiLCJzdWIiOiJkZGQyYjkzMmRkZWI1YTIyOTVhYmFmYmU2MTc3ZTZlNCIsImF1dGhfdGltZSI6MTc0NTk5MzUzMSwieGVyb191c2VyaWQiOiJiMDZjNjhkOC1kYzVkLTRhZmEtODdmNS01ZjBjNTcxYjQ1ODEiLCJnbG9iYWxfc2Vzc2lvbl9pZCI6IjE4Y2I0NjAxYTg3ODRmMDFhM2I4Njc4ZWRlMGY0YjZkIiwic2lkIjoiMThjYjQ2MDFhODc4NGYwMWEzYjg2NzhlZGUwZjRiNmQiLCJqdGkiOiI1NzdEQjUyQjk2OTlDQjUyOTY2QjRFQjA0NDkyRkE3RCIsImF1dGhlbnRpY2F0aW9uX2V2ZW50X2lkIjoiZDJkMDExNDUtMTk1Mi00OTI0LWEwY2MtOTUzYjU2YWZiZmQ4Iiwic2NvcGUiOlsiZW1haWwiLCJwcm9maWxlIiwib3BlbmlkIiwiYWNjb3VudGluZy5yZXBvcnRzLnJlYWQiLCJhY2NvdW50aW5nLnNldHRpbmdzIiwiYWNjb3VudGluZy5hdHRhY2htZW50cyIsImFjY291bnRpbmcudHJhbnNhY3Rpb25zIiwiYWNjb3VudGluZy5qb3VybmFscy5yZWFkIiwiYWNjb3VudGluZy5jb250YWN0cyIsIm9mZmxpbmVfYWNjZXNzIl0sImFtciI6WyJwd2QiXX0.aoFn4FT3Hg-tOwrPfnsQUppfO_QCk_vmcHlKTu25z3UsQ8kjRlcaigOl5CPM3G4S_UHWKAZK8cusK1Qq-80C1bX9ZRRZTEZD8WULTNm_3GkUtc7_m3FNZrxmpqEs6bmDTOodxqi9pTlIrMCEBcQjVFX22stgk8Th3aVinBv3w6xvfaWWZbkV-yV-LGgZrtQqT-w2pvTMHCFmmHJ-PmCRb_HtqoZTVwFZcRyF2xPEN3hcIQWB9sp2iQyCCVxJNo7kmM6ffl4FVo668aQOdRM6nG8YYU5h8FdMUczZGc7CRv8aEzibOOD5gZ3Whr_PZ8exBRdVKizhDGg3ZS6Vo2n15Q',
-//   expires_at: 1745995341,
-//   token_type: 'Bearer',
-//   refresh_token: '2qcxgHr3_LLXR9mw3kMC92vFQH7zAyZjH7l0_TKakTk',
-//   scope: 'openid profile email accounting.settings accounting.reports.read accounting.journals.read accounting.contacts accounting.attachments accounting.transactions offline_access'
-// }
 
 export const getXeroContacts = async (req: Request, res: Response) => {
   if (req.session.xeroActiveTenants == undefined) {
@@ -1190,5 +1180,41 @@ const getContactFromXero = async (contactName: string) => {
     return null;
   } catch (error) {
     throw new Error(error);
+  }
+};
+
+export const disconnectXeroIntegration = async (req: Request, res: Response) => {
+  try {
+    const admin = await prisma.admin.findUnique({
+      where: {
+        userId: req.session.userid,
+      },
+    });
+
+    if (!admin) return res.status(404).json({ message: 'User not found' });
+
+    const tokenSet = (admin.xeroTokenSet as TokenSet) || '';
+
+    // console.log(tokenSet.refresh_token);
+
+    // Set current token set from DB/session
+    xero.setTokenSet(tokenSet);
+
+    // Call the revoke token endpoint
+    // await xero.revokeToken();
+
+    await prisma.admin.update({
+      where: {
+        id: admin.id,
+      },
+      data: {
+        xeroTokenSet: undefined,
+      },
+    });
+
+    return res.status(200).json({ success: true, message: 'Disconnected from Xero successfully.' });
+  } catch (error) {
+    console.error('❌ Failed to disconnect Xero integration:', error);
+    return res.status(400).json({ success: false, message: 'Failed to disconnect from Xero' });
   }
 };
