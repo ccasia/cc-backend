@@ -58,6 +58,10 @@ model User {
   video              Video[]
   rawFootage         RawFootage[]
   photo              Photo[]
+  isActive           Boolean              @default(true)
+  isVerified         Boolean              @default(false)
+  isKWSPCampaign     Boolean?             @default(false)
+  hasSubmittedKWSP   Boolean              @default(false)
 }
 
 model ResetPasswordToken {
