@@ -804,13 +804,22 @@ export const checkRefreshToken = async (req: Request, res: Response) => {
       where: {
         id: userId,
       },
+      include: {
+        admin: {
+          select: {
+            xeroTokenSet: true,
+          },
+        },
+      },
     });
 
     if (!user) {
       return res.status(400).json({ message: 'User not found' });
     }
 
-    if (!user.updateRefershToken) {
+    console.log(user.admin?.xeroTokenSet);
+
+    if (!user.admin?.xeroTokenSet) {
       return res.status(200).json({ token: null });
     }
     const lastRefreshToken: any = new Date(user.updateRefershToken || new Date());
@@ -1208,7 +1217,7 @@ export const disconnectXeroIntegration = async (req: Request, res: Response) => 
         id: admin.id,
       },
       data: {
-        xeroTokenSet: undefined,
+        xeroTokenSet: '',
       },
     });
 
