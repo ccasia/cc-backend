@@ -680,6 +680,7 @@ export const updateInvoice = async (req: Request, res: Response) => {
         );
 
         const adminId = req.session.userid;
+
         if (adminId) {
           const adminLogMessage = `Updated Invoice for - "${creatorUser?.name}"`;
           logAdminChange(adminLogMessage, adminId, req);
@@ -728,6 +729,7 @@ export const getXero = async (req: Request, res: Response) => {
 };
 
 export const xeroCallBack = async (req: Request, res: Response) => {
+  console.log(req.url);
   try {
     const user = await prisma.user.findUnique({
       where: {
@@ -738,19 +740,12 @@ export const xeroCallBack = async (req: Request, res: Response) => {
     if (!user) return res.status(404).json({ message: 'User not found.' });
 
     const tokenSet: TokenSet = await xero.apiCallback(req.url);
-    await xero.updateTenants();
 
-    const decodedIdToken: any = jwt.decode(tokenSet.id_token as any);
+    // await xero.updateTenants();
+
+    // const decodedIdToken: any = jwt.decode(tokenSet.id_token as any);
+
     const decodedAccessToken: any = jwt.decode(tokenSet.access_token as any);
-
-    req.session.xeroTokenid = decodedIdToken;
-    req.session.xeroToken = decodedAccessToken;
-    req.session.xeroTokenSet = tokenSet;
-    req.session.xeroTenants = xero.tenants;
-    req.session.xeroActiveTenants = xero.tenants[0];
-
-    const today = new Date();
-    const refreshExpiry = new Date(today);
 
     await prisma.user.update({
       where: {
@@ -758,15 +753,30 @@ export const xeroCallBack = async (req: Request, res: Response) => {
       },
       data: {
         xeroRefreshToken: tokenSet.refresh_token,
-        updateRefershToken: new Date(refreshExpiry),
+        updateRefershToken: dayjs().toDate(),
+        admin: {
+          update: {
+            xeroTokenSet: tokenSet as any,
+          },
+        },
       },
     });
 
     return res.status(200).json({ token: decodedAccessToken || null }); // Send the token response back to the client
   } catch (err) {
+    console.log(err);
     return res.status(400).json(error);
   }
 };
+
+// {
+//   id_token: 'eyJhbGciOiJSUzI1NiIsImtpZCI6IjFDQUY4RTY2NzcyRDZEQzAyOEQ2NzI2RkQwMjYxNTgxNTcwRUZDMTkiLCJ0eXAiOiJKV1QiLCJ4NXQiOiJISy1PWm5jdGJjQW8xbkp2MENZVmdWY09fQmsifQ.eyJuYmYiOjE3NDU5OTM1NDEsImV4cCI6MTc0NTk5Mzg0MSwiaXNzIjoiaHR0cHM6Ly9pZGVudGl0eS54ZXJvLmNvbSIsImF1ZCI6IkVEMTAxRTJBQUZBMjQyNzBCODVBMUZFMjNDMUQ4OEUxIiwiaWF0IjoxNzQ1OTkzNTQxLCJhdF9oYXNoIjoiX3hpS0VLNHJWT3RGSlllNFJHbWU1QSIsInNpZCI6IjE4Y2I0NjAxYTg3ODRmMDFhM2I4Njc4ZWRlMGY0YjZkIiwic3ViIjoiZGRkMmI5MzJkZGViNWEyMjk1YWJhZmJlNjE3N2U2ZTQiLCJhdXRoX3RpbWUiOjE3NDU5OTM1MzEsInhlcm9fdXNlcmlkIjoiYjA2YzY4ZDgtZGM1ZC00YWZhLTg3ZjUtNWYwYzU3MWI0NTgxIiwiZ2xvYmFsX3Nlc3Npb25faWQiOiIxOGNiNDYwMWE4Nzg0ZjAxYTNiODY3OGVkZTBmNGI2ZCIsInByZWZlcnJlZF91c2VybmFtZSI6ImF0aXFAY3VsdGNyZWF0aXZlLmFzaWEiLCJlbWFpbCI6ImF0aXFAY3VsdGNyZWF0aXZlLmFzaWEiLCJnaXZlbl9uYW1lIjoiTnVyIEF0aXFhaCIsImZhbWlseV9uYW1lIjoiWmFpbnVsIiwibmFtZSI6Ik51ciBBdGlxYWggWmFpbnVsIiwiYW1yIjpbInB3ZCJdfQ.AqiCqFQ-vcG-ZBJ1EAa7EN9L7XfSldDEBXpGA6OEtMvjp7cmT66g7xNExQfp-nwLfxLnRFxiDiXB-2PROx6LNNyLvA4TNRmggPdnGnEoxcMsVJO-FHRNHxy98JrlSd1QvmpLPUS_sEWVT_c89MJch1UpCrLUR8Bsymitm4slYXpCNEAoNbRGQSXzT9XTSeKCv7FxdinhrdYlDo_w6H_YhL7w9Fitc2ocITqaAGS_3tackOKtfbNEaI1_Ho4z6dBbmv83SAJEwCG8MAzN5c1ji4XGEffec23Y9at_oxS333PePgB5RxfXPFLx8x7cLfrvL2wITUNDWmDQrwMrX51dig',
+//   access_token: 'eyJhbGciOiJSUzI1NiIsImtpZCI6IjFDQUY4RTY2NzcyRDZEQzAyOEQ2NzI2RkQwMjYxNTgxNTcwRUZDMTkiLCJ0eXAiOiJKV1QiLCJ4NXQiOiJISy1PWm5jdGJjQW8xbkp2MENZVmdWY09fQmsifQ.eyJuYmYiOjE3NDU5OTM1NDEsImV4cCI6MTc0NTk5NTM0MSwiaXNzIjoiaHR0cHM6Ly9pZGVudGl0eS54ZXJvLmNvbSIsImF1ZCI6Imh0dHBzOi8vaWRlbnRpdHkueGVyby5jb20vcmVzb3VyY2VzIiwiY2xpZW50X2lkIjoiRUQxMDFFMkFBRkEyNDI3MEI4NUExRkUyM0MxRDg4RTEiLCJzdWIiOiJkZGQyYjkzMmRkZWI1YTIyOTVhYmFmYmU2MTc3ZTZlNCIsImF1dGhfdGltZSI6MTc0NTk5MzUzMSwieGVyb191c2VyaWQiOiJiMDZjNjhkOC1kYzVkLTRhZmEtODdmNS01ZjBjNTcxYjQ1ODEiLCJnbG9iYWxfc2Vzc2lvbl9pZCI6IjE4Y2I0NjAxYTg3ODRmMDFhM2I4Njc4ZWRlMGY0YjZkIiwic2lkIjoiMThjYjQ2MDFhODc4NGYwMWEzYjg2NzhlZGUwZjRiNmQiLCJqdGkiOiI1NzdEQjUyQjk2OTlDQjUyOTY2QjRFQjA0NDkyRkE3RCIsImF1dGhlbnRpY2F0aW9uX2V2ZW50X2lkIjoiZDJkMDExNDUtMTk1Mi00OTI0LWEwY2MtOTUzYjU2YWZiZmQ4Iiwic2NvcGUiOlsiZW1haWwiLCJwcm9maWxlIiwib3BlbmlkIiwiYWNjb3VudGluZy5yZXBvcnRzLnJlYWQiLCJhY2NvdW50aW5nLnNldHRpbmdzIiwiYWNjb3VudGluZy5hdHRhY2htZW50cyIsImFjY291bnRpbmcudHJhbnNhY3Rpb25zIiwiYWNjb3VudGluZy5qb3VybmFscy5yZWFkIiwiYWNjb3VudGluZy5jb250YWN0cyIsIm9mZmxpbmVfYWNjZXNzIl0sImFtciI6WyJwd2QiXX0.aoFn4FT3Hg-tOwrPfnsQUppfO_QCk_vmcHlKTu25z3UsQ8kjRlcaigOl5CPM3G4S_UHWKAZK8cusK1Qq-80C1bX9ZRRZTEZD8WULTNm_3GkUtc7_m3FNZrxmpqEs6bmDTOodxqi9pTlIrMCEBcQjVFX22stgk8Th3aVinBv3w6xvfaWWZbkV-yV-LGgZrtQqT-w2pvTMHCFmmHJ-PmCRb_HtqoZTVwFZcRyF2xPEN3hcIQWB9sp2iQyCCVxJNo7kmM6ffl4FVo668aQOdRM6nG8YYU5h8FdMUczZGc7CRv8aEzibOOD5gZ3Whr_PZ8exBRdVKizhDGg3ZS6Vo2n15Q',
+//   expires_at: 1745995341,
+//   token_type: 'Bearer',
+//   refresh_token: '2qcxgHr3_LLXR9mw3kMC92vFQH7zAyZjH7l0_TKakTk',
+//   scope: 'openid profile email accounting.settings accounting.reports.read accounting.journals.read accounting.contacts accounting.attachments accounting.transactions offline_access'
+// }
 
 export const getXeroContacts = async (req: Request, res: Response) => {
   if (req.session.xeroActiveTenants == undefined) {
@@ -831,60 +841,88 @@ export const checkAndRefreshAccessToken = async (req: Request, res: Response, ne
       where: {
         id: userId,
       },
+      include: {
+        admin: {
+          select: {
+            xeroTokenSet: true,
+          },
+        },
+      },
     });
 
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
     const refreshTokenUser = user?.xeroRefreshToken;
+    const tokenSet: TokenSet = (user.admin?.xeroTokenSet as TokenSet) || null;
 
-    if (!req.session.xeroTokenSet) {
-      const tokenSet: TokenSet = await xero.refreshWithRefreshToken(client_id, client_secret, refreshTokenUser);
-      await xero.updateTenants();
+    if (!tokenSet) return res.status(404).json({ message: 'You are not connected to Xero' });
 
-      const newTokenSet = xero.readTokenSet();
-      const decodedAccessTokenRef = jwt.decode(tokenSet.access_token as any);
-      const decodedIdToken: any = jwt.decode(tokenSet.id_token as any);
+    xero.setTokenSet(tokenSet);
 
-      req.session.xeroTokenid = decodedIdToken;
-      req.session.xeroToken = decodedAccessTokenRef;
-      req.session.xeroTokenSet = tokenSet;
-      req.session.xeroTenants = xero.tenants;
-      req.session.xeroActiveTenants = xero.tenants[0];
+    if (dayjs(tokenSet.expires_at).isAfter(dayjs(), 'date')) {
+      const validTokenSet = await xero.refreshToken();
+      // save the new tokenset
 
-      await prisma.user.update({
+      await prisma.admin.update({
         where: {
-          id: req.session.userid,
+          userId: user.id,
         },
         data: {
-          xeroRefreshToken: tokenSet.refresh_token,
+          xeroTokenSet: validTokenSet as any,
         },
       });
     }
-    const decodedAccessToken = jwt.decode(req.session.xeroTokenSet.access_token) as any;
 
-    const currentTime = Math.floor(Date.now() / 1000);
+    // if (!req.session.xeroTokenSet) {
+    //   const tokenSet: TokenSet = await xero.refreshWithRefreshToken(client_id, client_secret, refreshTokenUser);
+    //   await xero.updateTenants();
 
-    if (decodedAccessToken) {
-      const tokenSet: TokenSet = await xero.refreshWithRefreshToken(client_id, client_secret, refreshTokenUser);
-      await xero.updateTenants();
+    //   const newTokenSet = xero.readTokenSet();
+    //   const decodedAccessTokenRef = jwt.decode(tokenSet.access_token as any);
+    //   const decodedIdToken: any = jwt.decode(tokenSet.id_token as any);
 
-      const newTokenSet = xero.readTokenSet();
-      const decodedAccessTokenRef = jwt.decode(tokenSet.access_token as any);
-      const decodedIdToken: any = jwt.decode(tokenSet.id_token as any);
+    //   req.session.xeroTokenid = decodedIdToken;
+    //   req.session.xeroToken = decodedAccessTokenRef;
+    //   req.session.xeroTokenSet = tokenSet;
+    //   req.session.xeroTenants = xero.tenants;
+    //   req.session.xeroActiveTenants = xero.tenants[0];
 
-      req.session.xeroTokenid = decodedIdToken;
-      req.session.xeroToken = decodedAccessTokenRef;
-      req.session.xeroTokenSet = tokenSet;
-      req.session.xeroTenants = xero.tenants;
-      req.session.xeroActiveTenants = xero.tenants[0];
+    //   await prisma.user.update({
+    //     where: {
+    //       id: req.session.userid,
+    //     },
+    //     data: {
+    //       xeroRefreshToken: tokenSet.refresh_token,
+    //     },
+    //   });
+    // }
+    // const decodedAccessToken = jwt.decode(req.session.xeroTokenSet.access_token) as any;
 
-      await prisma.user.update({
-        where: {
-          id: req.session.userid,
-        },
-        data: {
-          xeroRefreshToken: tokenSet.refresh_token,
-        },
-      });
-    }
+    // const currentTime = Math.floor(Date.now() / 1000);
+
+    // if (decodedAccessToken) {
+    //   const tokenSet: TokenSet = await xero.refreshWithRefreshToken(client_id, client_secret, refreshTokenUser);
+    //   await xero.updateTenants();
+
+    //   const newTokenSet = xero.readTokenSet();
+    //   const decodedAccessTokenRef = jwt.decode(tokenSet.access_token as any);
+    //   const decodedIdToken: any = jwt.decode(tokenSet.id_token as any);
+
+    //   req.session.xeroTokenid = decodedIdToken;
+    //   req.session.xeroToken = decodedAccessTokenRef;
+    //   req.session.xeroTokenSet = tokenSet;
+    //   req.session.xeroTenants = xero.tenants;
+    //   req.session.xeroActiveTenants = xero.tenants[0];
+
+    //   await prisma.user.update({
+    //     where: {
+    //       id: req.session.userid,
+    //     },
+    //     data: {
+    //       xeroRefreshToken: tokenSet.refresh_token,
+    //     },
+    //   });
+    // }
 
     next();
   } catch (err) {
