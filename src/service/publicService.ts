@@ -3,8 +3,11 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-export const generateCampaignAccessService = async (campaignId: string, expiryInDays: number = 7) => {
-  const password = crypto.randomBytes(8).toString('base64').replace(/[^a-zA-Z0-9]/g, '');
+export const generateCampaignAccessService = async (campaignId: string, expiryInDays = 7) => {
+  const password = crypto
+    .randomBytes(8)
+    .toString('base64')
+    .replace(/[^a-zA-Z0-9]/g, '');
 
   const expiryDate = new Date();
   expiryDate.setDate(expiryDate.getDate() + expiryInDays);
@@ -17,7 +20,7 @@ export const generateCampaignAccessService = async (campaignId: string, expiryIn
   if (existingAccess) {
     // Update the existing record
     await prisma.publicAccess.update({
-      where: { id: existingAccess.id }, 
+      where: { id: existingAccess.id },
       data: { password, expiryDate },
     });
   } else {
@@ -45,19 +48,21 @@ export const validateCampaignPasswordService = async (campaignId: string, inputP
   return true;
 };
 
-
 export const regenerateCampaignPasswordService = async (campaignId: string, expiryInMinutes: number) => {
   // Fetch the most recent record for the given campaignId
   const existingAccess = await prisma.publicAccess.findFirst({
     where: { campaignId },
-    orderBy: { createdAt: 'desc' }, 
+    orderBy: { createdAt: 'desc' },
   });
 
   if (!existingAccess) {
     throw new Error('No existing password found for this campaign');
   }
 
-  const newPassword = crypto.randomBytes(8).toString('base64').replace(/[^a-zA-Z0-9]/g, '');
+  const newPassword = crypto
+    .randomBytes(8)
+    .toString('base64')
+    .replace(/[^a-zA-Z0-9]/g, '');
 
   const expiryDate = new Date();
   expiryDate.setMinutes(expiryDate.getMinutes() + expiryInMinutes);
@@ -71,4 +76,3 @@ export const regenerateCampaignPasswordService = async (campaignId: string, expi
   const url = `${process.env.BASE_EMAIL_URL}/public/access/${campaignId}`;
   return { url, password: newPassword };
 };
-

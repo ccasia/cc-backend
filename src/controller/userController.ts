@@ -107,7 +107,6 @@ export const getAdminLogs = async (req: Request, res: Response) => {
   }
 };
 
-
 // export const approveOrReject = async (req: Request, res: Response) => {
 //   const { approve } = req.body;
 
