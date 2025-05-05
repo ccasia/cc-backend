@@ -12,6 +12,8 @@ interface CreatorData {
 // Define the expected headers for the creator spreadsheet
 const CREATOR_HEADERS = ['Name', 'Email', 'Phone Number', 'Country'];
 
+const title = process.env.NODE_ENV === 'production' ? 'Production' : 'Staging';
+
 /**
  * Save registered creator information to Google Spreadsheet
  * @param creatorData Object containing creator information
@@ -21,7 +23,7 @@ export const saveCreatorToSpreadsheet = async (creatorData: CreatorData): Promis
   try {
     // Get environment variables
     const SPREADSHEET_ID = process.env.REGISTERED_CREATORS_SPREADSHEET_ID;
-    
+
     if (!SPREADSHEET_ID) {
       console.error('Missing REGISTERED_CREATORS_SPREADSHEET_ID environment variable');
       return false;
@@ -32,11 +34,10 @@ export const saveCreatorToSpreadsheet = async (creatorData: CreatorData): Promis
     console.log(`Spreadsheet title: ${doc.title}`);
 
     let sheet;
-    
+
     // Check if there are any existing sheets
     if (doc.sheetCount > 0) {
-
-      sheet = doc.sheetsByIndex[0];
+      sheet = doc.sheetsByTitle[title];
       console.log(`Using existing sheet: ${sheet.title}`);
 
       try {
@@ -45,28 +46,28 @@ export const saveCreatorToSpreadsheet = async (creatorData: CreatorData): Promis
       } catch (headerError) {
         console.error('Error setting headers on existing sheet:', headerError);
         // If setting headers fails, try creating a new sheet
-        sheet = await doc.addSheet({ 
-          title: 'Registered Creators', 
-          headerValues: CREATOR_HEADERS 
+        sheet = await doc.addSheet({
+          title: 'Registered Creators',
+          headerValues: CREATOR_HEADERS,
         });
         console.log('Created new sheet with headers after error');
       }
     } else {
       // No sheets exist, create a new one
-      sheet = await doc.addSheet({ 
-        title: 'Registered Creators', 
-        headerValues: CREATOR_HEADERS 
+      sheet = await doc.addSheet({
+        title: 'Registered Creators',
+        headerValues: CREATOR_HEADERS,
       });
       console.log('Created new sheet with headers');
     }
-    
+
     // After ensuring headers exist, add the new row
     // Match the property names exactly to the headers
     const result = await sheet.addRow({
-      'Name': creatorData.name || '',
-      'Email': creatorData.email || '',
+      Name: creatorData.name || '',
+      Email: creatorData.email || '',
       'Phone Number': creatorData.phoneNumber || '',
-      'Country': creatorData.country || '',
+      Country: creatorData.country || '',
     });
 
     console.log(`Successfully added creator ${creatorData.name} to spreadsheet`);

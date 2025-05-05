@@ -272,8 +272,8 @@ export const registerCreator = async (req: Request, res: Response) => {
         name: result.user.name || '',
         email: result.user.email,
         phoneNumber: result.user.phoneNumber || '',
-        country: result.user.country || ''
-      }).catch(error => {
+        country: result.user.country || '',
+      }).catch((error) => {
         console.error('Error saving creator to spreadsheet:', error);
       });
 
