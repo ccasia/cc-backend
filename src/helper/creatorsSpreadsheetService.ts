@@ -26,7 +26,6 @@ export const exportCreatorsToSpreadsheet = async (): Promise<string> => {
     console.log(`Using spreadsheet ID: ${SPREADSHEET_ID}`);
 
     // Connect to the spreadsheet
-    console.log('Connecting to Google Sheets API');
     const doc = await accessGoogleSheetAPI(SPREADSHEET_ID);
     await doc.loadInfo();
     console.log(`Connected to spreadsheet: ${doc.title}`);
@@ -40,7 +39,6 @@ export const exportCreatorsToSpreadsheet = async (): Promise<string> => {
       console.log(`Found existing sheet: ${sheet.title}`);
       
       // Load the sheet data first to ensure headers are available
-      console.log('Loading sheet data...');
       await sheet.loadHeaderRow();
       console.log('Sheet header row loaded');
       
@@ -51,28 +49,24 @@ export const exportCreatorsToSpreadsheet = async (): Promise<string> => {
         
         // Check if headers match expected ones
         if (!headers || headers.length === 0 || !arraysEqual(headers, CREATOR_HEADERS)) {
-          console.log('Setting headers on existing sheet');
           await sheet.setHeaderRow(CREATOR_HEADERS);
           console.log('Headers updated successfully');
         }
       } catch (headerError) {
         console.error('Error checking headers:', headerError);
-        console.log('Attempting to set headers directly');
         await sheet.setHeaderRow(CREATOR_HEADERS);
         console.log('Headers set successfully');
       }
     } else {
       // No sheets exist, create a new one
-      console.log('No sheets found, creating new sheet');
+
       sheet = await doc.addSheet({ 
         title: 'Registered Creators', 
         headerValues: CREATOR_HEADERS 
       });
-      console.log('Created new sheet with headers');
     }
     
     // Fetch all existing rows from the spreadsheet
-    console.log('Fetching existing data from spreadsheet');
     const existingRows = await sheet.getRows();
     console.log(`Found ${existingRows.length} existing records in spreadsheet`);
     
@@ -86,7 +80,6 @@ export const exportCreatorsToSpreadsheet = async (): Promise<string> => {
     console.log(`Found ${existingEmails.size} unique emails in spreadsheet`);
     
     // Fetch all creators from the database
-    console.log('Fetching creators from database');
     const users = await prisma.user.findMany({
       where: {
         role: 'creator',
@@ -95,8 +88,7 @@ export const exportCreatorsToSpreadsheet = async (): Promise<string> => {
         creator: true,
       },
     });
-    console.log(`Found ${users.length} creators in database`);
-    
+
     // Identify new records that don't exist in the spreadsheet
     const newRows = [];
     for (const user of users) {
@@ -110,11 +102,9 @@ export const exportCreatorsToSpreadsheet = async (): Promise<string> => {
         });
       }
     }
-    console.log(`Identified ${newRows.length} new creators to add to spreadsheet`);
     
     // Add the new rows to the sheet
     if (newRows.length > 0) {
-      console.log('Adding new rows to spreadsheet...');
       await sheet.addRows(newRows);
       console.log(`Successfully added ${newRows.length} new creators to spreadsheet`);
     } else {
