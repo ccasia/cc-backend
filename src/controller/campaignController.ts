@@ -2937,7 +2937,7 @@ export const creatorAgreements = async (req: Request, res: Response) => {
 export const updateAmountAgreement = async (req: Request, res: Response) => {
   try {
     const { paymentAmount, currency, user, campaignId, id: agreementId } = JSON.parse(req.body.data);
-    
+
     console.log('Received update data:', { paymentAmount, currency, campaignId, agreementId });
 
     const creator = await prisma.user.findUnique({
@@ -2975,7 +2975,7 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
       },
       data: {
         amount: parseInt(paymentAmount),
-        currency: currency
+        currency: currency,
       },
     });
 
@@ -3021,7 +3021,7 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
 
     return res.status(200).json({
       message: 'Agreement updated successfully',
-      agreement: updatedAgreement
+      agreement: updatedAgreement,
     });
   } catch (error) {
     console.error('Error in updateAmountAgreement:', error);

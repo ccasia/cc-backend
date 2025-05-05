@@ -9,7 +9,7 @@ import {
   checkForgetPasswordToken,
   changePassword,
   getOverview,
-  getAdminLogs
+  getAdminLogs,
 } from '@controllers/userController';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 import { isLoggedIn } from '@middlewares/onlyLogin';
