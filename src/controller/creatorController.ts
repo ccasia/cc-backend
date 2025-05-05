@@ -781,19 +781,19 @@ export const exportCreatorsToSheet = async (req: Request, res: Response) => {
   try {
     // Call the service function to export creators to spreadsheet
     const spreadsheetUrl = await exportCreatorsToSpreadsheet();
-    
+
     // Return the URL of the spreadsheet
-    return res.status(200).json({ 
-      success: true, 
-      message: 'Creators exported to spreadsheet successfully', 
-      url: spreadsheetUrl 
+    return res.status(200).json({
+      success: true,
+      message: 'Creators exported to spreadsheet successfully',
+      url: spreadsheetUrl,
     });
   } catch (error) {
     console.error('Error in exportCreatorsToSheet controller: ', error);
-    return res.status(500).json({ 
-      success: false, 
-      message: 'Failed to export creators to spreadsheet', 
-      error: error.message 
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to export creators to spreadsheet',
+      error: error.message,
     });
   }
 };

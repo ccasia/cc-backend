@@ -680,6 +680,7 @@ export const updateInvoice = async (req: Request, res: Response) => {
         );
 
         const adminId = req.session.userid;
+
         if (adminId) {
           const adminLogMessage = `Updated Invoice for - "${creatorUser?.name}"`;
           logAdminChange(adminLogMessage, adminId, req);
@@ -738,19 +739,12 @@ export const xeroCallBack = async (req: Request, res: Response) => {
     if (!user) return res.status(404).json({ message: 'User not found.' });
 
     const tokenSet: TokenSet = await xero.apiCallback(req.url);
-    await xero.updateTenants();
 
-    const decodedIdToken: any = jwt.decode(tokenSet.id_token as any);
+    // await xero.updateTenants();
+
+    // const decodedIdToken: any = jwt.decode(tokenSet.id_token as any);
+
     const decodedAccessToken: any = jwt.decode(tokenSet.access_token as any);
-
-    req.session.xeroTokenid = decodedIdToken;
-    req.session.xeroToken = decodedAccessToken;
-    req.session.xeroTokenSet = tokenSet;
-    req.session.xeroTenants = xero.tenants;
-    req.session.xeroActiveTenants = xero.tenants[0];
-
-    const today = new Date();
-    const refreshExpiry = new Date(today);
 
     await prisma.user.update({
       where: {
@@ -758,12 +752,18 @@ export const xeroCallBack = async (req: Request, res: Response) => {
       },
       data: {
         xeroRefreshToken: tokenSet.refresh_token,
-        updateRefershToken: new Date(refreshExpiry),
+        updateRefershToken: dayjs().toDate(),
+        admin: {
+          update: {
+            xeroTokenSet: tokenSet as any,
+          },
+        },
       },
     });
 
     return res.status(200).json({ token: decodedAccessToken || null }); // Send the token response back to the client
   } catch (err) {
+    console.log(err);
     return res.status(400).json(error);
   }
 };
@@ -804,13 +804,22 @@ export const checkRefreshToken = async (req: Request, res: Response) => {
       where: {
         id: userId,
       },
+      include: {
+        admin: {
+          select: {
+            xeroTokenSet: true,
+          },
+        },
+      },
     });
 
     if (!user) {
       return res.status(400).json({ message: 'User not found' });
     }
 
-    if (!user.updateRefershToken) {
+    console.log(user.admin?.xeroTokenSet);
+
+    if (!user.admin?.xeroTokenSet) {
       return res.status(200).json({ token: null });
     }
     const lastRefreshToken: any = new Date(user.updateRefershToken || new Date());
@@ -831,60 +840,88 @@ export const checkAndRefreshAccessToken = async (req: Request, res: Response, ne
       where: {
         id: userId,
       },
+      include: {
+        admin: {
+          select: {
+            xeroTokenSet: true,
+          },
+        },
+      },
     });
 
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
     const refreshTokenUser = user?.xeroRefreshToken;
+    const tokenSet: TokenSet = (user.admin?.xeroTokenSet as TokenSet) || null;
 
-    if (!req.session.xeroTokenSet) {
-      const tokenSet: TokenSet = await xero.refreshWithRefreshToken(client_id, client_secret, refreshTokenUser);
-      await xero.updateTenants();
+    if (!tokenSet) return res.status(404).json({ message: 'You are not connected to Xero' });
 
-      const newTokenSet = xero.readTokenSet();
-      const decodedAccessTokenRef = jwt.decode(tokenSet.access_token as any);
-      const decodedIdToken: any = jwt.decode(tokenSet.id_token as any);
+    xero.setTokenSet(tokenSet);
 
-      req.session.xeroTokenid = decodedIdToken;
-      req.session.xeroToken = decodedAccessTokenRef;
-      req.session.xeroTokenSet = tokenSet;
-      req.session.xeroTenants = xero.tenants;
-      req.session.xeroActiveTenants = xero.tenants[0];
+    if (dayjs(tokenSet.expires_at).isAfter(dayjs(), 'date')) {
+      const validTokenSet = await xero.refreshToken();
+      // save the new tokenset
 
-      await prisma.user.update({
+      await prisma.admin.update({
         where: {
-          id: req.session.userid,
+          userId: user.id,
         },
         data: {
-          xeroRefreshToken: tokenSet.refresh_token,
+          xeroTokenSet: validTokenSet as any,
         },
       });
     }
-    const decodedAccessToken = jwt.decode(req.session.xeroTokenSet.access_token) as any;
 
-    const currentTime = Math.floor(Date.now() / 1000);
+    // if (!req.session.xeroTokenSet) {
+    //   const tokenSet: TokenSet = await xero.refreshWithRefreshToken(client_id, client_secret, refreshTokenUser);
+    //   await xero.updateTenants();
 
-    if (decodedAccessToken) {
-      const tokenSet: TokenSet = await xero.refreshWithRefreshToken(client_id, client_secret, refreshTokenUser);
-      await xero.updateTenants();
+    //   const newTokenSet = xero.readTokenSet();
+    //   const decodedAccessTokenRef = jwt.decode(tokenSet.access_token as any);
+    //   const decodedIdToken: any = jwt.decode(tokenSet.id_token as any);
 
-      const newTokenSet = xero.readTokenSet();
-      const decodedAccessTokenRef = jwt.decode(tokenSet.access_token as any);
-      const decodedIdToken: any = jwt.decode(tokenSet.id_token as any);
+    //   req.session.xeroTokenid = decodedIdToken;
+    //   req.session.xeroToken = decodedAccessTokenRef;
+    //   req.session.xeroTokenSet = tokenSet;
+    //   req.session.xeroTenants = xero.tenants;
+    //   req.session.xeroActiveTenants = xero.tenants[0];
 
-      req.session.xeroTokenid = decodedIdToken;
-      req.session.xeroToken = decodedAccessTokenRef;
-      req.session.xeroTokenSet = tokenSet;
-      req.session.xeroTenants = xero.tenants;
-      req.session.xeroActiveTenants = xero.tenants[0];
+    //   await prisma.user.update({
+    //     where: {
+    //       id: req.session.userid,
+    //     },
+    //     data: {
+    //       xeroRefreshToken: tokenSet.refresh_token,
+    //     },
+    //   });
+    // }
+    // const decodedAccessToken = jwt.decode(req.session.xeroTokenSet.access_token) as any;
 
-      await prisma.user.update({
-        where: {
-          id: req.session.userid,
-        },
-        data: {
-          xeroRefreshToken: tokenSet.refresh_token,
-        },
-      });
-    }
+    // const currentTime = Math.floor(Date.now() / 1000);
+
+    // if (decodedAccessToken) {
+    //   const tokenSet: TokenSet = await xero.refreshWithRefreshToken(client_id, client_secret, refreshTokenUser);
+    //   await xero.updateTenants();
+
+    //   const newTokenSet = xero.readTokenSet();
+    //   const decodedAccessTokenRef = jwt.decode(tokenSet.access_token as any);
+    //   const decodedIdToken: any = jwt.decode(tokenSet.id_token as any);
+
+    //   req.session.xeroTokenid = decodedIdToken;
+    //   req.session.xeroToken = decodedAccessTokenRef;
+    //   req.session.xeroTokenSet = tokenSet;
+    //   req.session.xeroTenants = xero.tenants;
+    //   req.session.xeroActiveTenants = xero.tenants[0];
+
+    //   await prisma.user.update({
+    //     where: {
+    //       id: req.session.userid,
+    //     },
+    //     data: {
+    //       xeroRefreshToken: tokenSet.refresh_token,
+    //     },
+    //   });
+    // }
 
     next();
   } catch (err) {
@@ -1152,5 +1189,41 @@ const getContactFromXero = async (contactName: string) => {
     return null;
   } catch (error) {
     throw new Error(error);
+  }
+};
+
+export const disconnectXeroIntegration = async (req: Request, res: Response) => {
+  try {
+    const admin = await prisma.admin.findUnique({
+      where: {
+        userId: req.session.userid,
+      },
+    });
+
+    if (!admin) return res.status(404).json({ message: 'User not found' });
+
+    const tokenSet = (admin.xeroTokenSet as TokenSet) || '';
+
+    // console.log(tokenSet.refresh_token);
+
+    // Set current token set from DB/session
+    xero.setTokenSet(tokenSet);
+
+    // Call the revoke token endpoint
+    // await xero.revokeToken();
+
+    await prisma.admin.update({
+      where: {
+        id: admin.id,
+      },
+      data: {
+        xeroTokenSet: '',
+      },
+    });
+
+    return res.status(200).json({ success: true, message: 'Disconnected from Xero successfully.' });
+  } catch (error) {
+    console.error('❌ Failed to disconnect Xero integration:', error);
+    return res.status(400).json({ success: false, message: 'Failed to disconnect from Xero' });
   }
 };

@@ -170,8 +170,8 @@ export const createNewKWSPRowData = async ({
     const updatedRow = await currentSheet.addRow({
       'Full Name': data.fullName,
       'NRIC/Passport Number': `'${data.nricPassport}`,
-      'Date': data.date,
-      'Email': data.email,
+      Date: data.date,
+      Email: data.email,
     });
 
     return updatedRow;

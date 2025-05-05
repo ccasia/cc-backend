@@ -1,7 +1,10 @@
 import { Request, Response } from 'express';
 import { Entity, Invoice, PrismaClient, FeedbackType } from '@prisma/client';
-import { generateCampaignAccessService, validateCampaignPasswordService, regenerateCampaignPasswordService } from '@services/publicService';
-
+import {
+  generateCampaignAccessService,
+  validateCampaignPasswordService,
+  regenerateCampaignPasswordService,
+} from '@services/publicService';
 
 const prisma = new PrismaClient();
 
@@ -17,9 +20,6 @@ export const generateCampaignAccess = async (req: Request, res: Response) => {
     return res.status(400).json({ error: error.message });
   }
 };
-
-
-
 
 // Validate campaign password
 export const validateCampaignPassword = async (req: Request, res: Response) => {
@@ -72,12 +72,11 @@ export const publicSubmitFeedback = async (req: Request, res: Response) => {
     //   return res.status(400).json({ message: 'Invalid feedback type' });
     // }
 
-
     // Prepare feedback data
-    let feedbackData = {
+    const feedbackData = {
       content: feedback,
       type: FeedbackType.REQUEST,
-      reasons: reasons || [],   // Default to empty array if no reasons provided
+      reasons: reasons || [], // Default to empty array if no reasons provided
       submissionId: submissionId,
     };
 
@@ -99,4 +98,3 @@ export const publicSubmitFeedback = async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'An error occurred while submitting feedback.' });
   }
 };
-

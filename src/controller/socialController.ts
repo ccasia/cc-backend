@@ -67,8 +67,6 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
 
     const { access_token, refresh_token } = tokenResponse.data;
 
-    console.log(tokenResponse.data);
-
     const encryptedAccessToken = encryptToken(access_token);
     const encryptedRefreshToken = encryptToken(refresh_token);
 

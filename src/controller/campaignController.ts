@@ -517,7 +517,7 @@ export const createCampaign = async (req: Request, res: Response) => {
           }),
         );
 
-        logChange('Campaign Created', campaign.id, req);
+        logChange('Created the Campaign', campaign.id, req);
 
         const adminId = req.session.userid;
         if (adminId) {
@@ -1529,7 +1529,7 @@ export const editCampaignInfo = async (req: Request, res: Response) => {
       },
     });
 
-    const message = 'Updated campaign info';
+    const message = 'Updated campaign information';
     logChange(message, id, req);
 
     if (adminId) {
@@ -1641,7 +1641,7 @@ export const editCampaignRequirements = async (req: Request, res: Response) => {
       },
     });
 
-    const message = 'Campaign requirements updated successfully.';
+    const message = 'Updated campaign requirements';
     logChange(message, campaignId, req);
 
     const adminmessage = `Update Campaign requirements for campaign - ${updatedCampaignRequirement.campaign.name} `;
@@ -2937,7 +2937,7 @@ export const creatorAgreements = async (req: Request, res: Response) => {
 export const updateAmountAgreement = async (req: Request, res: Response) => {
   try {
     const { paymentAmount, currency, user, campaignId, id: agreementId } = JSON.parse(req.body.data);
-    
+
     console.log('Received update data:', { paymentAmount, currency, campaignId, agreementId });
 
     const creator = await prisma.user.findUnique({
@@ -2975,7 +2975,7 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
       },
       data: {
         amount: parseInt(paymentAmount),
-        currency: currency
+        currency: currency,
       },
     });
 
@@ -3021,7 +3021,7 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
 
     return res.status(200).json({
       message: 'Agreement updated successfully',
-      agreement: updatedAgreement
+      agreement: updatedAgreement,
     });
   } catch (error) {
     console.error('Error in updateAmountAgreement:', error);

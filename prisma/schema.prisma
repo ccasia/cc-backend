@@ -74,13 +74,17 @@ model ResetPasswordToken {
 }
 
 model Admin {
-  id                    String                  @id @unique @default(cuid())
-  mode                  Mode                    @default(normal)
-  inviteToken           String?                 @unique
-  userId                String                  @unique
-  roleId                String?
-  role                  Role?                   @relation(fields: [roleId], references: [id])
-  user                  User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id          String  @id @unique @default(cuid())
+  mode        Mode    @default(normal)
+  inviteToken String? @unique
+  userId      String  @unique
+  roleId      String?
+
+  xeroTokenSet Json?
+
+  role Role? @relation(fields: [roleId], references: [id])
+  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   adminPermissionModule AdminPermissionModule[]
   campaignAdmin         CampaignAdmin[]
   adminLogs             AdminLog[]              @relation("AdminToAdminLog")
