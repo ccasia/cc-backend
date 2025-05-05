@@ -10,6 +10,7 @@ import { verifyToken } from '@utils/jwtHelper';
 import { uploadImage, uploadProfileImage } from '@configs/cloudStorage.config';
 import { createKanbanBoard } from './kanbanController';
 import axios from 'axios';
+import { saveCreatorToSpreadsheet } from '@helper/registeredCreatorSpreadsheet';
 
 const prisma = new PrismaClient();
 
@@ -265,6 +266,16 @@ export const registerCreator = async (req: Request, res: Response) => {
       // Send verification email
       const token = jwt.sign({ id: result.user.id }, process.env.ACCESSKEY as Secret, { expiresIn: '15m' });
       creatorVerificationEmail(result.user.email, token);
+
+      // Save creator information to Google Spreadsheet
+      saveCreatorToSpreadsheet({
+        name: result.user.name || '',
+        email: result.user.email,
+        phoneNumber: result.user.phoneNumber || '',
+        country: result.user.country || ''
+      }).catch(error => {
+        console.error('Error saving creator to spreadsheet:', error);
+      });
 
       return res.status(201).json({ user: result.user.email });
     }

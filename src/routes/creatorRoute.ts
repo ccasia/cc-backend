@@ -17,6 +17,7 @@ import {
   updateSocialMedia,
   getPartnerships,
   updateCreatorPreference,
+  exportCreatorsToSheet
 } from '@controllers/creatorController';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 // import { needPermissions } from '@middlewares/needPermissions';
@@ -32,6 +33,8 @@ router.get('/public/getCreatorFullInfoById/:id', getCreatorFullInfoByIdPublic);
 router.get('/getCreatorSocialMediaData', getCreatorSocialMediaData);
 router.get('/creator/:id/social-media', getCreatorSocialMediaDataById);
 router.get('/getPartnerships/:id', isLoggedIn, getPartnerships);
+
+router.get('/exportCreators', isSuperAdmin, exportCreatorsToSheet)
 
 // router.post('/crawl', crawlCreator);
 
