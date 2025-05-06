@@ -817,8 +817,6 @@ export const checkRefreshToken = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'User not found' });
     }
 
-    console.log(user.admin?.xeroTokenSet);
-
     if (!user.admin?.xeroTokenSet) {
       return res.status(200).json({ token: null });
     }
@@ -858,7 +856,7 @@ export const checkAndRefreshAccessToken = async (req: Request, res: Response, ne
 
     xero.setTokenSet(tokenSet);
 
-    if (dayjs(tokenSet.expires_at).isAfter(dayjs(), 'date')) {
+    if (dayjs(tokenSet.expires_at).isBefore(dayjs())) {
       const validTokenSet = await xero.refreshToken();
       // save the new tokenset
 
