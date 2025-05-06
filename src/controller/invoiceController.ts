@@ -591,8 +591,6 @@ export const updateInvoice = async (req: Request, res: Response) => {
     reason,
   }: invoiceData = req.body;
 
-  console.log(req.body);
-
   try {
     const invoice = await prisma.$transaction(async (tx) => {
       const updatedInvoice = await tx.invoice.update({
@@ -980,11 +978,9 @@ export const createXeroContact = async (bankInfo: any, creator: any, invoiceFrom
     bankAccountDetails: bankInfo.accountNumber,
   };
 
-  console.log(xero);
-
   try {
     const response = await xero.accountingApi.createContacts(xero.tenants[0].tenantId, { contacts: [contact] });
-    console.log('RESPONSE', response);
+
     return response.body.contacts;
   } catch (error) {
     console.log('SADSAD', error);
