@@ -985,7 +985,7 @@ export const createXeroContact = async (bankInfo: any, creator: any, invoiceFrom
     console.log('RESPONSE', response);
     return response.body.contacts;
   } catch (error) {
-    console.log('SADSAD');
+    console.log('SADSAD', error);
     return error;
   }
 };
