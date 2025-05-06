@@ -854,6 +854,8 @@ export const checkAndRefreshAccessToken = async (req: Request, res: Response, ne
 
     if (!tokenSet) return res.status(404).json({ message: 'You are not connected to Xero' });
 
+    await xero.initialize();
+
     xero.setTokenSet(tokenSet);
 
     if (dayjs(tokenSet.expires_at).isBefore(dayjs())) {
