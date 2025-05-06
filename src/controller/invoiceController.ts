@@ -591,6 +591,8 @@ export const updateInvoice = async (req: Request, res: Response) => {
     reason,
   }: invoiceData = req.body;
 
+  console.log(req.body);
+
   try {
     const invoice = await prisma.$transaction(async (tx) => {
       const updatedInvoice = await tx.invoice.update({
