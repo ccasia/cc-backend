@@ -421,7 +421,7 @@ export const updatePaymentForm = async (req: Request, res: Response) => {
       },
     });
     // {"payTo":"Dan","bankName":"Affin Bank Berhad","accountName":"asdasdasd","accountEmail":"debis60817@lxheir.com","accountNumber":"131231231"}
-    if (!existingPaymentForm) return res.status(404).json({ message: 'Payment form not found' });
+    // if (!existingPaymentForm) return res.status(404).json({ message: 'Payment form not found' });
 
     if (existingPaymentForm?.status === 'rejected') {
       const { name, email } = existingPaymentForm.user;
