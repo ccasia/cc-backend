@@ -633,7 +633,9 @@ export const updateInvoice = async (req: Request, res: Response) => {
       let contactID = updatedInvoice.creator.xeroContactId;
 
       if (newContact) {
+        console.log('Start');
         const [contact] = await createXeroContact(bankInfo, updatedInvoice.creator, updatedInvoice.user, invoiceFrom);
+        console.log('End', contact);
         contactID = contact.contactID;
 
         await tx.creator.update({
@@ -979,7 +981,7 @@ export const createXeroContact = async (bankInfo: any, creator: any, user: any, 
 
   try {
     const response = await xero.accountingApi.createContacts(xero.tenants[0].tenantId, { contacts: [contact] });
-    console.log(response);
+    // console.log(response);
     return response.body.contacts;
   } catch (error) {
     return error;
