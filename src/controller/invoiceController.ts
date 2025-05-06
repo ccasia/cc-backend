@@ -979,6 +979,7 @@ export const createXeroContact = async (bankInfo: any, creator: any, user: any, 
 
   try {
     const response = await xero.accountingApi.createContacts(xero.tenants[0].tenantId, { contacts: [contact] });
+    console.log(response);
     return response.body.contacts;
   } catch (error) {
     return error;
