@@ -696,7 +696,7 @@ export const updateCreator = async (req: Request, res: Response) => {
             }
           : {}),
         socialMediaData: parsedSocialMediaData, // Store as JSON object
-        // isOnBoardingFormCompleted: true,
+        isOnBoardingFormCompleted: true,
       },
       include: {
         interests: true,
@@ -710,6 +710,7 @@ export const updateCreator = async (req: Request, res: Response) => {
 
     return res.status(200).json({ name: creator.user.name });
   } catch (error) {
+    console.log(error);
     return res.status(400).json({ message: 'Error updating creator', error: error.message });
   }
 };
