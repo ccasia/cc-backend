@@ -1,6 +1,8 @@
 import passport from 'passport';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, User } from '@prisma/client';
+import { createKanbanBoard } from '@controllers/kanbanController';
+import { saveCreatorToSpreadsheet } from '@helper/registeredCreatorSpreadsheet';
 
 const prisma = new PrismaClient();
 
@@ -14,15 +16,15 @@ passport.use(
     async (accessToken, refreshToken, profile, done) => {
       try {
         // Check if user exists
-        let user = await prisma.user.findFirst({
+        const existingUser = await prisma.user.findFirst({
           where: {
             OR: [{ email: profile.emails?.[0].value! }, { googleId: profile.id }],
           },
         });
 
-        user = await prisma.user.upsert({
+        const user = await prisma.user.upsert({
           where: {
-            id: user?.id || '',
+            id: existingUser?.id || '',
           },
           update: {
             googleId: profile.id,
@@ -39,7 +41,28 @@ passport.use(
               create: {},
             },
           },
+          include: {
+            Board: true,
+          },
         });
+
+        // If a existing user is not found, then create kanban and save to spreadsheet
+        if (!existingUser) {
+          await createKanbanBoard(user.id, 'creator');
+
+          await saveCreatorToSpreadsheet({
+            name: user.name || '',
+            email: user.email,
+            phoneNumber: user.phoneNumber || '',
+            country: user.country || '',
+          }).catch((error) => {
+            console.error('Error saving creator to spreadsheet:', error);
+          });
+        }
+
+        if (!user.Board) {
+          await createKanbanBoard(user.id, 'creator');
+        }
 
         return done(null, user);
       } catch (err) {

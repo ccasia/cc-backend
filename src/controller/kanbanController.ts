@@ -330,6 +330,14 @@ export const moveTask = async (req: Request, res: Response) => {
 export const createKanbanBoard = async (userId: string, type?: any) => {
   let columns;
   try {
+    const existingBoard = await prisma.board.findFirst({
+      where: {
+        userId: userId,
+      },
+    });
+
+    if (existingBoard) return;
+
     const board = await prisma.board.create({
       data: {
         name: 'My Tasks',
