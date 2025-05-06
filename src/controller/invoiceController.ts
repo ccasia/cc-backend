@@ -633,9 +633,8 @@ export const updateInvoice = async (req: Request, res: Response) => {
       let contactID = updatedInvoice.creator.xeroContactId;
 
       if (newContact) {
-        console.log('Start');
         const [contact] = await createXeroContact(bankInfo, updatedInvoice.creator, updatedInvoice.user, invoiceFrom);
-        console.log('End', contact);
+
         contactID = contact.contactID;
 
         await tx.creator.update({
@@ -963,6 +962,7 @@ export const createXeroInvoice = async (req: Request, res: Response) => {
 };
 
 export const createXeroContact = async (bankInfo: any, creator: any, user: any, invoiceFrom: any) => {
+  console.log(bankInfo, creator, invoiceFrom);
   if (Object.keys(bankInfo).length == 0) {
     throw new Error('bank information not found');
   }
