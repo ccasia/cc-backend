@@ -875,9 +875,11 @@ export const checkAndRefreshAccessToken = async (req: Request, res: Response, ne
       });
     }
 
+    await xero.updateTenants();
+
     // if (!req.session.xeroTokenSet) {
     //   const tokenSet: TokenSet = await xero.refreshWithRefreshToken(client_id, client_secret, refreshTokenUser);
-    //   await xero.updateTenants();
+    // await xero.updateTenants();
 
     //   const newTokenSet = xero.readTokenSet();
     //   const decodedAccessTokenRef = jwt.decode(tokenSet.access_token as any);
