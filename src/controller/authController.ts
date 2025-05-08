@@ -233,7 +233,10 @@ export const registerCreator = async (req: Request, res: Response) => {
         }
 
         const creator = await tx.creator.create({
-          data: creatorObj,
+          data: {
+            ...creatorObj,
+            isOnBoardingFormCompleted: true,
+          },
           include: {
             user: true,
           },
