@@ -18,6 +18,7 @@ import {
   getPartnerships,
   updateCreatorPreference,
   exportCreatorsToSheet,
+  createKanban,
 } from '@controllers/creatorController';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 // import { needPermissions } from '@middlewares/needPermissions';
@@ -37,6 +38,8 @@ router.get('/getPartnerships/:id', isLoggedIn, getPartnerships);
 router.get('/exportCreators', isSuperAdmin, exportCreatorsToSheet);
 
 // router.post('/crawl', crawlCreator);
+
+router.post('/createKanban', createKanban);
 
 router.patch('/updateSocialMediaUsername', isLoggedIn, updateSocialMedia);
 router.patch('/update-creator', isLoggedIn, updateCreator);
