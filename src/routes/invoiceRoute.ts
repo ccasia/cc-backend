@@ -42,7 +42,7 @@ router.get('/creatorInvoice/:invoiceId', isLoggedIn, creatorInvoice);
 router.post('/create', createInvoice);
 
 router.patch('/updateStatus', updateInvoiceStatus);
-router.patch('/update', checkAndRefreshAccessToken, updateInvoice);
+router.patch('/update', updateInvoice);
 
 router.delete('/:id', isSuperAdmin, deleteInvoice);
 

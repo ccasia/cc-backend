@@ -591,6 +591,8 @@ export const updateInvoice = async (req: Request, res: Response) => {
     reason,
   }: invoiceData = req.body;
 
+  const userId = req.session.userid;
+
   try {
     const invoice = await prisma.$transaction(async (tx) => {
       const updatedInvoice = await tx.invoice.update({
@@ -641,6 +643,42 @@ export const updateInvoice = async (req: Request, res: Response) => {
       }
 
       if (status === 'approved') {
+        const user = await tx.user.findUnique({
+          where: {
+            id: userId,
+          },
+          include: {
+            admin: {
+              select: {
+                xeroTokenSet: true,
+              },
+            },
+          },
+        });
+
+        if (!user) throw new Error('User not found');
+
+        const tokenSet: TokenSet = (user.admin?.xeroTokenSet as TokenSet) || null;
+
+        if (!tokenSet) throw new Error('You are not connected to Xero');
+
+        xero.setTokenSet(tokenSet);
+        await xero.updateTenants();
+
+        if (dayjs(tokenSet.expires_at).isAfter(dayjs(), 'date')) {
+          const validTokenSet = await xero.refreshToken();
+          // save the new tokenset
+
+          await prisma.admin.update({
+            where: {
+              userId: user.id,
+            },
+            data: {
+              xeroTokenSet: validTokenSet as any,
+            },
+          });
+        }
+
         await sendToSpreadSheet(
           {
             createdAt: dayjs().format('YYYY-MM-DD'),
@@ -851,7 +889,6 @@ export const checkAndRefreshAccessToken = async (req: Request, res: Response, ne
 
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    const refreshTokenUser = user?.xeroRefreshToken;
     const tokenSet: TokenSet = (user.admin?.xeroTokenSet as TokenSet) || null;
 
     if (!tokenSet) return res.status(404).json({ message: 'You are not connected to Xero' });
