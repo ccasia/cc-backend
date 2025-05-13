@@ -426,8 +426,10 @@ export const handleLinkNewPackage = async (req: Request, res: Response) => {
       const expiredAt = dayjs(invoiceDate).add(parseInt(validityPeriod), 'months').format();
 
       const subscription = company.subscriptions.find((sub) => sub.status === 'ACTIVE');
+      const creditsUsed = (subscription?.totalCredits ?? 0) - (subscription?.creditsUsed ?? 0);
+      const isExpired = dayjs(subscription?.expiredAt).isBefore(dayjs(), 'date');
 
-      if (subscription) {
+      if (subscription && creditsUsed > 0 && !isExpired) {
         throw new Error('Package is still active. Please deactivate or complete the package before proceeding.');
       }
 
@@ -461,6 +463,17 @@ export const handleLinkNewPackage = async (req: Request, res: Response) => {
 
       if (packageType !== 'Custom' && !fixedPackage) {
         throw new Error('Fixed package not found');
+      }
+
+      if (subscription && isExpired) {
+        await tx.subscription.update({
+          where: {
+            id: subscription?.id,
+          },
+          data: {
+            status: 'EXPIRED',
+          },
+        });
       }
 
       await tx.subscription.create({

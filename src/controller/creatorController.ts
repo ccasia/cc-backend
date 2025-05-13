@@ -6,6 +6,7 @@ import { Title, saveNotification } from './notificationController';
 import { clients, io } from '../server';
 import { updateInvoices } from '@services/invoiceService';
 import { exportCreatorsToSpreadsheet } from '@helper/creatorsSpreadsheetService';
+import { createKanbanBoard } from './kanbanController';
 
 const prisma = new PrismaClient();
 
@@ -795,5 +796,29 @@ export const exportCreatorsToSheet = async (req: Request, res: Response) => {
       message: 'Failed to export creators to spreadsheet',
       error: error.message,
     });
+  }
+};
+
+export const createKanban = async (req: Request, res: Response) => {
+  const { creatorId } = req.body;
+  try {
+    const user = await prisma.user.findUnique({
+      where: {
+        id: creatorId,
+      },
+      include: {
+        Board: true,
+      },
+    });
+
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    if (user.Board) return res.status(400).json({ message: 'Kanban Board already exist' });
+
+    await createKanbanBoard(user.id, 'creator');
+
+    return res.sendStatus(200);
+  } catch (error) {
+    console.log(error);
+    return res.status(400).json(error);
   }
 };
