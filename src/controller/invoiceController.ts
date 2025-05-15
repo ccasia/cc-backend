@@ -632,16 +632,6 @@ export const updateInvoice = async (req: Request, res: Response) => {
 
       let contactID = updatedInvoice.creator.xeroContactId;
 
-      if (newContact) {
-        const [contact] = await createXeroContact(bankInfo, updatedInvoice.creator, invoiceFrom);
-        contactID = contact.contactID;
-
-        await tx.creator.update({
-          where: { id: updatedInvoice.creator.id },
-          data: { xeroContactId: contactID },
-        });
-      }
-
       if (status === 'approved') {
         const user = await tx.user.findUnique({
           where: {
