@@ -652,8 +652,9 @@ export const updateInvoice = async (req: Request, res: Response) => {
 
         if (!tokenSet) throw new Error('You are not connected to Xero');
 
+        await xero.initialize();
+
         xero.setTokenSet(tokenSet);
-        await xero.updateTenants();
 
         if (dayjs(tokenSet.expires_at).isBefore(dayjs(), 'date')) {
           const validTokenSet = await xero.refreshToken();
@@ -668,6 +669,8 @@ export const updateInvoice = async (req: Request, res: Response) => {
             },
           });
         }
+
+        await xero.updateTenants();
 
         await sendToSpreadSheet(
           {
