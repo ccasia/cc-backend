@@ -665,7 +665,7 @@ export const updateInvoice = async (req: Request, res: Response) => {
         xero.setTokenSet(tokenSet);
         await xero.updateTenants();
 
-        if (dayjs(tokenSet.expires_at).isAfter(dayjs(), 'date')) {
+        if (dayjs(tokenSet.expires_at).isBefore(dayjs(), 'date')) {
           const validTokenSet = await xero.refreshToken();
           // save the new tokenset
 
