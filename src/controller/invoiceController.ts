@@ -693,6 +693,17 @@ export const updateInvoice = async (req: Request, res: Response) => {
           'Invoices',
         );
 
+        if (newContact) {
+          const [contact] = await createXeroContact(bankInfo, updatedInvoice.creator, invoiceFrom);
+
+          contactID = contact.contactID;
+
+          await tx.creator.update({
+            where: { id: updatedInvoice.creator.id },
+            data: { xeroContactId: contactID },
+          });
+        }
+
         if (contactID) {
           await createXeroInvoiceLocal(contactID, items, dueDate, campaign.name, updatedInvoice.invoiceNumber);
         }
@@ -1014,9 +1025,12 @@ export const createXeroContact = async (bankInfo: any, creator: any, invoiceFrom
 
   try {
     const response = await xero.accountingApi.createContacts(xero.tenants[0].tenantId, { contacts: [contact] });
+
     return response.body.contacts;
   } catch (error) {
+    // console.log(error);
     return error;
+    // throw new Error(error);
   }
 };
 
