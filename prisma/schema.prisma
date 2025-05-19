@@ -225,6 +225,7 @@ model InstagramVideo {
   thumbnail_url  String?
   caption        String?
   permalink      String?
+  timestamp      String?
 
   instagramUserId String?
   // instagramUser   InstagramUser? @relation(fields: [instagramUserId], references: [id])
