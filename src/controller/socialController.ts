@@ -716,6 +716,10 @@ export const getInstagramMediaKit = async (req: Request, res: Response) => {
         followers_count: overview.followers_count,
         follows_count: overview.follows_count,
         media_count: overview.media_count,
+        totalLikes: medias.totalLikes,
+        totalComments: medias.totalComments,
+        averageLikes: medias.averageLikes,
+        averageComments: medias.averageComments,
         username: overview.username,
       },
       create: {
@@ -724,6 +728,10 @@ export const getInstagramMediaKit = async (req: Request, res: Response) => {
         follows_count: overview.follows_count,
         media_count: overview.media_count,
         username: overview.username,
+        totalLikes: medias.totalLikes,
+        totalComments: medias.totalComments,
+        averageLikes: medias.averageLikes,
+        averageComments: medias.averageComments,
       },
     });
 
