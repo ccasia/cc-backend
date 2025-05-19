@@ -181,6 +181,8 @@ export const getAllMediaObject = async (
 
     const videos = res.data.data;
 
+    console.log(videos);
+
     // sort but highest like_count
     let sortedVideos: any[] = videos?.sort((a: any, b: any) => a.like_count > b.like_count);
     sortedVideos = sortedVideos.slice(0, 5);
