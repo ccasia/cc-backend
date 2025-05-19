@@ -505,7 +505,7 @@ export const instagramCallback = async (req: Request, res: Response) => {
 
     const medias = await getAllMediaObject(access_token, overview.user_id);
 
-    for (const media of medias) {
+    for (const media of medias.sortedVideos) {
       await prisma.instagramVideo.upsert({
         where: {
           video_id: media.id,

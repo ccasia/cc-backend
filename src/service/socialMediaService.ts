@@ -175,19 +175,23 @@ export const getAllMediaObject = async (
       params: {
         access_token: accessToken,
         fields: fields.toString(),
-        limit: 60,
+        // limit: 60,
       },
     });
 
-    const videos = res.data.data;
+    const videos = res.data.data || [];
 
-    console.log(videos);
+    const totalComments = videos.reduce((acc: any, cur: any) => acc + cur.comments_count, 0);
+    const averageComments = totalComments / videos.length;
+
+    const totalLikes = videos.reduce((acc: any, cur: any) => acc + cur.like_count, 0);
+    const averageLikes = totalLikes / videos.length;
 
     // sort but highest like_count
     let sortedVideos: any[] = videos?.sort((a: any, b: any) => a.like_count > b.like_count);
     sortedVideos = sortedVideos.slice(0, 5);
 
-    return sortedVideos;
+    return { sortedVideos, averageLikes, averageComments };
   } catch (error) {
     throw new Error(error);
   }
