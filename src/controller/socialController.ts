@@ -706,7 +706,57 @@ export const getInstagramMediaKit = async (req: Request, res: Response) => {
     const accessToken = decryptToken(encryptedAccessToken as any);
 
     const overview = await getInstagramOverviewService(accessToken);
-    const medias = await getAllMediaObject(accessToken, overview.user_id);
+    const medias = await getAllMediaObject(accessToken, overview.user_id, overview.media_count);
+
+    const instagramUser = await prisma.instagramUser.upsert({
+      where: {
+        creatorId: creator.id,
+      },
+      update: {
+        followers_count: overview.followers_count,
+        follows_count: overview.follows_count,
+        media_count: overview.media_count,
+        username: overview.username,
+      },
+      create: {
+        creatorId: creator.id,
+        followers_count: overview.followers_count,
+        follows_count: overview.follows_count,
+        media_count: overview.media_count,
+        username: overview.username,
+      },
+    });
+
+    for (const media of medias.sortedVideos) {
+      await prisma.instagramVideo.upsert({
+        where: {
+          video_id: media.id,
+        },
+        update: {
+          comments_count: media.comments_count,
+          like_count: media.like_count,
+          media_type: media.media_type,
+          media_url: media.media_url,
+          thumbnail_url: media.thumbnail_url,
+          caption: media.caption,
+          permalink: media.permalink,
+          datePosted: media.timestamp,
+          shortCode: media.shortcode,
+        },
+        create: {
+          comments_count: media.comments_count,
+          like_count: media.like_count,
+          media_type: media.media_type,
+          media_url: media.media_url,
+          thumbnail_url: media.thumbnail_url,
+          caption: media.caption,
+          permalink: media.permalink,
+          shortCode: media.shortcode,
+          datePosted: media.timestamp,
+          instagramUserId: instagramUser.id,
+        },
+      });
+    }
 
     return res.status(200).json({ overview, medias });
   } catch (error) {
