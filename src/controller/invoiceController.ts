@@ -760,7 +760,7 @@ export const updateInvoice = async (req: Request, res: Response) => {
 
     return res.status(200).json(invoice);
   } catch (error) {
-    console.error(error);
+    console.error('asdsads', error);
     const message = error instanceof Error ? error.message : 'Unknown error occurred';
     return res.status(400).json({ error: message });
   }
@@ -864,8 +864,6 @@ export const checkRefreshToken = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'User not found' });
     }
 
-    console.log(user.admin?.xeroTokenSet);
-
     if (!user.admin?.xeroTokenSet) {
       return res.status(200).json({ token: null });
     }
@@ -902,9 +900,11 @@ export const checkAndRefreshAccessToken = async (req: Request, res: Response, ne
 
     if (!tokenSet) return res.status(404).json({ message: 'You are not connected to Xero' });
 
+    await xero.initialize();
+
     xero.setTokenSet(tokenSet);
 
-    if (dayjs(tokenSet.expires_at).isAfter(dayjs(), 'date')) {
+    if (dayjs(tokenSet.expires_at).isBefore(dayjs())) {
       const validTokenSet = await xero.refreshToken();
       // save the new tokenset
 
@@ -918,9 +918,11 @@ export const checkAndRefreshAccessToken = async (req: Request, res: Response, ne
       });
     }
 
+    await xero.updateTenants();
+
     // if (!req.session.xeroTokenSet) {
     //   const tokenSet: TokenSet = await xero.refreshWithRefreshToken(client_id, client_secret, refreshTokenUser);
-    //   await xero.updateTenants();
+    // await xero.updateTenants();
 
     //   const newTokenSet = xero.readTokenSet();
     //   const decodedAccessTokenRef = jwt.decode(tokenSet.access_token as any);
@@ -1026,7 +1028,7 @@ export const createXeroContact = async (bankInfo: any, creator: any, invoiceFrom
 
     return response.body.contacts;
   } catch (error) {
-    // console.log(error);
+    console.log('SADSAD', error);
     return error;
     // throw new Error(error);
   }
