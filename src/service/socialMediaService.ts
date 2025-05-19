@@ -255,9 +255,7 @@ export const getMediaInsight = async (accessToken: string, mediaId: string) => {
       },
     });
 
-    const insights = response.data || [];
-
-    console.log(insights);
+    const insights = response.data.data || [];
 
     const newInsights = insights.map((insight: any) => ({
       name: insight?.name,
