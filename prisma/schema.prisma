@@ -201,7 +201,7 @@ model InstagramUser {
   creatorId String  @unique
   creator   Creator @relation(references: [id], fields: [creatorId])
 
-  accessToken     String?
+  accessToken     Json?
   expiresIn       String?
   user_id         String? @unique
   followers_count Int?
