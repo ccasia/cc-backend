@@ -115,6 +115,8 @@ export const getInstagramAccessToken = async (code: string) => {
       },
     });
 
+    console.log(longLivedToken);
+
     const encrypToken = await encryptToken(longLivedToken.data.access_token);
 
     const data = {
@@ -123,8 +125,6 @@ export const getInstagramAccessToken = async (code: string) => {
       encryptedToken: encrypToken,
       expires_in: longLivedToken.data.expires_in,
     };
-
-    console.log(data);
 
     return data;
   } catch (error) {
