@@ -706,8 +706,9 @@ export const getInstagramMediaKit = async (req: Request, res: Response) => {
     const accessToken = decryptToken(encryptedAccessToken as any);
 
     const overview = await getInstagramOverviewService(accessToken);
+    const medias = await getAllMediaObject(accessToken, overview.user_id);
 
-    return res.status(200).json(overview);
+    return res.status(200).json({ overview, medias });
   } catch (error) {
     return res.status(400).json(error);
   }
