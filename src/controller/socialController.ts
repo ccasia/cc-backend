@@ -632,8 +632,6 @@ export const handleInstagramCallback = async (req: Request, res: Response) => {
   if (!code) return res.status(404).json({ message: 'Code not found.' });
   if (!userId) return res.status(404).json({ message: 'Session Expired. Please log in again.' });
 
-  console.log(code);
-
   try {
     const data = await getInstagramAccessToken(code as string);
 

@@ -1,5 +1,6 @@
 import { encryptToken } from '@helper/encrypt';
 import axios from 'axios';
+import dayjs from 'dayjs';
 
 // Function to get Page ID
 export const getPageId = async (accessToken: string): Promise<string> => {
@@ -115,15 +116,16 @@ export const getInstagramAccessToken = async (code: string) => {
       },
     });
 
-    console.log(longLivedToken);
-
     const encrypToken = await encryptToken(longLivedToken.data.access_token);
+
+    const today = dayjs();
+    const expiredDate = today.add(longLivedToken.data.expires_in, 'second').unix();
 
     const data = {
       user_id: res.data.user_id,
       permissions: res.data.permissions,
       encryptedToken: encrypToken,
-      expires_in: longLivedToken.data.expires_in,
+      expires_in: expiredDate,
     };
 
     return data;
