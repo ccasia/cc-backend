@@ -168,14 +168,26 @@ export const getInstagramOverviewService = async (accessToken: string) => {
 export const getAllMediaObject = async (
   accessToken: string,
   instaUserId: string,
-  fields = ['id', 'comments_count', 'like_count', 'media_type', 'media_url', 'thumbnail_url', 'caption', 'permalink'],
+  limit?: number,
+  fields = [
+    'id',
+    'comments_count',
+    'like_count',
+    'media_type',
+    'media_url',
+    'thumbnail_url',
+    'caption',
+    'permalink',
+    'shortcode',
+    'timestamp',
+  ],
 ) => {
   try {
     const res = await axios.get(`https://graph.instagram.com/v22.0/me/media`, {
       params: {
         access_token: accessToken,
         fields: fields.toString(),
-        // limit: 60,
+        ...(limit && { limit: limit }),
       },
     });
 

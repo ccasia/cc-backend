@@ -167,10 +167,9 @@ model TiktokUser {
   follower_count  Int?
   likes_count     Int?
 
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
-  tiktokVideo    TiktokVideo[]
-  InstagramVideo InstagramVideo[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  tiktokVideo TiktokVideo[]
 }
 
 model TiktokVideo {
@@ -227,22 +226,15 @@ model InstagramVideo {
   thumbnail_url  String?
   caption        String?
   permalink      String?
+  shortCode      String?
+  datePosted     DateTime?
 
   instagramUserId String?
-  // instagramUser   InstagramUser? @relation(fields: [instagramUserId], references: [id])
 
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
-  isTiktokConnected   Boolean  @default(false)
-  isFacebookConnected Boolean  @default(false)
-  tiktokData          Json?
-  instagramData       Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  isOnBoardingFormCompleted Boolean?
-
-  tiktokUser    TiktokUser?    @relation(fields: [tiktokUserId], references: [id])
   instagramUser InstagramUser? @relation(fields: [instagramUserId], references: [id])
-  tiktokUserId  String?
 }
 
 model MediaKit {
