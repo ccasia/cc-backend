@@ -191,7 +191,7 @@ export const getAllMediaObject = async (
     let sortedVideos: any[] = videos?.sort((a: any, b: any) => a.like_count > b.like_count);
     sortedVideos = sortedVideos.slice(0, 5);
 
-    return { sortedVideos, averageLikes, averageComments };
+    return { sortedVideos, averageLikes, averageComments, totalComments, totalLikes };
   } catch (error) {
     throw new Error(error);
   }
