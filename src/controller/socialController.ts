@@ -620,3 +620,149 @@ export const removeInstagramPermissions = async (req: Request, res: Response) =>
     return res.status(400).json(error);
   }
 };
+
+// Get Instagram content by ID
+export const getInstagramContentById = async (req: Request, res: Response) => {
+  const { contentId } = req.params;
+  
+  try {
+    // First check our database
+    const existingContent = await prisma.instagramVideo.findFirst({
+      where: { 
+        permalink: {
+          contains: contentId
+        }
+      }
+    });
+    
+    if (existingContent) {
+      return res.status(200).json({ instagramVideo: existingContent });
+    }
+
+    // If not found, get from Instagram API
+    const creator = await prisma.creator.findFirst({
+      where: { 
+        isFacebookConnected: true 
+      },
+      include: { 
+        instagramUser: true 
+      }
+    });
+
+    if (!creator?.instagramData) {
+      return res.status(404).json({ 
+        message: 'No connected Instagram account found'
+      });
+    }
+
+    const instagramData = creator.instagramData as any;
+    if (!instagramData?.access_token?.value) {
+      return res.status(404).json({ 
+        message: 'Instagram access token not found'
+      });
+    }
+
+    const accessToken = decryptToken(instagramData.access_token.value);
+    
+    try {
+      // Use Instagram Business ID to get media data
+      const mediaData = await getInstagramMediaData(accessToken, contentId, [
+        'comments_count',
+        'like_count',
+        'media_type',
+        'media_url',
+        'thumbnail_url',
+        'caption',
+        'permalink',
+        'timestamp', // Added timestamp field for date posted
+      ]);
+
+      if (!mediaData) {
+        return res.status(404).json({ 
+          message: 'Content not found on Instagram'
+        });
+      }
+
+      // Store in database for future use
+      const newContent = await prisma.instagramVideo.create({
+        data: {
+          video_id: contentId,
+          comments_count: mediaData.comments_count || 0,
+          like_count: mediaData.like_count || 0,
+          media_type: mediaData.media_type,
+          media_url: mediaData.media_url,
+          caption: mediaData.caption,
+          permalink: mediaData.permalink,
+          timestamp: mediaData.timestamp,
+          instagramUserId: creator.instagramUser?.id
+        }
+      });
+
+      // Return combined data with insights
+      return res.status(200).json({ 
+        instagramVideo: {
+          ...newContent,
+        } 
+      });
+
+    } catch (instagramError) {
+      console.error('Instagram API Error:', instagramError);
+      return res.status(500).json({ 
+        error: 'Failed to fetch from Instagram API',
+        details: instagramError.message
+      });
+    }
+
+  } catch (error) {
+    console.error('Server Error:', error);
+    return res.status(500).json({ 
+      error: 'Failed to fetch content',
+      details: error.message
+    });
+  }
+};
+
+export const getCreatorByInstagramContent = async (req: Request, res: Response) => {
+  const { contentId } = req.params;
+  
+  try {
+    // First try to find the content in our database
+    const content = await prisma.instagramVideo.findFirst({
+      where: {
+        OR: [
+          { id: contentId },
+          { permalink: { contains: contentId } }
+        ]
+      },
+      include: {
+        instagramUser: {
+          include: {
+            creator: {
+              include: {
+                user: true
+              }
+            }
+          }
+        },
+      }
+    });
+
+    if (!content || !content.instagramUser) {
+      return res.status(404).json({
+        message: 'Content not found in our system'
+      });
+    }
+
+    return res.status(200).json({
+      username: content.instagramUser.username,
+      name: content.instagramUser.creator.user.name
+    });
+    
+  } catch (error) {
+    console.error('Error fetching creator:', error);
+    return res.status(500).json({ 
+      error: 'Failed to fetch creator information',
+      message: error.message
+    });
+  }
+};
