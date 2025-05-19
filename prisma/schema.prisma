@@ -207,6 +207,10 @@ model InstagramUser {
   follows_count   Int?
   media_count     Int?
   username        String?
+  totalLikes      Int?
+  totalComments   Int?
+  averageLikes    Float?
+  averageComments Float?
 
   instagramVideo InstagramVideo[]
 
