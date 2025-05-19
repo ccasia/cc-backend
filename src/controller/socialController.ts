@@ -9,8 +9,10 @@ import {
   getInstagramAccessToken,
   getInstagramBusinesssAccountId,
   getInstagramMediaData,
+  getInstagramMedias,
   getInstagramOverviewService,
   getInstagramUserData,
+  getMediaInsight,
   getPageId,
   revokeInstagramPermission,
 } from '@services/socialMediaService';
@@ -28,6 +30,12 @@ interface InstagramData {
 }
 
 enum MetricProfileInsights {}
+
+function extractInstagramShortcode(url: string) {
+  const regex = /(?:https?:\/\/)?(?:www\.)?instagram\.com\/(?:p|reel|tv)\/([A-Za-z0-9_-]+)/;
+  const match = url.match(regex);
+  return match ? match[1] : null;
+}
 
 // Connect account
 export const tiktokAuthentication = (_req: Request, res: Response) => {
@@ -768,6 +776,61 @@ export const getInstagramMediaKit = async (req: Request, res: Response) => {
 
     return res.status(200).json({ overview, medias });
   } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const getInstagramMediaInsight = async (req: Request, res: Response) => {
+  const { userId } = req.params;
+  const { url } = req.query;
+
+  if (!userId) return res.status(404).json({ message: 'Parameter missing: userId' });
+  if (!url) return res.status(404).json({ message: 'Query missing: url' });
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: {
+        id: userId,
+      },
+    });
+
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    const creator = await prisma.creator.findFirst({
+      where: {
+        userId: user.id,
+      },
+      select: {
+        instagramUser: true,
+        isFacebookConnected: true,
+      },
+    });
+
+    if (!creator) return res.status(404).json({ message: 'User is not a creator' });
+    if (!creator.isFacebookConnected || !creator.instagramUser)
+      return res.status(400).json({ message: 'Creator is not connected to instagram account' });
+    if (dayjs().isAfter(dayjs.unix(creator?.instagramUser?.expiresIn!))) {
+      return res.status(400).json({ message: 'Instagram Token expired' });
+    }
+
+    const encryptedAccessToken = creator.instagramUser?.accessToken;
+    if (!encryptedAccessToken) return res.status(404).json({ message: 'Access token not found' });
+
+    const accessToken = decryptToken(encryptedAccessToken as any);
+
+    const { videos } = await getInstagramMedias(accessToken, creator.instagramUser.media_count as number);
+
+    const shortCode = extractInstagramShortcode(url as string);
+
+    const video = videos.find((item: any) => item?.shortcode === shortCode);
+
+    if (!video) return res.status(404).json({ message: 'Shortcode not found' });
+
+    const insight = await getMediaInsight(accessToken, video?.id);
+
+    return res.status(200).json({ insight });
+  } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   }
 };
