@@ -668,7 +668,10 @@ export const handleInstagramCallback = async (req: Request, res: Response) => {
         },
       });
     });
+
+    return res.status(200).redirect(process.env.REDIRECT_CLIENT as string);
   } catch (error) {
+    console.log(error);
     return res.status(400).json('Error authenticate instagram user');
   }
 };
