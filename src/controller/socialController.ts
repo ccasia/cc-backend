@@ -824,13 +824,11 @@ export const getInstagramMediaInsight = async (req: Request, res: Response) => {
 
     const video = videos.find((item: any) => item?.shortcode === shortCode);
 
-    console.log(video);
-
     if (!video) return res.status(404).json({ message: 'Shortcode not found' });
 
     const insight = await getMediaInsight(accessToken, video?.id);
 
-    return res.status(200).json({ insight });
+    return res.status(200).json({ insight, video });
   } catch (error) {
     console.log(error);
     return res.status(400).json(error);
