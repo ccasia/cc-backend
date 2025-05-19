@@ -698,7 +698,7 @@ export const getInstagramMediaKit = async (req: Request, res: Response) => {
     if (!creator.isFacebookConnected)
       return res.status(400).json({ message: 'Creator is not connected to instagram account' });
 
-    if (dayjs().isAfter(dayjs.unix(parseInt(creator?.instagramUser?.expiresIn!)))) {
+    if (dayjs().isAfter(dayjs.unix(creator?.instagramUser?.expiresIn!))) {
       return res.status(400).json({ message: 'Instagram Token expired' });
     }
 
