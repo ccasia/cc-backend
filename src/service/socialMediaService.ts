@@ -86,8 +86,10 @@ export const getInstagramMediaData = async (
   }
 };
 
+// Get Long-lived token
 export const getInstagramAccessToken = async (code: string) => {
   if (!code) throw new Error('Code not found');
+
   try {
     const res = await axios.post(
       'https://api.instagram.com/oauth/access_token',
@@ -125,6 +127,22 @@ export const getInstagramAccessToken = async (code: string) => {
     return data;
   } catch (error) {
     throw new Error(error);
+  }
+};
+
+export const refreshInstagramToken = async (accessToken: string) => {
+  if (!accessToken) throw new Error('Access token is not provided');
+  try {
+    const refreshedToken = await axios.get('https://graph.instagram.com/refresh_access_token', {
+      params: {
+        grant_type: 'ig_refresh_token',
+        accessToken: accessToken,
+      },
+    });
+
+    return refreshedToken.data;
+  } catch (error) {
+    throw new Error('Error refresh instagram token');
   }
 };
 

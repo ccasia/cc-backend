@@ -27,6 +27,8 @@ interface InstagramData {
   expires_in: string;
 }
 
+enum MetricProfileInsights {}
+
 // Connect account
 export const tiktokAuthentication = (_req: Request, res: Response) => {
   const csrfState = Math.random().toString(36).substring(2);
@@ -463,6 +465,7 @@ export const instagramCallback = async (req: Request, res: Response) => {
   if (!userId) return res.status(404).json({ message: 'Session Expired. Please log in again.' });
 
   try {
+    // Long-lived token
     const data = await getInstagramAccessToken(code as string);
 
     const access_token = decryptToken(data.encryptedToken);
@@ -473,7 +476,7 @@ export const instagramCallback = async (req: Request, res: Response) => {
       },
       data: {
         instagramData: data,
-        isFacebookConnected: true,
+        isFacebookConnected: true, //Instagram
       },
     });
 
@@ -617,6 +620,92 @@ export const removeInstagramPermissions = async (req: Request, res: Response) =>
     return res.status(200).json({ message: 'Successfully revoke permission' });
   } catch (error) {
     console.log(error);
+    return res.status(400).json(error);
+  }
+};
+
+// V2 INSTAGRAM
+export const handleInstagramCallback = async (req: Request, res: Response) => {
+  const code = req.query.code;
+  const userId = req.session.userid;
+
+  if (!code) return res.status(404).json({ message: 'Code not found.' });
+  if (!userId) return res.status(404).json({ message: 'Session Expired. Please log in again.' });
+
+  try {
+    const data = await getInstagramAccessToken(code as string);
+
+    await prisma.$transaction(async (tx) => {
+      const user = await tx.creator.findUnique({
+        where: {
+          userId: userId,
+        },
+      });
+
+      if (!user) throw new Error('User not found');
+
+      await tx.instagramUser.upsert({
+        where: {
+          creatorId: user.id,
+        },
+        update: {
+          accessToken: data.encryptedToken,
+          expiresIn: data.expires_in,
+        },
+        create: {
+          accessToken: data.encryptedToken,
+          expiresIn: data.expires_in,
+          creatorId: user.id,
+        },
+      });
+
+      await tx.creator.update({
+        where: {
+          id: user.id,
+        },
+        data: {
+          isFacebookConnected: true,
+        },
+      });
+    });
+  } catch (error) {
+    return res.status(400).json('Error authenticate instagram user');
+  }
+};
+
+export const getInstagramMediaKit = async (req: Request, res: Response) => {
+  const { userId } = req.params;
+
+  if (!userId) return res.status(400).json({ message: 'Missing parameter: userId' });
+
+  try {
+    const creator = await prisma.creator.findFirst({
+      where: {
+        userId: userId as string,
+      },
+      include: {
+        instagramUser: true,
+      },
+    });
+
+    if (!creator) return res.status(404).json({ message: 'Creator not found' });
+
+    if (!creator.isFacebookConnected)
+      return res.status(400).json({ message: 'Creator is not connected to instagram account' });
+
+    if (dayjs().isAfter(dayjs.unix(parseInt(creator?.instagramUser?.expiresIn!)))) {
+      return res.status(400).json({ message: 'Instagram Token expired' });
+    }
+
+    const encryptedAccessToken = creator.instagramUser?.accessToken;
+    if (!encryptedAccessToken) return res.status(404).json({ message: 'Access token not found' });
+
+    const accessToken = decryptToken(encryptedAccessToken as any);
+
+    const overview = await getInstagramOverviewService(accessToken);
+
+    return res.status(200).json(overview);
+  } catch (error) {
     return res.status(400).json(error);
   }
 };
