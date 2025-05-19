@@ -124,6 +124,8 @@ export const getInstagramAccessToken = async (code: string) => {
       expires_in: longLivedToken.data.expires_in,
     };
 
+    console.log(data);
+
     return data;
   } catch (error) {
     throw new Error(error);
