@@ -13,7 +13,7 @@ export const encryptToken = (token: string): any => {
   return { iv: iv.toString('hex'), content: encryptedToken.toString('hex') };
 };
 
-export const decryptToken = (encryptedData: { iv: string; content: string }) => {
+export const decryptToken = (encryptedData: { iv: string; content: string }): string => {
   const { iv, content } = encryptedData;
 
   const key = crypto.createHash('sha256').update(secretKey).digest();

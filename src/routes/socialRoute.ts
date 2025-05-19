@@ -1,9 +1,11 @@
 import {
   facebookAuthentication,
+  getInstagramMediaKit,
   getInstagramOverview,
   getUserInstagramData,
   handleDisconnectFacebook,
   handleDisconnectTiktok,
+  handleInstagramCallback,
   instagramCallback,
   redirectFacebookAuth,
   redirectTiktokAfterAuth,
@@ -37,5 +39,10 @@ router.get('/auth/instagram/callback', instagramCallback);
 router.get('/instagram/overview/:userId', isLoggedIn, getInstagramOverview);
 
 router.delete('/instagram/permissions/:userId', isLoggedIn, removeInstagramPermissions);
+
+// Instagram, V2
+
+router.get('/v2/auth/instagram/callback', handleInstagramCallback);
+router.get('/v2/instagramOverview/:userId', getInstagramMediaKit);
 
 export default router;
