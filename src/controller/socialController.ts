@@ -740,7 +740,7 @@ export const getInstagramMediaKit = async (req: Request, res: Response) => {
           thumbnail_url: media.thumbnail_url,
           caption: media.caption,
           permalink: media.permalink,
-          datePosted: media.timestamp,
+          datePosted: dayjs(media.timestamp).toDate(),
           shortCode: media.shortcode,
         },
         create: {
@@ -752,7 +752,7 @@ export const getInstagramMediaKit = async (req: Request, res: Response) => {
           caption: media.caption,
           permalink: media.permalink,
           shortCode: media.shortcode,
-          datePosted: media.timestamp,
+          datePosted: dayjs(media.timestamp).toDate(),
           instagramUserId: instagramUser.id,
         },
       });
