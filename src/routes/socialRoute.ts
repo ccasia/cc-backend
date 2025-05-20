@@ -12,6 +12,8 @@ import {
   tiktokData,
   getInstagramContentById,
   getCreatorByInstagramContent,
+  getTiktokContentById,
+  getCreatorByTiktokContent,
 } from '@controllers/socialController';
 import { Router } from 'express';
 import { isLoggedIn } from '@middlewares/onlyLogin';
@@ -41,6 +43,10 @@ router.get('/instagram/overview/:userId', isLoggedIn, getInstagramOverview);
 router.get('/instagram/content/:contentId', getInstagramContentById);
 
 router.get('/instagram/creator/:contentId', getCreatorByInstagramContent);
+
+router.get('/tiktok/content/:contentId', getTiktokContentById);
+
+router.get('/tiktok/creator/:contentId', getCreatorByTiktokContent);
 
 router.delete('/instagram/permissions/:userId', isLoggedIn, removeInstagramPermissions);
 

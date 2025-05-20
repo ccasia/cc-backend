@@ -766,3 +766,74 @@ export const getCreatorByInstagramContent = async (req: Request, res: Response) 
     });
   }
 };
+
+// Get TikTok content by ID
+export const getTiktokContentById = async (req: Request, res: Response) => {
+  const { contentId } = req.params;
+  
+  try {
+    // First check our database
+    const existingContent = await prisma.tiktokVideo.findFirst({
+      where: { 
+        video_id: contentId
+      }
+    });
+    
+    if (existingContent) {
+      return res.status(200).json({ tiktokVideo: existingContent });
+    }
+
+    // If not found in database, return not found
+    return res.status(404).json({ 
+      message: 'Content not found in our system'
+    });
+
+  } catch (error) {
+    console.error('Server Error:', error);
+    return res.status(500).json({ 
+      error: 'Failed to fetch content',
+      details: error.message
+    });
+  }
+};
+
+export const getCreatorByTiktokContent = async (req: Request, res: Response) => {
+  const { contentId } = req.params;
+  
+  try {
+    const content = await prisma.tiktokVideo.findFirst({
+      where: {
+        video_id: contentId
+      },
+      include: {
+        tiktokUser: {
+          include: {
+            creator: {
+              include: {
+                user: true
+              }
+            }
+          }
+        }
+      }
+    });
+
+    if (!content?.tiktokUser) {
+      return res.status(404).json({
+        message: 'Content not found in our system'
+      });
+    }
+
+    return res.status(200).json({
+      display_name: content.tiktokUser.creator.user.name,
+      avatar_url: content.tiktokUser.avatar_url
+    });
+    
+  } catch (error) {
+    console.error('Error fetching creator:', error);
+    return res.status(500).json({ 
+      error: 'Failed to fetch creator information',
+      message: error.message
+    });
+  }
+};
