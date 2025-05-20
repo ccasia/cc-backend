@@ -13,6 +13,8 @@ import {
   getDeliverables,
   getSubmissionByCampaignCreatorId,
   postingSubmission,
+  updateSubmissionStatus,
+  adminManageFinalDraft,
 } from '@controllers/submissionController';
 import { isLoggedIn } from '@middlewares/onlyLogin';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
@@ -34,8 +36,13 @@ router.patch('/adminManageDraft', isSuperAdmin, adminManageDraft);
 router.patch('/adminManagePosting', isSuperAdmin, adminManagePosting);
 router.patch('/posting', isLoggedIn, isSuperAdmin, changePostingDate);
 
+// Section-specific management routes
 router.patch('/managePhotos', isSuperAdmin, adminManagePhotos);
 router.patch('/manageVideos', isSuperAdmin, adminManageVideos);
 router.patch('/manageRawFootages', isSuperAdmin, adminManageRawFootages);
+router.patch('/manageFinalDraft', isSuperAdmin, adminManageFinalDraft);
+
+// Direct status update endpoint
+router.patch('/status', isSuperAdmin, updateSubmissionStatus);
 
 export default router;
