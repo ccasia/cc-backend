@@ -183,10 +183,13 @@ model TiktokVideo {
   embed_link      String?
   embed_html      String?
 
-  like_count    Int?
-  comment_count Int?
-  share_count   Int?
-  view_count    Int?
+  create_time     String?
+  like_count      Int?
+  comment_count   Int?
+  share_count     Int?
+  view_count      Int?
+  favorites_count Int?
+  interactions    Int?
 
   tiktokUserId String?
   tiktokUser   TiktokUser? @relation(references: [id], fields: [tiktokUserId])
