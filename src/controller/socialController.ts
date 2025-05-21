@@ -9,8 +9,10 @@ import {
   getInstagramAccessToken,
   getInstagramBusinesssAccountId,
   getInstagramMediaData,
+  getInstagramMedias,
   getInstagramOverviewService,
   getInstagramUserData,
+  getMediaInsight,
   getPageId,
   revokeInstagramPermission,
 } from '@services/socialMediaService';
@@ -20,11 +22,25 @@ import {
 
 const prisma = new PrismaClient();
 
+function extractInstagramShortcode(url: string) {
+  const regex = /(?:https?:\/\/)?(?:www\.)?instagram\.com\/(?:p|reel|tv)\/([A-Za-z0-9_-]+)/;
+  const match = url.match(regex);
+  return match ? match[1] : null;
+}
+
 interface InstagramData {
   user_id: string;
   permissions: string[];
   encryptedToken: { iv: string; content: string };
   expires_in: string;
+}
+
+interface MediaResponse {
+  sortedVideos: any[];
+  averageLikes: number;
+  averageComments: number;
+  totalComments: number;
+  totalLikes: number;
 }
 
 // Connect account
@@ -502,7 +518,7 @@ export const instagramCallback = async (req: Request, res: Response) => {
 
     const medias = await getAllMediaObject(access_token, overview.user_id);
 
-    for (const media of medias) {
+    for (const media of medias.sortedVideos) {
       await prisma.instagramVideo.upsert({
         where: {
           video_id: media.id,
@@ -667,15 +683,19 @@ export const getInstagramContentById = async (req: Request, res: Response) => {
     try {
       // Use Instagram Business ID to get media data
       const mediaData = await getInstagramMediaData(accessToken, contentId, [
+        'id',
+        'caption',
+        'like_count', 
         'comments_count',
-        'like_count',
         'media_type',
         'media_url',
         'thumbnail_url',
-        'caption',
         'permalink',
-        'timestamp', // Added timestamp field for date posted
+        'timestamp',
+        'shortcode'
       ]);
+
+      const insightsData = await getMediaInsight(accessToken, contentId);
 
       if (!mediaData) {
         return res.status(404).json({ 
@@ -683,26 +703,45 @@ export const getInstagramContentById = async (req: Request, res: Response) => {
         });
       }
 
-      // Store in database for future use
-      const newContent = await prisma.instagramVideo.create({
+      const insightsObject = insightsData.reduce((acc: { [x: string]: any; }, insight: { name: string | number; value: any; }) => {
+        acc[insight.name] = insight.value;
+        return acc;
+      }, {});
+
+      // Store in database with both media data and insights
+      const content = await prisma.instagramVideo.create({
         data: {
           video_id: contentId,
           comments_count: mediaData.comments_count || 0,
           like_count: mediaData.like_count || 0,
           media_type: mediaData.media_type,
           media_url: mediaData.media_url,
+          thumbnail_url: mediaData.thumbnail_url,
           caption: mediaData.caption,
           permalink: mediaData.permalink,
           timestamp: mediaData.timestamp,
+          shortcode: mediaData.shortcode,
+          
+          // Insights data
+          saved_count: insightsObject.saved || 0,
+          views_count: insightsObject.views || 0,
+          shares_count: insightsObject.shares || 0,
+          reach_count: insightsObject.reach || 0,
+          interactions: insightsObject.total_interactions || 0,
+          engagement_rate: insightsObject.engagement || 0,
+          datePosted: mediaData.timestamp,
+          
+          // Store all insights as JSON for future reference
+          insights: insightsData,
+          
+          // User relationship
           instagramUserId: creator.instagramUser?.id
         }
       });
 
       // Return combined data with insights
       return res.status(200).json({ 
-        instagramVideo: {
-          ...newContent,
-        } 
+        instagramVideo: content
       });
 
     } catch (instagramError) {
@@ -754,6 +793,7 @@ export const getCreatorByInstagramContent = async (req: Request, res: Response) 
     }
 
     return res.status(200).json({
+      id: content.instagramUser.creatorId,
       username: content.instagramUser.username,
       name: content.instagramUser.creator.user.name
     });
@@ -835,5 +875,267 @@ export const getCreatorByTiktokContent = async (req: Request, res: Response) => 
       error: 'Failed to fetch creator information',
       message: error.message
     });
+  }
+};
+
+// V2 INSTAGRAM
+export const handleInstagramCallback = async (req: Request, res: Response) => {
+  const code = req.query.code;
+  const userId = req.session.userid;
+
+  if (!code) return res.status(404).json({ message: 'Code not found.' });
+  if (!userId) return res.status(404).json({ message: 'Session Expired. Please log in again.' });
+
+  try {
+    const data = await getInstagramAccessToken(code as string);
+
+    await prisma.$transaction(async (tx: {
+        creator: { findUnique: (arg0: { where: { userId: any; }; }) => any; update: (arg0: { where: { id: any; }; data: { isFacebookConnected: boolean; }; }) => any; }; instagramUser: {
+          upsert: (arg0: {
+            where: { creatorId: any; }; update: {
+              accessToken: string; // Convert to string if needed
+              expiresIn: number;
+            }; create: {
+              accessToken: string; // Convert to string if needed
+              expiresIn: number; creatorId: any;
+            };
+          }) => any;
+        };
+      }) => {
+      const user = await tx.creator.findUnique({
+        where: {
+          userId: userId,
+        },
+      });
+
+      if (!user) throw new Error('User not found');
+
+      // Update with the correct field names that exist in the schema
+      await tx.instagramUser.upsert({
+        where: {
+          creatorId: user.id,
+        },
+        update: {
+          accessToken: JSON.stringify(data.encryptedToken), // Convert to string if needed
+          expiresIn: parseInt(data.expires_in),
+        },
+        create: {
+          accessToken: JSON.stringify(data.encryptedToken), // Convert to string if needed
+          expiresIn: parseInt(data.expires_in),
+          creatorId: user.id,
+        },
+      });
+
+      await tx.creator.update({
+        where: {
+          id: user.id,
+        },
+        data: {
+          isFacebookConnected: true,
+        },
+      });
+    });
+
+    return res.status(200).redirect(process.env.REDIRECT_CLIENT as string);
+  } catch (error) {
+    console.log(error);
+    return res.status(400).json('Error authenticate instagram user');
+  }
+};
+
+export const getInstagramMediaKit = async (req: Request, res: Response) => {
+  const { userId } = req.params;
+
+  if (!userId) return res.status(400).json({ message: 'Missing parameter: userId' });
+
+  try {
+    const creator = await prisma.creator.findFirst({
+      where: {
+        userId: userId as string,
+      },
+      include: {
+        instagramUser: true,
+      },
+    });
+
+    if (!creator) return res.status(404).json({ message: 'Creator not found' });
+
+    if (!creator.isFacebookConnected)
+      return res.status(400).json({ message: 'Creator is not connected to instagram account' });
+
+    // Check if expiresIn exists before using it
+    if (creator.instagramUser?.expiresIn && dayjs().isAfter(dayjs.unix(creator.instagramUser.expiresIn))) {
+      return res.status(400).json({ message: 'Instagram Token expired' });
+    }
+
+    // Make sure accessToken exists
+    if (!creator.instagramUser?.accessToken) {
+      return res.status(404).json({ message: 'Access token not found' });
+    }
+
+    // Parse the token if it was stored as a JSON string
+    let accessToken;
+    try {
+      // Check if accessToken is a JSON string
+      const tokenValue = creator.instagramUser.accessToken;
+      if (typeof tokenValue === 'string' && (tokenValue.startsWith('{') || tokenValue.includes('iv'))) {
+        try {
+          const tokenObject = JSON.parse(tokenValue);
+          accessToken = decryptToken(tokenObject);
+        } catch (e) {
+          // If it's not valid JSON but maybe already an object structure
+          accessToken = decryptToken(tokenValue as any);
+        }
+      } else {
+        // Directly use as is
+        accessToken = decryptToken(tokenValue as any);
+      }
+    } catch (error) {
+      console.error("Error decrypting token:", error);
+      return res.status(400).json({ message: "Invalid access token format" });
+    }
+
+    const overview = await getInstagramOverviewService(accessToken);
+    const mediaResult = await getAllMediaObject(accessToken, overview.user_id, overview.media_count);
+
+    const instagramUser = await prisma.instagramUser.upsert({
+      where: {
+        creatorId: creator.id,
+      },
+      update: {
+        followers_count: overview.followers_count,
+        follows_count: overview.follows_count,
+        media_count: overview.media_count,
+        totalLikes: mediaResult.totalLikes,
+        totalComments: mediaResult.totalComments,
+        averageLikes: mediaResult.averageLikes,
+        averageComments: mediaResult.averageComments,
+        username: overview.username,
+      },
+      create: {
+        creatorId: creator.id,
+        followers_count: overview.followers_count,
+        follows_count: overview.follows_count,
+        media_count: overview.media_count,
+        username: overview.username,
+        totalLikes: mediaResult.totalLikes,
+        totalComments: mediaResult.totalComments,
+        averageLikes: mediaResult.averageLikes,
+        averageComments: mediaResult.averageComments,
+      },
+    });
+
+    // Make sure to iterate over the sortedVideos property
+    for (const media of mediaResult.sortedVideos) {
+      await prisma.instagramVideo.upsert({
+        where: {
+          video_id: media.id,
+        },
+        update: {
+          comments_count: media.comments_count,
+          like_count: media.like_count,
+          media_type: media.media_type,
+          media_url: media.media_url,
+          thumbnail_url: media.thumbnail_url,
+          caption: media.caption,
+          permalink: media.permalink,
+          datePosted: dayjs(media.timestamp).toDate(),
+          shortcode: media.shortcode, // Use lowercase 'shortcode'
+        },
+        create: {
+          comments_count: media.comments_count,
+          like_count: media.like_count,
+          media_type: media.media_type,
+          media_url: media.media_url,
+          thumbnail_url: media.thumbnail_url,
+          caption: media.caption,
+          permalink: media.permalink,
+          shortcode: media.shortcode, // Use lowercase 'shortcode'
+          datePosted: dayjs(media.timestamp).toDate(),
+          instagramUserId: instagramUser.id,
+        },
+      });
+    }
+
+    return res.status(200).json({ overview, medias: mediaResult });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const getInstagramMediaInsight = async (req: Request, res: Response) => {
+  const { userId } = req.params;
+  const { url } = req.query;
+
+  if (!userId) return res.status(404).json({ message: 'Parameter missing: userId' });
+  if (!url) return res.status(404).json({ message: 'Query missing: url' });
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: {
+        id: userId,
+      },
+    });
+
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    const creator = await prisma.creator.findFirst({
+      where: {
+        userId: user.id,
+      },
+      select: {
+        instagramUser: true,
+        isFacebookConnected: true,
+      },
+    });
+
+    if (!creator) return res.status(404).json({ message: 'User is not a creator' });
+    if (!creator.isFacebookConnected || !creator.instagramUser)
+      return res.status(400).json({ message: 'Creator is not connected to instagram account' });
+      
+    // Check if expiresIn exists before using it
+    if (creator.instagramUser?.expiresIn && dayjs().isAfter(dayjs.unix(creator.instagramUser.expiresIn))) {
+      return res.status(400).json({ message: 'Instagram Token expired' });
+    }
+
+    // Make sure accessToken exists
+    if (!creator.instagramUser?.accessToken) {
+      return res.status(404).json({ message: 'Access token not found' });
+    }
+
+    // Parse the token if it was stored as a JSON string
+    let accessToken;
+    try {
+      const tokenObject = JSON.parse(creator.instagramUser.accessToken);
+      accessToken = decryptToken(tokenObject);
+    } catch (e) {
+      // If parsing fails, try to decrypt the string directly
+      accessToken = decryptToken(creator.instagramUser.accessToken as any);
+    }
+
+    // Step 1: Extract the shortcode from the URL
+    const shortCode = extractInstagramShortcode(url as string);
+    if (!shortCode) {
+      return res.status(400).json({ message: 'Invalid Instagram URL' });
+    }
+
+    // Step 2: We need to first get all the user's media to find the media ID
+    const mediaCount = creator.instagramUser.media_count || 0;
+    const { videos } = await getInstagramMedias(accessToken, mediaCount);
+
+    // Step 3: Find the media with matching shortcode
+    const video = videos.find((item: { shortcode: string; }) => item?.shortcode === shortCode);
+
+    if (!video) {
+      return res.status(404).json({ message: 'Media not found. Make sure this content belongs to the connected Instagram account.' });
+    }
+
+    // Step 4: Now we have the media ID, get the insights
+    const insight = await getMediaInsight(accessToken, video.id);
+
+    return res.status(200).json({ insight, video });
+  } catch (error) {
+    console.log(error);
+    return res.status(400).json(error);
   }
 };

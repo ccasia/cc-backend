@@ -70,13 +70,27 @@ export const getInstagramUserData = async (
 export const getInstagramMediaData = async (
   accessToken: string,
   mediaId: string,
-  fields: ('like_count' | 'media_url' | 'media_type' | 'comments_count' | 'thumbnail_url' | 'caption' | 'permalink' | 'timestamp')[],
+  fields: string[],
 ) => {
   try {
+    const validFields = [
+      'id',
+      'caption',
+      'like_count',
+      'comments_count',
+      'media_type',
+      'media_url',
+      'thumbnail_url',
+      'permalink',      
+      'timestamp',
+      'children',
+      'shortcode'
+    ];
+
     const response = await axios.get(`https://graph.facebook.com/${mediaId}`, {
       params: {
         access_token: accessToken,
-        fields: fields.toString(),
+        fields: validFields,
       },
     });
 
@@ -146,26 +160,50 @@ export const getInstagramOverviewService = async (accessToken: string) => {
 export const getAllMediaObject = async (
   accessToken: string,
   instaUserId: string,
-  fields = ['id', 'comments_count', 'like_count', 'media_type', 'media_url', 'thumbnail_url', 'caption', 'permalink'],
+  limit?: number,
+  fields = [
+    'id',
+    'comments_count',
+    'like_count',
+    'media_type',
+    'media_url',
+    'thumbnail_url',
+    'caption',
+    'permalink',
+    'shortcode',
+    'timestamp',
+  ],
 ) => {
   try {
     const res = await axios.get(`https://graph.instagram.com/v22.0/me/media`, {
       params: {
         access_token: accessToken,
         fields: fields.toString(),
-        limit: 60,
+        ...(limit && { limit: limit }),
       },
     });
 
-    const videos = res.data.data;
+    const videos = res.data.data || [];
 
-    // sort but highest like_count
-    let sortedVideos: any[] = videos?.sort((a: any, b: any) => a.like_count > b.like_count);
-    sortedVideos = sortedVideos.slice(0, 5);
+    const totalComments = videos.reduce((acc: any, cur: any) => acc + (cur.comments_count || 0), 0);
+    const averageComments = videos.length > 0 ? totalComments / videos.length : 0;
 
-    return sortedVideos;
+    const totalLikes = videos.reduce((acc: any, cur: any) => acc + (cur.like_count || 0), 0);
+    const averageLikes = videos.length > 0 ? totalLikes / videos.length : 0;
+
+    // Get top videos by likes
+    const sortedVideos = videos.slice(0, 5);
+
+    // Return as a plain object (not iterable)
+    return {
+      sortedVideos, 
+      averageLikes, 
+      averageComments, 
+      totalComments, 
+      totalLikes 
+    };
   } catch (error) {
-    throw new Error(error);
+    throw new Error(error as any);
   }
 };
 
@@ -200,4 +238,73 @@ export const calculateAverageLikes = (medias: [{ like_count: number }]) => {
   const numberOfPosts = medias.length;
 
   return Math.round(totalLikes / numberOfPosts) || 0;
+};
+
+export const getMediaInsight = async (accessToken: string, mediaId: string) => {
+  if (!accessToken || !mediaId) throw new Error(`Missing parameters: accessToken, mediaId`);
+
+  try {
+    const response = await axios.get(`https://graph.instagram.com/v22.0/${mediaId}/insights?`, {
+      params: {
+        access_token: accessToken,
+        metric: 'engagement,impressions,reach,saved,views,shares',
+        period: 'lifetime',
+      },
+    });
+
+    const insights = response.data.data || [];
+
+    const newInsights = insights.map((insight: any) => ({
+      name: insight?.name,
+      value: insight?.values[0]?.value || 0,
+    }));
+
+    return newInsights;
+  } catch (error) {
+    console.log(error);
+    throw new Error(`Failed to fetch media insight: ${error}`);
+  }
+};
+
+export const getInstagramMedias = async (
+  accessToken: string,
+  limit?: number,
+  fields = [
+    'id',
+    'comments_count',
+    'like_count',
+    'media_type',
+    'media_url',
+    'thumbnail_url',
+    'caption',
+    'permalink',
+    'shortcode',
+    'timestamp',
+  ],
+) => {
+  try {
+    const res = await axios.get(`https://graph.instagram.com/v22.0/me/media`, {
+      params: {
+        access_token: accessToken,
+        fields: fields.toString(),
+        ...(limit && { limit: limit }),
+      },
+    });
+
+    const videos = res.data.data || [];
+
+    const totalComments = videos.reduce((acc: any, cur: any) => acc + cur.comments_count, 0);
+    const averageComments = totalComments / videos.length;
+
+    const totalLikes = videos.reduce((acc: any, cur: any) => acc + cur.like_count, 0);
+    const averageLikes = totalLikes / videos.length;
+
+    // sort but highest like_count
+    // let sortedVideos: any[] = videos?.sort((a: any, b: any) => a.like_count > b.like_count);
+    // const sortedVideos = videos.slice(0, 5);
+
+    return { videos, averageLikes, averageComments, totalComments, totalLikes };
+  } catch (error) {
+    throw new Error(error);
+  }
 };
