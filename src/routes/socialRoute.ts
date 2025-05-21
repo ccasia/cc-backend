@@ -14,6 +14,9 @@ import {
   getCreatorByInstagramContent,
   getTiktokContentById,
   getCreatorByTiktokContent,
+  handleInstagramCallback,
+  getInstagramMediaKit,
+  getInstagramMediaInsight,
 } from '@controllers/socialController';
 import { Router } from 'express';
 import { isLoggedIn } from '@middlewares/onlyLogin';
@@ -49,5 +52,9 @@ router.get('/tiktok/content/:contentId', getTiktokContentById);
 router.get('/tiktok/creator/:contentId', getCreatorByTiktokContent);
 
 router.delete('/instagram/permissions/:userId', isLoggedIn, removeInstagramPermissions);
+
+router.get('/v2/auth/instagram/callback', handleInstagramCallback);
+router.get('/v2/instagramOverview/:userId', getInstagramMediaKit);
+router.get('/v2/mediaInsight/:userId', getInstagramMediaInsight);
 
 export default router;
