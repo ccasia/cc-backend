@@ -209,6 +209,12 @@ model InstagramUser {
   follows_count   Int?
   media_count     Int?
   username        String?
+  accessToken     String? 
+  expiresIn       Int?
+  totalLikes      Int? 
+  totalComments   Int?
+  averageLikes    Float?
+  averageComments Float? 
 
   instagramVideo InstagramVideo[]
 
@@ -229,6 +235,16 @@ model InstagramVideo {
   caption        String?
   permalink      String?
   timestamp      String?
+
+  saved_count     Int?
+  views_count     Int?
+  shares_count    Int?
+  reach_count     Int?
+  interactions    Int?
+  engagement_rate Float?
+  datePosted     DateTime?
+  shortcode      String?
+  insights       Json?
 
   instagramUserId String?
   // instagramUser   InstagramUser? @relation(fields: [instagramUserId], references: [id])
