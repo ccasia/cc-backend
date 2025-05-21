@@ -75,6 +75,10 @@ const corsOptions = {
 };
 
 app.use(cors());
+// app.use(cors({
+//   origin: 'http://localhost:3030', 
+//   credentials: true        
+// }));
 app.use(morgan('combined'));
 app.disable('x-powered-by');
 app.use('/uploads', express.static(uploadPath));
