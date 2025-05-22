@@ -836,21 +836,35 @@ export const createCampaignCreator = async (req: Request, res: Response) => {
       },
     });
 
-    await Promise.all(
-      shortlistedCreators.map((item) => {
-        return createCampaignCreatorSpreadSheet({
-          spreadSheetId: '1i89GPX6a8OOyVAyHuHT7zelqrhHrbXYPkkvY8ybflYA',
-          sheetByTitle: 'Campaign Creators',
-          data: {
-            name: item.user?.name || '',
-            instagram: item.user?.creator?.instagram || '',
-            tiktok: item.user?.creator?.tiktok || '',
-            email: item.user?.email || '',
-            phoneNumber: item.user?.phoneNumber || '',
-          },
-        });
-      }),
-    );
+    for (const item of shortlistedCreators) {
+      await createCampaignCreatorSpreadSheet({
+        spreadSheetId: '1i89GPX6a8OOyVAyHuHT7zelqrhHrbXYPkkvY8ybflYA',
+        sheetByTitle: 'Campaign Creators',
+        data: {
+          name: item.user?.name || '',
+          instagram: item.user?.creator?.instagram || '',
+          tiktok: item.user?.creator?.tiktok || '',
+          email: item.user?.email || '',
+          phoneNumber: item.user?.phoneNumber || '',
+        },
+      });
+    }
+
+    // await Promise.all(
+    //   shortlistedCreators.map((item) => {
+    //     return createCampaignCreatorSpreadSheet({
+    //       spreadSheetId: '1i89GPX6a8OOyVAyHuHT7zelqrhHrbXYPkkvY8ybflYA',
+    //       sheetByTitle: 'Campaign Creators',
+    //       data: {
+    //         name: item.user?.name || '',
+    //         instagram: item.user?.creator?.instagram || '',
+    //         tiktok: item.user?.creator?.tiktok || '',
+    //         email: item.user?.email || '',
+    //         phoneNumber: item.user?.phoneNumber || '',
+    //       },
+    //     });
+    //   }),
+    // );
 
     return res.sendStatus(200);
   } catch (error) {
