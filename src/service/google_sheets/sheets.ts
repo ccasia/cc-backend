@@ -179,3 +179,46 @@ export const createNewKWSPRowData = async ({
     throw new Error(error);
   }
 };
+
+export const createCampaignCreatorSpreadSheet = async ({
+  spreadSheetId,
+  sheetByTitle,
+  data,
+}: {
+  spreadSheetId: string;
+  sheetByTitle: string;
+  data: {
+    name: string;
+    instagram?: string;
+    tiktok?: string;
+    email: string;
+    phoneNumber: string;
+  };
+}) => {
+  try {
+    const sheet = await accessGoogleSheetAPI(spreadSheetId);
+
+    if (!sheet) {
+      throw new Error('Sheet not found.');
+    }
+
+    const currentSheet = sheet.sheetsByTitle[sheetByTitle];
+
+    if (!currentSheet) {
+      throw new Error('Sheet not found.');
+    }
+
+    const updatedRow = await currentSheet.addRow({
+      Name: data.name,
+      Instagram: data.instagram || 'N/A',
+      TikTok: data.tiktok || 'N/A',
+      Email: data.email,
+      'Phone Number': data.email,
+    });
+
+    return updatedRow;
+  } catch (error) {
+    console.log(error);
+    throw new Error(error);
+  }
+};

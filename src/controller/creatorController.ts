@@ -7,6 +7,7 @@ import { clients, io } from '../server';
 import { updateInvoices } from '@services/invoiceService';
 import { exportCreatorsToSpreadsheet } from '@helper/creatorsSpreadsheetService';
 import { createKanbanBoard } from './kanbanController';
+import { createCampaignCreatorSpreadSheet } from '@services/google_sheets/sheets';
 
 const prisma = new PrismaClient();
 
@@ -819,6 +820,40 @@ export const createKanban = async (req: Request, res: Response) => {
     return res.sendStatus(200);
   } catch (error) {
     console.log(error);
+    return res.status(400).json(error);
+  }
+};
+
+export const createCampaignCreator = async (req: Request, res: Response) => {
+  try {
+    const shortlistedCreators = await prisma.shortListedCreator.findMany({
+      include: {
+        user: {
+          include: {
+            creator: true,
+          },
+        },
+      },
+    });
+
+    await Promise.all(
+      shortlistedCreators.map((item) => {
+        createCampaignCreatorSpreadSheet({
+          spreadSheetId: '1i89GPX6a8OOyVAyHuHT7zelqrhHrbXYPkkvY8ybflYA',
+          sheetByTitle: 'Campaign Creators',
+          data: {
+            name: item.user?.name || '',
+            instagram: item.user?.creator?.instagram || '',
+            tiktok: item.user?.creator?.tiktok || '',
+            email: item.user?.email || '',
+            phoneNumber: item.user?.phoneNumber || '',
+          },
+        });
+      }),
+    );
+
+    return res.sendStatus(200);
+  } catch (error) {
     return res.status(400).json(error);
   }
 };
