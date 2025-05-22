@@ -838,7 +838,7 @@ export const createCampaignCreator = async (req: Request, res: Response) => {
 
     await Promise.all(
       shortlistedCreators.map((item) => {
-        createCampaignCreatorSpreadSheet({
+        return createCampaignCreatorSpreadSheet({
           spreadSheetId: '1i89GPX6a8OOyVAyHuHT7zelqrhHrbXYPkkvY8ybflYA',
           sheetByTitle: 'Campaign Creators',
           data: {
