@@ -55,6 +55,7 @@ passport.use(
             email: user.email,
             phoneNumber: user.phoneNumber || '',
             country: user.country || '',
+            createdAt: user.createdAt || new Date(),
           }).catch((error) => {
             console.error('Error saving creator to spreadsheet:', error);
           });
@@ -63,7 +64,6 @@ passport.use(
         if (!user.Board) {
           await createKanbanBoard(user.id, 'creator');
         }
-
         return done(null, user);
       } catch (err) {
         return done(err, null!);
