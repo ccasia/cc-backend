@@ -1,6 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { accessGoogleSheetAPI } from '@services/google_sheets/sheets';
-import formatDateTime from './formateDateTime';
+import formatDateTime from '../helper/formateDateTime';
 
 const prisma = new PrismaClient();
 
