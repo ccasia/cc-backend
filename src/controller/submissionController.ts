@@ -546,7 +546,13 @@ export const getAllSubmissions = async (req: Request, res: Response) => {
           select: {
             name: true,
             email: true,
+            photoURL: true,
           },
+        },
+        campaign: {
+          select: {
+            name: true,
+          }
         },
         admin: {
           select: {
@@ -592,7 +598,9 @@ export const getAllSubmissions = async (req: Request, res: Response) => {
                 1000,
             )
           : null,
+      content: submission.content || null,
       user: submission.user,
+      campaign: submission.campaign,
       feedback: submission.feedback,
       approvedByAdmin: submission.admin?.user,
     }));
