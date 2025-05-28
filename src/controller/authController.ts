@@ -12,7 +12,6 @@ import { saveCreatorToSpreadsheet } from '@helper/registeredCreatorSpreadsheet';
 import axios from 'axios';
 import bcrypt from 'bcryptjs';
 
-
 const prisma = new PrismaClient();
 
 interface RequestData {
@@ -252,8 +251,6 @@ export const registerCreator = async (req: Request, res: Response) => {
             },
           },
         });
-
-
 
         // Create interests if provided
         if (creatorData?.interests && creatorData.interests.length > 0) {
