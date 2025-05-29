@@ -2003,7 +2003,7 @@ export const changePitchStatus = async (req: Request, res: Response) => {
 
           if (socketId) {
             io.to(socketId).emit('notification', data);
-            io.to(socketId).emit('shortlisted', { message: 'shortlisted' });
+            // io.to(socketId).emit('shortlisted', data);
           }
 
           // Fetching admins for the campaign
@@ -2846,10 +2846,24 @@ export const shortlistCreator = async (req: Request, res: Response) => {
             });
 
             const image: any = campaign.campaignBrief?.images;
-            shortlisted(creator.email, campaign.name, creator.name ?? 'Creator', campaign.id, image[0]);
+            shortlisted(creator.email, campaign.name, creator.name ?? 'Creator', campaign.id, image?.[0]);
 
             const socketId = clients.get(creator.id);
-            if (socketId) io.to(socketId).emit('notification', notification);
+            if (socketId) {
+              io.to(socketId).emit('notification', notification);
+
+              io.to(socketId).emit('shortlisted', {
+                campaignId: campaign.id,
+                campaignName: campaign.name,
+                message: `Congratulations! You've been shortlisted for the ${campaign.name} campaign.`,
+                creatorData: {
+                  id: creator.id,
+                  name: creator.name,
+                  email: creator.email,
+                },
+
+  });
+}
 
             if (!campaign.thread) throw new Error('Campaign thread not found');
 

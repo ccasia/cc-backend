@@ -34,7 +34,7 @@ import FfmpegPath from '@ffmpeg-installer/ffmpeg';
 import { storage } from '@configs/cloudStorage.config';
 import dayjs from 'dayjs';
 import passport from 'passport';
-// import { draftConsumer } from '@helper/videoDraftWorker';
+// import { draftConsumer } from '@helper/videoDraftWorker';;
 
 import amqplib from 'amqplib';
 
@@ -189,6 +189,7 @@ io.on('connection', (socket) => {
       }
     }
   });
+  
 
   // Joins a room for every thread
   socket.on('room', async (threadId: any) => {
