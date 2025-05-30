@@ -311,3 +311,30 @@ export const getInstagramMedias = async (
     throw new Error(error);
   }
 };
+
+export const getTikTokVideoById = async (accessToken: string, videoId: string) => {
+  if (!accessToken || !videoId) throw new Error('Access token and video ID are required');
+
+  try {
+    const response = await axios.post(
+      'https://open.tiktokapis.com/v2/video/query/',
+      {
+        filters: { video_ids: [videoId] }
+      },
+      {
+        params: {
+          fields: 'id,title,video_description,duration,cover_image_url,embed_link,embed_html,like_count,comment_count,share_count,view_count,create_time'
+        },
+        headers: { 
+          Authorization: `Bearer ${accessToken}`, 
+          'Content-Type': 'application/json' 
+        },
+      },
+    );
+
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching TikTok video by ID:', error);
+    throw new Error(`Failed to fetch TikTok video: ${error}`);
+  }
+};

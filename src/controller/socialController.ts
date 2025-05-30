@@ -14,7 +14,7 @@ import {
   getInstagramUserData,
   getMediaInsight,
   getPageId,
-  revokeInstagramPermission,
+  getTikTokVideoById
 } from '@services/socialMediaService';
 
 // const CODE_VERIFIER = 'your_unique_code_verifier';
@@ -35,6 +35,46 @@ function extractInstagramShortcode(url: string) {
   const regex = /(?:https?:\/\/)?(?:www\.)?instagram\.com\/(?:p|reel|tv)\/([A-Za-z0-9_-]+)/;
   const match = url.match(regex);
   return match ? match[1] : null;
+}
+
+function extractTikTokVideoId(url: string): string | null {
+  try {
+    const urlObj = new URL(url);
+    
+    // Handle different TikTok URL formats
+    if (urlObj.hostname.includes('tiktok.com')) {
+      // Format: https://www.tiktok.com/@username/video/1234567890
+      if (urlObj.pathname.includes('/video/')) {
+        const videoId = urlObj.pathname.split('/video/')[1].split('?')[0];
+        return videoId;
+      }
+      
+      // Format: https://www.tiktok.com/@username/photo/1234567890 (for photo posts)
+      if (urlObj.pathname.includes('/photo/')) {
+        const photoId = urlObj.pathname.split('/photo/')[1].split('?')[0];
+        return photoId;
+      }
+
+      // Handle short URLs like vm.tiktok.com
+      if (urlObj.hostname.includes('vm.tiktok.com')) {
+        const shortCode = urlObj.pathname.substring(1); // Remove leading slash
+        return shortCode;
+      }
+
+      // Handle mobile URLs like m.tiktok.com
+      if (urlObj.hostname.includes('m.tiktok.com')) {
+        if (urlObj.pathname.includes('/v/')) {
+          const videoId = urlObj.pathname.split('/v/')[1].split('.html')[0];
+          return videoId;
+        }
+      }
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Invalid TikTok URL:', error);
+    return null;
+  }
 }
 
 // Connect account
@@ -829,11 +869,185 @@ export const getInstagramMediaInsight = async (req: Request, res: Response) => {
 
     if (!video) return res.status(404).json({ message: `This is the url shortcode: ${shortCode} but we can't find the video shortcode.` });
 
+    // NEW: Get the previous video (the one posted before this video)
+    // Since videos are sorted by timestamp (newest first), find the video right after the current one in the array
+    const currentVideoIndex = videos.findIndex((item: any) => item?.shortcode === shortCode);
+    const previousVideo = currentVideoIndex !== -1 && currentVideoIndex < videos.length - 1 
+      ? videos[currentVideoIndex + 1] 
+      : null;
+
+    console.log("Pervious video data: ", previousVideo)
+
     const insight = await getMediaInsight(accessToken, video?.id);
 
-    return res.status(200).json({ insight, video });
+    // Calculate percentage changes if previous video exists
+    let changes = {};
+    let previousPostData = null;
+
+    if (previousVideo) {
+      // Extract previous video metrics
+      previousPostData = {
+        timestamp: previousVideo.timestamp,
+        likes: previousVideo.like_count || 0,
+        comments: previousVideo.comments_count || 0,
+        saved: 0, // We don't have this in the video object, would need separate API call
+        shares: 0, // We don't have this in the video object, would need separate API call
+      };
+
+      // Get current metrics
+      const currentMetrics = {
+        likes: video.like_count || insight.find((i: { name: string; }) => i.name === 'likes')?.value || 0,
+        comments: video.comments_count || insight.find((i: { name: string; }) => i.name === 'comments')?.value || 0,
+        saved: insight.find((i: { name: string; }) => i.name === 'saved')?.value || 0,
+        shares: insight.find((i: { name: string; }) => i.name === 'shares')?.value || 0,
+      };
+
+      // Calculate percentage changes
+      changes = {
+        likes: previousPostData.likes > 0 ? ((currentMetrics.likes - previousPostData.likes) / previousPostData.likes) * 100 : (currentMetrics.likes > 0 ? 100 : 0),
+        comments: previousPostData.comments > 0 ? ((currentMetrics.comments - previousPostData.comments) / previousPostData.comments) * 100 : (currentMetrics.comments > 0 ? 100 : 0),
+        saved: previousPostData.saved > 0 ? ((currentMetrics.saved - previousPostData.saved) / previousPostData.saved) * 100 : (currentMetrics.saved > 0 ? 100 : 0),
+        shares: previousPostData.shares > 0 ? ((currentMetrics.shares - previousPostData.shares) / previousPostData.shares) * 100 : (currentMetrics.shares > 0 ? 100 : 0),
+      };
+    }
+
+    return res.status(200).json({ 
+      insight, 
+      video,
+      previousPost: previousPostData,
+      changes: changes,
+      hasPreviousPost: !!previousPostData
+    });
   } catch (error) {
     console.log(error);
     return res.status(400).json(error);
+  }
+};
+
+export const getTikTokVideoInsight = async (req: Request, res: Response) => {
+  const { userId } = req.params;
+  const { url } = req.query;
+
+  if (!userId) return res.status(404).json({ message: 'Parameter missing: userId' });
+  if (!url) return res.status(404).json({ message: 'Query missing: url' });
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: {
+        id: userId,
+      },
+    });
+
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    const creator = await prisma.creator.findFirst({
+      where: {
+        userId: user.id,
+      },
+      select: {
+        tiktokData: true,
+        isTiktokConnected: true,
+      },
+    });
+
+    if (!creator) return res.status(404).json({ message: 'User is not a creator' });
+    if (!creator.isTiktokConnected || !creator.tiktokData) {
+      return res.status(400).json({ message: 'Creator is not connected to TikTok account' });
+    }
+
+    const tiktokData = creator.tiktokData as any;
+    console.log('TikTok Data structure:', Object.keys(tiktokData)); // Debug
+    
+    // const encryptedAccessToken = tiktokData?.access_token;
+    
+    // if (!encryptedAccessToken) return res.status(404).json({ message: 'TikTok access token not found' });
+
+    // const accessToken = decryptToken(encryptedAccessToken);
+    const accessToken = 'act.q0zdw8SAAWGnra2c7isdYicog1w3szmfWuFgU5g9ZDlEffyMCt5JagB2p8sp!5620.va';
+
+    
+    // Debug: Check token format (don't log the full token for security)
+    console.log('Access token format check:', {
+      hasToken: !!accessToken,
+      startsWithAct: accessToken?.startsWith('act.'),
+      tokenLength: accessToken?.length,
+      firstChars: accessToken?.substring(0, 10),
+    });
+
+    // Extract video ID from URL
+    const videoId = extractTikTokVideoId(url as string);
+    console.log('Extracted video ID:', videoId); // Debug
+    
+    if (!videoId) {
+      return res.status(400).json({ message: 'Invalid TikTok URL or unable to extract video ID' });
+    }
+
+    // Test the token first with user info endpoint
+    try {
+      const testResponse = await axios.get('https://open.tiktokapis.com/v2/user/info/', {
+        params: {
+          fields: 'open_id,display_name'
+        },
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      console.log('Token test successful:', testResponse.data);
+    } catch (testError) {
+      console.error('Token test failed:', testError.response?.status, testError.response?.data);
+      return res.status(400).json({ 
+        message: 'Access token is invalid or expired',
+        error: testError.response?.data
+      });
+    }
+
+    // Now try to fetch the video
+    const videoResponse = await getTikTokVideoById(accessToken, videoId);
+    const videos = videoResponse?.data?.videos;
+    
+    if (!videos || videos.length === 0) {
+      return res.status(404).json({ message: 'Video not found or not accessible' });
+    }
+    
+    const video = videos[0];
+
+    // Format the response similar to Instagram
+    const formattedVideo = {
+      id: video.id,
+      title: video.title,
+      description: video.video_description,
+      media_url: video.cover_image_url,
+      cover_image_url: video.cover_image_url,
+      embed_link: video.embed_link,
+      embed_html: video.embed_html,
+      duration: video.duration,
+      like_count: video.like_count,
+      comment_count: video.comment_count,
+      share_count: video.share_count,
+      view_count: video.view_count,
+      timestamp: video.create_time,
+    };
+
+    // Create insight-like data from available metrics
+    const insight = [
+      { name: 'views', value: video.view_count || 0 },
+      { name: 'likes', value: video.like_count || 0 },
+      { name: 'comments', value: video.comment_count || 0 },
+      { name: 'shares', value: video.share_count || 0 },
+      { name: 'saved', value: 0 }, 
+      { name: 'reach', value: 0 },
+      { name: 'total_interactions', value: (video.like_count || 0) + (video.comment_count || 0) + (video.share_count || 0) },
+      { name: 'profile_visits', value: 0 },
+    ];
+
+    return res.status(200).json({ 
+      video: formattedVideo, 
+      insight 
+    });
+
+  } catch (error) {
+    console.error('Error getting TikTok video insight:', error);
+    return res.status(400).json({ 
+      message: 'Failed to get TikTok video insight',
+      error: error.message 
+    });
   }
 };
