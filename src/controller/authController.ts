@@ -226,7 +226,7 @@ export const registerCreator = async (req: Request, res: Response) => {
             pronounce: creatorData.pronounce || '',
             location: creatorData.location || '',
             birthDate: creatorData.birthDate ? new Date(creatorData.birthDate) : null,
-            employment: creatorData.employment || 'fulltime',
+            employment: creatorData.employment || '',
             tiktok: creatorData.tiktok || '',
             languages: creatorData.languages || [],
           });
