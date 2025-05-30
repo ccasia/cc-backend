@@ -25,6 +25,7 @@ import dotenv from 'dotenv';
 import '@services/google_sheets/sheets';
 import path from 'path';
 import fse from 'fs-extra';
+import fs from 'fs';
 
 import { PrismaSessionStore } from '@quixo3/prisma-session-store';
 
@@ -33,7 +34,7 @@ import FfmpegPath from '@ffmpeg-installer/ffmpeg';
 import { storage } from '@configs/cloudStorage.config';
 import dayjs from 'dayjs';
 import passport from 'passport';
-// import { draftConsumer } from '@helper/videoDraftWorker';
+// import { draftConsumer } from '@helper/videoDraftWorker';;
 
 import amqplib from 'amqplib';
 
@@ -46,6 +47,7 @@ const uploadPathChunks = path.join(__dirname, 'chunks');
 
 const app: Application = express();
 const server = http.createServer(app);
+
 
 export const io = new Server(server, {
   connectionStateRecovery: {},
@@ -73,8 +75,14 @@ const corsOptions = {
 };
 
 app.use(cors());
+// app.use(cors({
+//   origin: 'http://localhost:3030', 
+//   credentials: true        
+// }));
 app.use(morgan('combined'));
 app.disable('x-powered-by');
+app.use('/uploads', express.static(uploadPath));
+
 
 // create the session here
 declare module 'express-session' {
@@ -181,6 +189,7 @@ io.on('connection', (socket) => {
       }
     }
   });
+  
 
   // Joins a room for every thread
   socket.on('room', async (threadId: any) => {
@@ -343,7 +352,6 @@ app.post('/sendMessage', async (req: Request, res: Response) => {
   let con: any;
   try {
     amqp = await amqplib.connect(process.env.RABBIT_MQ!);
-
     con = await amqp.createChannel();
     await con.assertQueue('draft', { durable: true });
 
@@ -355,6 +363,41 @@ app.post('/sendMessage', async (req: Request, res: Response) => {
   } finally {
     if (con) await con.close();
     if (amqp) await amqp.close();
+  }
+});
+
+app.post('/api/thread/upload-attachment', async (req: Request, res: Response) => {
+  try {
+    if (!req.files || Object.keys(req.files).length === 0) {
+      return res.status(400).json({ error: 'No files were uploaded.' });
+    }
+
+    // 'file' is the name of the form field from client
+    const uploadedFile = req.files.file as fileUpload.UploadedFile;
+
+    // Ensure uploads directory exists
+    if (!fs.existsSync(uploadPath)) {
+      fs.mkdirSync(uploadPath, { recursive: true });
+    }
+
+    // Create unique filename
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+    const ext = path.extname(uploadedFile.name);
+    const filename = `attachment-${uniqueSuffix}${ext}`;
+
+    // Save the file locally
+    const savePath = path.join(uploadPath, filename);
+
+    await uploadedFile.mv(savePath);
+
+    // Construct the public URL assuming 'uploads' is served statically or accessible
+    // You may want to serve '/uploads' statically if not done already
+    const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${filename}`;
+
+    return res.json({ url: fileUrl });
+  } catch (error) {
+    console.error('Upload attachment error:', error);
+    return res.status(500).json({ error: 'Failed to upload file.' });
   }
 });
 

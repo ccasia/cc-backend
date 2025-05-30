@@ -48,6 +48,51 @@ export const uploadImage = async (tempFilePath: string, fileName: string, folder
   }
 };
 
+// New function for chat attachments
+export const uploadChatAttachment = async (
+  tempFilePath: string, 
+  fileName: string, 
+  threadId: string,
+  fileType: string
+): Promise<{ url: string; originalName: string; fileType: string }> => {
+  try {
+    // Ensure unique filenames
+    const uniqueFileName = `${dayjs().format('YYYYMMDDHHmmss')}-${fileName}`;
+    const folderName = `chat-attachments/${threadId}`;
+    
+    const bucketName = process.env.BUCKET_NAME as string;
+    const destination = `${folderName}/${uniqueFileName}`;
+
+    // Upload the file to the specified bucket
+    const [file] = await storage.bucket(bucketName).upload(tempFilePath, {
+      destination,
+      gzip: true,
+      metadata: {
+        contentType: fileType,
+        metadata: {
+          originalName: fileName,
+          threadId: threadId
+        }
+      },
+    });
+
+    // Make the file public
+    await file.makePublic();
+
+    // Construct the public URL with a cache-busting parameter
+    const publicURL = `https://storage.googleapis.com/${bucketName}/${destination}?v=${dayjs().format()}`;
+    
+    return {
+      url: publicURL,
+      originalName: fileName,
+      fileType: fileType
+    };
+  } catch (err) {
+    console.error("Error uploading chat attachment:", err);
+    throw new Error(`Error uploading chat attachment: ${err.message}`);
+  }
+};
+
 export const uploadProfileImage = async (tempFilePath: string, fileName: string, folderName: string) => {
   try {
     const bucket = storage.bucket(process.env.BUCKET_NAME as string);
@@ -109,48 +154,6 @@ export const uploadCompanyLogo = async (tempFilePath: string, fileName: string) 
     throw new Error(`Error uploading file: ${err}`);
   }
 };
-
-// export const uploadPitchVideo = async (
-//   tempFilePath: string,
-//   fileName: string,
-//   folderName: string,
-//   progressCallback?: any,
-//   size?: number,
-// ) => {
-//   try {
-//     const bucketName = process.env.BUCKET_NAME as string;
-//     const destination = `${folderName}/${fileName}`;
-
-//     await checkIfVideoExist(fileName, folderName);
-
-//     // Upload the file to the specified bucket
-//     const [file] = await storage.bucket(bucketName).upload(tempFilePath, {
-//       destination,
-//       gzip: true,
-//       resumable: true,
-//       metadata: {
-//         contentType: 'video/mp4',
-//       },
-//       onUploadProgress: (event) => {
-//         console.log(event.bytesWritten, size);
-//         if (size) {
-//           if (event.bytesWritten === size) {
-//             progressCallback(100);
-//           } else {
-//             const progress = (event.bytesWritten / size) * 100;
-//             progressCallback(progress);
-//           }
-//         }
-//       },
-//     });
-
-//     const publicURL = `https://storage.googleapis.com/${bucketName}/${destination}?v=${dayjs().format()}`;
-
-//     return publicURL;
-//   } catch (err) {
-//     throw new Error(`Error uploading file: ${err.message}`);
-//   }
-// };
 
 export const uploadPitchVideo = async (
   tempFilePath: string,
@@ -355,3 +358,5 @@ export const deleteContent = async ({ fileName, folderName }: any) => {
     throw new Error(error);
   }
 };
+
+const path = require('path');
