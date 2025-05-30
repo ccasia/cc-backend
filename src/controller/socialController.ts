@@ -806,9 +806,11 @@ export const getInstagramMediaInsight = async (req: Request, res: Response) => {
       },
     });
 
+
     if (!creator) return res.status(404).json({ message: 'User is not a creator' });
     if (!creator.isFacebookConnected || !creator.instagramUser)
       return res.status(400).json({ message: 'Creator is not connected to instagram account' });
+
     if (dayjs().isAfter(dayjs.unix(creator?.instagramUser?.expiresIn!))) {
       return res.status(400).json({ message: 'Instagram Token expired' });
     }
@@ -817,6 +819,7 @@ export const getInstagramMediaInsight = async (req: Request, res: Response) => {
     if (!encryptedAccessToken) return res.status(404).json({ message: 'Access token not found' });
 
     const accessToken = decryptToken(encryptedAccessToken as any);
+    // const accessToken = 'IGAAIGNU09lZBhBZAE5zNFZARbmlkbThTbEdVdTBkWndaUDhzRFNFMkwzbkZAINTY5dDdTbTVNaUNRemNGRmdGVFZAzdy1VSDRwRFBzSDNWQWt3a3NTeWZAKMXZAmVFpTMVRONDE1eU5kMk9jT2xmS0o4UV9SOTZAwVkJYWVBld3NXYzhrSQZDZD'
 
     const { videos } = await getInstagramMedias(accessToken, creator.instagramUser.media_count as number);
 
@@ -824,7 +827,7 @@ export const getInstagramMediaInsight = async (req: Request, res: Response) => {
 
     const video = videos.find((item: any) => item?.shortcode === shortCode);
 
-    if (!video) return res.status(404).json({ message: 'Shortcode not found' });
+    if (!video) return res.status(404).json({ message: `This is the url shortcode: ${shortCode} but we can't find the video shortcode.` });
 
     const insight = await getMediaInsight(accessToken, video?.id);
 

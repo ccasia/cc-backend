@@ -249,7 +249,7 @@ export const getMediaInsight = async (accessToken: string, mediaId: string) => {
     const response = await axios.get(`https://graph.instagram.com/v22.0/${mediaId}/insights?`, {
       params: {
         access_token: accessToken,
-        metric: ['likes', 'comments', 'views', 'saved', 'shares', 'reach', 'total_interactions'],
+        metric: ['likes', 'comments', 'views', 'saved', 'shares', 'reach', 'total_interactions', 'profile_visits'],
         period: 'day',
         metric_type: 'total_value',
       },

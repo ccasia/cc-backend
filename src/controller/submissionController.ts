@@ -544,6 +544,7 @@ export const getAllSubmissions = async (req: Request, res: Response) => {
         video: true,
         user: {
           select: {
+            id: true,
             name: true,
             email: true,
             photoURL: true,
@@ -558,6 +559,7 @@ export const getAllSubmissions = async (req: Request, res: Response) => {
           select: {
             user: {
               select: {
+                id: true,
                 name: true,
                 email: true,
               },
@@ -600,7 +602,9 @@ export const getAllSubmissions = async (req: Request, res: Response) => {
           : null,
       content: submission.content || null,
       user: submission.user,
+      userId: submission.user.id,
       campaign: submission.campaign,
+      campaignId: submission.campaignId,
       feedback: submission.feedback,
       approvedByAdmin: submission.admin?.user,
     }));
