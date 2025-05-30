@@ -3,6 +3,7 @@ import {
   getInstagramMediaInsight,
   getInstagramMediaKit,
   getInstagramOverview,
+  getTikTokVideoInsight,
   getUserInstagramData,
   handleDisconnectFacebook,
   handleDisconnectTiktok,
@@ -46,5 +47,7 @@ router.delete('/instagram/permissions/:userId', isLoggedIn, removeInstagramPermi
 router.get('/v2/auth/instagram/callback', handleInstagramCallback);
 router.get('/v2/instagramOverview/:userId', getInstagramMediaKit);
 router.get('/v2/mediaInsight/:userId', getInstagramMediaInsight);
+
+router.get('/v2/tiktokMediaInsight/:userId', getTikTokVideoInsight);
 
 export default router;

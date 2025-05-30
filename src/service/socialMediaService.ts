@@ -249,7 +249,7 @@ export const getMediaInsight = async (accessToken: string, mediaId: string) => {
     const response = await axios.get(`https://graph.instagram.com/v22.0/${mediaId}/insights?`, {
       params: {
         access_token: accessToken,
-        metric: ['likes', 'comments', 'views', 'saved', 'shares', 'reach', 'total_interactions'],
+        metric: ['likes', 'comments', 'views', 'saved', 'shares', 'reach', 'total_interactions', 'profile_visits'],
         period: 'day',
         metric_type: 'total_value',
       },
@@ -309,5 +309,32 @@ export const getInstagramMedias = async (
     return { videos, averageLikes, averageComments, totalComments, totalLikes };
   } catch (error) {
     throw new Error(error);
+  }
+};
+
+export const getTikTokVideoById = async (accessToken: string, videoId: string) => {
+  if (!accessToken || !videoId) throw new Error('Access token and video ID are required');
+
+  try {
+    const response = await axios.post(
+      'https://open.tiktokapis.com/v2/video/query/',
+      {
+        filters: { video_ids: [videoId] }
+      },
+      {
+        params: {
+          fields: 'id,title,video_description,duration,cover_image_url,embed_link,embed_html,like_count,comment_count,share_count,view_count,create_time'
+        },
+        headers: { 
+          Authorization: `Bearer ${accessToken}`, 
+          'Content-Type': 'application/json' 
+        },
+      },
+    );
+
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching TikTok video by ID:', error);
+    throw new Error(`Failed to fetch TikTok video: ${error}`);
   }
 };
