@@ -15,6 +15,9 @@ import {
   postingSubmission,
   updateSubmissionStatus,
   adminManageFinalDraft,
+  adminManagePhotosV2,
+  adminManageDraftVideosV2,
+  adminManageRawFootagesV2,
 } from '@controllers/submissionController';
 import { isLoggedIn } from '@middlewares/onlyLogin';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
@@ -44,5 +47,10 @@ router.patch('/manageFinalDraft', isSuperAdmin, adminManageFinalDraft);
 
 // Direct status update endpoint
 router.patch('/status', isSuperAdmin, updateSubmissionStatus);
+
+// V2 - Individual media management routes
+router.patch('/v2/managePhotos', isSuperAdmin, adminManagePhotosV2);
+router.patch('/v2/manageDraftVideos', isSuperAdmin, adminManageDraftVideosV2);
+router.patch('/v2/manageRawFootages', isSuperAdmin, adminManageRawFootagesV2);
 
 export default router;

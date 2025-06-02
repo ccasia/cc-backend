@@ -50,8 +50,10 @@ export const logAdminChange = async (message: string, adminId: string, req: Requ
   }
 };
 
-export const deductCredits = async (campaignId: string, userId: string, tx: PrismaClient) => {
+export const deductCredits = async (campaignId: string, userId: string, prismaFunc?: PrismaClient) => {
   try {
+
+    const tx = prismaFunc ?? prisma
     // return await prisma.$transaction(async (tx) => {
     const campaign = await tx.campaign.findUnique({
       where: {
