@@ -866,6 +866,8 @@ export const getInstagramMediaInsight = async (req: Request, res: Response) => {
 
     const video = videos.find((item: any) => item?.shortcode === shortCode);
 
+    console.log('ASDSAD', video);
+
     if (!video)
       return res
         .status(404)
@@ -877,7 +879,7 @@ export const getInstagramMediaInsight = async (req: Request, res: Response) => {
     const previousVideo =
       currentVideoIndex !== -1 && currentVideoIndex < videos.length - 1 ? videos[currentVideoIndex + 1] : null;
 
-    console.log('Pervious video data: ', previousVideo);
+    // console.log('Pervious video data: ', previousVideo);
 
     const insight = await getMediaInsight(accessToken, video?.id);
 
@@ -940,7 +942,7 @@ export const getInstagramMediaInsight = async (req: Request, res: Response) => {
       hasPreviousPost: !!previousPostData,
     });
   } catch (error) {
-    console.log(error);
+    // console.log(error);
     return res.status(400).json(error);
   }
 };
