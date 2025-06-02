@@ -161,6 +161,7 @@ export const getInstagramOverviewService = async (accessToken: string) => {
 
     return res.data;
   } catch (error) {
+    console.log(error);
     throw new Error(error);
   }
 };
@@ -308,6 +309,7 @@ export const getInstagramMedias = async (
 
     return { videos, averageLikes, averageComments, totalComments, totalLikes };
   } catch (error) {
+    console.log(error);
     throw new Error(error);
   }
 };
