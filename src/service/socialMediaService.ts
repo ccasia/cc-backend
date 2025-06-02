@@ -319,15 +319,16 @@ export const getTikTokVideoById = async (accessToken: string, videoId: string) =
     const response = await axios.post(
       'https://open.tiktokapis.com/v2/video/query/',
       {
-        filters: { video_ids: [videoId] }
+        filters: { video_ids: [videoId] },
       },
       {
         params: {
-          fields: 'id,title,video_description,duration,cover_image_url,embed_link,embed_html,like_count,comment_count,share_count,view_count,create_time'
+          fields:
+            'id,title,video_description,duration,cover_image_url,embed_link,embed_html,like_count,comment_count,share_count,view_count,create_time',
         },
-        headers: { 
-          Authorization: `Bearer ${accessToken}`, 
-          'Content-Type': 'application/json' 
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
         },
       },
     );

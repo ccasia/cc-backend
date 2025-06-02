@@ -553,7 +553,7 @@ export const getAllSubmissions = async (req: Request, res: Response) => {
         campaign: {
           select: {
             name: true,
-          }
+          },
         },
         admin: {
           select: {
