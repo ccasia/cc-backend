@@ -866,8 +866,6 @@ export const getInstagramMediaInsight = async (req: Request, res: Response) => {
 
     const video = videos.find((item: any) => item?.shortcode === shortCode);
 
-    console.log('ASDSAD', video);
-
     if (!video)
       return res
         .status(404)
@@ -876,6 +874,7 @@ export const getInstagramMediaInsight = async (req: Request, res: Response) => {
     // NEW: Get the previous video (the one posted before this video)
     // Since videos are sorted by timestamp (newest first), find the video right after the current one in the array
     const currentVideoIndex = videos.findIndex((item: any) => item?.shortcode === shortCode);
+
     const previousVideo =
       currentVideoIndex !== -1 && currentVideoIndex < videos.length - 1 ? videos[currentVideoIndex + 1] : null;
 
