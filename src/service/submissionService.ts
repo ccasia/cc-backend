@@ -5,12 +5,15 @@ import { PrismaClient } from '@prisma/client';
 import { Request } from 'express';
 import { getTaskId, updateTask } from './kanbanService';
 import { saveNotification } from '@controllers/notificationController';
+import { deductCredits } from './campaignServices';
+import { createInvoiceService } from './invoiceService';
 
 const prisma = new PrismaClient();
 
-export const getCreatorInvoiceLists = async (submissionId: string, prisma: PrismaClient) => {
+export const getCreatorInvoiceLists = async (submissionId: string, prismaFunc?: PrismaClient) => {
   try {
-    const submission = await prisma.submission.findUnique({
+
+    const submission = await (prismaFunc ?? prisma).submission.findUnique({
       where: {
         id: submissionId,
       },
@@ -252,3 +255,93 @@ export const handleSubmissionNotification = async (submissionId: string) => {
     throw new Error(error);
   }
 };
+
+
+export const handleCompletedCampaign = async (submissionId: string) => {
+try {
+  console.log('🎯 Starting handleCompletedCampaign for submission:', submissionId);
+
+  const submission = await prisma.submission.findUnique({
+    where: {
+      id: submissionId
+    },
+    include: {
+      user: {
+        include: {
+          creator: true,
+          paymentForm: true,
+          creatorAgreement: true,
+          Board: true,
+        },
+      },
+      campaign: true
+    }
+  })
+
+  if(!submission) {
+    console.log('❌ Submission not found:', submissionId);
+    throw new Error("Submission not found")
+  }
+
+  console.log('📋 Found submission:', {
+    id: submission.id,
+    userId: submission.userId,
+    campaignId: submission.campaignId,
+    campaignName: submission.campaign.name
+  });
+
+  const invoiceAmount = submission.user.creatorAgreement.find(
+    (elem: any) => elem.campaignId === submission.campaignId,
+  )?.amount;
+
+  console.log('💰 Invoice amount found:', invoiceAmount);
+
+  if(!invoiceAmount) {
+    console.log('⚠️ Invoice amount not found, but continuing with campaign completion...');
+    // Don't throw error, just log and continue with marking campaign as done
+  } else {
+    console.log('💳 Processing invoice and credits...');
+    
+    if (submission.campaign.campaignCredits !== null) {
+      console.log('🔄 Deducting credits...');
+      await deductCredits(submission.campaignId, submission.userId);
+    }
+
+    const invoiceItems = await getCreatorInvoiceLists(submission.id);
+    console.log('📄 Invoice items:', invoiceItems);
+
+    await createInvoiceService(submission, submission.userId, invoiceAmount, invoiceItems);
+    console.log('✅ Invoice created successfully');
+  }
+
+  const shortlistedCreator = await prisma.shortListedCreator.findFirst({
+    where: {
+      AND: [{ userId: submission.userId }, { campaignId: submission.campaignId }],
+    },
+  });
+
+  if (!shortlistedCreator) {
+    console.log('❌ Shortlisted creator not found for userId:', submission.userId, 'campaignId:', submission.campaignId);
+    throw new Error('Shortlisted creator not found.');
+  }
+
+  console.log('👤 Found shortlisted creator:', shortlistedCreator.id);
+
+  await prisma.shortListedCreator.update({
+    where: {
+      id: shortlistedCreator.id,
+    },
+    data: {
+      isCampaignDone: true,
+    },
+  });
+
+  console.log('🎉 Campaign marked as done! isCampaignDone set to true');
+    
+} catch (error) {
+  console.log('❌ Error in handleCompletedCampaign:', error);
+  // Don't throw error to prevent breaking the approval flow
+  // Just log the error and continue
+}
+
+} 
