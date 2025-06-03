@@ -18,7 +18,6 @@ import dayjs from 'dayjs';
 import axios from 'axios';
 import bcrypt from 'bcryptjs';
 
-
 const prisma = new PrismaClient();
 
 interface RequestData {
@@ -259,8 +258,6 @@ export const registerCreator = async (req: Request, res: Response) => {
           },
         });
 
-
-
         // Create interests if provided
         if (creatorData?.interests && creatorData.interests.length > 0) {
           // Handle both formats: array of strings or array of objects
@@ -286,7 +283,7 @@ export const registerCreator = async (req: Request, res: Response) => {
       await createKanbanBoard(result.user.id, 'creator');
 
       // Send verification email
-      const token = jwt.sign({ id: result.user.id }, process.env.ACCESSKEY as Secret, { expiresIn: '1m' });
+      const token = jwt.sign({ id: result.user.id }, process.env.ACCESSKEY as Secret, { expiresIn: '15m' });
 
       let shortCode;
 
@@ -309,7 +306,7 @@ export const registerCreator = async (req: Request, res: Response) => {
               id: result.user.id,
             },
           },
-          expiredAt: dayjs().add(1, 'minute').toDate(),
+          expiredAt: dayjs().add(15, 'minute').toDate(),
           token: token,
         },
       });
