@@ -1,5 +1,9 @@
 import { Response, NextFunction } from 'express';
 import { verify } from 'jsonwebtoken';
+import { PrismaClient } from '@prisma/client';
+import dayjs from 'dayjs';
+
+const prisma = new PrismaClient();
 
 export const validateToken = (req: any, res: Response, next: NextFunction) => {
   const accessToken = req.cookies['accessToken'];
@@ -34,5 +38,25 @@ export const verifyToken = (token: string) => {
       throw new Error('Invalid token.');
     }
     throw new Error('Error verifying token.');
+  }
+};
+
+export const getJWTToken = async (token: string) => {
+  try {
+    const jwtToken = await prisma.emailVerification.findFirst({
+      where: {
+        shortCode: token,
+      },
+      include: {
+        user: true,
+      },
+    });
+
+    if (!jwtToken) throw new Error('Shortcode not found');
+    if (dayjs(jwtToken.expiredAt).isBefore(dayjs(), 'date')) throw new Error('Shortcode expired');
+
+    return { jwtToken: jwtToken.token, user: jwtToken.user, id: jwtToken.id };
+  } catch (error) {
+    throw new Error(error);
   }
 };
