@@ -3237,6 +3237,7 @@ export const adminManagePhotosV2 = async (req: Request, res: Response) => {
 
       return {
         photo,
+        submission,
         newStatus,
         submissionUpdated,
         allSectionsReviewed,
@@ -3251,10 +3252,14 @@ export const adminManagePhotosV2 = async (req: Request, res: Response) => {
     if (result.submissionUpdated) {
       // Handle completed campaign logic if needed
       if (!preventStatusChange) {
-        await handleCompletedCampaign(result.photo.submissionId as string);
+        // Only call handleCompletedCampaign for POSTING submissions
+        if (result.photo.submission?.submissionType?.type === 'POSTING') {
+          await handleCompletedCampaign(result.photo.submissionId as string);
+        }
       } else {
         // Even with preventStatusChange, we need to complete the campaign if there's no posting submission
-        if (!result.postingSubmission) {
+        // and this is a POSTING submission
+        if (!result.postingSubmission && result.photo.submission?.submissionType?.type === 'POSTING') {
           await handleCompletedCampaign(result.photo.submissionId as string);
         }
       }
@@ -3518,6 +3523,7 @@ export const adminManageDraftVideosV2 = async (req: Request, res: Response) => {
 
       return {
         video,
+        submission,
         newStatus,
         submissionUpdated,
         allSectionsReviewed,
@@ -3532,10 +3538,14 @@ export const adminManageDraftVideosV2 = async (req: Request, res: Response) => {
     if (result.submissionUpdated) {
       // Handle completed campaign logic if needed
       if (!preventStatusChange) {
-        await handleCompletedCampaign(result.video.submissionId as string);
+        // Only call handleCompletedCampaign for POSTING submissions
+        if (result.video.submission?.submissionType?.type === 'POSTING') {
+          await handleCompletedCampaign(result.video.submissionId as string);
+        }
       } else {
         // Even with preventStatusChange, we need to complete the campaign if there's no posting submission
-        if (!result.postingSubmission) {
+        // and this is a POSTING submission
+        if (!result.postingSubmission && result.video.submission?.submissionType?.type === 'POSTING') {
           await handleCompletedCampaign(result.video.submissionId as string);
         }
       }
@@ -3799,6 +3809,7 @@ export const adminManageRawFootagesV2 = async (req: Request, res: Response) => {
 
       return {
         rawFootage,
+        submission,
         newStatus,
         submissionUpdated,
         allSectionsReviewed,
@@ -3813,10 +3824,14 @@ export const adminManageRawFootagesV2 = async (req: Request, res: Response) => {
     if (result.submissionUpdated) {
       // Handle completed campaign logic if needed
       if (!preventStatusChange) {
-        await handleCompletedCampaign(result.rawFootage.submissionId as string);
+        // Only call handleCompletedCampaign for POSTING submissions
+        if (result.submission?.submissionType?.type === 'POSTING') {
+          await handleCompletedCampaign(result.rawFootage.submissionId as string);
+        }
       } else {
         // Even with preventStatusChange, we need to complete the campaign if there's no posting submission
-        if (!result.postingSubmission) {
+        // and this is a POSTING submission
+        if (!result.postingSubmission && result.submission?.submissionType?.type === 'POSTING') {
           await handleCompletedCampaign(result.rawFootage.submissionId as string);
         }
       }
@@ -3853,7 +3868,7 @@ export const adminManageRawFootagesV2 = async (req: Request, res: Response) => {
         photosAllReviewed: result.photosAllReviewed
       }
     });
-
+// Catch error
   } catch (error) {
     return res.status(500).json({ 
       message: 'Internal server error',
@@ -3861,4 +3876,4 @@ export const adminManageRawFootagesV2 = async (req: Request, res: Response) => {
     });
   }
 };
-//test
+
