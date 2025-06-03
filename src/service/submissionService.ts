@@ -274,7 +274,8 @@ try {
           Board: true,
         },
       },
-      campaign: true
+      campaign: true,
+      submissionType: true
     }
   })
 
@@ -287,8 +288,15 @@ try {
     id: submission.id,
     userId: submission.userId,
     campaignId: submission.campaignId,
-    campaignName: submission.campaign.name
+    campaignName: submission.campaign.name,
+    submissionType: submission.submissionType.type
   });
+
+  // Only mark campaign as done for POSTING submissions, not for draft submissions
+  if (submission.submissionType.type !== 'POSTING') {
+    console.log('⏭️ Skipping campaign completion - this is not a POSTING submission, type:', submission.submissionType.type);
+    return;
+  }
 
   const invoiceAmount = submission.user.creatorAgreement.find(
     (elem: any) => elem.campaignId === submission.campaignId,
@@ -336,7 +344,7 @@ try {
     },
   });
 
-  console.log('🎉 Campaign marked as done! isCampaignDone set to true');
+  console.log('🎉 Campaign marked as done! isCampaignDone set to true for POSTING submission');
     
 } catch (error) {
   console.log('❌ Error in handleCompletedCampaign:', error);
