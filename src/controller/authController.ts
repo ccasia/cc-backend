@@ -5,10 +5,16 @@ import { Request, Response } from 'express';
 import { AdminInvitaion, AdminInvite, creatorVerificationEmail } from '@configs/nodemailer.config';
 import { handleChangePassword } from '@services/authServices';
 import { getUser } from '@services/userServices';
-import { verifyToken } from '@utils/jwtHelper';
-import { uploadProfileImage } from '@configs/cloudStorage.config';
+
+import { getJWTToken, verifyToken } from '@utils/jwtHelper';
+import { uploadImage, uploadProfileImage } from '@configs/cloudStorage.config';
 import { createKanbanBoard } from './kanbanController';
 import { saveCreatorToSpreadsheet } from '@helper/registeredCreatorSpreadsheet';
+
+import { generateRandomString } from '@utils/randomString';
+import { token } from 'morgan';
+import dayjs from 'dayjs';
+
 import axios from 'axios';
 import bcrypt from 'bcryptjs';
 
@@ -280,8 +286,35 @@ export const registerCreator = async (req: Request, res: Response) => {
       await createKanbanBoard(result.user.id, 'creator');
 
       // Send verification email
-      const token = jwt.sign({ id: result.user.id }, process.env.ACCESSKEY as Secret, { expiresIn: '15m' });
-      creatorVerificationEmail(result.user.email, token);
+      const token = jwt.sign({ id: result.user.id }, process.env.ACCESSKEY as Secret, { expiresIn: '1m' });
+
+      let shortCode;
+
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        shortCode = generateRandomString();
+
+        const isShortCodeExist = await prisma.emailVerification.findFirst({
+          where: { shortCode },
+        });
+
+        if (!isShortCodeExist) break;
+      }
+
+      const code = await prisma.emailVerification.create({
+        data: {
+          shortCode: shortCode!,
+          user: {
+            connect: {
+              id: result.user.id,
+            },
+          },
+          expiredAt: dayjs().add(1, 'minute').toDate(),
+          token: token,
+        },
+      });
+
+      creatorVerificationEmail(result.user.email, code.shortCode);
 
       // Save creator information to Google Spreadsheet
       saveCreatorToSpreadsheet({
@@ -477,8 +510,14 @@ export const checkTokenValidity = async (req: Request, res: Response) => {
 export const verifyCreator = async (req: Request, res: Response) => {
   const { token } = req.body;
 
+  if (!token) return res.status(404).json({ message: 'Token is missing' });
+
   try {
-    const result = verifyToken(token);
+    const { jwtToken } = await getJWTToken(token as string);
+
+    if (!jwtToken) return res.status(400).json({ message: 'Access token not found' });
+
+    const result = verifyToken(jwtToken);
 
     if (!result) {
       return res.status(400).json({ message: 'Unauthorized' });
@@ -498,7 +537,7 @@ export const verifyCreator = async (req: Request, res: Response) => {
     }
 
     // Update user status to active
-    await prisma.user.update({
+    const user = await prisma.user.update({
       where: {
         id: creator.id,
       },
@@ -507,6 +546,13 @@ export const verifyCreator = async (req: Request, res: Response) => {
       },
     });
 
+    if (user.emailVerificationId) {
+      await prisma.emailVerification.delete({
+        where: {
+          id: user.emailVerificationId,
+        },
+      });
+    }
     // Create kanban board if it doesn't exist yet
     const board = await prisma.board.findFirst({
       where: {
@@ -538,8 +584,12 @@ export const verifyCreator = async (req: Request, res: Response) => {
       httpOnly: true,
     });
 
-    return res.status(200).json({ message: 'Your are verified!', user: creator, accessToken });
+    return res.status(200).json({ message: 'Your are verified!', user: creator });
   } catch (error) {
+    console.log(error);
+    if (error instanceof Error) {
+      return res.status(400).json(error.message);
+    }
     if (error.message) return res.status(400).json({ message: error.message, tokenExpired: true });
     return res.status(400).json({ message: 'Error verifying creator' });
   }
@@ -1068,22 +1118,90 @@ export const updateProfileCreator = async (req: Request, res: Response) => {
 export const resendVerificationLinkCreator = async (req: Request, res: Response) => {
   const { token } = req.body;
 
+  if (!token) return res.status(404).json({ message: 'Token is missing' });
+
+  // try {
+  // const decode = jwt.decode(token);
+
+  // if (!decode) return res.status(400).json({ message: 'Token is invalid' });
+
+  //   const user = await prisma.user.findUnique({
+  //     where: {
+  //       id: (decode as any).id,
+  //     },
+  //   });
+
+  //   if (!user) return res.status(404).json({ message: 'User is not registered.' });
+
+  // const newToken = jwt.sign({ id: user.id }, process.env.ACCESSKEY as Secret, { expiresIn: '15m' });
+
+  // let code;
+
+  // // eslint-disable-next-line no-constant-condition
+  // while (true) {
+  //   const shortCode = generateRandomString();
+
+  //   const isShortCodeExist = await prisma.emailVerification.findFirst({
+  //     where: { shortCode },
+  //   });
+
+  //   if (!isShortCodeExist) {
+  //     code = await prisma.emailVerification.create({
+  //       data: {
+  //         shortCode: shortCode,
+  //         userId: user.id,
+  //         expiredAt: dayjs().add(15, 'minute').toDate(),
+  //         token: token,
+  //       },
+  //     });
+  //     break;
+  //   }
+  // }
+
+  // creatorVerificationEmail(user.email, code.shortCode);
+
+  // return res.status(200).json({ message: 'New verification link has been sent.' });
+  // } catch (error) {
+  //   return res.status(400).json(error);
+  // }
+
   try {
-    const decode = jwt.decode(token);
+    const { jwtToken, user, id } = await getJWTToken(token as string);
+
+    if (!jwtToken) return res.status(400).json({ message: 'Access token not found' });
+    if (!user) return res.status(400).json({ message: 'User not found' });
+
+    const decode = jwt.decode(jwtToken);
 
     if (!decode) return res.status(400).json({ message: 'Token is invalid' });
 
-    const user = await prisma.user.findUnique({
+    const newToken = jwt.sign({ id: user.id }, process.env.ACCESSKEY as Secret, { expiresIn: '15m' });
+
+    let shortCode;
+
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      shortCode = generateRandomString();
+
+      const isShortCodeExist = await prisma.emailVerification.findFirst({
+        where: { shortCode },
+      });
+
+      if (!isShortCodeExist) break;
+    }
+
+    const newCode = await prisma.emailVerification.update({
       where: {
-        id: (decode as any).id,
+        id: id,
+      },
+      data: {
+        token: newToken,
+        shortCode: shortCode,
+        expiredAt: dayjs().add(15, 'minute').toDate(),
       },
     });
 
-    if (!user) return res.status(404).json({ message: 'User is not registered.' });
-
-    const newToken = jwt.sign({ id: user.id }, process.env.ACCESSKEY as Secret, { expiresIn: '15m' });
-
-    creatorVerificationEmail(user.email, newToken);
+    creatorVerificationEmail(user.email, newCode.shortCode);
 
     return res.status(200).json({ message: 'New verification link has been sent.' });
   } catch (error) {
