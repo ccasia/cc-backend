@@ -78,7 +78,7 @@ RUN npx prisma generate
 # RUN yarn deploy
 
 # Add seed and create-timeline commands
-RUN yarn seed && yarn create-timeline
+# RUN yarn seed && yarn create-timeline
 
 EXPOSE 3001
 
