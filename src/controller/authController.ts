@@ -1,19 +1,23 @@
 /* eslint-disable no-unused-vars */
 import jwt, { JwtPayload, Secret } from 'jsonwebtoken';
 import { Employment, PrismaClient, RoleEnum, Prisma } from '@prisma/client';
-import { Request, response, Response } from 'express';
+import { Request, Response } from 'express';
 import { AdminInvitaion, AdminInvite, creatorVerificationEmail } from '@configs/nodemailer.config';
-import bcrypt from 'bcryptjs';
 import { handleChangePassword } from '@services/authServices';
 import { getUser } from '@services/userServices';
+
 import { getJWTToken, verifyToken } from '@utils/jwtHelper';
 import { uploadImage, uploadProfileImage } from '@configs/cloudStorage.config';
 import { createKanbanBoard } from './kanbanController';
-import axios from 'axios';
 import { saveCreatorToSpreadsheet } from '@helper/registeredCreatorSpreadsheet';
+
 import { generateRandomString } from '@utils/randomString';
 import { token } from 'morgan';
 import dayjs from 'dayjs';
+
+import axios from 'axios';
+import bcrypt from 'bcryptjs';
+
 
 const prisma = new PrismaClient();
 
@@ -242,8 +246,20 @@ export const registerCreator = async (req: Request, res: Response) => {
           },
           include: {
             user: true,
+            instagramUser: {
+              select: {
+                username: true,
+              },
+            },
+            tiktokUser: {
+              select: {
+                display_name: true,
+              },
+            },
           },
         });
+
+
 
         // Create interests if provided
         if (creatorData?.interests && creatorData.interests.length > 0) {
@@ -306,6 +322,7 @@ export const registerCreator = async (req: Request, res: Response) => {
         email: result.user.email,
         phoneNumber: result.user.phoneNumber || '',
         country: result.user.country || '',
+        createdAt: result.user.createdAt,
       }).catch((error) => {
         console.error('Error saving creator to spreadsheet:', error);
       });

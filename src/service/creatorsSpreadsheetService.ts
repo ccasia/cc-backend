@@ -1,10 +1,11 @@
 import { PrismaClient } from '@prisma/client';
 import { accessGoogleSheetAPI } from '@services/google_sheets/sheets';
+import formatDateTime from '../helper/formateDateTime';
 
 const prisma = new PrismaClient();
 
 // Define the expected headers for the creator spreadsheet
-const CREATOR_HEADERS = ['Name', 'Email', 'Phone Number', 'Country'];
+const CREATOR_HEADERS = ['Name', 'Email', 'Phone Number', 'Country', 'Date Registered', 'Social Handle'];
 
 /**
  * Fetches all creators from the database and exports them to Google Spreadsheet
@@ -71,34 +72,85 @@ export const exportCreatorsToSpreadsheet = async (): Promise<string> => {
     console.log(`Found ${existingRows.length} existing records in spreadsheet`);
 
     // Create a set of existing emails for fast lookup
-    const existingEmails = new Set();
+    const existingEmailsMap = new Map();
     for (const row of existingRows) {
-      if (row.get('Email')) {
-        existingEmails.add(row.get('Email').trim().toLowerCase()); // Normalize emails for comparison
+      const email = row.get('Email')?.trim().toLowerCase();
+      if (email) {
+        existingEmailsMap.set(email, row);
       }
     }
-    console.log(`Found ${existingEmails.size} unique emails in spreadsheet`);
+    console.log(`Found ${existingEmailsMap.size} unique emails in spreadsheet`);
 
     // Fetch all creators from the database
     const users = await prisma.user.findMany({
       where: {
         role: 'creator',
       },
-      include: {
-        creator: true,
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phoneNumber: true,
+        country: true,
+        createdAt: true,
+        creator: {
+          include: {
+            instagramUser: {
+              select: {
+                username: true,
+              },
+            },
+            tiktokUser: {
+              select: {
+                display_name: true,
+              }
+            }
+          }
+        }
       },
     });
 
     // Identify new records that don't exist in the spreadsheet
     const newRows = [];
     for (const user of users) {
-      const email = user.email?.trim().toLowerCase(); // Normalize for comparison
-      if (email && !existingEmails.has(email)) {
+      const email = user.email?.trim().toLowerCase();
+      if (!email) continue;
+        
+      // Get social handles
+      const socialHandles = [];
+      
+      if (user.creator?.instagramUser?.username) {
+        socialHandles.push(`IG: ${user.creator.instagramUser.username}`);
+      }
+      
+      if (user.creator?.tiktokUser?.display_name) {
+        socialHandles.push(`TT: ${user.creator.tiktokUser.display_name}`);
+      }
+
+      const socialHandlesString = socialHandles.join(' / ');
+
+      // Check if user exists in spreadsheet
+      const existingRow = existingEmailsMap.get(email);
+      if (existingRow) {
+        // Update existing row if date or social handles are missing
+        const currentDate = existingRow.get('Date Registered');
+        const currentSocialHandle = existingRow.get('Social Handle');
+
+        if (!currentDate || !currentSocialHandle) {
+          existingRow.set('Date Registered', formatDateTime(user.createdAt));
+          existingRow.set('Social Handle', socialHandlesString);
+          await existingRow.save();
+          console.log(`Updated existing row for ${email}`);
+        }
+      } else {
+        // Add new row
         newRows.push({
           Name: user.name || '',
           Email: user.email || '',
           'Phone Number': user.phoneNumber || '',
           Country: user.country || '',
+          'Date Registered': formatDateTime(user.createdAt),
+          'Social Handle': socialHandlesString || '',
         });
       }
     }
@@ -111,13 +163,17 @@ export const exportCreatorsToSpreadsheet = async (): Promise<string> => {
       console.log('No new creators to add - spreadsheet is already up to date');
     }
 
+    // Log summary
+    console.log(`Updated ${existingEmailsMap.size} existing records`);
+    console.log(`Added ${newRows.length} new records`);
+
     // Return the URL of the spreadsheet
     const spreadsheetUrl = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}`;
     console.log(`Export completed. Spreadsheet URL: ${spreadsheetUrl}`);
     return spreadsheetUrl;
   } catch (error) {
     console.error('Error in exportCreatorsToSpreadsheet:', error);
-    throw error;
+    throw new Error(`Failed to export creators: ${error.message}`);
   }
 };
 

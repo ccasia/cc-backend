@@ -5,7 +5,7 @@ import { uploadAgreementForm, uploadProfileImage } from '@configs/cloudStorage.c
 import { Title, saveNotification } from './notificationController';
 import { clients, io } from '../server';
 import { updateInvoices } from '@services/invoiceService';
-import { exportCreatorsToSpreadsheet } from '@helper/creatorsSpreadsheetService';
+import { exportCreatorsToSpreadsheet } from '@services/creatorsSpreadsheetService';
 import { createKanbanBoard } from './kanbanController';
 import { createCampaignCreatorSpreadSheet } from '@services/google_sheets/sheets';
 
