@@ -1,16 +1,16 @@
-const { GoogleSpreadsheet } = require('google-spreadsheet');
 import { accessGoogleSheetAPI } from '@services/google_sheets/sheets';
-import { JWT } from 'google-auth-library';
+import formatDateTime from './formateDateTime';
 
 interface CreatorData {
   name: string;
   email: string;
   phoneNumber: string;
   country: string;
+  createdAt: Date;
 }
 
 // Define the expected headers for the creator spreadsheet
-const CREATOR_HEADERS = ['Name', 'Email', 'Phone Number', 'Country'];
+const CREATOR_HEADERS = ['Name', 'Email', 'Phone Number', 'Country', 'Date Registered', 'Social Handle'];
 
 const title = process.env.NODE_ENV === 'production' ? 'Production' : 'Staging';
 
@@ -63,11 +63,12 @@ export const saveCreatorToSpreadsheet = async (creatorData: CreatorData): Promis
 
     // After ensuring headers exist, add the new row
     // Match the property names exactly to the headers
-    const result = await sheet.addRow({
+    await sheet.addRow({
       Name: creatorData.name || '',
       Email: creatorData.email || '',
       'Phone Number': creatorData.phoneNumber || '',
       Country: creatorData.country || '',
+      'Date Registered': formatDateTime(new Date()),
     });
 
     console.log(`Successfully added creator ${creatorData.name} to spreadsheet`);
