@@ -2003,7 +2003,6 @@ export const changePitchStatus = async (req: Request, res: Response) => {
 
           if (socketId) {
             io.to(socketId).emit('notification', data);
-            // io.to(socketId).emit('shortlisted', data);
           }
 
           // Fetching admins for the campaign
@@ -2837,6 +2836,9 @@ export const shortlistCreator = async (req: Request, res: Response) => {
             include: { admin: { include: { user: true } } },
           });
 
+          console.log('Admins found:', admins);
+          console.log('About to process creators...');
+
           for (const creator of creatorData) {
             const notification = await saveNotification({
               userId: creator.id,
@@ -2847,6 +2849,8 @@ export const shortlistCreator = async (req: Request, res: Response) => {
 
             const image: any = campaign.campaignBrief?.images;
             shortlisted(creator.email, campaign.name, creator.name ?? 'Creator', campaign.id, image?.[0]);
+
+           
 
             const socketId = clients.get(creator.id);
             if (socketId) {
@@ -2861,7 +2865,6 @@ export const shortlistCreator = async (req: Request, res: Response) => {
                   name: creator.name,
                   email: creator.email,
                 },
-
   });
 }
 
