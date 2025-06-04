@@ -550,6 +550,7 @@ export const verifyCreator = async (req: Request, res: Response) => {
         },
       });
     }
+
     // Create kanban board if it doesn't exist yet
     const board = await prisma.board.findFirst({
       where: {
@@ -1094,16 +1095,10 @@ export const updateProfileCreator = async (req: Request, res: Response) => {
       message: 'Profile updated successfully!',
       creator: updatedCreator,
     });
-    return res.status(200).json({
-      message: 'Profile updated successfully!',
-      creator: updatedCreator,
-    });
   } catch (error) {
-    console.error('Error updating creator:', error);
-    return res.status(400).json({
-      message: 'Error updating creator',
-      error: error.message,
-    });
+    if (error instanceof Error) {
+      console.error('Error updating creator:', error.message);
+    }
     console.error('Error updating creator:', error);
     return res.status(400).json({
       message: 'Error updating creator',
