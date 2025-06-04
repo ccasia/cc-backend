@@ -63,6 +63,7 @@ export const createInvoiceService = async (
   userId: any,
   amount: any,
   invoiceItems?: { type: string; count: number }[],
+  tx?: PrismaClient,
 ) => {
   const invoiceNumber = await generateUniqueInvoiceNumber();
 
@@ -108,7 +109,7 @@ export const createInvoiceService = async (
   };
 
   try {
-    const { invoice } = await prisma.campaign.update({
+    const { invoice } = await (tx ?? prisma).campaign.update({
       where: {
         id: data.campaignId,
       },

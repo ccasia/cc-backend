@@ -2171,7 +2171,7 @@ export const adminManagePosting = async (req: Request, res: Response) => {
 
         const invoiceItems = await getCreatorInvoiceLists(approvedSubmission.id, tx as PrismaClient);
 
-        await createInvoiceService(approvedSubmission, userId, invoiceAmount, invoiceItems);
+        await createInvoiceService(approvedSubmission, userId, invoiceAmount, invoiceItems, tx as PrismaClient);
 
         const shortlistedCreator = await tx.shortListedCreator.findFirst({
           where: { userId: approvedSubmission.userId, campaignId: submission.campaignId },
@@ -2257,7 +2257,10 @@ export const adminManagePosting = async (req: Request, res: Response) => {
 
     return res.status(200).json({ message: 'Successfully submitted' });
   } catch (error) {
-    return res.status(400).json({ error: error.message });
+    if (error instanceof Error) {
+      return res.status(400).json({ error: error.message });
+    }
+    return res.status(400).json({ error: 'Error approving posting submission' });
   }
 };
 
