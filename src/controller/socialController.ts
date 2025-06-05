@@ -752,6 +752,8 @@ export const getInstagramMediaKit = async (req: Request, res: Response) => {
     if (!encryptedAccessToken) return res.status(404).json({ message: 'Access token not found' });
 
     const accessToken = decryptToken(encryptedAccessToken as any);
+    // const accessToken = 'IGAAIGNU09lZBhBZAE9OSDE4VWVja1BhZA2pMOWkzVG9nTkJVWnZA0QkhKMlFXdTBVbW1fS0tUQWl5RE1BQTY4N0ktODhUQjRIU1RWQ1hBcHdmbWdUSTlBOVE2QVBELXN1azQzNFhSZA2dBWi1PVjhWaUxmaWZAMekl4U2FMMWJLWDk5awZDZD';
+
 
     const overview = await getInstagramOverviewService(accessToken);
     const medias = await getAllMediaObject(accessToken, overview.user_id, overview.media_count);
@@ -858,7 +860,6 @@ export const getInstagramMediaInsight = async (req: Request, res: Response) => {
     if (!encryptedAccessToken) return res.status(404).json({ message: 'Access token not found' });
 
     const accessToken = decryptToken(encryptedAccessToken as any);
-    // const accessToken = 'IGAAIGNU09lZBhBZAE5zNFZARbmlkbThTbEdVdTBkWndaUDhzRFNFMkwzbkZAINTY5dDdTbTVNaUNRemNGRmdGVFZAzdy1VSDRwRFBzSDNWQWt3a3NTeWZAKMXZAmVFpTMVRONDE1eU5kMk9jT2xmS0o4UV9SOTZAwVkJYWVBld3NXYzhrSQZDZD'
 
     const { videos } = await getInstagramMedias(accessToken, creator.instagramUser.media_count as number);
 
@@ -980,12 +981,12 @@ export const getTikTokVideoInsight = async (req: Request, res: Response) => {
     const tiktokData = creator.tiktokData as any;
     console.log('TikTok Data structure:', Object.keys(tiktokData)); // Debug
 
-    // const encryptedAccessToken = tiktokData?.access_token;
+    const encryptedAccessToken = tiktokData?.access_token;
 
-    // if (!encryptedAccessToken) return res.status(404).json({ message: 'TikTok access token not found' });
+    if (!encryptedAccessToken) return res.status(404).json({ message: 'TikTok access token not found' });
 
-    // const accessToken = decryptToken(encryptedAccessToken);
-    const accessToken = 'act.q0zdw8SAAWGnra2c7isdYicog1w3szmfWuFgU5g9ZDlEffyMCt5JagB2p8sp!5620.va';
+    const accessToken = decryptToken(encryptedAccessToken);
+    // const accessToken = 'act.q0zdw8SAAWGnra2c7isdYicog1w3szmfWuFgU5g9ZDlEffyMCt5JagB2p8sp!5620.va';
 
     // Debug: Check token format (don't log the full token for security)
     console.log('Access token format check:', {
@@ -1053,13 +1054,10 @@ export const getTikTokVideoInsight = async (req: Request, res: Response) => {
       { name: 'likes', value: video.like_count || 0 },
       { name: 'comments', value: video.comment_count || 0 },
       { name: 'shares', value: video.share_count || 0 },
-      { name: 'saved', value: 0 },
-      { name: 'reach', value: 0 },
       {
         name: 'total_interactions',
         value: (video.like_count || 0) + (video.comment_count || 0) + (video.share_count || 0),
       },
-      { name: 'profile_visits', value: 0 },
     ];
 
     return res.status(200).json({
