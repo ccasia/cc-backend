@@ -17,6 +17,46 @@ import {
   getTikTokVideoById,
 } from '@services/socialMediaService';
 
+// Type definitions
+export interface UrlData {
+  url: string;
+  submissionId: string;
+  userId: string;
+  userName: string;
+}
+
+export interface MetricData {
+  name: string;
+  value: number;
+}
+
+export interface MetricsMap {
+  [key: string]: number;
+}
+
+export interface Totals {
+  views: number;
+  likes: number;
+  comments: number;
+  saved: number;
+  totalInteractions: number;
+  reach: number;
+  shares: number;
+  postCount?: number;
+}
+
+export interface MetricComparison {
+  current: number;
+  average: number;
+  change: number;
+  isAboveAverage: boolean;
+  changeText: string;
+}
+
+export interface ComparisonResult {
+  [key: string]: MetricComparison;
+}
+
 // const CODE_VERIFIER = 'your_unique_code_verifier';
 // const CODE_CHALLENGE = 'SHA256_hash_of_code_verifier';
 
@@ -28,8 +68,6 @@ interface InstagramData {
   encryptedToken: { iv: string; content: string };
   expires_in: string;
 }
-
-enum MetricProfileInsights {}
 
 function extractInstagramShortcode(url: string) {
   const regex = /(?:https?:\/\/)?(?:www\.)?instagram\.com\/(?:p|reel|tv)\/([A-Za-z0-9_-]+)/;
@@ -822,9 +860,144 @@ export const getInstagramMediaKit = async (req: Request, res: Response) => {
   }
 };
 
+// Helper function to get campaign submission URLs
+async function getCampaignSubmissionUrls(campaignId: string): Promise<UrlData[]> {
+  try {
+    const submissions = await prisma.submission.findMany({
+      where: {
+        campaignId: campaignId,
+        status: 'APPROVED'
+      },
+      select: {
+        id: true,
+        userId: true,
+        content: true,
+        user: {
+          select: {
+            name: true
+          }
+        }
+      }
+    });
+
+    const allUrls: UrlData[] = [];
+    submissions.forEach(submission => {
+      if (submission.content) {
+        const instagramUrlRegex = /https?:\/\/(www\.)?instagram\.com\/[^\s]+/g;
+        const urls = submission.content.match(instagramUrlRegex);
+        
+        if (urls && urls.length > 0) {
+          urls.forEach(url => {
+            const cleanUrl = url.replace(/[.,;!?]+$/, '');
+            allUrls.push({
+              url: cleanUrl,
+              submissionId: submission.id,
+              userId: submission.userId,
+              userName: submission.user.name || ''
+            });
+          });
+        }
+      }
+    });
+
+    return allUrls;
+  } catch (error) {
+    console.error('Error fetching campaign submissions:', error);
+    return [];
+  }
+}
+
+// Helper function to calculate campaign averages
+function calculateCampaignAverages(campaignInsights: MetricData[][]): Totals {
+  if (campaignInsights.length === 0) {
+    return {
+      views: 0,
+      likes: 0,
+      comments: 0,
+      saved: 0,
+      totalInteractions: 0,
+      reach: 0,
+      shares: 0,
+      postCount: 0
+    };
+  }
+
+  const totals: Totals = {
+    views: 0,
+    likes: 0,
+    comments: 0,
+    saved: 0,
+    totalInteractions: 0,
+    reach: 0,
+    shares: 0
+  };
+
+  campaignInsights.forEach(insight => {
+    const metricsMap: MetricsMap = {};
+    insight.forEach((metric: MetricData) => {
+      metricsMap[metric.name] = metric.value || 0;
+    });
+
+    totals.views += metricsMap['views'] || 0;
+    totals.likes += metricsMap['likes'] || 0;
+    totals.comments += metricsMap['comments'] || 0;
+    totals.saved += metricsMap['saved'] || 0;
+    totals.totalInteractions += metricsMap['total_interactions'] || 0;
+    totals.reach += metricsMap['reach'] || 0;
+    totals.shares += metricsMap['shares'] || 0;
+  });
+
+  const count = campaignInsights.length;
+  return {
+    views: Math.round(totals.views / count),
+    likes: Math.round(totals.likes / count),
+    comments: Math.round(totals.comments / count),
+    saved: Math.round(totals.saved / count),
+    totalInteractions: Math.round(totals.totalInteractions / count),
+    reach: Math.round(totals.reach / count),
+    shares: Math.round(totals.shares / count),
+    postCount: count
+  };
+}
+
+// Helper function to compare current post with campaign averages
+function calculateCampaignComparison(currentInsight: MetricData[], campaignAverages: Totals): ComparisonResult {
+  const currentMetricsMap: MetricsMap = {};
+  currentInsight.forEach(metric => {
+    currentMetricsMap[metric.name] = metric.value || 0;
+  });
+
+  const currentMetrics: Totals = {
+    views: currentMetricsMap['views'] || 0,
+    likes: currentMetricsMap['likes'] || 0,
+    comments: currentMetricsMap['comments'] || 0,
+    saved: currentMetricsMap['saved'] || 0,
+    totalInteractions: currentMetricsMap['total_interactions'] || 0,
+    reach: currentMetricsMap['reach'] || 0,
+    shares: currentMetricsMap['shares'] || 0
+  };
+
+  const comparison: ComparisonResult = {};
+  (Object.keys(currentMetrics) as Array<keyof Totals>).forEach(metric => {
+    const current = currentMetrics[metric] || 0;
+    const average = campaignAverages[metric] || 0;
+    const change = average > 0 ? ((current - average) / average) * 100 : (current > 0 ? 100 : 0);
+    
+    comparison[metric] = {
+      current,
+      average,
+      change,
+      isAboveAverage: change > 0,
+      changeText: `${change > 0 ? '+' : ''}${change.toFixed(0)}%`
+    };
+  });
+
+  return comparison;
+}
+
 export const getInstagramMediaInsight = async (req: Request, res: Response) => {
   const { userId } = req.params;
-  const { url } = req.query;
+  const { url, campaignId } = req.query; // Added campaignId parameter
 
   if (!userId) return res.status(404).json({ message: 'Parameter missing: userId' });
   if (!url) return res.status(404).json({ message: 'Query missing: url' });
@@ -872,77 +1045,82 @@ export const getInstagramMediaInsight = async (req: Request, res: Response) => {
         .status(404)
         .json({ message: `This is the url shortcode: ${shortCode} but we can't find the video shortcode.` });
 
-    // NEW: Get the previous video (the one posted before this video)
-    // Since videos are sorted by timestamp (newest first), find the video right after the current one in the array
-    const currentVideoIndex = videos.findIndex((item: any) => item?.shortcode === shortCode);
-
-    const previousVideo =
-      currentVideoIndex !== -1 && currentVideoIndex < videos.length - 1 ? videos[currentVideoIndex + 1] : null;
-
-    // console.log('Pervious video data: ', previousVideo);
-
+    // Get current post insight
     const insight = await getMediaInsight(accessToken, video?.id);
 
-    // Calculate percentage changes if previous video exists
-    let changes = {};
-    let previousPostData = null;
+    // Campaign averages calculation
+    let campaignAverages = null;
+    let campaignComparison = null;
+    let campaignPostsCount = 0;
 
-    if (previousVideo) {
-      // Extract previous video metrics
-      previousPostData = {
-        timestamp: previousVideo.timestamp,
-        likes: previousVideo.like_count || 0,
-        comments: previousVideo.comments_count || 0,
-        saved: 0, // We don't have this in the video object, would need separate API call
-        shares: 0, // We don't have this in the video object, would need separate API call
-      };
+    if (campaignId) {
+      console.log(`🎯 Calculating campaign averages for campaign: ${campaignId}`);
+      
+      try {
+        // Get all campaign submission URLs
+        const campaignUrls = await getCampaignSubmissionUrls(campaignId as string);
+        console.log(`📊 Found ${campaignUrls.length} campaign URLs`);
 
-      // Get current metrics
-      const currentMetrics = {
-        likes: video.like_count || insight.find((i: { name: string }) => i.name === 'likes')?.value || 0,
-        comments: video.comments_count || insight.find((i: { name: string }) => i.name === 'comments')?.value || 0,
-        saved: insight.find((i: { name: string }) => i.name === 'saved')?.value || 0,
-        shares: insight.find((i: { name: string }) => i.name === 'shares')?.value || 0,
-      };
+        if (campaignUrls.length > 0) {
+          const campaignInsights = [];
 
-      // Calculate percentage changes
-      changes = {
-        likes:
-          previousPostData.likes > 0
-            ? ((currentMetrics.likes - previousPostData.likes) / previousPostData.likes) * 100
-            : currentMetrics.likes > 0
-              ? 100
-              : 0,
-        comments:
-          previousPostData.comments > 0
-            ? ((currentMetrics.comments - previousPostData.comments) / previousPostData.comments) * 100
-            : currentMetrics.comments > 0
-              ? 100
-              : 0,
-        saved:
-          previousPostData.saved > 0
-            ? ((currentMetrics.saved - previousPostData.saved) / previousPostData.saved) * 100
-            : currentMetrics.saved > 0
-              ? 100
-              : 0,
-        shares:
-          previousPostData.shares > 0
-            ? ((currentMetrics.shares - previousPostData.shares) / previousPostData.shares) * 100
-            : currentMetrics.shares > 0
-              ? 100
-              : 0,
-      };
+          // Process each campaign URL to get insights
+          for (const urlData of campaignUrls) {
+            try {
+              const campaignShortCode = extractInstagramShortcode(urlData.url);
+              if (!campaignShortCode) continue;
+
+              // Find the video in the user's media
+              const campaignVideo = videos.find((item: any) => item?.shortcode === campaignShortCode);
+              if (!campaignVideo) continue;
+
+              // Get insight for this campaign video
+              const campaignInsight = await getMediaInsight(accessToken, campaignVideo.id);
+              if (campaignInsight && campaignInsight.length > 0) {
+                campaignInsights.push(campaignInsight);
+              }
+
+              // Add delay to avoid rate limiting
+              await new Promise(resolve => setTimeout(resolve, 500));
+            } catch (error) {
+              console.error(`Error processing campaign URL ${urlData.url}:`, error);
+              continue;
+            }
+          }
+
+          console.log(`📈 Successfully processed ${campaignInsights.length} campaign posts`);
+          campaignPostsCount = campaignInsights.length;
+
+          // Calculate averages
+          if (campaignInsights.length > 0) {
+            campaignAverages = calculateCampaignAverages(campaignInsights);
+            
+            // Compare current post with campaign averages
+            campaignComparison = calculateCampaignComparison(insight, campaignAverages);
+            
+            console.log('Campaign averages calculated:', campaignAverages);
+          }
+        }
+      } catch (error) {
+        console.error('Error calculating campaign averages:', error);
+        // Continue without campaign data if there's an error
+      }
     }
 
-    return res.status(200).json({
+    // Enhanced response with campaign data only
+    const response = {
       insight,
       video,
-      previousPost: previousPostData,
-      changes: changes,
-      hasPreviousPost: !!previousPostData,
-    });
+      // Campaign comparison data
+      campaignAverages: campaignAverages,
+      campaignComparison: campaignComparison,
+      campaignPostsCount: campaignPostsCount,
+      hasCampaignData: !!campaignAverages
+    };
+
+    return res.status(200).json(response);
   } catch (error) {
-    // console.log(error);
+    console.log(error);
     return res.status(400).json(error);
   }
 };
