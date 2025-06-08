@@ -65,6 +65,11 @@ model User {
   isVerified         Boolean              @default(false)
   isKWSPCampaign     Boolean?             @default(false)
   hasSubmittedKWSP   Boolean              @default(false)
+  
+  // Individual feedback relations
+  videoFeedback      Video[]              @relation("VideoFeedback")
+  rawFootageFeedback RawFootage[]         @relation("RawFootageFeedback")
+  photoFeedback      Photo[]              @relation("PhotoFeedback")
 }
 
 model EmailVerification {
@@ -178,10 +183,9 @@ model TiktokUser {
   follower_count  Int?
   likes_count     Int?
 
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
-  tiktokVideo    TiktokVideo[]
-  InstagramVideo InstagramVideo[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  tiktokVideo TiktokVideo[]
 }
 
 model TiktokVideo {
@@ -212,11 +216,17 @@ model InstagramUser {
   creatorId String  @unique
   creator   Creator @relation(references: [id], fields: [creatorId])
 
+  accessToken     Json?
+  expiresIn       Int?
   user_id         String? @unique
   followers_count Int?
   follows_count   Int?
   media_count     Int?
   username        String?
+  totalLikes      Int?
+  totalComments   Int?
+  averageLikes    Float?
+  averageComments Float?
 
   instagramVideo InstagramVideo[]
 
@@ -236,22 +246,15 @@ model InstagramVideo {
   thumbnail_url  String?
   caption        String?
   permalink      String?
+  shortCode      String?
+  datePosted     DateTime?
 
   instagramUserId String?
-  // instagramUser   InstagramUser? @relation(fields: [instagramUserId], references: [id])
 
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
-  isTiktokConnected   Boolean  @default(false)
-  isFacebookConnected Boolean  @default(false)
-  tiktokData          Json?
-  instagramData       Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  isOnBoardingFormCompleted Boolean?
-
-  tiktokUser    TiktokUser?    @relation(fields: [tiktokUserId], references: [id])
   instagramUser InstagramUser? @relation(fields: [instagramUserId], references: [id])
-  tiktokUserId  String?
 }
 
 model MediaKit {
@@ -822,6 +825,13 @@ model Video {
   submission   Submission?    @relation(fields: [submissionId], references: [id])
   createdAt    DateTime       @default(now())
   updatedAt    DateTime?      @updatedAt
+  
+  // Individual feedback fields
+  feedback     String?        // Individual feedback message
+  reasons      String[]       // Reasons for changes (if any)
+  adminId      String?        // Admin who provided feedback
+  admin        User?          @relation("VideoFeedback", fields: [adminId], references: [id])
+  feedbackAt   DateTime?      // When feedback was provided
 }
 
 model RawFootage {
@@ -837,6 +847,13 @@ model RawFootage {
   submission   Submission? @relation(fields: [submissionId], references: [id])
   createdAt    DateTime    @default(now())
   updatedAt    DateTime?   @updatedAt
+  
+  // Individual feedback fields
+  feedback     String?     // Individual feedback message
+  reasons      String[]    // Reasons for changes (if any)
+  adminId      String?     // Admin who provided feedback
+  admin        User?       @relation("RawFootageFeedback", fields: [adminId], references: [id])
+  feedbackAt   DateTime?   // When feedback was provided
 }
 
 model Photo {
@@ -852,6 +869,13 @@ model Photo {
   submission   Submission? @relation(fields: [submissionId], references: [id])
   createdAt    DateTime    @default(now())
   updatedAt    DateTime?   @updatedAt
+  
+  // Individual feedback fields
+  feedback     String?     // Individual feedback message
+  reasons      String[]    // Reasons for changes (if any)
+  adminId      String?     // Admin who provided feedback
+  admin        User?       @relation("PhotoFeedback", fields: [adminId], references: [id])
+  feedbackAt   DateTime?   // When feedback was provided
 }
 
 // model DeliverableFeedback {

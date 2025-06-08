@@ -5,12 +5,15 @@ import { PrismaClient } from '@prisma/client';
 import { Request } from 'express';
 import { getTaskId, updateTask } from './kanbanService';
 import { saveNotification } from '@controllers/notificationController';
+import { deductCredits } from './campaignServices';
+import { createInvoiceService } from './invoiceService';
 
 const prisma = new PrismaClient();
 
-export const getCreatorInvoiceLists = async (submissionId: string, prisma: PrismaClient) => {
+export const getCreatorInvoiceLists = async (submissionId: string, prismaFunc?: PrismaClient) => {
   try {
-    const submission = await prisma.submission.findUnique({
+
+    const submission = await (prismaFunc ?? prisma).submission.findUnique({
       where: {
         id: submissionId,
       },
@@ -252,3 +255,165 @@ export const handleSubmissionNotification = async (submissionId: string) => {
     throw new Error(error);
   }
 };
+
+
+export const handleCompletedCampaign = async (submissionId: string) => {
+try {
+  console.log('🎯 Starting handleCompletedCampaign for submission:', submissionId);
+
+  const submission = await prisma.submission.findUnique({
+    where: {
+      id: submissionId
+    },
+    include: {
+      user: {
+        include: {
+          creator: true,
+          paymentForm: true,
+          creatorAgreement: true,
+          Board: true,
+        },
+      },
+      campaign: true,
+      submissionType: true,
+      video: true,
+      photos: true,
+      rawFootages: true
+    }
+  })
+
+  if(!submission) {
+    console.log('❌ Submission not found:', submissionId);
+    throw new Error("Submission not found")
+  }
+
+  console.log('📋 Found submission:', {
+    id: submission.id,
+    userId: submission.userId,
+    campaignId: submission.campaignId,
+    campaignName: submission.campaign.name,
+    submissionType: submission.submissionType.type,
+    campaignType: submission.campaign.campaignType,
+    status: submission.status
+  });
+
+  // Determine if this campaign should be completed based on submission type and campaign type
+  let shouldCompleteCampaign = false;
+  
+  if (submission.campaign.campaignType === 'ugc') {
+    // For UGC campaigns, complete when FIRST_DRAFT or FINAL_DRAFT is approved
+    if (submission.submissionType.type === 'FIRST_DRAFT' || submission.submissionType.type === 'FINAL_DRAFT') {
+      shouldCompleteCampaign = true;
+      console.log('✅ UGC campaign - checking draft approval');
+    }
+  } else {
+    // For normal campaigns, complete only when POSTING is approved
+    if (submission.submissionType.type === 'POSTING') {
+      shouldCompleteCampaign = true;
+      console.log('✅ Normal campaign - checking posting approval');
+    }
+  }
+
+  if (!shouldCompleteCampaign) {
+    console.log('⏭️ Skipping campaign completion - conditions not met for submission type:', submission.submissionType.type, 'campaign type:', submission.campaign.campaignType);
+    return;
+  }
+
+  // Check if submission is ready for completion
+  let isReadyForCompletion = false;
+
+  if (submission.status === 'APPROVED') {
+    // V1 scenario: submission is fully approved
+    isReadyForCompletion = true;
+    console.log('✅ V1 scenario - submission is APPROVED');
+  } else {
+    // V2 scenario: check if all required media items are individually approved
+    console.log('🔍 V2 scenario - checking individual media approval status');
+    
+    const requiresVideos = true; // Videos are always required
+    const requiresRawFootages = submission.campaign.rawFootage === true;
+    const requiresPhotos = submission.campaign.photos === true;
+
+    const videosApproved = !requiresVideos || submission.video.length === 0 || submission.video.every(v => v.status === 'APPROVED');
+    const rawFootagesApproved = !requiresRawFootages || submission.rawFootages.length === 0 || submission.rawFootages.every(rf => rf.status === 'APPROVED');
+    const photosApproved = !requiresPhotos || submission.photos.length === 0 || submission.photos.every(p => p.status === 'APPROVED');
+
+    isReadyForCompletion = videosApproved && rawFootagesApproved && photosApproved;
+
+    console.log('📊 Media approval status:', {
+      requiresVideos,
+      requiresRawFootages, 
+      requiresPhotos,
+      videosApproved,
+      rawFootagesApproved,
+      photosApproved,
+      isReadyForCompletion
+    });
+  }
+
+  if (!isReadyForCompletion) {
+    console.log('⏭️ Skipping campaign completion - not all required media approved yet');
+    return;
+  }
+
+  // Check if campaign is already completed to prevent duplicate processing
+  const shortlistedCreator = await prisma.shortListedCreator.findFirst({
+    where: {
+      AND: [{ userId: submission.userId }, { campaignId: submission.campaignId }],
+    },
+  });
+
+  if (!shortlistedCreator) {
+    console.log('❌ Shortlisted creator not found for userId:', submission.userId, 'campaignId:', submission.campaignId);
+    throw new Error('Shortlisted creator not found.');
+  }
+
+  if (shortlistedCreator.isCampaignDone) {
+    console.log('⏭️ Campaign already completed - skipping duplicate processing');
+    return;
+  }
+
+  console.log('👤 Found shortlisted creator:', shortlistedCreator.id, 'isCampaignDone:', shortlistedCreator.isCampaignDone);
+
+  const invoiceAmount = submission.user.creatorAgreement.find(
+    (elem: any) => elem.campaignId === submission.campaignId,
+  )?.amount;
+
+  console.log('💰 Invoice amount found:', invoiceAmount);
+
+  if(!invoiceAmount) {
+    console.log('⚠️ Invoice amount not found, but continuing with campaign completion...');
+    // Don't throw error, just log and continue with marking campaign as done
+  } else {
+    console.log('💳 Processing invoice and credits...');
+    
+    if (submission.campaign.campaignCredits !== null) {
+      console.log('🔄 Deducting credits...');
+      await deductCredits(submission.campaignId, submission.userId);
+    }
+
+    const invoiceItems = await getCreatorInvoiceLists(submission.id);
+    console.log('📄 Invoice items:', invoiceItems);
+
+    await createInvoiceService(submission, submission.userId, invoiceAmount, invoiceItems);
+    console.log('✅ Invoice created successfully');
+  }
+
+  await prisma.shortListedCreator.update({
+    where: {
+      id: shortlistedCreator.id,
+    },
+    data: {
+      isCampaignDone: true,
+    },
+  });
+
+  console.log('🎉 Campaign marked as done! isCampaignDone set to true for', submission.campaign.campaignType, 'campaign on', submission.submissionType.type, 'approval');
+    
+} catch (error) {
+  console.log('❌ Error in handleCompletedCampaign:', error);
+  // Don't throw error to prevent breaking the approval flow
+  // Just log the error and continue
+}
+
+} 

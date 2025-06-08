@@ -103,10 +103,10 @@ export const exportCreatorsToSpreadsheet = async (): Promise<string> => {
             tiktokUser: {
               select: {
                 display_name: true,
-              }
-            }
-          }
-        }
+              },
+            },
+          },
+        },
       },
     });
 
@@ -115,10 +115,10 @@ export const exportCreatorsToSpreadsheet = async (): Promise<string> => {
     for (const user of users) {
       const email = user.email?.trim().toLowerCase();
       if (!email) continue;
-        
+
       // Get social handles
       const socialHandles = [];
-      
+
       if (user.creator?.instagramUser?.username) {
         socialHandles.push(`IG: ${user.creator.instagramUser.username}`);
       }

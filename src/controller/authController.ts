@@ -6,10 +6,13 @@ import { AdminInvitaion, AdminInvite, creatorVerificationEmail } from '@configs/
 import { handleChangePassword } from '@services/authServices';
 import { getUser } from '@services/userServices';
 
-import { getJWTToken, verifyToken } from '@utils/jwtHelper';
-import { uploadImage, uploadProfileImage } from '@configs/cloudStorage.config';
+import { verifyToken } from '@utils/jwtHelper';
+import { uploadProfileImage } from '@configs/cloudStorage.config';
+
 import { createKanbanBoard } from './kanbanController';
 import { saveCreatorToSpreadsheet } from '@helper/registeredCreatorSpreadsheet';
+import axios from 'axios';
+import bcrypt from 'bcryptjs';
 
 import { generateRandomString } from '@utils/randomString';
 import { token } from 'morgan';

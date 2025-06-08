@@ -1,6 +1,8 @@
 import passport from 'passport';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
-import { PrismaClient } from '@prisma/client';
+
+import { PrismaClient, User } from '@prisma/client';
+
 import { createKanbanBoard } from '@controllers/kanbanController';
 import { saveCreatorToSpreadsheet } from '@helper/registeredCreatorSpreadsheet';
 
@@ -72,7 +74,6 @@ passport.use(
       //   return done(err, null!);
       // }
       try {
-        // Try to find existing user by email or googleId
         const existingUser = await prisma.user.findFirst({
           where: {
             OR: [{ email: profile.emails?.[0].value }, { googleId: profile.id }],
@@ -82,40 +83,32 @@ passport.use(
           },
         });
 
-        let user;
+        const user = await prisma.user.upsert({
+          where: {
+            id: existingUser?.id || '',
+          },
+          update: {
+            googleId: profile.id,
+            photoURL: profile.photos?.[0]?.value || '',
+          },
+          create: {
+            googleId: profile.id,
+            name: profile.displayName,
+            email: profile.emails?.[0]?.value || '',
+            photoURL: profile.photos?.[0]?.value || '',
+            role: 'creator',
+            status: 'active',
+            creator: {
+              create: {},
+            },
+          },
+          include: {
+            Board: true,
+          },
+        });
 
-        if (existingUser) {
-          // Update existing user
-          user = await prisma.user.update({
-            where: { id: existingUser.id },
-            data: {
-              googleId: profile.id,
-              photoURL: profile.photos?.[0]?.value || '',
-            },
-            include: {
-              Board: true,
-            },
-          });
-        } else {
-          // Create new user
-          user = await prisma.user.create({
-            data: {
-              googleId: profile.id,
-              name: profile.displayName,
-              email: profile.emails?.[0]?.value || '',
-              photoURL: profile.photos?.[0]?.value || '',
-              role: 'creator',
-              status: 'active',
-              creator: {
-                create: {},
-              },
-            },
-            include: {
-              Board: true,
-            },
-          });
-
-          // Only for new users
+        // If a existing user is not found, then create kanban and save to spreadsheet
+        if (!existingUser) {
           await createKanbanBoard(user.id, 'creator');
 
           await saveCreatorToSpreadsheet({
@@ -129,11 +122,9 @@ passport.use(
           });
         }
 
-        // Create board if user doesn't have one
         if (!user.Board) {
           await createKanbanBoard(user.id, 'creator');
         }
-
         return done(null, user);
       } catch (err) {
         return done(err, null!);

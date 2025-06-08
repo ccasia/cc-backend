@@ -72,13 +72,13 @@ COPY --from=builder /app/.env ./.env
 # Generate Prisma client in production environment
 RUN npx prisma generate
 
-RUN npx prisma migrate dev --name init
+# RUN npx prisma migrate dev --name init
 
 # Run database migrations
-RUN yarn deploy
+# RUN yarn deploy
 
 # Add seed and create-timeline commands
-RUN yarn seed && yarn create-timeline
+# RUN yarn seed && yarn create-timeline
 
 EXPOSE 3001
 
