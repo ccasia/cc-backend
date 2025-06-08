@@ -6,7 +6,7 @@ import { AdminInvitaion, AdminInvite, creatorVerificationEmail } from '@configs/
 import { handleChangePassword } from '@services/authServices';
 import { getUser } from '@services/userServices';
 
-import { verifyToken } from '@utils/jwtHelper';
+import { getJWTToken, verifyToken } from '@utils/jwtHelper';
 import { uploadProfileImage } from '@configs/cloudStorage.config';
 
 import { createKanbanBoard } from './kanbanController';
@@ -15,11 +15,7 @@ import axios from 'axios';
 import bcrypt from 'bcryptjs';
 
 import { generateRandomString } from '@utils/randomString';
-import { token } from 'morgan';
 import dayjs from 'dayjs';
-
-import axios from 'axios';
-import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 

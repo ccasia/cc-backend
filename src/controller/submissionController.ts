@@ -689,7 +689,7 @@ export const draftSubmission = async (req: Request, res: Response) => {
         campaign: {
           include: {
             campaignAdmin: true,
-        },
+          },
         },
         feedback: true,
       },
@@ -861,14 +861,14 @@ export const adminManageDraft = async (req: Request, res: Response) => {
       const result = await prisma.$transaction(async (tx) => {
         // Check if all sections are approved when doing a section approval
         const allSectionsApproved = await checkAllSectionsApproved(submission, section);
-        
+
         const approveSubmission = await tx.submission.update({
           where: {
             id: submission?.id,
           },
           data: {
             // Only update main status if all sections are approved or it's not a section-only approval
-            status: (sectionOnly && !allSectionsApproved) ? submission.status : 'APPROVED',
+            status: sectionOnly && !allSectionsApproved ? submission.status : 'APPROVED',
             isReview: true,
             completedAt: new Date(),
             approvedByAdminId: req.session.userid as string,
@@ -924,10 +924,10 @@ export const adminManageDraft = async (req: Request, res: Response) => {
           if (finalDraft) {
             await tx.submission.update({
               where: { id: finalDraft.id },
-              data: { 
+              data: {
                 status: 'NOT_STARTED',
-                nextsubmissionDate: new Date()
-              }
+                nextsubmissionDate: new Date(),
+              },
             });
           }
         }
@@ -943,11 +943,11 @@ export const adminManageDraft = async (req: Request, res: Response) => {
               },
             },
           });
-          
+
           if (postingSubmission) {
             await tx.submission.update({
               where: { id: postingSubmission.id },
-              data: { 
+              data: {
                 status: 'IN_PROGRESS',
                 dueDate: new Date(dueDate),
                 startDate: new Date(dueDate),
@@ -960,7 +960,7 @@ export const adminManageDraft = async (req: Request, res: Response) => {
         // Move task from column In Review to Done if all sections are approved
         if (allSectionsApproved) {
           const doneColumnId = await getColumnId({ userId: submission.userId, columnName: 'Done' });
-          
+
           if (approveSubmission.user.Board) {
             const task = await getTaskId({
               boardId: approveSubmission?.user.Board.id,
@@ -1041,7 +1041,9 @@ export const adminManageDraft = async (req: Request, res: Response) => {
       // Send notification for section approval
       const { title, message } = notificationApproveDraft(
         submission.campaign.name,
-        sectionOnly ? `${section} in ${MAP_TIMELINE[submission.submissionType.type]}` : MAP_TIMELINE[submission.submissionType.type]
+        sectionOnly
+          ? `${section} in ${MAP_TIMELINE[submission.submissionType.type]}`
+          : MAP_TIMELINE[submission.submissionType.type],
       );
 
       const notification = await saveNotification({
@@ -1168,21 +1170,25 @@ const checkAllSectionsApproved = async (submission: any, currentSection?: string
   const hasPhotos = submission.photos && submission.photos.length > 0;
 
   // If a section is being approved, consider it as approved for this check
-  const videosApproved = hasVideos ? 
-    (currentSection === 'videos' || submission.video.every((v: { status: string }) => v.status === 'APPROVED')) : true;
-  const rawFootagesApproved = hasRawFootages ? 
-    (currentSection === 'rawFootages' || submission.rawFootages.every((f: { status: string }) => f.status === 'APPROVED')) : true;
-  const photosApproved = hasPhotos ? 
-    (currentSection === 'photos' || submission.photos.every((p: { status: string }) => p.status === 'APPROVED')) : true;
+  const videosApproved = hasVideos
+    ? currentSection === 'videos' || submission.video.every((v: { status: string }) => v.status === 'APPROVED')
+    : true;
+  const rawFootagesApproved = hasRawFootages
+    ? currentSection === 'rawFootages' ||
+      submission.rawFootages.every((f: { status: string }) => f.status === 'APPROVED')
+    : true;
+  const photosApproved = hasPhotos
+    ? currentSection === 'photos' || submission.photos.every((p: { status: string }) => p.status === 'APPROVED')
+    : true;
 
   // Only check sections that exist in the submission
   const requiredSections = [
     hasVideos && videosApproved,
     hasRawFootages && rawFootagesApproved,
-    hasPhotos && photosApproved
+    hasPhotos && photosApproved,
   ].filter(Boolean);
 
-  return requiredSections.every(approved => approved === true);
+  return requiredSections.every((approved) => approved === true);
 };
 
 export const postingSubmission = async (req: Request, res: Response) => {
@@ -1523,7 +1529,7 @@ export const adminManagePhotos = async (req: Request, res: Response) => {
   const { photos, submissionId, feedback: photoFeedback, type, sectionOnly } = req.body;
 
   if (!photos.length) return res.status(404).json({ message: 'At least one photo is required' });
-  if(!type) return res.status(400).json({message: "Type is required"})
+  if (!type) return res.status(400).json({ message: 'Type is required' });
 
   try {
     const submission = await prisma.submission.findUnique({
@@ -1575,35 +1581,37 @@ export const adminManagePhotos = async (req: Request, res: Response) => {
     const [updateResult, updatedRecords] = updatedPhotos;
 
     // Check for submission types
-    const isRawFootage = submission.campaign.rawFootage
+    const isRawFootage = submission.campaign.rawFootage;
 
-    const isRawFootageAllApproved = !isRawFootage || (submission.rawFootages?.length > 0 && submission.rawFootages.every(item => item.status === 'APPROVED'));
-    const isDraftVideosAllApproved = submission.video.every(item => item.status === 'APPROVED')
-    const isPhotosAllApproved = updatedRecords.every((item) => item.status === 'APPROVED')
+    const isRawFootageAllApproved =
+      !isRawFootage ||
+      (submission.rawFootages?.length > 0 && submission.rawFootages.every((item) => item.status === 'APPROVED'));
+    const isDraftVideosAllApproved = submission.video.every((item) => item.status === 'APPROVED');
+    const isPhotosAllApproved = updatedRecords.every((item) => item.status === 'APPROVED');
 
-
-    if(type === "approve" && isDraftVideosAllApproved && isPhotosAllApproved && isRawFootageAllApproved){    
+    if (type === 'approve' && isDraftVideosAllApproved && isPhotosAllApproved && isRawFootageAllApproved) {
       const updatedSubmission = await prisma.submission.update({
         where: {
-          id: submission.id
+          id: submission.id,
         },
         data: {
           status: 'APPROVED',
           completedAt: new Date(),
           approvedByAdminId: req.session.userid as string,
-          feedback: photoFeedback ? {
-            create: {
-              photoContent: photoFeedback,
-              adminId: req.session.userid,
-              type: 'COMMENT',
-            },
-          } : undefined,
-        }
-      })
+          feedback: photoFeedback
+            ? {
+                create: {
+                  photoContent: photoFeedback,
+                  adminId: req.session.userid,
+                  type: 'COMMENT',
+                },
+              }
+            : undefined,
+        },
+      });
 
-      await handleCompletedCampaign(updatedSubmission.id)
-
-    }else{   
+      await handleCompletedCampaign(updatedSubmission.id);
+    } else {
       await prisma.submission.update({
         where: {
           id: submission.id,
@@ -1626,12 +1634,7 @@ export const adminManagePhotos = async (req: Request, res: Response) => {
       });
     }
 
-
     await handleKanbanSubmission(submission.id);
-
-
-    
-
 
     // If sectionOnly flag is present, don't change submission status for either approve or request
     // if (sectionOnly) {
@@ -1639,7 +1642,7 @@ export const adminManagePhotos = async (req: Request, res: Response) => {
     //   if (submission.status === 'CHANGES_REQUIRED' && submission.feedback.length && type === 'request') {
     //     // Update existing feedback if already in CHANGES_REQUIRED state
     //     const feedbackId = submission.feedback[0].id;
-        
+
     //     await prisma.feedback.update({
     //       where: {
     //         id: feedbackId,
@@ -1686,7 +1689,7 @@ export const adminManagePhotos = async (req: Request, res: Response) => {
     //       } : undefined,
     //     },
     //   });
-      
+
     //   // Update kanban board for full approvals
     //   await handleKanbanSubmission(submission.id);
     // }
@@ -1729,7 +1732,7 @@ export const adminManagePhotos = async (req: Request, res: Response) => {
     //       },
     //     });
     //   }
-      
+
     //   // Update kanban board for full change requests
     //   await handleKanbanSubmission(submission.id);
     // }
@@ -1739,7 +1742,7 @@ export const adminManagePhotos = async (req: Request, res: Response) => {
     io.to(clients.get(submission.userId)).emit('notification', notification);
     io.to(clients.get(submission.userId)).emit('newFeedback');
 
-    return res.status(200).json({ 
+    return res.status(200).json({
       message: type === 'approve' ? 'Photos approved successfully' : 'Changes requested successfully',
     });
   } catch (error) {
@@ -1765,14 +1768,14 @@ export const adminManageVideos = async (req: Request, res: Response) => {
               video: true,
             },
           });
-          
+
           if (!submission) throw new Error('Submission not found');
-          
+
           // Just mark the videos as approved
           const videoIds = videos.length ? videos : submission.video.map((v) => v.id);
-            
+
           await tx.video.updateMany({
-            where: { 
+            where: {
               id: { in: videoIds },
               userId: submission.userId,
               campaignId: submission.campaignId,
@@ -1781,7 +1784,7 @@ export const adminManageVideos = async (req: Request, res: Response) => {
               status: 'APPROVED',
             },
           });
-          
+
           // Add feedback if provided but don't change submission status
           if (feedback) {
             await tx.feedback.create({
@@ -1793,7 +1796,7 @@ export const adminManageVideos = async (req: Request, res: Response) => {
               },
             });
           }
-          
+
           // If dueDate is provided, store it on the submission for future use
           if (dueDate) {
             // Find or create a posting submission for this creator
@@ -1806,7 +1809,7 @@ export const adminManageVideos = async (req: Request, res: Response) => {
                 },
               },
             });
-            
+
             if (postingSubmission) {
               // Update the due date on the posting submission
               await tx.submission.update({
@@ -1814,20 +1817,20 @@ export const adminManageVideos = async (req: Request, res: Response) => {
                 data: { dueDate: new Date(dueDate) },
               });
             }
-            
+
             // Also store due date on the current submission as reference
             await tx.submission.update({
               where: { id: submission.id },
               data: { dueDate: new Date(dueDate) },
             });
           }
-          
+
           return submission;
         });
-        
+
         return res.status(200).json({ message: 'Videos approved successfully' });
       }
-      
+
       // Original full approval flow (when sectionOnly is not present)
       await prisma.$transaction(async (tx) => {
         const approveSubmission = await tx.submission.update({
@@ -2132,10 +2135,10 @@ export const adminManageVideos = async (req: Request, res: Response) => {
           campaign: {
             select: {
               name: true,
-              campaignAdmin: { 
-                select: { 
-                  admin: { 
-                    select: { 
+              campaignAdmin: {
+                select: {
+                  admin: {
+                    select: {
                       role: true,
                       userId: true,
                     },
@@ -2317,10 +2320,10 @@ export const adminManageFinalDraft = async (req: Request, res: Response) => {
       if (type === 'approve') {
         // If sectionOnly flag is present, only update the videos
         if (sectionOnly) {
-          const videoIds = videos.length ? videos : submission.video.map(v => v.id);
-          
+          const videoIds = videos.length ? videos : submission.video.map((v) => v.id);
+
           await tx.video.updateMany({
-            where: { 
+            where: {
               id: { in: videoIds },
               userId: submission.userId,
               campaignId: submission.campaignId,
@@ -2350,7 +2353,7 @@ export const adminManageFinalDraft = async (req: Request, res: Response) => {
             },
           });
 
-          const allSectionsApproved = allVideos.every(v => v.status === 'APPROVED');
+          const allSectionsApproved = allVideos.every((v) => v.status === 'APPROVED');
 
           // If all sections are approved, update the final draft status
           if (allSectionsApproved) {
@@ -2377,12 +2380,14 @@ export const adminManageFinalDraft = async (req: Request, res: Response) => {
 
             if (postingSubmission) {
               // Calculate 3 days from today for posting due date
-              const postingDueDate = dueDate ? new Date(dueDate) : (() => {
-                const threeDaysFromToday = new Date();
-                threeDaysFromToday.setDate(threeDaysFromToday.getDate() + 3);
-                threeDaysFromToday.setHours(23, 59, 59, 999);
-                return threeDaysFromToday;
-              })();
+              const postingDueDate = dueDate
+                ? new Date(dueDate)
+                : (() => {
+                    const threeDaysFromToday = new Date();
+                    threeDaysFromToday.setDate(threeDaysFromToday.getDate() + 3);
+                    threeDaysFromToday.setHours(23, 59, 59, 999);
+                    return threeDaysFromToday;
+                  })();
               await tx.submission.update({
                 where: { id: postingSubmission.id },
                 data: {
@@ -2494,12 +2499,14 @@ export const adminManageFinalDraft = async (req: Request, res: Response) => {
 
           if (postingSubmission) {
             // Calculate 3 days from today for posting due date
-            const postingDueDate = dueDate ? new Date(dueDate) : (() => {
-              const threeDaysFromToday = new Date();
-              threeDaysFromToday.setDate(threeDaysFromToday.getDate() + 3);
-              threeDaysFromToday.setHours(23, 59, 59, 999);
-              return threeDaysFromToday;
-            })();
+            const postingDueDate = dueDate
+              ? new Date(dueDate)
+              : (() => {
+                  const threeDaysFromToday = new Date();
+                  threeDaysFromToday.setDate(threeDaysFromToday.getDate() + 3);
+                  threeDaysFromToday.setHours(23, 59, 59, 999);
+                  return threeDaysFromToday;
+                })();
             await tx.submission.update({
               where: { id: postingSubmission.id },
               data: {
@@ -2549,12 +2556,12 @@ export const adminManageFinalDraft = async (req: Request, res: Response) => {
 
         const inProgressColumn = await getColumnId({ userId: submission?.userId, columnName: 'In Progress' });
 
-          if (taskInReview) {
-            await updateTask({
-              taskId: taskInReview.id,
-              toColumnId: inProgressColumn as any,
-              userId: submission.userId,
-            });
+        if (taskInReview) {
+          await updateTask({
+            taskId: taskInReview.id,
+            toColumnId: inProgressColumn as any,
+            userId: submission.userId,
+          });
         }
 
         // Send notification
@@ -2600,19 +2607,19 @@ export const getDeliverables = async (req: Request, res: Response) => {
                   select: {
                     role: {
                       select: {
-                        name: true
-                      }
-                    }
-                  }
-                }
-              }
-            }
+                        name: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
           },
           orderBy: {
-            createdAt: 'desc'
-          }
-        }
-      }
+            createdAt: 'desc',
+          },
+        },
+      },
     });
 
     const videos = await prisma.video.findMany({
@@ -2638,50 +2645,55 @@ export const getDeliverables = async (req: Request, res: Response) => {
 
     // Helper function to get feedback for a specific media item
     const getMediaFeedback = (mediaId: string, mediaType: 'video' | 'photo' | 'rawFootage') => {
-      const allFeedback = submissions.flatMap(sub => sub.feedback);
-      
-      return allFeedback.filter(feedback => {
-        switch (mediaType) {
-          case 'video':
-            return feedback.videosToUpdate?.includes(mediaId);
-          case 'photo':
-            return feedback.photosToUpdate?.includes(mediaId);
-          case 'rawFootage':
-            return feedback.rawFootageToUpdate?.includes(mediaId);
-          default:
-            return false;
-        }
-      }).map(feedback => ({
-        id: feedback.id,
-        content: mediaType === 'video' ? feedback.content : 
-                mediaType === 'photo' ? feedback.photoContent : 
-                feedback.rawFootageContent,
-        reasons: feedback.reasons || [],
-        createdAt: feedback.createdAt,
-        admin: feedback.admin
-      }));
+      const allFeedback = submissions.flatMap((sub) => sub.feedback);
+
+      return allFeedback
+        .filter((feedback) => {
+          switch (mediaType) {
+            case 'video':
+              return feedback.videosToUpdate?.includes(mediaId);
+            case 'photo':
+              return feedback.photosToUpdate?.includes(mediaId);
+            case 'rawFootage':
+              return feedback.rawFootageToUpdate?.includes(mediaId);
+            default:
+              return false;
+          }
+        })
+        .map((feedback) => ({
+          id: feedback.id,
+          content:
+            mediaType === 'video'
+              ? feedback.content
+              : mediaType === 'photo'
+                ? feedback.photoContent
+                : feedback.rawFootageContent,
+          reasons: feedback.reasons || [],
+          createdAt: feedback.createdAt,
+          admin: feedback.admin,
+        }));
     };
 
     // Add feedback to each media item
-    const videosWithFeedback = videos.map(video => ({
+    const videosWithFeedback = videos.map((video) => ({
       ...video,
-      individualFeedback: getMediaFeedback(video.id, 'video')
+      individualFeedback: getMediaFeedback(video.id, 'video'),
     }));
 
-    const photosWithFeedback = photos.map(photo => ({
+    const photosWithFeedback = photos.map((photo) => ({
       ...photo,
-      individualFeedback: getMediaFeedback(photo.id, 'photo')
+      individualFeedback: getMediaFeedback(photo.id, 'photo'),
     }));
 
-    const rawFootagesWithFeedback = rawFootages.map(footage => ({
+    const rawFootagesWithFeedback = rawFootages.map((footage) => ({
       ...footage,
-      individualFeedback: getMediaFeedback(footage.id, 'rawFootage')
+      individualFeedback: getMediaFeedback(footage.id, 'rawFootage'),
     }));
 
-    return res.status(200).json({ 
-      videos: videosWithFeedback, 
-      rawFootages: rawFootagesWithFeedback, 
-      photos: photosWithFeedback 
+    return res.status(200).json({
+      videos: videosWithFeedback,
+      rawFootages: rawFootagesWithFeedback,
+      photos: photosWithFeedback,
     });
   } catch (error) {
     return res.status(400).json(error);
@@ -2729,7 +2741,7 @@ export const adminManageRawFootages = async (req: Request, res: Response) => {
       if (submission.status === 'CHANGES_REQUIRED' && submission.feedback.length && type === 'request') {
         // Update existing feedback if already in CHANGES_REQUIRED state
         const feedbackId = submission.feedback[0].id;
-        
+
         await prisma.feedback.update({
           where: {
             id: feedbackId,
@@ -2767,16 +2779,16 @@ export const adminManageRawFootages = async (req: Request, res: Response) => {
           status: 'APPROVED',
           feedback: rawFootageContent
             ? {
-            create: {
-              rawFootageContent: rawFootageContent,
-              adminId: req.session.userid,
-              type: 'COMMENT',
-            },
+                create: {
+                  rawFootageContent: rawFootageContent,
+                  adminId: req.session.userid,
+                  type: 'COMMENT',
+                },
               }
             : undefined,
         },
       });
-      
+
       // Update kanban board for full approvals
       await handleKanbanSubmission(submission.id);
     }
@@ -2817,7 +2829,7 @@ export const adminManageRawFootages = async (req: Request, res: Response) => {
           },
         });
       }
-      
+
       // Update kanban board for full change requests
       await handleKanbanSubmission(submission.id);
     }
@@ -2827,7 +2839,7 @@ export const adminManageRawFootages = async (req: Request, res: Response) => {
     io.to(clients.get(submission.userId)).emit('notification', notification);
     io.to(clients.get(submission.userId)).emit('newFeedback');
 
-    return res.status(200).json({ 
+    return res.status(200).json({
       message: type === 'approve' ? 'Raw footage approved successfully' : 'Changes requested successfully',
     });
   } catch (error) {
@@ -2837,16 +2849,8 @@ export const adminManageRawFootages = async (req: Request, res: Response) => {
 
 export const updateSubmissionStatus = async (req: Request, res: Response) => {
   try {
-    const { 
-      submissionId, 
-      status, 
-      feedback, 
-      dueDate,
-      sectionApproval,
-      approvedSections,
-      updatePosting,
-      forceUpdate
-    } = req.body;
+    const { submissionId, status, feedback, dueDate, sectionApproval, approvedSections, updatePosting, forceUpdate } =
+      req.body;
 
     if (!submissionId || !status) {
       return res.status(400).json({ message: 'Missing required fields' });
@@ -2863,8 +2867,8 @@ export const updateSubmissionStatus = async (req: Request, res: Response) => {
           video: true,
           photos: true,
           rawFootages: true,
-          feedback: true
-        }
+          feedback: true,
+        },
       });
 
       if (!submission) {
@@ -2876,33 +2880,33 @@ export const updateSubmissionStatus = async (req: Request, res: Response) => {
         // Update video statuses if needed
         if (approvedSections.videos && submission.video && submission.video.length > 0) {
           await tx.video.updateMany({
-            where: { 
+            where: {
               submissionId: submission.id,
-              status: { not: 'APPROVED' }
+              status: { not: 'APPROVED' },
             },
-            data: { status: 'APPROVED' }
+            data: { status: 'APPROVED' },
           });
         }
-        
+
         // Update raw footage statuses if needed
         if (approvedSections.rawFootages && submission.rawFootages && submission.rawFootages.length > 0) {
           await tx.rawFootage.updateMany({
-            where: { 
+            where: {
               submissionId: submission.id,
-              status: { not: 'APPROVED' }
+              status: { not: 'APPROVED' },
             },
-            data: { status: 'APPROVED' }
+            data: { status: 'APPROVED' },
           });
         }
-        
+
         // Update photo statuses if needed
         if (approvedSections.photos && submission.photos && submission.photos.length > 0) {
           await tx.photo.updateMany({
-            where: { 
+            where: {
               submissionId: submission.id,
-              status: { not: 'APPROVED' }
+              status: { not: 'APPROVED' },
             },
-            data: { status: 'APPROVED' }
+            data: { status: 'APPROVED' },
           });
         }
       }
@@ -2913,17 +2917,21 @@ export const updateSubmissionStatus = async (req: Request, res: Response) => {
         data: {
           status,
           ...(feedback && { feedback: { create: { content: feedback, adminId: req.session.userid } } }),
-          ...(dueDate && { dueDate: new Date(dueDate) })
+          ...(dueDate && { dueDate: new Date(dueDate) }),
         },
         include: {
           submissionType: true,
-          campaign: true
-        }
+          campaign: true,
+        },
       });
 
       // Handle status transitions based on submission type and only if not a section approval
       // or if explicitly requested to update posting status
-      if ((submission.submissionType.type === 'FIRST_DRAFT' && status === 'APPROVED' && (!sectionApproval || updatePosting))) {
+      if (
+        submission.submissionType.type === 'FIRST_DRAFT' &&
+        status === 'APPROVED' &&
+        (!sectionApproval || updatePosting)
+      ) {
         // Find the next submissions (both Final Draft and Posting)
         const [finalDraftSubmission, postingSubmission] = await Promise.all([
           tx.submission.findFirst({
@@ -2931,19 +2939,19 @@ export const updateSubmissionStatus = async (req: Request, res: Response) => {
               userId: submission.userId,
               campaignId: submission.campaignId,
               submissionType: {
-                type: 'FINAL_DRAFT'
-              }
-            }
+                type: 'FINAL_DRAFT',
+              },
+            },
           }),
           tx.submission.findFirst({
             where: {
               userId: submission.userId,
               campaignId: submission.campaignId,
               submissionType: {
-                type: 'POSTING'
-              }
-            }
-          })
+                type: 'POSTING',
+              },
+            },
+          }),
         ]);
 
         // When First Draft is approved, update related submissions
@@ -2951,12 +2959,14 @@ export const updateSubmissionStatus = async (req: Request, res: Response) => {
           // Set Posting to IN_PROGRESS if it exists and updatePosting is true
           if (postingSubmission && (updatePosting || forceUpdate)) {
             // Calculate 3 days from today for posting due date
-            const postingDueDate = dueDate ? new Date(dueDate) : (() => {
-              const threeDaysFromToday = new Date();
-              threeDaysFromToday.setDate(threeDaysFromToday.getDate() + 3);
-              threeDaysFromToday.setHours(23, 59, 59, 999);
-              return threeDaysFromToday;
-            })();
+            const postingDueDate = dueDate
+              ? new Date(dueDate)
+              : (() => {
+                  const threeDaysFromToday = new Date();
+                  threeDaysFromToday.setDate(threeDaysFromToday.getDate() + 3);
+                  threeDaysFromToday.setHours(23, 59, 59, 999);
+                  return threeDaysFromToday;
+                })();
 
             await tx.submission.update({
               where: { id: postingSubmission.id },
@@ -2964,16 +2974,16 @@ export const updateSubmissionStatus = async (req: Request, res: Response) => {
                 status: 'IN_PROGRESS',
                 dueDate: postingDueDate,
                 startDate: postingDueDate,
-                endDate: postingDueDate
-              }
+                endDate: postingDueDate,
+              },
             });
           }
-          
+
           // Set Final Draft to NOT_STARTED if it exists
           if (finalDraftSubmission) {
             await tx.submission.update({
               where: { id: finalDraftSubmission.id },
-              data: { status: 'NOT_STARTED' }
+              data: { status: 'NOT_STARTED' },
             });
           }
         }
@@ -2984,58 +2994,63 @@ export const updateSubmissionStatus = async (req: Request, res: Response) => {
           if (finalDraftSubmission) {
             await tx.submission.update({
               where: { id: finalDraftSubmission.id },
-              data: { status: 'IN_PROGRESS' }
+              data: { status: 'IN_PROGRESS' },
             });
           }
-          
+
           // 2. Set Posting to NOT_STARTED if it exists
           if (postingSubmission) {
             await tx.submission.update({
               where: { id: postingSubmission.id },
-              data: { status: 'NOT_STARTED' }
+              data: { status: 'NOT_STARTED' },
             });
           }
-        }
-        else if (status === 'PENDING_REVIEW') {
+        } else if (status === 'PENDING_REVIEW') {
           // When First Draft is in review, set both to NOT_STARTED
           if (finalDraftSubmission) {
             await tx.submission.update({
               where: { id: finalDraftSubmission.id },
-              data: { status: 'NOT_STARTED' }
+              data: { status: 'NOT_STARTED' },
             });
           }
-          
+
           if (postingSubmission) {
             await tx.submission.update({
               where: { id: postingSubmission.id },
-              data: { status: 'NOT_STARTED' }
+              data: { status: 'NOT_STARTED' },
             });
           }
         }
       }
-      
+
       // Handle Final Draft posting activation
-      if ((submission.submissionType.type === 'FINAL_DRAFT' && status === 'APPROVED' && (!sectionApproval || updatePosting))) {
+      if (
+        submission.submissionType.type === 'FINAL_DRAFT' &&
+        status === 'APPROVED' &&
+        (!sectionApproval || updatePosting)
+      ) {
         // Find the posting submission
         const postingSubmission = await tx.submission.findFirst({
           where: {
             userId: submission.userId,
             campaignId: submission.campaignId,
             submissionType: {
-              type: 'POSTING'
-            }
-          }
+              type: 'POSTING',
+            },
+          },
         });
 
         // When Final Draft is approved, activate posting
         if (status === 'APPROVED' && postingSubmission && (updatePosting || forceUpdate)) {
           // Calculate 3 days from today for posting due date
-          const postingDueDate = dueDate ? new Date(dueDate) : (() => {
-            const threeDaysFromToday = new Date();
-            threeDaysFromToday.setDate(threeDaysFromToday.getDate() + 3);
-            threeDaysFromToday.setHours(23, 59, 59, 999);
-            return threeDaysFromToday;
-          })();
+          const postingDueDate = dueDate
+            ? new Date(dueDate)
+            : (() => {
+                const threeDaysFromToday = new Date();
+                threeDaysFromToday.setDate(threeDaysFromToday.getDate() + 3);
+                threeDaysFromToday.setHours(23, 59, 59, 999);
+                return threeDaysFromToday;
+              })();
 
           await tx.submission.update({
             where: { id: postingSubmission.id },
@@ -3043,27 +3058,25 @@ export const updateSubmissionStatus = async (req: Request, res: Response) => {
               status: 'IN_PROGRESS',
               dueDate: postingDueDate,
               startDate: postingDueDate,
-              endDate: postingDueDate
-            }
+              endDate: postingDueDate,
+            },
           });
         }
       }
 
       return {
         updatedSubmission,
-        submission
+        submission,
       };
     });
 
     // Small delay to ensure all database operations are fully committed
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 100));
 
     return res.status(200).json({
-      message: sectionApproval 
-        ? 'Section approval updated successfully' 
-        : `Submission status updated to ${status}`,
+      message: sectionApproval ? 'Section approval updated successfully' : `Submission status updated to ${status}`,
       submission: result.updatedSubmission,
-      sectionApproval: sectionApproval || false
+      sectionApproval: sectionApproval || false,
     });
   } catch (error) {
     console.error('Error updating submission status:', error);
@@ -3071,22 +3084,19 @@ export const updateSubmissionStatus = async (req: Request, res: Response) => {
   }
 };
 
-
-
-
-export const adminManagePhotosV2 = async (req: Request, res: Response) => { 
+export const adminManagePhotosV2 = async (req: Request, res: Response) => {
   const { mediaId, status, feedback, reasons, preventStatusChange } = req.body;
 
   // Validate required fields
   if (!mediaId || !status) {
-    return res.status(400).json({ 
-      message: 'Missing required fields: mediaId and status are required' 
+    return res.status(400).json({
+      message: 'Missing required fields: mediaId and status are required',
     });
   }
 
   if (!['APPROVED', 'CHANGES_REQUIRED'].includes(status)) {
-    return res.status(400).json({ 
-      message: 'Invalid status. Must be "APPROVED" or "CHANGES_REQUIRED"' 
+    return res.status(400).json({
+      message: 'Invalid status. Must be "APPROVED" or "CHANGES_REQUIRED"',
     });
   }
 
@@ -3104,10 +3114,10 @@ export const adminManagePhotosV2 = async (req: Request, res: Response) => {
               photos: true,
               video: true,
               rawFootages: true,
-              submissionType: true
-            }
-          }
-        }
+              submissionType: true,
+            },
+          },
+        },
       });
 
       if (!photo) {
@@ -3116,19 +3126,21 @@ export const adminManagePhotosV2 = async (req: Request, res: Response) => {
 
       // Update ONLY this specific photo's status
       const newStatus = status === 'APPROVED' ? 'APPROVED' : 'REVISION_REQUESTED';
-      
+
       await tx.photo.update({
         where: { id: mediaId },
-        data: { status: newStatus }
+        data: { status: newStatus },
       });
 
       // Enhanced feedback system - store individual feedback with media ID reference
       if (feedback) {
         // Clean the reasons array to remove any null/undefined values
-        const cleanReasons = Array.isArray(reasons) 
-          ? reasons.filter(reason => reason !== null && reason !== undefined && reason !== '')
-          : (reasons ? [reasons] : []);
-          
+        const cleanReasons = Array.isArray(reasons)
+          ? reasons.filter((reason) => reason !== null && reason !== undefined && reason !== '')
+          : reasons
+            ? [reasons]
+            : [];
+
         await tx.feedback.create({
           data: {
             photoContent: feedback,
@@ -3136,8 +3148,8 @@ export const adminManagePhotosV2 = async (req: Request, res: Response) => {
             submissionId: photo.submissionId as string,
             type: status === 'APPROVED' ? 'COMMENT' : 'REQUEST',
             photosToUpdate: [mediaId], // Always include media ID for both approved and changes required
-            reasons: cleanReasons
-          }
+            reasons: cleanReasons,
+          },
         });
       }
 
@@ -3145,33 +3157,33 @@ export const adminManagePhotosV2 = async (req: Request, res: Response) => {
       if (!photo.submission) {
         throw new Error('Submission not found');
       }
-      
+
       const campaign = photo.submission.campaign;
       const submission = photo.submission;
-      
+
       // Get current status of all media in this submission after this update
       const allPhotos = await tx.photo.findMany({
         where: {
           submissionId: photo.submissionId,
           userId: photo.userId,
-          campaignId: photo.campaignId
-        }
+          campaignId: photo.campaignId,
+        },
       });
 
       const allVideos = await tx.video.findMany({
         where: {
           submissionId: photo.submissionId,
           userId: photo.userId,
-          campaignId: photo.campaignId
-        }
+          campaignId: photo.campaignId,
+        },
       });
 
       const allRawFootages = await tx.rawFootage.findMany({
         where: {
           submissionId: photo.submissionId,
           userId: photo.userId,
-          campaignId: photo.campaignId
-        }
+          campaignId: photo.campaignId,
+        },
       });
 
       // Determine which sections are required for this campaign
@@ -3180,9 +3192,18 @@ export const adminManagePhotosV2 = async (req: Request, res: Response) => {
       const requiresPhotos = campaign.photos;
 
       // Check if all required media items have been reviewed (either approved or revision requested)
-      const photosAllReviewed = !requiresPhotos || allPhotos.length === 0 || allPhotos.every(p => p.status === 'APPROVED' || p.status === 'REVISION_REQUESTED');
-      const videosAllReviewed = !requiresVideos || allVideos.length === 0 || allVideos.every(v => v.status === 'APPROVED' || v.status === 'REVISION_REQUESTED');
-      const rawFootagesAllReviewed = !requiresRawFootages || allRawFootages.length === 0 || allRawFootages.every(rf => rf.status === 'APPROVED' || rf.status === 'REVISION_REQUESTED');
+      const photosAllReviewed =
+        !requiresPhotos ||
+        allPhotos.length === 0 ||
+        allPhotos.every((p) => p.status === 'APPROVED' || p.status === 'REVISION_REQUESTED');
+      const videosAllReviewed =
+        !requiresVideos ||
+        allVideos.length === 0 ||
+        allVideos.every((v) => v.status === 'APPROVED' || v.status === 'REVISION_REQUESTED');
+      const rawFootagesAllReviewed =
+        !requiresRawFootages ||
+        allRawFootages.length === 0 ||
+        allRawFootages.every((rf) => rf.status === 'APPROVED' || rf.status === 'REVISION_REQUESTED');
 
       // Only update submission status if all required sections have been fully reviewed
       const allSectionsReviewed = photosAllReviewed && videosAllReviewed && rawFootagesAllReviewed;
@@ -3192,14 +3213,18 @@ export const adminManagePhotosV2 = async (req: Request, res: Response) => {
 
       if (allSectionsReviewed) {
         // Check final approval status
-        const photosApproved = !requiresPhotos || allPhotos.length === 0 || allPhotos.every(p => p.status === 'APPROVED');
-        const videosApproved = !requiresVideos || allVideos.length === 0 || allVideos.every(v => v.status === 'APPROVED');
-        const rawFootagesApproved = !requiresRawFootages || allRawFootages.length === 0 || allRawFootages.every(rf => rf.status === 'APPROVED');
+        const photosApproved =
+          !requiresPhotos || allPhotos.length === 0 || allPhotos.every((p) => p.status === 'APPROVED');
+        const videosApproved =
+          !requiresVideos || allVideos.length === 0 || allVideos.every((v) => v.status === 'APPROVED');
+        const rawFootagesApproved =
+          !requiresRawFootages || allRawFootages.length === 0 || allRawFootages.every((rf) => rf.status === 'APPROVED');
 
         // Check if any required section has changes requested
-        const photosHaveChanges = requiresPhotos && allPhotos.some(p => p.status === 'REVISION_REQUESTED');
-        const videosHaveChanges = requiresVideos && allVideos.some(v => v.status === 'REVISION_REQUESTED');
-        const rawFootagesHaveChanges = requiresRawFootages && allRawFootages.some(rf => rf.status === 'REVISION_REQUESTED');
+        const photosHaveChanges = requiresPhotos && allPhotos.some((p) => p.status === 'REVISION_REQUESTED');
+        const videosHaveChanges = requiresVideos && allVideos.some((v) => v.status === 'REVISION_REQUESTED');
+        const rawFootagesHaveChanges =
+          requiresRawFootages && allRawFootages.some((rf) => rf.status === 'REVISION_REQUESTED');
 
         if (photosApproved && videosApproved && rawFootagesApproved) {
           // All sections approved - update to APPROVED
@@ -3208,8 +3233,8 @@ export const adminManagePhotosV2 = async (req: Request, res: Response) => {
             data: {
               status: 'APPROVED',
               completedAt: new Date(),
-              approvedByAdminId: req.session.userid as string
-            }
+              approvedByAdminId: req.session.userid as string,
+            },
           });
 
           submissionUpdated = true;
@@ -3219,8 +3244,8 @@ export const adminManagePhotosV2 = async (req: Request, res: Response) => {
             where: {
               userId: submission.userId,
               campaignId: submission.campaignId,
-              submissionType: { type: 'POSTING' }
-            }
+              submissionType: { type: 'POSTING' },
+            },
           });
 
           // Only do full workflow logic if preventStatusChange is not true
@@ -3233,15 +3258,15 @@ export const adminManagePhotosV2 = async (req: Request, res: Response) => {
                 const threeDaysFromToday = new Date();
                 threeDaysFromToday.setDate(threeDaysFromToday.getDate() + 3);
                 threeDaysFromToday.setHours(23, 59, 59, 999); // Set to end of day
-                
+
                 await tx.submission.update({
                   where: { id: postingSubmission.id },
-                  data: { 
+                  data: {
                     status: 'IN_PROGRESS',
                     dueDate: threeDaysFromToday,
                     startDate: threeDaysFromToday,
-                    endDate: threeDaysFromToday
-                  }
+                    endDate: threeDaysFromToday,
+                  },
                 });
               }
             } else if (submission.submissionType.type === 'FINAL_DRAFT') {
@@ -3251,15 +3276,15 @@ export const adminManagePhotosV2 = async (req: Request, res: Response) => {
                 const threeDaysFromToday = new Date();
                 threeDaysFromToday.setDate(threeDaysFromToday.getDate() + 3);
                 threeDaysFromToday.setHours(23, 59, 59, 999); // Set to end of day
-                
+
                 await tx.submission.update({
                   where: { id: postingSubmission.id },
-                  data: { 
+                  data: {
                     status: 'IN_PROGRESS',
                     dueDate: threeDaysFromToday,
                     startDate: threeDaysFromToday,
-                    endDate: threeDaysFromToday
-                  }
+                    endDate: threeDaysFromToday,
+                  },
                 });
               }
             }
@@ -3268,7 +3293,7 @@ export const adminManagePhotosV2 = async (req: Request, res: Response) => {
           // Some sections have changes requested - update to CHANGES_REQUIRED
           await tx.submission.update({
             where: { id: photo.submissionId as string },
-            data: { status: 'CHANGES_REQUIRED' }
+            data: { status: 'CHANGES_REQUIRED' },
           });
 
           submissionUpdated = true;
@@ -3280,14 +3305,14 @@ export const adminManagePhotosV2 = async (req: Request, res: Response) => {
               where: {
                 userId: submission.userId,
                 campaignId: submission.campaignId,
-                submissionType: { type: 'FINAL_DRAFT' }
-              }
+                submissionType: { type: 'FINAL_DRAFT' },
+              },
             });
 
             if (finalDraftSubmission) {
               await tx.submission.update({
                 where: { id: finalDraftSubmission.id },
-                data: { status: 'IN_PROGRESS' }
+                data: { status: 'IN_PROGRESS' },
               });
             }
           }
@@ -3303,7 +3328,7 @@ export const adminManagePhotosV2 = async (req: Request, res: Response) => {
         photosAllReviewed,
         videosAllReviewed,
         rawFootagesAllReviewed,
-        postingSubmission
+        postingSubmission,
       };
     });
 
@@ -3323,20 +3348,21 @@ export const adminManagePhotosV2 = async (req: Request, res: Response) => {
           await handleCompletedCampaign(result.photo.submissionId as string);
         }
       }
-      
+
       // Update kanban board
       await handleKanbanSubmission(result.photo.submissionId as string);
     }
 
     // Small delay to ensure all database operations are fully committed
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 100));
 
     // Send notification to creator
     const notification = await saveNotification({
       userId: result.photo.userId as string,
-      message: status === 'APPROVED' 
-        ? `✅ Your photo has been approved in campaign ${result.photo.submission?.campaign?.name || 'Unknown Campaign'}`
-        : `📝 Changes requested for your photo in campaign ${result.photo.submission?.campaign?.name || 'Unknown Campaign'}`,
+      message:
+        status === 'APPROVED'
+          ? `✅ Your photo has been approved in campaign ${result.photo.submission?.campaign?.name || 'Unknown Campaign'}`
+          : `📝 Changes requested for your photo in campaign ${result.photo.submission?.campaign?.name || 'Unknown Campaign'}`,
       entity: Entity.Draft,
       entityId: result.photo.campaignId as string,
     });
@@ -3350,20 +3376,19 @@ export const adminManagePhotosV2 = async (req: Request, res: Response) => {
       data: {
         mediaId,
         status: result.newStatus,
-        url: result.photo.url
+        url: result.photo.url,
       },
       reviewProgress: {
         allSectionsReviewed: result.allSectionsReviewed,
         photosAllReviewed: result.photosAllReviewed,
         videosAllReviewed: result.videosAllReviewed,
-        rawFootagesAllReviewed: result.rawFootagesAllReviewed
-      }
+        rawFootagesAllReviewed: result.rawFootagesAllReviewed,
+      },
     });
-    
   } catch (error) {
-    return res.status(500).json({ 
+    return res.status(500).json({
       message: 'Internal server error',
-      error: error.message 
+      error: error.message,
     });
   }
 };
@@ -3373,14 +3398,14 @@ export const adminManageDraftVideosV2 = async (req: Request, res: Response) => {
 
   // Validate required fields
   if (!mediaId || !status) {
-    return res.status(400).json({ 
-      message: 'Missing required fields: mediaId and status are required' 
+    return res.status(400).json({
+      message: 'Missing required fields: mediaId and status are required',
     });
   }
 
   if (!['APPROVED', 'CHANGES_REQUIRED'].includes(status)) {
-    return res.status(400).json({ 
-      message: 'Invalid status. Must be "APPROVED" or "CHANGES_REQUIRED"' 
+    return res.status(400).json({
+      message: 'Invalid status. Must be "APPROVED" or "CHANGES_REQUIRED"',
     });
   }
 
@@ -3398,10 +3423,10 @@ export const adminManageDraftVideosV2 = async (req: Request, res: Response) => {
               photos: true,
               video: true,
               rawFootages: true,
-              submissionType: true
-            }
-          }
-        }
+              submissionType: true,
+            },
+          },
+        },
       });
 
       if (!video) {
@@ -3410,19 +3435,21 @@ export const adminManageDraftVideosV2 = async (req: Request, res: Response) => {
 
       // Update ONLY this specific video's status
       const newStatus = status === 'APPROVED' ? 'APPROVED' : 'REVISION_REQUESTED';
-      
+
       await tx.video.update({
         where: { id: mediaId },
-        data: { status: newStatus }
+        data: { status: newStatus },
       });
 
       // Enhanced feedback system - store individual feedback with media ID reference
       if (feedback) {
         // Clean the reasons array to remove any null/undefined values
-        const cleanReasons = Array.isArray(reasons) 
-          ? reasons.filter(reason => reason !== null && reason !== undefined && reason !== '')
-          : (reasons ? [reasons] : []);
-          
+        const cleanReasons = Array.isArray(reasons)
+          ? reasons.filter((reason) => reason !== null && reason !== undefined && reason !== '')
+          : reasons
+            ? [reasons]
+            : [];
+
         await tx.feedback.create({
           data: {
             content: feedback,
@@ -3430,8 +3457,8 @@ export const adminManageDraftVideosV2 = async (req: Request, res: Response) => {
             submissionId: video.submissionId as string,
             type: status === 'APPROVED' ? 'COMMENT' : 'REQUEST',
             videosToUpdate: [mediaId], // Always include media ID for both approved and changes required
-            reasons: cleanReasons
-          }
+            reasons: cleanReasons,
+          },
         });
       }
 
@@ -3439,33 +3466,33 @@ export const adminManageDraftVideosV2 = async (req: Request, res: Response) => {
       if (!video.submission) {
         throw new Error('Submission not found');
       }
-      
+
       const campaign = video.submission.campaign;
       const submission = video.submission;
-      
+
       // Get current status of all media in this submission after this update
       const allVideos = await tx.video.findMany({
         where: {
           submissionId: video.submissionId,
           userId: video.userId,
-          campaignId: video.campaignId
-        }
+          campaignId: video.campaignId,
+        },
       });
 
       const allPhotos = await tx.photo.findMany({
         where: {
           submissionId: video.submissionId,
           userId: video.userId,
-          campaignId: video.campaignId
-        }
+          campaignId: video.campaignId,
+        },
       });
 
       const allRawFootages = await tx.rawFootage.findMany({
         where: {
           submissionId: video.submissionId,
           userId: video.userId,
-          campaignId: video.campaignId
-        }
+          campaignId: video.campaignId,
+        },
       });
 
       // Determine which sections are required for this campaign
@@ -3474,9 +3501,20 @@ export const adminManageDraftVideosV2 = async (req: Request, res: Response) => {
       const requiresPhotos = campaign.photos === true;
 
       // Check if all required media items have been reviewed (either approved or revision requested)
-      const videosAllReviewed = !requiresVideos || allVideos.length === 0 || allVideos.every(v => v.status === 'APPROVED' || v.status === 'REVISION_REQUESTED');
-      const photosAllReviewed = !requiresPhotos || allPhotos.length === 0 || allPhotos.every(p => p.status === 'APPROVED' || p.status === 'REVISION_REQUESTED');
-      const rawFootagesAllReviewed = !requiresRawFootages || allRawFootages.length === 0 || allRawFootages.every(rf => rf.status === 'APPROVED' || rf.status === 'REVISION_REQUESTED');
+      const videosAllReviewed =
+        !requiresVideos ||
+        allVideos.length === 0 ||
+        allVideos.every((v) => v.status === 'APPROVED' || v.status === 'REVISION_REQUESTED');
+
+      const photosAllReviewed =
+        !requiresPhotos ||
+        allPhotos.length === 0 ||
+        allPhotos.every((p) => p.status === 'APPROVED' || p.status === 'REVISION_REQUESTED');
+
+      const rawFootagesAllReviewed =
+        !requiresRawFootages ||
+        allRawFootages.length === 0 ||
+        allRawFootages.every((rf) => rf.status === 'APPROVED' || rf.status === 'REVISION_REQUESTED');
 
       // Only update submission status if all required sections have been fully reviewed
       const allSectionsReviewed = videosAllReviewed && photosAllReviewed && rawFootagesAllReviewed;
@@ -3486,14 +3524,22 @@ export const adminManageDraftVideosV2 = async (req: Request, res: Response) => {
 
       if (allSectionsReviewed) {
         // Check final approval status
-        const videosApproved = !requiresVideos || allVideos.length === 0 || allVideos.every(v => v.status === 'APPROVED');
-        const photosApproved = !requiresPhotos || allPhotos.length === 0 || allPhotos.every(p => p.status === 'APPROVED');
-        const rawFootagesApproved = !requiresRawFootages || allRawFootages.length === 0 || allRawFootages.every(rf => rf.status === 'APPROVED');
+        const videosApproved =
+          !requiresVideos || allVideos.length === 0 || allVideos.every((v) => v.status === 'APPROVED');
+
+        const photosApproved =
+          !requiresPhotos || allPhotos.length === 0 || allPhotos.every((p) => p.status === 'APPROVED');
+
+        const rawFootagesApproved =
+          !requiresRawFootages || allRawFootages.length === 0 || allRawFootages.every((rf) => rf.status === 'APPROVED');
 
         // Check if any required section has changes requested
-        const videosHaveChanges = requiresVideos && allVideos.some(v => v.status === 'REVISION_REQUESTED');
-        const photosHaveChanges = requiresPhotos && allPhotos.some(p => p.status === 'REVISION_REQUESTED');
-        const rawFootagesHaveChanges = requiresRawFootages && allRawFootages.some(rf => rf.status === 'REVISION_REQUESTED');
+        const videosHaveChanges = requiresVideos && allVideos.some((v) => v.status === 'REVISION_REQUESTED');
+
+        const photosHaveChanges = requiresPhotos && allPhotos.some((p) => p.status === 'REVISION_REQUESTED');
+
+        const rawFootagesHaveChanges =
+          requiresRawFootages && allRawFootages.some((rf) => rf.status === 'REVISION_REQUESTED');
 
         if (videosApproved && photosApproved && rawFootagesApproved) {
           // All sections approved - update to APPROVED
@@ -3502,8 +3548,8 @@ export const adminManageDraftVideosV2 = async (req: Request, res: Response) => {
             data: {
               status: 'APPROVED',
               completedAt: new Date(),
-              approvedByAdminId: req.session.userid as string
-            }
+              approvedByAdminId: req.session.userid as string,
+            },
           });
 
           submissionUpdated = true;
@@ -3517,14 +3563,14 @@ export const adminManageDraftVideosV2 = async (req: Request, res: Response) => {
                 where: {
                   userId: submission.userId,
                   campaignId: submission.campaignId,
-                  submissionType: { type: 'POSTING' }
-                }
+                  submissionType: { type: 'POSTING' },
+                },
               });
 
               if (postingSubmission) {
                 await tx.submission.update({
                   where: { id: postingSubmission.id },
-                  data: { status: 'IN_PROGRESS' }
+                  data: { status: 'IN_PROGRESS' },
                 });
               }
             } else if (submission.submissionType.type === 'FINAL_DRAFT') {
@@ -3533,8 +3579,8 @@ export const adminManageDraftVideosV2 = async (req: Request, res: Response) => {
                 where: {
                   userId: submission.userId,
                   campaignId: submission.campaignId,
-                  submissionType: { type: 'POSTING' }
-                }
+                  submissionType: { type: 'POSTING' },
+                },
               });
 
               if (postingSubmission) {
@@ -3542,15 +3588,15 @@ export const adminManageDraftVideosV2 = async (req: Request, res: Response) => {
                 const threeDaysFromToday = new Date();
                 threeDaysFromToday.setDate(threeDaysFromToday.getDate() + 3);
                 threeDaysFromToday.setHours(23, 59, 59, 999); // Set to end of day
-                
+
                 await tx.submission.update({
                   where: { id: postingSubmission.id },
-                  data: { 
+                  data: {
                     status: 'IN_PROGRESS',
                     dueDate: threeDaysFromToday,
                     startDate: threeDaysFromToday,
-                    endDate: threeDaysFromToday
-                  }
+                    endDate: threeDaysFromToday,
+                  },
                 });
               }
             }
@@ -3560,15 +3606,15 @@ export const adminManageDraftVideosV2 = async (req: Request, res: Response) => {
               where: {
                 userId: submission.userId,
                 campaignId: submission.campaignId,
-                submissionType: { type: 'POSTING' }
-              }
+                submissionType: { type: 'POSTING' },
+              },
             });
           }
         } else if (videosHaveChanges || photosHaveChanges || rawFootagesHaveChanges) {
           // Some sections have changes requested - update to CHANGES_REQUIRED
           await tx.submission.update({
             where: { id: video.submissionId as string },
-            data: { status: 'CHANGES_REQUIRED' }
+            data: { status: 'CHANGES_REQUIRED' },
           });
 
           submissionUpdated = true;
@@ -3580,14 +3626,14 @@ export const adminManageDraftVideosV2 = async (req: Request, res: Response) => {
               where: {
                 userId: submission.userId,
                 campaignId: submission.campaignId,
-                submissionType: { type: 'FINAL_DRAFT' }
-              }
+                submissionType: { type: 'FINAL_DRAFT' },
+              },
             });
 
             if (finalDraftSubmission) {
               await tx.submission.update({
                 where: { id: finalDraftSubmission.id },
-                data: { status: 'IN_PROGRESS' }
+                data: { status: 'IN_PROGRESS' },
               });
             }
           }
@@ -3603,7 +3649,7 @@ export const adminManageDraftVideosV2 = async (req: Request, res: Response) => {
         videosAllReviewed,
         photosAllReviewed,
         rawFootagesAllReviewed,
-        postingSubmission
+        postingSubmission,
       };
     });
 
@@ -3618,24 +3664,25 @@ export const adminManageDraftVideosV2 = async (req: Request, res: Response) => {
       } else {
         // Even with preventStatusChange, we need to complete the campaign if there's no posting submission
         // and this is a POSTING submission
-        if (!result.postingSubmission && result.video.submission?.submissionType?.type === 'POSTING') {
+        if (!result.postingSubmission || result.video.submission?.submissionType?.type === 'POSTING') {
           await handleCompletedCampaign(result.video.submissionId as string);
         }
       }
-      
+
       // Update kanban board
       await handleKanbanSubmission(result.video.submissionId as string);
     }
 
     // Small delay to ensure all database operations are fully committed
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 100));
 
     // Send notification to creator
     const notification = await saveNotification({
       userId: result.video.userId as string,
-      message: status === 'APPROVED' 
-        ? `✅ Your video has been approved in campaign ${result.video.submission?.campaign?.name || 'Unknown Campaign'}`
-        : `📝 Changes requested for your video in campaign ${result.video.submission?.campaign?.name || 'Unknown Campaign'}`,
+      message:
+        status === 'APPROVED'
+          ? `✅ Your video has been approved in campaign ${result.video.submission?.campaign?.name || 'Unknown Campaign'}`
+          : `📝 Changes requested for your video in campaign ${result.video.submission?.campaign?.name || 'Unknown Campaign'}`,
       entity: Entity.Draft,
       entityId: result.video.campaignId as string,
     });
@@ -3649,20 +3696,19 @@ export const adminManageDraftVideosV2 = async (req: Request, res: Response) => {
       data: {
         mediaId,
         status: result.newStatus,
-        url: result.video.url
+        url: result.video.url,
       },
       reviewProgress: {
         allSectionsReviewed: result.allSectionsReviewed,
         videosAllReviewed: result.videosAllReviewed,
         photosAllReviewed: result.photosAllReviewed,
-        rawFootagesAllReviewed: result.rawFootagesAllReviewed
-      }
+        rawFootagesAllReviewed: result.rawFootagesAllReviewed,
+      },
     });
-
   } catch (error) {
-    return res.status(500).json({ 
+    return res.status(500).json({
       message: 'Internal server error',
-      error: error.message 
+      error: error.message,
     });
   }
 };
@@ -3672,14 +3718,14 @@ export const adminManageRawFootagesV2 = async (req: Request, res: Response) => {
 
   // Validate required fields
   if (!mediaId || !status) {
-    return res.status(400).json({ 
-      message: 'Missing required fields: mediaId and status are required' 
+    return res.status(400).json({
+      message: 'Missing required fields: mediaId and status are required',
     });
   }
 
   if (!['APPROVED', 'CHANGES_REQUIRED'].includes(status)) {
-    return res.status(400).json({ 
-      message: 'Invalid status. Must be "APPROVED" or "CHANGES_REQUIRED"' 
+    return res.status(400).json({
+      message: 'Invalid status. Must be "APPROVED" or "CHANGES_REQUIRED"',
     });
   }
 
@@ -3697,10 +3743,10 @@ export const adminManageRawFootagesV2 = async (req: Request, res: Response) => {
               photos: true,
               video: true,
               rawFootages: true,
-              submissionType: true
-            }
-          }
-        }
+              submissionType: true,
+            },
+          },
+        },
       });
 
       if (!rawFootage) {
@@ -3709,19 +3755,21 @@ export const adminManageRawFootagesV2 = async (req: Request, res: Response) => {
 
       // Update ONLY this specific raw footage's status
       const newStatus = status === 'APPROVED' ? 'APPROVED' : 'REVISION_REQUESTED';
-      
+
       await tx.rawFootage.update({
         where: { id: mediaId },
-        data: { status: newStatus }
+        data: { status: newStatus },
       });
 
       // Enhanced feedback system - store individual feedback with media ID reference
       if (feedback) {
         // Clean the reasons array to remove any null/undefined values
-        const cleanReasons = Array.isArray(reasons) 
-          ? reasons.filter(reason => reason !== null && reason !== undefined && reason !== '')
-          : (reasons ? [reasons] : []);
-          
+        const cleanReasons = Array.isArray(reasons)
+          ? reasons.filter((reason) => reason !== null && reason !== undefined && reason !== '')
+          : reasons
+            ? [reasons]
+            : [];
+
         await tx.feedback.create({
           data: {
             rawFootageContent: feedback,
@@ -3729,8 +3777,8 @@ export const adminManageRawFootagesV2 = async (req: Request, res: Response) => {
             submissionId: rawFootage.submissionId as string,
             type: status === 'APPROVED' ? 'COMMENT' : 'REQUEST',
             rawFootageToUpdate: [mediaId], // Always include media ID for both approved and changes required
-            reasons: cleanReasons
-          }
+            reasons: cleanReasons,
+          },
         });
       }
 
@@ -3738,33 +3786,33 @@ export const adminManageRawFootagesV2 = async (req: Request, res: Response) => {
       if (!rawFootage.submission) {
         throw new Error('Submission not found');
       }
-      
+
       const campaign = rawFootage.submission.campaign;
       const submission = rawFootage.submission;
-      
+
       // Get current status of all media in this submission after this update
       const allRawFootages = await tx.rawFootage.findMany({
         where: {
           submissionId: rawFootage.submissionId,
           userId: rawFootage.userId,
-          campaignId: rawFootage.campaignId
-        }
+          campaignId: rawFootage.campaignId,
+        },
       });
 
       const allVideos = await tx.video.findMany({
         where: {
           submissionId: rawFootage.submissionId,
           userId: rawFootage.userId,
-          campaignId: rawFootage.campaignId
-        }
+          campaignId: rawFootage.campaignId,
+        },
       });
 
       const allPhotos = await tx.photo.findMany({
         where: {
           submissionId: rawFootage.submissionId,
           userId: rawFootage.userId,
-          campaignId: rawFootage.campaignId
-        }
+          campaignId: rawFootage.campaignId,
+        },
       });
 
       // Determine which sections are required for this campaign
@@ -3773,9 +3821,18 @@ export const adminManageRawFootagesV2 = async (req: Request, res: Response) => {
       const requiresPhotos = campaign.photos === true;
 
       // Check if all required media items have been reviewed (either approved or revision requested)
-      const rawFootagesAllReviewed = !requiresRawFootages || allRawFootages.length === 0 || allRawFootages.every(rf => rf.status === 'APPROVED' || rf.status === 'REVISION_REQUESTED');
-      const videosAllReviewed = !requiresVideos || allVideos.length === 0 || allVideos.every(v => v.status === 'APPROVED' || v.status === 'REVISION_REQUESTED');
-      const photosAllReviewed = !requiresPhotos || allPhotos.length === 0 || allPhotos.every(p => p.status === 'APPROVED' || p.status === 'REVISION_REQUESTED');
+      const rawFootagesAllReviewed =
+        !requiresRawFootages ||
+        allRawFootages.length === 0 ||
+        allRawFootages.every((rf) => rf.status === 'APPROVED' || rf.status === 'REVISION_REQUESTED');
+      const videosAllReviewed =
+        !requiresVideos ||
+        allVideos.length === 0 ||
+        allVideos.every((v) => v.status === 'APPROVED' || v.status === 'REVISION_REQUESTED');
+      const photosAllReviewed =
+        !requiresPhotos ||
+        allPhotos.length === 0 ||
+        allPhotos.every((p) => p.status === 'APPROVED' || p.status === 'REVISION_REQUESTED');
 
       // Only update submission status if all required sections have been fully reviewed
       const allSectionsReviewed = rawFootagesAllReviewed && videosAllReviewed && photosAllReviewed;
@@ -3785,14 +3842,18 @@ export const adminManageRawFootagesV2 = async (req: Request, res: Response) => {
 
       if (allSectionsReviewed) {
         // Check final approval status
-        const rawFootagesApproved = !requiresRawFootages || allRawFootages.length === 0 || allRawFootages.every(rf => rf.status === 'APPROVED');
-        const videosApproved = !requiresVideos || allVideos.length === 0 || allVideos.every(v => v.status === 'APPROVED');
-        const photosApproved = !requiresPhotos || allPhotos.length === 0 || allPhotos.every(p => p.status === 'APPROVED');
+        const rawFootagesApproved =
+          !requiresRawFootages || allRawFootages.length === 0 || allRawFootages.every((rf) => rf.status === 'APPROVED');
+        const videosApproved =
+          !requiresVideos || allVideos.length === 0 || allVideos.every((v) => v.status === 'APPROVED');
+        const photosApproved =
+          !requiresPhotos || allPhotos.length === 0 || allPhotos.every((p) => p.status === 'APPROVED');
 
         // Check if any required section has changes requested
-        const rawFootagesHaveChanges = requiresRawFootages && allRawFootages.some(rf => rf.status === 'REVISION_REQUESTED');
-        const videosHaveChanges = requiresVideos && allVideos.some(v => v.status === 'REVISION_REQUESTED');
-        const photosHaveChanges = requiresPhotos && allPhotos.some(p => p.status === 'REVISION_REQUESTED');
+        const rawFootagesHaveChanges =
+          requiresRawFootages && allRawFootages.some((rf) => rf.status === 'REVISION_REQUESTED');
+        const videosHaveChanges = requiresVideos && allVideos.some((v) => v.status === 'REVISION_REQUESTED');
+        const photosHaveChanges = requiresPhotos && allPhotos.some((p) => p.status === 'REVISION_REQUESTED');
 
         if (rawFootagesApproved && videosApproved && photosApproved) {
           // All sections approved - update to APPROVED
@@ -3816,8 +3877,8 @@ export const adminManageRawFootagesV2 = async (req: Request, res: Response) => {
                 where: {
                   userId: submission.userId,
                   campaignId: submission.campaignId,
-                  submissionType: { type: 'POSTING' }
-                }
+                  submissionType: { type: 'POSTING' },
+                },
               });
 
               if (postingSubmission) {
@@ -3825,15 +3886,15 @@ export const adminManageRawFootagesV2 = async (req: Request, res: Response) => {
                 const threeDaysFromToday = new Date();
                 threeDaysFromToday.setDate(threeDaysFromToday.getDate() + 3);
                 threeDaysFromToday.setHours(23, 59, 59, 999); // Set to end of day
-                
+
                 await tx.submission.update({
                   where: { id: postingSubmission.id },
-                  data: { 
+                  data: {
                     status: 'IN_PROGRESS',
                     dueDate: threeDaysFromToday,
                     startDate: threeDaysFromToday,
-                    endDate: threeDaysFromToday
-                  }
+                    endDate: threeDaysFromToday,
+                  },
                 });
               }
             } else if (submission.submissionType.type === 'FINAL_DRAFT') {
@@ -3842,8 +3903,8 @@ export const adminManageRawFootagesV2 = async (req: Request, res: Response) => {
                 where: {
                   userId: submission.userId,
                   campaignId: submission.campaignId,
-                  submissionType: { type: 'POSTING' }
-                }
+                  submissionType: { type: 'POSTING' },
+                },
               });
 
               if (postingSubmission) {
@@ -3851,15 +3912,15 @@ export const adminManageRawFootagesV2 = async (req: Request, res: Response) => {
                 const threeDaysFromToday = new Date();
                 threeDaysFromToday.setDate(threeDaysFromToday.getDate() + 3);
                 threeDaysFromToday.setHours(23, 59, 59, 999); // Set to end of day
-                
+
                 await tx.submission.update({
                   where: { id: postingSubmission.id },
-                  data: { 
+                  data: {
                     status: 'IN_PROGRESS',
                     dueDate: threeDaysFromToday,
                     startDate: threeDaysFromToday,
-                    endDate: threeDaysFromToday
-                  }
+                    endDate: threeDaysFromToday,
+                  },
                 });
               }
             }
@@ -3869,15 +3930,15 @@ export const adminManageRawFootagesV2 = async (req: Request, res: Response) => {
               where: {
                 userId: submission.userId,
                 campaignId: submission.campaignId,
-                submissionType: { type: 'POSTING' }
-              }
+                submissionType: { type: 'POSTING' },
+              },
             });
           }
         } else if (rawFootagesHaveChanges || videosHaveChanges || photosHaveChanges) {
           // Some sections have changes requested - update to CHANGES_REQUIRED
           await tx.submission.update({
             where: { id: rawFootage.submissionId as string },
-            data: { status: 'CHANGES_REQUIRED' }
+            data: { status: 'CHANGES_REQUIRED' },
           });
 
           submissionUpdated = true;
@@ -3889,14 +3950,14 @@ export const adminManageRawFootagesV2 = async (req: Request, res: Response) => {
               where: {
                 userId: submission.userId,
                 campaignId: submission.campaignId,
-                submissionType: { type: 'FINAL_DRAFT' }
-              }
+                submissionType: { type: 'FINAL_DRAFT' },
+              },
             });
 
             if (finalDraftSubmission) {
               await tx.submission.update({
                 where: { id: finalDraftSubmission.id },
-                data: { status: 'IN_PROGRESS' }
+                data: { status: 'IN_PROGRESS' },
               });
             }
           }
@@ -3912,7 +3973,7 @@ export const adminManageRawFootagesV2 = async (req: Request, res: Response) => {
         rawFootagesAllReviewed,
         videosAllReviewed,
         photosAllReviewed,
-        postingSubmission
+        postingSubmission,
       };
     });
 
@@ -3927,24 +3988,25 @@ export const adminManageRawFootagesV2 = async (req: Request, res: Response) => {
       } else {
         // Even with preventStatusChange, we need to complete the campaign if there's no posting submission
         // and this is a POSTING submission
-        if (!result.postingSubmission && result.submission?.submissionType?.type === 'POSTING') {
+        if (!result.postingSubmission || result.submission?.submissionType?.type === 'POSTING') {
           await handleCompletedCampaign(result.rawFootage.submissionId as string);
         }
       }
-      
+
       // Update kanban board
       await handleKanbanSubmission(result.rawFootage.submissionId as string);
     }
 
     // Small delay to ensure all database operations are fully committed
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 100));
 
     // Send notification to creator
     const notification = await saveNotification({
       userId: result.rawFootage.userId as string,
-      message: status === 'APPROVED' 
-        ? `✅ Your raw footage has been approved in campaign ${result.rawFootage.submission?.campaign?.name || 'Unknown Campaign'}`
-        : `📝 Changes requested for your raw footage in campaign ${result.rawFootage.submission?.campaign?.name || 'Unknown Campaign'}`,
+      message:
+        status === 'APPROVED'
+          ? `✅ Your raw footage has been approved in campaign ${result.rawFootage.submission?.campaign?.name || 'Unknown Campaign'}`
+          : `📝 Changes requested for your raw footage in campaign ${result.rawFootage.submission?.campaign?.name || 'Unknown Campaign'}`,
       entity: Entity.Draft,
       entityId: result.rawFootage.campaignId as string,
     });
@@ -3958,21 +4020,20 @@ export const adminManageRawFootagesV2 = async (req: Request, res: Response) => {
       data: {
         mediaId,
         status: result.newStatus,
-        url: result.rawFootage.url
+        url: result.rawFootage.url,
       },
       reviewProgress: {
         allSectionsReviewed: result.allSectionsReviewed,
         rawFootagesAllReviewed: result.rawFootagesAllReviewed,
         videosAllReviewed: result.videosAllReviewed,
-        photosAllReviewed: result.photosAllReviewed
-      }
+        photosAllReviewed: result.photosAllReviewed,
+      },
     });
-// Catch error
+    // Catch error
   } catch (error) {
-    return res.status(500).json({ 
+    return res.status(500).json({
       message: 'Internal server error',
-      error: error.message 
+      error: error.message,
     });
   }
 };
-
