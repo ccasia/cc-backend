@@ -14,6 +14,9 @@ model User {
   email    String  @unique @db.VarChar(255)
   password String? @db.VarChar(255)
 
+  emailVerificationId String?            @unique
+  emailVerifcation    EmailVerification? @relation(fields: [emailVerificationId], references: [id])
+
   createdAt          DateTime             @default(now())
   name               String?              @db.VarChar(255)
   photoURL           String?              @db.VarChar(255)
@@ -67,6 +70,14 @@ model User {
   videoFeedback      Video[]              @relation("VideoFeedback")
   rawFootageFeedback RawFootage[]         @relation("RawFootageFeedback")
   photoFeedback      Photo[]              @relation("PhotoFeedback")
+}
+
+model EmailVerification {
+  id        String   @id @unique @default(cuid())
+  shortCode String
+  token     String
+  expiredAt DateTime
+  user      User?
 }
 
 model ResetPasswordToken {

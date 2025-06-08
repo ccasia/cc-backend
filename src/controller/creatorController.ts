@@ -7,6 +7,7 @@ import { clients, io } from '../server';
 import { updateInvoices } from '@services/invoiceService';
 import { exportCreatorsToSpreadsheet } from '@services/creatorsSpreadsheetService';
 import { createKanbanBoard } from './kanbanController';
+import { createCampaignCreatorSpreadSheet } from '@services/google_sheets/sheets';
 
 const prisma = new PrismaClient();
 
@@ -821,4 +822,104 @@ export const createKanban = async (req: Request, res: Response) => {
     console.log(error);
     return res.status(400).json(error);
   }
+};
+
+export const createCampaignCreator = async (req: Request, res: Response) => {
+  try {
+    // const uniqueCreators = await prisma.user.groupBy({
+    //   by: ['id'], // group by creator's unique ID
+    //   _count: true,
+    // });
+
+    const shortlistedCreators = await prisma.shortListedCreator.findMany({
+      include: {
+        user: {
+          include: {
+            creator: true,
+          },
+        },
+      },
+    });
+
+    const seen = new Set();
+
+    const uniqueCreators = shortlistedCreators.filter((item) => {
+      const creatorId = item?.user?.id;
+      if (seen.has(creatorId)) return false;
+      seen.add(creatorId);
+      return true;
+    });
+
+    const formatData = uniqueCreators.map((item) => ({
+      Name: item?.user?.name || '',
+      Instagram: item?.user?.creator?.instagram || 'N/A',
+      TikTok: item?.user?.creator?.tiktok || 'N/A',
+      Email: item?.user?.email || '',
+      'Phone Number': item?.user?.phoneNumber || '',
+    }));
+
+    await createCampaignCreatorSpreadSheet({
+      spreadSheetId: '1i89GPX6a8OOyVAyHuHT7zelqrhHrbXYPkkvY8ybflYA',
+      sheetByTitle: 'Campaign Creators',
+      data: formatData,
+    });
+
+    // for (const item of shortlistedCreators) {
+    //   await createCampaignCreatorSpreadSheet({
+    //     spreadSheetId: '1i89GPX6a8OOyVAyHuHT7zelqrhHrbXYPkkvY8ybflYA',
+    //     sheetByTitle: 'Campaign Creators',
+    //     data: {
+    //       name: item.user?.name || '',
+    //       instagram: item.user?.creator?.instagram || '',
+    //       tiktok: item.user?.creator?.tiktok || '',
+    //       email: item.user?.email || '',
+    //       phoneNumber: item.user?.phoneNumber || '',
+    //     },
+    //   });
+    // }
+    // await Promise.all(
+    //   shortlistedCreators.map((item) => {
+    //     return createCampaignCreatorSpreadSheet({
+    //       spreadSheetId: '1i89GPX6a8OOyVAyHuHT7zelqrhHrbXYPkkvY8ybflYA',
+    //       sheetByTitle: 'Campaign Creators',
+    //       data: {
+    //         name: item.user?.name || '',
+    //         instagram: item.user?.creator?.instagram || '',
+    //         tiktok: item.user?.creator?.tiktok || '',
+    //         email: item.user?.email || '',
+    //         phoneNumber: item.user?.phoneNumber || '',
+    //       },
+    //     });
+    //   }),
+    // );
+    return res.sendStatus(200);
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+  // try {
+  //   const spreadsheetId = '1i89GPX6a8OOyVAyHuHT7zelqrhHrbXYPkkvY8ybflYA';
+  //   const range = 'Campaign Creators!A2'; // adjust to match your headers
+  //   // const creators = req.body.creators; // Expecting array of creators
+  //   const shortlistedCreators = await prisma.shortListedCreator.findMany({
+  //     include: {
+  //       user: {
+  //         include: {
+  //           creator: true,
+  //         },
+  //       },
+  //     },
+  //   });
+  //   const rows = shortlistedCreators.map((creator) => [
+  //     creator.user?.name || '',
+  //     creator.user?.creator?.instagram || '',
+  //     creator.user?.creator?.tiktok || '',
+  //     creator.user?.email || '',
+  //     creator.user?.phoneNumber || '',
+  //   ]);
+  //   await batchUpdateRows(spreadsheetId, range, rows);
+  //   res.status(200).json({ message: 'Spreadsheet updated successfully' });
+  // } catch (err) {
+  //   console.error(err);
+  //   res.status(500).json({ message: 'Failed to update spreadsheet', error: err.message });
+  // }
 };

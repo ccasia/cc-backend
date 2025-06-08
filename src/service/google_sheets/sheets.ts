@@ -179,3 +179,86 @@ export const createNewKWSPRowData = async ({
     throw new Error(error);
   }
 };
+
+export const createCampaignCreatorSpreadSheet = async ({
+  spreadSheetId,
+  sheetByTitle,
+  data,
+}: {
+  spreadSheetId: string;
+  sheetByTitle: string;
+  data: {
+    Name: string;
+    Instagram?: string;
+    TikTok?: string;
+    Email: string;
+    'Phone Number': string;
+  }[];
+}) => {
+  try {
+    const sheet = await accessGoogleSheetAPI(spreadSheetId);
+
+    if (!sheet) {
+      throw new Error('Sheet not found.');
+    }
+
+    const currentSheet = sheet.sheetsByTitle[sheetByTitle];
+
+    if (!currentSheet) {
+      throw new Error('Sheet not found.');
+    }
+
+    currentSheet.addRows;
+
+    const updatedRow = await currentSheet.addRows(data);
+
+    return updatedRow;
+  } catch (error) {
+    console.log(error);
+    throw new Error(error);
+  }
+};
+
+// async function withRetries(fn: any, retries = 3, delay = 1000) {
+//   for (let attempt = 1; attempt <= retries; attempt++) {
+//     try {
+//       return await fn();
+//     } catch (err) {
+//       if (attempt === retries || err.response?.status !== 503) {
+//         throw err;
+//       }
+//       console.warn(`Retrying (${attempt}/${retries}) after error: ${err.message}`);
+//       // eslint-disable-next-line promise/param-names
+//       await new Promise((res) => setTimeout(res, delay * attempt)); // exponential backoff
+//     }
+//   }
+// }
+
+// async function batchUpdateRows(spreadsheetId: string, range: string, rows: any, chunkSize = 100) {
+//   const client = await auth.getClient();
+//   const chunks = [];
+
+//   for (let i = 0; i < rows.length; i += chunkSize) {
+//     chunks.push(rows.slice(i, i + chunkSize));
+//   }
+
+//   for (const chunk of chunks) {
+//     const resource = {
+//       data: [
+//         {
+//           range,
+//           values: chunk,
+//         },
+//       ],
+//       valueInputOption: 'RAW',
+//     };
+
+//     await withRetries(() =>
+//       sheets.spreadsheets.values.batchUpdate({
+//         spreadsheetId,
+//         resource,
+//         auth: client,
+//       }),
+//     );
+//   }
+// }

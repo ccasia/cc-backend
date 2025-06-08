@@ -122,7 +122,7 @@ export const exportCreatorsToSpreadsheet = async (): Promise<string> => {
       if (user.creator?.instagramUser?.username) {
         socialHandles.push(`IG: ${user.creator.instagramUser.username}`);
       }
-
+      
       if (user.creator?.tiktokUser?.display_name) {
         socialHandles.push(`TT: ${user.creator.tiktokUser.display_name}`);
       }
