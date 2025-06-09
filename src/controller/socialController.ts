@@ -23,6 +23,7 @@ export interface UrlData {
   submissionId: string;
   userId: string;
   userName: string;
+  platform: 'Instagram' | 'TikTok'; // Add platform identifier
 }
 
 export interface MetricData {
@@ -860,7 +861,6 @@ export const getInstagramMediaKit = async (req: Request, res: Response) => {
   }
 };
 
-// Helper function to get campaign submission URLs
 async function getCampaignSubmissionUrls(campaignId: string): Promise<UrlData[]> {
   try {
     const submissions = await prisma.submission.findMany({
@@ -883,17 +883,38 @@ async function getCampaignSubmissionUrls(campaignId: string): Promise<UrlData[]>
     const allUrls: UrlData[] = [];
     submissions.forEach(submission => {
       if (submission.content) {
+        // Instagram URL regex
         const instagramUrlRegex = /https?:\/\/(www\.)?instagram\.com\/[^\s]+/g;
-        const urls = submission.content.match(instagramUrlRegex);
+        const instagramUrls = submission.content.match(instagramUrlRegex);
         
-        if (urls && urls.length > 0) {
-          urls.forEach(url => {
+        // TikTok URL regex - handles multiple formats
+        const tiktokUrlRegex = /https?:\/\/(www\.)?(vm\.|m\.)?tiktok\.com\/[^\s]+/g;
+        const tiktokUrls = submission.content.match(tiktokUrlRegex);
+        
+        // Process Instagram URLs
+        if (instagramUrls && instagramUrls.length > 0) {
+          instagramUrls.forEach(url => {
             const cleanUrl = url.replace(/[.,;!?]+$/, '');
             allUrls.push({
               url: cleanUrl,
               submissionId: submission.id,
               userId: submission.userId,
-              userName: submission.user.name || ''
+              userName: submission.user.name || '',
+              platform: 'Instagram' // Add platform identifier
+            });
+          });
+        }
+        
+        // Process TikTok URLs
+        if (tiktokUrls && tiktokUrls.length > 0) {
+          tiktokUrls.forEach(url => {
+            const cleanUrl = url.replace(/[.,;!?]+$/, '');
+            allUrls.push({
+              url: cleanUrl,
+              submissionId: submission.id,
+              userId: submission.userId,
+              userName: submission.user.name || '',
+              platform: 'TikTok' // Add platform identifier
             });
           });
         }
@@ -1053,19 +1074,22 @@ export const getInstagramMediaInsight = async (req: Request, res: Response) => {
     let campaignComparison = null;
     let campaignPostsCount = 0;
 
+    // Updated section in getInstagramMediaInsight function
     if (campaignId) {
       console.log(`🎯 Calculating campaign averages for campaign: ${campaignId}`);
       
       try {
-        // Get all campaign submission URLs
+        // Get all campaign submission URLs (now includes both Instagram and TikTok)
         const campaignUrls = await getCampaignSubmissionUrls(campaignId as string);
-        console.log(`📊 Found ${campaignUrls.length} campaign URLs`);
+        // Filter for Instagram URLs only
+        const instagramUrls = campaignUrls.filter(urlData => urlData.platform === 'Instagram');
+        console.log(`📊 Found ${instagramUrls.length} Instagram campaign URLs out of ${campaignUrls.length} total URLs`);
 
-        if (campaignUrls.length > 0) {
+        if (instagramUrls.length > 0) {
           const campaignInsights = [];
 
           // Process each campaign URL to get insights
-          for (const urlData of campaignUrls) {
+          for (const urlData of instagramUrls) {
             try {
               const campaignShortCode = extractInstagramShortcode(urlData.url);
               if (!campaignShortCode) continue;
@@ -1091,11 +1115,11 @@ export const getInstagramMediaInsight = async (req: Request, res: Response) => {
           console.log(`📈 Successfully processed ${campaignInsights.length} campaign posts`);
           campaignPostsCount = campaignInsights.length;
 
-          // Calculate averages
+          // Calculate averages (reusing existing function)
           if (campaignInsights.length > 0) {
             campaignAverages = calculateCampaignAverages(campaignInsights);
             
-            // Compare current post with campaign averages
+            // Compare current post with campaign averages (reusing existing function)
             campaignComparison = calculateCampaignComparison(insight, campaignAverages);
             
             console.log('Campaign averages calculated:', campaignAverages);
@@ -1127,7 +1151,7 @@ export const getInstagramMediaInsight = async (req: Request, res: Response) => {
 
 export const getTikTokVideoInsight = async (req: Request, res: Response) => {
   const { userId } = req.params;
-  const { url } = req.query;
+  const { url, campaignId } = req.query; // Added campaignId parameter
 
   if (!userId) return res.status(404).json({ message: 'Parameter missing: userId' });
   if (!url) return res.status(404).json({ message: 'Query missing: url' });
@@ -1157,30 +1181,11 @@ export const getTikTokVideoInsight = async (req: Request, res: Response) => {
     }
 
     const tiktokData = creator.tiktokData as any;
-    console.log('TikTok Data structure:', Object.keys(tiktokData)); // Debug
-
     const encryptedAccessToken = tiktokData?.access_token;
 
     if (!encryptedAccessToken) return res.status(404).json({ message: 'TikTok access token not found' });
 
     const accessToken = decryptToken(encryptedAccessToken);
-    // const accessToken = 'act.q0zdw8SAAWGnra2c7isdYicog1w3szmfWuFgU5g9ZDlEffyMCt5JagB2p8sp!5620.va';
-
-    // Debug: Check token format (don't log the full token for security)
-    console.log('Access token format check:', {
-      hasToken: !!accessToken,
-      startsWithAct: accessToken?.startsWith('act.'),
-      tokenLength: accessToken?.length,
-      firstChars: accessToken?.substring(0, 10),
-    });
-
-    // Extract video ID from URL
-    const videoId = extractTikTokVideoId(url as string);
-    console.log('Extracted video ID:', videoId); // Debug
-
-    if (!videoId) {
-      return res.status(400).json({ message: 'Invalid TikTok URL or unable to extract video ID' });
-    }
 
     // Test the token first with user info endpoint
     try {
@@ -1199,7 +1204,15 @@ export const getTikTokVideoInsight = async (req: Request, res: Response) => {
       });
     }
 
-    // Now try to fetch the video
+    // Extract video ID from URL
+    const videoId = extractTikTokVideoId(url as string);
+    console.log('Extracted video ID:', videoId);
+
+    if (!videoId) {
+      return res.status(400).json({ message: 'Invalid TikTok URL or unable to extract video ID' });
+    }
+
+    // Fetch the current video
     const videoResponse = await getTikTokVideoById(accessToken, videoId);
     const videos = videoResponse?.data?.videos;
 
@@ -1238,10 +1251,93 @@ export const getTikTokVideoInsight = async (req: Request, res: Response) => {
       },
     ];
 
-    return res.status(200).json({
+    // Campaign averages calculation
+    let campaignAverages = null;
+    let campaignComparison = null;
+    let campaignPostsCount = 0;
+
+    if (campaignId) {
+      console.log(`🎯 Calculating TikTok campaign averages for campaign: ${campaignId}`);
+      
+      try {
+        // Get all campaign submission URLs (now includes both Instagram and TikTok)
+        const campaignUrls = await getCampaignSubmissionUrls(campaignId as string);
+        // Filter for TikTok URLs only
+        const tiktokUrls = campaignUrls.filter(urlData => urlData.platform === 'TikTok');
+        console.log(`📊 Found ${tiktokUrls.length} TikTok campaign URLs out of ${campaignUrls.length} total URLs`);
+
+        if (tiktokUrls.length > 0) {
+          const campaignInsights = [];
+
+          // Process each campaign URL to get insights
+          for (const urlData of tiktokUrls) {
+            try {
+              const campaignVideoId = extractTikTokVideoId(urlData.url);
+              if (!campaignVideoId) continue;
+
+              // Get the video data for this campaign video
+              const campaignVideoResponse = await getTikTokVideoById(accessToken, campaignVideoId);
+              const campaignVideos = campaignVideoResponse?.data?.videos;
+              
+              if (!campaignVideos || campaignVideos.length === 0) continue;
+
+              const campaignVideo = campaignVideos[0];
+
+              // Create insight data from campaign video metrics
+              const campaignInsight = [
+                { name: 'views', value: campaignVideo.view_count || 0 },
+                { name: 'likes', value: campaignVideo.like_count || 0 },
+                { name: 'comments', value: campaignVideo.comment_count || 0 },
+                { name: 'shares', value: campaignVideo.share_count || 0 },
+                {
+                  name: 'total_interactions',
+                  value: (campaignVideo.like_count || 0) + (campaignVideo.comment_count || 0) + (campaignVideo.share_count || 0),
+                },
+              ];
+
+              if (campaignInsight && campaignInsight.length > 0) {
+                campaignInsights.push(campaignInsight);
+              }
+
+              // Add delay to avoid rate limiting
+              await new Promise(resolve => setTimeout(resolve, 1000)); // Longer delay for TikTok API
+            } catch (error) {
+              console.error(`Error processing TikTok campaign URL ${urlData.url}:`, error);
+              continue;
+            }
+          }
+
+          console.log(`📈 Successfully processed ${campaignInsights.length} TikTok campaign posts`);
+          campaignPostsCount = campaignInsights.length;
+
+          // Calculate averages (reusing existing function)
+          if (campaignInsights.length > 0) {
+            campaignAverages = calculateCampaignAverages(campaignInsights);
+            
+            // Compare current post with campaign averages (reusing existing function)
+            campaignComparison = calculateCampaignComparison(insight, campaignAverages);
+            
+            console.log('TikTok Campaign averages calculated:', campaignAverages);
+          }
+        }
+      } catch (error) {
+        console.error('Error calculating TikTok campaign averages:', error);
+        // Continue without campaign data if there's an error
+      }
+    }
+
+    // Enhanced response with campaign data
+    const response = {
       video: formattedVideo,
       insight,
-    });
+      // Campaign comparison data
+      campaignAverages: campaignAverages,
+      campaignComparison: campaignComparison,
+      campaignPostsCount: campaignPostsCount,
+      hasCampaignData: !!campaignAverages
+    };
+
+    return res.status(200).json(response);
   } catch (error) {
     console.error('Error getting TikTok video insight:', error);
     return res.status(400).json({
