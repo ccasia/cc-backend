@@ -4090,12 +4090,34 @@ export const removeCreatorFromCampaign = async (req: Request, res: Response) => 
     const threadId = campaign?.thread?.id;
 
     await prisma.$transaction(async (tx) => {
+      const shorlistedCreator = await tx.shortListedCreator.findFirst({
+        where: {
+          userId: user.id,
+          campaignId: campaign.id,
+        },
+      });
+
+      if (!shorlistedCreator) throw new Error('Creator is not shortlisted');
+
+      if (shorlistedCreator.isCampaignDone) {
+        await tx.campaign.update({
+          where: {
+            id: campaign.id,
+          },
+          data: {
+            creditsUtilized: {
+              decrement: shorlistedCreator.ugcVideos!,
+            },
+            creditsPending: {
+              increment: shorlistedCreator.ugcVideos!,
+            },
+          },
+        });
+      }
+
       await tx.shortListedCreator.delete({
         where: {
-          userId_campaignId: {
-            userId: user.id,
-            campaignId: campaign.id,
-          },
+          id: shorlistedCreator.id,
         },
       });
 

@@ -3658,7 +3658,7 @@ export const adminManageDraftVideosV2 = async (req: Request, res: Response) => {
       } else {
         // Even with preventStatusChange, we need to complete the campaign if there's no posting submission
         // and this is a POSTING submission
-        if (!result.postingSubmission && result.video.submission?.submissionType?.type === 'POSTING') {
+        if (!result.postingSubmission || result.video.submission?.submissionType?.type === 'POSTING') {
           await handleCompletedCampaign(result.video.submissionId as string);
         }
       }
@@ -3982,7 +3982,7 @@ export const adminManageRawFootagesV2 = async (req: Request, res: Response) => {
       } else {
         // Even with preventStatusChange, we need to complete the campaign if there's no posting submission
         // and this is a POSTING submission
-        if (!result.postingSubmission && result.submission?.submissionType?.type === 'POSTING') {
+        if (!result.postingSubmission || result.submission?.submissionType?.type === 'POSTING') {
           await handleCompletedCampaign(result.rawFootage.submissionId as string);
         }
       }
