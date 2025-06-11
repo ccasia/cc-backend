@@ -132,7 +132,11 @@ const checkCurrentSubmission = async (submissionId: string) => {
     },
   });
 
-  if (!user) throw new Error('UGC Credits is not assigned to this creator');
+  // For UGC campaigns (campaignCredits === null), we don't require the creator to be in shortlisted table
+  // For campaigns with credits, the creator must be shortlisted
+  if (!user && submission.campaign.campaignCredits !== null) {
+    throw new Error('UGC Credits is not assigned to this creator');
+  }
 
   const [videos, rawFootages, photos] = await Promise.all([
     prisma.video.count({ where: { userId: submission.userId, campaignId: submission.campaignId } }),
@@ -143,7 +147,11 @@ const checkCurrentSubmission = async (submissionId: string) => {
   let allDeliverablesSent = false;
 
   if (submission?.submissionType.type === 'FIRST_DRAFT') {
-    const hasVideo = videos === user.ugcVideos;
+    // For campaigns without campaignCredits (UGC campaigns), just check if at least one video is uploaded
+    // For campaigns with campaignCredits, check if the exact number of ugcVideos is uploaded
+    const hasVideo = submission.campaign.campaignCredits === null 
+      ? videos > 0 
+      : videos === (user?.ugcVideos || 0);
     const hasRawFootage = submission.campaign.rawFootage ? rawFootages > 0 : true;
     const hasPhotos = submission.campaign.photos ? photos > 0 : true;
 
