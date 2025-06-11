@@ -3311,15 +3311,24 @@ export const adminManagePhotosV2 = async (req: Request, res: Response) => {
     if (result.submissionUpdated) {
       // Handle completed campaign logic if needed
       if (!preventStatusChange) {
-        // Call handleCompletedCampaign for all approved submissions
-        // The function will internally determine if the campaign should be completed
-        if (result.photo.submission?.status === 'APPROVED') {
+        // Only call handleCompletedCampaign for POSTING submissions or FIRST_DRAFT/FINAL_DRAFT submissions from campaigns without campaignCredits
+        const shouldCallHandleCompleted = result.photo.submission?.submissionType?.type === 'POSTING' || 
+            ((result.photo.submission?.submissionType?.type === 'FIRST_DRAFT' || result.photo.submission?.submissionType?.type === 'FINAL_DRAFT') && 
+             result.photo.submission?.campaign?.campaignCredits === null);
+        
+        if (shouldCallHandleCompleted) {
           await handleCompletedCampaign(result.photo.submissionId as string);
         }
       } else {
         // Even with preventStatusChange, we need to complete the campaign if there's no posting submission
-        // and this is a UGC campaign or POSTING submission
-        if (!result.postingSubmission || result.photo.submission?.submissionType?.type === 'POSTING') {
+        // and this is a POSTING submission, OR if this is a UGC campaign FIRST_DRAFT or FINAL_DRAFT
+        const isUGCDraft = (result.photo.submission?.submissionType?.type === 'FIRST_DRAFT' || 
+                           result.photo.submission?.submissionType?.type === 'FINAL_DRAFT') && 
+                          result.photo.submission?.campaign?.campaignCredits === null;
+        
+        if (isUGCDraft) {
+          await handleCompletedCampaign(result.photo.submissionId as string);
+        } else if (!result.postingSubmission && result.photo.submission?.submissionType?.type === 'POSTING') {
           await handleCompletedCampaign(result.photo.submissionId as string);
         }
       }
@@ -3611,14 +3620,24 @@ export const adminManageDraftVideosV2 = async (req: Request, res: Response) => {
     if (result.submissionUpdated) {
       // Handle completed campaign logic if needed
       if (!preventStatusChange) {
-        // Only call handleCompletedCampaign for POSTING submissions
-        if (result.video.submission?.submissionType?.type === 'POSTING') {
+        // Only call handleCompletedCampaign for POSTING submissions or FIRST_DRAFT submissions from campaigns without campaignCredits
+        const shouldCallHandleCompleted = result.video.submission?.submissionType?.type === 'POSTING' || 
+            ((result.video.submission?.submissionType?.type === 'FIRST_DRAFT' || result.video.submission?.submissionType?.type === 'FINAL_DRAFT') && 
+             result.video.submission?.campaign?.campaignCredits === null);
+        
+        if (shouldCallHandleCompleted) {
           await handleCompletedCampaign(result.video.submissionId as string);
         }
       } else {
-        // Even with preventStatusChange, we need to complete the campaign if there's no posting submission
-        // and this is a POSTING submission
-        if (!result.postingSubmission && result.video.submission?.submissionType?.type === 'POSTING') {
+        // Special case: For campaigns without campaignCredits (UGC campaigns), we still need to complete 
+        // the campaign when FIRST_DRAFT or FINAL_DRAFT is approved, even with preventStatusChange
+        const isUGCDraft = (result.video.submission?.submissionType?.type === 'FIRST_DRAFT' || 
+                           result.video.submission?.submissionType?.type === 'FINAL_DRAFT') && 
+                          result.video.submission?.campaign?.campaignCredits === null;
+        
+        if (isUGCDraft) {
+          await handleCompletedCampaign(result.video.submissionId as string);
+        } else if (!result.postingSubmission && result.video.submission?.submissionType?.type === 'POSTING') {
           await handleCompletedCampaign(result.video.submissionId as string);
         }
       }
@@ -3920,14 +3939,24 @@ export const adminManageRawFootagesV2 = async (req: Request, res: Response) => {
     if (result.submissionUpdated) {
       // Handle completed campaign logic if needed
       if (!preventStatusChange) {
-        // Only call handleCompletedCampaign for POSTING submissions
-        if (result.submission?.submissionType?.type === 'POSTING') {
+        // Only call handleCompletedCampaign for POSTING submissions or FIRST_DRAFT submissions from campaigns without campaignCredits
+        const shouldCallHandleCompleted = result.submission?.submissionType?.type === 'POSTING' || 
+            ((result.submission?.submissionType?.type === 'FIRST_DRAFT' || result.submission?.submissionType?.type === 'FINAL_DRAFT') && 
+             result.submission?.campaign?.campaignCredits === null);
+
+        if (shouldCallHandleCompleted) {
           await handleCompletedCampaign(result.rawFootage.submissionId as string);
         }
       } else {
         // Even with preventStatusChange, we need to complete the campaign if there's no posting submission
-        // and this is a POSTING submission
-        if (!result.postingSubmission && result.submission?.submissionType?.type === 'POSTING') {
+        // and this is a POSTING submission, OR if this is a UGC campaign FIRST_DRAFT
+        const isUGCFirstDraft = (result.submission?.submissionType?.type === 'FIRST_DRAFT' || 
+                               result.submission?.submissionType?.type === 'FINAL_DRAFT') && 
+                          result.submission?.campaign?.campaignCredits === null;
+        
+        if (isUGCFirstDraft) {
+          await handleCompletedCampaign(result.rawFootage.submissionId as string);
+        } else if (!result.postingSubmission && result.submission?.submissionType?.type === 'POSTING') {
           await handleCompletedCampaign(result.rawFootage.submissionId as string);
         }
       }
