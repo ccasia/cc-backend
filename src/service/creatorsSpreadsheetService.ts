@@ -9,7 +9,7 @@ const CREATOR_HEADERS = ['Name', 'Email', 'Phone Number', 'Country', 'Date Regis
 
 // Rate limiting constants
 const BATCH_SIZE = 500; // Process users in batches
-const DELAY_BETWEEN_BATCHES = 200; // 2 seconds delay between batches
+const DELAY_BETWEEN_BATCHES = 200;
 const MAX_RETRIES = 3;
 
 /**
