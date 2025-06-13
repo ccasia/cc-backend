@@ -4111,10 +4111,10 @@ export const removeCreatorFromCampaign = async (req: Request, res: Response) => 
           },
           data: {
             creditsUtilized: {
-              decrement: shorlistedCreator.ugcVideos!,
+              decrement: shortlistedCreator.ugcVideos!,
             },
             creditsPending: {
-              increment: shorlistedCreator.ugcVideos!,
+              increment: shortlistedCreator.ugcVideos!,
             },
           },
         });
@@ -4122,7 +4122,7 @@ export const removeCreatorFromCampaign = async (req: Request, res: Response) => 
 
       await tx.shortListedCreator.delete({
         where: {
-          id: shorlistedCreator.id,
+          id: shortlistedCreator.id,
         },
       });
 
