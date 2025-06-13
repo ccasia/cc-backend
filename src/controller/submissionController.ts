@@ -3546,7 +3546,7 @@ export const adminManageDraftVideosV2 = async (req: Request, res: Response) => {
         const videosHaveChanges = requiresVideos && allVideos.some((v) => v.status === 'REVISION_REQUESTED');
 
         const photosHaveChanges = requiresPhotos && allPhotos.some((p) => p.status === 'REVISION_REQUESTED');
-
+        
         const rawFootagesHaveChanges =
           requiresRawFootages && allRawFootages.some((rf) => rf.status === 'REVISION_REQUESTED');
 
@@ -3675,6 +3675,7 @@ export const adminManageDraftVideosV2 = async (req: Request, res: Response) => {
           await handleCompletedCampaign(result.video.submissionId as string);
         }
       } else {
+
         // Special case: For campaigns without campaignCredits (UGC campaigns), we still need to complete 
         // the campaign when FIRST_DRAFT or FINAL_DRAFT is approved, even with preventStatusChange
         const isUGCDraft = (result.video.submission?.submissionType?.type === 'FIRST_DRAFT' || 
@@ -4010,6 +4011,7 @@ export const adminManageRawFootagesV2 = async (req: Request, res: Response) => {
         }
       } else {
         // Even with preventStatusChange, we need to complete the campaign if there's no posting submission
+
         // and this is a POSTING submission, OR if this is a UGC campaign FIRST_DRAFT
         const isUGCFirstDraft = (result.submission?.submissionType?.type === 'FIRST_DRAFT' || 
                                result.submission?.submissionType?.type === 'FINAL_DRAFT') && 
@@ -4066,4 +4068,3 @@ export const adminManageRawFootagesV2 = async (req: Request, res: Response) => {
     });
   }
 };
-
