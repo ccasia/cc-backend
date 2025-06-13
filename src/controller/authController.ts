@@ -15,7 +15,6 @@ import axios from 'axios';
 import bcrypt from 'bcryptjs';
 
 import { generateRandomString } from '@utils/randomString';
-import { token } from 'morgan';
 import dayjs from 'dayjs';
 
 const prisma = new PrismaClient();
