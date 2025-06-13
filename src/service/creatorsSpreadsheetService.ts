@@ -76,8 +76,8 @@ async function batchUpdateSpreadsheet(
 
     // Split into smaller chunks to avoid hitting limits
     const chunks = [];
-    for (let i = 0; i < requests.length; i += 500) {
-      chunks.push(requests.slice(i, i + 500));
+    for (let i = 0; i < requests.length; i += 100) {
+      chunks.push(requests.slice(i, i + 100));
     }
 
     console.log(`Updating ${updates.length} rows in ${chunks.length} chunks`);
