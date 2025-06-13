@@ -15,30 +15,26 @@ const MAX_RETRIES = 3;
 /**
  * Sleep utility function
  */
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * Retry wrapper for API calls
  */
-async function withRetry<T>(
-  operation: () => Promise<T>,
-  retries: number = MAX_RETRIES,
-  delay: number = 1000
-): Promise<T> {
+async function withRetry<T>(operation: () => Promise<T>, retries: number = MAX_RETRIES, delay = 1000): Promise<T> {
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       return await operation();
     } catch (error) {
       console.log(`Attempt ${attempt} failed:`, error.message);
-      
+
       if (attempt === retries) {
         throw error;
       }
-      
+
       // Exponential backoff for rate limit errors
       const isRateLimit = error.message?.includes('429') || error.message?.includes('Quota exceeded');
       const backoffDelay = isRateLimit ? delay * Math.pow(2, attempt) : delay;
-      
+
       console.log(`Retrying in ${backoffDelay}ms...`);
       await sleep(backoffDelay);
     }
@@ -52,13 +48,13 @@ async function withRetry<T>(
 async function batchUpdateSpreadsheet(
   spreadsheetId: string,
   sheetName: string,
-  updates: Array<{ row: number; values: string[] }>
+  updates: { row: number; values: string[] }[],
 ) {
   if (updates.length === 0) return;
 
   try {
     const { JWT } = await import('google-auth-library');
-    
+
     const serviceAccountAuth = new JWT({
       email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
       key: process.env.GOOGLE_PRIVATE_KEY,
@@ -67,11 +63,11 @@ async function batchUpdateSpreadsheet(
 
     // Get access token for direct API calls
     const { token } = await serviceAccountAuth.getAccessToken();
-    
+
     // Prepare batch update requests
-    const requests = updates.map(update => ({
+    const requests = updates.map((update) => ({
       range: `'${sheetName}'!A${update.row}:F${update.row}`,
-      values: [update.values]
+      values: [update.values],
     }));
 
     // Split into smaller chunks to avoid hitting limits
@@ -84,21 +80,21 @@ async function batchUpdateSpreadsheet(
 
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
-      
+
       await withRetry(async () => {
         const response = await fetch(
           `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`,
           {
             method: 'POST',
             headers: {
-              'Authorization': `Bearer ${token}`,
+              Authorization: `Bearer ${token}`,
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
               valueInputOption: 'USER_ENTERED',
-              data: chunk
-            })
-          }
+              data: chunk,
+            }),
+          },
         );
 
         if (!response.ok) {
@@ -110,7 +106,7 @@ async function batchUpdateSpreadsheet(
       });
 
       console.log(`Completed chunk ${i + 1}/${chunks.length}`);
-      
+
       // Add delay between chunks
       if (i < chunks.length - 1) {
         await sleep(500);
@@ -127,11 +123,7 @@ async function batchUpdateSpreadsheet(
 /**
  * Batch add new rows to Google Sheets
  */
-async function batchAddRows(
-  spreadsheetId: string,
-  sheetName: string,
-  newRows: Array<Record<string, string>>
-) {
+async function batchAddRows(spreadsheetId: string, sheetName: string, newRows: Record<string, string>[]) {
   if (newRows.length === 0) return;
 
   const chunks = [];
@@ -146,13 +138,13 @@ async function batchAddRows(
 
   for (let i = 0; i < chunks.length; i++) {
     const chunk = chunks[i];
-    
+
     await withRetry(async () => {
       await sheet.addRows(chunk);
     });
 
     console.log(`Added chunk ${i + 1}/${chunks.length} (${chunk.length} rows)`);
-    
+
     // Add delay between chunks
     if (i < chunks.length - 1) {
       await sleep(DELAY_BETWEEN_BATCHES);
@@ -225,20 +217,20 @@ export const exportCreatorsToSpreadsheet = async (): Promise<string> => {
 
     // Create a map of existing data for fast lookup
     const existingDataMap = new Map();
-    const rowsToUpdate: Array<{ row: number; values: string[] }> = [];
+    const rowsToUpdate: { row: number; values: string[] }[] = [];
 
     for (let i = 0; i < existingRows.length; i++) {
       const row = existingRows[i];
       const email = row.get('Email')?.trim().toLowerCase();
-      
+
       if (email) {
         const currentDate = row.get('Date Registered');
         const currentSocialHandle = row.get('Social Handle');
-        
+
         existingDataMap.set(email, {
           row: i + 2, // +2 because spreadsheet is 1-indexed and has header row
           needsUpdate: !currentDate || !currentSocialHandle,
-          existingRow: row
+          existingRow: row,
         });
       }
     }
@@ -248,12 +240,12 @@ export const exportCreatorsToSpreadsheet = async (): Promise<string> => {
     // Fetch all creators from the database in batches
     console.log('Fetching creators from database...');
     const totalCreators = await prisma.user.count({
-      where: { role: 'creator' }
+      where: { role: 'creator' },
     });
-    
+
     console.log(`Total creators in database: ${totalCreators}`);
 
-    const newRowsToAdd: Array<Record<string, string>> = [];
+    const newRowsToAdd: Record<string, string>[] = [];
     let processedCount = 0;
     const dbBatchSize = 500; // Fetch from DB in larger batches
 
@@ -288,7 +280,7 @@ export const exportCreatorsToSpreadsheet = async (): Promise<string> => {
         take: dbBatchSize,
       });
 
-      console.log(`Processing batch ${Math.floor(offset/dbBatchSize) + 1}: ${users.length} users`);
+      console.log(`Processing batch ${Math.floor(offset / dbBatchSize) + 1}: ${users.length} users`);
 
       for (const user of users) {
         const email = user.email?.trim().toLowerCase();
@@ -305,7 +297,7 @@ export const exportCreatorsToSpreadsheet = async (): Promise<string> => {
         const socialHandlesString = socialHandles.join(' / ');
 
         const existingData = existingDataMap.get(email);
-        
+
         if (existingData) {
           // Check if update is needed
           if (existingData.needsUpdate) {
@@ -317,8 +309,8 @@ export const exportCreatorsToSpreadsheet = async (): Promise<string> => {
                 user.phoneNumber || '',
                 user.country || '',
                 formatDateTime(user.createdAt),
-                socialHandlesString || ''
-              ]
+                socialHandlesString || '',
+              ],
             });
           }
         } else {
