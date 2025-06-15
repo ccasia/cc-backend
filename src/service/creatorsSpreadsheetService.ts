@@ -1,6 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { accessGoogleSheetAPI } from '@services/google_sheets/sheets';
-import formatDateTime from '../helper/formateDateTime';
+import { formatDateTimeMY } from '@helper/formateDateTime';
 
 const prisma = new PrismaClient();
 
@@ -8,8 +8,8 @@ const prisma = new PrismaClient();
 const CREATOR_HEADERS = ['Name', 'Email', 'Phone Number', 'Country', 'Date Registered', 'Social Handle'];
 
 // Rate limiting constants
-const BATCH_SIZE = 50; // Process users in batches
-const DELAY_BETWEEN_BATCHES = 2000; // 2 seconds delay between batches
+const BATCH_SIZE = 500; // Process users in batches
+const DELAY_BETWEEN_BATCHES = 200;
 const MAX_RETRIES = 3;
 
 /**
@@ -179,7 +179,7 @@ export const exportCreatorsToSpreadsheet = async (): Promise<string> => {
 
     // Get or create the sheet
     let sheet;
-    let sheetName = 'Staging';
+    let sheetName = 'Production';
 
     if (doc.sheetCount > 0) {
       sheet = doc.sheetsByIndex[0];
@@ -308,9 +308,9 @@ export const exportCreatorsToSpreadsheet = async (): Promise<string> => {
                 user.email || '',
                 user.phoneNumber || '',
                 user.country || '',
-                formatDateTime(user.createdAt),
-                socialHandlesString || '',
-              ],
+                formatDateTimeMY(user.createdAt),
+                socialHandlesString || ''
+              ]
             });
           }
         } else {
@@ -320,7 +320,7 @@ export const exportCreatorsToSpreadsheet = async (): Promise<string> => {
             Email: user.email || '',
             'Phone Number': user.phoneNumber || '',
             Country: user.country || '',
-            'Date Registered': formatDateTime(user.createdAt),
+            'Date Registered': formatDateTimeMY(user.createdAt),
             'Social Handle': socialHandlesString || '',
           });
         }

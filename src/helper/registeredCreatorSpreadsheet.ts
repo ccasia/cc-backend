@@ -1,5 +1,5 @@
 import { accessGoogleSheetAPI } from '@services/google_sheets/sheets';
-import formatDateTime from './formateDateTime';
+import { formatDateTimeMY } from './formateDateTime';
 
 interface CreatorData {
   name: string;
@@ -68,7 +68,7 @@ export const saveCreatorToSpreadsheet = async (creatorData: CreatorData): Promis
       Email: creatorData.email || '',
       'Phone Number': creatorData.phoneNumber || '',
       Country: creatorData.country || '',
-      'Date Registered': formatDateTime(new Date()),
+      'Date Registered': formatDateTimeMY(new Date()),
     });
 
     console.log(`Successfully added creator ${creatorData.name} to spreadsheet`);
