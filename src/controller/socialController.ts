@@ -15,6 +15,7 @@ import {
   getMediaInsight,
   getPageId,
   getTikTokVideoById,
+  refreshTikTokToken,
 } from '@services/socialMediaService';
 
 // Type definitions
@@ -982,7 +983,7 @@ function calculateCampaignAverages(campaignInsights: MetricData[][]): Totals {
 }
 
 // Helper function to compare current post with campaign averages
-function calculateCampaignComparison(currentInsight: MetricData[], campaignAverages: Totals): ComparisonResult {
+function calculateCampaignComparison(currentInsight: MetricData[], campaignAverages: Totals, campaignPostsCount: number = 0): ComparisonResult {
   const currentMetricsMap: MetricsMap = {};
   currentInsight.forEach(metric => {
     currentMetricsMap[metric.name] = metric.value || 0;
@@ -1002,14 +1003,30 @@ function calculateCampaignComparison(currentInsight: MetricData[], campaignAvera
   (Object.keys(currentMetrics) as Array<keyof Totals>).forEach(metric => {
     const current = currentMetrics[metric] || 0;
     const average = campaignAverages[metric] || 0;
-    const change = average > 0 ? ((current - average) / average) * 100 : (current > 0 ? 100 : 0);
+    
+    let change: number;
+    let isAboveAverage: boolean;
+    let changeText: string;
+    
+    // Special case: If there's only 1 post in the campaign (comparing against itself)
+    // Default to +100% to indicate they're not competing with other creators
+    if (campaignPostsCount <= 1) {
+      change = 100;
+      isAboveAverage = true;
+      changeText = '+100%';
+    } else {
+      // Normal calculation when there are multiple posts to compare against
+      change = average > 0 ? ((current - average) / average) * 100 : (current > 0 ? 100 : 0);
+      isAboveAverage = change > 0;
+      changeText = `${change > 0 ? '+' : ''}${change.toFixed(0)}%`;
+    }
     
     comparison[metric] = {
       current,
       average,
       change,
-      isAboveAverage: change > 0,
-      changeText: `${change > 0 ? '+' : ''}${change.toFixed(0)}%`
+      isAboveAverage,
+      changeText
     };
   });
 
@@ -1120,7 +1137,7 @@ export const getInstagramMediaInsight = async (req: Request, res: Response) => {
             campaignAverages = calculateCampaignAverages(campaignInsights);
             
             // Compare current post with campaign averages (reusing existing function)
-            campaignComparison = calculateCampaignComparison(insight, campaignAverages);
+            campaignComparison = calculateCampaignComparison(insight, campaignAverages, campaignInsights.length);
             
             console.log('Campaign averages calculated:', campaignAverages);
           }
@@ -1149,9 +1166,83 @@ export const getInstagramMediaInsight = async (req: Request, res: Response) => {
   }
 };
 
+async function ensureValidTikTokToken(userId: string): Promise<string> {
+  const creator = await prisma.creator.findFirst({
+    where: {
+      userId: userId,
+    },
+    select: {
+      id: true,
+      tiktokData: true,
+      isTiktokConnected: true,
+    },
+  });
+
+  if (!creator || !creator.isTiktokConnected || !creator.tiktokData) {
+    throw new Error('Creator is not connected to TikTok account');
+  }
+
+  const tiktokData = creator.tiktokData as any;
+  const encryptedAccessToken = tiktokData?.access_token;
+  const encryptedRefreshToken = tiktokData?.refresh_token;
+  const expiresIn = tiktokData?.expires_in;
+
+  if (!encryptedAccessToken) {
+    throw new Error('TikTok access token not found');
+  }
+
+  let accessToken = decryptToken(encryptedAccessToken);
+
+  // Check if token is expired (if expires_in is available)
+  const currentTime = Math.floor(Date.now() / 1000);
+  const tokenExpired = expiresIn && currentTime >= expiresIn;
+
+  if (tokenExpired || !accessToken) {
+    console.log('TikTok token expired or invalid, attempting refresh...');
+    
+    if (!encryptedRefreshToken) {
+      throw new Error('TikTok refresh token not found');
+    }
+
+    const refreshToken = decryptToken(encryptedRefreshToken);
+    
+    try {
+      // Refresh the token
+      const refreshedTokenData = await refreshTikTokToken(refreshToken);
+      
+      // Encrypt the new tokens
+      const newEncryptedAccessToken = encryptToken(refreshedTokenData.access_token);
+      const newEncryptedRefreshToken = encryptToken(refreshedTokenData.refresh_token);
+      
+      // Update the database with new tokens
+      await prisma.creator.update({
+        where: {
+          id: creator.id,
+        },
+        data: {
+          tiktokData: {
+            ...tiktokData,
+            access_token: newEncryptedAccessToken,
+            refresh_token: newEncryptedRefreshToken,
+            expires_in: refreshedTokenData.expires_in ? currentTime + refreshedTokenData.expires_in : null,
+          },
+        },
+      });
+
+      accessToken = refreshedTokenData.access_token;
+      console.log('TikTok token refreshed successfully');
+    } catch (refreshError) {
+      console.error('Failed to refresh TikTok token:', refreshError);
+      throw new Error('TikTok token expired and refresh failed. Please reconnect your TikTok account.');
+    }
+  }
+
+  return accessToken;
+}
+
 export const getTikTokVideoInsight = async (req: Request, res: Response) => {
   const { userId } = req.params;
-  const { url, campaignId } = req.query; // Added campaignId parameter
+  const { url, campaignId } = req.query;
 
   if (!userId) return res.status(404).json({ message: 'Parameter missing: userId' });
   if (!url) return res.status(404).json({ message: 'Query missing: url' });
@@ -1165,29 +1256,18 @@ export const getTikTokVideoInsight = async (req: Request, res: Response) => {
 
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    const creator = await prisma.creator.findFirst({
-      where: {
-        userId: user.id,
-      },
-      select: {
-        tiktokData: true,
-        isTiktokConnected: true,
-      },
-    });
-
-    if (!creator) return res.status(404).json({ message: 'User is not a creator' });
-    if (!creator.isTiktokConnected || !creator.tiktokData) {
-      return res.status(400).json({ message: 'Creator is not connected to TikTok account' });
+    // Use the helper function to ensure we have a valid token
+    let accessToken: string;
+    try {
+      accessToken = await ensureValidTikTokToken(user.id);
+    } catch (tokenError) {
+      return res.status(400).json({ 
+        message: tokenError.message,
+        requiresReconnection: true 
+      });
     }
 
-    const tiktokData = creator.tiktokData as any;
-    const encryptedAccessToken = tiktokData?.access_token;
-
-    if (!encryptedAccessToken) return res.status(404).json({ message: 'TikTok access token not found' });
-
-    const accessToken = decryptToken(encryptedAccessToken);
-
-    // Test the token first with user info endpoint
+    // Test the token to make sure it's working
     try {
       const testResponse = await axios.get('https://open.tiktokapis.com/v2/user/info/', {
         params: {
@@ -1197,9 +1277,10 @@ export const getTikTokVideoInsight = async (req: Request, res: Response) => {
       });
       console.log('Token test successful:', testResponse.data);
     } catch (testError) {
-      console.error('Token test failed:', testError.response?.status, testError.response?.data);
+      console.error('Token test failed even after refresh:', testError.response?.status, testError.response?.data);
       return res.status(400).json({
-        message: 'Access token is invalid or expired',
+        message: 'TikTok token is invalid. Please reconnect your TikTok account.',
+        requiresReconnection: true,
         error: testError.response?.data,
       });
     }
@@ -1315,7 +1396,7 @@ export const getTikTokVideoInsight = async (req: Request, res: Response) => {
             campaignAverages = calculateCampaignAverages(campaignInsights);
             
             // Compare current post with campaign averages (reusing existing function)
-            campaignComparison = calculateCampaignComparison(insight, campaignAverages);
+            campaignComparison = calculateCampaignComparison(insight, campaignAverages, campaignInsights.length);
             
             console.log('TikTok Campaign averages calculated:', campaignAverages);
           }
