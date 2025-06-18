@@ -314,6 +314,30 @@ export const getInstagramMedias = async (
   }
 };
 
+export const refreshTikTokToken = async (refreshToken: string) => {
+  if (!refreshToken) throw new Error('Refresh token is not provided');
+  
+  try {
+    const refreshedToken = await axios.post(
+      'https://open.tiktokapis.com/v2/oauth/token/',
+      {
+        client_key: process.env.TIKTOK_CLIENT_KEY,
+        client_secret: process.env.TIKTOK_CLIENT_SECRET,
+        grant_type: 'refresh_token',
+        refresh_token: refreshToken,
+      },
+      {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      }
+    );
+
+    return refreshedToken.data;
+  } catch (error) {
+    console.error('Error refreshing TikTok token:', error);
+    throw new Error('Error refreshing TikTok token');
+  }
+};
+
 export const getTikTokVideoById = async (accessToken: string, videoId: string) => {
   if (!accessToken || !videoId) throw new Error('Access token and video ID are required');
 
