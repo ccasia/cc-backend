@@ -1518,6 +1518,7 @@ export const adminManagePosting = async (req: Request, res: Response) => {
 
     return res.status(200).json({ message: 'Successfully submitted' });
   } catch (error) {
+    console.log(error);
     if (error instanceof Error) {
       return res.status(400).json({ error: error.message });
     }
