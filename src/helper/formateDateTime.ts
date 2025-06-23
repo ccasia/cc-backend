@@ -17,6 +17,6 @@ export function formatDateTimeMY(date: Date): string {
     hour: '2-digit',
     minute: '2-digit',
     hour12: true,
-    timeZone: 'Asia/Kuala_Lumpur'
+    timeZone: 'Asia/Kuala_Lumpur',
   });
 }

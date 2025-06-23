@@ -1924,12 +1924,13 @@ export const adminManageVideos = async (req: Request, res: Response) => {
           const adminName = admin?.name || 'Admin';
           const logMessage = `Admin "${adminName}" approved video section for review`;
           // Note: We don't have campaign ID easily accessible here, so we'll get it from the submission
-          const submissionData = await prisma.submission.findUnique({ 
-            where: { id: submissionId }, 
-            select: { campaignId: true, user: { select: { name: true } }, submissionType: { select: { type: true } } } 
+          const submissionData = await prisma.submission.findUnique({
+            where: { id: submissionId },
+            select: { campaignId: true, user: { select: { name: true } }, submissionType: { select: { type: true } } },
           });
           if (submissionData?.campaignId) {
-            const submissionTypeName = submissionData.submissionType.type === 'FIRST_DRAFT' ? 'first draft' : 'final draft';
+            const submissionTypeName =
+              submissionData.submissionType.type === 'FIRST_DRAFT' ? 'first draft' : 'final draft';
             const logMessage = `Admin "${adminName}" approved ${submissionTypeName} video section for creator "${submissionData.user.name}"`;
             await logChange(logMessage, submissionData.campaignId, req);
           }
@@ -2070,7 +2071,14 @@ export const adminManageVideos = async (req: Request, res: Response) => {
 
           const invoiceItems = await getCreatorInvoiceLists(approveSubmission.id, tx as PrismaClient);
 
-          await createInvoiceService(approveSubmission, approveSubmission.userId, invoiceAmount, invoiceItems, undefined, req.session.userid);
+          await createInvoiceService(
+            approveSubmission,
+            approveSubmission.userId,
+            invoiceAmount,
+            invoiceItems,
+            undefined,
+            req.session.userid,
+          );
 
           const shortlistedCreator = await tx.shortListedCreator.findFirst({
             where: {
@@ -2215,7 +2223,8 @@ export const adminManageVideos = async (req: Request, res: Response) => {
         if (approveSubmission.campaignId && req.session.userid) {
           const admin = await prisma.user.findUnique({ where: { id: req.session.userid }, include: { admin: true } });
           const adminName = admin?.name || 'Admin';
-          const submissionTypeName = approveSubmission.submissionType.type === 'FIRST_DRAFT' ? 'first draft' : 'final draft';
+          const submissionTypeName =
+            approveSubmission.submissionType.type === 'FIRST_DRAFT' ? 'first draft' : 'final draft';
           const logMessage = `Admin "${adminName}" approved ${submissionTypeName} videos for creator "${approveSubmission.user.name}"`;
           await logChange(logMessage, approveSubmission.campaignId, req);
         }
@@ -3604,7 +3613,8 @@ export const adminManageDraftVideosV2 = async (req: Request, res: Response) => {
         const admin = await tx.user.findUnique({ where: { id: req.session.userid }, include: { admin: true } });
         const adminName = admin?.name || 'Admin';
         const actionType = status === 'APPROVED' ? 'approved' : 'requested changes to';
-        const submissionTypeName = video.submission?.submissionType?.type === 'FIRST_DRAFT' ? 'first draft' : 'final draft';
+        const submissionTypeName =
+          video.submission?.submissionType?.type === 'FIRST_DRAFT' ? 'first draft' : 'final draft';
         const logMessage = `Admin "${adminName}" ${actionType} ${submissionTypeName} video for creator "${video.submission?.user?.name || 'Unknown'}"`;
         await logChange(logMessage, video.campaignId, req);
       }
@@ -3947,7 +3957,8 @@ export const adminManageRawFootagesV2 = async (req: Request, res: Response) => {
         const admin = await tx.user.findUnique({ where: { id: req.session.userid }, include: { admin: true } });
         const adminName = admin?.name || 'Admin';
         const actionType = status === 'APPROVED' ? 'approved' : 'requested changes to';
-        const submissionTypeName = rawFootage.submission?.submissionType?.type === 'FIRST_DRAFT' ? 'first draft' : 'final draft';
+        const submissionTypeName =
+          rawFootage.submission?.submissionType?.type === 'FIRST_DRAFT' ? 'first draft' : 'final draft';
         const logMessage = `Admin "${adminName}" ${actionType} ${submissionTypeName} raw footage for creator "${rawFootage.submission?.user?.name || 'Unknown'}"`;
         await logChange(logMessage, rawFootage.campaignId, req);
       }

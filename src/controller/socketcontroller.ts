@@ -30,15 +30,15 @@ export const handleSendMessage = async (message: any, io: any) => {
     status: (code: number) => ({
       json: async (data: any) => {
         if (code === 201) {
-                    // //console.log('Message saved:', data);
-                    // io.to(threadId).emit('message', {
-                    //   senderId,
-                    //   threadId,
-                    //   content,
-                    //   sender: { role, name, photoURL },
-                    //   createdAt: new Date().toISOString(),
-                    // });
-          
+          // //console.log('Message saved:', data);
+          // io.to(threadId).emit('message', {
+          //   senderId,
+          //   threadId,
+          //   content,
+          //   sender: { role, name, photoURL },
+          //   createdAt: new Date().toISOString(),
+          // });
+
           // Message saved successfully - socket emission is now handled in sendMessageInThread
           console.log('Message saved via socket:', data.id);
 

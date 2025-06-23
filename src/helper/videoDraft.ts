@@ -149,9 +149,7 @@ const checkCurrentSubmission = async (submissionId: string) => {
   if (submission?.submissionType.type === 'FIRST_DRAFT') {
     // For campaigns without campaignCredits (UGC campaigns), just check if at least one video is uploaded
     // For campaigns with campaignCredits, check if the exact number of ugcVideos is uploaded
-    const hasVideo = submission.campaign.campaignCredits === null 
-      ? videos > 0 
-      : videos === (user?.ugcVideos || 0);
+    const hasVideo = submission.campaign.campaignCredits === null ? videos > 0 : videos === (user?.ugcVideos || 0);
     const hasRawFootage = submission.campaign.rawFootage ? rawFootages > 0 : true;
     const hasPhotos = submission.campaign.photos ? photos > 0 : true;
 
