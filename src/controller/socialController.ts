@@ -15,6 +15,7 @@ import {
   getMediaInsight,
   getPageId,
   getTikTokVideoById,
+  refreshInstagramToken,
   refreshTikTokToken,
 } from '@services/socialMediaService';
 
@@ -1033,6 +1034,65 @@ function calculateCampaignComparison(currentInsight: MetricData[], campaignAvera
   return comparison;
 }
 
+async function ensureValidInstagramToken(userId: string): Promise<string> {
+  const creator = await prisma.creator.findFirst({
+    where: {
+      userId: userId,
+    },
+    include: {
+      instagramUser: true,
+    },
+  });
+
+  if (!creator) throw new Error('Creator not found');
+  if (!creator.isFacebookConnected || !creator.instagramUser) {
+    throw new Error('Creator is not connected to instagram account');
+  }
+
+  const encryptedAccessToken = creator.instagramUser?.accessToken;
+  if (!encryptedAccessToken) throw new Error('Access token not found');
+
+  let accessToken = decryptToken(encryptedAccessToken as any);
+
+  // Check if token is expired
+  const isExpired = dayjs().isAfter(dayjs.unix(creator.instagramUser.expiresIn!));
+
+  if (isExpired) {
+    console.log('Instagram token expired, attempting refresh...');
+    
+    try {
+      // Refresh the token using the existing service
+      const refreshedTokenData = await refreshInstagramToken(accessToken);
+      
+      // Encrypt the new token
+      const newEncryptedAccessToken = encryptToken(refreshedTokenData.access_token);
+      
+      // Calculate new expiry time
+      const currentTime = dayjs();
+      const newExpiryTime = currentTime.add(refreshedTokenData.expires_in, 'second').unix();
+      
+      // Update the database with new token
+      await prisma.instagramUser.update({
+        where: {
+          creatorId: creator.id,
+        },
+        data: {
+          accessToken: newEncryptedAccessToken,
+          expiresIn: newExpiryTime,
+        },
+      });
+
+      accessToken = refreshedTokenData.access_token;
+      console.log('Instagram token refreshed successfully');
+    } catch (refreshError) {
+      console.error('Failed to refresh Instagram token:', refreshError);
+      throw new Error('Instagram token expired and refresh failed. Please reconnect your Instagram account.');
+    }
+  }
+
+  return accessToken;
+}
+
 export const getInstagramMediaInsight = async (req: Request, res: Response) => {
   const { userId } = req.params;
   const { url, campaignId } = req.query; // Added campaignId parameter
@@ -1049,30 +1109,28 @@ export const getInstagramMediaInsight = async (req: Request, res: Response) => {
 
     if (!user) return res.status(404).json({ message: 'User not found' });
 
+    // Use the helper function to ensure we have a valid token
+    let accessToken: string;
+    try {
+      accessToken = await ensureValidInstagramToken(user.id);
+    } catch (tokenError) {
+      return res.status(400).json({ 
+        message: tokenError.message,
+        requiresReconnection: tokenError.message.includes('refresh failed') 
+      });
+    }
+
+    // Get creator info for media count
     const creator = await prisma.creator.findFirst({
       where: {
         userId: user.id,
       },
       select: {
         instagramUser: true,
-        isFacebookConnected: true,
       },
     });
 
-    if (!creator) return res.status(404).json({ message: 'User is not a creator' });
-    if (!creator.isFacebookConnected || !creator.instagramUser)
-      return res.status(400).json({ message: 'Creator is not connected to instagram account' });
-
-    if (dayjs().isAfter(dayjs.unix(creator?.instagramUser?.expiresIn!))) {
-      return res.status(400).json({ message: 'Instagram Token expired' });
-    }
-
-    const encryptedAccessToken = creator.instagramUser?.accessToken;
-    if (!encryptedAccessToken) return res.status(404).json({ message: 'Access token not found' });
-
-    const accessToken = decryptToken(encryptedAccessToken as any);
-
-    const { videos } = await getInstagramMedias(accessToken, creator.instagramUser.media_count as number);
+    const { videos } = await getInstagramMedias(accessToken, creator?.instagramUser?.media_count as number);
 
     const shortCode = extractInstagramShortcode(url as string);
 
