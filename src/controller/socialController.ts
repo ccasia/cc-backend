@@ -3,6 +3,7 @@ import axios from 'axios';
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import dayjs from 'dayjs';
+import { UrlParser } from '@utils/urlParser';
 import {
   calculateAverageLikes,
   getAllMediaObject,
@@ -18,6 +19,7 @@ import {
   refreshInstagramToken,
   refreshTikTokToken,
 } from '@services/socialMediaService';
+
 
 // Type definitions
 export interface UrlData {
@@ -64,59 +66,6 @@ export interface ComparisonResult {
 // const CODE_CHALLENGE = 'SHA256_hash_of_code_verifier';
 
 const prisma = new PrismaClient();
-
-interface InstagramData {
-  user_id: string;
-  permissions: string[];
-  encryptedToken: { iv: string; content: string };
-  expires_in: string;
-}
-
-function extractInstagramShortcode(url: string) {
-  const regex = /(?:https?:\/\/)?(?:www\.)?instagram\.com\/(?:p|reel|tv)\/([A-Za-z0-9_-]+)/;
-  const match = url.match(regex);
-  return match ? match[1] : null;
-}
-
-function extractTikTokVideoId(url: string): string | null {
-  try {
-    const urlObj = new URL(url);
-
-    // Handle different TikTok URL formats
-    if (urlObj.hostname.includes('tiktok.com')) {
-      // Format: https://www.tiktok.com/@username/video/1234567890
-      if (urlObj.pathname.includes('/video/')) {
-        const videoId = urlObj.pathname.split('/video/')[1].split('?')[0];
-        return videoId;
-      }
-
-      // Format: https://www.tiktok.com/@username/photo/1234567890 (for photo posts)
-      if (urlObj.pathname.includes('/photo/')) {
-        const photoId = urlObj.pathname.split('/photo/')[1].split('?')[0];
-        return photoId;
-      }
-
-      // Handle short URLs like vm.tiktok.com
-      if (urlObj.hostname.includes('vm.tiktok.com')) {
-        const shortCode = urlObj.pathname.substring(1); // Remove leading slash
-        return shortCode;
-      }
-
-      // Handle mobile URLs like m.tiktok.com
-      if (urlObj.hostname.includes('m.tiktok.com')) {
-        if (urlObj.pathname.includes('/v/')) {
-          const videoId = urlObj.pathname.split('/v/')[1].split('.html')[0];
-          return videoId;
-        }
-      }
-    }
-
-    return null;
-  } catch (error) {
-    console.error('Invalid TikTok URL:', error);
-    return null;
-  }
-}
 
 // Connect account
 export const tiktokAuthentication = (_req: Request, res: Response) => {
@@ -1132,7 +1081,7 @@ export const getInstagramMediaInsight = async (req: Request, res: Response) => {
 
     const { videos } = await getInstagramMedias(accessToken, creator?.instagramUser?.media_count as number);
 
-    const shortCode = extractInstagramShortcode(url as string);
+    const shortCode = UrlParser.extractInstagramShortcode(url as string);
 
     const video = videos.find((item: any) => item?.shortcode === shortCode);
 
@@ -1166,7 +1115,7 @@ export const getInstagramMediaInsight = async (req: Request, res: Response) => {
           // Process each campaign URL to get insights
           for (const urlData of instagramUrls) {
             try {
-              const campaignShortCode = extractInstagramShortcode(urlData.url);
+              const campaignShortCode = UrlParser.extractInstagramShortcode(urlData.url);
               if (!campaignShortCode) continue;
 
               // Find the video in the user's media
@@ -1344,7 +1293,7 @@ export const getTikTokVideoInsight = async (req: Request, res: Response) => {
     }
 
     // Extract video ID from URL
-    const videoId = extractTikTokVideoId(url as string);
+    const videoId = UrlParser.extractTikTokVideoId(url as string);
     console.log('Extracted video ID:', videoId);
 
     if (!videoId) {
@@ -1411,7 +1360,7 @@ export const getTikTokVideoInsight = async (req: Request, res: Response) => {
           // Process each campaign URL to get insights
           for (const urlData of tiktokUrls) {
             try {
-              const campaignVideoId = extractTikTokVideoId(urlData.url);
+              const campaignVideoId = UrlParser.extractTikTokVideoId(urlData.url);
               if (!campaignVideoId) continue;
 
               // Get the video data for this campaign video
