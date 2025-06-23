@@ -32,6 +32,7 @@ import {
   creatorAgreements,
   updateAmountAgreement,
   sendAgreement,
+  resendAgreement,
   editCampaignImages,
   draftPitch,
   getMyCampaigns,
@@ -137,6 +138,7 @@ router.patch('/changeLogisticStatus', isSuperAdmin, updateStatusLogistic); //nee
 router.patch('/receiveLogistic', isLoggedIn, receiveLogistic);
 router.patch('/updateAmountAgreement', isLoggedIn, isSuperAdmin, updateAmountAgreement);
 router.patch('/sendAgreement', isLoggedIn, isSuperAdmin, sendAgreement);
+router.patch('/resendAgreement', isLoggedIn, resendAgreement);
 router.patch('/removePitchVideo', isLoggedIn, removePitchVideo);
 router.patch('/linkNewAgreement', isLoggedIn, isSuperAdmin, linkNewAgreement);
 

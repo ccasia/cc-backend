@@ -255,7 +255,7 @@ export const handleSubmissionNotification = async (submissionId: string) => {
   }
 };
 
-export const handleCompletedCampaign = async (submissionId: string) => {
+export const handleCompletedCampaign = async (submissionId: string, adminId?: string) => {
   try {
     console.log('🎯 Starting handleCompletedCampaign for submission:', submissionId);
 
@@ -413,7 +413,7 @@ export const handleCompletedCampaign = async (submissionId: string) => {
       const invoiceItems = await getCreatorInvoiceLists(submission.id);
       console.log('📄 Invoice items:', invoiceItems);
 
-      await createInvoiceService(submission, submission.userId, invoiceAmount, invoiceItems);
+      await createInvoiceService(submission, submission.userId, invoiceAmount, invoiceItems, undefined, adminId);
       console.log('✅ Invoice created successfully');
     }
 

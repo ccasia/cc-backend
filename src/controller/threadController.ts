@@ -5,6 +5,7 @@ import { markMessagesService, fetchMessagesFromThread, totalUnreadMessagesServic
 import { clients, io } from '../server';
 import { notificationCSMChat, notificationGroupChat } from '@helper/notification';
 import { saveNotification } from './notificationController';
+import { uploadAttachments } from '@configs/cloudStorage.config';
 
 const prisma = new PrismaClient();
 
@@ -231,13 +232,47 @@ export const sendMessageInThread = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Missing sender information.' });
     }
 
+    let fileUrl: string | null = null;
+    let fileType: string | null = null;
+
+    // Handle file upload if present
+    if (req.files && (req.files as any).attachments) {
+      const file = Array.isArray((req.files as any).attachments) 
+        ? (req.files as any).attachments[0] 
+        : (req.files as any).attachments;
+
+      try {
+        fileUrl = await uploadAttachments({
+          tempFilePath: file.tempFilePath,
+          fileName: file.name,
+          folderName: 'chat-attachments',
+        });
+        fileType = file.mimetype;
+      } catch (uploadError) {
+        console.error('File upload error:', uploadError);
+        return res.status(500).json({ error: 'Failed to upload attachment.' });
+      }
+    }
+
     const datas = await prisma.$transaction(async (tx) => {
       const message = await tx.message.create({
         data: {
-          content,
+          content: content || '',
           threadId,
           senderId: userId,
+          file: fileUrl,
+          fileType: fileType,
           createdAt: new Date(),
+        },
+        include: {
+          sender: {
+            select: {
+              id: true,
+              name: true,
+              photoURL: true,
+              role: true,
+            },
+          },
         },
       });
 
@@ -255,6 +290,18 @@ export const sendMessageInThread = async (req: Request, res: Response) => {
         },
       });
       return { data, message };
+    });
+
+    // Emit the message to all users in the thread via socket for real-time updates
+    io.to(threadId).emit('message', {
+      id: datas.message.id,
+      content: datas.message.content,
+      senderId: datas.message.senderId,
+      threadId: datas.message.threadId,
+      file: datas.message.file,
+      fileType: datas.message.fileType,
+      createdAt: datas.message.createdAt,
+      sender: datas.message.sender,
     });
 
     const userIds = datas.data.UserThread.map((thread) => thread.user.id);
@@ -314,16 +361,32 @@ export const sendMessageInThread = async (req: Request, res: Response) => {
       io.to(clients.get(thread.user.id)).emit('messageCount', { count, name: senderInformation?.user.name });
     }
 
-    // for (const thread of data.UserThread) {
-    //   const unreadCount = await prisma.unreadMessage.count({
-    //     where: {
-    //       userId: thread.user.id,
-    //       threadId,
-    //     },
-    //   });
+    // Only create unread messages if this is a direct API call (has files) 
+    // Socket messages handle unread creation in socketController
+    if (fileUrl) {
+      const usersInThread = await prisma.userThread.findMany({
+        where: {
+          threadId,
+          userId: { not: userId },
+        },
+        select: {
+          userId: true,
+        },
+      });
 
-    //   io.to(clients.get(thread.user.id)).emit('messageCount', { count: unreadCount });
-    // }
+      if (usersInThread.length > 0) {
+        const unreadMessagesData = usersInThread.map(({ userId }) => ({
+          userId,
+          threadId,
+          messageId: datas.message.id,
+        }));
+
+        await prisma.unreadMessage.createMany({
+          data: unreadMessagesData,
+          skipDuplicates: true,
+        });
+      }
+    }
 
     return res.status(201).json(datas.message);
   } catch (error) {

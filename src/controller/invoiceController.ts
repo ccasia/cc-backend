@@ -7,6 +7,7 @@ import { Request, Response } from 'express';
 
 import { creatorInvoice as emailCreatorInvoice } from '@configs/nodemailer.config';
 import { logAdminChange } from '@services/campaignServices';
+import { logChange } from '@services/campaignServices';
 
 import { InvoiceStatus, PrismaClient } from '@prisma/client';
 import {
@@ -729,6 +730,13 @@ export const updateInvoice = async (req: Request, res: Response) => {
             logAdminChange(adminLogMessage, adminId, req);
           }
 
+          // Log invoice approval in campaign logs for Invoice Actions tab
+          if (adminId && updatedInvoice.campaignId) {
+            const creatorName = creatorUser?.name || 'Unknown Creator';
+            const logMessage = `Approved invoice ${updatedInvoice.invoiceNumber} for ${creatorName}`;
+            await logChange(logMessage, updatedInvoice.campaignId, req);
+          }
+
           // Notify creator
           const creatorNotification = await saveNotification({
             userId: updatedInvoice.creatorId,
@@ -1164,6 +1172,9 @@ export const generateInvoice = async (req: Request, res: Response) => {
         { ...creator, userId: creator.user?.id, campaignId: creator.campaign.id },
         req.session.userid,
         invoiceAmount,
+        undefined,
+        undefined,
+        req.session.userid
       );
 
       await prisma.shortListedCreator.update({
@@ -1215,13 +1226,34 @@ export const generateInvoice = async (req: Request, res: Response) => {
 
 export const deleteInvoice = async (req: Request, res: Response) => {
   const { id } = req.params;
+  const adminId = req.session.userid;
 
   try {
-    const invoice = await prisma.invoice.findUnique({ where: { id: id } });
+    const invoice = await prisma.invoice.findUnique({ 
+      where: { id: id },
+      include: {
+        creator: {
+          include: {
+            user: true
+          }
+        },
+        campaign: true
+      }
+    });
 
     if (!invoice) return res.status(404).json({ message: 'Invoice not found' });
 
+    // Get creator name for logging
+    const creatorName = invoice.creator?.user?.name || 'Unknown Creator';
+    const campaignName = invoice.campaign?.name || 'Campaign';
+
     await prisma.invoice.delete({ where: { id: id } });
+
+    // Log the deletion in campaign logs
+    if (adminId && invoice.campaignId) {
+      const logMessage = `Deleted invoice ${invoice.invoiceNumber} for creator "${creatorName}"`;
+      await logChange(logMessage, invoice.campaignId, req);
+    }
 
     return res.status(200).json({ message: 'Successfully deleted' });
   } catch (error) {

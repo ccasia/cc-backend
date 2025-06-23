@@ -7,6 +7,7 @@ import timezone from 'dayjs/plugin/timezone';
 import { saveNotification } from '@controllers/notificationController';
 import { sendEmail } from '@controllers/authController';
 import { rejectInvoiceEmail } from '@configs/nodemailer.config';
+import { logChange } from '@services/campaignServices';
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -64,6 +65,7 @@ export const createInvoiceService = async (
   amount: any,
   invoiceItems?: { type: string; count: number }[],
   tx?: PrismaClient,
+  adminId?: string,
 ) => {
   const invoiceNumber = await generateUniqueInvoiceNumber();
 
@@ -146,7 +148,24 @@ export const createInvoiceService = async (
       },
     });
 
-    return invoice.find((item) => item.creatorId === data.user.id);
+    const createdInvoice = invoice.find((item) => item.creatorId === data.user.id);
+    
+    // Log invoice generation in campaign logs for Invoice Actions tab
+    if (createdInvoice && data.campaignId && adminId) {
+      const creatorName = data.user?.name || 'Unknown Creator';
+      const logMessage = `Invoice ${invoiceNumber} for ${creatorName} was generated`;
+      
+      // Create the log entry directly without requiring a full request object
+      await (tx ?? prisma).campaignLog.create({
+        data: {
+          message: logMessage,
+          campaignId: data.campaignId,
+          adminId: adminId,
+        },
+      });
+    }
+
+    return createdInvoice;
   } catch (error) {
     throw new Error(error);
   }
