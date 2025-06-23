@@ -88,7 +88,7 @@ router.post('/generateInvoice', async (req, res) => {
     });
 
     if (!submission) return res.status(404).json({ message: 'Invoice not found' });
-    await createInvoiceService(submission, submission.userId, invoiceAmount);
+    await createInvoiceService(submission, submission.userId, invoiceAmount, undefined, undefined, undefined);
 
     return res.status(200).send('Success');
   } catch (error) {

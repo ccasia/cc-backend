@@ -1199,3 +1199,69 @@ export const resendVerificationLinkCreator = async (req: Request, res: Response)
     return res.status(400).json(error);
   }
 };
+
+export const deleteAccount = async (req: Request, res: Response) => {
+  const userId = req.session.userid as string;
+
+  if (!userId) {
+    return res.status(401).json({ message: 'Unauthorized' });
+  }
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        creator: true,
+        admin: true,
+      },
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Delete all related data based on user role
+    await prisma.$transaction(async (tx) => {
+      // Common deletions for all users
+      await tx.interest.deleteMany({ where: { userId } });
+      await tx.invoice.deleteMany({ where: { creatorId: userId } });
+      await tx.pitch.deleteMany({ where: { userId } });
+      await tx.userNotification.deleteMany({ where: { userId } });
+      await tx.notification.deleteMany({ where: { userId } });
+      await tx.unreadMessage.deleteMany({ where: { userId } });
+      await tx.seenMessage.deleteMany({ where: { userId } });
+      await tx.bookMarkCampaign.deleteMany({ where: { userId } });
+      await tx.paymentForm.deleteMany({ where: { userId } });
+      await tx.userThread.deleteMany({ where: { userId } });
+      await tx.creatorAgreement.deleteMany({ where: { userId } });
+      await tx.submission.deleteMany({ where: { userId } });
+      await tx.logistic.deleteMany({ where: { userId } });
+
+      // Role-specific deletions
+      if (user.role === 'creator') {
+        await tx.creator.delete({
+          where: { userId },
+          include: { mediaKit: true },
+        });
+      } else if (user.role === 'admin') {
+        await tx.admin.delete({ where: { userId } });
+      }
+
+      // Finally delete the user
+      await tx.user.delete({ where: { id: userId } });
+    });
+
+    // Clear session and cookies
+    req.session.destroy((err) => {
+      if (err) {
+        return res.status(400).json({ message: 'Error logging out' });
+      }
+      res.clearCookie('userid');
+      res.clearCookie('accessToken');
+      return res.status(200).json({ message: 'Account deleted successfully' });
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(400).json({ message: 'Failed to delete account' });
+  }
+};
