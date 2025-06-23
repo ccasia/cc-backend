@@ -149,12 +149,12 @@ export const createInvoiceService = async (
     });
 
     const createdInvoice = invoice.find((item) => item.creatorId === data.user.id);
-    
+
     // Log invoice generation in campaign logs for Invoice Actions tab
     if (createdInvoice && data.campaignId && adminId) {
       const creatorName = data.user?.name || 'Unknown Creator';
       const logMessage = `Invoice ${invoiceNumber} for ${creatorName} was generated`;
-      
+
       // Create the log entry directly without requiring a full request object
       await (tx ?? prisma).campaignLog.create({
         data: {

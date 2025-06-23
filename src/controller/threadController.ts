@@ -237,8 +237,8 @@ export const sendMessageInThread = async (req: Request, res: Response) => {
 
     // Handle file upload if present
     if (req.files && (req.files as any).attachments) {
-      const file = Array.isArray((req.files as any).attachments) 
-        ? (req.files as any).attachments[0] 
+      const file = Array.isArray((req.files as any).attachments)
+        ? (req.files as any).attachments[0]
         : (req.files as any).attachments;
 
       try {
@@ -361,7 +361,7 @@ export const sendMessageInThread = async (req: Request, res: Response) => {
       io.to(clients.get(thread.user.id)).emit('messageCount', { count, name: senderInformation?.user.name });
     }
 
-    // Only create unread messages if this is a direct API call (has files) 
+    // Only create unread messages if this is a direct API call (has files)
     // Socket messages handle unread creation in socketController
     if (fileUrl) {
       const usersInThread = await prisma.userThread.findMany({
