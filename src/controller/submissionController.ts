@@ -314,13 +314,7 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
         },
       });
 
-      // Log admin activity
-      if (campaignId && adminId && user) {
-        const admin = await prisma.user.findUnique({ where: { id: adminId }, include: { admin: true } });
-        const adminName = admin?.name || 'Admin';
-        const logMessage = `Admin "${adminName}" approved agreement submission for creator "${user.name}"`;
-        await logChange(logMessage, campaignId, req);
-      }
+
 
       const taskInReviewColumn = inReviewColumn?.task?.find((item) => item.submissionId === agreementSubs.id);
 
@@ -540,10 +534,10 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
 
       // Log admin activity for rejection
       if (campaignId && adminId && user) {
-        const admin = await prisma.user.findUnique({ where: { id: adminId }, include: { admin: true } });
+        const admin = await prisma.user.findUnique({ where: { id: adminId } });
         const adminName = admin?.name || 'Admin';
-        const logMessage = `Admin "${adminName}" requested changes to agreement submission for creator "${user.name}"`;
-        await logChange(logMessage, campaignId, req);
+        const adminActivityMessage = `${adminName} requested changes on ${user.name}'s Agreement submission`;
+        await logChange(adminActivityMessage, campaignId, req);
       }
 
       const notification = await saveNotification({
@@ -1096,12 +1090,12 @@ export const adminManageDraft = async (req: Request, res: Response) => {
 
       // Log admin activity for draft approval
       if (submission.campaignId && userId) {
-        const admin = await prisma.user.findUnique({ where: { id: userId }, include: { admin: true } });
+        const admin = await prisma.user.findUnique({ where: { id: userId } });
         const adminName = admin?.name || 'Admin';
-        const submissionTypeName = submission.submissionType.type === 'FIRST_DRAFT' ? 'first draft' : 'final draft';
+        const submissionTypeName = submission.submissionType.type === 'FIRST_DRAFT' ? 'First Draft' : 'Final Draft';
         const sectionText = sectionOnly ? ` (${section} section)` : '';
-        const logMessage = `Admin "${adminName}" approved ${submissionTypeName}${sectionText} for creator "${submission.user.name}"`;
-        await logChange(logMessage, submission.campaignId, req);
+        const adminActivityMessage = `${adminName} approved ${submission.user.name}'s ${submissionTypeName}${sectionText}`;
+        await logChange(adminActivityMessage, submission.campaignId, req);
       }
 
       const notification = await saveNotification({
@@ -1928,9 +1922,9 @@ export const adminManageVideos = async (req: Request, res: Response) => {
             select: { campaignId: true, user: { select: { name: true } }, submissionType: { select: { type: true } } } 
           });
           if (submissionData?.campaignId) {
-            const submissionTypeName = submissionData.submissionType.type === 'FIRST_DRAFT' ? 'first draft' : 'final draft';
-            const logMessage = `Admin "${adminName}" approved ${submissionTypeName} video section for creator "${submissionData.user.name}"`;
-            await logChange(logMessage, submissionData.campaignId, req);
+            const submissionTypeName = submissionData.submissionType.type === 'FIRST_DRAFT' ? 'First Draft' : 'Final Draft';
+            const adminActivityMessage = `${adminName} approved ${submissionData.user.name}'s ${submissionTypeName} video section`;
+            await logChange(adminActivityMessage, submissionData.campaignId, req);
           }
         }
 
@@ -2212,11 +2206,11 @@ export const adminManageVideos = async (req: Request, res: Response) => {
 
         // Log admin activity for video approval
         if (approveSubmission.campaignId && req.session.userid) {
-          const admin = await prisma.user.findUnique({ where: { id: req.session.userid }, include: { admin: true } });
+          const admin = await prisma.user.findUnique({ where: { id: req.session.userid } });
           const adminName = admin?.name || 'Admin';
-          const submissionTypeName = approveSubmission.submissionType.type === 'FIRST_DRAFT' ? 'first draft' : 'final draft';
-          const logMessage = `Admin "${adminName}" approved ${submissionTypeName} videos for creator "${approveSubmission.user.name}"`;
-          await logChange(logMessage, approveSubmission.campaignId, req);
+          const submissionTypeName = approveSubmission.submissionType.type === 'FIRST_DRAFT' ? 'First Draft' : 'Final Draft';
+          const adminActivityMessage = `${adminName} approved ${approveSubmission.user.name}'s ${submissionTypeName} videos`;
+          await logChange(adminActivityMessage, approveSubmission.campaignId, req);
         }
 
         const notification = await saveNotification({
@@ -3268,14 +3262,7 @@ export const adminManagePhotosV2 = async (req: Request, res: Response) => {
         });
       }
 
-      // Log admin activity for photo management
-      if (photo.campaignId && req.session.userid) {
-        const admin = await tx.user.findUnique({ where: { id: req.session.userid }, include: { admin: true } });
-        const adminName = admin?.name || 'Admin';
-        const actionType = status === 'APPROVED' ? 'approved' : 'requested changes to';
-        const logMessage = `Admin "${adminName}" ${actionType} photo for creator "${photo.submission?.user?.name || 'Unknown'}"`;
-        await logChange(logMessage, photo.campaignId, req);
-      }
+      // Individual media logging removed - will log at submission level instead
 
       // Check if we should update submission status based on overall review progress
       if (!photo.submission) {
@@ -3363,6 +3350,15 @@ export const adminManagePhotosV2 = async (req: Request, res: Response) => {
 
           submissionUpdated = true;
 
+          // Log consolidated admin activity for submission approval
+          if (photo.campaignId && req.session.userid) {
+            const admin = await tx.user.findUnique({ where: { id: req.session.userid } });
+            const adminName = admin?.name || 'Admin';
+            const submissionTypeName = photo.submission?.submissionType?.type === 'FIRST_DRAFT' ? 'First Draft' : 'Final Draft';
+            const adminActivityMessage = `${adminName} approved ${photo.submission?.user?.name || 'Unknown'}'s ${submissionTypeName}`;
+            await logChange(adminActivityMessage, photo.campaignId, req);
+          }
+
           // Check if this campaign has a posting submission
           postingSubmission = await tx.submission.findFirst({
             where: {
@@ -3421,6 +3417,15 @@ export const adminManagePhotosV2 = async (req: Request, res: Response) => {
           });
 
           submissionUpdated = true;
+
+          // Log consolidated admin activity for changes requested
+          if (photo.campaignId && req.session.userid) {
+            const admin = await tx.user.findUnique({ where: { id: req.session.userid } });
+            const adminName = admin?.name || 'Admin';
+            const submissionTypeName = photo.submission?.submissionType?.type === 'FIRST_DRAFT' ? 'First Draft' : 'Final Draft';
+            const adminActivityMessage = `${adminName} requested changes on ${photo.submission?.user?.name || 'Unknown'}'s ${submissionTypeName}`;
+            await logChange(adminActivityMessage, photo.campaignId, req);
+          }
 
           // Always activate Final Draft when changes are requested, regardless of preventStatusChange
           // This is essential for the workflow to function properly
@@ -3598,15 +3603,7 @@ export const adminManageDraftVideosV2 = async (req: Request, res: Response) => {
         });
       }
 
-      // Log admin activity for video management
-      if (video.campaignId && req.session.userid) {
-        const admin = await tx.user.findUnique({ where: { id: req.session.userid }, include: { admin: true } });
-        const adminName = admin?.name || 'Admin';
-        const actionType = status === 'APPROVED' ? 'approved' : 'requested changes to';
-        const submissionTypeName = video.submission?.submissionType?.type === 'FIRST_DRAFT' ? 'first draft' : 'final draft';
-        const logMessage = `Admin "${adminName}" ${actionType} ${submissionTypeName} video for creator "${video.submission?.user?.name || 'Unknown'}"`;
-        await logChange(logMessage, video.campaignId, req);
-      }
+      // Individual media logging removed - will log at submission level instead
 
       // Check if we should update submission status based on overall review progress
       if (!video.submission) {
@@ -3700,6 +3697,15 @@ export const adminManageDraftVideosV2 = async (req: Request, res: Response) => {
 
           submissionUpdated = true;
 
+          // Log consolidated admin activity for submission approval
+          if (video.campaignId && req.session.userid) {
+            const admin = await tx.user.findUnique({ where: { id: req.session.userid } });
+            const adminName = admin?.name || 'Admin';
+            const submissionTypeName = video.submission?.submissionType?.type === 'FIRST_DRAFT' ? 'First Draft' : 'Final Draft';
+            const adminActivityMessage = `${adminName} approved ${video.submission?.user?.name || 'Unknown'}'s ${submissionTypeName}`;
+            await logChange(adminActivityMessage, video.campaignId, req);
+          }
+
           // Only do full workflow logic if preventStatusChange is not true
           if (!preventStatusChange) {
             // Handle next steps based on submission type
@@ -3764,6 +3770,15 @@ export const adminManageDraftVideosV2 = async (req: Request, res: Response) => {
           });
 
           submissionUpdated = true;
+
+          // Log consolidated admin activity for changes requested
+          if (video.campaignId && req.session.userid) {
+            const admin = await tx.user.findUnique({ where: { id: req.session.userid } });
+            const adminName = admin?.name || 'Admin';
+            const submissionTypeName = video.submission?.submissionType?.type === 'FIRST_DRAFT' ? 'First Draft' : 'Final Draft';
+            const adminActivityMessage = `${adminName} requested changes on ${video.submission?.user?.name || 'Unknown'}'s ${submissionTypeName}`;
+            await logChange(adminActivityMessage, video.campaignId, req);
+          }
 
           // Always activate Final Draft when changes are requested, regardless of preventStatusChange
           // This is essential for the workflow to function properly
@@ -3941,15 +3956,7 @@ export const adminManageRawFootagesV2 = async (req: Request, res: Response) => {
         });
       }
 
-      // Log admin activity for raw footage management
-      if (rawFootage.campaignId && req.session.userid) {
-        const admin = await tx.user.findUnique({ where: { id: req.session.userid }, include: { admin: true } });
-        const adminName = admin?.name || 'Admin';
-        const actionType = status === 'APPROVED' ? 'approved' : 'requested changes to';
-        const submissionTypeName = rawFootage.submission?.submissionType?.type === 'FIRST_DRAFT' ? 'first draft' : 'final draft';
-        const logMessage = `Admin "${adminName}" ${actionType} ${submissionTypeName} raw footage for creator "${rawFootage.submission?.user?.name || 'Unknown'}"`;
-        await logChange(logMessage, rawFootage.campaignId, req);
-      }
+      // Individual media logging removed - will log at submission level instead
 
       // Check if we should update submission status based on overall review progress
       if (!rawFootage.submission) {
@@ -4037,6 +4044,15 @@ export const adminManageRawFootagesV2 = async (req: Request, res: Response) => {
 
           submissionUpdated = true;
 
+          // Log consolidated admin activity for submission approval
+          if (rawFootage.campaignId && req.session.userid) {
+            const admin = await tx.user.findUnique({ where: { id: req.session.userid } });
+            const adminName = admin?.name || 'Admin';
+            const submissionTypeName = rawFootage.submission?.submissionType?.type === 'FIRST_DRAFT' ? 'First Draft' : 'Final Draft';
+            const adminActivityMessage = `${adminName} approved ${rawFootage.submission?.user?.name || 'Unknown'}'s ${submissionTypeName}`;
+            await logChange(adminActivityMessage, rawFootage.campaignId, req);
+          }
+
           // Only do full workflow logic if preventStatusChange is not true
           if (!preventStatusChange) {
             // Handle next steps based on submission type
@@ -4111,6 +4127,15 @@ export const adminManageRawFootagesV2 = async (req: Request, res: Response) => {
           });
 
           submissionUpdated = true;
+
+          // Log consolidated admin activity for changes requested
+          if (rawFootage.campaignId && req.session.userid) {
+            const admin = await tx.user.findUnique({ where: { id: req.session.userid } });
+            const adminName = admin?.name || 'Admin';
+            const submissionTypeName = rawFootage.submission?.submissionType?.type === 'FIRST_DRAFT' ? 'First Draft' : 'Final Draft';
+            const adminActivityMessage = `${adminName} requested changes on ${rawFootage.submission?.user?.name || 'Unknown'}'s ${submissionTypeName}`;
+            await logChange(adminActivityMessage, rawFootage.campaignId, req);
+          }
 
           // Always activate Final Draft when changes are requested, regardless of preventStatusChange
           // This is essential for the workflow to function properly

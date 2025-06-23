@@ -3083,9 +3083,9 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
       },
     });
 
-    // Log admin activity for amount change if amount was changed
-    if (currentAgreement && currentAgreement.amount !== paymentAmount) {
-      const oldAmount = currentAgreement.amount || '0';
+    // Log admin activity for amount change if amount was actually changed (not just set for the first time)
+    if (currentAgreement && currentAgreement.amount && currentAgreement.amount !== paymentAmount) {
+      const oldAmount = currentAgreement.amount;
       const newAmount = paymentAmount;
       const oldCurrency = currentAgreement.currency || 'MYR'; // Get the previous currency
       const newCurrency = currency; // Use the new currency from the request
