@@ -1174,7 +1174,7 @@ export const generateInvoice = async (req: Request, res: Response) => {
         invoiceAmount,
         undefined,
         undefined,
-        req.session.userid
+        req.session.userid,
       );
 
       await prisma.shortListedCreator.update({
@@ -1229,16 +1229,16 @@ export const deleteInvoice = async (req: Request, res: Response) => {
   const adminId = req.session.userid;
 
   try {
-    const invoice = await prisma.invoice.findUnique({ 
+    const invoice = await prisma.invoice.findUnique({
       where: { id: id },
       include: {
         creator: {
           include: {
-            user: true
-          }
+            user: true,
+          },
         },
-        campaign: true
-      }
+        campaign: true,
+      },
     });
 
     if (!invoice) return res.status(404).json({ message: 'Invoice not found' });

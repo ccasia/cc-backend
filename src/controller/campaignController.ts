@@ -2040,10 +2040,10 @@ export const changePitchStatus = async (req: Request, res: Response) => {
 
           if (socketId) {
             io.to(socketId).emit('notification', data);
-            io.to(socketId).emit('shortlisted', { 
+            io.to(socketId).emit('shortlisted', {
               message: 'shortlisted',
               campaignId: pitch.campaign.id,
-              campaignName: pitch.campaign.name
+              campaignName: pitch.campaign.name,
             });
           }
 
@@ -2897,10 +2897,10 @@ export const shortlistCreator = async (req: Request, res: Response) => {
             if (socketId) {
               io.to(socketId).emit('notification', notification);
               // Emit shortlisted event with campaign data for popup
-              io.to(socketId).emit('shortlisted', { 
+              io.to(socketId).emit('shortlisted', {
                 message: 'shortlisted',
                 campaignId: campaign.id,
-                campaignName: campaign.name
+                campaignName: campaign.name,
               });
             }
 
@@ -3089,7 +3089,7 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
       const newAmount = paymentAmount;
       const oldCurrency = currentAgreement.currency || 'MYR'; // Get the previous currency
       const newCurrency = currency; // Use the new currency from the request
-      
+
       // Get currency symbol based on currency code
       const getCurrencySymbol = (currencyCode: string) => {
         switch (currencyCode) {
@@ -3107,7 +3107,7 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
             return 'RM'; // Default fallback
         }
       };
-      
+
       const oldCurrencySymbol = getCurrencySymbol(oldCurrency);
       const newCurrencySymbol = getCurrencySymbol(newCurrency);
       const adminActivityMessage = `${adminName} changed the amount from ${oldCurrencySymbol}${oldAmount} to ${newCurrencySymbol}${newAmount} on the Agreement for ${creatorName}`;
@@ -4300,10 +4300,10 @@ export const removeCreatorFromCampaign = async (req: Request, res: Response) => 
         include: {
           creator: {
             include: {
-              user: true
-            }
-          }
-        }
+              user: true,
+            },
+          },
+        },
       });
 
       if (invoice) {
@@ -4312,7 +4312,7 @@ export const removeCreatorFromCampaign = async (req: Request, res: Response) => 
             id: invoice.id,
           },
         });
-        
+
         // Remove the invoice deletion logging for withdrawal - it should not appear in Invoice Actions
         // const logMessage = `Deleted invoice ${invoice.invoiceNumber} for creator "${user.name}" during withdrawal from campaign`;
         // await logChange(logMessage, campaign.id, req);
@@ -4512,10 +4512,10 @@ export const shortlistCreatorV2 = async (req: Request, res: Response) => {
           if (socketId) {
             io.to(socketId).emit('notification', notification);
             // Emit shortlisted event with campaign data for popup
-            io.to(socketId).emit('shortlisted', { 
+            io.to(socketId).emit('shortlisted', {
               message: 'shortlisted',
               campaignId: campaign.id,
-              campaignName: campaign.name
+              campaignName: campaign.name,
             });
           }
 

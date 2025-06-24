@@ -49,6 +49,7 @@ router.delete('/:id', isSuperAdmin, deleteInvoice);
 // Temporary function
 router.post('/generateInvoice', async (req, res) => {
   const { submissionId, invoiceAmount } = req.body;
+
   try {
     const submission = await prisma.submission.findUnique({
       where: {
