@@ -7,10 +7,10 @@ export const missingInvoices = [
   //     userId: 'cm64i356a02ldr601og3x52ap',
   //     campaignId: 'cm64fowyl02her601dfeecwyh',
   //   },
-  {
-    userId: 'cm64jmtui02pqr601u2qah45r',
-    campaignId: 'cm64fowyl02her601dfeecwyh',
-  },
+  //   {
+  //     userId: 'cm64jmtui02pqr601u2qah45r',
+  //     campaignId: 'cm64fowyl02her601dfeecwyh',
+  //   },
   {
     userId: 'cm64z24ie03dgr601bcz6sac4',
     campaignId: 'cm64fowyl02her601dfeecwyh',
