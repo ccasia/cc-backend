@@ -314,7 +314,6 @@ export async function findMissingInvoices() {
     });
 
     for (const item of creators) {
-      // console.log(item);
       const invoice = await prisma.invoice.findFirst({
         where: {
           AND: [
@@ -322,9 +321,16 @@ export async function findMissingInvoices() {
               campaignId: item.campaignId,
             },
             {
-              user: {
-                id: item?.user?.id,
-              },
+              OR: [
+                {
+                  user: {
+                    id: item?.user?.id,
+                  },
+                },
+                {
+                  creatorId: item.user?.id,
+                },
+              ],
             },
           ],
         },
