@@ -292,192 +292,190 @@ export const updateInvoices = async ({ bankAcc, userId }: { bankAcc: any; userId
   }
 };
 
-export async function findMissingInvoices() {
-  try {
-    const missings = [];
+// export async function findMissingInvoices() {
+//   try {
+//     const missings = [];
 
-    const creators = await prisma.shortListedCreator.findMany({
-      where: {
-        isCampaignDone: true,
-      },
-      select: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            creator: true,
-          },
-        },
-        campaignId: true,
-        campaign: {
-          select: {
-            name: true,
-          },
-        },
-      },
-    });
+//     const creators = await prisma.shortListedCreator.findMany({
+//       where: {
+//         isCampaignDone: true,
+//       },
+//       select: {
+//         user: {
+//           select: {
+//             id: true,
+//             name: true,
+//             creator: true,
+//           },
+//         },
+//         campaignId: true,
+//         campaign: {
+//           select: {
+//             name: true,
+//           },
+//         },
+//       },
+//     });
 
-    for (const item of creators) {
-      const invoice = await prisma.invoice.findFirst({
-        where: {
-          AND: [
-            {
-              campaignId: item.campaignId,
-            },
-            {
-              OR: [
-                {
-                  user: {
-                    id: item?.user?.id,
-                  },
-                },
-                {
-                  creatorId: item.user?.id,
-                },
-              ],
-            },
-          ],
-        },
-      });
+//     for (const item of creators) {
+//       const invoice = await prisma.invoice.findFirst({
+//         where: {
+//           AND: [
+//             {
+//               campaignId: item.campaignId,
+//             },
+//             {
+//               OR: [
+//                 {
+//                   user: {
+//                     id: item?.user?.id,
+//                   },
+//                 },
+//                 {
+//                   creatorId: item.user?.id,
+//                 },
+//               ],
+//             },
+//           ],
+//         },
+//       });
 
-      const data = { userId: item.user?.id, campaignId: item.campaignId };
+//       const data = { userId: item.user?.id, campaignId: item.campaignId };
 
-      if (!invoice) {
-        missings.push(data);
-        // console.log(
-        //   `${item?.user?.name} (${item.user?.id})'s invoice is missing for campaign ${item.campaign.name} (${item.campaignId})`,
-        // );
-      }
-    }
+//       if (!invoice) {
+//         missings.push(data);
+//         // console.log(
+//         //   `${item?.user?.name} (${item.user?.id})'s invoice is missing for campaign ${item.campaign.name} (${item.campaignId})`,
+//         // );
+//       }
+//     }
 
-    console.log(missings);
+//     console.log(missings);
 
-    return;
+//     return;
 
-    // console.log(creators);
-  } catch (error) {
-    console.log(error);
-    throw new Error(error);
-  }
-}
+//     // console.log(creators);
+//   } catch (error) {
+//     console.log(error);
+//     throw new Error(error);
+//   }
+// }
 
-findMissingInvoices();
+// export async function generateInvoices() {
+//   const invoiceTo = {
+//     id: '1',
+//     name: 'Cult Creative',
+//     fullAddress: '5-3A, Block A, Jaya One, No.72A, Jalan Universiti,46200 Petaling Jaya, Selangor',
+//     phoneNumber: '+60 11-5415 5751',
+//     company: 'Cult Creative',
+//     addressType: 'Hq',
+//     email: 'support@cultcreative.asia',
+//     primary: true,
+//   };
 
-export async function generateInvoices() {
-  const invoiceTo = {
-    id: '1',
-    name: 'Cult Creative',
-    fullAddress: '5-3A, Block A, Jaya One, No.72A, Jalan Universiti,46200 Petaling Jaya, Selangor',
-    phoneNumber: '+60 11-5415 5751',
-    company: 'Cult Creative',
-    addressType: 'Hq',
-    email: 'support@cultcreative.asia',
-    primary: true,
-  };
+//   try {
+//     for (const item of missingInvoices) {
+//       const invoiceNumber = await generateUniqueInvoiceNumber();
 
-  try {
-    for (const item of missingInvoices) {
-      const invoiceNumber = await generateUniqueInvoiceNumber();
+//       const agreement = await prisma.creatorAgreement.findFirst({
+//         where: {
+//           userId: item.userId,
+//           campaignId: item.campaignId,
+//         },
+//         include: {
+//           user: {
+//             include: {
+//               creator: true,
+//               paymentForm: true,
+//             },
+//           },
+//         },
+//       });
 
-      const agreement = await prisma.creatorAgreement.findFirst({
-        where: {
-          userId: item.userId,
-          campaignId: item.campaignId,
-        },
-        include: {
-          user: {
-            include: {
-              creator: true,
-              paymentForm: true,
-            },
-          },
-        },
-      });
+//       const items = {
+//         title: 'Posting on social media',
+//         description: 'Posting on social media',
+//         service: 'Posting on social media',
+//         quantity: 1,
+//         price: agreement?.amount,
+//         total: agreement?.amount,
+//       };
 
-      const items = {
-        title: 'Posting on social media',
-        description: 'Posting on social media',
-        service: 'Posting on social media',
-        quantity: 1,
-        price: agreement?.amount,
-        total: agreement?.amount,
-      };
+//       const invoiceFrom = {
+//         id: agreement?.user.id,
+//         name: agreement?.user.name,
+//         phoneNumber: agreement?.user.phoneNumber,
+//         email: agreement?.user.email,
+//         fullAddress: agreement?.user.creator?.address,
+//         company: agreement?.user.creator?.employment,
+//         addressType: 'Home',
+//         primary: false,
+//       };
 
-      const invoiceFrom = {
-        id: agreement?.user.id,
-        name: agreement?.user.name,
-        phoneNumber: agreement?.user.phoneNumber,
-        email: agreement?.user.email,
-        fullAddress: agreement?.user.creator?.address,
-        company: agreement?.user.creator?.employment,
-        addressType: 'Home',
-        primary: false,
-      };
+//       const bankInfo = {
+//         bankName: agreement?.user.paymentForm?.bankName,
+//         accountName: agreement?.user.paymentForm?.bankAccountName,
+//         payTo: agreement?.user.name,
+//         accountNumber: agreement?.user.paymentForm?.bankAccountNumber,
+//         accountEmail: agreement?.user.email,
+//       };
 
-      const bankInfo = {
-        bankName: agreement?.user.paymentForm?.bankName,
-        accountName: agreement?.user.paymentForm?.bankAccountName,
-        payTo: agreement?.user.name,
-        accountNumber: agreement?.user.paymentForm?.bankAccountNumber,
-        accountEmail: agreement?.user.email,
-      };
+//       const firstDraftType = await prisma.submissionType.findFirst({
+//         where: {
+//           type: 'FIRST_DRAFT',
+//         },
+//       });
 
-      const firstDraftType = await prisma.submissionType.findFirst({
-        where: {
-          type: 'FIRST_DRAFT',
-        },
-      });
+//       const finalDraftType = await prisma.submissionType.findFirst({
+//         where: {
+//           type: 'FINAL_DRAFT',
+//         },
+//       });
 
-      const finalDraftType = await prisma.submissionType.findFirst({
-        where: {
-          type: 'FINAL_DRAFT',
-        },
-      });
+//       const firstDraftSubmission = await prisma.submission.findFirst({
+//         where: {
+//           userId: agreement?.userId,
+//           campaignId: agreement?.campaignId,
+//           submissionTypeId: firstDraftType?.id,
+//         },
+//       });
 
-      const firstDraftSubmission = await prisma.submission.findFirst({
-        where: {
-          userId: agreement?.userId,
-          campaignId: agreement?.campaignId,
-          submissionTypeId: firstDraftType?.id,
-        },
-      });
+//       const invoiceItems = await getCreatorInvoiceLists(firstDraftSubmission?.id!);
 
-      const invoiceItems = await getCreatorInvoiceLists(firstDraftSubmission?.id!);
+//       await prisma.invoice.create({
+//         data: {
+//           invoiceNumber: invoiceNumber,
+//           createdAt: new Date(),
+//           dueDate: new Date(dayjs().add(28, 'day').format()),
+//           status: 'draft' as InvoiceStatus,
+//           invoiceFrom: invoiceFrom,
+//           invoiceTo,
+//           task: items,
+//           amount: parseFloat(agreement?.amount!) || 0,
+//           bankAcc: bankInfo,
+//           user: {
+//             connect: {
+//               id: agreement?.userId,
+//             },
+//           },
+//           creator: {
+//             connect: {
+//               userId: agreement?.userId,
+//             },
+//           },
+//           ...(invoiceItems?.length && {
+//             deliverables: invoiceItems,
+//           }),
+//           campaign: {
+//             connect: { id: item.campaignId },
+//           },
+//         },
+//       });
+//     }
 
-      await prisma.invoice.create({
-        data: {
-          invoiceNumber: invoiceNumber,
-          createdAt: new Date(),
-          dueDate: new Date(dayjs().add(28, 'day').format()),
-          status: 'draft' as InvoiceStatus,
-          invoiceFrom: invoiceFrom,
-          invoiceTo,
-          task: items,
-          amount: parseFloat(agreement?.amount!) || 0,
-          bankAcc: bankInfo,
-          user: {
-            connect: {
-              id: agreement?.userId,
-            },
-          },
-          creator: {
-            connect: {
-              userId: agreement?.userId,
-            },
-          },
-          ...(invoiceItems?.length && {
-            deliverables: invoiceItems,
-          }),
-          campaign: {
-            connect: { id: item.campaignId },
-          },
-        },
-      });
-    }
-
-    return 'success';
-  } catch (error) {
-    console.log(error);
-    throw new Error(error);
-  }
-}
+//     return 'success';
+//   } catch (error) {
+//     console.log(error);
+//     throw new Error(error);
+//   }
+// }

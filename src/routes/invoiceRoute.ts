@@ -28,7 +28,7 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-router.get('/executeInvoice', generateMissingInvoices);
+// router.get('/executeInvoice', generateMissingInvoices);
 
 router.get('/zeroConnect', isSuperAdmin, getXero);
 router.get('/xeroCallback', xeroCallBack);
