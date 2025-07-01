@@ -22,8 +22,15 @@ import { TokenSet } from 'openid-client';
 import { error } from 'console';
 
 import fs from 'fs-extra';
-import { createInvoiceService, rejectInvoice, sendToSpreadSheet } from '@services/invoiceService';
+import {
+  createInvoiceService,
+  generateUniqueInvoiceNumber,
+  rejectInvoice,
+  sendToSpreadSheet,
+} from '@services/invoiceService';
 import dayjs from 'dayjs';
+import { getCreatorInvoiceLists } from '@services/submissionService';
+import { missingInvoices } from '@constants/missing-invoices';
 // import { decreamentCreditCampiagn } from '@services/packageService';
 
 const prisma = new PrismaClient();
@@ -1310,3 +1317,122 @@ export const disconnectXeroIntegration = async (req: Request, res: Response) => 
     return res.status(400).json({ success: false, message: 'Failed to disconnect from Xero' });
   }
 };
+
+export async function generateMissingInvoices(req: Request, res: Response) {
+  const invoiceNumber = await generateUniqueInvoiceNumber();
+
+  const invoiceTo = {
+    id: '1',
+    name: 'Cult Creative',
+    fullAddress: '5-3A, Block A, Jaya One, No.72A, Jalan Universiti,46200 Petaling Jaya, Selangor',
+    phoneNumber: '+60 11-5415 5751',
+    company: 'Cult Creative',
+    addressType: 'Hq',
+    email: 'support@cultcreative.asia',
+    primary: true,
+  };
+
+  try {
+    for (const item of missingInvoices) {
+      const agreement = await prisma.creatorAgreement.findFirst({
+        where: {
+          userId: item.userId,
+          campaignId: item.campaignId,
+        },
+        include: {
+          user: {
+            include: {
+              creator: true,
+              paymentForm: true,
+            },
+          },
+        },
+      });
+
+      const items = {
+        title: 'Posting on social media',
+        description: 'Posting on social media',
+        service: 'Posting on social media',
+        quantity: 1,
+        price: agreement?.amount,
+        total: agreement?.amount,
+      };
+
+      const invoiceFrom = {
+        id: agreement?.user.id,
+        name: agreement?.user.name,
+        phoneNumber: agreement?.user.phoneNumber,
+        email: agreement?.user.email,
+        fullAddress: agreement?.user.creator?.address,
+        company: agreement?.user.creator?.employment,
+        addressType: 'Home',
+        primary: false,
+      };
+
+      const bankInfo = {
+        bankName: agreement?.user.paymentForm?.bankName,
+        accountName: agreement?.user.paymentForm?.bankAccountName,
+        payTo: agreement?.user.name,
+        accountNumber: agreement?.user.paymentForm?.bankAccountNumber,
+        accountEmail: agreement?.user.email,
+      };
+
+      const firstDraftType = await prisma.submissionType.findFirst({
+        where: {
+          type: 'FIRST_DRAFT',
+        },
+      });
+
+      const finalDraftType = await prisma.submissionType.findFirst({
+        where: {
+          type: 'FINAL_DRAFT',
+        },
+      });
+
+      const firstDraftSubmission = await prisma.submission.findFirst({
+        where: {
+          userId: agreement?.userId,
+          campaignId: agreement?.campaignId,
+          submissionTypeId: firstDraftType?.id,
+        },
+      });
+
+      const invoiceItems = await getCreatorInvoiceLists(firstDraftSubmission?.id!);
+
+      await prisma.invoice.create({
+        data: {
+          invoiceNumber: invoiceNumber,
+          createdAt: new Date(),
+          dueDate: new Date(dayjs().add(28, 'day').format()),
+          status: 'draft' as InvoiceStatus,
+          invoiceFrom: invoiceFrom,
+          invoiceTo,
+          task: items,
+          amount: parseFloat(agreement?.amount!) || 0,
+          bankAcc: bankInfo,
+          user: {
+            connect: {
+              id: agreement?.userId,
+            },
+          },
+          creator: {
+            connect: {
+              userId: agreement?.userId,
+            },
+          },
+          ...(invoiceItems?.length && {
+            deliverables: invoiceItems,
+          }),
+          campaign: {
+            connect: { id: item.campaignId },
+          },
+        },
+      });
+    }
+
+    res.sendStatus(200);
+  } catch (error) {
+    console.log(error);
+    res.sendStatus(400);
+  }
+}

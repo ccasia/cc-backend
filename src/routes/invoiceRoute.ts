@@ -16,6 +16,7 @@ import {
   getXeroContacts,
   checkRefreshToken,
   deleteInvoice,
+  generateMissingInvoices,
 } from '@controllers/invoiceController';
 import { checkAndRefreshAccessToken } from '@controllers/invoiceController';
 import { creatorInvoice } from '@controllers/invoiceController';
@@ -35,6 +36,8 @@ router.get('/creator', getInvoicesByCreatorId);
 router.get('/:id', getInvoiceById);
 router.get('/', isSuperAdmin, getAllInvoices);
 router.get('/getInvoicesByCampaignId/:id', getInvoicesByCampaignId);
+
+router.get('/executeInvoice', generateMissingInvoices);
 
 router.get('/creator/:creatorId/campaign/:campaignId', getInvoiceByCreatorIdAndCampaignId);
 router.get('/creatorInvoice/:invoiceId', isLoggedIn, creatorInvoice);
