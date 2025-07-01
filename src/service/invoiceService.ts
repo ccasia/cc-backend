@@ -361,7 +361,7 @@ export async function findMissingInvoices() {
   }
 }
 
-// findMissingInvoices();
+findMissingInvoices();
 
 export async function generateInvoices() {
   const invoiceTo = {
