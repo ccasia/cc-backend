@@ -1319,8 +1319,6 @@ export const disconnectXeroIntegration = async (req: Request, res: Response) => 
 };
 
 export async function generateMissingInvoices(req: Request, res: Response) {
-  const invoiceNumber = await generateUniqueInvoiceNumber();
-
   const invoiceTo = {
     id: '1',
     name: 'Cult Creative',
@@ -1334,6 +1332,7 @@ export async function generateMissingInvoices(req: Request, res: Response) {
 
   try {
     for (const item of missingInvoices) {
+      const invoiceNumber = await generateUniqueInvoiceNumber();
       const agreement = await prisma.creatorAgreement.findFirst({
         where: {
           userId: item.userId,
