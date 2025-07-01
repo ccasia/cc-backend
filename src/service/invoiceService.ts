@@ -289,3 +289,61 @@ export const updateInvoices = async ({ bankAcc, userId }: { bankAcc: any; userId
     throw new Error(String(error));
   }
 };
+
+export async function findMissingInvoices() {
+  try {
+    const creators = await prisma.shortListedCreator.findMany({
+      where: {
+        isCampaignDone: true,
+      },
+      select: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            creator: true,
+          },
+        },
+        campaignId: true,
+        campaign: {
+          select: {
+            name: true,
+          },
+        },
+      },
+    });
+
+    for (const item of creators) {
+      // console.log(item);
+      const invoice = await prisma.invoice.findFirst({
+        where: {
+          AND: [
+            {
+              campaignId: item.campaignId,
+            },
+            {
+              user: {
+                id: item?.user?.id,
+              },
+            },
+          ],
+        },
+      });
+
+      if (!invoice) {
+        console.log(
+          `${item?.user?.name} (${item.user?.id})'s invoice is missing for campaign ${item.campaign.name} (${item.campaignId})`,
+        );
+      }
+    }
+
+    return;
+
+    // console.log(creators);
+  } catch (error) {
+    console.log(error);
+    throw new Error(error);
+  }
+}
+
+findMissingInvoices();
