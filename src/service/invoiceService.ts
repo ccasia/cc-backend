@@ -292,6 +292,8 @@ export const updateInvoices = async ({ bankAcc, userId }: { bankAcc: any; userId
 
 export async function findMissingInvoices() {
   try {
+    const missings = [];
+
     const creators = await prisma.shortListedCreator.findMany({
       where: {
         isCampaignDone: true,
@@ -336,12 +338,17 @@ export async function findMissingInvoices() {
         },
       });
 
+      const data = { userId: item.user?.id, campaignId: item.campaignId };
+
       if (!invoice) {
-        console.log(
-          `${item?.user?.name} (${item.user?.id})'s invoice is missing for campaign ${item.campaign.name} (${item.campaignId})`,
-        );
+        missings.push(data);
+        // console.log(
+        //   `${item?.user?.name} (${item.user?.id})'s invoice is missing for campaign ${item.campaign.name} (${item.campaignId})`,
+        // );
       }
     }
+
+    console.log(missings);
 
     return;
 
@@ -353,3 +360,7 @@ export async function findMissingInvoices() {
 }
 
 findMissingInvoices();
+
+// export async function generateInvoices(params: type) {
+
+// }
