@@ -23,7 +23,7 @@ export const handleDeleteAdminById = async (id: string) => {
       prisma.notification.deleteMany({ where: { userId: id } }),
       prisma.userNotification.deleteMany({ where: { userId: id } }),
       prisma.resetPasswordToken.deleteMany({ where: { userId: id } }),
-      prisma.invoice.deleteMany({ where: { adminId: id } }),
+      // prisma.invoice.deleteMany({ where: { adminId: id } }),
       prisma.campaignAdmin.deleteMany({ where: { adminId: admin.admin?.id } }),
     ]);
 
