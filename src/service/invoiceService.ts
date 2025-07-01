@@ -364,8 +364,6 @@ export async function findMissingInvoices() {
 // findMissingInvoices();
 
 export async function generateInvoices() {
-  const invoiceNumber = await generateUniqueInvoiceNumber();
-
   const invoiceTo = {
     id: '1',
     name: 'Cult Creative',
@@ -379,6 +377,8 @@ export async function generateInvoices() {
 
   try {
     for (const item of missingInvoices) {
+      const invoiceNumber = await generateUniqueInvoiceNumber();
+
       const agreement = await prisma.creatorAgreement.findFirst({
         where: {
           userId: item.userId,
