@@ -1349,6 +1349,8 @@ export async function generateMissingInvoices(req: Request, res: Response) {
         },
       });
 
+      console.log(agreement);
+
       const items = {
         title: 'Posting on social media',
         description: 'Posting on social media',
