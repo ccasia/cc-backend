@@ -382,6 +382,14 @@ export const getInstagramEngagementRateOverTime = async (
 
     const posts = res.data.data || [];
     
+    // Return empty data if no posts available
+    if (!posts || posts.length === 0) {
+      return {
+        engagementRates: [],
+        months: []
+      };
+    }
+    
     // Get follower count for engagement rate calculation
     const overviewRes = await axios.get('https://graph.instagram.com/v22.0/me', {
       params: {
@@ -390,7 +398,7 @@ export const getInstagramEngagementRateOverTime = async (
       },
     });
     
-    const followersCount = overviewRes.data.followers_count;
+    const followersCount = overviewRes.data.followers_count || 1;
     
     // Sort posts by timestamp (newest first)
     const sortedPosts = posts.sort((a: any, b: any) => 
@@ -441,6 +449,13 @@ export const getInstagramMonthlyInteractions = async (
     });
 
     const posts = res.data.data || [];
+    
+    // Return empty data if no posts available
+    if (!posts || posts.length === 0) {
+      return {
+        monthlyData: []
+      };
+    }
     
     // Sort posts by timestamp (newest first)
     const sortedPosts = posts.sort((a: any, b: any) => 
