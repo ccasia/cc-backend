@@ -17,6 +17,8 @@ import {
   getTikTokVideoById,
   refreshInstagramToken,
   refreshTikTokToken,
+  getInstagramEngagementRateOverTime,
+  getInstagramMonthlyInteractions,
 } from '@services/socialMediaService';
 
 // Type definitions
@@ -799,6 +801,31 @@ export const getInstagramMediaKit = async (req: Request, res: Response) => {
     const overview = await getInstagramOverviewService(accessToken);
     const medias = await getAllMediaObject(accessToken, overview.user_id, overview.media_count);
 
+    // Get analytics data for charts with error handling
+    let analytics: {
+      engagementRates: number[];
+      months: string[];
+      monthlyInteractions: { month: string; interactions: number }[];
+    } = {
+      engagementRates: [],
+      months: [],
+      monthlyInteractions: []
+    };
+    
+    try {
+      const engagementAnalytics = await getInstagramEngagementRateOverTime(accessToken);
+      const monthlyAnalytics = await getInstagramMonthlyInteractions(accessToken);
+      
+      analytics = {
+        engagementRates: engagementAnalytics.engagementRates,
+        months: engagementAnalytics.months,
+        monthlyInteractions: monthlyAnalytics.monthlyData
+      };
+    } catch (analyticsError) {
+      console.warn('Failed to fetch Instagram analytics data:', analyticsError);
+      // analytics remains as empty arrays - frontend will use fallback
+    }
+
     const instagramUser = await prisma.instagramUser.upsert({
       where: {
         creatorId: creator.id,
@@ -857,7 +884,11 @@ export const getInstagramMediaKit = async (req: Request, res: Response) => {
       });
     }
 
-    return res.status(200).json({ overview, medias });
+    return res.status(200).json({ 
+      overview, 
+      medias,
+      analytics
+    });
   } catch (error) {
     return res.status(400).json(error);
   }

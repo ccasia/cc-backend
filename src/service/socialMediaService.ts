@@ -365,3 +365,122 @@ export const getTikTokVideoById = async (accessToken: string, videoId: string) =
     throw new Error(`Failed to fetch TikTok video: ${error}`);
   }
 };
+
+// New function to calculate engagement rates over time for charts
+export const getInstagramEngagementRateOverTime = async (
+  accessToken: string,
+  limit: number = 25
+): Promise<{ engagementRates: number[], months: string[] }> => {
+  try {
+    const res = await axios.get(`https://graph.instagram.com/v22.0/me/media`, {
+      params: {
+        access_token: accessToken,
+        fields: 'id,like_count,comments_count,timestamp',
+        limit: limit,
+      },
+    });
+
+    const posts = res.data.data || [];
+    
+    // Get follower count for engagement rate calculation
+    const overviewRes = await axios.get('https://graph.instagram.com/v22.0/me', {
+      params: {
+        access_token: accessToken,
+        fields: 'followers_count',
+      },
+    });
+    
+    const followersCount = overviewRes.data.followers_count;
+    
+    // Sort posts by timestamp (newest first)
+    const sortedPosts = posts.sort((a: any, b: any) => 
+      new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    );
+    
+    // Get last 3 posts for engagement rate calculation
+    const lastThreePosts = sortedPosts.slice(0, 3);
+    
+    const engagementRates = lastThreePosts.map((post: any) => {
+      const totalEngagement = (post.like_count || 0) + (post.comments_count || 0);
+      const engagementRate = followersCount > 0 ? (totalEngagement / followersCount) * 100 : 0;
+      return parseFloat(engagementRate.toFixed(1));
+    });
+    
+    // Generate dynamic months (last 3 months)
+    const currentDate = new Date();
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const dynamicMonths: string[] = [];
+    
+    for (let i = 2; i >= 0; i--) {
+      const monthIndex = (currentDate.getMonth() - i + 12) % 12;
+      dynamicMonths.push(months[monthIndex]);
+    }
+    
+    return {
+      engagementRates,
+      months: dynamicMonths
+    };
+  } catch (error) {
+    console.error('Error calculating engagement rates over time:', error);
+    throw new Error(`Failed to calculate engagement rates: ${error}`);
+  }
+};
+
+// New function to calculate monthly interactions for bar chart
+export const getInstagramMonthlyInteractions = async (
+  accessToken: string,
+  limit: number = 25
+): Promise<{ monthlyData: { month: string, interactions: number }[] }> => {
+  try {
+    const res = await axios.get(`https://graph.instagram.com/v22.0/me/media`, {
+      params: {
+        access_token: accessToken,
+        fields: 'id,like_count,comments_count,timestamp',
+        limit: limit,
+      },
+    });
+
+    const posts = res.data.data || [];
+    
+    // Sort posts by timestamp (newest first)
+    const sortedPosts = posts.sort((a: any, b: any) => 
+      new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    );
+    
+    // Get last 3 posts for monthly interactions
+    const lastThreePosts = sortedPosts.slice(0, 3);
+    
+    // Generate dynamic months (last 3 months)
+    const currentDate = new Date();
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const dynamicMonths: string[] = [];
+    
+    for (let i = 2; i >= 0; i--) {
+      const monthIndex = (currentDate.getMonth() - i + 12) % 12;
+      dynamicMonths.push(months[monthIndex]);
+    }
+    
+    // Map posts to monthly data
+    const monthlyData = lastThreePosts.map((post: any, index: number) => {
+      const interactions = (post.like_count || 0) + (post.comments_count || 0);
+      return {
+        month: dynamicMonths[index] || dynamicMonths[0], // Fallback to first month if index out of bounds
+        interactions
+      };
+    });
+    
+    // Ensure we always have 3 data points (fill with defaults if needed)
+    while (monthlyData.length < 3) {
+      const monthIndex = monthlyData.length;
+      monthlyData.push({
+        month: dynamicMonths[monthIndex] || 'Jan',
+        interactions: 0
+      });
+    }
+    
+    return { monthlyData };
+  } catch (error) {
+    console.error('Error calculating monthly interactions:', error);
+    throw new Error(`Failed to calculate monthly interactions: ${error}`);
+  }
+};
