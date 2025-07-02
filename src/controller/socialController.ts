@@ -65,6 +65,41 @@ export interface ComparisonResult {
 
 const prisma = new PrismaClient();
 
+// Memory cache for campaign averages
+const campaignAveragesCache = new Map();
+const CAMPAIGN_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+
+const getCachedCampaignAverages = (campaignId: string, platform: string) => {
+  const cacheKey = `${campaignId}_${platform}`;
+  if (campaignAveragesCache.has(cacheKey)) {
+    const cached = campaignAveragesCache.get(cacheKey);
+    const isExpired = Date.now() - cached.timestamp > CAMPAIGN_CACHE_TTL;
+    if (!isExpired) {
+      console.log(`📦 Using cached campaign averages for ${platform} campaign ${campaignId}`);
+      return cached.data;
+    } else {
+      campaignAveragesCache.delete(cacheKey);
+    }
+  }
+  return null;
+};
+
+const setCachedCampaignAverages = (campaignId: string, platform: string, data: any) => {
+  const cacheKey = `${campaignId}_${platform}`;
+  campaignAveragesCache.set(cacheKey, {
+    data,
+    timestamp: Date.now()
+  });
+  
+  // Clean old cache entries (keep max 50)
+  if (campaignAveragesCache.size > 50) {
+    const entries = Array.from(campaignAveragesCache.entries());
+    entries.sort((a, b) => a[1].timestamp - b[1].timestamp);
+    const toRemove = entries.slice(0, campaignAveragesCache.size - 50);
+    toRemove.forEach(([key]) => campaignAveragesCache.delete(key));
+  }
+};
+
 interface InstagramData {
   user_id: string;
   permissions: string[];
@@ -1153,56 +1188,71 @@ export const getInstagramMediaInsight = async (req: Request, res: Response) => {
     if (campaignId) {
       console.log(`🎯 Calculating campaign averages for campaign: ${campaignId}`);
       
-      try {
-        // Get all campaign submission URLs (now includes both Instagram and TikTok)
-        const campaignUrls = await getCampaignSubmissionUrls(campaignId as string);
-        // Filter for Instagram URLs only
-        const instagramUrls = campaignUrls.filter(urlData => urlData.platform === 'Instagram');
-        console.log(`📊 Found ${instagramUrls.length} Instagram campaign URLs out of ${campaignUrls.length} total URLs`);
+      // Check cache first
+      const cachedAverages = getCachedCampaignAverages(campaignId as string, 'Instagram');
+      if (cachedAverages) {
+        campaignAverages = cachedAverages.averages;
+        campaignPostsCount = cachedAverages.postsCount;
+        campaignComparison = calculateCampaignComparison(insight, campaignAverages, campaignPostsCount);
+        console.log('Using cached campaign averages:', campaignAverages);
+      } else {
+        try {
+          // Get all campaign submission URLs (now includes both Instagram and TikTok)
+          const campaignUrls = await getCampaignSubmissionUrls(campaignId as string);
+          // Filter for Instagram URLs only
+          const instagramUrls = campaignUrls.filter(urlData => urlData.platform === 'Instagram');
+          console.log(`📊 Found ${instagramUrls.length} Instagram campaign URLs out of ${campaignUrls.length} total URLs`);
 
-        if (instagramUrls.length > 0) {
-          const campaignInsights = [];
+          if (instagramUrls.length > 0) {
+            const campaignInsights = [];
 
-          // Process each campaign URL to get insights
-          for (const urlData of instagramUrls) {
-            try {
-              const campaignShortCode = extractInstagramShortcode(urlData.url);
-              if (!campaignShortCode) continue;
+            // Process each campaign URL to get insights
+            for (const urlData of instagramUrls) {
+              try {
+                const campaignShortCode = extractInstagramShortcode(urlData.url);
+                if (!campaignShortCode) continue;
 
-              // Find the video in the user's media
-              const campaignVideo = videos.find((item: any) => item?.shortcode === campaignShortCode);
-              if (!campaignVideo) continue;
+                // Find the video in the user's media
+                const campaignVideo = videos.find((item: any) => item?.shortcode === campaignShortCode);
+                if (!campaignVideo) continue;
 
-              // Get insight for this campaign video
-              const campaignInsight = await getMediaInsight(accessToken, campaignVideo.id);
-              if (campaignInsight && campaignInsight.length > 0) {
-                campaignInsights.push(campaignInsight);
+                // Get insight for this campaign video
+                const campaignInsight = await getMediaInsight(accessToken, campaignVideo.id);
+                if (campaignInsight && campaignInsight.length > 0) {
+                  campaignInsights.push(campaignInsight);
+                }
+
+                // Reduced delay for better performance
+                await new Promise(resolve => setTimeout(resolve, 200));
+              } catch (error) {
+                console.error(`Error processing campaign URL ${urlData.url}:`, error);
+                continue;
               }
+            }
 
-              // Add delay to avoid rate limiting
-              await new Promise(resolve => setTimeout(resolve, 500));
-            } catch (error) {
-              console.error(`Error processing campaign URL ${urlData.url}:`, error);
-              continue;
+            console.log(`📈 Successfully processed ${campaignInsights.length} campaign posts`);
+            campaignPostsCount = campaignInsights.length;
+
+            // Calculate averages (reusing existing function)
+            if (campaignInsights.length > 0) {
+              campaignAverages = calculateCampaignAverages(campaignInsights);
+              
+              // Cache the result
+              setCachedCampaignAverages(campaignId as string, 'Instagram', {
+                averages: campaignAverages,
+                postsCount: campaignPostsCount
+              });
+              
+              // Compare current post with campaign averages (reusing existing function)
+              campaignComparison = calculateCampaignComparison(insight, campaignAverages, campaignInsights.length);
+              
+              console.log('Campaign averages calculated and cached:', campaignAverages);
             }
           }
-
-          console.log(`📈 Successfully processed ${campaignInsights.length} campaign posts`);
-          campaignPostsCount = campaignInsights.length;
-
-          // Calculate averages (reusing existing function)
-          if (campaignInsights.length > 0) {
-            campaignAverages = calculateCampaignAverages(campaignInsights);
-            
-            // Compare current post with campaign averages (reusing existing function)
-            campaignComparison = calculateCampaignComparison(insight, campaignAverages, campaignInsights.length);
-            
-            console.log('Campaign averages calculated:', campaignAverages);
-          }
+        } catch (error) {
+          console.error('Error calculating campaign averages:', error);
+          // Continue without campaign data if there's an error
         }
-      } catch (error) {
-        console.error('Error calculating campaign averages:', error);
-        // Continue without campaign data if there's an error
       }
     }
 
@@ -1398,70 +1448,85 @@ export const getTikTokVideoInsight = async (req: Request, res: Response) => {
     if (campaignId) {
       console.log(`🎯 Calculating TikTok campaign averages for campaign: ${campaignId}`);
       
-      try {
-        // Get all campaign submission URLs (now includes both Instagram and TikTok)
-        const campaignUrls = await getCampaignSubmissionUrls(campaignId as string);
-        // Filter for TikTok URLs only
-        const tiktokUrls = campaignUrls.filter(urlData => urlData.platform === 'TikTok');
-        console.log(`📊 Found ${tiktokUrls.length} TikTok campaign URLs out of ${campaignUrls.length} total URLs`);
+      // Check cache first
+      const cachedAverages = getCachedCampaignAverages(campaignId as string, 'TikTok');
+      if (cachedAverages) {
+        campaignAverages = cachedAverages.averages;
+        campaignPostsCount = cachedAverages.postsCount;
+        campaignComparison = calculateCampaignComparison(insight, campaignAverages, campaignPostsCount);
+        console.log('Using cached TikTok campaign averages:', campaignAverages);
+      } else {
+        try {
+          // Get all campaign submission URLs (now includes both Instagram and TikTok)
+          const campaignUrls = await getCampaignSubmissionUrls(campaignId as string);
+          // Filter for TikTok URLs only
+          const tiktokUrls = campaignUrls.filter(urlData => urlData.platform === 'TikTok');
+          console.log(`📊 Found ${tiktokUrls.length} TikTok campaign URLs out of ${campaignUrls.length} total URLs`);
 
-        if (tiktokUrls.length > 0) {
-          const campaignInsights = [];
+          if (tiktokUrls.length > 0) {
+            const campaignInsights = [];
 
-          // Process each campaign URL to get insights
-          for (const urlData of tiktokUrls) {
-            try {
-              const campaignVideoId = extractTikTokVideoId(urlData.url);
-              if (!campaignVideoId) continue;
+            // Process each campaign URL to get insights
+            for (const urlData of tiktokUrls) {
+              try {
+                const campaignVideoId = extractTikTokVideoId(urlData.url);
+                if (!campaignVideoId) continue;
 
-              // Get the video data for this campaign video
-              const campaignVideoResponse = await getTikTokVideoById(accessToken, campaignVideoId);
-              const campaignVideos = campaignVideoResponse?.data?.videos;
-              
-              if (!campaignVideos || campaignVideos.length === 0) continue;
+                // Get the video data for this campaign video
+                const campaignVideoResponse = await getTikTokVideoById(accessToken, campaignVideoId);
+                const campaignVideos = campaignVideoResponse?.data?.videos;
+                
+                if (!campaignVideos || campaignVideos.length === 0) continue;
 
-              const campaignVideo = campaignVideos[0];
+                const campaignVideo = campaignVideos[0];
 
-              // Create insight data from campaign video metrics
-              const campaignInsight = [
-                { name: 'views', value: campaignVideo.view_count || 0 },
-                { name: 'likes', value: campaignVideo.like_count || 0 },
-                { name: 'comments', value: campaignVideo.comment_count || 0 },
-                { name: 'shares', value: campaignVideo.share_count || 0 },
-                {
-                  name: 'total_interactions',
-                  value: (campaignVideo.like_count || 0) + (campaignVideo.comment_count || 0) + (campaignVideo.share_count || 0),
-                },
-              ];
+                // Create insight data from campaign video metrics
+                const campaignInsight = [
+                  { name: 'views', value: campaignVideo.view_count || 0 },
+                  { name: 'likes', value: campaignVideo.like_count || 0 },
+                  { name: 'comments', value: campaignVideo.comment_count || 0 },
+                  { name: 'shares', value: campaignVideo.share_count || 0 },
+                  {
+                    name: 'total_interactions',
+                    value: (campaignVideo.like_count || 0) + (campaignVideo.comment_count || 0) + (campaignVideo.share_count || 0),
+                  },
+                ];
 
-              if (campaignInsight && campaignInsight.length > 0) {
-                campaignInsights.push(campaignInsight);
+                if (campaignInsight && campaignInsight.length > 0) {
+                  campaignInsights.push(campaignInsight);
+                }
+
+                // Reduced delay for better performance
+                await new Promise(resolve => setTimeout(resolve, 500));
+              } catch (error) {
+                console.error(`Error processing TikTok campaign URL ${urlData.url}:`, error);
+                continue;
               }
+            }
 
-              // Add delay to avoid rate limiting
-              await new Promise(resolve => setTimeout(resolve, 1000)); // Longer delay for TikTok API
-            } catch (error) {
-              console.error(`Error processing TikTok campaign URL ${urlData.url}:`, error);
-              continue;
+            console.log(`📈 Successfully processed ${campaignInsights.length} TikTok campaign posts`);
+            campaignPostsCount = campaignInsights.length;
+
+            // Calculate averages (reusing existing function)
+            if (campaignInsights.length > 0) {
+              campaignAverages = calculateCampaignAverages(campaignInsights);
+              
+              // Cache the result
+              setCachedCampaignAverages(campaignId as string, 'TikTok', {
+                averages: campaignAverages,
+                postsCount: campaignPostsCount
+              });
+              
+              // Compare current post with campaign averages (reusing existing function)
+              campaignComparison = calculateCampaignComparison(insight, campaignAverages, campaignInsights.length);
+              
+              console.log('TikTok Campaign averages calculated and cached:', campaignAverages);
             }
           }
-
-          console.log(`📈 Successfully processed ${campaignInsights.length} TikTok campaign posts`);
-          campaignPostsCount = campaignInsights.length;
-
-          // Calculate averages (reusing existing function)
-          if (campaignInsights.length > 0) {
-            campaignAverages = calculateCampaignAverages(campaignInsights);
-            
-            // Compare current post with campaign averages (reusing existing function)
-            campaignComparison = calculateCampaignComparison(insight, campaignAverages, campaignInsights.length);
-            
-            console.log('TikTok Campaign averages calculated:', campaignAverages);
-          }
+        } catch (error) {
+          console.error('Error calculating TikTok campaign averages:', error);
+          // Continue without campaign data if there's an error
         }
-      } catch (error) {
-        console.error('Error calculating TikTok campaign averages:', error);
-        // Continue without campaign data if there's an error
       }
     }
 
