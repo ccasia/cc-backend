@@ -126,7 +126,11 @@ export const getInvoicesByCampaignId = async (req: Request, res: Response) => {
       },
       include: {
         creator: true,
-        campaign: true,
+        campaign: {
+          include: {
+            subscription: true
+          }
+        },
         user: true,
       },
     });
@@ -1098,7 +1102,11 @@ export const creatorInvoice = async (req: Request, res: Response) => {
         id: invoiceId,
       },
       include: {
-        campaign: true,
+        campaign: {
+          include: {
+            subscription: true
+          }
+        },
       },
     });
 
