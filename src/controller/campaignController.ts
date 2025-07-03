@@ -519,6 +519,16 @@ export const createCampaign = async (req: Request, res: Response) => {
 
         logChange('Created the Campaign', campaign.id, req);
 
+        // Get admin info for logging
+        const admin = await prisma.user.findUnique({
+          where: { id: req.session.userid },
+        });
+        const adminName = admin?.name || 'Admin';
+
+        // Log admin activity for campaign creation
+        const adminActivityMessage = `${adminName} created ${campaign.name}`;
+        await logChange(adminActivityMessage, campaign.id, req);
+
         const adminId = req.session.userid;
         if (adminId) {
           const adminLogMessage = `Created campaign - "${campaign.name}" `;
@@ -1173,6 +1183,12 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
     });
 
     if (pitch) {
+      // Log the pitch submission in campaign logs for Creator Activities tab
+      const creatorName = user?.name || 'Unknown Creator';
+      const campaignName = campaign?.name || 'Unknown Campaign';
+      const logMessage = `${creatorName} pitched for ${campaignName}`;
+      await logChange(logMessage, campaignId, req);
+
       const notification = notificationPitch(pitch.campaign.name, 'Creator');
       const newPitch = await saveNotification({
         userId: user?.id as string,
@@ -1532,6 +1548,16 @@ export const editCampaignInfo = async (req: Request, res: Response) => {
     const message = 'Updated campaign information';
     logChange(message, id, req);
 
+    // Get admin info for logging
+    const admin = await prisma.user.findUnique({
+      where: { id: adminId },
+    });
+    const adminName = admin?.name || 'Admin';
+
+    // Log admin activity for editing campaign details
+    const adminActivityMessage = `${adminName} edited the Campaign Details`;
+    await logChange(adminActivityMessage, id, req);
+
     if (adminId) {
       const adminLogMessage = `Updated campaign info for campaign - ${name}`;
       logAdminChange(adminLogMessage, adminId, req);
@@ -1599,11 +1625,11 @@ export const editCampaignDosAndDonts = async (req: Request, res: Response) => {
       },
     });
 
-    const message = 'Dos and don’ts updated successfully.';
+    const message = "Dos and don'ts updated successfully.";
     logChange(message, campaignId, req);
     const adminId = req.session.userid;
     if (adminId) {
-      const adminLogMessage = `Updated do's and don’ts.`;
+      const adminLogMessage = "Updated do's and don'ts.";
       logAdminChange(adminLogMessage, adminId, req);
     }
     return res.status(200).json({ message: message, ...updatedCampaignBrief });
@@ -1826,7 +1852,18 @@ export const changePitchStatus = async (req: Request, res: Response) => {
     if (!existingPitch.user.creator?.isFormCompleted)
       return res.status(404).json({ message: 'Payment form not completed.' });
 
+    // Get admin info for logging
+    const admin = await prisma.user.findUnique({
+      where: { id: adminId },
+    });
+    const adminName = admin?.name || 'Admin';
+    const creatorName = existingPitch.user.name || 'Creator';
+
     if (status === 'approved') {
+      // Log admin activity for pitch approval
+      const adminActivityMessage = `${adminName} approved ${creatorName}'s pitch`;
+      await logChange(adminActivityMessage, existingPitch.campaignId, req);
+
       await prisma.$transaction(
         async (tx) => {
           const pitch = await prisma.pitch.update({
@@ -2003,7 +2040,11 @@ export const changePitchStatus = async (req: Request, res: Response) => {
 
           if (socketId) {
             io.to(socketId).emit('notification', data);
-            io.to(socketId).emit('shortlisted', { message: 'shortlisted' });
+            io.to(socketId).emit('shortlisted', {
+              message: 'shortlisted',
+              campaignId: pitch.campaign.id,
+              campaignName: pitch.campaign.name,
+            });
           }
 
           // Fetching admins for the campaign
@@ -2072,6 +2113,10 @@ export const changePitchStatus = async (req: Request, res: Response) => {
         },
       );
     } else {
+      // Log admin activity for pitch rejection
+      const adminActivityMessage = `${adminName} rejected ${creatorName}'s pitch`;
+      await logChange(adminActivityMessage, existingPitch.campaignId, req);
+
       const pitch = await prisma.pitch.update({
         where: {
           id: existingPitch.id,
@@ -2849,7 +2894,15 @@ export const shortlistCreator = async (req: Request, res: Response) => {
             shortlisted(creator.email, campaign.name, creator.name ?? 'Creator', campaign.id, image[0]);
 
             const socketId = clients.get(creator.id);
-            if (socketId) io.to(socketId).emit('notification', notification);
+            if (socketId) {
+              io.to(socketId).emit('notification', notification);
+              // Emit shortlisted event with campaign data for popup
+              io.to(socketId).emit('shortlisted', {
+                message: 'shortlisted',
+                campaignId: campaign.id,
+                campaignName: campaign.name,
+              });
+            }
 
             if (!campaign.thread) throw new Error('Campaign thread not found');
 
@@ -2967,6 +3020,19 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Campaign not found' });
     }
 
+    // Get current agreement amount for comparison
+    const currentAgreement = await prisma.creatorAgreement.findUnique({
+      where: { id: agreementId },
+    });
+
+    // Get admin info for logging
+    const adminId = req.session.userid;
+    const admin = await prisma.user.findUnique({
+      where: { id: adminId },
+    });
+    const adminName = admin?.name || 'Admin';
+    const creatorName = creator.name || 'Creator';
+
     // Update shortlisted creator first
     await prisma.shortListedCreator.updateMany({
       where: {
@@ -3016,6 +3082,37 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
         },
       },
     });
+
+    // Log admin activity for amount change if amount was actually changed (not just set for the first time)
+    if (currentAgreement && currentAgreement.amount && currentAgreement.amount !== paymentAmount) {
+      const oldAmount = currentAgreement.amount;
+      const newAmount = paymentAmount;
+      const oldCurrency = currentAgreement.currency || 'MYR'; // Get the previous currency
+      const newCurrency = currency; // Use the new currency from the request
+
+      // Get currency symbol based on currency code
+      const getCurrencySymbol = (currencyCode: string) => {
+        switch (currencyCode) {
+          case 'SGD':
+          case 'AUD':
+          case 'USD':
+            return '$';
+          case 'MYR':
+            return 'RM';
+          case 'JPY':
+            return '¥';
+          case 'IDR':
+            return 'Rp';
+          default:
+            return 'RM'; // Default fallback
+        }
+      };
+
+      const oldCurrencySymbol = getCurrencySymbol(oldCurrency);
+      const newCurrencySymbol = getCurrencySymbol(newCurrency);
+      const adminActivityMessage = `${adminName} changed the amount from ${oldCurrencySymbol}${oldAmount} to ${newCurrencySymbol}${newAmount} on the Agreement for ${creatorName}`;
+      await logChange(adminActivityMessage, campaignId, req);
+    }
 
     console.log('Updated agreement:', updatedAgreement);
 
@@ -3110,6 +3207,17 @@ export const sendAgreement = async (req: Request, res: Response) => {
         isAgreementReady: true,
       },
     });
+
+    // Get admin info for logging
+    const admin = await prisma.user.findUnique({
+      where: { id: adminId },
+    });
+    const adminName = admin?.name || 'Admin';
+    const creatorName = isUserExist.name || 'Creator';
+
+    // Log admin activity for sending agreement
+    const adminActivityMessage = `${adminName} sent the Agreement to ${creatorName}`;
+    await logChange(adminActivityMessage, campaignId, req);
 
     if (adminId) {
       const adminLogMessage = `Sent Agreement  to ${user.name} in campaign - ${campaign.name} `;
@@ -4189,6 +4297,13 @@ export const removeCreatorFromCampaign = async (req: Request, res: Response) => 
             },
           ],
         },
+        include: {
+          creator: {
+            include: {
+              user: true,
+            },
+          },
+        },
       });
 
       if (invoice) {
@@ -4197,6 +4312,10 @@ export const removeCreatorFromCampaign = async (req: Request, res: Response) => 
             id: invoice.id,
           },
         });
+
+        // Remove the invoice deletion logging for withdrawal - it should not appear in Invoice Actions
+        // const logMessage = `Deleted invoice ${invoice.invoiceNumber} for creator "${user.name}" during withdrawal from campaign`;
+        // await logChange(logMessage, campaign.id, req);
       }
 
       const pitch = await tx.pitch.findFirst({
@@ -4213,6 +4332,12 @@ export const removeCreatorFromCampaign = async (req: Request, res: Response) => 
 
     const adminLogMessage = `Withdrew Creator "${user.name}" From - ${campaign.name} `;
     logAdminChange(adminLogMessage, adminId, req);
+
+    // Log the creator withdrawal in campaign logs
+    const admin = await prisma.user.findUnique({ where: { id: adminId } });
+    const adminName = admin?.name || 'Admin';
+    const adminActivityMessage = `${adminName} withdrew ${user.name} from the campaign`;
+    await logChange(adminActivityMessage, campaign.id, req);
 
     return res.status(200).json({ message: 'Successfully withdraw' });
   } catch (error) {
@@ -4384,7 +4509,15 @@ export const shortlistCreatorV2 = async (req: Request, res: Response) => {
           shortlisted(creator.email, campaign.name, creator.name ?? 'Creator', campaign.id, image[0]);
 
           const socketId = clients.get(creator.id);
-          if (socketId) io.to(socketId).emit('notification', notification);
+          if (socketId) {
+            io.to(socketId).emit('notification', notification);
+            // Emit shortlisted event with campaign data for popup
+            io.to(socketId).emit('shortlisted', {
+              message: 'shortlisted',
+              campaignId: campaign.id,
+              campaignName: campaign.name,
+            });
+          }
 
           if (!campaign.thread) throw new Error('Campaign thread not found');
 
@@ -4414,6 +4547,112 @@ export const shortlistCreatorV2 = async (req: Request, res: Response) => {
     if (error?.message) {
       return res.status(400).json(error?.message);
     }
+    return res.status(400).json(error);
+  }
+};
+
+export const resendAgreement = async (req: Request, res: Response) => {
+  const { userId, campaignId } = req.body;
+  const adminId = req.session.userid;
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        creator: true,
+      },
+    });
+
+    const campaign = await prisma.campaign.findUnique({
+      where: { id: campaignId },
+      select: {
+        name: true,
+        agreementTemplate: true,
+      },
+    });
+
+    if (!user || !campaign) {
+      return res.status(404).json({ message: 'User or campaign not found.' });
+    }
+
+    // Find the agreement
+    const agreement = await prisma.creatorAgreement.findFirst({
+      where: {
+        userId: userId,
+        campaignId: campaignId,
+      },
+    });
+
+    if (!agreement) {
+      return res.status(404).json({ message: 'Agreement not found.' });
+    }
+
+    // Update the agreement status for resend
+    await prisma.creatorAgreement.update({
+      where: {
+        id: agreement.id,
+      },
+      data: {
+        isSent: true,
+        completedAt: new Date(),
+        approvedByAdminId: adminId,
+      },
+    });
+
+    // Update shortlisted creator table
+    const shortlistedCreator = await prisma.shortListedCreator.findFirst({
+      where: {
+        userId: userId,
+        campaignId: campaignId,
+      },
+    });
+
+    if (shortlistedCreator) {
+      await prisma.shortListedCreator.update({
+        where: {
+          id: shortlistedCreator.id,
+        },
+        data: {
+          isAgreementReady: true,
+        },
+      });
+    }
+
+    // Get admin info for logging
+    const admin = await prisma.user.findUnique({
+      where: { id: adminId },
+    });
+    const adminName = admin?.name || 'Admin';
+    const creatorName = user.name || 'Creator';
+
+    // Log admin activity for resending agreement
+    const adminActivityMessage = `${adminName} resent the Agreement to ${creatorName}`;
+    await logChange(adminActivityMessage, campaignId, req);
+
+    if (adminId) {
+      const adminLogMessage = `Resent Agreement to ${user.name} in campaign - ${campaign.name}`;
+      logAdminChange(adminLogMessage, adminId, req);
+    }
+
+    const { title, message } = notificationSignature(campaign.name);
+
+    const notification = await saveNotification({
+      userId: userId,
+      title: title,
+      message: message,
+      entity: 'Agreement',
+      entityId: campaignId,
+    });
+
+    const socketId = clients.get(userId);
+
+    if (socketId) {
+      io.to(socketId).emit('notification', notification);
+      io.to(clients.get(userId)).emit('agreementReady');
+    }
+
+    return res.status(200).json({ message: 'Agreement resent successfully.' });
+  } catch (error) {
     return res.status(400).json(error);
   }
 };

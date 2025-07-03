@@ -19,6 +19,7 @@ import {
   updateProfileCreator,
   registerFinanceUser,
   resendVerificationLinkCreator,
+  deleteAccount,
 } from '@controllers/authController';
 
 import { validateToken } from '@utils/jwtHelper';
@@ -63,5 +64,7 @@ router.put('/updateCreator', isLoggedIn, updateCreator);
 
 router.patch('/updateProfileCreator', updateProfileCreator);
 router.patch('/changePassword', validateToken, changePassword);
+
+router.delete('/account', isLoggedIn, deleteAccount);
 
 export default router;

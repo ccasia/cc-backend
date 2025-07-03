@@ -309,8 +309,8 @@ export const exportCreatorsToSpreadsheet = async (): Promise<string> => {
                 user.phoneNumber || '',
                 user.country || '',
                 formatDateTimeMY(user.createdAt),
-                socialHandlesString || ''
-              ]
+                socialHandlesString || '',
+              ],
             });
           }
         } else {
