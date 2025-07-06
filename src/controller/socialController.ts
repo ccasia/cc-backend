@@ -19,6 +19,8 @@ import {
   refreshTikTokToken,
   getInstagramEngagementRateOverTime,
   getInstagramMonthlyInteractions,
+  getTikTokEngagementRateOverTime,
+  getTikTokMonthlyInteractions,
 } from '@services/socialMediaService';
 import { batchRequests } from '@helper/batchRequests';
 
@@ -820,19 +822,20 @@ export const getInstagramMediaKit = async (req: Request, res: Response) => {
 
     if (!creator) return res.status(404).json({ message: 'Creator not found' });
 
-    if (!creator.isFacebookConnected)
+    if (!creator.isFacebookConnected) {
       return res.status(400).json({ message: 'Creator is not connected to instagram account' });
+    }
 
     if (dayjs().isAfter(dayjs.unix(creator?.instagramUser?.expiresIn!))) {
       return res.status(400).json({ message: 'Instagram Token expired' });
     }
 
     const encryptedAccessToken = creator.instagramUser?.accessToken;
-    if (!encryptedAccessToken) return res.status(404).json({ message: 'Access token not found' });
+    if (!encryptedAccessToken) {
+      return res.status(404).json({ message: 'Access token not found' });
+    }
 
     const accessToken = decryptToken(encryptedAccessToken as any);
-    // const accessToken = 'IGAAIGNU09lZBhBZAE9OSDE4VWVja1BhZA2pMOWkzVG9nTkJVWnZA0QkhKMlFXdTBVbW1fS0tUQWl5RE1BQTY4N0ktODhUQjRIU1RWQ1hBcHdmbWdUSTlBOVE2QVBELXN1azQzNFhSZA2dBWi1PVjhWaUxmaWZAMekl4U2FMMWJLWDk5awZDZD';
-
 
     const overview = await getInstagramOverviewService(accessToken);
     const medias = await getAllMediaObject(accessToken, overview.user_id, overview.media_count);
@@ -858,7 +861,7 @@ export const getInstagramMediaKit = async (req: Request, res: Response) => {
         monthlyInteractions: monthlyAnalytics.monthlyData
       };
     } catch (analyticsError) {
-      console.warn('Failed to fetch Instagram analytics data:', analyticsError);
+      console.error('Failed to fetch Instagram analytics:', analyticsError);
       // analytics remains as empty arrays - frontend will use fallback
     }
 
@@ -926,6 +929,7 @@ export const getInstagramMediaKit = async (req: Request, res: Response) => {
       analytics
     });
   } catch (error) {
+    console.error('Error in getInstagramMediaKit:', error);
     return res.status(400).json(error);
   }
 };
@@ -1578,6 +1582,181 @@ export const getTikTokVideoInsight = async (req: Request, res: Response) => {
     console.error('Error getting TikTok video insight:', error);
     return res.status(400).json({
       message: 'Failed to get TikTok video insight',
+      error: error.message,
+    });
+  }
+};
+
+export const getTikTokMediaKit = async (req: Request, res: Response) => {
+  const { userId } = req.params;
+
+  if (!userId) return res.status(404).json({ message: 'Parameter missing: userId' });
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        creator: {
+          include: {
+            tiktokUser: {
+              include: {
+                tiktokVideo: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    if (!user.creator) return res.status(404).json({ message: 'Creator profile not found' });
+
+    // Use the helper function to ensure we have a valid token
+    let accessToken: string;
+    try {
+      accessToken = await ensureValidTikTokToken(user.id);
+    } catch (tokenError) {
+      console.error('TikTok token error:', tokenError.message);
+      return res.status(400).json({ 
+        message: tokenError.message,
+        requiresReconnection: true 
+      });
+    }
+
+    // Get TikTok user profile overview
+    const overviewRes = await axios.get('https://open.tiktokapis.com/v2/user/info/', {
+      params: {
+        fields: 'open_id,union_id,display_name,avatar_url,following_count,follower_count,likes_count',
+      },
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    const overview = overviewRes.data.data.user;
+
+    // Get TikTok videos data
+    const videosRes = await axios.post(
+      'https://open.tiktokapis.com/v2/video/list/',
+      { max_count: 20 },
+      {
+        params: {
+          fields: 'id,title,video_description,duration,cover_image_url,embed_link,embed_html,like_count,comment_count,share_count,view_count,create_time',
+        },
+        headers: { 
+          Authorization: `Bearer ${accessToken}`, 
+          'Content-Type': 'application/json' 
+        },
+      }
+    );
+
+    const videos = videosRes.data.data?.videos || [];
+
+    // Calculate analytics from videos
+    const totalLikes = videos.reduce((sum: number, video: any) => sum + (video.like_count || 0), 0);
+    const totalComments = videos.reduce((sum: number, video: any) => sum + (video.comment_count || 0), 0);
+    const totalShares = videos.reduce((sum: number, video: any) => sum + (video.share_count || 0), 0);
+    const totalViews = videos.reduce((sum: number, video: any) => sum + (video.view_count || 0), 0);
+    
+    const averageLikes = videos.length > 0 ? totalLikes / videos.length : 0;
+    const averageComments = videos.length > 0 ? totalComments / videos.length : 0;
+    const averageShares = videos.length > 0 ? totalShares / videos.length : 0;
+    const averageViews = videos.length > 0 ? totalViews / videos.length : 0;
+
+    // Get analytics data for charts with error handling
+    let analytics: {
+      engagementRates: number[];
+      months: string[];
+      monthlyInteractions: { month: string; interactions: number }[];
+    } = {
+      engagementRates: [],
+      months: [],
+      monthlyInteractions: []
+    };
+    
+    try {
+      const engagementAnalytics = await getTikTokEngagementRateOverTime(accessToken);
+      const monthlyAnalytics = await getTikTokMonthlyInteractions(accessToken);
+      
+      analytics = {
+        engagementRates: engagementAnalytics.engagementRates,
+        months: engagementAnalytics.months,
+        monthlyInteractions: monthlyAnalytics.monthlyData
+      };
+    } catch (analyticsError) {
+      console.error('Failed to fetch TikTok analytics:', analyticsError);
+      // analytics remains as empty arrays - frontend will use fallback
+    }
+    
+    // Calculate engagement rate using the calculated values
+    const engagement_rate = overview.follower_count 
+      ? ((totalLikes + totalComments) / overview.follower_count) * 100 
+      : 0;
+
+    // Update TikTok user data in database
+    await prisma.tiktokUser.upsert({
+      where: { creatorId: user.creator.id },
+      update: {
+        display_name: overview.display_name,
+        avatar_url: overview.avatar_url,
+        following_count: overview.following_count,
+        follower_count: overview.follower_count,
+        likes_count: overview.likes_count,
+        totalLikes: totalLikes,
+        totalComments: totalComments,
+        averageLikes: averageLikes,
+        averageComments: averageComments,
+        engagement_rate: engagement_rate,
+        lastUpdated: new Date(),
+      } as any,
+      create: {
+        creatorId: user.creator.id,
+        display_name: overview.display_name,
+        avatar_url: overview.avatar_url,
+        following_count: overview.following_count,
+        follower_count: overview.follower_count,
+        likes_count: overview.likes_count,
+        totalLikes: totalLikes,
+        totalComments: totalComments,
+        averageLikes: averageLikes,
+        averageComments: averageComments,
+        engagement_rate: engagement_rate,
+        lastUpdated: new Date(),
+      } as any,
+    });
+
+    // Prepare response data structure similar to Instagram
+    const responseData = {
+      overview: {
+        display_name: overview.display_name,
+        follower_count: overview.follower_count,
+        following_count: overview.following_count,
+        likes_count: overview.likes_count,
+      },
+      medias: {
+        sortedVideos: videos.slice(0, 5), // Top 5 videos for display
+        averageLikes: Math.round(averageLikes),
+        averageComments: Math.round(averageComments),
+        averageShares: Math.round(averageShares),
+        averageViews: Math.round(averageViews),
+        totalLikes,
+        totalComments,
+        totalShares,
+        totalViews,
+      },
+      analytics: analytics,
+      tiktokUser: {
+        display_name: overview.display_name,
+        follower_count: overview.follower_count,
+        following_count: overview.following_count,
+        likes_count: overview.likes_count,
+      },
+    };
+
+    return res.status(200).json(responseData);
+
+  } catch (error: any) {
+    console.error('Error in getTikTokMediaKit:', error);
+    return res.status(400).json({
+      message: 'Failed to get TikTok media kit data',
       error: error.message,
     });
   }
