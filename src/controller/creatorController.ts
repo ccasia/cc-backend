@@ -8,6 +8,13 @@ import { updateInvoices } from '@services/invoiceService';
 import { exportCreatorsToSpreadsheet } from '@services/creatorsSpreadsheetService';
 import { createKanbanBoard } from './kanbanController';
 import { createCampaignCreatorSpreadSheet } from '@services/google_sheets/sheets';
+import {
+  getInstagramEngagementRateOverTime,
+  getInstagramMonthlyInteractions,
+  getTikTokEngagementRateOverTime,
+  getTikTokMonthlyInteractions,
+} from '@services/socialMediaService';
+import { decryptToken } from '@helper/encrypt';
 
 const prisma = new PrismaClient();
 
@@ -922,4 +929,135 @@ export const createCampaignCreator = async (req: Request, res: Response) => {
   //   console.error(err);
   //   res.status(500).json({ message: 'Failed to update spreadsheet', error: err.message });
   // }
+};
+
+export const getCreatorAnalytics = async (req: Request, res: Response) => {
+  const { userId } = req.params;
+  try {
+    // Get creator and tokens
+    const creator = await prisma.creator.findUnique({
+      where: { userId },
+      include: {
+        instagramUser: true,
+        tiktokUser: true,
+      },
+    });
+    if (!creator) return res.status(404).json({ message: 'Creator not found' });
+
+    // Instagram
+    let instagramAnalytics = null;
+    if (creator.instagramUser && creator.instagramUser.accessToken) {
+      try {
+        const accessToken = decryptToken(creator.instagramUser.accessToken as { iv: string; content: string });
+        
+        // Get real-time analytics from Instagram API
+        const engagement = await getInstagramEngagementRateOverTime(accessToken);
+        const monthly = await getInstagramMonthlyInteractions(accessToken);
+        
+        // Calculate overall engagement rate
+        const totalEngagement = (creator.instagramUser.totalLikes || 0) + (creator.instagramUser.totalComments || 0);
+        const overallEngagementRate = creator.instagramUser.followers_count 
+          ? (totalEngagement / creator.instagramUser.followers_count) * 100 
+          : 0;
+
+        instagramAnalytics = {
+          followers: creator.instagramUser.followers_count || 0,
+          engagement_rate: parseFloat(overallEngagementRate.toFixed(1)),
+          averageLikes: creator.instagramUser.averageLikes || 0,
+          averageComments: creator.instagramUser.averageComments || 0,
+          totalLikes: creator.instagramUser.totalLikes || 0,
+          totalComments: creator.instagramUser.totalComments || 0,
+          engagementRates: engagement.engagementRates,
+          months: engagement.months,
+          monthlyInteractions: monthly.monthlyData,
+        };
+      } catch (error) {
+        console.error('Error fetching Instagram analytics:', error);
+        // Return null analytics on error
+        instagramAnalytics = null;
+      }
+    }
+
+    // TikTok
+    let tiktokAnalytics = null;
+    if (creator.tiktokUser) {
+      try {
+        // Check if we have access token for real-time analytics
+        const tiktokData = creator.tiktokData as any;
+        if (tiktokData?.access_token) {
+          const accessToken = decryptToken(tiktokData.access_token as { iv: string; content: string });
+          
+          // Get real-time analytics from TikTok API
+          const engagement = await getTikTokEngagementRateOverTime(accessToken);
+          const monthly = await getTikTokMonthlyInteractions(accessToken);
+          
+          // Calculate overall engagement rate
+          const totalEngagement = (creator.tiktokUser.likes_count || 0);
+          const overallEngagementRate = creator.tiktokUser.follower_count 
+            ? (totalEngagement / creator.tiktokUser.follower_count) * 100 
+            : 0;
+
+          tiktokAnalytics = {
+            followers: creator.tiktokUser.follower_count || 0,
+            engagement_rate: parseFloat(overallEngagementRate.toFixed(1)),
+            averageLikes: (creator.tiktokUser as any).averageLikes || 0,
+            totalLikes: (creator.tiktokUser as any).totalLikes || 0,
+            averageComments: (creator.tiktokUser as any).averageComments || 0,
+            totalComments: (creator.tiktokUser as any).totalComments || 0,
+            engagementRates: engagement.engagementRates,
+            months: engagement.months,
+            monthlyInteractions: monthly.monthlyData,
+          };
+        } else {
+          // Fallback to stored data only
+          const totalEngagement = creator.tiktokUser.likes_count || 0;
+          const engagementRate = creator.tiktokUser.follower_count 
+            ? (totalEngagement / creator.tiktokUser.follower_count) * 100 
+            : 0;
+
+          tiktokAnalytics = {
+            followers: creator.tiktokUser.follower_count || 0,
+            engagement_rate: parseFloat(engagementRate.toFixed(1)),
+            averageLikes: (creator.tiktokUser as any).averageLikes || 0,
+            totalLikes: (creator.tiktokUser as any).totalLikes || 0,
+            averageComments: (creator.tiktokUser as any).averageComments || 0,
+            totalComments: (creator.tiktokUser as any).totalComments || 0,
+            engagementRates: [],
+            months: [],
+            monthlyInteractions: [],
+          };
+        }
+      } catch (error) {
+        console.error('Error fetching TikTok analytics:', error);
+        // Fallback to basic stored data
+        const totalEngagement = creator.tiktokUser.likes_count || 0;
+        const engagementRate = creator.tiktokUser.follower_count 
+          ? (totalEngagement / creator.tiktokUser.follower_count) * 100 
+          : 0;
+
+        tiktokAnalytics = {
+          followers: creator.tiktokUser.follower_count || 0,
+          engagement_rate: parseFloat(engagementRate.toFixed(1)),
+          averageLikes: (creator.tiktokUser as any).averageLikes || 0,
+          totalLikes: (creator.tiktokUser as any).totalLikes || 0,
+          averageComments: (creator.tiktokUser as any).averageComments || 0,
+          totalComments: (creator.tiktokUser as any).totalComments || 0,
+          engagementRates: [],
+          months: [],
+          monthlyInteractions: [],
+        };
+      }
+    }
+
+    return res.status(200).json({
+      instagram: instagramAnalytics,
+      tiktok: tiktokAnalytics,
+    });
+  } catch (error) {
+    console.error('Error in getCreatorAnalytics:', error);
+    return res.status(500).json({ 
+      message: 'Failed to fetch analytics',
+      error: error.message 
+    });
+  }
 };
