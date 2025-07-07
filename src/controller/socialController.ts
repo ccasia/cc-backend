@@ -853,6 +853,8 @@ export const getInstagramMediaKit = async (req: Request, res: Response) => {
       });
     }
 
+    console.log({ instagramUser, medias });
+
     return res.status(200).json({ instagramUser, medias });
   } catch (error) {
     console.log(error);
