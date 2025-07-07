@@ -128,6 +128,8 @@ export const getInstagramAccessToken = async (code: string) => {
       expires_in: expiredDate,
     };
 
+    console.log('DSADSAD', data);
+
     return data;
   } catch (error) {
     throw new Error(error);

@@ -721,6 +721,8 @@ export const handleInstagramCallback = async (req: Request, res: Response) => {
   try {
     const data = await getInstagramAccessToken(code as string);
 
+    console.log(data);
+
     await prisma.$transaction(async (tx) => {
       const user = await tx.creator.findUnique({
         where: {
@@ -729,8 +731,6 @@ export const handleInstagramCallback = async (req: Request, res: Response) => {
       });
 
       if (!user) throw new Error('User not found');
-
-      console.log(data);
 
       await tx.instagramUser.upsert({
         where: {
