@@ -1216,7 +1216,6 @@ export const getInstagramMediaInsight = async (req: Request, res: Response) => {
     let campaignComparison = null;
     let campaignPostsCount = 0;
 
-    // Updated section in getInstagramMediaInsight function
     if (campaignId) {
       console.log(`🎯 Calculating campaign averages for campaign: ${campaignId}`);
       
@@ -1235,50 +1234,56 @@ export const getInstagramMediaInsight = async (req: Request, res: Response) => {
           const instagramUrls = campaignUrls.filter(urlData => urlData.platform === 'Instagram');
           console.log(`📊 Found ${instagramUrls.length} Instagram campaign URLs out of ${campaignUrls.length} total URLs`);
 
-        if (instagramUrls.length > 0) {
+          if (instagramUrls.length > 0) {
+            // Process each campaign URL to get insights
+            const campaignInsightsResults = await batchRequests(
+              instagramUrls,
+              async (urlData, index) => {
+                const campaignShortCode = extractInstagramShortcode(urlData.url);
+                if (!campaignShortCode) return null;
 
-          // Process each campaign URL to get insights
-          const campaignInsightsResults = await batchRequests(
-            instagramUrls,
-            async (urlData, index) => {
-              const campaignShortCode = extractInstagramShortcode(urlData.url);
-              if (!campaignShortCode) return null;
+                const campaignVideo = videos.find((item: any) => item?.shortcode === campaignShortCode);
+                if (!campaignVideo) return null;
 
-              const campaignVideo = videos.find((item: any) => item?.shortcode === campaignShortCode);
-              if (!campaignVideo) return null;
+                try {
+                  const campaignInsight = await getMediaInsight(accessToken, campaignVideo.id);
+                  return campaignInsight && campaignInsight.length > 0 ? campaignInsight : null;
+                } catch (error) {
+                  console.error(`Error processing campaign URL ${urlData.url}:`, error);
+                  return null;
+                }
+              },
+              2, // Process 2 at a time
+              800 // 800ms delay between batches
+            );
 
-              try {
-                const campaignInsight = await getMediaInsight(accessToken, campaignVideo.id);
-                return campaignInsight && campaignInsight.length > 0 ? campaignInsight : null;
-              } catch (error) {
-                console.error(`Error processing campaign URL ${urlData.url}:`, error);
-                return null;
-              }
-            },
-            2, // Process 2 at a time
-            800 // 800ms delay between batches
-          );
+            const campaignInsights = campaignInsightsResults
+              .filter(result => result.status === 'fulfilled' && result.value !== null)
+              .map(result => result.value);
 
-          const campaignInsights = campaignInsightsResults
-            .filter(result => result.status === 'fulfilled' && result.value !== null)
-            .map(result => result.value);
+            console.log(`📈 Successfully processed ${campaignInsights.length} campaign posts`);
+            campaignPostsCount = campaignInsights.length;
 
-          console.log(`📈 Successfully processed ${campaignInsights.length} campaign posts`);
-          campaignPostsCount = campaignInsights.length;
-
-          // Calculate averages (reusing existing function)
-          if (campaignInsights.length > 0) {
-            campaignAverages = calculateCampaignAverages(campaignInsights);
-            
-            // Compare current post with campaign averages (reusing existing function)
-            campaignComparison = calculateCampaignComparison(insight, campaignAverages, campaignInsights.length);
-            
-            console.log('Campaign averages calculated:', campaignAverages);
+            // Calculate averages (reusing existing function)
+            if (campaignInsights.length > 0) {
+              campaignAverages = calculateCampaignAverages(campaignInsights);
+              
+              // Cache the result
+              setCachedCampaignAverages(campaignId as string, 'Instagram', {
+                averages: campaignAverages,
+                postsCount: campaignPostsCount
+              });
+              
+              // Compare current post with campaign averages (reusing existing function)
+              campaignComparison = calculateCampaignComparison(insight, campaignAverages, campaignInsights.length);
+              
+              console.log('Campaign averages calculated and cached:', campaignAverages);
+            }
           }
+        } catch (error) {
+          console.error('Error calculating campaign averages:', error);
+          // Continue without campaign data if there's an error
         }
-      } catch (error) {
-        console.error('Error calculating campaign averages:', error);
-        // Continue without campaign data if there's an error
       }
     }
 
@@ -1489,65 +1494,71 @@ export const getTikTokVideoInsight = async (req: Request, res: Response) => {
           const tiktokUrls = campaignUrls.filter(urlData => urlData.platform === 'TikTok');
           console.log(`📊 Found ${tiktokUrls.length} TikTok campaign URLs out of ${campaignUrls.length} total URLs`);
 
-        if (tiktokUrls.length > 0) {
+          if (tiktokUrls.length > 0) {
+            // Process each campaign URL to get insights
+            const campaignInsightsResults = await batchRequests(
+              tiktokUrls,
+              async (urlData, index) => {
+                const campaignVideoId = extractTikTokVideoId(urlData.url);
+                if (!campaignVideoId) return null;
 
-          // Process each campaign URL to get insights
-          const campaignInsightsResults = await batchRequests(
-            tiktokUrls,
-            async (urlData, index) => {
-              const campaignVideoId = extractTikTokVideoId(urlData.url);
-              if (!campaignVideoId) return null;
+                try {
+                  const campaignVideoResponse = await getTikTokVideoById(accessToken, campaignVideoId);
+                  const campaignVideos = campaignVideoResponse?.data?.videos;
+                  
+                  if (!campaignVideos || campaignVideos.length === 0) return null;
 
-              try {
-                const campaignVideoResponse = await getTikTokVideoById(accessToken, campaignVideoId);
-                const campaignVideos = campaignVideoResponse?.data?.videos;
-                
-                if (!campaignVideos || campaignVideos.length === 0) return null;
+                  const campaignVideo = campaignVideos[0];
 
-                const campaignVideo = campaignVideos[0];
+                  // Create insight data from campaign video metrics
+                  const campaignInsight = [
+                    { name: 'views', value: campaignVideo.view_count || 0 },
+                    { name: 'likes', value: campaignVideo.like_count || 0 },
+                    { name: 'comments', value: campaignVideo.comment_count || 0 },
+                    { name: 'shares', value: campaignVideo.share_count || 0 },
+                    {
+                      name: 'total_interactions',
+                      value: (campaignVideo.like_count || 0) + (campaignVideo.comment_count || 0) + (campaignVideo.share_count || 0),
+                    },
+                  ];
 
-                // Create insight data from campaign video metrics
-                const campaignInsight = [
-                  { name: 'views', value: campaignVideo.view_count || 0 },
-                  { name: 'likes', value: campaignVideo.like_count || 0 },
-                  { name: 'comments', value: campaignVideo.comment_count || 0 },
-                  { name: 'shares', value: campaignVideo.share_count || 0 },
-                  {
-                    name: 'total_interactions',
-                    value: (campaignVideo.like_count || 0) + (campaignVideo.comment_count || 0) + (campaignVideo.share_count || 0),
-                  },
-                ];
+                  return campaignInsight;
+                } catch (error) {
+                  console.error(`Error processing TikTok campaign URL ${urlData.url}:`, error);
+                  return null;
+                }
+              },
+              2, // Process 2 at a time  
+              1200 // 1200ms delay between batches for TikTok
+            );
 
-                return campaignInsight;
-              } catch (error) {
-                console.error(`Error processing TikTok campaign URL ${urlData.url}:`, error);
-                return null;
-              }
-            },
-            2, // Process 2 at a time  
-            1200 // 1200ms delay between batches for TikTok
-          );
+            const campaignInsights = campaignInsightsResults
+              .filter(result => result.status === 'fulfilled' && result.value !== null)
+              .map(result => result.value);
 
-          const campaignInsights = campaignInsightsResults
-            .filter(result => result.status === 'fulfilled' && result.value !== null)
-            .map(result => result.value);
+            console.log(`📈 Successfully processed ${campaignInsights.length} TikTok campaign posts`);
+            campaignPostsCount = campaignInsights.length;
 
-          console.log(`📈 Successfully processed ${campaignInsights.length} TikTok campaign posts`);
-          campaignPostsCount = campaignInsights.length;
-
-          // Calculate averages (reusing existing function)
-          if (campaignInsights.length > 0) {
-            campaignAverages = calculateCampaignAverages(campaignInsights);
-            
-            // Compare current post with campaign averages (reusing existing function)
-            campaignComparison = calculateCampaignComparison(insight, campaignAverages, campaignInsights.length);
-            
-            console.log('TikTok Campaign averages calculated:', campaignAverages);
+            // Calculate averages (reusing existing function)
+            if (campaignInsights.length > 0) {
+              campaignAverages = calculateCampaignAverages(campaignInsights);
+              
+              // Cache the result
+              setCachedCampaignAverages(campaignId as string, 'TikTok', {
+                averages: campaignAverages,
+                postsCount: campaignPostsCount
+              });
+              
+              // Compare current post with campaign averages (reusing existing function)
+              campaignComparison = calculateCampaignComparison(insight, campaignAverages, campaignInsights.length);
+              
+              console.log('TikTok Campaign averages calculated and cached:', campaignAverages);
+            }
           }
+        } catch (error) {
+          console.error('Error calculating TikTok campaign averages:', error);
+          // Continue without campaign data if there's an error
         }
-      } catch (error) {
-        console.error('Error calculating TikTok campaign averages:', error);
-        // Continue without campaign data if there's an error
       }
     }
 
