@@ -1253,8 +1253,8 @@ export const getInstagramMediaInsight = async (req: Request, res: Response) => {
                   return null;
                 }
               },
-              2, // Process 2 at a time
-              800 // 800ms delay between batches
+              3, // Process 2 at a time
+              1200 // 800ms delay between batches
             );
 
             const campaignInsights = campaignInsightsResults
