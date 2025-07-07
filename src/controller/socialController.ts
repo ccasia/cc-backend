@@ -854,6 +854,7 @@ export const getInstagramMediaKit = async (req: Request, res: Response) => {
 
     return res.status(200).json({ overview, medias });
   } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   }
 };
@@ -979,7 +980,11 @@ function calculateCampaignAverages(campaignInsights: MetricData[][]): Totals {
 }
 
 // Helper function to compare current post with campaign averages
-function calculateCampaignComparison(currentInsight: MetricData[], campaignAverages: Totals, campaignPostsCount: number = 0): ComparisonResult {
+function calculateCampaignComparison(
+  currentInsight: MetricData[],
+  campaignAverages: Totals,
+  campaignPostsCount = 0,
+): ComparisonResult {
   const currentMetricsMap: MetricsMap = {};
   currentInsight.forEach((metric) => {
     currentMetricsMap[metric.name] = metric.value || 0;
@@ -1038,18 +1043,18 @@ async function ensureValidInstagramToken(userId: string): Promise<string> {
 
   if (isExpired) {
     console.log('Instagram token expired, attempting refresh...');
-    
+
     try {
       // Refresh the token using the existing service
       const refreshedTokenData = await refreshInstagramToken(accessToken);
-      
+
       // Encrypt the new token
       const newEncryptedAccessToken = encryptToken(refreshedTokenData.access_token);
-      
+
       // Calculate new expiry time
       const currentTime = dayjs();
       const newExpiryTime = currentTime.add(refreshedTokenData.expires_in, 'second').unix();
-      
+
       // Update the database with new token
       await prisma.instagramUser.update({
         where: {
@@ -1093,9 +1098,9 @@ export const getInstagramMediaInsight = async (req: Request, res: Response) => {
     try {
       accessToken = await ensureValidInstagramToken(user.id);
     } catch (tokenError) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         message: tokenError.message,
-        requiresReconnection: tokenError.message.includes('refresh failed') 
+        requiresReconnection: tokenError.message.includes('refresh failed'),
       });
     }
 
@@ -1238,21 +1243,21 @@ async function ensureValidTikTokToken(userId: string): Promise<string> {
 
   if (tokenExpired || !accessToken) {
     console.log('TikTok token expired or invalid, attempting refresh...');
-    
+
     if (!encryptedRefreshToken) {
       throw new Error('TikTok refresh token not found');
     }
 
     const refreshToken = decryptToken(encryptedRefreshToken);
-    
+
     try {
       // Refresh the token
       const refreshedTokenData = await refreshTikTokToken(refreshToken);
-      
+
       // Encrypt the new tokens
       const newEncryptedAccessToken = encryptToken(refreshedTokenData.access_token);
       const newEncryptedRefreshToken = encryptToken(refreshedTokenData.refresh_token);
-      
+
       // Update the database with new tokens
       await prisma.creator.update({
         where: {
@@ -1300,9 +1305,9 @@ export const getTikTokVideoInsight = async (req: Request, res: Response) => {
     try {
       accessToken = await ensureValidTikTokToken(user.id);
     } catch (tokenError) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         message: tokenError.message,
-        requiresReconnection: true 
+        requiresReconnection: true,
       });
     }
 
