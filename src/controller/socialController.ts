@@ -662,6 +662,7 @@ export const getInstagramOverview = async (req: Request, res: Response) => {
 
 export const removeInstagramPermissions = async (req: Request, res: Response) => {
   const { userId, permissions } = req.params;
+
   try {
     const creator = await prisma.creator.findFirst({
       where: {
@@ -728,6 +729,8 @@ export const handleInstagramCallback = async (req: Request, res: Response) => {
       });
 
       if (!user) throw new Error('User not found');
+
+      console.log(data);
 
       await tx.instagramUser.upsert({
         where: {
