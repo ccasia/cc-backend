@@ -721,8 +721,6 @@ export const handleInstagramCallback = async (req: Request, res: Response) => {
   try {
     const data = await getInstagramAccessToken(code as string);
 
-    console.log('SADSADS', data);
-
     await prisma.$transaction(async (tx) => {
       const user = await tx.creator.findUnique({
         where: {
