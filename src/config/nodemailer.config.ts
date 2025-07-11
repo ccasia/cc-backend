@@ -38,6 +38,35 @@ const transport = nodemailer.createTransport({
 
 // sendMail(transport, mailOptions);
 
+export const ClientInvitation = (email: string, inviteToken: string, companyName: string) => {
+  transport
+    .sendMail({
+      from: user,
+      to: email,
+      subject: '[Cult Creative] Welcome to Your Client Portal',
+      html: `
+        <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Client Portal Invitation</title>
+        </head>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; background-color: #f4f4f4; margin: 0; padding: 0;">
+          <div style="max-width: 600px; margin: auto; padding: 20px; background: #fff; border-radius: 5px; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);">
+            <h1 style="margin: 0 0 20px;">Welcome to Cult Creative Client Portal!</h1>
+            <p style="margin: 0 0 20px;">Hello,</p>
+            <p style="margin: 0 0 20px;">You have been invited to access the client portal for ${companyName}.</p>
+            <p style="margin: 0 0 20px;">Please click on the following link to set up your password and access your account:</p>
+            <a href="${process.env.BASE_EMAIL_URL}/auth/client/setup-password?token=${inviteToken}" style="display: inline-block; padding: 10px 20px; background-color: #007bff; color: #fff; text-decoration: none; border-radius: 5px;">Set Up Your Account</a>
+            <p style="margin: 20px 0 0;">If you did not expect this invitation, please contact support.</p>
+          </div>
+        </body>
+      `,
+    })
+    .catch((err) => {
+      return err;
+    });
+};
+
 export const AdminInvitaion = (email: string, confirmationCode: string) => {
   transport
     .sendMail({

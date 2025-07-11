@@ -14,11 +14,15 @@ import {
   // updateCreator,
   verifyCreator,
   updateCreator,
+  updateClient,
   resendVerifyTokenAdmin,
   checkTokenValidity,
   updateProfileCreator,
   registerFinanceUser,
   resendVerificationLinkCreator,
+  inviteClient,
+  verifyClientInvite,
+  setupClientPassword,
 } from '@controllers/authController';
 
 import { validateToken } from '@utils/jwtHelper';
@@ -59,7 +63,13 @@ router.post('/registerSuperAdmin', registerSuperAdmin);
 router.post('/registerFinanceUser', registerFinanceUser);
 router.post('/resendVerificationLinkCreator', resendVerificationLinkCreator);
 
+// Client authentication routes
+router.post('/invite-client', inviteClient);
+router.get('/verify-client-invite', verifyClientInvite);
+router.post('/setup-client-password', setupClientPassword);
+
 router.put('/updateCreator', isLoggedIn, updateCreator);
+router.patch('/updateClient', isLoggedIn, updateClient);
 
 router.patch('/updateProfileCreator', updateProfileCreator);
 router.patch('/changePassword', validateToken, changePassword);

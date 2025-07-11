@@ -2,7 +2,7 @@
 import jwt, { JwtPayload, Secret } from 'jsonwebtoken';
 import { Employment, PrismaClient, RoleEnum, Prisma } from '@prisma/client';
 import { Request, Response } from 'express';
-import { AdminInvitaion, AdminInvite, creatorVerificationEmail } from '@configs/nodemailer.config';
+import { AdminInvitaion, AdminInvite, ClientInvitation, creatorVerificationEmail } from '@configs/nodemailer.config';
 import { handleChangePassword } from '@services/authServices';
 import { getUser } from '@services/userServices';
 
@@ -779,6 +779,61 @@ export const updateCreator = async (req: Request, res: Response) => {
   }
 };
 
+// Function to update client profile
+export const updateClient = async (req: Request, res: Response) => {
+  const { userid } = req.session;
+
+  if (!userid) {
+    return res.status(401).json({ message: 'User not authenticated' });
+  }
+
+  const { name, country, phoneNumber } = req.body;
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: {
+        id: userid,
+      },
+      include: {
+        client: true,
+      },
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: 'Client Not Found' });
+    }
+
+    if (user.role !== 'client') {
+      return res.status(403).json({ message: 'Access denied. User is not a client.' });
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: {
+        id: userid,
+      },
+      data: {
+        ...(name && { name }),
+        ...(country && { country }),
+        ...(phoneNumber && { phoneNumber }),
+      },
+    });
+
+    return res.status(200).json({ 
+      message: 'Client profile updated successfully',
+      user: {
+        id: updatedUser.id,
+        name: updatedUser.name,
+        email: updatedUser.email,
+        country: updatedUser.country,
+        phoneNumber: updatedUser.phoneNumber,
+      }
+    });
+  } catch (error) {
+    console.log(error);
+    return res.status(400).json({ message: 'Error updating client profile', error: error.message });
+  }
+};
+
 // Function to get user's information
 export const getprofile = async (req: Request, res: Response) => {
   const userId = req.session.userid as string;
@@ -1197,5 +1252,174 @@ export const resendVerificationLinkCreator = async (req: Request, res: Response)
     return res.status(200).json({ message: 'New verification link has been sent.' });
   } catch (error) {
     return res.status(400).json(error);
+  }
+};
+
+export const inviteClient = async (req: Request, res: Response) => {
+  const { email, companyId } = req.body;
+
+  try {
+    // Check if user already exists
+    const existingUser = await prisma.user.findFirst({
+      where: { email: email.toLowerCase() }
+    });
+
+    if (existingUser) {
+      return res.status(400).json({ message: 'User already exists' });
+    }
+
+    // Get company information
+    const company = await prisma.company.findUnique({
+      where: { id: companyId },
+      include: { pic: true }
+    });
+
+    if (!company) {
+      return res.status(404).json({ message: 'Company not found' });
+    }
+
+    // Create user with client role
+    const result = await prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          email: email.toLowerCase(),
+          password: '', // Empty password initially
+          role: 'client',
+          status: 'pending',
+          name: company.pic[0].name || 'Client User'
+        }
+      });
+
+      // Generate invite token
+      const inviteToken = jwt.sign(
+        { id: user.id, companyId },
+        process.env.SESSION_SECRET as Secret,
+        { expiresIn: '24h' } // 24 hour expiry for client setup
+      );
+
+      // Create client record
+      const client = await tx.client.create({
+        data: {
+          userId: user.id,
+          inviteToken: inviteToken,
+        }
+      });
+
+      return { user, client, company };
+    });
+
+    // Send invitation email
+    ClientInvitation(result.user.email, result.client.inviteToken!, result.company.name);
+
+    return res.status(200).json({
+      message: 'Client invitation sent successfully',
+      user: { email: result.user.email, id: result.user.id }
+    });
+
+  } catch (error) {
+    console.error('Client invitation error:', error);
+    return res.status(400).json({ message: 'Error sending client invitation' });
+  }
+};
+
+export const verifyClientInvite = async (req: Request, res: Response) => {
+  const { token } = req.query;
+
+  try {
+    // Verify JWT token
+    const decoded = jwt.verify(token as string, process.env.SESSION_SECRET as string) as any;
+
+    // Find client by token
+    const client = await prisma.client.findFirst({
+      where: { inviteToken: token as string },
+      include: { user: true }
+    });
+
+    if (!client) {
+      return res.status(404).json({ message: 'Invalid or expired invitation' });
+    }
+
+    // Return user info for password setup
+    return res.status(200).json({
+      message: 'Valid invitation',
+      user: {
+        id: client.user.id,
+        email: client.user.email,
+        name: client.user.name
+      }
+    });
+
+  } catch (error) {
+    return res.status(400).json({ message: 'Invalid or expired invitation' });
+  }
+};
+
+export const setupClientPassword = async (req: Request, res: Response) => {
+  const { token, password, confirmPassword } = req.body;
+
+  if (password !== confirmPassword) {
+    return res.status(400).json({ message: 'Passwords do not match' });
+  }
+
+  try {
+      // Verify token and get client
+    const decoded = jwt.verify(token as string, process.env.SESSION_SECRET as string) as any;
+
+    const client = await prisma.client.findFirst({
+      where: { inviteToken: token },
+      include: { user: true }
+    });
+
+    if (!client) {
+      return res.status(404).json({ message: 'Invalid or expired invitation' });
+    }
+
+    // Hash password and update user
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const result = await prisma.$transaction(async (tx) => {
+      // Update user with password and activate
+      const updatedUser = await tx.user.update({
+        where: { id: client.user.id },
+        data: {
+          password: hashedPassword,
+          status: 'active'
+        }
+      });
+
+      return updatedUser;
+    });
+
+    // Create session and tokens
+    const accessToken = jwt.sign({ id: result.id }, process.env.ACCESSKEY as Secret, {
+      expiresIn: '4h'
+    });
+
+    const refreshToken = jwt.sign({ id: result.id }, process.env.REFRESHKEY as Secret);
+
+    const session = req.session;
+    session.userid = result.id;
+    session.refreshToken = refreshToken;
+    session.role = result.role;
+
+    res.cookie('userid', result.id, {
+      maxAge: 60 * 60 * 24 * 1000, // 1 Day
+      httpOnly: true
+    });
+
+    res.cookie('accessToken', accessToken, {
+      maxAge: 60 * 60 * 4 * 1000, // 4 hours
+      httpOnly: true
+    });
+
+    return res.status(200).json({
+      message: 'Password set up successfully',
+      user: result,
+      accessToken
+    });
+
+  } catch (error) {
+    console.error('Password setup error:', error);
+    return res.status(400).json({ message: 'Error setting up password' });
   }
 };

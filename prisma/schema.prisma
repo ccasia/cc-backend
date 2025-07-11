@@ -115,6 +115,7 @@ model Client {
   //  address     String?  @db.VarChar(255)
   //  phone       String?  @db.VarChar(100)
   //  website     String?  @db.VarChar(255)
+  inviteToken String? @unique
   userId String @unique
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
@@ -1285,6 +1286,7 @@ enum CampaignStatus {
 enum RoleEnum {
   admin
   creator
+  client
   brand
   superadmin
   finance
