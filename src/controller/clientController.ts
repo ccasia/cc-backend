@@ -15,6 +15,7 @@ export const updateClient = async (req: Request, res: Response) => {
     const {
       companyName,
       companyAddress,
+      companyEmail,
       registrationNumber,
       picName,
       picDesignation,
@@ -66,6 +67,7 @@ export const updateClient = async (req: Request, res: Response) => {
     // Update company data
     if (companyName) companyUpdateData.name = companyName;
     if (companyAddress) companyUpdateData.address = companyAddress;
+    if (companyEmail) companyUpdateData.email = companyEmail;
     if (registrationNumber) companyUpdateData.registration_number = registrationNumber;
     if (logoURL !== company.logo) companyUpdateData.logo = logoURL;
 

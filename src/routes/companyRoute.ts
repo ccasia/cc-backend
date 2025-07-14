@@ -39,7 +39,7 @@ router.post('/createOneCompany', isSuperAdmin, createOneCompany);
 router.post('/createOneBrand', isSuperAdmin, createOneBrand);
 router.post('/createBrand', isSuperAdmin, createBrand);
 
-router.patch('/editCompany', isAdminOrClient, editCompany);
+router.patch('/editCompany', isSuperAdmin, editCompany);
 router.patch('/editBrand', isSuperAdmin, editBrand);
 router.patch('/linkPackage/:companyId', isSuperAdmin, handleLinkNewPackage);
 
