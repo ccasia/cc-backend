@@ -1286,15 +1286,14 @@ export const inviteClient = async (req: Request, res: Response) => {
           password: '', // Empty password initially
           role: 'client',
           status: 'pending',
-          name: company.pic[0].name || 'Client User'
+          name: company.name || 'Client User'
         }
       });
 
       // Generate invite token
       const inviteToken = jwt.sign(
         { id: user.id, companyId },
-        process.env.SESSION_SECRET as Secret,
-        { expiresIn: '24h' } // 24 hour expiry for client setup
+        process.env.SESSION_SECRET as Secret
       );
 
       // Create client record
@@ -1384,6 +1383,14 @@ export const setupClientPassword = async (req: Request, res: Response) => {
         data: {
           password: hashedPassword,
           status: 'active'
+        }
+      });
+
+      // Clear the invite token after successful setup
+      await tx.client.update({
+        where: { id: client.id },
+        data: {
+          inviteToken: null
         }
       });
 

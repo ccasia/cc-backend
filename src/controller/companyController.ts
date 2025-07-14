@@ -105,6 +105,7 @@ export const getCompanyById = async (req: Request, res: Response) => {
             },
           },
         },
+        clients: true,
       },
     });
 
@@ -578,6 +579,7 @@ export const activateClient = async (req: Request, res: Response) => {
         data: {
           userId: user.id,
           inviteToken: inviteToken,
+          companyId: companyId, // Connect client to company
         }
       });
 
