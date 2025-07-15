@@ -333,6 +333,81 @@ export const registerCreator = async (req: Request, res: Response) => {
   }
 };
 
+export const registerClient = async (req: Request, res: Response) => {
+  const { name, email, password } = req.body;
+
+  console.log('Backend received client registration data:', { name, email, password: '***' });
+
+  try {
+    const search = await prisma.user.findFirst({
+      where: {
+        email: email.toLowerCase(),
+      },
+    });
+
+    if (search) {
+      return res.status(400).json({ message: 'Email already exists' });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Create user and client in a transaction
+    const result = await prisma.$transaction(async (tx) => {
+      // Create user
+      const user = await tx.user.create({
+        data: {
+          email: email.toLowerCase(),
+          password: hashedPassword,
+          role: 'client',
+          name: name,
+          status: 'active',
+          isActive: true,
+        },
+      });
+
+      // Create client record
+      const client = await tx.client.create({
+        data: {
+          userId: user.id,
+        },
+      });
+
+      return { user, client };
+    });
+
+    // Generate JWT tokens
+    const accessToken = jwt.sign({ id: result.user.id }, process.env.ACCESSKEY as Secret, {
+      expiresIn: '4h',
+    });
+    const refreshToken = jwt.sign({ id: result.user.id }, process.env.REFRESHKEY as Secret);
+
+    // Set session
+    const session = req.session;
+    session.userid = result.user.id;
+
+    // Update refresh token timestamp
+    await prisma.user.update({
+      where: { id: result.user.id },
+      data: { updateRefershToken: new Date() },
+    });
+
+    return res.status(201).json({
+      message: 'Client registered and logged in successfully',
+      user: {
+        id: result.user.id,
+        email: result.user.email,
+        name: result.user.name,
+        role: result.user.role,
+      },
+      accessToken: accessToken,
+      refreshToken: refreshToken,
+    });
+  } catch (error) {
+    console.error('Client registration error:', error);
+    return res.status(400).json({ message: 'Error registering client', error: error.message });
+  }
+};
+
 export const registerFinanceUser = async (req: Request, res: Response) => {
   const { email, password, name } = req.body;
 

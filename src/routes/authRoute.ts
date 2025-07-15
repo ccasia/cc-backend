@@ -4,6 +4,7 @@ import {
   login,
   displayAll,
   registerCreator,
+  registerClient,
   verifyAdmin,
   registerSuperAdmin,
   getprofile,
@@ -59,6 +60,7 @@ router.post('/register', registerUser);
 router.post('/resendVerifyToken', resendVerifyTokenAdmin);
 router.post('/verifyCreator', verifyCreator);
 router.post('/registerCreator', registerCreator);
+router.post('/registerClient', registerClient);
 router.post('/registerSuperAdmin', registerSuperAdmin);
 router.post('/registerFinanceUser', registerFinanceUser);
 router.post('/resendVerificationLinkCreator', resendVerificationLinkCreator);
