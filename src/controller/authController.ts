@@ -2,7 +2,7 @@
 import jwt, { JwtPayload, Secret } from 'jsonwebtoken';
 import { Employment, PrismaClient, RoleEnum, Prisma } from '@prisma/client';
 import { Request, Response } from 'express';
-import { AdminInvitaion, AdminInvite, ClientInvitation, creatorVerificationEmail } from '@configs/nodemailer.config';
+import { AdminInvitaion, AdminInvite, ClientInvitation, creatorVerificationEmail, clientVerificationEmail } from '@configs/nodemailer.config';
 import { handleChangePassword } from '@services/authServices';
 import { getUser } from '@services/userServices';
 
@@ -353,15 +353,15 @@ export const registerClient = async (req: Request, res: Response) => {
 
     // Create user and client in a transaction
     const result = await prisma.$transaction(async (tx) => {
-      // Create user
+      // Create user with pending status
       const user = await tx.user.create({
         data: {
           email: email.toLowerCase(),
           password: hashedPassword,
           role: 'client',
           name: name,
-          status: 'active',
-          isActive: true,
+          status: 'pending',
+          isActive: false,
         },
       });
 
@@ -375,32 +375,40 @@ export const registerClient = async (req: Request, res: Response) => {
       return { user, client };
     });
 
-    // Generate JWT tokens
-    const accessToken = jwt.sign({ id: result.user.id }, process.env.ACCESSKEY as Secret, {
-      expiresIn: '4h',
-    });
-    const refreshToken = jwt.sign({ id: result.user.id }, process.env.REFRESHKEY as Secret);
+    // Send verification email
+    const token = jwt.sign({ id: result.user.id }, process.env.ACCESSKEY as Secret, { expiresIn: '15m' });
 
-    // Set session
-    const session = req.session;
-    session.userid = result.user.id;
+    let shortCode;
 
-    // Update refresh token timestamp
-    await prisma.user.update({
-      where: { id: result.user.id },
-      data: { updateRefershToken: new Date() },
-    });
+    // Generate unique short code
+    while (true) {
+      shortCode = generateRandomString();
 
-    return res.status(201).json({
-      message: 'Client registered and logged in successfully',
-      user: {
-        id: result.user.id,
-        email: result.user.email,
-        name: result.user.name,
-        role: result.user.role,
+      const isShortCodeExist = await prisma.emailVerification.findFirst({
+        where: { shortCode },
+      });
+
+      if (!isShortCodeExist) break;
+    }
+
+    const code = await prisma.emailVerification.create({
+      data: {
+        shortCode: shortCode!,
+        user: {
+          connect: {
+            id: result.user.id,
+          },
+        },
+        expiredAt: dayjs().add(15, 'minute').toDate(),
+        token: token,
       },
-      accessToken: accessToken,
-      refreshToken: refreshToken,
+    });
+
+    clientVerificationEmail(result.user.email, code.shortCode);
+
+    return res.status(201).json({ 
+      message: 'Client registered successfully. Please check your email to verify your account.',
+      email: result.user.email 
     });
   } catch (error) {
     console.error('Client registration error:', error);
@@ -664,6 +672,89 @@ export const verifyCreator = async (req: Request, res: Response) => {
     }
     if (error.message) return res.status(400).json({ message: error.message, tokenExpired: true });
     return res.status(400).json({ message: 'Error verifying creator' });
+  }
+};
+
+export const verifyClient = async (req: Request, res: Response) => {
+  const { token } = req.body;
+
+  if (!token) return res.status(404).json({ message: 'Token is missing' });
+
+  try {
+    const { jwtToken } = await getJWTToken(token as string);
+
+    if (!jwtToken) return res.status(400).json({ message: 'Access token not found' });
+
+    const result = verifyToken(jwtToken);
+
+    if (!result) {
+      return res.status(400).json({ message: 'Unauthorized' });
+    }
+
+    const client = await prisma.user.findFirst({
+      where: {
+        id: (result as JwtPayload).id,
+      },
+      include: {
+        client: true,
+      },
+    });
+
+    if (!client) {
+      return res.status(404).json({ message: 'Not found.' });
+    }
+
+    // Update user status to active
+    const user = await prisma.user.update({
+      where: {
+        id: client.id,
+      },
+      data: {
+        status: 'active',
+        isActive: true,
+      },
+    });
+
+    if (user.emailVerificationId) {
+      await prisma.emailVerification.delete({
+        where: {
+          id: user.emailVerificationId,
+        },
+      });
+    }
+
+    const accessToken = jwt.sign({ id: client.id }, process.env.ACCESSKEY as Secret, {
+      expiresIn: '4h',
+    });
+
+    const refreshToken = jwt.sign({ id: client.id }, process.env.REFRESHKEY as Secret);
+
+    const session = req.session;
+    session.userid = client.id;
+    session.refreshToken = refreshToken;
+
+    res.cookie('userid', client.id, {
+      maxAge: 60 * 60 * 24 * 1000, // 1 Day
+      httpOnly: true,
+    });
+
+    res.cookie('accessToken', accessToken, {
+      maxAge: 60 * 60 * 4 * 1000, // 4 Hours
+      httpOnly: true,
+    });
+
+    return res.status(200).json({ 
+      message: 'Your email has been verified successfully!', 
+      user: client,
+      accessToken
+    });
+  } catch (error) {
+    console.log(error);
+    if (error instanceof Error) {
+      return res.status(400).json(error.message);
+    }
+    if (error.message) return res.status(400).json({ message: error.message, tokenExpired: true });
+    return res.status(400).json({ message: 'Error verifying client' });
   }
 };
 
@@ -1323,6 +1414,60 @@ export const resendVerificationLinkCreator = async (req: Request, res: Response)
     });
 
     creatorVerificationEmail(user.email, newCode.shortCode);
+
+    return res.status(200).json({ message: 'New verification link has been sent.' });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const resendVerificationLinkClient = async (req: Request, res: Response) => {
+  const { token } = req.body;
+
+  if (!token) return res.status(404).json({ message: 'Token is missing' });
+
+  try {
+    // Get JWT token and user information from the provided token
+    const { jwtToken, user, id } = await getJWTToken(token as string);
+
+    if (!jwtToken) return res.status(400).json({ message: 'Access token not found' });
+    if (!user) return res.status(400).json({ message: 'User not found' });
+
+    // Decode the JWT token to verify it's valid
+    const decode = jwt.decode(jwtToken);
+
+    if (!decode) return res.status(400).json({ message: 'Token is invalid' });
+
+    // Create a new JWT token with 15 minutes expiration
+    const newToken = jwt.sign({ id: user.id }, process.env.ACCESSKEY as Secret, { expiresIn: '15m' });
+
+    let shortCode;
+
+    // Generate a unique short code for the verification email
+    while (true) {
+      shortCode = generateRandomString();
+
+      const isShortCodeExist = await prisma.emailVerification.findFirst({
+        where: { shortCode },
+      });
+
+      if (!isShortCodeExist) break;
+    }
+
+    // Update the existing email verification record with new token and short code
+    const newCode = await prisma.emailVerification.update({
+      where: {
+        id: id,
+      },
+      data: {
+        token: newToken,
+        shortCode: shortCode,
+        expiredAt: dayjs().add(15, 'minute').toDate(),
+      },
+    });
+
+    // Send the verification email with the new short code for clients
+    clientVerificationEmail(user.email, newCode.shortCode);
 
     return res.status(200).json({ message: 'New verification link has been sent.' });
   } catch (error) {
