@@ -41,11 +41,11 @@ export const updateClient = async (req: Request, res: Response) => {
     });
     
     const company = companies.find(comp => 
-      comp.pic?.some(pic => pic.email?.toLowerCase() === user.email?.toLowerCase())
+      comp?.email?.toLowerCase() === user.email?.toLowerCase()
     );
 
     if (!company) {
-      return res.status(404).json({ message: 'No company found with matching PIC email' });
+      return res.status(404).json({ message: 'No company found with matching email' });
     }
 
     // Handle company logo upload
@@ -60,7 +60,8 @@ export const updateClient = async (req: Request, res: Response) => {
     const companyUpdateData: any = {};
 
     // Update user data (PIC personal info)
-    if (picName) userUpdateData.name = picName;
+    if (companyName) userUpdateData.name = companyName;
+    if (companyEmail) userUpdateData.email = companyEmail;
     if (country) userUpdateData.country = country;
     if (picMobile) userUpdateData.phoneNumber = picMobile;
 
@@ -73,12 +74,12 @@ export const updateClient = async (req: Request, res: Response) => {
 
     // Update PIC designation in company.pic array
     if (picDesignation && company.pic) {
-      const currentPic = company.pic.find(pic => pic.email?.toLowerCase() === user.email?.toLowerCase());
+      const currentPic = company.pic.find(pic => pic.companyId === company?.id);
       if (currentPic) {
         companyUpdateData.pic = {
           update: {
             where: { id: currentPic.id },
-            data: { name: picName,designation: picDesignation }
+            data: { name: picName, designation: picDesignation }
           }
         };
       }
@@ -119,6 +120,129 @@ export const updateClient = async (req: Request, res: Response) => {
     console.error('Error updating client profile:', error);
     return res.status(500).json({ 
       message: error.message || 'Internal server error while updating client profile' 
+    });
+  }
+};
+
+export const checkClientCompany = async (req: Request, res: Response) => {
+  try {
+    const userId = req.session.userid;
+    
+    if (!userId) {
+      return res.status(401).json({ message: 'User not authenticated' });
+    }
+
+    const client = await prisma.client.findUnique({
+      where: { userId },
+      include: {
+        company: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            type: true
+          }
+        }
+      }
+    });
+
+    if (!client) {
+      return res.status(404).json({ message: 'Client not found' });
+    }
+
+    return res.status(200).json({
+      hasCompany: !!client.companyId,
+      company: client.company
+    });
+
+  } catch (error: any) {
+    console.error('Error checking client company:', error);
+    return res.status(500).json({ 
+      message: error.message || 'Internal server error while checking client company' 
+    });
+  }
+};
+
+export const createClientCompany = async (req: Request, res: Response) => {
+  try {
+    const userId = req.session.userid;
+    
+    if (!userId) {
+      return res.status(401).json({ message: 'User not authenticated' });
+    }
+
+    const { companyName, registrationNumber, companyAddress, picDesignation, picNumber, country } = req.body;
+
+    if (!companyName) {
+      return res.status(400).json({ message: 'Company name is required' });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId, role: 'client' }
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: 'Client user not found' });
+    }
+
+    const client = await prisma.client.findUnique({
+      where: { userId }
+    });
+
+    if (!client) {
+      return res.status(404).json({ message: 'Client not found' });
+    }
+
+    if (client.companyId) {
+      return res.status(400).json({ message: 'Client already has a company' });
+    }
+
+    const company = await prisma.company.create({
+      data: {
+        name: companyName,
+        email: user.email,
+        address: companyAddress,
+        registration_number: registrationNumber,
+        pic: {
+          create: {
+            name: user.name || `${picDesignation} of ${companyName}`,
+            email: user.email,
+            designation: picDesignation || 'PIC',
+          }
+        }
+      },
+      include: {
+        pic: true
+      }
+    });
+
+    await prisma.client.update({
+      where: { userId },
+      data: { companyId: company.id }
+    });
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        country,
+        phoneNumber: picNumber 
+      }
+    });
+
+    return res.status(201).json({
+      message: 'Company created successfully',
+      company: {
+        id: company.id,
+        name: company.name,
+        email: company.email,
+        type: company.type,
+      }
+    });
+
+  } catch (error: any) {
+    console.error('Error creating client company:', error);
+    return res.status(500).json({ 
+      message: error.message || 'Internal server error while creating company' 
     });
   }
 };
