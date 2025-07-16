@@ -100,6 +100,7 @@ model Admin {
 
   role Role? @relation(fields: [roleId], references: [id])
   user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  client Client?
 
   adminPermissionModule AdminPermissionModule[]
   campaignAdmin         CampaignAdmin[]
@@ -118,8 +119,10 @@ model Client {
   inviteToken String? @unique
   companyId String?
   userId String @unique
+  adminId String? @unique
   company Company? @relation(fields: [companyId], references: [id])
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  admin  Admin? @relation(fields: [adminId], references: [id])
 }
 
 model Role {

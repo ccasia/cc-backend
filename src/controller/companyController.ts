@@ -567,6 +567,19 @@ export const activateClient = async (req: Request, res: Response) => {
         }
       });
 
+      // Get or create default client role
+      let clientRole = await tx.role.findFirst({
+        where: { name: 'Client' }
+      });
+
+      if (!clientRole) {
+        clientRole = await tx.role.create({
+          data: {
+            name: 'Client',
+          }
+        });
+      }
+
       // Generate invite token
       const inviteToken = jwt.sign(
         { id: user.id, companyId },
@@ -574,16 +587,27 @@ export const activateClient = async (req: Request, res: Response) => {
         { expiresIn: '24h' } // 24 hour expiry for client setup
       );
 
+      // Create admin record for client with Client role
+      const admin = await tx.admin.create({
+        data: {
+          userId: user.id,
+          inviteToken: inviteToken,
+          roleId: clientRole.id,
+          mode: 'normal',
+        },
+      });
+
       // Create client record
       const client = await tx.client.create({
         data: {
           userId: user.id,
+          adminId: admin.id,
           inviteToken: inviteToken,
           companyId: companyId, // Connect client to company
         }
       });
 
-      return { user, client, company };
+      return { user, admin, client, company };
     });
 
     // Send invitation email

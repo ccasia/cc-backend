@@ -365,14 +365,37 @@ export const registerClient = async (req: Request, res: Response) => {
         },
       });
 
-      // Create client record
-      const client = await tx.client.create({
+      // Get or create default client role
+      let defaultClientRole = await tx.role.findFirst({
+        where: { name: 'Client' }
+      });
+
+      if (!defaultClientRole) {
+        defaultClientRole = await tx.role.create({
+          data: {
+            name: 'Client',
+          }
+        });
+      }
+
+      // Create admin record for client with Client role
+      const admin = await tx.admin.create({
         data: {
           userId: user.id,
+          roleId: defaultClientRole.id,
+          mode: 'normal', // Default mode for client admins
         },
       });
 
-      return { user, client };
+      // Create client record linked to admin
+      const client = await tx.client.create({
+        data: {
+          userId: user.id,
+          adminId: admin.id,
+        },
+      });
+
+      return { user, client, admin };
     });
 
     // Send verification email
@@ -1506,9 +1529,22 @@ export const inviteClient = async (req: Request, res: Response) => {
           password: '', // Empty password initially
           role: 'client',
           status: 'pending',
-          name: company.name || 'Client User'
+          name: company.name || 'Client User',
         }
       });
+
+      // Get or create default client role
+      let clientRole = await tx.role.findFirst({
+        where: { name: 'Client' }
+      });
+
+      if (!clientRole) {
+        clientRole = await tx.role.create({
+          data: {
+            name: 'Client',
+          }
+        });
+      }
 
       // Generate invite token
       const inviteToken = jwt.sign(
@@ -1516,15 +1552,26 @@ export const inviteClient = async (req: Request, res: Response) => {
         process.env.SESSION_SECRET as Secret
       );
 
-      // Create client record
+      // Create admin record for client with Client role
+      const admin = await tx.admin.create({
+        data: {
+          userId: user.id,
+          roleId: clientRole.id,
+          mode: 'normal',
+        },
+      });
+
+      // Create client record linked to admin
       const client = await tx.client.create({
         data: {
           userId: user.id,
           inviteToken: inviteToken,
+          adminId: admin.id,
+          companyId: companyId, // Add the companyId from request
         }
       });
 
-      return { user, client, company };
+      return { user, client, admin, company };
     });
 
     // Send invitation email
@@ -1551,12 +1598,41 @@ export const verifyClientInvite = async (req: Request, res: Response) => {
     // Find client by token
     const client = await prisma.client.findFirst({
       where: { inviteToken: token as string },
-      include: { user: true }
+      include: { 
+        user: true,
+        admin: true
+      }
     });
 
     if (!client) {
       return res.status(404).json({ message: 'Invalid or expired invitation' });
     }
+
+    if (!client.user) {
+      return res.status(404).json({ message: 'Missing user information' });
+    }
+
+    // Create session for the user so they can access the app
+    const accessToken = jwt.sign({ id: client.user.id }, process.env.ACCESSKEY as Secret, {
+      expiresIn: '4h'
+    });
+
+    const refreshToken = jwt.sign({ id: client.user.id }, process.env.REFRESHKEY as Secret);
+
+    const session = req.session;
+    session.userid = client.user.id;
+    session.refreshToken = refreshToken;
+    session.role = client.user.role;
+
+    res.cookie('userid', client.user.id, {
+      maxAge: 60 * 60 * 24 * 1000, // 1 Day
+      httpOnly: true
+    });
+
+    res.cookie('accessToken', accessToken, {
+      maxAge: 60 * 60 * 4 * 1000, // 4 hours
+      httpOnly: true
+    });
 
     // Return user info for password setup
     return res.status(200).json({
@@ -1564,11 +1640,14 @@ export const verifyClientInvite = async (req: Request, res: Response) => {
       user: {
         id: client.user.id,
         email: client.user.email,
-        name: client.user.name
-      }
+        name: client.user.name,
+        role: client.user.role
+      },
+      accessToken
     });
 
   } catch (error) {
+    console.error('Client invite verification error:', error);
     return res.status(400).json({ message: 'Invalid or expired invitation' });
   }
 };
@@ -1586,7 +1665,10 @@ export const setupClientPassword = async (req: Request, res: Response) => {
 
     const client = await prisma.client.findFirst({
       where: { inviteToken: token },
-      include: { user: true }
+      include: { 
+        user: true,
+        admin: true
+      }
     });
 
     if (!client) {
@@ -1602,7 +1684,8 @@ export const setupClientPassword = async (req: Request, res: Response) => {
         where: { id: client.user.id },
         data: {
           password: hashedPassword,
-          status: 'active'
+          status: 'active',
+          isActive: true
         }
       });
 

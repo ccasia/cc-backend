@@ -56,7 +56,7 @@ export const ClientInvitation = (email: string, inviteToken: string, companyName
             <p style="margin: 0 0 20px;">Hello,</p>
             <p style="margin: 0 0 20px;">You have been invited to access the client portal for ${companyName}.</p>
             <p style="margin: 0 0 20px;">Please click on the following link to set up your password and access your account:</p>
-            <a href="${process.env.BASE_EMAIL_URL}/auth/client/setup-password?token=${inviteToken}" style="display: inline-block; padding: 10px 20px; background-color: #007bff; color: #fff; text-decoration: none; border-radius: 5px;">Set Up Your Account</a>
+            <a href="${process.env.BASE_EMAIL_URL}/auth/jwt/client/setup-password?token=${inviteToken}" style="display: inline-block; padding: 10px 20px; background-color: #007bff; color: #fff; text-decoration: none; border-radius: 5px;">Set Up Your Account</a>
             <p style="margin: 20px 0 0;">If you did not expect this invitation, please contact support.</p>
           </div>
         </body>
