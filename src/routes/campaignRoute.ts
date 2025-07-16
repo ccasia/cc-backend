@@ -47,6 +47,7 @@ import {
   shortlistCreatorV2,
   getAllPitches,
   getAllCreatorAgreements,
+  getClientCampaigns,
 } from '@controllers/campaignController';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 
@@ -105,6 +106,9 @@ router.get('/getMyCampaigns/:userId', isLoggedIn, getMyCampaigns);
 
 // Get Campaigns by Admin ID
 router.get('/getAllCampaignsByAdminId/:userId', getAllCampaignsByAdminId);
+
+// Get Campaigns for Client users
+router.get('/getClientCampaigns', isLoggedIn, getClientCampaigns);
 
 router.post('/updateOrCreateDefaultTimeline', updateOrCreateDefaultTimeline);
 router.post('/createCampaign', isSuperAdmin, createCampaign);

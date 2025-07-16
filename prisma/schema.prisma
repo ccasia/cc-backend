@@ -1230,6 +1230,7 @@ enum Designation {
   CSM
   BD
   Growth
+  Client
 }
 
 enum Modules {
