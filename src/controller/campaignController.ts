@@ -422,6 +422,25 @@ export const createCampaign = async (req: Request, res: Response) => {
           throw new Error('Campaign creation failed or campaign ID is missing');
         }
 
+        // Check if the user creating the campaign is a Client
+        const userId = req.session.userid;
+        if (userId) {
+          const currentUser = await tx.user.findUnique({
+            where: { id: userId },
+            include: { admin: { include: { role: true } } },
+          });
+
+          // If the user is a Client, add them to campaignAdmin
+          if (currentUser?.admin?.role?.name === 'Client') {
+            await tx.campaignAdmin.create({
+              data: {
+                adminId: userId,
+                campaignId: campaign.id,
+              },
+            });
+          }
+        }
+
         await tx.thread.create({
           data: {
             title: campaign.name,
@@ -1599,11 +1618,11 @@ export const editCampaignDosAndDonts = async (req: Request, res: Response) => {
       },
     });
 
-    const message = 'Dos and don’ts updated successfully.';
+    const message = "Dos and don'ts updated successfully.";
     logChange(message, campaignId, req);
     const adminId = req.session.userid;
     if (adminId) {
-      const adminLogMessage = `Updated do's and don’ts.`;
+      const adminLogMessage = "Updated do's and don'ts.";
       logAdminChange(adminLogMessage, adminId, req);
     }
     return res.status(200).json({ message: message, ...updatedCampaignBrief });
@@ -4415,5 +4434,59 @@ export const shortlistCreatorV2 = async (req: Request, res: Response) => {
       return res.status(400).json(error?.message);
     }
     return res.status(400).json(error);
+  }
+};
+
+// Get campaigns for a client user
+export const getClientCampaigns = async (req: Request, res: Response) => {
+  const { userid } = req.session;
+  
+  // Check if user session exists
+  if (!userid) {
+    return res.status(401).json({ message: 'Unauthorized. No user session found.' });
+  }
+  
+  try {
+    // Get the user first
+    const user = await prisma.user.findUnique({
+      where: {
+        id: userid,
+      },
+      include: {
+        client: true,
+      },
+    });
+
+    // Make sure user exists
+    if (!user) {
+      return res.status(401).json({ message: 'Unauthorized. User not found.' });
+    }
+
+    // Find only campaigns created by this client user
+    // We can identify this by looking at the campaignAdmin relation
+    // or by checking if the user is in the campaign's admin list
+    const campaigns = await prisma.campaign.findMany({
+      where: {
+        campaignAdmin: {
+          some: {
+            adminId: userid,
+          },
+        },
+      },
+      include: {
+        brand: { include: { company: true } },
+        company: true,
+        campaignBrief: true,
+        campaignTimeline: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    return res.status(200).json(campaigns);
+  } catch (error) {
+    console.error('Error fetching client campaigns:', error);
+    return res.status(400).json({ message: 'Error fetching campaigns', error });
   }
 };
