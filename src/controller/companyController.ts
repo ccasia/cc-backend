@@ -9,6 +9,8 @@ import {
 import { logAdminChange } from '@services/campaignServices';
 import { Company, CustomPackage, Package, PrismaClient } from '@prisma/client';
 import { uploadCompanyLogo } from '@configs/cloudStorage.config';
+import { ClientInvitation } from '@configs/nodemailer.config';
+import jwt, { Secret } from 'jsonwebtoken';
 import dayjs from 'dayjs';
 
 const prisma = new PrismaClient();
@@ -103,6 +105,7 @@ export const getCompanyById = async (req: Request, res: Response) => {
             },
           },
         },
+        clients: true,
       },
     });
 
@@ -519,5 +522,108 @@ export const clientOverview = async (req: Request, res: Response) => {
     return res.status(200).json(clients);
   } catch (error) {
     return res.status(400).json(error);
+  }
+};
+
+export const activateClient = async (req: Request, res: Response) => {
+  const { companyId } = req.params;
+  const adminId = req.session.userid;
+
+  try {
+    // Get company information
+    const company = await prisma.company.findUnique({
+      where: { id: companyId },
+      include: {
+        pic: true // Get person in charge details
+      }
+    });
+
+    if (!company) {
+      return res.status(404).json({ message: 'Company not found' });
+    }
+
+    if (!company.pic[0].email) {
+      return res.status(400).json({ message: 'PIC email not found' });
+    }
+
+    // Check if client user already exists
+    const existingUser = await prisma.user.findFirst({
+      where: { email: company.pic[0].email.toLowerCase() }
+    });
+
+    if (existingUser) {
+      return res.status(400).json({ message: 'Client already activated' });
+    }
+
+    // Create user with client role
+    const result = await prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          email: (company.pic[0].email ?? '').toLowerCase(),
+          password: '', // Empty password initially
+          role: 'client',
+          status: 'pending',
+          name: company.pic[0].name || 'Client User'
+        }
+      });
+
+      // Get or create default client role
+      let clientRole = await tx.role.findFirst({
+        where: { name: 'Client' }
+      });
+
+      if (!clientRole) {
+        clientRole = await tx.role.create({
+          data: {
+            name: 'Client',
+          }
+        });
+      }
+
+      // Generate invite token
+      const inviteToken = jwt.sign(
+        { id: user.id, companyId },
+        process.env.SESSION_SECRET as Secret,
+        { expiresIn: '24h' } // 24 hour expiry for client setup
+      );
+
+      // Create admin record for client with Client role
+      const admin = await tx.admin.create({
+        data: {
+          userId: user.id,
+          inviteToken: inviteToken,
+          roleId: clientRole.id,
+          mode: 'normal',
+        },
+      });
+
+      // Create client record
+      const client = await tx.client.create({
+        data: {
+          userId: user.id,
+          adminId: admin.id,
+          inviteToken: inviteToken,
+          companyId: companyId, // Connect client to company
+        }
+      });
+
+      return { user, admin, client, company };
+    });
+
+    // Send invitation email
+    ClientInvitation(result.user.email, result.client.inviteToken!, result.company.name);
+
+    // Log admin action
+    const adminLogMessage = `Activated client for company ${company.name}`;
+    logAdminChange(adminLogMessage, adminId, req);
+
+    return res.status(200).json({
+      message: 'Client activation email sent successfully',
+      email: company.email
+    });
+
+  } catch (error) {
+    console.error('Client activation error:', error);
+    return res.status(400).json({ message: 'Error activating client' });
   }
 };

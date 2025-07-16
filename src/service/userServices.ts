@@ -190,6 +190,7 @@ export const getUser = async (id: string) => {
             },
           },
         },
+        client: true,
         creator: {
           include: {
             interests: true,

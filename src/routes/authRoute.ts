@@ -4,6 +4,7 @@ import {
   login,
   displayAll,
   registerCreator,
+  registerClient,
   verifyAdmin,
   registerSuperAdmin,
   getprofile,
@@ -14,11 +15,17 @@ import {
   // updateCreator,
   verifyCreator,
   updateCreator,
+  updateClient,
   resendVerifyTokenAdmin,
   checkTokenValidity,
   updateProfileCreator,
   registerFinanceUser,
   resendVerificationLinkCreator,
+  resendVerificationLinkClient,
+  inviteClient,
+  verifyClientInvite,
+  setupClientPassword,
+  verifyClient,
 } from '@controllers/authController';
 
 import { validateToken } from '@utils/jwtHelper';
@@ -55,11 +62,20 @@ router.post('/register', registerUser);
 router.post('/resendVerifyToken', resendVerifyTokenAdmin);
 router.post('/verifyCreator', verifyCreator);
 router.post('/registerCreator', registerCreator);
+router.post('/registerClient', registerClient);
 router.post('/registerSuperAdmin', registerSuperAdmin);
 router.post('/registerFinanceUser', registerFinanceUser);
 router.post('/resendVerificationLinkCreator', resendVerificationLinkCreator);
+router.post('/resendVerificationLinkClient', resendVerificationLinkClient);
+router.post('/verifyClient', verifyClient);
+
+// Client authentication routes
+router.post('/invite-client', inviteClient);
+router.get('/verify-client-invite', verifyClientInvite);
+router.post('/setup-client-password', setupClientPassword);
 
 router.put('/updateCreator', isLoggedIn, updateCreator);
+router.patch('/updateClient', isLoggedIn, updateClient);
 
 router.patch('/updateProfileCreator', updateProfileCreator);
 router.patch('/changePassword', validateToken, changePassword);
