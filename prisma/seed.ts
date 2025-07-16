@@ -114,90 +114,51 @@ const growthRole = {
   permissions: ['list:campaign', 'view:campaign', 'list:brand', 'view:brand', 'list:metrics', 'view:metrics'],
 };
 
+const clientRole = {
+  permissions: ['list:campaign', 'view:campaign', 'list:creator', 'view:creator'],
+};
+
 async function main() {
-  // // Uncomment code below to create list of roles and permissions
-  // // const permissions = await prisma.permisions.findMany(); //comment this line if permissions is not created yet
-  const permissions = await Promise.all(
-    scopes.map(async (elem) => {
-      return await prisma.permisions.create({
-        data: {
-          name: elem.name,
-          descriptions: elem.description,
+  // Check if Client role already exists
+  const existingClientRole = await prisma.role.findFirst({
+    where: {
+      name: 'Client',
+    },
+  });
+
+  if (existingClientRole) {
+    console.log('Client role already exists');
+    return;
+  }
+
+  // Fetch existing permissions
+  const permissions = await prisma.permisions.findMany();
+  
+  // Create Client Role
+  const clientPermissions = clientRole.permissions;
+  const filteredClientPermissions = permissions.filter((item) => clientPermissions.includes(item.name));
+  
+  if (filteredClientPermissions.length > 0) {
+    await prisma.role.create({
+      data: {
+        name: 'Client',
+        permissions: {
+          connect: filteredClientPermissions.map((item) => ({ id: item.id })),
         },
-      });
-    }),
-  );
-
-  // Create CSM Role
-  const csmPermissions = csmRoles.permissions;
-  const filteredCSMPermissions = permissions.filter((item) => csmPermissions.includes(item.name));
-  await prisma.role.create({
-    data: {
-      name: 'CSM',
-      permissions: {
-        connect: filteredCSMPermissions.map((item) => ({ id: item.id })),
       },
-    },
-  });
-
-  // Create Finance Role
-  const financePermissions = financeRole.permissions;
-  const filteredFinancePermissions = permissions.filter((item) => financePermissions.includes(item.name));
-  await prisma.role.create({
-    data: {
-      name: 'Finance',
-      permissions: {
-        connect: filteredFinancePermissions.map((item) => ({ id: item.id })),
-      },
-    },
-  });
-
-  // Create BD Role
-  const bdPermissions = bdRole.permissions;
-  const filteredbdPermissions = permissions.filter((item) => bdPermissions.includes(item.name));
-  await prisma.role.create({
-    data: {
-      name: 'BD',
-      permissions: {
-        connect: filteredbdPermissions.map((item) => ({ id: item.id })),
-      },
-    },
-  });
-
-  // // seed Packages
-  // await Promise.all(
-  //   pakcagesArray.map(async (item) => {
-  //     await prisma.packages.create({
-  //       data: {
-  //         type: item.type,
-  //         valueMYR: item.valueMYR,
-  //         valueSGD: item.valueSGD,
-  //         totalUGCCredits: item.totalCredits,
-  //         validityPeriod: item.validityPeriod,
-  //       },
-  //     });
-  //   }),
-  // );
-
-  // Create Growth Role
-  const growthPermissions = growthRole.permissions;
-  const filteredgrowthPermissions = permissions.filter((item) => growthPermissions.includes(item.name));
-  await prisma.role.create({
-    data: {
-      name: 'Growth',
-      permissions: {
-        connect: filteredgrowthPermissions.map((item) => ({ id: item.id })),
-      },
-    },
-  });
+    });
+    console.log('Client role created successfully');
+  } else {
+    console.log('No matching permissions found for Client role');
+  }
 }
 
-// eslint-disable-next-line promise/catch-or-return
 main()
-  .catch((e) => {
-    console.error(e);
-    process.exit(1);
-  })
-  .finally(async () => {
+  .then(async () => {
     await prisma.$disconnect();
+  })
+  .catch(async (e) => {
+    console.error(e);
+    await prisma.$disconnect();
+    process.exit(1);
   });
