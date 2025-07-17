@@ -15,7 +15,7 @@ export const updateClient = async (req: Request, res: Response) => {
     const {
       companyName,
       companyAddress,
-      companyEmail,
+      picEmail,
       registrationNumber,
       picName,
       picDesignation,
@@ -39,9 +39,9 @@ export const updateClient = async (req: Request, res: Response) => {
     const companies = await prisma.company.findMany({
       include: { pic: true }
     });
-    
-    const company = companies.find(comp => 
-      comp?.email?.toLowerCase() === user.email?.toLowerCase()
+
+    const company = companies.find(comp =>
+      comp?.pic[0]?.email === user.email?.toLowerCase()
     );
 
     if (!company) {
@@ -61,14 +61,13 @@ export const updateClient = async (req: Request, res: Response) => {
 
     // Update user data (PIC personal info)
     if (companyName) userUpdateData.name = companyName;
-    if (companyEmail) userUpdateData.email = companyEmail;
+    if (picEmail) userUpdateData.email = picEmail;
     if (country) userUpdateData.country = country;
     if (picMobile) userUpdateData.phoneNumber = picMobile;
 
     // Update company data
     if (companyName) companyUpdateData.name = companyName;
     if (companyAddress) companyUpdateData.address = companyAddress;
-    if (companyEmail) companyUpdateData.email = companyEmail;
     if (registrationNumber) companyUpdateData.registration_number = registrationNumber;
     if (logoURL !== company.logo) companyUpdateData.logo = logoURL;
 
@@ -79,7 +78,7 @@ export const updateClient = async (req: Request, res: Response) => {
         companyUpdateData.pic = {
           update: {
             where: { id: currentPic.id },
-            data: { name: picName, designation: picDesignation }
+            data: { name: picName, designation: picDesignation, email: picEmail }
           }
         };
       }
@@ -136,11 +135,8 @@ export const checkClientCompany = async (req: Request, res: Response) => {
       where: { userId },
       include: {
         company: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            type: true
+          include: {
+            pic: true
           }
         }
       }
@@ -171,10 +167,10 @@ export const createClientCompany = async (req: Request, res: Response) => {
       return res.status(401).json({ message: 'User not authenticated' });
     }
 
-    const { companyName, registrationNumber, companyAddress, picDesignation, picNumber, country } = req.body;
+    const { picName, registrationNumber, companyAddress, picDesignation, picNumber, country } = req.body;
 
-    if (!companyName) {
-      return res.status(400).json({ message: 'Company name is required' });
+    if (!picName) {
+      return res.status(400).json({ message: 'PIC name is required' });
     }
 
     const user = await prisma.user.findUnique({
@@ -199,13 +195,13 @@ export const createClientCompany = async (req: Request, res: Response) => {
 
     const company = await prisma.company.create({
       data: {
-        name: companyName,
+        name: user.name || picName,
         email: user.email,
         address: companyAddress,
         registration_number: registrationNumber,
         pic: {
           create: {
-            name: user.name || `${picDesignation} of ${companyName}`,
+            name: picName || `${picDesignation} of ${user.name}`,
             email: user.email,
             designation: picDesignation || 'PIC',
           }
@@ -234,8 +230,12 @@ export const createClientCompany = async (req: Request, res: Response) => {
       company: {
         id: company.id,
         name: company.name,
-        email: company.email,
-        type: company.type,
+        registration_number: company.registration_number,
+        pic: {
+          name: company.pic[0].name,
+          email: company.pic[0].email,
+          designation: company.pic[0].designation,
+        }
       }
     });
 
