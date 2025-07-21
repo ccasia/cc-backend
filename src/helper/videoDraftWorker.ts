@@ -455,7 +455,7 @@ async function deleteFileIfExists(filePath: string) {
                 const notification = await saveNotification({
                   userId: item.adminId,
                   message: adminMessage,
-                  creatorId: content.userId,
+                  creatorId: data.user?.id,
                   title: adminTitle,
                   entity: 'Draft',
                   entityId: data.campaignId,
