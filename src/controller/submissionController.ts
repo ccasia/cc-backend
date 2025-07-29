@@ -1192,7 +1192,7 @@ const checkAllSectionsApproved = async (submission: any, currentSection?: string
 };
 
 export const postingSubmission = async (req: Request, res: Response) => {
-  const { submissionId, postingLink } = req.body;
+  const { submissionId, postingLinks } = req.body;
 
   try {
     const submission = await prisma.submission.update({
@@ -1200,7 +1200,8 @@ export const postingSubmission = async (req: Request, res: Response) => {
         id: submissionId,
       },
       data: {
-        content: postingLink,
+        videos: postingLinks.filter((link: string) => link && link.trim() !== ''),
+        content: postingLinks.filter((link: string) => link && link.trim() !== '').join(', '),
         status: 'PENDING_REVIEW',
         submissionDate: dayjs().format(),
       },
