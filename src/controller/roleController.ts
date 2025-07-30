@@ -77,3 +77,18 @@ export const updateRole = async (req: Request, res: Response) => {
     return res.status(400).json(error);
   }
 };
+
+export const createRole = async (req: Request, res: Response) => {
+  const { role } = req.body;
+  try {
+    const data = await prisma.role.create({
+      data: {
+        name: role,
+      },
+    });
+
+    return res.status(200).json({ data, message: 'Successfully created' });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
