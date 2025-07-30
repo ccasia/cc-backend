@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, CampaignStatus } from '@prisma/client';
 import { uploadCompanyLogo } from '@configs/cloudStorage.config';
 
 const prisma = new PrismaClient();
@@ -230,6 +230,367 @@ export const createClientCompany = async (req: Request, res: Response) => {
     console.error('Error creating client company:', error);
     return res.status(500).json({
       message: error.message || 'Internal server error while creating company',
+    });
+  }
+};
+
+export const createClientCampaign = async (req: Request, res: Response) => {
+  try {
+    const userId = req.session.userid;
+
+    if (!userId) {
+      return res.status(401).json({ message: 'User not authenticated' });
+    }
+
+    // Check if the user is a client
+    const user = await prisma.user.findUnique({
+      where: {
+        id: userId,
+        role: 'client',
+      },
+      include: {
+        client: {
+          include: {
+            company: true,
+          },
+        },
+      },
+    });
+
+    if (!user || !user.client) {
+      return res.status(403).json({ message: 'Only client users can create client campaigns' });
+    }
+
+    // Parse form data
+    let campaignData;
+    try {
+      // Check if data exists and is a string before parsing
+      if (!req.body.data) {
+        return res.status(400).json({ message: 'Missing campaign data' });
+      }
+      
+      campaignData = typeof req.body.data === 'string' 
+        ? JSON.parse(req.body.data) 
+        : req.body.data; // If it's already an object, use it directly
+    } catch (error) {
+      console.error('Error parsing campaign data:', error, 'Raw data:', req.body.data);
+      return res.status(400).json({ message: 'Invalid campaign data format' });
+    }
+
+    const {
+      campaignTitle,
+      campaignDescription,
+      campaignStartDate,
+      campaignEndDate,
+      campaignCredits,
+      brandTone,
+      productName,
+      campaignIndustries,
+      campaignObjectives,
+      audienceGender,
+      audienceAge,
+      audienceLocation,
+      audienceLanguage,
+      audienceCreatorPersona,
+      audienceUserPersona,
+      socialMediaPlatform,
+      videoAngle,
+      campaignDo,
+      campaignDont,
+    } = campaignData;
+
+    // Validate required fields
+    if (!campaignTitle || !campaignDescription) {
+      return res.status(400).json({ message: 'Campaign title and description are required' });
+    }
+
+    // Check if client has a company
+    if (!user.client.companyId) {
+      return res.status(400).json({ message: 'Client must be associated with a company to create campaigns' });
+    }
+
+    const company = user.client.company;
+
+    // Generate campaign ID
+    const campaignId = `C${Math.floor(Math.random() * 1000)}`;
+
+    // Process uploaded images
+    let publicURL: string[] = [];
+    if (req.files && (req.files as any).campaignImages) {
+      const images = Array.isArray((req.files as any).campaignImages)
+        ? (req.files as any).campaignImages
+        : [(req.files as any).campaignImages];
+
+      for (const image of images) {
+        // Use your existing image upload function
+        const url = await uploadCompanyLogo(image.tempFilePath, image.name);
+        publicURL.push(url);
+      }
+    }
+
+    // Create campaign with PENDING status
+    const campaign = await prisma.campaign.create({
+      data: {
+        campaignId,
+        name: campaignTitle,
+        description: campaignDescription,
+        status: 'PENDING_CSM_REVIEW', // Set to PENDING_CSM_REVIEW so it shows up in the Pending tab for admins
+        origin: 'CLIENT', // Mark as client-created campaign for v3 flow
+        brandTone: brandTone || '',
+        productName: productName || '',
+        // Skip adminManager and other fields that will be set by CSM later
+        campaignBrief: {
+          create: {
+            title: campaignTitle,
+            objectives: campaignObjectives ? campaignObjectives.join(', ') : '',
+            images: publicURL,
+            startDate: campaignStartDate ? new Date(campaignStartDate) : new Date(),
+            endDate: campaignEndDate ? new Date(campaignEndDate) : new Date(),
+            industries: campaignIndustries ? campaignIndustries.join(', ') : '',
+            campaigns_do: campaignDo || [],
+            campaigns_dont: campaignDont || [],
+            videoAngle: videoAngle || [],
+            socialMediaPlatform: socialMediaPlatform || [],
+          },
+        },
+        campaignRequirement: {
+          create: {
+            gender: audienceGender || [],
+            age: audienceAge || [],
+            geoLocation: audienceLocation || [],
+            language: audienceLanguage || [],
+            creator_persona: audienceCreatorPersona || [],
+            user_persona: audienceUserPersona || '',
+          },
+        },
+        campaignCredits: campaignCredits ? Number(campaignCredits) : 0,
+        creditsPending: campaignCredits ? Number(campaignCredits) : 0,
+        creditsUtilized: 0,
+        // Connect to client's company
+        company: {
+          connect: {
+            id: company?.id || '',
+          },
+        },
+        // Store reference to client in a campaign log
+      },
+      include: {
+        campaignBrief: true,
+        campaignRequirement: true,
+      },
+    });
+    
+    // Add the client to campaignAdmin so they can see it in their dashboard
+    await prisma.campaignAdmin.create({
+      data: {
+        adminId: userId,
+        campaignId: campaign.id,
+      },
+    });
+    
+    // Add all other clients from the same company to campaignAdmin
+    const otherClientsInCompany = await prisma.user.findMany({
+      where: {
+        client: {
+          companyId: company?.id || '',
+        },
+        id: {
+          not: userId, // Exclude the current user as they're already added
+        },
+      },
+    });
+    
+    console.log(`Found ${otherClientsInCompany.length} other clients in the same company`);
+    
+    // Add each client to campaignAdmin
+    for (const clientUser of otherClientsInCompany) {
+      try {
+        await prisma.campaignAdmin.create({
+          data: {
+            adminId: clientUser.id,
+            campaignId: campaign.id,
+          },
+        });
+        console.log(`Added client ${clientUser.id} to campaign ${campaign.id}`);
+      } catch (error) {
+        console.error(`Error adding client ${clientUser.id} to campaign:`, error);
+        // Continue with other clients even if one fails
+      }
+    }
+    
+    // Create a campaign log entry to track that this client created the campaign
+    await prisma.campaignLog.create({
+      data: {
+        message: `Campaign created by client ${user.name || user.id}`,
+        adminId: userId,
+        campaignId: campaign.id,
+      },
+    });
+
+    // Create a notification for CSM users about the new client campaign
+    await prisma.notification.create({
+      data: {
+        title: 'New Client Campaign',
+        message: `Client ${user.name || 'Unknown'} has created a new campaign: ${campaignTitle}`,
+        entity: 'Campaign',
+        campaignId: campaign.id,
+        // This notification will be sent to all CSM users
+        // You'll need to implement logic to determine which CSM users should receive it
+      },
+    });
+
+    return res.status(201).json({
+      message: 'Client campaign created successfully and is pending CSM review',
+      campaign: {
+        id: campaign.id,
+        campaignId: campaign.campaignId,
+        name: campaign.name,
+        status: campaign.status,
+      },
+    });
+  } catch (error: any) {
+    console.error('Error creating client campaign:', error);
+    return res.status(500).json({
+      message: error.message || 'Internal server error while creating client campaign',
+    });
+  }
+};
+
+export const createClientRecord = async (req: Request, res: Response) => {
+  try {
+    const userId = req.session.userid;
+
+    if (!userId) {
+      return res.status(401).json({ message: 'User not authenticated' });
+    }
+
+    // Check if user exists and has client role
+    const user = await prisma.user.findUnique({
+      where: { 
+        id: userId,
+        role: 'client'
+      },
+      include: {
+        client: true
+      }
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: 'Client user not found' });
+    }
+
+    // If client record already exists, return it
+    if (user.client) {
+      return res.status(200).json({ 
+        message: 'Client record already exists',
+        client: user.client
+      });
+    }
+
+    // Create client record
+    const client = await prisma.client.create({
+      data: {
+        userId: userId,
+        // No company yet - user will need to create one separately
+      }
+    });
+
+    return res.status(201).json({
+      message: 'Client record created successfully',
+      client
+    });
+  } catch (error: any) {
+    console.error('Error creating client record:', error);
+    return res.status(500).json({
+      message: error.message || 'Internal server error while creating client record',
+    });
+  }
+};
+
+export const createClientWithCompany = async (req: Request, res: Response) => {
+  try {
+    const userId = req.session.userid;
+
+    if (!userId) {
+      return res.status(401).json({ message: 'User not authenticated' });
+    }
+
+    // Check if user exists and has client role
+    const user = await prisma.user.findUnique({
+      where: { 
+        id: userId,
+        role: 'client'
+      },
+      include: {
+        client: true
+      }
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: 'Client user not found' });
+    }
+
+    // Create client record if it doesn't exist
+    let client = user.client;
+    if (!client) {
+      client = await prisma.client.create({
+        data: {
+          userId: userId,
+        }
+      });
+    }
+
+    // Check if client already has a company
+    if (client.companyId) {
+      return res.status(200).json({ 
+        message: 'Client already has a company',
+        clientId: client.id,
+        companyId: client.companyId
+      });
+    }
+
+    // Create a company for the client using the user's name as company name
+    const company = await prisma.company.create({
+      data: {
+        name: user.name || 'Client Company',
+        email: user.email,
+        address: '',
+        registration_number: '',
+        pic: {
+          create: {
+            name: user.name || 'Client PIC',
+            email: user.email,
+            designation: 'Owner',
+          },
+        },
+      },
+      include: {
+        pic: true,
+      },
+    });
+
+    // Associate the company with the client
+    await prisma.client.update({
+      where: { userId },
+      data: { companyId: company.id },
+    });
+
+    return res.status(201).json({
+      message: 'Company created and associated with client successfully',
+      client: {
+        id: client.id,
+        companyId: company.id
+      },
+      company: {
+        id: company.id,
+        name: company.name,
+        email: company.email
+      }
+    });
+  } catch (error: any) {
+    console.error('Error creating client with company:', error);
+    return res.status(500).json({
+      message: error.message || 'Internal server error while creating client with company',
     });
   }
 };
