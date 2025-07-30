@@ -45,11 +45,20 @@ import {
   removeCreatorFromCampaign,
   getCampaignsTotal,
   shortlistCreatorV2,
+  shortlistCreatorV2ForClient,
+  shortlistCreatorV3,
   getAllPitches,
   getAllCreatorAgreements,
   getClientCampaigns,
+  activateClientCampaign,
+  checkCampaignAdmin,
+  addClientToCampaignAdmin,
+  fixCampaignTimelines,
+  checkCampaignCreatorVisibility,
+  updateCampaignOrigin,
 } from '@controllers/campaignController';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
+import { canActivateCampaign } from '@middlewares/adminOrClient';
 
 import {
   createNewTimeline,
@@ -110,6 +119,21 @@ router.get('/getAllCampaignsByAdminId/:userId', getAllCampaignsByAdminId);
 // Get Campaigns for Client users
 router.get('/getClientCampaigns', isLoggedIn, getClientCampaigns);
 
+// Debug endpoint to check campaign admin entries
+router.get('/checkCampaignAdmin', isLoggedIn, checkCampaignAdmin);
+
+// Debug endpoint to update campaign origin for testing
+router.post('/updateCampaignOrigin', isLoggedIn, updateCampaignOrigin);
+
+// Debug endpoint to add client to campaign admin for all company campaigns
+router.post('/addClientToCampaignAdmin', isLoggedIn, addClientToCampaignAdmin);
+
+// Fix campaign timelines for creator discovery
+router.post('/fixCampaignTimelines/:campaignId', isLoggedIn, fixCampaignTimelines);
+
+// Check if a campaign meets all requirements to be visible to creators
+router.get('/checkCreatorVisibility/:campaignId', isLoggedIn, checkCampaignCreatorVisibility);
+
 router.post('/updateOrCreateDefaultTimeline', updateOrCreateDefaultTimeline);
 router.post('/createCampaign', isSuperAdmin, createCampaign);
 router.post('/createNewTimeline', isSuperAdmin, createNewTimeline);
@@ -123,6 +147,8 @@ router.post('/draftPitch', isLoggedIn, draftPitch);
 router.post('/spreadsheet', isLoggedIn, isSuperAdmin, createNewSpreadSheets);
 router.post('/removeCreatorFromCampaign', isLoggedIn, isSuperAdmin, removeCreatorFromCampaign);
 router.post('/v2/shortlistCreator', isSuperAdmin, shortlistCreatorV2);
+router.post('/v2/shortlistCreator/client', isSuperAdmin, shortlistCreatorV2ForClient);
+router.post('/v3/shortlistCreator', isLoggedIn, shortlistCreatorV3);
 
 router.patch('/pitch', isLoggedIn, creatorMakePitch);
 router.patch('/changeCampaignStage/:campaignId', changeCampaignStage);
@@ -146,5 +172,8 @@ router.patch('/linkNewAgreement', isLoggedIn, isSuperAdmin, linkNewAgreement);
 
 router.delete('/timelineType/:id', isSuperAdmin, deleteTimelineType);
 router.delete('/unsaveCampaign/:id', isLoggedIn, unSaveCampaign);
+
+// Client campaign activation by CSM
+router.post('/activateClientCampaign/:campaignId', canActivateCampaign, activateClientCampaign);
 
 export default router;

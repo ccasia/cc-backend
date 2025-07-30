@@ -10,6 +10,7 @@ import notificationRoute from './notificationRoute';
 import draftRoute from './draftRoute';
 import taskRoute from './taskRoute';
 import submissionRoute from './submissionRoute';
+import submissionV3Route from './submissionV3Route';
 import roleRoute from './roleRoute';
 import invoiceRoute from './invoiceRoute';
 import threadRoute from './threadRoute';
@@ -21,6 +22,7 @@ import socialRoute from './socialRoute';
 import subscriptionRoute from './subscriptionRoute';
 import kwspRoute from './kwspRoute';
 import clientRoute from './clientRoute';
+import pitchRoute from './pitchRoute';
 
 export const router = express.Router();
 
@@ -36,6 +38,7 @@ router.use('/draft', draftRoute);
 router.use('/thread', threadRoute);
 router.use('/tasks', taskRoute);
 router.use('/submission', submissionRoute);
+router.use('/submission', submissionV3Route);
 router.use('/role', roleRoute);
 router.use('/invoice', invoiceRoute);
 router.use('/kanban', kanbanRoute);
@@ -46,3 +49,4 @@ router.use('/social', socialRoute);
 router.use('/subscription', subscriptionRoute);
 router.use('/kwsp', kwspRoute);
 router.use('/client', clientRoute);
+router.use('/pitch', pitchRoute);

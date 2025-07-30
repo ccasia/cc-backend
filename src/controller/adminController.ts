@@ -4,6 +4,29 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
+export const getAllAdmins = async (req: Request, res: Response) => {
+  try {
+    const admins = await prisma.admin.findMany({
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            photoURL: true,
+          },
+        },
+        role: true,
+      },
+    });
+
+    return res.status(200).json(admins);
+  } catch (error) {
+    console.error('Error fetching admins:', error);
+    return res.status(500).json({ message: 'Failed to fetch admins', error });
+  }
+};
+
 export const deleteAdminById = async (req: Request, res: Response) => {
   const { id } = req.params;
   try {

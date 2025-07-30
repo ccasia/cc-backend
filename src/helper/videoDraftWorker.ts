@@ -122,6 +122,20 @@ const checkCurrentSubmission = async (submissionId: string) => {
 
   if (!submission) throw new Error('Submission not found');
 
+  console.log(`Worker - Checking submission ${submissionId}:`, {
+    submissionType: submission.submissionType.type,
+    currentStatus: submission.status,
+    campaignOrigin: submission.campaign.origin,
+    campaignCredits: submission.campaign.campaignCredits,
+    hasVideos: submission.video.length,
+    hasRawFootages: submission.rawFootages.length,
+    hasPhotos: submission.photos.length
+  });
+
+  // Special handling for V3 campaigns (origin: 'CLIENT')
+  const isV3Campaign = submission.campaign.origin === 'CLIENT';
+  console.log(`Worker - V3 Campaign detected: ${isV3Campaign}`);
+
   const user = await prisma.shortListedCreator.findFirst({
     where: {
       userId: submission?.userId,
@@ -144,6 +158,13 @@ const checkCurrentSubmission = async (submissionId: string) => {
     prisma.photo.count({ where: { userId: submission.userId, campaignId: submission.campaignId } }),
   ]);
 
+  console.log(`Worker - Deliverable counts for submission ${submissionId}:`, {
+    videos,
+    rawFootages,
+    photos,
+    expectedUgcVideos: user?.ugcVideos || 0
+  });
+
   let allDeliverablesSent = false;
 
   if (submission?.submissionType.type === 'FIRST_DRAFT') {
@@ -156,6 +177,22 @@ const checkCurrentSubmission = async (submissionId: string) => {
     const hasPhotos = submission.campaign.photos ? photos > 0 : true;
 
     allDeliverablesSent = hasVideo && hasRawFootage && hasPhotos;
+
+    console.log(`Worker - First Draft checks for submission ${submissionId}:`, {
+      hasVideo,
+      hasRawFootage,
+      hasPhotos,
+      allDeliverablesSent,
+      campaignRequiresRawFootage: submission.campaign.rawFootage,
+      campaignRequiresPhotos: submission.campaign.photos,
+      isV3Campaign
+    });
+
+    // For V3 campaigns, if we have any deliverables uploaded, consider it ready for review
+    if (isV3Campaign && (hasVideo || hasRawFootage || hasPhotos)) {
+      console.log(`Worker - V3 Campaign: At least one deliverable uploaded, marking as ready for review`);
+      allDeliverablesSent = true;
+    }
   } else if (submission?.submissionType.type === 'FINAL_DRAFT') {
     const [videosWithRevision, rawFootagesWithRevision, photosWithRevision] = await Promise.all([
       prisma.video.count({
@@ -188,12 +225,20 @@ const checkCurrentSubmission = async (submissionId: string) => {
     const hasPhotos = submission.campaign.photos ? photosWithRevision === 0 : true;
 
     allDeliverablesSent = hasVideos && hasRawFootage && hasPhotos;
+
+    console.log(`Worker - Final Draft checks for submission ${submissionId}:`, {
+      hasVideos,
+      hasRawFootage,
+      hasPhotos,
+      allDeliverablesSent
+    });
   }
 
   // Update submission status based on deliverable checks
   // For UGC campaigns (no posting required), set to PENDING_REVIEW when all deliverables are sent
   // For normal campaigns, also consider campaignCredits condition
   if (allDeliverablesSent) {
+    console.log(`Worker - Updating submission ${submissionId} to PENDING_REVIEW`);
     await prisma.submission.update({
       where: { id: submission.id },
       data: {
@@ -201,8 +246,10 @@ const checkCurrentSubmission = async (submissionId: string) => {
         submissionDate: dayjs().format(),
       },
     });
+    console.log(`Worker - Successfully updated submission ${submissionId} to PENDING_REVIEW`);
   } else {
     if (submission.submissionType.type === 'FIRST_DRAFT') {
+      console.log(`Worker - Updating submission ${submissionId} to IN_PROGRESS (not all deliverables sent)`);
       await prisma.submission.update({
         where: { id: submission.id },
         data: {
@@ -210,6 +257,7 @@ const checkCurrentSubmission = async (submissionId: string) => {
         },
       });
     } else {
+      console.log(`Worker - Updating submission ${submissionId} to CHANGES_REQUIRED`);
       await prisma.submission.update({
         where: { id: submission.id },
         data: {
@@ -253,7 +301,14 @@ async function deleteFileIfExists(filePath: string) {
       async (msg) => {
         if (msg !== null) {
           const content: any = JSON.parse(msg.content.toString());
-          console.log('RECIEVED', content);
+          console.log('Worker - RECEIVED message:', {
+            submissionId: content.submissionId,
+            userid: content.userid,
+            folder: content.folder,
+            hasVideos: content.filePaths?.video?.length || 0,
+            hasRawFootages: content.filePaths?.rawFootages?.length || 0,
+            hasPhotos: content.filePaths?.photos?.length || 0
+          });
           const { filePaths } = content;
 
           try {
@@ -273,6 +328,7 @@ async function deleteFileIfExists(filePath: string) {
                     rawFootage: true,
                     photos: true,
                     campaignCredits: true,
+                    origin: true,
                   },
                 },
                 feedback: {
@@ -285,6 +341,14 @@ async function deleteFileIfExists(filePath: string) {
 
             if (!submission) throw new Error('Submission not found');
 
+            console.log('Worker - Processing submission:', {
+              submissionId: submission.id,
+              submissionType: submission.submissionType.type,
+              currentStatus: submission.status,
+              campaignOrigin: submission.campaign.origin,
+              campaignCredits: submission.campaign.campaignCredits
+            });
+
             const requestChangeVideos = await prisma.video.findMany({
               where: {
                 userId: submission.userId,
@@ -295,8 +359,9 @@ async function deleteFileIfExists(filePath: string) {
 
             // For videos
             if (filePaths?.video?.length) {
+              console.log(`Worker - Processing ${filePaths.video.length} videos for submission ${submission.id}`);
               const videoPromises = filePaths.video.map(async (videoFile: VideoFile, index: any) => {
-                console.log(`Processing video ${videoFile.fileName}`);
+                console.log(`Worker - Processing video ${videoFile.fileName}`);
 
                 // Process video
                 await processVideo(
@@ -617,14 +682,20 @@ async function deleteFileIfExists(filePath: string) {
               }
             }
 
+            console.log(`Worker - All file processing complete for submission ${submission.id}, calling checkCurrentSubmission...`);
             await checkCurrentSubmission(submission.id);
+            console.log(`Worker - checkCurrentSubmission completed for submission ${submission.id}`);
 
             const endUsage = process.cpuUsage(startUsage);
 
             console.log(`CPU Usage: ${endUsage.user} microseconds (user) / ${endUsage.system} microseconds (system)`);
 
             for (const item of content.admins) {
-              io.to(clients.get(item.admin.user.id)).emit('newSubmission');
+              if (item.admin && item.admin.user && item.admin.user.id) {
+                io.to(clients.get(item.admin.user.id)).emit('newSubmission');
+              } else {
+                console.warn('[videoDraftWorker] Skipping admin notification: missing admin or user for item:', item);
+              }
             }
 
             const allSuperadmins = await prisma.user.findMany({
