@@ -67,11 +67,11 @@ model User {
   isVerified         Boolean              @default(false)
   isKWSPCampaign     Boolean?             @default(false)
   hasSubmittedKWSP   Boolean              @default(false)
-  
+
   // Individual feedback relations
-  videoFeedback      Video[]              @relation("VideoFeedback")
-  rawFootageFeedback RawFootage[]         @relation("RawFootageFeedback")
-  photoFeedback      Photo[]              @relation("PhotoFeedback")
+  videoFeedback      Video[]      @relation("VideoFeedback")
+  rawFootageFeedback RawFootage[] @relation("RawFootageFeedback")
+  photoFeedback      Photo[]      @relation("PhotoFeedback")
 }
 
 model EmailVerification {
@@ -100,8 +100,8 @@ model Admin {
 
   xeroTokenSet Json?
 
-  role Role? @relation(fields: [roleId], references: [id])
-  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   Role?   @relation(fields: [roleId], references: [id])
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   client Client?
 
   adminPermissionModule AdminPermissionModule[]
@@ -114,18 +114,19 @@ model Admin {
 }
 
 model Client {
-  id     String @id @unique @default(cuid())
+  id          String     @id @unique @default(cuid())
   //  companyName String   @db.VarChar(255)
   //  address     String?  @db.VarChar(255)
   //  phone       String?  @db.VarChar(100)
   //  website     String?  @db.VarChar(255)
-  inviteToken String? @unique
-  companyId String?
-  userId String @unique
-  adminId String? @unique
-  company Company? @relation(fields: [companyId], references: [id])
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  admin  Admin? @relation(fields: [adminId], references: [id])
+  inviteToken String?    @unique
+  companyId   String?
+  userId      String     @unique
+  adminId     String?    @unique
+  company     Company?   @relation(fields: [companyId], references: [id])
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  admin       Admin?     @relation(fields: [adminId], references: [id])
+  campaign    Campaign[]
 }
 
 model Role {
@@ -191,7 +192,7 @@ model TiktokUser {
   following_count Int?
   follower_count  Int?
   likes_count     Int?
-  
+
   totalLikes      Int?
   totalComments   Int?
   averageLikes    Float?
@@ -234,7 +235,7 @@ model InstagramUser {
 
   accessToken     Json?
   expiresIn       Int?
-  user_id         String? @unique
+  user_id         String?   @unique
   followers_count Int?
   follows_count   Int?
   media_count     Int?
@@ -244,7 +245,7 @@ model InstagramUser {
   averageLikes    Float?
   averageComments Float?
   engagement_rate Float?
-  lastUpdated DateTime?
+  lastUpdated     DateTime?
 
   instagramVideo InstagramVideo[]
 
@@ -516,6 +517,8 @@ model Campaign {
   brandId        String?
   subscriptionId String?
 
+  clientId String?
+
   companyId           String?
   brandTone           String?
   productName         String?
@@ -530,6 +533,7 @@ model Campaign {
   company             Company?           @relation(fields: [companyId], references: [id])
   event               Event?             @relation(fields: [eventId], references: [id])
   subscription        Subscription?      @relation(fields: [subscriptionId], references: [id])
+  client              Client?            @relation(fields: [clientId], references: [id])
 
   campaignAdmin                 CampaignAdmin[]
   campaignBrief                 CampaignBrief?
@@ -703,28 +707,28 @@ model AdminLog {
 }
 
 model Pitch {
-  id                String         @id @unique @default(cuid())
-  type              PitchType
-  campaignId        String
-  userId            String
-  status            PitchStatus?   @default(pending)
-  content           String         @default("test")
-  createdAt         DateTime       @default(now())
-  completedAt       DateTime?
-  approvedByAdminId String?
-  approvedByClientId String?
-  rejectedByAdminId String?
-  rejectedByClientId String?
-  rejectionReason   String?
-  amount            Int?
+  id                  String         @id @unique @default(cuid())
+  type                PitchType
+  campaignId          String
+  userId              String
+  status              PitchStatus?   @default(pending)
+  content             String         @default("test")
+  createdAt           DateTime       @default(now())
+  completedAt         DateTime?
+  approvedByAdminId   String?
+  approvedByClientId  String?
+  rejectedByAdminId   String?
+  rejectedByClientId  String?
+  rejectionReason     String?
+  amount              Int?
   agreementTemplateId String?
-  Notification      Notification[]
-  campaign          Campaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  user              User           @relation(fields: [userId], references: [id])
-  admin             Admin?         @relation(fields: [approvedByAdminId], references: [userId], name: "ApprovedByAdmin")
-  client            User?          @relation("ApprovedByClient", fields: [approvedByClientId], references: [id])
-  rejectedByAdmin   Admin?         @relation("RejectedByAdmin", fields: [rejectedByAdminId], references: [userId])
-  rejectedByClient  User?          @relation("RejectedByClient", fields: [rejectedByClientId], references: [id])
+  Notification        Notification[]
+  campaign            Campaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  user                User           @relation(fields: [userId], references: [id])
+  admin               Admin?         @relation(fields: [approvedByAdminId], references: [userId], name: "ApprovedByAdmin")
+  client              User?          @relation("ApprovedByClient", fields: [approvedByClientId], references: [id])
+  rejectedByAdmin     Admin?         @relation("RejectedByAdmin", fields: [rejectedByAdminId], references: [userId])
+  rejectedByClient    User?          @relation("RejectedByClient", fields: [rejectedByClientId], references: [id])
 
   @@unique([userId, campaignId])
 }
@@ -854,13 +858,13 @@ model Video {
   submission   Submission?    @relation(fields: [submissionId], references: [id])
   createdAt    DateTime       @default(now())
   updatedAt    DateTime?      @updatedAt
-  
+
   // Individual feedback fields
-  feedback     String?        // Individual feedback message
-  reasons      String[]       // Reasons for changes (if any)
-  adminId      String?        // Admin who provided feedback
-  admin        User?          @relation("VideoFeedback", fields: [adminId], references: [id])
-  feedbackAt   DateTime?      // When feedback was provided
+  feedback   String? // Individual feedback message
+  reasons    String[] // Reasons for changes (if any)
+  adminId    String? // Admin who provided feedback
+  admin      User?     @relation("VideoFeedback", fields: [adminId], references: [id])
+  feedbackAt DateTime? // When feedback was provided
 }
 
 model RawFootage {
@@ -876,13 +880,13 @@ model RawFootage {
   submission   Submission? @relation(fields: [submissionId], references: [id])
   createdAt    DateTime    @default(now())
   updatedAt    DateTime?   @updatedAt
-  
+
   // Individual feedback fields
-  feedback     String?     // Individual feedback message
-  reasons      String[]    // Reasons for changes (if any)
-  adminId      String?     // Admin who provided feedback
-  admin        User?       @relation("RawFootageFeedback", fields: [adminId], references: [id])
-  feedbackAt   DateTime?   // When feedback was provided
+  feedback   String? // Individual feedback message
+  reasons    String[] // Reasons for changes (if any)
+  adminId    String? // Admin who provided feedback
+  admin      User?     @relation("RawFootageFeedback", fields: [adminId], references: [id])
+  feedbackAt DateTime? // When feedback was provided
 }
 
 model Photo {
@@ -898,13 +902,13 @@ model Photo {
   submission   Submission? @relation(fields: [submissionId], references: [id])
   createdAt    DateTime    @default(now())
   updatedAt    DateTime?   @updatedAt
-  
+
   // Individual feedback fields
-  feedback     String?     // Individual feedback message
-  reasons      String[]    // Reasons for changes (if any)
-  adminId      String?     // Admin who provided feedback
-  admin        User?       @relation("PhotoFeedback", fields: [adminId], references: [id])
-  feedbackAt   DateTime?   // When feedback was provided
+  feedback   String? // Individual feedback message
+  reasons    String[] // Reasons for changes (if any)
+  adminId    String? // Admin who provided feedback
+  admin      User?     @relation("PhotoFeedback", fields: [adminId], references: [id])
+  feedbackAt DateTime? // When feedback was provided
 }
 
 // model DeliverableFeedback {

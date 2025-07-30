@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import { PrismaClient, CampaignStatus } from '@prisma/client';
 import { uploadCompanyLogo } from '@configs/cloudStorage.config';
+import jwt, { Secret } from 'jsonwebtoken';
+import { ClientInvitation } from '@configs/nodemailer.config';
 
 const prisma = new PrismaClient();
 
@@ -268,10 +270,8 @@ export const createClientCampaign = async (req: Request, res: Response) => {
       if (!req.body.data) {
         return res.status(400).json({ message: 'Missing campaign data' });
       }
-      
-      campaignData = typeof req.body.data === 'string' 
-        ? JSON.parse(req.body.data) 
-        : req.body.data; // If it's already an object, use it directly
+
+      campaignData = typeof req.body.data === 'string' ? JSON.parse(req.body.data) : req.body.data; // If it's already an object, use it directly
     } catch (error) {
       console.error('Error parsing campaign data:', error, 'Raw data:', req.body.data);
       return res.status(400).json({ message: 'Invalid campaign data format' });
@@ -372,6 +372,11 @@ export const createClientCampaign = async (req: Request, res: Response) => {
             id: company?.id || '',
           },
         },
+        client: {
+          connect: {
+            id: user.client?.id,
+          },
+        },
         // Store reference to client in a campaign log
       },
       include: {
@@ -379,15 +384,15 @@ export const createClientCampaign = async (req: Request, res: Response) => {
         campaignRequirement: true,
       },
     });
-    
+
     // Add the client to campaignAdmin so they can see it in their dashboard
-    await prisma.campaignAdmin.create({
-      data: {
-        adminId: userId,
-        campaignId: campaign.id,
-      },
-    });
-    
+    // await prisma.campaignAdmin.create({
+    //   data: {
+    //     adminId: userId,
+    //     campaignId: campaign.id,
+    //   },
+    // });
+
     // Add all other clients from the same company to campaignAdmin
     const otherClientsInCompany = await prisma.user.findMany({
       where: {
@@ -399,25 +404,25 @@ export const createClientCampaign = async (req: Request, res: Response) => {
         },
       },
     });
-    
+
     console.log(`Found ${otherClientsInCompany.length} other clients in the same company`);
-    
+
     // Add each client to campaignAdmin
-    for (const clientUser of otherClientsInCompany) {
-      try {
-        await prisma.campaignAdmin.create({
-          data: {
-            adminId: clientUser.id,
-            campaignId: campaign.id,
-          },
-        });
-        console.log(`Added client ${clientUser.id} to campaign ${campaign.id}`);
-      } catch (error) {
-        console.error(`Error adding client ${clientUser.id} to campaign:`, error);
-        // Continue with other clients even if one fails
-      }
-    }
-    
+    // for (const clientUser of otherClientsInCompany) {
+    //   try {
+    //     await prisma.campaignAdmin.create({
+    //       data: {
+    //         adminId: clientUser.id,
+    //         campaignId: campaign.id,
+    //       },
+    //     });
+    //     console.log(`Added client ${clientUser.id} to campaign ${campaign.id}`);
+    //   } catch (error) {
+    //     console.error(`Error adding client ${clientUser.id} to campaign:`, error);
+    //     // Continue with other clients even if one fails
+    //   }
+    // }
+
     // Create a campaign log entry to track that this client created the campaign
     await prisma.campaignLog.create({
       data: {
@@ -466,13 +471,13 @@ export const createClientRecord = async (req: Request, res: Response) => {
 
     // Check if user exists and has client role
     const user = await prisma.user.findUnique({
-      where: { 
+      where: {
         id: userId,
-        role: 'client'
+        role: 'client',
       },
       include: {
-        client: true
-      }
+        client: true,
+      },
     });
 
     if (!user) {
@@ -481,9 +486,9 @@ export const createClientRecord = async (req: Request, res: Response) => {
 
     // If client record already exists, return it
     if (user.client) {
-      return res.status(200).json({ 
+      return res.status(200).json({
         message: 'Client record already exists',
-        client: user.client
+        client: user.client,
       });
     }
 
@@ -492,12 +497,12 @@ export const createClientRecord = async (req: Request, res: Response) => {
       data: {
         userId: userId,
         // No company yet - user will need to create one separately
-      }
+      },
     });
 
     return res.status(201).json({
       message: 'Client record created successfully',
-      client
+      client,
     });
   } catch (error: any) {
     console.error('Error creating client record:', error);
@@ -517,13 +522,13 @@ export const createClientWithCompany = async (req: Request, res: Response) => {
 
     // Check if user exists and has client role
     const user = await prisma.user.findUnique({
-      where: { 
+      where: {
         id: userId,
-        role: 'client'
+        role: 'client',
       },
       include: {
-        client: true
-      }
+        client: true,
+      },
     });
 
     if (!user) {
@@ -536,16 +541,16 @@ export const createClientWithCompany = async (req: Request, res: Response) => {
       client = await prisma.client.create({
         data: {
           userId: userId,
-        }
+        },
       });
     }
 
     // Check if client already has a company
     if (client.companyId) {
-      return res.status(200).json({ 
+      return res.status(200).json({
         message: 'Client already has a company',
         clientId: client.id,
-        companyId: client.companyId
+        companyId: client.companyId,
       });
     }
 
@@ -579,18 +584,59 @@ export const createClientWithCompany = async (req: Request, res: Response) => {
       message: 'Company created and associated with client successfully',
       client: {
         id: client.id,
-        companyId: company.id
+        companyId: company.id,
       },
       company: {
         id: company.id,
         name: company.name,
-        email: company.email
-      }
+        email: company.email,
+      },
     });
   } catch (error: any) {
     console.error('Error creating client with company:', error);
     return res.status(500).json({
       message: error.message || 'Internal server error while creating client with company',
     });
+  }
+};
+
+export const inviteClient = async (req: Request, res: Response) => {
+  const { email } = req.body;
+  try {
+    const user = await prisma.user.findFirst({
+      where: {
+        email,
+      },
+    });
+
+    if (user) return res.status(404).json({ message: 'Client is already exist' });
+
+    const data = await prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          email: email,
+          role: 'client',
+          status: 'pending',
+        },
+      });
+
+      const client = await tx.client.create({
+        data: {
+          userId: user.id,
+        },
+      });
+
+      return { user, client };
+    });
+
+    const token = jwt.sign({ id: data.user.id }, process.env.SESSION_SECRET as string, { expiresIn: '15m' });
+
+    await prisma.client.update({ where: { id: data.client.id }, data: { inviteToken: token } });
+
+    ClientInvitation(data.user.email, token, 'Testing');
+
+    return res.status(200).json({ message: 'Invitation link has been sent!' });
+  } catch (error) {
+    return res.status(400).json(error);
   }
 };

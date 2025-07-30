@@ -9,7 +9,7 @@ import {
   setPitchAgreement,
   submitAgreement,
   getPitchesV3,
-  getPitchByIdV3
+  getPitchByIdV3,
 } from '@controllers/pitchController';
 
 const router = express.Router();
@@ -24,4 +24,4 @@ router.patch('/v3/:pitchId/reject/client', isLoggedIn, isAdminOrClient, rejectPi
 router.patch('/v3/:pitchId/agreement', isLoggedIn, isAdminOrClient, setPitchAgreement);
 router.patch('/v3/:pitchId/submit-agreement', isLoggedIn, submitAgreement);
 
-export default router; 
+export default router;

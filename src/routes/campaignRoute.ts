@@ -85,7 +85,7 @@ router.get('/template/:id', getTemplatebyId);
 
 router.get('/getAllCampaignsByAdminID', isSuperAdmin, getAllCampaigns);
 
-router.get('/getCampaignById/:id', isSuperAdmin, getCampaignById);
+router.get('/getCampaignById/:id', getCampaignById);
 router.get('/getClientByCampID/:id', getCampaignById);
 // router.get('/getCampaignByIdInvoice/:id' , getCampaignById);
 router.get('/getAllActiveCampaign', getAllActiveCampaign);
