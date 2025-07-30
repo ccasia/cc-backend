@@ -4656,3 +4656,95 @@ export const resendAgreement = async (req: Request, res: Response) => {
     return res.status(400).json(error);
   }
 };
+
+export const changeCampaignCredit = async (req: Request, res: Response) => {
+  const { campaignId, newCredit } = req.body;
+  const { userid } = req.session;
+
+  try {
+    const user = await prisma.user.findFirst({
+      where: {
+        id: userid,
+      },
+    });
+
+    const campaign = await prisma.campaign.findUnique({
+      where: {
+        id: campaignId,
+      },
+      include: {
+        brand: true,
+        company: {
+          select: {
+            subscriptions: {
+              where: {
+                status: 'ACTIVE',
+              },
+            },
+            brand: true,
+          },
+        },
+        subscription: true,
+      },
+    });
+
+    if (!campaign) return res.status(404).json({ message: 'Campaign not found' });
+
+    const { subscription } = campaign;
+
+    const updatedCampaign = await prisma.campaign.update({
+      where: {
+        id: campaign.id,
+      },
+      data: {
+        campaignCredits: {
+          increment: newCredit,
+        },
+        creditsPending: {
+          increment: newCredit,
+        },
+      },
+    });
+
+    if ((subscription?.totalCredits ?? 0) === (subscription?.creditsUsed ?? 0)) {
+      await prisma.subscription.update({
+        where: {
+          id: campaign?.subscription?.id,
+        },
+        data: {
+          totalCredits: {
+            increment: newCredit,
+          },
+        },
+      });
+    } else if ((subscription?.creditsUsed ?? 0) < (subscription?.totalCredits ?? 0)) {
+      await prisma.subscription.update({
+        where: {
+          id: campaign?.subscription?.id,
+        },
+        data: {
+          totalCredits: {
+            decrement: newCredit,
+          },
+        },
+      });
+    }
+
+    await prisma.adminLog.create({
+      data: {
+        message: `${user?.name} changed the campaign credit for "${campaign.name}" from ${campaign.campaignCredits} to ${updatedCampaign.campaignCredits} credits.`,
+        admin: {
+          connect: {
+            userId: user?.id,
+          },
+        },
+        performedBy: user?.name,
+      },
+    });
+
+    res.status(200).json({ message: 'Successfully changed' });
+  } catch (error) {
+    console.log(error);
+    res.status(400).json({ message: error });
+  }
+};
