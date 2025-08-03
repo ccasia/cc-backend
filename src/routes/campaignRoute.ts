@@ -48,6 +48,7 @@ import {
   shortlistCreatorV2,
   getAllPitches,
   getAllCreatorAgreements,
+  changeCampaignCredit,
 } from '@controllers/campaignController';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 
@@ -141,6 +142,7 @@ router.patch('/sendAgreement', isLoggedIn, isSuperAdmin, sendAgreement);
 router.patch('/resendAgreement', isLoggedIn, resendAgreement);
 router.patch('/removePitchVideo', isLoggedIn, removePitchVideo);
 router.patch('/linkNewAgreement', isLoggedIn, isSuperAdmin, linkNewAgreement);
+router.patch('/changeCredits', isLoggedIn, changeCampaignCredit);
 
 router.delete('/timelineType/:id', isSuperAdmin, deleteTimelineType);
 router.delete('/unsaveCampaign/:id', isLoggedIn, unSaveCampaign);
