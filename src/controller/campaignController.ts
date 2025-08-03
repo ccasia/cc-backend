@@ -4668,6 +4668,8 @@ export const changeCampaignCredit = async (req: Request, res: Response) => {
       },
     });
 
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
     const campaign = await prisma.campaign.findUnique({
       where: {
         id: campaignId,
@@ -4690,57 +4692,101 @@ export const changeCampaignCredit = async (req: Request, res: Response) => {
 
     if (!campaign) return res.status(404).json({ message: 'Campaign not found' });
 
-    const { subscription } = campaign;
+    const subscription = campaign?.subscription || null;
 
-    const updatedCampaign = await prisma.campaign.update({
+    if (!subscription) return res.status(404).json({ message: 'No subscription found' });
+
+    const subscribedCampaigns = await prisma.subscription.findFirst({
       where: {
-        id: campaign.id,
+        id: subscription.id,
       },
-      data: {
-        campaignCredits: {
-          increment: newCredit,
-        },
-        creditsPending: {
-          increment: newCredit,
+      select: {
+        campaign: {
+          select: {
+            campaignCredits: true,
+            shortlisted: true,
+            id: true,
+            name: true,
+            creditsPending: true,
+          },
         },
       },
     });
 
-    if ((subscription?.totalCredits ?? 0) === (subscription?.creditsUsed ?? 0)) {
-      await prisma.subscription.update({
+    const totalAssignedCredits = subscribedCampaigns?.campaign.reduce(
+      (acc, cur) => acc + (cur.campaignCredits ?? 0),
+      0,
+    );
+
+    if (newCredit < 0) {
+      //Deduct from existing credits and add into subscription credit
+
+      await prisma.campaign.update({
         where: {
-          id: campaign?.subscription?.id,
+          id: campaign.id,
         },
         data: {
-          totalCredits: {
-            increment: newCredit,
+          campaignCredits: {
+            decrement: Math.abs(newCredit),
+          },
+          creditsPending: {
+            decrement: Math.abs(newCredit),
           },
         },
       });
-    } else if ((subscription?.creditsUsed ?? 0) < (subscription?.totalCredits ?? 0)) {
-      await prisma.subscription.update({
-        where: {
-          id: campaign?.subscription?.id,
-        },
-        data: {
-          totalCredits: {
-            decrement: newCredit,
+    } else {
+      if (totalAssignedCredits === subscription.totalCredits) {
+        // const campaigns = subscribedCampaigns?.campaign || [];
+
+        // const newCampaigns = campaigns.map((item) => {
+        //   const shortlistedCreditsAssigned = item.shortlisted.reduce((acc, cur) => acc + (cur?.ugcVideos ?? 0), 0);
+
+        //   return {
+        //     campaignId: item.id,
+        //     campaignName: item.name,
+        //     creditsPending: (item.campaignCredits ?? 0) - shortlistedCreditsAssigned,
+        //   };
+        // });
+
+        // console.log(newCampaigns);
+
+        return res.status(400).json({ message: 'All available credits have been used.' });
+      }
+
+      if (totalAssignedCredits + newCredit > (subscription?.totalCredits ?? 0)) {
+        return res.status(400).json({
+          message: `Only ${(subscription?.totalCredits ?? 0) - (totalAssignedCredits ?? 0)} credits is available to add.`,
+        });
+      }
+
+      await prisma.$transaction(async (tx) => {
+        const updatedCampaign = await tx.campaign.update({
+          where: {
+            id: campaign.id,
           },
-        },
+          data: {
+            campaignCredits: {
+              increment: newCredit,
+            },
+            creditsPending: {
+              increment: newCredit,
+            },
+          },
+        });
+
+        await tx.adminLog.create({
+          data: {
+            message: `${user?.name} changed the campaign credit for "${campaign.name}" from ${campaign.campaignCredits} to ${updatedCampaign.campaignCredits} credits.`,
+            admin: {
+              connect: {
+                userId: user?.id,
+              },
+            },
+            performedBy: user?.name,
+          },
+        });
       });
     }
-
-    await prisma.adminLog.create({
-      data: {
-        message: `${user?.name} changed the campaign credit for "${campaign.name}" from ${campaign.campaignCredits} to ${updatedCampaign.campaignCredits} credits.`,
-        admin: {
-          connect: {
-            userId: user?.id,
-          },
-        },
-        performedBy: user?.name,
-      },
-    });
 
     res.status(200).json({ message: 'Successfully changed' });
   } catch (error) {
