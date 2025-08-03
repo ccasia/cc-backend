@@ -31,9 +31,7 @@ export const getInstagramBusinesssAccountId = async (accessToken: string, pageId
       },
     });
 
-    console.log(response);
-
-    if (!response?.data?.instagram_business_account) throw new Error('No Instargram account is connected to the page');
+    if (!response?.data?.instagram_business_account) throw new Error('No Instagram account is connected to the page');
 
     const instagramAccountId = response?.data?.instagram_business_account?.id;
 
@@ -162,7 +160,6 @@ export const getInstagramOverviewService = async (accessToken: string) => {
 
     return res.data;
   } catch (error) {
-    console.log(error);
     throw new Error(error);
   }
 };
@@ -364,5 +361,296 @@ export const getTikTokVideoById = async (accessToken: string, videoId: string) =
   } catch (error) {
     console.error('Error fetching TikTok video by ID:', error);
     throw new Error(`Failed to fetch TikTok video: ${error}`);
+  }
+};
+
+interface InstagramPost {
+  id: string;
+  like_count?: number;
+  comments_count?: number;
+  timestamp: string;
+}
+
+// New function to calculate engagement rates over time for charts
+export const getInstagramEngagementRateOverTime = async (
+  accessToken: string,
+  limit: number = 25
+): Promise<{ engagementRates: number[], months: string[] }> => {
+  try {
+    const response = await axios.get('https://graph.instagram.com/v22.0/me/media', {
+      params: {
+        access_token: accessToken,
+        fields: 'id,like_count,comments_count,timestamp',
+        limit: limit,
+      },
+    });
+
+    const posts: InstagramPost[] = response.data.data || [];
+
+    if (posts.length === 0) {
+      return { engagementRates: [], months: [] };
+    }
+
+    // Get follower count for engagement rate calculation
+    const userResponse = await axios.get('https://graph.instagram.com/v22.0/me', {
+      params: {
+        access_token: accessToken,
+        fields: 'followers_count',
+      },
+    });
+
+    const followersCount = userResponse.data.followers_count || 1;
+
+    // Group posts by month and calculate engagement rates
+    const monthlyData = new Map<string, { totalEngagement: number, postCount: number }>();
+    const lastThreeMonths = new Set<string>();
+
+    // Get last 3 months
+    for (let i = 0; i < 3; i++) {
+      const month = dayjs().subtract(i, 'month').format('MMM');
+      lastThreeMonths.add(month);
+    }
+
+    posts.forEach(post => {
+      const postDate = dayjs(post.timestamp);
+      const monthKey = postDate.format('MMM');
+      
+      if (lastThreeMonths.has(monthKey)) {
+        const engagement = (post.like_count || 0) + (post.comments_count || 0);
+        
+        if (!monthlyData.has(monthKey)) {
+          monthlyData.set(monthKey, { totalEngagement: 0, postCount: 0 });
+        }
+        
+        const current = monthlyData.get(monthKey)!;
+        current.totalEngagement += engagement;
+        current.postCount += 1;
+      }
+    });
+
+    // Calculate engagement rates and prepare ordered data
+    const monthOrder = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const lastThreeMonthsArray = Array.from(lastThreeMonths).sort((a, b) => monthOrder.indexOf(a) - monthOrder.indexOf(b));
+    
+    const engagementRates = lastThreeMonthsArray.map(month => {
+      const data = monthlyData.get(month);
+      if (!data || data.postCount === 0) return 0;
+      
+      const avgEngagementPerPost = data.totalEngagement / data.postCount;
+      const engagementRate = (avgEngagementPerPost / followersCount) * 100;
+      return parseFloat(engagementRate.toFixed(2));
+    });
+
+    return {
+      engagementRates,
+      months: lastThreeMonthsArray,
+    };
+  } catch (error) {
+    console.error('Error calculating Instagram engagement rate over time:', error);
+    return { engagementRates: [], months: [] };
+  }
+};
+
+// New function to calculate monthly interactions for bar chart
+export const getInstagramMonthlyInteractions = async (
+  accessToken: string,
+  limit: number = 25
+): Promise<{ monthlyData: { month: string, interactions: number }[] }> => {
+  try {
+    const response = await axios.get('https://graph.instagram.com/v22.0/me/media', {
+      params: {
+        access_token: accessToken,
+        fields: 'id,like_count,comments_count,timestamp',
+        limit: limit,
+      },
+    });
+
+    const posts: InstagramPost[] = response.data.data || [];
+
+    if (posts.length === 0) {
+      return { monthlyData: [] };
+    }
+
+    // Group posts by month and calculate total interactions
+    const monthlyData = new Map<string, number>();
+    const lastThreeMonths = new Set<string>();
+
+    // Get last 3 months
+    for (let i = 0; i < 3; i++) {
+      const month = dayjs().subtract(i, 'month').format('MMM');
+      lastThreeMonths.add(month);
+    }
+
+    posts.forEach(post => {
+      const postDate = dayjs(post.timestamp);
+      const monthKey = postDate.format('MMM');
+      
+      if (lastThreeMonths.has(monthKey)) {
+        const interactions = (post.like_count || 0) + (post.comments_count || 0);
+        monthlyData.set(monthKey, (monthlyData.get(monthKey) || 0) + interactions);
+      }
+    });
+
+    // Prepare ordered data
+    const monthOrder = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const lastThreeMonthsArray = Array.from(lastThreeMonths).sort((a, b) => monthOrder.indexOf(a) - monthOrder.indexOf(b));
+    
+    const formattedData = lastThreeMonthsArray.map(month => ({
+      month,
+      interactions: monthlyData.get(month) || 0
+    }));
+
+    return { monthlyData: formattedData };
+  } catch (error) {
+    console.error('Error calculating Instagram monthly interactions:', error);
+    return { monthlyData: [] };
+  }
+};
+
+// New function to calculate TikTok engagement rates over time for charts
+export const getTikTokEngagementRateOverTime = async (
+  accessToken: string,
+  limit: number = 20
+): Promise<{ engagementRates: number[], months: string[] }> => {
+  try {
+    const response = await axios.post(
+      'https://open.tiktokapis.com/v2/video/list/',
+      { max_count: limit },
+      {
+        params: {
+          fields: 'id,like_count,comment_count,create_time',
+        },
+        headers: { 
+          Authorization: `Bearer ${accessToken}`, 
+          'Content-Type': 'application/json' 
+        },
+      }
+    );
+
+    const videos = response.data.data?.videos || [];
+
+    if (videos.length === 0) {
+      return { engagementRates: [], months: [] };
+    }
+
+    // Get follower count for engagement rate calculation
+    const userResponse = await axios.get('https://open.tiktokapis.com/v2/user/info/', {
+      params: {
+        fields: 'follower_count',
+      },
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    const followersCount = userResponse.data.data.user.follower_count || 1;
+
+    // Group videos by month and calculate engagement rates
+    const monthlyData = new Map<string, { totalEngagement: number, videoCount: number }>();
+    const lastThreeMonths = new Set<string>();
+
+    // Get last 3 months
+    for (let i = 0; i < 3; i++) {
+      const month = dayjs().subtract(i, 'month').format('MMM');
+      lastThreeMonths.add(month);
+    }
+
+    videos.forEach((video: any) => {
+      const videoDate = dayjs.unix(video.create_time);
+      const monthKey = videoDate.format('MMM');
+      
+      if (lastThreeMonths.has(monthKey)) {
+        const engagement = (video.like_count || 0) + (video.comment_count || 0);
+        
+        if (!monthlyData.has(monthKey)) {
+          monthlyData.set(monthKey, { totalEngagement: 0, videoCount: 0 });
+        }
+        
+        const current = monthlyData.get(monthKey)!;
+        current.totalEngagement += engagement;
+        current.videoCount += 1;
+      }
+    });
+
+    // Calculate engagement rates and prepare ordered data
+    const monthOrder = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const lastThreeMonthsArray = Array.from(lastThreeMonths).sort((a, b) => monthOrder.indexOf(a) - monthOrder.indexOf(b));
+    
+    const engagementRates = lastThreeMonthsArray.map(month => {
+      const data = monthlyData.get(month);
+      if (!data || data.videoCount === 0) return 0;
+      
+      const avgEngagementPerVideo = data.totalEngagement / data.videoCount;
+      const engagementRate = (avgEngagementPerVideo / followersCount) * 100;
+      return parseFloat(engagementRate.toFixed(2));
+    });
+
+    return {
+      engagementRates,
+      months: lastThreeMonthsArray,
+    };
+  } catch (error) {
+    console.error('Error calculating TikTok engagement rate over time:', error);
+    return { engagementRates: [], months: [] };
+  }
+};
+
+// New function to calculate TikTok monthly interactions for bar chart
+export const getTikTokMonthlyInteractions = async (
+  accessToken: string,
+  limit: number = 20
+): Promise<{ monthlyData: { month: string, interactions: number }[] }> => {
+  try {
+    const response = await axios.post(
+      'https://open.tiktokapis.com/v2/video/list/',
+      { max_count: limit },
+      {
+        params: {
+          fields: 'id,like_count,comment_count,create_time',
+        },
+        headers: { 
+          Authorization: `Bearer ${accessToken}`, 
+          'Content-Type': 'application/json' 
+        },
+      }
+    );
+
+    const videos = response.data.data?.videos || [];
+
+    if (videos.length === 0) {
+      return { monthlyData: [] };
+    }
+
+    // Group videos by month and calculate total interactions
+    const monthlyData = new Map<string, number>();
+    const lastThreeMonths = new Set<string>();
+
+    // Get last 3 months
+    for (let i = 0; i < 3; i++) {
+      const month = dayjs().subtract(i, 'month').format('MMM');
+      lastThreeMonths.add(month);
+    }
+
+    videos.forEach((video: any) => {
+      const videoDate = dayjs.unix(video.create_time);
+      const monthKey = videoDate.format('MMM');
+      
+      if (lastThreeMonths.has(monthKey)) {
+        const interactions = (video.like_count || 0) + (video.comment_count || 0);
+        monthlyData.set(monthKey, (monthlyData.get(monthKey) || 0) + interactions);
+      }
+    });
+
+    // Prepare ordered data
+    const monthOrder = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const lastThreeMonthsArray = Array.from(lastThreeMonths).sort((a, b) => monthOrder.indexOf(a) - monthOrder.indexOf(b));
+    
+    const formattedData = lastThreeMonthsArray.map(month => ({
+      month,
+      interactions: monthlyData.get(month) || 0
+    }));
+
+    return { monthlyData: formattedData };
+  } catch (error) {
+    console.error('Error calculating TikTok monthly interactions:', error);
+    return { monthlyData: [] };
   }
 };

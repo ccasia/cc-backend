@@ -182,6 +182,13 @@ model TiktokUser {
   following_count Int?
   follower_count  Int?
   likes_count     Int?
+  
+  totalLikes      Int?
+  totalComments   Int?
+  averageLikes    Float?
+  averageComments Float?
+  engagement_rate Float?
+  lastUpdated     DateTime?
 
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
@@ -227,6 +234,8 @@ model InstagramUser {
   totalComments   Int?
   averageLikes    Float?
   averageComments Float?
+  engagement_rate Float?
+  lastUpdated DateTime?
 
   instagramVideo InstagramVideo[]
 
