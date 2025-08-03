@@ -8,7 +8,7 @@ import FfmpegPath from '@ffmpeg-installer/ffmpeg';
 import amqplib from 'amqplib';
 import dayjs from 'dayjs';
 import { MAP_TIMELINE } from '@constants/map-timeline';
-import { logAdminChange } from '@services/campaignServices';
+import { logAdminChange, logChange } from '@services/campaignServices';
 import { createInvoiceService } from '../service/invoiceService';
 
 import {
@@ -94,6 +94,12 @@ export const agreementSubmission = async (req: Request, res: Response) => {
           submissionDate: dayjs().format(),
         },
       });
+
+      // Log creator activity
+      if (submission.campaignId) {
+        const logMessage = `${submission.user.name} submitted the Agreement`;
+        await logChange(logMessage, submission.campaignId, req);
+      }
 
       const boards = await prisma.board.findFirst({
         where: {
@@ -271,6 +277,17 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
     const inProgressColumn = boards.columns.find((column) => column.name === 'In Progress');
 
     if (status === 'approve') {
+      // Get user info first
+      const user = await prisma.user.findUnique({
+        where: {
+          id: userId,
+        },
+        select: {
+          email: true,
+          name: true,
+        },
+      });
+
       const agreementSubs = await prisma.submission.update({
         where: {
           id: submissionId,
@@ -279,12 +296,13 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
           status: 'APPROVED',
           isReview: true,
           completedAt: new Date(),
-          approvedByAdminId: req.session.userid as string,
+          approvedByAdminId: adminId as string,
         },
         include: {
           task: true,
           campaign: {
             include: {
+              campaignBrief: true,
               campaignAdmin: {
                 select: {
                   adminId: true,
@@ -308,16 +326,6 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
           },
         });
       }
-
-      const user = await prisma.user.findUnique({
-        where: {
-          id: userId,
-        },
-        select: {
-          email: true,
-          name: true,
-        },
-      });
 
       const submission = await prisma.submission.update({
         where: {
@@ -386,6 +394,17 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
         logAdminChange(message, adminId, req);
       }
 
+      // Get admin info for logging admin activity
+      const admin = await prisma.user.findUnique({
+        where: { id: adminId },
+      });
+      const adminName = admin?.name || 'Admin';
+      const creatorName = user?.name || 'Creator';
+
+      // Log admin activity for agreement approval
+      const adminActivityMessage = `${adminName} approved the Agreement by ${creatorName}`;
+      await logChange(adminActivityMessage, campaign.id, req);
+
       const { title, message } = notificationApproveAgreement(campaign?.name as string);
 
       const notification = await saveNotification({
@@ -407,6 +426,12 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
       io.to(clients.get(userId)).emit('newFeedback');
     } else if (data.status === 'reject') {
       const { feedback, campaignTaskId, submissionId, userId, submission: sub } = data;
+
+      // Get user info for logging
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { name: true },
+      });
 
       const submission = await prisma.submission.update({
         where: {
@@ -503,6 +528,14 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
       if (adminId) {
         const message = `Rejected agreement in campaign - ${campaign.name} `;
         logAdminChange(message, adminId, req);
+      }
+
+      // Log admin activity for rejection
+      if (campaignId && adminId && user) {
+        const admin = await prisma.user.findUnique({ where: { id: adminId } });
+        const adminName = admin?.name || 'Admin';
+        const adminActivityMessage = `${adminName} requested changes on ${user.name}'s Agreement submission`;
+        await logChange(adminActivityMessage, campaignId, req);
       }
 
       const notification = await saveNotification({
@@ -793,6 +826,13 @@ export const draftSubmission = async (req: Request, res: Response) => {
       { persistent: true },
     );
 
+    // Log creator activity
+    if (submission.campaignId) {
+      const submissionTypeName = submission.submissionType.type === 'FIRST_DRAFT' ? 'First Draft' : 'Final Draft';
+      const logMessage = `${submission.user.name} submitted ${submissionTypeName}`;
+      await logChange(logMessage, submission.campaignId, req);
+    }
+
     activeProcesses.set(submissionId, { status: 'queue' });
 
     // await channel.close();
@@ -1018,7 +1058,7 @@ export const adminManageDraft = async (req: Request, res: Response) => {
           (elem: any) => elem.campaignId === submission.campaign.id,
         )?.amount;
 
-        const invoice = await createInvoiceService(submission, userId, invoiceAmount);
+        const invoice = await createInvoiceService(submission, userId, invoiceAmount, undefined, undefined, userId);
 
         const shortlistedCreator = await prisma.shortListedCreator.findFirst({
           where: {
@@ -1045,6 +1085,16 @@ export const adminManageDraft = async (req: Request, res: Response) => {
           ? `${section} in ${MAP_TIMELINE[submission.submissionType.type]}`
           : MAP_TIMELINE[submission.submissionType.type],
       );
+
+      // Log admin activity for draft approval
+      if (submission.campaignId && userId) {
+        const admin = await prisma.user.findUnique({ where: { id: userId } });
+        const adminName = admin?.name || 'Admin';
+        const submissionTypeName = submission.submissionType.type === 'FIRST_DRAFT' ? 'First Draft' : 'Final Draft';
+        const sectionText = sectionOnly ? ` (${section} section)` : '';
+        const adminActivityMessage = `${adminName} approved ${submission.user.name}'s ${submissionTypeName}${sectionText}`;
+        await logChange(adminActivityMessage, submission.campaignId, req);
+      }
 
       const notification = await saveNotification({
         userId: submission.userId,
@@ -1143,6 +1193,15 @@ export const adminManageDraft = async (req: Request, res: Response) => {
         MAP_TIMELINE[sub.submissionType.type],
       );
 
+      // Log admin activity for requesting changes
+      if (sub.campaignId && req.session.userid) {
+        const admin = await prisma.user.findUnique({ where: { id: req.session.userid } });
+        const adminName = admin?.name || 'Admin';
+        const submissionTypeName = sub.submissionType.type === 'FIRST_DRAFT' ? 'First Draft' : 'Final Draft';
+        const adminActivityMessage = `${adminName} requested changes on ${sub.user.name}'s ${submissionTypeName}`;
+        await logChange(adminActivityMessage, sub.campaignId, req);
+      }
+
       const notification = await saveNotification({
         userId: sub.userId,
         message: message,
@@ -1230,6 +1289,12 @@ export const postingSubmission = async (req: Request, res: Response) => {
         task: true,
       },
     });
+
+    // Log creator activity
+    if (submission.campaignId) {
+      const logMessage = `${submission.user.name} submitted Posting Link`;
+      await logChange(logMessage, submission.campaignId, req);
+    }
 
     const inReviewColumnId = await getColumnId({ userId: submission.userId, columnName: 'In Review' });
     const inProgress = await getColumnId({ userId: submission.userId, columnName: 'In Progress' });
@@ -1433,7 +1498,7 @@ export const adminManagePosting = async (req: Request, res: Response) => {
 
         const invoiceItems = await getCreatorInvoiceLists(approvedSubmission.id, tx as PrismaClient);
 
-        await createInvoiceService(approvedSubmission, userId, invoiceAmount, invoiceItems, tx as PrismaClient);
+        await createInvoiceService(approvedSubmission, userId, invoiceAmount, invoiceItems, tx as PrismaClient, userId);
 
         const shortlistedCreator = await tx.shortListedCreator.findFirst({
           where: { userId: approvedSubmission.userId, campaignId: submission.campaignId },
@@ -1454,6 +1519,14 @@ export const adminManagePosting = async (req: Request, res: Response) => {
           entity: Entity.Post,
           entityId: submission.campaignId,
         });
+
+        // Log admin activity for posting approval
+        if (submission.campaignId && userId) {
+          const admin = await prisma.user.findUnique({ where: { id: userId } });
+          const adminName = admin?.name || 'Admin';
+          const adminActivityMessage = `${adminName} approved ${submission.user.name}'s Posting Link`;
+          await logChange(adminActivityMessage, submission.campaignId, req);
+        }
       } else {
         await tx.submission.update({
           where: { id: submission.id },
@@ -1465,6 +1538,14 @@ export const adminManagePosting = async (req: Request, res: Response) => {
             },
           },
         });
+
+        // Log admin activity for posting rejection
+        if (submission.campaignId && userId) {
+          const admin = await prisma.user.findUnique({ where: { id: userId } });
+          const adminName = admin?.name || 'Admin';
+          const adminActivityMessage = `${adminName} requested changes on ${submission.user.name}'s Posting Link`;
+          await logChange(adminActivityMessage, submission.campaignId, req);
+        }
 
         if (submission.user.Board) {
           const inProgressColumn = await getColumnId({
@@ -1519,6 +1600,7 @@ export const adminManagePosting = async (req: Request, res: Response) => {
 
     return res.status(200).json({ message: 'Successfully submitted' });
   } catch (error) {
+    console.log(error);
     if (error instanceof Error) {
       return res.status(400).json({ error: error.message });
     }
@@ -1611,7 +1693,7 @@ export const adminManagePhotos = async (req: Request, res: Response) => {
         },
       });
 
-      await handleCompletedCampaign(updatedSubmission.id);
+      await handleCompletedCampaign(updatedSubmission.id, req.session.userid);
     } else {
       await prisma.submission.update({
         where: {
@@ -1829,6 +1911,24 @@ export const adminManageVideos = async (req: Request, res: Response) => {
           return submission;
         });
 
+        // Log admin activity for section-only video approval
+        if (submissionId && req.session.userid) {
+          const admin = await prisma.user.findUnique({ where: { id: req.session.userid }, include: { admin: true } });
+          const adminName = admin?.name || 'Admin';
+          const logMessage = `Admin "${adminName}" approved video section for review`;
+          // Note: We don't have campaign ID easily accessible here, so we'll get it from the submission
+          const submissionData = await prisma.submission.findUnique({
+            where: { id: submissionId },
+            select: { campaignId: true, user: { select: { name: true } }, submissionType: { select: { type: true } } },
+          });
+          if (submissionData?.campaignId) {
+            const submissionTypeName =
+              submissionData.submissionType.type === 'FIRST_DRAFT' ? 'First Draft' : 'Final Draft';
+            const adminActivityMessage = `${adminName} approved ${submissionData.user.name}'s ${submissionTypeName} video section`;
+            await logChange(adminActivityMessage, submissionData.campaignId, req);
+          }
+        }
+
         return res.status(200).json({ message: 'Videos approved successfully' });
       }
 
@@ -1964,7 +2064,14 @@ export const adminManageVideos = async (req: Request, res: Response) => {
 
           const invoiceItems = await getCreatorInvoiceLists(approveSubmission.id, tx as PrismaClient);
 
-          await createInvoiceService(approveSubmission, approveSubmission.userId, invoiceAmount, invoiceItems);
+          await createInvoiceService(
+            approveSubmission,
+            approveSubmission.userId,
+            invoiceAmount,
+            invoiceItems,
+            undefined,
+            req.session.userid,
+          );
 
           const shortlistedCreator = await tx.shortListedCreator.findFirst({
             where: {
@@ -2104,6 +2211,17 @@ export const adminManageVideos = async (req: Request, res: Response) => {
           approveSubmission.campaign.name,
           MAP_TIMELINE[approveSubmission.submissionType.type],
         );
+
+        // Log admin activity for video approval
+        if (approveSubmission.campaignId && req.session.userid) {
+          const admin = await prisma.user.findUnique({ where: { id: req.session.userid } });
+          const adminName = admin?.name || 'Admin';
+
+          const submissionTypeName =
+            approveSubmission.submissionType.type === 'FIRST_DRAFT' ? 'First Draft' : 'Final Draft';
+          const adminActivityMessage = `${adminName} approved ${approveSubmission.user.name}'s ${submissionTypeName} videos`;
+          await logChange(adminActivityMessage, approveSubmission.campaignId, req);
+        }
 
         const notification = await saveNotification({
           userId: approveSubmission.userId,
@@ -3154,6 +3272,8 @@ export const adminManagePhotosV2 = async (req: Request, res: Response) => {
         });
       }
 
+      // Individual media logging removed - will log at submission level instead
+
       // Check if we should update submission status based on overall review progress
       if (!photo.submission) {
         throw new Error('Submission not found');
@@ -3240,6 +3360,16 @@ export const adminManagePhotosV2 = async (req: Request, res: Response) => {
 
           submissionUpdated = true;
 
+          // Log consolidated admin activity for submission approval
+          if (photo.campaignId && req.session.userid) {
+            const admin = await tx.user.findUnique({ where: { id: req.session.userid } });
+            const adminName = admin?.name || 'Admin';
+            const submissionTypeName =
+              photo.submission?.submissionType?.type === 'FIRST_DRAFT' ? 'First Draft' : 'Final Draft';
+            const adminActivityMessage = `${adminName} approved ${photo.submission?.user?.name || 'Unknown'}'s ${submissionTypeName}`;
+            await logChange(adminActivityMessage, photo.campaignId, req);
+          }
+
           // Check if this campaign has a posting submission
           postingSubmission = await tx.submission.findFirst({
             where: {
@@ -3299,6 +3429,16 @@ export const adminManagePhotosV2 = async (req: Request, res: Response) => {
 
           submissionUpdated = true;
 
+          // Log consolidated admin activity for changes requested
+          if (photo.campaignId && req.session.userid) {
+            const admin = await tx.user.findUnique({ where: { id: req.session.userid } });
+            const adminName = admin?.name || 'Admin';
+            const submissionTypeName =
+              photo.submission?.submissionType?.type === 'FIRST_DRAFT' ? 'First Draft' : 'Final Draft';
+            const adminActivityMessage = `${adminName} requested changes on ${photo.submission?.user?.name || 'Unknown'}'s ${submissionTypeName}`;
+            await logChange(adminActivityMessage, photo.campaignId, req);
+          }
+
           // Always activate Final Draft when changes are requested, regardless of preventStatusChange
           // This is essential for the workflow to function properly
           if (submission.submissionType.type === 'FIRST_DRAFT') {
@@ -3326,9 +3466,9 @@ export const adminManagePhotosV2 = async (req: Request, res: Response) => {
         newStatus,
         submissionUpdated,
         allSectionsReviewed,
-        photosAllReviewed,
-        videosAllReviewed,
-        rawFootagesAllReviewed,
+        photosAllReviewed: photosAllReviewed,
+        videosAllReviewed: videosAllReviewed,
+        rawFootagesAllReviewed: rawFootagesAllReviewed,
         postingSubmission,
       };
     });
@@ -3345,7 +3485,7 @@ export const adminManagePhotosV2 = async (req: Request, res: Response) => {
             result.photo.submission?.campaign?.campaignCredits === null);
 
         if (shouldCallHandleCompleted) {
-          await handleCompletedCampaign(result.photo.submissionId as string);
+          await handleCompletedCampaign(result.photo.submissionId as string, req.session.userid);
         }
       } else {
         // Even with preventStatusChange, we need to complete the campaign if there's no posting submission
@@ -3356,9 +3496,9 @@ export const adminManagePhotosV2 = async (req: Request, res: Response) => {
           result.photo.submission?.campaign?.campaignCredits === null;
 
         if (isUGCDraft) {
-          await handleCompletedCampaign(result.photo.submissionId as string);
+          await handleCompletedCampaign(result.photo.submissionId as string, req.session.userid);
         } else if (!result.postingSubmission || result.photo.submission?.submissionType?.type === 'POSTING') {
-          await handleCompletedCampaign(result.photo.submissionId as string);
+          await handleCompletedCampaign(result.photo.submissionId as string, req.session.userid);
         }
       }
 
@@ -3475,6 +3615,17 @@ export const adminManageDraftVideosV2 = async (req: Request, res: Response) => {
         });
       }
 
+      // Log admin activity for video management
+      if (video.campaignId && req.session.userid) {
+        const admin = await tx.user.findUnique({ where: { id: req.session.userid }, include: { admin: true } });
+        const adminName = admin?.name || 'Admin';
+        const actionType = status === 'APPROVED' ? 'approved' : 'requested changes to';
+        const submissionTypeName =
+          video.submission?.submissionType?.type === 'FIRST_DRAFT' ? 'first draft' : 'final draft';
+        const logMessage = `Admin "${adminName}" ${actionType} ${submissionTypeName} video for creator "${video.submission?.user?.name || 'Unknown'}"`;
+        await logChange(logMessage, video.campaignId, req);
+      }
+
       // Check if we should update submission status based on overall review progress
       if (!video.submission) {
         throw new Error('Submission not found');
@@ -3567,6 +3718,16 @@ export const adminManageDraftVideosV2 = async (req: Request, res: Response) => {
 
           submissionUpdated = true;
 
+          // Log consolidated admin activity for submission approval
+          if (video.campaignId && req.session.userid) {
+            const admin = await tx.user.findUnique({ where: { id: req.session.userid } });
+            const adminName = admin?.name || 'Admin';
+            const submissionTypeName =
+              video.submission?.submissionType?.type === 'FIRST_DRAFT' ? 'First Draft' : 'Final Draft';
+            const adminActivityMessage = `${adminName} approved ${video.submission?.user?.name || 'Unknown'}'s ${submissionTypeName}`;
+            await logChange(adminActivityMessage, video.campaignId, req);
+          }
+
           // Only do full workflow logic if preventStatusChange is not true
           if (!preventStatusChange) {
             // Handle next steps based on submission type
@@ -3632,6 +3793,16 @@ export const adminManageDraftVideosV2 = async (req: Request, res: Response) => {
 
           submissionUpdated = true;
 
+          // Log consolidated admin activity for changes requested
+          if (video.campaignId && req.session.userid) {
+            const admin = await tx.user.findUnique({ where: { id: req.session.userid } });
+            const adminName = admin?.name || 'Admin';
+            const submissionTypeName =
+              video.submission?.submissionType?.type === 'FIRST_DRAFT' ? 'First Draft' : 'Final Draft';
+            const adminActivityMessage = `${adminName} requested changes on ${video.submission?.user?.name || 'Unknown'}'s ${submissionTypeName}`;
+            await logChange(adminActivityMessage, video.campaignId, req);
+          }
+
           // Always activate Final Draft when changes are requested, regardless of preventStatusChange
           // This is essential for the workflow to function properly
           if (submission.submissionType.type === 'FIRST_DRAFT') {
@@ -3659,9 +3830,9 @@ export const adminManageDraftVideosV2 = async (req: Request, res: Response) => {
         newStatus,
         submissionUpdated,
         allSectionsReviewed,
-        videosAllReviewed,
-        photosAllReviewed,
-        rawFootagesAllReviewed,
+        videosAllReviewed: videosAllReviewed,
+        photosAllReviewed: photosAllReviewed,
+        rawFootagesAllReviewed: rawFootagesAllReviewed,
         postingSubmission,
       };
     });
@@ -3678,7 +3849,7 @@ export const adminManageDraftVideosV2 = async (req: Request, res: Response) => {
             result.video.submission?.campaign?.campaignCredits === null);
 
         if (shouldCallHandleCompleted) {
-          await handleCompletedCampaign(result.video.submissionId as string);
+          await handleCompletedCampaign(result.video.submissionId as string, req.session.userid);
         }
       } else {
         // Special case: For campaigns without campaignCredits (UGC campaigns), we still need to complete
@@ -3689,9 +3860,9 @@ export const adminManageDraftVideosV2 = async (req: Request, res: Response) => {
           result.video.submission?.campaign?.campaignCredits === null;
 
         if (isUGCDraft) {
-          await handleCompletedCampaign(result.video.submissionId as string);
+          await handleCompletedCampaign(result.video.submissionId as string, req.session.userid);
         } else if (!result.postingSubmission || result.video.submission?.submissionType?.type === 'POSTING') {
-          await handleCompletedCampaign(result.video.submissionId as string);
+          await handleCompletedCampaign(result.video.submissionId as string, req.session.userid);
         }
       }
 
@@ -3808,6 +3979,17 @@ export const adminManageRawFootagesV2 = async (req: Request, res: Response) => {
         });
       }
 
+      // Log admin activity for raw footage management
+      if (rawFootage.campaignId && req.session.userid) {
+        const admin = await tx.user.findUnique({ where: { id: req.session.userid }, include: { admin: true } });
+        const adminName = admin?.name || 'Admin';
+        const actionType = status === 'APPROVED' ? 'approved' : 'requested changes to';
+        const submissionTypeName =
+          rawFootage.submission?.submissionType?.type === 'FIRST_DRAFT' ? 'first draft' : 'final draft';
+        const logMessage = `Admin "${adminName}" ${actionType} ${submissionTypeName} raw footage for creator "${rawFootage.submission?.user?.name || 'Unknown'}"`;
+        await logChange(logMessage, rawFootage.campaignId, req);
+      }
+
       // Check if we should update submission status based on overall review progress
       if (!rawFootage.submission) {
         throw new Error('Submission not found');
@@ -3894,6 +4076,16 @@ export const adminManageRawFootagesV2 = async (req: Request, res: Response) => {
 
           submissionUpdated = true;
 
+          // Log consolidated admin activity for submission approval
+          if (rawFootage.campaignId && req.session.userid) {
+            const admin = await tx.user.findUnique({ where: { id: req.session.userid } });
+            const adminName = admin?.name || 'Admin';
+            const submissionTypeName =
+              rawFootage.submission?.submissionType?.type === 'FIRST_DRAFT' ? 'First Draft' : 'Final Draft';
+            const adminActivityMessage = `${adminName} approved ${rawFootage.submission?.user?.name || 'Unknown'}'s ${submissionTypeName}`;
+            await logChange(adminActivityMessage, rawFootage.campaignId, req);
+          }
+
           // Only do full workflow logic if preventStatusChange is not true
           if (!preventStatusChange) {
             // Handle next steps based on submission type
@@ -3969,6 +4161,16 @@ export const adminManageRawFootagesV2 = async (req: Request, res: Response) => {
 
           submissionUpdated = true;
 
+          // Log consolidated admin activity for changes requested
+          if (rawFootage.campaignId && req.session.userid) {
+            const admin = await tx.user.findUnique({ where: { id: req.session.userid } });
+            const adminName = admin?.name || 'Admin';
+            const submissionTypeName =
+              rawFootage.submission?.submissionType?.type === 'FIRST_DRAFT' ? 'First Draft' : 'Final Draft';
+            const adminActivityMessage = `${adminName} requested changes on ${rawFootage.submission?.user?.name || 'Unknown'}'s ${submissionTypeName}`;
+            await logChange(adminActivityMessage, rawFootage.campaignId, req);
+          }
+
           // Always activate Final Draft when changes are requested, regardless of preventStatusChange
           // This is essential for the workflow to function properly
           if (submission.submissionType.type === 'FIRST_DRAFT') {
@@ -3996,9 +4198,9 @@ export const adminManageRawFootagesV2 = async (req: Request, res: Response) => {
         newStatus,
         submissionUpdated,
         allSectionsReviewed,
-        rawFootagesAllReviewed,
-        videosAllReviewed,
-        photosAllReviewed,
+        rawFootagesAllReviewed: rawFootagesAllReviewed,
+        videosAllReviewed: videosAllReviewed,
+        photosAllReviewed: photosAllReviewed,
         postingSubmission,
       };
     });
@@ -4015,7 +4217,7 @@ export const adminManageRawFootagesV2 = async (req: Request, res: Response) => {
             result.submission?.campaign?.campaignCredits === null);
 
         if (shouldCallHandleCompleted) {
-          await handleCompletedCampaign(result.rawFootage.submissionId as string);
+          await handleCompletedCampaign(result.rawFootage.submissionId as string, req.session.userid);
         }
       } else {
         // Even with preventStatusChange, we need to complete the campaign if there's no posting submission
@@ -4027,9 +4229,9 @@ export const adminManageRawFootagesV2 = async (req: Request, res: Response) => {
           result.submission?.campaign?.campaignCredits === null;
 
         if (isUGCFirstDraft) {
-          await handleCompletedCampaign(result.rawFootage.submissionId as string);
+          await handleCompletedCampaign(result.rawFootage.submissionId as string, req.session.userid);
         } else if (!result.postingSubmission || result.submission?.submissionType?.type === 'POSTING') {
-          await handleCompletedCampaign(result.rawFootage.submissionId as string);
+          await handleCompletedCampaign(result.rawFootage.submissionId as string, req.session.userid);
         }
       }
 

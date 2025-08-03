@@ -16,6 +16,7 @@ import {
   getXeroContacts,
   checkRefreshToken,
   deleteInvoice,
+  generateMissingInvoices,
 } from '@controllers/invoiceController';
 import { checkAndRefreshAccessToken } from '@controllers/invoiceController';
 import { creatorInvoice } from '@controllers/invoiceController';
@@ -26,6 +27,8 @@ import { createInvoiceService } from '@services/invoiceService';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
+
+// router.get('/executeInvoice', generateMissingInvoices);
 
 router.get('/zeroConnect', isSuperAdmin, getXero);
 router.get('/xeroCallback', xeroCallBack);
@@ -49,6 +52,7 @@ router.delete('/:id', isSuperAdmin, deleteInvoice);
 // Temporary function
 router.post('/generateInvoice', async (req, res) => {
   const { submissionId, invoiceAmount } = req.body;
+
   try {
     const submission = await prisma.submission.findUnique({
       where: {
@@ -88,7 +92,7 @@ router.post('/generateInvoice', async (req, res) => {
     });
 
     if (!submission) return res.status(404).json({ message: 'Invoice not found' });
-    await createInvoiceService(submission, submission.userId, invoiceAmount);
+    await createInvoiceService(submission, submission.userId, invoiceAmount, undefined, undefined, undefined);
 
     return res.status(200).send('Success');
   } catch (error) {

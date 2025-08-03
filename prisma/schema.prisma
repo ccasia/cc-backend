@@ -67,11 +67,11 @@ model User {
   isVerified         Boolean              @default(false)
   isKWSPCampaign     Boolean?             @default(false)
   hasSubmittedKWSP   Boolean              @default(false)
-  
+
   // Individual feedback relations
-  videoFeedback      Video[]              @relation("VideoFeedback")
-  rawFootageFeedback RawFootage[]         @relation("RawFootageFeedback")
-  photoFeedback      Photo[]              @relation("PhotoFeedback")
+  videoFeedback      Video[]      @relation("VideoFeedback")
+  rawFootageFeedback RawFootage[] @relation("RawFootageFeedback")
+  photoFeedback      Photo[]      @relation("PhotoFeedback")
 }
 
 model EmailVerification {
@@ -504,11 +504,12 @@ model SupSupBrand {
 }
 
 model Campaign {
-  id              String         @id @unique @default(cuid())
-  campaignId      String?
-  name            String
-  description     String
-  status          CampaignStatus @default(SCHEDULED)
+  id          String         @id @unique @default(cuid())
+  campaignId  String?
+  name        String
+  description String
+  status      CampaignStatus @default(SCHEDULED)
+
   campaignCredits Int?
   creditsPending  Int?
   creditsUtilized Int?
@@ -854,13 +855,13 @@ model Video {
   submission   Submission?    @relation(fields: [submissionId], references: [id])
   createdAt    DateTime       @default(now())
   updatedAt    DateTime?      @updatedAt
-  
+
   // Individual feedback fields
-  feedback     String?        // Individual feedback message
-  reasons      String[]       // Reasons for changes (if any)
-  adminId      String?        // Admin who provided feedback
-  admin        User?          @relation("VideoFeedback", fields: [adminId], references: [id])
-  feedbackAt   DateTime?      // When feedback was provided
+  feedback   String? // Individual feedback message
+  reasons    String[] // Reasons for changes (if any)
+  adminId    String? // Admin who provided feedback
+  admin      User?     @relation("VideoFeedback", fields: [adminId], references: [id])
+  feedbackAt DateTime? // When feedback was provided
 }
 
 model RawFootage {
@@ -876,13 +877,13 @@ model RawFootage {
   submission   Submission? @relation(fields: [submissionId], references: [id])
   createdAt    DateTime    @default(now())
   updatedAt    DateTime?   @updatedAt
-  
+
   // Individual feedback fields
-  feedback     String?     // Individual feedback message
-  reasons      String[]    // Reasons for changes (if any)
-  adminId      String?     // Admin who provided feedback
-  admin        User?       @relation("RawFootageFeedback", fields: [adminId], references: [id])
-  feedbackAt   DateTime?   // When feedback was provided
+  feedback   String? // Individual feedback message
+  reasons    String[] // Reasons for changes (if any)
+  adminId    String? // Admin who provided feedback
+  admin      User?     @relation("RawFootageFeedback", fields: [adminId], references: [id])
+  feedbackAt DateTime? // When feedback was provided
 }
 
 model Photo {
@@ -898,13 +899,13 @@ model Photo {
   submission   Submission? @relation(fields: [submissionId], references: [id])
   createdAt    DateTime    @default(now())
   updatedAt    DateTime?   @updatedAt
-  
+
   // Individual feedback fields
-  feedback     String?     // Individual feedback message
-  reasons      String[]    // Reasons for changes (if any)
-  adminId      String?     // Admin who provided feedback
-  admin        User?       @relation("PhotoFeedback", fields: [adminId], references: [id])
-  feedbackAt   DateTime?   // When feedback was provided
+  feedback   String? // Individual feedback message
+  reasons    String[] // Reasons for changes (if any)
+  adminId    String? // Admin who provided feedback
+  admin      User?     @relation("PhotoFeedback", fields: [adminId], references: [id])
+  feedbackAt DateTime? // When feedback was provided
 }
 
 // model DeliverableFeedback {

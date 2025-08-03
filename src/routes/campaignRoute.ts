@@ -32,6 +32,7 @@ import {
   creatorAgreements,
   updateAmountAgreement,
   sendAgreement,
+  resendAgreement,
   editCampaignImages,
   draftPitch,
   getMyCampaigns,
@@ -56,6 +57,7 @@ import {
   fixCampaignTimelines,
   checkCampaignCreatorVisibility,
   updateCampaignOrigin,
+  changeCampaignCredit,
 } from '@controllers/campaignController';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 import { canActivateCampaign } from '@middlewares/adminOrClient';
@@ -167,8 +169,10 @@ router.patch('/changeLogisticStatus', isSuperAdmin, updateStatusLogistic); //nee
 router.patch('/receiveLogistic', isLoggedIn, receiveLogistic);
 router.patch('/updateAmountAgreement', isLoggedIn, isSuperAdmin, updateAmountAgreement);
 router.patch('/sendAgreement', isLoggedIn, isSuperAdmin, sendAgreement);
+router.patch('/resendAgreement', isLoggedIn, resendAgreement);
 router.patch('/removePitchVideo', isLoggedIn, removePitchVideo);
 router.patch('/linkNewAgreement', isLoggedIn, isSuperAdmin, linkNewAgreement);
+router.patch('/changeCredits', isLoggedIn, changeCampaignCredit);
 
 router.delete('/timelineType/:id', isSuperAdmin, deleteTimelineType);
 router.delete('/unsaveCampaign/:id', isLoggedIn, unSaveCampaign);

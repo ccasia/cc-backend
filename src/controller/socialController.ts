@@ -38,9 +38,7 @@ export interface MetricData {
   value: number;
 }
 
-export interface MetricsMap {
-  [key: string]: number;
-}
+export type MetricsMap = Record<string, number>;
 
 export interface Totals {
   views: number;
@@ -61,9 +59,7 @@ export interface MetricComparison {
   changeText: string;
 }
 
-export interface ComparisonResult {
-  [key: string]: MetricComparison;
-}
+export type ComparisonResult = Record<string, MetricComparison>;
 
 // const CODE_VERIFIER = 'your_unique_code_verifier';
 // const CODE_CHALLENGE = 'SHA256_hash_of_code_verifier';
@@ -93,9 +89,9 @@ const setCachedCampaignAverages = (campaignId: string, platform: string, data: a
   const cacheKey = `${campaignId}_${platform}`;
   campaignAveragesCache.set(cacheKey, {
     data,
-    timestamp: Date.now()
+    timestamp: Date.now(),
   });
-  
+
   // Clean old cache entries (keep max 50)
   if (campaignAveragesCache.size > 50) {
     const entries = Array.from(campaignAveragesCache.entries());
@@ -706,6 +702,7 @@ export const getInstagramOverview = async (req: Request, res: Response) => {
 
 export const removeInstagramPermissions = async (req: Request, res: Response) => {
   const { userId, permissions } = req.params;
+
   try {
     const creator = await prisma.creator.findFirst({
       where: {
@@ -836,6 +833,7 @@ export const getInstagramMediaKit = async (req: Request, res: Response) => {
     }
 
     const accessToken = decryptToken(encryptedAccessToken as any);
+    // const accessToken = 'IGAAIGNU09lZBhBZAE9OSDE4VWVja1BhZA2pMOWkzVG9nTkJVWnZA0QkhKMlFXdTBVbW1fS0tUQWl5RE1BQTY4N0ktODhUQjRIU1RWQ1hBcHdmbWdUSTlBOVE2QVBELXN1azQzNFhSZA2dBWi1PVjhWaUxmaWZAMekl4U2FMMWJLWDk5awZDZD';
 
     const overview = await getInstagramOverviewService(accessToken);
     const medias = await getAllMediaObject(accessToken, overview.user_id, overview.media_count);
@@ -848,17 +846,17 @@ export const getInstagramMediaKit = async (req: Request, res: Response) => {
     } = {
       engagementRates: [],
       months: [],
-      monthlyInteractions: []
+      monthlyInteractions: [],
     };
-    
+
     try {
       const engagementAnalytics = await getInstagramEngagementRateOverTime(accessToken);
       const monthlyAnalytics = await getInstagramMonthlyInteractions(accessToken);
-      
+
       analytics = {
         engagementRates: engagementAnalytics.engagementRates,
         months: engagementAnalytics.months,
-        monthlyInteractions: monthlyAnalytics.monthlyData
+        monthlyInteractions: monthlyAnalytics.monthlyData,
       };
     } catch (analyticsError) {
       console.error('Failed to fetch Instagram analytics:', analyticsError);
@@ -923,10 +921,10 @@ export const getInstagramMediaKit = async (req: Request, res: Response) => {
       });
     }
 
-    return res.status(200).json({ 
-      overview, 
+    return res.status(200).json({
+      overview,
       medias,
-      analytics
+      analytics,
     });
   } catch (error) {
     console.error('Error in getInstagramMediaKit:', error);
@@ -939,7 +937,7 @@ async function getCampaignSubmissionUrls(campaignId: string): Promise<UrlData[]>
     const submissions = await prisma.submission.findMany({
       where: {
         campaignId: campaignId,
-        status: 'APPROVED'
+        status: 'APPROVED',
       },
       select: {
         id: true,
@@ -947,47 +945,47 @@ async function getCampaignSubmissionUrls(campaignId: string): Promise<UrlData[]>
         content: true,
         user: {
           select: {
-            name: true
-          }
-        }
-      }
+            name: true,
+          },
+        },
+      },
     });
 
     const allUrls: UrlData[] = [];
-    submissions.forEach(submission => {
+    submissions.forEach((submission) => {
       if (submission.content) {
         // Instagram URL regex
         const instagramUrlRegex = /https?:\/\/(www\.)?instagram\.com\/[^\s]+/g;
         const instagramUrls = submission.content.match(instagramUrlRegex);
-        
+
         // TikTok URL regex - handles multiple formats
         const tiktokUrlRegex = /https?:\/\/(www\.)?(vm\.|m\.)?tiktok\.com\/[^\s]+/g;
         const tiktokUrls = submission.content.match(tiktokUrlRegex);
-        
+
         // Process Instagram URLs
         if (instagramUrls && instagramUrls.length > 0) {
-          instagramUrls.forEach(url => {
+          instagramUrls.forEach((url) => {
             const cleanUrl = url.replace(/[.,;!?]+$/, '');
             allUrls.push({
               url: cleanUrl,
               submissionId: submission.id,
               userId: submission.userId,
               userName: submission.user.name || '',
-              platform: 'Instagram' // Add platform identifier
+              platform: 'Instagram', // Add platform identifier
             });
           });
         }
-        
+
         // Process TikTok URLs
         if (tiktokUrls && tiktokUrls.length > 0) {
-          tiktokUrls.forEach(url => {
+          tiktokUrls.forEach((url) => {
             const cleanUrl = url.replace(/[.,;!?]+$/, '');
             allUrls.push({
               url: cleanUrl,
               submissionId: submission.id,
               userId: submission.userId,
               userName: submission.user.name || '',
-              platform: 'TikTok' // Add platform identifier
+              platform: 'TikTok', // Add platform identifier
             });
           });
         }
@@ -1012,7 +1010,7 @@ function calculateCampaignAverages(campaignInsights: MetricData[][]): Totals {
       totalInteractions: 0,
       reach: 0,
       shares: 0,
-      postCount: 0
+      postCount: 0,
     };
   }
 
@@ -1023,10 +1021,10 @@ function calculateCampaignAverages(campaignInsights: MetricData[][]): Totals {
     saved: 0,
     totalInteractions: 0,
     reach: 0,
-    shares: 0
+    shares: 0,
   };
 
-  campaignInsights.forEach(insight => {
+  campaignInsights.forEach((insight) => {
     const metricsMap: MetricsMap = {};
     insight.forEach((metric: MetricData) => {
       metricsMap[metric.name] = metric.value || 0;
@@ -1050,14 +1048,18 @@ function calculateCampaignAverages(campaignInsights: MetricData[][]): Totals {
     totalInteractions: Math.round(totals.totalInteractions / count),
     reach: Math.round(totals.reach / count),
     shares: Math.round(totals.shares / count),
-    postCount: count
+    postCount: count,
   };
 }
 
 // Helper function to compare current post with campaign averages
-function calculateCampaignComparison(currentInsight: MetricData[], campaignAverages: Totals, campaignPostsCount: number = 0): ComparisonResult {
+function calculateCampaignComparison(
+  currentInsight: MetricData[],
+  campaignAverages: Totals,
+  campaignPostsCount = 0,
+): ComparisonResult {
   const currentMetricsMap: MetricsMap = {};
-  currentInsight.forEach(metric => {
+  currentInsight.forEach((metric) => {
     currentMetricsMap[metric.name] = metric.value || 0;
   });
 
@@ -1068,37 +1070,21 @@ function calculateCampaignComparison(currentInsight: MetricData[], campaignAvera
     saved: currentMetricsMap['saved'] || 0,
     totalInteractions: currentMetricsMap['total_interactions'] || 0,
     reach: currentMetricsMap['reach'] || 0,
-    shares: currentMetricsMap['shares'] || 0
+    shares: currentMetricsMap['shares'] || 0,
   };
 
   const comparison: ComparisonResult = {};
-  (Object.keys(currentMetrics) as Array<keyof Totals>).forEach(metric => {
+  (Object.keys(currentMetrics) as (keyof Totals)[]).forEach((metric) => {
     const current = currentMetrics[metric] || 0;
     const average = campaignAverages[metric] || 0;
-    
-    let change: number;
-    let isAboveAverage: boolean;
-    let changeText: string;
-    
-    // Special case: If there's only 1 post in the campaign (comparing against itself)
-    // Default to +100% to indicate they're not competing with other creators
-    if (campaignPostsCount <= 1) {
-      change = 100;
-      isAboveAverage = true;
-      changeText = '+100%';
-    } else {
-      // Normal calculation when there are multiple posts to compare against
-      change = average > 0 ? ((current - average) / average) * 100 : (current > 0 ? 100 : 0);
-      isAboveAverage = change > 0;
-      changeText = `${change > 0 ? '+' : ''}${change.toFixed(0)}%`;
-    }
-    
+    const change = average > 0 ? ((current - average) / average) * 100 : current > 0 ? 100 : 0;
+
     comparison[metric] = {
       current,
       average,
       change,
-      isAboveAverage,
-      changeText
+      isAboveAverage: change > 0,
+      changeText: `${change > 0 ? '+' : ''}${change.toFixed(0)}%`,
     };
   });
 
@@ -1130,18 +1116,18 @@ async function ensureValidInstagramToken(userId: string): Promise<string> {
 
   if (isExpired) {
     console.log('Instagram token expired, attempting refresh...');
-    
+
     try {
       // Refresh the token using the existing service
       const refreshedTokenData = await refreshInstagramToken(accessToken);
-      
+
       // Encrypt the new token
       const newEncryptedAccessToken = encryptToken(refreshedTokenData.access_token);
-      
+
       // Calculate new expiry time
       const currentTime = dayjs();
       const newExpiryTime = currentTime.add(refreshedTokenData.expires_in, 'second').unix();
-      
+
       // Update the database with new token
       await prisma.instagramUser.update({
         where: {
@@ -1164,6 +1150,168 @@ async function ensureValidInstagramToken(userId: string): Promise<string> {
   return accessToken;
 }
 
+// export const getInstagramMediaInsight = async (req: Request, res: Response) => {
+//   const { userId } = req.params;
+//   const { url, campaignId } = req.query; // Added campaignId parameter
+
+//   if (!userId) return res.status(404).json({ message: 'Parameter missing: userId' });
+//   if (!url) return res.status(404).json({ message: 'Query missing: url' });
+
+//   try {
+//     const user = await prisma.user.findUnique({
+//       where: {
+//         id: userId,
+//       },
+//     });
+
+//     if (!user) return res.status(404).json({ message: 'User not found' });
+
+//     // Use the helper function to ensure we have a valid token
+//     let accessToken: string;
+//     try {
+//       accessToken = await ensureValidInstagramToken(user.id);
+//     } catch (tokenError) {
+//       return res.status(400).json({
+//         message: tokenError.message,
+//         requiresReconnection: tokenError.message.includes('refresh failed'),
+//       });
+//     }
+
+//     // Get creator info for media count
+//     const creator = await prisma.creator.findFirst({
+//       where: {
+//         userId: user.id,
+//       },
+//       select: {
+//         instagramUser: true,
+//       },
+//     });
+
+//     const { videos } = await getInstagramMedias(accessToken, creator?.instagramUser?.media_count as number);
+
+//     const shortCode = extractInstagramShortcode(url as string);
+
+//     const video = videos.find((item: any) => item?.shortcode === shortCode);
+
+//     if (!video)
+//       return res
+//         .status(404)
+//         .json({ message: `This is the url shortcode: ${shortCode} but we can't find the video shortcode.` });
+
+//     // Get current post insight
+//     const insight = await getMediaInsight(accessToken, video?.id);
+
+//     // Campaign averages calculation
+//     let campaignAverages = null;
+//     let campaignComparison = null;
+//     let campaignPostsCount = 0;
+
+//     if (campaignId) {
+//       console.log(`🎯 Calculating campaign averages for campaign: ${campaignId}`);
+
+//       try {
+//         // Get all campaign submission URLs (now includes both Instagram and TikTok)
+//         const campaignUrls = await getCampaignSubmissionUrls(campaignId as string);
+//         // Filter for Instagram URLs only
+//         const instagramUrls = campaignUrls.filter((urlData) => urlData.platform === 'Instagram');
+//         console.log(
+//           `📊 Found ${instagramUrls.length} Instagram campaign URLs out of ${campaignUrls.length} total URLs`,
+//         );
+
+//           if (instagramUrls.length > 0) {
+//             // Process each campaign URL to get insights
+//             const campaignInsightsResults = await batchRequests(
+//               instagramUrls,
+//               async (urlData, index) => {
+//                 const campaignShortCode = extractInstagramShortcode(urlData.url);
+//                 if (!campaignShortCode) return null;
+
+//                 const campaignVideo = videos.find((item: any) => item?.shortcode === campaignShortCode);
+//                 if (!campaignVideo) return null;
+
+//                 try {
+//                   const campaignInsight = await getMediaInsight(accessToken, campaignVideo.id);
+//                   return campaignInsight && campaignInsight.length > 0 ? campaignInsight : null;
+//                 } catch (error) {
+//                   console.error(`Error processing campaign URL ${urlData.url}:`, error);
+//                   return null;
+//                 }
+//               },
+//               3, // Process 2 at a time
+//               1200 // 800ms delay between batches
+//             );
+
+//             const campaignInsights = campaignInsightsResults
+//               .filter(result => result.status === 'fulfilled' && result.value !== null)
+//               .map(result => result.value);
+
+// <<<<<<< HEAD
+//             console.log(`📈 Successfully processed ${campaignInsights.length} campaign posts`);
+//             campaignPostsCount = campaignInsights.length;
+
+//             // Calculate averages (reusing existing function)
+//             if (campaignInsights.length > 0) {
+//               campaignAverages = calculateCampaignAverages(campaignInsights);
+
+//               // Cache the result
+//               setCachedCampaignAverages(campaignId as string, 'Instagram', {
+//                 averages: campaignAverages,
+//                 postsCount: campaignPostsCount
+//               });
+
+//               // Compare current post with campaign averages (reusing existing function)
+//               campaignComparison = calculateCampaignComparison(insight, campaignAverages, campaignInsights.length);
+
+//               console.log('Campaign averages calculated and cached:', campaignAverages);
+//             }
+//           }
+//         } catch (error) {
+//           console.error('Error calculating campaign averages:', error);
+//           // Continue without campaign data if there's an error
+// =======
+//               // Add delay to avoid rate limiting
+//               await new Promise((resolve) => setTimeout(resolve, 500));
+//             } catch (error) {
+//               console.error(`Error processing campaign URL ${urlData.url}:`, error);
+//               continue;
+//             }
+//           }
+
+//           console.log(`📈 Successfully processed ${campaignInsights.length} campaign posts`);
+//           campaignPostsCount = campaignInsights.length;
+
+//           // Calculate averages (reusing existing function)
+//           if (campaignInsights.length > 0) {
+//             campaignAverages = calculateCampaignAverages(campaignInsights);
+
+//             // Compare current post with campaign averages (reusing existing function)
+//             campaignComparison = calculateCampaignComparison(insight, campaignAverages);
+
+//             console.log('Campaign averages calculated:', campaignAverages);
+//           }
+// >>>>>>> feature/change-campaign-credits
+//         }
+//       }
+//     }
+
+//     // Enhanced response with campaign data only
+//     const response = {
+//       insight,
+//       video,
+//       // Campaign comparison data
+//       campaignAverages: campaignAverages,
+//       campaignComparison: campaignComparison,
+//       campaignPostsCount: campaignPostsCount,
+//       hasCampaignData: !!campaignAverages,
+//     };
+
+//     return res.status(200).json(response);
+//   } catch (error) {
+//     console.log(error);
+//     return res.status(400).json(error);
+//   }
+// };
+
 export const getInstagramMediaInsight = async (req: Request, res: Response) => {
   const { userId } = req.params;
   const { url, campaignId } = req.query; // Added campaignId parameter
@@ -1185,9 +1333,9 @@ export const getInstagramMediaInsight = async (req: Request, res: Response) => {
     try {
       accessToken = await ensureValidInstagramToken(user.id);
     } catch (tokenError) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         message: tokenError.message,
-        requiresReconnection: tokenError.message.includes('refresh failed') 
+        requiresReconnection: tokenError.message.includes('refresh failed'),
       });
     }
 
@@ -1208,9 +1356,9 @@ export const getInstagramMediaInsight = async (req: Request, res: Response) => {
     const video = videos.find((item: any) => item?.shortcode === shortCode);
 
     if (!video)
-      return res
-        .status(404)
-        .json({ message: `This is the url shortcode: ${shortCode} but we can't find the video shortcode.` });
+      return res.status(404).json({
+        message: `This is the url shortcode: ${shortCode} but we can't find the video shortcode.`,
+      });
 
     // Get current post insight
     const insight = await getMediaInsight(accessToken, video?.id);
@@ -1222,7 +1370,7 @@ export const getInstagramMediaInsight = async (req: Request, res: Response) => {
 
     if (campaignId) {
       console.log(`🎯 Calculating campaign averages for campaign: ${campaignId}`);
-      
+
       // Check cache first
       const cachedAverages = getCachedCampaignAverages(campaignId as string, 'Instagram');
       if (cachedAverages) {
@@ -1235,8 +1383,10 @@ export const getInstagramMediaInsight = async (req: Request, res: Response) => {
           // Get all campaign submission URLs (now includes both Instagram and TikTok)
           const campaignUrls = await getCampaignSubmissionUrls(campaignId as string);
           // Filter for Instagram URLs only
-          const instagramUrls = campaignUrls.filter(urlData => urlData.platform === 'Instagram');
-          console.log(`📊 Found ${instagramUrls.length} Instagram campaign URLs out of ${campaignUrls.length} total URLs`);
+          const instagramUrls = campaignUrls.filter((urlData) => urlData.platform === 'Instagram');
+          console.log(
+            `📊 Found ${instagramUrls.length} Instagram campaign URLs out of ${campaignUrls.length} total URLs`,
+          );
 
           if (instagramUrls.length > 0) {
             // Process each campaign URL to get insights
@@ -1258,12 +1408,12 @@ export const getInstagramMediaInsight = async (req: Request, res: Response) => {
                 }
               },
               3, // Process 2 at a time
-              1200 // 800ms delay between batches
+              1200, // 800ms delay between batches
             );
 
             const campaignInsights = campaignInsightsResults
-              .filter(result => result.status === 'fulfilled' && result.value !== null)
-              .map(result => result.value);
+              .filter((result) => result.status === 'fulfilled' && result.value !== null)
+              .map((result) => result.value);
 
             console.log(`📈 Successfully processed ${campaignInsights.length} campaign posts`);
             campaignPostsCount = campaignInsights.length;
@@ -1271,16 +1421,16 @@ export const getInstagramMediaInsight = async (req: Request, res: Response) => {
             // Calculate averages (reusing existing function)
             if (campaignInsights.length > 0) {
               campaignAverages = calculateCampaignAverages(campaignInsights);
-              
+
               // Cache the result
               setCachedCampaignAverages(campaignId as string, 'Instagram', {
                 averages: campaignAverages,
-                postsCount: campaignPostsCount
+                postsCount: campaignPostsCount,
               });
-              
+
               // Compare current post with campaign averages (reusing existing function)
               campaignComparison = calculateCampaignComparison(insight, campaignAverages, campaignInsights.length);
-              
+
               console.log('Campaign averages calculated and cached:', campaignAverages);
             }
           }
@@ -1299,7 +1449,7 @@ export const getInstagramMediaInsight = async (req: Request, res: Response) => {
       campaignAverages: campaignAverages,
       campaignComparison: campaignComparison,
       campaignPostsCount: campaignPostsCount,
-      hasCampaignData: !!campaignAverages
+      hasCampaignData: !!campaignAverages,
     };
 
     return res.status(200).json(response);
@@ -1342,21 +1492,21 @@ async function ensureValidTikTokToken(userId: string): Promise<string> {
 
   if (tokenExpired || !accessToken) {
     console.log('TikTok token expired or invalid, attempting refresh...');
-    
+
     if (!encryptedRefreshToken) {
       throw new Error('TikTok refresh token not found');
     }
 
     const refreshToken = decryptToken(encryptedRefreshToken);
-    
+
     try {
       // Refresh the token
       const refreshedTokenData = await refreshTikTokToken(refreshToken);
-      
+
       // Encrypt the new tokens
       const newEncryptedAccessToken = encryptToken(refreshedTokenData.access_token);
       const newEncryptedRefreshToken = encryptToken(refreshedTokenData.refresh_token);
-      
+
       // Update the database with new tokens
       await prisma.creator.update({
         where: {
@@ -1404,9 +1554,9 @@ export const getTikTokVideoInsight = async (req: Request, res: Response) => {
     try {
       accessToken = await ensureValidTikTokToken(user.id);
     } catch (tokenError) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         message: tokenError.message,
-        requiresReconnection: true 
+        requiresReconnection: true,
       });
     }
 
@@ -1482,7 +1632,7 @@ export const getTikTokVideoInsight = async (req: Request, res: Response) => {
 
     if (campaignId) {
       console.log(`🎯 Calculating TikTok campaign averages for campaign: ${campaignId}`);
-      
+
       // Check cache first
       const cachedAverages = getCachedCampaignAverages(campaignId as string, 'TikTok');
       if (cachedAverages) {
@@ -1495,7 +1645,7 @@ export const getTikTokVideoInsight = async (req: Request, res: Response) => {
           // Get all campaign submission URLs (now includes both Instagram and TikTok)
           const campaignUrls = await getCampaignSubmissionUrls(campaignId as string);
           // Filter for TikTok URLs only
-          const tiktokUrls = campaignUrls.filter(urlData => urlData.platform === 'TikTok');
+          const tiktokUrls = campaignUrls.filter((urlData) => urlData.platform === 'TikTok');
           console.log(`📊 Found ${tiktokUrls.length} TikTok campaign URLs out of ${campaignUrls.length} total URLs`);
 
           if (tiktokUrls.length > 0) {
@@ -1509,7 +1659,7 @@ export const getTikTokVideoInsight = async (req: Request, res: Response) => {
                 try {
                   const campaignVideoResponse = await getTikTokVideoById(accessToken, campaignVideoId);
                   const campaignVideos = campaignVideoResponse?.data?.videos;
-                  
+
                   if (!campaignVideos || campaignVideos.length === 0) return null;
 
                   const campaignVideo = campaignVideos[0];
@@ -1518,11 +1668,17 @@ export const getTikTokVideoInsight = async (req: Request, res: Response) => {
                   const campaignInsight = [
                     { name: 'views', value: campaignVideo.view_count || 0 },
                     { name: 'likes', value: campaignVideo.like_count || 0 },
-                    { name: 'comments', value: campaignVideo.comment_count || 0 },
+                    {
+                      name: 'comments',
+                      value: campaignVideo.comment_count || 0,
+                    },
                     { name: 'shares', value: campaignVideo.share_count || 0 },
                     {
                       name: 'total_interactions',
-                      value: (campaignVideo.like_count || 0) + (campaignVideo.comment_count || 0) + (campaignVideo.share_count || 0),
+                      value:
+                        (campaignVideo.like_count || 0) +
+                        (campaignVideo.comment_count || 0) +
+                        (campaignVideo.share_count || 0),
                     },
                   ];
 
@@ -1532,13 +1688,13 @@ export const getTikTokVideoInsight = async (req: Request, res: Response) => {
                   return null;
                 }
               },
-              2, // Process 2 at a time  
-              1200 // 1200ms delay between batches for TikTok
+              2, // Process 2 at a time
+              1200, // 1200ms delay between batches for TikTok
             );
 
             const campaignInsights = campaignInsightsResults
-              .filter(result => result.status === 'fulfilled' && result.value !== null)
-              .map(result => result.value);
+              .filter((result) => result.status === 'fulfilled' && result.value !== null)
+              .map((result) => result.value);
 
             console.log(`📈 Successfully processed ${campaignInsights.length} TikTok campaign posts`);
             campaignPostsCount = campaignInsights.length;
@@ -1546,16 +1702,16 @@ export const getTikTokVideoInsight = async (req: Request, res: Response) => {
             // Calculate averages (reusing existing function)
             if (campaignInsights.length > 0) {
               campaignAverages = calculateCampaignAverages(campaignInsights);
-              
+
               // Cache the result
               setCachedCampaignAverages(campaignId as string, 'TikTok', {
                 averages: campaignAverages,
-                postsCount: campaignPostsCount
+                postsCount: campaignPostsCount,
               });
-              
+
               // Compare current post with campaign averages (reusing existing function)
               campaignComparison = calculateCampaignComparison(insight, campaignAverages, campaignInsights.length);
-              
+
               console.log('TikTok Campaign averages calculated and cached:', campaignAverages);
             }
           }
@@ -1574,7 +1730,7 @@ export const getTikTokVideoInsight = async (req: Request, res: Response) => {
       campaignAverages: campaignAverages,
       campaignComparison: campaignComparison,
       campaignPostsCount: campaignPostsCount,
-      hasCampaignData: !!campaignAverages
+      hasCampaignData: !!campaignAverages,
     };
 
     return res.status(200).json(response);
@@ -1617,9 +1773,9 @@ export const getTikTokMediaKit = async (req: Request, res: Response) => {
       accessToken = await ensureValidTikTokToken(user.id);
     } catch (tokenError) {
       console.error('TikTok token error:', tokenError.message);
-      return res.status(400).json({ 
+      return res.status(400).json({
         message: tokenError.message,
-        requiresReconnection: true 
+        requiresReconnection: true,
       });
     }
 
@@ -1639,13 +1795,14 @@ export const getTikTokMediaKit = async (req: Request, res: Response) => {
       { max_count: 20 },
       {
         params: {
-          fields: 'id,title,video_description,duration,cover_image_url,embed_link,embed_html,like_count,comment_count,share_count,view_count,create_time',
+          fields:
+            'id,title,video_description,duration,cover_image_url,embed_link,embed_html,like_count,comment_count,share_count,view_count,create_time',
         },
-        headers: { 
-          Authorization: `Bearer ${accessToken}`, 
-          'Content-Type': 'application/json' 
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
         },
-      }
+      },
     );
 
     const videos = videosRes.data.data?.videos || [];
@@ -1655,7 +1812,7 @@ export const getTikTokMediaKit = async (req: Request, res: Response) => {
     const totalComments = videos.reduce((sum: number, video: any) => sum + (video.comment_count || 0), 0);
     const totalShares = videos.reduce((sum: number, video: any) => sum + (video.share_count || 0), 0);
     const totalViews = videos.reduce((sum: number, video: any) => sum + (video.view_count || 0), 0);
-    
+
     const averageLikes = videos.length > 0 ? totalLikes / videos.length : 0;
     const averageComments = videos.length > 0 ? totalComments / videos.length : 0;
     const averageShares = videos.length > 0 ? totalShares / videos.length : 0;
@@ -1669,26 +1826,26 @@ export const getTikTokMediaKit = async (req: Request, res: Response) => {
     } = {
       engagementRates: [],
       months: [],
-      monthlyInteractions: []
+      monthlyInteractions: [],
     };
-    
+
     try {
       const engagementAnalytics = await getTikTokEngagementRateOverTime(accessToken);
       const monthlyAnalytics = await getTikTokMonthlyInteractions(accessToken);
-      
+
       analytics = {
         engagementRates: engagementAnalytics.engagementRates,
         months: engagementAnalytics.months,
-        monthlyInteractions: monthlyAnalytics.monthlyData
+        monthlyInteractions: monthlyAnalytics.monthlyData,
       };
     } catch (analyticsError) {
       console.error('Failed to fetch TikTok analytics:', analyticsError);
       // analytics remains as empty arrays - frontend will use fallback
     }
-    
+
     // Calculate engagement rate using the calculated values
-    const engagement_rate = overview.follower_count 
-      ? ((totalLikes + totalComments) / overview.follower_count) * 100 
+    const engagement_rate = overview.follower_count
+      ? ((totalLikes + totalComments) / overview.follower_count) * 100
       : 0;
 
     // Update TikTok user data in database
@@ -1752,7 +1909,6 @@ export const getTikTokMediaKit = async (req: Request, res: Response) => {
     };
 
     return res.status(200).json(responseData);
-
   } catch (error: any) {
     console.error('Error in getTikTokMediaKit:', error);
     return res.status(400).json({

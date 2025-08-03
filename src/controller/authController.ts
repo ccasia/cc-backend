@@ -2,7 +2,13 @@
 import jwt, { JwtPayload, Secret } from 'jsonwebtoken';
 import { Employment, PrismaClient, RoleEnum, Prisma } from '@prisma/client';
 import { Request, Response } from 'express';
-import { AdminInvitaion, AdminInvite, ClientInvitation, creatorVerificationEmail, clientVerificationEmail } from '@configs/nodemailer.config';
+import {
+  AdminInvitaion,
+  AdminInvite,
+  ClientInvitation,
+  creatorVerificationEmail,
+  clientVerificationEmail,
+} from '@configs/nodemailer.config';
 import { handleChangePassword } from '@services/authServices';
 import { getUser } from '@services/userServices';
 
@@ -367,14 +373,14 @@ export const registerClient = async (req: Request, res: Response) => {
 
       // Get or create default client role
       let defaultClientRole = await tx.role.findFirst({
-        where: { name: 'Client' }
+        where: { name: 'Client' },
       });
 
       if (!defaultClientRole) {
         defaultClientRole = await tx.role.create({
           data: {
             name: 'Client',
-          }
+          },
         });
       }
 
@@ -404,6 +410,7 @@ export const registerClient = async (req: Request, res: Response) => {
     let shortCode;
 
     // Generate unique short code
+    // eslint-disable-next-line no-constant-condition
     while (true) {
       shortCode = generateRandomString();
 
@@ -429,9 +436,9 @@ export const registerClient = async (req: Request, res: Response) => {
 
     clientVerificationEmail(result.user.email, code.shortCode);
 
-    return res.status(201).json({ 
+    return res.status(201).json({
       message: 'Client registered successfully. Please check your email to verify your account.',
-      email: result.user.email 
+      email: result.user.email,
     });
   } catch (error) {
     console.error('Client registration error:', error);
@@ -766,10 +773,10 @@ export const verifyClient = async (req: Request, res: Response) => {
       httpOnly: true,
     });
 
-    return res.status(200).json({ 
-      message: 'Your email has been verified successfully!', 
+    return res.status(200).json({
+      message: 'Your email has been verified successfully!',
       user: client,
-      accessToken
+      accessToken,
     });
   } catch (error) {
     console.log(error);
@@ -1007,7 +1014,7 @@ export const updateClient = async (req: Request, res: Response) => {
       },
     });
 
-    return res.status(200).json({ 
+    return res.status(200).json({
       message: 'Client profile updated successfully',
       user: {
         id: updatedUser.id,
@@ -1015,7 +1022,7 @@ export const updateClient = async (req: Request, res: Response) => {
         email: updatedUser.email,
         country: updatedUser.country,
         phoneNumber: updatedUser.phoneNumber,
-      }
+      },
     });
   } catch (error) {
     console.log(error);
@@ -1467,6 +1474,7 @@ export const resendVerificationLinkClient = async (req: Request, res: Response) 
     let shortCode;
 
     // Generate a unique short code for the verification email
+    // eslint-disable-next-line no-constant-condition
     while (true) {
       shortCode = generateRandomString();
 
@@ -1504,7 +1512,7 @@ export const inviteClient = async (req: Request, res: Response) => {
   try {
     // Check if user already exists
     const existingUser = await prisma.user.findFirst({
-      where: { email: email.toLowerCase() }
+      where: { email: email.toLowerCase() },
     });
 
     if (existingUser) {
@@ -1514,7 +1522,7 @@ export const inviteClient = async (req: Request, res: Response) => {
     // Get company information
     const company = await prisma.company.findUnique({
       where: { id: companyId },
-      include: { pic: true }
+      include: { pic: true },
     });
 
     if (!company) {
@@ -1530,27 +1538,24 @@ export const inviteClient = async (req: Request, res: Response) => {
           role: 'client',
           status: 'pending',
           name: company.name || 'Client User',
-        }
+        },
       });
 
       // Get or create default client role
       let clientRole = await tx.role.findFirst({
-        where: { name: 'Client' }
+        where: { name: 'Client' },
       });
 
       if (!clientRole) {
         clientRole = await tx.role.create({
           data: {
             name: 'Client',
-          }
+          },
         });
       }
 
       // Generate invite token
-      const inviteToken = jwt.sign(
-        { id: user.id, companyId },
-        process.env.SESSION_SECRET as Secret
-      );
+      const inviteToken = jwt.sign({ id: user.id, companyId }, process.env.SESSION_SECRET as Secret);
 
       // Create admin record for client with Client role
       const admin = await tx.admin.create({
@@ -1568,7 +1573,7 @@ export const inviteClient = async (req: Request, res: Response) => {
           inviteToken: inviteToken,
           adminId: admin.id,
           companyId: companyId, // Add the companyId from request
-        }
+        },
       });
 
       return { user, client, admin, company };
@@ -1579,9 +1584,8 @@ export const inviteClient = async (req: Request, res: Response) => {
 
     return res.status(200).json({
       message: 'Client invitation sent successfully',
-      user: { email: result.user.email, id: result.user.id }
+      user: { email: result.user.email, id: result.user.id },
     });
-
   } catch (error) {
     console.error('Client invitation error:', error);
     return res.status(400).json({ message: 'Error sending client invitation' });
@@ -1598,10 +1602,10 @@ export const verifyClientInvite = async (req: Request, res: Response) => {
     // Find client by token
     const client = await prisma.client.findFirst({
       where: { inviteToken: token as string },
-      include: { 
+      include: {
         user: true,
-        admin: true
-      }
+        admin: true,
+      },
     });
 
     if (!client) {
@@ -1614,7 +1618,7 @@ export const verifyClientInvite = async (req: Request, res: Response) => {
 
     // Create session for the user so they can access the app
     const accessToken = jwt.sign({ id: client.user.id }, process.env.ACCESSKEY as Secret, {
-      expiresIn: '4h'
+      expiresIn: '4h',
     });
 
     const refreshToken = jwt.sign({ id: client.user.id }, process.env.REFRESHKEY as Secret);
@@ -1626,12 +1630,12 @@ export const verifyClientInvite = async (req: Request, res: Response) => {
 
     res.cookie('userid', client.user.id, {
       maxAge: 60 * 60 * 24 * 1000, // 1 Day
-      httpOnly: true
+      httpOnly: true,
     });
 
     res.cookie('accessToken', accessToken, {
       maxAge: 60 * 60 * 4 * 1000, // 4 hours
-      httpOnly: true
+      httpOnly: true,
     });
 
     // Return user info for password setup
@@ -1641,11 +1645,10 @@ export const verifyClientInvite = async (req: Request, res: Response) => {
         id: client.user.id,
         email: client.user.email,
         name: client.user.name,
-        role: client.user.role
+        role: client.user.role,
       },
-      accessToken
+      accessToken,
     });
-
   } catch (error) {
     console.error('Client invite verification error:', error);
     return res.status(400).json({ message: 'Invalid or expired invitation' });
@@ -1660,15 +1663,15 @@ export const setupClientPassword = async (req: Request, res: Response) => {
   }
 
   try {
-      // Verify token and get client
+    // Verify token and get client
     const decoded = jwt.verify(token as string, process.env.SESSION_SECRET as string) as any;
 
     const client = await prisma.client.findFirst({
       where: { inviteToken: token },
-      include: { 
+      include: {
         user: true,
-        admin: true
-      }
+        admin: true,
+      },
     });
 
     if (!client) {
@@ -1685,16 +1688,16 @@ export const setupClientPassword = async (req: Request, res: Response) => {
         data: {
           password: hashedPassword,
           status: 'active',
-          isActive: true
-        }
+          isActive: true,
+        },
       });
 
       // Clear the invite token after successful setup
       await tx.client.update({
         where: { id: client.id },
         data: {
-          inviteToken: null
-        }
+          inviteToken: null,
+        },
       });
 
       return updatedUser;
@@ -1702,7 +1705,7 @@ export const setupClientPassword = async (req: Request, res: Response) => {
 
     // Create session and tokens
     const accessToken = jwt.sign({ id: result.id }, process.env.ACCESSKEY as Secret, {
-      expiresIn: '4h'
+      expiresIn: '4h',
     });
 
     const refreshToken = jwt.sign({ id: result.id }, process.env.REFRESHKEY as Secret);
@@ -1714,22 +1717,86 @@ export const setupClientPassword = async (req: Request, res: Response) => {
 
     res.cookie('userid', result.id, {
       maxAge: 60 * 60 * 24 * 1000, // 1 Day
-      httpOnly: true
+      httpOnly: true,
     });
 
     res.cookie('accessToken', accessToken, {
       maxAge: 60 * 60 * 4 * 1000, // 4 hours
-      httpOnly: true
+      httpOnly: true,
     });
 
     return res.status(200).json({
       message: 'Password set up successfully',
       user: result,
-      accessToken
+      accessToken,
     });
-
   } catch (error) {
     console.error('Password setup error:', error);
     return res.status(400).json({ message: 'Error setting up password' });
+  }
+};
+export const deleteAccount = async (req: Request, res: Response) => {
+  const userId = req.session.userid as string;
+
+  if (!userId) {
+    return res.status(401).json({ message: 'Unauthorized' });
+  }
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        creator: true,
+        admin: true,
+      },
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Delete all related data based on user role
+    await prisma.$transaction(async (tx) => {
+      // Common deletions for all users
+      await tx.interest.deleteMany({ where: { userId } });
+      await tx.invoice.deleteMany({ where: { creatorId: userId } });
+      await tx.pitch.deleteMany({ where: { userId } });
+      await tx.userNotification.deleteMany({ where: { userId } });
+      await tx.notification.deleteMany({ where: { userId } });
+      await tx.unreadMessage.deleteMany({ where: { userId } });
+      await tx.seenMessage.deleteMany({ where: { userId } });
+      await tx.bookMarkCampaign.deleteMany({ where: { userId } });
+      await tx.paymentForm.deleteMany({ where: { userId } });
+      await tx.userThread.deleteMany({ where: { userId } });
+      await tx.creatorAgreement.deleteMany({ where: { userId } });
+      await tx.submission.deleteMany({ where: { userId } });
+      await tx.logistic.deleteMany({ where: { userId } });
+
+      // Role-specific deletions
+      if (user.role === 'creator') {
+        await tx.creator.delete({
+          where: { userId },
+          include: { mediaKit: true },
+        });
+      } else if (user.role === 'admin') {
+        await tx.admin.delete({ where: { userId } });
+      }
+
+      // Finally delete the user
+      await tx.user.delete({ where: { id: userId } });
+    });
+
+    // Clear session and cookies
+    req.session.destroy((err) => {
+      if (err) {
+        return res.status(400).json({ message: 'Error logging out' });
+      }
+      res.clearCookie('userid');
+      res.clearCookie('accessToken');
+      return res.status(200).json({ message: 'Account deleted successfully' });
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(400).json({ message: 'Failed to delete account' });
   }
 };

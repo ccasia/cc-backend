@@ -26,6 +26,7 @@ import {
   verifyClientInvite,
   setupClientPassword,
   verifyClient,
+  deleteAccount,
 } from '@controllers/authController';
 
 import { validateToken } from '@utils/jwtHelper';
@@ -79,5 +80,7 @@ router.patch('/updateClient', isLoggedIn, updateClient);
 
 router.patch('/updateProfileCreator', updateProfileCreator);
 router.patch('/changePassword', validateToken, changePassword);
+
+router.delete('/account', isLoggedIn, deleteAccount);
 
 export default router;

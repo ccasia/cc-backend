@@ -128,6 +128,7 @@ export const getInstagramAccessToken = async (code: string) => {
 
     return data;
   } catch (error) {
+    console.log(error);
     throw new Error(error);
   }
 };
@@ -313,7 +314,7 @@ export const getInstagramMedias = async (
 
 export const refreshTikTokToken = async (refreshToken: string) => {
   if (!refreshToken) throw new Error('Refresh token is not provided');
-  
+
   try {
     const refreshedToken = await axios.post(
       'https://open.tiktokapis.com/v2/oauth/token/',
@@ -325,7 +326,7 @@ export const refreshTikTokToken = async (refreshToken: string) => {
       },
       {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      }
+      },
     );
 
     return refreshedToken.data;
