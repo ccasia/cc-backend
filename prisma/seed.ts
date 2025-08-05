@@ -118,38 +118,110 @@ const clientRole = {
   permissions: ['list:campaign', 'view:campaign', 'list:creator', 'view:creator'],
 };
 
+const csLeadRole = {
+  permissions: [
+    'list:campaign',
+    'view:campaign',
+    'create:campaign',
+    'update:campaign',
+    'delete:campaign',
+    'list:client',
+    'view:client',
+    'create:client',
+    'update:client',
+    'delete:client',
+  ],
+};
+
 async function main() {
-  // Check if Client role already exists
-  const existingClientRole = await prisma.role.findFirst({
-    where: {
-      name: 'Client',
-    },
-  });
-
-  if (existingClientRole) {
-    console.log('Client role already exists');
-    return;
-  }
-
-  // Fetch existing permissions
-  const permissions = await prisma.permisions.findMany();
-  
-  // Create Client Role
-  const clientPermissions = clientRole.permissions;
-  const filteredClientPermissions = permissions.filter((item) => clientPermissions.includes(item.name));
-  
-  if (filteredClientPermissions.length > 0) {
-    await prisma.role.create({
-      data: {
-        name: 'Client',
-        permissions: {
-          connect: filteredClientPermissions.map((item) => ({ id: item.id })),
-        },
+  // Create permissions first
+  for (const scope of scopes) {
+    await prisma.permisions.upsert({
+      where: { name: scope.name },
+      update: {},
+      create: {
+        name: scope.name,
+        descriptions: scope.description,
       },
     });
-    console.log('Client role created successfully');
-  } else {
-    console.log('No matching permissions found for Client role');
+  }
+  console.log('Permissions created/updated successfully');
+
+  // Define all roles
+  const roles = [
+    { name: 'CSM', permissions: csmRoles.permissions },
+    { name: 'Finance', permissions: financeRole.permissions },
+    { name: 'BD', permissions: bdRole.permissions },
+    { name: 'Growth', permissions: growthRole.permissions },
+    { name: 'Client', permissions: clientRole.permissions },
+    { name: 'CSL', permissions: csLeadRole.permissions },
+  ];
+
+  // Create roles with their permissions
+  for (const role of roles) {
+    const existingRole = await prisma.role.findFirst({
+      where: { name: role.name },
+    });
+
+    if (existingRole) {
+      console.log(`${role.name} role already exists`);
+      continue;
+    }
+
+    // Fetch existing permissions
+    const permissions = await prisma.permisions.findMany();
+    const filteredPermissions = permissions.filter((item) => role.permissions.includes(item.name));
+    
+    if (filteredPermissions.length > 0) {
+      await prisma.role.create({
+        data: {
+          name: role.name,
+          permissions: {
+            connect: filteredPermissions.map((item) => ({ id: item.id })),
+          },
+        },
+      });
+      console.log(`${role.name} role created successfully`);
+    } else {
+      console.log(`No matching permissions found for ${role.name} role`);
+    }
+  }
+
+  // Create package types
+  for (const pkg of pakcagesArray) {
+    const existingPackage = await prisma.package.findFirst({
+      where: { name: pkg.type },
+    });
+
+    if (!existingPackage) {
+      const createdPackage = await prisma.package.create({
+        data: {
+          name: pkg.type,
+          credits: pkg.totalCredits,
+          validityPeriod: pkg.validityPeriod,
+        },
+      });
+
+      // Create prices for MYR and SGD
+      await prisma.price.createMany({
+        data: [
+          {
+            packageId: createdPackage.id,
+            currency: 'MYR',
+            amount: pkg.valueMYR,
+          },
+          {
+            packageId: createdPackage.id,
+            currency: 'SGD',
+            amount: pkg.valueSGD,
+          },
+        ],
+      });
+
+      console.log(`Package ${pkg.type} created successfully with prices`);
+    } else {
+      console.log(`Package ${pkg.type} already exists`);
+    }
   }
 }
 
