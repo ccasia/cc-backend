@@ -6,6 +6,5 @@ import { Router } from 'express';
 const router = Router();
 
 router.get('/', isSuperAdmin, getAllSubscriptions);
-router.patch('/:id', isLoggedIn, updateSubscription);
-
+router.patch('/:id', isLoggedIn, isSuperAdmin, updateSubscription);
 export default router;

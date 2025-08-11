@@ -22,6 +22,7 @@ import bcrypt from 'bcryptjs';
 
 import { generateRandomString } from '@utils/randomString';
 import dayjs from 'dayjs';
+import { TokenSet, XeroClient } from 'xero-node';
 
 const prisma = new PrismaClient();
 
@@ -67,6 +68,18 @@ interface CreatorUpdateData {
   socialMediaData: Prisma.InputJsonValue;
   city: string;
 }
+
+const client_id: string = process.env.XERO_CLIENT_ID as string;
+const client_secret: string = process.env.XERO_CLIENT_SECRET as string;
+const redirectUrl: string = process.env.XERO_REDIRECT_URL as string;
+const scopes: string = process.env.XERO_SCOPES as string;
+
+const xero = new XeroClient({
+  clientId: client_id,
+  clientSecret: client_secret,
+  redirectUris: [redirectUrl],
+  scopes: scopes?.split(' '),
+});
 
 export const registerUser = async (req: Request, res: Response) => {
   const { email, password }: RequestData = req.body;
@@ -1032,6 +1045,7 @@ export const updateClient = async (req: Request, res: Response) => {
 // Function to get user's information
 export const getprofile = async (req: Request, res: Response) => {
   const userId = req.session.userid as string;
+  let xeroinformation;
 
   if (!userId) {
     res.clearCookie('accessToken');
@@ -1041,6 +1055,32 @@ export const getprofile = async (req: Request, res: Response) => {
 
   try {
     const user = await getUser(userId);
+
+    if (user?.role === 'admin' && user.admin?.role?.name?.toLowerCase() === 'finance') {
+      await xero.initialize();
+
+      const tokenSet = user.admin.xeroTokenSet as TokenSet;
+
+      if (tokenSet) {
+        xero.setTokenSet(tokenSet);
+
+        if (dayjs.unix(tokenSet.expires_at!).isBefore(dayjs())) {
+          const newTokenSet = await xero.refreshToken();
+
+          await prisma.admin.update({
+            where: {
+              userId: user.id,
+            },
+            data: {
+              xeroTokenSet: newTokenSet as any,
+            },
+          });
+        }
+
+        await xero.updateTenants();
+        xeroinformation = xero.tenants;
+      }
+    }
 
     if (!user) return res.status(401).json({ message: 'Unauthorized' });
 
@@ -1059,7 +1099,7 @@ export const getprofile = async (req: Request, res: Response) => {
         return res.status(400).json({ message: 'Account rejected.' });
     }
 
-    return res.status(200).json({ user });
+    return res.status(200).json({ user: { ...user, xeroinformation } });
   } catch (error) {
     return res.status(404).json(error);
   }

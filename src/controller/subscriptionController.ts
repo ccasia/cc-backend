@@ -25,7 +25,6 @@ export const getAllSubscriptions = async (req: Request, res: Response) => {
     return res.status(400).json(error);
   }
 };
-
 export const updateSubscription = async (req: Request, res: Response) => {
   const { id } = req.params;
   const { packagePrice, creditsUsed, totalCredits, expiredAt } = req.body;

@@ -21,7 +21,8 @@
     "create-timeline": "ts-node prisma/createTimeline.ts",
     "update-kanban": "ts-node prisma/updateBoardAdmin.ts",
     "try": "ts-node src/config/nodemailer.config.ts",
-    "db-push": "npx prisma db push && docker exec -it cc-backend npx prisma db push"
+    "db-push": "npx prisma db push && docker exec -it cc-backend npx prisma db push",
+    "push-campaigns": "ts-node campaignLogs.ts"
   },
   "dependencies": {
     "@dotenvx/dotenvx": "^1.9.0",
