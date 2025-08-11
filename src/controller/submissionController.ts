@@ -2763,10 +2763,11 @@ export const getDeliverables = async (req: Request, res: Response) => {
     });
 
     // Helper function to get feedback for a specific media item
-    const getMediaFeedback = (mediaId: string, mediaType: 'video' | 'photo' | 'rawFootage') => {
+    const getMediaFeedback = (mediaId: string, mediaType: 'video' | 'photo' | 'rawFootage', mediaStatus: string) => {
       const allFeedback = submissions.flatMap((sub) => sub.feedback);
 
-      return allFeedback
+      // Get feedback specifically for this media item
+      const mediaSpecificFeedback = allFeedback
         .filter((feedback) => {
           switch (mediaType) {
             case 'video':
@@ -2790,29 +2791,49 @@ export const getDeliverables = async (req: Request, res: Response) => {
           reasons: feedback.reasons || [],
           createdAt: feedback.createdAt,
           admin: feedback.admin,
+          type: feedback.type,
         }));
+
+      // Also include client feedback for this submission when media has CLIENT_FEEDBACK status
+      const clientFeedback = allFeedback
+        .filter((feedback) => 
+          feedback.admin?.admin?.role?.name === 'client' && 
+          feedback.type === 'REASON' &&
+          mediaStatus === 'CLIENT_FEEDBACK'
+        )
+        .map((feedback) => ({
+          id: feedback.id,
+          content: feedback.content,
+          reasons: feedback.reasons || [],
+          createdAt: feedback.createdAt,
+          admin: feedback.admin,
+          type: feedback.type,
+        }));
+
+      return [...mediaSpecificFeedback, ...clientFeedback];
     };
 
     // Add feedback to each media item
     const videosWithFeedback = videos.map((video) => ({
       ...video,
-      individualFeedback: getMediaFeedback(video.id, 'video'),
+      individualFeedback: getMediaFeedback(video.id, 'video', video.status),
     }));
 
     const photosWithFeedback = photos.map((photo) => ({
       ...photo,
-      individualFeedback: getMediaFeedback(photo.id, 'photo'),
+      individualFeedback: getMediaFeedback(photo.id, 'photo', photo.status),
     }));
 
     const rawFootagesWithFeedback = rawFootages.map((footage) => ({
       ...footage,
-      individualFeedback: getMediaFeedback(footage.id, 'rawFootage'),
+      individualFeedback: getMediaFeedback(footage.id, 'rawFootage', footage.status),
     }));
 
     return res.status(200).json({
       videos: videosWithFeedback,
       rawFootages: rawFootagesWithFeedback,
       photos: photosWithFeedback,
+      submissions: submissions, // Include submissions with feedback for frontend access
     });
   } catch (error) {
     return res.status(400).json(error);

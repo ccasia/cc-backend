@@ -170,7 +170,8 @@ const checkCurrentSubmission = async (submissionId: string) => {
   if (submission?.submissionType.type === 'FIRST_DRAFT') {
     // For campaigns without campaignCredits (UGC campaigns), just check if at least one video is uploaded
     // For campaigns with campaignCredits, check if the exact number of ugcVideos is uploaded
-    const hasVideo = submission.campaign.campaignCredits === null ? videos > 0 : videos === (user?.ugcVideos || 0);
+    const requiredUgcVideos = user?.ugcVideos && user.ugcVideos > 0 ? user.ugcVideos : 1;
+    const hasVideo = submission.campaign.campaignCredits === null ? videos > 0 : videos >= requiredUgcVideos;
     const hasRawFootage = submission.campaign.rawFootage ? rawFootages > 0 : true;
     const hasPhotos = submission.campaign.photos ? photos > 0 : true;
 
@@ -186,10 +187,24 @@ const checkCurrentSubmission = async (submissionId: string) => {
       isV3Campaign
     });
 
-    // For V3 campaigns, if we have any deliverables uploaded, consider it ready for review
-    if (isV3Campaign && (hasVideo || hasRawFootage || hasPhotos)) {
-      console.log(`Worker - V3 Campaign: At least one deliverable uploaded, marking as ready for review`);
-      allDeliverablesSent = true;
+    // For V3 campaigns, use the same logic but with enhanced logging
+    if (isV3Campaign) {
+      console.log(`Worker - V3 Campaign ${submissionId}: Deliverable requirements check`, {
+        campaignRequiresVideos: true, // Always required
+        campaignRequiresRawFootage: submission.campaign.rawFootage,
+        campaignRequiresPhotos: submission.campaign.photos,
+        actualVideos: videos,
+        actualRawFootages: rawFootages, 
+        actualPhotos: photos,
+        hasVideo,
+        hasRawFootage,
+        hasPhotos,
+        allDeliverablesSent
+      });
+      
+      // V3 uses same logic as V2 - allDeliverablesSent already calculated above
+      // hasVideo && hasRawFootage && hasPhotos
+      // where hasRawFootage/hasPhotos are true if not required by campaign
     }
   } else if (submission?.submissionType.type === 'FINAL_DRAFT') {
     const [videosWithRevision, rawFootagesWithRevision, photosWithRevision] = await Promise.all([

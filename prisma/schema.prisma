@@ -102,7 +102,8 @@ model Admin {
 
   role Role? @relation(fields: [roleId], references: [id])
   user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  client Client?
+  // Remove client relation since we're separating client and admin
+  // client Client?
 
   adminPermissionModule AdminPermissionModule[]
   campaignAdmin         CampaignAdmin[]
@@ -115,17 +116,73 @@ model Admin {
 
 model Client {
   id     String @id @unique @default(cuid())
-  //  companyName String   @db.VarChar(255)
-  //  address     String?  @db.VarChar(255)
-  //  phone       String?  @db.VarChar(100)
-  //  website     String?  @db.VarChar(255)
   inviteToken String? @unique
   companyId String?
+  
+  // Remove admin sharing - clients should not share admin IDs
+  // adminId String? @unique  // ❌ REMOVED
+  // admin  Admin? @relation(fields: [adminId], references: [id])  // ❌ REMOVED
+  
+  // Keep user relation but with better separation
   userId String @unique
-  adminId String? @unique
-  company Company? @relation(fields: [companyId], references: [id])
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  admin  Admin? @relation(fields: [adminId], references: [id])
+  
+  // Keep company relation
+  company Company? @relation(fields: [companyId], references: [id])
+  
+  // Add client-specific fields
+  clientType ClientType @default(directClient)
+  isActive   Boolean    @default(true)
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @default(now()) @updatedAt
+  
+  // Client-specific relations
+  clientCampaigns ClientCampaign[]
+  clientNotifications ClientNotification[]
+  campaignClients CampaignClient[]
+}
+
+// New enum for client types
+enum ClientType {
+  directClient
+  agencyClient
+  enterpriseClient
+}
+
+// Separate client campaign model for better organization
+model ClientCampaign {
+  id         String   @id @unique @default(cuid())
+  clientId   String
+  campaignId String
+  role       ClientCampaignRole @default(viewer)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  
+  client   Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  
+  @@unique([clientId, campaignId])
+}
+
+enum ClientCampaignRole {
+  owner
+  viewer
+  editor
+  approver
+}
+
+// Separate client notification model
+model ClientNotification {
+  id        String   @id @unique @default(cuid())
+  clientId  String
+  title     String
+  message   String
+  entity    Entity?
+  entityId  String?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
 }
 
 model Role {
@@ -533,6 +590,7 @@ model Campaign {
   subscription        Subscription?      @relation(fields: [subscriptionId], references: [id])
 
   campaignAdmin                 CampaignAdmin[]
+  campaignClients               CampaignClient[]
   campaignBrief                 CampaignBrief?
   campaignLogs                  CampaignLog[]
   campaignRequirement           CampaignRequirement?
@@ -562,6 +620,9 @@ model Campaign {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  
+  // Add client campaign relation
+  clientCampaigns ClientCampaign[]
 }
 
 model BookMarkCampaign {
@@ -574,14 +635,42 @@ model BookMarkCampaign {
   @@unique([userId, campaignId])
 }
 
+// Separate admin and client campaign access models
 model CampaignAdmin {
   adminId    String
   campaignId String
-  admin      Admin    @relation(fields: [adminId], references: [userId], onDelete: Cascade)
-  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  role       CampaignAdminRole @default(viewer)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
+  
+  admin    Admin    @relation(fields: [adminId], references: [userId], onDelete: Cascade)
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
   @@id([adminId, campaignId])
   @@index([adminId])
+  @@index([campaignId])
+}
+
+enum CampaignAdminRole {
+  owner
+  viewer
+  editor
+  manager
+}
+
+// Separate client campaign access model
+model CampaignClient {
+  clientId   String
+  campaignId String
+  role       ClientCampaignRole @default(viewer)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
+  
+  client   Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@id([clientId, campaignId])
+  @@index([clientId])
   @@index([campaignId])
 }
 
@@ -925,6 +1014,7 @@ enum FeedbackStatus {
   REJECTED
   REVISION_REQUESTED
   SENT_TO_CLIENT
+  CLIENT_FEEDBACK
 }
 
 // model DeliverableFeedback {
@@ -1390,7 +1480,8 @@ enum SubmissionStatus {
   // V3 flow statuses for client-created campaigns
   SENT_TO_CLIENT
   CLIENT_APPROVED
-  CLIENT_CHANGES_REQUESTED
+  CLIENT_FEEDBACK
+  SENT_TO_ADMIN
 }
 
 enum Priority {
@@ -1406,6 +1497,18 @@ enum Entity {
   Shortlist
   Timeline
   Feedback
+  AdminAgreementForm
+  AdminFirstDraft
+  AdminFinalDraft
+  AdminPosting
+  ClientAgreementForm
+  ClientFirstDraft
+  ClientFinalDraft
+  ClientPosting
+  AgreementForm
+  FirstDraft
+  FinalDraft
+  Posting
   Draft
   Post
   Logistic

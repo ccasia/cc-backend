@@ -27,16 +27,25 @@ export const updateClient = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Client user not found' });
     }
 
-    // Find company where user's email matches any PIC email
-    const companies = await prisma.company.findMany({
-      include: { pic: true },
+    // Get client record to find the company
+    const client = await prisma.client.findUnique({
+      where: { userId },
+      include: {
+        company: {
+          include: { pic: true },
+        },
+      },
     });
 
-    const company = companies.find((comp) => comp?.pic[0]?.email === user.email?.toLowerCase());
-
-    if (!company) {
-      return res.status(404).json({ message: 'No company found with matching email' });
+    if (!client) {
+      return res.status(404).json({ message: 'Client not found' });
     }
+
+    if (!client.companyId || !client.company) {
+      return res.status(404).json({ message: 'Client has no associated company' });
+    }
+
+    const company = client.company;
 
     // Handle company logo upload
     let logoURL = company.logo;
@@ -62,15 +71,19 @@ export const updateClient = async (req: Request, res: Response) => {
     if (logoURL !== company.logo) companyUpdateData.logo = logoURL;
 
     // Update PIC designation in company.pic array
-    if (picDesignation && company.pic) {
-      const currentPic = company.pic.find((pic) => pic.companyId === company?.id);
+    if (picDesignation && company.pic && company.pic.length > 0) {
+      // Find the first PIC record for this company
+      const currentPic = company.pic[0];
       if (currentPic) {
-        companyUpdateData.pic = {
-          update: {
-            where: { id: currentPic.id },
-            data: { name: picName, designation: picDesignation, email: picEmail },
+        // Update the PIC record
+        await prisma.pic.update({
+          where: { id: currentPic.id },
+          data: { 
+            name: picName, 
+            designation: picDesignation, 
+            email: picEmail 
           },
-        };
+        });
       }
     }
 

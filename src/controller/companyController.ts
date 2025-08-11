@@ -601,7 +601,6 @@ export const activateClient = async (req: Request, res: Response) => {
       const client = await tx.client.create({
         data: {
           userId: user.id,
-          adminId: admin.id,
           inviteToken: inviteToken,
           companyId: companyId, // Connect client to company
         }

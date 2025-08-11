@@ -393,11 +393,10 @@ export const registerClient = async (req: Request, res: Response) => {
         },
       });
 
-      // Create client record linked to admin
+      // Create client record
       const client = await tx.client.create({
         data: {
           userId: user.id,
-          adminId: admin.id,
         },
       });
 
@@ -1571,7 +1570,6 @@ export const inviteClient = async (req: Request, res: Response) => {
         data: {
           userId: user.id,
           inviteToken: inviteToken,
-          adminId: admin.id,
           companyId: companyId, // Add the companyId from request
         },
       });
@@ -1604,7 +1602,6 @@ export const verifyClientInvite = async (req: Request, res: Response) => {
       where: { inviteToken: token as string },
       include: {
         user: true,
-        admin: true,
       },
     });
 
@@ -1670,7 +1667,6 @@ export const setupClientPassword = async (req: Request, res: Response) => {
       where: { inviteToken: token },
       include: {
         user: true,
-        admin: true,
       },
     });
 
