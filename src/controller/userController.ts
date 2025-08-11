@@ -1,3 +1,4 @@
+
 import { Request, Response } from 'express';
 import { AdminInvite, forgetPasswordEmail } from '@configs/nodemailer.config';
 import jwt, { JwtPayload, Secret } from 'jsonwebtoken';

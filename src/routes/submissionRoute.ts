@@ -19,6 +19,14 @@ import {
   adminManageDraftVideosV2,
   adminManageRawFootagesV2,
 } from '@controllers/submissionController';
+import {
+  getSubmissionsV3,
+  getSubmissionByIdV3,
+  approveIndividualMediaV3,
+  requestChangesIndividualMediaV3,
+  approveIndividualMediaByClientV3,
+  requestChangesIndividualMediaByClientV3,
+} from '@controllers/submissionV3Controller';
 import { isLoggedIn } from '@middlewares/onlyLogin';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 import { generateInvoice } from '@controllers/invoiceController';
@@ -52,5 +60,13 @@ router.patch('/status', isSuperAdmin, updateSubmissionStatus);
 router.patch('/v2/managePhotos', isSuperAdmin, adminManagePhotosV2);
 router.patch('/v2/manageDraftVideos', isSuperAdmin, adminManageDraftVideosV2);
 router.patch('/v2/manageRawFootages', isSuperAdmin, adminManageRawFootagesV2);
+
+// V3 - Client-created campaign routes
+router.get('/v3', isLoggedIn, getSubmissionsV3);
+router.get('/v3/:submissionId', isLoggedIn, getSubmissionByIdV3);
+router.patch('/v3/media/approve', isLoggedIn, approveIndividualMediaV3);
+router.patch('/v3/media/request-changes', isLoggedIn, requestChangesIndividualMediaV3);
+router.patch('/v3/media/approve/client', isLoggedIn, approveIndividualMediaByClientV3);
+router.patch('/v3/media/request-changes/client', isLoggedIn, requestChangesIndividualMediaByClientV3);
 
 export default router;

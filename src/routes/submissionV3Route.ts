@@ -13,6 +13,7 @@ import {
   approveDraftByClientV3,
   requestChangesByClientV3,
   forwardClientFeedbackV3,
+  reviewAndForwardClientFeedbackV3,
   approveIndividualMediaV3,
   requestChangesIndividualMediaV3,
   approveSubmissionByClientV3,
@@ -39,35 +40,21 @@ const isCreatorOrClient = async (req: Request, res: Response, next: NextFunction
   return res.status(403).json({ message: 'Access denied: Creator or client access required' });
 };
 
-// Get submissions for V3 flow with role-based status display
 router.get('/v3', isAdminOrClient, getSubmissionsV3);
-
-// Get single submission with role-based status display
 router.get('/v3/:submissionId', isAdminOrClient, getSubmissionByIdV3);
-
-// V3: Creator or client submits draft
 router.post('/v3/submit-draft', isCreatorOrClient, submitDraftV3);
-
-// V3 Individual Media Admin Approval/Rejection
 router.patch('/v3/media/approve', isAdmin, approveIndividualMediaV3);
 router.patch('/v3/media/request-changes', isAdmin, requestChangesIndividualMediaV3);
-
-// V3 Individual Media Client Approval/Rejection
 router.patch('/v3/media/approve/client', isClient, approveIndividualMediaByClientV3);
 router.patch('/v3/media/request-changes/client', isClient, requestChangesIndividualMediaByClientV3);
-
-// V3 Submission Client Approval
 router.patch('/v3/:submissionId/approve/client', isClient, approveSubmissionByClientV3);
-
-// V3 Posting Admin Approval/Rejection
+router.patch('/v3/:submissionId/request-changes/client', isClient, requestChangesByClientV3);
 router.patch('/v3/posting/approve', isAdmin, approvePostingByAdminV3);
 router.patch('/v3/posting/request-changes', isAdmin, requestChangesForPostingByAdminV3);
-
-// V3 Posting Client Approval/Rejection
 router.patch('/v3/posting/approve/client', isClient, approvePostingByClientV3);
 router.patch('/v3/posting/request-changes/client', isClient, requestChangesForPostingByClientV3);
-
-// V3 Posting Client Feedback Forward
 router.patch('/v3/posting/forward-feedback', isAdmin, forwardClientPostingFeedbackV3);
+router.patch('/v3/draft/review-feedback', isAdmin, reviewAndForwardClientFeedbackV3);
+router.patch('/v3/draft/forward-feedback', isAdmin, forwardClientFeedbackV3);
 
 export default router; 

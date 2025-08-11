@@ -1,7 +1,40 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
+import dayjs from 'dayjs';
 
 const prisma = new PrismaClient();
+
+// Utility function to map submission types to entities
+const getEntityFromSubmissionType = (submissionType: string, userRole?: 'admin' | 'client' | 'creator') => {
+  const baseEntity = (() => {
+    switch (submissionType) {
+      case 'AGREEMENT_FORM':
+        return 'AgreementForm';
+      case 'FIRST_DRAFT':
+        return 'FirstDraft';
+      case 'FINAL_DRAFT':
+        return 'FinalDraft';
+      case 'POSTING':
+        return 'Posting';
+      default:
+        return 'Draft';
+    }
+  })();
+
+  // If user role is specified, use role-specific entities
+  if (userRole) {
+    switch (userRole) {
+      case 'admin':
+        return `Admin${baseEntity}`;
+      case 'client':
+        return `Client${baseEntity}`;
+      default:
+        return baseEntity; // For creators, use generic entities
+    }
+  }
+
+  return baseEntity; // Fallback to generic entities
+};
 
 // New Flow: Admin approves pitch and sends to client
 export const approvePitchByAdmin = async (req: Request, res: Response) => {
@@ -659,31 +692,41 @@ export const getPitchesV3 = async (req: Request, res: Response) => {
       }
     });
 
-    // Transform pitches to show role-based status
-    const transformedPitches = pitches.map(pitch => {
-      let displayStatus = pitch.status;
-      
-      // Role-based status display logic
-      if (user.role === 'admin' || user.role === 'superadmin') {
-        // Admin sees: PENDING_REVIEW -> PENDING_REVIEW, SENT_TO_CLIENT -> SENT_TO_CLIENT, APPROVED -> APPROVED
-        displayStatus = pitch.status;
-      } else if (user.role === 'client') {
-        // Client sees: PENDING_REVIEW -> PENDING_REVIEW, SENT_TO_CLIENT -> PENDING_REVIEW, APPROVED -> APPROVED
-        if (pitch.status === 'SENT_TO_CLIENT') {
-          displayStatus = 'PENDING_REVIEW';
+    // Transform pitches to show role-based status and filter for clients
+    const transformedPitches = pitches
+      .filter(pitch => {
+        // For clients: only show pitches that are SENT_TO_CLIENT or APPROVED
+        // Hide pitches with PENDING_REVIEW status (admin review stage)
+        if (user.role === 'client') {
+          return pitch.status === 'SENT_TO_CLIENT' || pitch.status === 'APPROVED';
         }
-      } else if (user.role === 'creator') {
-        // Creator sees: PENDING_REVIEW -> PENDING_REVIEW, SENT_TO_CLIENT -> PENDING_REVIEW, APPROVED -> APPROVED
-        if (pitch.status === 'SENT_TO_CLIENT') {
-          displayStatus = 'PENDING_REVIEW';
+        // For admin and creators: show all pitches
+        return true;
+      })
+      .map(pitch => {
+        let displayStatus = pitch.status;
+        
+        // Role-based status display logic
+        if (user.role === 'admin' || user.role === 'superadmin') {
+          // Admin sees: PENDING_REVIEW -> PENDING_REVIEW, SENT_TO_CLIENT -> SENT_TO_CLIENT, APPROVED -> APPROVED
+          displayStatus = pitch.status;
+        } else if (user.role === 'client') {
+          // Client sees: SENT_TO_CLIENT -> PENDING_REVIEW, APPROVED -> APPROVED
+          if (pitch.status === 'SENT_TO_CLIENT') {
+            displayStatus = 'PENDING_REVIEW';
+          }
+        } else if (user.role === 'creator') {
+          // Creator sees: PENDING_REVIEW -> PENDING_REVIEW, SENT_TO_CLIENT -> PENDING_REVIEW, APPROVED -> APPROVED
+          if (pitch.status === 'SENT_TO_CLIENT') {
+            displayStatus = 'PENDING_REVIEW';
+          }
         }
-      }
 
-      return {
-        ...pitch,
-        displayStatus // Add display status for frontend
-      };
-    });
+        return {
+          ...pitch,
+          displayStatus // Add display status for frontend
+        };
+      });
 
     return res.status(200).json(transformedPitches);
 
@@ -738,6 +781,12 @@ export const getPitchByIdV3 = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
     }
 
+    // For clients: only allow access to pitches that are SENT_TO_CLIENT or APPROVED
+    // Hide pitches with PENDING_REVIEW status (admin review stage)
+    if (user.role === 'client' && pitch.status === 'PENDING_REVIEW') {
+      return res.status(403).json({ message: 'Access denied. This pitch is still under admin review.' });
+    }
+
     // Transform pitch to show role-based status
     let displayStatus = pitch.status;
     
@@ -746,7 +795,7 @@ export const getPitchByIdV3 = async (req: Request, res: Response) => {
       // Admin sees: PENDING_REVIEW -> PENDING_REVIEW, SENT_TO_CLIENT -> SENT_TO_CLIENT, APPROVED -> APPROVED
       displayStatus = pitch.status;
     } else if (user.role === 'client') {
-      // Client sees: PENDING_REVIEW -> PENDING_REVIEW, SENT_TO_CLIENT -> PENDING_REVIEW, APPROVED -> APPROVED
+      // Client sees: SENT_TO_CLIENT -> PENDING_REVIEW, APPROVED -> APPROVED
       if (pitch.status === 'SENT_TO_CLIENT') {
         displayStatus = 'PENDING_REVIEW';
       }
@@ -1139,24 +1188,29 @@ export const approveDraftByClientV3 = async (req: Request, res: Response) => {
       ca.admin.user.role === 'admin' || ca.admin.user.role === 'superadmin'
     );
 
+    // Determine entity based on submission type - this is a client action
+    const clientEntity = getEntityFromSubmissionType(submission.submissionType.type, 'client');
+
     for (const adminUser of adminUsers) {
       await prisma.notification.create({
         data: {
           title: 'Draft Approved by Client',
           message: `A ${submission.submissionType.type.toLowerCase().replace('_', ' ')} has been approved by client for campaign "${submission.campaign.name}".`,
-          entity: 'Draft',
+          entity: clientEntity as any,
           campaignId: submission.campaignId,
           userId: adminUser.admin.userId
         }
       });
     }
 
-    // Notify creator
+    // Notify creator - use generic entity for creator notifications
+    const creatorEntity = getEntityFromSubmissionType(submission.submissionType.type);
+
     await prisma.notification.create({
       data: {
         title: 'Draft Approved',
         message: `Your ${submission.submissionType.type.toLowerCase().replace('_', ' ')} has been approved by client for campaign "${submission.campaign.name}".`,
-        entity: 'Draft',
+        entity: creatorEntity as any,
         campaignId: submission.campaignId,
         userId: submission.userId
       }
@@ -1225,11 +1279,11 @@ export const requestChangesByClientV3 = async (req: Request, res: Response) => {
       return res.status(403).json({ message: 'Client not authorized for this campaign' });
     }
 
-    // Update submission status to CLIENT_CHANGES_REQUESTED
+    // Update submission status to SENT_TO_ADMIN
     await prisma.submission.update({
       where: { id: submissionId },
       data: {
-        status: 'CLIENT_CHANGES_REQUESTED',
+        status: 'SENT_TO_ADMIN',
         completedAt: new Date()
       }
     });
@@ -1250,19 +1304,22 @@ export const requestChangesByClientV3 = async (req: Request, res: Response) => {
       ca.admin.user.role === 'admin' || ca.admin.user.role === 'superadmin'
     );
 
+    // Determine entity based on submission type
+    const entity = getEntityFromSubmissionType(submission.submissionType.type, 'client');
+
     for (const adminUser of adminUsers) {
       await prisma.notification.create({
         data: {
           title: 'Client Requested Changes',
           message: `Client has requested changes for ${submission.submissionType.type.toLowerCase().replace('_', ' ')} in campaign "${submission.campaign.name}".`,
-          entity: 'Draft',
+          entity: entity as any,
           campaignId: submission.campaignId,
           userId: adminUser.admin.userId
         }
       });
     }
 
-    console.log(`Changes requested by client for draft ${submissionId}, status updated to CLIENT_CHANGES_REQUESTED`);
+    console.log(`Changes requested by client for draft ${submissionId}, status updated to SENT_TO_ADMIN`);
     return res.status(200).json({ message: 'Changes requested by client' });
 
   } catch (error) {
@@ -1297,20 +1354,22 @@ export const forwardClientFeedbackV3 = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
     }
 
-    // Check if submission is in correct status
-    if (submission.status !== 'CLIENT_CHANGES_REQUESTED') {
+    // Check if submission is in correct status - allow both SENT_TO_ADMIN and CHANGES_REQUIRED
+    if (submission.status !== 'SENT_TO_ADMIN' && submission.status !== 'CHANGES_REQUIRED') {
       return res.status(400).json({ 
         message: `Submission is not in correct status for forwarding feedback. Current status: ${submission.status}` 
       });
     }
 
-    // Update submission status to CHANGES_REQUIRED (back to creator)
-    await prisma.submission.update({
-      where: { id: submissionId },
-      data: {
-        status: 'CHANGES_REQUIRED'
-      }
-    });
+    // Only update status if it's currently SENT_TO_ADMIN, otherwise keep it as CHANGES_REQUIRED
+    if (submission.status === 'SENT_TO_ADMIN') {
+      await prisma.submission.update({
+        where: { id: submissionId },
+        data: {
+          status: 'CHANGES_REQUIRED'
+        }
+      });
+    }
 
     // Add admin's review of client feedback
     if (adminFeedback) {
@@ -1324,12 +1383,14 @@ export const forwardClientFeedbackV3 = async (req: Request, res: Response) => {
       });
     }
 
-    // Create notification for creator
+    // Create notification for creator - this is an admin action
+    const adminEntity = getEntityFromSubmissionType(submission.submissionType.type, 'admin');
+
     await prisma.notification.create({
       data: {
         title: 'Changes Required',
         message: `Changes have been requested for your ${submission.submissionType.type.toLowerCase().replace('_', ' ')} in campaign "${submission.campaign.name}". Please review the feedback and resubmit.`,
-        entity: 'Draft',
+        entity: adminEntity as any,
         campaignId: submission.campaignId,
         userId: submission.userId
       }

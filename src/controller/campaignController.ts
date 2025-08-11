@@ -979,15 +979,20 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       return res.status(200).json(data);
     }
 
-    // Filter campaigns that have an Open For Pitch timeline with status OPEN
+    // Show all active campaigns to creators (both admin and client created) - like superadmin
     const beforeFilterCount = campaigns.length;
-    campaigns = campaigns.filter(
-      (campaign) => campaign.campaignTimeline.find((timeline) => timeline.name === 'Open For Pitch')?.status === 'OPEN',
-    );
+    
+    // For now, show ALL active campaigns to creators to match superadmin behavior
+    // This ensures creators can see all campaigns like superadmin does
+    campaigns = campaigns.filter((campaign) => {
+      // Show all ACTIVE campaigns regardless of timeline status
+      return campaign.status === 'ACTIVE';
+    });
+    
     const afterFilterCount = campaigns.length;
 
     console.log(
-      `matchCampaignWithCreator - After filtering for "Open For Pitch" timeline: ${afterFilterCount}/${beforeFilterCount} campaigns remain`,
+      `matchCampaignWithCreator - After filtering: ${afterFilterCount}/${beforeFilterCount} campaigns remain (showing ALL active campaigns to creators)`,
     );
 
     const calculateInterestMatchingPercentage = (creatorInterests: Interest[], creatorPerona: []) => {
@@ -1073,10 +1078,8 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       };
     });
 
-    // const sortedMatchedCampaigns = matchedCampaignWithPercentage.sort((a, b) => b.percentageMatch - a.percentageMatch);
-    const sortedMatchedCampaigns = matchedCampaignWithPercentage.sort((a, b) => {
-      return dayjs(a.createdAt).isBefore(b.createdAt, 'date') ? 1 : -1;
-    });
+    // Keep the original order from database (newest first) instead of overriding
+    const sortedMatchedCampaigns = matchedCampaignWithPercentage;
 
     const lastCursor = campaigns.length > Number(take) - 1 ? campaigns[Number(take) - 1]?.id : null;
 
@@ -1348,33 +1351,43 @@ export const getAllPitches = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'No pitches found.' });
     }
 
-    // Transform pitches to show role-based status for client-created campaigns
-    const transformedPitches = pitches.map((pitch) => {
-      let displayStatus = pitch.status;
+    // Transform pitches to show role-based status for client-created campaigns and filter for clients
+    const transformedPitches = pitches
+      .filter(pitch => {
+        // For clients: only show pitches that are SENT_TO_CLIENT or APPROVED
+        // Hide pitches with PENDING_REVIEW status (admin review stage)
+        if (user?.role === 'client' && pitch.campaign.origin === 'CLIENT') {
+          return pitch.status === 'SENT_TO_CLIENT' || pitch.status === 'APPROVED';
+        }
+        // For admin and creators: show all pitches
+        return true;
+      })
+      .map((pitch) => {
+        let displayStatus = pitch.status;
 
-      if (pitch.campaign.origin === 'CLIENT' && user) {
-        // Role-based status display logic for client-created campaigns
-        if (user.role === 'admin' || user.role === 'superadmin') {
-          // Admin sees: PENDING_REVIEW -> PENDING_REVIEW, SENT_TO_CLIENT -> SENT_TO_CLIENT, APPROVED -> APPROVED
-          displayStatus = pitch.status;
-        } else if (user.role === 'client') {
-          // Client sees: PENDING_REVIEW -> PENDING_REVIEW, SENT_TO_CLIENT -> PENDING_REVIEW, APPROVED -> APPROVED
-          if (pitch.status === 'SENT_TO_CLIENT') {
-            displayStatus = 'PENDING_REVIEW';
-          }
-        } else if (user.role === 'creator') {
-          // Creator sees: PENDING_REVIEW -> PENDING_REVIEW, SENT_TO_CLIENT -> PENDING_REVIEW, APPROVED -> APPROVED
-          if (pitch.status === 'SENT_TO_CLIENT') {
-            displayStatus = 'PENDING_REVIEW';
+        if (pitch.campaign.origin === 'CLIENT' && user) {
+          // Role-based status display logic for client-created campaigns
+          if (user.role === 'admin' || user.role === 'superadmin') {
+            // Admin sees: PENDING_REVIEW -> PENDING_REVIEW, SENT_TO_CLIENT -> SENT_TO_CLIENT, APPROVED -> APPROVED
+            displayStatus = pitch.status;
+          } else if (user.role === 'client') {
+            // Client sees: SENT_TO_CLIENT -> PENDING_REVIEW, APPROVED -> APPROVED
+            if (pitch.status === 'SENT_TO_CLIENT') {
+              displayStatus = 'PENDING_REVIEW';
+            }
+          } else if (user.role === 'creator') {
+            // Creator sees: PENDING_REVIEW -> PENDING_REVIEW, SENT_TO_CLIENT -> PENDING_REVIEW, APPROVED -> APPROVED
+            if (pitch.status === 'SENT_TO_CLIENT') {
+              displayStatus = 'PENDING_REVIEW';
+            }
           }
         }
-      }
 
-      return {
-        ...pitch,
-        displayStatus,
-      };
-    });
+        return {
+          ...pitch,
+          displayStatus,
+        };
+      });
 
     return res.status(200).json({ pitches: transformedPitches });
   } catch (error) {
@@ -1655,6 +1668,12 @@ export const getPitchById = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Pitch not found.' });
     }
 
+    // For clients: only allow access to pitches that are SENT_TO_CLIENT or APPROVED
+    // Hide pitches with PENDING_REVIEW status (admin review stage)
+    if (user?.role === 'client' && pitch.campaign.origin === 'CLIENT' && pitch.status === 'PENDING_REVIEW') {
+      return res.status(403).json({ message: 'Access denied. This pitch is still under admin review.' });
+    }
+
     // Add role-based status display for client-created campaigns
     let displayStatus = pitch.status;
 
@@ -1664,7 +1683,7 @@ export const getPitchById = async (req: Request, res: Response) => {
         // Admin sees: PENDING_REVIEW -> PENDING_REVIEW, SENT_TO_CLIENT -> SENT_TO_CLIENT, APPROVED -> APPROVED
         displayStatus = pitch.status;
       } else if (user.role === 'client') {
-        // Client sees: PENDING_REVIEW -> PENDING_REVIEW, SENT_TO_CLIENT -> PENDING_REVIEW, APPROVED -> APPROVED
+        // Client sees: SENT_TO_CLIENT -> PENDING_REVIEW, APPROVED -> APPROVED
         if (pitch.status === 'SENT_TO_CLIENT') {
           displayStatus = 'PENDING_REVIEW';
         }
@@ -3188,9 +3207,23 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
     }
 
     // Get current agreement amount for comparison
-    const currentAgreement = await prisma.creatorAgreement.findUnique({
-      where: { id: agreementId },
-    });
+    let currentAgreement = null;
+    if (isNew) {
+      // For V3: Find by userId and campaignId
+      currentAgreement = await prisma.creatorAgreement.findUnique({
+        where: {
+          userId_campaignId: {
+            userId: creator.id,
+            campaignId: campaignId,
+          },
+        },
+      });
+    } else if (agreementId) {
+      // For V2: Find by id
+      currentAgreement = await prisma.creatorAgreement.findUnique({
+        where: { id: agreementId },
+      });
+    }
 
     // Get admin info for logging
     const adminId = req.session.userid;
@@ -3359,7 +3392,7 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
 };
 
 export const sendAgreement = async (req: Request, res: Response) => {
-  const { user, id: agreementId, campaignId } = req.body;
+  const { user, id: agreementId, campaignId, isNew } = req.body;
 
   const adminId = req.session.userid;
 
@@ -3377,27 +3410,61 @@ export const sendAgreement = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Creator not exist' });
     }
 
-    const agreement = await prisma.creatorAgreement.findUnique({
-      where: {
-        id: agreementId,
-      },
-    });
+    let agreement;
+
+    // Handle V3 agreements (client-created campaigns)
+    if (isNew) {
+      // For V3: Find agreement by userId and campaignId
+      agreement = await prisma.creatorAgreement.findUnique({
+        where: {
+          userId_campaignId: {
+            userId: user.id,
+            campaignId: campaignId,
+          },
+        },
+      });
+    } else {
+      // For V2: Find agreement by id
+      agreement = await prisma.creatorAgreement.findUnique({
+        where: {
+          id: agreementId,
+        },
+      });
+    }
 
     if (!agreement) {
       return res.status(404).json({ message: 'Agreement not found.' });
     }
 
     // update the status of agreement
-    await prisma.creatorAgreement.update({
-      where: {
-        id: agreement.id,
-      },
-      data: {
-        isSent: true,
-        completedAt: new Date(),
-        approvedByAdminId: adminId,
-      },
-    });
+    if (isNew) {
+      // For V3: Update by userId and campaignId
+      await prisma.creatorAgreement.update({
+        where: {
+          userId_campaignId: {
+            userId: user.id,
+            campaignId: campaignId,
+          },
+        },
+        data: {
+          isSent: true,
+          completedAt: new Date(),
+          approvedByAdminId: adminId,
+        },
+      });
+    } else {
+      // For V2: Update by id
+      await prisma.creatorAgreement.update({
+        where: {
+          id: agreement.id,
+        },
+        data: {
+          isSent: true,
+          completedAt: new Date(),
+          approvedByAdminId: adminId,
+        },
+      });
+    }
 
     const shortlistedCreator = await prisma.shortListedCreator.findFirst({
       where: {
@@ -3699,6 +3766,9 @@ export const getMyCampaigns = async (req: Request, res: Response) => {
             ],
           },
         },
+      },
+      orderBy: {
+        createdAt: 'desc', // Sort by newest first to match discover page
       },
     });
 
@@ -4152,7 +4222,7 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
           ],
         },
         orderBy: {
-          createdAt: 'desc',
+          createdAt: 'asc',
         },
         include: {
           agreementTemplate: true,
@@ -6261,9 +6331,9 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
 
       if (!campaign) throw new Error('Campaign not found');
 
-      // Skip credit check for client-created campaigns
-      if (!isClientCreator && !campaign?.campaignCredits) {
-        throw new Error('Campaign is not assigned to any credits');
+      // For V3, we only support client-created campaigns
+      if (campaign.origin !== 'CLIENT') {
+        throw new Error('V3 shortlisting is only for client-created campaigns');
       }
 
       const creatorIds = creators.map((c: any) => c.id);
@@ -6277,11 +6347,8 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
       const threadId = campaign.thread?.id;
 
       // For client-created campaigns, we'll continue even without a thread
-      // This avoids the "Campaign thread not found" error
-      if (!threadId && isClientCreator) {
+      if (!threadId) {
         console.log('Client-created campaign without thread, continuing anyway');
-      } else if (!threadId) {
-        throw new Error('Campaign thread not found');
       }
 
       // Process each creator
@@ -6291,34 +6358,33 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
 
         console.log(`Processing creator: ${user.name} (${user.id})`);
 
-        // Check if already shortlisted
-        const existingShortlist = await tx.shortListedCreator.findFirst({
+        // Check if already has a pitch for this campaign
+        const existingPitch = await tx.pitch.findFirst({
           where: {
             userId: user.id,
             campaignId: campaign.id,
           },
         });
 
-        if (existingShortlist) {
-          console.log(`Creator ${user.id} already shortlisted, updating`);
-          await tx.shortListedCreator.update({
-            where: {
-              id: existingShortlist.id,
-            },
-            data: {
-              ugcVideos: isClientCreator ? 1 : creator.credits, // Default to 1 for client-created campaigns
-            },
-          });
-        } else {
-          console.log(`Shortlisting creator ${user.id}`);
-          await tx.shortListedCreator.create({
-            data: {
-              userId: user.id,
-              campaignId: campaign.id,
-              ugcVideos: isClientCreator ? 1 : creator.credits, // Default to 1 for client-created campaigns
-            },
-          });
+        if (existingPitch) {
+          console.log(`Creator ${user.id} already has a pitch, skipping`);
+          continue;
         }
+
+        // Create a pitch record for this creator
+        console.log(`Creating pitch for creator ${user.id}`);
+        await tx.pitch.create({
+          data: {
+            userId: user.id,
+            campaignId: campaign.id,
+            type: 'text', // V3 shortlist pitch type
+            status: 'SENT_TO_CLIENT', // Client can immediately approve
+            content: `Creator ${user.name} has been shortlisted for campaign "${campaign.name}"`,
+            // Set default values for V3 flow
+            amount: null, // Will be set when admin approves
+            agreementTemplateId: null, // Will be set when admin approves
+          },
+        });
 
         // Add creator to thread if not already added and if thread exists
         if (threadId) {
@@ -6345,34 +6411,43 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
             console.error(`Error adding creator to thread:`, error);
           }
         }
-      }
 
-      // Only update campaign credits for non-client campaigns
-      if (!isClientCreator && campaign.campaignCredits) {
-        const totalCreditsAssigned = creators.reduce(
-          (acc: number, creator: { credits: number }) => acc + creator.credits,
-          0,
-        );
-
-        await tx.campaign.update({
+        // Create notification for admin users
+        const adminUsers = await tx.campaignAdmin.findMany({
           where: {
-            id: campaign.id,
+            campaignId: campaign.id,
+            admin: {
+              user: {
+                role: { in: ['admin', 'superadmin'] }
+              }
+            }
           },
-          data: {
-            creditsPending: {
-              decrement: totalCreditsAssigned,
-            },
-            creditsUtilized: {
-              increment: totalCreditsAssigned,
-            },
-          },
+          include: {
+            admin: {
+              include: {
+                user: true
+              }
+            }
+          }
         });
+
+        for (const adminUser of adminUsers) {
+          await tx.notification.create({
+            data: {
+              title: 'New Creator Shortlisted',
+              message: `Creator ${user.name} has been shortlisted for campaign "${campaign.name}". Please review and approve.`,
+              entity: 'Pitch',
+              campaignId: campaign.id,
+              userId: adminUser.admin.userId
+            }
+          });
+        }
       }
     });
 
-    return res.status(200).json({ message: 'Successfully shortlisted creators' });
+    return res.status(200).json({ message: 'Successfully shortlisted creators for V3 flow' });
   } catch (error) {
-    console.error('Error shortlisting creators:', error);
+    console.error('Error shortlisting creators for V3:', error);
     return res.status(400).json({
       message: error instanceof Error ? error.message : 'Failed to shortlist creators',
       error,
