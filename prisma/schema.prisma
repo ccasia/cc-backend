@@ -807,6 +807,7 @@ model Pitch {
   rejectedByClientId String?
   rejectionReason   String?
   amount            Int?
+  ugcCredits        Int?
   agreementTemplateId String?
   Notification      Notification[]
   campaign          Campaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)

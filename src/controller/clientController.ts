@@ -32,7 +32,7 @@ export const updateClient = async (req: Request, res: Response) => {
       where: { userId },
       include: {
         company: {
-          include: { pic: true },
+      include: { pic: true },
         },
       },
     });
@@ -77,7 +77,7 @@ export const updateClient = async (req: Request, res: Response) => {
       if (currentPic) {
         // Update the PIC record
         await prisma.pic.update({
-          where: { id: currentPic.id },
+            where: { id: currentPic.id },
           data: { 
             name: picName, 
             designation: picDesignation, 
