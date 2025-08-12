@@ -1117,10 +1117,10 @@ export const checkAndUpdateSubmissionStatusV3 = async (submissionId: string, adm
             allRequiredMediaUploadedAndApproved &&
             !hasChangesRequested
           ) {
-            await prisma.submission.update({
-              where: { id: submissionId },
-              data: { status: 'SENT_TO_CLIENT' }
-            });
+        await prisma.submission.update({
+          where: { id: submissionId },
+          data: { status: 'SENT_TO_CLIENT' }
+        });
             console.log(`V3 FINAL_DRAFT Submission ${submissionId} status updated to SENT_TO_CLIENT (all uploaded media approved by admin)`);
           } else if (
             submission.submissionType.type !== 'FINAL_DRAFT' &&
@@ -1136,7 +1136,7 @@ export const checkAndUpdateSubmissionStatusV3 = async (submissionId: string, adm
             console.log(`V3 Submission ${submissionId} NOT sent to client yet (required media not fully uploaded or not all approved or changes requested)`);
             console.log(`Debug - allRequiredMediaUploadedAndApproved: ${allRequiredMediaUploadedAndApproved}, hasChangesRequested: ${hasChangesRequested}`);
           }
-        }
+      }
     } else if (allClientApproved && submission.status === 'SENT_TO_CLIENT' && !hasChangesRequested) {
       await prisma.submission.update({
         where: { id: submissionId },
@@ -1388,12 +1388,12 @@ export const submitDraftV3 = async (req: Request, res: Response) => {
 
       const payload = {
         userid: creatorId,
-        submissionId,
-        campaignId: submission.campaignId,
-        folder: submission.submissionType.type,
-        caption,
-        admins: submission.campaign.campaignAdmin,
-        filePaths: Object.fromEntries(filePaths),
+      submissionId,
+      campaignId: submission.campaignId,
+      folder: submission.submissionType.type,
+      caption,
+      admins: submission.campaign.campaignAdmin,
+      filePaths: Object.fromEntries(filePaths),
         // Add existing media info for worker to preserve
         existingMedia: {
           videos: submission.video?.map(v => ({ id: v.id, status: v.status })) || [],
