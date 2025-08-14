@@ -31,6 +31,7 @@ import {
 import dayjs from 'dayjs';
 import { getCreatorInvoiceLists } from '@services/submissionService';
 import { missingInvoices } from '@constants/missing-invoices';
+import { creatorAgreements } from './campaignController';
 // import { decreamentCreditCampiagn } from '@services/packageService';
 
 const prisma = new PrismaClient();
@@ -125,13 +126,30 @@ export const getAllInvoices = async (req: Request, res: Response) => {
         user: {
           include: {
             creator: true,
+            creatorAgreement: true,
           },
         },
-        campaign: true,
+        campaign: {
+          include: {
+            creatorAgreement: true
+          }
+        },
       },
     });
 
-    return res.status(200).json(invoices);
+    // Map through invoices to include the specific creator agreement with currency
+    const invoicesWithCurrency = invoices.map(invoice => {
+      const creatorAgreement = invoice.campaign?.creatorAgreement?.find(
+        agreement => agreement.campaignId === invoice.campaignId && agreement.userId === invoice.creatorId
+      );
+      
+      return {
+        ...invoice,
+        currency: creatorAgreement?.currency || null
+      };
+    });
+
+    return res.status(200).json(invoicesWithCurrency);
   } catch (error) {
     return res.status(400).json(error);
   }
@@ -151,8 +169,14 @@ export const getInvoicesByCreatorId = async (req: Request, res: Response) => {
           include: {
             brand: true,
             company: true,
+            creatorAgreement: {
+              where: {
+                userId: userid,
+              },
+            },
           },
         },
+        user: true
       },
     });
     return res.status(200).json(invoices);
@@ -165,6 +189,7 @@ export const getInvoicesByCreatorId = async (req: Request, res: Response) => {
 // get invoices by campaign id
 export const getInvoicesByCampaignId = async (req: Request, res: Response) => {
   const { id } = req.params;
+
   try {
     const invoices = await prisma.invoice.findMany({
       where: {
@@ -175,12 +200,26 @@ export const getInvoicesByCampaignId = async (req: Request, res: Response) => {
         campaign: {
           include: {
             subscription: true,
+            creatorAgreement: true
           },
         },
         user: true,
       },
     });
-    res.status(200).json(invoices);
+
+    // Map through invoices to include the specific creator agreement with currency
+    const invoicesWithCurrency = invoices.map(invoice => {
+      const creatorAgreement = invoice.campaign?.creatorAgreement?.find(
+        agreement => agreement.campaignId === invoice.campaignId && agreement.userId === invoice.creatorId
+      );
+      
+      return {
+        ...invoice,
+        currency: creatorAgreement?.currency || null
+      };
+    });
+
+    res.status(200).json(invoicesWithCurrency);
   } catch (error) {
     res.status(500).json({ error: 'Something went wrong' });
   }
@@ -189,6 +228,18 @@ export const getInvoicesByCampaignId = async (req: Request, res: Response) => {
 // get single invoice by id
 export const getInvoiceById = async (req: Request, res: Response) => {
   const { id } = req.params;
+
+  const invoiceCreatorId = await prisma.invoice.findUnique({
+    where: {
+      id: id,
+    },
+    select: {
+      creatorId: true,
+    },
+  });
+
+  const creatorId = invoiceCreatorId?.creatorId;
+
   try {
     const invoice = await prisma.invoice.findUnique({
       where: {
@@ -220,6 +271,7 @@ export const getInvoiceById = async (req: Request, res: Response) => {
                 name: true,
               },
             },
+            creatorAgreement: { where: { userId: creatorId } }
           },
         },
         user: {
@@ -229,6 +281,7 @@ export const getInvoiceById = async (req: Request, res: Response) => {
         },
       },
     });
+
     res.status(200).json(invoice);
   } catch (error) {
     res.status(400).json(error);
@@ -1171,6 +1224,14 @@ export const creatorInvoice = async (req: Request, res: Response) => {
   const { invoiceId } = req.params;
 
   try {
+    // First get the invoice to find the campaignId
+    const invoiceDetail = await prisma.invoice.findUnique({
+      where: { id: invoiceId },
+      select: { campaignId: true, creatorId: true },
+    });
+
+    if (!invoiceDetail) return res.status(404).json({ message: 'Invoice not found.' });
+
     const invoice = await prisma.invoice.findUnique({
       where: {
         id: invoiceId,
@@ -1179,6 +1240,12 @@ export const creatorInvoice = async (req: Request, res: Response) => {
         campaign: {
           include: {
             subscription: true,
+            creatorAgreement: {
+              where: {
+                campaignId: invoiceDetail.campaignId,
+                userId: invoiceDetail.creatorId,
+              },
+            },
           },
         },
       },
