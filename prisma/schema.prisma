@@ -110,36 +110,37 @@ model Admin {
   adminLogs             AdminLog[]              @relation("AdminToAdminLog")
   approvedPitches       Pitch[]                 @relation("ApprovedByAdmin")
   rejectedPitches       Pitch[]                 @relation("RejectedByAdmin")
+  adminCommentedPitches Pitch[]                 @relation("AdminCommenter")
   approvedSubmissions   Submission[]            @relation("ApprovedByAdmin")
   completedAgreements   CreatorAgreement[]      @relation("CompletedByAdmin")
 }
 
 model Client {
-  id     String @id @unique @default(cuid())
+  id          String  @id @unique @default(cuid())
   inviteToken String? @unique
-  companyId String?
-  
+  companyId   String?
+
   // Remove admin sharing - clients should not share admin IDs
   // adminId String? @unique  // ❌ REMOVED
   // admin  Admin? @relation(fields: [adminId], references: [id])  // ❌ REMOVED
-  
+
   // Keep user relation but with better separation
   userId String @unique
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+
   // Keep company relation
   company Company? @relation(fields: [companyId], references: [id])
-  
+
   // Add client-specific fields
   clientType ClientType @default(directClient)
   isActive   Boolean    @default(true)
   createdAt  DateTime   @default(now())
   updatedAt  DateTime   @default(now()) @updatedAt
-  
+
   // Client-specific relations
-  clientCampaigns ClientCampaign[]
+  clientCampaigns     ClientCampaign[]
   clientNotifications ClientNotification[]
-  campaignClients CampaignClient[]
+  campaignClients     CampaignClient[]
 }
 
 // New enum for client types
@@ -151,16 +152,16 @@ enum ClientType {
 
 // Separate client campaign model for better organization
 model ClientCampaign {
-  id         String   @id @unique @default(cuid())
+  id         String             @id @unique @default(cuid())
   clientId   String
   campaignId String
   role       ClientCampaignRole @default(viewer)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-  
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+
   client   Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
   campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  
+
   @@unique([clientId, campaignId])
 }
 
@@ -181,7 +182,7 @@ model ClientNotification {
   entityId  String?
   isRead    Boolean  @default(false)
   createdAt DateTime @default(now())
-  
+
   client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
 }
 
@@ -248,7 +249,7 @@ model TiktokUser {
   following_count Int?
   follower_count  Int?
   likes_count     Int?
-  
+
   totalLikes      Int?
   totalComments   Int?
   averageLikes    Float?
@@ -291,7 +292,7 @@ model InstagramUser {
 
   accessToken     Json?
   expiresIn       Int?
-  user_id         String? @unique
+  user_id         String?   @unique
   followers_count Int?
   follows_count   Int?
   media_count     Int?
@@ -301,7 +302,7 @@ model InstagramUser {
   averageLikes    Float?
   averageComments Float?
   engagement_rate Float?
-  lastUpdated DateTime?
+  lastUpdated     DateTime?
 
   instagramVideo InstagramVideo[]
 
@@ -643,9 +644,9 @@ model CampaignAdmin {
   adminId    String
   campaignId String
   role       CampaignAdminRole @default(viewer)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @default(now()) @updatedAt
-  
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @default(now()) @updatedAt
+
   admin    Admin    @relation(fields: [adminId], references: [userId], onDelete: Cascade)
   campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
@@ -666,9 +667,9 @@ model CampaignClient {
   clientId   String
   campaignId String
   role       ClientCampaignRole @default(viewer)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @default(now()) @updatedAt
-  
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @default(now()) @updatedAt
+
   client   Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
   campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
@@ -796,29 +797,32 @@ model AdminLog {
 }
 
 model Pitch {
-  id                String         @id @unique @default(cuid())
-  type              PitchType
-  campaignId        String
-  userId            String
-  status            PitchStatus?   @default(pending)
-  content           String         @default("test")
-  createdAt         DateTime       @default(now())
-  completedAt       DateTime?
-  approvedByAdminId String?
-  approvedByClientId String?
-  rejectedByAdminId String?
-  rejectedByClientId String?
-  rejectionReason   String?
-  amount            Int?
-  ugcCredits        Int?
+  id                  String         @id @unique @default(cuid())
+  type                PitchType
+  campaignId          String
+  userId              String
+  status              PitchStatus?   @default(pending)
+  content             String         @default("test")
+  createdAt           DateTime       @default(now())
+  completedAt         DateTime?
+  approvedByAdminId   String?
+  approvedByClientId  String?
+  rejectedByAdminId   String?
+  rejectedByClientId  String?
+  rejectionReason     String?
+  amount              Int?
+  ugcCredits          Int?
   agreementTemplateId String?
-  Notification      Notification[]
-  campaign          Campaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  user              User           @relation(fields: [userId], references: [id])
-  admin             Admin?         @relation(fields: [approvedByAdminId], references: [userId], name: "ApprovedByAdmin")
-  client            User?          @relation("ApprovedByClient", fields: [approvedByClientId], references: [id])
-  rejectedByAdmin   Admin?         @relation("RejectedByAdmin", fields: [rejectedByAdminId], references: [userId])
-  rejectedByClient  User?          @relation("RejectedByClient", fields: [rejectedByClientId], references: [id])
+  Notification        Notification[]
+  adminComments       String?
+  adminCommentedBy    String?
+  adminCommenter      Admin?         @relation("AdminCommenter", fields: [adminCommentedBy], references: [userId])
+  campaign            Campaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  user                User           @relation(fields: [userId], references: [id])
+  admin               Admin?         @relation(fields: [approvedByAdminId], references: [userId], name: "ApprovedByAdmin")
+  client              User?          @relation("ApprovedByClient", fields: [approvedByClientId], references: [id])
+  rejectedByAdmin     Admin?         @relation("RejectedByAdmin", fields: [rejectedByAdminId], references: [userId])
+  rejectedByClient    User?          @relation("RejectedByClient", fields: [rejectedByClientId], references: [id])
 
   @@unique([userId, campaignId])
 }
