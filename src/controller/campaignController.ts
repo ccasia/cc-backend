@@ -584,13 +584,14 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
         admin: {
           select: {
             mode: true,
+            role: true
           },
         },
         id: true,
       },
     });
 
-    if (user?.admin?.mode === 'god' || user?.admin?.mode === 'advanced') {
+    if (user?.admin?.mode === 'god' || user?.admin?.role?.name === 'CSL') {
       campaigns = await prisma.campaign.findMany({
         include: {
           agreementTemplate: true,
@@ -4176,6 +4177,7 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
         admin: {
           select: {
             mode: true,
+            role: true,
           },
         },
         id: true,
@@ -4184,7 +4186,7 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
 
     if (!user) return res.status(404).json({ message: 'User not found.' });
 
-    if (user.admin?.mode === 'god' || user.admin?.mode === 'advanced') {
+    if (user.admin?.mode === 'god' || user.admin?.role?.name === 'CSL') {
       // Handle comma-separated status values
       let statusCondition = {};
       if (status) {
