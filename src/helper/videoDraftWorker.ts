@@ -247,36 +247,50 @@ const checkCurrentSubmission = async (submissionId: string) => {
     });
   }
 
-  // Update submission status based on deliverable checks
-  // For UGC campaigns (no posting required), set to PENDING_REVIEW when all deliverables are sent
-  // For normal campaigns, also consider campaignCredits condition
-  if (allDeliverablesSent) {
-    console.log(`Worker - Updating submission ${submissionId} to PENDING_REVIEW`);
-    await prisma.submission.update({
-      where: { id: submission.id },
-      data: {
-        status: 'PENDING_REVIEW',
-        submissionDate: dayjs().format(),
-      },
-    });
-    console.log(`Worker - Successfully updated submission ${submissionId} to PENDING_REVIEW`);
+  // 🔍 FIXED: Check current submission status before updating
+  // If status is already PENDING_REVIEW, don't override it
+  const currentSubmission = await prisma.submission.findUnique({
+    where: { id: submission.id },
+    select: { status: true }
+  });
+
+  console.log(`🔍 FIXED: Worker - Current submission ${submissionId} status: ${currentSubmission?.status}`);
+
+  // Only update status if it's not already PENDING_REVIEW
+  if (currentSubmission?.status === 'PENDING_REVIEW') {
+    console.log(`🔍 FIXED: Worker - Submission ${submissionId} already PENDING_REVIEW, skipping status update`);
   } else {
-    if (submission.submissionType.type === 'FIRST_DRAFT') {
-      console.log(`Worker - Updating submission ${submissionId} to IN_PROGRESS (not all deliverables sent)`);
+    // Update submission status based on deliverable checks
+    // For UGC campaigns (no posting required), set to PENDING_REVIEW when all deliverables are sent
+    // For normal campaigns, also consider campaignCredits condition
+    if (allDeliverablesSent) {
+      console.log(`Worker - Updating submission ${submissionId} to PENDING_REVIEW`);
       await prisma.submission.update({
         where: { id: submission.id },
         data: {
-          status: 'IN_PROGRESS',
+          status: 'PENDING_REVIEW',
+          submissionDate: dayjs().format(),
         },
       });
+      console.log(`Worker - Successfully updated submission ${submissionId} to PENDING_REVIEW`);
     } else {
-      console.log(`Worker - Updating submission ${submissionId} to CHANGES_REQUIRED`);
-      await prisma.submission.update({
-        where: { id: submission.id },
-        data: {
-          status: 'CHANGES_REQUIRED',
-        },
-      });
+      if (submission.submissionType.type === 'FIRST_DRAFT') {
+        console.log(`Worker - Updating submission ${submissionId} to IN_PROGRESS (not all deliverables sent)`);
+        await prisma.submission.update({
+          where: { id: submission.id },
+          data: {
+            status: 'IN_PROGRESS',
+          },
+        });
+      } else {
+        console.log(`Worker - Updating submission ${submissionId} to CHANGES_REQUIRED`);
+        await prisma.submission.update({
+          where: { id: submission.id },
+          data: {
+            status: 'CHANGES_REQUIRED',
+          },
+        });
+      }
     }
   }
 
