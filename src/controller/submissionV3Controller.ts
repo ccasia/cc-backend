@@ -739,7 +739,7 @@ export const requestChangesIndividualMediaV3 = async (req: Request, res: Respons
         console.log(`🔍 WARNING: Final Draft submission ${submission.id} but no First Draft submission found`);
       }
     }
-    
+
     // Check and update submission status
     console.log(`V3 ${mediaType} ${mediaId} changes requested by admin - calling checkAndUpdateSubmissionStatusV3 for submission ${submissionToUpdate}`);
     console.log(`🔍 Before status update - Submission ${submissionToUpdate} current status: ${submission.status}`);
@@ -756,7 +756,7 @@ export const requestChangesIndividualMediaV3 = async (req: Request, res: Respons
     // But only if admin has finished reviewing all media items
     if (submissionType?.type === 'FINAL_DRAFT') {
       console.log(`🔍 FIXED: Checking if Final Draft submission ${submission.id} should be updated to CHANGES_REQUIRED`);
-      await checkAndUpdateSubmissionStatusV3(submission.id, adminId);
+    await checkAndUpdateSubmissionStatusV3(submission.id, adminId);
     }
 
     // Get updated submission status for logging
@@ -1151,7 +1151,40 @@ export const requestChangesIndividualMediaByClientV3 = async (req: Request, res:
     console.log(`🔍 V3 Client request changes - Created feedback full object:`, JSON.stringify(createdFeedback, null, 2));
 
     // Check and update submission status
-    await checkAndUpdateSubmissionStatusV3(submission.id, clientId);
+    console.log(`🔍 DEBUG: Client requesting changes for ${mediaType} ${mediaId}`);
+    console.log(`🔍 DEBUG: Media belongs to submission: ${submission.id}`);
+    console.log(`🔍 DEBUG: Current submission status: ${submission.status}`);
+    
+    // 🔍 FIXED: For Final Draft, we need to update the Final Draft submission status, not First Draft
+    // If this is a Final Draft submission, update it directly
+    // If this is a First Draft submission but we're in Final Draft context, find and update Final Draft
+    let submissionToUpdate = submission.id;
+    
+    if (submission.submissionTypeId) {
+      const submissionType = await prisma.submissionType.findUnique({
+        where: { id: submission.submissionTypeId }
+      });
+      
+      console.log(`🔍 DEBUG: Submission type: ${submissionType?.type}`);
+      
+      // If this is First Draft but we want to update Final Draft, find the Final Draft submission
+      if (submissionType?.type === 'FIRST_DRAFT') {
+        const finalDraftSubmission = await prisma.submission.findFirst({
+          where: {
+            userId: submission.userId,
+            campaignId: submission.campaignId,
+            submissionType: { type: 'FINAL_DRAFT' }
+          }
+        });
+        
+        if (finalDraftSubmission) {
+          console.log(`🔍 DEBUG: Found Final Draft submission: ${finalDraftSubmission.id}, updating it instead of First Draft`);
+          submissionToUpdate = finalDraftSubmission.id;
+        }
+      }
+    }
+    
+    await checkAndUpdateSubmissionStatusV3(submissionToUpdate, clientId);
 
     console.log(`V3 ${mediaType} ${mediaId} changes requested by client`);
     return res.status(200).json({ message: 'Changes requested by client' });
@@ -1200,6 +1233,23 @@ export const checkAndUpdateSubmissionStatusV3 = async (submissionId: string, adm
     let changesRequestedPhotos = 0;
     let changesRequestedRawFootages = 0;
 
+    // 🔍 FIXED: Get First Draft submission for both First Draft and Final Draft logic
+    let firstDraftSubmission = null;
+    if (submission.submissionType.type === 'FINAL_DRAFT') {
+      firstDraftSubmission = await prisma.submission.findFirst({
+        where: {
+          userId: submission.userId,
+          campaignId: submission.campaignId,
+          submissionType: { type: 'FIRST_DRAFT' }
+        },
+        include: {
+          video: true,
+          photos: true,
+          rawFootages: true,
+        }
+      });
+    }
+
     if (submission.submissionType.type === 'FIRST_DRAFT') {
       // 🔍 FIXED: Get ALL submissions for this user/campaign to count total media
       const allSubmissions = await prisma.submission.findMany({
@@ -1232,45 +1282,24 @@ export const checkAndUpdateSubmissionStatusV3 = async (submissionId: string, adm
         sentToClientPhotos += sub.photos.filter(p => p.status === 'SENT_TO_CLIENT').length;
         sentToClientRawFootages += sub.rawFootages.filter(r => r.status === 'SENT_TO_CLIENT').length;
         
-        changesRequestedVideos += sub.video.filter(v => v.status === 'REVISION_REQUESTED').length;
-        changesRequestedPhotos += sub.photos.filter(p => p.status === 'REVISION_REQUESTED').length;
-        changesRequestedRawFootages += sub.rawFootages.filter(r => r.status === 'REVISION_REQUESTED').length;
+        changesRequestedVideos += sub.video.filter(v => v.status === 'REVISION_REQUESTED' || v.status === 'CLIENT_FEEDBACK').length;
+        changesRequestedPhotos += sub.photos.filter(p => p.status === 'REVISION_REQUESTED' || p.status === 'CLIENT_FEEDBACK').length;
+        changesRequestedRawFootages += sub.rawFootages.filter(r => r.status === 'REVISION_REQUESTED' || r.status === 'CLIENT_FEEDBACK').length;
       });
 
       console.log(`🔍 FIXED: Total media counts across all submissions: videos=${uploadedVideos}, photos=${uploadedPhotos}, rawFootages=${uploadedRawFootages}`);
     } else {
-      // For Final Draft, use the original logic (only current submission + approved from First Draft)
+      // For Final Draft, count media from current submission + approved media from First Draft
       uploadedVideos = submission.video.length;
       uploadedPhotos = submission.photos.length;
       uploadedRawFootages = submission.rawFootages.length;
 
-      // For Final Draft, also count approved media from First Draft
-      const firstDraftSubmission = await prisma.submission.findFirst({
-        where: {
-          userId: submission.userId,
-          campaignId: submission.campaignId,
-          submissionType: { type: 'FIRST_DRAFT' }
-        },
-        include: {
-          video: true,
-          photos: true,
-          rawFootages: true,
-        }
-      });
+      console.log(`🔍 Final Draft - Current submission media: Videos: ${uploadedVideos}, Photos: ${uploadedPhotos}, Raw Footages: ${uploadedRawFootages}`);
 
-      console.log(`🔍 Final Draft debugging - Looking for First Draft submission:`);
-      console.log(`🔍 User ID: ${submission.userId}`);
-      console.log(`🔍 Campaign ID: ${submission.campaignId}`);
-      console.log(`🔍 First Draft submission found: ${firstDraftSubmission ? 'YES' : 'NO'}`);
-      
+      // Get approved media from First Draft (already retrieved above)
+
       if (firstDraftSubmission) {
-        console.log(`🔍 First Draft submission ID: ${firstDraftSubmission.id}`);
-        console.log(`🔍 First Draft videos: ${firstDraftSubmission.video.length}`);
-        console.log(`🔍 First Draft photos: ${firstDraftSubmission.photos.length}`);
-        console.log(`🔍 First Draft raw footages: ${firstDraftSubmission.rawFootages.length}`);
-        console.log(`🔍 First Draft video statuses:`, firstDraftSubmission.video.map(v => ({ id: v.id, status: v.status })));
-        console.log(`🔍 First Draft photo statuses:`, firstDraftSubmission.photos.map(p => ({ id: p.id, status: p.status })));
-        console.log(`🔍 First Draft raw footage statuses:`, firstDraftSubmission.rawFootages.map(r => ({ id: r.id, status: r.status })));
+        console.log(`🔍 Final Draft - Found First Draft submission: ${firstDraftSubmission.id}`);
         
         // Count approved media from First Draft
         const approvedFirstDraftVideos = firstDraftSubmission.video.filter(v => v.status === 'APPROVED' || v.status === 'SENT_TO_CLIENT').length;
@@ -1282,15 +1311,19 @@ export const checkAndUpdateSubmissionStatusV3 = async (submissionId: string, adm
         uploadedPhotos += approvedFirstDraftPhotos;
         uploadedRawFootages += approvedFirstDraftRawFootages;
 
-        console.log(`V3 Final Draft media counts - First Draft approved: videos=${approvedFirstDraftVideos}, photos=${approvedFirstDraftPhotos}, rawFootages=${approvedFirstDraftRawFootages}`);
-      } else {
-        console.log(`🔍 No First Draft submission found for user ${submission.userId} in campaign ${submission.campaignId}`);
-      }
+        console.log(`🔍 Final Draft - First Draft approved media: Videos: ${approvedFirstDraftVideos}, Photos: ${approvedFirstDraftPhotos}, Raw Footages: ${approvedFirstDraftRawFootages}`);
+        console.log(`🔍 Final Draft - Total media counts: Videos: ${uploadedVideos}, Photos: ${uploadedPhotos}, Raw Footages: ${uploadedRawFootages}`);
+    }
 
-      // Count approved media items (client approved)
+      // Count approved media items (client approved) - from current submission only
       approvedVideos = submission.video.filter(v => v.status === 'APPROVED').length;
       approvedPhotos = submission.photos.filter(p => p.status === 'APPROVED').length;
       approvedRawFootages = submission.rawFootages.filter(r => r.status === 'APPROVED').length;
+
+      // Count media sent to client (admin approved) - from current submission only
+      sentToClientVideos = submission.video.filter(v => v.status === 'SENT_TO_CLIENT').length;
+      sentToClientPhotos = submission.photos.filter(p => p.status === 'SENT_TO_CLIENT').length;
+      sentToClientRawFootages = submission.rawFootages.filter(r => r.status === 'SENT_TO_CLIENT').length;
 
       // For Final Draft, also count approved media from First Draft
       if (firstDraftSubmission) {
@@ -1303,15 +1336,7 @@ export const checkAndUpdateSubmissionStatusV3 = async (submissionId: string, adm
         approvedVideos += approvedFirstDraftVideos;
         approvedPhotos += approvedFirstDraftPhotos;
         approvedRawFootages += approvedFirstDraftRawFootages;
-      }
 
-      // Count media sent to client (admin approved)
-      sentToClientVideos = submission.video.filter(v => v.status === 'SENT_TO_CLIENT').length;
-      sentToClientPhotos = submission.photos.filter(p => p.status === 'SENT_TO_CLIENT').length;
-      sentToClientRawFootages = submission.rawFootages.filter(r => r.status === 'SENT_TO_CLIENT').length;
-
-      // For Final Draft, also count media sent to client from First Draft
-      if (firstDraftSubmission) {
         // Count media sent to client from First Draft
         const sentToClientFirstDraftVideos = firstDraftSubmission.video.filter(v => v.status === 'SENT_TO_CLIENT').length;
         const sentToClientFirstDraftPhotos = firstDraftSubmission.photos.filter(p => p.status === 'SENT_TO_CLIENT').length;
@@ -1333,6 +1358,22 @@ export const checkAndUpdateSubmissionStatusV3 = async (submissionId: string, adm
       changesRequestedVideos = submission.video.filter(v => v.status === 'REVISION_REQUESTED' || v.status === 'CLIENT_FEEDBACK').length;
       changesRequestedPhotos = submission.photos.filter(p => p.status === 'REVISION_REQUESTED' || p.status === 'CLIENT_FEEDBACK').length;
       changesRequestedRawFootages = submission.rawFootages.filter(r => r.status === 'REVISION_REQUESTED' || r.status === 'CLIENT_FEEDBACK').length;
+      
+      // 🔍 FIXED: For Final Draft, also count CLIENT_FEEDBACK from First Draft submission
+      if (firstDraftSubmission) {
+        const firstDraftChangesRequestedVideos = firstDraftSubmission.video.filter(v => v.status === 'CLIENT_FEEDBACK').length;
+        const firstDraftChangesRequestedPhotos = firstDraftSubmission.photos.filter(p => p.status === 'CLIENT_FEEDBACK').length;
+        const firstDraftChangesRequestedRawFootages = firstDraftSubmission.rawFootages.filter(r => r.status === 'CLIENT_FEEDBACK').length;
+        
+        console.log(`🔍 Final Draft - First Draft CLIENT_FEEDBACK counts: Videos: ${firstDraftChangesRequestedVideos}, Photos: ${firstDraftChangesRequestedPhotos}, Raw Footages: ${firstDraftChangesRequestedRawFootages}`);
+        
+        // Add First Draft CLIENT_FEEDBACK to Final Draft counts
+        changesRequestedVideos += firstDraftChangesRequestedVideos;
+        changesRequestedPhotos += firstDraftChangesRequestedPhotos;
+        changesRequestedRawFootages += firstDraftChangesRequestedRawFootages;
+        
+        console.log(`🔍 Final Draft - Total changes requested counts: Videos: ${changesRequestedVideos}, Photos: ${changesRequestedPhotos}, Raw Footages: ${changesRequestedRawFootages}`);
+      }
     }
 
     // Check if all required media types have been uploaded
@@ -1352,10 +1393,26 @@ export const checkAndUpdateSubmissionStatusV3 = async (submissionId: string, adm
       (campaignRequiresVideos ? approvedVideos >= uploadedVideos : true) &&
       (campaignRequiresPhotos ? approvedPhotos >= uploadedPhotos : true) &&
       (campaignRequiresRawFootage ? approvedRawFootages >= uploadedRawFootages : true) &&
-      // Additional check: no media items should have REVISION_REQUESTED status
+      // Additional check: no media items should have REVISION_REQUESTED or CLIENT_FEEDBACK status
       changesRequestedVideos === 0 &&
       changesRequestedPhotos === 0 &&
       changesRequestedRawFootages === 0;
+      
+    console.log(`🔍 DEBUG: allClientApproved calculation for submission ${submissionId}:`, {
+      campaignRequiresVideos,
+      campaignRequiresPhotos,
+      campaignRequiresRawFootage,
+      approvedVideos,
+      uploadedVideos,
+      approvedPhotos,
+      uploadedPhotos,
+      approvedRawFootages,
+      uploadedRawFootages,
+      changesRequestedVideos,
+      changesRequestedPhotos,
+      changesRequestedRawFootages,
+      allClientApproved
+    });
 
     // Check if all media items have been processed (either approved or changes requested)
     const allMediaProcessed = 
@@ -1549,11 +1606,52 @@ export const checkAndUpdateSubmissionStatusV3 = async (submissionId: string, adm
 
     // Priority 1: Handle client-requested changes (CLIENT_FEEDBACK status) for First Draft and Final Draft submissions
     // Only change status to SENT_TO_ADMIN when ALL media items have been processed
-    const hasClientRequestedChanges = submission.video.some(v => v.status === 'CLIENT_FEEDBACK') ||
-                                     submission.photos.some(p => p.status === 'CLIENT_FEEDBACK') ||
-                                     submission.rawFootages.some(r => r.status === 'CLIENT_FEEDBACK');
+    let hasClientRequestedChanges = submission.video.some(v => v.status === 'CLIENT_FEEDBACK') ||
+                                   submission.photos.some(p => p.status === 'CLIENT_FEEDBACK') ||
+                                   submission.rawFootages.some(r => r.status === 'CLIENT_FEEDBACK');
     
-    if (hasClientRequestedChanges && submission.status === 'SENT_TO_CLIENT') {
+    // 🔍 FIXED: For Final Draft, also check First Draft media for CLIENT_FEEDBACK status
+    if (submission.submissionType.type === 'FINAL_DRAFT' && firstDraftSubmission) {
+      const firstDraftHasClientRequestedChanges = firstDraftSubmission.video.some(v => v.status === 'CLIENT_FEEDBACK') ||
+                                                 firstDraftSubmission.photos.some(p => p.status === 'CLIENT_FEEDBACK') ||
+                                                 firstDraftSubmission.rawFootages.some(r => r.status === 'CLIENT_FEEDBACK');
+      
+      console.log(`🔍 Final Draft - First Draft hasClientRequestedChanges: ${firstDraftHasClientRequestedChanges}`);
+      console.log(`🔍 Final Draft - Current submission hasClientRequestedChanges: ${hasClientRequestedChanges}`);
+      
+      hasClientRequestedChanges = hasClientRequestedChanges || firstDraftHasClientRequestedChanges;
+      
+      console.log(`🔍 Final Draft - Combined hasClientRequestedChanges: ${hasClientRequestedChanges}`);
+    }
+    
+    console.log(`🔍 Priority 1 Debug - Submission ${submissionId}:`, {
+      hasClientRequestedChanges,
+      currentStatus: submission.status,
+      submissionType: submission.submissionType?.type,
+      videoStatuses: submission.video.map(v => ({ id: v.id, status: v.status })),
+      photoStatuses: submission.photos.map(p => ({ id: p.id, status: p.status })),
+      rawFootageStatuses: submission.rawFootages.map(r => ({ id: r.id, status: r.status }))
+    });
+    
+    console.log(`🔍 Priority 1 Condition Check - Submission ${submissionId}:`, {
+      hasClientRequestedChanges,
+      statusIsSENT_TO_CLIENT: submission.status === 'SENT_TO_CLIENT',
+      statusIsPENDING_REVIEW: submission.status === 'PENDING_REVIEW',
+      conditionMet: hasClientRequestedChanges && (submission.status === 'SENT_TO_CLIENT' || submission.status === 'PENDING_REVIEW')
+    });
+    
+    // 🔍 DEBUG: Force update to CLIENT_FEEDBACK if any media has CLIENT_FEEDBACK status
+    if (hasClientRequestedChanges) {
+      console.log(`🔍 DEBUG: Found client-requested changes, forcing status update to CLIENT_FEEDBACK`);
+      await prisma.submission.update({
+        where: { id: submissionId },
+        data: { status: 'CLIENT_FEEDBACK' }
+      });
+      console.log(`🔍 DEBUG: V3 Submission ${submissionId} status updated to CLIENT_FEEDBACK (client requested changes)`);
+      return; // Exit early to prevent other status changes
+    }
+    
+    if (hasClientRequestedChanges && (submission.status === 'SENT_TO_CLIENT' || submission.status === 'PENDING_REVIEW')) {
       // First, update submission status to CLIENT_FEEDBACK
       await prisma.submission.update({
         where: { id: submissionId },
@@ -1579,7 +1677,7 @@ export const checkAndUpdateSubmissionStatusV3 = async (submissionId: string, adm
         await prisma.submission.update({
           where: { id: submissionId },
         data: { status: 'SENT_TO_ADMIN' }
-      });
+        });
         console.log(`V3 Final Draft Submission ${submissionId} status updated to SENT_TO_ADMIN (client requested changes and all media processed)`);
         return; // Exit early to prevent other status changes
       }
@@ -1620,51 +1718,65 @@ export const checkAndUpdateSubmissionStatusV3 = async (submissionId: string, adm
             status: submission.status
           });
           
+          // 🔍 FIXED: Check if all media has been reviewed by admin (either approved or changes requested)
+          const allMediaReviewedByAdmin = 
+            (uploadedVideos === 0 || (sentToClientVideos + changesRequestedVideos === uploadedVideos)) &&
+            (uploadedPhotos === 0 || (sentToClientPhotos + changesRequestedPhotos === uploadedPhotos)) &&
+            (uploadedRawFootages === 0 || (sentToClientRawFootages + changesRequestedRawFootages === uploadedRawFootages));
+          
           // Check if all required media are uploaded and approved (sent to client)
           const allRequiredMediaUploadedAndApproved = 
             (!campaignRequiresVideos || (uploadedVideos > 0 && sentToClientVideos === uploadedVideos)) &&
             (!campaignRequiresPhotos || (uploadedPhotos > 0 && sentToClientPhotos === uploadedPhotos)) &&
             (!campaignRequiresRawFootage || (uploadedRawFootages > 0 && sentToClientRawFootages === uploadedRawFootages));
           
-          if (
-            submission.submissionType.type === 'FINAL_DRAFT' &&
+          console.log(`🔍 FIXED: Admin review check for submission ${submissionId}:`, {
+            allMediaReviewedByAdmin,
+            allRequiredMediaUploadedAndApproved,
+            hasChangesRequested,
+            mediaCounts: {
+              videos: { uploaded: uploadedVideos, sentToClient: sentToClientVideos, changesRequested: changesRequestedVideos },
+              photos: { uploaded: uploadedPhotos, sentToClient: sentToClientPhotos, changesRequested: changesRequestedPhotos },
+              rawFootages: { uploaded: uploadedRawFootages, sentToClient: sentToClientRawFootages, changesRequested: changesRequestedRawFootages }
+            }
+          });
+          
+          // 🔍 FIXED: More detailed condition checking for both First Draft and Final Draft
+          // For Final Draft, we should send to client when all media is SENT_TO_CLIENT, regardless of previous changes
+          const currentChangesRequested = 
+            submission.video.some(v => v.status === 'REVISION_REQUESTED' || v.status === 'CLIENT_FEEDBACK') ||
+            submission.photos.some(p => p.status === 'REVISION_REQUESTED' || p.status === 'CLIENT_FEEDBACK') ||
+            submission.rawFootages.some(r => r.status === 'REVISION_REQUESTED' || r.status === 'CLIENT_FEEDBACK');
+          
+          const shouldSendToClient = 
+            (submission.submissionType.type === 'FIRST_DRAFT' || submission.submissionType.type === 'FINAL_DRAFT') &&
             allRequiredMediaUploadedAndApproved &&
-            !hasChangesRequested
-          ) {
-        await prisma.submission.update({
-          where: { id: submissionId },
-          data: { status: 'SENT_TO_CLIENT' }
-        });
-            console.log(`V3 FINAL_DRAFT Submission ${submissionId} status updated to SENT_TO_CLIENT (all uploaded media approved by admin)`);
-          } else if (
-            submission.submissionType.type !== 'FINAL_DRAFT' &&
-            allRequiredMediaUploaded &&
-            !hasChangesRequested
-          ) {
+            allMediaReviewedByAdmin &&
+            !currentChangesRequested;
+
+          console.log(`🔍 FIXED: Should send to client decision for submission ${submissionId}:`, {
+            submissionType: submission.submissionType.type,
+            isFirstDraft: submission.submissionType.type === 'FIRST_DRAFT',
+            isFinalDraft: submission.submissionType.type === 'FINAL_DRAFT',
+            allRequiredMediaUploadedAndApproved,
+            allMediaReviewedByAdmin,
+            currentChangesRequested,
+            shouldSendToClient
+          });
+
+          if (shouldSendToClient) {
             await prisma.submission.update({
               where: { id: submissionId },
               data: { status: 'SENT_TO_CLIENT' }
             });
-            console.log(`V3 Submission ${submissionId} status updated to SENT_TO_CLIENT (all required media uploaded and reviewed, no changes requested)`);
+            console.log(`🔍 FIXED: V3 ${submission.submissionType.type} Submission ${submissionId} status updated to SENT_TO_CLIENT (all uploaded media approved by admin)`);
           } else {
-            console.log(`V3 Submission ${submissionId} NOT sent to client yet (required media not fully uploaded or not all approved or changes requested)`);
-            console.log(`Debug - allRequiredMediaUploadedAndApproved: ${allRequiredMediaUploadedAndApproved}, hasChangesRequested: ${hasChangesRequested}`);
+            console.log(`🔍 FIXED: V3 Submission ${submissionId} NOT sent to client yet`);
+            console.log(`🔍 FIXED: Reason - submissionType: ${submission.submissionType.type}, allRequiredMediaUploadedAndApproved: ${allRequiredMediaUploadedAndApproved}, allMediaReviewedByAdmin: ${allMediaReviewedByAdmin}, hasChangesRequested: ${hasChangesRequested}`);
           }
           
-          // NEW LOGIC: For First Draft, allow sending approved media to client even if some media needs changes
-          // This is the typical workflow: admin reviews media, approves some, requests changes for others
-          if (submission.submissionType.type === 'FIRST_DRAFT' && hasApprovedMedia && !hasChangesRequested) {
-            // If admin has approved some media and no changes are requested, send to client
-            await prisma.submission.update({
-              where: { id: submissionId },
-              data: { status: 'SENT_TO_CLIENT' }
-            });
-            console.log(`V3 First Draft Submission ${submissionId} status updated to SENT_TO_CLIENT (some media approved, no changes requested)`);
-          } else if (submission.submissionType.type === 'FIRST_DRAFT' && hasApprovedMedia && hasChangesRequested) {
-            // If admin has approved some media BUT also requested changes, keep as PENDING_REVIEW
-            // This allows admin to continue reviewing and approving other media
-            console.log(`V3 First Draft Submission ${submissionId} keeping PENDING_REVIEW status (some media approved, some changes requested - admin can continue reviewing)`);
-          }
+          // 🔍 FIXED: Removed problematic First Draft logic that was sending to client prematurely
+          // Now only Final Draft submissions will be sent to client when all media is reviewed and approved
       }
     } else if (allClientApproved && submission.status === 'SENT_TO_CLIENT' && !hasChangesRequested) {
       await prisma.submission.update({
@@ -1949,8 +2061,67 @@ export const submitDraftV3 = async (req: Request, res: Response) => {
     if (amqp) await amqp.close();
     }
 
-    // Let the worker update status based on uploaded items; keep current status here
-    return res.status(200).json({ message: 'Draft processing started' });
+    // 🔍 FIXED: Check if all required deliverables are uploaded before updating status
+    const campaignRequiresVideos = true; // Always required
+    const campaignRequiresPhotos = submission.campaign.photos;
+    const campaignRequiresRawFootage = submission.campaign.rawFootage;
+
+    // Count existing media
+    const existingVideos = submission.video?.length || 0;
+    const existingPhotos = submission.photos?.length || 0;
+    const existingRawFootages = submission.rawFootages?.length || 0;
+
+    // Count new uploads
+    const newVideos = draftVideos.length;
+    const newPhotos = uploadedPhotos.length;
+    const newRawFootages = uploadedRawFootages.length;
+
+    // Check if all required deliverables are present
+    const hasRequiredVideos = (existingVideos + newVideos) > 0;
+    const hasRequiredPhotos = !campaignRequiresPhotos || (existingPhotos + newPhotos) > 0;
+    const hasRequiredRawFootage = !campaignRequiresRawFootage || (existingRawFootages + newRawFootages) > 0;
+
+    const allRequiredDeliverablesUploaded = hasRequiredVideos && hasRequiredPhotos && hasRequiredRawFootage;
+
+    console.log(`🔍 FIXED: Deliverable check for submission ${submissionId}:`, {
+      campaignRequiresVideos,
+      campaignRequiresPhotos,
+      campaignRequiresRawFootage,
+      existingVideos,
+      existingPhotos,
+      existingRawFootages,
+      newVideos,
+      newPhotos,
+      newRawFootages,
+      hasRequiredVideos,
+      hasRequiredPhotos,
+      hasRequiredRawFootage,
+      allRequiredDeliverablesUploaded
+    });
+
+    // Only update status to PENDING_REVIEW if all required deliverables are uploaded
+    if (allRequiredDeliverablesUploaded) {
+      await prisma.submission.update({
+        where: { id: submissionId },
+        data: {
+          status: 'PENDING_REVIEW'
+        }
+      });
+
+      console.log(`🔍 FIXED: Submission ${submissionId} status updated to PENDING_REVIEW (all deliverables uploaded)`);
+
+      // Verify the status was updated
+      const updatedSubmission = await prisma.submission.findUnique({
+        where: { id: submissionId },
+        select: { status: true }
+      });
+      console.log(`🔍 FIXED: Verified submission ${submissionId} status after update: ${updatedSubmission?.status}`);
+
+      return res.status(200).json({ message: 'Draft submitted successfully and sent for review' });
+    } else {
+      console.log(`🔍 FIXED: Submission ${submissionId} keeping IN_PROGRESS status (missing required deliverables)`);
+      return res.status(200).json({ message: 'Draft uploaded successfully. Please upload all required deliverables before submitting for review.' });
+    }
 
   } catch (error) {
     console.error('Error submitting draft V3:', error);
@@ -2540,8 +2711,8 @@ export const forwardClientFeedbackV3 = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
     }
 
-    // Check if submission is in correct status - allow both SENT_TO_ADMIN and CHANGES_REQUIRED
-    if (submission.status !== 'SENT_TO_ADMIN' && submission.status !== 'CHANGES_REQUIRED') {
+    // Check if submission is in correct status - allow SENT_TO_ADMIN, CHANGES_REQUIRED, and CLIENT_FEEDBACK
+    if (submission.status !== 'SENT_TO_ADMIN' && submission.status !== 'CHANGES_REQUIRED' && submission.status !== 'CLIENT_FEEDBACK') {
       return res.status(400).json({ 
         message: `Submission is not in correct status for forwarding feedback. Current status: ${submission.status}` 
       });
@@ -2624,14 +2795,14 @@ export const forwardClientFeedbackV3 = async (req: Request, res: Response) => {
     console.log(`Submission current status: ${submission.status}, will update to CHANGES_REQUIRED: ${submission.status === 'SENT_TO_ADMIN' && totalPending === 0}`);
 
     // Only update submission status to CHANGES_REQUIRED if there are no more CLIENT_FEEDBACK items
-    if (submission.status === 'SENT_TO_ADMIN' && totalPending === 0) {
+    if ((submission.status === 'SENT_TO_ADMIN' || submission.status === 'CLIENT_FEEDBACK') && totalPending === 0) {
       await prisma.submission.update({
         where: { id: submissionId },
         data: { status: 'CHANGES_REQUIRED' }
       });
       console.log(`Client feedback forwarded for submission ${submissionId}, all CLIENT_FEEDBACK items processed → status updated to CHANGES_REQUIRED`);
-    } else if (submission.status === 'SENT_TO_ADMIN') {
-      console.log(`Client feedback forwarded for submission ${submissionId}, ${totalPending} CLIENT_FEEDBACK items remaining → status remains SENT_TO_ADMIN`);
+    } else if (submission.status === 'SENT_TO_ADMIN' || submission.status === 'CLIENT_FEEDBACK') {
+      console.log(`Client feedback forwarded for submission ${submissionId}, ${totalPending} CLIENT_FEEDBACK items remaining → status remains ${submission.status}`);
     }
 
     // Create notification for creator
