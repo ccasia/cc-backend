@@ -350,6 +350,18 @@ export const createCampaign = async (req: Request, res: Response) => {
           },
         });
 
+        // Deduct credits from subscription
+        await tx.subscription.update({
+          where: {
+            id: existingClient.subscriptions[0].id,
+          },
+          data: {
+            creditsUsed: {
+              increment: campaignCredits,
+            },
+          },
+        });
+
         // Create Campaign Timeline
         const timelines: CampaignTimeline[] = await Promise.all(
           timeline.map(async (item: any, index: number) => {
@@ -4166,7 +4178,7 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
   const { userId } = req.params;
   // const { status, limit = 9, cursor } = req.query;
   const { cursor, limit = 10, search, status } = req.query;
-  console.log(cursor);
+  console.log('getAllCampaignsByAdminId called with:', { userId, status, search, limit, cursor });
 
   try {
     const user = await prisma.user.findUnique({
@@ -4224,7 +4236,7 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
           ],
         },
         orderBy: {
-          createdAt: 'asc',
+          createdAt: 'desc',
         },
         include: {
           agreementTemplate: true,
@@ -4329,6 +4341,25 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
       return res.status(200).json(data);
     }
 
+    // Handle comma-separated status values for non-superadmin users
+    let statusCondition = {};
+    if (status) {
+      const statusValues = (status as string).split(',');
+      if (statusValues.length > 1) {
+        statusCondition = {
+          status: {
+            in: statusValues as CampaignStatus[],
+          },
+        };
+      } else {
+        statusCondition = {
+          status: statusValues[0] as CampaignStatus,
+        };
+      }
+    }
+    
+    console.log('Non-superadmin user, status condition:', statusCondition);
+
     const campaigns = await prisma.campaign.findMany({
       take: Number(limit),
       ...(cursor && {
@@ -4344,9 +4375,7 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
               },
             },
           },
-          {
-            ...(status && { status: status as any }),
-          },
+          statusCondition,
           {
             ...(search && {
               name: {
@@ -4356,6 +4385,9 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
             }),
           },
         ],
+      },
+      orderBy: {
+        createdAt: 'desc',
       },
       // where: {
       //   ...(status
@@ -4451,6 +4483,11 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
         creatorAgreement: true,
       },
     });
+
+    console.log(`Found ${campaigns.length} campaigns for non-superadmin user ${user.id}`);
+    if (campaigns.length > 0) {
+      console.log('Campaign statuses:', campaigns.map(c => ({ id: c.id, name: c.name, status: c.status })));
+    }
 
     const totalActiveCampaigns = campaigns.filter((campaign) => campaign.status === 'ACTIVE').length;
 
@@ -5278,7 +5315,7 @@ export const activateClientCampaign = async (req: Request, res: Response) => {
         id: userId,
       },
       include: {
-        admin: true,
+        admin: { include: { role: true } },
       },
     });
 
@@ -5325,13 +5362,11 @@ export const activateClientCampaign = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Agreement template is required' });
     }
 
-    // Check if campaign exists and is in PENDING_CSM_REVIEW or SCHEDULED status
+    // Check if campaign exists and is in PENDING_ADMIN_ACTIVATION status
     const campaign = await prisma.campaign.findFirst({
       where: {
         id: campaignId,
-        status: {
-          in: ['PENDING_CSM_REVIEW', 'SCHEDULED'] as CampaignStatus[],
-        },
+        status: 'PENDING_ADMIN_ACTIVATION',
       },
       include: {
         company: true,
@@ -5339,7 +5374,7 @@ export const activateClientCampaign = async (req: Request, res: Response) => {
     });
 
     if (!campaign) {
-      return res.status(404).json({ message: 'Campaign not found or not in pending/scheduled status' });
+      return res.status(404).json({ message: 'Campaign not found or not in pending admin activation status' });
     }
 
     // Log user info for debugging
@@ -6614,5 +6649,147 @@ export const shortlistCreatorV2ForClient = async (req: Request, res: Response) =
   } catch (error) {
     console.error('Error shortlisting creators for client campaign:', error);
     return res.status(400).json({ message: error.message || 'Failed to shortlist creators' });
+  }
+};
+
+export const initialActivateCampaign = async (req: Request, res: Response) => {
+  try {
+    const userId = req.session.userid;
+    const { campaignId } = req.params;
+
+    if (!userId) {
+      return res.status(401).json({ message: 'User not authenticated' });
+    }
+
+    // Check if user is CSL or superadmin
+    const user = await prisma.user.findUnique({
+      where: {
+        id: userId,
+      },
+      include: {
+        admin: { include: { role: true } },
+      },
+    });
+
+    if (!user) {
+      return res.status(403).json({ message: 'User not found' });
+    }
+
+    // Only allow CSL or superadmin (god mode) to do initial activation
+    const isCSL = user.admin?.role?.name === 'CSL';
+    const isSuperAdmin = user.admin?.mode === 'god';
+    
+    if (!isCSL && !isSuperAdmin) {
+      return res.status(403).json({ message: 'Only CSL or Superadmin users can perform initial campaign activation' });
+    }
+
+    console.log('User performing initial activation:', {
+      userId: user.id,
+      userName: user.name,
+      userRole: user.role,
+      adminMode: user.admin?.mode,
+      adminRoleName: user.admin?.role?.name,
+    });
+
+    // Parse request data
+    let data;
+    try {
+      data = JSON.parse(req.body.data);
+    } catch (error) {
+      return res.status(400).json({ message: 'Invalid data format' });
+    }
+
+    const { adminManager } = data;
+
+    console.log('Received initial activation data:', { adminManager });
+
+    // Validate required fields
+    if (!adminManager || (Array.isArray(adminManager) && adminManager.length === 0)) {
+      return res.status(400).json({ message: 'At least one admin manager is required' });
+    }
+
+    // Ensure adminManager is always an array
+    const adminManagerArray = Array.isArray(adminManager) ? adminManager : [adminManager];
+
+    // Check if campaign exists and is in PENDING_CSM_REVIEW or SCHEDULED status
+    const campaign = await prisma.campaign.findFirst({
+      where: {
+        id: campaignId,
+        status: {
+          in: ['PENDING_CSM_REVIEW', 'SCHEDULED'] as CampaignStatus[],
+        },
+      },
+      include: {
+        company: true,
+      },
+    });
+
+    if (!campaign) {
+      return res.status(404).json({ message: 'Campaign not found or not in pending/scheduled status' });
+    }
+
+    // Update campaign status to PENDING_ADMIN_ACTIVATION
+    const updatedCampaign = await prisma.campaign.update({
+      where: {
+        id: campaignId,
+      },
+      data: {
+        status: 'PENDING_ADMIN_ACTIVATION',
+      },
+    });
+
+    // Add admin managers to the campaign
+    for (const adminId of adminManagerArray) {
+      try {
+        // Check if the admin exists
+        const admin = await prisma.admin.findFirst({
+          where: {
+            id: adminId,
+          },
+        });
+
+        if (!admin) {
+          // Try to find admin by userId
+          const adminByUserId = await prisma.admin.findFirst({
+            where: {
+              userId: adminId,
+            },
+          });
+
+          if (adminByUserId) {
+            await prisma.campaignAdmin.create({
+              data: {
+                adminId: adminByUserId.userId,
+                campaignId,
+              },
+            });
+          }
+        } else {
+          await prisma.campaignAdmin.create({
+            data: {
+              adminId: adminId,
+              campaignId,
+            },
+          });
+        }
+      } catch (error) {
+        console.error(`Error adding admin ${adminId} to campaign:`, error);
+      }
+    }
+
+    console.log('Campaign updated for initial activation:', {
+      campaignId,
+      newStatus: updatedCampaign.status,
+      adminManager: adminManagerArray,
+    });
+
+    res.status(200).json({
+      message: 'Campaign activated and assigned to admin. Waiting for admin to complete setup.',
+      campaign: updatedCampaign,
+    });
+
+  } catch (error) {
+    console.error('Error in initial campaign activation:', error);
+    res.status(500).json({ message: 'Internal server error' });
   }
 };

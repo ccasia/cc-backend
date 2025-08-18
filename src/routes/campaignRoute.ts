@@ -52,6 +52,7 @@ import {
   getAllCreatorAgreements,
   getClientCampaigns,
   activateClientCampaign,
+  initialActivateCampaign,
   checkCampaignAdmin,
   addClientToCampaignAdmin,
   fixCampaignTimelines,
@@ -179,5 +180,6 @@ router.delete('/unsaveCampaign/:id', isLoggedIn, unSaveCampaign);
 
 // Client campaign activation by CSM
 router.post('/activateClientCampaign/:campaignId', canActivateCampaign, activateClientCampaign);
+router.post('/initialActivateCampaign/:campaignId', canActivateCampaign, initialActivateCampaign);
 
 export default router;
