@@ -135,6 +135,7 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
     }
 
     console.log(`Pitch ${pitchId} approved by admin with ${ugcCredits} UGC credits, status updated to SENT_TO_CLIENT`);
+    console.log(adminComments ? `Comments: ${adminComments}` : 'No comments provided');
     return res.status(200).json({
       message: 'Pitch approved and sent to client for review',
       pitch: updatedPitch,
