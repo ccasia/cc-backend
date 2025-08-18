@@ -260,36 +260,36 @@ const checkCurrentSubmission = async (submissionId: string) => {
   if (currentSubmission?.status === 'PENDING_REVIEW') {
     console.log(`🔍 FIXED: Worker - Submission ${submissionId} already PENDING_REVIEW, skipping status update`);
   } else {
-    // Update submission status based on deliverable checks
-    // For UGC campaigns (no posting required), set to PENDING_REVIEW when all deliverables are sent
-    // For normal campaigns, also consider campaignCredits condition
-    if (allDeliverablesSent) {
-      console.log(`Worker - Updating submission ${submissionId} to PENDING_REVIEW`);
+  // Update submission status based on deliverable checks
+  // For UGC campaigns (no posting required), set to PENDING_REVIEW when all deliverables are sent
+  // For normal campaigns, also consider campaignCredits condition
+  if (allDeliverablesSent) {
+    console.log(`Worker - Updating submission ${submissionId} to PENDING_REVIEW`);
+    await prisma.submission.update({
+      where: { id: submission.id },
+      data: {
+        status: 'PENDING_REVIEW',
+        submissionDate: dayjs().format(),
+      },
+    });
+    console.log(`Worker - Successfully updated submission ${submissionId} to PENDING_REVIEW`);
+  } else {
+    if (submission.submissionType.type === 'FIRST_DRAFT') {
+      console.log(`Worker - Updating submission ${submissionId} to IN_PROGRESS (not all deliverables sent)`);
       await prisma.submission.update({
         where: { id: submission.id },
         data: {
-          status: 'PENDING_REVIEW',
-          submissionDate: dayjs().format(),
+          status: 'IN_PROGRESS',
         },
       });
-      console.log(`Worker - Successfully updated submission ${submissionId} to PENDING_REVIEW`);
     } else {
-      if (submission.submissionType.type === 'FIRST_DRAFT') {
-        console.log(`Worker - Updating submission ${submissionId} to IN_PROGRESS (not all deliverables sent)`);
-        await prisma.submission.update({
-          where: { id: submission.id },
-          data: {
-            status: 'IN_PROGRESS',
-          },
-        });
-      } else {
-        console.log(`Worker - Updating submission ${submissionId} to CHANGES_REQUIRED`);
-        await prisma.submission.update({
-          where: { id: submission.id },
-          data: {
-            status: 'CHANGES_REQUIRED',
-          },
-        });
+      console.log(`Worker - Updating submission ${submissionId} to CHANGES_REQUIRED`);
+      await prisma.submission.update({
+        where: { id: submission.id },
+        data: {
+          status: 'CHANGES_REQUIRED',
+        },
+      });
       }
     }
   }

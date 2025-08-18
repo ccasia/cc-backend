@@ -4236,7 +4236,7 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
           ],
         },
         orderBy: {
-          createdAt: 'asc',
+          createdAt: 'desc',
         },
         include: {
           agreementTemplate: true,
@@ -4385,6 +4385,9 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
             }),
           },
         ],
+      },
+      orderBy: {
+        createdAt: 'desc',
       },
       // where: {
       //   ...(status
