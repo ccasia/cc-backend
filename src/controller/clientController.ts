@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { PrismaClient, CampaignStatus } from '@prisma/client';
 import { uploadCompanyLogo } from '@configs/cloudStorage.config';
+import { getRemainingCredits } from '@services/companyService';
 
 const prisma = new PrismaClient();
 
@@ -324,6 +325,26 @@ export const createClientCampaign = async (req: Request, res: Response) => {
 
     const company = user.client.company;
 
+    // Check available credits before creating campaign
+    if (!company) {
+      return res.status(400).json({ message: 'Client company not found' });
+    }
+
+    const availableCredits = await getRemainingCredits(company.id);
+
+    // Ensure availableCredits is a valid number
+    if (availableCredits === null || typeof availableCredits !== 'number') {
+      return res.status(400).json({ message: 'Unable to retrieve available credits for the client' });
+    }
+
+    // Check if campaignCredits exceed availableCredits
+    const requestedCredits = campaignCredits ? Number(campaignCredits) : 0;
+    if (requestedCredits > availableCredits) {
+      return res.status(400).json({ 
+        message: `Not enough credits to create the campaign. Available: ${availableCredits}, Requested: ${requestedCredits}` 
+      });
+    }
+
     // Generate campaign ID
     const campaignId = `C${Math.floor(Math.random() * 1000)}`;
 
@@ -376,8 +397,8 @@ export const createClientCampaign = async (req: Request, res: Response) => {
             user_persona: audienceUserPersona || '',
           },
         },
-        campaignCredits: campaignCredits ? Number(campaignCredits) : 0,
-        creditsPending: campaignCredits ? Number(campaignCredits) : 0,
+        campaignCredits: requestedCredits,
+        creditsPending: requestedCredits,
         creditsUtilized: 0,
         // Connect to client's company
         company: {
@@ -385,13 +406,33 @@ export const createClientCampaign = async (req: Request, res: Response) => {
             id: company?.id || '',
           },
         },
-        // Store reference to client in a campaign log
       },
       include: {
         campaignBrief: true,
         campaignRequirement: true,
       },
     });
+
+    // Deduct credits from subscription
+    const activeSubscription = await prisma.subscription.findFirst({
+      where: {
+        companyId: company?.id || '',
+        status: 'ACTIVE',
+      },
+    });
+
+    if (activeSubscription && requestedCredits > 0) {
+      await prisma.subscription.update({
+        where: {
+          id: activeSubscription.id,
+        },
+        data: {
+          creditsUsed: {
+            increment: requestedCredits,
+          },
+        },
+      });
+    }
     
     // Add the client to campaignAdmin so they can see it in their dashboard
     await prisma.campaignAdmin.create({

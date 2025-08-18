@@ -382,7 +382,6 @@ export const getRemainingCredits = async (clientId: string) => {
             package: true,
           },
         },
-        campaign: true,
       },
     });
 
@@ -394,11 +393,10 @@ export const getRemainingCredits = async (clientId: string) => {
       throw new Error('No active subscription or invalid total credits');
     }
 
-    const totalCreditsUsed = client.campaign
-      .filter((campaign) => campaign.subscriptionId !== null && campaign.subscriptionId === activeSubscription.id)
-      .reduce((sum, campaign) => sum + (campaign?.campaignCredits || 0), 0);
+    // Calculate remaining credits based on subscription's creditsUsed field
+    const remainingCredits = activeSubscription.totalCredits - activeSubscription.creditsUsed;
 
-    return activeSubscription.totalCredits - totalCreditsUsed;
+    return Math.max(0, remainingCredits); // Ensure we don't return negative credits
   } catch (error) {
     throw new Error(error);
   }

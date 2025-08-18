@@ -350,6 +350,18 @@ export const createCampaign = async (req: Request, res: Response) => {
           },
         });
 
+        // Deduct credits from subscription
+        await tx.subscription.update({
+          where: {
+            id: existingClient.subscriptions[0].id,
+          },
+          data: {
+            creditsUsed: {
+              increment: campaignCredits,
+            },
+          },
+        });
+
         // Create Campaign Timeline
         const timelines: CampaignTimeline[] = await Promise.all(
           timeline.map(async (item: any, index: number) => {
