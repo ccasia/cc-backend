@@ -1399,6 +1399,7 @@ enum CampaignStatus {
   CANCELLED
   SCHEDULED
   PENDING_CSM_REVIEW
+  PENDING_ADMIN_ACTIVATION
 }
 
 enum RoleEnum {

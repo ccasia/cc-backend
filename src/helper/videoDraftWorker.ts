@@ -247,6 +247,19 @@ const checkCurrentSubmission = async (submissionId: string) => {
     });
   }
 
+  // 🔍 FIXED: Check current submission status before updating
+  // If status is already PENDING_REVIEW, don't override it
+  const currentSubmission = await prisma.submission.findUnique({
+    where: { id: submission.id },
+    select: { status: true }
+  });
+
+  console.log(`🔍 FIXED: Worker - Current submission ${submissionId} status: ${currentSubmission?.status}`);
+
+  // Only update status if it's not already PENDING_REVIEW
+  if (currentSubmission?.status === 'PENDING_REVIEW') {
+    console.log(`🔍 FIXED: Worker - Submission ${submissionId} already PENDING_REVIEW, skipping status update`);
+  } else {
   // Update submission status based on deliverable checks
   // For UGC campaigns (no posting required), set to PENDING_REVIEW when all deliverables are sent
   // For normal campaigns, also consider campaignCredits condition
@@ -277,6 +290,7 @@ const checkCurrentSubmission = async (submissionId: string) => {
           status: 'CHANGES_REQUIRED',
         },
       });
+      }
     }
   }
 
