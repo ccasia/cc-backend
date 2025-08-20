@@ -5,8 +5,13 @@ import {
   submitV4ContentController,
   approveV4Submission,
   updatePostingLinkController,
-  getV4SubmissionById
+  getV4SubmissionById,
+  approveV4SubmissionByClient,
+  forwardClientFeedbackV4
 } from '../controller/submissionV4Controller';
+import { isLoggedIn } from '../middleware/onlyLogin';
+import { isAdmin } from '../middleware/onlySuperadmin';
+import { isClient } from '@middlewares/clientOnly';
 
 const router = express.Router();
 
@@ -28,7 +33,13 @@ router.get('/submission/:id', getV4SubmissionById);
 router.post('/submit-content', submitV4ContentController);
 
 // Approve/reject V4 submission (admin action)
-router.post('/approve', approveV4Submission);
+router.post('/approve', isLoggedIn, isAdmin, approveV4Submission);
+
+// Client approve/reject V4 submission (client action for client-created campaigns)
+router.post('/approve/client', isLoggedIn, isClient, approveV4SubmissionByClient);
+
+// Admin forward client feedback to creator
+router.post('/forward-client-feedback', isLoggedIn, isAdmin, forwardClientFeedbackV4);
 
 // Update posting link for approved submission (creator action)
 router.put('/posting-link', updatePostingLinkController);
