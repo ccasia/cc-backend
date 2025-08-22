@@ -56,7 +56,7 @@ export const getMyV4Submissions = async (req: Request, res: Response) => {
     // Calculate overall progress
     const totalSubmissions = submissions.length;
     const completedSubmissions = submissions.filter(s => 
-      s.status === 'APPROVED' || s.status === 'CLIENT_APPROVED'
+      s.status === 'APPROVED' || s.status === 'CLIENT_APPROVED' || s.status === 'POSTED'
     ).length;
     const progress = totalSubmissions > 0 ? (completedSubmissions / totalSubmissions) * 100 : 0;
     
