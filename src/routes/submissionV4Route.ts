@@ -7,7 +7,8 @@ import {
   updatePostingLinkController,
   getV4SubmissionById,
   approveV4SubmissionByClient,
-  forwardClientFeedbackV4
+  forwardClientFeedbackV4,
+  approvePostingLinkV4
 } from '../controller/submissionV4Controller';
 import { isLoggedIn } from '../middleware/onlyLogin';
 import { isAdmin } from '../middleware/onlySuperadmin';
@@ -43,5 +44,8 @@ router.post('/forward-client-feedback', isLoggedIn, isAdmin, forwardClientFeedba
 
 // Update posting link for approved submission (creator action)
 router.put('/posting-link', updatePostingLinkController);
+
+// Admin approve/reject posting link (admin action)
+router.post('/posting-link/approve', isLoggedIn, isAdmin, approvePostingLinkV4);
 
 export default router;

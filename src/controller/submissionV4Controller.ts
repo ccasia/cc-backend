@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { FeedbackStatus, PrismaClient, SubmissionStatus } from '@prisma/client';
 import { 
   createV4SubmissionsForCreator, 
   getV4Submissions, 
@@ -420,12 +420,12 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
     
     switch (action) {
       case 'approve':
-        newSubmissionStatus = 'APPROVED';
-        newContentStatus = 'CLIENT_APPROVED';
+        newSubmissionStatus = 'CLIENT_APPROVED'; 
+        newContentStatus = 'APPROVED'; 
         break;
       case 'request_changes':
         newSubmissionStatus = 'CLIENT_FEEDBACK';
-        newContentStatus = 'CLIENT_FEEDBACK';
+        newContentStatus = 'CLIENT_FEEDBACK'; 
         break;
       default:
         newSubmissionStatus = 'SENT_TO_CLIENT';
@@ -440,8 +440,7 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
       prisma.submission.update({
         where: { id: submissionId },
         data: {
-          status: newSubmissionStatus as any,
-          updatedAt: new Date()
+          status: newSubmissionStatus as SubmissionStatus
         }
       })
     );
@@ -452,10 +451,9 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
         prisma.video.updateMany({
           where: { submissionId },
           data: {
-            status: newContentStatus as any,
+            status: newContentStatus as FeedbackStatus,
             feedback: feedback || null,
             reasons: reasons || []
-            // Note: clientId and clientFeedbackAt fields would need to be added to schema
           }
         })
       );
@@ -467,10 +465,9 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
         prisma.photo.updateMany({
           where: { submissionId },
           data: {
-            status: newContentStatus as any,
+            status: newContentStatus as FeedbackStatus,
             feedback: feedback || null,
             reasons: reasons || []
-            // Note: clientId and clientFeedbackAt fields would need to be added to schema
           }
         })
       );
@@ -482,10 +479,9 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
         prisma.rawFootage.updateMany({
           where: { submissionId },
           data: {
-            status: newContentStatus as any,
+            status: newContentStatus as FeedbackStatus,
             feedback: feedback || null,
             reasons: reasons || []
-            // Note: clientId and clientFeedbackAt fields would need to be added to schema
           }
         })
       );
@@ -708,6 +704,95 @@ export const updatePostingLinkController = async (req: Request, res: Response) =
     
     res.status(500).json({
       message: 'Failed to update posting link',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+};
+
+/**
+ * Admin approve/reject posting link for V4 submission
+ * POST /api/submissions/v4/posting-link/approve
+ */
+export const approvePostingLinkV4 = async (req: Request, res: Response) => {
+  const { submissionId, action } = req.body;
+  const adminId = req.session.userid;
+  
+  try {
+    if (!submissionId || !action) {
+      return res.status(400).json({ 
+        message: 'submissionId and action are required' 
+      });
+    }
+    
+    if (!['approve', 'reject'].includes(action)) {
+      return res.status(400).json({ 
+        message: 'action must be approve or reject' 
+      });
+    }
+    
+    // Get submission
+    const submission = await prisma.submission.findUnique({
+      where: { id: submissionId },
+      include: {
+        submissionType: true
+      }
+    });
+    
+    if (!submission) {
+      return res.status(404).json({ message: 'Submission not found' });
+    }
+    
+    if (submission.submissionVersion !== 'v4') {
+      return res.status(400).json({ message: 'Not a v4 submission' });
+    }
+    
+    // Check if submission has posting link to approve
+    if (!submission.content) {
+      return res.status(400).json({ 
+        message: 'No posting link found to approve' 
+      });
+    }
+    
+    // Determine new status and content action
+    let newStatus: string;
+    let newContent: string | null;
+    
+    switch (action) {
+      case 'approve':
+        newStatus = 'POSTED';
+        newContent = submission.content; // Keep the posting link
+        break;
+      case 'reject':
+        newStatus = 'CLIENT_APPROVED'; // Back to approved state
+        newContent = null; // Clear the posting link
+        break;
+      default:
+        newStatus = submission.status;
+        newContent = submission.content;
+    }
+    
+    // Update submission
+    await prisma.submission.update({
+      where: { id: submissionId },
+      data: {
+        status: newStatus as SubmissionStatus,
+        content: newContent,
+        updatedAt: new Date()
+      }
+    });
+    
+    console.log(`✅ V4 submission ${submissionId} posting link ${action}d by admin ${adminId}`);
+    
+    res.status(200).json({
+      message: `Posting link ${action}d successfully`,
+      submissionId,
+      newStatus
+    });
+    
+  } catch (error) {
+    console.error('Error approving posting link v4:', error);
+    res.status(500).json({
+      message: 'Failed to process posting link approval',
       error: error instanceof Error ? error.message : 'Unknown error'
     });
   }

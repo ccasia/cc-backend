@@ -137,10 +137,6 @@ export const updatePostingLink = async (submissionId: string, postingLink: strin
       throw new Error('Not a v4 submission');
     }
     
-    if (submission.status !== 'APPROVED') {
-      throw new Error('Submission must be approved before adding posting link');
-    }
-    
     // Update the posting link
     const updatedSubmission = await prisma.submission.update({
       where: { id: submissionId },
