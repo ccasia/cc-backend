@@ -55,6 +55,7 @@ import {
 import { deliveryConfirmation, shortlisted, tracking } from '@configs/nodemailer.config';
 import { createNewSpreadSheet } from '@services/google_sheets/sheets';
 import { getRemainingCredits } from '@services/companyService';
+import { handleGuestForShortListing } from '@services/shortlistService';
 // import { applyCreditCampiagn } from '@services/packageService';
 
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
@@ -596,7 +597,7 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
         admin: {
           select: {
             mode: true,
-            role: true
+            role: true,
           },
         },
         id: true,
@@ -994,14 +995,14 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
 
     // Show all active campaigns to creators (both admin and client created) - like superadmin
     const beforeFilterCount = campaigns.length;
-    
+
     // For now, show ALL active campaigns to creators to match superadmin behavior
     // This ensures creators can see all campaigns like superadmin does
     campaigns = campaigns.filter((campaign) => {
       // Show all ACTIVE campaigns regardless of timeline status
       return campaign.status === 'ACTIVE';
     });
-    
+
     const afterFilterCount = campaigns.length;
 
     console.log(
@@ -1366,7 +1367,7 @@ export const getAllPitches = async (req: Request, res: Response) => {
 
     // Transform pitches to show role-based status for client-created campaigns and filter for clients
     const transformedPitches = pitches
-      .filter(pitch => {
+      .filter((pitch) => {
         // For clients: only show pitches that are SENT_TO_CLIENT or APPROVED
         // Hide pitches with PENDING_REVIEW status (admin review stage)
         if (user?.role === 'client' && pitch.campaign.origin === 'CLIENT') {
@@ -4357,7 +4358,7 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
         };
       }
     }
-    
+
     console.log('Non-superadmin user, status condition:', statusCondition);
 
     const campaigns = await prisma.campaign.findMany({
@@ -4486,7 +4487,10 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
 
     console.log(`Found ${campaigns.length} campaigns for non-superadmin user ${user.id}`);
     if (campaigns.length > 0) {
-      console.log('Campaign statuses:', campaigns.map(c => ({ id: c.id, name: c.name, status: c.status })));
+      console.log(
+        'Campaign statuses:',
+        campaigns.map((c) => ({ id: c.id, name: c.name, status: c.status })),
+      );
     }
 
     const totalActiveCampaigns = campaigns.filter((campaign) => campaign.status === 'ACTIVE').length;
@@ -6455,17 +6459,17 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
             campaignId: campaign.id,
             admin: {
               user: {
-                role: { in: ['admin', 'superadmin'] }
-              }
-            }
+                role: { in: ['admin', 'superadmin'] },
+              },
+            },
           },
           include: {
             admin: {
               include: {
-                user: true
-              }
-            }
-          }
+                user: true,
+              },
+            },
+          },
         });
 
         for (const adminUser of adminUsers) {
@@ -6475,8 +6479,8 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
               message: `Creator ${user.name} has been shortlisted for campaign "${campaign.name}". Please review and approve.`,
               entity: 'Pitch',
               campaignId: campaign.id,
-              userId: adminUser.admin.userId
-            }
+              userId: adminUser.admin.userId,
+            },
           });
         }
       }
@@ -6678,7 +6682,7 @@ export const initialActivateCampaign = async (req: Request, res: Response) => {
     // Only allow CSL or superadmin (god mode) to do initial activation
     const isCSL = user.admin?.role?.name === 'CSL';
     const isSuperAdmin = user.admin?.mode === 'god';
-    
+
     if (!isCSL && !isSuperAdmin) {
       return res.status(403).json({ message: 'Only CSL or Superadmin users can perform initial campaign activation' });
     }
@@ -6787,9 +6791,68 @@ export const initialActivateCampaign = async (req: Request, res: Response) => {
       message: 'Campaign activated and assigned to admin. Waiting for admin to complete setup.',
       campaign: updatedCampaign,
     });
-
   } catch (error) {
     console.error('Error in initial campaign activation:', error);
     res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+// 3.1 Shortlisting Non-Platform (Guest) Creators
+export const shortlistGuestCreators = async (req: Request, res: Response) => {
+  const { campaignId, guestCreators } = req.body;
+  const adminId = req.session.userid;
+
+  if (!campaignId || !Array.isArray(guestCreators) || guestCreators.length === 0) {
+    return res.status(400).json({ message: 'Campaign ID and a list of guest creators are required.' });
+  }
+
+  if (guestCreators.length > 3) {
+    return res.status(400).json({ message: 'You can add a maximum of 3 guest creators at a time' });
+  }
+
+  try {
+    const campaign = await prisma.campaign.findUnique({ where: { id: campaignId } });
+
+    if (!campaign) return res.status(404).json({ message: 'Campaign not found.' });
+
+    await prisma.$transaction(async (tx) => {
+      for (const guest of guestCreators) {
+        // give guest a userId
+        const { userId } = await handleGuestForShortListing(guest, tx);
+
+        // Check if guest has already been shortlisted
+        const existingShortlist = await tx.shortListedCreator.findUnique({
+          where: {
+            userId_campaignId: {
+              userId,
+              campaignId,
+            },
+          },
+        });
+
+        if (existingShortlist) {
+          console.log(`Guest creator ${guest.profileLink} is already shortlisted. Skipping.`);
+          continue; // Skip and move to the next guest
+        }
+
+        await tx.shortListedCreator.create({
+          data: {
+            userId,
+            campaignId,
+            adminComments: guest.adminComments || null,
+            amount: 0,
+            currency: 'SGD',
+          },
+        });
+      }
+    });
+
+    const adminLogMessage = `Shortlisted ${guestCreators.length} guest creator(s) for Campaign "${campaign.name}"`;
+    logAdminChange(adminLogMessage, adminId, req);
+
+    return res.status(200).json({ message: 'Guest creators successfully shortlisted.' });
+  } catch (error) {
+    console.error('GUEST SHORTLIST ERROR:', error);
+    return res.status(400).json({ message: error.message || 'Failed to shortlist guest creators.' });
   }
 };

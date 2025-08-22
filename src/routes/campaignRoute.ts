@@ -48,6 +48,7 @@ import {
   shortlistCreatorV2,
   shortlistCreatorV2ForClient,
   shortlistCreatorV3,
+  shortlistGuestCreators,
   getAllPitches,
   getAllCreatorAgreements,
   getClientCampaigns,
@@ -152,6 +153,7 @@ router.post('/removeCreatorFromCampaign', isLoggedIn, isSuperAdmin, removeCreato
 router.post('/v2/shortlistCreator', isSuperAdmin, shortlistCreatorV2);
 router.post('/v2/shortlistCreator/client', isSuperAdmin, shortlistCreatorV2ForClient);
 router.post('/v3/shortlistCreator', isLoggedIn, shortlistCreatorV3);
+router.post('/v3/shortlistCreator/guest', isSuperAdmin, shortlistGuestCreators);
 
 router.patch('/pitch', isLoggedIn, creatorMakePitch);
 router.patch('/changeCampaignStage/:campaignId', changeCampaignStage);
