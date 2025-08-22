@@ -714,10 +714,13 @@ export const getPitchesV3 = async (req: Request, res: Response) => {
     // Transform pitches to show role-based status and filter for clients
     const transformedPitches = pitches
       .filter(pitch => {
-        // For clients: only show pitches that are SENT_TO_CLIENT or APPROVED
+        // For clients: show pitches that are SENT_TO_CLIENT, APPROVED, or in agreement stages
         // Hide pitches with PENDING_REVIEW status (admin review stage)
         if (user.role === 'client') {
-          return pitch.status === 'SENT_TO_CLIENT' || pitch.status === 'APPROVED';
+          return pitch.status === 'SENT_TO_CLIENT' || 
+                 pitch.status === 'APPROVED' || 
+                 pitch.status === 'AGREEMENT_PENDING' || 
+                 pitch.status === 'AGREEMENT_SUBMITTED';
         }
         // For admin and creators: show all pitches
         return true;
@@ -733,11 +736,15 @@ export const getPitchesV3 = async (req: Request, res: Response) => {
           // Client sees: SENT_TO_CLIENT -> PENDING_REVIEW, APPROVED -> APPROVED
           if (pitch.status === 'SENT_TO_CLIENT') {
             displayStatus = 'PENDING_REVIEW';
+          } else if (pitch.status === 'AGREEMENT_PENDING' || pitch.status === 'AGREEMENT_SUBMITTED') {
+            displayStatus = 'APPROVED';
           }
         } else if (user.role === 'creator') {
           // Creator sees: PENDING_REVIEW -> PENDING_REVIEW, SENT_TO_CLIENT -> PENDING_REVIEW, APPROVED -> APPROVED
           if (pitch.status === 'SENT_TO_CLIENT') {
             displayStatus = 'PENDING_REVIEW';
+          } else if (pitch.status === 'AGREEMENT_PENDING' || pitch.status === 'AGREEMENT_SUBMITTED') {
+            displayStatus = 'APPROVED';
           }
         }
 
