@@ -725,8 +725,8 @@ export const getPitchesV3 = async (req: Request, res: Response) => {
 
     // Transform pitches to show role-based status and filter for clients
     const transformedPitches = pitches
-      .filter((pitch) => {
-        // For clients: only show pitches that are SENT_TO_CLIENT or APPROVED
+      .filter(pitch => {
+        // For clients: show pitches that are SENT_TO_CLIENT, APPROVED, or in agreement stages
         // Hide pitches with PENDING_REVIEW status (admin review stage)
         if (user.role === 'client') {
           return pitch.status === 'SENT_TO_CLIENT' || 
@@ -757,7 +757,7 @@ export const getPitchesV3 = async (req: Request, res: Response) => {
             displayStatus = 'PENDING_REVIEW';
           } else if (pitch.status === 'AGREEMENT_PENDING' || pitch.status === 'AGREEMENT_SUBMITTED') {
             displayStatus = 'APPROVED';
-          }
+          } 
         }
 
         return {
