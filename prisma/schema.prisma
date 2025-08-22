@@ -1491,6 +1491,8 @@ enum SubmissionStatus {
   CLIENT_APPROVED
   CLIENT_FEEDBACK
   SENT_TO_ADMIN
+  // V4 posting status
+  POSTED
 }
 
 enum Priority {
