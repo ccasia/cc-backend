@@ -146,7 +146,7 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
     }
     
     // Check if submission is in a state that allows content updates
-    const allowedStatuses = ['IN_PROGRESS', 'CHANGES_REQUIRED', 'REJECTED', 'NOT_STARTED'];
+    const allowedStatuses = ['IN_PROGRESS', 'CHANGES_REQUIRED', 'REJECTED', 'NOT_STARTED', 'CLIENT_FEEDBACK'];
     if (!allowedStatuses.includes(submission.status)) {
       return res.status(400).json({ 
         message: `Cannot submit content. Current status: ${submission.status}` 
