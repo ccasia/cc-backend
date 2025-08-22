@@ -26,6 +26,7 @@ import {
   requestChangesForPostingByClientV3,
   forwardClientPostingFeedbackV3,
   updateFeedbackV3,
+  getCreatorVisibleFeedbackV3,
 } from '../controller/submissionV3Controller';
 
 const router = Router();
@@ -58,5 +59,6 @@ router.patch('/v3/posting/forward-feedback', isAdmin, forwardClientPostingFeedba
 router.patch('/v3/draft/review-feedback', isAdmin, reviewAndForwardClientFeedbackV3);
 router.patch('/v3/draft/forward-feedback', isAdmin, forwardClientFeedbackV3);
 router.patch('/v3/feedback/:feedbackId', isAdmin, updateFeedbackV3);
+router.get('/v3/creator-feedback/:submissionId', isCreatorOrClient, getCreatorVisibleFeedbackV3);
 
 export default router; 
