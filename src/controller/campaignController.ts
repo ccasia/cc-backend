@@ -6797,6 +6797,136 @@ export const initialActivateCampaign = async (req: Request, res: Response) => {
   }
 };
 
+// Add this function after the shortlistCreatorV3 function
+export const assignUGCCreditsV3 = async (req: Request, res: Response) => {
+  const { creators, campaignId } = req.body;
+  const userId = req.session.userid;
+
+  try {
+    console.log(`assignUGCCreditsV3: Assigning UGC credits for campaign ${campaignId} by user ${userId}`);
+    console.log(`Creators with credits:`, creators);
+
+    // Check if the user has access to this campaign (is admin or client who created it)
+    const campaignAccess = await prisma.campaignAdmin.findFirst({
+      where: {
+        campaignId,
+        adminId: userId,
+      },
+      include: {
+        admin: {
+          include: {
+            user: true,
+          },
+        },
+        campaign: {
+          include: {
+            shortlisted: true,
+          },
+        },
+      },
+    });
+
+    // If not authorized, return error
+    if (!campaignAccess) {
+      return res.status(403).json({ message: 'Not authorized to assign UGC credits for this campaign' });
+    }
+
+    const campaign = campaignAccess.campaign;
+    
+    // For V3, we only support client-created campaigns
+    if (campaign.origin !== 'CLIENT') {
+      throw new Error('V3 UGC credits assignment is only for client-created campaigns');
+    }
+
+    // Calculate total credits being assigned
+    const totalCreditsToAssign = creators.reduce((acc: number, creator: any) => acc + (creator.credits || 0), 0);
+    
+    // Check if campaign has enough credits
+    if (campaign.campaignCredits && totalCreditsToAssign > campaign.campaignCredits) {
+      return res.status(400).json({ 
+        message: `Not enough credits available. Campaign has ${campaign.campaignCredits} credits, but trying to assign ${totalCreditsToAssign} credits.` 
+      });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      // Process each creator
+      for (const creator of creators) {
+        if (!creator.credits || creator.credits <= 0) continue;
+
+        console.log(`Assigning ${creator.credits} UGC credits to creator ${creator.id}`);
+
+        // Check if creator is already shortlisted
+        const existingShortlist = await tx.shortListedCreator.findUnique({
+          where: {
+            userId_campaignId: {
+              userId: creator.id,
+              campaignId: campaign.id,
+            },
+          },
+        });
+
+        if (existingShortlist) {
+          // Update existing shortlist with UGC credits
+          await tx.shortListedCreator.update({
+            where: {
+              userId_campaignId: {
+                userId: creator.id,
+                campaignId: campaign.id,
+              },
+            },
+            data: {
+              ugcVideos: creator.credits,
+            },
+          });
+          console.log(`Updated UGC credits for existing shortlisted creator ${creator.id}`);
+        } else {
+          // Create new shortlist entry with UGC credits
+          await tx.shortListedCreator.create({
+            data: {
+              userId: creator.id,
+              campaignId: campaign.id,
+              ugcVideos: creator.credits,
+              currency: 'SGD', // Default currency for V3
+            },
+          });
+          console.log(`Created new shortlist entry with UGC credits for creator ${creator.id}`);
+        }
+      }
+
+      // Update campaign credits tracking fields
+      // Get all shortlisted creators for this campaign to calculate total utilized credits
+      const allShortlistedCreators = await tx.shortListedCreator.findMany({
+        where: { campaignId: campaign.id },
+        select: { ugcVideos: true },
+      });
+      
+      const totalUtilizedCredits = allShortlistedCreators.reduce((acc, creator) => acc + (creator.ugcVideos || 0), 0);
+      
+      if (campaign.campaignCredits) {
+        await tx.campaign.update({
+          where: { id: campaign.id },
+          data: {
+            creditsUtilized: totalUtilizedCredits,
+            creditsPending: campaign.campaignCredits - totalUtilizedCredits,
+          },
+        });
+        console.log(`Updated campaign credits: utilized=${totalUtilizedCredits}, pending=${campaign.campaignCredits - totalUtilizedCredits}`);
+      }
+    });
+
+    return res.status(200).json({ 
+      message: 'Successfully assigned UGC credits to creators',
+      totalCreditsAssigned: totalCreditsToAssign
+    });
+  } catch (error) {
+    console.error('Error assigning UGC credits for V3:', error);
+    return res.status(400).json({
+      message: error instanceof Error ? error.message : 'Failed to assign UGC credits',
+      error,
+    });
+  }
+};
+
 // 3.1 Shortlisting Non-Platform (Guest) Creators
 export const shortlistGuestCreators = async (req: Request, res: Response) => {
   const { campaignId, guestCreators } = req.body;
