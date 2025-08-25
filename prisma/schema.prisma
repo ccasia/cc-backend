@@ -114,6 +114,7 @@ model Admin {
   adminLogs             AdminLog[]              @relation("AdminToAdminLog")
   approvedPitches       Pitch[]                 @relation("ApprovedByAdmin")
   rejectedPitches       Pitch[]                 @relation("RejectedByAdmin")
+  adminCommentedPitches Pitch[]                 @relation("AdminCommenter")
   approvedSubmissions   Submission[]            @relation("ApprovedByAdmin")
   completedAgreements   CreatorAgreement[]      @relation("CompletedByAdmin")
 }
@@ -817,6 +818,9 @@ model Pitch {
   ugcCredits          Int?
   agreementTemplateId String?
   Notification        Notification[]
+  adminComments       String?
+  adminCommentedBy    String?
+  adminCommenter      Admin?         @relation("AdminCommenter", fields: [adminCommentedBy], references: [userId])
   campaign            Campaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   user                User           @relation(fields: [userId], references: [id])
   admin               Admin?         @relation(fields: [approvedByAdminId], references: [userId], name: "ApprovedByAdmin")
@@ -824,7 +828,6 @@ model Pitch {
   rejectedByAdmin     Admin?         @relation("RejectedByAdmin", fields: [rejectedByAdminId], references: [userId])
   rejectedByClient    User?          @relation("RejectedByClient", fields: [rejectedByClientId], references: [id])
   maybeByClient       User?          @relation("MaybeByClient", fields: [maybeByClientId], references: [id])
-
   @@unique([userId, campaignId])
 }
 

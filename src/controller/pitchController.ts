@@ -39,11 +39,13 @@ const getEntityFromSubmissionType = (submissionType: string, userRole?: 'admin' 
 // New Flow: Admin approves pitch and sends to client
 export const approvePitchByAdmin = async (req: Request, res: Response) => {
   const { pitchId } = req.params;
-  const { ugcCredits, feedback } = req.body;
+  const { ugcCredits, feedback, adminComments } = req.body;
   const adminId = req.session.userid;
 
   try {
-    console.log(`Admin ${adminId} approving pitch ${pitchId} with ${ugcCredits} UGC credits`);
+    console.log(
+      `Admin ${adminId} approving pitch ${pitchId} with ${ugcCredits} UGC credits and ${adminComments} comments`,
+    );
 
     const pitch = await prisma.pitch.findUnique({
       where: { id: pitchId },
@@ -84,14 +86,32 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Valid UGC credits are required' });
     }
 
+    const updateData: {
+      status: 'SENT_TO_CLIENT';
+      approvedByAdminId: string;
+      ugcCredits: number;
+      adminComments?: string;
+      adminCommentedBy?: string;
+    } = {
+      status: 'SENT_TO_CLIENT',
+      approvedByAdminId: adminId,
+      ugcCredits: parseInt(ugcCredits),
+    };
+
+    if (adminComments && typeof adminComments === 'string' && adminComments.trim().length > 0) {
+      updateData.adminComments = adminComments.trim();
+      updateData.adminCommentedBy = adminId;
+    }
+
     // Update pitch status to sent to client and store UGC credits
     const updatedPitch = await prisma.pitch.update({
       where: { id: pitchId },
       data: {
-        status: 'SENT_TO_CLIENT',
-        approvedByAdminId: adminId,
-        ugcCredits: parseInt(ugcCredits),
-      },
+  ...updateData,
+  status: 'SENT_TO_CLIENT',
+  approvedByAdminId: adminId,
+  ugcCredits: parseInt(ugcCredits),
+},
       include: {
         campaign: true,
         user: true,
@@ -120,6 +140,7 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
     }
 
     console.log(`Pitch ${pitchId} approved by admin with ${ugcCredits} UGC credits, status updated to SENT_TO_CLIENT`);
+    console.log(adminComments ? `Comments: ${adminComments}` : 'No comments provided');
     return res.status(200).json({
       message: 'Pitch approved and sent to client for review',
       pitch: updatedPitch,
@@ -444,6 +465,7 @@ export const rejectPitchByClient = async (req: Request, res: Response) => {
         rejectedByClientId: clientId,
         rejectionReason: rejectionReason || 'Rejected by client',
         customRejectionText: customRejectionText,
+
       },
     });
 
