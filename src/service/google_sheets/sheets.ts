@@ -219,6 +219,284 @@ export const createCampaignCreatorSpreadSheet = async ({
   }
 };
 
+export const exportCampaignCreatorsToSheet = async ({
+  spreadSheetId,
+  sheetByTitle,
+  campaignId,
+}: {
+  spreadSheetId: string;
+  sheetByTitle: string;
+  campaignId: string;
+}) => {
+  try {
+    const { PrismaClient } = await import('@prisma/client');
+    const prisma = new PrismaClient();
+
+    // Get campaign with shortlisted creators
+    const campaign = await prisma.campaign.findUnique({
+      where: { id: campaignId },
+      include: {
+        shortlisted: {
+          include: {
+            user: {
+              select: {
+                name: true,
+                email: true,
+                phoneNumber: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!campaign) {
+      throw new Error('Campaign not found.');
+    }
+
+    // Get creator data for each shortlisted user
+    const creatorDataPromises = campaign.shortlisted.map(async (shortlistedCreator) => {
+      if (!shortlistedCreator.userId) {
+        return {
+          Name: 'N/A',
+          Email: 'N/A',
+          'Phone Number': 'N/A',
+          'Instagram Handle': 'N/A',
+          'TikTok Handle': 'N/A',
+        };
+      }
+
+      // Get creator with social media data
+      const creator = await prisma.creator.findUnique({
+        where: { userId: shortlistedCreator.userId },
+        include: {
+          instagramUser: {
+            select: {
+              username: true,
+            },
+          },
+          tiktokUser: {
+            select: {
+              display_name: true,
+            },
+          },
+        },
+      });
+
+      return {
+        Campaign: campaign.name,
+        Name: shortlistedCreator.user?.name || 'N/A',
+        Email: shortlistedCreator.user?.email || 'N/A',
+        'Phone Number': shortlistedCreator.user?.phoneNumber || 'N/A',
+        'Instagram Handle': creator?.instagramUser?.username 
+          ? `@${creator.instagramUser.username}` 
+          : 'N/A',
+        'TikTok Handle': creator?.tiktokUser?.display_name 
+          ? `@${creator.tiktokUser.display_name}` 
+          : 'N/A',
+      };
+    });
+
+    const creatorData = await Promise.all(creatorDataPromises);
+
+    // Get the Google Sheet
+    const sheet = await accessGoogleSheetAPI(spreadSheetId);
+    if (!sheet) {
+      throw new Error('Sheet not found.');
+    }
+
+    // Get or create the target sheet
+    let targetSheet = sheet.sheetsByTitle[sheetByTitle];
+    if (!targetSheet) {
+      // Create new sheet if it doesn't exist
+      targetSheet = await sheet.addSheet({ title: sheetByTitle });
+    }
+
+    // Check if headers exist, if not set them
+    try {
+      await targetSheet.loadHeaderRow();
+    } catch (error) {
+      // Headers don't exist, set them
+      await targetSheet.setHeaderRow([
+        'Campaign',
+        'Name',
+        'Email', 
+        'Phone Number',
+        'Instagram Handle',
+        'TikTok Handle'
+      ]);
+    }
+
+    // Add creator data
+    const result = await targetSheet.addRows(creatorData as any);
+
+    await prisma.$disconnect();
+
+    return {
+      success: true,
+      exportedCount: creatorData.length,
+      campaignName: campaign.name,
+      data: creatorData,
+    };
+  } catch (error) {
+    console.error('Error exporting campaign creators:', error);
+    throw new Error(`Failed to export campaign creators: ${error.message}`);
+  }
+};
+
+export const exportAllCampaignCreatorsToSheet = async ({
+  spreadSheetId,
+  sheetByTitle,
+}: {
+  spreadSheetId: string;
+  sheetByTitle: string;
+}) => {
+  try {
+    const { PrismaClient } = await import('@prisma/client');
+    const prisma = new PrismaClient();
+
+    // Get all campaigns with shortlisted creators
+    const campaigns = await prisma.campaign.findMany({
+      where: {
+        status: 'ACTIVE',
+        shortlisted: {
+          some: {} // Only campaigns that have shortlisted creators
+        }
+      },
+      include: {
+        shortlisted: {
+          include: {
+            user: {
+              select: {
+                name: true,
+                email: true,
+                phoneNumber: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (campaigns.length === 0) {
+      throw new Error('No campaigns with creators found.');
+    }
+
+    // Get the Google Sheet
+    const sheet = await accessGoogleSheetAPI(spreadSheetId);
+    if (!sheet) {
+      throw new Error('Sheet not found.');
+    }
+
+    // Get or create the target sheet
+    let targetSheet = sheet.sheetsByTitle[sheetByTitle];
+    if (!targetSheet) {
+      targetSheet = await sheet.addSheet({ title: sheetByTitle });
+    }
+
+    // Check if headers exist, if not set them
+    try {
+      await targetSheet.loadHeaderRow();
+    } catch (error) {
+      // Headers don't exist, set them
+      await targetSheet.setHeaderRow([
+        'Campaign',
+        'Name',
+        'Email', 
+        'Phone Number',
+        'Instagram Handle',
+        'TikTok Handle'
+      ]);
+    }
+
+    let totalExported = 0;
+    const exportedCampaigns = [];
+    const exportedCreators = new Set<string>(); // Track exported creators by email
+
+    // Export each campaign
+    for (const campaign of campaigns) {
+      try {
+        console.log(`Processing campaign: ${campaign.name}`);
+
+        // Get creator data for each shortlisted user
+        const creatorDataPromises = campaign.shortlisted.map(async (shortlistedCreator) => {
+          if (!shortlistedCreator.userId || !shortlistedCreator.user?.email) {
+            return null;
+          }
+
+          // Skip if this creator has already been exported
+          if (exportedCreators.has(shortlistedCreator.user.email)) {
+            console.log(`Skipping already exported creator: ${shortlistedCreator.user.email}`);
+            return null;
+          }
+
+          // Get creator with social media data
+          const creator = await prisma.creator.findUnique({
+            where: { userId: shortlistedCreator.userId },
+            include: {
+              instagramUser: {
+                select: {
+                  username: true,
+                },
+              },
+              tiktokUser: {
+                select: {
+                  display_name: true,
+                },
+              },
+            },
+          });
+
+          return {
+            Campaign: campaign.name,
+            Name: shortlistedCreator.user?.name || 'N/A',
+            Email: shortlistedCreator.user?.email || 'N/A',
+            'Phone Number': shortlistedCreator.user?.phoneNumber || 'N/A',
+            'Instagram Handle': creator?.instagramUser?.username 
+              ? `@${creator.instagramUser.username}` 
+              : 'N/A',
+            'TikTok Handle': creator?.tiktokUser?.display_name 
+              ? `@${creator.tiktokUser.display_name}` 
+              : 'N/A',
+          };
+        });
+
+        const creatorData = await Promise.all(creatorDataPromises);
+        const validCreatorData = creatorData.filter(data => data !== null);
+
+        if (validCreatorData.length > 0) {
+          // Add creator data
+          await targetSheet.addRows(validCreatorData as any);
+
+          // Mark creators as exported
+          validCreatorData.forEach(data => {
+            if (data?.Email && data.Email !== 'N/A') {
+              exportedCreators.add(data.Email);
+            }
+          });
+
+          totalExported += validCreatorData.length;
+          exportedCampaigns.push(campaign.name);
+        }
+      } catch (error) {
+        console.error(`Error exporting campaign ${campaign.name}:`, error);
+      }
+    }
+
+    await prisma.$disconnect();
+
+    return {
+      success: true,
+      totalExportedCount: totalExported,
+      exportedCampaigns,
+      totalCampaigns: exportedCampaigns.length,
+    };
+  } catch (error) {
+    console.error('Error exporting all campaign creators:', error);
+    throw new Error(`Failed to export all campaign creators: ${error.message}`);
+  }
+};
+
 // async function withRetries(fn: any, retries = 3, delay = 1000) {
 //   for (let attempt = 1; attempt <= retries; attempt++) {
 //     try {

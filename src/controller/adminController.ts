@@ -53,3 +53,67 @@ export const disconnectXero = async (req: Request, res: Response) => {
     return res.status(400).json({ message: 'Failed to disconnect xero' });
   }
 };
+
+export const exportCampaignCreators = async (req: Request, res: Response) => {
+  try {
+    const { campaignId } = req.params;
+    const { spreadSheetId, sheetByTitle } = req.body;
+
+    if (!spreadSheetId || !sheetByTitle) {
+      return res.status(400).json({ 
+        message: 'Missing required parameters: spreadSheetId and sheetByTitle' 
+      });
+    }
+
+    // Import the export function using require
+    const sheetsModule = require('../service/google_sheets/sheets');
+    const { exportCampaignCreatorsToSheet } = sheetsModule;
+
+    const result = await exportCampaignCreatorsToSheet({
+      spreadSheetId,
+      sheetByTitle,
+      campaignId,
+    });
+
+    return res.status(200).json({
+      message: `Successfully exported ${result.exportedCount} creators from "${result.campaignName}"`,
+      ...result,
+    });
+  } catch (error) {
+    console.error('Export error:', error);
+    return res.status(500).json({ 
+      message: error.message || 'Failed to export campaign creators' 
+    });
+  }
+};
+
+export const exportAllCampaignCreators = async (req: Request, res: Response) => {
+  try {
+    const { spreadSheetId, sheetByTitle } = req.body;
+
+    if (!spreadSheetId || !sheetByTitle) {
+      return res.status(400).json({ 
+        message: 'Missing required parameters: spreadSheetId and sheetByTitle' 
+      });
+    }
+
+    // Import the export function using require
+    const sheetsModule = require('../service/google_sheets/sheets');
+    const { exportAllCampaignCreatorsToSheet } = sheetsModule;
+
+    const result = await exportAllCampaignCreatorsToSheet({
+      spreadSheetId,
+      sheetByTitle,
+    });
+
+    return res.status(200).json({
+      message: `Successfully exported ${result.totalExportedCount} creators from ${result.totalCampaigns} campaigns`,
+      ...result,
+    });
+  } catch (error) {
+    console.error('Export error:', error);
+    return res.status(500).json({ 
+      message: error.message || 'Failed to export all campaign creators' 
+    });
+  }
+};
