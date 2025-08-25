@@ -54,15 +54,15 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
               include: {
                 admin: {
                   include: {
-                    user: true
-                  }
-                }
-              }
-            }
-          }
+                    user: true,
+                  },
+                },
+              },
+            },
+          },
         },
-        user: true
-      }
+        user: true,
+      },
     });
 
     if (!pitch) {
@@ -90,21 +90,21 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
       data: {
         status: 'SENT_TO_CLIENT',
         approvedByAdminId: adminId,
-        ugcCredits: parseInt(ugcCredits)
+        ugcCredits: parseInt(ugcCredits),
       },
       include: {
         campaign: true,
         user: true,
         admin: {
           include: {
-            user: true
-          }
-        }
-      }
+            user: true,
+          },
+        },
+      },
     });
 
     // Find client users for this campaign
-    const clientUsers = pitch.campaign.campaignAdmin.filter(ca => ca.admin.user.role === 'client');
+    const clientUsers = pitch.campaign.campaignAdmin.filter((ca) => ca.admin.user.role === 'client');
 
     for (const clientUser of clientUsers) {
       await prisma.notification.create({
@@ -114,17 +114,16 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
           entity: 'Pitch',
           campaignId: pitch.campaignId,
           pitchId: pitchId,
-          userId: clientUser.admin.userId
-        }
+          userId: clientUser.admin.userId,
+        },
       });
     }
 
     console.log(`Pitch ${pitchId} approved by admin with ${ugcCredits} UGC credits, status updated to SENT_TO_CLIENT`);
-    return res.status(200).json({ 
+    return res.status(200).json({
       message: 'Pitch approved and sent to client for review',
-      pitch: updatedPitch
+      pitch: updatedPitch,
     });
-
   } catch (error) {
     console.error('Error approving pitch by admin:', error);
     return res.status(500).json({ message: 'Failed to approve pitch' });
@@ -144,8 +143,8 @@ export const rejectPitchByAdmin = async (req: Request, res: Response) => {
       where: { id: pitchId },
       include: {
         campaign: true,
-        user: true
-      }
+        user: true,
+      },
     });
 
     if (!pitch) {
@@ -168,16 +167,16 @@ export const rejectPitchByAdmin = async (req: Request, res: Response) => {
       data: {
         status: 'REJECTED',
         rejectedByAdminId: adminId,
-        rejectionReason: rejectionReason || 'Rejected by admin'
-      }
+        rejectionReason: rejectionReason || 'Rejected by admin',
+      },
     });
 
     // Remove creator from campaign
     await prisma.shortListedCreator.deleteMany({
       where: {
         userId: pitch.userId,
-        campaignId: pitch.campaignId
-      }
+        campaignId: pitch.campaignId,
+      },
     });
 
     // Create notification for creator
@@ -188,13 +187,12 @@ export const rejectPitchByAdmin = async (req: Request, res: Response) => {
         entity: 'Pitch',
         campaignId: pitch.campaignId,
         pitchId: pitchId,
-        userId: pitch.userId
-      }
+        userId: pitch.userId,
+      },
     });
 
     console.log(`Pitch ${pitchId} rejected by admin, creator removed from campaign`);
     return res.status(200).json({ message: 'Pitch rejected and creator removed from campaign' });
-
   } catch (error) {
     console.error('Error rejecting pitch by admin:', error);
     return res.status(500).json({ message: 'Failed to reject pitch' });
@@ -218,22 +216,24 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
               include: {
                 admin: {
                   include: {
-                    user: true
-                  }
-                }
-              }
-            }
-          }
+                    user: true,
+                  },
+                },
+              },
+            },
+          },
         },
-        user: true
-      }
+        user: true,
+      },
     });
 
     if (!pitch) {
       return res.status(404).json({ message: 'Pitch not found' });
     }
 
-    console.log(`Client approval attempt - Pitch ID: ${pitchId}, Current status: ${pitch.status}, Client ID: ${clientId}`);
+    console.log(
+      `Client approval attempt - Pitch ID: ${pitchId}, Current status: ${pitch.status}, Client ID: ${clientId}`,
+    );
 
     // Check if this is a client-created campaign
     if (pitch.campaign.origin !== 'CLIENT') {
@@ -247,14 +247,14 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
 
     // Check if pitch is in correct status
     if (pitch.status !== 'SENT_TO_CLIENT') {
-      return res.status(400).json({ 
-        message: `Pitch is not in correct status for client approval. Current status: ${pitch.status}, Expected: SENT_TO_CLIENT` 
+      return res.status(400).json({
+        message: `Pitch is not in correct status for client approval. Current status: ${pitch.status}, Expected: SENT_TO_CLIENT`,
       });
     }
 
     // Verify client has access to this campaign
-    const clientAccess = pitch.campaign.campaignAdmin.find(ca => 
-      ca.admin.userId === clientId && ca.admin.user.role === 'client'
+    const clientAccess = pitch.campaign.campaignAdmin.find(
+      (ca) => ca.admin.userId === clientId && ca.admin.user.role === 'client',
     );
 
     if (!clientAccess) {
@@ -266,8 +266,8 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
       where: { id: pitchId },
       data: {
         status: 'APPROVED',
-        approvedByClientId: clientId
-      }
+        approvedByClientId: clientId,
+      },
     });
 
     // Create ShortListedCreator record for V3 approved pitches
@@ -276,17 +276,17 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
       where: {
         userId_campaignId: {
           userId: pitch.userId,
-          campaignId: pitch.campaignId
-        }
+          campaignId: pitch.campaignId,
+        },
       },
       update: {
-        isAgreementReady: false // Not ready yet, waiting for agreement setup
+        isAgreementReady: false, // Not ready yet, waiting for agreement setup
       },
       create: {
         userId: pitch.userId,
         campaignId: pitch.campaignId,
-        isAgreementReady: false // Not ready yet, waiting for agreement setup
-      }
+        isAgreementReady: false, // Not ready yet, waiting for agreement setup
+      },
     });
 
     // Create submission records for V3 approved pitches (similar to V2 shortlisting)
@@ -335,7 +335,7 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
                 submissionType: true,
               },
             });
-          })
+          }),
         );
 
         // Create dependencies between submissions
@@ -359,8 +359,8 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
     }
 
     // Find admin users for this campaign
-    const adminUsers = pitch.campaign.campaignAdmin.filter(ca => 
-      ca.admin.user.role === 'admin' || ca.admin.user.role === 'superadmin'
+    const adminUsers = pitch.campaign.campaignAdmin.filter(
+      (ca) => ca.admin.user.role === 'admin' || ca.admin.user.role === 'superadmin',
     );
 
     for (const adminUser of adminUsers) {
@@ -371,14 +371,13 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
           entity: 'Pitch',
           campaignId: pitch.campaignId,
           pitchId: pitchId,
-          userId: adminUser.admin.userId
-        }
+          userId: adminUser.admin.userId,
+        },
       });
     }
 
     console.log(`Pitch ${pitchId} approved by client, status updated to APPROVED`);
     return res.status(200).json({ message: 'Pitch approved by client' });
-
   } catch (error) {
     console.error('Error approving pitch by client:', error);
     return res.status(500).json({ message: 'Failed to approve pitch' });
@@ -388,7 +387,7 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
 // V3 Flow: Client rejects pitch for client-created campaign
 export const rejectPitchByClient = async (req: Request, res: Response) => {
   const { pitchId } = req.params;
-  const { rejectionReason } = req.body;
+  const { rejectionReason, customRejectionText } = req.body;
   const clientId = req.session.userid;
 
   try {
@@ -403,15 +402,15 @@ export const rejectPitchByClient = async (req: Request, res: Response) => {
               include: {
                 admin: {
                   include: {
-                    user: true
-                  }
-                }
-              }
-            }
-          }
+                    user: true,
+                  },
+                },
+              },
+            },
+          },
         },
-        user: true
-      }
+        user: true,
+      },
     });
 
     if (!pitch) {
@@ -429,8 +428,8 @@ export const rejectPitchByClient = async (req: Request, res: Response) => {
     }
 
     // Verify client has access to this campaign
-    const clientAccess = pitch.campaign.campaignAdmin.find(ca => 
-      ca.admin.userId === clientId && ca.admin.user.role === 'client'
+    const clientAccess = pitch.campaign.campaignAdmin.find(
+      (ca) => ca.admin.userId === clientId && ca.admin.user.role === 'client',
     );
 
     if (!clientAccess) {
@@ -443,16 +442,17 @@ export const rejectPitchByClient = async (req: Request, res: Response) => {
       data: {
         status: 'REJECTED',
         rejectedByClientId: clientId,
-        rejectionReason: rejectionReason || 'Rejected by client'
-      }
+        rejectionReason: rejectionReason || 'Rejected by client',
+        customRejectionText: customRejectionText,
+      },
     });
 
     // Remove creator from campaign
     await prisma.shortListedCreator.deleteMany({
       where: {
         userId: pitch.userId,
-        campaignId: pitch.campaignId
-      }
+        campaignId: pitch.campaignId,
+      },
     });
 
     // Create notification for creator
@@ -463,13 +463,13 @@ export const rejectPitchByClient = async (req: Request, res: Response) => {
         entity: 'Pitch',
         campaignId: pitch.campaignId,
         pitchId: pitchId,
-        userId: pitch.userId
-      }
+        userId: pitch.userId,
+      },
     });
 
     // Create notification for admin
-    const adminUsers = pitch.campaign.campaignAdmin.filter(ca => 
-      ca.admin.user.role === 'admin' || ca.admin.user.role === 'superadmin'
+    const adminUsers = pitch.campaign.campaignAdmin.filter(
+      (ca) => ca.admin.user.role === 'admin' || ca.admin.user.role === 'superadmin',
     );
 
     for (const adminUser of adminUsers) {
@@ -480,17 +480,116 @@ export const rejectPitchByClient = async (req: Request, res: Response) => {
           entity: 'Pitch',
           campaignId: pitch.campaignId,
           pitchId: pitchId,
-          userId: adminUser.admin.userId
-        }
+          userId: adminUser.admin.userId,
+        },
       });
     }
 
     console.log(`Pitch ${pitchId} rejected by client, creator removed from campaign`);
     return res.status(200).json({ message: 'Pitch rejected and creator removed from campaign' });
-
   } catch (error) {
     console.error('Error rejecting pitch by client:', error);
     return res.status(500).json({ message: 'Failed to reject pitch' });
+  }
+};
+
+// V3.1 Flow: Client maybe option
+export const maybePitchByClient = async (req: Request, res: Response) => {
+  const { pitchId } = req.params;
+  const { rejectionReason, customRejectionText } = req.body;
+  const clientId = req.session.userid;
+
+  try {
+    console.log(`Client ${clientId} setting pitch ${pitchId} to maybe`);
+
+    const pitch = await prisma.pitch.findUnique({
+      where: { id: pitchId },
+      include: {
+        campaign: {
+          include: {
+            campaignAdmin: {
+              include: {
+                admin: {
+                  include: {
+                    user: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+        user: true,
+      },
+    });
+
+    if (!pitch) {
+      return res.status(404).json({ message: 'Pitch not found' });
+    }
+
+    // Check if this is a client-created campaign
+    if (pitch.campaign.origin !== 'CLIENT') {
+      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
+    }
+
+    // Check if pitch is in correct status
+    if (pitch.status !== 'SENT_TO_CLIENT') {
+      return res.status(400).json({ message: 'Pitch is not in correct status for client action' });
+    }
+
+    // Verify client has access to this campaign
+    const clientAccess = pitch.campaign.campaignAdmin.find(
+      (ca) => ca.admin.userId === clientId && ca.admin.user.role === 'client',
+    );
+
+    if (!clientAccess) {
+      return res.status(403).json({ message: 'Client not authorized for this campaign' });
+    }
+
+    await prisma.pitch.update({
+      where: { id: pitchId },
+      data: {
+        status: 'MAYBE',
+        maybeByClientId: clientId,
+        rejectionReason: rejectionReason,
+        customRejectionText: customRejectionText,
+      },
+    });
+
+    // Create notification for creator
+    await prisma.notification.create({
+      data: {
+        title: 'Pitch Under Consideration',
+        message: `Your pitch for campaign "${pitch.campaign.name}" is under consideration by the client.`,
+        entity: 'Pitch',
+        campaignId: pitch.campaignId,
+        pitchId: pitchId,
+        userId: pitch.userId,
+      },
+    });
+
+    // Create notification for admin
+    const adminUsers = pitch.campaign.campaignAdmin.filter(
+      (ca) => ca.admin.user.role === 'admin' || ca.admin.user.role === 'superadmin',
+    );
+
+    for (const adminUser of adminUsers) {
+      await prisma.notification.create({
+        data: {
+          title: 'Pitch Set to Maybe by Client',
+          message: `A pitch for campaign "${pitch.campaign.name}" has been set to maybe by client.`,
+          entity: 'Pitch',
+          campaignId: pitch.campaignId,
+          pitchId: pitchId,
+          userId: adminUser.admin.userId,
+        },
+      });
+    }
+
+    console.log(`Pitch ${pitchId} set to maybe by client`);
+    return res.status(200).json({ message: 'Pitch status updated to maybe' });
+  } catch (error) {
+    console.error('Error setting pitch to maybe by client:', error);
+    return res.status(500).json({ message: 'Failed to update pitch status' });
   }
 };
 
@@ -507,8 +606,8 @@ export const setPitchAgreement = async (req: Request, res: Response) => {
       where: { id: pitchId },
       include: {
         campaign: true,
-        user: true
-      }
+        user: true,
+      },
     });
 
     if (!pitch) {
@@ -531,8 +630,8 @@ export const setPitchAgreement = async (req: Request, res: Response) => {
       data: {
         status: 'AGREEMENT_PENDING',
         amount: amount ? (typeof amount === 'string' ? parseInt(amount) : amount) : null,
-        agreementTemplateId: agreementTemplateId
-      }
+        agreementTemplateId: agreementTemplateId,
+      },
     });
 
     // Create notification for creator
@@ -543,13 +642,12 @@ export const setPitchAgreement = async (req: Request, res: Response) => {
         entity: 'Pitch',
         campaignId: pitch.campaignId,
         pitchId: pitchId,
-        userId: pitch.userId
-      }
+        userId: pitch.userId,
+      },
     });
 
     console.log(`Agreement set for pitch ${pitchId}, status updated to PENDING_CREATOR_AGREEMENT`);
     return res.status(200).json({ message: 'Agreement set and sent to creator for review' });
-
   } catch (error) {
     console.error('Error setting pitch agreement:', error);
     return res.status(500).json({ message: 'Failed to set agreement' });
@@ -573,15 +671,15 @@ export const submitAgreement = async (req: Request, res: Response) => {
               include: {
                 admin: {
                   include: {
-                    user: true
-                  }
-                }
-              }
-            }
-          }
+                    user: true,
+                  },
+                },
+              },
+            },
+          },
         },
-        user: true
-      }
+        user: true,
+      },
     });
 
     if (!pitch) {
@@ -608,8 +706,8 @@ export const submitAgreement = async (req: Request, res: Response) => {
       where: { id: pitchId },
       data: {
         status: 'AGREEMENT_SUBMITTED',
-        completedAt: new Date()
-      }
+        completedAt: new Date(),
+      },
     });
 
     // Update submission status from IN_PROGRESS to PENDING_REVIEW
@@ -618,20 +716,20 @@ export const submitAgreement = async (req: Request, res: Response) => {
         userId: pitch.userId,
         campaignId: pitch.campaignId,
         submissionType: {
-          type: 'AGREEMENT_FORM'
-        }
+          type: 'AGREEMENT_FORM',
+        },
       },
       data: {
-        status: 'PENDING_REVIEW'
-      }
+        status: 'PENDING_REVIEW',
+      },
     });
 
     // Note: Creator agreement record creation skipped due to schema mismatch
     // TODO: Update CreatorAgreement model to match V3 flow requirements
 
     // Create notification for admin and client
-    const adminAndClientUsers = pitch.campaign.campaignAdmin.filter(ca => 
-      ca.admin.user.role === 'admin' || ca.admin.user.role === 'superadmin' || ca.admin.user.role === 'client'
+    const adminAndClientUsers = pitch.campaign.campaignAdmin.filter(
+      (ca) => ca.admin.user.role === 'admin' || ca.admin.user.role === 'superadmin' || ca.admin.user.role === 'client',
     );
 
     for (const user of adminAndClientUsers) {
@@ -642,14 +740,13 @@ export const submitAgreement = async (req: Request, res: Response) => {
           entity: 'Pitch',
           campaignId: pitch.campaignId,
           pitchId: pitchId,
-          userId: user.admin.userId
-        }
+          userId: user.admin.userId,
+        },
       });
     }
 
     console.log(`Agreement submitted for pitch ${pitchId}, status updated to AGREEMENT_SUBMITTED`);
     return res.status(200).json({ message: 'Agreement submitted successfully' });
-
   } catch (error) {
     console.error('Error submitting agreement:', error);
     return res.status(500).json({ message: 'Failed to submit agreement' });
@@ -665,7 +762,7 @@ export const getPitchesV3 = async (req: Request, res: Response) => {
     // Get user role
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { role: true }
+      select: { role: true },
     });
 
     if (!user) {
@@ -687,28 +784,28 @@ export const getPitchesV3 = async (req: Request, res: Response) => {
       where: {
         ...whereClause,
         campaign: {
-          origin: 'CLIENT'
-        }
+          origin: 'CLIENT',
+        },
       },
       include: {
         campaign: true,
         user: true,
         admin: {
           include: {
-            user: true
-          }
+            user: true,
+          },
         },
         client: true,
         rejectedByAdmin: {
           include: {
-            user: true
-          }
+            user: true,
+          },
         },
-        rejectedByClient: true
+        rejectedByClient: true,
       },
       orderBy: {
-        createdAt: 'desc'
-      }
+        createdAt: 'desc',
+      },
     });
 
     // Transform pitches to show role-based status and filter for clients
@@ -725,9 +822,9 @@ export const getPitchesV3 = async (req: Request, res: Response) => {
         // For admin and creators: show all pitches
         return true;
       })
-      .map(pitch => {
+      .map((pitch) => {
         let displayStatus = pitch.status;
-        
+
         // Role-based status display logic
         if (user.role === 'admin' || user.role === 'superadmin') {
           // Admin sees: PENDING_REVIEW -> PENDING_REVIEW, SENT_TO_CLIENT -> SENT_TO_CLIENT, APPROVED -> APPROVED
@@ -750,12 +847,11 @@ export const getPitchesV3 = async (req: Request, res: Response) => {
 
         return {
           ...pitch,
-          displayStatus // Add display status for frontend
+          displayStatus, // Add display status for frontend
         };
       });
 
     return res.status(200).json(transformedPitches);
-
   } catch (error) {
     console.error('Error getting v3 pitches:', error);
     return res.status(500).json({ message: 'Failed to get pitches' });
@@ -771,7 +867,7 @@ export const getPitchByIdV3 = async (req: Request, res: Response) => {
     // Get user role
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { role: true }
+      select: { role: true },
     });
 
     if (!user) {
@@ -785,17 +881,17 @@ export const getPitchByIdV3 = async (req: Request, res: Response) => {
         user: true,
         admin: {
           include: {
-            user: true
-          }
+            user: true,
+          },
         },
         client: true,
         rejectedByAdmin: {
           include: {
-            user: true
-          }
+            user: true,
+          },
         },
-        rejectedByClient: true
-      }
+        rejectedByClient: true,
+      },
     });
 
     if (!pitch) {
@@ -815,7 +911,7 @@ export const getPitchByIdV3 = async (req: Request, res: Response) => {
 
     // Transform pitch to show role-based status
     let displayStatus = pitch.status;
-    
+
     // Role-based status display logic
     if (user.role === 'admin' || user.role === 'superadmin') {
       // Admin sees: PENDING_REVIEW -> PENDING_REVIEW, SENT_TO_CLIENT -> SENT_TO_CLIENT, APPROVED -> APPROVED
@@ -834,16 +930,15 @@ export const getPitchByIdV3 = async (req: Request, res: Response) => {
 
     const transformedPitch = {
       ...pitch,
-      displayStatus // Add display status for frontend
+      displayStatus, // Add display status for frontend
     };
 
     return res.status(200).json(transformedPitch);
-
   } catch (error) {
     console.error('Error getting pitch by ID:', error);
     return res.status(500).json({ message: 'Failed to get pitch' });
   }
-}; 
+};
 
 // V3 Draft Submission Flow Functions
 
@@ -867,14 +962,14 @@ export const submitDraftV3 = async (req: Request, res: Response) => {
               include: {
                 admin: {
                   include: {
-                    user: true
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
+                    user: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
     });
 
     if (!submission) {
@@ -893,14 +988,14 @@ export const submitDraftV3 = async (req: Request, res: Response) => {
 
     // Check if submission is in correct status
     if (submission.status !== 'IN_PROGRESS' && submission.status !== 'CHANGES_REQUIRED') {
-      return res.status(400).json({ 
-        message: `Submission is not in correct status for draft submission. Current status: ${submission.status}` 
+      return res.status(400).json({
+        message: `Submission is not in correct status for draft submission. Current status: ${submission.status}`,
       });
     }
 
     // Handle file uploads (simplified for now - you can add the full file processing logic here)
     // This is a placeholder - you'll need to implement the actual file upload logic
-    
+
     // Update submission status to PENDING_REVIEW (admin review)
     await prisma.submission.update({
       where: { id: submissionId },
@@ -909,13 +1004,13 @@ export const submitDraftV3 = async (req: Request, res: Response) => {
         submissionDate: new Date(),
         content: caption || null,
         photosDriveLink: photosDriveLink || null,
-        rawFootagesDriveLink: rawFootagesDriveLink || null
-      }
+        rawFootagesDriveLink: rawFootagesDriveLink || null,
+      },
     });
 
     // Create notification for admin users
-    const adminUsers = submission.campaign.campaignAdmin.filter(ca => 
-      ca.admin.user.role === 'admin' || ca.admin.user.role === 'superadmin'
+    const adminUsers = submission.campaign.campaignAdmin.filter(
+      (ca) => ca.admin.user.role === 'admin' || ca.admin.user.role === 'superadmin',
     );
 
     for (const adminUser of adminUsers) {
@@ -925,14 +1020,13 @@ export const submitDraftV3 = async (req: Request, res: Response) => {
           message: `A ${submission.submissionType.type.toLowerCase().replace('_', ' ')} has been submitted for campaign "${submission.campaign.name}".`,
           entity: 'Draft',
           campaignId: submission.campaignId,
-          userId: adminUser.admin.userId
-        }
+          userId: adminUser.admin.userId,
+        },
       });
     }
 
     console.log(`Draft submitted for submission ${submissionId}, status updated to PENDING_REVIEW`);
     return res.status(200).json({ message: 'Draft submitted successfully for admin review' });
-
   } catch (error) {
     console.error('Error submitting draft V3:', error);
     return res.status(500).json({ message: 'Failed to submit draft' });
@@ -958,14 +1052,14 @@ export const approveDraftByAdminV3 = async (req: Request, res: Response) => {
               include: {
                 admin: {
                   include: {
-                    user: true
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
+                    user: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
     });
 
     if (!submission) {
@@ -979,8 +1073,8 @@ export const approveDraftByAdminV3 = async (req: Request, res: Response) => {
 
     // Check if submission is in correct status
     if (submission.status !== 'PENDING_REVIEW') {
-      return res.status(400).json({ 
-        message: `Submission is not in correct status for admin approval. Current status: ${submission.status}` 
+      return res.status(400).json({
+        message: `Submission is not in correct status for admin approval. Current status: ${submission.status}`,
       });
     }
 
@@ -990,8 +1084,8 @@ export const approveDraftByAdminV3 = async (req: Request, res: Response) => {
       data: {
         status: 'SENT_TO_CLIENT',
         approvedByAdminId: adminId,
-        completedAt: new Date()
-      }
+        completedAt: new Date(),
+      },
     });
 
     // Add feedback if provided
@@ -1001,15 +1095,13 @@ export const approveDraftByAdminV3 = async (req: Request, res: Response) => {
           content: feedback,
           type: 'COMMENT',
           adminId: adminId,
-          submissionId: submissionId
-        }
+          submissionId: submissionId,
+        },
       });
     }
 
     // Create notification for client users
-    const clientUsers = submission.campaign.campaignAdmin.filter(ca => 
-      ca.admin.user.role === 'client'
-    );
+    const clientUsers = submission.campaign.campaignAdmin.filter((ca) => ca.admin.user.role === 'client');
 
     for (const clientUser of clientUsers) {
       await prisma.notification.create({
@@ -1018,14 +1110,13 @@ export const approveDraftByAdminV3 = async (req: Request, res: Response) => {
           message: `A ${submission.submissionType.type.toLowerCase().replace('_', ' ')} has been approved by admin and sent to you for review.`,
           entity: 'Draft',
           campaignId: submission.campaignId,
-          userId: clientUser.admin.userId
-        }
+          userId: clientUser.admin.userId,
+        },
       });
     }
 
     console.log(`Draft ${submissionId} approved by admin, status updated to SENT_TO_CLIENT`);
     return res.status(200).json({ message: 'Draft approved and sent to client for review' });
-
   } catch (error) {
     console.error('Error approving draft by admin V3:', error);
     return res.status(500).json({ message: 'Failed to approve draft' });
@@ -1045,8 +1136,8 @@ export const requestChangesByAdminV3 = async (req: Request, res: Response) => {
       include: {
         submissionType: true,
         user: true,
-        campaign: true
-      }
+        campaign: true,
+      },
     });
 
     if (!submission) {
@@ -1060,8 +1151,8 @@ export const requestChangesByAdminV3 = async (req: Request, res: Response) => {
 
     // Check if submission is in correct status
     if (submission.status !== 'PENDING_REVIEW') {
-      return res.status(400).json({ 
-        message: `Submission is not in correct status for changes request. Current status: ${submission.status}` 
+      return res.status(400).json({
+        message: `Submission is not in correct status for changes request. Current status: ${submission.status}`,
       });
     }
 
@@ -1071,8 +1162,8 @@ export const requestChangesByAdminV3 = async (req: Request, res: Response) => {
       data: {
         status: 'CHANGES_REQUIRED',
         approvedByAdminId: adminId,
-        completedAt: new Date()
-      }
+        completedAt: new Date(),
+      },
     });
 
     // Add feedback
@@ -1082,8 +1173,8 @@ export const requestChangesByAdminV3 = async (req: Request, res: Response) => {
         type: 'REASON',
         reasons: reasons,
         adminId: adminId,
-        submissionId: submissionId
-      }
+        submissionId: submissionId,
+      },
     });
 
     // Create notification for creator
@@ -1093,13 +1184,12 @@ export const requestChangesByAdminV3 = async (req: Request, res: Response) => {
         message: `Changes have been requested for your ${submission.submissionType.type.toLowerCase().replace('_', ' ')} in campaign "${submission.campaign.name}".`,
         entity: 'Draft',
         campaignId: submission.campaignId,
-        userId: submission.userId
-      }
+        userId: submission.userId,
+      },
     });
 
     console.log(`Changes requested for draft ${submissionId}, status updated to CHANGES_REQUIRED`);
     return res.status(200).json({ message: 'Changes requested successfully' });
-
   } catch (error) {
     console.error('Error requesting changes by admin V3:', error);
     return res.status(500).json({ message: 'Failed to request changes' });
@@ -1125,14 +1215,14 @@ export const approveDraftByClientV3 = async (req: Request, res: Response) => {
               include: {
                 admin: {
                   include: {
-                    user: true
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
+                    user: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
     });
 
     if (!submission) {
@@ -1146,14 +1236,14 @@ export const approveDraftByClientV3 = async (req: Request, res: Response) => {
 
     // Check if submission is in correct status
     if (submission.status !== 'SENT_TO_CLIENT') {
-      return res.status(400).json({ 
-        message: `Submission is not in correct status for client approval. Current status: ${submission.status}` 
+      return res.status(400).json({
+        message: `Submission is not in correct status for client approval. Current status: ${submission.status}`,
       });
     }
 
     // Verify client has access to this campaign
-    const clientAccess = submission.campaign.campaignAdmin.find(ca => 
-      ca.admin.userId === clientId && ca.admin.user.role === 'client'
+    const clientAccess = submission.campaign.campaignAdmin.find(
+      (ca) => ca.admin.userId === clientId && ca.admin.user.role === 'client',
     );
 
     if (!clientAccess) {
@@ -1165,8 +1255,8 @@ export const approveDraftByClientV3 = async (req: Request, res: Response) => {
       where: { id: submissionId },
       data: {
         status: 'CLIENT_APPROVED',
-        completedAt: new Date()
-      }
+        completedAt: new Date(),
+      },
     });
 
     // Add feedback if provided
@@ -1176,8 +1266,8 @@ export const approveDraftByClientV3 = async (req: Request, res: Response) => {
           content: feedback,
           type: 'COMMENT',
           adminId: clientId,
-          submissionId: submissionId
-        }
+          submissionId: submissionId,
+        },
       });
     }
 
@@ -1193,9 +1283,9 @@ export const approveDraftByClientV3 = async (req: Request, res: Response) => {
           userId: submission.userId,
           campaignId: submission.campaignId,
           submissionType: {
-            type: submission.submissionType.type === 'FIRST_DRAFT' ? 'FINAL_DRAFT' : 'POSTING'
-          }
-        }
+            type: submission.submissionType.type === 'FIRST_DRAFT' ? 'FINAL_DRAFT' : 'POSTING',
+          },
+        },
       });
 
       if (nextSubmission) {
@@ -1203,15 +1293,15 @@ export const approveDraftByClientV3 = async (req: Request, res: Response) => {
           where: { id: nextSubmission.id },
           data: {
             status: 'IN_PROGRESS',
-            nextsubmissionDate: new Date()
-          }
+            nextsubmissionDate: new Date(),
+          },
         });
       }
     }
 
     // Create notification for admin and creator
-    const adminUsers = submission.campaign.campaignAdmin.filter(ca => 
-      ca.admin.user.role === 'admin' || ca.admin.user.role === 'superadmin'
+    const adminUsers = submission.campaign.campaignAdmin.filter(
+      (ca) => ca.admin.user.role === 'admin' || ca.admin.user.role === 'superadmin',
     );
 
     // Determine entity based on submission type - this is a client action
@@ -1224,8 +1314,8 @@ export const approveDraftByClientV3 = async (req: Request, res: Response) => {
           message: `A ${submission.submissionType.type.toLowerCase().replace('_', ' ')} has been approved by client for campaign "${submission.campaign.name}".`,
           entity: clientEntity as any,
           campaignId: submission.campaignId,
-          userId: adminUser.admin.userId
-        }
+          userId: adminUser.admin.userId,
+        },
       });
     }
 
@@ -1238,13 +1328,12 @@ export const approveDraftByClientV3 = async (req: Request, res: Response) => {
         message: `Your ${submission.submissionType.type.toLowerCase().replace('_', ' ')} has been approved by client for campaign "${submission.campaign.name}".`,
         entity: creatorEntity as any,
         campaignId: submission.campaignId,
-        userId: submission.userId
-      }
+        userId: submission.userId,
+      },
     });
 
     console.log(`Draft ${submissionId} approved by client, status updated to CLIENT_APPROVED`);
     return res.status(200).json({ message: 'Draft approved by client' });
-
   } catch (error) {
     console.error('Error approving draft by client V3:', error);
     return res.status(500).json({ message: 'Failed to approve draft' });
@@ -1270,14 +1359,14 @@ export const requestChangesByClientV3 = async (req: Request, res: Response) => {
               include: {
                 admin: {
                   include: {
-                    user: true
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
+                    user: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
     });
 
     if (!submission) {
@@ -1291,14 +1380,14 @@ export const requestChangesByClientV3 = async (req: Request, res: Response) => {
 
     // Check if submission is in correct status
     if (submission.status !== 'SENT_TO_CLIENT') {
-      return res.status(400).json({ 
-        message: `Submission is not in correct status for changes request. Current status: ${submission.status}` 
+      return res.status(400).json({
+        message: `Submission is not in correct status for changes request. Current status: ${submission.status}`,
       });
     }
 
     // Verify client has access to this campaign
-    const clientAccess = submission.campaign.campaignAdmin.find(ca => 
-      ca.admin.userId === clientId && ca.admin.user.role === 'client'
+    const clientAccess = submission.campaign.campaignAdmin.find(
+      (ca) => ca.admin.userId === clientId && ca.admin.user.role === 'client',
     );
 
     if (!clientAccess) {
@@ -1310,8 +1399,8 @@ export const requestChangesByClientV3 = async (req: Request, res: Response) => {
       where: { id: submissionId },
       data: {
         status: 'SENT_TO_ADMIN',
-        completedAt: new Date()
-      }
+        completedAt: new Date(),
+      },
     });
 
     // Add feedback
@@ -1321,13 +1410,13 @@ export const requestChangesByClientV3 = async (req: Request, res: Response) => {
         type: 'REASON',
         reasons: reasons,
         adminId: clientId,
-        submissionId: submissionId
-      }
+        submissionId: submissionId,
+      },
     });
 
     // Create notification for admin
-    const adminUsers = submission.campaign.campaignAdmin.filter(ca => 
-      ca.admin.user.role === 'admin' || ca.admin.user.role === 'superadmin'
+    const adminUsers = submission.campaign.campaignAdmin.filter(
+      (ca) => ca.admin.user.role === 'admin' || ca.admin.user.role === 'superadmin',
     );
 
     // Determine entity based on submission type
@@ -1340,14 +1429,13 @@ export const requestChangesByClientV3 = async (req: Request, res: Response) => {
           message: `Client has requested changes for ${submission.submissionType.type.toLowerCase().replace('_', ' ')} in campaign "${submission.campaign.name}".`,
           entity: entity as any,
           campaignId: submission.campaignId,
-          userId: adminUser.admin.userId
-        }
+          userId: adminUser.admin.userId,
+        },
       });
     }
 
     console.log(`Changes requested by client for draft ${submissionId}, status updated to SENT_TO_ADMIN`);
     return res.status(200).json({ message: 'Changes requested by client' });
-
   } catch (error) {
     console.error('Error requesting changes by client V3:', error);
     return res.status(500).json({ message: 'Failed to request changes' });
@@ -1367,8 +1455,8 @@ export const forwardClientFeedbackV3 = async (req: Request, res: Response) => {
       include: {
         submissionType: true,
         user: true,
-        campaign: true
-      }
+        campaign: true,
+      },
     });
 
     if (!submission) {
@@ -1382,8 +1470,8 @@ export const forwardClientFeedbackV3 = async (req: Request, res: Response) => {
 
     // Check if submission is in correct status - allow both SENT_TO_ADMIN and CHANGES_REQUIRED
     if (submission.status !== 'SENT_TO_ADMIN' && submission.status !== 'CHANGES_REQUIRED') {
-      return res.status(400).json({ 
-        message: `Submission is not in correct status for forwarding feedback. Current status: ${submission.status}` 
+      return res.status(400).json({
+        message: `Submission is not in correct status for forwarding feedback. Current status: ${submission.status}`,
       });
     }
 
@@ -1392,8 +1480,8 @@ export const forwardClientFeedbackV3 = async (req: Request, res: Response) => {
       await prisma.submission.update({
         where: { id: submissionId },
         data: {
-          status: 'CHANGES_REQUIRED'
-        }
+          status: 'CHANGES_REQUIRED',
+        },
       });
     }
 
@@ -1404,8 +1492,8 @@ export const forwardClientFeedbackV3 = async (req: Request, res: Response) => {
           content: adminFeedback,
           type: 'COMMENT',
           adminId: adminId,
-          submissionId: submissionId
-        }
+          submissionId: submissionId,
+        },
       });
     }
 
@@ -1418,15 +1506,14 @@ export const forwardClientFeedbackV3 = async (req: Request, res: Response) => {
         message: `Changes have been requested for your ${submission.submissionType.type.toLowerCase().replace('_', ' ')} in campaign "${submission.campaign.name}". Please review the feedback and resubmit.`,
         entity: adminEntity as any,
         campaignId: submission.campaignId,
-        userId: submission.userId
-      }
+        userId: submission.userId,
+      },
     });
 
     console.log(`Client feedback forwarded for submission ${submissionId}, status updated to CHANGES_REQUIRED`);
     return res.status(200).json({ message: 'Client feedback forwarded to creator' });
-
   } catch (error) {
     console.error('Error forwarding client feedback V3:', error);
     return res.status(500).json({ message: 'Failed to forward feedback' });
   }
-}; 
+};

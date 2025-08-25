@@ -49,6 +49,7 @@ model User {
   pitch              Pitch[]
   approvedPitches    Pitch[]              @relation("ApprovedByClient")
   rejectedPitches    Pitch[]              @relation("RejectedByClient")
+  maybePitches       Pitch[]              @relation("MaybeByClient")
   resetPasswordToken ResetPasswordToken?
   seenMessages       SeenMessage[]
   shortlisted        ShortListedCreator[]
@@ -810,6 +811,8 @@ model Pitch {
   rejectedByAdminId   String?
   rejectedByClientId  String?
   rejectionReason     String?
+  customRejectionText String?
+  maybeByClientId     String?
   amount              Int?
   ugcCredits          Int?
   agreementTemplateId String?
@@ -820,6 +823,7 @@ model Pitch {
   client              User?          @relation("ApprovedByClient", fields: [approvedByClientId], references: [id])
   rejectedByAdmin     Admin?         @relation("RejectedByAdmin", fields: [rejectedByAdminId], references: [userId])
   rejectedByClient    User?          @relation("RejectedByClient", fields: [rejectedByClientId], references: [id])
+  maybeByClient       User?          @relation("MaybeByClient", fields: [maybeByClientId], references: [id])
 
   @@unique([userId, campaignId])
 }
@@ -1455,6 +1459,7 @@ enum PitchStatus {
   PENDING_REVIEW
   SENT_TO_CLIENT
   APPROVED
+  MAYBE
   REJECTED
   AGREEMENT_PENDING
   AGREEMENT_SUBMITTED

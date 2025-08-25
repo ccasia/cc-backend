@@ -3022,7 +3022,7 @@ export const shortlistCreator = async (req: Request, res: Response) => {
               userId: creator.id,
               campaignId,
               amount: 0,
-              currency: 'SGD',
+              currency: 'MYR',
             })),
           });
 
@@ -6896,7 +6896,7 @@ export const assignUGCCreditsV3 = async (req: Request, res: Response) => {
               userId: creator.id,
               campaignId: campaign.id,
               ugcVideos: creator.credits,
-              currency: 'SGD', // Default currency for V3
+              currency: 'MYR', // Default currency for V3
             },
           });
           console.log(`Created new shortlist entry with UGC credits for creator ${creator.id}`);

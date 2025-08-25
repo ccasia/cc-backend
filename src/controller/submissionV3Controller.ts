@@ -1609,48 +1609,41 @@ export const checkAndUpdateSubmissionStatusV3 = async (submissionId: string, adm
       conditionMet: hasClientRequestedChanges && (submission.status === 'SENT_TO_CLIENT' || submission.status === 'PENDING_REVIEW')
     });
     
-    // 🔍 DEBUG: Force update to CLIENT_FEEDBACK if any media has CLIENT_FEEDBACK status
+    // 🔍 FIXED: Only update to CLIENT_FEEDBACK when ALL media has been reviewed by client
+    // This prevents hiding other media items that are still in SENT_TO_CLIENT status
     if (hasClientRequestedChanges) {
-      console.log(`🔍 DEBUG: Found client-requested changes, forcing status update to CLIENT_FEEDBACK`);
-      await prisma.submission.update({
-        where: { id: submissionId },
-        data: { status: 'CLIENT_FEEDBACK' }
-      });
-      console.log(`🔍 DEBUG: V3 Submission ${submissionId} status updated to CLIENT_FEEDBACK (client requested changes)`);
-      return; // Exit early to prevent other status changes
-    }
-    
-    if (hasClientRequestedChanges && (submission.status === 'SENT_TO_CLIENT' || submission.status === 'PENDING_REVIEW')) {
-      // First, update submission status to CLIENT_FEEDBACK
-      await prisma.submission.update({
-        where: { id: submissionId },
-        data: { status: 'CLIENT_FEEDBACK' }
-      });
-      console.log(`V3 Submission ${submissionId} status updated to CLIENT_FEEDBACK (client requested changes)`);
+      // Check if all media has been reviewed by client (either approved or changes requested)
+      const allMediaReviewedByClient = 
+        (uploadedVideos === 0 || (approvedVideos + changesRequestedVideos === uploadedVideos)) &&
+        (uploadedPhotos === 0 || (approvedPhotos + changesRequestedPhotos === uploadedPhotos)) &&
+        (uploadedRawFootages === 0 || (approvedRawFootages + changesRequestedRawFootages === uploadedRawFootages));
       
-      if (submission.submissionType.type === 'FIRST_DRAFT') {
-        // For First Draft: only change status to SENT_TO_ADMIN when ALL media is processed
-        if (allMediaProcessed) {
-      await prisma.submission.update({
-        where: { id: submissionId },
-        data: { status: 'SENT_TO_ADMIN' }
-      });
-          console.log(`V3 First Draft Submission ${submissionId} status updated to SENT_TO_ADMIN (client requested changes and ALL media processed)`);
-          return; // Exit early to prevent other status changes
-        } else {
-          console.log(`V3 First Draft Submission ${submissionId} has changes requested but NOT all media processed yet - keeping CLIENT_FEEDBACK status`);
-          // Keep status as CLIENT_FEEDBACK until all media is processed
+      console.log(`🔍 FIXED: Client review check for submission ${submissionId}:`, {
+        hasClientRequestedChanges,
+        allMediaReviewedByClient,
+        mediaCounts: {
+          videos: { uploaded: uploadedVideos, approved: approvedVideos, changesRequested: changesRequestedVideos },
+          photos: { uploaded: uploadedPhotos, approved: approvedPhotos, changesRequested: changesRequestedPhotos },
+          rawFootages: { uploaded: uploadedRawFootages, approved: approvedRawFootages, changesRequested: changesRequestedRawFootages }
         }
-      } else if (submission.submissionType.type === 'FINAL_DRAFT' && allMediaProcessed) {
-        // For Final Draft: if client requests changes and all media is processed, set status to SENT_TO_ADMIN
+      });
+      
+      // Only change to CLIENT_FEEDBACK when client has reviewed ALL media items
+      if (allMediaReviewedByClient) {
+        console.log(`🔍 FIXED: All media reviewed by client, updating submission status to CLIENT_FEEDBACK`);
         await prisma.submission.update({
           where: { id: submissionId },
-        data: { status: 'SENT_TO_ADMIN' }
+          data: { status: 'CLIENT_FEEDBACK' }
         });
-        console.log(`V3 Final Draft Submission ${submissionId} status updated to SENT_TO_ADMIN (client requested changes and all media processed)`);
+        console.log(`🔍 FIXED: V3 Submission ${submissionId} status updated to CLIENT_FEEDBACK (all media reviewed by client)`);
         return; // Exit early to prevent other status changes
+      } else {
+        console.log(`🔍 FIXED: Client requested changes but not all media reviewed yet - keeping current status ${submission.status}`);
+        // Keep current status until client reviews all media items
       }
     }
+    
+
 
     // Priority 2: Handle admin review and approval logic
     // Only run this if we haven't already handled client-requested changes in Priority 1
