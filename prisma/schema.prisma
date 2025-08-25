@@ -73,6 +73,9 @@ model User {
   videoFeedback      Video[]      @relation("VideoFeedback")
   rawFootageFeedback RawFootage[] @relation("RawFootageFeedback")
   photoFeedback      Photo[]      @relation("PhotoFeedback")
+
+  // Guest profile link 
+  guestProfileLink String? @unique // unique for guests, but null for platform users
 }
 
 model EmailVerification {
@@ -230,6 +233,7 @@ model Creator {
   isFacebookConnected    Boolean     @default(false)
   tiktokData             Json?
   instagramData          Json?
+  isGuest                Boolean     @default(false)
 
   isOnBoardingFormCompleted Boolean?
 
@@ -828,6 +832,7 @@ model ShortListedCreator {
   id               String   @id @default(cuid())
   campaignId       String
   userId           String?
+  adminComments    String?
   currency         String?
   shortlisted_date DateTime @default(now())
   isAgreementReady Boolean? @default(false)
@@ -1379,6 +1384,7 @@ enum Status {
   blacklisted
   suspended
   spam
+  guest
 }
 
 enum InvoiceStatus {
