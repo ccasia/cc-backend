@@ -687,6 +687,7 @@ model CampaignRequirement {
   geoLocation     String[]
   language        String[]
   creator_persona String[]
+  country         String?
   user_persona    String
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -828,6 +829,7 @@ model Pitch {
   rejectedByAdmin     Admin?         @relation("RejectedByAdmin", fields: [rejectedByAdminId], references: [userId])
   rejectedByClient    User?          @relation("RejectedByClient", fields: [rejectedByClientId], references: [id])
   maybeByClient       User?          @relation("MaybeByClient", fields: [maybeByClientId], references: [id])
+
   @@unique([userId, campaignId])
 }
 
