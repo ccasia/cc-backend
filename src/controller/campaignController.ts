@@ -837,13 +837,23 @@ export const getCampaignById = async (req: Request, res: Response) => {
         },
         shortlisted: {
           select: {
+            id: true,
             ugcVideos: true,
+            userId: true,
+            adminComments: true,
             user: {
-              include: {
-                creator: true,
+              select: {
+                id: true,
+                name: true,
+                photoURL: true,
+                status: true,
+                creator: {
+                  select: {
+                    isGuest: true,
+                  }
+                }
               },
             },
-            userId: true,
           },
         },
         campaignTasks: {
