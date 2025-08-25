@@ -5,8 +5,13 @@ import {
   getV4Submissions, 
   updatePostingLink, 
   submitV4Content
-} from '../services/submissionV4Service';
+} from '../service/submissionV4Service';
 import { V4SubmissionCreateData, PostingLinkUpdate, V4ContentSubmission } from '../types/submissionV4Types';
+import { 
+  getNextStatusAfterAdminAction, 
+  getNextStatusAfterClientAction,
+  getStatusAfterForwardingClientFeedback
+} from '../utils/v4StatusUtils';
 
 const prisma = new PrismaClient();
 
@@ -207,34 +212,11 @@ export const approveV4Submission = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Not a v4 submission' });
     }
     
-    // Determine submission status based on campaign origin and action
-    let newStatus: string;
-    let contentStatus: string;
-    
-    switch (action) {
-      case 'approve':
-        // For client-created campaigns, admin approval sends to client first
-        if (submission.campaign.origin === 'CLIENT') {
-          newStatus = 'SENT_TO_CLIENT';
-          contentStatus = 'SENT_TO_CLIENT';
-        } else {
-          // For admin-created campaigns, direct approval
-          newStatus = 'APPROVED';
-          contentStatus = 'APPROVED';
-        }
-        break;
-      case 'reject':
-        newStatus = 'REJECTED';
-        contentStatus = 'REJECTED';
-        break;
-      case 'request_revision':
-        newStatus = 'CHANGES_REQUIRED';
-        contentStatus = 'REVISION_REQUESTED';
-        break;
-      default:
-        newStatus = 'PENDING_REVIEW';
-        contentStatus = 'PENDING';
-    }
+    // Use status utilities to determine next status
+    const { submissionStatus: newStatus, videoStatus: contentStatus } = getNextStatusAfterAdminAction(
+      action as any,
+      submission.campaign.origin as any
+    );
     
     // Update submission and individual content items
     const updates = [];
@@ -309,7 +291,8 @@ export const approveV4Submission = async (req: Request, res: Response) => {
             reasons: reasons || [],
             submissionId,
             adminId: currentUserId,
-            type: 'COMMENT'
+            type: 'COMMENT',
+            sentToCreator: action !== 'approve' // Set to true for reject and request_revision
           }
         })
       );
@@ -414,23 +397,10 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
       });
     }
     
-    // Determine new statuses
-    let newSubmissionStatus: string;
-    let newContentStatus: string;
-    
-    switch (action) {
-      case 'approve':
-        newSubmissionStatus = 'CLIENT_APPROVED'; 
-        newContentStatus = 'APPROVED'; 
-        break;
-      case 'request_changes':
-        newSubmissionStatus = 'CLIENT_FEEDBACK';
-        newContentStatus = 'CLIENT_FEEDBACK'; 
-        break;
-      default:
-        newSubmissionStatus = 'SENT_TO_CLIENT';
-        newContentStatus = 'SENT_TO_CLIENT';
-    }
+    // Use status utilities to determine next status  
+    const { submissionStatus: newSubmissionStatus, videoStatus: newContentStatus } = getNextStatusAfterClientAction(
+      action as any
+    );
     
     // Update submission and individual content items
     const updates = [];
@@ -567,6 +537,9 @@ export const forwardClientFeedbackV4 = async (req: Request, res: Response) => {
       });
     }
     
+    // Use status utilities to determine next status
+    const { submissionStatus: newSubmissionStatus, videoStatus: contentStatus } = getStatusAfterForwardingClientFeedback();
+    
     // Update submission and content to changes required
     const updates = [];
     
@@ -575,14 +548,11 @@ export const forwardClientFeedbackV4 = async (req: Request, res: Response) => {
       prisma.submission.update({
         where: { id: submissionId },
         data: {
-          status: 'CHANGES_REQUIRED',
+          status: newSubmissionStatus,
           updatedAt: new Date()
         }
       })
     );
-    
-    // Update individual content items
-    const contentStatus = 'REVISION_REQUESTED';
     
     if (submission.video && submission.video.length > 0) {
       updates.push(
@@ -623,6 +593,19 @@ export const forwardClientFeedbackV4 = async (req: Request, res: Response) => {
       );
     }
     
+    // Update original client feedback to be visible to creator
+    if (submission.feedback && submission.feedback.length > 0) {
+      const latestClientFeedback = submission.feedback[0]; // Most recent feedback
+      updates.push(
+        prisma.feedback.update({
+          where: { id: latestClientFeedback.id },
+          data: {
+            sentToCreator: true // Mark client feedback as sent to creator
+          }
+        })
+      );
+    }
+
     // Add admin's forwarding feedback if provided
     if (adminFeedback) {
       updates.push(
@@ -631,7 +614,8 @@ export const forwardClientFeedbackV4 = async (req: Request, res: Response) => {
             content: adminFeedback,
             type: 'COMMENT', // Using existing enum value, ADMIN_COMMENT would need to be added
             adminId: adminId,
-            submissionId
+            submissionId,
+            sentToCreator: true // Admin forwarded feedback is sent to creator
           }
         })
       );
@@ -799,6 +783,632 @@ export const approvePostingLinkV4 = async (req: Request, res: Response) => {
 };
 
 /**
+ * Admin approve individual content (video or raw footage)
+ * PATCH /api/submissions/v4/content/approve
+ */
+export const approveIndividualContentV4 = async (req: Request, res: Response) => {
+  const { contentType, contentId, feedback, reasons } = req.body;
+  const adminId = req.session.userid;
+  
+  try {
+    if (!contentType || !contentId) {
+      return res.status(400).json({ 
+        message: 'contentType and contentId are required' 
+      });
+    }
+    
+    if (!['video', 'rawFootage'].includes(contentType)) {
+      return res.status(400).json({ 
+        message: 'contentType must be video or rawFootage' 
+      });
+    }
+    
+    let updatedContent;
+    let submission;
+    
+    if (contentType === 'video') {
+      // Get video and its submission
+      const video = await prisma.video.findUnique({
+        where: { id: contentId },
+        include: { 
+          submission: { 
+            include: { campaign: true } 
+          } 
+        }
+      });
+      
+      if (!video) {
+        return res.status(404).json({ message: 'Video not found' });
+      }
+      
+      submission = video.submission;
+      
+      if (!submission || submission.submissionVersion !== 'v4') {
+        return res.status(400).json({ message: 'Not a v4 submission' });
+      }
+      
+      // Determine status based on campaign origin
+      const newStatus = submission.campaign.origin === 'CLIENT' ? 'SENT_TO_CLIENT' : 'APPROVED';
+      
+      // Update video
+      updatedContent = await prisma.video.update({
+        where: { id: contentId },
+        data: {
+          status: newStatus as any,
+          feedback: feedback || null,
+          reasons: reasons || [],
+          adminId,
+          feedbackAt: new Date()
+        }
+      });
+    } else {
+      // Handle raw footage
+      const rawFootage = await prisma.rawFootage.findUnique({
+        where: { id: contentId },
+        include: { 
+          submission: { 
+            include: { campaign: true } 
+          } 
+        }
+      });
+      
+      if (!rawFootage) {
+        return res.status(404).json({ message: 'Raw footage not found' });
+      }
+      
+      submission = rawFootage.submission;
+      
+      if (!submission || submission.submissionVersion !== 'v4') {
+        return res.status(400).json({ message: 'Not a v4 submission' });
+      }
+      
+      // Determine status based on campaign origin
+      const newStatus = submission.campaign.origin === 'CLIENT' ? 'SENT_TO_CLIENT' : 'APPROVED';
+      
+      // Update raw footage
+      updatedContent = await prisma.rawFootage.update({
+        where: { id: contentId },
+        data: {
+          status: newStatus as any,
+          feedback: feedback || null,
+          reasons: reasons || [],
+          adminId,
+          feedbackAt: new Date()
+        }
+      });
+    }
+    
+    // Add to submission-level feedback if feedback provided
+    if (feedback) {
+      const feedbackData: any = {
+        submissionId: submission.id,
+        adminId,
+        type: 'COMMENT',
+        reasons: reasons || [],
+        sentToCreator: false
+      };
+      
+      if (contentType === 'video') {
+        feedbackData.content = feedback;
+        feedbackData.videosToUpdate = [contentId];
+      } else {
+        feedbackData.rawFootageContent = feedback;
+        feedbackData.rawFootageToUpdate = [contentId];
+      }
+      
+      await prisma.feedback.create({ data: feedbackData });
+    }
+    
+    console.log(`✅ V4 ${contentType} ${contentId} approved by admin ${adminId}`);
+    
+    res.status(200).json({
+      message: `${contentType} approved successfully`,
+      content: updatedContent,
+      status: updatedContent.status
+    });
+    
+  } catch (error) {
+    console.error('Error approving individual content v4:', error);
+    res.status(500).json({
+      message: 'Failed to approve content',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+};
+
+/**
+ * Admin request changes for individual content (video or raw footage)
+ * PATCH /api/submissions/v4/content/request-changes
+ */
+export const requestChangesIndividualContentV4 = async (req: Request, res: Response) => {
+  const { contentType, contentId, feedback, reasons } = req.body;
+  const adminId = req.session.userid;
+  
+  try {
+    if (!contentType || !contentId || !feedback) {
+      return res.status(400).json({ 
+        message: 'contentType, contentId, and feedback are required' 
+      });
+    }
+    
+    if (!['video', 'rawFootage'].includes(contentType)) {
+      return res.status(400).json({ 
+        message: 'contentType must be video or rawFootage' 
+      });
+    }
+    
+    let updatedContent;
+    let submission;
+    
+    if (contentType === 'video') {
+      // Get video and its submission
+      const video = await prisma.video.findUnique({
+        where: { id: contentId },
+        include: { submission: true }
+      });
+      
+      if (!video) {
+        return res.status(404).json({ message: 'Video not found' });
+      }
+      
+      submission = video.submission;
+      
+      if (!submission || submission.submissionVersion !== 'v4') {
+        return res.status(400).json({ message: 'Not a v4 submission' });
+      }
+      
+      // Update video
+      updatedContent = await prisma.video.update({
+        where: { id: contentId },
+        data: {
+          status: 'REVISION_REQUESTED',
+          feedback,
+          reasons: reasons || [],
+          adminId,
+          feedbackAt: new Date()
+        }
+      });
+    } else {
+      // Handle raw footage
+      const rawFootage = await prisma.rawFootage.findUnique({
+        where: { id: contentId },
+        include: { submission: true }
+      });
+      
+      if (!rawFootage) {
+        return res.status(404).json({ message: 'Raw footage not found' });
+      }
+      
+      submission = rawFootage.submission;
+      
+      if (!submission || submission.submissionVersion !== 'v4') {
+        return res.status(400).json({ message: 'Not a v4 submission' });
+      }
+      
+      // Update raw footage
+      updatedContent = await prisma.rawFootage.update({
+        where: { id: contentId },
+        data: {
+          status: 'REVISION_REQUESTED',
+          feedback,
+          reasons: reasons || [],
+          adminId,
+          feedbackAt: new Date()
+        }
+      });
+    }
+    
+    // Add to submission-level feedback
+    const feedbackData: any = {
+      submissionId: submission.id,
+      adminId,
+      type: 'COMMENT',
+      reasons: reasons || [],
+      sentToCreator: true // Admin feedback is automatically sent to creator
+    };
+    
+    if (contentType === 'video') {
+      feedbackData.content = feedback;
+      feedbackData.videosToUpdate = [contentId];
+    } else {
+      feedbackData.rawFootageContent = feedback;
+      feedbackData.rawFootageToUpdate = [contentId];
+    }
+    
+    await prisma.feedback.create({ data: feedbackData });
+    
+    console.log(`✅ V4 ${contentType} ${contentId} changes requested by admin ${adminId}`);
+    
+    res.status(200).json({
+      message: `Changes requested for ${contentType} successfully`,
+      content: updatedContent,
+      status: updatedContent.status
+    });
+    
+  } catch (error) {
+    console.error('Error requesting changes for individual content v4:', error);
+    res.status(500).json({
+      message: 'Failed to request changes',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+};
+
+/**
+ * Client approve individual content (video or raw footage)
+ * PATCH /api/submissions/v4/content/approve/client
+ */
+export const approveIndividualContentByClientV4 = async (req: Request, res: Response) => {
+  const { contentType, contentId, feedback } = req.body;
+  const clientId = req.session.userid;
+  
+  try {
+    if (!contentType || !contentId) {
+      return res.status(400).json({ 
+        message: 'contentType and contentId are required' 
+      });
+    }
+    
+    if (!['video', 'rawFootage'].includes(contentType)) {
+      return res.status(400).json({ 
+        message: 'contentType must be video or rawFootage' 
+      });
+    }
+    
+    let updatedContent;
+    let submission;
+    
+    if (contentType === 'video') {
+      // Get video and its submission
+      const video = await prisma.video.findUnique({
+        where: { id: contentId },
+        include: { 
+          submission: { 
+            include: { campaign: true } 
+          } 
+        }
+      });
+      
+      if (!video) {
+        return res.status(404).json({ message: 'Video not found' });
+      }
+      
+      submission = video.submission;
+      
+      if (!submission || submission.submissionVersion !== 'v4') {
+        return res.status(400).json({ message: 'Not a v4 submission' });
+      }
+      
+      if (submission.campaign.origin !== 'CLIENT') {
+        return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
+      }
+      
+      // Update video
+      updatedContent = await prisma.video.update({
+        where: { id: contentId },
+        data: {
+          status: 'APPROVED',
+          feedback: feedback || null,
+          adminId: clientId,
+          feedbackAt: new Date()
+        }
+      });
+    } else {
+      // Handle raw footage
+      const rawFootage = await prisma.rawFootage.findUnique({
+        where: { id: contentId },
+        include: { 
+          submission: { 
+            include: { campaign: true } 
+          } 
+        }
+      });
+      
+      if (!rawFootage) {
+        return res.status(404).json({ message: 'Raw footage not found' });
+      }
+      
+      submission = rawFootage.submission;
+      
+      if (!submission || submission.submissionVersion !== 'v4') {
+        return res.status(400).json({ message: 'Not a v4 submission' });
+      }
+      
+      if (submission.campaign.origin !== 'CLIENT') {
+        return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
+      }
+      
+      // Update raw footage
+      updatedContent = await prisma.rawFootage.update({
+        where: { id: contentId },
+        data: {
+          status: 'APPROVED',
+          feedback: feedback || null,
+          adminId: clientId,
+          feedbackAt: new Date()
+        }
+      });
+    }
+    
+    // Add to submission-level feedback if feedback provided
+    if (feedback) {
+      const feedbackData: any = {
+        submissionId: submission.id,
+        adminId: clientId,
+        type: 'COMMENT',
+        sentToCreator: false // Client feedback needs admin to forward
+      };
+      
+      if (contentType === 'video') {
+        feedbackData.content = feedback;
+        feedbackData.videosToUpdate = [contentId];
+      } else {
+        feedbackData.rawFootageContent = feedback;
+        feedbackData.rawFootageToUpdate = [contentId];
+      }
+      
+      await prisma.feedback.create({ data: feedbackData });
+    }
+    
+    console.log(`✅ V4 ${contentType} ${contentId} approved by client ${clientId}`);
+    
+    res.status(200).json({
+      message: `${contentType} approved by client successfully`,
+      content: updatedContent,
+      status: updatedContent.status
+    });
+    
+  } catch (error) {
+    console.error('Error approving individual content by client v4:', error);
+    res.status(500).json({
+      message: 'Failed to approve content',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+};
+
+/**
+ * Client request changes for individual content (video or raw footage)
+ * PATCH /api/submissions/v4/content/request-changes/client
+ */
+export const requestChangesIndividualContentByClientV4 = async (req: Request, res: Response) => {
+  const { contentType, contentId, feedback, reasons } = req.body;
+  const clientId = req.session.userid;
+  
+  try {
+    if (!contentType || !contentId || !feedback) {
+      return res.status(400).json({ 
+        message: 'contentType, contentId, and feedback are required' 
+      });
+    }
+    
+    if (!['video', 'rawFootage'].includes(contentType)) {
+      return res.status(400).json({ 
+        message: 'contentType must be video or rawFootage' 
+      });
+    }
+    
+    let updatedContent;
+    let submission;
+    
+    if (contentType === 'video') {
+      // Get video and its submission
+      const video = await prisma.video.findUnique({
+        where: { id: contentId },
+        include: { 
+          submission: { 
+            include: { campaign: true } 
+          } 
+        }
+      });
+      
+      if (!video) {
+        return res.status(404).json({ message: 'Video not found' });
+      }
+      
+      submission = video.submission;
+      
+      if (!submission || submission.submissionVersion !== 'v4') {
+        return res.status(400).json({ message: 'Not a v4 submission' });
+      }
+      
+      if (submission.campaign.origin !== 'CLIENT') {
+        return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
+      }
+      
+      // Update video
+      updatedContent = await prisma.video.update({
+        where: { id: contentId },
+        data: {
+          status: 'CLIENT_FEEDBACK',
+          feedback,
+          reasons: reasons || [],
+          adminId: clientId,
+          feedbackAt: new Date()
+        }
+      });
+    } else {
+      // Handle raw footage
+      const rawFootage = await prisma.rawFootage.findUnique({
+        where: { id: contentId },
+        include: { 
+          submission: { 
+            include: { campaign: true } 
+          } 
+        }
+      });
+      
+      if (!rawFootage) {
+        return res.status(404).json({ message: 'Raw footage not found' });
+      }
+      
+      submission = rawFootage.submission;
+      
+      if (!submission || submission.submissionVersion !== 'v4') {
+        return res.status(400).json({ message: 'Not a v4 submission' });
+      }
+      
+      if (submission.campaign.origin !== 'CLIENT') {
+        return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
+      }
+      
+      // Update raw footage
+      updatedContent = await prisma.rawFootage.update({
+        where: { id: contentId },
+        data: {
+          status: 'CLIENT_FEEDBACK',
+          feedback,
+          reasons: reasons || [],
+          adminId: clientId,
+          feedbackAt: new Date()
+        }
+      });
+    }
+    
+    // Add to submission-level feedback
+    const feedbackData: any = {
+      submissionId: submission.id,
+      adminId: clientId,
+      type: 'COMMENT',
+      reasons: reasons || [],
+      sentToCreator: false // Client feedback needs admin to forward
+    };
+    
+    if (contentType === 'video') {
+      feedbackData.content = feedback;
+      feedbackData.videosToUpdate = [contentId];
+    } else {
+      feedbackData.rawFootageContent = feedback;
+      feedbackData.rawFootageToUpdate = [contentId];
+    }
+    
+    await prisma.feedback.create({ data: feedbackData });
+    
+    console.log(`✅ V4 ${contentType} ${contentId} changes requested by client ${clientId}`);
+    
+    res.status(200).json({
+      message: `Changes requested for ${contentType} by client successfully`,
+      content: updatedContent,
+      status: updatedContent.status
+    });
+    
+  } catch (error) {
+    console.error('Error requesting changes by client for individual content v4:', error);
+    res.status(500).json({
+      message: 'Failed to request changes',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+};
+
+/**
+ * Get feedback history for individual content
+ * GET /api/submissions/v4/content/feedback/:contentType/:contentId
+ */
+export const getIndividualContentFeedbackV4 = async (req: Request, res: Response) => {
+  const { contentType, contentId } = req.params;
+  
+  try {
+    if (!['video', 'rawFootage'].includes(contentType)) {
+      return res.status(400).json({ 
+        message: 'contentType must be video or rawFootage' 
+      });
+    }
+    
+    // Get content item and its submission
+    let content;
+    let submissionId;
+    
+    if (contentType === 'video') {
+      content = await prisma.video.findUnique({
+        where: { id: contentId },
+        include: { 
+          admin: { select: { id: true, name: true } },
+          submission: { select: { id: true } }
+        }
+      });
+      submissionId = content?.submissionId;
+    } else {
+      content = await prisma.rawFootage.findUnique({
+        where: { id: contentId },
+        include: { 
+          admin: { select: { id: true, name: true } },
+          submission: { select: { id: true } }
+        }
+      });
+      submissionId = content?.submissionId;
+    }
+    
+    if (!content) {
+      return res.status(404).json({ message: `${contentType} not found` });
+    }
+    
+    // Get submission-level feedback for this content
+    const submissionFeedback = await prisma.feedback.findMany({
+      where: {
+        submissionId: submissionId || undefined,
+        OR: [
+          { videosToUpdate: { has: contentId } },
+          { rawFootageToUpdate: { has: contentId } }
+        ]
+      },
+      include: {
+        admin: { select: { id: true, name: true } }
+      },
+      orderBy: { createdAt: 'asc' }
+    });
+    
+    // Combine individual content feedback with submission feedback
+    const feedbackHistory = [];
+    
+    // Add individual content feedback if exists
+    if (content.feedback) {
+      feedbackHistory.push({
+        id: `${contentType}-${contentId}`,
+        type: 'individual',
+        feedback: content.feedback,
+        reasons: content.reasons || [],
+        admin: content.admin,
+        createdAt: content.feedbackAt || content.updatedAt,
+        status: content.status
+      });
+    }
+    
+    // Add submission-level feedback
+    submissionFeedback.forEach(fb => {
+      const feedbackText = contentType === 'video' ? fb.content : fb.rawFootageContent;
+      if (feedbackText) {
+        feedbackHistory.push({
+          id: fb.id,
+          type: 'submission',
+          feedback: feedbackText,
+          reasons: fb.reasons || [],
+          admin: fb.adminId,
+          createdAt: fb.createdAt,
+          sentToCreator: fb.sentToCreator
+        });
+      }
+    });
+    
+    // Sort by creation date
+    feedbackHistory.sort((a, b) => new Date(a.createdAt || new Date(0)).getTime() - new Date(b.createdAt || new Date(0)).getTime());
+    
+    res.status(200).json({
+      content,
+      feedbackHistory,
+      totalFeedback: feedbackHistory.length
+    });
+    
+  } catch (error) {
+    console.error('Error getting individual content feedback v4:', error);
+    res.status(500).json({
+      message: 'Failed to get feedback history',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+};
+
+/**
  * Get single V4 submission by ID
  * GET /api/submissions/v4/submission/:id
  */
@@ -883,6 +1493,92 @@ export const getV4SubmissionById = async (req: Request, res: Response) => {
     console.error('Error getting v4 submission by ID:', error);
     res.status(500).json({
       message: 'Failed to get submission',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+};
+
+/**
+ * Get submission status information for a user role
+ * GET /api/submissions/v4/status/:submissionId?role=creator|admin|client
+ */
+export const getSubmissionStatusInfo = async (req: Request, res: Response) => {
+  const { submissionId } = req.params;
+  const { role } = req.query;
+  
+  try {
+    if (!submissionId || !role) {
+      return res.status(400).json({ 
+        message: 'submissionId and role query parameter are required' 
+      });
+    }
+    
+    if (!['creator', 'admin', 'client'].includes(role as string)) {
+      return res.status(400).json({ 
+        message: 'role must be creator, admin, or client' 
+      });
+    }
+    
+    const submission = await prisma.submission.findUnique({
+      where: { id: submissionId },
+      include: {
+        submissionType: true,
+        campaign: {
+          select: {
+            origin: true
+          }
+        },
+        video: {
+          select: {
+            status: true
+          }
+        }
+      }
+    });
+    
+    if (!submission) {
+      return res.status(404).json({ message: 'Submission not found' });
+    }
+    
+    if (submission.submissionVersion !== 'v4') {
+      return res.status(400).json({ message: 'Not a v4 submission' });
+    }
+    
+    const { 
+      getSubmissionStatusDisplay, 
+      canCreatorUpload, 
+      canAddPostingLink,
+      getAvailableActions 
+    } = require('../utils/v4StatusUtils');
+    
+    const videoStatus = submission.video[0]?.status || 'PENDING';
+    
+    const statusInfo = {
+      submissionId: submission.id,
+      submissionStatus: submission.status,
+      videoStatus,
+      statusDisplay: getSubmissionStatusDisplay(
+        submission.status,
+        videoStatus,
+        role as any,
+        submission.campaign.origin as any
+      ),
+      canUpload: role === 'creator' ? canCreatorUpload(submission.status, videoStatus) : false,
+      canAddPostingLink: role === 'creator' ? canAddPostingLink(submission.status, videoStatus) : false,
+      availableActions: getAvailableActions(
+        submission.status,
+        videoStatus,
+        role as any,
+        submission.campaign.origin as any
+      )
+    };
+    
+    res.status(200).json(statusInfo);
+    
+  } catch (error) {
+    console.error('Error getting submission status info:', error);
+    res.status(500).json({
+      message: 'Failed to get status information',
       error: error instanceof Error ? error.message : 'Unknown error'
     });
   }

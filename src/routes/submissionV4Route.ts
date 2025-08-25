@@ -8,7 +8,13 @@ import {
   getV4SubmissionById,
   approveV4SubmissionByClient,
   forwardClientFeedbackV4,
-  approvePostingLinkV4
+  approvePostingLinkV4,
+  approveIndividualContentV4,
+  requestChangesIndividualContentV4,
+  approveIndividualContentByClientV4,
+  requestChangesIndividualContentByClientV4,
+  getIndividualContentFeedbackV4,
+  getSubmissionStatusInfo
 } from '../controller/submissionV4Controller';
 import { isLoggedIn } from '../middleware/onlyLogin';
 import { isAdmin } from '../middleware/onlySuperadmin';
@@ -30,6 +36,9 @@ router.get('/submissions', getV4SubmissionsController);
 // Get single V4 submission by ID
 router.get('/submission/:id', getV4SubmissionById);
 
+// Get submission status information for a role
+router.get('/status/:submissionId', getSubmissionStatusInfo);
+
 // Submit content for a V4 submission (creator uploads content)
 router.post('/submit-content', submitV4ContentController);
 
@@ -47,5 +56,12 @@ router.put('/posting-link', updatePostingLinkController);
 
 // Admin approve/reject posting link (admin action)
 router.post('/posting-link/approve', isLoggedIn, isAdmin, approvePostingLinkV4);
+
+// Individual content feedback endpoints (following v3 pattern)
+router.patch('/content/approve', isLoggedIn, isAdmin, approveIndividualContentV4);
+router.patch('/content/request-changes', isLoggedIn, isAdmin, requestChangesIndividualContentV4);
+router.patch('/content/approve/client', isLoggedIn, isClient, approveIndividualContentByClientV4);
+router.patch('/content/request-changes/client', isLoggedIn, isClient, requestChangesIndividualContentByClientV4);
+router.get('/content/feedback/:contentType/:contentId', isLoggedIn, getIndividualContentFeedbackV4);
 
 export default router;

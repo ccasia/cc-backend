@@ -59,7 +59,14 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
             status: true,
             feedback: true,
             reasons: true,
-            feedbackAt: true
+            feedbackAt: true,
+            adminId: true,
+            admin: {
+              select: {
+                id: true,
+                name: true
+              }
+            }
           }
         },
         photos: {
@@ -79,7 +86,14 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
             status: true,
             feedback: true,
             reasons: true,
-            feedbackAt: true
+            feedbackAt: true,
+            adminId: true,
+            admin: {
+              select: {
+                id: true,
+                name: true
+              }
+            }
           }
         },
         feedback: {
@@ -126,7 +140,12 @@ export const updatePostingLink = async (submissionId: string, postingLink: strin
     // Verify submission is approved and v4
     const submission = await prisma.submission.findUnique({
       where: { id: submissionId },
-      include: { submissionType: true }
+      include: { 
+        submissionType: true,
+        video: {
+          select: { status: true }
+        }
+      }
     });
     
     if (!submission) {
@@ -135,6 +154,14 @@ export const updatePostingLink = async (submissionId: string, postingLink: strin
     
     if (submission.submissionVersion !== 'v4') {
       throw new Error('Not a v4 submission');
+    }
+    
+    // Check if posting link can be added based on approval status
+    const { canAddPostingLink } = require('../utils/v4StatusUtils');
+    const videoStatus = submission.video[0]?.status || 'PENDING';
+    
+    if (!canAddPostingLink(submission.status, videoStatus as any)) {
+      throw new Error(`Cannot add posting link. Video must be fully approved first. Current status: ${submission.status}, Video status: ${videoStatus}`);
     }
     
     // Update the posting link
@@ -176,7 +203,10 @@ export const submitV4Content = async (
       where: { id: submissionId },
       include: { 
         submissionType: true,
-        campaign: true
+        campaign: true,
+        video: {
+          select: { status: true }
+        }
       }
     });
     
@@ -186,6 +216,14 @@ export const submitV4Content = async (
     
     if (submission.submissionVersion !== 'v4') {
       throw new Error('Not a v4 submission');
+    }
+    
+    // Check if creator can upload based on current status
+    const { canCreatorUpload } = require('../utils/v4StatusUtils');
+    const videoStatus = submission.video[0]?.status || 'PENDING';
+    
+    if (!canCreatorUpload(submission.status, videoStatus as any)) {
+      throw new Error(`Cannot upload content. Current status: ${submission.status}. Please wait for review to complete.`);
     }
     
     const submissionType = submission.submissionType.type as string;
