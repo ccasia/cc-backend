@@ -1084,6 +1084,7 @@ model Feedback {
   photosToUpdate     String[]
   submissionId       String
   adminId            String
+  sentToCreator      Boolean       @default(false)
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt
   admin              User          @relation(fields: [adminId], references: [id])
