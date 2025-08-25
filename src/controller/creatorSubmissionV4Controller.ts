@@ -4,7 +4,7 @@ import amqplib from 'amqplib';
 import { 
   getV4Submissions, 
   updatePostingLink
-} from '../services/submissionV4Service';
+} from '../service/submissionV4Service';
 import { PostingLinkUpdate } from '../types/submissionV4Types';
 
 const prisma = new PrismaClient();
