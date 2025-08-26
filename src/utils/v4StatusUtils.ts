@@ -109,9 +109,11 @@ export const canAddPostingLink = (
   submissionStatus: SubmissionStatus,
   videoStatus: FeedbackStatus
 ): boolean => {
-  // Posting link can only be added when video is fully approved
-  return (submissionStatus === 'APPROVED' || submissionStatus === 'CLIENT_APPROVED') &&
-         videoStatus === 'APPROVED';
+  // Posting link can be added when:
+  // 1. Both submission and video are fully approved, OR
+  // 2. Submission is CLIENT_APPROVED (regardless of video status)
+  return (submissionStatus === 'APPROVED' && videoStatus === 'APPROVED') ||
+         submissionStatus === 'CLIENT_APPROVED';
 };
 
 /**
@@ -170,7 +172,7 @@ export const getNextStatusAfterClientAction = (
   switch (action) {
     case 'approve':
       return {
-        submissionStatus: 'APPROVED',
+        submissionStatus: 'CLIENT_APPROVED',
         videoStatus: 'APPROVED'
       };
     

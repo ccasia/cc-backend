@@ -607,7 +607,7 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
             reasons: reasons || [],
             submissionId,
             adminId: clientId,
-            sentToCreator: true,
+            sentToCreator: false, // Client feedback needs admin to forward
             type: 'COMMENT'
           }
         })
@@ -1958,7 +1958,8 @@ export const getV4SubmissionById = async (req: Request, res: Response) => {
             admin: {
               select: {
                 id: true,
-                name: true
+                name: true,
+                role: true
               }
             }
           },

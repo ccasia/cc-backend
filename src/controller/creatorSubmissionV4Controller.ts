@@ -45,28 +45,47 @@ export const getMyV4Submissions = async (req: Request, res: Response) => {
       creatorId
     );
     
+    // Filter feedback for each submission based on submission status
+    const submissionsWithFilteredFeedback = submissions.map(submission => {
+      let filteredFeedback = submission.feedback;
+      
+      // When submission status is CLIENT_APPROVED, return only the last two feedback entries
+      // regardless of sentToCreator status
+      if (submission.status === 'CLIENT_APPROVED') {
+        filteredFeedback = submission.feedback.slice(0, 2);
+      } else {
+        // For other statuses, only show feedback that was sent to creator
+        filteredFeedback = submission.feedback.filter(feedback => feedback.sentToCreator);
+      }
+      
+      return {
+        ...submission,
+        feedback: filteredFeedback
+      };
+    });
+    
     // Group submissions by type for creator interface
     const groupedSubmissions = {
-      agreement: submissions.find(s => s.submissionType.type === 'AGREEMENT_FORM'),
-      videos: submissions.filter(s => s.submissionType.type === 'VIDEO'),
-      photos: submissions.filter(s => s.submissionType.type === 'PHOTO'),
-      rawFootage: submissions.filter(s => s.submissionType.type === 'RAW_FOOTAGE')
+      agreement: submissionsWithFilteredFeedback.find(s => s.submissionType.type === 'AGREEMENT_FORM'),
+      videos: submissionsWithFilteredFeedback.filter(s => s.submissionType.type === 'VIDEO'),
+      photos: submissionsWithFilteredFeedback.filter(s => s.submissionType.type === 'PHOTO'),
+      rawFootage: submissionsWithFilteredFeedback.filter(s => s.submissionType.type === 'RAW_FOOTAGE')
     };
     
     // Calculate overall progress
-    const totalSubmissions = submissions.length;
-    const completedSubmissions = submissions.filter(s => 
+    const totalSubmissions = submissionsWithFilteredFeedback.length;
+    const completedSubmissions = submissionsWithFilteredFeedback.filter(s => 
       s.status === 'APPROVED' || s.status === 'CLIENT_APPROVED' || s.status === 'POSTED'
     ).length;
     const progress = totalSubmissions > 0 ? (completedSubmissions / totalSubmissions) * 100 : 0;
     
-    console.log(`🎯 Creator ${creatorId} retrieved ${submissions.length} v4 submissions for campaign ${campaignId}`);
+    console.log(`🎯 Creator ${creatorId} retrieved ${submissionsWithFilteredFeedback.length} v4 submissions for campaign ${campaignId}`);
     
     res.status(200).json({
-      submissions,
+      submissions: submissionsWithFilteredFeedback,
       grouped: groupedSubmissions,
       progress: Math.round(progress),
-      total: submissions.length,
+      total: submissionsWithFilteredFeedback.length,
       completed: completedSubmissions
     });
     
@@ -480,6 +499,18 @@ export const getMySubmissionDetails = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Not a v4 submission' });
     }
     
+    // Filter feedback based on submission status
+    let filteredFeedback = submission.feedback;
+    
+    // When submission status is CLIENT_APPROVED, return only the last two feedback entries
+    // regardless of sentToCreator status
+    if (submission.status === 'CLIENT_APPROVED') {
+      filteredFeedback = submission.feedback.slice(0, 2);
+    } else {
+      // For other statuses, only show feedback that was sent to creator
+      filteredFeedback = submission.feedback.filter(feedback => feedback.sentToCreator);
+    }
+
     // Add creator-friendly status mapping
     const getCreatorStatus = (status: string) => {
       switch (status) {
@@ -506,6 +537,7 @@ export const getMySubmissionDetails = async (req: Request, res: Response) => {
     
     const submissionWithCreatorStatus = {
       ...submission,
+      feedback: filteredFeedback,
       creatorStatus: getCreatorStatus(submission.status)
     };
     
