@@ -191,7 +191,7 @@ model TiktokUser {
 
   engagement_rate Int?
 
-  lastUpdated DateTime @updatedAt
+  lastUpdated DateTime? @updatedAt
 
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
