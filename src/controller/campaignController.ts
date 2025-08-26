@@ -52,7 +52,7 @@ import {
   notificationLogisticDelivery,
 } from '@helper/notification';
 import { deliveryConfirmation, shortlisted, tracking } from '@configs/nodemailer.config';
-import { createNewSpreadSheet } from '@services/google_sheets/sheets';
+import { createNewSpreadSheet, upsertSheetAndWriteRows } from '@services/google_sheets/sheets';
 import { getRemainingCredits } from '@services/companyService';
 // import { applyCreditCampiagn } from '@services/packageService';
 
@@ -546,6 +546,140 @@ export const createCampaign = async (req: Request, res: Response) => {
     );
   } catch (error) {
     return res.status(400).json(error?.message);
+  }
+};
+
+export const exportActiveCompletedToSheet = async (_req: Request, res: Response) => {
+  try {
+    const campaigns = await prisma.campaign.findMany({
+      include: {
+        brand: true,
+        company: true,
+      },
+    });
+
+    const active = campaigns.filter((c) => c.status === 'ACTIVE');
+    const completed = campaigns.filter((c) => c.status === 'COMPLETED');
+
+    const toRow = (c: any): (string | number)[] => [
+      c.name || '',
+      (c.brand?.name || c.company?.name || ''),
+      c.campaignCredits || 0,
+      c.creditsUtilized || 0,
+      c.creditsPending || Math.max((c.campaignCredits || 0) - (c.creditsUtilized || 0), 0),
+    ];
+
+    const header = [
+      'Campaign',
+      'Client Name',
+      'Campaign Credits',
+      'Credits Utilized',
+      'Credits Pending',
+    ];
+
+    // Target spreadsheet provided by user
+    const spreadsheetId = '1AtuEMQDR3pblQqBStBpsW_S19bUY-4rJcjyQ_BE-YZY';
+
+    await upsertSheetAndWriteRows({
+      spreadSheetId: spreadsheetId,
+      sheetTitle: 'Active',
+      headerRow: header,
+      rows: active.map(toRow),
+    });
+
+    await upsertSheetAndWriteRows({
+      spreadSheetId: spreadsheetId,
+      sheetTitle: 'Completed',
+      headerRow: header,
+      rows: completed.map(toRow),
+    });
+
+    return res.status(200).json({ success: true });
+  } catch (error: any) {
+    console.log(error);
+    return res.status(500).json({ success: false, message: error?.message || 'Failed to export' });
+  }
+};
+
+async function syncCreatorsCampaignSheetInternal() {
+  // Spreadsheet and sheet details from user request
+  const spreadsheetId = '1E6Rcm-0VA5INObz7weqpcdaQ7pcSLej7guiq8mwfjKo';
+  const sheetTitle = 'Campaign';
+
+  // Group shortlisted creators by user to get first campaign date and count
+  const grouped = await prisma.shortListedCreator.groupBy({
+    by: ['userId'],
+    _count: { _all: true },
+    _min: { shortlisted_date: true },
+  });
+
+  if (!grouped?.length) {
+    await upsertSheetAndWriteRows({
+      spreadSheetId: spreadsheetId,
+      sheetTitle,
+      headerRow: [
+        'Date of First Campaign',
+        'Name',
+        'Number of Campaigns',
+        'Email',
+        'Phone Number',
+        'Instagram Handle',
+        'TikTok Handle',
+      ],
+      rows: [],
+    });
+    return;
+  }
+
+  const userIds = (grouped.map((g) => g.userId).filter((id): id is string => Boolean(id)));
+  const users = await prisma.user.findMany({
+    where: { id: { in: userIds } },
+    include: {
+      creator: true,
+    },
+  });
+
+  const userMap = new Map(users.map((u) => [u.id, u]));
+
+  const rows: (string | number)[][] = grouped
+    .map((g) => {
+      if (!g.userId) return null;
+      const u = userMap.get(g.userId);
+      if (!u) return null;
+      const date = g._min?.shortlisted_date ? dayjs(g._min.shortlisted_date as any).format('YYYY-MM-DD') : '';
+      const name = u.name || '';
+      const numCampaigns = (g as any)._count?._all || 0;
+      const email = u.email || '';
+      const phone = u.phoneNumber || '';
+      const ig = (u as any)?.creator?.instagram || (u as any)?.creator?.instagramUser?.username || '';
+      const tiktok = (u as any)?.creator?.tiktok || (u as any)?.creator?.tiktokUser?.username || '';
+      return [date, name, numCampaigns, email, phone, ig, tiktok];
+    })
+    .filter(Boolean) as (string | number)[][];
+
+  await upsertSheetAndWriteRows({
+    spreadSheetId: spreadsheetId,
+    sheetTitle,
+    headerRow: [
+      'Date of First Campaign',
+      'Name',
+      'Number of Campaigns',
+      'Email',
+      'Phone Number',
+      'Instagram Handle',
+      'TikTok Handle',
+    ],
+    rows,
+  });
+}
+
+export const exportCreatorsCampaignSheet = async (_req: Request, res: Response) => {
+  try {
+    await syncCreatorsCampaignSheetInternal();
+    return res.status(200).json({ success: true });
+  } catch (error: any) {
+    console.log(error);
+    return res.status(500).json({ success: false, message: error?.message || 'Failed to export' });
   }
 };
 
@@ -2112,6 +2246,13 @@ export const changePitchStatus = async (req: Request, res: Response) => {
           timeout: 20000,
         },
       );
+
+      // After approving a pitch (shortlist created), sync creators-campaign sheet (best-effort)
+      try {
+        await syncCreatorsCampaignSheetInternal();
+      } catch (err) {
+        console.log('Sheet sync failed (non-blocking):', err);
+      }
     } else {
       // Log admin activity for pitch rejection
       const adminActivityMessage = `${adminName} rejected ${creatorName}'s pitch`;
@@ -2930,8 +3071,15 @@ export const shortlistCreator = async (req: Request, res: Response) => {
       { timeout: 10000 },
     );
 
-    const adminLogMessage = `Creator Shortlisted for Campaign - ${campaignId.name} `;
+    const adminLogMessage = `Creator Shortlisted for Campaign - ${campaignId} `;
     logAdminChange(adminLogMessage, adminId, req);
+
+    // After successful shortlist, sync creators-campaign sheet (best-effort)
+    try {
+      await syncCreatorsCampaignSheetInternal();
+    } catch (err) {
+      console.log('Sheet sync failed (non-blocking):', err);
+    }
 
     return res.status(200).json({ message: 'Successfully shortlisted' });
   } catch (error) {
@@ -4339,6 +4487,13 @@ export const removeCreatorFromCampaign = async (req: Request, res: Response) => 
     const adminActivityMessage = `${adminName} withdrew ${user.name} from the campaign`;
     await logChange(adminActivityMessage, campaign.id, req);
 
+    // After successful withdrawal, sync creators-campaign sheet (best-effort)
+    try {
+      await syncCreatorsCampaignSheetInternal();
+    } catch (err) {
+      console.log('Sheet sync failed (non-blocking):', err);
+    }
+
     return res.status(200).json({ message: 'Successfully withdraw' });
   } catch (error) {
     console.log(error);
@@ -4537,10 +4692,18 @@ export const shortlistCreatorV2 = async (req: Request, res: Response) => {
             });
           }
         }
+
       } catch (error) {
         throw new Error(error);
       }
     });
+
+    // After successful shortlist, sync creators-campaign sheet (best-effort)
+    try {
+      await syncCreatorsCampaignSheetInternal();
+    } catch (err) {
+      console.log('Sheet sync failed (non-blocking):', err);
+    }
 
     return res.status(200).json({ message: 'Successfully shortlisted creators' });
   } catch (error) {

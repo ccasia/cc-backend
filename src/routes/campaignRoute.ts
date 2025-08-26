@@ -49,6 +49,8 @@ import {
   getAllPitches,
   getAllCreatorAgreements,
   changeCampaignCredit,
+  exportActiveCompletedToSheet,
+  exportCreatorsCampaignSheet,
 } from '@controllers/campaignController';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 
@@ -119,6 +121,8 @@ router.post('/shortlistCreator', isSuperAdmin, shortlistCreator);
 router.post('/template/:id', isSuperAdmin, createNewTemplate);
 router.post('/draftPitch', isLoggedIn, draftPitch);
 router.post('/spreadsheet', isLoggedIn, isSuperAdmin, createNewSpreadSheets);
+router.post('/export/active-completed', isSuperAdmin, exportActiveCompletedToSheet);
+router.post('/export/campaign-creators', isSuperAdmin, exportCreatorsCampaignSheet);
 router.post('/removeCreatorFromCampaign', isLoggedIn, isSuperAdmin, removeCreatorFromCampaign);
 router.post('/v2/shortlistCreator', isSuperAdmin, shortlistCreatorV2);
 
