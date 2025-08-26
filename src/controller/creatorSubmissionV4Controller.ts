@@ -197,7 +197,7 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
     await prisma.submission.update({
       where: { id: submissionId },
       data: {
-        content: caption || null
+        caption: caption || null
       }
     });
     
