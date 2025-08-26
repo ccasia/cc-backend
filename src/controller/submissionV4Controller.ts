@@ -13,6 +13,147 @@ import {
   getStatusAfterForwardingClientFeedback
 } from '../utils/v4StatusUtils';
 
+/**
+ * Update submission status based on individual content statuses
+ * For photo and raw footage submissions, if any content needs revision, 
+ * the submission should allow creator to re-upload
+ */
+const updateSubmissionStatusBasedOnContent = async (submissionId: string) => {
+  const submission = await prisma.submission.findUnique({
+    where: { id: submissionId },
+    include: {
+      submissionType: true,
+      campaign: true,
+      photos: true,
+      rawFootages: true,
+      video: true
+    }
+  });
+
+  if (!submission) return;
+
+  // Only update status for photo and raw footage submissions
+  const isPhotoSubmission = submission.submissionType.type === 'PHOTO';
+  const isRawFootageSubmission = submission.submissionType.type === 'RAW_FOOTAGE';
+  
+  if (!isPhotoSubmission && !isRawFootageSubmission) return;
+
+  let hasRevisionRequested = false;
+  let hasApproved = false;
+  let hasClientFeedback = false;
+  let hasSentToClient = false;
+  let allProcessed = true;
+
+  // Check photo statuses
+  if (isPhotoSubmission && submission.photos?.length > 0) {
+    submission.photos.forEach(photo => {
+      if (['REVISION_REQUESTED', 'REJECTED'].includes(photo.status)) {
+        hasRevisionRequested = true;
+      } else if (photo.status === 'APPROVED') {
+        hasApproved = true;
+      } else if (photo.status === 'SENT_TO_CLIENT') {
+        hasSentToClient = true;
+      } else if (photo.status === 'CLIENT_FEEDBACK') {
+        hasClientFeedback = true;
+      } else if (['PENDING', 'PENDING_REVIEW'].includes(photo.status)) {
+        allProcessed = false;
+      }
+    });
+  }
+
+  // Check raw footage statuses
+  if (isRawFootageSubmission && submission.rawFootages?.length > 0) {
+    submission.rawFootages.forEach(rawFootage => {
+      if (['REVISION_REQUESTED', 'REJECTED'].includes(rawFootage.status)) {
+        hasRevisionRequested = true;
+      } else if (rawFootage.status === 'APPROVED') {
+        hasApproved = true;
+      } else if (rawFootage.status === 'SENT_TO_CLIENT') {
+        hasSentToClient = true;
+      } else if (rawFootage.status === 'CLIENT_FEEDBACK') {
+        hasClientFeedback = true;
+      } else if (['PENDING', 'PENDING_REVIEW'].includes(rawFootage.status)) {
+        allProcessed = false;
+      }
+    });
+  }
+
+  // Determine new submission status
+  let newSubmissionStatus = submission.status;
+
+  if (hasRevisionRequested && !hasClientFeedback) {
+    // If any content needs revision AND no content has client feedback, allow creator to re-upload
+    newSubmissionStatus = 'CHANGES_REQUIRED';
+  } else if (hasClientFeedback && allProcessed) {
+    // If any content has client feedback, admin needs to forward it
+    newSubmissionStatus = 'CLIENT_FEEDBACK';
+  } else if ((hasApproved || hasSentToClient) && allProcessed) {
+    // Check what the final status should be based on content statuses
+    const isClientCampaign = submission.campaign?.origin === 'CLIENT';
+    
+    if (isClientCampaign) {
+      // For client campaigns
+      const allContentApproved = isPhotoSubmission 
+        ? submission.photos?.every(p => p.status === 'APPROVED')
+        : submission.rawFootages?.every(r => r.status === 'APPROVED');
+      
+      const allContentSentToClient = isPhotoSubmission 
+        ? submission.photos?.every(p => p.status === 'SENT_TO_CLIENT')
+        : submission.rawFootages?.every(r => r.status === 'SENT_TO_CLIENT');
+      
+      if (allContentApproved) {
+        // All content is fully approved by client - final approval state
+        newSubmissionStatus = 'CLIENT_APPROVED';
+      } else if (allContentSentToClient) {
+        // All content has been sent to client for review
+        newSubmissionStatus = 'SENT_TO_CLIENT';
+      } else {
+        // Mixed statuses - check what the majority status should be
+        const hasAnyApproved = isPhotoSubmission 
+          ? submission.photos?.some(p => p.status === 'APPROVED')
+          : submission.rawFootages?.some(r => r.status === 'APPROVED');
+        
+        const hasAnySentToClient = isPhotoSubmission 
+          ? submission.photos?.some(p => p.status === 'SENT_TO_CLIENT')
+          : submission.rawFootages?.some(r => r.status === 'SENT_TO_CLIENT');
+        
+        if (hasAnySentToClient && !hasAnyApproved) {
+          // All content is either sent to client or in review - keep as sent to client
+          newSubmissionStatus = 'SENT_TO_CLIENT';
+        } else if (hasAnyApproved && !hasAnySentToClient) {
+          // Some content approved by client but not all - this shouldn't happen but handle gracefully
+          newSubmissionStatus = 'SENT_TO_CLIENT';
+        } else {
+          // Mixed approved and sent to client - still waiting for all to be approved
+          newSubmissionStatus = 'SENT_TO_CLIENT';
+        }
+      }
+    } else {
+      // For regular campaigns, mark as approved when all content is approved
+      const allContentApproved = isPhotoSubmission 
+        ? submission.photos?.every(p => p.status === 'APPROVED')
+        : submission.rawFootages?.every(r => r.status === 'APPROVED');
+      
+      if (allContentApproved) {
+        newSubmissionStatus = 'APPROVED';
+      }
+    }
+  } else if (allProcessed && !hasRevisionRequested && !hasApproved && !hasSentToClient) {
+    // If all processed but none approved or rejected, keep in review
+    newSubmissionStatus = 'PENDING_REVIEW';
+  }
+
+  // Update submission status if it changed
+  if (newSubmissionStatus !== submission.status) {
+    await prisma.submission.update({
+      where: { id: submissionId },
+      data: { status: newSubmissionStatus as any }
+    });
+    
+    console.log(`📝 Updated submission ${submissionId} status from ${submission.status} to ${newSubmissionStatus}`);
+  }
+};
+
 const prisma = new PrismaClient();
 
 /**
@@ -466,7 +607,8 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
             reasons: reasons || [],
             submissionId,
             adminId: clientId,
-            type: 'COMMENT' // Using existing enum value, CLIENT_COMMENT would need to be added
+            sentToCreator: true,
+            type: 'COMMENT'
           }
         })
       );
@@ -797,9 +939,9 @@ export const approveIndividualContentV4 = async (req: Request, res: Response) =>
       });
     }
     
-    if (!['video', 'rawFootage'].includes(contentType)) {
+    if (!['video', 'rawFootage', 'photo'].includes(contentType)) {
       return res.status(400).json({ 
-        message: 'contentType must be video or rawFootage' 
+        message: 'contentType must be video, rawFootage, or photo' 
       });
     }
     
@@ -841,7 +983,7 @@ export const approveIndividualContentV4 = async (req: Request, res: Response) =>
           feedbackAt: new Date()
         }
       });
-    } else {
+    } else if (contentType === 'rawFootage') {
       // Handle raw footage
       const rawFootage = await prisma.rawFootage.findUnique({
         where: { id: contentId },
@@ -876,6 +1018,41 @@ export const approveIndividualContentV4 = async (req: Request, res: Response) =>
           feedbackAt: new Date()
         }
       });
+    } else {
+      // Handle photo
+      const photo = await prisma.photo.findUnique({
+        where: { id: contentId },
+        include: { 
+          submission: { 
+            include: { campaign: true } 
+          } 
+        }
+      });
+      
+      if (!photo) {
+        return res.status(404).json({ message: 'Photo not found' });
+      }
+      
+      submission = photo.submission;
+      
+      if (!submission || submission.submissionVersion !== 'v4') {
+        return res.status(400).json({ message: 'Not a v4 submission' });
+      }
+      
+      // Determine status based on campaign origin
+      const newStatus = submission.campaign.origin === 'CLIENT' ? 'SENT_TO_CLIENT' : 'APPROVED';
+      
+      // Update photo
+      updatedContent = await prisma.photo.update({
+        where: { id: contentId },
+        data: {
+          status: newStatus as any,
+          feedback: feedback || null,
+          reasons: reasons || [],
+          adminId,
+          feedbackAt: new Date()
+        }
+      });
     }
     
     // Add to submission-level feedback if feedback provided
@@ -891,13 +1068,19 @@ export const approveIndividualContentV4 = async (req: Request, res: Response) =>
       if (contentType === 'video') {
         feedbackData.content = feedback;
         feedbackData.videosToUpdate = [contentId];
-      } else {
+      } else if (contentType === 'rawFootage') {
         feedbackData.rawFootageContent = feedback;
         feedbackData.rawFootageToUpdate = [contentId];
+      } else {
+        feedbackData.photoContent = feedback;
+        feedbackData.photosToUpdate = [contentId];
       }
       
       await prisma.feedback.create({ data: feedbackData });
     }
+    
+    // Update submission status based on individual content statuses
+    await updateSubmissionStatusBasedOnContent(submission.id);
     
     console.log(`✅ V4 ${contentType} ${contentId} approved by admin ${adminId}`);
     
@@ -931,9 +1114,9 @@ export const requestChangesIndividualContentV4 = async (req: Request, res: Respo
       });
     }
     
-    if (!['video', 'rawFootage'].includes(contentType)) {
+    if (!['video', 'rawFootage', 'photo'].includes(contentType)) {
       return res.status(400).json({ 
-        message: 'contentType must be video or rawFootage' 
+        message: 'contentType must be video, rawFootage, or photo' 
       });
     }
     
@@ -968,7 +1151,7 @@ export const requestChangesIndividualContentV4 = async (req: Request, res: Respo
           feedbackAt: new Date()
         }
       });
-    } else {
+    } else if (contentType === 'rawFootage') {
       // Handle raw footage
       const rawFootage = await prisma.rawFootage.findUnique({
         where: { id: contentId },
@@ -996,6 +1179,34 @@ export const requestChangesIndividualContentV4 = async (req: Request, res: Respo
           feedbackAt: new Date()
         }
       });
+    } else {
+      // Handle photo
+      const photo = await prisma.photo.findUnique({
+        where: { id: contentId },
+        include: { submission: true }
+      });
+      
+      if (!photo) {
+        return res.status(404).json({ message: 'Photo not found' });
+      }
+      
+      submission = photo.submission;
+      
+      if (!submission || submission.submissionVersion !== 'v4') {
+        return res.status(400).json({ message: 'Not a v4 submission' });
+      }
+      
+      // Update photo
+      updatedContent = await prisma.photo.update({
+        where: { id: contentId },
+        data: {
+          status: 'REVISION_REQUESTED',
+          feedback,
+          reasons: reasons || [],
+          adminId,
+          feedbackAt: new Date()
+        }
+      });
     }
     
     // Add to submission-level feedback
@@ -1010,12 +1221,18 @@ export const requestChangesIndividualContentV4 = async (req: Request, res: Respo
     if (contentType === 'video') {
       feedbackData.content = feedback;
       feedbackData.videosToUpdate = [contentId];
-    } else {
+    } else if (contentType === 'rawFootage') {
       feedbackData.rawFootageContent = feedback;
       feedbackData.rawFootageToUpdate = [contentId];
+    } else {
+      feedbackData.photoContent = feedback;
+      feedbackData.photosToUpdate = [contentId];
     }
     
     await prisma.feedback.create({ data: feedbackData });
+    
+    // Update submission status based on individual content statuses
+    await updateSubmissionStatusBasedOnContent(submission.id);
     
     console.log(`✅ V4 ${contentType} ${contentId} changes requested by admin ${adminId}`);
     
@@ -1049,9 +1266,9 @@ export const approveIndividualContentByClientV4 = async (req: Request, res: Resp
       });
     }
     
-    if (!['video', 'rawFootage'].includes(contentType)) {
+    if (!['video', 'rawFootage', 'photo'].includes(contentType)) {
       return res.status(400).json({ 
-        message: 'contentType must be video or rawFootage' 
+        message: 'contentType must be video, rawFootage, or photo' 
       });
     }
     
@@ -1093,7 +1310,7 @@ export const approveIndividualContentByClientV4 = async (req: Request, res: Resp
           feedbackAt: new Date()
         }
       });
-    } else {
+    } else if (contentType === 'rawFootage') {
       // Handle raw footage
       const rawFootage = await prisma.rawFootage.findUnique({
         where: { id: contentId },
@@ -1128,6 +1345,41 @@ export const approveIndividualContentByClientV4 = async (req: Request, res: Resp
           feedbackAt: new Date()
         }
       });
+    } else {
+      // Handle photo
+      const photo = await prisma.photo.findUnique({
+        where: { id: contentId },
+        include: { 
+          submission: { 
+            include: { campaign: true } 
+          } 
+        }
+      });
+      
+      if (!photo) {
+        return res.status(404).json({ message: 'Photo not found' });
+      }
+      
+      submission = photo.submission;
+      
+      if (!submission || submission.submissionVersion !== 'v4') {
+        return res.status(400).json({ message: 'Not a v4 submission' });
+      }
+      
+      if (submission.campaign.origin !== 'CLIENT') {
+        return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
+      }
+      
+      // Update photo
+      updatedContent = await prisma.photo.update({
+        where: { id: contentId },
+        data: {
+          status: 'APPROVED',
+          feedback: feedback || null,
+          adminId: clientId,
+          feedbackAt: new Date()
+        }
+      });
     }
     
     // Add to submission-level feedback if feedback provided
@@ -1142,13 +1394,19 @@ export const approveIndividualContentByClientV4 = async (req: Request, res: Resp
       if (contentType === 'video') {
         feedbackData.content = feedback;
         feedbackData.videosToUpdate = [contentId];
-      } else {
+      } else if (contentType === 'rawFootage') {
         feedbackData.rawFootageContent = feedback;
         feedbackData.rawFootageToUpdate = [contentId];
+      } else {
+        feedbackData.photoContent = feedback;
+        feedbackData.photosToUpdate = [contentId];
       }
       
       await prisma.feedback.create({ data: feedbackData });
     }
+    
+    // Update submission status based on individual content statuses
+    await updateSubmissionStatusBasedOnContent(submission.id);
     
     console.log(`✅ V4 ${contentType} ${contentId} approved by client ${clientId}`);
     
@@ -1182,9 +1440,9 @@ export const requestChangesIndividualContentByClientV4 = async (req: Request, re
       });
     }
     
-    if (!['video', 'rawFootage'].includes(contentType)) {
+    if (!['video', 'rawFootage', 'photo'].includes(contentType)) {
       return res.status(400).json({ 
-        message: 'contentType must be video or rawFootage' 
+        message: 'contentType must be video, rawFootage, or photo' 
       });
     }
     
@@ -1227,7 +1485,7 @@ export const requestChangesIndividualContentByClientV4 = async (req: Request, re
           feedbackAt: new Date()
         }
       });
-    } else {
+    } else if (contentType === 'rawFootage') {
       // Handle raw footage
       const rawFootage = await prisma.rawFootage.findUnique({
         where: { id: contentId },
@@ -1263,6 +1521,42 @@ export const requestChangesIndividualContentByClientV4 = async (req: Request, re
           feedbackAt: new Date()
         }
       });
+    } else {
+      // Handle photo
+      const photo = await prisma.photo.findUnique({
+        where: { id: contentId },
+        include: { 
+          submission: { 
+            include: { campaign: true } 
+          } 
+        }
+      });
+      
+      if (!photo) {
+        return res.status(404).json({ message: 'Photo not found' });
+      }
+      
+      submission = photo.submission;
+      
+      if (!submission || submission.submissionVersion !== 'v4') {
+        return res.status(400).json({ message: 'Not a v4 submission' });
+      }
+      
+      if (submission.campaign.origin !== 'CLIENT') {
+        return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
+      }
+      
+      // Update photo
+      updatedContent = await prisma.photo.update({
+        where: { id: contentId },
+        data: {
+          status: 'CLIENT_FEEDBACK',
+          feedback,
+          reasons: reasons || [],
+          adminId: clientId,
+          feedbackAt: new Date()
+        }
+      });
     }
     
     // Add to submission-level feedback
@@ -1277,12 +1571,18 @@ export const requestChangesIndividualContentByClientV4 = async (req: Request, re
     if (contentType === 'video') {
       feedbackData.content = feedback;
       feedbackData.videosToUpdate = [contentId];
-    } else {
+    } else if (contentType === 'rawFootage') {
       feedbackData.rawFootageContent = feedback;
       feedbackData.rawFootageToUpdate = [contentId];
+    } else {
+      feedbackData.photoContent = feedback;
+      feedbackData.photosToUpdate = [contentId];
     }
     
     await prisma.feedback.create({ data: feedbackData });
+    
+    // Update submission status based on individual content statuses
+    await updateSubmissionStatusBasedOnContent(submission.id);
     
     console.log(`✅ V4 ${contentType} ${contentId} changes requested by client ${clientId}`);
     
@@ -1309,9 +1609,9 @@ export const getIndividualContentFeedbackV4 = async (req: Request, res: Response
   const { contentType, contentId } = req.params;
   
   try {
-    if (!['video', 'rawFootage'].includes(contentType)) {
+    if (!['video', 'rawFootage', 'photo'].includes(contentType)) {
       return res.status(400).json({ 
-        message: 'contentType must be video or rawFootage' 
+        message: 'contentType must be video, rawFootage, or photo' 
       });
     }
     
@@ -1328,8 +1628,17 @@ export const getIndividualContentFeedbackV4 = async (req: Request, res: Response
         }
       });
       submissionId = content?.submissionId;
-    } else {
+    } else if (contentType === 'rawFootage') {
       content = await prisma.rawFootage.findUnique({
+        where: { id: contentId },
+        include: { 
+          admin: { select: { id: true, name: true } },
+          submission: { select: { id: true } }
+        }
+      });
+      submissionId = content?.submissionId;
+    } else {
+      content = await prisma.photo.findUnique({
         where: { id: contentId },
         include: { 
           admin: { select: { id: true, name: true } },
@@ -1349,7 +1658,8 @@ export const getIndividualContentFeedbackV4 = async (req: Request, res: Response
         submissionId: submissionId || undefined,
         OR: [
           { videosToUpdate: { has: contentId } },
-          { rawFootageToUpdate: { has: contentId } }
+          { rawFootageToUpdate: { has: contentId } },
+          { photosToUpdate: { has: contentId } }
         ]
       },
       include: {
@@ -1376,7 +1686,15 @@ export const getIndividualContentFeedbackV4 = async (req: Request, res: Response
     
     // Add submission-level feedback
     submissionFeedback.forEach(fb => {
-      const feedbackText = contentType === 'video' ? fb.content : fb.rawFootageContent;
+      let feedbackText;
+      if (contentType === 'video') {
+        feedbackText = fb.content;
+      } else if (contentType === 'rawFootage') {
+        feedbackText = fb.rawFootageContent;
+      } else {
+        feedbackText = fb.photoContent;
+      }
+      
       if (feedbackText) {
         feedbackHistory.push({
           id: fb.id,
@@ -1403,6 +1721,178 @@ export const getIndividualContentFeedbackV4 = async (req: Request, res: Response
     console.error('Error getting individual content feedback v4:', error);
     res.status(500).json({
       message: 'Failed to get feedback history',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+};
+
+/**
+ * Get feedback for a specific photo
+ * GET /api/submissions/v4/photo/:photoId/feedback
+ */
+export const getPhotoFeedbackV4 = async (req: Request, res: Response) => {
+  const { photoId } = req.params;
+  
+  try {
+    // Get photo with submission info
+    const photo = await prisma.photo.findUnique({
+      where: { id: photoId },
+      include: {
+        submission: {
+          include: {
+            feedback: {
+              where: {
+                photosToUpdate: { has: photoId },
+                photoContent: { not: null }
+              },
+              include: {
+                admin: {
+                  select: { id: true, name: true, role: true }
+                }
+              },
+              orderBy: { createdAt: 'asc' }
+            }
+          }
+        }
+      }
+    });
+
+    if (!photo) {
+      return res.status(404).json({ message: 'Photo not found' });
+    }
+
+    // Only show feedback from feedback table with photoContent
+    interface FeedbackHistoryItem {
+      id: string;
+      type: 'client_feedback' | 'admin_feedback';
+      feedback: string | null;
+      reasons: string[];
+      admin: {
+      id: string;
+      name: string;
+      role?: string;
+      } | null;
+      createdAt: Date;
+      sentToCreator: boolean;
+    }
+
+    const feedbackHistory: FeedbackHistoryItem[] = [];
+
+    // Add feedback from feedback table that targets this photo
+    photo.submission?.feedback.forEach(fb => {
+      feedbackHistory.push({
+        id: fb.id,
+        type: fb.admin?.role === 'client' ? 'client_feedback' : 'admin_feedback',
+        feedback: fb.photoContent,
+        reasons: fb.reasons || [],
+        admin: fb.admin ? {
+          id: fb.admin.id,
+          name: fb.admin.name ?? 'Unknown',
+          role: fb.admin.role
+        } : null,
+        createdAt: fb.createdAt,
+        sentToCreator: fb.sentToCreator
+      });
+    });
+
+    // Skip submission-level feedback to avoid duplication in photo feedback dialog
+
+    // Sort by creation date
+    feedbackHistory.sort((a, b) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime());
+
+    res.status(200).json({
+      photo: {
+        id: photo.id,
+        url: photo.url,
+        status: photo.status,
+        feedback: photo.feedback,
+        reasons: photo.reasons
+      },
+      feedbackHistory,
+      totalFeedback: feedbackHistory.length
+    });
+
+  } catch (error) {
+    console.error('Error getting photo feedback v4:', error);
+    res.status(500).json({
+      message: 'Failed to get photo feedback',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+};
+
+/**
+ * Forward individual photo feedback to creator
+ * POST /api/submissions/v4/forward-photo-feedback
+ */
+export const forwardPhotoFeedbackV4 = async (req: Request, res: Response) => {
+  const { feedbackId } = req.body;
+  const adminId = req.session.userid;
+  
+  try {
+    if (!feedbackId) {
+      return res.status(400).json({ message: 'feedbackId is required' });
+    }
+
+    // Get the feedback and its associated photo
+    const feedback = await prisma.feedback.findUnique({
+      where: { id: feedbackId },
+      include: {
+        submission: {
+          include: {
+            photos: true
+          }
+        }
+      }
+    });
+
+    if (!feedback) {
+      return res.status(404).json({ message: 'Feedback not found' });
+    }
+
+    if (feedback.sentToCreator) {
+      return res.status(400).json({ message: 'Feedback already forwarded to creator' });
+    }
+
+    if (!feedback.photosToUpdate || feedback.photosToUpdate.length === 0) {
+      return res.status(400).json({ message: 'No photos associated with this feedback' });
+    }
+
+    // Update the feedback to be sent to creator
+    await prisma.feedback.update({
+      where: { id: feedbackId },
+      data: {
+        sentToCreator: true,
+        updatedAt: new Date()
+      }
+    });
+
+    // Update the associated photos to REVISION_REQUESTED status
+    await prisma.photo.updateMany({
+      where: {
+        id: { in: feedback.photosToUpdate }
+      },
+      data: {
+        status: 'REVISION_REQUESTED',
+        adminId,
+        feedbackAt: new Date()
+      }
+    });
+
+    // Update submission status based on individual content statuses
+    await updateSubmissionStatusBasedOnContent(feedback.submissionId);
+
+    console.log(`✅ Photo feedback ${feedbackId} forwarded to creator by admin ${adminId}`);
+    
+    res.status(200).json({
+      message: 'Feedback forwarded to creator successfully',
+      feedbackId
+    });
+
+  } catch (error) {
+    console.error('Error forwarding photo feedback:', error);
+    res.status(500).json({
+      message: 'Failed to forward feedback',
       error: error instanceof Error ? error.message : 'Unknown error'
     });
   }

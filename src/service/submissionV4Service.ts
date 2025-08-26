@@ -101,7 +101,8 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
             admin: {
               select: {
                 id: true,
-                name: true
+                name: true,
+                role: true
               }
             }
           },

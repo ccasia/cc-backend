@@ -14,6 +14,8 @@ import {
   approveIndividualContentByClientV4,
   requestChangesIndividualContentByClientV4,
   getIndividualContentFeedbackV4,
+  getPhotoFeedbackV4,
+  forwardPhotoFeedbackV4,
   getSubmissionStatusInfo
 } from '../controller/submissionV4Controller';
 import { isLoggedIn } from '../middleware/onlyLogin';
@@ -51,6 +53,9 @@ router.post('/approve/client', isLoggedIn, isClient, approveV4SubmissionByClient
 // Admin forward client feedback to creator
 router.post('/forward-client-feedback', isLoggedIn, isAdmin, forwardClientFeedbackV4);
 
+// Admin forward individual photo feedback to creator
+router.post('/forward-photo-feedback', isLoggedIn, isAdmin, forwardPhotoFeedbackV4);
+
 // Update posting link for approved submission (creator action)
 router.put('/posting-link', updatePostingLinkController);
 
@@ -62,6 +67,7 @@ router.patch('/content/approve', isLoggedIn, isAdmin, approveIndividualContentV4
 router.patch('/content/request-changes', isLoggedIn, isAdmin, requestChangesIndividualContentV4);
 router.patch('/content/approve/client', isLoggedIn, isClient, approveIndividualContentByClientV4);
 router.patch('/content/request-changes/client', isLoggedIn, isClient, requestChangesIndividualContentByClientV4);
+router.get('/photo/:photoId/feedback', isLoggedIn, getPhotoFeedbackV4);
 router.get('/content/feedback/:contentType/:contentId', isLoggedIn, getIndividualContentFeedbackV4);
 
 export default router;
