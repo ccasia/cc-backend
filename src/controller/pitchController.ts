@@ -833,11 +833,12 @@ export const getPitchesV3 = async (req: Request, res: Response) => {
     // Transform pitches to show role-based status and filter for clients
     const transformedPitches = pitches
       .filter(pitch => {
-        // For clients: show pitches that are SENT_TO_CLIENT, APPROVED, or in agreement stages
+        // For clients: show pitches that are SENT_TO_CLIENT, APPROVED, REJECTED, or in agreement stages
         // Hide pitches with PENDING_REVIEW status (admin review stage)
         if (user.role === 'client') {
           return pitch.status === 'SENT_TO_CLIENT' || 
                  pitch.status === 'APPROVED' || 
+                 pitch.status === 'REJECTED' ||
                  pitch.status === 'AGREEMENT_PENDING' || 
                  pitch.status === 'AGREEMENT_SUBMITTED';
         }
@@ -1490,10 +1491,10 @@ export const forwardClientFeedbackV3 = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
     }
 
-    // Check if submission is in correct status - allow both SENT_TO_ADMIN and CHANGES_REQUIRED
-    if (submission.status !== 'SENT_TO_ADMIN' && submission.status !== 'CHANGES_REQUIRED') {
-      return res.status(400).json({
-        message: `Submission is not in correct status for forwarding feedback. Current status: ${submission.status}`,
+    // Check if submission is in correct status
+    if (submission.status !== 'SENT_TO_ADMIN') {
+      return res.status(400).json({ 
+        message: `Submission is not in correct status for forwarding feedback. Current status: ${submission.status}` 
       });
     }
 
