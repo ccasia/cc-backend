@@ -49,6 +49,7 @@ model User {
   pitch              Pitch[]
   approvedPitches    Pitch[]              @relation("ApprovedByClient")
   rejectedPitches    Pitch[]              @relation("RejectedByClient")
+  maybePitches       Pitch[]              @relation("MaybeByClient")
   resetPasswordToken ResetPasswordToken?
   seenMessages       SeenMessage[]
   shortlisted        ShortListedCreator[]
@@ -131,14 +132,17 @@ model Client {
   userId String @unique
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+
   // Keep company relation
   company Company? @relation(fields: [companyId], references: [id])
+
 
   // Add client-specific fields
   clientType ClientType @default(directClient)
   isActive   Boolean    @default(true)
   createdAt  DateTime   @default(now())
   updatedAt  DateTime   @default(now()) @updatedAt
+
 
   // Client-specific relations
   clientCampaigns     ClientCampaign[]
@@ -253,6 +257,7 @@ model TiktokUser {
   following_count Int?
   follower_count  Int?
   likes_count     Int?
+
 
   totalLikes      Int?
   totalComments   Int?
@@ -815,6 +820,8 @@ model Pitch {
   rejectedByAdminId   String?
   rejectedByClientId  String?
   rejectionReason     String?
+  customRejectionText String?
+  maybeByClientId     String?
   amount              Int?
   ugcCredits          Int?
   agreementTemplateId String?
@@ -1468,6 +1475,7 @@ enum PitchStatus {
   PENDING_REVIEW
   SENT_TO_CLIENT
   APPROVED
+  MAYBE
   REJECTED
   AGREEMENT_PENDING
   AGREEMENT_SUBMITTED

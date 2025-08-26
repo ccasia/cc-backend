@@ -106,7 +106,12 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
     // Update pitch status to sent to client and store UGC credits
     const updatedPitch = await prisma.pitch.update({
       where: { id: pitchId },
-      data: updateData,
+      data: {
+  ...updateData,
+  status: 'SENT_TO_CLIENT',
+  approvedByAdminId: adminId,
+  ugcCredits: parseInt(ugcCredits),
+},
       include: {
         campaign: true,
         user: true,
@@ -403,7 +408,7 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
 // V3 Flow: Client rejects pitch for client-created campaign
 export const rejectPitchByClient = async (req: Request, res: Response) => {
   const { pitchId } = req.params;
-  const { rejectionReason } = req.body;
+  const { rejectionReason, customRejectionText } = req.body;
   const clientId = req.session.userid;
 
   try {
@@ -459,6 +464,8 @@ export const rejectPitchByClient = async (req: Request, res: Response) => {
         status: 'REJECTED',
         rejectedByClientId: clientId,
         rejectionReason: rejectionReason || 'Rejected by client',
+        customRejectionText: customRejectionText,
+
       },
     });
 
@@ -505,6 +512,106 @@ export const rejectPitchByClient = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error rejecting pitch by client:', error);
     return res.status(500).json({ message: 'Failed to reject pitch' });
+  }
+};
+
+// V3.1 Flow: Client maybe option
+export const maybePitchByClient = async (req: Request, res: Response) => {
+  const { pitchId } = req.params;
+  const { rejectionReason, customRejectionText } = req.body;
+  const clientId = req.session.userid;
+
+  try {
+    console.log(`Client ${clientId} setting pitch ${pitchId} to maybe`);
+
+    const pitch = await prisma.pitch.findUnique({
+      where: { id: pitchId },
+      include: {
+        campaign: {
+          include: {
+            campaignAdmin: {
+              include: {
+                admin: {
+                  include: {
+                    user: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+        user: true,
+      },
+    });
+
+    if (!pitch) {
+      return res.status(404).json({ message: 'Pitch not found' });
+    }
+
+    // Check if this is a client-created campaign
+    if (pitch.campaign.origin !== 'CLIENT') {
+      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
+    }
+
+    // Check if pitch is in correct status
+    if (pitch.status !== 'SENT_TO_CLIENT') {
+      return res.status(400).json({ message: 'Pitch is not in correct status for client action' });
+    }
+
+    // Verify client has access to this campaign
+    const clientAccess = pitch.campaign.campaignAdmin.find(
+      (ca) => ca.admin.userId === clientId && ca.admin.user.role === 'client',
+    );
+
+    if (!clientAccess) {
+      return res.status(403).json({ message: 'Client not authorized for this campaign' });
+    }
+
+    await prisma.pitch.update({
+      where: { id: pitchId },
+      data: {
+        status: 'MAYBE',
+        maybeByClientId: clientId,
+        rejectionReason: rejectionReason,
+        customRejectionText: customRejectionText,
+      },
+    });
+
+    // Create notification for creator
+    await prisma.notification.create({
+      data: {
+        title: 'Pitch Under Consideration',
+        message: `Your pitch for campaign "${pitch.campaign.name}" is under consideration by the client.`,
+        entity: 'Pitch',
+        campaignId: pitch.campaignId,
+        pitchId: pitchId,
+        userId: pitch.userId,
+      },
+    });
+
+    // Create notification for admin
+    const adminUsers = pitch.campaign.campaignAdmin.filter(
+      (ca) => ca.admin.user.role === 'admin' || ca.admin.user.role === 'superadmin',
+    );
+
+    for (const adminUser of adminUsers) {
+      await prisma.notification.create({
+        data: {
+          title: 'Pitch Set to Maybe by Client',
+          message: `A pitch for campaign "${pitch.campaign.name}" has been set to maybe by client.`,
+          entity: 'Pitch',
+          campaignId: pitch.campaignId,
+          pitchId: pitchId,
+          userId: adminUser.admin.userId,
+        },
+      });
+    }
+
+    console.log(`Pitch ${pitchId} set to maybe by client`);
+    return res.status(200).json({ message: 'Pitch status updated to maybe' });
+  } catch (error) {
+    console.error('Error setting pitch to maybe by client:', error);
+    return res.status(500).json({ message: 'Failed to update pitch status' });
   }
 };
 
@@ -757,7 +864,7 @@ export const getPitchesV3 = async (req: Request, res: Response) => {
             displayStatus = 'PENDING_REVIEW';
           } else if (pitch.status === 'AGREEMENT_PENDING' || pitch.status === 'AGREEMENT_SUBMITTED') {
             displayStatus = 'APPROVED';
-          } 
+          }
         }
 
         return {
