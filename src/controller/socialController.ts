@@ -1603,7 +1603,7 @@ export const getTikTokMediaKit = async (req: Request, res: Response) => {
         averageComments: averageComments,
         engagement_rate: engagement_rate,
         lastUpdated: new Date(),
-      } as any,
+      },
       create: {
         creatorId: user.creator.id,
         display_name: overview.display_name,
@@ -1617,7 +1617,7 @@ export const getTikTokMediaKit = async (req: Request, res: Response) => {
         averageComments: averageComments,
         engagement_rate: engagement_rate,
         lastUpdated: new Date(),
-      } as any,
+      },
     });
 
     // Prepare response data structure similar to Instagram
