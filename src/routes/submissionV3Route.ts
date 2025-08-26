@@ -58,7 +58,5 @@ router.patch('/v3/posting/request-changes/client', isClient, requestChangesForPo
 router.patch('/v3/posting/forward-feedback', isAdmin, forwardClientPostingFeedbackV3);
 router.patch('/v3/draft/review-feedback', isAdmin, reviewAndForwardClientFeedbackV3);
 router.patch('/v3/draft/forward-feedback', isAdmin, forwardClientFeedbackV3);
-router.patch('/v3/feedback/:feedbackId', isAdmin, updateFeedbackV3);
-router.get('/v3/creator-feedback/:submissionId', isCreatorOrClient, getCreatorVisibleFeedbackV3);
 
 export default router; 
