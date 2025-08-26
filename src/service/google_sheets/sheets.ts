@@ -219,6 +219,49 @@ export const createCampaignCreatorSpreadSheet = async ({
   }
 };
 
+export const upsertSheetAndWriteRows = async ({
+  spreadSheetId,
+  sheetTitle,
+  headerRow,
+  rows,
+}: {
+  spreadSheetId: string;
+  sheetTitle: string;
+  headerRow: string[];
+  rows: (string | number)[][];
+}) => {
+  try {
+    const doc = await accessGoogleSheetAPI(spreadSheetId);
+
+    if (!doc) {
+      throw new Error('Spreadsheet not found.');
+    }
+
+    let currentSheet = doc.sheetsByTitle[sheetTitle];
+
+    if (!currentSheet) {
+      currentSheet = await doc.addSheet({ title: sheetTitle });
+    }
+
+    // Clear existing content to avoid duplicates, then set header and add rows
+    if ((currentSheet as any).clear) {
+      await (currentSheet as any).clear();
+    }
+
+    await currentSheet.setHeaderRow(headerRow);
+
+    if (rows?.length) {
+      // google-spreadsheet accepts array of objects or array of arrays when header is set
+      await currentSheet.addRows(rows as any);
+    }
+
+    return true;
+  } catch (error) {
+    console.log(error);
+    throw new Error(error as any);
+  }
+};
+
 // async function withRetries(fn: any, retries = 3, delay = 1000) {
 //   for (let attempt = 1; attempt <= retries; attempt++) {
 //     try {
