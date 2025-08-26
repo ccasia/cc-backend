@@ -1648,6 +1648,8 @@ export const getTikTokMediaKit = async (req: Request, res: Response) => {
       },
     };
 
+    console.log(responseData);
+
     return res.status(200).json(responseData);
   } catch (error: any) {
     console.error('Error in getTikTokMediaKit:', error);
