@@ -1,0 +1,29 @@
+import { Prisma, PrismaClient, Status } from '@prisma/client';
+
+type PrismaTransactionClient = Prisma.TransactionClient;
+
+export const handleGuestForShortListing = async (
+  creator: any,
+  tx: PrismaTransactionClient,
+): Promise<{ userId: string; isGuest: boolean }> => {
+  // Platform creator - return existing id
+  if (!creator.name || !creator.profileLink) {
+    throw new Error(`Guest creator is missing required fields: ${JSON.stringify(creator)}`);
+  }
+
+  // Non-platform creator - return temp id
+  const guestCreator = await tx.user.upsert({
+    where: { guestProfileLink: creator.profileLink },
+    update: {},
+    create: {
+      name: creator.name,
+      email: `guest_${Date.now()}_${Math.random()}@tempmail.com`,
+      guestProfileLink: creator.profileLink,
+      status: Status.guest,
+      role: 'creator',
+      creator: { create: { isGuest: true } },
+    },
+  });
+
+  return { userId: guestCreator.id, isGuest: true };
+};
