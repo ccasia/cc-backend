@@ -1628,8 +1628,19 @@ export const submitDraftV3 = async (req: Request, res: Response) => {
       allRequiredDeliverablesUploaded
     });
 
-    // Only update status to PENDING_REVIEW if all required deliverables are uploaded
-    if (allRequiredDeliverablesUploaded) {
+    // If specific media types have REVISION_REQUESTED/CLIENT_FEEDBACK, require a fresh upload for that type in this submission attempt
+    const rawNeedsResubmission = campaignRequiresRawFootage && submission.rawFootages.some(r => r.status === 'REVISION_REQUESTED' || r.status === 'CLIENT_FEEDBACK');
+    const photosNeedResubmission = campaignRequiresPhotos && submission.photos.some(p => p.status === 'REVISION_REQUESTED' || p.status === 'CLIENT_FEEDBACK');
+    const videosNeedResubmission = campaignRequiresVideos && submission.video.some(v => v.status === 'REVISION_REQUESTED' || v.status === 'CLIENT_FEEDBACK');
+
+    const resubmissionRequirementsSatisfied =
+      (!videosNeedResubmission || newVideos > 0) &&
+      (!photosNeedResubmission || newPhotos > 0) &&
+      (!rawNeedsResubmission || newRawFootages > 0);
+
+    // Only update status to PENDING_REVIEW if all required deliverables are uploaded,
+    // and any requested revisions have fresh uploads for those media types
+    if (allRequiredDeliverablesUploaded && resubmissionRequirementsSatisfied) {
       await prisma.submission.update({
         where: { id: submissionId },
         data: {
@@ -1649,7 +1660,7 @@ export const submitDraftV3 = async (req: Request, res: Response) => {
       return res.status(200).json({ message: 'Draft submitted successfully and sent for review' });
     } else {
       console.log(`🔍 FIXED: Submission ${submissionId} keeping IN_PROGRESS status (missing required deliverables)`);
-      return res.status(200).json({ message: 'Draft uploaded successfully. Please upload all required deliverables before submitting for review.' });
+      return res.status(200).json({ message: 'Draft uploaded successfully. Please upload all required deliverables and address requested revisions before submitting for review.' });
     }
 
   } catch (error) {

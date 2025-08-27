@@ -123,6 +123,29 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
       },
     });
 
+    // Deduct credits from the client's active subscription (for client-origin campaigns)
+    try {
+      const company = await prisma.company.findUnique({
+        where: { id: updatedPitch.campaign.companyId as string },
+        include: { subscriptions: true as any },
+      } as any);
+      if (company) {
+        const activeSub = (company as any).subscriptions?.find((s: any) => s.status === 'ACTIVE') || (company as any).subscriptions?.[0];
+        if (activeSub) {
+          const currentUsed = Number((activeSub as any).creditsUsed || 0);
+          const toDeduct = Number(ugcCredits || 0);
+          const nextUsed = currentUsed + (isNaN(toDeduct) ? 0 : toDeduct);
+          await prisma.subscription.update({
+            where: { id: (activeSub as any).id },
+            data: { creditsUsed: nextUsed },
+          });
+          console.log(`Subscription ${(activeSub as any).id} creditsUsed updated: ${currentUsed} -> ${nextUsed}`);
+        }
+      }
+    } catch (creditErr) {
+      console.warn('Unable to update subscription creditsUsed after pitch approval:', creditErr);
+    }
+
     // Find client users for this campaign
     const clientUsers = pitch.campaign.campaignAdmin.filter((ca) => ca.admin.user.role === 'client');
 
