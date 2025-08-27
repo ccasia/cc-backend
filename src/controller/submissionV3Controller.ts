@@ -1706,13 +1706,18 @@ export const approveDraftByAdminV3 = async (req: Request, res: Response) => {
     // Guard: If FE accidentally sent FIRST_DRAFT id from Final Draft admin, redirect to the dependent FINAL_DRAFT
     let targetSubmissionId = submissionId;
     if (submission.submissionType.type === 'FIRST_DRAFT') {
+      // Correct mapping: find dependency where the current FIRST_DRAFT is the base submission,
+      // and the dependent is the FINAL_DRAFT we want to update
       const dep = await prisma.submissionDependency.findFirst({
-        where: { dependentSubmissionId: submissionId },
-        select: { submissionId: true, submission: { select: { submissionType: true } } },
+        where: { submissionId: submissionId },
+        select: {
+          dependentSubmissionId: true,
+          dependentSubmission: { select: { submissionType: true } },
+        },
       });
-      if (dep?.submissionId && dep.submission?.submissionType?.type === 'FINAL_DRAFT') {
-        console.log(`⚠️ approveDraftByAdminV3: Received FIRST_DRAFT id ${submissionId}, redirecting to FINAL_DRAFT ${dep.submissionId}`);
-        targetSubmissionId = dep.submissionId;
+      if (dep?.dependentSubmissionId && dep.dependentSubmission?.submissionType?.type === 'FINAL_DRAFT') {
+        console.log(`⚠️ approveDraftByAdminV3: Received FIRST_DRAFT id ${submissionId}, redirecting to FINAL_DRAFT ${dep.dependentSubmissionId}`);
+        targetSubmissionId = dep.dependentSubmissionId;
       }
     }
 
