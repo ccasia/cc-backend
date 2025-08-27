@@ -1178,7 +1178,7 @@ export const createXeroInvoiceLocal = async (
   try {
     // await xero.updateTenants();
 
-    let contact: Contact = { contactID: contactId };
+    // let contact: Contact = { contactID: contactId };
 
     const where = 'Status=="ACTIVE"';
 
@@ -1186,31 +1186,31 @@ export const createXeroInvoiceLocal = async (
       activeTenant = xero.tenants.find((item) => item?.orgData.baseCurrency.toUpperCase() === currency);
     }
 
-    const result = await xero.accountingApi.getContacts(
-      activeTenant.tenantId,
-      undefined, // IDs
-      `EmailAddress=="${creatorEmail}"`,
-    );
+    // const result = await xero.accountingApi.getContacts(
+    //   activeTenant.tenantId,
+    //   undefined, // IDs
+    //   `EmailAddress=="${creatorEmail}"`,
+    // );
 
-    if (result.body.contacts && result.body.contacts.length > 0) {
-      contact = { contactID: result.body.contacts[0].contactID };
-    } else {
-      const contactInfo: Contact = {
-        name: invoiceFrom.name,
-        emailAddress: invoiceFrom.email,
-        phones: [{ phoneType: Phone.PhoneTypeEnum.MOBILE, phoneNumber: invoiceFrom.phoneNumber }],
-        addresses: [
-          {
-            addressLine1: creator.address,
-          },
-        ],
-        bankAccountDetails: bankInfo.accountNumber,
-      };
+    // if (result.body.contacts && result.body.contacts.length > 0) {
+    //   contact = { contactID: result.body.contacts[0].contactID };
+    // } else {
+    //   const contactInfo: Contact = {
+    //     name: invoiceFrom.name,
+    //     emailAddress: invoiceFrom.email,
+    //     phones: [{ phoneType: Phone.PhoneTypeEnum.MOBILE, phoneNumber: invoiceFrom.phoneNumber }],
+    //     addresses: [
+    //       {
+    //         addressLine1: creator.address,
+    //       },
+    //     ],
+    //     bankAccountDetails: bankInfo.accountNumber,
+    //   };
 
-      const response = await xero.accountingApi.createContacts(activeTenant.tenantId, { contacts: [contactInfo] });
+    //   const response = await xero.accountingApi.createContacts(activeTenant.tenantId, { contacts: [contactInfo] });
 
-      contact = { contactID: (response.body as any).contacts[0].contactID };
-    }
+    //   contact = { contactID: (response.body as any).contacts[0].contactID };
+    // }
 
     const accounts: any = await xero.accountingApi.getAccounts(activeTenant.tenantId, undefined, where);
 
@@ -1225,7 +1225,7 @@ export const createXeroInvoiceLocal = async (
 
     const invoice: Invoice = {
       type: 'ACCPAY' as any,
-      contact: contact,
+      contact: contactId as any,
       dueDate: dueDate,
       lineItems: lineItemsArray,
       status: 'AUTHORISED' as any,
