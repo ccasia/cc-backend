@@ -1130,6 +1130,7 @@ export const createXeroContact = async (
     await xero.updateTenants();
 
     console.log('TENANTS', xero.tenants);
+    console.log('CURRENCY', currency);
 
     activeTenant = xero.tenants.find((item) => item?.orgData.baseCurrency.toUpperCase() === currency);
 
