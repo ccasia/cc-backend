@@ -2195,7 +2195,7 @@ export const forwardClientPostingFeedbackV3 = async (req: Request, res: Response
 
 // V3: Admin forwards client feedback for drafts
 export const forwardClientFeedbackV3 = async (req: Request, res: Response) => {
-  const { submissionId, adminFeedback, mediaId, mediaType } = req.body;
+  const { submissionId, adminFeedback, mediaId, mediaType, feedbackId } = req.body;
   const adminId = req.session.userid;
 
   try {
@@ -2205,6 +2205,7 @@ export const forwardClientFeedbackV3 = async (req: Request, res: Response) => {
       hasAdminFeedback: !!adminFeedback,
       mediaId,
       mediaType,
+      feedbackId,
     });
 
     const submission = await prisma.submission.findUnique({
@@ -2233,19 +2234,27 @@ export const forwardClientFeedbackV3 = async (req: Request, res: Response) => {
     }
 
     // Add/forward feedback for the specific media to creator (carry over client feedback details when possible)
+    let createdFeedback: any = null;
+
     if (mediaId && mediaType) {
-      // Try to find the latest client feedback that references this media
-      const sourceFeedback = await prisma.feedback.findFirst({
-        where: {
-          submissionId,
-          OR: [
-            { videosToUpdate: { has: mediaId } },
-            { photosToUpdate: { has: mediaId } },
-            { rawFootageToUpdate: { has: mediaId } },
-          ],
-        },
-        orderBy: { createdAt: 'desc' },
-      });
+      // Prefer an explicitly provided feedbackId; fall back to latest by media
+      let sourceFeedback = null as any;
+      if (feedbackId) {
+        sourceFeedback = await prisma.feedback.findUnique({ where: { id: feedbackId } });
+      }
+      if (!sourceFeedback) {
+        sourceFeedback = await prisma.feedback.findFirst({
+          where: {
+            submissionId,
+            OR: [
+              { videosToUpdate: { has: mediaId } },
+              { photosToUpdate: { has: mediaId } },
+              { rawFootageToUpdate: { has: mediaId } },
+            ],
+          },
+          orderBy: { createdAt: 'desc' },
+        });
+      }
 
       const baseData: any = {
         adminId: adminId,
@@ -2260,19 +2269,32 @@ export const forwardClientFeedbackV3 = async (req: Request, res: Response) => {
         baseData.type = sourceFeedback?.type || 'REQUEST';
       } else if (mediaType === 'photo') {
         baseData.photosToUpdate = [mediaId];
-        baseData.photoContent = sourceFeedback?.photoContent || sourceFeedback?.content || adminFeedback || 'Changes requested';
+        const chosen = sourceFeedback?.photoContent || sourceFeedback?.content || adminFeedback || 'Changes requested';
+        baseData.photoContent = chosen;
+        baseData.content = chosen; // ensure generic content is set for creator UIs that read `content`
         baseData.reasons = sourceFeedback?.reasons || [];
         baseData.type = sourceFeedback?.type || 'REQUEST';
       } else if (mediaType === 'rawFootage') {
         baseData.rawFootageToUpdate = [mediaId];
-        baseData.rawFootageContent = sourceFeedback?.rawFootageContent || sourceFeedback?.content || adminFeedback || 'Changes requested';
+        const chosen = sourceFeedback?.rawFootageContent || sourceFeedback?.content || adminFeedback || 'Changes requested';
+        baseData.rawFootageContent = chosen;
+        baseData.content = chosen; // ensure generic content is set for creator UIs that read `content`
         baseData.reasons = sourceFeedback?.reasons || [];
         baseData.type = sourceFeedback?.type || 'REQUEST';
       }
 
-      console.log('📝  [forwardClientFeedbackV3] creating creator-visible media feedback:', baseData);
+      console.log('📝  [forwardClientFeedbackV3] creating creator-visible media feedback:', {
+        submissionId,
+        mediaType,
+        mediaId,
+        feedbackId,
+        chosenContent: baseData.content,
+        reasons: baseData.reasons,
+        type: baseData.type,
+      });
       const created = await prisma.feedback.create({ data: baseData });
       console.log('✅  [forwardClientFeedbackV3] created feedback id:', created.id);
+      createdFeedback = created;
     } else if (adminFeedback) {
       // Fallback: if no media provided, store a general comment for the submission
       console.log('📝  [forwardClientFeedbackV3] creating creator-visible general feedback');
@@ -2286,6 +2308,7 @@ export const forwardClientFeedbackV3 = async (req: Request, res: Response) => {
         },
       });
       console.log('✅  [forwardClientFeedbackV3] created general feedback id:', created.id);
+      createdFeedback = created;
     }
 
     // Update specific media status from CLIENT_FEEDBACK to REVISION_REQUESTED
@@ -2350,17 +2373,17 @@ export const forwardClientFeedbackV3 = async (req: Request, res: Response) => {
     const totalPending = pendingVideos + pendingPhotos + pendingRawFootages;
 
     console.log(`Status check after forwarding: videos=${pendingVideos}, photos=${pendingPhotos}, rawFootages=${pendingRawFootages}, total=${totalPending}`);
-    console.log(`Submission current status: ${submission.status}, will update to CHANGES_REQUIRED: ${submission.status === 'SENT_TO_ADMIN' && totalPending === 0}`);
+    console.log(`Submission current status: ${submission.status}, will update to CHANGES_REQUIRED: ${totalPending === 0}`);
 
-    // Only update submission status to CHANGES_REQUIRED if there are no more CLIENT_FEEDBACK items
-    if ((submission.status === 'SENT_TO_ADMIN' || submission.status === 'CLIENT_FEEDBACK') && totalPending === 0) {
+    // Update submission status to CHANGES_REQUIRED only when ALL items have been processed
+    if (totalPending === 0) {
       await prisma.submission.update({
         where: { id: submissionId },
         data: { status: 'CHANGES_REQUIRED' }
       });
-      console.log(`Client feedback forwarded for submission ${submissionId}, all CLIENT_FEEDBACK items processed → status updated to CHANGES_REQUIRED`);
-    } else if (submission.status === 'SENT_TO_ADMIN' || submission.status === 'CLIENT_FEEDBACK') {
-      console.log(`Client feedback forwarded for submission ${submissionId}, ${totalPending} CLIENT_FEEDBACK items remaining → status remains ${submission.status}`);
+      console.log(`Submission ${submissionId} status updated to CHANGES_REQUIRED after all items processed.`);
+    } else {
+      console.log(`Submission ${submissionId} status kept as ${submission.status} - ${totalPending} items still pending.`);
     }
 
     // Create notification for creator
@@ -2374,7 +2397,7 @@ export const forwardClientFeedbackV3 = async (req: Request, res: Response) => {
       }
     });
 
-    return res.status(200).json({ message: 'Client feedback forwarded to creator' });
+    return res.status(200).json({ message: 'Client feedback forwarded to creator', feedback: createdFeedback });
 
   } catch (error) {
     console.error('Error forwarding client feedback V3:', error);
@@ -3011,13 +3034,22 @@ export const updateFeedbackV3 = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
     }
 
-    await prisma.feedback.update({
-      where: { id: feedbackId },
-      data: { content }
-    });
+    // Update generic content, and media-specific fields so both are in sync
+    const updateData: any = { content };
+    if ((existing.photosToUpdate?.length || 0) > 0) {
+      updateData.photoContent = content;
+    }
+    if ((existing.rawFootageToUpdate?.length || 0) > 0) {
+      updateData.rawFootageContent = content;
+    }
+
+    await prisma.feedback.update({ where: { id: feedbackId }, data: updateData });
+
+    // Return the updated feedback for immediate UI updates on both sides
+    const updated = await prisma.feedback.findUnique({ where: { id: feedbackId } });
 
     console.log(`Admin ${adminId} updated feedback ${feedbackId}`);
-    return res.status(200).json({ message: 'Feedback updated' });
+    return res.status(200).json({ message: 'Feedback updated', feedback: updated });
   } catch (error) {
     console.error('Error updating feedback V3:', error);
     return res.status(500).json({ message: 'Failed to update feedback' });
