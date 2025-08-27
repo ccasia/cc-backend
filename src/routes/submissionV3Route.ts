@@ -27,6 +27,7 @@ import {
   forwardClientPostingFeedbackV3,
   getCreatorVisibleFeedbackV3,
   updateFeedbackV3,
+  triggerCheckAndUpdateSubmissionStatusV3,
 } from '../controller/submissionV3Controller';
 
 const router = Router();
@@ -59,5 +60,8 @@ router.patch('/v3/posting/forward-feedback', isAdmin, forwardClientPostingFeedba
 router.patch('/v3/draft/review-feedback', isAdmin, reviewAndForwardClientFeedbackV3);
 router.patch('/v3/draft/forward-feedback', isAdmin, forwardClientFeedbackV3);
 router.patch('/v3/feedback/:feedbackId', isAdmin, updateFeedbackV3);
+
+// Allow creators or clients to trigger a re-check to move to PENDING_REVIEW when stuck
+router.patch('/v3/check-status', isCreatorOrClient, triggerCheckAndUpdateSubmissionStatusV3);
 
 export default router; 
