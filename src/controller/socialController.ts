@@ -921,11 +921,13 @@ export const getInstagramMediaKit = async (req: Request, res: Response) => {
       });
     }
 
-    return res.status(200).json({
-      overview,
-      medias,
-      analytics,
-    });
+    return res.status(200).json({ instagramUser, medias });
+
+    // return res.status(200).json({
+    //   overview,
+    //   medias,
+    //   analytics,
+    // });
   } catch (error) {
     console.error('Error in getInstagramMediaKit:', error);
     return res.status(400).json(error);
