@@ -1491,10 +1491,10 @@ export const forwardClientFeedbackV3 = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
     }
 
-    // Check if submission is in correct status - allow both SENT_TO_ADMIN and CHANGES_REQUIRED
-    if (submission.status !== 'SENT_TO_ADMIN' && submission.status !== 'CHANGES_REQUIRED') {
-      return res.status(400).json({
-        message: `Submission is not in correct status for forwarding feedback. Current status: ${submission.status}`,
+    // Check if submission is in correct status
+    if (submission.status !== 'SENT_TO_ADMIN') {
+      return res.status(400).json({ 
+        message: `Submission is not in correct status for forwarding feedback. Current status: ${submission.status}` 
       });
     }
 

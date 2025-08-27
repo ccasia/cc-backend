@@ -200,7 +200,11 @@ const checkCurrentSubmission = async (submissionId: string) => {
       },
     });
   } else {
-    if (submission.submissionType.type === 'FIRST_DRAFT') {
+    // Check if this is a v4 submission already in PENDING_REVIEW
+    if (submission.submissionVersion === 'v4' && submission.status === 'PENDING_REVIEW') {
+      // V4 FIX: Don't change status if v4 submission is already PENDING_REVIEW
+      console.log(`🔍 V4 FIX: Preserving PENDING_REVIEW status for v4 submission ${submission.id}`);
+    } else if (submission.submissionType.type === 'FIRST_DRAFT') {
       await prisma.submission.update({
         where: { id: submission.id },
         data: {
