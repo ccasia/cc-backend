@@ -1156,7 +1156,7 @@ export const createXeroInvoiceLocal = async (
   let activeTenant;
 
   try {
-    await xero.updateTenants();
+    // await xero.updateTenants();
 
     let contact: Contact = { contactID: contactId };
 
@@ -1216,6 +1216,7 @@ export const createXeroInvoiceLocal = async (
     const response: any = await xero.accountingApi.createInvoices(activeTenant.tenantId, { invoices: [invoice] });
     return response;
   } catch (error) {
+    console.log('Testing', error);
     throw new Error(error);
   }
 };
