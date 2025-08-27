@@ -155,7 +155,6 @@ router.post('/v2/shortlistCreator', isSuperAdmin, shortlistCreatorV2);
 router.post('/v2/shortlistCreator/client', isSuperAdmin, shortlistCreatorV2ForClient);
 router.post('/v3/shortlistCreator', isLoggedIn, shortlistCreatorV3);
 router.post('/v3/assignUGCCredits', isLoggedIn, assignUGCCreditsV3);
-router.post('/v3/shortlistCreator/guest', isSuperAdmin, shortlistGuestCreators);
 
 router.patch('/pitch', isLoggedIn, creatorMakePitch);
 router.patch('/changeCampaignStage/:campaignId', changeCampaignStage);
