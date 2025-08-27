@@ -1129,6 +1129,8 @@ export const createXeroContact = async (
   try {
     await xero.updateTenants();
 
+    console.log('TENANTS', xero.tenants);
+
     activeTenant = xero.tenants.find((item) => item?.orgData.baseCurrency.toUpperCase() === currency);
 
     const response = await xero.accountingApi.createContacts(activeTenant.tenantId, { contacts: [contact] });
