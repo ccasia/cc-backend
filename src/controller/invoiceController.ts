@@ -795,21 +795,33 @@ export const updateInvoice = async (req: Request, res: Response) => {
 
           await xero.updateTenants();
 
-          await sendToSpreadSheet(
-            {
-              createdAt: dayjs().format('YYYY-MM-DD'),
-              name: creatorUser?.name || '',
-              icNumber: creatorPaymentForm?.icNumber || '',
-              bankName: creatorPaymentForm?.bankAccountName || '',
-              bankAccountNumber: creatorPaymentForm?.bankAccountNumber || '',
-              campaignName: campaign.name,
-              amount: updatedInvoice.amount,
-            },
-            '1VClmvYJV9R4HqjADhGA6KYIR9KCFoXTag5SMVSL4rFc',
-            'Invoices',
+          // await sendToSpreadSheet(
+          //   {
+          //     createdAt: dayjs().format('YYYY-MM-DD'),
+          //     name: creatorUser?.name || '',
+          //     icNumber: creatorPaymentForm?.icNumber || '',
+          //     bankName: creatorPaymentForm?.bankAccountName || '',
+          //     bankAccountNumber: creatorPaymentForm?.bankAccountNumber || '',
+          //     campaignName: campaign.name,
+          //     amount: updatedInvoice.amount,
+          //   },
+          //   '1VClmvYJV9R4HqjADhGA6KYIR9KCFoXTag5SMVSL4rFc',
+          //   'Invoices',
+          // );
+
+          const activeTenant = xero.tenants.find(
+            (item) => item?.orgData.baseCurrency.toUpperCase() === (agreement?.currency as 'MYR' | 'SGD'),
           );
 
-          if (newContact) {
+          const result = await xero.accountingApi.getContacts(
+            activeTenant.tenantId,
+            undefined, // IDs
+            `EmailAddress=="${user.email}"`,
+          );
+
+          if (result.body.contacts && result.body.contacts.length > 0) {
+            contactID = result.body.contacts[0].contactID || null;
+          } else {
             const [contact] = await createXeroContact(
               bankInfo,
               updatedInvoice.creator,
