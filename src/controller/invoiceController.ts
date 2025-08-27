@@ -1225,7 +1225,7 @@ export const createXeroInvoiceLocal = async (
 
     const invoice: Invoice = {
       type: 'ACCPAY' as any,
-      contact: contactId as any,
+      contact: { contactID: contactId as any },
       dueDate: dueDate,
       lineItems: lineItemsArray,
       status: 'AUTHORISED' as any,
