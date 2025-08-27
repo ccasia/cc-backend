@@ -1275,6 +1275,64 @@ export const checkAndUpdateSubmissionStatusV3 = async (submissionId: string, adm
   }
 };
 
+// Controller wrapper so creators/clients can trigger the status check via HTTP
+export const triggerCheckAndUpdateSubmissionStatusV3 = async (req: Request, res: Response) => {
+  try {
+    const { submissionId } = req.body;
+    const userId = req.session.userid;
+    if (!submissionId) {
+      return res.status(400).json({ message: 'submissionId is required' });
+    }
+
+    // Fetch the submission and campaign requirements
+    const submission = await prisma.submission.findUnique({
+      where: { id: submissionId },
+      include: {
+        campaign: true,
+        video: true,
+        photos: true,
+        rawFootages: true,
+        submissionType: true,
+      },
+    });
+
+    if (!submission) {
+      return res.status(404).json({ message: 'Submission not found' });
+    }
+
+    // Only applies to First Draft
+    if (submission.submissionType?.type !== 'FIRST_DRAFT') {
+      await checkAndUpdateSubmissionStatusV3(submissionId, userId);
+      return res.status(200).json({ message: 'Status check triggered (non-first draft)' });
+    }
+
+    // Simple completeness check: require at least one draft video (or content),
+    // and photos/rawFootages if the campaign requires them
+    const requiresPhotos = !!submission.campaign?.photos;
+    const requiresRaw = !!submission.campaign?.rawFootage;
+    const hasVideo = (submission.video?.length ?? 0) > 0 || !!submission.content;
+    const hasPhotos = (submission.photos?.length ?? 0) > 0;
+    const hasRaw = (submission.rawFootages?.length ?? 0) > 0;
+
+    const complete = hasVideo && (!requiresPhotos || hasPhotos) && (!requiresRaw || hasRaw);
+
+    if (complete) {
+      await prisma.submission.update({
+        where: { id: submissionId },
+        data: { status: 'PENDING_REVIEW', submissionDate: new Date() },
+      });
+      return res.status(200).json({ message: 'Submission moved to PENDING_REVIEW' });
+    }
+
+    // Fallback to the comprehensive checker (will keep IN_PROGRESS if not ready)
+    await checkAndUpdateSubmissionStatusV3(submissionId, userId);
+    return res.status(200).json({ message: 'Not all deliverables uploaded yet' });
+  } catch (error) {
+    console.error('Error triggering status check:', error);
+    return res.status(500).json({ message: 'Failed to trigger status check' });
+  }
+};
+
 // V3: Creator submits draft (First Draft or Final Draft)
 export const submitDraftV3 = async (req: Request, res: Response) => {
   let submissionId, caption, photosDriveLink, rawFootagesDriveLink;
