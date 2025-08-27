@@ -795,20 +795,6 @@ export const updateInvoice = async (req: Request, res: Response) => {
 
           await xero.updateTenants();
 
-          // await sendToSpreadSheet(
-          //   {
-          //     createdAt: dayjs().format('YYYY-MM-DD'),
-          //     name: creatorUser?.name || '',
-          //     icNumber: creatorPaymentForm?.icNumber || '',
-          //     bankName: creatorPaymentForm?.bankAccountName || '',
-          //     bankAccountNumber: creatorPaymentForm?.bankAccountNumber || '',
-          //     campaignName: campaign.name,
-          //     amount: updatedInvoice.amount,
-          //   },
-          //   '1VClmvYJV9R4HqjADhGA6KYIR9KCFoXTag5SMVSL4rFc',
-          //   'Invoices',
-          // );
-
           const activeTenant = xero.tenants.find(
             (item) =>
               item?.orgData.baseCurrency.toUpperCase() === (agreement?.currency?.toUpperCase() as 'MYR' | 'SGD'),
@@ -819,8 +805,6 @@ export const updateInvoice = async (req: Request, res: Response) => {
             undefined, // IDs
             `EmailAddress=="${creatorUser.email}"`,
           );
-
-          console.log('RESULT', result);
 
           if (result.body.contacts && result.body.contacts.length > 0) {
             contactID = result.body.contacts[0].contactID || null;
@@ -888,6 +872,20 @@ export const updateInvoice = async (req: Request, res: Response) => {
             const logMessage = `Approved invoice ${updatedInvoice.invoiceNumber} for ${creatorName}`;
             await logChange(logMessage, updatedInvoice.campaignId, req);
           }
+
+          await sendToSpreadSheet(
+            {
+              createdAt: dayjs().format('YYYY-MM-DD'),
+              name: creatorUser?.name || '',
+              icNumber: creatorPaymentForm?.icNumber || '',
+              bankName: creatorPaymentForm?.bankAccountName || '',
+              bankAccountNumber: creatorPaymentForm?.bankAccountNumber || '',
+              campaignName: campaign.name,
+              amount: updatedInvoice.amount,
+            },
+            '1VClmvYJV9R4HqjADhGA6KYIR9KCFoXTag5SMVSL4rFc',
+            'Invoices',
+          );
 
           // Notify creator
           const creatorNotification = await saveNotification({
