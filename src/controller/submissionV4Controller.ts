@@ -1899,6 +1899,180 @@ export const forwardPhotoFeedbackV4 = async (req: Request, res: Response) => {
 };
 
 /**
+ * Get feedback for a specific raw footage
+ * GET /api/submissions/v4/rawFootage/:rawFootageId/feedback
+ */
+export const getRawFootageFeedbackV4 = async (req: Request, res: Response) => {
+  const { rawFootageId } = req.params;
+  
+  try {
+    // Get raw footage with submission info
+    const rawFootage = await prisma.rawFootage.findUnique({
+      where: { id: rawFootageId },
+      include: {
+        submission: {
+          include: {
+            feedback: {
+              where: {
+                rawFootageToUpdate: { has: rawFootageId },
+                rawFootageContent: { not: null }
+              },
+              include: {
+                admin: {
+                  select: { id: true, name: true, role: true }
+                }
+              },
+              orderBy: { createdAt: 'asc' }
+            }
+          }
+        }
+      }
+    });
+
+    if (!rawFootage) {
+      return res.status(404).json({ message: 'Raw footage not found' });
+    }
+
+    // Only show feedback from feedback table with rawFootageContent
+    interface FeedbackHistoryItem {
+      id: string;
+      type: 'client_feedback' | 'admin_feedback' | 'individual';
+      feedback: string | null;
+      reasons: string[];
+      admin: {
+      id: string;
+      name: string;
+      role?: string;
+      } | null;
+      createdAt: Date;
+      sentToCreator: boolean;
+      status?: string;
+    }
+
+    const feedbackHistory: FeedbackHistoryItem[] = [];
+
+    // Add feedback from feedback table that targets this raw footage
+    rawFootage.submission?.feedback.forEach(fb => {
+      feedbackHistory.push({
+        id: fb.id,
+        type: fb.admin?.role === 'client' ? 'individual' : 'individual', // Using 'individual' to match frontend expectations
+        feedback: fb.rawFootageContent,
+        reasons: fb.reasons || [],
+        admin: fb.admin ? {
+          id: fb.admin.id,
+          name: fb.admin.name ?? 'Unknown',
+          role: fb.admin.role
+        } : null,
+        createdAt: fb.createdAt,
+        sentToCreator: fb.sentToCreator,
+        status: fb.admin?.role === 'client' ? 'CLIENT_FEEDBACK' : 'ADMIN_FEEDBACK'
+      });
+    });
+
+    // Skip individual raw footage feedback to avoid duplication in raw footage feedback dialog
+
+    // Sort by creation date
+    feedbackHistory.sort((a, b) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime());
+
+    res.status(200).json({
+      content: {
+        id: rawFootage.id,
+        url: rawFootage.url,
+        status: rawFootage.status,
+        feedback: rawFootage.feedback,
+        reasons: rawFootage.reasons
+      },
+      feedbackHistory,
+      totalFeedback: feedbackHistory.length
+    });
+
+  } catch (error) {
+    console.error('Error getting raw footage feedback v4:', error);
+    res.status(500).json({
+      message: 'Failed to get raw footage feedback',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+};
+
+/**
+ * Forward individual raw footage feedback to creator
+ * POST /api/submissions/v4/forward-raw-footage-feedback
+ */
+export const forwardRawFootageFeedbackV4 = async (req: Request, res: Response) => {
+  const { feedbackId } = req.body;
+  const adminId = req.session.userid;
+  
+  try {
+    if (!feedbackId) {
+      return res.status(400).json({ message: 'feedbackId is required' });
+    }
+
+    // Get the feedback and its associated raw footage
+    const feedback = await prisma.feedback.findUnique({
+      where: { id: feedbackId },
+      include: {
+        submission: {
+          include: {
+            rawFootages: true
+          }
+        }
+      }
+    });
+
+    if (!feedback) {
+      return res.status(404).json({ message: 'Feedback not found' });
+    }
+
+    if (feedback.sentToCreator) {
+      return res.status(400).json({ message: 'Feedback already forwarded to creator' });
+    }
+
+    if (!feedback.rawFootageToUpdate || feedback.rawFootageToUpdate.length === 0) {
+      return res.status(400).json({ message: 'No raw footage associated with this feedback' });
+    }
+
+    // Update the feedback to be sent to creator
+    await prisma.feedback.update({
+      where: { id: feedbackId },
+      data: {
+        sentToCreator: true,
+        updatedAt: new Date()
+      }
+    });
+
+    // Update the associated raw footage to REVISION_REQUESTED status
+    await prisma.rawFootage.updateMany({
+      where: {
+        id: { in: feedback.rawFootageToUpdate }
+      },
+      data: {
+        status: 'REVISION_REQUESTED',
+        adminId,
+        feedbackAt: new Date()
+      }
+    });
+
+    // Update submission status based on individual content statuses
+    await updateSubmissionStatusBasedOnContent(feedback.submissionId);
+
+    console.log(`✅ Raw footage feedback ${feedbackId} forwarded to creator by admin ${adminId}`);
+    
+    res.status(200).json({
+      message: 'Feedback forwarded to creator successfully',
+      feedbackId
+    });
+
+  } catch (error) {
+    console.error('Error forwarding raw footage feedback:', error);
+    res.status(500).json({
+      message: 'Failed to forward feedback',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+};
+
+/**
  * Get single V4 submission by ID
  * GET /api/submissions/v4/submission/:id
  */
