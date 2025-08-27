@@ -726,7 +726,7 @@ export const updateInvoice = async (req: Request, res: Response) => {
           include: {
             creator: {
               include: {
-                user: { select: { id: true, name: true, paymentForm: true, creatorAgreement: true } },
+                user: { select: { id: true, name: true, paymentForm: true, creatorAgreement: true, email: true } },
               },
             },
             user: {
@@ -810,13 +810,14 @@ export const updateInvoice = async (req: Request, res: Response) => {
           // );
 
           const activeTenant = xero.tenants.find(
-            (item) => item?.orgData.baseCurrency.toUpperCase() === (agreement?.currency as 'MYR' | 'SGD'),
+            (item) =>
+              item?.orgData.baseCurrency.toUpperCase() === (agreement?.currency?.toUpperCase() as 'MYR' | 'SGD'),
           );
 
           const result = await xero.accountingApi.getContacts(
             activeTenant.tenantId,
             undefined, // IDs
-            `EmailAddress=="${user.email}"`,
+            `EmailAddress=="${creatorUser.email}"`,
           );
 
           console.log('RESULT', result);
