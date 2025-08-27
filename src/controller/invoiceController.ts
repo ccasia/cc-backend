@@ -819,6 +819,8 @@ export const updateInvoice = async (req: Request, res: Response) => {
             `EmailAddress=="${user.email}"`,
           );
 
+          console.log('RESULT', result);
+
           if (result.body.contacts && result.body.contacts.length > 0) {
             contactID = result.body.contacts[0].contactID || null;
           } else {
