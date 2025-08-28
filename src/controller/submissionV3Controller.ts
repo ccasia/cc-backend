@@ -1204,6 +1204,95 @@ export const checkAndUpdateSubmissionStatusV3 = async (submissionId: string, adm
             !currentChangesRequested;
 
           if (shouldSendToClient) {
+                      // Special handling for First Draft: if changes were previously requested, 
+          // don't send to client, instead keep as CHANGES_REQUIRED and activate Final Draft
+          if (submission.submissionType.type === 'FIRST_DRAFT') {
+            // Check if this is a re-upload after changes were requested
+            // This includes checking for any media items that were previously in REVISION_REQUESTED or CLIENT_FEEDBACK status
+            const hasPreviousChangesRequested = submission.video.some(v => 
+              v.status === 'REVISION_REQUESTED' || v.status === 'CLIENT_FEEDBACK'
+            ) || submission.photos.some(p => 
+              p.status === 'REVISION_REQUESTED' || p.status === 'CLIENT_FEEDBACK'
+            ) || submission.rawFootages.some(r => 
+              r.status === 'REVISION_REQUESTED' || r.status === 'CLIENT_FEEDBACK'
+            );
+
+            console.log(`🔍 First Draft ${submissionId} - Checking for previous changes requested:`, {
+              hasPreviousChangesRequested,
+              videoStatuses: submission.video.map(v => ({ id: v.id, status: v.status })),
+              photoStatuses: submission.photos.map(p => ({ id: p.id, status: p.status })),
+              rawFootageStatuses: submission.rawFootages.map(r => ({ id: r.id, status: r.status }))
+            });
+
+              if (hasPreviousChangesRequested) {
+                // Keep First Draft as CHANGES_REQUIRED and activate Final Draft
+                await prisma.submission.update({
+                  where: { id: submissionId },
+                  data: { status: 'CHANGES_REQUIRED' }
+                });
+                console.log(`V3 First Draft ${submissionId} kept as CHANGES_REQUIRED after re-upload (changes were previously requested)`);
+                
+                // Ensure any media items that were re-uploaded and approved are marked as APPROVED
+                // This prevents them from being stuck in REVISION_REQUESTED status
+                for (const video of submission.video) {
+                  if (video.status === 'REVISION_REQUESTED') {
+                    await prisma.video.update({
+                      where: { id: video.id },
+                      data: { status: 'APPROVED' }
+                    });
+                    console.log(`V3 Video ${video.id} status updated from REVISION_REQUESTED to APPROVED`);
+                  }
+                }
+                
+                for (const photo of submission.photos) {
+                  if (photo.status === 'REVISION_REQUESTED') {
+                    await prisma.photo.update({
+                      where: { id: photo.id },
+                      data: { status: 'APPROVED' }
+                    });
+                    console.log(`V3 Photo ${photo.id} status updated from REVISION_REQUESTED to APPROVED`);
+                  }
+                }
+                
+                for (const rawFootage of submission.rawFootages) {
+                  if (rawFootage.status === 'REVISION_REQUESTED') {
+                    await prisma.rawFootage.update({
+                      where: { id: rawFootage.id },
+                      data: { status: 'APPROVED' }
+                    });
+                    console.log(`V3 Raw Footage ${rawFootage.id} status updated from REVISION_REQUESTED to APPROVED`);
+                  }
+                }
+                
+                // Activate Final Draft
+                const finalDraftSubmission = await prisma.submission.findFirst({
+                  where: {
+                    userId: submission.userId,
+                    campaignId: submission.campaignId,
+                    submissionType: {
+                      type: 'FINAL_DRAFT'
+                    }
+                  }
+                });
+
+                if (finalDraftSubmission) {
+                  await prisma.submission.update({
+                    where: { id: finalDraftSubmission.id },
+                    data: {
+                      status: 'SENT_TO_CLIENT',
+                      nextsubmissionDate: new Date()
+                    }
+                  });
+                  console.log(`V3 Final Draft ${finalDraftSubmission.id} activated and set to SENT_TO_CLIENT`);
+                  console.log(`🔍 Workflow transition: First Draft ${submissionId} -> Final Draft ${finalDraftSubmission.id} (SENT_TO_CLIENT)`);
+                } else {
+                  console.log(`⚠️ Warning: No Final Draft submission found for campaign ${submission.campaignId} and user ${submission.userId}`);
+                }
+                return; // Exit early to prevent further status changes
+              }
+            }
+
+            // For Final Draft or First Draft without previous changes, proceed normally
             await prisma.submission.update({
               where: { id: submissionId },
               data: { status: 'SENT_TO_CLIENT' }
