@@ -424,11 +424,11 @@ export const approveV4Submission = async (req: Request, res: Response) => {
     }
     
     // Add overall feedback record
-    if (feedback) {
+    if (feedback || (reasons && reasons.length > 0)) {
       updates.push(
         prisma.feedback.create({
           data: {
-            content: feedback,
+            content: feedback || '',
             reasons: reasons || [],
             submissionId,
             adminId: currentUserId,
@@ -599,11 +599,11 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
     }
     
     // Add client feedback record if provided
-    if (feedback) {
+    if (feedback || (reasons && reasons.length > 0)) {
       updates.push(
         prisma.feedback.create({
           data: {
-            content: feedback,
+            content: feedback || '',
             reasons: reasons || [],
             submissionId,
             adminId: clientId,
@@ -2245,6 +2245,37 @@ export const getSubmissionStatusInfo = async (req: Request, res: Response) => {
     res.status(500).json({
       message: 'Failed to get status information',
       error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+};
+
+/**
+ * Update submission due date (admin only)
+ */
+export const updateSubmissionDueDate = async (req: Request, res: Response) => {
+  try {
+    const { submissionId, dueDate } = req.body;
+    
+    if (!submissionId || !dueDate) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'submissionId and dueDate are required' 
+      });
+    }
+
+    const { updateDueDateService } = require('../service/submissionV4Service');
+    const updatedSubmission = await updateDueDateService(submissionId, dueDate);
+    
+    res.status(200).json({
+      success: true,
+      data: updatedSubmission,
+      message: 'Due date updated successfully'
+    });
+  } catch (error) {
+    console.error('Error updating due date:', error);
+    res.status(500).json({
+      success: false,
+      message: error instanceof Error ? error.message : 'Failed to update due date'
     });
   }
 };

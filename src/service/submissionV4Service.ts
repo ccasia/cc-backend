@@ -417,3 +417,47 @@ export const createContentSubmissionsAfterAgreement = async (agreementSubmission
     throw error;
   }
 };
+
+/**
+ * Update submission due date
+ */
+export const updateDueDateService = async (submissionId: string, dueDate: string) => {
+  try {
+    // Verify submission exists and is v4
+    const submission = await prisma.submission.findUnique({
+      where: { id: submissionId },
+      include: { 
+        submissionType: true,
+        campaign: true
+      }
+    });
+    
+    if (!submission) {
+      throw new Error('Submission not found');
+    }
+    
+    if (submission.submissionVersion !== 'v4') {
+      throw new Error('Not a v4 submission');
+    }
+    
+    // Update the due date
+    const updatedSubmission = await prisma.submission.update({
+      where: { id: submissionId },
+      data: { 
+        dueDate: new Date(dueDate),
+        updatedAt: new Date()
+      },
+      include: {
+        submissionType: true,
+        video: true,
+        photos: true,
+        rawFootages: true
+      }
+    });
+    
+    return updatedSubmission;
+  } catch (error) {
+    console.error('Error in updateDueDateService:', error);
+    throw error;
+  }
+};

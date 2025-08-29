@@ -18,7 +18,8 @@ import {
   forwardPhotoFeedbackV4,
   getRawFootageFeedbackV4,
   forwardRawFootageFeedbackV4,
-  getSubmissionStatusInfo
+  getSubmissionStatusInfo,
+  updateSubmissionDueDate
 } from '../controller/submissionV4Controller';
 import { isLoggedIn } from '../middleware/onlyLogin';
 import { isAdmin } from '../middleware/onlySuperadmin';
@@ -63,6 +64,9 @@ router.post('/forward-raw-footage-feedback', isLoggedIn, isAdmin, forwardRawFoot
 
 // Update posting link for approved submission (creator action)
 router.put('/posting-link', updatePostingLinkController);
+
+// Update due date for submission (admin action)
+router.put('/due-date', isLoggedIn, isAdmin, updateSubmissionDueDate);
 
 // Admin approve/reject posting link (admin action)
 router.post('/posting-link/approve', isLoggedIn, isAdmin, approvePostingLinkV4);
