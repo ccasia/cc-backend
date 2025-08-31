@@ -312,7 +312,7 @@ export const submitV4ContentController = async (req: Request, res: Response) => 
  * POST /api/submissions/v4/approve
  */
 export const approveV4Submission = async (req: Request, res: Response) => {
-  const { submissionId, action, feedback, reasons } = req.body;
+  const { submissionId, action, feedback, reasons, caption } = req.body;
   const currentUserId = req.session.userid;
   
   try {
@@ -362,14 +362,21 @@ export const approveV4Submission = async (req: Request, res: Response) => {
     // Update submission and individual content items
     const updates = [];
     
-    // Update submission status
+    // Update submission status and caption if provided
+    const updateData: any = {
+      status: newStatus as any,
+      updatedAt: new Date()
+    };
+    
+    // Update caption if provided (only for admin actions)
+    if (caption !== undefined) {
+      updateData.caption = caption || null;
+    }
+    
     updates.push(
       prisma.submission.update({
         where: { id: submissionId },
-        data: {
-          status: newStatus as any,
-          updatedAt: new Date()
-        }
+        data: updateData
       })
     );
     
