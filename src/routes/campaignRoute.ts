@@ -61,6 +61,7 @@ import {
   checkCampaignCreatorVisibility,
   updateCampaignOrigin,
   changeCampaignCredit,
+  getCampaignsForPublic,
 } from '@controllers/campaignController';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 import { canActivateCampaign } from '@middlewares/adminOrClient';
@@ -138,6 +139,8 @@ router.post('/fixCampaignTimelines/:campaignId', isLoggedIn, fixCampaignTimeline
 
 // Check if a campaign meets all requirements to be visible to creators
 router.get('/checkCreatorVisibility/:campaignId', isLoggedIn, checkCampaignCreatorVisibility);
+
+router.get('/public', getCampaignsForPublic);
 
 router.post('/updateOrCreateDefaultTimeline', updateOrCreateDefaultTimeline);
 router.post('/createCampaign', isSuperAdmin, createCampaign);

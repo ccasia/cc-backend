@@ -854,8 +854,8 @@ export const getCampaignById = async (req: Request, res: Response) => {
                 creator: {
                   select: {
                     isGuest: true,
-                  }
-                }
+                  },
+                },
               },
             },
           },
@@ -6853,7 +6853,7 @@ export const assignUGCCreditsV3 = async (req: Request, res: Response) => {
     }
 
     const campaign = campaignAccess.campaign;
-    
+
     // For V3, we only support client-created campaigns
     if (campaign.origin !== 'CLIENT') {
       throw new Error('V3 UGC credits assignment is only for client-created campaigns');
@@ -6861,11 +6861,11 @@ export const assignUGCCreditsV3 = async (req: Request, res: Response) => {
 
     // Calculate total credits being assigned
     const totalCreditsToAssign = creators.reduce((acc: number, creator: any) => acc + (creator.credits || 0), 0);
-    
+
     // Check if campaign has enough credits
     if (campaign.campaignCredits && totalCreditsToAssign > campaign.campaignCredits) {
-      return res.status(400).json({ 
-        message: `Not enough credits available. Campaign has ${campaign.campaignCredits} credits, but trying to assign ${totalCreditsToAssign} credits.` 
+      return res.status(400).json({
+        message: `Not enough credits available. Campaign has ${campaign.campaignCredits} credits, but trying to assign ${totalCreditsToAssign} credits.`,
       });
     }
 
@@ -6920,9 +6920,9 @@ export const assignUGCCreditsV3 = async (req: Request, res: Response) => {
         where: { campaignId: campaign.id },
         select: { ugcVideos: true },
       });
-      
+
       const totalUtilizedCredits = allShortlistedCreators.reduce((acc, creator) => acc + (creator.ugcVideos || 0), 0);
-      
+
       if (campaign.campaignCredits) {
         await tx.campaign.update({
           where: { id: campaign.id },
@@ -6931,13 +6931,15 @@ export const assignUGCCreditsV3 = async (req: Request, res: Response) => {
             creditsPending: campaign.campaignCredits - totalUtilizedCredits,
           },
         });
-        console.log(`Updated campaign credits: utilized=${totalUtilizedCredits}, pending=${campaign.campaignCredits - totalUtilizedCredits}`);
+        console.log(
+          `Updated campaign credits: utilized=${totalUtilizedCredits}, pending=${campaign.campaignCredits - totalUtilizedCredits}`,
+        );
       }
     });
 
-    return res.status(200).json({ 
+    return res.status(200).json({
       message: 'Successfully assigned UGC credits to creators',
-      totalCreditsAssigned: totalCreditsToAssign
+      totalCreditsAssigned: totalCreditsToAssign,
     });
   } catch (error) {
     console.error('Error assigning UGC credits for V3:', error);
@@ -7005,5 +7007,82 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('GUEST SHORTLIST ERROR:', error);
     return res.status(400).json({ message: error.message || 'Failed to shortlist guest creators.' });
+  }
+};
+
+export const getCampaignsForPublic = async (req: Request, res: Response) => {
+  const { cursor, take = 10, search } = req.query;
+  try {
+    let campaigns = await prisma.campaign.findMany({
+      take: Number(take),
+      ...(cursor && {
+        skip: 1,
+        cursor: {
+          id: cursor as string,
+        },
+      }),
+      where: {
+        // status: 'ACTIVE',
+
+        AND: [
+          { status: 'ACTIVE' },
+          {
+            ...(search && {
+              name: {
+                contains: search as string,
+                mode: 'insensitive',
+              },
+            }),
+          },
+        ],
+      },
+      include: {
+        campaignBrief: true,
+        campaignRequirement: true,
+        campaignTimeline: true,
+        brand: { include: { company: { include: { subscriptions: true } } } },
+        company: true,
+        pitch: true,
+        bookMarkCampaign: true,
+        shortlisted: true,
+        logistic: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    if (campaigns?.length === 0) {
+      const data = {
+        data: {
+          campaigns: [],
+        },
+        metaData: {
+          lastCursor: null,
+          hasNextPage: false,
+        },
+      };
+
+      return res.status(200).json(data);
+    }
+
+    campaigns = campaigns.filter(
+      (campaign) => campaign.campaignTimeline.find((timeline) => timeline.name === 'Open For Pitch')?.status === 'OPEN',
+    );
+    const lastCursor = campaigns.length > Number(take) - 1 ? campaigns[Number(take) - 1]?.id : null;
+
+    const data = {
+      data: {
+        campaigns: campaigns,
+      },
+      metaData: {
+        lastCursor: lastCursor,
+        hasNextPage: true,
+      },
+    };
+
+    return res.status(200).json(data);
+  } catch (error) {
+    return res.status(400).json(error);
   }
 };
