@@ -7057,6 +7057,8 @@ export const getCampaignsForPublic = async (req: Request, res: Response) => {
       },
     });
 
+    console.log(campaigns);
+
     if (campaigns?.length === 0) {
       const data = {
         data: {
