@@ -7030,10 +7030,10 @@ export const getCampaignsForPublic = async (req: Request, res: Response) => {
         },
       }),
       where: {
+        id: campaignId as string,
         status: 'ACTIVE',
-        ...(campaignId && {
-          id: campaignId as string,
-        }),
+        // ...(campaignId && {
+        // }),
         // ...(search && {
         //   name: {
         //     contains: search as string,
