@@ -7030,23 +7030,19 @@ export const getCampaignsForPublic = async (req: Request, res: Response) => {
         AND: [
           { status: 'ACTIVE' },
           {
-            OR: [
-              {
-                ...(search && {
-                  name: {
-                    contains: search as string,
-                    mode: 'insensitive',
-                  },
-                }),
+            ...(search && {
+              name: {
+                contains: search as string,
+                mode: 'insensitive',
               },
-              {
-                ...(campaignId && {
-                  id: {
-                    equals: campaignId as string,
-                  },
-                }),
+            }),
+          },
+          {
+            ...(campaignId && {
+              id: {
+                equals: campaignId as string,
               },
-            ],
+            }),
           },
         ],
       },
