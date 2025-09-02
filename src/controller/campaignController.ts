@@ -7016,12 +7016,9 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
 };
 
 export const getCampaignsForPublic = async (req: Request, res: Response) => {
-  const { cursor, take = 10, search, campaignId } = req.query;
-
-  console.log(campaignId);
-  console.log(cursor);
+  const { cursor, take = 10, search } = req.query;
   try {
-    const campaigns = await prisma.campaign.findMany({
+    let campaigns = await prisma.campaign.findMany({
       take: Number(take),
       ...(cursor && {
         skip: 1,
@@ -7030,16 +7027,19 @@ export const getCampaignsForPublic = async (req: Request, res: Response) => {
         },
       }),
       where: {
-        id: campaignId as string,
-        status: 'ACTIVE',
-        // ...(campaignId && {
-        // }),
-        // ...(search && {
-        //   name: {
-        //     contains: search as string,
-        //     mode: 'insensitive',
-        //   },
-        // }),
+        // status: 'ACTIVE',
+
+        AND: [
+          { status: 'ACTIVE' },
+          {
+            ...(search && {
+              name: {
+                contains: search as string,
+                mode: 'insensitive',
+              },
+            }),
+          },
+        ],
       },
       include: {
         campaignBrief: true,
@@ -7071,9 +7071,9 @@ export const getCampaignsForPublic = async (req: Request, res: Response) => {
       return res.status(200).json(data);
     }
 
-    // campaigns = campaigns.filter(
-    //   (campaign) => campaign.campaignTimeline.find((timeline) => timeline.name === 'Open For Pitch')?.status === 'OPEN',
-    // );
+    campaigns = campaigns.filter(
+      (campaign) => campaign.campaignTimeline.find((timeline) => timeline.name === 'Open For Pitch')?.status === 'OPEN',
+    );
     const lastCursor = campaigns.length > Number(take) - 1 ? campaigns[Number(take) - 1]?.id : null;
 
     const data = {
