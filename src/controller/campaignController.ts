@@ -7057,8 +7057,6 @@ export const getCampaignsForPublic = async (req: Request, res: Response) => {
       },
     });
 
-    console.log(campaigns);
-
     if (campaigns?.length === 0) {
       const data = {
         data: {
@@ -7087,6 +7085,8 @@ export const getCampaignsForPublic = async (req: Request, res: Response) => {
         hasNextPage: true,
       },
     };
+
+    console.log(data);
 
     return res.status(200).json(data);
   } catch (error) {
