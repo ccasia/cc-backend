@@ -7027,25 +7027,16 @@ export const getCampaignsForPublic = async (req: Request, res: Response) => {
         },
       }),
       where: {
-        AND: [
-          { status: 'ACTIVE' },
-
-          {
-            ...(search && {
-              name: {
-                contains: search as string,
-                mode: 'insensitive',
-              },
-            }),
+        status: 'ACTIVE',
+        ...(campaignId && {
+          id: campaignId as string,
+        }),
+        ...(search && {
+          name: {
+            contains: search as string,
+            mode: 'insensitive',
           },
-          {
-            ...(campaignId && {
-              id: {
-                equals: campaignId as string,
-              },
-            }),
-          },
-        ],
+        }),
       },
       include: {
         campaignBrief: true,
