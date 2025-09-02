@@ -7012,6 +7012,8 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
 
 export const getCampaignsForPublic = async (req: Request, res: Response) => {
   const { cursor, take = 10, search, campaignId } = req.query;
+
+  console.log(campaignId);
   try {
     let campaigns = await prisma.campaign.findMany({
       take: Number(take),
@@ -7022,16 +7024,16 @@ export const getCampaignsForPublic = async (req: Request, res: Response) => {
         },
       }),
       where: {
-        status: 'ACTIVE',
+        // status: 'ACTIVE',
         ...(campaignId && {
           id: campaignId as string,
         }),
-        ...(search && {
-          name: {
-            contains: search as string,
-            mode: 'insensitive',
-          },
-        }),
+        // ...(search && {
+        //   name: {
+        //     contains: search as string,
+        //     mode: 'insensitive',
+        //   },
+        // }),
       },
       include: {
         campaignBrief: true,
