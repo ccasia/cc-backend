@@ -7014,11 +7014,12 @@ export const getCampaignsForPublic = async (req: Request, res: Response) => {
   const { cursor, take = 10, search, campaignId } = req.query;
 
   console.log(campaignId);
+  console.log(cursor);
   try {
     let campaigns = await prisma.campaign.findMany({
       take: Number(take),
       ...(cursor && {
-        skip: 0,
+        skip: 1,
         cursor: {
           id: cursor as string,
         },
@@ -7028,12 +7029,12 @@ export const getCampaignsForPublic = async (req: Request, res: Response) => {
         ...(campaignId && {
           id: campaignId as string,
         }),
-        ...(search && {
-          name: {
-            contains: search as string,
-            mode: 'insensitive',
-          },
-        }),
+        // ...(search && {
+        //   name: {
+        //     contains: search as string,
+        //     mode: 'insensitive',
+        //   },
+        // }),
       },
       include: {
         campaignBrief: true,
