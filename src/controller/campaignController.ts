@@ -563,19 +563,13 @@ export const exportActiveCompletedToSheet = async (_req: Request, res: Response)
 
     const toRow = (c: any): (string | number)[] => [
       c.name || '',
-      (c.brand?.name || c.company?.name || ''),
+      c.brand?.name || c.company?.name || '',
       c.campaignCredits || 0,
       c.creditsUtilized || 0,
       c.creditsPending || Math.max((c.campaignCredits || 0) - (c.creditsUtilized || 0), 0),
     ];
 
-    const header = [
-      'Campaign',
-      'Client Name',
-      'Campaign Credits',
-      'Credits Utilized',
-      'Credits Pending',
-    ];
+    const header = ['Campaign', 'Client Name', 'Campaign Credits', 'Credits Utilized', 'Credits Pending'];
 
     // Target spreadsheet provided by user
     const spreadsheetId = '1AtuEMQDR3pblQqBStBpsW_S19bUY-4rJcjyQ_BE-YZY';
@@ -631,7 +625,7 @@ async function syncCreatorsCampaignSheetInternal() {
     return;
   }
 
-  const userIds = (grouped.map((g) => g.userId).filter((id): id is string => Boolean(id)));
+  const userIds = grouped.map((g) => g.userId).filter((id): id is string => Boolean(id));
   const users = await prisma.user.findMany({
     where: { id: { in: userIds } },
     include: {
@@ -4692,7 +4686,6 @@ export const shortlistCreatorV2 = async (req: Request, res: Response) => {
             });
           }
         }
-
       } catch (error) {
         throw new Error(error);
       }
@@ -4955,5 +4948,82 @@ export const changeCampaignCredit = async (req: Request, res: Response) => {
   } catch (error) {
     console.log(error);
     res.status(400).json({ message: error });
+  }
+};
+
+export const getCampaignsForPublic = async (req: Request, res: Response) => {
+  const { cursor, take = 10, search } = req.query;
+  try {
+    let campaigns = await prisma.campaign.findMany({
+      take: Number(take),
+      ...(cursor && {
+        skip: 1,
+        cursor: {
+          id: cursor as string,
+        },
+      }),
+      where: {
+        // status: 'ACTIVE',
+
+        AND: [
+          { status: 'ACTIVE' },
+          {
+            ...(search && {
+              name: {
+                contains: search as string,
+                mode: 'insensitive',
+              },
+            }),
+          },
+        ],
+      },
+      include: {
+        campaignBrief: true,
+        campaignRequirement: true,
+        campaignTimeline: true,
+        brand: { include: { company: { include: { subscriptions: true } } } },
+        company: true,
+        pitch: true,
+        bookMarkCampaign: true,
+        shortlisted: true,
+        logistic: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    if (campaigns?.length === 0) {
+      const data = {
+        data: {
+          campaigns: [],
+        },
+        metaData: {
+          lastCursor: null,
+          hasNextPage: false,
+        },
+      };
+
+      return res.status(200).json(data);
+    }
+
+    campaigns = campaigns.filter(
+      (campaign) => campaign.campaignTimeline.find((timeline) => timeline.name === 'Open For Pitch')?.status === 'OPEN',
+    );
+    const lastCursor = campaigns.length > Number(take) - 1 ? campaigns[Number(take) - 1]?.id : null;
+
+    const data = {
+      data: {
+        campaigns: campaigns,
+      },
+      metaData: {
+        lastCursor: lastCursor,
+        hasNextPage: true,
+      },
+    };
+
+    return res.status(200).json(data);
+  } catch (error) {
+    return res.status(400).json(error);
   }
 };
