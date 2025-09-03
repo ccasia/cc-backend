@@ -878,12 +878,13 @@ export const getPitchesV3 = async (req: Request, res: Response) => {
     // Transform pitches to show role-based status and filter for clients
     const transformedPitches = pitches
       .filter(pitch => {
-        // For clients: show pitches that are SENT_TO_CLIENT, APPROVED, REJECTED, or in agreement stages
+        // For clients: show pitches that are SENT_TO_CLIENT, APPROVED, REJECTED, MAYBE, or in agreement stages
         // Hide pitches with PENDING_REVIEW status (admin review stage)
         if (user.role === 'client') {
           return pitch.status === 'SENT_TO_CLIENT' || 
                  pitch.status === 'APPROVED' || 
                  pitch.status === 'REJECTED' ||
+                 pitch.status === 'MAYBE' ||
                  pitch.status === 'AGREEMENT_PENDING' || 
                  pitch.status === 'AGREEMENT_SUBMITTED';
         }
