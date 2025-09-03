@@ -846,7 +846,17 @@ export const getPitchesV3 = async (req: Request, res: Response) => {
       },
       include: {
         campaign: true,
-        user: true,
+        user: {
+          include: {
+            creator: {
+              include: {
+                instagramUser: true,
+                tiktokUser: true,
+                mediaKit: true,
+              },
+            },
+          },
+        },
         admin: {
           include: {
             user: true,
@@ -937,7 +947,17 @@ export const getPitchByIdV3 = async (req: Request, res: Response) => {
       where: { id: pitchId },
       include: {
         campaign: true,
-        user: true,
+        user: {
+          include: {
+            creator: {
+              include: {
+                instagramUser: true,
+                tiktokUser: true,
+                mediaKit: true,
+              },
+            },
+          },
+        },
         admin: {
           include: {
             user: true,
