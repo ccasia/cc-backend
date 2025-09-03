@@ -76,8 +76,8 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
     }
 
-    // Check if pitch is in correct status
-    if (pitch.status !== 'PENDING_REVIEW') {
+    // Check if pitch is in correct status - allow admin to approve from PENDING_REVIEW or MAYBE
+    if (pitch.status !== 'PENDING_REVIEW' && pitch.status !== 'MAYBE') {
       return res.status(400).json({ message: 'Pitch is not in correct status for admin approval' });
     }
 
@@ -200,8 +200,8 @@ export const rejectPitchByAdmin = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
     }
 
-    // Check if pitch is in correct status
-    if (pitch.status !== 'PENDING_REVIEW') {
+    // Check if pitch is in correct status - allow admin to reject from PENDING_REVIEW or MAYBE
+    if (pitch.status !== 'PENDING_REVIEW' && pitch.status !== 'MAYBE') {
       return res.status(400).json({ message: 'Pitch is not in correct status for admin rejection' });
     }
 
@@ -235,8 +235,20 @@ export const rejectPitchByAdmin = async (req: Request, res: Response) => {
       },
     });
 
+    // Fetch the updated pitch to return in response
+    const updatedPitch = await prisma.pitch.findUnique({
+      where: { id: pitchId },
+      include: {
+        campaign: true,
+        user: true,
+      },
+    });
+
     console.log(`Pitch ${pitchId} rejected by admin, creator removed from campaign`);
-    return res.status(200).json({ message: 'Pitch rejected and creator removed from campaign' });
+    return res.status(200).json({ 
+      message: 'Pitch rejected and creator removed from campaign',
+      pitch: updatedPitch
+    });
   } catch (error) {
     console.error('Error rejecting pitch by admin:', error);
     return res.status(500).json({ message: 'Failed to reject pitch' });
@@ -856,12 +868,13 @@ export const getPitchesV3 = async (req: Request, res: Response) => {
     // Transform pitches to show role-based status and filter for clients
     const transformedPitches = pitches
       .filter(pitch => {
-        // For clients: show pitches that are SENT_TO_CLIENT, APPROVED, REJECTED, or in agreement stages
+        // For clients: show pitches that are SENT_TO_CLIENT, APPROVED, REJECTED, MAYBE, or in agreement stages
         // Hide pitches with PENDING_REVIEW status (admin review stage)
         if (user.role === 'client') {
           return pitch.status === 'SENT_TO_CLIENT' || 
                  pitch.status === 'APPROVED' || 
                  pitch.status === 'REJECTED' ||
+                 pitch.status === 'MAYBE' ||
                  pitch.status === 'AGREEMENT_PENDING' || 
                  pitch.status === 'AGREEMENT_SUBMITTED';
         }
