@@ -54,6 +54,7 @@ import {
 import { deliveryConfirmation, shortlisted, tracking } from '@configs/nodemailer.config';
 import { createNewSpreadSheet } from '@services/google_sheets/sheets';
 import { getRemainingCredits } from '@services/companyService';
+import getCountry from '@utils/getCountry';
 // import { applyCreditCampiagn } from '@services/packageService';
 
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
@@ -905,9 +906,13 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       (campaign) => campaign.campaignTimeline.find((timeline) => timeline.name === 'Open For Pitch')?.status === 'OPEN',
     );
 
+    const country = await getCountry(req.ip as string);
+
+    console.log('COUNTRY', country);
+
     campaigns = campaigns.filter((campaign) => {
       if (!campaign.campaignRequirement?.country) return campaign;
-      return campaign.campaignRequirement.country.toLocaleLowerCase() === user.country?.toLowerCase();
+      return campaign.campaignRequirement.country.toLocaleLowerCase() === country?.toLowerCase();
     });
 
     // campaigns = campaigns.filter((campaign) => campaign.campaignBrief.)
