@@ -33,7 +33,6 @@ import FfmpegPath from '@ffmpeg-installer/ffmpeg';
 import { storage } from '@configs/cloudStorage.config';
 import dayjs from 'dayjs';
 import passport from 'passport';
-// import { draftConsumer } from '@helper/videoDraftWorker';
 
 import amqplib from 'amqplib';
 
@@ -73,8 +72,11 @@ const corsOptions = {
 };
 
 app.use(cors());
+
 app.use(morgan('combined'));
 app.disable('x-powered-by');
+
+app.set('trust proxy', true);
 
 // create the session here
 declare module 'express-session' {
