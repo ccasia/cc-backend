@@ -94,7 +94,7 @@ declare module 'express-session' {
   }
 }
 
-app.set('trust proxy', true);
+// app.set('trust proxy', true);
 
 app.use(
   session({
