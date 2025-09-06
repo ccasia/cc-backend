@@ -101,7 +101,7 @@ app.use(
     secret: process.env.SESSION_SECRET as string,
     resave: false,
     saveUninitialized: false,
-    // proxy: process.env.NODE_ENV === 'production',
+    proxy: process.env.NODE_ENV === 'production',
     cookie: {
       secure: process.env.NODE_ENV === 'production',
       maxAge: 24 * 60 * 60 * 1000, //expires in 24hours
@@ -119,8 +119,6 @@ app.use(passport.initialize());
 app.use(passport.session());
 
 app.use(router);
-
-app.set('trust proxy', true);
 
 app.get('/', (req: Request, res: Response) => {
   res.send(`Your IP is ${req.ip}. ${process.env.NODE_ENV} is running...`);
