@@ -123,7 +123,6 @@ app.use(router);
 app.set('trust proxy', true);
 
 app.get('/', (req: Request, res: Response) => {
-  console.log(req.headers['x-forwarded-for']);
   res.send(`Your IP is ${req.ip}. ${process.env.NODE_ENV} is running...`);
 });
 
