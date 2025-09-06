@@ -119,6 +119,7 @@ app.use(router);
 app.set('trust proxt', true);
 
 app.get('/', (req: Request, res: Response) => {
+  console.log(req.headers);
   res.send(`Your IP is ${req.ip}. ${process.env.NODE_ENV} is running...`);
 });
 
