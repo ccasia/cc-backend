@@ -116,8 +116,10 @@ app.use(passport.session());
 
 app.use(router);
 
-app.get('/', (_req: Request, res: Response) => {
-  res.send(`${process.env.NODE_ENV} is running...`);
+app.set('trust proxt', true);
+
+app.get('/', (req: Request, res: Response) => {
+  res.send(`Your IP is ${req.ip}. ${process.env.NODE_ENV} is running...`);
 });
 
 app.get('/users', isLoggedIn, async (_req, res) => {
