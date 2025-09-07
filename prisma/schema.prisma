@@ -65,6 +65,7 @@ model User {
   isVerified         Boolean              @default(false)
   isKWSPCampaign     Boolean?             @default(false)
   hasSubmittedKWSP   Boolean              @default(false)
+  referralCode       String?              @db.VarChar(50)
 
   // Individual feedback relations
   videoFeedback      Video[]      @relation("VideoFeedback")
