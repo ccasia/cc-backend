@@ -6861,10 +6861,21 @@ export const assignUGCCreditsV3 = async (req: Request, res: Response) => {
     // Calculate total credits being assigned
     const totalCreditsToAssign = creators.reduce((acc: number, creator: any) => acc + (creator.credits || 0), 0);
 
-    // Check if campaign has enough credits
-    if (campaign.campaignCredits && totalCreditsToAssign > campaign.campaignCredits) {
+    // Compute already utilized credits from shortlisted creators
+    const alreadyUtilized = (campaign.shortlisted || []).reduce(
+      (acc, item) => acc + (item.ugcVideos || 0),
+      0,
+    );
+
+    // Enforce remaining credits check (campaignCredits - alreadyUtilized)
+    if (
+      campaign.campaignCredits &&
+      totalCreditsToAssign > (campaign.campaignCredits - alreadyUtilized)
+    ) {
       return res.status(400).json({
-        message: `Not enough credits available. Campaign has ${campaign.campaignCredits} credits, but trying to assign ${totalCreditsToAssign} credits.`,
+        message: `Not enough credits available. Remaining: ${
+          campaign.campaignCredits - alreadyUtilized
+        }, requested: ${totalCreditsToAssign}`,
       });
     }
 
