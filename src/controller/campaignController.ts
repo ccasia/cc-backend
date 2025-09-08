@@ -294,6 +294,10 @@ export const createCampaign = async (req: Request, res: Response) => {
 
         const url: string = await createNewSpreadSheet({ title: campaignTitle });
 
+        // Normalize campaign brief dates
+        const briefStartDate = campaignStartDate ? new Date(campaignStartDate) : new Date();
+        const briefEndDate = campaignEndDate ? new Date(campaignEndDate) : briefStartDate;
+
         // Create Campaign
         const campaign = await tx.campaign.create({
           data: {
@@ -321,8 +325,8 @@ export const createCampaign = async (req: Request, res: Response) => {
                 images: publicURL.map((image: any) => image) || '',
                 otherAttachments: otherAttachments,
                 referencesLinks: referencesLinks?.map((link: any) => link.value) || [],
-                startDate: dayjs(campaignStartDate) as any,
-                endDate: dayjs(campaignEndDate) as any,
+                startDate: briefStartDate,
+                endDate: briefEndDate,
                 industries: campaignIndustries,
                 campaigns_do: campaignDo,
                 campaigns_dont: campaignDont,
