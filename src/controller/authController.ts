@@ -334,7 +334,7 @@ export const registerCreator = async (req: Request, res: Response) => {
           phoneNumber: result.user.phoneNumber || '',
           referralCode: creatorData.referralCode,
         });
-        
+
         // Try to add referral data to the same spreadsheet that's already working
         const existingSpreadsheetId = process.env.REGISTERED_CREATORS_SPREADSHEET_ID;
         if (existingSpreadsheetId) {
@@ -348,11 +348,13 @@ export const registerCreator = async (req: Request, res: Response) => {
               phoneNumber: result.user.phoneNumber || '',
               referralCode: creatorData.referralCode,
             },
-          }).then(() => {
-            console.log('Successfully added referral data to Google Sheets');
-          }).catch((error) => {
-            console.error('Error adding referral data to Google Sheets:', error);
-          });
+          })
+            .then(() => {
+              console.log('Successfully added referral data to Google Sheets');
+            })
+            .catch((error) => {
+              console.error('Error adding referral data to Google Sheets:', error);
+            });
         } else {
           console.log('No existing spreadsheet ID found, trying with provided ID...');
           addReferralData({
@@ -364,11 +366,13 @@ export const registerCreator = async (req: Request, res: Response) => {
               phoneNumber: result.user.phoneNumber || '',
               referralCode: creatorData.referralCode,
             },
-          }).then(() => {
-            console.log('Successfully added referral data to Google Sheets');
-          }).catch((error) => {
-            console.error('Error adding referral data to Google Sheets:', error);
-          });
+          })
+            .then(() => {
+              console.log('Successfully added referral data to Google Sheets');
+            })
+            .catch((error) => {
+              console.error('Error adding referral data to Google Sheets:', error);
+            });
         }
       } else {
         console.log('No referral code provided or referral code is empty');

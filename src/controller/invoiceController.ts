@@ -803,7 +803,8 @@ export const updateInvoice = async (req: Request, res: Response) => {
           const result = await xero.accountingApi.getContacts(
             activeTenant.tenantId,
             undefined, // IDs
-            `EmailAddress=="${creatorUser.email}"`,
+            // `EmailAddress=="${creatorUser.email}"`,
+            `EmailAddress=="${creatorUser.email}" || Name=="${creatorUser.name}"`,
           );
 
           if (result.body.contacts && result.body.contacts.length > 0) {
