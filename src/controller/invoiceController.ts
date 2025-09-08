@@ -804,7 +804,8 @@ export const updateInvoice = async (req: Request, res: Response) => {
             activeTenant.tenantId,
             undefined, // IDs
             // `EmailAddress=="${creatorUser.email}"`,
-            `EmailAddress=="${creatorUser.email}" || Name=="${creatorUser.name}"`,
+            // `EmailAddress=="${creatorUser.email}" || Name=="${creatorUser.name}"`,
+            `Name=="${creatorUser.name}"`,
           );
 
           if (result.body.contacts && result.body.contacts.length > 0) {
