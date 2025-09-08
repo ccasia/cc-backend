@@ -29,13 +29,13 @@ export const isAdmin = async (req: Request, res: Response, next: NextFunction) =
   try {
     const user = await getUser(userid);
     
-    // First check if user has admin role
-    if (user?.role !== 'admin') {
+    // Allow both admin and superadmin roles
+    if (user?.role !== 'admin' && user?.role !== 'superadmin') {
       return res.status(403).json({ message: 'Access denied. Admin role required.' });
     }
     
     // Check if user is a superadmin (god or advanced mode)
-    const isSuperAdmin = ['god', 'advanced'].includes(user?.admin?.mode || '');
+    const isSuperAdmin = user?.role === 'superadmin' || ['god', 'advanced'].includes(user?.admin?.mode || '');
     
     // If user is superadmin, allow access
     if (isSuperAdmin) {
