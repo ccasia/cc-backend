@@ -30,6 +30,7 @@ import {
 import { isLoggedIn } from '@middlewares/onlyLogin';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 import { generateInvoice } from '@controllers/invoiceController';
+import { submitPostingLinkByCSMV2, approvePostingLinkBySuperadminV2, rejectPostingLinkBySuperadminV2 } from '@controllers/submissionController';
 
 const router = Router();
 
@@ -41,6 +42,10 @@ router.post('/submitAgreement', isLoggedIn, agreementSubmission);
 router.post('/draftSubmission', isLoggedIn, draftSubmission);
 router.post('/postSubmission', isLoggedIn, postingSubmission);
 router.post('/generateInvoice', isSuperAdmin, generateInvoice);
+// New posting link flow (V2)
+router.post('/v2/posting/submit-link', isSuperAdmin, submitPostingLinkByCSMV2);
+router.post('/v2/posting/superadmin/approve', isSuperAdmin, approvePostingLinkBySuperadminV2);
+router.post('/v2/posting/superadmin/reject', isSuperAdmin, rejectPostingLinkBySuperadminV2);
 
 router.patch('/adminManageAgreementSubmission', isSuperAdmin, adminManageAgreementSubmission);
 router.patch('/adminManageDraft', isSuperAdmin, adminManageDraft);

@@ -86,6 +86,9 @@ export const getSubmissionsV3 = async (req: Request, res: Response) => {
       if (user.role === 'admin' || user.role === 'superadmin') {
         if (submission.status === 'SENT_TO_ADMIN') {
           displayStatus = 'CLIENT_FEEDBACK';
+        } else if (submission.status === 'SENT_TO_SUPERADMIN') {
+          // Admin sees SENT_TO_SUPERADMIN, Superadmin sees PENDING_REVIEW
+          displayStatus = user.role === 'admin' ? 'SENT_TO_SUPERADMIN' : 'PENDING_REVIEW';
         } else {
           displayStatus = submission.status;
         }
@@ -96,6 +99,9 @@ export const getSubmissionsV3 = async (req: Request, res: Response) => {
           displayStatus = 'PENDING_REVIEW';
         } else if (submission.status === 'SENT_TO_ADMIN') {
           displayStatus = 'CLIENT_FEEDBACK';
+        } else if (submission.status === 'SENT_TO_SUPERADMIN') {
+          // Client sees NOT_STARTED when posting is SENT_TO_SUPERADMIN
+          displayStatus = 'NOT_STARTED';
         } else if (submission.status === 'CLIENT_APPROVED') {
           displayStatus = 'APPROVED';
         } else if (submission.status === 'APPROVED') {
@@ -111,6 +117,9 @@ export const getSubmissionsV3 = async (req: Request, res: Response) => {
       } else if (user.role === 'creator') {
         // For creators, show 'IN_REVIEW' when admin sends to client or when client feedback is being reviewed
         if (submission.status === 'SENT_TO_CLIENT' || submission.status === 'SENT_TO_ADMIN') {
+          displayStatus = 'IN_REVIEW';
+        } else if (submission.status === 'SENT_TO_SUPERADMIN') {
+          // Creator sees IN_REVIEW when posting is SENT_TO_SUPERADMIN
           displayStatus = 'IN_REVIEW';
         } else if (submission.status === 'CLIENT_APPROVED') {
           displayStatus = 'APPROVED';
@@ -209,6 +218,9 @@ export const getSubmissionByIdV3 = async (req: Request, res: Response) => {
     if (user.role === 'admin' || user.role === 'superadmin') {
       if (submission.status === 'SENT_TO_ADMIN') {
         displayStatus = 'CLIENT_FEEDBACK';
+      } else if (submission.status === 'SENT_TO_SUPERADMIN') {
+        // Admin sees SENT_TO_SUPERADMIN, Superadmin sees PENDING_REVIEW
+        displayStatus = user.role === 'admin' ? 'SENT_TO_SUPERADMIN' : 'PENDING_REVIEW';
       } else {
         displayStatus = submission.status;
       }
@@ -219,6 +231,9 @@ export const getSubmissionByIdV3 = async (req: Request, res: Response) => {
         displayStatus = 'PENDING_REVIEW';
       } else if (submission.status === 'SENT_TO_ADMIN') {
         displayStatus = 'CLIENT_FEEDBACK';
+      } else if (submission.status === 'SENT_TO_SUPERADMIN') {
+        // Client sees NOT_STARTED when posting is SENT_TO_SUPERADMIN
+        displayStatus = 'NOT_STARTED';
       } else if (submission.status === 'CLIENT_APPROVED') {
         displayStatus = 'APPROVED';
       } else if (submission.status === 'APPROVED') {
@@ -234,6 +249,9 @@ export const getSubmissionByIdV3 = async (req: Request, res: Response) => {
     } else if (user.role === 'creator') {
       // For creators, show 'IN_REVIEW' when admin sends to client or when client feedback is being reviewed
       if (submission.status === 'SENT_TO_CLIENT' || submission.status === 'SENT_TO_ADMIN') {
+        displayStatus = 'IN_REVIEW';
+      } else if (submission.status === 'SENT_TO_SUPERADMIN') {
+        // Creator sees IN_REVIEW when posting is SENT_TO_SUPERADMIN
         displayStatus = 'IN_REVIEW';
       } else if (submission.status === 'CLIENT_APPROVED') {
         displayStatus = 'APPROVED';
@@ -1342,11 +1360,11 @@ export const checkAndUpdateSubmissionStatusV3 = async (submissionId: string, adm
         await prisma.submission.update({
           where: { id: nextSubmission.id },
           data: {
-            status: 'IN_PROGRESS',
+            status: 'PENDING_REVIEW',
             nextsubmissionDate: new Date()
           }
         });
-        console.log(`V3 Next submission ${nextSubmission.id} (${nextSubmission.submissionType.type}) activated to IN_PROGRESS`);
+        console.log(`V3 Next submission ${nextSubmission.id} (${nextSubmission.submissionType.type}) activated to PENDING_REVIEW`);
       }
     } else if (!allClientApproved && submission.status === 'CLIENT_APPROVED') {
       // Revert status if it was incorrectly set to CLIENT_APPROVED
@@ -1759,7 +1777,8 @@ export const approveDraftByAdminV3 = async (req: Request, res: Response) => {
     }
 
     // Check if submission is in correct status
-    if (submission.status !== 'PENDING_REVIEW') {
+    const approvableStatuses = ['PENDING_REVIEW', 'SENT_TO_ADMIN', 'SENT_TO_SUPERADMIN'];
+    if (!approvableStatuses.includes(submission.status)) {
       return res.status(400).json({ 
         message: `Submission is not in correct status for admin approval. Current status: ${submission.status}` 
       });
@@ -2703,7 +2722,8 @@ export const approvePostingByAdminV3 = async (req: Request, res: Response) => {
     }
 
     // Check if submission is in correct status
-    if (submission.status !== 'PENDING_REVIEW') {
+    const approvableStatuses = ['PENDING_REVIEW', 'SENT_TO_ADMIN', 'SENT_TO_SUPERADMIN'];
+    if (!approvableStatuses.includes(submission.status)) {
       return res.status(400).json({ 
         message: `Submission is not in correct status for admin approval. Current status: ${submission.status}` 
       });
@@ -3128,6 +3148,162 @@ export const requestChangesForPostingByClientV3 = async (req: Request, res: Resp
   } catch (error) {
     console.error('Error requesting changes for posting by client V3:', error);
     return res.status(500).json({ message: 'Failed to request changes' });
+  }
+};
+
+// V3: CSM submits posting link for superadmin review
+export const submitPostingLinkByCSMV3 = async (req: Request, res: Response) => {
+  const { submissionId, link } = req.body;
+  const adminId = req.session.userid;
+
+  try {
+    console.log(`CSM ${adminId} submitting posting link for submission ${submissionId}`);
+
+    const submission = await prisma.submission.findUnique({
+      where: { id: submissionId },
+      include: {
+        submissionType: true,
+        user: true,
+        campaign: true,
+      },
+    });
+
+    if (!submission) return res.status(404).json({ message: 'Submission not found' });
+    if (submission.campaign.origin !== 'CLIENT') {
+      return res.status(400).json({ message: 'Only for client-created (V3) campaigns' });
+    }
+
+    // Save link and set to SENT_TO_SUPERADMIN for superadmin review
+    await prisma.submission.update({
+      where: { id: submissionId },
+      data: {
+        content: link,
+        status: 'SENT_TO_SUPERADMIN',
+        approvedByAdminId: adminId,
+        updatedAt: new Date(),
+      },
+    });
+
+    // Emit socket event if io available
+    try {
+      const io: any = (req as any).app?.get?.('io');
+      if (io) io.to(submission.campaignId).emit('v3:campaign:updated', { campaignId: submission.campaignId });
+    } catch {}
+
+    return res.status(200).json({ message: 'Posting link submitted for superadmin review' });
+  } catch (error) {
+    console.error('Error submitting posting link V3:', error);
+    return res.status(500).json({ message: 'Failed to submit posting link' });
+  }
+};
+
+// V3: Superadmin approves posting link (generate invoice)
+export const approvePostingLinkBySuperadminV3 = async (req: Request, res: Response) => {
+  const { submissionId } = req.body;
+  const superadminId = req.session.userid;
+
+  try {
+    const submission = await prisma.submission.findUnique({
+      where: { id: submissionId },
+      include: {
+        submissionType: true,
+        user: true,
+        campaign: {
+          include: {
+            shortlisted: true,
+            campaignBrief: true,
+          },
+        },
+      },
+    });
+
+    if (!submission) return res.status(404).json({ message: 'Submission not found' });
+    if (submission.campaign.origin !== 'CLIENT') {
+      return res.status(400).json({ message: 'Only for client-created (V3) campaigns' });
+    }
+
+    // Mark approved by superadmin
+    await prisma.submission.update({
+      where: { id: submissionId },
+      data: { status: 'APPROVED', completedAt: new Date(), approvedByAdminId: superadminId },
+    });
+
+    // Generate invoice (reuse admin approve logic path if any)
+    try {
+      const creator = await prisma.shortListedCreator.findFirst({
+        where: { campaignId: submission.campaignId, userId: submission.userId },
+        include: {
+          user: {
+            include: { creatorAgreement: true },
+          },
+          campaign: { include: { campaignBrief: true } },
+        },
+      });
+
+      if (creator && !creator.isCampaignDone) {
+        const invoiceAmount = creator?.user?.creatorAgreement.find((elem) => elem.campaignId === creator.campaign.id)?.amount;
+        const invoice = await createInvoiceService(
+          { ...creator, userId: creator.user?.id, campaignId: creator.campaign.id },
+          superadminId,
+          invoiceAmount,
+          undefined,
+          undefined,
+          superadminId,
+        );
+
+        await prisma.shortListedCreator.update({
+          where: { userId_campaignId: { userId: creator.user?.id as string, campaignId: creator.campaign.id as string } },
+          data: { isCampaignDone: true },
+        });
+
+        const images: any = creator.campaign.campaignBrief?.images;
+        creatorInvoice(creator?.user?.email as any, creator.campaign.name, creator?.user?.name ?? 'Creator', images?.[0]);
+        const { title, message } = notificationInvoiceGenerate(creator.campaign.name);
+        await saveNotification({ userId: creator.user?.id as any, title, message, invoiceId: invoice?.id, entity: 'Invoice', entityId: creator.campaign.id });
+      }
+    } catch (err) {
+      console.error('Error generating invoice on superadmin approval:', err);
+    }
+
+    // Emit socket event
+    try {
+      const io: any = (req as any).app?.get?.('io');
+      if (io) io.to(submission.campaignId).emit('v3:campaign:updated', { campaignId: submission.campaignId });
+    } catch {}
+
+    return res.status(200).json({ message: 'Posting link approved and invoice generated' });
+  } catch (error) {
+    console.error('Error approving posting link V3:', error);
+    return res.status(500).json({ message: 'Failed to approve posting link' });
+  }
+};
+
+// V3: Superadmin rejects posting link
+export const rejectPostingLinkBySuperadminV3 = async (req: Request, res: Response) => {
+  const { submissionId, feedback } = req.body;
+  const superadminId = req.session.userid;
+
+  try {
+    const submission = await prisma.submission.findUnique({ where: { id: submissionId }, include: { campaign: true } });
+    if (!submission) return res.status(404).json({ message: 'Submission not found' });
+    if (submission.campaign.origin !== 'CLIENT') {
+      return res.status(400).json({ message: 'Only for client-created (V3) campaigns' });
+    }
+
+    await prisma.submission.update({ where: { id: submissionId }, data: { status: 'CHANGES_REQUIRED', approvedByAdminId: superadminId } });
+    if (feedback) {
+      await prisma.feedback.create({ data: { content: feedback, type: 'REASON', adminId: superadminId, submissionId } });
+    }
+
+    try {
+      const io: any = (req as any).app?.get?.('io');
+      if (io) io.to(submission.campaignId).emit('v3:campaign:updated', { campaignId: submission.campaignId });
+    } catch {}
+
+    return res.status(200).json({ message: 'Posting link rejected' });
+  } catch (error) {
+    console.error('Error rejecting posting link V3:', error);
+    return res.status(500).json({ message: 'Failed to reject posting link' });
   }
 };
 

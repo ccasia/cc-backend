@@ -317,6 +317,30 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
       return res.status(403).json({ message: 'Client not authorized for this campaign' });
     }
 
+    // V3 credits logic: validate credits before finalizing approval and consuming credits
+    const campaignWithShortlisted = await prisma.campaign.findUnique({
+      where: { id: pitch.campaignId },
+      include: { shortlisted: true },
+    });
+
+    const creditsAssignedForThisPitch = Number(pitch.ugcCredits || 0);
+    const totalUtilizedBefore = (campaignWithShortlisted?.shortlisted || []).reduce(
+      (acc, item) => acc + Number(item.ugcVideos || 0),
+      0,
+    );
+
+    if (
+      campaignWithShortlisted?.campaignCredits &&
+      creditsAssignedForThisPitch > 0 &&
+      totalUtilizedBefore + creditsAssignedForThisPitch > campaignWithShortlisted.campaignCredits
+    ) {
+      return res.status(400).json({
+        message: `Not enough campaign credits. Remaining: ${
+          campaignWithShortlisted.campaignCredits - totalUtilizedBefore
+        }, requested: ${creditsAssignedForThisPitch}`,
+      });
+    }
+
     // Update pitch status to approved (both admin and client see this as approved)
     await prisma.pitch.update({
       where: { id: pitchId },
@@ -326,24 +350,66 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
       },
     });
 
-    // Create ShortListedCreator record for V3 approved pitches
-    // This ensures the creator appears in the Shortlisted Creator section
-    await prisma.shortListedCreator.upsert({
+    // Create/Update ShortListedCreator record for V3 approved pitches
+    // Preserve previously assigned UGC credits if pitch.ugcCredits is not set
+    const existingShortlist = await prisma.shortListedCreator.findUnique({
       where: {
         userId_campaignId: {
           userId: pitch.userId,
           campaignId: pitch.campaignId,
         },
       },
-      update: {
-        isAgreementReady: false, // Not ready yet, waiting for agreement setup
-      },
-      create: {
-        userId: pitch.userId,
-        campaignId: pitch.campaignId,
-        isAgreementReady: false, // Not ready yet, waiting for agreement setup
-      },
     });
+
+    if (existingShortlist) {
+      await prisma.shortListedCreator.update({
+        where: {
+          userId_campaignId: {
+            userId: pitch.userId,
+            campaignId: pitch.campaignId,
+          },
+        },
+        data: {
+          isAgreementReady: false,
+          ...(creditsAssignedForThisPitch > 0
+            ? { ugcVideos: creditsAssignedForThisPitch }
+            : {}), // do not overwrite with null/0 if credits not provided
+        },
+      });
+    } else {
+      await prisma.shortListedCreator.create({
+        data: {
+          userId: pitch.userId,
+          campaignId: pitch.campaignId,
+          isAgreementReady: false,
+          ugcVideos: creditsAssignedForThisPitch > 0 ? creditsAssignedForThisPitch : 0,
+          currency: 'MYR',
+        },
+      });
+    }
+    // Recalculate and persist campaign creditsPending (V3 only)
+    if (campaignWithShortlisted?.campaignCredits) {
+      const refreshed = await prisma.campaign.findUnique({
+        where: { id: pitch.campaignId },
+        include: { shortlisted: { select: { ugcVideos: true } } },
+      });
+
+      const totalUtilized = (refreshed?.shortlisted || []).reduce(
+        (acc, item) => acc + Number(item.ugcVideos || 0),
+        0,
+      );
+
+      await prisma.campaign.update({
+        where: { id: pitch.campaignId },
+        data: {
+          creditsUtilized: Number(totalUtilized),
+          creditsPending: Math.max(
+            0,
+            Number(campaignWithShortlisted.campaignCredits) - Number(totalUtilized),
+          ),
+        },
+      });
+    }
 
     // Create submission records for V3 approved pitches (similar to V2 shortlisting)
     const timelines = await prisma.campaignTimeline.findMany({
