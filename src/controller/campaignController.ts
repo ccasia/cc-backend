@@ -6347,6 +6347,9 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
   const userId = req.session.userid;
 
   try {
+    // Allow superadmin to bypass campaign admin check
+    const currentUser = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+    const isSuperadmin = currentUser?.role === 'superadmin';
     console.log(`shortlistCreatorV3: Shortlisting creators for campaign ${campaignId} by user ${userId}`);
     console.log(`Creators to shortlist:`, creators);
 
@@ -6379,7 +6382,7 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
     console.log(`Is client who created campaign: ${isClientCreator && isClientCreatedCampaign}`);
 
     // If not authorized, return error
-    if (!campaignAccess) {
+    if (!campaignAccess && !isSuperadmin) {
       return res.status(403).json({ message: 'Not authorized to shortlist creators for this campaign' });
     }
 
@@ -6831,6 +6834,9 @@ export const assignUGCCreditsV3 = async (req: Request, res: Response) => {
   const userId = req.session.userid;
 
   try {
+    // Allow superadmin to bypass campaign admin check
+    const currentUser = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+    const isSuperadmin = currentUser?.role === 'superadmin';
     console.log(`assignUGCCreditsV3: Assigning UGC credits for campaign ${campaignId} by user ${userId}`);
     console.log(`Creators with credits:`, creators);
 
@@ -6855,11 +6861,19 @@ export const assignUGCCreditsV3 = async (req: Request, res: Response) => {
     });
 
     // If not authorized, return error
-    if (!campaignAccess) {
+    if (!campaignAccess && !isSuperadmin) {
       return res.status(403).json({ message: 'Not authorized to assign UGC credits for this campaign' });
     }
 
-    const campaign = campaignAccess.campaign;
+    // campaignAccess may be null for superadmin; fetch campaign directly in that case
+    // Always fetch a fresh campaign instance to avoid mixed types from relations
+    const campaign = await prisma.campaign.findUnique({
+      where: { id: campaignId },
+      include: { shortlisted: true },
+    });
+    if (!campaign) {
+      return res.status(404).json({ message: 'Campaign not found' });
+    }
 
     // For V3, we only support client-created campaigns
     if (campaign.origin !== 'CLIENT') {
