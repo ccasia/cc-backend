@@ -6344,7 +6344,7 @@ export const checkCampaignCreatorVisibility = async (req: Request, res: Response
 
 // Add this function after the shortlistCreatorV2 function
 export const shortlistCreatorV3 = async (req: Request, res: Response) => {
-  const { creators, campaignId } = req.body;
+  const { creators, campaignId, adminComments } = req.body;
   const userId = req.session.userid;
 
   try {
@@ -6450,6 +6450,9 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
             // Set default values for V3 flow
             amount: null, // Will be set when admin approves
             agreementTemplateId: null, // Will be set when admin approves
+            ...(typeof adminComments === 'string' && adminComments.trim().length > 0
+              ? { adminComments: adminComments.trim(), adminCommentedBy: userId }
+              : {}),
           },
         });
 
@@ -6984,6 +6987,7 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
 
     if (!campaign) return res.status(404).json({ message: 'Campaign not found.' });
 
+    const createdCreators: Array<{ id: string }> = [];
     await prisma.$transaction(async (tx) => {
       for (const guest of guestCreators) {
         // give guest a userId
@@ -7013,13 +7017,37 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
             currency: 'SGD',
           },
         });
+
+        // Also create a V3 pitch entry so it appears in the pitches list
+        const existingPitch = await tx.pitch.findFirst({
+          where: { userId, campaignId },
+        });
+
+        if (!existingPitch) {
+          await tx.pitch.create({
+            data: {
+              userId,
+              campaignId,
+              type: 'text',
+              status: 'SENT_TO_CLIENT',
+              content: `Non-platform creator has been shortlisted for campaign "${campaign.name}"`,
+              amount: null,
+              agreementTemplateId: null,
+              ...(guest.adminComments && guest.adminComments.trim().length > 0
+                ? { adminComments: guest.adminComments.trim(), adminCommentedBy: adminId }
+                : {}),
+            },
+          });
+        }
+
+        createdCreators.push({ id: userId });
       }
     });
 
     const adminLogMessage = `Shortlisted ${guestCreators.length} guest creator(s) for Campaign "${campaign.name}"`;
     logAdminChange(adminLogMessage, adminId, req);
 
-    return res.status(200).json({ message: 'Guest creators successfully shortlisted.' });
+    return res.status(200).json({ message: 'Guest creators successfully shortlisted.', createdCreators });
   } catch (error) {
     console.error('GUEST SHORTLIST ERROR:', error);
     return res.status(400).json({ message: error.message || 'Failed to shortlist guest creators.' });
