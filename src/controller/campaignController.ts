@@ -4569,21 +4569,45 @@ export const shortlistCreatorV2 = async (req: Request, res: Response) => {
         //   },
         // });
 
-        await tx.creatorAgreement.createMany({
-          data: creatorData.map((creator) => ({
-            userId: creator.id,
-            campaignId: campaign.id,
-            agreementUrl: '',
-          })),
-        });
+        await Promise.all(
+          creatorData.map((creator) =>
+            tx.creatorAgreement.upsert({
+              where: {
+                userId_campaignId: {
+                  userId: creator.id,
+                  campaignId: campaign.id,
+                },
+              },
+              update: {},
+              create: {
+                userId: creator.id,
+                campaignId: campaign.id,
+                agreementUrl: '',
+              },
+            }),
+          ),
+        );
 
-        await tx.shortListedCreator.createMany({
-          data: creators.map((creator: any) => ({
-            userId: creator.id,
-            campaignId,
-            ugcVideos: creator.credits,
-          })),
-        });
+        await Promise.all(
+          creators.map((creator: any) =>
+            tx.shortListedCreator.upsert({
+              where: {
+                userId_campaignId: {
+                  userId: creator.id,
+                  campaignId,
+                },
+              },
+              update: {
+                ugcVideos: creator.credits,
+              },
+              create: {
+                userId: creator.id,
+                campaignId,
+                ugcVideos: creator.credits,
+              },
+            }),
+          ),
+        );
 
         const boards = await tx.board.findMany({
           where: { userId: { in: creatorIds } },
