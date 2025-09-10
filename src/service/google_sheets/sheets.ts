@@ -293,7 +293,7 @@ export const addReferralData = async ({
 }) => {
   try {
     console.log('Starting addReferralData with:', { spreadSheetId, sheetByTitle, data });
-    
+
     console.log('Attempting to access Google Sheet API...');
     const sheet = await accessGoogleSheetAPI(spreadSheetId);
     console.log('Google Sheet accessed successfully');
@@ -346,7 +346,7 @@ export const addReferralData = async ({
     console.error('Error details:', {
       message: error.message,
       stack: error.stack,
-      name: error.name
+      name: error.name,
     });
     throw new Error(`Failed to add referral data: ${error}`);
   }

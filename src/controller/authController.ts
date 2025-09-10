@@ -351,6 +351,7 @@ export const registerCreator = async (req: Request, res: Response) => {
           })
             .then(() => {
               console.log('Successfully added referral data to Google Sheets');
+              return;
             })
             .catch((error) => {
               console.error('Error adding referral data to Google Sheets:', error);
@@ -369,6 +370,7 @@ export const registerCreator = async (req: Request, res: Response) => {
           })
             .then(() => {
               console.log('Successfully added referral data to Google Sheets');
+              return;
             })
             .catch((error) => {
               console.error('Error adding referral data to Google Sheets:', error);
