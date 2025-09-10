@@ -316,8 +316,8 @@ export const createCampaign = async (req: Request, res: Response) => {
                 images: publicURL.map((image: any) => image) || '',
                 otherAttachments: otherAttachments,
                 referencesLinks: referencesLinks?.map((link: any) => link.value) || [],
-                startDate: dayjs(campaignStartDate) as any,
-                endDate: dayjs(campaignEndDate) as any,
+                startDate: dayjs(campaignStartDate).toDate(),
+                endDate: dayjs(campaignEndDate ?? campaignStartDate).toDate(),
                 industries: campaignIndustries,
                 campaigns_do: campaignDo,
                 campaigns_dont: campaignDont,
@@ -706,6 +706,9 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
 
     if (user?.admin?.mode === 'god' || user?.admin?.mode === 'advanced') {
       campaigns = await prisma.campaign.findMany({
+        orderBy: {
+          createdAt: 'desc',
+        },
         include: {
           agreementTemplate: true,
           submission: {
@@ -786,6 +789,9 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
               adminId: user?.id,
             },
           },
+        },
+        orderBy: {
+          createdAt: 'desc',
         },
         include: {
           agreementTemplate: true,
@@ -1033,10 +1039,9 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
 
       return res.status(200).json(data);
     }
-
-    campaigns = campaigns.filter(
-      (campaign) => campaign.campaignTimeline.find((timeline) => timeline.name === 'Open For Pitch')?.status === 'OPEN',
-    );
+    // campaigns = campaigns.filter(
+    //   (campaign) => campaign.campaignTimeline.find((timeline) => timeline.name === 'Open For Pitch')?.status === 'OPEN',
+    // );
 
     const calculateInterestMatchingPercentage = (creatorInterests: Interest[], creatorPerona: []) => {
       const totalInterests = creatorPerona.length;
@@ -4187,6 +4192,9 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
             }),
           },
         ],
+      },
+      orderBy: {
+        createdAt: 'desc',
       },
       // where: {
       //   ...(status
