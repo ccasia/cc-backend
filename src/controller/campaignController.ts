@@ -54,6 +54,7 @@ import {
 import { deliveryConfirmation, shortlisted, tracking } from '@configs/nodemailer.config';
 import { createNewSpreadSheet, upsertSheetAndWriteRows } from '@services/google_sheets/sheets';
 import { getRemainingCredits } from '@services/companyService';
+import getCountry from '@utils/getCountry';
 // import { applyCreditCampiagn } from '@services/packageService';
 
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
@@ -131,6 +132,7 @@ interface Campaign {
   crossPosting: boolean;
   ads: boolean;
   campaignCredits: number;
+  country: string;
 }
 
 const MAPPING: Record<string, string> = {
@@ -210,6 +212,7 @@ export const createCampaign = async (req: Request, res: Response) => {
     crossPosting,
     ads,
     campaignCredits,
+    country,
   }: Campaign = JSON.parse(req.body.data);
 
   try {
@@ -333,6 +336,7 @@ export const createCampaign = async (req: Request, res: Response) => {
                 language: audienceLanguage,
                 creator_persona: audienceCreatorPersona,
                 user_persona: audienceUserPersona,
+                country: country,
               },
             },
             campaignCredits,
@@ -990,8 +994,6 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
         },
       }),
       where: {
-        // status: 'ACTIVE',
-
         AND: [
           { status: 'ACTIVE' },
           {
@@ -1036,6 +1038,17 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
     // campaigns = campaigns.filter(
     //   (campaign) => campaign.campaignTimeline.find((timeline) => timeline.name === 'Open For Pitch')?.status === 'OPEN',
     // );
+
+    const country = await getCountry(req.ip as string);
+
+    console.log('COUNTRY', country);
+
+    campaigns = campaigns.filter((campaign) => {
+      if (!campaign.campaignRequirement?.country) return campaign;
+      return campaign.campaignRequirement.country.toLocaleLowerCase() === country?.toLowerCase();
+    });
+
+    // campaigns = campaigns.filter((campaign) => campaign.campaignBrief.)
 
     const calculateInterestMatchingPercentage = (creatorInterests: Interest[], creatorPerona: []) => {
       const totalInterests = creatorPerona.length;
@@ -1780,6 +1793,7 @@ export const editCampaignRequirements = async (req: Request, res: Response) => {
     audienceLanguage,
     audienceCreatorPersona,
     audienceUserPersona,
+    country,
   } = req.body;
 
   try {
@@ -1794,6 +1808,7 @@ export const editCampaignRequirements = async (req: Request, res: Response) => {
         language: audienceLanguage,
         creator_persona: audienceCreatorPersona,
         user_persona: audienceUserPersona,
+        country: country,
       },
       include: {
         campaign: { select: { name: true } },

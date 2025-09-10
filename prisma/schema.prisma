@@ -65,7 +65,9 @@ model User {
   isVerified         Boolean              @default(false)
   isKWSPCampaign     Boolean?             @default(false)
   hasSubmittedKWSP   Boolean              @default(false)
+
   referralCode       String?              @db.VarChar(50)
+
 
   // Individual feedback relations
   videoFeedback      Video[]      @relation("VideoFeedback")
@@ -582,6 +584,7 @@ model CampaignRequirement {
   geoLocation     String[]
   language        String[]
   creator_persona String[]
+  country         String?
   user_persona    String
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt

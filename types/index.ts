@@ -1,4 +1,5 @@
 import { XeroAccessToken, XeroIdToken } from 'xero-node';
+import 'express';
 
 declare module 'express-session' {
   interface Session {
@@ -7,5 +8,20 @@ declare module 'express-session' {
     tokenSet: any;
     allTenants: any[];
     activeTenant: any;
+  }
+}
+
+declare module 'express-serve-static-core' {
+  interface Request {
+    ipinfo?: {
+      ip: string;
+      city?: string;
+      region?: string;
+      country?: string;
+      loc?: string;
+      org?: string;
+      postal?: string;
+      timezone?: string;
+    };
   }
 }
