@@ -49,6 +49,9 @@ import {
   getAllPitches,
   getAllCreatorAgreements,
   changeCampaignCredit,
+  exportActiveCompletedToSheet,
+  exportCreatorsCampaignSheet,
+  getCampaignsForPublic,
 } from '@controllers/campaignController';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 
@@ -108,6 +111,8 @@ router.get('/getMyCampaigns/:userId', isLoggedIn, getMyCampaigns);
 // Get Campaigns by Admin ID
 router.get('/getAllCampaignsByAdminId/:userId', getAllCampaignsByAdminId);
 
+router.get('/public', getCampaignsForPublic);
+
 router.post('/updateOrCreateDefaultTimeline', updateOrCreateDefaultTimeline);
 router.post('/createCampaign', isSuperAdmin, createCampaign);
 router.post('/createNewTimeline', isSuperAdmin, createNewTimeline);
@@ -119,6 +124,8 @@ router.post('/shortlistCreator', isSuperAdmin, shortlistCreator);
 router.post('/template/:id', isSuperAdmin, createNewTemplate);
 router.post('/draftPitch', isLoggedIn, draftPitch);
 router.post('/spreadsheet', isLoggedIn, isSuperAdmin, createNewSpreadSheets);
+router.post('/export/active-completed', isSuperAdmin, exportActiveCompletedToSheet);
+router.post('/export/campaign-creators', isSuperAdmin, exportCreatorsCampaignSheet);
 router.post('/removeCreatorFromCampaign', isLoggedIn, isSuperAdmin, removeCreatorFromCampaign);
 router.post('/v2/shortlistCreator', isSuperAdmin, shortlistCreatorV2);
 

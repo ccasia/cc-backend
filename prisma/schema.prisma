@@ -66,6 +66,9 @@ model User {
   isKWSPCampaign     Boolean?             @default(false)
   hasSubmittedKWSP   Boolean              @default(false)
 
+  referralCode       String?              @db.VarChar(50)
+
+
   // Individual feedback relations
   videoFeedback      Video[]      @relation("VideoFeedback")
   rawFootageFeedback RawFootage[] @relation("RawFootageFeedback")
@@ -182,6 +185,16 @@ model TiktokUser {
   following_count Int?
   follower_count  Int?
   likes_count     Int?
+
+  totalLikes    Int?
+  totalComments Int?
+
+  averageLikes    Int?
+  averageComments Int?
+
+  engagement_rate Int?
+
+  lastUpdated DateTime? @updatedAt
 
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt

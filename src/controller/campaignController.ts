@@ -52,7 +52,7 @@ import {
   notificationLogisticDelivery,
 } from '@helper/notification';
 import { deliveryConfirmation, shortlisted, tracking } from '@configs/nodemailer.config';
-import { createNewSpreadSheet } from '@services/google_sheets/sheets';
+import { createNewSpreadSheet, upsertSheetAndWriteRows } from '@services/google_sheets/sheets';
 import { getRemainingCredits } from '@services/companyService';
 import getCountry from '@utils/getCountry';
 // import { applyCreditCampiagn } from '@services/packageService';
@@ -319,8 +319,8 @@ export const createCampaign = async (req: Request, res: Response) => {
                 images: publicURL.map((image: any) => image) || '',
                 otherAttachments: otherAttachments,
                 referencesLinks: referencesLinks?.map((link: any) => link.value) || [],
-                startDate: dayjs(campaignStartDate) as any,
-                endDate: dayjs(campaignEndDate) as any,
+                startDate: dayjs(campaignStartDate).toDate(),
+                endDate: dayjs(campaignEndDate ?? campaignStartDate).toDate(),
                 industries: campaignIndustries,
                 campaigns_do: campaignDo,
                 campaigns_dont: campaignDont,
@@ -553,6 +553,134 @@ export const createCampaign = async (req: Request, res: Response) => {
   }
 };
 
+export const exportActiveCompletedToSheet = async (_req: Request, res: Response) => {
+  try {
+    const campaigns = await prisma.campaign.findMany({
+      include: {
+        brand: true,
+        company: true,
+      },
+    });
+
+    const active = campaigns.filter((c) => c.status === 'ACTIVE');
+    const completed = campaigns.filter((c) => c.status === 'COMPLETED');
+
+    const toRow = (c: any): (string | number)[] => [
+      c.name || '',
+      c.brand?.name || c.company?.name || '',
+      c.campaignCredits || 0,
+      c.creditsUtilized || 0,
+      c.creditsPending || Math.max((c.campaignCredits || 0) - (c.creditsUtilized || 0), 0),
+    ];
+
+    const header = ['Campaign', 'Client Name', 'Campaign Credits', 'Credits Utilized', 'Credits Pending'];
+
+    // Target spreadsheet provided by user
+    const spreadsheetId = '1AtuEMQDR3pblQqBStBpsW_S19bUY-4rJcjyQ_BE-YZY';
+
+    await upsertSheetAndWriteRows({
+      spreadSheetId: spreadsheetId,
+      sheetTitle: 'Active',
+      headerRow: header,
+      rows: active.map(toRow),
+    });
+
+    await upsertSheetAndWriteRows({
+      spreadSheetId: spreadsheetId,
+      sheetTitle: 'Completed',
+      headerRow: header,
+      rows: completed.map(toRow),
+    });
+
+    return res.status(200).json({ success: true });
+  } catch (error: any) {
+    console.log(error);
+    return res.status(500).json({ success: false, message: error?.message || 'Failed to export' });
+  }
+};
+
+async function syncCreatorsCampaignSheetInternal() {
+  // Spreadsheet and sheet details from user request
+  const spreadsheetId = '1E6Rcm-0VA5INObz7weqpcdaQ7pcSLej7guiq8mwfjKo';
+  const sheetTitle = 'Campaign';
+
+  // Group shortlisted creators by user to get first campaign date and count
+  const grouped = await prisma.shortListedCreator.groupBy({
+    by: ['userId'],
+    _count: { _all: true },
+    _min: { shortlisted_date: true },
+  });
+
+  if (!grouped?.length) {
+    await upsertSheetAndWriteRows({
+      spreadSheetId: spreadsheetId,
+      sheetTitle,
+      headerRow: [
+        'Date of First Campaign',
+        'Name',
+        'Number of Campaigns',
+        'Email',
+        'Phone Number',
+        'Instagram Handle',
+        'TikTok Handle',
+      ],
+      rows: [],
+    });
+    return;
+  }
+
+  const userIds = grouped.map((g) => g.userId).filter((id): id is string => Boolean(id));
+  const users = await prisma.user.findMany({
+    where: { id: { in: userIds } },
+    include: {
+      creator: true,
+    },
+  });
+
+  const userMap = new Map(users.map((u) => [u.id, u]));
+
+  const rows: (string | number)[][] = grouped
+    .map((g) => {
+      if (!g.userId) return null;
+      const u = userMap.get(g.userId);
+      if (!u) return null;
+      const date = g._min?.shortlisted_date ? dayjs(g._min.shortlisted_date as any).format('YYYY-MM-DD') : '';
+      const name = u.name || '';
+      const numCampaigns = (g as any)._count?._all || 0;
+      const email = u.email || '';
+      const phone = u.phoneNumber || '';
+      const ig = (u as any)?.creator?.instagram || (u as any)?.creator?.instagramUser?.username || '';
+      const tiktok = (u as any)?.creator?.tiktok || (u as any)?.creator?.tiktokUser?.username || '';
+      return [date, name, numCampaigns, email, phone, ig, tiktok];
+    })
+    .filter(Boolean) as (string | number)[][];
+
+  await upsertSheetAndWriteRows({
+    spreadSheetId: spreadsheetId,
+    sheetTitle,
+    headerRow: [
+      'Date of First Campaign',
+      'Name',
+      'Number of Campaigns',
+      'Email',
+      'Phone Number',
+      'Instagram Handle',
+      'TikTok Handle',
+    ],
+    rows,
+  });
+}
+
+export const exportCreatorsCampaignSheet = async (_req: Request, res: Response) => {
+  try {
+    await syncCreatorsCampaignSheetInternal();
+    return res.status(200).json({ success: true });
+  } catch (error: any) {
+    console.log(error);
+    return res.status(500).json({ success: false, message: error?.message || 'Failed to export' });
+  }
+};
+
 // Campaign Info for Admin
 export const getAllCampaigns = async (req: Request, res: Response) => {
   const id = req.session.userid;
@@ -576,6 +704,9 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
 
     if (user?.admin?.mode === 'god' || user?.admin?.mode === 'advanced') {
       campaigns = await prisma.campaign.findMany({
+        orderBy: {
+          createdAt: 'desc',
+        },
         include: {
           agreementTemplate: true,
           submission: {
@@ -656,6 +787,9 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
               adminId: user?.id,
             },
           },
+        },
+        orderBy: {
+          createdAt: 'desc',
         },
         include: {
           agreementTemplate: true,
@@ -851,7 +985,7 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
 
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    let campaigns = await prisma.campaign.findMany({
+    const campaigns = await prisma.campaign.findMany({
       take: Number(take),
       ...(cursor && {
         skip: 1,
@@ -901,10 +1035,9 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
 
       return res.status(200).json(data);
     }
-
-    campaigns = campaigns.filter(
-      (campaign) => campaign.campaignTimeline.find((timeline) => timeline.name === 'Open For Pitch')?.status === 'OPEN',
-    );
+    // campaigns = campaigns.filter(
+    //   (campaign) => campaign.campaignTimeline.find((timeline) => timeline.name === 'Open For Pitch')?.status === 'OPEN',
+    // );
 
     const country = await getCountry(req.ip as string);
 
@@ -2127,6 +2260,13 @@ export const changePitchStatus = async (req: Request, res: Response) => {
           timeout: 20000,
         },
       );
+
+      // After approving a pitch (shortlist created), sync creators-campaign sheet (best-effort)
+      try {
+        await syncCreatorsCampaignSheetInternal();
+      } catch (err) {
+        console.log('Sheet sync failed (non-blocking):', err);
+      }
     } else {
       // Log admin activity for pitch rejection
       const adminActivityMessage = `${adminName} rejected ${creatorName}'s pitch`;
@@ -2945,8 +3085,15 @@ export const shortlistCreator = async (req: Request, res: Response) => {
       { timeout: 10000 },
     );
 
-    const adminLogMessage = `Creator Shortlisted for Campaign - ${campaignId.name} `;
+    const adminLogMessage = `Creator Shortlisted for Campaign - ${campaignId} `;
     logAdminChange(adminLogMessage, adminId, req);
+
+    // After successful shortlist, sync creators-campaign sheet (best-effort)
+    try {
+      await syncCreatorsCampaignSheetInternal();
+    } catch (err) {
+      console.log('Sheet sync failed (non-blocking):', err);
+    }
 
     return res.status(200).json({ message: 'Successfully shortlisted' });
   } catch (error) {
@@ -4055,6 +4202,9 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
           },
         ],
       },
+      orderBy: {
+        createdAt: 'desc',
+      },
       // where: {
       //   ...(status
       //     ? {
@@ -4354,6 +4504,13 @@ export const removeCreatorFromCampaign = async (req: Request, res: Response) => 
     const adminActivityMessage = `${adminName} withdrew ${user.name} from the campaign`;
     await logChange(adminActivityMessage, campaign.id, req);
 
+    // After successful withdrawal, sync creators-campaign sheet (best-effort)
+    try {
+      await syncCreatorsCampaignSheetInternal();
+    } catch (err) {
+      console.log('Sheet sync failed (non-blocking):', err);
+    }
+
     return res.status(200).json({ message: 'Successfully withdraw' });
   } catch (error) {
     console.log(error);
@@ -4421,21 +4578,45 @@ export const shortlistCreatorV2 = async (req: Request, res: Response) => {
         //   },
         // });
 
-        await tx.creatorAgreement.createMany({
-          data: creatorData.map((creator) => ({
-            userId: creator.id,
-            campaignId: campaign.id,
-            agreementUrl: '',
-          })),
-        });
+        await Promise.all(
+          creatorData.map((creator) =>
+            tx.creatorAgreement.upsert({
+              where: {
+                userId_campaignId: {
+                  userId: creator.id,
+                  campaignId: campaign.id,
+                },
+              },
+              update: {},
+              create: {
+                userId: creator.id,
+                campaignId: campaign.id,
+                agreementUrl: '',
+              },
+            }),
+          ),
+        );
 
-        await tx.shortListedCreator.createMany({
-          data: creators.map((creator: any) => ({
-            userId: creator.id,
-            campaignId,
-            ugcVideos: creator.credits,
-          })),
-        });
+        await Promise.all(
+          creators.map((creator: any) =>
+            tx.shortListedCreator.upsert({
+              where: {
+                userId_campaignId: {
+                  userId: creator.id,
+                  campaignId,
+                },
+              },
+              update: {
+                ugcVideos: creator.credits,
+              },
+              create: {
+                userId: creator.id,
+                campaignId,
+                ugcVideos: creator.credits,
+              },
+            }),
+          ),
+        );
 
         const boards = await tx.board.findMany({
           where: { userId: { in: creatorIds } },
@@ -4556,6 +4737,13 @@ export const shortlistCreatorV2 = async (req: Request, res: Response) => {
         throw new Error(error);
       }
     });
+
+    // After successful shortlist, sync creators-campaign sheet (best-effort)
+    try {
+      await syncCreatorsCampaignSheetInternal();
+    } catch (err) {
+      console.log('Sheet sync failed (non-blocking):', err);
+    }
 
     return res.status(200).json({ message: 'Successfully shortlisted creators' });
   } catch (error) {
@@ -4807,5 +4995,82 @@ export const changeCampaignCredit = async (req: Request, res: Response) => {
   } catch (error) {
     console.log(error);
     res.status(400).json({ message: error });
+  }
+};
+
+export const getCampaignsForPublic = async (req: Request, res: Response) => {
+  const { cursor, take = 10, search } = req.query;
+  try {
+    let campaigns = await prisma.campaign.findMany({
+      take: Number(take),
+      ...(cursor && {
+        skip: 1,
+        cursor: {
+          id: cursor as string,
+        },
+      }),
+      where: {
+        // status: 'ACTIVE',
+
+        AND: [
+          { status: 'ACTIVE' },
+          {
+            ...(search && {
+              name: {
+                contains: search as string,
+                mode: 'insensitive',
+              },
+            }),
+          },
+        ],
+      },
+      include: {
+        campaignBrief: true,
+        campaignRequirement: true,
+        campaignTimeline: true,
+        brand: { include: { company: { include: { subscriptions: true } } } },
+        company: true,
+        pitch: true,
+        bookMarkCampaign: true,
+        shortlisted: true,
+        logistic: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    if (campaigns?.length === 0) {
+      const data = {
+        data: {
+          campaigns: [],
+        },
+        metaData: {
+          lastCursor: null,
+          hasNextPage: false,
+        },
+      };
+
+      return res.status(200).json(data);
+    }
+
+    campaigns = campaigns.filter(
+      (campaign) => campaign.campaignTimeline.find((timeline) => timeline.name === 'Open For Pitch')?.status === 'OPEN',
+    );
+    const lastCursor = campaigns.length > Number(take) - 1 ? campaigns[Number(take) - 1]?.id : null;
+
+    const data = {
+      data: {
+        campaigns: campaigns,
+      },
+      metaData: {
+        lastCursor: lastCursor,
+        hasNextPage: true,
+      },
+    };
+
+    return res.status(200).json(data);
+  } catch (error) {
+    return res.status(400).json(error);
   }
 };

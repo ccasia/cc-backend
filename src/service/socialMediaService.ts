@@ -370,7 +370,7 @@ export const getTikTokVideoById = async (accessToken: string, videoId: string) =
 // New function to calculate TikTok engagement rates over time for charts
 export const getTikTokEngagementRateOverTime = async (
   accessToken: string,
-  limit: number = 20,
+  limit = 20,
 ): Promise<{ engagementRates: number[]; months: string[] }> => {
   try {
     const response = await axios.post(
@@ -458,7 +458,7 @@ export const getTikTokEngagementRateOverTime = async (
 // New function to calculate TikTok monthly interactions for bar chart
 export const getTikTokMonthlyInteractions = async (
   accessToken: string,
-  limit: number = 20,
+  limit = 20,
 ): Promise<{ monthlyData: { month: string; interactions: number }[] }> => {
   try {
     const response = await axios.post(
