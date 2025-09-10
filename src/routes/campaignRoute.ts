@@ -51,6 +51,7 @@ import {
   changeCampaignCredit,
   exportActiveCompletedToSheet,
   exportCreatorsCampaignSheet,
+  getCampaignsForPublic,
 } from '@controllers/campaignController';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 
@@ -109,6 +110,8 @@ router.get('/getMyCampaigns/:userId', isLoggedIn, getMyCampaigns);
 
 // Get Campaigns by Admin ID
 router.get('/getAllCampaignsByAdminId/:userId', getAllCampaignsByAdminId);
+
+router.get('/public', getCampaignsForPublic);
 
 router.post('/updateOrCreateDefaultTimeline', updateOrCreateDefaultTimeline);
 router.post('/createCampaign', isSuperAdmin, createCampaign);
