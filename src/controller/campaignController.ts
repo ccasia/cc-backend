@@ -563,19 +563,13 @@ export const exportActiveCompletedToSheet = async (_req: Request, res: Response)
 
     const toRow = (c: any): (string | number)[] => [
       c.name || '',
-      (c.brand?.name || c.company?.name || ''),
+      c.brand?.name || c.company?.name || '',
       c.campaignCredits || 0,
       c.creditsUtilized || 0,
       c.creditsPending || Math.max((c.campaignCredits || 0) - (c.creditsUtilized || 0), 0),
     ];
 
-    const header = [
-      'Campaign',
-      'Client Name',
-      'Campaign Credits',
-      'Credits Utilized',
-      'Credits Pending',
-    ];
+    const header = ['Campaign', 'Client Name', 'Campaign Credits', 'Credits Utilized', 'Credits Pending'];
 
     // Target spreadsheet provided by user
     const spreadsheetId = '1AtuEMQDR3pblQqBStBpsW_S19bUY-4rJcjyQ_BE-YZY';
@@ -631,7 +625,7 @@ async function syncCreatorsCampaignSheetInternal() {
     return;
   }
 
-  const userIds = (grouped.map((g) => g.userId).filter((id): id is string => Boolean(id)));
+  const userIds = grouped.map((g) => g.userId).filter((id): id is string => Boolean(id));
   const users = await prisma.user.findMany({
     where: { id: { in: userIds } },
     include: {
@@ -987,7 +981,7 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
 
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    let campaigns = await prisma.campaign.findMany({
+    const campaigns = await prisma.campaign.findMany({
       take: Number(take),
       ...(cursor && {
         skip: 1,
@@ -4724,7 +4718,6 @@ export const shortlistCreatorV2 = async (req: Request, res: Response) => {
             });
           }
         }
-
       } catch (error) {
         throw new Error(error);
       }
