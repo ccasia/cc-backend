@@ -1792,22 +1792,34 @@ export const getTikTokMediaKit = async (req: Request, res: Response) => {
     const overview = overviewRes.data.data.user;
 
     // Get TikTok videos data
-    const videosRes = await axios.post(
-      'https://open.tiktokapis.com/v2/video/list/',
-      { max_count: 20 },
-      {
-        params: {
-          fields:
-            'id,title,video_description,duration,cover_image_url,embed_link,embed_html,like_count,comment_count,share_count,view_count,create_time',
+    let videosRes;
+    try {
+      videosRes = await axios.post(
+        'https://open.tiktokapis.com/v2/video/list/',
+        { max_count: 20 },
+        {
+          params: {
+            fields:
+              'id,title,video_description,duration,cover_image_url,embed_link,embed_html,like_count,comment_count,share_count,view_count,create_time',
+          },
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
         },
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-      },
-    );
+      );
+    } catch (videoError: any) {
+      // If it's a permission error, the user might need to reconnect
+      if (videoError.response?.status === 403 || videoError.response?.status === 401) {
+        throw new Error('TikTok permissions expired. Please reconnect your TikTok account.');
+      }
+      
+      // For other errors, continue with empty videos array
+      videosRes = { data: { data: { videos: [] } } };
+    }
 
     const videos = videosRes.data.data?.videos || [];
+
 
     // Calculate analytics from videos
     const totalLikes = videos.reduce((sum: number, video: any) => sum + (video.like_count || 0), 0);
@@ -1909,6 +1921,7 @@ export const getTikTokMediaKit = async (req: Request, res: Response) => {
         likes_count: overview.likes_count,
       },
     };
+
 
     return res.status(200).json(responseData);
   } catch (error: any) {
