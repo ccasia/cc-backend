@@ -1851,22 +1851,8 @@ export const getTikTokMediaKit = async (req: Request, res: Response) => {
         hasVideos: !!videosRes.data.data?.videos,
         videosType: typeof videosRes.data.data?.videos,
         videosLength: videosRes.data.data?.videos?.length
-      },
-      fullResponse: videosRes.data
+      }
     });
-
-    // If no videos found, log additional info
-    if (videos.length === 0) {
-      console.log('No TikTok videos found. Possible reasons:', {
-        userHasVideos: videosRes.data.data?.videos === null ? 'API returned null' : 'API returned empty array',
-        responseStatus: videosRes.status,
-        responseData: videosRes.data,
-        userInfo: {
-          display_name: overview.display_name,
-          follower_count: overview.follower_count
-        }
-      });
-    }
 
     // Calculate analytics from videos
     const totalLikes = mappedVideos.reduce((sum: number, video: any) => sum + (video.like_count || 0), 0);
@@ -1972,14 +1958,6 @@ export const getTikTokMediaKit = async (req: Request, res: Response) => {
     // Debug logging for response data
     console.log('TikTok Response Data Structure:', {
       sortedVideosCount: responseData.medias.sortedVideos.length,
-      sortedVideos: responseData.medias.sortedVideos.map((v: any) => ({
-        id: v.id,
-        title: v.title,
-        like: v.like,
-        comment: v.comment,
-        like_count: v.like_count,
-        comment_count: v.comment_count
-      })),
       totalVideos: mappedVideos.length
     });
 
