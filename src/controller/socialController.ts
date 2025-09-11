@@ -1809,6 +1809,13 @@ export const getTikTokMediaKit = async (req: Request, res: Response) => {
         },
       );
     } catch (videoError: any) {
+      console.error('TikTok video list API error:', {
+        status: videoError.response?.status,
+        statusText: videoError.response?.statusText,
+        data: videoError.response?.data,
+        message: videoError.message
+      });
+      
       // If it's a permission error, the user might need to reconnect
       if (videoError.response?.status === 403 || videoError.response?.status === 401) {
         throw new Error('TikTok permissions expired. Please reconnect your TikTok account.');
@@ -1820,6 +1827,31 @@ export const getTikTokMediaKit = async (req: Request, res: Response) => {
 
     const videos = videosRes.data.data?.videos || [];
 
+    // Debug logging for staging
+    console.log('TikTok API Response:', {
+      status: videosRes.status,
+      videosCount: videos.length,
+      hasData: !!videosRes.data.data,
+      responseStructure: {
+        hasVideos: !!videosRes.data.data?.videos,
+        videosType: typeof videosRes.data.data?.videos,
+        videosLength: videosRes.data.data?.videos?.length
+      },
+      fullResponse: videosRes.data
+    });
+
+    // If no videos found, log additional info
+    if (videos.length === 0) {
+      console.log('No TikTok videos found. Possible reasons:', {
+        userHasVideos: videosRes.data.data?.videos === null ? 'API returned null' : 'API returned empty array',
+        responseStatus: videosRes.status,
+        responseData: videosRes.data,
+        userInfo: {
+          display_name: overview.display_name,
+          follower_count: overview.follower_count
+        }
+      });
+    }
 
     // Calculate analytics from videos
     const totalLikes = videos.reduce((sum: number, video: any) => sum + (video.like_count || 0), 0);
