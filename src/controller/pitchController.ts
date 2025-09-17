@@ -1612,9 +1612,7 @@ export const forwardClientFeedbackV3 = async (req: Request, res: Response) => {
     if (submission.campaign.origin !== 'CLIENT') {
       return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
     }
-
-    // Check if submission is in correct status
-    if (submission.status !== 'SENT_TO_ADMIN') {
+    
     // Check if submission is in correct status
     if (submission.status !== 'SENT_TO_ADMIN') {
       return res.status(400).json({ 
