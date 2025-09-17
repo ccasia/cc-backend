@@ -1507,6 +1507,7 @@ enum SubmissionStatus {
   ON_HOLD
   OVERDUE
   CHANGES_REQUIRED
+  POSTED
   // V3 flow statuses for client-created campaigns
   SENT_TO_CLIENT
   CLIENT_APPROVED
