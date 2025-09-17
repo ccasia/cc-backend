@@ -236,6 +236,21 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
       }
     }
     
+    // Handle raw footage replacement for V4 resubmissions
+    if (isResubmission && uploadedRawFootages.length > 0) {
+      console.log(`🎬 V4 Controller - Resubmission detected, deleting ${submission.rawFootages?.length || 0} existing raw footages`);
+      
+      // Delete all existing raw footages for this submission
+      if (submission.rawFootages?.length > 0) {
+        await prisma.rawFootage.deleteMany({
+          where: {
+            submissionId: submissionId,
+          },
+        });
+        console.log(`🎬 V4 Controller - Deleted ${submission.rawFootages.length} existing raw footages`);
+      }
+    }
+    
     // Build local file paths and enqueue processing job
     let amqp: amqplib.Connection | null = null;
     let channel: amqplib.Channel | null = null;
