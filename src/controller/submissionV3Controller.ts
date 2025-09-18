@@ -83,16 +83,19 @@ export const getSubmissionsV3 = async (req: Request, res: Response) => {
       let displayStatus: string = submission.status;
       
       // Role-based status display logic
-      if (user.role === 'admin' || user.role === 'superadmin') {
-        if (submission.status === 'SENT_TO_ADMIN') {
-          displayStatus = 'CLIENT_FEEDBACK';
-        } else if (submission.status === 'SENT_TO_SUPERADMIN') {
-          // Admin sees SENT_TO_SUPERADMIN, Superadmin sees PENDING_REVIEW
-          displayStatus = user.role === 'admin' ? 'SENT_TO_SUPERADMIN' : 'PENDING_REVIEW';
-        } else {
-          displayStatus = submission.status;
-        }
-      } else if (user.role === 'client') {
+    if (user.role === 'admin' || user.role === 'superadmin') {
+      if (submission.status === 'SENT_TO_ADMIN') {
+        displayStatus = 'CLIENT_FEEDBACK';
+      } else if (submission.status === 'SENT_TO_SUPERADMIN') {
+        // Admin sees SENT_TO_SUPERADMIN, Superadmin sees PENDING_REVIEW
+        displayStatus = user.role === 'admin' ? 'SENT_TO_SUPERADMIN' : 'PENDING_REVIEW';
+      } else if (user.role === 'superadmin' && submission.status === 'PENDING_REVIEW') {
+        // Superadmin should see PENDING_REVIEW as IN_PROGRESS
+        displayStatus = 'IN_PROGRESS';
+      } else {
+        displayStatus = submission.status;
+      }
+    } else if (user.role === 'client') {
         if (submission.status === 'PENDING_REVIEW') {
           displayStatus = 'NOT_STARTED';
         } else if (submission.status === 'SENT_TO_CLIENT') {
@@ -221,6 +224,9 @@ export const getSubmissionByIdV3 = async (req: Request, res: Response) => {
       } else if (submission.status === 'SENT_TO_SUPERADMIN') {
         // Admin sees SENT_TO_SUPERADMIN, Superadmin sees PENDING_REVIEW
         displayStatus = user.role === 'admin' ? 'SENT_TO_SUPERADMIN' : 'PENDING_REVIEW';
+      } else if (user.role === 'superadmin' && submission.status === 'PENDING_REVIEW') {
+        // Superadmin should see PENDING_REVIEW as IN_PROGRESS
+        displayStatus = 'IN_PROGRESS';
       } else {
         displayStatus = submission.status;
       }
@@ -2729,6 +2735,13 @@ export const approvePostingByAdminV3 = async (req: Request, res: Response) => {
       });
     }
 
+    // Check if submission has content (link) to approve
+    if (!submission.content || submission.content.trim() === '') {
+      return res.status(400).json({ 
+        message: 'No posting link found to approve. Please ensure a link has been submitted.' 
+      });
+    }
+
     // Update submission status to APPROVED (admin can approve posting directly)
     await prisma.submission.update({
       where: { id: submissionId },
@@ -2879,7 +2892,8 @@ export const requestChangesForPostingByAdminV3 = async (req: Request, res: Respo
     }
 
     // Check if submission is in correct status
-    if (submission.status !== 'PENDING_REVIEW') {
+    const changeableStatuses = ['PENDING_REVIEW', 'SENT_TO_SUPERADMIN'];
+    if (!changeableStatuses.includes(submission.status)) {
       return res.status(400).json({ 
         message: `Submission is not in correct status for changes request. Current status: ${submission.status}` 
       });
@@ -3151,7 +3165,85 @@ export const requestChangesForPostingByClientV3 = async (req: Request, res: Resp
   }
 };
 
-// V3: CSM submits posting link for superadmin review
+// V3: Creator submits posting link when status is PENDING_REVIEW
+export const submitPostingLinkByCreatorV3 = async (req: Request, res: Response) => {
+  const { submissionId, link } = req.body;
+  const creatorId = req.session.userid;
+
+  try {
+    console.log(`Creator ${creatorId} submitting posting link for submission ${submissionId}`);
+
+    const submission = await prisma.submission.findUnique({
+      where: { id: submissionId },
+      include: {
+        submissionType: true,
+        user: true,
+        campaign: true,
+      },
+    });
+
+    if (!submission) return res.status(404).json({ message: 'Submission not found' });
+    if (submission.campaign.origin !== 'CLIENT') {
+      return res.status(400).json({ message: 'Only for client-created (V3) campaigns' });
+    }
+
+    // Verify creator owns this submission
+    if (submission.userId !== creatorId) {
+      return res.status(403).json({ message: 'Not authorized to submit for this submission' });
+    }
+
+    // Check if submission is in correct status for CSM submit (allow re-upload after changes)
+    const csmSubmittableStatuses = ['PENDING_REVIEW', 'CHANGES_REQUIRED'];
+    if (!csmSubmittableStatuses.includes(submission.status)) {
+      return res.status(400).json({ 
+        message: `Submission is not in correct status for CSM submit. Current status: ${submission.status}` 
+      });
+    }
+
+    // Save link and keep status as PENDING_REVIEW (waiting for admin approval)
+    await prisma.submission.update({
+      where: { id: submissionId },
+      data: {
+        content: link,
+        status: 'PENDING_REVIEW', // Keep as PENDING_REVIEW for admin approval
+        updatedAt: new Date(),
+      },
+    });
+
+    // Notify admins that creator has submitted posting link
+    const campaignAdmins = await prisma.campaignAdmin.findMany({
+      where: { campaignId: submission.campaignId },
+      include: { admin: { include: { user: true } } },
+    });
+
+    for (const admin of campaignAdmins) {
+      if (admin.admin.user.role === 'admin' || admin.admin.user.role === 'superadmin') {
+        await prisma.notification.create({
+          data: {
+            title: 'Creator Submitted Posting Link',
+            message: `Creator ${submission.user.name} has submitted a posting link for campaign "${submission.campaign.name}". Please review and approve.`,
+            entity: 'Posting',
+            campaignId: submission.campaignId,
+            userId: admin.admin.userId,
+          },
+        });
+      }
+    }
+
+    // Emit socket event if io available
+    try {
+      const io: any = (req as any).app?.get?.('io');
+      if (io) io.to(submission.campaignId).emit('v3:campaign:updated', { campaignId: submission.campaignId });
+    } catch {}
+
+    return res.status(200).json({ message: 'Posting link submitted for admin review' });
+  } catch (error) {
+    console.error('Error submitting posting link by creator V3:', error);
+    return res.status(500).json({ message: 'Failed to submit posting link' });
+  }
+};
+
+// V3: CSM submits posting link when status is PENDING_REVIEW
 export const submitPostingLinkByCSMV3 = async (req: Request, res: Response) => {
   const { submissionId, link } = req.body;
   const adminId = req.session.userid;
@@ -3173,6 +3265,14 @@ export const submitPostingLinkByCSMV3 = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Only for client-created (V3) campaigns' });
     }
 
+    // Allow CSM submit when posting is awaiting or needs changes
+    const csmSubmittableStatuses = ['PENDING_REVIEW', 'CHANGES_REQUIRED', 'SENT_TO_SUPERADMIN', 'SENT_TO_ADMIN'];
+    if (!csmSubmittableStatuses.includes(submission.status)) {
+      return res.status(400).json({ 
+        message: `Submission is not in correct status for CSM submit. Current status: ${submission.status}` 
+      });
+    }
+
     // Save link and set to SENT_TO_SUPERADMIN for superadmin review
     await prisma.submission.update({
       where: { id: submissionId },
@@ -3183,6 +3283,23 @@ export const submitPostingLinkByCSMV3 = async (req: Request, res: Response) => {
         updatedAt: new Date(),
       },
     });
+
+    // Notify superadmin that CSM has submitted posting link
+    const superadmins = await prisma.user.findMany({
+      where: { role: 'superadmin' },
+    });
+
+    for (const superadmin of superadmins) {
+      await prisma.notification.create({
+        data: {
+          title: 'CSM Submitted Posting Link',
+          message: `CSM has submitted a posting link for campaign "${submission.campaign.name}". Please review and approve.`,
+          entity: 'Posting',
+          campaignId: submission.campaignId,
+          userId: superadmin.id,
+        },
+      });
+    }
 
     // Emit socket event if io available
     try {
