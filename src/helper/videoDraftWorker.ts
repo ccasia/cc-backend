@@ -717,6 +717,20 @@ async function deleteFileIfExists(filePath: string) {
             await checkCurrentSubmission(submission.id);
             console.log(`Worker - checkCurrentSubmission completed for submission ${submission.id}`);
 
+            // Emit socket event to notify that content is now processed and available
+            if (io && submission.campaignId) {
+              io.to(submission.campaignId).emit('v4:content:processed', {
+                submissionId: submission.id,
+                campaignId: submission.campaignId,
+                hasVideo: filePaths?.video?.length > 0,
+                hasPhotos: filePaths?.photos?.length > 0,
+                hasRawFootage: filePaths?.rawFootages?.length > 0,
+                processedAt: new Date().toISOString(),
+                creatorId: content.userid
+              });
+              console.log(`🚀 Emitted v4:content:processed for submission ${submission.id}`);
+            }
+
             const endUsage = process.cpuUsage(startUsage);
 
             console.log(`CPU Usage: ${endUsage.user} microseconds (user) / ${endUsage.system} microseconds (system)`);

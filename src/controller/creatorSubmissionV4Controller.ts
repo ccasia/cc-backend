@@ -352,6 +352,21 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
         }
       });
       
+      // Emit socket event for real-time updates
+      const io = req.app.get('io');
+      if (io) {
+        io.to(submission.campaignId).emit('v4:content:submitted', {
+          submissionId,
+          campaignId: submission.campaignId,
+          hasVideo: uploadedVideos.length > 0,
+          hasPhotos: uploadedPhotos.length > 0,
+          hasRawFootage: uploadedRawFootages.length > 0,
+          submittedAt: new Date().toISOString(),
+          creatorId,
+          newStatus: 'PENDING_REVIEW'
+        });
+      }
+      
       console.log(`📤 Creator ${creatorId} submitted V4 content for submission ${submissionId}, status updated to PENDING_REVIEW`);
     }
     
@@ -423,6 +438,18 @@ export const updateMyPostingLink = async (req: Request, res: Response) => {
     }
     
     const result = await updatePostingLink(submissionId, postingLink);
+    
+    // Emit socket event for real-time updates
+    const io = req.app.get('io');
+    if (io) {
+      io.to(submission.campaignId).emit('v4:posting:updated', {
+        submissionId,
+        campaignId: submission.campaignId,
+        postingLink,
+        updatedAt: new Date().toISOString(),
+        creatorId
+      });
+    }
     
     console.log(`🔗 Creator ${creatorId} updated posting link for v4 submission ${submissionId}`);
     

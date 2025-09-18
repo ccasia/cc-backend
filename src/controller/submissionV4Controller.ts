@@ -213,6 +213,18 @@ export const createV4Submissions = async (req: Request, res: Response) => {
     // Get the created submissions with full data
     const submissions = await getV4Submissions(campaignId, userId);
     
+    // Emit socket event for real-time updates
+    const io = req.app.get('io');
+    if (io) {
+      io.to(campaignId).emit('v4:submissions:created', {
+        campaignId,
+        userId,
+        count: result.count,
+        submissions,
+        createdAt: new Date().toISOString()
+      });
+    }
+    
     console.log(`✅ Created ${result.count} v4 submissions for creator ${userId} in campaign ${campaignId}`);
     
     res.status(201).json({
@@ -290,6 +302,27 @@ export const submitV4ContentController = async (req: Request, res: Response) => 
       rawFootageUrls,
       caption
     });
+    
+    // Emit socket event for real-time updates
+    const io = req.app.get('io');
+    if (io) {
+      // Get campaign ID for socket room
+      const submission = await prisma.submission.findUnique({
+        where: { id: submissionId },
+        select: { campaign: { select: { id: true } } }
+      });
+      
+      if (submission) {
+        io.to(submission.campaign.id).emit('v4:content:submitted', {
+          submissionId,
+          campaignId: submission.campaign.id,
+          hasVideo: videoUrls && videoUrls.length > 0,
+          hasPhotos: photoUrls && photoUrls.length > 0,
+          hasRawFootage: rawFootageUrls && rawFootageUrls.length > 0,
+          submittedAt: new Date().toISOString()
+        });
+      }
+    }
     
     console.log(`📤 Content submitted for v4 submission ${submissionId}`);
     
@@ -448,6 +481,18 @@ export const approveV4Submission = async (req: Request, res: Response) => {
     
     // Execute all updates
     await prisma.$transaction(updates);
+    
+    // Emit socket event for real-time updates
+    const io = req.app.get('io');
+    if (io) {
+      io.to(submission.campaign.id).emit('v4:submission:updated', {
+        submissionId,
+        campaignId: submission.campaign.id,
+        newStatus,
+        action,
+        updatedAt: new Date().toISOString()
+      });
+    }
     
     // Note: Content submissions are created when agreements are approved in the main submission workflow
     // This controller only handles the actual content submissions (VIDEO, PHOTO, RAW_FOOTAGE)
@@ -623,6 +668,19 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
     
     // Execute all updates
     await prisma.$transaction(updates);
+    
+    // Emit socket event for real-time updates
+    const io = req.app.get('io');
+    if (io) {
+      io.to(submission.campaign.id).emit('v4:submission:updated', {
+        submissionId,
+        campaignId: submission.campaign.id,
+        newStatus: newSubmissionStatus,
+        action,
+        byClient: true,
+        updatedAt: new Date().toISOString()
+      });
+    }
     
     console.log(`✅ V4 submission ${submissionId} ${action}d by client ${clientId}`);
     
@@ -913,6 +971,26 @@ export const approvePostingLinkV4 = async (req: Request, res: Response) => {
         updatedAt: new Date()
       }
     });
+    
+    // Emit socket event for real-time updates
+    const io = req.app.get('io');
+    if (io) {
+      // Get campaign ID for socket room
+      const submissionWithCampaign = await prisma.submission.findUnique({
+        where: { id: submissionId },
+        select: { campaign: { select: { id: true } } }
+      });
+      
+      if (submissionWithCampaign) {
+        io.to(submissionWithCampaign.campaign.id).emit('v4:submission:updated', {
+          submissionId,
+          campaignId: submissionWithCampaign.campaign.id,
+          newStatus,
+          action: `posting_link_${action}`,
+          updatedAt: new Date().toISOString()
+        });
+      }
+    }
     
     console.log(`✅ V4 submission ${submissionId} posting link ${action}d by admin ${adminId}`);
     
