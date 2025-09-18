@@ -26,23 +26,27 @@ export const createV4SubmissionsForCreator = async (data: V4SubmissionCreateData
 
 /**
  * Get V4 submissions for a campaign and user
+ * Also includes AGREEMENT_FORM submissions from v3 campaigns
  */
 export const getV4Submissions = async (campaignId: string, userId?: string) => {
   try {
-    const whereClause: any = {
+    const baseWhereClause: any = {
       campaignId,
-      submissionVersion: 'v4',
-      campaign: {
-        submissionVersion: 'v4'
-      }
     };
     
     if (userId) {
-      whereClause.userId = userId;
+      baseWhereClause.userId = userId;
     }
     
-    const submissions = await prisma.submission.findMany({
-      where: whereClause,
+    // Get v4 submissions
+    const v4Submissions = await prisma.submission.findMany({
+      where: {
+        ...baseWhereClause,
+        submissionVersion: 'v4',
+        campaign: {
+          submissionVersion: 'v4'
+        }
+      },
       include: {
         submissionType: true,
         user: {
@@ -126,7 +130,62 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
       ]
     });
     
-    return submissions;
+    // Also get AGREEMENT_FORM submissions from v3 campaigns (needed for approval check)
+    const agreementSubmissions = await prisma.submission.findMany({
+      where: {
+        ...baseWhereClause,
+        submissionType: {
+          type: 'AGREEMENT_FORM'
+        }
+      },
+      include: {
+        submissionType: true,
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        },
+        feedback: {
+          include: {
+            admin: {
+              select: {
+                id: true,
+                name: true,
+                role: true
+              }
+            }
+          },
+          orderBy: {
+            createdAt: 'desc'
+          }
+        }
+      }
+    });
+    
+    // Combine both sets of submissions
+    const allSubmissions = [...v4Submissions, ...agreementSubmissions];
+    
+    // Sort combined submissions
+    allSubmissions.sort((a, b) => {
+      // Agreement forms first, then by type, then by content order
+      if (a.submissionType.type === 'AGREEMENT_FORM' && b.submissionType.type !== 'AGREEMENT_FORM') {
+        return -1;
+      }
+      if (b.submissionType.type === 'AGREEMENT_FORM' && a.submissionType.type !== 'AGREEMENT_FORM') {
+        return 1;
+      }
+      
+      const typeComparison = a.submissionType.type.localeCompare(b.submissionType.type);
+      if (typeComparison !== 0) return typeComparison;
+      
+      const orderA = a.contentOrder || 0;
+      const orderB = b.contentOrder || 0;
+      return orderA - orderB;
+    });
+    
+    return allSubmissions;
   } catch (error) {
     console.error('Error getting v4 submissions:', error);
     throw error;

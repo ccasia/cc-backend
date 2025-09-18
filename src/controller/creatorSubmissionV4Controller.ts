@@ -633,17 +633,25 @@ export const getMyCampaignOverview = async (req: Request, res: Response) => {
         submissionVersion: true,
       }
     });
+
     
     // Get submission summary
     const submissions = await getV4Submissions(campaignId as string, creatorId);
     
+    // Find agreement form submission status
+    const agreementSubmission = submissions.find(s => s.submissionType.type === 'AGREEMENT_FORM');
+    const isAgreementApproved = agreementSubmission?.status === 'APPROVED' || agreementSubmission?.status === 'CLIENT_APPROVED';
+    
+    // Filter out agreement form from summary calculations (only count content submissions)
+    const contentSubmissions = submissions.filter(s => s.submissionType.type !== 'AGREEMENT_FORM');
+    
     // Calculate progress and requirements
     const submissionSummary = {
-      total: submissions.length,
-      completed: submissions.filter(s => s.status === 'APPROVED' || s.status === 'CLIENT_APPROVED').length,
-      inReview: submissions.filter(s => s.status === 'PENDING_REVIEW' || s.status === 'SENT_TO_CLIENT').length,
-      needsChanges: submissions.filter(s => s.status === 'CHANGES_REQUIRED' || s.status === 'REJECTED').length,
-      inProgress: submissions.filter(s => s.status === 'IN_PROGRESS').length
+      total: contentSubmissions.length,
+      completed: contentSubmissions.filter(s => s.status === 'APPROVED' || s.status === 'CLIENT_APPROVED').length,
+      inReview: contentSubmissions.filter(s => s.status === 'PENDING_REVIEW' || s.status === 'SENT_TO_CLIENT').length,
+      needsChanges: contentSubmissions.filter(s => s.status === 'CHANGES_REQUIRED' || s.status === 'REJECTED').length,
+      inProgress: contentSubmissions.filter(s => s.status === 'IN_PROGRESS').length
     };
     
     const progress = submissionSummary.total > 0 
@@ -655,6 +663,8 @@ export const getMyCampaignOverview = async (req: Request, res: Response) => {
     res.status(200).json({
       campaign,
       creatorStatus: 'APPROVED', // ShortListedCreator doesn't have status field, so they're approved if they exist
+      agreementStatus: agreementSubmission?.status || null,
+      isAgreementApproved,
       submissions: submissionSummary,
       progress,
       isComplete: progress === 100
