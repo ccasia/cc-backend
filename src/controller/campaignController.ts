@@ -216,6 +216,16 @@ export const createCampaign = async (req: Request, res: Response) => {
     campaignCredits,
     country,
   }: Campaign = JSON.parse(req.body.data);
+  // Also read optional fields not in the Campaign interface
+  const rawBody: any = (() => {
+    try {
+      return JSON.parse(req.body.data);
+    } catch {
+      return {};
+    }
+  })();
+  const requestedOrigin = rawBody?.origin as 'ADMIN' | 'CLIENT' | undefined;
+  const clientManagers = Array.isArray(rawBody?.clientManagers) ? rawBody.clientManagers : [];
 
   try {
     const publicURL: any = [];
@@ -273,6 +283,21 @@ export const createCampaign = async (req: Request, res: Response) => {
             });
           }),
         );
+
+        // Attach client managers (if provided) to campaignAdmin as well
+        const clientManagerUsers = await Promise.all(
+          clientManagers.map(async (cm: any) => {
+            // Accept either {id} or email/name strings; try id first
+            if (cm?.id) {
+              return tx.user.findUnique({ where: { id: cm.id } });
+            }
+            // Try by email
+            if (typeof cm === 'string' && cm.includes('@')) {
+              return tx.user.findUnique({ where: { email: cm } });
+            }
+            return null;
+          }),
+        );
         const existingClient = await tx.company.findUnique({
           where: { id: client.id },
           include: { subscriptions: { where: { status: 'ACTIVE' } } },
@@ -295,6 +320,10 @@ export const createCampaign = async (req: Request, res: Response) => {
         const url: string = await createNewSpreadSheet({ title: campaignTitle });
 
         // Create Campaign
+        // Normalize dates for campaign brief
+        const normalizedStartDate = campaignStartDate ? dayjs(campaignStartDate).toDate() : new Date();
+        const normalizedEndDate = campaignEndDate ? dayjs(campaignEndDate).toDate() : normalizedStartDate;
+
         const campaign = await tx.campaign.create({
           data: {
             campaignId: campaignId,
@@ -302,6 +331,7 @@ export const createCampaign = async (req: Request, res: Response) => {
             campaignType: campaignType,
             description: campaignDescription,
             status: campaignStage as CampaignStatus,
+            origin: requestedOrigin === 'CLIENT' ? 'CLIENT' : 'ADMIN',
             brandTone: brandTone,
             productName: productName,
             spreadSheetURL: url,
@@ -321,8 +351,8 @@ export const createCampaign = async (req: Request, res: Response) => {
                 images: publicURL.map((image: any) => image) || '',
                 otherAttachments: otherAttachments,
                 referencesLinks: referencesLinks?.map((link: any) => link.value) || [],
-                startDate: dayjs(campaignStartDate) as any,
-                endDate: dayjs(campaignEndDate) as any,
+                startDate: normalizedStartDate,
+                endDate: normalizedEndDate,
                 industries: campaignIndustries,
                 campaigns_do: campaignDo,
                 campaigns_dont: campaignDont,
@@ -477,6 +507,20 @@ export const createCampaign = async (req: Request, res: Response) => {
           },
         });
 
+        // Add adminManager and clientManagers to campaignAdmin
+        const adminIdsToAdd = [
+          ...admins.map((a: any) => a?.id).filter(Boolean),
+          ...clientManagerUsers.map((u: any) => u?.id).filter(Boolean),
+        ] as string[];
+        for (const adminUserId of adminIdsToAdd) {
+          const exists = await tx.campaignAdmin.findUnique({
+            where: { adminId_campaignId: { adminId: adminUserId, campaignId: campaign.id } },
+          });
+          if (!exists) {
+            await tx.campaignAdmin.create({ data: { adminId: adminUserId, campaignId: campaign.id } });
+          }
+        }
+
         await Promise.all(
           admins.map(async (admin: any) => {
             const existing = await tx.campaignAdmin.findUnique({
@@ -496,10 +540,11 @@ export const createCampaign = async (req: Request, res: Response) => {
             });
 
             if (existing) {
-              return res.status(400).json({ message: 'Admin exists' });
+              // Skip existing admin instead of aborting the whole request
+              return null;
             }
 
-            const admins = await tx.campaignAdmin.create({
+            const createdAdminRel = await tx.campaignAdmin.create({
               data: {
                 adminId: admin?.id,
                 campaignId: campaign.id,
@@ -514,7 +559,7 @@ export const createCampaign = async (req: Request, res: Response) => {
                 start: dayjs(campaign?.campaignBrief?.startDate).format(),
                 end: dayjs(campaign?.campaignBrief?.endDate).format(),
                 title: campaign?.name,
-                userId: admins.admin.userId as string,
+                userId: createdAdminRel.admin.userId as string,
                 allDay: false,
               },
             });
@@ -550,7 +595,7 @@ export const createCampaign = async (req: Request, res: Response) => {
             });
 
             io.to(clients.get(admin.id)).emit('notification', data);
-            return admins;
+            return createdAdminRel;
           }),
         );
 
@@ -582,7 +627,10 @@ export const createCampaign = async (req: Request, res: Response) => {
       },
     );
   } catch (error) {
-    return res.status(400).json(error?.message);
+    if (!res.headersSent) {
+      return res.status(400).json(error?.message);
+    }
+    console.error('createCampaign error after response sent:', error);
   }
 };
 
@@ -4025,6 +4073,54 @@ export const editCampaignAdmin = async (req: Request, res: Response) => {
   }
 };
 
+// Add client managers to a campaign and flip origin to CLIENT (V3)
+export const addClientManagers = async (req: Request, res: Response) => {
+  const adminId = req.session.userid;
+  const { campaignId, clientManagers } = req.body as { campaignId: string; clientManagers: Array<{ id?: string; email?: string } | string> };
+
+  try {
+    const campaign = await prisma.campaign.findUnique({ where: { id: campaignId } });
+    if (!campaign) return res.status(404).json({ message: 'Campaign not found.' });
+
+    // Resolve client manager userIds
+    const userIds: string[] = [];
+    for (const cm of clientManagers || []) {
+      const id = typeof cm === 'string' ? cm : cm?.id || '';
+      if (id) {
+        userIds.push(id);
+        continue;
+      }
+      const email = typeof cm !== 'string' ? cm?.email : undefined;
+      if (email) {
+        const user = await prisma.user.findUnique({ where: { email } });
+        if (user) userIds.push(user.id);
+      }
+    }
+
+    // Create campaignAdmin entries for these users
+    for (const uid of userIds) {
+      const exists = await prisma.campaignAdmin.findUnique({
+        where: { adminId_campaignId: { adminId: uid, campaignId } },
+      });
+      if (!exists) {
+        await prisma.campaignAdmin.create({ data: { adminId: uid, campaignId } });
+      }
+    }
+
+    // Flip origin to CLIENT for v3 flow
+    await prisma.campaign.update({ where: { id: campaignId }, data: { origin: 'CLIENT' } });
+
+    if (adminId) {
+      const adminLogMessage = `Added ${userIds.length} client manager(s) and converted campaign to V3`;
+      logAdminChange(adminLogMessage, adminId, req);
+    }
+
+    return res.status(200).json({ message: 'Client managers added and campaign converted to V3.' });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
 export const editCampaignAttachments = async (req: Request, res: Response) => {
   const { id } = req.params;
   const { otherAttachments: currentAttachments } = req.body;
@@ -5103,6 +5199,109 @@ export const resendAgreement = async (req: Request, res: Response) => {
     return res.status(200).json({ message: 'Agreement resent successfully.' });
   } catch (error) {
     return res.status(400).json(error);
+  }
+};
+
+// V3: Creator submits agreement for a client-origin campaign
+export const submitAgreementV3 = async (req: Request, res: Response) => {
+  const { pitchId } = req.params as { pitchId: string };
+  const { agreementUrl } = req.body as { agreementUrl?: string };
+  const userId = req.session.userid;
+
+  try {
+    console.log('[submitAgreementV3] start', { pitchId, userId, hasAgreementUrl: !!agreementUrl });
+    const pitch = await prisma.pitch.findUnique({
+      where: { id: pitchId },
+      include: { campaign: true },
+    });
+
+    if (!pitch) {
+      console.log('[submitAgreementV3] pitch not found');
+      return res.status(404).json({ message: 'Pitch not found' });
+    }
+
+    // Allow if current user is the pitch owner, or an admin/superadmin (to help testing)
+    const currentUser = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+    const isOwner = pitch.userId === userId;
+    const isPrivileged = currentUser?.role === 'admin' || currentUser?.role === 'superadmin';
+    console.log('[submitAgreementV3] auth', { isOwner, isPrivileged, currentUserRole: currentUser?.role });
+    if (!isOwner && !isPrivileged) {
+      return res.status(403).json({ message: 'Not allowed' });
+    }
+    if (!pitch.campaignId) return res.status(400).json({ message: 'Campaign not found for pitch' });
+
+    // Upsert creator agreement for V3
+    console.log('[submitAgreementV3] upserting agreement', { campaignId: pitch.campaignId, pitchUserId: pitch.userId });
+    await prisma.creatorAgreement.upsert({
+      where: {
+        userId_campaignId: {
+          userId: pitch.userId,
+          campaignId: pitch.campaignId,
+        },
+      },
+      update: {
+        agreementUrl: agreementUrl || undefined,
+        isSent: true,
+        completedAt: new Date(),
+      },
+      create: {
+        userId: pitch.userId,
+        campaignId: pitch.campaignId,
+        agreementUrl: agreementUrl || '',
+        isSent: true,
+        completedAt: new Date(),
+      },
+    });
+
+    // Mark pitch as AGREEMENT_SUBMITTED for V3 flow
+    console.log('[submitAgreementV3] updating pitch status to AGREEMENT_SUBMITTED');
+    const updatedPitch = await prisma.pitch.update({
+      where: { id: pitch.id },
+      data: { status: 'AGREEMENT_SUBMITTED' },
+    });
+
+    // Notify campaign admins
+    const admins = await prisma.campaignAdmin.findMany({
+      where: { campaignId: pitch.campaignId as string },
+      include: { admin: { include: { user: true } } },
+    });
+    const submitter = await prisma.user.findUnique({ where: { id: pitch.userId } });
+    const campaignName = pitch.campaign?.name || '';
+
+    // Mark shortlisted row as agreement ready so admin UI reflects new state
+    const shortlisted = await prisma.shortListedCreator.findFirst({
+      where: { userId: pitch.userId, campaignId: pitch.campaignId as string },
+    });
+    if (shortlisted) {
+      await prisma.shortListedCreator.update({
+        where: { id: shortlisted.id },
+        data: { isAgreementReady: true },
+      });
+    }
+    for (const a of admins) {
+      const notification = await saveNotification({
+        userId: a.adminId,
+        title: 'Agreement Submitted',
+        message: `${submitter?.name || 'Creator'} submitted the agreement for ${campaignName}.`,
+        entity: 'Agreement',
+        entityId: pitch.campaignId as string,
+      });
+      const socketId = clients.get(a.admin.userId);
+      if (socketId) {
+        io.to(socketId).emit('notification', notification);
+        io.to(socketId).emit('agreementReady');
+        io.to(socketId).emit('pitchUpdate');
+      }
+    }
+
+    // Log campaign change
+    await logChange(`${submitter?.name || 'Creator'} submitted agreement`, pitch.campaignId as string, req);
+
+    console.log('[submitAgreementV3] success');
+    return res.status(200).json({ message: 'Agreement submitted', pitch: updatedPitch });
+  } catch (error) {
+    console.error('submitAgreementV3 error:', error);
+    return res.status(400).json({ message: error?.message || 'Failed to submit agreement' });
   }
 };
 
