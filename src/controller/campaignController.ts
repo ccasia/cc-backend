@@ -4161,10 +4161,7 @@ export const editCampaignAdmin = async (req: Request, res: Response) => {
 // Add client managers to a campaign and flip origin to CLIENT (V3)
 export const addClientManagers = async (req: Request, res: Response) => {
   const adminId = req.session.userid;
-  const { campaignId, clientManagers } = req.body as {
-    campaignId: string;
-    clientManagers: ({ id?: string; email?: string } | string)[];
-  };
+  const { campaignId, clientManagers } = req.body as { campaignId: string; clientManagers: Array<{ id?: string; email?: string } | string> };
 
   try {
     const campaign = await prisma.campaign.findUnique({ where: { id: campaignId } });
