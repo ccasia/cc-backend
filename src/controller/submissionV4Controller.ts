@@ -896,7 +896,7 @@ export const approvePostingLinkV4 = async (req: Request, res: Response) => {
         newContent = submission.content; // Keep the posting link
         break;
       case 'reject':
-        newStatus = 'CLIENT_APPROVED'; // Back to approved state
+        newStatus = 'REJECTED'; // Requires changes
         newContent = null; // Clear the posting link
         break;
       default:

@@ -113,7 +113,7 @@ export const canAddPostingLink = (
   // 1. Both submission and video are fully approved, OR
   // 2. Submission is CLIENT_APPROVED (regardless of video status)
   return (submissionStatus === 'APPROVED' && videoStatus === 'APPROVED') ||
-         submissionStatus === 'CLIENT_APPROVED';
+         submissionStatus === 'CLIENT_APPROVED' || submissionStatus === 'REJECTED';
 };
 
 /**

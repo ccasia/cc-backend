@@ -227,11 +227,12 @@ export const updatePostingLink = async (submissionId: string, postingLink: strin
       throw new Error(`Cannot add posting link. Video must be fully approved first. Current status: ${submission.status}, Video status: ${videoStatus}`);
     }
     
-    // Update the posting link
+    // Update the posting link and set status to PENDING_REVIEW
     const updatedSubmission = await prisma.submission.update({
       where: { id: submissionId },
       data: { 
         content: postingLink,
+        status: 'PENDING_REVIEW',
         updatedAt: new Date()
       },
       include: {
