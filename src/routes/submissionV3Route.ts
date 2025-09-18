@@ -28,6 +28,7 @@ import {
   getCreatorVisibleFeedbackV3,
   updateFeedbackV3,
   triggerCheckAndUpdateSubmissionStatusV3,
+  submitPostingLinkByCreatorV3,
   submitPostingLinkByCSMV3,
   approvePostingLinkBySuperadminV3,
   rejectPostingLinkBySuperadminV3,
@@ -68,7 +69,9 @@ router.patch('/v3/feedback/:feedbackId', isAdmin, updateFeedbackV3);
 router.patch('/v3/check-status', isCreatorOrClient, triggerCheckAndUpdateSubmissionStatusV3);
 
 // New posting link flow (V3)
-router.post('/v3/posting/submit-link', isAdmin, submitPostingLinkByCSMV3); // CSM submits
+router.post('/v3/posting/submit-link/creator', isCreatorOrClient, submitPostingLinkByCreatorV3); // Creator submits
+// Allow admin/CSM (not only superadmin) to submit posting link
+router.post('/v3/posting/submit-link/csm', isAdminOrClient, submitPostingLinkByCSMV3); // CSM submits
 router.post('/v3/posting/superadmin/approve', isAdmin, approvePostingLinkBySuperadminV3); // Superadmin approves
 router.post('/v3/posting/superadmin/reject', isAdmin, rejectPostingLinkBySuperadminV3); // Superadmin rejects
 
