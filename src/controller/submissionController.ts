@@ -314,20 +314,6 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
         },
       });
 
-      // If this is a V4 campaign, create content submissions after agreement approval
-      if (agreementSubs.campaign.submissionVersion === 'v4') {
-        console.log(`🔄 V4 campaign detected - attempting to create content submissions for agreement ${agreementSubs.id}`);
-        try {
-          const { createContentSubmissionsAfterAgreement } = require('../service/submissionV4Service');
-          const contentSubmissions = await createContentSubmissionsAfterAgreement(agreementSubs);
-          console.log(`✅ Created ${contentSubmissions.count} V4 content submissions after agreement approval`);
-        } catch (error) {
-          console.error('❌ Error creating V4 content submissions after agreement approval:', error);
-          // Don't fail the whole request, just log the error
-        }
-      } else {
-        console.log(`ℹ️  Campaign ${agreementSubs.campaignId} is not V4 (version: ${agreementSubs.campaign.submissionVersion}) - skipping V4 content submission creation`);
-      }
 
       const taskInReviewColumn = inReviewColumn?.task?.find((item) => item.submissionId === agreementSubs.id);
 
