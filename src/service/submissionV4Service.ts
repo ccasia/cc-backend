@@ -64,6 +64,7 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
             feedback: true,
             reasons: true,
             feedbackAt: true,
+            createdAt: true,
             adminId: true,
             admin: {
               select: {
@@ -80,7 +81,8 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
             status: true,
             feedback: true,
             reasons: true,
-            feedbackAt: true
+            feedbackAt: true,
+            createdAt: true,
           }
         },
         rawFootages: {
@@ -91,6 +93,7 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
             feedback: true,
             reasons: true,
             feedbackAt: true,
+            createdAt: true,
             adminId: true,
             admin: {
               select: {
