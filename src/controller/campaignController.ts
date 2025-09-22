@@ -1078,44 +1078,29 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
     // TEMPORARY: Disable country filtering to fix creator discovery issue
     // The country filtering was preventing creators from seeing campaigns
     const beforeCountryFilterCount = campaigns.length;
-
+    
     // Log country information for debugging
     console.log(`DEBUG: Creator country detected as: ${country || 'UNKNOWN'}`);
     console.log(`DEBUG: Before country filtering - ${beforeCountryFilterCount} campaigns available`);
-
+    
     // Show campaigns with country requirements for debugging
-    campaigns.forEach((campaign) => {
+    campaigns.forEach(campaign => {
       if (campaign.campaignRequirement?.country) {
-        console.log(
-          `Campaign ${campaign.id} (${campaign.name}) requires country: ${campaign.campaignRequirement.country}`,
-        );
+        console.log(`Campaign ${campaign.id} (${campaign.name}) requires country: ${campaign.campaignRequirement.country}`);
       } else {
         console.log(`Campaign ${campaign.id} (${campaign.name}) has no country requirement`);
       }
     });
-
+    
     // TEMPORARILY BYPASS COUNTRY FILTERING - Show all campaigns to creators
     // This ensures creators can see all available campaigns while we fix country detection
     console.log('TEMPORARILY BYPASSING COUNTRY FILTERING - Showing all campaigns to creators');
-
-    // TODO: Re-enable proper country filtering once country detection is working correctly
-    // TEMPORARILY DISABLE ALL COUNTRY FILTERING to fix creator discovery issue
-    // The country filtering was preventing creators from seeing all available campaigns
-    
-    // COMMENTED OUT: Country filtering is disabled for now
-    // if (process.env.NODE_ENV !== 'development') {
-    //   campaigns = campaigns.filter((campaign) => {
-    //     if (!campaign.campaignRequirement?.country) return campaign;
-    //     return campaign.campaignRequirement.country.toLocaleLowerCase() === country?.toLowerCase();
-    //   });
-    // }
     
     const afterCountryFilterCount = campaigns.length;
-    console.log(
-      `Country filtering completely bypassed: ${afterCountryFilterCount}/${beforeCountryFilterCount} campaigns remain (no filtering applied)`,
-    );
+    console.log(`Country filtering bypassed: ${afterCountryFilterCount}/${beforeCountryFilterCount} campaigns remain (no filtering applied)`);
     
-    // Original filtering logic (DISABLED):
+    // TODO: Re-enable proper country filtering once country detection is working correctly
+    // Original filtering logic should be:
     // campaigns = campaigns.filter((campaign) => {
     //   if (!campaign.campaignRequirement?.country) return true;
     //   if (!country) return true;
