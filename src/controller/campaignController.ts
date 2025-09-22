@@ -905,6 +905,7 @@ export const getCampaignById = async (req: Request, res: Response) => {
                     isGuest: true,
                   },
                 },
+                paymentForm: true,
               },
             },
           },
