@@ -93,60 +93,6 @@ export const getAdmins = async (req: Request, res: Response) => {
   }
 };
 
-export const getClients = async (req: Request, res: Response) => {
-  try {
-    if (req.query.target && req.query.target === 'active') {
-      const clients = await prisma.user.findMany({
-        where: {
-          role: 'client',
-          status: 'active',
-        },
-        select: {
-          id: true,
-          name: true,
-          status: true,
-          phoneNumber: true,
-          country: true,
-          email: true,
-          photoURL: true,
-          client: {
-            include: {
-              company: true,
-            },
-          },
-        },
-      });
-
-      return res.status(200).json(clients);
-    }
-
-    // Return all clients if no target specified
-    const clients = await prisma.user.findMany({
-      where: {
-        role: 'client',
-      },
-      select: {
-        id: true,
-        name: true,
-        status: true,
-        phoneNumber: true,
-        country: true,
-        email: true,
-        photoURL: true,
-        client: {
-          include: {
-            company: true,
-          },
-        },
-      },
-    });
-
-    return res.status(200).json(clients);
-  } catch (error) {
-    return res.status(400).json(error);
-  }
-};
-
 export const getAdminLogs = async (req: Request, res: Response) => {
   const { adminId } = req.params;
 

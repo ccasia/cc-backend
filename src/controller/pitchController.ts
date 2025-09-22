@@ -834,14 +834,7 @@ export const submitAgreement = async (req: Request, res: Response) => {
     });
 
     // Update submission status from IN_PROGRESS to PENDING_REVIEW
-    console.log(`[submitAgreement] Looking for submission to update...`);
-    console.log(`[submitAgreement] Search criteria:`, {
-      userId: pitch.userId,
-      campaignId: pitch.campaignId,
-      submissionType: 'AGREEMENT_FORM'
-    });
-
-    const submissionUpdateResult = await prisma.submission.updateMany({
+    await prisma.submission.updateMany({
       where: {
         userId: pitch.userId,
         campaignId: pitch.campaignId,
@@ -853,38 +846,6 @@ export const submitAgreement = async (req: Request, res: Response) => {
         status: 'PENDING_REVIEW',
       },
     });
-
-    console.log(`[submitAgreement] Submission update result:`, submissionUpdateResult);
-    console.log(`[submitAgreement] Updated ${submissionUpdateResult.count} submission records`);
-
-    // If no submission records were updated, create one for V3 campaigns
-    if (submissionUpdateResult.count === 0) {
-      console.log(`[submitAgreement] No submission record found, creating one for V3 campaign...`);
-      
-      // First, find the AGREEMENT_FORM submission type
-      const agreementSubmissionType = await prisma.submissionType.findFirst({
-        where: { type: 'AGREEMENT_FORM' }
-      });
-
-      if (!agreementSubmissionType) {
-        console.log(`[submitAgreement] ERROR: AGREEMENT_FORM submission type not found`);
-        return res.status(500).json({ message: 'Agreement submission type not configured' });
-      }
-
-      // Create the submission record
-      const newSubmission = await prisma.submission.create({
-        data: {
-          userId: pitch.userId,
-          campaignId: pitch.campaignId,
-          submissionTypeId: agreementSubmissionType.id,
-          status: 'PENDING_REVIEW',
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        }
-      });
-
-      console.log(`[submitAgreement] Created new submission record:`, newSubmission);
-    }
 
     // Note: Creator agreement record creation skipped due to schema mismatch
     // TODO: Update CreatorAgreement model to match V3 flow requirements
