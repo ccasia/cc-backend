@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import {
   getAdmins,
+  getClients,
   inviteAdmin,
   updateAdminInformation,
   updateProfileAdmin,
@@ -17,6 +18,7 @@ import { isLoggedIn } from '@middlewares/onlyLogin';
 const router = Router();
 
 router.get('/admins', isSuperAdmin, getAdmins);
+router.get('/clients', isSuperAdmin, getClients);
 router.get('/alladmins', getAdmins);
 router.get('/forget-password-token/:token', checkForgetPasswordToken);
 router.get('/overview/:userId', isLoggedIn, getOverview);
