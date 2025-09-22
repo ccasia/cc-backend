@@ -1078,27 +1078,31 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
     // TEMPORARY: Disable country filtering to fix creator discovery issue
     // The country filtering was preventing creators from seeing campaigns
     const beforeCountryFilterCount = campaigns.length;
-    
+
     // Log country information for debugging
     console.log(`DEBUG: Creator country detected as: ${country || 'UNKNOWN'}`);
     console.log(`DEBUG: Before country filtering - ${beforeCountryFilterCount} campaigns available`);
-    
+
     // Show campaigns with country requirements for debugging
-    campaigns.forEach(campaign => {
+    campaigns.forEach((campaign) => {
       if (campaign.campaignRequirement?.country) {
-        console.log(`Campaign ${campaign.id} (${campaign.name}) requires country: ${campaign.campaignRequirement.country}`);
+        console.log(
+          `Campaign ${campaign.id} (${campaign.name}) requires country: ${campaign.campaignRequirement.country}`,
+        );
       } else {
         console.log(`Campaign ${campaign.id} (${campaign.name}) has no country requirement`);
       }
     });
-    
+
     // TEMPORARILY BYPASS COUNTRY FILTERING - Show all campaigns to creators
     // This ensures creators can see all available campaigns while we fix country detection
     console.log('TEMPORARILY BYPASSING COUNTRY FILTERING - Showing all campaigns to creators');
-    
+
     const afterCountryFilterCount = campaigns.length;
-    console.log(`Country filtering bypassed: ${afterCountryFilterCount}/${beforeCountryFilterCount} campaigns remain (no filtering applied)`);
-    
+    console.log(
+      `Country filtering bypassed: ${afterCountryFilterCount}/${beforeCountryFilterCount} campaigns remain (no filtering applied)`,
+    );
+
     // TODO: Re-enable proper country filtering once country detection is working correctly
     // Original filtering logic should be:
     // campaigns = campaigns.filter((campaign) => {
@@ -1106,6 +1110,12 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
     //   if (!country) return true;
     //   return campaign.campaignRequirement.country.toLowerCase().trim() === country.toLowerCase().trim();
     // });
+    if (process.env.NODE_ENV !== 'development') {
+      campaigns = campaigns.filter((campaign) => {
+        if (!campaign.campaignRequirement?.country) return campaign;
+        return campaign.campaignRequirement.country.toLocaleLowerCase() === country?.toLowerCase();
+      });
+    }
 
     // campaigns = campaigns.filter((campaign) => campaign.campaignBrief.)
 
@@ -4146,7 +4156,10 @@ export const editCampaignAdmin = async (req: Request, res: Response) => {
 // Add client managers to a campaign and flip origin to CLIENT (V3)
 export const addClientManagers = async (req: Request, res: Response) => {
   const adminId = req.session.userid;
-  const { campaignId, clientManagers } = req.body as { campaignId: string; clientManagers: Array<{ id?: string; email?: string } | string> };
+  const { campaignId, clientManagers } = req.body as {
+    campaignId: string;
+    clientManagers: ({ id?: string; email?: string } | string)[];
+  };
 
   try {
     const campaign = await prisma.campaign.findUnique({ where: { id: campaignId } });
