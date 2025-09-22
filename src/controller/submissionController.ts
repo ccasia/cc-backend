@@ -228,6 +228,14 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
   const adminId = req.session.userid;
 
   const { campaignId, userId, status, submissionId } = data;
+  
+  console.log('[adminManageAgreementSubmission] Received data:', {
+    campaignId,
+    userId,
+    status,
+    submissionId,
+    adminId
+  });
   const nextSubmissionId = data?.submission?.dependencies[0]?.submissionId;
 
   try {
@@ -288,6 +296,20 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
         },
       });
 
+      console.log('[adminManageAgreementSubmission] Attempting to update submission:', submissionId);
+      
+      // First check if submission exists
+      const existingSubmission = await prisma.submission.findUnique({
+        where: { id: submissionId }
+      });
+      
+      if (!existingSubmission) {
+        console.log('[adminManageAgreementSubmission] Submission not found:', submissionId);
+        return res.status(404).json({ message: 'Submission not found' });
+      }
+      
+      console.log('[adminManageAgreementSubmission] Found existing submission:', existingSubmission);
+
       const agreementSubs = await prisma.submission.update({
         where: {
           id: submissionId,
@@ -327,21 +349,99 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
         });
       }
 
-      const submission = await prisma.submission.update({
-        where: {
-          id: nextSubmissionId as string,
-        },
-        data: {
-          status: 'IN_PROGRESS',
-          nextsubmissionDate: new Date(),
-        },
-        include: {
-          task: true,
-        },
-      });
+      console.log('[adminManageAgreementSubmission] Next submission ID:', nextSubmissionId);
+      
+      let submission = null;
+      if (nextSubmissionId) {
+        // Check if next submission exists before updating
+        const nextSubmissionExists = await prisma.submission.findUnique({
+          where: { id: nextSubmissionId as string }
+        });
+        
+        console.log('[adminManageAgreementSubmission] Next submission exists:', !!nextSubmissionExists);
+        
+        if (nextSubmissionExists) {
+          submission = await prisma.submission.update({
+            where: {
+              id: nextSubmissionId as string,
+            },
+            data: {
+              status: 'IN_PROGRESS',
+              nextsubmissionDate: new Date(),
+            },
+            include: {
+              task: true,
+            },
+          });
+          console.log('[adminManageAgreementSubmission] Updated next submission:', submission?.id);
+        } else {
+          console.log('[adminManageAgreementSubmission] Skipping next submission update - submission not found');
+        }
+      } else {
+        console.log('[adminManageAgreementSubmission] Skipping next submission update - no nextSubmissionId');
+        
+        // For V3 campaigns, we might need to create the next submission type
+        // Check if this is a V3 campaign
+        const isV3Campaign = campaign.origin === 'CLIENT';
+        console.log('[adminManageAgreementSubmission] Is V3 campaign:', isV3Campaign);
+        
+        if (isV3Campaign) {
+          // For V3 campaigns, after agreement approval, we should enable draft submission
+          console.log('[adminManageAgreementSubmission] V3 campaign detected - should create draft submission type');
+          
+          // Find FIRST_DRAFT submission type
+          const draftSubmissionType = await prisma.submissionType.findFirst({
+            where: { type: 'FIRST_DRAFT' }
+          });
+          
+          if (draftSubmissionType) {
+            console.log('[adminManageAgreementSubmission] Creating draft submission for V3 campaign');
+            
+            const draftSubmission = await prisma.submission.create({
+              data: {
+                userId: agreementSubs.userId,
+                campaignId: agreementSubs.campaignId,
+                submissionTypeId: draftSubmissionType.id,
+                status: 'IN_PROGRESS',
+                createdAt: new Date(),
+                updatedAt: new Date(),
+              }
+            });
+            
+            console.log('[adminManageAgreementSubmission] Created draft submission for V3:', draftSubmission.id);
+            
+            // For V3 campaigns, also add creator to shortlisted if not already there
+            const existingShortlisted = await prisma.shortListedCreator.findFirst({
+              where: {
+                userId: agreementSubs.userId,
+                campaignId: agreementSubs.campaignId,
+              }
+            });
+            
+            if (!existingShortlisted) {
+              console.log('[adminManageAgreementSubmission] Adding creator to shortlisted for V3 campaign');
+              
+              const shortlistedCreator = await prisma.shortListedCreator.create({
+                data: {
+                  userId: agreementSubs.userId,
+                  campaignId: agreementSubs.campaignId,
+                  amount: 0,
+                  currency: 'MYR',
+                }
+              });
+              
+              console.log('[adminManageAgreementSubmission] Added creator to shortlisted:', shortlistedCreator.id);
+            } else {
+              console.log('[adminManageAgreementSubmission] Creator already in shortlisted');
+            }
+          } else {
+            console.log('[adminManageAgreementSubmission] FIRST_DRAFT submission type not found');
+          }
+        }
+      }
 
       // find by column
-      const inProgressTask = submission.task.find((item) => item.columnId === toDoColumn?.id);
+      const inProgressTask = submission?.task?.find((item) => item.columnId === toDoColumn?.id);
 
       if (inProgressTask) {
         await prisma.task.update({
