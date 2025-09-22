@@ -38,6 +38,11 @@ import {
   getMyCampaigns,
   removePitchVideo,
   editCampaignAdmin,
+  editCampaignClients,
+  convertToV3,
+  fixV3Submissions,
+  debugV3Submissions,
+  activateV3Campaign,
   editCampaignAttachments,
   createNewSpreadSheets,
   editCampaignReference,
@@ -170,6 +175,11 @@ router.patch('/editCampaignRequirements', isSuperAdmin, editCampaignRequirements
 router.patch('/editCampaignTimeline/:id', isSuperAdmin, editCampaignTimeline);
 router.patch('/editCampaignImages/:id', isSuperAdmin, editCampaignImages);
 router.patch('/editCampaignAdmins/:id', isSuperAdmin, editCampaignAdmin);
+router.patch('/editCampaignClients/:id', isSuperAdmin, editCampaignClients);
+router.patch('/convertToV3/:id', isSuperAdmin, convertToV3);
+router.patch('/fixV3Submissions/:id', isSuperAdmin, fixV3Submissions);
+router.get('/debugV3Submissions/:id', isSuperAdmin, debugV3Submissions);
+router.patch('/activateV3Campaign/:id', isSuperAdmin, activateV3Campaign);
 router.patch('/editCampaignAttachments/:id', isSuperAdmin, editCampaignAttachments);
 router.patch('/editCampaignReference/:id', isSuperAdmin, editCampaignReference);
 router.patch('/changePitchStatus', isSuperAdmin, changePitchStatus);
