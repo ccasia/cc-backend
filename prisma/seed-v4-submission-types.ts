@@ -1,6 +1,26 @@
-const { PrismaClient } = require('@prisma/client');
+import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
+
+interface SubmissionTypeData {
+  type: string;
+  description: string;
+}
+
+const v4SubmissionTypes: SubmissionTypeData[] = [
+  {
+    type: 'VIDEO',
+    description: 'Individual video submission for V4 campaigns'
+  },
+  {
+    type: 'PHOTO',
+    description: 'Photo submission for V4 campaigns'
+  },
+  {
+    type: 'RAW_FOOTAGE',
+    description: 'Raw footage submission for V4 campaigns'
+  }
+];
 
 async function seedV4SubmissionTypes() {
   try {
@@ -10,37 +30,15 @@ async function seedV4SubmissionTypes() {
     const existingTypes = await prisma.submissionType.findMany({
       where: {
         type: {
-          in: ['VIDEO', 'PHOTO', 'RAW_FOOTAGE']
+          in: v4SubmissionTypes.map(t => t.type)
         }
       }
     });
 
     const existingTypeValues = existingTypes.map(t => t.type);
-    const typesToCreate = [];
-
-    // Add VIDEO type if it doesn't exist
-    if (!existingTypeValues.includes('VIDEO')) {
-      typesToCreate.push({
-        type: 'VIDEO',
-        description: 'Individual video submission for V4 campaigns'
-      });
-    }
-
-    // Add PHOTO type if it doesn't exist
-    if (!existingTypeValues.includes('PHOTO')) {
-      typesToCreate.push({
-        type: 'PHOTO',
-        description: 'Photo submission for V4 campaigns'
-      });
-    }
-
-    // Add RAW_FOOTAGE type if it doesn't exist
-    if (!existingTypeValues.includes('RAW_FOOTAGE')) {
-      typesToCreate.push({
-        type: 'RAW_FOOTAGE',
-        description: 'Raw footage submission for V4 campaigns'
-      });
-    }
+    const typesToCreate = v4SubmissionTypes.filter(
+      type => !existingTypeValues.includes(type.type)
+    );
 
     if (typesToCreate.length > 0) {
       const result = await prisma.submissionType.createMany({
@@ -61,9 +59,19 @@ async function seedV4SubmissionTypes() {
 
   } catch (error) {
     console.error('❌ Error seeding V4 submission types:', error);
-  } finally {
-    await prisma.$disconnect();
   }
 }
 
-seedV4SubmissionTypes();
+async function main() {
+  await seedV4SubmissionTypes();
+}
+
+main()
+  .then(async () => {
+    await prisma.$disconnect();
+  })
+  .catch(async (e) => {
+    console.error(e);
+    await prisma.$disconnect();
+    process.exit(1);
+  });
