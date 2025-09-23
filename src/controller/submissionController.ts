@@ -314,6 +314,7 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
         },
       });
 
+
       const taskInReviewColumn = inReviewColumn?.task?.find((item) => item.submissionId === agreementSubs.id);
 
       if (taskInReviewColumn) {

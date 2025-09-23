@@ -897,6 +897,7 @@ export const getCampaignById = async (req: Request, res: Response) => {
               select: {
                 id: true,
                 name: true,
+                email: true,
                 photoURL: true,
                 status: true,
                 creator: {

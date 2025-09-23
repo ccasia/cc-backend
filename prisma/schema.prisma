@@ -132,14 +132,17 @@ model Client {
   userId String @unique
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+
   // Keep company relation
   company Company? @relation(fields: [companyId], references: [id])
+
 
   // Add client-specific fields
   clientType ClientType @default(directClient)
   isActive   Boolean    @default(true)
   createdAt  DateTime   @default(now())
   updatedAt  DateTime   @default(now()) @updatedAt
+
 
   // Client-specific relations
   clientCampaigns     ClientCampaign[]
@@ -254,6 +257,7 @@ model TiktokUser {
   following_count Int?
   follower_count  Int?
   likes_count     Int?
+
 
   totalLikes      Int?
   totalComments   Int?
@@ -626,7 +630,10 @@ model Campaign {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
+  
+  // V4 submission version tracking
+  submissionVersion String? @default("v3") // "v2", "v3", "v4"
+  
   // Add client campaign relation
   clientCampaigns ClientCampaign[]
 }
@@ -943,8 +950,12 @@ model Submission {
   publicFeedback       PublicFeedback[]
   photosDriveLink      String?
   rawFootagesDriveLink String?
+  
+  // V4 specific fields
+  contentOrder    Int?           // Order of content (Video 1, Video 2, etc.)
+  submissionVersion String?      @default("v3") // "v2", "v3", "v4"
 
-  @@unique([userId, campaignId, submissionTypeId])
+  @@unique([userId, campaignId, submissionTypeId, contentOrder])
 }
 
 model Video {
@@ -1496,6 +1507,7 @@ enum SubmissionStatus {
   ON_HOLD
   OVERDUE
   CHANGES_REQUIRED
+  POSTED
   // V3 flow statuses for client-created campaigns
   SENT_TO_CLIENT
   CLIENT_APPROVED
@@ -1546,6 +1558,9 @@ enum SubmissionEnum {
   FIRST_DRAFT
   FINAL_DRAFT
   POSTING
+  VIDEO
+  PHOTO
+  RAW_FOOTAGE
   OTHER
 }
 

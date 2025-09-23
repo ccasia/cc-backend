@@ -480,6 +480,39 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
       }
     }
 
+    // Create submission records for V3 approved pitches
+    if (pitch.campaign.submissionVersion === 'v4') {
+      console.log(`🔄 V4 campaign detected - attempting to create content submissions for pitch approval ${pitchId}`);
+      try {
+        // Find the shortlisted creator record that was just created/updated
+        const shortlistedCreator = await prisma.shortListedCreator.findUnique({
+          where: {
+            userId_campaignId: {
+              userId: pitch.userId,
+              campaignId: pitch.campaignId,
+            },
+          },
+          include: {
+            campaign: true,
+            user: true,
+          },
+        });
+
+        if (shortlistedCreator) {
+          const { createContentSubmissionsAfterAgreement } = require('../service/submissionV4Service');
+          const contentSubmissions = await createContentSubmissionsAfterAgreement(shortlistedCreator);
+          console.log(`✅ Created ${contentSubmissions.count} V4 content submissions after pitch approval`);
+        } else {
+          console.error('❌ Could not find shortlisted creator record for V4 submission creation');
+        }
+      } catch (error) {
+        console.error('❌ Error creating V4 content submissions after pitch approval:', error);
+        // Don't fail the whole request, just log the error
+      }
+    } else {
+      console.log(`ℹ️  Campaign ${pitch.campaignId} is not V4 (version: ${pitch.campaign.submissionVersion}) - skipping V4 content submission creation`);
+    }
+
     // Find admin users for this campaign
     const adminUsers = pitch.campaign.campaignAdmin.filter(
       (ca) => ca.admin.user.role === 'admin' || ca.admin.user.role === 'superadmin',
@@ -819,9 +852,32 @@ export const submitAgreement = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
     }
 
-    // Check if pitch is in correct status
-    if (pitch.status !== 'AGREEMENT_PENDING') {
-      return res.status(400).json({ message: 'Pitch is not in correct status for agreement submission' });
+    // Check if pitch is in correct status for agreement submission
+    // Allow AGREEMENT_PENDING (initial submission) and AGREEMENT_SUBMITTED (when resubmitting after changes requested)
+    if (pitch.status !== 'AGREEMENT_PENDING' && pitch.status !== 'AGREEMENT_SUBMITTED') {
+      return res.status(400).json({ 
+        message: `Pitch is not in correct status for agreement submission. Current status: ${pitch.status}` 
+      });
+    }
+
+    // If pitch is already AGREEMENT_SUBMITTED, check if the agreement submission needs changes
+    if (pitch.status === 'AGREEMENT_SUBMITTED') {
+      const agreementSubmission = await prisma.submission.findFirst({
+        where: {
+          userId: pitch.userId,
+          campaignId: pitch.campaignId,
+          submissionType: {
+            type: 'AGREEMENT_FORM',
+          },
+        },
+      });
+
+      // Only allow resubmission if agreement submission is in CHANGES_REQUIRED status
+      if (!agreementSubmission || agreementSubmission.status !== 'CHANGES_REQUIRED') {
+        return res.status(400).json({ 
+          message: 'Agreement has already been submitted and is not pending changes' 
+        });
+      }
     }
 
     // Update pitch status to completed
@@ -1612,11 +1668,11 @@ export const forwardClientFeedbackV3 = async (req: Request, res: Response) => {
     if (submission.campaign.origin !== 'CLIENT') {
       return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
     }
-
-    // Check if submission is in correct status - allow both SENT_TO_ADMIN and CHANGES_REQUIRED
-    if (submission.status !== 'SENT_TO_ADMIN' && submission.status !== 'CHANGES_REQUIRED') {
-      return res.status(400).json({
-        message: `Submission is not in correct status for forwarding feedback. Current status: ${submission.status}`,
+    
+    // Check if submission is in correct status
+    if (submission.status !== 'SENT_TO_ADMIN') {
+      return res.status(400).json({ 
+        message: `Submission is not in correct status for forwarding feedback. Current status: ${submission.status}` 
       });
     }
 
