@@ -1204,7 +1204,16 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
     // Keep the original order from database (newest first) instead of overriding
     const sortedMatchedCampaigns = matchedCampaignWithPercentage;
 
-    const lastCursor = campaigns.length > Number(take) - 1 ? campaigns[Number(take) - 1]?.id : null;
+    // Fix pagination logic: determine if there are more pages
+    const hasNextPage = campaigns.length === Number(take);
+    const lastCursor = hasNextPage ? campaigns[campaigns.length - 1]?.id : null;
+
+    console.log(`matchCampaignWithCreator - Pagination info:`, {
+      campaignsReturned: campaigns.length,
+      requestedTake: Number(take),
+      hasNextPage: hasNextPage,
+      lastCursor: lastCursor
+    });
 
     const data = {
       data: {
@@ -1212,7 +1221,7 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       },
       metaData: {
         lastCursor: lastCursor,
-        hasNextPage: true,
+        hasNextPage: hasNextPage,
       },
     };
 
