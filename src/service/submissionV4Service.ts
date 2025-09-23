@@ -443,7 +443,7 @@ export const createContentSubmissionsAfterAgreement = async (agreementSubmission
 
     const contentSubmissions = [];
 
-    // Create VIDEO submissions based on ugcVideos count
+    // Create VIDEO submissions based on ugcVideos countt
     const ugcVideos = shortlistedCreator.ugcVideos || 0;
     for (let i = 1; i <= ugcVideos; i++) {
       contentSubmissions.push({
