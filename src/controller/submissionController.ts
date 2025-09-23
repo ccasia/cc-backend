@@ -1251,9 +1251,18 @@ const checkAllSectionsApproved = async (submission: any, currentSection?: string
 };
 
 export const postingSubmission = async (req: Request, res: Response) => {
-  const { submissionId, postingLink } = req.body;
+  const { submissionId, postingLink, creatorId } = req.body;
+  const currentUserId = req.session.userid;
 
   try {
+    // Check if current user is admin and if they're submitting for a creator
+    const currentUser = await prisma.user.findUnique({
+      where: { id: currentUserId },
+      include: { admin: true }
+    });
+
+    const isAdminSubmission = currentUser?.admin && creatorId && creatorId !== currentUserId;
+    
     const submission = await prisma.submission.update({
       where: {
         id: submissionId,
@@ -1262,6 +1271,8 @@ export const postingSubmission = async (req: Request, res: Response) => {
         content: postingLink,
         status: 'PENDING_REVIEW',
         submissionDate: dayjs().format(),
+        // Note: submittedByAdminId field will be added in future database migration
+        // ...(isAdminSubmission && { submittedByAdminId: currentUser.admin?.userId }),
       },
       include: {
         campaign: {
@@ -1289,9 +1300,11 @@ export const postingSubmission = async (req: Request, res: Response) => {
       },
     });
 
-    // Log creator activity
+    // Log activity
     if (submission.campaignId) {
-      const logMessage = `${submission.user.name} submitted Posting Link`;
+      const logMessage = isAdminSubmission 
+        ? `${currentUser?.name} (Admin) submitted Posting Link for ${submission.user.name}`
+        : `${submission.user.name} submitted Posting Link`;
       await logChange(logMessage, submission.campaignId, req);
     }
 
@@ -1425,12 +1438,34 @@ export const adminManagePosting = async (req: Request, res: Response) => {
             },
           },
         },
-        task: true,
+        task: true
       },
     });
 
     if (!submission) {
       return res.status(404).json({ message: 'Submission not found.' });
+    }
+
+    // Check permission based on submission flow
+    const currentUser = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { admin: true }
+    });
+
+    // Permission logic based on new flow:
+    // Creator submit -> Admin can approve/reject
+    // Admin submit for creator -> Only Superadmin can approve/reject
+    // Note: This will be properly implemented when submittedByAdminId field is added to database
+    const isAdminSubmission = false; // Will check (submission as any).submittedByAdminId !== null when DB is updated
+    const isSuperAdmin = currentUser?.admin?.mode === 'god' || currentUser?.admin?.mode === 'advanced';
+    const isRegularAdmin = currentUser?.admin && !isSuperAdmin;
+
+    if (isAdminSubmission && !isSuperAdmin) {
+      return res.status(403).json({ message: 'Only superadmin can approve/reject admin submissions.' });
+    }
+
+    if (!isAdminSubmission && !currentUser?.admin) {
+      return res.status(403).json({ message: 'Only admins can approve/reject creator submissions.' });
     }
 
     const inReviewColumn = await getColumnId({ userId: submission?.userId, columnName: 'In Review' });
@@ -1491,8 +1526,8 @@ export const adminManagePosting = async (req: Request, res: Response) => {
           });
         }
 
-        const invoiceAmount = submission.user.creatorAgreement.find(
-          (elem) => elem.campaignId === submission.campaign.id,
+        const invoiceAmount = (submission as any).user?.creatorAgreement?.find(
+          (elem: any) => elem.campaignId === (submission as any).campaign?.id,
         )?.amount;
 
         const invoiceItems = await getCreatorInvoiceLists(approvedSubmission.id, tx as PrismaClient);
@@ -1514,7 +1549,7 @@ export const adminManagePosting = async (req: Request, res: Response) => {
 
         await saveNotification({
           userId: submission.userId,
-          message: ` ✅ Your posting has been approved for campaign ${submission.campaign.name}`,
+          message: ` ✅ Your posting has been approved for campaign ${(submission as any).campaign?.name || 'Campaign'}`,
           entity: Entity.Post,
           entityId: submission.campaignId,
         });
@@ -1523,7 +1558,10 @@ export const adminManagePosting = async (req: Request, res: Response) => {
         if (submission.campaignId && userId) {
           const admin = await prisma.user.findUnique({ where: { id: userId } });
           const adminName = admin?.name || 'Admin';
-          const adminActivityMessage = `${adminName} approved ${submission.user.name}'s Posting Link`;
+          const submissionType = isAdminSubmission 
+            ? `Admin submission for ${(submission as any).user?.name || 'Creator'}`
+            : `${(submission as any).user?.name || 'Creator'}'s submission`;
+          const adminActivityMessage = `${adminName} approved ${submissionType} Posting Link`;
           await logChange(adminActivityMessage, submission.campaignId, req);
         }
       } else {
@@ -1542,19 +1580,22 @@ export const adminManagePosting = async (req: Request, res: Response) => {
         if (submission.campaignId && userId) {
           const admin = await prisma.user.findUnique({ where: { id: userId } });
           const adminName = admin?.name || 'Admin';
-          const adminActivityMessage = `${adminName} requested changes on ${submission.user.name}'s Posting Link`;
+          const submissionType = isAdminSubmission 
+            ? `Admin submission for ${(submission as any).user?.name || 'Creator'}`
+            : `${(submission as any).user?.name || 'Creator'}'s submission`;
+          const adminActivityMessage = `${adminName} requested changes on ${submissionType} Posting Link`;
           await logChange(adminActivityMessage, submission.campaignId, req);
         }
 
-        if (submission.user.Board) {
+        if ((submission as any).user?.Board) {
           const inProgressColumn = await getColumnId({
             userId: submission.userId,
-            boardId: submission.user.Board.id,
+            boardId: (submission as any).user?.Board?.id,
             columnName: 'In Progress',
           });
 
           const taskInReview = await getTaskId({
-            boardId: submission.user.Board.id,
+            boardId: (submission as any).user?.Board?.id,
             submissionId: submission.id,
             columnName: 'In Review',
           });
@@ -1588,7 +1629,7 @@ export const adminManagePosting = async (req: Request, res: Response) => {
 
         const notification = await saveNotification({
           userId: submission.userId,
-          message: `❌ Your posting has been rejected for campaign ${submission.campaign.name}. Feedback is provided.`,
+          message: `❌ Your posting has been rejected for campaign ${(submission as any).campaign?.name || 'Campaign'}. Feedback is provided.`,
           entity: Entity.Post,
         });
 

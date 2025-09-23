@@ -32,11 +32,12 @@ router.get('/deliverables/:userId/:campaignId', isLoggedIn, getDeliverables);
 router.post('/submitAgreement', isLoggedIn, agreementSubmission);
 router.post('/draftSubmission', isLoggedIn, draftSubmission);
 router.post('/postSubmission', isLoggedIn, postingSubmission);
+router.post('/adminPostSubmission', isLoggedIn, postingSubmission);
 router.post('/generateInvoice', isSuperAdmin, generateInvoice);
 
 router.patch('/adminManageAgreementSubmission', isSuperAdmin, adminManageAgreementSubmission);
 router.patch('/adminManageDraft', isSuperAdmin, adminManageDraft);
-router.patch('/adminManagePosting', isSuperAdmin, adminManagePosting);
+router.patch('/adminManagePosting', isLoggedIn, adminManagePosting);
 router.patch('/posting', isLoggedIn, isSuperAdmin, changePostingDate);
 
 // Section-specific management routes
