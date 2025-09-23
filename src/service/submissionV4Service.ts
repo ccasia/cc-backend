@@ -430,7 +430,7 @@ export const createContentSubmissionsAfterAgreement = async (agreementSubmission
       ['VIDEO', 'PHOTO', 'RAW_FOOTAGE'].includes(st.type)
     );
 
-    console.log(`📋 Found ${submissionTypes.length} matching submission types:`, submissionTypes.map(st => ({ id: st.id, type: st.type })));
+    console.log(`📋 Found ${submissionTypes.length} matching submissionn types:`, submissionTypes.map(st => ({ id: st.id, type: st.type })));
 
     const getSubmissionTypeId = (type: string) => {
       const foundType = submissionTypes.find(st => st.type === type);
