@@ -1098,33 +1098,42 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
     // This ensures creators can see all available campaigns while we fix country detection
     console.log('TEMPORARILY BYPASSING COUNTRY FILTERING - Showing all campaigns to creators');
 
+    // TODO: Re-enable proper country filtering once country detection is working correctly
+    // TEMPORARILY DISABLE ALL COUNTRY FILTERING to fix creator discovery issue
+    // The country filtering was preventing creators from seeing all available campaigns
+    
+    // COMMENTED OUT: Country filtering is disabled for now
+    // if (process.env.NODE_ENV !== 'development') {
+    //   campaigns = campaigns.filter((campaign) => {
+    //     if (!campaign.campaignRequirement?.country) return campaign;
+    //     return campaign.campaignRequirement.country.toLocaleLowerCase() === country?.toLowerCase();
+    //   });
+    // }
+    
     const afterCountryFilterCount = campaigns.length;
     console.log(
-      `Country filtering bypassed: ${afterCountryFilterCount}/${beforeCountryFilterCount} campaigns remain (no filtering applied)`,
+      `Country filtering completely bypassed: ${afterCountryFilterCount}/${beforeCountryFilterCount} campaigns remain (no filtering applied)`,
     );
-
-    // TODO: Re-enable proper country filtering once country detection is working correctly
-    // Original filtering logic should be:
+    
+    // Original filtering logic (DISABLED):
     // campaigns = campaigns.filter((campaign) => {
     //   if (!campaign.campaignRequirement?.country) return true;
     //   if (!country) return true;
     //   return campaign.campaignRequirement.country.toLowerCase().trim() === country.toLowerCase().trim();
     // });
-    if (process.env.NODE_ENV !== 'development') {
-      campaigns = campaigns.filter((campaign) => {
-        if (!campaign.campaignRequirement?.country) return campaign;
-        return campaign.campaignRequirement.country.toLocaleLowerCase() === country?.toLowerCase();
-      });
-    }
 
     // campaigns = campaigns.filter((campaign) => campaign.campaignBrief.)
 
     const calculateInterestMatchingPercentage = (creatorInterests: Interest[], creatorPerona: []) => {
-      const totalInterests = creatorPerona.length;
+      const totalInterests = creatorPerona?.length || 0;
+      
+      if (totalInterests === 0) {
+        return 0; // Return 0% if no persona interests defined
+      }
 
-      const matchingInterests = creatorInterests.filter((interest) =>
+      const matchingInterests = creatorInterests?.filter((interest) =>
         creatorPerona.includes(interest?.name?.toLowerCase() as never),
-      ).length;
+      ).length || 0;
 
       return (matchingInterests / totalInterests) * 100;
     };
@@ -1171,7 +1180,7 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
         }
       }
 
-      return (matches / totalCriteria) * 100;
+      return totalCriteria === 0 ? 0 : (matches / totalCriteria) * 100;
     };
 
     const calculateOverallMatchingPercentage = (
@@ -1183,27 +1192,54 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       return interestMatch * interestWeight + requirementMatch * requirementWeight;
     };
 
-    const matchedCampaignWithPercentage = campaigns.map((item) => {
-      const interestPercentage = calculateInterestMatchingPercentage(
-        user?.creator?.interests as never,
-        item.campaignRequirement?.creator_persona as any,
-      );
+    const matchedCampaignWithPercentage = campaigns.map((item, index) => {
+      try {
+        const interestPercentage = calculateInterestMatchingPercentage(
+          user?.creator?.interests as never,
+          item.campaignRequirement?.creator_persona as any,
+        );
 
-      const requirementPercentage = calculateRequirementMatchingPercentage(
-        user?.creator as Creator,
-        item.campaignRequirement as CampaignRequirement,
-      );
+        const requirementPercentage = calculateRequirementMatchingPercentage(
+          user?.creator as Creator,
+          item.campaignRequirement as CampaignRequirement,
+        );
 
-      const overallMatchingPercentage = calculateOverallMatchingPercentage(interestPercentage, requirementPercentage);
+        const overallMatchingPercentage = calculateOverallMatchingPercentage(interestPercentage, requirementPercentage);
 
-      return {
-        ...item,
-        percentageMatch: overallMatchingPercentage,
-      };
+        // Debug log for problematic campaigns
+        if (index < 3) { // Log first 3 campaigns for debugging
+          console.log(`Campaign ${item.id} (${item.name}) matching:`, {
+            interestPercentage: isNaN(interestPercentage) ? 'NaN' : interestPercentage,
+            requirementPercentage: isNaN(requirementPercentage) ? 'NaN' : requirementPercentage,
+            overallMatchingPercentage: isNaN(overallMatchingPercentage) ? 'NaN' : overallMatchingPercentage,
+            hasCreatorPersona: !!item.campaignRequirement?.creator_persona,
+            creatorPersonaLength: item.campaignRequirement?.creator_persona?.length || 0
+          });
+        }
+
+        return {
+          ...item,
+          percentageMatch: isNaN(overallMatchingPercentage) ? 0 : overallMatchingPercentage,
+        };
+      } catch (error) {
+        console.error(`Error calculating percentage for campaign ${item.id}:`, error);
+        return {
+          ...item,
+          percentageMatch: 0,
+        };
+      }
     });
 
     // Keep the original order from database (newest first) instead of overriding
     const sortedMatchedCampaigns = matchedCampaignWithPercentage;
+
+    // Debug: Check if there's any difference between campaigns and sortedMatchedCampaigns
+    console.log(`matchCampaignWithCreator - Debug counts:`, {
+      originalCampaigns: campaigns.length,
+      matchedCampaigns: matchedCampaignWithPercentage.length,
+      sortedMatchedCampaigns: sortedMatchedCampaigns.length,
+      requestedTake: Number(take)
+    });
 
     // Fix pagination logic: determine if there are more pages
     const hasNextPage = campaigns.length === Number(take);
@@ -1211,6 +1247,7 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
 
     console.log(`matchCampaignWithCreator - Pagination info:`, {
       campaignsReturned: campaigns.length,
+      campaignsInResponse: sortedMatchedCampaigns.length,
       requestedTake: Number(take),
       hasNextPage: hasNextPage,
       lastCursor: lastCursor
