@@ -423,16 +423,22 @@ export const createContentSubmissionsAfterAgreement = async (agreementSubmission
     console.log(`🎬 Shortlisted creator found - ugcVideos: ${shortlistedCreator.ugcVideos}, campaign photos: ${campaign.photos}, rawFootage: ${campaign.rawFootage}`);
 
     // Get submission type records
-    const submissionTypes = await prisma.submissionType.findMany({
-      where: {
-        type: {
-          in: ['VIDEO', 'PHOTO', 'RAW_FOOTAGE'] as any
-        }
-      }
-    });
+    const allSubmissionTypes = await prisma.submissionType.findMany();
+    console.log(`📋 All submission types in database:`, allSubmissionTypes.map(st => ({ id: st.id, type: st.type })));
+    
+    const submissionTypes = allSubmissionTypes.filter(st => 
+      ['VIDEO', 'PHOTO', 'RAW_FOOTAGE'].includes(st.type)
+    );
+
+    console.log(`📋 Found ${submissionTypes.length} matching submission types:`, submissionTypes.map(st => ({ id: st.id, type: st.type })));
 
     const getSubmissionTypeId = (type: string) => {
-      return submissionTypes.find(st => st.type === type)?.id;
+      const foundType = submissionTypes.find(st => st.type === type);
+      if (!foundType) {
+        console.error(`❌ Submission type '${type}' not found! Available types:`, submissionTypes.map(st => st.type));
+        throw new Error(`Submission type '${type}' not found`);
+      }
+      return foundType.id;
     };
 
     const contentSubmissions = [];
@@ -443,7 +449,7 @@ export const createContentSubmissionsAfterAgreement = async (agreementSubmission
       contentSubmissions.push({
         campaignId: agreementSubmission.campaignId,
         userId: agreementSubmission.userId,
-        submissionTypeId: getSubmissionTypeId('VIDEO')!,
+        submissionTypeId: getSubmissionTypeId('VIDEO'),
         contentOrder: i,
         submissionVersion: 'v4',
         status: 'NOT_STARTED' as const,
@@ -456,7 +462,7 @@ export const createContentSubmissionsAfterAgreement = async (agreementSubmission
       contentSubmissions.push({
         campaignId: agreementSubmission.campaignId,
         userId: agreementSubmission.userId,
-        submissionTypeId: getSubmissionTypeId('PHOTO')!,
+        submissionTypeId: getSubmissionTypeId('PHOTO'),
         contentOrder: 1, // Single photo submission
         submissionVersion: 'v4',
         status: 'NOT_STARTED' as const,
@@ -469,7 +475,7 @@ export const createContentSubmissionsAfterAgreement = async (agreementSubmission
       contentSubmissions.push({
         campaignId: agreementSubmission.campaignId,
         userId: agreementSubmission.userId,
-        submissionTypeId: getSubmissionTypeId('RAW_FOOTAGE')!,
+        submissionTypeId: getSubmissionTypeId('RAW_FOOTAGE'),
         contentOrder: 1, // Single raw footage submission
         submissionVersion: 'v4',
         status: 'NOT_STARTED' as const,
@@ -479,10 +485,19 @@ export const createContentSubmissionsAfterAgreement = async (agreementSubmission
 
     console.log(`📝 Prepared ${contentSubmissions.length} content submissions:`, 
       contentSubmissions.map(s => ({ 
-        type: s.submissionTypeId, 
-        order: s.contentOrder 
+        submissionTypeId: s.submissionTypeId, 
+        order: s.contentOrder,
+        campaignId: s.campaignId,
+        userId: s.userId
       }))
     );
+
+    // Validate all submissions have valid submissionTypeId
+    const invalidSubmissions = contentSubmissions.filter(s => !s.submissionTypeId);
+    if (invalidSubmissions.length > 0) {
+      console.error(`❌ Found ${invalidSubmissions.length} submissions with invalid submissionTypeId`);
+      throw new Error('Some submissions have undefined submissionTypeId');
+    }
 
     // Create all content submissions
     if (contentSubmissions.length > 0) {
