@@ -123,6 +123,7 @@ const checkCurrentSubmission = async (submissionId: string) => {
   if (!submission) throw new Error('Submission not found');
 
   console.log(`Worker - Checking submission ${submissionId}:`, {
+    submissionVersion: submission.submissionVersion,
     submissionType: submission.submissionType.type,
     currentStatus: submission.status,
     campaignOrigin: submission.campaign.origin,
@@ -256,8 +257,10 @@ const checkCurrentSubmission = async (submissionId: string) => {
 
   console.log(`🔍 FIXED: Worker - Current submission ${submissionId} status: ${currentSubmission?.status}`);
 
-  // Only update status if it's not already PENDING_REVIEW
-  if (currentSubmission?.status === 'PENDING_REVIEW') {
+  // V4 FIX: For v4 submissions, preserve PENDING_REVIEW status
+  if (submission.submissionVersion === 'v4' && currentSubmission?.status === 'PENDING_REVIEW') {
+    console.log(`🔍 V4 FIX: Worker - Preserving PENDING_REVIEW status for v4 submission ${submissionId}`);
+  } else if (currentSubmission?.status === 'PENDING_REVIEW' && submission.submissionVersion !== 'v4') {
     console.log(`🔍 FIXED: Worker - Submission ${submissionId} already PENDING_REVIEW, skipping status update`);
   } else {
   // Update submission status based on deliverable checks
@@ -345,6 +348,7 @@ async function deleteFileIfExists(filePath: string) {
                 campaignId: true,
                 status: true,
                 id: true,
+                submissionVersion: true,
                 video: true,
                 rawFootages: true,
                 photos: true,
@@ -712,6 +716,20 @@ async function deleteFileIfExists(filePath: string) {
             console.log(`Worker - All file processing complete for submission ${submission.id}, calling checkCurrentSubmission...`);
             await checkCurrentSubmission(submission.id);
             console.log(`Worker - checkCurrentSubmission completed for submission ${submission.id}`);
+
+            // Emit socket event to notify that content is now processed and available
+            if (io && submission.campaignId) {
+              io.to(submission.campaignId).emit('v4:content:processed', {
+                submissionId: submission.id,
+                campaignId: submission.campaignId,
+                hasVideo: filePaths?.video?.length > 0,
+                hasPhotos: filePaths?.photos?.length > 0,
+                hasRawFootage: filePaths?.rawFootages?.length > 0,
+                processedAt: new Date().toISOString(),
+                creatorId: content.userid
+              });
+              console.log(`🚀 Emitted v4:content:processed for submission ${submission.id}`);
+            }
 
             const endUsage = process.cpuUsage(startUsage);
 
