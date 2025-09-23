@@ -1098,24 +1098,29 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
     // This ensures creators can see all available campaigns while we fix country detection
     console.log('TEMPORARILY BYPASSING COUNTRY FILTERING - Showing all campaigns to creators');
 
+    // TODO: Re-enable proper country filtering once country detection is working correctly
+    // TEMPORARILY DISABLE ALL COUNTRY FILTERING to fix creator discovery issue
+    // The country filtering was preventing creators from seeing all available campaigns
+    
+    // COMMENTED OUT: Country filtering is disabled for now
+    // if (process.env.NODE_ENV !== 'development') {
+    //   campaigns = campaigns.filter((campaign) => {
+    //     if (!campaign.campaignRequirement?.country) return campaign;
+    //     return campaign.campaignRequirement.country.toLocaleLowerCase() === country?.toLowerCase();
+    //   });
+    // }
+    
     const afterCountryFilterCount = campaigns.length;
     console.log(
-      `Country filtering bypassed: ${afterCountryFilterCount}/${beforeCountryFilterCount} campaigns remain (no filtering applied)`,
+      `Country filtering completely bypassed: ${afterCountryFilterCount}/${beforeCountryFilterCount} campaigns remain (no filtering applied)`,
     );
-
-    // TODO: Re-enable proper country filtering once country detection is working correctly
-    // Original filtering logic should be:
+    
+    // Original filtering logic (DISABLED):
     // campaigns = campaigns.filter((campaign) => {
     //   if (!campaign.campaignRequirement?.country) return true;
     //   if (!country) return true;
     //   return campaign.campaignRequirement.country.toLowerCase().trim() === country.toLowerCase().trim();
     // });
-    if (process.env.NODE_ENV !== 'development') {
-      campaigns = campaigns.filter((campaign) => {
-        if (!campaign.campaignRequirement?.country) return campaign;
-        return campaign.campaignRequirement.country.toLocaleLowerCase() === country?.toLowerCase();
-      });
-    }
 
     // campaigns = campaigns.filter((campaign) => campaign.campaignBrief.)
 
@@ -1228,12 +1233,21 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
     // Keep the original order from database (newest first) instead of overriding
     const sortedMatchedCampaigns = matchedCampaignWithPercentage;
 
+    // Debug: Check if there's any difference between campaigns and sortedMatchedCampaigns
+    console.log(`matchCampaignWithCreator - Debug counts:`, {
+      originalCampaigns: campaigns.length,
+      matchedCampaigns: matchedCampaignWithPercentage.length,
+      sortedMatchedCampaigns: sortedMatchedCampaigns.length,
+      requestedTake: Number(take)
+    });
+
     // Fix pagination logic: determine if there are more pages
     const hasNextPage = campaigns.length === Number(take);
     const lastCursor = hasNextPage ? campaigns[campaigns.length - 1]?.id : null;
 
     console.log(`matchCampaignWithCreator - Pagination info:`, {
       campaignsReturned: campaigns.length,
+      campaignsInResponse: sortedMatchedCampaigns.length,
       requestedTake: Number(take),
       hasNextPage: hasNextPage,
       lastCursor: lastCursor
