@@ -109,6 +109,7 @@ model Admin {
   adminLogs             AdminLog[]              @relation("AdminToAdminLog")
   approvedPitches       Pitch[]                 @relation("ApprovedByAdmin")
   approvedSubmissions   Submission[]            @relation("ApprovedByAdmin")
+  submittedSubmissions  Submission[]            @relation("SubmittedByAdmin")
   completedAgreements   CreatorAgreement[]      @relation("CompletedByAdmin")
 }
 
@@ -808,12 +809,14 @@ model Submission {
   isReview             Boolean                @default(false)
   startDate            DateTime?
   endDate              DateTime?
+  submittedByAdminId   String?                // Track if admin submitted for creator
   feedback             Feedback[]
   Notification         Notification[]
   campaign             Campaign               @relation(fields: [campaignId], references: [id])
   submissionType       SubmissionType         @relation(fields: [submissionTypeId], references: [id])
   user                 User                   @relation(fields: [userId], references: [id])
   admin                Admin?                 @relation(fields: [approvedByAdminId], references: [userId], name: "ApprovedByAdmin")
+  submittedByAdmin     Admin?                 @relation(fields: [submittedByAdminId], references: [userId], name: "SubmittedByAdmin")
   dependencies         SubmissionDependency[] @relation("Dependencies")
   dependentOn          SubmissionDependency[] @relation("DependentOn")
   task                 Task[]
