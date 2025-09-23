@@ -925,7 +925,10 @@ export const approvePostingLinkV4 = async (req: Request, res: Response) => {
     const submission = await prisma.submission.findUnique({
       where: { id: submissionId },
       include: {
-        submissionType: true
+        submissionType: true,
+        campaign: {
+          select: { campaignType: true }
+        }
       }
     });
     
@@ -935,6 +938,13 @@ export const approvePostingLinkV4 = async (req: Request, res: Response) => {
     
     if (submission.submissionVersion !== 'v4') {
       return res.status(400).json({ message: 'Not a v4 submission' });
+    }
+    
+    // Check if campaign type allows posting links
+    if (submission.campaign?.campaignType === 'ugc') {
+      return res.status(400).json({ 
+        message: 'Posting links are not required for UGC (No posting) campaigns' 
+      });
     }
     
     // Check if submission has posting link to approve

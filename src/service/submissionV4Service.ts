@@ -49,6 +49,13 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
       },
       include: {
         submissionType: true,
+        campaign: {
+          select: {
+            id: true,
+            name: true,
+            campaignType: true
+          }
+        },
         user: {
           select: {
             id: true,
@@ -143,6 +150,13 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
       },
       include: {
         submissionType: true,
+        campaign: {
+          select: {
+            id: true,
+            name: true,
+            campaignType: true
+          }
+        },
         user: {
           select: {
             id: true,
@@ -205,6 +219,9 @@ export const updatePostingLink = async (submissionId: string, postingLink: strin
       where: { id: submissionId },
       include: { 
         submissionType: true,
+        campaign: {
+          select: { campaignType: true }
+        },
         video: {
           select: { status: true }
         }
@@ -217,6 +234,11 @@ export const updatePostingLink = async (submissionId: string, postingLink: strin
     
     if (submission.submissionVersion !== 'v4') {
       throw new Error('Not a v4 submission');
+    }
+    
+    // Check if campaign type allows posting links
+    if (submission.campaign?.campaignType === 'ugc') {
+      throw new Error('Posting links are not required for UGC (No posting) campaigns');
     }
     
     // Check if posting link can be added based on approval status
