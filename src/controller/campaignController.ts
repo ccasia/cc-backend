@@ -1039,20 +1039,18 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
     //   (campaign) => campaign.campaignTimeline.find((timeline) => timeline.name === 'Open For Pitch')?.status === 'OPEN',
     // );
 
-    const country = await getCountry(req.ip as string);
+    const country = (await getCountry(req.ip as string))?.trim();
 
     console.log('COUNTRY', country);
 
     campaigns = campaigns.filter((campaign) => {
-      const campaignCountry = campaign?.campaignRequirement?.country;
+      const campaignCountry = campaign?.campaignRequirement?.country?.trim();
 
       if (campaignCountry) {
         return campaignCountry.toLowerCase() === country?.toLowerCase();
       }
-      return false;
+      return true;
     });
-
-    console.log('CAMPAIGN', campaigns);
 
     const calculateInterestMatchingPercentage = (creatorInterests: Interest[], creatorPerona: []) => {
       const totalInterests = creatorPerona.length;
