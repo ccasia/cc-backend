@@ -1046,9 +1046,13 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
     campaigns = campaigns.filter((campaign) => {
       const campaignCountry = campaign?.campaignRequirement?.country;
 
+      console.log(campaignCountry, country);
+
       if (!campaignCountry) return true;
       return campaignCountry.toLowerCase() === country?.toLowerCase();
     });
+
+    console.log('CAMPAIGN', campaigns);
 
     const calculateInterestMatchingPercentage = (creatorInterests: Interest[], creatorPerona: []) => {
       const totalInterests = creatorPerona.length;
