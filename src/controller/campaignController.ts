@@ -1044,11 +1044,10 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
     console.log('COUNTRY', country);
 
     campaigns = campaigns.filter((campaign) => {
-      if (!campaign.campaignRequirement?.country) return campaign;
-      return campaign.campaignRequirement.country.toLowerCase() === country?.toLowerCase();
+      // if (!campaign.campaignRequirement?.country) return campaign;
+      const country = campaign?.campaignRequirement?.country || '';
+      return country.toLowerCase() === country?.toLowerCase();
     });
-
-    // campaigns = campaigns.filter((campaign) => campaign.campaignBrief.)
 
     const calculateInterestMatchingPercentage = (creatorInterests: Interest[], creatorPerona: []) => {
       const totalInterests = creatorPerona.length;
