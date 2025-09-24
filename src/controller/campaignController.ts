@@ -1045,7 +1045,7 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
 
     campaigns = campaigns.filter((campaign) => {
       if (!campaign.campaignRequirement?.country) return campaign;
-      return campaign.campaignRequirement.country.toLocaleLowerCase() === country?.toLowerCase();
+      return campaign.campaignRequirement.country.toLowerCase() === country?.toLowerCase();
     });
 
     // campaigns = campaigns.filter((campaign) => campaign.campaignBrief.)
