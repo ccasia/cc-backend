@@ -985,7 +985,9 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
 
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    let campaigns = await prisma.campaign.findMany({
+    const country = (await getCountry(req.ip as string))?.trim();
+
+    const campaigns = await prisma.campaign.findMany({
       take: Number(take),
       ...(cursor && {
         skip: 1,
@@ -1003,6 +1005,14 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
                 mode: 'insensitive',
               },
             }),
+          },
+          {
+            campaignRequirement: {
+              country: {
+                equals: country,
+                mode: 'insensitive',
+              },
+            },
           },
         ],
       },
@@ -1039,19 +1049,19 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
     //   (campaign) => campaign.campaignTimeline.find((timeline) => timeline.name === 'Open For Pitch')?.status === 'OPEN',
     // );
 
-    const country = (await getCountry(req.ip as string))?.trim();
+    // const country = (await getCountry(req.ip as string))?.trim();
 
     console.log('COUNTRY', country);
 
-    campaigns = campaigns.filter((campaign) => {
-      const campaignCountry = campaign?.campaignRequirement?.country?.trim();
+    // campaigns = campaigns.filter((campaign) => {
+    //   const campaignCountry = campaign?.campaignRequirement?.country?.trim();
 
-      if (campaignCountry) {
-        console.log(campaignCountry, country);
-        return campaignCountry.toLowerCase() === country?.toLowerCase();
-      }
-      return true;
-    });
+    //   if (campaignCountry) {
+    //     console.log(campaignCountry, country);
+    //     return campaignCountry.toLowerCase() === country?.toLowerCase();
+    //   }
+    //   return true;
+    // });
 
     const calculateInterestMatchingPercentage = (creatorInterests: Interest[], creatorPerona: []) => {
       const totalInterests = creatorPerona.length;
