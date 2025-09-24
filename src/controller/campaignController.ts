@@ -1046,10 +1046,10 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
     campaigns = campaigns.filter((campaign) => {
       const campaignCountry = campaign?.campaignRequirement?.country;
 
-      console.log(campaignCountry, country);
-
-      if (!campaignCountry) return true;
-      return campaignCountry.toLowerCase() === country?.toLowerCase();
+      if (campaignCountry) {
+        return campaignCountry.toLowerCase() === country?.toLowerCase();
+      }
+      return false;
     });
 
     console.log('CAMPAIGN', campaigns);
