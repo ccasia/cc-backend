@@ -1047,6 +1047,7 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       const campaignCountry = campaign?.campaignRequirement?.country?.trim();
 
       if (campaignCountry) {
+        console.log(campaignCountry, country);
         return campaignCountry.toLowerCase() === country?.toLowerCase();
       }
       return true;
