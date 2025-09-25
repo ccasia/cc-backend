@@ -463,21 +463,30 @@ export const approveV4Submission = async (req: Request, res: Response) => {
       );
     }
     
-    // Add overall feedback record
-    if (feedback || (reasons && reasons.length > 0)) {
-      updates.push(
-        prisma.feedback.create({
-          data: {
-            content: feedback || '',
-            reasons: reasons || [],
-            submissionId,
-            adminId: currentUserId,
-            type: 'COMMENT',
-            sentToCreator: action !== 'approve' // Set to true for reject and request_revision
-          }
-        })
-      );
+    // Always add feedback record to maintain consistent display
+    // Determine feedback type based on action and campaign origin
+    let feedbackType: 'REQUEST' | 'COMMENT' = 'COMMENT';
+    
+    if (action === 'request_revision' || action === 'reject') {
+      // Admin requesting changes = REQUEST type
+      feedbackType = 'REQUEST';
+    } else if (action === 'approve' && submission.campaign.origin === 'CLIENT') {
+      // Send to Client = COMMENT type
+      feedbackType = 'COMMENT';
     }
+    
+    updates.push(
+      prisma.feedback.create({
+        data: {
+          content: feedback || '',
+          reasons: reasons || [],
+          submissionId,
+          adminId: currentUserId,
+          type: feedbackType,
+          sentToCreator: action !== 'approve' // Set to true for reject and request_revision
+        }
+      })
+    );
     
     // Execute all updates
     await prisma.$transaction(updates);
@@ -650,21 +659,22 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
       );
     }
     
-    // Add client feedback record if provided
-    if (feedback || (reasons && reasons.length > 0)) {
-      updates.push(
-        prisma.feedback.create({
-          data: {
-            content: feedback || '',
-            reasons: reasons || [],
-            submissionId,
-            adminId: clientId,
-            sentToCreator: false, // Client feedback needs admin to forward
-            type: 'COMMENT'
-          }
-        })
-      );
-    }
+    // Always add client feedback record to maintain consistent display
+    // Determine feedback type based on action
+    const feedbackType = action === 'request_changes' ? 'REQUEST' : 'COMMENT';
+    
+    updates.push(
+      prisma.feedback.create({
+        data: {
+          content: feedback || '',
+          reasons: reasons || [],
+          submissionId,
+          adminId: clientId,
+          sentToCreator: false, // Client feedback needs admin to forward
+          type: feedbackType
+        }
+      })
+    );
     
     // Execute all updates
     await prisma.$transaction(updates);
@@ -819,7 +829,7 @@ export const forwardClientFeedbackV4 = async (req: Request, res: Response) => {
         prisma.feedback.create({
           data: {
             content: adminFeedback,
-            type: 'COMMENT', // Using existing enum value, ADMIN_COMMENT would need to be added
+            type: 'COMMENT', // Admin forwarding client feedback = COMMENT type
             adminId: adminId,
             submissionId,
             sentToCreator: true // Admin forwarded feedback is sent to creator
@@ -1150,29 +1160,27 @@ export const approveIndividualContentV4 = async (req: Request, res: Response) =>
       });
     }
     
-    // Add to submission-level feedback if feedback provided
-    if (feedback) {
-      const feedbackData: any = {
-        submissionId: submission.id,
-        adminId,
-        type: 'COMMENT',
-        reasons: reasons || [],
-        sentToCreator: false
-      };
-      
-      if (contentType === 'video') {
-        feedbackData.content = feedback;
-        feedbackData.videosToUpdate = [contentId];
-      } else if (contentType === 'rawFootage') {
-        feedbackData.rawFootageContent = feedback;
-        feedbackData.rawFootageToUpdate = [contentId];
-      } else {
-        feedbackData.photoContent = feedback;
-        feedbackData.photosToUpdate = [contentId];
-      }
-      
-      await prisma.feedback.create({ data: feedbackData });
+    // Always add to submission-level feedback to maintain consistent display
+    const feedbackData: any = {
+      submissionId: submission.id,
+      adminId,
+      type: 'COMMENT', // Admin approving individual content = COMMENT type
+      reasons: reasons || [],
+      sentToCreator: false
+    };
+    
+    if (contentType === 'video') {
+      feedbackData.content = feedback || '';
+      feedbackData.videosToUpdate = [contentId];
+    } else if (contentType === 'rawFootage') {
+      feedbackData.rawFootageContent = feedback || '';
+      feedbackData.rawFootageToUpdate = [contentId];
+    } else {
+      feedbackData.photoContent = feedback || '';
+      feedbackData.photosToUpdate = [contentId];
     }
+    
+    await prisma.feedback.create({ data: feedbackData });
     
     // Update submission status based on individual content statuses
     await updateSubmissionStatusBasedOnContent(submission.id);
@@ -1308,7 +1316,7 @@ export const requestChangesIndividualContentV4 = async (req: Request, res: Respo
     const feedbackData: any = {
       submissionId: submission.id,
       adminId,
-      type: 'COMMENT',
+      type: 'REQUEST', // Admin requesting changes = REQUEST type
       reasons: reasons || [],
       sentToCreator: true // Admin feedback is automatically sent to creator
     };
@@ -1477,28 +1485,26 @@ export const approveIndividualContentByClientV4 = async (req: Request, res: Resp
       });
     }
     
-    // Add to submission-level feedback if feedback provided
-    if (feedback) {
-      const feedbackData: any = {
-        submissionId: submission.id,
-        adminId: clientId,
-        type: 'COMMENT',
-        sentToCreator: false // Client feedback needs admin to forward
-      };
-      
-      if (contentType === 'video') {
-        feedbackData.content = feedback;
-        feedbackData.videosToUpdate = [contentId];
-      } else if (contentType === 'rawFootage') {
-        feedbackData.rawFootageContent = feedback;
-        feedbackData.rawFootageToUpdate = [contentId];
-      } else {
-        feedbackData.photoContent = feedback;
-        feedbackData.photosToUpdate = [contentId];
-      }
-      
-      await prisma.feedback.create({ data: feedbackData });
+    // Always add to submission-level feedback to maintain consistent display
+    const feedbackData: any = {
+      submissionId: submission.id,
+      adminId: clientId,
+      type: 'COMMENT', // Client approving individual content = COMMENT type
+      sentToCreator: false // Client feedback needs admin to forward
+    };
+    
+    if (contentType === 'video') {
+      feedbackData.content = feedback || '';
+      feedbackData.videosToUpdate = [contentId];
+    } else if (contentType === 'rawFootage') {
+      feedbackData.rawFootageContent = feedback || '';
+      feedbackData.rawFootageToUpdate = [contentId];
+    } else {
+      feedbackData.photoContent = feedback || '';
+      feedbackData.photosToUpdate = [contentId];
     }
+    
+    await prisma.feedback.create({ data: feedbackData });
     
     // Update submission status based on individual content statuses
     await updateSubmissionStatusBasedOnContent(submission.id);
@@ -1658,7 +1664,7 @@ export const requestChangesIndividualContentByClientV4 = async (req: Request, re
     const feedbackData: any = {
       submissionId: submission.id,
       adminId: clientId,
-      type: 'COMMENT',
+      type: 'REQUEST', // Client requesting changes = REQUEST type
       reasons: reasons || [],
       sentToCreator: false // Client feedback needs admin to forward
     };
