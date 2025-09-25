@@ -5690,7 +5690,7 @@ export const activateClientCampaign = async (req: Request, res: Response) => {
     });
 
     if (!campaign) {
-      return res.status(404).json({ message: 'Campaign not found or not in pending admin activation status' });
+      return res.status(404).json({ message: 'Campaign has already been activated or is not in pending admin activation status' });
     }
 
     // Log user info for debugging
