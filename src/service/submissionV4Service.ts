@@ -56,6 +56,17 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
             campaignType: true
           }
         },
+        admin: {
+          select: {
+            userId: true,
+            user: {
+              select: {
+                name: true
+              }
+            },
+            role: true
+          }
+        },
         user: {
           select: {
             id: true,
@@ -212,7 +223,7 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
 /**
  * Update posting link for an approved submission
  */
-export const updatePostingLink = async (submissionId: string, postingLink: string) => {
+export const updatePostingLink = async (submissionId: string, postingLink: string, adminId?: string) => {
   try {
     // Verify submission is approved and v4
     const submission = await prisma.submission.findUnique({
@@ -250,11 +261,13 @@ export const updatePostingLink = async (submissionId: string, postingLink: strin
     }
     
     // Update the posting link and set status to PENDING_REVIEW
+    // Track who added the posting link (admin or creator)
     const updatedSubmission = await prisma.submission.update({
       where: { id: submissionId },
       data: { 
         content: postingLink,
-        status: 'PENDING_REVIEW',
+        status: 'CLIENT_APPROVED',
+        approvedByAdminId: adminId || null, // Track if admin added the link
         updatedAt: new Date()
       },
       include: {
