@@ -864,6 +864,7 @@ export const forwardClientFeedbackV4 = async (req: Request, res: Response) => {
  */
 export const updatePostingLinkController = async (req: Request, res: Response) => {
   const { submissionId, postingLink } = req.body as PostingLinkUpdate;
+  const currentUserId = req.session.userid;
   
   try {
     if (!submissionId || !postingLink) {
@@ -879,7 +880,7 @@ export const updatePostingLinkController = async (req: Request, res: Response) =
       return res.status(400).json({ message: 'Invalid posting link URL' });
     }
     
-    const result = await updatePostingLink(submissionId, postingLink);
+    const result = await updatePostingLink(submissionId, postingLink, currentUserId);
     
     console.log(`🔗 Posting link updated for v4 submission ${submissionId}`);
     

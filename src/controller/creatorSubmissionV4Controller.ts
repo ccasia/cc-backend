@@ -450,7 +450,7 @@ export const updateMyPostingLink = async (req: Request, res: Response) => {
       });
     }
     
-    const result = await updatePostingLink(submissionId, postingLink);
+    const result = await updatePostingLink(submissionId, postingLink); // Creator adding link - no adminId
     
     // Emit socket event for real-time updates
     const io = req.app.get('io');
