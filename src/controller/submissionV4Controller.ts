@@ -12,6 +12,7 @@ import {
   getNextStatusAfterClientAction,
   getStatusAfterForwardingClientFeedback
 } from '../utils/v4StatusUtils';
+import { checkAndCompleteV4Campaign } from '../service/submissionV4CompletionService';
 
 /**
  * Update submission status based on individual content statuses
@@ -463,21 +464,30 @@ export const approveV4Submission = async (req: Request, res: Response) => {
       );
     }
     
-    // Add overall feedback record
-    if (feedback || (reasons && reasons.length > 0)) {
-      updates.push(
-        prisma.feedback.create({
-          data: {
-            content: feedback || '',
-            reasons: reasons || [],
-            submissionId,
-            adminId: currentUserId,
-            type: 'COMMENT',
-            sentToCreator: action !== 'approve' // Set to true for reject and request_revision
-          }
-        })
-      );
+    // Always add feedback record to maintain consistent display
+    // Determine feedback type based on action and campaign origin
+    let feedbackType: 'REQUEST' | 'COMMENT' = 'COMMENT';
+    
+    if (action === 'request_revision' || action === 'reject') {
+      // Admin requesting changes = REQUEST type
+      feedbackType = 'REQUEST';
+    } else if (action === 'approve' && submission.campaign.origin === 'CLIENT') {
+      // Send to Client = COMMENT type
+      feedbackType = 'COMMENT';
     }
+    
+    updates.push(
+      prisma.feedback.create({
+        data: {
+          content: feedback || '',
+          reasons: reasons || [],
+          submissionId,
+          adminId: currentUserId,
+          type: feedbackType,
+          sentToCreator: action !== 'approve' // Set to true for reject and request_revision
+        }
+      })
+    );
     
     // Execute all updates
     await prisma.$transaction(updates);
@@ -502,6 +512,16 @@ export const approveV4Submission = async (req: Request, res: Response) => {
       : `${action}d successfully`;
     
     console.log(`✅ V4 submission ${submissionId} ${actionMessage} by admin ${currentUserId}`);
+    
+    // Check if campaign is now complete and generate invoice if needed
+    if (action === 'approve' && (newStatus === 'APPROVED' || newStatus === 'SENT_TO_CLIENT')) {
+      try {
+        await checkAndCompleteV4Campaign(submissionId, currentUserId);
+      } catch (error) {
+        console.error('Error checking campaign completion after submission approval by admin:', error);
+        // Don't fail the request if completion check fails
+      }
+    }
     
     res.status(200).json({
       message: `Submission ${actionMessage}`,
@@ -650,21 +670,22 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
       );
     }
     
-    // Add client feedback record if provided
-    if (feedback || (reasons && reasons.length > 0)) {
-      updates.push(
-        prisma.feedback.create({
-          data: {
-            content: feedback || '',
-            reasons: reasons || [],
-            submissionId,
-            adminId: clientId,
-            sentToCreator: false, // Client feedback needs admin to forward
-            type: 'COMMENT'
-          }
-        })
-      );
-    }
+    // Always add client feedback record to maintain consistent display
+    // Determine feedback type based on action
+    const feedbackType = action === 'request_changes' ? 'REQUEST' : 'COMMENT';
+    
+    updates.push(
+      prisma.feedback.create({
+        data: {
+          content: feedback || '',
+          reasons: reasons || [],
+          submissionId,
+          adminId: clientId,
+          sentToCreator: false, // Client feedback needs admin to forward
+          type: feedbackType
+        }
+      })
+    );
     
     // Execute all updates
     await prisma.$transaction(updates);
@@ -683,6 +704,16 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
     }
     
     console.log(`✅ V4 submission ${submissionId} ${action}d by client ${clientId}`);
+    
+    // Check if campaign is now complete and generate invoice if needed
+    if (action === 'approve' && newSubmissionStatus === 'CLIENT_APPROVED') {
+      try {
+        await checkAndCompleteV4Campaign(submissionId, clientId);
+      } catch (error) {
+        console.error('Error checking campaign completion after client approval:', error);
+        // Don't fail the request if completion check fails
+      }
+    }
     
     res.status(200).json({
       message: `Submission ${action}d by client successfully`,
@@ -819,7 +850,7 @@ export const forwardClientFeedbackV4 = async (req: Request, res: Response) => {
         prisma.feedback.create({
           data: {
             content: adminFeedback,
-            type: 'COMMENT', // Using existing enum value, ADMIN_COMMENT would need to be added
+            type: 'COMMENT', // Admin forwarding client feedback = COMMENT type
             adminId: adminId,
             submissionId,
             sentToCreator: true // Admin forwarded feedback is sent to creator
@@ -854,6 +885,7 @@ export const forwardClientFeedbackV4 = async (req: Request, res: Response) => {
  */
 export const updatePostingLinkController = async (req: Request, res: Response) => {
   const { submissionId, postingLink } = req.body as PostingLinkUpdate;
+  const currentUserId = req.session.userid;
   
   try {
     if (!submissionId || !postingLink) {
@@ -869,7 +901,7 @@ export const updatePostingLinkController = async (req: Request, res: Response) =
       return res.status(400).json({ message: 'Invalid posting link URL' });
     }
     
-    const result = await updatePostingLink(submissionId, postingLink);
+    const result = await updatePostingLink(submissionId, postingLink, currentUserId);
     
     console.log(`🔗 Posting link updated for v4 submission ${submissionId}`);
     
@@ -1003,6 +1035,16 @@ export const approvePostingLinkV4 = async (req: Request, res: Response) => {
     }
     
     console.log(`✅ V4 submission ${submissionId} posting link ${action}d by admin ${adminId}`);
+    
+    // Check if campaign is now complete and generate invoice if needed
+    if (action === 'approve' && newStatus === 'POSTED') {
+      try {
+        await checkAndCompleteV4Campaign(submissionId, adminId);
+      } catch (error) {
+        console.error('Error checking campaign completion after posting link approval:', error);
+        // Don't fail the request if completion check fails
+      }
+    }
     
     res.status(200).json({
       message: `Posting link ${action}d successfully`,
@@ -1150,34 +1192,42 @@ export const approveIndividualContentV4 = async (req: Request, res: Response) =>
       });
     }
     
-    // Add to submission-level feedback if feedback provided
-    if (feedback) {
-      const feedbackData: any = {
-        submissionId: submission.id,
-        adminId,
-        type: 'COMMENT',
-        reasons: reasons || [],
-        sentToCreator: false
-      };
-      
-      if (contentType === 'video') {
-        feedbackData.content = feedback;
-        feedbackData.videosToUpdate = [contentId];
-      } else if (contentType === 'rawFootage') {
-        feedbackData.rawFootageContent = feedback;
-        feedbackData.rawFootageToUpdate = [contentId];
-      } else {
-        feedbackData.photoContent = feedback;
-        feedbackData.photosToUpdate = [contentId];
-      }
-      
-      await prisma.feedback.create({ data: feedbackData });
+    // Always add to submission-level feedback to maintain consistent display
+    const feedbackData: any = {
+      submissionId: submission.id,
+      adminId,
+      type: 'COMMENT', // Admin approving individual content = COMMENT type
+      reasons: reasons || [],
+      sentToCreator: false
+    };
+    
+    if (contentType === 'video') {
+      feedbackData.content = feedback || '';
+      feedbackData.videosToUpdate = [contentId];
+    } else if (contentType === 'rawFootage') {
+      feedbackData.rawFootageContent = feedback || '';
+      feedbackData.rawFootageToUpdate = [contentId];
+    } else {
+      feedbackData.photoContent = feedback || '';
+      feedbackData.photosToUpdate = [contentId];
     }
+    
+    await prisma.feedback.create({ data: feedbackData });
     
     // Update submission status based on individual content statuses
     await updateSubmissionStatusBasedOnContent(submission.id);
     
     console.log(`✅ V4 ${contentType} ${contentId} approved by admin ${adminId}`);
+    
+    // Check if campaign is now complete and generate invoice if needed
+    if (updatedContent.status === 'APPROVED' || updatedContent.status === 'SENT_TO_CLIENT') {
+      try {
+        await checkAndCompleteV4Campaign(submission.id, adminId);
+      } catch (error) {
+        console.error('Error checking campaign completion after individual content approval by admin:', error);
+        // Don't fail the request if completion check fails
+      }
+    }
     
     res.status(200).json({
       message: `${contentType} approved successfully`,
@@ -1308,7 +1358,7 @@ export const requestChangesIndividualContentV4 = async (req: Request, res: Respo
     const feedbackData: any = {
       submissionId: submission.id,
       adminId,
-      type: 'COMMENT',
+      type: 'REQUEST', // Admin requesting changes = REQUEST type
       reasons: reasons || [],
       sentToCreator: true // Admin feedback is automatically sent to creator
     };
@@ -1477,33 +1527,41 @@ export const approveIndividualContentByClientV4 = async (req: Request, res: Resp
       });
     }
     
-    // Add to submission-level feedback if feedback provided
-    if (feedback) {
-      const feedbackData: any = {
-        submissionId: submission.id,
-        adminId: clientId,
-        type: 'COMMENT',
-        sentToCreator: false // Client feedback needs admin to forward
-      };
-      
-      if (contentType === 'video') {
-        feedbackData.content = feedback;
-        feedbackData.videosToUpdate = [contentId];
-      } else if (contentType === 'rawFootage') {
-        feedbackData.rawFootageContent = feedback;
-        feedbackData.rawFootageToUpdate = [contentId];
-      } else {
-        feedbackData.photoContent = feedback;
-        feedbackData.photosToUpdate = [contentId];
-      }
-      
-      await prisma.feedback.create({ data: feedbackData });
+    // Always add to submission-level feedback to maintain consistent display
+    const feedbackData: any = {
+      submissionId: submission.id,
+      adminId: clientId,
+      type: 'COMMENT', // Client approving individual content = COMMENT type
+      sentToCreator: false // Client feedback needs admin to forward
+    };
+    
+    if (contentType === 'video') {
+      feedbackData.content = feedback || '';
+      feedbackData.videosToUpdate = [contentId];
+    } else if (contentType === 'rawFootage') {
+      feedbackData.rawFootageContent = feedback || '';
+      feedbackData.rawFootageToUpdate = [contentId];
+    } else {
+      feedbackData.photoContent = feedback || '';
+      feedbackData.photosToUpdate = [contentId];
     }
+    
+    await prisma.feedback.create({ data: feedbackData });
     
     // Update submission status based on individual content statuses
     await updateSubmissionStatusBasedOnContent(submission.id);
     
     console.log(`✅ V4 ${contentType} ${contentId} approved by client ${clientId}`);
+    
+    // Check if campaign is now complete and generate invoice if needed
+    if (updatedContent.status === 'APPROVED') {
+      try {
+        await checkAndCompleteV4Campaign(submission.id, clientId);
+      } catch (error) {
+        console.error('Error checking campaign completion after individual content approval:', error);
+        // Don't fail the request if completion check fails
+      }
+    }
     
     res.status(200).json({
       message: `${contentType} approved by client successfully`,
@@ -1658,7 +1716,7 @@ export const requestChangesIndividualContentByClientV4 = async (req: Request, re
     const feedbackData: any = {
       submissionId: submission.id,
       adminId: clientId,
-      type: 'COMMENT',
+      type: 'REQUEST', // Client requesting changes = REQUEST type
       reasons: reasons || [],
       sentToCreator: false // Client feedback needs admin to forward
     };
@@ -2371,6 +2429,81 @@ export const updateSubmissionDueDate = async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       message: error instanceof Error ? error.message : 'Failed to update due date'
+    });
+  }
+};
+
+/**
+ * Test endpoint to check V4 campaign completion status
+ * GET /api/submissions/v4/completion-status?campaignId=xxx&userId=xxx
+ */
+export const checkV4CompletionStatus = async (req: Request, res: Response) => {
+  const { campaignId, userId } = req.query;
+  
+  try {
+    if (!campaignId || !userId) {
+      return res.status(400).json({ 
+        message: 'campaignId and userId are required' 
+      });
+    }
+    
+    const { checkV4SubmissionCompletion } = await import('../service/submissionV4CompletionService.js');
+    const completionStatus = await checkV4SubmissionCompletion(
+      campaignId as string,
+      userId as string
+    );
+    
+    console.log(`🔍 Completion status check for user ${userId} in campaign ${campaignId}:`, completionStatus);
+    
+    res.status(200).json({
+      campaignId,
+      userId,
+      ...completionStatus,
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('Error checking completion status:', error);
+    res.status(500).json({
+      message: 'Failed to check completion status',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+};
+
+/**
+ * Test endpoint to manually trigger V4 campaign completion
+ * POST /api/submissions/v4/trigger-completion
+ */
+export const triggerV4Completion = async (req: Request, res: Response) => {
+  const { campaignId, userId } = req.body;
+  const adminId = req.session.userid;
+  
+  try {
+    if (!campaignId || !userId) {
+      return res.status(400).json({ 
+        message: 'campaignId and userId are required' 
+      });
+    }
+    
+    const { handleV4CompletedCampaign } = await import('../service/submissionV4CompletionService.js');
+    const result = await handleV4CompletedCampaign(campaignId, userId, adminId);
+    
+    console.log(`🎯 Manual completion trigger for user ${userId} in campaign ${campaignId}: ${result ? 'SUCCESS' : 'NOT READY'}`);
+    
+    res.status(200).json({
+      campaignId,
+      userId,
+      completed: result,
+      message: result ? 'Campaign completed and invoice generated' : 'Campaign not ready for completion',
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('Error triggering completion:', error);
+    res.status(500).json({
+      message: 'Failed to trigger completion',
+      error: error instanceof Error ? error.message : 'Unknown error'
     });
   }
 };

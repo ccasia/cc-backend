@@ -45,7 +45,7 @@ export const getMyV4Submissions = async (req: Request, res: Response) => {
       creatorId
     );
     
-    // Filter feedback for each submission based on submission status
+    // Filter feedback for each submission based on submission status and type
     const submissionsWithFilteredFeedback = submissions.map(submission => {
       let filteredFeedback = submission.feedback;
       
@@ -54,8 +54,11 @@ export const getMyV4Submissions = async (req: Request, res: Response) => {
       if (submission.status === 'CLIENT_APPROVED') {
         filteredFeedback = submission.feedback.slice(0, 2);
       } else {
-        // For other statuses, only show feedback that was sent to creator
-        filteredFeedback = submission.feedback.filter(feedback => feedback.sentToCreator);
+        // For other statuses, only show feedback that was sent to creator AND is COMMENT type
+        // Creators should only see COMMENT type feedback (not REQUEST type)
+        filteredFeedback = submission.feedback.filter(feedback => 
+          feedback.sentToCreator && feedback.type === 'COMMENT'
+        );
       }
       
       return {
@@ -447,7 +450,7 @@ export const updateMyPostingLink = async (req: Request, res: Response) => {
       });
     }
     
-    const result = await updatePostingLink(submissionId, postingLink);
+    const result = await updatePostingLink(submissionId, postingLink); // Creator adding link - no adminId
     
     // Emit socket event for real-time updates
     const io = req.app.get('io');
@@ -574,7 +577,7 @@ export const getMySubmissionDetails = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Not a v4 submission' });
     }
     
-    // Filter feedback based on submission status
+    // Filter feedback based on submission status and type
     let filteredFeedback = submission.feedback;
     
     // When submission status is CLIENT_APPROVED, return only the last two feedback entries
@@ -582,8 +585,11 @@ export const getMySubmissionDetails = async (req: Request, res: Response) => {
     if (submission.status === 'CLIENT_APPROVED') {
       filteredFeedback = submission.feedback.slice(0, 2);
     } else {
-      // For other statuses, only show feedback that was sent to creator
-      filteredFeedback = submission.feedback.filter(feedback => feedback.sentToCreator);
+      // For other statuses, only show feedback that was sent to creator AND is COMMENT type
+      // Creators should only see COMMENT type feedback (not REQUEST type)
+      filteredFeedback = submission.feedback.filter(feedback => 
+        feedback.sentToCreator && feedback.type === 'COMMENT'
+      );
     }
 
     // Add creator-friendly status mapping
