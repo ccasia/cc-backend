@@ -12,6 +12,7 @@ import {
   getNextStatusAfterClientAction,
   getStatusAfterForwardingClientFeedback
 } from '../utils/v4StatusUtils';
+import { checkAndCompleteV4Campaign } from '../service/submissionV4CompletionService';
 
 /**
  * Update submission status based on individual content statuses
@@ -512,6 +513,16 @@ export const approveV4Submission = async (req: Request, res: Response) => {
     
     console.log(`✅ V4 submission ${submissionId} ${actionMessage} by admin ${currentUserId}`);
     
+    // Check if campaign is now complete and generate invoice if needed
+    if (action === 'approve' && (newStatus === 'APPROVED' || newStatus === 'SENT_TO_CLIENT')) {
+      try {
+        await checkAndCompleteV4Campaign(submissionId, currentUserId);
+      } catch (error) {
+        console.error('Error checking campaign completion after submission approval by admin:', error);
+        // Don't fail the request if completion check fails
+      }
+    }
+    
     res.status(200).json({
       message: `Submission ${actionMessage}`,
       submissionId,
@@ -693,6 +704,16 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
     }
     
     console.log(`✅ V4 submission ${submissionId} ${action}d by client ${clientId}`);
+    
+    // Check if campaign is now complete and generate invoice if needed
+    if (action === 'approve' && newSubmissionStatus === 'CLIENT_APPROVED') {
+      try {
+        await checkAndCompleteV4Campaign(submissionId, clientId);
+      } catch (error) {
+        console.error('Error checking campaign completion after client approval:', error);
+        // Don't fail the request if completion check fails
+      }
+    }
     
     res.status(200).json({
       message: `Submission ${action}d by client successfully`,
@@ -1015,6 +1036,16 @@ export const approvePostingLinkV4 = async (req: Request, res: Response) => {
     
     console.log(`✅ V4 submission ${submissionId} posting link ${action}d by admin ${adminId}`);
     
+    // Check if campaign is now complete and generate invoice if needed
+    if (action === 'approve' && newStatus === 'POSTED') {
+      try {
+        await checkAndCompleteV4Campaign(submissionId, adminId);
+      } catch (error) {
+        console.error('Error checking campaign completion after posting link approval:', error);
+        // Don't fail the request if completion check fails
+      }
+    }
+    
     res.status(200).json({
       message: `Posting link ${action}d successfully`,
       submissionId,
@@ -1187,6 +1218,16 @@ export const approveIndividualContentV4 = async (req: Request, res: Response) =>
     await updateSubmissionStatusBasedOnContent(submission.id);
     
     console.log(`✅ V4 ${contentType} ${contentId} approved by admin ${adminId}`);
+    
+    // Check if campaign is now complete and generate invoice if needed
+    if (updatedContent.status === 'APPROVED' || updatedContent.status === 'SENT_TO_CLIENT') {
+      try {
+        await checkAndCompleteV4Campaign(submission.id, adminId);
+      } catch (error) {
+        console.error('Error checking campaign completion after individual content approval by admin:', error);
+        // Don't fail the request if completion check fails
+      }
+    }
     
     res.status(200).json({
       message: `${contentType} approved successfully`,
@@ -1511,6 +1552,16 @@ export const approveIndividualContentByClientV4 = async (req: Request, res: Resp
     await updateSubmissionStatusBasedOnContent(submission.id);
     
     console.log(`✅ V4 ${contentType} ${contentId} approved by client ${clientId}`);
+    
+    // Check if campaign is now complete and generate invoice if needed
+    if (updatedContent.status === 'APPROVED') {
+      try {
+        await checkAndCompleteV4Campaign(submission.id, clientId);
+      } catch (error) {
+        console.error('Error checking campaign completion after individual content approval:', error);
+        // Don't fail the request if completion check fails
+      }
+    }
     
     res.status(200).json({
       message: `${contentType} approved by client successfully`,
@@ -2378,6 +2429,81 @@ export const updateSubmissionDueDate = async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       message: error instanceof Error ? error.message : 'Failed to update due date'
+    });
+  }
+};
+
+/**
+ * Test endpoint to check V4 campaign completion status
+ * GET /api/submissions/v4/completion-status?campaignId=xxx&userId=xxx
+ */
+export const checkV4CompletionStatus = async (req: Request, res: Response) => {
+  const { campaignId, userId } = req.query;
+  
+  try {
+    if (!campaignId || !userId) {
+      return res.status(400).json({ 
+        message: 'campaignId and userId are required' 
+      });
+    }
+    
+    const { checkV4SubmissionCompletion } = await import('../service/submissionV4CompletionService.js');
+    const completionStatus = await checkV4SubmissionCompletion(
+      campaignId as string,
+      userId as string
+    );
+    
+    console.log(`🔍 Completion status check for user ${userId} in campaign ${campaignId}:`, completionStatus);
+    
+    res.status(200).json({
+      campaignId,
+      userId,
+      ...completionStatus,
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('Error checking completion status:', error);
+    res.status(500).json({
+      message: 'Failed to check completion status',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+};
+
+/**
+ * Test endpoint to manually trigger V4 campaign completion
+ * POST /api/submissions/v4/trigger-completion
+ */
+export const triggerV4Completion = async (req: Request, res: Response) => {
+  const { campaignId, userId } = req.body;
+  const adminId = req.session.userid;
+  
+  try {
+    if (!campaignId || !userId) {
+      return res.status(400).json({ 
+        message: 'campaignId and userId are required' 
+      });
+    }
+    
+    const { handleV4CompletedCampaign } = await import('../service/submissionV4CompletionService.js');
+    const result = await handleV4CompletedCampaign(campaignId, userId, adminId);
+    
+    console.log(`🎯 Manual completion trigger for user ${userId} in campaign ${campaignId}: ${result ? 'SUCCESS' : 'NOT READY'}`);
+    
+    res.status(200).json({
+      campaignId,
+      userId,
+      completed: result,
+      message: result ? 'Campaign completed and invoice generated' : 'Campaign not ready for completion',
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('Error triggering completion:', error);
+    res.status(500).json({
+      message: 'Failed to trigger completion',
+      error: error instanceof Error ? error.message : 'Unknown error'
     });
   }
 };
