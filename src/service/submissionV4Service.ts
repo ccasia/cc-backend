@@ -266,7 +266,7 @@ export const updatePostingLink = async (submissionId: string, postingLink: strin
       where: { id: submissionId },
       data: { 
         content: postingLink,
-        status: 'PENDING_REVIEW',
+        status: 'CLIENT_APPROVED',
         approvedByAdminId: adminId || null, // Track if admin added the link
         updatedAt: new Date()
       },
