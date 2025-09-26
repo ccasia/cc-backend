@@ -599,38 +599,43 @@ async function deleteFileIfExists(filePath: string) {
 
             //For Raw Footages
             if (filePaths?.rawFootages?.length) {
-              const requestChangeRawFootages = await prisma.rawFootage.findMany({
-                where: {
-                  userId: submission.userId,
-                  campaignId: submission.campaignId,
-                  status: 'REVISION_REQUESTED',
-                },
+              // Debug logging for raw footage processing
+              console.log('🎬 Worker Raw Footage Processing Debug:', {
+                submissionId: submission.id,
+                newRawFootagesToProcess: filePaths.rawFootages.length,
+                preserveExistingMedia: content.preserveExistingMedia,
+                isV4: content.isV4,
+                existingMediaInfo: content.existingMedia?.rawFootages || []
               });
 
-              const urls = await Promise.all(
-                filePaths.rawFootages.map(async (rawFootagePath: any) => {
-                  const rawFootageFileName = `${submission.id}_${path.basename(rawFootagePath)}`;
+              // For V4 submissions with selective updates, always create new raw footages
+              // The backend controller has already handled selective deletion
+              if (content.isV4 && content.preserveExistingMedia) {
+                console.log('🔄 V4 Selective Update: Creating new raw footages directly (backend handled existing raw footage preservation)');
+                
+                const urls = await Promise.all(
+                  filePaths.rawFootages.map(async (rawFootagePath: any) => {
+                    const rawFootageFileName = `${submission.id}_${path.basename(rawFootagePath)}`;
 
-                  const { size } = await fs.promises.stat(rawFootagePath);
+                    const { size } = await fs.promises.stat(rawFootagePath);
 
-                  const rawFootagePublicURL = await uploadPitchVideo(
-                    rawFootagePath,
-                    rawFootageFileName,
-                    content.folder,
-                    (data: number) => {
-                      io?.to(clients.get(content.userid)!).emit('progress', {
-                        progress: Math.ceil(data),
-                        submissionId: submission.id,
-                        name: 'Uploading Start',
-                        fileName: rawFootageFileName,
-                        fileSize: fs.statSync(rawFootagePath).size,
-                        fileType: path.extname(rawFootagePath),
-                      });
-                    },
-                    size,
-                  );
+                    const rawFootagePublicURL = await uploadPitchVideo(
+                      rawFootagePath,
+                      rawFootageFileName,
+                      content.folder,
+                      (data: number) => {
+                        io?.to(clients.get(content.userid)!).emit('progress', {
+                          progress: Math.ceil(data),
+                          submissionId: submission.id,
+                          name: 'Uploading Start',
+                          fileName: rawFootageFileName,
+                          fileSize: fs.statSync(rawFootagePath).size,
+                          fileType: path.extname(rawFootagePath),
+                        });
+                      },
+                      size,
+                    );
 
-                  if (!requestChangeRawFootages.length) {
                     await prisma.rawFootage.create({
                       data: {
                         url: rawFootagePublicURL,
@@ -639,46 +644,102 @@ async function deleteFileIfExists(filePath: string) {
                         userId: submission.userId,
                       },
                     });
-                  }
 
-                  return rawFootagePublicURL;
-                }),
-              );
-
-              if (requestChangeRawFootages.length) {
-                await Promise.all(
-                  requestChangeRawFootages.map((video, index) =>
-                    prisma.rawFootage.update({
-                      where: { id: video.id },
-                      data: {
-                        url: urls[index],
-                        submissionId: submission.id,
-                        campaignId: content.campaignId,
-                        userId: submission.userId,
-                        status: 'PENDING',
-                      },
-                    }),
-                  ),
+                    console.log('✅ V4 Raw footage entry created in the DB (selective update).');
+                    return rawFootagePublicURL;
+                  }),
                 );
+              } else {
+                // Original logic for non-V4 or full replacement
+                const requestChangeRawFootages = await prisma.rawFootage.findMany({
+                  where: {
+                    userId: submission.userId,
+                    campaignId: submission.campaignId,
+                    status: 'REVISION_REQUESTED',
+                  },
+                });
+
+                console.log('🔍 Worker found raw footages with REVISION_REQUESTED status:', requestChangeRawFootages.length);
+
+                const urls = await Promise.all(
+                  filePaths.rawFootages.map(async (rawFootagePath: any) => {
+                    const rawFootageFileName = `${submission.id}_${path.basename(rawFootagePath)}`;
+
+                    const { size } = await fs.promises.stat(rawFootagePath);
+
+                    const rawFootagePublicURL = await uploadPitchVideo(
+                      rawFootagePath,
+                      rawFootageFileName,
+                      content.folder,
+                      (data: number) => {
+                        io?.to(clients.get(content.userid)!).emit('progress', {
+                          progress: Math.ceil(data),
+                          submissionId: submission.id,
+                          name: 'Uploading Start',
+                          fileName: rawFootageFileName,
+                          fileSize: fs.statSync(rawFootagePath).size,
+                          fileType: path.extname(rawFootagePath),
+                        });
+                      },
+                      size,
+                    );
+
+                    if (!requestChangeRawFootages.length) {
+                      await prisma.rawFootage.create({
+                        data: {
+                          url: rawFootagePublicURL,
+                          submissionId: submission.id,
+                          campaignId: content.campaignId,
+                          userId: submission.userId,
+                        },
+                      });
+                    }
+
+                    console.log('✅ Raw footage entry created in the DB.');
+                    return rawFootagePublicURL;
+                  }),
+                );
+
+                if (requestChangeRawFootages.length) {
+                  await Promise.all(
+                    requestChangeRawFootages.map((video, index) =>
+                      prisma.rawFootage.update({
+                        where: { id: video.id },
+                        data: {
+                          url: urls[index],
+                          submissionId: submission.id,
+                          campaignId: content.campaignId,
+                          userId: submission.userId,
+                          status: 'PENDING',
+                        },
+                      }),
+                    ),
+                  );
+                }
               }
             }
 
             // For photos
             if (filePaths?.photos?.length) {
-              const requestChangePhotos = await prisma.photo.findMany({
-                where: {
-                  userId: submission.userId,
-                  campaignId: submission.campaignId,
-                  status: 'REVISION_REQUESTED',
-                },
+              // Debug logging for photo processing
+              console.log('🖼️ Worker Photo Processing Debug:', {
+                submissionId: submission.id,
+                newPhotosToProcess: filePaths.photos.length,
+                preserveExistingMedia: content.preserveExistingMedia,
+                isV4: content.isV4,
+                existingMediaInfo: content.existingMedia?.photos || []
               });
 
-              const urls = await Promise.all(
-                filePaths.photos.map(async (photoPath: any) => {
-                  const photoFileName = `${submission.id}_${path.basename(photoPath)}`;
-                  const photoPublicURL = await uploadImage(photoPath, photoFileName, content.folder);
+              // For V4 submissions with selective updates, always create new photos
+              // The backend controller has already handled selective deletion
+              if (content.isV4 && content.preserveExistingMedia) {
+                console.log('🔄 V4 Selective Update: Creating new photos directly (backend handled existing photo preservation)');
+                
+                const urls = await Promise.all(
+                  filePaths.photos.map(async (photoPath: any) => {
+                    const photoFileName = `${submission.id}_${path.basename(photoPath)}`;
+                    const photoPublicURL = await uploadImage(photoPath, photoFileName, content.folder);
 
-                  if (!requestChangePhotos.length) {
                     await prisma.photo.create({
                       data: {
                         url: photoPublicURL,
@@ -687,29 +748,60 @@ async function deleteFileIfExists(filePath: string) {
                         userId: submission.userId,
                       },
                     });
-                  }
-                  // await fs.promises.unlink(photoPath);
 
-                  console.log('✅ Photo entry created in the DB.');
-                  return photoPublicURL;
-                }),
-              );
-
-              if (requestChangePhotos.length) {
-                await Promise.all(
-                  requestChangePhotos.map((photo, index) =>
-                    prisma.photo.update({
-                      where: { id: photo.id },
-                      data: {
-                        url: urls[index],
-                        submissionId: submission.id,
-                        campaignId: content.campaignId,
-                        userId: submission.userId,
-                        status: 'PENDING',
-                      },
-                    }),
-                  ),
+                    console.log('✅ V4 Photo entry created in the DB (selective update).');
+                    return photoPublicURL;
+                  }),
                 );
+              } else {
+                // Original logic for non-V4 or full replacement
+                const requestChangePhotos = await prisma.photo.findMany({
+                  where: {
+                    userId: submission.userId,
+                    campaignId: submission.campaignId,
+                    status: 'REVISION_REQUESTED',
+                  },
+                });
+
+                console.log('🔍 Worker found photos with REVISION_REQUESTED status:', requestChangePhotos.length);
+
+                const urls = await Promise.all(
+                  filePaths.photos.map(async (photoPath: any) => {
+                    const photoFileName = `${submission.id}_${path.basename(photoPath)}`;
+                    const photoPublicURL = await uploadImage(photoPath, photoFileName, content.folder);
+
+                    if (!requestChangePhotos.length) {
+                      await prisma.photo.create({
+                        data: {
+                          url: photoPublicURL,
+                          submissionId: submission.id,
+                          campaignId: content.campaignId,
+                          userId: submission.userId,
+                        },
+                      });
+                    }
+
+                    console.log('✅ Photo entry created in the DB.');
+                    return photoPublicURL;
+                  }),
+                );
+
+                if (requestChangePhotos.length) {
+                  await Promise.all(
+                    requestChangePhotos.map((photo, index) =>
+                      prisma.photo.update({
+                        where: { id: photo.id },
+                        data: {
+                          url: urls[index],
+                          submissionId: submission.id,
+                          campaignId: content.campaignId,
+                          userId: submission.userId,
+                          status: 'PENDING',
+                        },
+                      }),
+                    ),
+                  );
+                }
               }
             }
 
