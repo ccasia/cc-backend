@@ -116,10 +116,18 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
     }
     
     // Parse JSON data from form data
+    let isSelectiveUpdate = false;
+    let keepExistingPhotos: Array<{id: string, url: string}> = [];
+    let keepExistingRawFootages: Array<{id: string, url: string}> = [];
+    
     try {
       const parsedData = JSON.parse(req.body.data);
       submissionId = parsedData.submissionId;
       caption = parsedData.caption;
+      isSelectiveUpdate = parsedData.isSelectiveUpdate || false;
+      keepExistingPhotos = parsedData.keepExistingPhotos || [];
+      keepExistingRawFootages = parsedData.keepExistingRawFootages || [];
+      
     } catch (parseError) {
       console.error('V4 submit-content JSON parse error:', parseError);
       return res.status(400).json({ message: 'Invalid request data format' });
@@ -205,6 +213,8 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
       existingPhotos: submission.photos?.length || 0,
       existingRawFootages: submission.rawFootages?.length || 0,
       submissionStatus: submission.status,
+      isSelectiveUpdate,
+      keepExistingPhotosCount: keepExistingPhotos.length,
     });
     
     const hasUploadedFiles = uploadedVideos.length > 0 || uploadedPhotos.length > 0 || uploadedRawFootages.length > 0;
@@ -226,31 +236,73 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
     // Handle photo replacement for V4 resubmissions
     const isResubmission = ['CHANGES_REQUIRED', 'REJECTED'].includes(submission.status);
     if (isResubmission && uploadedPhotos.length > 0) {
-      console.log(`🖼️ V4 Controller - Resubmission detected, deleting ${submission.photos?.length || 0} existing photos`);
-      
-      // Delete all existing photos for this submission
-      if (submission.photos?.length > 0) {
-        await prisma.photo.deleteMany({
-          where: {
-            submissionId: submissionId,
-          },
-        });
-        console.log(`🖼️ V4 Controller - Deleted ${submission.photos.length} existing photos`);
+      if (isSelectiveUpdate && keepExistingPhotos.length > 0) {
+        // Selective update: only delete photos that are NOT in the keepExistingPhotos list
+        const existingPhotoIds = submission.photos?.map(photo => photo.id) || [];
+        const keepPhotoIds = keepExistingPhotos.map(photo => photo.id);
+        const photosToDelete = existingPhotoIds.filter(id => !keepPhotoIds.includes(id));
+        
+        console.log(`🖼️ V4 Controller - Selective update: keeping ${keepPhotoIds.length} photos, deleting ${photosToDelete.length} photos`);
+        console.log(`🖼️ V4 Controller - Photos to keep:`, keepPhotoIds);
+        console.log(`🖼️ V4 Controller - Photos to delete:`, photosToDelete);
+        
+        if (photosToDelete.length > 0) {
+          await prisma.photo.deleteMany({
+            where: {
+              id: { in: photosToDelete },
+              submissionId: submissionId,
+            },
+          });
+          console.log(`🖼️ V4 Controller - Selectively deleted ${photosToDelete.length} photos`);
+        }
+      } else {
+        // Full replacement: delete all existing photos (original behavior)
+        console.log(`🖼️ V4 Controller - Full replacement detected, deleting ${submission.photos?.length || 0} existing photos`);
+        
+        if (submission.photos?.length > 0) {
+          await prisma.photo.deleteMany({
+            where: {
+              submissionId: submissionId,
+            },
+          });
+          console.log(`🖼️ V4 Controller - Deleted ${submission.photos.length} existing photos`);
+        }
       }
     }
     
     // Handle raw footage replacement for V4 resubmissions
     if (isResubmission && uploadedRawFootages.length > 0) {
-      console.log(`🎬 V4 Controller - Resubmission detected, deleting ${submission.rawFootages?.length || 0} existing raw footages`);
-      
-      // Delete all existing raw footages for this submission
-      if (submission.rawFootages?.length > 0) {
-        await prisma.rawFootage.deleteMany({
-          where: {
-            submissionId: submissionId,
-          },
-        });
-        console.log(`🎬 V4 Controller - Deleted ${submission.rawFootages.length} existing raw footages`);
+      if (isSelectiveUpdate && keepExistingRawFootages.length > 0) {
+        // Selective update: only delete raw footages that are NOT in the keepExistingRawFootages list
+        const existingRawFootageIds = submission.rawFootages?.map(rawFootage => rawFootage.id) || [];
+        const keepRawFootageIds = keepExistingRawFootages.map(rawFootage => rawFootage.id);
+        const rawFootagesToDelete = existingRawFootageIds.filter(id => !keepRawFootageIds.includes(id));
+        
+        console.log(`🎬 V4 Controller - Selective update: keeping ${keepRawFootageIds.length} raw footages, deleting ${rawFootagesToDelete.length} raw footages`);
+        console.log(`🎬 V4 Controller - Raw footages to keep:`, keepRawFootageIds);
+        console.log(`🎬 V4 Controller - Raw footages to delete:`, rawFootagesToDelete);
+        
+        if (rawFootagesToDelete.length > 0) {
+          await prisma.rawFootage.deleteMany({
+            where: {
+              id: { in: rawFootagesToDelete },
+              submissionId: submissionId,
+            },
+          });
+          console.log(`🎬 V4 Controller - Selectively deleted ${rawFootagesToDelete.length} raw footages`);
+        }
+      } else {
+        // Full replacement: delete all existing raw footages (original behavior)
+        console.log(`🎬 V4 Controller - Full replacement detected, deleting ${submission.rawFootages?.length || 0} existing raw footages`);
+        
+        if (submission.rawFootages?.length > 0) {
+          await prisma.rawFootage.deleteMany({
+            where: {
+              submissionId: submissionId,
+            },
+          });
+          console.log(`🎬 V4 Controller - Deleted ${submission.rawFootages.length} existing raw footages`);
+        }
       }
     }
     
@@ -306,7 +358,9 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
       await channel.assertQueue('draft', { durable: true });
       
       // Log the submission status for clarity
-      console.log(`🔄 Submission status: ${submission.status} - ${['CHANGES_REQUIRED', 'REJECTED'].includes(submission.status) ? 'REPLACING' : 'Preserving'} existing media`);
+      const operationType = isSelectiveUpdate ? 'SELECTIVE UPDATE' : 
+                           ['CHANGES_REQUIRED', 'REJECTED'].includes(submission.status) ? 'REPLACING' : 'PRESERVING';
+      console.log(`🔄 Submission status: ${submission.status} - ${operationType} existing media`);
       
       const payload = {
         userid: creatorId,
@@ -325,8 +379,9 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
           photos: submission.photos?.map(p => ({ id: p.id, status: p.status })) || [],
           rawFootages: submission.rawFootages?.map(r => ({ id: r.id, status: r.status })) || [],
         },
-        // Don't preserve existing media if status is CHANGES_REQUIRED or REJECTED (replace all with new uploads)
-        preserveExistingMedia: !['CHANGES_REQUIRED', 'REJECTED'].includes(submission.status),
+        // For selective updates, preserve existing media even if status is CHANGES_REQUIRED or REJECTED
+        // For full replacement, don't preserve existing media
+        preserveExistingMedia: isSelectiveUpdate || !['CHANGES_REQUIRED', 'REJECTED'].includes(submission.status),
       };
       
     console.log('V4 submit-content sending to worker:', {
@@ -334,11 +389,12 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
       submissionType: submission.submissionType.type,
       filePaths: Object.keys(Object.fromEntries(filePaths)),
       isV4: true,
-      isReplacingContent: ['CHANGES_REQUIRED', 'REJECTED'].includes(submission.status),
+      isReplacingContent: !isSelectiveUpdate && ['CHANGES_REQUIRED', 'REJECTED'].includes(submission.status),
       currentStatus: submission.status,
       existingPhotoCount: submission.photos?.length || 0,
       newPhotoCount: uploadedPhotos.length,
-      preserveExistingMedia: !['CHANGES_REQUIRED', 'REJECTED'].includes(submission.status)
+      preserveExistingMedia: isSelectiveUpdate || !['CHANGES_REQUIRED', 'REJECTED'].includes(submission.status),
+      isSelectiveUpdate
     });      channel.sendToQueue('draft', Buffer.from(JSON.stringify(payload)), { persistent: true });
     } finally {
       if (channel) await channel.close();

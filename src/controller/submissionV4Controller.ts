@@ -434,6 +434,14 @@ export const approveV4Submission = async (req: Request, res: Response) => {
     
     // Update photos
     if (submission.photos && submission.photos.length > 0) {
+      console.log('🖼️ V4 Approve - Before photo status update:', {
+        submissionId,
+        action,
+        currentPhotoCount: submission.photos.length,
+        photoIds: submission.photos.map(p => p.id),
+        newContentStatus: contentStatus
+      });
+
       updates.push(
         prisma.photo.updateMany({
           where: { submissionId },
@@ -446,6 +454,8 @@ export const approveV4Submission = async (req: Request, res: Response) => {
           }
         })
       );
+
+      console.log('🔄 V4 Approve - Photo status update queued for transaction');
     }
     
     // Update raw footage
@@ -491,6 +501,21 @@ export const approveV4Submission = async (req: Request, res: Response) => {
     
     // Execute all updates
     await prisma.$transaction(updates);
+    
+    console.log('✅ V4 Approve - Transaction completed, checking photo count...');
+    
+    // Verify photos after transaction
+    const updatedSubmission = await prisma.submission.findUnique({
+      where: { id: submissionId },
+      include: { photos: true }
+    });
+    
+    console.log('🔍 V4 Approve - After transaction photo count:', {
+      submissionId,
+      action,
+      photoCountAfterTransaction: updatedSubmission?.photos?.length || 0,
+      photoIdsAfterTransaction: updatedSubmission?.photos?.map(p => p.id) || []
+    });
     
     // Emit socket event for real-time updates
     const io = req.app.get('io');
@@ -1024,11 +1049,21 @@ export const approvePostingLinkV4 = async (req: Request, res: Response) => {
       });
       
       if (submissionWithCampaign) {
+        // Emit submission update event
         io.to(submissionWithCampaign.campaign.id).emit('v4:submission:updated', {
           submissionId,
           campaignId: submissionWithCampaign.campaign.id,
           newStatus,
           action: `posting_link_${action}`,
+          updatedAt: new Date().toISOString()
+        });
+        
+        // Emit campaign update event for analytics consistency with V3
+        io.to(submissionWithCampaign.campaign.id).emit('v4:campaign:updated', {
+          campaignId: submissionWithCampaign.campaign.id,
+          action: `posting_link_${action}`,
+          submissionId,
+          newStatus,
           updatedAt: new Date().toISOString()
         });
       }
