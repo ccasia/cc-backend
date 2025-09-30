@@ -235,8 +235,8 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
     
     // Handle photo replacement for V4 resubmissions
     const isResubmission = ['CHANGES_REQUIRED', 'REJECTED'].includes(submission.status);
-    if (isResubmission && uploadedPhotos.length > 0) {
-      if (isSelectiveUpdate && keepExistingPhotos.length > 0) {
+    if (isResubmission && (uploadedPhotos.length > 0 || (isSelectiveUpdate && keepExistingPhotos.length >= 0))) {
+      if (isSelectiveUpdate && keepExistingPhotos.length >= 0) {
         // Selective update: only delete photos that are NOT in the keepExistingPhotos list
         const existingPhotoIds = submission.photos?.map(photo => photo.id) || [];
         const keepPhotoIds = keepExistingPhotos.map(photo => photo.id);
@@ -255,7 +255,7 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
           });
           console.log(`🖼️ V4 Controller - Selectively deleted ${photosToDelete.length} photos`);
         }
-      } else {
+      } else if (uploadedPhotos.length > 0) {
         // Full replacement: delete all existing photos (original behavior)
         console.log(`🖼️ V4 Controller - Full replacement detected, deleting ${submission.photos?.length || 0} existing photos`);
         
@@ -401,8 +401,13 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
       if (amqp) await amqp.close();
     }
     
-    // Update submission status to PENDING_REVIEW if files were uploaded
-    if (hasUploadedFiles) {
+    // Check if there are meaningful changes that warrant status update
+    const hasMeaningfulChanges = hasUploadedFiles || 
+      (isResubmission && isSelectiveUpdate && keepExistingPhotos.length !== (submission.photos?.length || 0)) ||
+      (caption && caption.trim() !== (submission.caption || '').trim());
+    
+    // Update submission status to PENDING_REVIEW if there are meaningful changes
+    if (hasMeaningfulChanges) {
       await prisma.submission.update({
         where: { id: submissionId },
         data: {
@@ -426,7 +431,7 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
         });
       }
       
-      console.log(`📤 Creator ${creatorId} submitted V4 content for submission ${submissionId}, status updated to PENDING_REVIEW`);
+      console.log(`📤 Creator ${creatorId} submitted V4 content changes for submission ${submissionId}, status updated to PENDING_REVIEW`);
     }
     
     res.status(200).json({
