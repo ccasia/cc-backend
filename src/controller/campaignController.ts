@@ -1450,7 +1450,19 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
       },
       include: {
         pitch: true,
-        campaignAdmin: true,
+        campaignAdmin: {
+          include: {
+            admin: {
+              include: {
+                user: {
+                  select: {
+                    role: true,
+                  },
+                },
+              },
+            },
+          },
+        },
       },
     });
 
@@ -1473,20 +1485,25 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
 
       io.to(clients.get(user?.id)).emit('notification', newPitch);
 
-      const admins = campaign?.campaignAdmin;
+      const campaignManagers = campaign?.campaignAdmin;
 
       const notificationAdmin = notificationPitch(pitch.campaign.name, 'Admin', pitch.user.name as string);
 
-      admins?.map(async ({ adminId }) => {
-        const notification = await saveNotification({
-          userId: adminId as string,
-          message: notificationAdmin.message,
-          title: notificationAdmin.title,
-          entity: 'Pitch',
-          entityId: campaign?.id as string,
-        });
+      campaignManagers?.map(async (manager) => {
+        const userRole = manager.admin.user.role;
+        const userId = manager.adminId;
 
-        io.to(clients.get(adminId)).emit('notification', notification);
+        if (userRole !== 'client') {
+          const notification = await saveNotification({
+            userId: userId as string,
+            message: notificationAdmin.message,
+            title: notificationAdmin.title,
+            entity: 'Pitch',
+            entityId: campaign?.id as string,
+          });
+
+          io.to(clients.get(manager)).emit('notification', notification);
+        }
       });
     }
 
