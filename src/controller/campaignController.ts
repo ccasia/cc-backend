@@ -51,6 +51,7 @@ import {
   notificationMaintenance,
   notificationLogisticTracking,
   notificationLogisticDelivery,
+  notificationPitchForClientReview,
 } from '@helper/notification';
 import { deliveryConfirmation, shortlisted, tracking } from '@configs/nodemailer.config';
 import { createNewSpreadSheet } from '@services/google_sheets/sheets';
@@ -6800,6 +6801,45 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
               userId: adminUser.admin.userId,
             },
           });
+        }
+
+        const clientUsers = await tx.campaignAdmin.findMany({
+          where: {
+            campaignId: campaign.id,
+            admin: {
+              user: {
+                role: 'client',
+              },
+            },
+          },
+          include: {
+            admin: {
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                  },
+                },
+              },
+            },
+          },
+        });
+
+        for (const clientUser of clientUsers) {
+          const { title, message } = notificationPitchForClientReview(campaign.name);
+
+          const notification = await saveNotification({
+            userId: clientUser.admin.userId,
+            title: title,
+            message: message,
+            entity: 'Pitch',
+            entityId: campaign.id,
+          });
+
+          const clientSocketId = clients.get(clientUser.admin.userId);
+          if (clientSocketId) {
+            io.to(clientSocketId).emit('notification', notification);
+          }
         }
       }
     });
