@@ -243,16 +243,29 @@ export const rejectPitchByAdmin = async (req: Request, res: Response) => {
     });
 
     // Create notification for creator
-    await prisma.notification.create({
-      data: {
-        title: 'Pitch Rejected',
-        message: `Your pitch for campaign "${pitch.campaign.name}" has been rejected by admin.`,
-        entity: 'Pitch',
-        campaignId: pitch.campaignId,
-        pitchId: pitchId,
-        userId: pitch.userId,
-      },
+    // await prisma.notification.create({
+    //   data: {
+    //     title: 'Pitch Rejected',
+    //     message: `Your pitch for campaign "${pitch.campaign.name}" has been rejected by admin.`,
+    //     entity: 'Pitch',
+    //     campaignId: pitch.campaignId,
+    //     pitchId: pitchId,
+    //     userId: pitch.userId,
+    //   },
+    // });
+    const notification = await saveNotification({
+      userId: pitch.userId,
+      title: 'Pitch Rejected',
+      message: `Your pitch for campaign "${pitch.campaign.name}" has been rejected by admin.`,
+      entity: 'Pitch',
+      entityId: pitch.campaignId,
     });
+
+    const socketId = clients.get(pitch.userId);
+    if (socketId) {
+      io.to(socketId).emit('notification', notification);
+      io.to(socketId).emit('pitchUpdate');
+    }
 
     // Fetch the updated pitch to return in response
     const updatedPitch = await prisma.pitch.findUnique({
@@ -264,9 +277,9 @@ export const rejectPitchByAdmin = async (req: Request, res: Response) => {
     });
 
     console.log(`Pitch ${pitchId} rejected by admin, creator removed from campaign`);
-    return res.status(200).json({ 
+    return res.status(200).json({
       message: 'Pitch rejected and creator removed from campaign',
-      pitch: updatedPitch
+      pitch: updatedPitch,
     });
   } catch (error) {
     console.error('Error rejecting pitch by admin:', error);
