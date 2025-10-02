@@ -25,6 +25,7 @@ import subscriptionRoute from './subscriptionRoute';
 import kwspRoute from './kwspRoute';
 import clientRoute from './clientRoute';
 import pitchRoute from './pitchRoute';
+import pdfRoute from './pdfRoute';
 
 export const router = express.Router();
 
@@ -54,3 +55,4 @@ router.use('/subscription', subscriptionRoute);
 router.use('/kwsp', kwspRoute);
 router.use('/client', clientRoute);
 router.use('/pitch', pitchRoute);
+router.use('/api', pdfRoute);
