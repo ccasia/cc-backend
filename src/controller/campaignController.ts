@@ -6819,44 +6819,44 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
             },
           });
         }
-
-        const clientUsers = await tx.campaignAdmin.findMany({
-          where: {
-            campaignId: campaign.id,
-            admin: {
-              user: {
-                role: 'client',
-              },
+      }
+      // Only one notification for all creators
+      const clientUsers = await tx.campaignAdmin.findMany({
+        where: {
+          campaignId: campaign.id,
+          admin: {
+            user: {
+              role: 'client',
             },
           },
-          include: {
-            admin: {
-              include: {
-                user: {
-                  select: {
-                    id: true,
-                  },
+        },
+        include: {
+          admin: {
+            include: {
+              user: {
+                select: {
+                  id: true,
                 },
               },
             },
           },
+        },
+      });
+
+      for (const clientUser of clientUsers) {
+        const { title, message } = notificationPitchForClientReview(campaign.name);
+
+        const notification = await saveNotification({
+          userId: clientUser.admin.userId,
+          title: title,
+          message: message,
+          entity: 'Pitch',
+          entityId: campaign.id,
         });
 
-        for (const clientUser of clientUsers) {
-          const { title, message } = notificationPitchForClientReview(campaign.name);
-
-          const notification = await saveNotification({
-            userId: clientUser.admin.userId,
-            title: title,
-            message: message,
-            entity: 'Pitch',
-            entityId: campaign.id,
-          });
-
-          const clientSocketId = clients.get(clientUser.admin.userId);
-          if (clientSocketId) {
-            io.to(clientSocketId).emit('notification', notification);
-          }
+        const clientSocketId = clients.get(clientUser.admin.userId);
+        if (clientSocketId) {
+          io.to(clientSocketId).emit('notification', notification);
         }
       }
     });
