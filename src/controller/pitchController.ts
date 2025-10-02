@@ -1,6 +1,9 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import dayjs from 'dayjs';
+import { clients, io } from '../server';
+import { saveNotification } from './notificationController';
+import { notificationPitchForClientReview } from '@helper/notification';
 
 const prisma = new PrismaClient();
 
@@ -107,11 +110,11 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
     const updatedPitch = await prisma.pitch.update({
       where: { id: pitchId },
       data: {
-  ...updateData,
-  status: 'SENT_TO_CLIENT',
-  approvedByAdminId: adminId,
-  ugcCredits: parseInt(ugcCredits),
-},
+        ...updateData,
+        status: 'SENT_TO_CLIENT',
+        approvedByAdminId: adminId,
+        ugcCredits: parseInt(ugcCredits),
+      },
       include: {
         campaign: true,
         user: true,
@@ -130,7 +133,9 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
         include: { subscriptions: true as any },
       } as any);
       if (company) {
-        const activeSub = (company as any).subscriptions?.find((s: any) => s.status === 'ACTIVE') || (company as any).subscriptions?.[0];
+        const activeSub =
+          (company as any).subscriptions?.find((s: any) => s.status === 'ACTIVE') ||
+          (company as any).subscriptions?.[0];
         if (activeSub) {
           const currentUsed = Number((activeSub as any).creditsUsed || 0);
           const toDeduct = Number(ugcCredits || 0);
@@ -150,16 +155,30 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
     const clientUsers = pitch.campaign.campaignAdmin.filter((ca) => ca.admin.user.role === 'client');
 
     for (const clientUser of clientUsers) {
-      await prisma.notification.create({
-        data: {
-          title: 'Pitch Sent to Client',
-          message: `A pitch for campaign "${pitch.campaign.name}" has been approved by admin and sent to you for review.`,
-          entity: 'Pitch',
-          campaignId: pitch.campaignId,
-          pitchId: pitchId,
-          userId: clientUser.admin.userId,
-        },
+      // const notification = await prisma.notification.create({
+      //   data: {
+      //     title: 'Pitch Sent to Client',
+      //     message: `A pitch for campaign "${pitch.campaign.name}" has been approved by admin and sent to you for review.`,
+      //     entity: 'Pitch',
+      //     campaignId: pitch.campaignId,
+      //     pitchId: pitchId,
+      //     userId: clientUser.admin.userId,
+      //   },
+      // });
+      const {title, message} = notificationPitchForClientReview(pitch.campaign.name);
+
+      const notification = await saveNotification({
+        userId: clientUser.admin.userId,
+        title: title,
+        message: message,
+        entity: 'Pitch',
+        entityId: pitch.campaignId,
       });
+
+      const clientSocketId = clients.get(clientUser.admin.userId);
+      if (clientSocketId) {
+        io.to(clientSocketId).emit('notification', notification);
+      }
     }
 
     console.log(`Pitch ${pitchId} approved by admin with ${ugcCredits} UGC credits, status updated to SENT_TO_CLIENT`);
@@ -999,16 +1018,18 @@ export const getPitchesV3 = async (req: Request, res: Response) => {
 
     // Transform pitches to show role-based status and filter for clients
     const transformedPitches = pitches
-      .filter(pitch => {
+      .filter((pitch) => {
         // For clients: show pitches that are SENT_TO_CLIENT, APPROVED, REJECTED, MAYBE, or in agreement stages
         // Hide pitches with PENDING_REVIEW status (admin review stage)
         if (user.role === 'client') {
-          return pitch.status === 'SENT_TO_CLIENT' || 
-                 pitch.status === 'APPROVED' || 
-                 pitch.status === 'REJECTED' ||
-                 pitch.status === 'MAYBE' ||
-                 pitch.status === 'AGREEMENT_PENDING' || 
-                 pitch.status === 'AGREEMENT_SUBMITTED';
+          return (
+            pitch.status === 'SENT_TO_CLIENT' ||
+            pitch.status === 'APPROVED' ||
+            pitch.status === 'REJECTED' ||
+            pitch.status === 'MAYBE' ||
+            pitch.status === 'AGREEMENT_PENDING' ||
+            pitch.status === 'AGREEMENT_SUBMITTED'
+          );
         }
         // For admin and creators: show all pitches
         return true;
