@@ -314,6 +314,17 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
         },
       });
 
+      // Update the corresponding pitch status to AGREEMENT_SUBMITTED when agreement is approved
+      await prisma.pitch.updateMany({
+        where: {
+          campaignId: campaignId,
+          userId: userId,
+          status: 'AGREEMENT_PENDING',
+        },
+        data: {
+          status: 'AGREEMENT_SUBMITTED',
+        },
+      });
 
       const taskInReviewColumn = inReviewColumn?.task?.find((item) => item.submissionId === agreementSubs.id);
 
@@ -467,6 +478,18 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
         },
       });
 
+      // Update the corresponding pitch status back to AGREEMENT_PENDING when agreement is rejected
+      await prisma.pitch.updateMany({
+        where: {
+          campaignId: campaignId,
+          userId: userId,
+          status: 'AGREEMENT_SUBMITTED',
+        },
+        data: {
+          status: 'AGREEMENT_PENDING',
+        },
+      });
+
       // For creator from In Review to In progress
       const taskInReviewColumn = await getTaskId({
         boardId: boards.id,
@@ -587,6 +610,7 @@ export const getAllSubmissions = async (req: Request, res: Response) => {
         campaign: {
           select: {
             name: true,
+            company: true,
           },
         },
         admin: {
