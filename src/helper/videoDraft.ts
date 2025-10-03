@@ -434,7 +434,8 @@ async function deleteFileIfExists(filePath: string) {
                 entityId: data.campaign.id,
               });
 
-              io?.to(clients.get(data.userId)).emit('notification', notification);
+              // Handle notification in controller directly
+              // io?.to(clients.get(data.userId)).emit('notification', notification);
 
               const { title: adminTitle, message: adminMessage } = notificationDraft(
                 data.campaign.name,
@@ -482,9 +483,10 @@ async function deleteFileIfExists(filePath: string) {
                   }
                 }
 
-                if (io) {
-                  io.to(clients.get(item.adminId)).emit('notification', notification);
-                }
+                // Handle notification in controller directly
+                // if (io) {
+                //   io.to(clients.get(item.adminId)).emit('notification', notification);
+                // }
               }
 
               activeProcesses.delete(submission.id);
@@ -614,7 +616,7 @@ async function deleteFileIfExists(filePath: string) {
 
             for (const item of content.admins) {
               if (item.admin && item.admin.user && item.admin.user.id) {
-              io.to(clients.get(item.admin.user.id)).emit('newSubmission');
+                io.to(clients.get(item.admin.user.id)).emit('newSubmission');
               } else {
                 console.warn('[videoDraft] Skipping admin notification: missing admin or user for item:', item);
               }

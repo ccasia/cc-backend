@@ -541,7 +541,7 @@ async function deleteFileIfExists(filePath: string) {
                 entityId: data.campaign.id,
               });
 
-              io?.to(clients.get(data.userId)).emit('notification', notification);
+              // io?.to(clients.get(data.userId)).emit('notification', notification);
 
               const { title: adminTitle, message: adminMessage } = notificationDraft(
                 data.campaign.name,
@@ -589,9 +589,9 @@ async function deleteFileIfExists(filePath: string) {
                   }
                 }
 
-                if (io) {
-                  io.to(clients.get(item.adminId)).emit('notification', notification);
-                }
+                // if (io) {
+                //   io.to(clients.get(item.adminId)).emit('notification', notification);
+                // }
               }
 
               activeProcesses.delete(submission.id);
