@@ -6,6 +6,9 @@ import {
   updatePostingLink
 } from '../service/submissionV4Service';
 import { PostingLinkUpdate } from '../types/submissionV4Types';
+import { io, clients } from 'src/server';
+import { saveNotification } from './notificationController';
+import { notificationDraft } from '@helper/notification';
 
 const prisma = new PrismaClient();
 
@@ -143,22 +146,23 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
     const submission = await prisma.submission.findUnique({
       where: { id: submissionId },
       include: {
+        user: true,
         submissionType: true,
         campaign: {
           include: {
             campaignAdmin: {
               include: {
                 admin: {
-                  include: { user: true }
-                }
-              }
-            }
-          }
+                  include: { user: true },
+                },
+              },
+            },
+          },
         },
         video: true,
         photos: true,
-        rawFootages: true
-      }
+        rawFootages: true,
+      },
     });
     
     if (!submission) {
@@ -430,8 +434,32 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
           newStatus: 'PENDING_REVIEW'
         });
       }
-      
-      console.log(`📤 Creator ${creatorId} submitted V4 content changes for submission ${submissionId}, status updated to PENDING_REVIEW`);
+
+      console.log(
+        `📤 Creator ${creatorId} submitted V4 content changes for submission ${submissionId}, status updated to PENDING_REVIEW`,
+      );
+    }
+
+    const adminUsers = submission.campaign.campaignAdmin.filter(
+      (ca) => ca.admin.user.role === 'admin' || ca.admin.user.role === 'superadmin',
+    );
+
+    for (const adminUser of adminUsers) {
+      const { title, message } = notificationDraft(submission.campaign.name, 'Admin', submission.user.name as string);
+      const adminUserId = adminUser.admin.userId;
+
+      const notification = saveNotification({
+        userId: adminUserId,
+        message: message,
+        title: title,
+        entity: 'Draft',
+        entityId: submission.campaign.id,
+      });
+
+      const adminSocketId = clients.get(adminUserId);
+      if (adminSocketId) {
+        io.to(adminSocketId).emit('notification', notification);
+      }
     }
     
     res.status(200).json({
