@@ -1,18 +1,21 @@
 import { Request, Response } from 'express';
 import { FeedbackStatus, PrismaClient, SubmissionStatus } from '@prisma/client';
-import { 
-  createV4SubmissionsForCreator, 
-  getV4Submissions, 
-  updatePostingLink, 
-  submitV4Content
+import {
+  createV4SubmissionsForCreator,
+  getV4Submissions,
+  updatePostingLink,
+  submitV4Content,
 } from '../service/submissionV4Service';
 import { V4SubmissionCreateData, PostingLinkUpdate, V4ContentSubmission } from '../types/submissionV4Types';
-import { 
-  getNextStatusAfterAdminAction, 
+import {
+  getNextStatusAfterAdminAction,
   getNextStatusAfterClientAction,
-  getStatusAfterForwardingClientFeedback
+  getStatusAfterForwardingClientFeedback,
 } from '../utils/v4StatusUtils';
 import { checkAndCompleteV4Campaign } from '../service/submissionV4CompletionService';
+import { clients, io } from 'src/server';
+import { saveNotification } from './notificationController';
+import { notificationDraft } from '@helper/notification';
 
 /**
  * Update submission status based on individual content statuses
@@ -367,16 +370,35 @@ export const approveV4Submission = async (req: Request, res: Response) => {
       where: { id: submissionId },
       include: {
         submissionType: true,
+        user: {
+          select: {
+            name: true,
+          },
+        },
         campaign: {
           select: {
+            campaignAdmin: {
+              select: {
+                admin: {
+                  include: {
+                    user: {
+                      select: {
+                        role: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
             id: true,
-            origin: true
-          }
+            origin: true,
+            name: true,
+          },
         },
         video: true,
         photos: true,
-        rawFootages: true
-      }
+        rawFootages: true,
+      },
     });
     
     if (!submission) {
@@ -531,11 +553,32 @@ export const approveV4Submission = async (req: Request, res: Response) => {
     
     // Note: Content submissions are created when agreements are approved in the main submission workflow
     // This controller only handles the actual content submissions (VIDEO, PHOTO, RAW_FOOTAGE)
-    
-    const actionMessage = submission.campaign.origin === 'CLIENT' && action === 'approve' 
-      ? 'approved and sent to client for review'
-      : `${action}d successfully`;
-    
+
+    const actionMessage =
+      submission.campaign.origin === 'CLIENT' && action === 'approve'
+        ? 'approved and sent to client for review'
+        : `${action}d successfully`;
+
+    const clientUsers = submission.campaign.campaignAdmin.filter((ca) => ca.admin.user.role === 'client');
+
+    for (const clientUser of clientUsers) {
+      const { title, message } = notificationDraft(submission.campaign.name, 'Admin', submission.user.name as string);
+      const clientUserId = clientUser.admin.userId;
+
+      const notification = saveNotification({
+        userId: clientUserId,
+        message: message,
+        title: title,
+        entity: 'Draft',
+        entityId: submission.campaign.id,
+      });
+
+      const clientSocketId = clients.get(clientUserId);
+      if (clientSocketId) {
+        io.to(clientSocketId).emit('notification', notification);
+      }
+    }
+
     console.log(`✅ V4 submission ${submissionId} ${actionMessage} by admin ${currentUserId}`);
     
     // Check if campaign is now complete and generate invoice if needed
