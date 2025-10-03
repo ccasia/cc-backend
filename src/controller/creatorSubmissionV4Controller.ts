@@ -1,11 +1,12 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import amqplib from 'amqplib';
-import { 
-  getV4Submissions, 
+import {
+  getV4Submissions,
   updatePostingLink
 } from '../service/submissionV4Service';
 import { PostingLinkUpdate } from '../types/submissionV4Types';
+import { saveCaptionToHistory } from '../utils/captionHistoryUtils';
 
 const prisma = new PrismaClient();
 
@@ -117,6 +118,7 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
     
     // Parse JSON data from form data
     let isSelectiveUpdate = false;
+    let caption = '';
     let keepExistingPhotos: Array<{id: string, url: string}> = [];
     let keepExistingRawFootages: Array<{id: string, url: string}> = [];
     
@@ -224,7 +226,10 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
     if (!hasUploadedFiles && existingMediaCount === 0) {
       return res.status(400).json({ message: 'Please upload at least one file before submitting for review.' });
     }
-    
+
+    // Save current caption to history before updating
+    await saveCaptionToHistory(submissionId, caption, creatorId!, 'creator');
+
     // Update submission caption
     await prisma.submission.update({
       where: { id: submissionId },
