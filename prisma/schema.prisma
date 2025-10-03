@@ -952,8 +952,9 @@ model Submission {
   rawFootagesDriveLink String?
   
   // V4 specific fields
-  contentOrder    Int?           // Order of content (Video 1, Video 2, etc.)
-  submissionVersion String?      @default("v3") // "v2", "v3", "v4"
+  contentOrder      Int?             // Order of content (Video 1, Video 2, etc.)
+  submissionVersion String?          @default("v2") // "v2", "v3", "v4"
+  captionHistory    CaptionHistory[]
 
   @@unique([userId, campaignId, submissionTypeId, contentOrder])
 }
@@ -1584,4 +1585,18 @@ enum PaymentFormStatus {
 enum CampaignOrigin {
   ADMIN
   CLIENT
+}
+
+model CaptionHistory {
+  id              String     @id @default(cuid())
+  submissionId    String
+  caption         String?
+  author   String     // userId or adminId who wrote this caption
+  authorType String   // "creator" or "admin" - who wrote this caption
+  createdAt       DateTime   @default(now())
+
+  submission      Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@index([submissionId])
+  @@index([createdAt])
 }
