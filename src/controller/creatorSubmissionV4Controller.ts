@@ -49,19 +49,16 @@ export const getMyV4Submissions = async (req: Request, res: Response) => {
     // Filter feedback for each submission based on submission status and type
     const submissionsWithFilteredFeedback = submissions.map(submission => {
       let filteredFeedback = submission.feedback;
-      
       // When submission status is CLIENT_APPROVED, return only the last two feedback entries
       // regardless of sentToCreator status
       if (submission.status === 'CLIENT_APPROVED') {
         filteredFeedback = submission.feedback.slice(0, 2);
       } else {
-        // For other statuses, only show feedback that was sent to creator AND is COMMENT type
-        // Creators should only see COMMENT type feedback (not REQUEST type)
-        filteredFeedback = submission.feedback.filter(feedback => 
-          feedback.sentToCreator && feedback.type === 'COMMENT'
+        // For other statuses, show all feedback that was sent to creator (both COMMENT and REQUEST types)
+        filteredFeedback = submission.feedback.filter(feedback =>
+          feedback.sentToCreator
         );
       }
-      
       return {
         ...submission,
         feedback: filteredFeedback
@@ -645,16 +642,12 @@ export const getMySubmissionDetails = async (req: Request, res: Response) => {
     
     // Filter feedback based on submission status and type
     let filteredFeedback = submission.feedback;
-    
-    // When submission status is CLIENT_APPROVED, return only the last two feedback entries
-    // regardless of sentToCreator status
+
     if (submission.status === 'CLIENT_APPROVED') {
       filteredFeedback = submission.feedback.slice(0, 2);
     } else {
-      // For other statuses, only show feedback that was sent to creator AND is COMMENT type
-      // Creators should only see COMMENT type feedback (not REQUEST type)
       filteredFeedback = submission.feedback.filter(feedback => 
-        feedback.sentToCreator && feedback.type === 'COMMENT'
+        feedback.sentToCreator && (feedback.type === 'REQUEST' || feedback.type === 'COMMENT')
       );
     }
 
