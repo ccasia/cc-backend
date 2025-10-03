@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
-import { V4SubmissionCreateData, V4SubmissionType } from '../types/submissionV4Types';
+import { V4SubmissionCreateData } from '../types/submissionV4Types';
+import { saveCaptionToHistory } from '../utils/captionHistoryUtils';
 
 const prisma = new PrismaClient();
 
@@ -377,7 +378,10 @@ export const submitV4Content = async (
         );
       }
     }
-    
+
+    // Save current caption to history before updating
+    await saveCaptionToHistory(submissionId, contentData.caption, submission.userId, 'creator');
+
     // Update submission status and caption
     updates.push(
       prisma.submission.update({
@@ -390,7 +394,7 @@ export const submitV4Content = async (
         }
       })
     );
-    
+
     // Execute all updates in transaction
     const results = await prisma.$transaction(updates);
     
