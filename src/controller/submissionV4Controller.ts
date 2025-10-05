@@ -4,7 +4,11 @@ import {
   createV4SubmissionsForCreator,
   getV4Submissions,
   updatePostingLink,
+<<<<<<< HEAD
   submitV4Content,
+=======
+  submitV4Content
+>>>>>>> b2f34f74f6bbc65d0695576d2918409818613736
 } from '../service/submissionV4Service';
 import { V4SubmissionCreateData, PostingLinkUpdate, V4ContentSubmission } from '../types/submissionV4Types';
 import {
@@ -13,9 +17,13 @@ import {
   getStatusAfterForwardingClientFeedback,
 } from '../utils/v4StatusUtils';
 import { checkAndCompleteV4Campaign } from '../service/submissionV4CompletionService';
+<<<<<<< HEAD
 import { clients, io } from 'src/server';
 import { saveNotification } from './notificationController';
 import { notificationDraft } from '@helper/notification';
+=======
+import { saveCaptionToHistory } from '../utils/captionHistoryUtils';
+>>>>>>> b2f34f74f6bbc65d0695576d2918409818613736
 
 /**
  * Update submission status based on individual content statuses
@@ -415,20 +423,25 @@ export const approveV4Submission = async (req: Request, res: Response) => {
       submission.campaign.origin as any
     );
     
+    // Save current caption to history before updating (if caption is being changed)
+    if (caption !== undefined) {
+      await saveCaptionToHistory(submissionId, caption, currentUserId!, 'admin');
+    }
+
     // Update submission and individual content items
     const updates = [];
-    
+
     // Update submission status and caption if provided
     const updateData: any = {
       status: newStatus as any,
       updatedAt: new Date()
     };
-    
+
     // Update caption if provided (only for admin actions)
     if (caption !== undefined) {
       updateData.caption = caption || null;
     }
-    
+
     updates.push(
       prisma.submission.update({
         where: { id: submissionId },
@@ -2556,19 +2569,19 @@ export const checkV4CompletionStatus = async (req: Request, res: Response) => {
 export const triggerV4Completion = async (req: Request, res: Response) => {
   const { campaignId, userId } = req.body;
   const adminId = req.session.userid;
-  
+
   try {
     if (!campaignId || !userId) {
-      return res.status(400).json({ 
-        message: 'campaignId and userId are required' 
+      return res.status(400).json({
+        message: 'campaignId and userId are required'
       });
     }
-    
+
     const { handleV4CompletedCampaign } = await import('../service/submissionV4CompletionService.js');
     const result = await handleV4CompletedCampaign(campaignId, userId, adminId);
-    
+
     console.log(`🎯 Manual completion trigger for user ${userId} in campaign ${campaignId}: ${result ? 'SUCCESS' : 'NOT READY'}`);
-    
+
     res.status(200).json({
       campaignId,
       userId,
@@ -2576,11 +2589,35 @@ export const triggerV4Completion = async (req: Request, res: Response) => {
       message: result ? 'Campaign completed and invoice generated' : 'Campaign not ready for completion',
       timestamp: new Date().toISOString()
     });
-    
+
   } catch (error) {
     console.error('Error triggering completion:', error);
     res.status(500).json({
       message: 'Failed to trigger completion',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+};
+
+/**
+ * Get caption history for a submission
+ * GET /api/submissions/v4/:submissionId/caption-history
+ */
+export const getCaptionHistory = async (req: Request, res: Response) => {
+  const { submissionId } = req.params;
+
+  try {
+    // Fetch all history
+    const history = await prisma.captionHistory.findMany({
+      where: { submissionId },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    return res.status(200).json({ history });
+  } catch (error) {
+    console.error('Error fetching caption history:', error);
+    res.status(500).json({
+      message: 'Failed to fetch caption history',
       error: error instanceof Error ? error.message : 'Unknown error'
     });
   }

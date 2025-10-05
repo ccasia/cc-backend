@@ -19,7 +19,8 @@ import {
   getRawFootageFeedbackV4,
   forwardRawFootageFeedbackV4,
   getSubmissionStatusInfo,
-  updateSubmissionDueDate
+  updateSubmissionDueDate,
+  getCaptionHistory
 } from '../controller/submissionV4Controller';
 import { isLoggedIn } from '../middleware/onlyLogin';
 import { isAdmin } from '../middleware/onlySuperadmin';
@@ -79,5 +80,8 @@ router.patch('/content/request-changes/client', isLoggedIn, isClient, requestCha
 router.get('/photo/:photoId/feedback', isLoggedIn, getPhotoFeedbackV4);
 router.get('/rawFootage/:rawFootageId/feedback', isLoggedIn, getRawFootageFeedbackV4);
 router.get('/content/feedback/:contentType/:contentId', isLoggedIn, getIndividualContentFeedbackV4);
+
+// Caption history endpoint
+router.get('/:submissionId/caption-history', isLoggedIn, getCaptionHistory);
 
 export default router;

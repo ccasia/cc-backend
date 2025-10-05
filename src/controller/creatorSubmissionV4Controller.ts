@@ -1,14 +1,15 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import amqplib from 'amqplib';
-import { 
-  getV4Submissions, 
-  updatePostingLink
-} from '../service/submissionV4Service';
+import { getV4Submissions, updatePostingLink } from '../service/submissionV4Service';
 import { PostingLinkUpdate } from '../types/submissionV4Types';
+<<<<<<< HEAD
 import { io, clients } from 'src/server';
 import { saveNotification } from './notificationController';
 import { notificationDraft } from '@helper/notification';
+=======
+import { saveCaptionToHistory } from '../utils/captionHistoryUtils';
+>>>>>>> b2f34f74f6bbc65d0695576d2918409818613736
 
 const prisma = new PrismaClient();
 
@@ -19,87 +20,80 @@ const prisma = new PrismaClient();
 export const getMyV4Submissions = async (req: Request, res: Response) => {
   const { campaignId } = req.query;
   const creatorId = req.session.userid;
-  
+
   try {
     if (!creatorId) {
       return res.status(401).json({ message: 'You are not logged in' });
     }
-    
+
     if (!campaignId) {
       return res.status(400).json({ message: 'campaignId is required' });
     }
-    
+
     // Verify creator has access to this campaign
     const creatorAccess = await prisma.shortListedCreator.findFirst({
       where: {
         campaignId: campaignId as string,
-        userId: creatorId
-      }
+        userId: creatorId,
+      },
     });
-    
+
     if (!creatorAccess) {
-      return res.status(403).json({ 
-        message: 'You do not have access to this campaign or are not approved' 
+      return res.status(403).json({
+        message: 'You do not have access to this campaign or are not approved',
       });
     }
-    
-    const submissions = await getV4Submissions(
-      campaignId as string, 
-      creatorId
-    );
-    
+
+    const submissions = await getV4Submissions(campaignId as string, creatorId);
+
     // Filter feedback for each submission based on submission status and type
-    const submissionsWithFilteredFeedback = submissions.map(submission => {
+    const submissionsWithFilteredFeedback = submissions.map((submission) => {
       let filteredFeedback = submission.feedback;
-      
       // When submission status is CLIENT_APPROVED, return only the last two feedback entries
       // regardless of sentToCreator status
       if (submission.status === 'CLIENT_APPROVED') {
         filteredFeedback = submission.feedback.slice(0, 2);
       } else {
-        // For other statuses, only show feedback that was sent to creator AND is COMMENT type
-        // Creators should only see COMMENT type feedback (not REQUEST type)
-        filteredFeedback = submission.feedback.filter(feedback => 
-          feedback.sentToCreator && feedback.type === 'COMMENT'
-        );
+        // For other statuses, show all feedback that was sent to creator (both COMMENT and REQUEST types)
+        filteredFeedback = submission.feedback.filter((feedback) => feedback.sentToCreator);
       }
-      
       return {
         ...submission,
-        feedback: filteredFeedback
+        feedback: filteredFeedback,
       };
     });
-    
+
     // Group submissions by type for creator interface
     const groupedSubmissions = {
-      agreement: submissionsWithFilteredFeedback.find(s => s.submissionType.type === 'AGREEMENT_FORM'),
-      videos: submissionsWithFilteredFeedback.filter(s => s.submissionType.type === 'VIDEO'),
-      photos: submissionsWithFilteredFeedback.filter(s => s.submissionType.type === 'PHOTO'),
-      rawFootage: submissionsWithFilteredFeedback.filter(s => s.submissionType.type === 'RAW_FOOTAGE')
+      agreement: submissionsWithFilteredFeedback.find((s) => s.submissionType.type === 'AGREEMENT_FORM'),
+      videos: submissionsWithFilteredFeedback.filter((s) => s.submissionType.type === 'VIDEO'),
+      photos: submissionsWithFilteredFeedback.filter((s) => s.submissionType.type === 'PHOTO'),
+      rawFootage: submissionsWithFilteredFeedback.filter((s) => s.submissionType.type === 'RAW_FOOTAGE'),
     };
-    
+
     // Calculate overall progress
     const totalSubmissions = submissionsWithFilteredFeedback.length;
-    const completedSubmissions = submissionsWithFilteredFeedback.filter(s => 
-      s.status === 'APPROVED' || s.status === 'CLIENT_APPROVED' || s.status === 'POSTED'
+    const completedSubmissions = submissionsWithFilteredFeedback.filter(
+      (s) => s.status === 'APPROVED' || s.status === 'CLIENT_APPROVED' || s.status === 'POSTED',
     ).length;
     const progress = totalSubmissions > 0 ? (completedSubmissions / totalSubmissions) * 100 : 0;
-    
-    console.log(`🎯 Creator ${creatorId} retrieved ${submissionsWithFilteredFeedback.length} v4 submissions for campaign ${campaignId}`);
-    
+
+    console.log(
+      `🎯 Creator ${creatorId} retrieved ${submissionsWithFilteredFeedback.length} v4 submissions for campaign ${campaignId}`,
+    );
+
     res.status(200).json({
       submissions: submissionsWithFilteredFeedback,
       grouped: groupedSubmissions,
       progress: Math.round(progress),
       total: submissionsWithFilteredFeedback.length,
-      completed: completedSubmissions
+      completed: completedSubmissions,
     });
-    
   } catch (error) {
     console.error('Error getting creator v4 submissions:', error);
     res.status(500).json({
       message: 'Failed to get your submissions',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 };
@@ -112,17 +106,18 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
   let submissionId: string, caption: string;
   const files = req.files as any;
   const creatorId = req.session.userid;
-  
+
   try {
     if (!creatorId) {
       return res.status(401).json({ message: 'You are not logged in' });
     }
-    
+
     // Parse JSON data from form data
     let isSelectiveUpdate = false;
-    let keepExistingPhotos: Array<{id: string, url: string}> = [];
-    let keepExistingRawFootages: Array<{id: string, url: string}> = [];
-    
+    let caption = '';
+    let keepExistingPhotos: Array<{ id: string; url: string }> = [];
+    let keepExistingRawFootages: Array<{ id: string; url: string }> = [];
+
     try {
       const parsedData = JSON.parse(req.body.data);
       submissionId = parsedData.submissionId;
@@ -130,18 +125,17 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
       isSelectiveUpdate = parsedData.isSelectiveUpdate || false;
       keepExistingPhotos = parsedData.keepExistingPhotos || [];
       keepExistingRawFootages = parsedData.keepExistingRawFootages || [];
-      
     } catch (parseError) {
       console.error('V4 submit-content JSON parse error:', parseError);
       return res.status(400).json({ message: 'Invalid request data format' });
     }
-    
+
     if (!submissionId) {
       return res.status(400).json({ message: 'submissionId is required' });
     }
-    
+
     console.log(`Creator ${creatorId} submitting content V4 for submission ${submissionId}`);
-    
+
     // Verify this submission belongs to the creator
     const submission = await prisma.submission.findUnique({
       where: { id: submissionId },
@@ -164,48 +158,40 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
         rawFootages: true,
       },
     });
-    
+
     if (!submission) {
       return res.status(404).json({ message: 'Submission not found' });
     }
-    
+
     if (submission.userId !== creatorId) {
-      return res.status(403).json({ 
-        message: 'You can only submit content for your own submissions' 
+      return res.status(403).json({
+        message: 'You can only submit content for your own submissions',
       });
     }
-    
+
     if (submission.submissionVersion !== 'v4') {
       return res.status(400).json({ message: 'Not a v4 submission' });
     }
-    
+
     // Check if submission is in a state that allows content updates
     const allowedStatuses = ['IN_PROGRESS', 'CHANGES_REQUIRED', 'REJECTED', 'NOT_STARTED', 'CLIENT_FEEDBACK'];
     if (!allowedStatuses.includes(submission.status)) {
-      return res.status(400).json({ 
-        message: `Cannot submit content. Current status: ${submission.status}` 
+      return res.status(400).json({
+        message: `Cannot submit content. Current status: ${submission.status}`,
       });
     }
-    
+
     // Normalize express-fileupload file shapes (single object or array)
-    const uploadedVideos = Array.isArray(files?.videos)
-      ? files.videos
-      : files?.videos
-        ? [files.videos]
-        : [];
-        
-    const uploadedPhotos = Array.isArray(files?.photos)
-      ? files.photos
-      : files?.photos
-        ? [files.photos]
-        : [];
-        
+    const uploadedVideos = Array.isArray(files?.videos) ? files.videos : files?.videos ? [files.videos] : [];
+
+    const uploadedPhotos = Array.isArray(files?.photos) ? files.photos : files?.photos ? [files.photos] : [];
+
     const uploadedRawFootages = Array.isArray(files?.rawFootages)
       ? files.rawFootages
       : files?.rawFootages
         ? [files.rawFootages]
         : [];
-    
+
     // Debug logs for incoming files
     console.log('V4 submit-content incoming payload:', {
       fileKeys: files ? Object.keys(files) : [],
@@ -220,36 +206,42 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
       isSelectiveUpdate,
       keepExistingPhotosCount: keepExistingPhotos.length,
     });
-    
+
     const hasUploadedFiles = uploadedVideos.length > 0 || uploadedPhotos.length > 0 || uploadedRawFootages.length > 0;
-    const existingMediaCount = (submission.video?.length || 0) + (submission.photos?.length || 0) + (submission.rawFootages?.length || 0);
-    
+    const existingMediaCount =
+      (submission.video?.length || 0) + (submission.photos?.length || 0) + (submission.rawFootages?.length || 0);
+
     // For v4, we require at least some content based on submission type
     if (!hasUploadedFiles && existingMediaCount === 0) {
       return res.status(400).json({ message: 'Please upload at least one file before submitting for review.' });
     }
-    
+
+    // Save current caption to history before updating
+    await saveCaptionToHistory(submissionId, caption, creatorId!, 'creator');
+
     // Update submission caption
     await prisma.submission.update({
       where: { id: submissionId },
       data: {
-        caption: caption || null
-      }
+        caption: caption || null,
+      },
     });
-    
+
     // Handle photo replacement for V4 resubmissions
     const isResubmission = ['CHANGES_REQUIRED', 'REJECTED'].includes(submission.status);
     if (isResubmission && (uploadedPhotos.length > 0 || (isSelectiveUpdate && keepExistingPhotos.length >= 0))) {
       if (isSelectiveUpdate && keepExistingPhotos.length >= 0) {
         // Selective update: only delete photos that are NOT in the keepExistingPhotos list
-        const existingPhotoIds = submission.photos?.map(photo => photo.id) || [];
-        const keepPhotoIds = keepExistingPhotos.map(photo => photo.id);
-        const photosToDelete = existingPhotoIds.filter(id => !keepPhotoIds.includes(id));
-        
-        console.log(`🖼️ V4 Controller - Selective update: keeping ${keepPhotoIds.length} photos, deleting ${photosToDelete.length} photos`);
+        const existingPhotoIds = submission.photos?.map((photo) => photo.id) || [];
+        const keepPhotoIds = keepExistingPhotos.map((photo) => photo.id);
+        const photosToDelete = existingPhotoIds.filter((id) => !keepPhotoIds.includes(id));
+
+        console.log(
+          `🖼️ V4 Controller - Selective update: keeping ${keepPhotoIds.length} photos, deleting ${photosToDelete.length} photos`,
+        );
         console.log(`🖼️ V4 Controller - Photos to keep:`, keepPhotoIds);
         console.log(`🖼️ V4 Controller - Photos to delete:`, photosToDelete);
-        
+
         if (photosToDelete.length > 0) {
           await prisma.photo.deleteMany({
             where: {
@@ -261,8 +253,10 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
         }
       } else if (uploadedPhotos.length > 0) {
         // Full replacement: delete all existing photos (original behavior)
-        console.log(`🖼️ V4 Controller - Full replacement detected, deleting ${submission.photos?.length || 0} existing photos`);
-        
+        console.log(
+          `🖼️ V4 Controller - Full replacement detected, deleting ${submission.photos?.length || 0} existing photos`,
+        );
+
         if (submission.photos?.length > 0) {
           await prisma.photo.deleteMany({
             where: {
@@ -273,19 +267,21 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
         }
       }
     }
-    
+
     // Handle raw footage replacement for V4 resubmissions
     if (isResubmission && uploadedRawFootages.length > 0) {
       if (isSelectiveUpdate && keepExistingRawFootages.length > 0) {
         // Selective update: only delete raw footages that are NOT in the keepExistingRawFootages list
-        const existingRawFootageIds = submission.rawFootages?.map(rawFootage => rawFootage.id) || [];
-        const keepRawFootageIds = keepExistingRawFootages.map(rawFootage => rawFootage.id);
-        const rawFootagesToDelete = existingRawFootageIds.filter(id => !keepRawFootageIds.includes(id));
-        
-        console.log(`🎬 V4 Controller - Selective update: keeping ${keepRawFootageIds.length} raw footages, deleting ${rawFootagesToDelete.length} raw footages`);
+        const existingRawFootageIds = submission.rawFootages?.map((rawFootage) => rawFootage.id) || [];
+        const keepRawFootageIds = keepExistingRawFootages.map((rawFootage) => rawFootage.id);
+        const rawFootagesToDelete = existingRawFootageIds.filter((id) => !keepRawFootageIds.includes(id));
+
+        console.log(
+          `🎬 V4 Controller - Selective update: keeping ${keepRawFootageIds.length} raw footages, deleting ${rawFootagesToDelete.length} raw footages`,
+        );
         console.log(`🎬 V4 Controller - Raw footages to keep:`, keepRawFootageIds);
         console.log(`🎬 V4 Controller - Raw footages to delete:`, rawFootagesToDelete);
-        
+
         if (rawFootagesToDelete.length > 0) {
           await prisma.rawFootage.deleteMany({
             where: {
@@ -297,8 +293,10 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
         }
       } else {
         // Full replacement: delete all existing raw footages (original behavior)
-        console.log(`🎬 V4 Controller - Full replacement detected, deleting ${submission.rawFootages?.length || 0} existing raw footages`);
-        
+        console.log(
+          `🎬 V4 Controller - Full replacement detected, deleting ${submission.rawFootages?.length || 0} existing raw footages`,
+        );
+
         if (submission.rawFootages?.length > 0) {
           await prisma.rawFootage.deleteMany({
             where: {
@@ -309,13 +307,13 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
         }
       }
     }
-    
+
     // Build local file paths and enqueue processing job
     let amqp: amqplib.Connection | null = null;
     let channel: amqplib.Channel | null = null;
-    
+
     const filePaths = new Map();
-    
+
     // Handle videos (compress later in worker)
     if (uploadedVideos.length) {
       filePaths.set('video', []);
@@ -326,11 +324,11 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
           inputPath: videoPath,
           outputPath: `/tmp/${submissionId}_${video.name.replace(/\.[^/.]+$/, '')}_compressed.mp4`,
           fileName: `${submissionId}_${video.name}`,
-          originalName: video.name
+          originalName: video.name,
         });
       }
     }
-    
+
     // Handle photos
     if (uploadedPhotos.length) {
       filePaths.set('photos', []);
@@ -340,7 +338,7 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
         filePaths.get('photos').push(photoPath);
       }
     }
-    
+
     // Handle raw footages
     if (uploadedRawFootages.length) {
       filePaths.set('rawFootages', []);
@@ -355,17 +353,20 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
         }
       }
     }
-    
+
     try {
       amqp = await amqplib.connect(process.env.RABBIT_MQ!);
       channel = await amqp.createChannel();
       await channel.assertQueue('draft', { durable: true });
-      
+
       // Log the submission status for clarity
-      const operationType = isSelectiveUpdate ? 'SELECTIVE UPDATE' : 
-                           ['CHANGES_REQUIRED', 'REJECTED'].includes(submission.status) ? 'REPLACING' : 'PRESERVING';
+      const operationType = isSelectiveUpdate
+        ? 'SELECTIVE UPDATE'
+        : ['CHANGES_REQUIRED', 'REJECTED'].includes(submission.status)
+          ? 'REPLACING'
+          : 'PRESERVING';
       console.log(`🔄 Submission status: ${submission.status} - ${operationType} existing media`);
-      
+
       const payload = {
         userid: creatorId,
         submissionId,
@@ -379,47 +380,49 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
         submissionType: submission.submissionType.type,
         // Add existing media info for worker to preserve
         existingMedia: {
-          videos: submission.video?.map(v => ({ id: v.id, status: v.status })) || [],
-          photos: submission.photos?.map(p => ({ id: p.id, status: p.status })) || [],
-          rawFootages: submission.rawFootages?.map(r => ({ id: r.id, status: r.status })) || [],
+          videos: submission.video?.map((v) => ({ id: v.id, status: v.status })) || [],
+          photos: submission.photos?.map((p) => ({ id: p.id, status: p.status })) || [],
+          rawFootages: submission.rawFootages?.map((r) => ({ id: r.id, status: r.status })) || [],
         },
         // For selective updates, preserve existing media even if status is CHANGES_REQUIRED or REJECTED
         // For full replacement, don't preserve existing media
         preserveExistingMedia: isSelectiveUpdate || !['CHANGES_REQUIRED', 'REJECTED'].includes(submission.status),
       };
-      
-    console.log('V4 submit-content sending to worker:', {
-      submissionId,
-      submissionType: submission.submissionType.type,
-      filePaths: Object.keys(Object.fromEntries(filePaths)),
-      isV4: true,
-      isReplacingContent: !isSelectiveUpdate && ['CHANGES_REQUIRED', 'REJECTED'].includes(submission.status),
-      currentStatus: submission.status,
-      existingPhotoCount: submission.photos?.length || 0,
-      newPhotoCount: uploadedPhotos.length,
-      preserveExistingMedia: isSelectiveUpdate || !['CHANGES_REQUIRED', 'REJECTED'].includes(submission.status),
-      isSelectiveUpdate
-    });      channel.sendToQueue('draft', Buffer.from(JSON.stringify(payload)), { persistent: true });
+
+      console.log('V4 submit-content sending to worker:', {
+        submissionId,
+        submissionType: submission.submissionType.type,
+        filePaths: Object.keys(Object.fromEntries(filePaths)),
+        isV4: true,
+        isReplacingContent: !isSelectiveUpdate && ['CHANGES_REQUIRED', 'REJECTED'].includes(submission.status),
+        currentStatus: submission.status,
+        existingPhotoCount: submission.photos?.length || 0,
+        newPhotoCount: uploadedPhotos.length,
+        preserveExistingMedia: isSelectiveUpdate || !['CHANGES_REQUIRED', 'REJECTED'].includes(submission.status),
+        isSelectiveUpdate,
+      });
+      channel.sendToQueue('draft', Buffer.from(JSON.stringify(payload)), { persistent: true });
     } finally {
       if (channel) await channel.close();
       if (amqp) await amqp.close();
     }
-    
+
     // Check if there are meaningful changes that warrant status update
-    const hasMeaningfulChanges = hasUploadedFiles || 
+    const hasMeaningfulChanges =
+      hasUploadedFiles ||
       (isResubmission && isSelectiveUpdate && keepExistingPhotos.length !== (submission.photos?.length || 0)) ||
       (caption && caption.trim() !== (submission.caption || '').trim());
-    
+
     // Update submission status to PENDING_REVIEW if there are meaningful changes
     if (hasMeaningfulChanges) {
       await prisma.submission.update({
         where: { id: submissionId },
         data: {
           status: 'PENDING_REVIEW',
-          updatedAt: new Date()
-        }
+          updatedAt: new Date(),
+        },
       });
-      
+
       // Emit socket event for real-time updates
       const io = req.app.get('io');
       if (io) {
@@ -431,13 +434,14 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
           hasRawFootage: uploadedRawFootages.length > 0,
           submittedAt: new Date().toISOString(),
           creatorId,
-          newStatus: 'PENDING_REVIEW'
+          newStatus: 'PENDING_REVIEW',
         });
       }
 
       console.log(
         `📤 Creator ${creatorId} submitted V4 content changes for submission ${submissionId}, status updated to PENDING_REVIEW`,
       );
+<<<<<<< HEAD
     }
 
     const adminUsers = submission.campaign.campaignAdmin.filter(
@@ -460,23 +464,24 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
       if (adminSocketId) {
         io.to(adminSocketId).emit('notification', notification);
       }
+=======
+>>>>>>> b2f34f74f6bbc65d0695576d2918409818613736
     }
-    
+
     res.status(200).json({
       message: 'Content submitted successfully and is being processed',
       submissionId,
       filesUploaded: {
         videos: uploadedVideos.length,
         photos: uploadedPhotos.length,
-        rawFootages: uploadedRawFootages.length
-      }
+        rawFootages: uploadedRawFootages.length,
+      },
     });
-    
   } catch (error) {
     console.error('Error submitting creator v4 content:', error);
     res.status(500).json({
       message: 'Failed to submit content',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 };
@@ -488,59 +493,59 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
 export const updateMyPostingLink = async (req: Request, res: Response) => {
   const { submissionId, postingLink } = req.body as PostingLinkUpdate;
   const creatorId = req.session.userid;
-  
+
   try {
     if (!creatorId) {
       return res.status(401).json({ message: 'You are not logged in' });
     }
-    
+
     if (!submissionId || !postingLink) {
-      return res.status(400).json({ 
-        message: 'submissionId and postingLink are required' 
+      return res.status(400).json({
+        message: 'submissionId and postingLink are required',
       });
     }
-    
+
     // Validate URL format
     try {
       new URL(postingLink);
     } catch {
       return res.status(400).json({ message: 'Invalid posting link URL' });
     }
-    
+
     // Verify this submission belongs to the creator
     const submission = await prisma.submission.findUnique({
       where: { id: submissionId },
       include: {
         submissionType: true,
         campaign: {
-          select: { campaignType: true }
-        }
-      }
+          select: { campaignType: true },
+        },
+      },
     });
-    
+
     if (!submission) {
       return res.status(404).json({ message: 'Submission not found' });
     }
-    
+
     if (submission.userId !== creatorId) {
-      return res.status(403).json({ 
-        message: 'You can only update posting links for your own submissions' 
+      return res.status(403).json({
+        message: 'You can only update posting links for your own submissions',
       });
     }
-    
+
     if (submission.submissionVersion !== 'v4') {
       return res.status(400).json({ message: 'Not a v4 submission' });
     }
-    
+
     // Check if campaign type allows posting links
     if (submission.campaign?.campaignType === 'ugc') {
-      return res.status(400).json({ 
-        message: 'Posting links are not required for UGC (No posting) campaigns' 
+      return res.status(400).json({
+        message: 'Posting links are not required for UGC (No posting) campaigns',
       });
     }
-    
+
     const result = await updatePostingLink(submissionId, postingLink); // Creator adding link - no adminId
-    
+
     // Emit socket event for real-time updates
     const io = req.app.get('io');
     if (io) {
@@ -549,20 +554,19 @@ export const updateMyPostingLink = async (req: Request, res: Response) => {
         campaignId: submission.campaignId,
         postingLink,
         updatedAt: new Date().toISOString(),
-        creatorId
+        creatorId,
       });
     }
-    
+
     console.log(`🔗 Creator ${creatorId} updated posting link for v4 submission ${submissionId}`);
-    
+
     res.status(200).json({
       message: 'Posting link updated successfully',
-      submission: result
+      submission: result,
     });
-    
   } catch (error) {
     console.error('Error updating creator posting link:', error);
-    
+
     if (error instanceof Error) {
       if (error.message.includes('not found')) {
         return res.status(404).json({ message: error.message });
@@ -574,10 +578,10 @@ export const updateMyPostingLink = async (req: Request, res: Response) => {
         return res.status(400).json({ message: error.message });
       }
     }
-    
+
     res.status(500).json({
       message: 'Failed to update posting link',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 };
@@ -589,12 +593,12 @@ export const updateMyPostingLink = async (req: Request, res: Response) => {
 export const getMySubmissionDetails = async (req: Request, res: Response) => {
   const { submissionId } = req.params;
   const creatorId = req.session.userid;
-  
+
   try {
     if (!creatorId) {
       return res.status(401).json({ message: 'You are not logged in' });
     }
-    
+
     const submission = await prisma.submission.findUnique({
       where: { id: submissionId },
       include: {
@@ -603,8 +607,8 @@ export const getMySubmissionDetails = async (req: Request, res: Response) => {
           select: {
             id: true,
             name: true,
-            description: true
-          }
+            description: true,
+          },
         },
         video: {
           select: {
@@ -613,8 +617,8 @@ export const getMySubmissionDetails = async (req: Request, res: Response) => {
             status: true,
             feedback: true,
             reasons: true,
-            feedbackAt: true
-          }
+            feedbackAt: true,
+          },
         },
         photos: {
           select: {
@@ -623,8 +627,8 @@ export const getMySubmissionDetails = async (req: Request, res: Response) => {
             status: true,
             feedback: true,
             reasons: true,
-            feedbackAt: true
-          }
+            feedbackAt: true,
+          },
         },
         rawFootages: {
           select: {
@@ -633,51 +637,47 @@ export const getMySubmissionDetails = async (req: Request, res: Response) => {
             status: true,
             feedback: true,
             reasons: true,
-            feedbackAt: true
-          }
+            feedbackAt: true,
+          },
         },
         feedback: {
           include: {
             admin: {
               select: {
                 id: true,
-                name: true
-              }
-            }
+                name: true,
+              },
+            },
           },
           orderBy: {
-            createdAt: 'desc'
-          }
-        }
-      }
+            createdAt: 'desc',
+          },
+        },
+      },
     });
-    
+
     if (!submission) {
       return res.status(404).json({ message: 'Submission not found' });
     }
-    
+
     if (submission.userId !== creatorId) {
-      return res.status(403).json({ 
-        message: 'You can only view your own submissions' 
+      return res.status(403).json({
+        message: 'You can only view your own submissions',
       });
     }
-    
+
     if (submission.submissionVersion !== 'v4') {
       return res.status(400).json({ message: 'Not a v4 submission' });
     }
-    
+
     // Filter feedback based on submission status and type
     let filteredFeedback = submission.feedback;
-    
-    // When submission status is CLIENT_APPROVED, return only the last two feedback entries
-    // regardless of sentToCreator status
+
     if (submission.status === 'CLIENT_APPROVED') {
       filteredFeedback = submission.feedback.slice(0, 2);
     } else {
-      // For other statuses, only show feedback that was sent to creator AND is COMMENT type
-      // Creators should only see COMMENT type feedback (not REQUEST type)
-      filteredFeedback = submission.feedback.filter(feedback => 
-        feedback.sentToCreator && feedback.type === 'COMMENT'
+      filteredFeedback = submission.feedback.filter(
+        (feedback) => feedback.sentToCreator && (feedback.type === 'REQUEST' || feedback.type === 'COMMENT'),
       );
     }
 
@@ -704,22 +704,21 @@ export const getMySubmissionDetails = async (req: Request, res: Response) => {
           return status;
       }
     };
-    
+
     const submissionWithCreatorStatus = {
       ...submission,
       feedback: filteredFeedback,
-      creatorStatus: getCreatorStatus(submission.status)
+      creatorStatus: getCreatorStatus(submission.status),
     };
-    
+
     console.log(`🔍 Creator ${creatorId} viewed details for v4 submission ${submissionId}`);
-    
+
     res.status(200).json({ submission: submissionWithCreatorStatus });
-    
   } catch (error) {
     console.error('Error getting creator submission details:', error);
     res.status(500).json({
       message: 'Failed to get submission details',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 };
@@ -731,27 +730,27 @@ export const getMySubmissionDetails = async (req: Request, res: Response) => {
 export const getMyCampaignOverview = async (req: Request, res: Response) => {
   const { campaignId } = req.query;
   const creatorId = req.session.userid;
-  
+
   try {
     if (!creatorId) {
       return res.status(401).json({ message: 'You are not logged in' });
     }
-    
+
     if (!campaignId) {
       return res.status(400).json({ message: 'campaignId is required' });
     }
-    
+
     // Get campaign details and creator status
     const shortlistedCreator = await prisma.shortListedCreator.findFirst({
       where: {
         campaignId: campaignId as string,
-        userId: creatorId
-      }
+        userId: creatorId,
+      },
     });
-    
+
     if (!shortlistedCreator) {
-      return res.status(404).json({ 
-        message: 'Campaign not found or you are not assigned to this campaign' 
+      return res.status(404).json({
+        message: 'Campaign not found or you are not assigned to this campaign',
       });
     }
 
@@ -763,35 +762,34 @@ export const getMyCampaignOverview = async (req: Request, res: Response) => {
         name: true,
         description: true,
         submissionVersion: true,
-      }
+      },
     });
 
-    
     // Get submission summary
     const submissions = await getV4Submissions(campaignId as string, creatorId);
-    
+
     // Find agreement form submission status
-    const agreementSubmission = submissions.find(s => s.submissionType.type === 'AGREEMENT_FORM');
-    const isAgreementApproved = agreementSubmission?.status === 'APPROVED' || agreementSubmission?.status === 'CLIENT_APPROVED';
-    
+    const agreementSubmission = submissions.find((s) => s.submissionType.type === 'AGREEMENT_FORM');
+    const isAgreementApproved =
+      agreementSubmission?.status === 'APPROVED' || agreementSubmission?.status === 'CLIENT_APPROVED';
+
     // Filter out agreement form from summary calculations (only count content submissions)
-    const contentSubmissions = submissions.filter(s => s.submissionType.type !== 'AGREEMENT_FORM');
-    
+    const contentSubmissions = submissions.filter((s) => s.submissionType.type !== 'AGREEMENT_FORM');
+
     // Calculate progress and requirements
     const submissionSummary = {
       total: contentSubmissions.length,
-      completed: contentSubmissions.filter(s => s.status === 'APPROVED' || s.status === 'CLIENT_APPROVED').length,
-      inReview: contentSubmissions.filter(s => s.status === 'PENDING_REVIEW' || s.status === 'SENT_TO_CLIENT').length,
-      needsChanges: contentSubmissions.filter(s => s.status === 'CHANGES_REQUIRED' || s.status === 'REJECTED').length,
-      inProgress: contentSubmissions.filter(s => s.status === 'IN_PROGRESS').length
+      completed: contentSubmissions.filter((s) => s.status === 'APPROVED' || s.status === 'CLIENT_APPROVED').length,
+      inReview: contentSubmissions.filter((s) => s.status === 'PENDING_REVIEW' || s.status === 'SENT_TO_CLIENT').length,
+      needsChanges: contentSubmissions.filter((s) => s.status === 'CHANGES_REQUIRED' || s.status === 'REJECTED').length,
+      inProgress: contentSubmissions.filter((s) => s.status === 'IN_PROGRESS').length,
     };
-    
-    const progress = submissionSummary.total > 0 
-      ? Math.round((submissionSummary.completed / submissionSummary.total) * 100) 
-      : 0;
-    
+
+    const progress =
+      submissionSummary.total > 0 ? Math.round((submissionSummary.completed / submissionSummary.total) * 100) : 0;
+
     console.log(`📊 Creator ${creatorId} viewed campaign overview for ${campaignId}`);
-    
+
     res.status(200).json({
       campaign,
       creatorStatus: 'APPROVED', // ShortListedCreator doesn't have status field, so they're approved if they exist
@@ -799,14 +797,13 @@ export const getMyCampaignOverview = async (req: Request, res: Response) => {
       isAgreementApproved,
       submissions: submissionSummary,
       progress,
-      isComplete: progress === 100
+      isComplete: progress === 100,
     });
-    
   } catch (error) {
     console.error('Error getting creator campaign overview:', error);
     res.status(500).json({
       message: 'Failed to get campaign overview',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 };
