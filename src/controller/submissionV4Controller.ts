@@ -4,11 +4,7 @@ import {
   createV4SubmissionsForCreator,
   getV4Submissions,
   updatePostingLink,
-<<<<<<< HEAD
   submitV4Content,
-=======
-  submitV4Content
->>>>>>> b2f34f74f6bbc65d0695576d2918409818613736
 } from '../service/submissionV4Service';
 import { V4SubmissionCreateData, PostingLinkUpdate, V4ContentSubmission } from '../types/submissionV4Types';
 import {
@@ -17,13 +13,10 @@ import {
   getStatusAfterForwardingClientFeedback,
 } from '../utils/v4StatusUtils';
 import { checkAndCompleteV4Campaign } from '../service/submissionV4CompletionService';
-<<<<<<< HEAD
 import { clients, io } from 'src/server';
 import { saveNotification } from './notificationController';
 import { notificationDraft } from '@helper/notification';
-=======
 import { saveCaptionToHistory } from '../utils/captionHistoryUtils';
->>>>>>> b2f34f74f6bbc65d0695576d2918409818613736
 
 /**
  * Update submission status based on individual content statuses
