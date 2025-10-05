@@ -3,13 +3,10 @@ import { PrismaClient } from '@prisma/client';
 import amqplib from 'amqplib';
 import { getV4Submissions, updatePostingLink } from '../service/submissionV4Service';
 import { PostingLinkUpdate } from '../types/submissionV4Types';
-<<<<<<< HEAD
 import { io, clients } from 'src/server';
 import { saveNotification } from './notificationController';
 import { notificationDraft } from '@helper/notification';
-=======
 import { saveCaptionToHistory } from '../utils/captionHistoryUtils';
->>>>>>> b2f34f74f6bbc65d0695576d2918409818613736
 
 const prisma = new PrismaClient();
 
@@ -441,7 +438,6 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
       console.log(
         `📤 Creator ${creatorId} submitted V4 content changes for submission ${submissionId}, status updated to PENDING_REVIEW`,
       );
-<<<<<<< HEAD
     }
 
     const adminUsers = submission.campaign.campaignAdmin.filter(
@@ -464,8 +460,6 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
       if (adminSocketId) {
         io.to(adminSocketId).emit('notification', notification);
       }
-=======
->>>>>>> b2f34f74f6bbc65d0695576d2918409818613736
     }
 
     res.status(200).json({
