@@ -6058,17 +6058,6 @@ export const activateClientCampaign = async (req: Request, res: Response) => {
           console.error(`Error adding client ${clientUser.id} to campaign:`, error);
           // Continue with other clients even if one fails
         }
-
-        // Create notification
-        await prisma.notification.create({
-          data: {
-            title: 'Campaign Activated',
-            message: `Your campaign "${campaign.name}" has been activated by CSM`,
-            entity: 'Campaign',
-            campaignId,
-            userId: clientUser.id,
-          },
-        });
       }
     }
 
@@ -6117,6 +6106,44 @@ export const activateClientCampaign = async (req: Request, res: Response) => {
     } catch (error) {
       console.error('Error creating thread for client campaign:', error);
       // Don't fail the activation if thread creation fails
+    }
+
+    // creating notification for clients when campaign is activated
+    const clientUsers = await prisma.campaignAdmin.findMany({
+      where: {
+        campaignId: campaign.id,
+        admin: {
+          user: {
+            role: 'client',
+          },
+        },
+      },
+      include: {
+        admin: {
+          include: {
+            user: {
+              select: {
+                id: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    for (const clientUser of clientUsers) {
+      const notification = await saveNotification({
+        userId: clientUser.admin.userId,
+        title: 'Campaign Activated',
+        message: `Your campaign "${campaign.name}" has been activated by CSM`,
+        entity: 'Campaign',
+        entityId: campaign.id,
+      });
+
+      const clientSocketId = clients.get(clientUser.admin.userId);
+      if (clientSocketId) {
+        io.to(clientSocketId).emit('notification', notification);
+      }
     }
 
     return res.status(200).json({
@@ -7394,6 +7421,46 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
         createdCreators.push({ id: userId });
       }
     });
+
+    // creating notification for clients when campaign is activated
+    const clientUsers = await prisma.campaignAdmin.findMany({
+      where: {
+        campaignId: campaign.id,
+        admin: {
+          user: {
+            role: 'client',
+          },
+        },
+      },
+      include: {
+        admin: {
+          include: {
+            user: {
+              select: {
+                id: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    for (const clientUser of clientUsers) {
+      const { title, message } = notificationPitchForClientReview(campaign.name);
+
+      const notification = await saveNotification({
+        userId: clientUser.admin.userId,
+        title: title,
+        message: message,
+        entity: 'Pitch',
+        entityId: campaign.id,
+      });
+
+      const clientSocketId = clients.get(clientUser.admin.userId);
+      if (clientSocketId) {
+        io.to(clientSocketId).emit('notification', notification);
+      }
+    }
 
     const adminLogMessage = `Shortlisted ${guestCreators.length} guest creator(s) for Campaign "${campaign.name}"`;
     logAdminChange(adminLogMessage, adminId, req);
