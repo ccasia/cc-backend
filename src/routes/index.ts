@@ -53,4 +53,4 @@ router.use('/subscription', subscriptionRoute);
 router.use('/kwsp', kwspRoute);
 router.use('/client', clientRoute);
 router.use('/pitch', pitchRoute);
-router.use('/api', pdfRoute);
+router.use('/agreement', pdfRoute);
