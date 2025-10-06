@@ -37,11 +37,7 @@ router.get('/agreement-template/:encodedPath', async (req, res, next) => {
 
     // If not found, try common folders with the last segment as filename
     const lastSegment = decodedPath.split('/').pop() as string;
-    const possiblePaths = [
-      `creatorAgreements/${lastSegment}`,
-      `agreementTemplates/${lastSegment}`,
-      lastSegment,
-    ];
+    const possiblePaths = [`creatorAgreements/${lastSegment}`, `agreementTemplates/${lastSegment}`, lastSegment];
 
     for (const path of possiblePaths) {
       const testFile = bucket.file(path);
@@ -71,15 +67,15 @@ router.get('/agreement-template/:folder/:filename', async (req, res) => {
     const { folder, filename } = req.params;
     const bucketName = process.env.BUCKET_NAME as string;
     const bucket = storage.bucket(bucketName);
-    
+
     // Decode the folder and filename from URL encoding
     const decodedFolder = decodeURIComponent(folder);
     const decodedFilename = decodeURIComponent(filename);
-    
+
     // Construct the full path
-    const filePath = `${decodedFolder}/${decodedFilename}`;
+    const filePath = `${folder}/${filename}`; //can change to decoded later
     const file = bucket.file(filePath);
-    
+
     console.log('[PDF ROUTE] Incoming request (two params)');
     console.log('  originalUrl:', req.originalUrl);
     console.log('  folder     :', folder, '->', decodedFolder);
@@ -88,23 +84,23 @@ router.get('/agreement-template/:folder/:filename', async (req, res) => {
     console.log('  bucketName :', bucketName);
     console.log('  referer    :', req.get('referer'));
     console.log('  user-agent :', req.get('user-agent'));
-    
+
     // Check if file exists
     const [exists] = await file.exists();
     if (!exists) {
       console.error('[PDF ROUTE] PDF not found (two params):', filePath);
       return res.status(404).json({ error: 'PDF not found', filePath });
     }
-    
+
     // Download file from Google Cloud Storage
     const [fileBuffer] = await file.download();
-    
+
     // Set appropriate headers
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="${decodedFilename}"`);
     res.setHeader('Cache-Control', 'public, max-age=3600');
     res.setHeader('Content-Length', fileBuffer.length.toString());
-    
+
     // Send the PDF
     res.send(fileBuffer);
   } catch (error) {
@@ -118,17 +114,13 @@ router.get('/pdf/:filename', async (req, res) => {
   try {
     const { filename } = req.params;
     const bucket = storage.bucket(process.env.BUCKET_NAME as string);
-    
+
     // Try different possible paths
-    const possiblePaths = [
-      `creatorAgreements/${filename}`,
-      `agreementTemplates/${filename}`,
-      filename
-    ];
-    
+    const possiblePaths = [`creatorAgreements/${filename}`, `agreementTemplates/${filename}`, filename];
+
     let file = null;
     let filePath = null;
-    
+
     for (const path of possiblePaths) {
       const testFile = bucket.file(path);
       const [exists] = await testFile.exists();
@@ -138,23 +130,23 @@ router.get('/pdf/:filename', async (req, res) => {
         break;
       }
     }
-    
+
     if (!filePath || !file) {
       console.error('PDF not found in any path:', filename);
       return res.status(404).json({ error: 'PDF not found' });
     }
-    
+
     console.log('Serving PDF from:', filePath);
-    
+
     // Download file from Google Cloud Storage
     const [fileBuffer] = await file.download();
-    
+
     // Set appropriate headers
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
     res.setHeader('Cache-Control', 'public, max-age=3600');
     res.setHeader('Content-Length', fileBuffer.length.toString());
-    
+
     // Send the PDF
     res.send(fileBuffer);
   } catch (error) {
