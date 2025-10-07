@@ -160,6 +160,9 @@ router.post('/v3/shortlistCreator', isLoggedIn, shortlistCreatorV3);
 router.post('/v3/shortlistCreator/guest', isLoggedIn, shortlistGuestCreators);
 router.post('/v3/assignUGCCredits', isLoggedIn, assignUGCCreditsV3);
 
+// V4 campaign credit management
+router.patch('/v4/changeCredits', isLoggedIn, changeCampaignCredit);
+
 router.patch('/pitch', isLoggedIn, creatorMakePitch);
 router.patch('/changeCampaignStage/:campaignId', changeCampaignStage);
 router.patch('/closeCampaign/:id', isSuperAdmin, closeCampaign);
