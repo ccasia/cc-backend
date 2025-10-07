@@ -5430,7 +5430,47 @@ export const changeCampaignCredit = async (req: Request, res: Response) => {
 
     const subscription = campaign?.subscription || null;
 
-    if (!subscription) return res.status(404).json({ message: 'No subscription found' });
+    // For V4 campaigns, especially client-created ones, subscription might not exist
+    if (!subscription) {
+      // For V4 campaigns without subscription, allow direct credit changes
+      if (campaign.submissionVersion === 'v4') {
+        try {
+          await prisma.$transaction(async (tx) => {
+            const updatedCampaign = await tx.campaign.update({
+              where: {
+                id: campaign.id,
+              },
+              data: {
+                campaignCredits: {
+                  increment: newCredit,
+                },
+                creditsPending: {
+                  increment: newCredit,
+                },
+              },
+            });
+
+            await tx.adminLog.create({
+              data: {
+                message: `${user?.name} changed the campaign credit for "${campaign.name}" from ${campaign.campaignCredits} to ${updatedCampaign.campaignCredits} credits.`,
+                admin: {
+                  connect: {
+                    userId: user?.id,
+                  },
+                },
+                performedBy: user?.name,
+              },
+            });
+          });
+
+          return res.status(200).json({ message: 'Successfully changed' });
+        } catch (error) {
+          return res.status(400).json({ message: error?.message || 'Failed to change campaign credits' });
+        }
+      }
+      
+      return res.status(404).json({ message: 'No subscription found' });
+    }
 
     const subscribedCampaigns = await prisma.subscription.findFirst({
       where: {
@@ -5526,8 +5566,7 @@ export const changeCampaignCredit = async (req: Request, res: Response) => {
 
     res.status(200).json({ message: 'Successfully changed' });
   } catch (error) {
-    console.log(error);
-    res.status(400).json({ message: error });
+    res.status(400).json({ message: error?.message || 'Failed to change campaign credits' });
   }
 };
 
