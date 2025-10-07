@@ -160,8 +160,7 @@ router.post('/v3/shortlistCreator', isLoggedIn, shortlistCreatorV3);
 router.post('/v3/shortlistCreator/guest', isLoggedIn, shortlistGuestCreators);
 router.post('/v3/assignUGCCredits', isLoggedIn, assignUGCCreditsV3);
 
-// V4 campaign credit management
-router.patch('/v4/changeCredits', isLoggedIn, changeCampaignCredit);
+router.patch('/v4/changeCredits', isLoggedIn, isSuperAdmin, changeCampaignCredit);
 
 router.patch('/pitch', isLoggedIn, creatorMakePitch);
 router.patch('/changeCampaignStage/:campaignId', changeCampaignStage);
@@ -183,7 +182,7 @@ router.patch('/sendAgreement', isLoggedIn, isSuperAdmin, sendAgreement);
 router.patch('/resendAgreement', isLoggedIn, resendAgreement);
 router.patch('/removePitchVideo', isLoggedIn, removePitchVideo);
 router.patch('/linkNewAgreement', isLoggedIn, isSuperAdmin, linkNewAgreement);
-router.patch('/changeCredits', isLoggedIn, changeCampaignCredit);
+router.patch('/changeCredits', isLoggedIn, isSuperAdmin, changeCampaignCredit);
 
 router.delete('/timelineType/:id', isSuperAdmin, deleteTimelineType);
 router.delete('/unsaveCampaign/:id', isLoggedIn, unSaveCampaign);
