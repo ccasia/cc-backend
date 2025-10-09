@@ -11,11 +11,9 @@ export const handleGuestForShortListing = async (
     throw new Error(`Guest creator is missing required fields: ${JSON.stringify(creator)}`);
   }
 
-  // Non-platform creator - return temp id
-  const guestCreator = await tx.user.upsert({
-    where: { guestProfileLink: creator.profileLink },
-    update: {},
-    create: {
+  // Non-platform creator - always create a new entry instead of reusing existing ones
+  const guestCreator = await tx.user.create({
+    data: {
       name: creator.name,
       email: `guest_${Date.now()}_${Math.random()}@tempmail.com`,
       guestProfileLink: creator.profileLink,

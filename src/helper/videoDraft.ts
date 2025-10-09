@@ -186,6 +186,7 @@ const checkCurrentSubmission = async (submissionId: string) => {
     const hasPhotos = submission.campaign.photos ? photosWithRevision === 0 : true;
 
     allDeliverablesSent = hasVideos && hasRawFootage && hasPhotos;
+    
   }
 
   // Update submission status based on deliverable checks
@@ -257,6 +258,7 @@ async function deleteFileIfExists(filePath: string) {
           const content: any = JSON.parse(msg.content.toString());
           console.log('RECIEVED', content);
           const { filePaths } = content;
+          
 
           try {
             const submission = await prisma.submission.findUnique({
@@ -560,21 +562,15 @@ async function deleteFileIfExists(filePath: string) {
 
             // For photos
             if (filePaths?.photos?.length) {
-              const requestChangePhotos = await prisma.photo.findMany({
-                where: {
-                  userId: submission.userId,
-                  campaignId: submission.campaignId,
-                  status: 'REVISION_REQUESTED',
-                },
-              });
+              
+              if (content.isV4 && content.preserveExistingMedia) {
+                
+                const urls = await Promise.all(
+                  filePaths.photos.map(async (photoPath: any) => {
+                    const photoFileName = `${submission.id}_${path.basename(photoPath)}`;
+                    const photoPublicURL = await uploadImage(photoPath, photoFileName, content.folder);
 
-              const urls = await Promise.all(
-                filePaths.photos.map(async (photoPath: any) => {
-                  const photoFileName = `${submission.id}_${path.basename(photoPath)}`;
-                  const photoPublicURL = await uploadImage(photoPath, photoFileName, content.folder);
-
-                  if (!requestChangePhotos.length) {
-                    await prisma.photo.create({
+                    const newPhoto = await prisma.photo.create({
                       data: {
                         url: photoPublicURL,
                         submissionId: submission.id,
@@ -582,29 +578,57 @@ async function deleteFileIfExists(filePath: string) {
                         userId: submission.userId,
                       },
                     });
-                  }
-                  // await fs.promises.unlink(photoPath);
 
-                  console.log('✅ Photo entry created in the DB.');
-                  return photoPublicURL;
-                }),
-              );
-
-              if (requestChangePhotos.length) {
-                await Promise.all(
-                  requestChangePhotos.map((photo, index) =>
-                    prisma.photo.update({
-                      where: { id: photo.id },
-                      data: {
-                        url: urls[index],
-                        submissionId: submission.id,
-                        campaignId: content.campaignId,
-                        userId: submission.userId,
-                        status: 'PENDING',
-                      },
-                    }),
-                  ),
+                    return photoPublicURL;
+                  }),
                 );
+              } else {
+                // Original logic for non-V4 or full replacement
+                const requestChangePhotos = await prisma.photo.findMany({
+                  where: {
+                    userId: submission.userId,
+                    campaignId: submission.campaignId,
+                    status: 'REVISION_REQUESTED',
+                  },
+                });
+
+                const urls = await Promise.all(
+                  filePaths.photos.map(async (photoPath: any) => {
+                    const photoFileName = `${submission.id}_${path.basename(photoPath)}`;
+                    const photoPublicURL = await uploadImage(photoPath, photoFileName, content.folder);
+
+                    if (!requestChangePhotos.length) {
+                      await prisma.photo.create({
+                        data: {
+                          url: photoPublicURL,
+                          submissionId: submission.id,
+                          campaignId: content.campaignId,
+                          userId: submission.userId,
+                        },
+                      });
+                    }
+                    // await fs.promises.unlink(photoPath);
+
+                    return photoPublicURL;
+                  }),
+                );
+
+                if (requestChangePhotos.length) {
+                  await Promise.all(
+                    requestChangePhotos.map((photo, index) =>
+                      prisma.photo.update({
+                        where: { id: photo.id },
+                        data: {
+                          url: urls[index],
+                          submissionId: submission.id,
+                          campaignId: content.campaignId,
+                          userId: submission.userId,
+                          status: 'PENDING',
+                        },
+                      }),
+                    ),
+                  );
+                }
               }
             }
 

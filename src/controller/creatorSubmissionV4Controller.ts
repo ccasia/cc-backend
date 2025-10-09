@@ -114,6 +114,7 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
     let caption = '';
     let keepExistingPhotos: Array<{ id: string; url: string }> = [];
     let keepExistingRawFootages: Array<{ id: string; url: string }> = [];
+    let photosToRemove: string[] = []; // Array of photo IDs to be removed
 
     try {
       const parsedData = JSON.parse(req.body.data);
@@ -122,6 +123,7 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
       isSelectiveUpdate = parsedData.isSelectiveUpdate || false;
       keepExistingPhotos = parsedData.keepExistingPhotos || [];
       keepExistingRawFootages = parsedData.keepExistingRawFootages || [];
+      photosToRemove = parsedData.photosToRemove || []; // Handle photos to be removed
     } catch (parseError) {
       console.error('V4 submit-content JSON parse error:', parseError);
       return res.status(400).json({ message: 'Invalid request data format' });
@@ -224,45 +226,23 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
       },
     });
 
-    // Handle photo replacement for V4 resubmissions
+    // Handle photo removal if requested
+    if (photosToRemove.length > 0) {
+      // Delete the photos from the database
+      await prisma.photo.deleteMany({
+        where: {
+          id: { in: photosToRemove },
+          submissionId: submissionId,
+        },
+      });
+    }
+
+    // V4 Photo Additive System: Never delete existing photos, only add new ones
     const isResubmission = ['CHANGES_REQUIRED', 'REJECTED'].includes(submission.status);
-    if (isResubmission && (uploadedPhotos.length > 0 || (isSelectiveUpdate && keepExistingPhotos.length >= 0))) {
-      if (isSelectiveUpdate && keepExistingPhotos.length >= 0) {
-        // Selective update: only delete photos that are NOT in the keepExistingPhotos list
-        const existingPhotoIds = submission.photos?.map((photo) => photo.id) || [];
-        const keepPhotoIds = keepExistingPhotos.map((photo) => photo.id);
-        const photosToDelete = existingPhotoIds.filter((id) => !keepPhotoIds.includes(id));
-
-        console.log(
-          `🖼️ V4 Controller - Selective update: keeping ${keepPhotoIds.length} photos, deleting ${photosToDelete.length} photos`,
-        );
-        console.log(`🖼️ V4 Controller - Photos to keep:`, keepPhotoIds);
-        console.log(`🖼️ V4 Controller - Photos to delete:`, photosToDelete);
-
-        if (photosToDelete.length > 0) {
-          await prisma.photo.deleteMany({
-            where: {
-              id: { in: photosToDelete },
-              submissionId: submissionId,
-            },
-          });
-          console.log(`🖼️ V4 Controller - Selectively deleted ${photosToDelete.length} photos`);
-        }
-      } else if (uploadedPhotos.length > 0) {
-        // Full replacement: delete all existing photos (original behavior)
-        console.log(
-          `🖼️ V4 Controller - Full replacement detected, deleting ${submission.photos?.length || 0} existing photos`,
-        );
-
-        if (submission.photos?.length > 0) {
-          await prisma.photo.deleteMany({
-            where: {
-              submissionId: submissionId,
-            },
-          });
-          console.log(`🖼️ V4 Controller - Deleted ${submission.photos.length} existing photos`);
-        }
-      }
+    
+    if (isResubmission) {
+      // In V4, we can now both remove existing photos and add new ones
+      // This creates a flexible system where creators can manage their photo collection
     }
 
     // Handle raw footage replacement for V4 resubmissions
@@ -351,57 +331,45 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
       }
     }
 
-    try {
-      amqp = await amqplib.connect(process.env.RABBIT_MQ!);
-      channel = await amqp.createChannel();
-      await channel.assertQueue('draft', { durable: true });
+    // Always trigger worker if there are changes (new files OR photos to remove)
+    const hasNewFiles = uploadedVideos.length > 0 || uploadedPhotos.length > 0 || uploadedRawFootages.length > 0;
+    const hasPhotosToRemove = photosToRemove.length > 0;
+    
+    if (hasNewFiles || hasPhotosToRemove) {
+      try {
+        amqp = await amqplib.connect(process.env.RABBIT_MQ!);
+        channel = await amqp.createChannel();
+        await channel.assertQueue('draft', { durable: true });
 
-      // Log the submission status for clarity
-      const operationType = isSelectiveUpdate
-        ? 'SELECTIVE UPDATE'
-        : ['CHANGES_REQUIRED', 'REJECTED'].includes(submission.status)
-          ? 'REPLACING'
-          : 'PRESERVING';
-      console.log(`🔄 Submission status: ${submission.status} - ${operationType} existing media`);
 
-      const payload = {
-        userid: creatorId,
-        submissionId,
-        campaignId: submission.campaignId,
-        folder: submission.submissionType.type,
-        caption,
-        admins: submission.campaign.campaignAdmin,
-        filePaths: Object.fromEntries(filePaths),
-        // V4 specific flags
-        isV4: true,
-        submissionType: submission.submissionType.type,
-        // Add existing media info for worker to preserve
-        existingMedia: {
-          videos: submission.video?.map((v) => ({ id: v.id, status: v.status })) || [],
-          photos: submission.photos?.map((p) => ({ id: p.id, status: p.status })) || [],
-          rawFootages: submission.rawFootages?.map((r) => ({ id: r.id, status: r.status })) || [],
-        },
-        // For selective updates, preserve existing media even if status is CHANGES_REQUIRED or REJECTED
-        // For full replacement, don't preserve existing media
-        preserveExistingMedia: isSelectiveUpdate || !['CHANGES_REQUIRED', 'REJECTED'].includes(submission.status),
-      };
+        const payload = {
+          userid: creatorId,
+          submissionId,
+          campaignId: submission.campaignId,
+          folder: submission.submissionType.type,
+          caption,
+          admins: submission.campaign.campaignAdmin,
+          filePaths: Object.fromEntries(filePaths),
+          // V4 specific flags
+          isV4: true,
+          submissionType: submission.submissionType.type,
+          // Add existing media info for worker to preserve
+          existingMedia: {
+            videos: submission.video?.map((v) => ({ id: v.id, status: v.status })) || [],
+            photos: submission.photos?.map((p) => ({ id: p.id, status: p.status })) || [],
+            rawFootages: submission.rawFootages?.map((r) => ({ id: r.id, status: r.status })) || [],
+          },
+          // V4 Additive System: Always preserve existing media, never replace
+          preserveExistingMedia: true,
+          // Include photos to remove for worker processing
+          photosToRemove: photosToRemove,
+        };
 
-      console.log('V4 submit-content sending to worker:', {
-        submissionId,
-        submissionType: submission.submissionType.type,
-        filePaths: Object.keys(Object.fromEntries(filePaths)),
-        isV4: true,
-        isReplacingContent: !isSelectiveUpdate && ['CHANGES_REQUIRED', 'REJECTED'].includes(submission.status),
-        currentStatus: submission.status,
-        existingPhotoCount: submission.photos?.length || 0,
-        newPhotoCount: uploadedPhotos.length,
-        preserveExistingMedia: isSelectiveUpdate || !['CHANGES_REQUIRED', 'REJECTED'].includes(submission.status),
-        isSelectiveUpdate,
-      });
-      channel.sendToQueue('draft', Buffer.from(JSON.stringify(payload)), { persistent: true });
-    } finally {
-      if (channel) await channel.close();
-      if (amqp) await amqp.close();
+        channel.sendToQueue('draft', Buffer.from(JSON.stringify(payload)), { persistent: true });
+      } finally {
+        if (channel) await channel.close();
+        if (amqp) await amqp.close();
+      }
     }
 
     // Check if there are meaningful changes that warrant status update
