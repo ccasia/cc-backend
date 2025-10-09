@@ -6147,41 +6147,56 @@ export const activateClientCampaign = async (req: Request, res: Response) => {
       // Don't fail the activation if thread creation fails
     }
 
-    // creating notification for clients when campaign is activated
-    const clientUsers = await prisma.campaignAdmin.findMany({
+    // Notify Client, CSL and Superadmin when campaign is activated by CSM
+    const usersToNotify = await prisma.user.findMany({
       where: {
-        campaignId: campaign.id,
-        admin: {
-          user: {
-            role: 'client',
+        OR: [
+          {
+            role: {
+              in: ['client', 'admin'],
+            },
           },
-        },
-      },
-      include: {
-        admin: {
-          include: {
-            user: {
-              select: {
-                id: true,
+          {
+            admin: {
+              role: {
+                name: 'CSL',
               },
             },
           },
-        },
+        ],
+      },
+      select: {
+        id: true,
+        role: true,
       },
     });
 
-    for (const clientUser of clientUsers) {
-      const notification = await saveNotification({
-        userId: clientUser.admin.userId,
-        title: 'Campaign Activated',
-        message: `Your campaign "${campaign.name}" has been activated by CSM`,
-        entity: 'Campaign',
-        entityId: campaign.id,
-      });
+    if (usersToNotify.length > 0) {
+      for (const adminUser of usersToNotify) {
+        let title = '';
+        let message = '';
 
-      const clientSocketId = clients.get(clientUser.admin.userId);
-      if (clientSocketId) {
-        io.to(clientSocketId).emit('notification', notification);
+        if (adminUser.role === 'client') {
+          title = `🚀 ${campaign.name} is now live!`;
+          message = `Your campaign "${campaign.name}" has been activated by CSM`;
+        } else {
+          title = `🚀 Campaign Activated: ${campaign.name} `;
+          message = `The campaign "${campaign.name}" has been activated and the client has been notified`;
+        }
+
+        const notification = await saveNotification({
+          userId: adminUser.id,
+          title: title,
+          message: message,
+          entity: 'Campaign',
+          campaignId: campaign.id,
+        });
+        const socketId = clients.get(adminUser.id);
+
+        if (socketId) {
+          io.to(socketId).emit('notification', notification);
+          console.log(`Sent real-time notification to user ${adminUser.id} on socket ${socketId}`);
+        }
       }
     }
 
