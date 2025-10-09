@@ -649,16 +649,20 @@ export const rejectPitchByClient = async (req: Request, res: Response) => {
     });
 
     // Create notification for creator
-    await prisma.notification.create({
-      data: {
-        title: 'Pitch Rejected',
-        message: `Your pitch for campaign "${pitch.campaign.name}" has been rejected by client.`,
-        entity: 'Pitch',
-        campaignId: pitch.campaignId,
-        pitchId: pitchId,
-        userId: pitch.userId,
-      },
+    const creatorNotification = await saveNotification({
+      title: 'Pitch Rejected',
+      message: `Your pitch for campaign "${pitch.campaign.name}" has been rejected by client.`,
+      entity: 'Pitch',
+      campaignId: pitch.campaignId,
+      pitchId: pitchId,
+      userId: pitch.userId,
     });
+
+    const creatorSocketId = clients.get(pitch.userId);
+
+    if (creatorSocketId) {
+      io.to(creatorSocketId).emit('notification', creatorNotification);
+    }
 
     // Create notification for admin
     const adminUsers = pitch.campaign.campaignAdmin.filter(
@@ -666,16 +670,20 @@ export const rejectPitchByClient = async (req: Request, res: Response) => {
     );
 
     for (const adminUser of adminUsers) {
-      await prisma.notification.create({
-        data: {
-          title: 'Pitch Rejected by Client',
-          message: `A pitch for campaign "${pitch.campaign.name}" has been rejected by client.`,
-          entity: 'Pitch',
-          campaignId: pitch.campaignId,
-          pitchId: pitchId,
-          userId: adminUser.admin.userId,
-        },
+      const adminNotification = await saveNotification({
+        title: 'Pitch Rejected by Client',
+        message: `A pitch for campaign "${pitch.campaign.name}" has been rejected by client.`,
+        entity: 'Pitch',
+        campaignId: pitch.campaignId,
+        pitchId: pitchId,
+        userId: adminUser.admin.userId,
       });
+
+      const adminSocketId = clients.get(adminUser.admin.userId);
+
+      if (adminSocketId) {
+        io.to(adminSocketId).emit('notification', adminNotification);
+      }
     }
 
     console.log(`Pitch ${pitchId} rejected by client, creator removed from campaign`);
