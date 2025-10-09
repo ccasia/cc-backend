@@ -547,20 +547,25 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
 
     // Find admin users for this campaign
     const adminUsers = pitch.campaign.campaignAdmin.filter(
-      (ca) => ca.admin.user.role === 'admin' || ca.admin.user.role === 'superadmin',
+      (ca) => ca.admin.user.role === 'admin' || ca.admin.user.role === 'superadmin', // should superadmin get this notif?
     );
 
     for (const adminUser of adminUsers) {
-      await prisma.notification.create({
-        data: {
-          title: 'Pitch Approved by Client',
-          message: `A pitch for campaign "${pitch.campaign.name}" has been approved by client and is ready for agreement setup.`,
-          entity: 'Pitch',
-          campaignId: pitch.campaignId,
-          pitchId: pitchId,
-          userId: adminUser.admin.userId,
-        },
+      // use saveNotification helper to store notifications
+      const notification = await saveNotification({
+        title: `📝 Agreements needed`,
+        message: `Finalise your shortlisted creators to keep ${pitch.campaign.name} moving.`,
+        entity: 'Pitch',
+        campaignId: pitch.campaignId,
+        pitchId: pitchId,
+        userId: adminUser.admin.userId,
       });
+
+      const adminSocketId = clients.get(adminUser.admin.userId);
+
+      if (adminSocketId) {
+        io.to(adminSocketId).emit('notification', notification);
+      }
     }
 
     console.log(`Pitch ${pitchId} approved by client, status updated to APPROVED`);
