@@ -565,23 +565,53 @@ export const approveV4Submission = async (req: Request, res: Response) => {
         ? 'approved and sent to client for review'
         : `${action}d successfully`;
 
-    const clientUsers = submission.campaign.campaignAdmin.filter((ca) => ca.admin.user.role === 'client');
+    if (submission.campaign.origin === 'CLIENT' && action === 'approve') {
+      const clientUsers = submission.campaign.campaignAdmin.filter((ca) => ca.admin.user.role === 'client');
 
-    for (const clientUser of clientUsers) {
-      const { title, message } = notificationDraft(submission.campaign.name, 'Admin', submission.user.name as string);
-      const clientUserId = clientUser.admin.userId;
+      for (const clientUser of clientUsers) {
+        const { title, message } = notificationDraft(submission.campaign.name, 'Admin', submission.user.name as string);
+        const clientUserId = clientUser.admin.userId;
 
-      const notification = saveNotification({
-        userId: clientUserId,
-        message: message,
-        title: title,
+        const notification = saveNotification({
+          userId: clientUserId,
+          message: message,
+          title: title,
+          entity: 'Draft',
+          entityId: submission.campaign.id,
+        });
+
+        const clientSocketId = clients.get(clientUserId);
+        if (clientSocketId) {
+          io.to(clientSocketId).emit('notification', notification);
+        }
+      }
+    } else if (action === 'request_revision' || action === 'rejected') {
+      const creatorId = submission.userId;
+      const contentType = submission.submissionType.type;
+
+      let content = '';
+
+      if (contentType === 'VIDEO') {
+        content = 'Video';
+      } else if (contentType === 'RAW_FOOTAGE') {
+        content = 'Raw Footage';
+      } else if (contentType === 'PHOTO') {
+        content = 'Photo';
+      } else if (contentType === 'POSTING') {
+        content = 'Posting Link';
+      }
+
+      const notification = await saveNotification({
+        userId: creatorId,
+        title: `📝 Feedback for ${content} for ${submission.campaign.name} is ready to view.`, // Double check with Naylisa for title/messages
+        message: `CSM has requested changes for your submission to the "${submission.campaign.name}" campaign. Please review the feedback.`,
         entity: 'Draft',
         entityId: submission.campaign.id,
       });
 
-      const clientSocketId = clients.get(clientUserId);
-      if (clientSocketId) {
-        io.to(clientSocketId).emit('notification', notification);
+      const creatorSocketId = clients.get(creatorId);
+      if (io && creatorSocketId) {
+        io.to(creatorSocketId).emit('notification', notification);
       }
     }
 
