@@ -1011,7 +1011,7 @@ export const updatePostingLinkController = async (req: Request, res: Response) =
  * POST /api/submissions/v4/posting-link/approve
  */
 export const approvePostingLinkV4 = async (req: Request, res: Response) => {
-  const { submissionId, action } = req.body;
+  const { submissionId, action, reasons } = req.body;
   const adminId = req.session.userid;
   
   try {
@@ -1027,7 +1027,6 @@ export const approvePostingLinkV4 = async (req: Request, res: Response) => {
       });
     }
     
-    // Get submission
     const submission = await prisma.submission.findUnique({
       where: { id: submissionId },
       include: {
@@ -1077,7 +1076,24 @@ export const approvePostingLinkV4 = async (req: Request, res: Response) => {
         newStatus = submission.status;
         newContent = submission.content;
     }
+
+    let feedbackType: 'REQUEST' | 'COMMENT' = 'COMMENT';
     
+    if (action === 'reject') {
+      feedbackType = 'REQUEST';
+    }
+
+    await prisma.feedback.create({
+      data: {
+        content: '',
+        reasons: reasons || [],
+        submissionId,
+        adminId: adminId,
+        type: feedbackType,
+        sentToCreator: action !== 'approve' // True for reject
+      }
+    })
+
     // Update submission
     await prisma.submission.update({
       where: { id: submissionId },

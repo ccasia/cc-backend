@@ -110,11 +110,11 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
     const updatedPitch = await prisma.pitch.update({
       where: { id: pitchId },
       data: {
-        ...updateData,
-        status: 'SENT_TO_CLIENT',
-        approvedByAdminId: adminId,
-        ugcCredits: parseInt(ugcCredits),
-      },
+              ...updateData,
+              status: 'SENT_TO_CLIENT',
+              approvedByAdminId: adminId,
+              ugcCredits: parseInt(ugcCredits),
+            },
       include: {
         campaign: true,
         user: true,
@@ -636,7 +636,6 @@ export const rejectPitchByClient = async (req: Request, res: Response) => {
         rejectedByClientId: clientId,
         rejectionReason: rejectionReason || 'Rejected by client',
         customRejectionText: customRejectionText,
-
       },
     });
 
@@ -1061,12 +1060,16 @@ export const getPitchesV3 = async (req: Request, res: Response) => {
         return true;
       })
       .map((pitch) => {
-        let displayStatus = pitch.status;
+        let displayStatus: string | null = pitch.status;
 
         // Role-based status display logic
         if (user.role === 'admin' || user.role === 'superadmin') {
           // Admin sees: PENDING_REVIEW -> PENDING_REVIEW, SENT_TO_CLIENT -> SENT_TO_CLIENT, APPROVED -> APPROVED
-          displayStatus = pitch.status;
+          if (pitch.status === 'SENT_TO_CLIENT' && pitch.adminComments) {
+            displayStatus = 'SENT_TO_CLIENT_WITH_COMMENTS';
+          } else {
+            displayStatus = pitch.status;
+          }
         } else if (user.role === 'client') {
           // Client sees: SENT_TO_CLIENT -> PENDING_REVIEW, APPROVED -> APPROVED
           if (pitch.status === 'SENT_TO_CLIENT') {
@@ -1157,13 +1160,17 @@ export const getPitchByIdV3 = async (req: Request, res: Response) => {
       return res.status(403).json({ message: 'Access denied. This pitch is still under admin review.' });
     }
 
+    // Set status based on adminComments
+
     // Transform pitch to show role-based status
-    let displayStatus = pitch.status;
+    let displayStatus: string | null = pitch.status;
 
     // Role-based status display logic
     if (user.role === 'admin' || user.role === 'superadmin') {
       // Admin sees: PENDING_REVIEW -> PENDING_REVIEW, SENT_TO_CLIENT -> SENT_TO_CLIENT, APPROVED -> APPROVED
-      displayStatus = pitch.status;
+      if (pitch.status === 'SENT_TO_CLIENT' && pitch.adminComments) {
+        displayStatus = 'SENT_TO_CLIENT_WITH_COMMENTS';
+      }
     } else if (user.role === 'client') {
       // Client sees: SENT_TO_CLIENT -> PENDING_REVIEW, APPROVED -> APPROVED
       if (pitch.status === 'SENT_TO_CLIENT') {
