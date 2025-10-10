@@ -56,6 +56,7 @@ import { deliveryConfirmation, shortlisted, tracking } from '@configs/nodemailer
 import { createNewSpreadSheet } from '@services/google_sheets/sheets';
 import { getRemainingCredits } from '@services/companyService';
 import { handleGuestForShortListing } from '@services/shortlistService';
+import getCountry from '@utils/getCountry';
 // import { applyCreditCampiagn } from '@services/packageService';
 
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
@@ -215,6 +216,16 @@ export const createCampaign = async (req: Request, res: Response) => {
     campaignCredits,
     country,
   }: Campaign = JSON.parse(req.body.data);
+  // Also read optional fields not in the Campaign interface
+  const rawBody: any = (() => {
+    try {
+      return JSON.parse(req.body.data);
+    } catch {
+      return {};
+    }
+  })();
+  const requestedOrigin = rawBody?.origin as 'ADMIN' | 'CLIENT' | undefined;
+  const clientManagers = Array.isArray(rawBody?.clientManagers) ? rawBody.clientManagers : [];
 
   try {
     const publicURL: any = [];
@@ -272,6 +283,21 @@ export const createCampaign = async (req: Request, res: Response) => {
             });
           }),
         );
+
+        // Attach client managers (if provided) to campaignAdmin as well
+        const clientManagerUsers = await Promise.all(
+          clientManagers.map(async (cm: any) => {
+            // Accept either {id} or email/name strings; try id first
+            if (cm?.id) {
+              return tx.user.findUnique({ where: { id: cm.id } });
+            }
+            // Try by email
+            if (typeof cm === 'string' && cm.includes('@')) {
+              return tx.user.findUnique({ where: { email: cm } });
+            }
+            return null;
+          }),
+        );
         const existingClient = await tx.company.findUnique({
           where: { id: client.id },
           include: { subscriptions: { where: { status: 'ACTIVE' } } },
@@ -294,6 +320,10 @@ export const createCampaign = async (req: Request, res: Response) => {
         const url: string = await createNewSpreadSheet({ title: campaignTitle });
 
         // Create Campaign
+        // Normalize dates for campaign brief
+        const normalizedStartDate = campaignStartDate ? dayjs(campaignStartDate).toDate() : new Date();
+        const normalizedEndDate = campaignEndDate ? dayjs(campaignEndDate).toDate() : normalizedStartDate;
+
         const campaign = await tx.campaign.create({
           data: {
             campaignId: campaignId,
@@ -301,6 +331,7 @@ export const createCampaign = async (req: Request, res: Response) => {
             campaignType: campaignType,
             description: campaignDescription,
             status: campaignStage as CampaignStatus,
+            origin: requestedOrigin === 'CLIENT' ? 'CLIENT' : 'ADMIN',
             brandTone: brandTone,
             productName: productName,
             spreadSheetURL: url,
@@ -320,8 +351,8 @@ export const createCampaign = async (req: Request, res: Response) => {
                 images: publicURL.map((image: any) => image) || '',
                 otherAttachments: otherAttachments,
                 referencesLinks: referencesLinks?.map((link: any) => link.value) || [],
-                startDate: dayjs(campaignStartDate) as any,
-                endDate: dayjs(campaignEndDate) as any,
+                startDate: normalizedStartDate,
+                endDate: normalizedEndDate,
                 industries: campaignIndustries,
                 campaigns_do: campaignDo,
                 campaigns_dont: campaignDont,
@@ -476,6 +507,20 @@ export const createCampaign = async (req: Request, res: Response) => {
           },
         });
 
+        // Add adminManager and clientManagers to campaignAdmin
+        const adminIdsToAdd = [
+          ...admins.map((a: any) => a?.id).filter(Boolean),
+          ...clientManagerUsers.map((u: any) => u?.id).filter(Boolean),
+        ] as string[];
+        for (const adminUserId of adminIdsToAdd) {
+          const exists = await tx.campaignAdmin.findUnique({
+            where: { adminId_campaignId: { adminId: adminUserId, campaignId: campaign.id } },
+          });
+          if (!exists) {
+            await tx.campaignAdmin.create({ data: { adminId: adminUserId, campaignId: campaign.id } });
+          }
+        }
+
         await Promise.all(
           admins.map(async (admin: any) => {
             const existing = await tx.campaignAdmin.findUnique({
@@ -495,10 +540,11 @@ export const createCampaign = async (req: Request, res: Response) => {
             });
 
             if (existing) {
-              return res.status(400).json({ message: 'Admin exists' });
+              // Skip existing admin instead of aborting the whole request
+              return null;
             }
 
-            const admins = await tx.campaignAdmin.create({
+            const createdAdminRel = await tx.campaignAdmin.create({
               data: {
                 adminId: admin?.id,
                 campaignId: campaign.id,
@@ -513,7 +559,7 @@ export const createCampaign = async (req: Request, res: Response) => {
                 start: dayjs(campaign?.campaignBrief?.startDate).format(),
                 end: dayjs(campaign?.campaignBrief?.endDate).format(),
                 title: campaign?.name,
-                userId: admins.admin.userId as string,
+                userId: createdAdminRel.admin.userId as string,
                 allDay: false,
               },
             });
@@ -549,7 +595,7 @@ export const createCampaign = async (req: Request, res: Response) => {
             });
 
             io.to(clients.get(admin.id)).emit('notification', data);
-            return admins;
+            return createdAdminRel;
           }),
         );
 
@@ -581,7 +627,10 @@ export const createCampaign = async (req: Request, res: Response) => {
       },
     );
   } catch (error) {
-    return res.status(400).json(error?.message);
+    if (!res.headersSent) {
+      return res.status(400).json(error?.message);
+    }
+    console.error('createCampaign error after response sent:', error);
   }
 };
 
@@ -848,13 +897,15 @@ export const getCampaignById = async (req: Request, res: Response) => {
               select: {
                 id: true,
                 name: true,
+                email: true,
                 photoURL: true,
                 status: true,
                 creator: {
                   select: {
                     isGuest: true,
-                  }
-                }
+                  },
+                },
+                paymentForm: true,
               },
             },
           },
@@ -1020,19 +1071,69 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       `matchCampaignWithCreator - After filtering: ${afterFilterCount}/${beforeFilterCount} campaigns remain (showing ALL active campaigns to creators)`,
     );
 
-    campaigns = campaigns.filter((campaign) => {
-      if (!campaign.campaignRequirement?.country) return campaign;
-      return campaign.campaignRequirement.country.toLocaleLowerCase() === user.country?.toLowerCase();
+    const country = await getCountry(req.ip as string);
+
+    console.log('COUNTRY', country);
+
+    // TEMPORARY: Disable country filtering to fix creator discovery issue
+    // The country filtering was preventing creators from seeing campaigns
+    const beforeCountryFilterCount = campaigns.length;
+
+    // Log country information for debugging
+    console.log(`DEBUG: Creator country detected as: ${country || 'UNKNOWN'}`);
+    console.log(`DEBUG: Before country filtering - ${beforeCountryFilterCount} campaigns available`);
+
+    // Show campaigns with country requirements for debugging
+    campaigns.forEach((campaign) => {
+      if (campaign.campaignRequirement?.country) {
+        console.log(
+          `Campaign ${campaign.id} (${campaign.name}) requires country: ${campaign.campaignRequirement.country}`,
+        );
+      } else {
+        console.log(`Campaign ${campaign.id} (${campaign.name}) has no country requirement`);
+      }
     });
+
+    // TEMPORARILY BYPASS COUNTRY FILTERING - Show all campaigns to creators
+    // This ensures creators can see all available campaigns while we fix country detection
+    console.log('TEMPORARILY BYPASSING COUNTRY FILTERING - Showing all campaigns to creators');
+
+    // TODO: Re-enable proper country filtering once country detection is working correctly
+    // TEMPORARILY DISABLE ALL COUNTRY FILTERING to fix creator discovery issue
+    // The country filtering was preventing creators from seeing all available campaigns
+    
+    // COMMENTED OUT: Country filtering is disabled for now
+    // if (process.env.NODE_ENV !== 'development') {
+    //   campaigns = campaigns.filter((campaign) => {
+    //     if (!campaign.campaignRequirement?.country) return campaign;
+    //     return campaign.campaignRequirement.country.toLocaleLowerCase() === country?.toLowerCase();
+    //   });
+    // }
+    
+    const afterCountryFilterCount = campaigns.length;
+    console.log(
+      `Country filtering completely bypassed: ${afterCountryFilterCount}/${beforeCountryFilterCount} campaigns remain (no filtering applied)`,
+    );
+    
+    // Original filtering logic (DISABLED):
+    // campaigns = campaigns.filter((campaign) => {
+    //   if (!campaign.campaignRequirement?.country) return true;
+    //   if (!country) return true;
+    //   return campaign.campaignRequirement.country.toLowerCase().trim() === country.toLowerCase().trim();
+    // });
 
     // campaigns = campaigns.filter((campaign) => campaign.campaignBrief.)
 
     const calculateInterestMatchingPercentage = (creatorInterests: Interest[], creatorPerona: []) => {
-      const totalInterests = creatorPerona.length;
+      const totalInterests = creatorPerona?.length || 0;
+      
+      if (totalInterests === 0) {
+        return 0; // Return 0% if no persona interests defined
+      }
 
-      const matchingInterests = creatorInterests.filter((interest) =>
+      const matchingInterests = creatorInterests?.filter((interest) =>
         creatorPerona.includes(interest?.name?.toLowerCase() as never),
-      ).length;
+      ).length || 0;
 
       return (matchingInterests / totalInterests) * 100;
     };
@@ -1079,7 +1180,7 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
         }
       }
 
-      return (matches / totalCriteria) * 100;
+      return totalCriteria === 0 ? 0 : (matches / totalCriteria) * 100;
     };
 
     const calculateOverallMatchingPercentage = (
@@ -1091,29 +1192,66 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       return interestMatch * interestWeight + requirementMatch * requirementWeight;
     };
 
-    const matchedCampaignWithPercentage = campaigns.map((item) => {
-      const interestPercentage = calculateInterestMatchingPercentage(
-        user?.creator?.interests as never,
-        item.campaignRequirement?.creator_persona as any,
-      );
+    const matchedCampaignWithPercentage = campaigns.map((item, index) => {
+      try {
+        const interestPercentage = calculateInterestMatchingPercentage(
+          user?.creator?.interests as never,
+          item.campaignRequirement?.creator_persona as any,
+        );
 
-      const requirementPercentage = calculateRequirementMatchingPercentage(
-        user?.creator as Creator,
-        item.campaignRequirement as CampaignRequirement,
-      );
+        const requirementPercentage = calculateRequirementMatchingPercentage(
+          user?.creator as Creator,
+          item.campaignRequirement as CampaignRequirement,
+        );
 
-      const overallMatchingPercentage = calculateOverallMatchingPercentage(interestPercentage, requirementPercentage);
+        const overallMatchingPercentage = calculateOverallMatchingPercentage(interestPercentage, requirementPercentage);
 
-      return {
-        ...item,
-        percentageMatch: overallMatchingPercentage,
-      };
+        // Debug log for problematic campaigns
+        if (index < 3) { // Log first 3 campaigns for debugging
+          console.log(`Campaign ${item.id} (${item.name}) matching:`, {
+            interestPercentage: isNaN(interestPercentage) ? 'NaN' : interestPercentage,
+            requirementPercentage: isNaN(requirementPercentage) ? 'NaN' : requirementPercentage,
+            overallMatchingPercentage: isNaN(overallMatchingPercentage) ? 'NaN' : overallMatchingPercentage,
+            hasCreatorPersona: !!item.campaignRequirement?.creator_persona,
+            creatorPersonaLength: item.campaignRequirement?.creator_persona?.length || 0
+          });
+        }
+
+        return {
+          ...item,
+          percentageMatch: isNaN(overallMatchingPercentage) ? 0 : overallMatchingPercentage,
+        };
+      } catch (error) {
+        console.error(`Error calculating percentage for campaign ${item.id}:`, error);
+        return {
+          ...item,
+          percentageMatch: 0,
+        };
+      }
     });
 
     // Keep the original order from database (newest first) instead of overriding
     const sortedMatchedCampaigns = matchedCampaignWithPercentage;
 
-    const lastCursor = campaigns.length > Number(take) - 1 ? campaigns[Number(take) - 1]?.id : null;
+    // Debug: Check if there's any difference between campaigns and sortedMatchedCampaigns
+    console.log(`matchCampaignWithCreator - Debug counts:`, {
+      originalCampaigns: campaigns.length,
+      matchedCampaigns: matchedCampaignWithPercentage.length,
+      sortedMatchedCampaigns: sortedMatchedCampaigns.length,
+      requestedTake: Number(take)
+    });
+
+    // Fix pagination logic: determine if there are more pages
+    const hasNextPage = campaigns.length === Number(take);
+    const lastCursor = hasNextPage ? campaigns[campaigns.length - 1]?.id : null;
+
+    console.log(`matchCampaignWithCreator - Pagination info:`, {
+      campaignsReturned: campaigns.length,
+      campaignsInResponse: sortedMatchedCampaigns.length,
+      requestedTake: Number(take),
+      hasNextPage: hasNextPage,
+      lastCursor: lastCursor
+    });
 
     const data = {
       data: {
@@ -1121,7 +1259,7 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       },
       metaData: {
         lastCursor: lastCursor,
-        hasNextPage: true,
+        hasNextPage: hasNextPage,
       },
     };
 
@@ -4020,6 +4158,57 @@ export const editCampaignAdmin = async (req: Request, res: Response) => {
   }
 };
 
+// Add client managers to a campaign and flip origin to CLIENT (V3)
+export const addClientManagers = async (req: Request, res: Response) => {
+  const adminId = req.session.userid;
+  const { campaignId, clientManagers } = req.body as {
+    campaignId: string;
+    clientManagers: ({ id?: string; email?: string } | string)[];
+  };
+
+  try {
+    const campaign = await prisma.campaign.findUnique({ where: { id: campaignId } });
+    if (!campaign) return res.status(404).json({ message: 'Campaign not found.' });
+
+    // Resolve client manager userIds
+    const userIds: string[] = [];
+    for (const cm of clientManagers || []) {
+      const id = typeof cm === 'string' ? cm : cm?.id || '';
+      if (id) {
+        userIds.push(id);
+        continue;
+      }
+      const email = typeof cm !== 'string' ? cm?.email : undefined;
+      if (email) {
+        const user = await prisma.user.findUnique({ where: { email } });
+        if (user) userIds.push(user.id);
+      }
+    }
+
+    // Create campaignAdmin entries for these users
+    for (const uid of userIds) {
+      const exists = await prisma.campaignAdmin.findUnique({
+        where: { adminId_campaignId: { adminId: uid, campaignId } },
+      });
+      if (!exists) {
+        await prisma.campaignAdmin.create({ data: { adminId: uid, campaignId } });
+      }
+    }
+
+    // Flip origin to CLIENT for v3 flow
+    await prisma.campaign.update({ where: { id: campaignId }, data: { origin: 'CLIENT' } });
+
+    if (adminId) {
+      const adminLogMessage = `Added ${userIds.length} client manager(s) and converted campaign to V3`;
+      logAdminChange(adminLogMessage, adminId, req);
+    }
+
+    return res.status(200).json({ message: 'Client managers added and campaign converted to V3.' });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
 export const editCampaignAttachments = async (req: Request, res: Response) => {
   const { id } = req.params;
   const { otherAttachments: currentAttachments } = req.body;
@@ -5101,6 +5290,109 @@ export const resendAgreement = async (req: Request, res: Response) => {
   }
 };
 
+// V3: Creator submits agreement for a client-origin campaign
+export const submitAgreementV3 = async (req: Request, res: Response) => {
+  const { pitchId } = req.params as { pitchId: string };
+  const { agreementUrl } = req.body as { agreementUrl?: string };
+  const userId = req.session.userid;
+
+  try {
+    console.log('[submitAgreementV3] start', { pitchId, userId, hasAgreementUrl: !!agreementUrl });
+    const pitch = await prisma.pitch.findUnique({
+      where: { id: pitchId },
+      include: { campaign: true },
+    });
+
+    if (!pitch) {
+      console.log('[submitAgreementV3] pitch not found');
+      return res.status(404).json({ message: 'Pitch not found' });
+    }
+
+    // Allow if current user is the pitch owner, or an admin/superadmin (to help testing)
+    const currentUser = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+    const isOwner = pitch.userId === userId;
+    const isPrivileged = currentUser?.role === 'admin' || currentUser?.role === 'superadmin';
+    console.log('[submitAgreementV3] auth', { isOwner, isPrivileged, currentUserRole: currentUser?.role });
+    if (!isOwner && !isPrivileged) {
+      return res.status(403).json({ message: 'Not allowed' });
+    }
+    if (!pitch.campaignId) return res.status(400).json({ message: 'Campaign not found for pitch' });
+
+    // Upsert creator agreement for V3
+    console.log('[submitAgreementV3] upserting agreement', { campaignId: pitch.campaignId, pitchUserId: pitch.userId });
+    await prisma.creatorAgreement.upsert({
+      where: {
+        userId_campaignId: {
+          userId: pitch.userId,
+          campaignId: pitch.campaignId,
+        },
+      },
+      update: {
+        agreementUrl: agreementUrl || undefined,
+        isSent: true,
+        completedAt: new Date(),
+      },
+      create: {
+        userId: pitch.userId,
+        campaignId: pitch.campaignId,
+        agreementUrl: agreementUrl || '',
+        isSent: true,
+        completedAt: new Date(),
+      },
+    });
+
+    // Mark pitch as AGREEMENT_SUBMITTED for V3 flow
+    console.log('[submitAgreementV3] updating pitch status to AGREEMENT_SUBMITTED');
+    const updatedPitch = await prisma.pitch.update({
+      where: { id: pitch.id },
+      data: { status: 'AGREEMENT_SUBMITTED' },
+    });
+
+    // Notify campaign admins
+    const admins = await prisma.campaignAdmin.findMany({
+      where: { campaignId: pitch.campaignId as string },
+      include: { admin: { include: { user: true } } },
+    });
+    const submitter = await prisma.user.findUnique({ where: { id: pitch.userId } });
+    const campaignName = pitch.campaign?.name || '';
+
+    // Mark shortlisted row as agreement ready so admin UI reflects new state
+    const shortlisted = await prisma.shortListedCreator.findFirst({
+      where: { userId: pitch.userId, campaignId: pitch.campaignId as string },
+    });
+    if (shortlisted) {
+      await prisma.shortListedCreator.update({
+        where: { id: shortlisted.id },
+        data: { isAgreementReady: true },
+      });
+    }
+    for (const a of admins) {
+      const notification = await saveNotification({
+        userId: a.adminId,
+        title: 'Agreement Submitted',
+        message: `${submitter?.name || 'Creator'} submitted the agreement for ${campaignName}.`,
+        entity: 'Agreement',
+        entityId: pitch.campaignId as string,
+      });
+      const socketId = clients.get(a.admin.userId);
+      if (socketId) {
+        io.to(socketId).emit('notification', notification);
+        io.to(socketId).emit('agreementReady');
+        io.to(socketId).emit('pitchUpdate');
+      }
+    }
+
+    // Log campaign change
+    await logChange(`${submitter?.name || 'Creator'} submitted agreement`, pitch.campaignId as string, req);
+
+    console.log('[submitAgreementV3] success');
+    return res.status(200).json({ message: 'Agreement submitted', pitch: updatedPitch });
+  } catch (error) {
+    console.error('submitAgreementV3 error:', error);
+    return res.status(400).json({ message: error?.message || 'Failed to submit agreement' });
+  }
+};
+
 export const changeCampaignCredit = async (req: Request, res: Response) => {
   const { campaignId, newCredit } = req.body;
   const { userid } = req.session;
@@ -5138,7 +5430,47 @@ export const changeCampaignCredit = async (req: Request, res: Response) => {
 
     const subscription = campaign?.subscription || null;
 
-    if (!subscription) return res.status(404).json({ message: 'No subscription found' });
+    // For V4 campaigns, especially client-created ones, subscription might not exist
+    if (!subscription) {
+      // For V4 campaigns without subscription, allow direct credit changes
+      if (campaign.submissionVersion === 'v4') {
+        try {
+          await prisma.$transaction(async (tx) => {
+            const updatedCampaign = await tx.campaign.update({
+              where: {
+                id: campaign.id,
+              },
+              data: {
+                campaignCredits: {
+                  increment: newCredit,
+                },
+                creditsPending: {
+                  increment: newCredit,
+                },
+              },
+            });
+
+            await tx.adminLog.create({
+              data: {
+                message: `${user?.name} changed the campaign credit for "${campaign.name}" from ${campaign.campaignCredits} to ${updatedCampaign.campaignCredits} credits.`,
+                admin: {
+                  connect: {
+                    userId: user?.id,
+                  },
+                },
+                performedBy: user?.name,
+              },
+            });
+          });
+
+          return res.status(200).json({ message: 'Successfully changed' });
+        } catch (error) {
+          return res.status(400).json({ message: error?.message || 'Failed to change campaign credits' });
+        }
+      }
+      
+      return res.status(404).json({ message: 'No subscription found' });
+    }
 
     const subscribedCampaigns = await prisma.subscription.findFirst({
       where: {
@@ -5234,8 +5566,7 @@ export const changeCampaignCredit = async (req: Request, res: Response) => {
 
     res.status(200).json({ message: 'Successfully changed' });
   } catch (error) {
-    console.log(error);
-    res.status(400).json({ message: error });
+    res.status(400).json({ message: error?.message || 'Failed to change campaign credits' });
   }
 };
 
@@ -5398,7 +5729,7 @@ export const activateClientCampaign = async (req: Request, res: Response) => {
     });
 
     if (!campaign) {
-      return res.status(404).json({ message: 'Campaign not found or not in pending admin activation status' });
+      return res.status(404).json({ message: 'Campaign has already been activated or is not in pending admin activation status' });
     }
 
     // Log user info for debugging
@@ -6338,10 +6669,13 @@ export const checkCampaignCreatorVisibility = async (req: Request, res: Response
 
 // Add this function after the shortlistCreatorV2 function
 export const shortlistCreatorV3 = async (req: Request, res: Response) => {
-  const { creators, campaignId } = req.body;
+  const { creators, campaignId, adminComments } = req.body;
   const userId = req.session.userid;
 
   try {
+    // Allow superadmin to bypass campaign admin check
+    const currentUser = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+    const isSuperadmin = currentUser?.role === 'superadmin';
     console.log(`shortlistCreatorV3: Shortlisting creators for campaign ${campaignId} by user ${userId}`);
     console.log(`Creators to shortlist:`, creators);
 
@@ -6374,7 +6708,7 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
     console.log(`Is client who created campaign: ${isClientCreator && isClientCreatedCampaign}`);
 
     // If not authorized, return error
-    if (!campaignAccess) {
+    if (!campaignAccess && !isSuperadmin) {
       return res.status(403).json({ message: 'Not authorized to shortlist creators for this campaign' });
     }
 
@@ -6444,6 +6778,9 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
             // Set default values for V3 flow
             amount: null, // Will be set when admin approves
             agreementTemplateId: null, // Will be set when admin approves
+            ...(typeof adminComments === 'string' && adminComments.trim().length > 0
+              ? { adminComments: adminComments.trim(), adminCommentedBy: userId }
+              : {}),
           },
         });
 
@@ -6823,6 +7160,9 @@ export const assignUGCCreditsV3 = async (req: Request, res: Response) => {
   const userId = req.session.userid;
 
   try {
+    // Allow superadmin to bypass campaign admin check
+    const currentUser = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+    const isSuperadmin = currentUser?.role === 'superadmin';
     console.log(`assignUGCCreditsV3: Assigning UGC credits for campaign ${campaignId} by user ${userId}`);
     console.log(`Creators with credits:`, creators);
 
@@ -6847,12 +7187,20 @@ export const assignUGCCreditsV3 = async (req: Request, res: Response) => {
     });
 
     // If not authorized, return error
-    if (!campaignAccess) {
+    if (!campaignAccess && !isSuperadmin) {
       return res.status(403).json({ message: 'Not authorized to assign UGC credits for this campaign' });
     }
 
-    const campaign = campaignAccess.campaign;
-    
+    // campaignAccess may be null for superadmin; fetch campaign directly in that case
+    // Always fetch a fresh campaign instance to avoid mixed types from relations
+    const campaign = await prisma.campaign.findUnique({
+      where: { id: campaignId },
+      include: { shortlisted: true },
+    });
+    if (!campaign) {
+      return res.status(404).json({ message: 'Campaign not found' });
+    }
+
     // For V3, we only support client-created campaigns
     if (campaign.origin !== 'CLIENT') {
       throw new Error('V3 UGC credits assignment is only for client-created campaigns');
@@ -6860,11 +7208,16 @@ export const assignUGCCreditsV3 = async (req: Request, res: Response) => {
 
     // Calculate total credits being assigned
     const totalCreditsToAssign = creators.reduce((acc: number, creator: any) => acc + (creator.credits || 0), 0);
-    
-    // Check if campaign has enough credits
-    if (campaign.campaignCredits && totalCreditsToAssign > campaign.campaignCredits) {
-      return res.status(400).json({ 
-        message: `Not enough credits available. Campaign has ${campaign.campaignCredits} credits, but trying to assign ${totalCreditsToAssign} credits.` 
+
+    // Compute already utilized credits from shortlisted creators
+    const alreadyUtilized = (campaign.shortlisted || []).reduce((acc, item) => acc + (item.ugcVideos || 0), 0);
+
+    // Enforce remaining credits check (campaignCredits - alreadyUtilized)
+    if (campaign.campaignCredits && totalCreditsToAssign > campaign.campaignCredits - alreadyUtilized) {
+      return res.status(400).json({
+        message: `Not enough credits available. Remaining: ${
+          campaign.campaignCredits - alreadyUtilized
+        }, requested: ${totalCreditsToAssign}`,
       });
     }
 
@@ -6919,9 +7272,9 @@ export const assignUGCCreditsV3 = async (req: Request, res: Response) => {
         where: { campaignId: campaign.id },
         select: { ugcVideos: true },
       });
-      
+
       const totalUtilizedCredits = allShortlistedCreators.reduce((acc, creator) => acc + (creator.ugcVideos || 0), 0);
-      
+
       if (campaign.campaignCredits) {
         await tx.campaign.update({
           where: { id: campaign.id },
@@ -6930,13 +7283,15 @@ export const assignUGCCreditsV3 = async (req: Request, res: Response) => {
             creditsPending: campaign.campaignCredits - totalUtilizedCredits,
           },
         });
-        console.log(`Updated campaign credits: utilized=${totalUtilizedCredits}, pending=${campaign.campaignCredits - totalUtilizedCredits}`);
+        console.log(
+          `Updated campaign credits: utilized=${totalUtilizedCredits}, pending=${campaign.campaignCredits - totalUtilizedCredits}`,
+        );
       }
     });
 
-    return res.status(200).json({ 
+    return res.status(200).json({
       message: 'Successfully assigned UGC credits to creators',
-      totalCreditsAssigned: totalCreditsToAssign
+      totalCreditsAssigned: totalCreditsToAssign,
     });
   } catch (error) {
     console.error('Error assigning UGC credits for V3:', error);
@@ -6965,6 +7320,7 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
 
     if (!campaign) return res.status(404).json({ message: 'Campaign not found.' });
 
+    const createdCreators: Array<{ id: string }> = [];
     await prisma.$transaction(async (tx) => {
       for (const guest of guestCreators) {
         // give guest a userId
@@ -6994,15 +7350,116 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
             currency: 'SGD',
           },
         });
+
+        // Also create a V3 pitch entry so it appears in the pitches list
+        const existingPitch = await tx.pitch.findFirst({
+          where: { userId, campaignId },
+        });
+
+        if (!existingPitch) {
+          await tx.pitch.create({
+            data: {
+              userId,
+              campaignId,
+              type: 'text',
+              status: 'SENT_TO_CLIENT',
+              content: `Non-platform creator has been shortlisted for campaign "${campaign.name}"`,
+              amount: null,
+              agreementTemplateId: null,
+              ...(guest.adminComments && guest.adminComments.trim().length > 0
+                ? { adminComments: guest.adminComments.trim(), adminCommentedBy: adminId }
+                : {}),
+            },
+          });
+        }
+
+        createdCreators.push({ id: userId });
       }
     });
 
     const adminLogMessage = `Shortlisted ${guestCreators.length} guest creator(s) for Campaign "${campaign.name}"`;
     logAdminChange(adminLogMessage, adminId, req);
 
-    return res.status(200).json({ message: 'Guest creators successfully shortlisted.' });
+    return res.status(200).json({ message: 'Guest creators successfully shortlisted.', createdCreators });
   } catch (error) {
     console.error('GUEST SHORTLIST ERROR:', error);
     return res.status(400).json({ message: error.message || 'Failed to shortlist guest creators.' });
+  }
+};
+
+export const getCampaignsForPublic = async (req: Request, res: Response) => {
+  const { cursor, take = 10, search, campaignId } = req.query;
+
+  console.log(campaignId);
+  console.log(cursor);
+  try {
+    const campaigns = await prisma.campaign.findMany({
+      take: Number(take),
+      ...(cursor && {
+        skip: 1,
+        cursor: {
+          id: cursor as string,
+        },
+      }),
+      where: {
+        id: campaignId as string,
+        status: 'ACTIVE',
+        // ...(campaignId && {
+        // }),
+        // ...(search && {
+        //   name: {
+        //     contains: search as string,
+        //     mode: 'insensitive',
+        //   },
+        // }),
+      },
+      include: {
+        campaignBrief: true,
+        campaignRequirement: true,
+        campaignTimeline: true,
+        brand: { include: { company: { include: { subscriptions: true } } } },
+        company: true,
+        pitch: true,
+        bookMarkCampaign: true,
+        shortlisted: true,
+        logistic: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    if (campaigns?.length === 0) {
+      const data = {
+        data: {
+          campaigns: [],
+        },
+        metaData: {
+          lastCursor: null,
+          hasNextPage: false,
+        },
+      };
+
+      return res.status(200).json(data);
+    }
+
+    // campaigns = campaigns.filter(
+    //   (campaign) => campaign.campaignTimeline.find((timeline) => timeline.name === 'Open For Pitch')?.status === 'OPEN',
+    // );
+    const lastCursor = campaigns.length > Number(take) - 1 ? campaigns[Number(take) - 1]?.id : null;
+
+    const data = {
+      data: {
+        campaigns: campaigns,
+      },
+      metaData: {
+        lastCursor: lastCursor,
+        hasNextPage: true,
+      },
+    };
+
+    return res.status(200).json(data);
+  } catch (error) {
+    return res.status(400).json(error);
   }
 };

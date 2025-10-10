@@ -33,7 +33,6 @@ import FfmpegPath from '@ffmpeg-installer/ffmpeg';
 import { storage } from '@configs/cloudStorage.config';
 import dayjs from 'dayjs';
 import passport from 'passport';
-// import { draftConsumer } from '@helper/videoDraftWorker';
 
 import amqplib from 'amqplib';
 
@@ -55,6 +54,9 @@ export const io = new Server(server, {
   },
 });
 
+// expose io to request handlers
+app.set('io', io);
+
 app.use(express.static('public'));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: false }));
@@ -73,8 +75,11 @@ const corsOptions = {
 };
 
 app.use(cors());
+
 app.use(morgan('combined'));
 app.disable('x-powered-by');
+
+// app.set('trust proxy', true);
 
 // create the session here
 declare module 'express-session' {
@@ -91,6 +96,8 @@ declare module 'express-session' {
     xeroActiveTenants: any;
   }
 }
+
+app.set('trust proxy', true);
 
 app.use(
   session({
@@ -116,8 +123,8 @@ app.use(passport.session());
 
 app.use(router);
 
-app.get('/', (_req: Request, res: Response) => {
-  res.send(`${process.env.NODE_ENV} is running...`);
+app.get('/', (req: Request, res: Response) => {
+  res.send(`Your IP is ${req.ip}. ${process.env.NODE_ENV} is running...`);
 });
 
 app.get('/users', isLoggedIn, async (_req, res) => {
@@ -146,6 +153,14 @@ io.on('connection', (socket) => {
 
   socket.on('online-user', () => {
     io.emit('onlineUsers', { onlineUsers: clients.size });
+  });
+
+  // join/leave campaign rooms for live updates per campaign
+  socket.on('join-campaign', (campaignId: string) => {
+    if (campaignId) socket.join(campaignId);
+  });
+  socket.on('leave-campaign', (campaignId: string) => {
+    if (campaignId) socket.leave(campaignId);
   });
 
   socket.on('cancel-processing', (data) => {

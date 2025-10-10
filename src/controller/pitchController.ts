@@ -76,8 +76,8 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
     }
 
-    // Check if pitch is in correct status
-    if (pitch.status !== 'PENDING_REVIEW') {
+    // Check if pitch is in correct status - allow admin to approve from PENDING_REVIEW or MAYBE
+    if (pitch.status !== 'PENDING_REVIEW' && pitch.status !== 'MAYBE') {
       return res.status(400).json({ message: 'Pitch is not in correct status for admin approval' });
     }
 
@@ -122,6 +122,29 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
         },
       },
     });
+
+    // Deduct credits from the client's active subscription (for client-origin campaigns)
+    try {
+      const company = await prisma.company.findUnique({
+        where: { id: updatedPitch.campaign.companyId as string },
+        include: { subscriptions: true as any },
+      } as any);
+      if (company) {
+        const activeSub = (company as any).subscriptions?.find((s: any) => s.status === 'ACTIVE') || (company as any).subscriptions?.[0];
+        if (activeSub) {
+          const currentUsed = Number((activeSub as any).creditsUsed || 0);
+          const toDeduct = Number(ugcCredits || 0);
+          const nextUsed = currentUsed + (isNaN(toDeduct) ? 0 : toDeduct);
+          await prisma.subscription.update({
+            where: { id: (activeSub as any).id },
+            data: { creditsUsed: nextUsed },
+          });
+          console.log(`Subscription ${(activeSub as any).id} creditsUsed updated: ${currentUsed} -> ${nextUsed}`);
+        }
+      }
+    } catch (creditErr) {
+      console.warn('Unable to update subscription creditsUsed after pitch approval:', creditErr);
+    }
 
     // Find client users for this campaign
     const clientUsers = pitch.campaign.campaignAdmin.filter((ca) => ca.admin.user.role === 'client');
@@ -177,8 +200,8 @@ export const rejectPitchByAdmin = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
     }
 
-    // Check if pitch is in correct status
-    if (pitch.status !== 'PENDING_REVIEW') {
+    // Check if pitch is in correct status - allow admin to reject from PENDING_REVIEW or MAYBE
+    if (pitch.status !== 'PENDING_REVIEW' && pitch.status !== 'MAYBE') {
       return res.status(400).json({ message: 'Pitch is not in correct status for admin rejection' });
     }
 
@@ -212,8 +235,20 @@ export const rejectPitchByAdmin = async (req: Request, res: Response) => {
       },
     });
 
+    // Fetch the updated pitch to return in response
+    const updatedPitch = await prisma.pitch.findUnique({
+      where: { id: pitchId },
+      include: {
+        campaign: true,
+        user: true,
+      },
+    });
+
     console.log(`Pitch ${pitchId} rejected by admin, creator removed from campaign`);
-    return res.status(200).json({ message: 'Pitch rejected and creator removed from campaign' });
+    return res.status(200).json({ 
+      message: 'Pitch rejected and creator removed from campaign',
+      pitch: updatedPitch
+    });
   } catch (error) {
     console.error('Error rejecting pitch by admin:', error);
     return res.status(500).json({ message: 'Failed to reject pitch' });
@@ -282,6 +317,30 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
       return res.status(403).json({ message: 'Client not authorized for this campaign' });
     }
 
+    // V3 credits logic: validate credits before finalizing approval and consuming credits
+    const campaignWithShortlisted = await prisma.campaign.findUnique({
+      where: { id: pitch.campaignId },
+      include: { shortlisted: true },
+    });
+
+    const creditsAssignedForThisPitch = Number(pitch.ugcCredits || 0);
+    const totalUtilizedBefore = (campaignWithShortlisted?.shortlisted || []).reduce(
+      (acc, item) => acc + Number(item.ugcVideos || 0),
+      0,
+    );
+
+    if (
+      campaignWithShortlisted?.campaignCredits &&
+      creditsAssignedForThisPitch > 0 &&
+      totalUtilizedBefore + creditsAssignedForThisPitch > campaignWithShortlisted.campaignCredits
+    ) {
+      return res.status(400).json({
+        message: `Not enough campaign credits. Remaining: ${
+          campaignWithShortlisted.campaignCredits - totalUtilizedBefore
+        }, requested: ${creditsAssignedForThisPitch}`,
+      });
+    }
+
     // Update pitch status to approved (both admin and client see this as approved)
     await prisma.pitch.update({
       where: { id: pitchId },
@@ -291,24 +350,66 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
       },
     });
 
-    // Create ShortListedCreator record for V3 approved pitches
-    // This ensures the creator appears in the Shortlisted Creator section
-    await prisma.shortListedCreator.upsert({
+    // Create/Update ShortListedCreator record for V3 approved pitches
+    // Preserve previously assigned UGC credits if pitch.ugcCredits is not set
+    const existingShortlist = await prisma.shortListedCreator.findUnique({
       where: {
         userId_campaignId: {
           userId: pitch.userId,
           campaignId: pitch.campaignId,
         },
       },
-      update: {
-        isAgreementReady: false, // Not ready yet, waiting for agreement setup
-      },
-      create: {
-        userId: pitch.userId,
-        campaignId: pitch.campaignId,
-        isAgreementReady: false, // Not ready yet, waiting for agreement setup
-      },
     });
+
+    if (existingShortlist) {
+      await prisma.shortListedCreator.update({
+        where: {
+          userId_campaignId: {
+            userId: pitch.userId,
+            campaignId: pitch.campaignId,
+          },
+        },
+        data: {
+          isAgreementReady: false,
+          ...(creditsAssignedForThisPitch > 0
+            ? { ugcVideos: creditsAssignedForThisPitch }
+            : {}), // do not overwrite with null/0 if credits not provided
+        },
+      });
+    } else {
+      await prisma.shortListedCreator.create({
+        data: {
+          userId: pitch.userId,
+          campaignId: pitch.campaignId,
+          isAgreementReady: false,
+          ugcVideos: creditsAssignedForThisPitch > 0 ? creditsAssignedForThisPitch : 0,
+          currency: 'MYR',
+        },
+      });
+    }
+    // Recalculate and persist campaign creditsPending (V3 only)
+    if (campaignWithShortlisted?.campaignCredits) {
+      const refreshed = await prisma.campaign.findUnique({
+        where: { id: pitch.campaignId },
+        include: { shortlisted: { select: { ugcVideos: true } } },
+      });
+
+      const totalUtilized = (refreshed?.shortlisted || []).reduce(
+        (acc, item) => acc + Number(item.ugcVideos || 0),
+        0,
+      );
+
+      await prisma.campaign.update({
+        where: { id: pitch.campaignId },
+        data: {
+          creditsUtilized: Number(totalUtilized),
+          creditsPending: Math.max(
+            0,
+            Number(campaignWithShortlisted.campaignCredits) - Number(totalUtilized),
+          ),
+        },
+      });
+    }
 
     // Create submission records for V3 approved pitches (similar to V2 shortlisting)
     const timelines = await prisma.campaignTimeline.findMany({
@@ -377,6 +478,39 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
 
         console.log(`Created ${submissions.length} submissions for V3 pitch approval`);
       }
+    }
+
+    // Create submission records for V3 approved pitches
+    if (pitch.campaign.submissionVersion === 'v4') {
+      console.log(`🔄 V4 campaign detected - attempting to create content submissions for pitch approval ${pitchId}`);
+      try {
+        // Find the shortlisted creator record that was just created/updated
+        const shortlistedCreator = await prisma.shortListedCreator.findUnique({
+          where: {
+            userId_campaignId: {
+              userId: pitch.userId,
+              campaignId: pitch.campaignId,
+            },
+          },
+          include: {
+            campaign: true,
+            user: true,
+          },
+        });
+
+        if (shortlistedCreator) {
+          const { createContentSubmissionsAfterAgreement } = require('../service/submissionV4Service');
+          const contentSubmissions = await createContentSubmissionsAfterAgreement(shortlistedCreator);
+          console.log(`✅ Created ${contentSubmissions.count} V4 content submissions after pitch approval`);
+        } else {
+          console.error('❌ Could not find shortlisted creator record for V4 submission creation');
+        }
+      } catch (error) {
+        console.error('❌ Error creating V4 content submissions after pitch approval:', error);
+        // Don't fail the whole request, just log the error
+      }
+    } else {
+      console.log(`ℹ️  Campaign ${pitch.campaignId} is not V4 (version: ${pitch.campaign.submissionVersion}) - skipping V4 content submission creation`);
     }
 
     // Find admin users for this campaign
@@ -717,9 +851,32 @@ export const submitAgreement = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
     }
 
-    // Check if pitch is in correct status
-    if (pitch.status !== 'AGREEMENT_PENDING') {
-      return res.status(400).json({ message: 'Pitch is not in correct status for agreement submission' });
+    // Check if pitch is in correct status for agreement submission
+    // Allow AGREEMENT_PENDING (initial submission) and AGREEMENT_SUBMITTED (when resubmitting after changes requested)
+    if (pitch.status !== 'AGREEMENT_PENDING' && pitch.status !== 'AGREEMENT_SUBMITTED') {
+      return res.status(400).json({ 
+        message: `Pitch is not in correct status for agreement submission. Current status: ${pitch.status}` 
+      });
+    }
+
+    // If pitch is already AGREEMENT_SUBMITTED, check if the agreement submission needs changes
+    if (pitch.status === 'AGREEMENT_SUBMITTED') {
+      const agreementSubmission = await prisma.submission.findFirst({
+        where: {
+          userId: pitch.userId,
+          campaignId: pitch.campaignId,
+          submissionType: {
+            type: 'AGREEMENT_FORM',
+          },
+        },
+      });
+
+      // Only allow resubmission if agreement submission is in CHANGES_REQUIRED status
+      if (!agreementSubmission || agreementSubmission.status !== 'CHANGES_REQUIRED') {
+        return res.status(400).json({ 
+          message: 'Agreement has already been submitted and is not pending changes' 
+        });
+      }
     }
 
     // Update pitch status to completed
@@ -810,7 +967,17 @@ export const getPitchesV3 = async (req: Request, res: Response) => {
       },
       include: {
         campaign: true,
-        user: true,
+        user: {
+          include: {
+            creator: {
+              include: {
+                instagramUser: true,
+                tiktokUser: true,
+                mediaKit: true,
+              },
+            },
+          },
+        },
         admin: {
           include: {
             user: true,
@@ -832,15 +999,17 @@ export const getPitchesV3 = async (req: Request, res: Response) => {
     // Transform pitches to show role-based status and filter for clients
     const transformedPitches = pitches
       .filter((pitch) => {
-        // For clients: show pitches that are SENT_TO_CLIENT, APPROVED, or in agreement stages
+        // For clients: show pitches that are SENT_TO_CLIENT, APPROVED, REJECTED, MAYBE, or in agreement stages
         // Hide pitches with PENDING_REVIEW status (admin review stage)
         if (user.role === 'client') {
           return (
-            pitch.status === 'SENT_TO_CLIENT' ||
-            pitch.status === 'APPROVED' ||
-            pitch.status === 'AGREEMENT_PENDING' ||
-            pitch.status === 'AGREEMENT_SUBMITTED'
-          );
+                 pitch.status === 'SENT_TO_CLIENT' || 
+                 pitch.status === 'APPROVED' || 
+                 pitch.status === 'REJECTED' ||
+                 pitch.status === 'MAYBE' ||
+                 pitch.status === 'AGREEMENT_PENDING' || 
+                 pitch.status === 'AGREEMENT_SUBMITTED';
+            );
         }
         // For admin and creators: show all pitches
         return true;
@@ -905,7 +1074,17 @@ export const getPitchByIdV3 = async (req: Request, res: Response) => {
       where: { id: pitchId },
       include: {
         campaign: true,
-        user: true,
+        user: {
+          include: {
+            creator: {
+              include: {
+                instagramUser: true,
+                tiktokUser: true,
+                mediaKit: true,
+              },
+            },
+          },
+        },
         admin: {
           include: {
             user: true,
@@ -1498,11 +1677,11 @@ export const forwardClientFeedbackV3 = async (req: Request, res: Response) => {
     if (submission.campaign.origin !== 'CLIENT') {
       return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
     }
-
-    // Check if submission is in correct status - allow both SENT_TO_ADMIN and CHANGES_REQUIRED
-    if (submission.status !== 'SENT_TO_ADMIN' && submission.status !== 'CHANGES_REQUIRED') {
-      return res.status(400).json({
-        message: `Submission is not in correct status for forwarding feedback. Current status: ${submission.status}`,
+    
+    // Check if submission is in correct status
+    if (submission.status !== 'SENT_TO_ADMIN') {
+      return res.status(400).json({ 
+        message: `Submission is not in correct status for forwarding feedback. Current status: ${submission.status}` 
       });
     }
 

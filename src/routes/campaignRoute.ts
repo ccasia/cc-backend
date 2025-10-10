@@ -48,8 +48,8 @@ import {
   shortlistCreatorV2,
   shortlistCreatorV2ForClient,
   shortlistCreatorV3,
-  shortlistGuestCreators,
   assignUGCCreditsV3,
+  shortlistGuestCreators,
   getAllPitches,
   getAllCreatorAgreements,
   getClientCampaigns,
@@ -61,6 +61,7 @@ import {
   checkCampaignCreatorVisibility,
   updateCampaignOrigin,
   changeCampaignCredit,
+  getCampaignsForPublic,
 } from '@controllers/campaignController';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 import { canActivateCampaign } from '@middlewares/adminOrClient';
@@ -139,6 +140,8 @@ router.post('/fixCampaignTimelines/:campaignId', isLoggedIn, fixCampaignTimeline
 // Check if a campaign meets all requirements to be visible to creators
 router.get('/checkCreatorVisibility/:campaignId', isLoggedIn, checkCampaignCreatorVisibility);
 
+router.get('/public', getCampaignsForPublic);
+
 router.post('/updateOrCreateDefaultTimeline', updateOrCreateDefaultTimeline);
 router.post('/createCampaign', isSuperAdmin, createCampaign);
 router.post('/createNewTimeline', isSuperAdmin, createNewTimeline);
@@ -154,6 +157,10 @@ router.post('/removeCreatorFromCampaign', isLoggedIn, isSuperAdmin, removeCreato
 router.post('/v2/shortlistCreator', isSuperAdmin, shortlistCreatorV2);
 router.post('/v2/shortlistCreator/client', isSuperAdmin, shortlistCreatorV2ForClient);
 router.post('/v3/shortlistCreator', isLoggedIn, shortlistCreatorV3);
+router.post('/v3/shortlistCreator/guest', isLoggedIn, shortlistGuestCreators);
+router.post('/v3/assignUGCCredits', isLoggedIn, assignUGCCreditsV3);
+
+router.patch('/v4/changeCredits', isLoggedIn, isSuperAdmin, changeCampaignCredit);
 
 router.patch('/pitch', isLoggedIn, creatorMakePitch);
 router.patch('/changeCampaignStage/:campaignId', changeCampaignStage);
@@ -175,7 +182,7 @@ router.patch('/sendAgreement', isLoggedIn, isSuperAdmin, sendAgreement);
 router.patch('/resendAgreement', isLoggedIn, resendAgreement);
 router.patch('/removePitchVideo', isLoggedIn, removePitchVideo);
 router.patch('/linkNewAgreement', isLoggedIn, isSuperAdmin, linkNewAgreement);
-router.patch('/changeCredits', isLoggedIn, changeCampaignCredit);
+router.patch('/changeCredits', isLoggedIn, isSuperAdmin, changeCampaignCredit);
 
 router.delete('/timelineType/:id', isSuperAdmin, deleteTimelineType);
 router.delete('/unsaveCampaign/:id', isLoggedIn, unSaveCampaign);

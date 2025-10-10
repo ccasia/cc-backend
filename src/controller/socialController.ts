@@ -921,11 +921,13 @@ export const getInstagramMediaKit = async (req: Request, res: Response) => {
       });
     }
 
-    return res.status(200).json({
-      overview,
-      medias,
-      analytics,
-    });
+    return res.status(200).json({ instagramUser, medias });
+
+    // return res.status(200).json({
+    //   overview,
+    //   medias,
+    //   analytics,
+    // });
   } catch (error) {
     console.error('Error in getInstagramMediaKit:', error);
     return res.status(400).json(error);
@@ -1790,33 +1792,78 @@ export const getTikTokMediaKit = async (req: Request, res: Response) => {
     const overview = overviewRes.data.data.user;
 
     // Get TikTok videos data
-    const videosRes = await axios.post(
-      'https://open.tiktokapis.com/v2/video/list/',
-      { max_count: 20 },
-      {
-        params: {
-          fields:
-            'id,title,video_description,duration,cover_image_url,embed_link,embed_html,like_count,comment_count,share_count,view_count,create_time',
+    let videosRes;
+    try {
+      videosRes = await axios.post(
+        'https://open.tiktokapis.com/v2/video/list/',
+        { max_count: 20 },
+        {
+          params: {
+            fields:
+              'id,title,video_description,duration,cover_image_url,embed_link,embed_html,like_count,comment_count,share_count,view_count,create_time',
+          },
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
         },
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-      },
-    );
+      );
+    } catch (videoError: any) {
+      console.error('TikTok video list API error:', {
+        status: videoError.response?.status,
+        statusText: videoError.response?.statusText,
+        data: videoError.response?.data,
+        message: videoError.message
+      });
+      
+      // If it's a permission error, the user might need to reconnect
+      if (videoError.response?.status === 403 || videoError.response?.status === 401) {
+        throw new Error('TikTok permissions expired. Please reconnect your TikTok account.');
+      }
+      
+      // For other errors, continue with empty videos array
+      videosRes = { data: { data: { videos: [] } } };
+    }
 
     const videos = videosRes.data.data?.videos || [];
 
-    // Calculate analytics from videos
-    const totalLikes = videos.reduce((sum: number, video: any) => sum + (video.like_count || 0), 0);
-    const totalComments = videos.reduce((sum: number, video: any) => sum + (video.comment_count || 0), 0);
-    const totalShares = videos.reduce((sum: number, video: any) => sum + (video.share_count || 0), 0);
-    const totalViews = videos.reduce((sum: number, video: any) => sum + (video.view_count || 0), 0);
+    // Map TikTok API fields to expected frontend fields
+    const mappedVideos = videos.map((video: any) => ({
+      ...video,
+      // Ensure we have the fields the frontend expects
+      like: video.like_count || 0,
+      comment: video.comment_count || 0,
+      share: video.share_count || 0,
+      view: video.view_count || 0,
+      // Keep original fields for compatibility
+      like_count: video.like_count || 0,
+      comment_count: video.comment_count || 0,
+      share_count: video.share_count || 0,
+      view_count: video.view_count || 0,
+    }));
 
-    const averageLikes = videos.length > 0 ? totalLikes / videos.length : 0;
-    const averageComments = videos.length > 0 ? totalComments / videos.length : 0;
-    const averageShares = videos.length > 0 ? totalShares / videos.length : 0;
-    const averageViews = videos.length > 0 ? totalViews / videos.length : 0;
+    // Debug logging for staging
+    console.log('TikTok API Response:', {
+      status: videosRes.status,
+      videosCount: videos.length,
+      hasData: !!videosRes.data.data,
+      responseStructure: {
+        hasVideos: !!videosRes.data.data?.videos,
+        videosType: typeof videosRes.data.data?.videos,
+        videosLength: videosRes.data.data?.videos?.length
+      }
+    });
+
+    // Calculate analytics from videos
+    const totalLikes = mappedVideos.reduce((sum: number, video: any) => sum + (video.like_count || 0), 0);
+    const totalComments = mappedVideos.reduce((sum: number, video: any) => sum + (video.comment_count || 0), 0);
+    const totalShares = mappedVideos.reduce((sum: number, video: any) => sum + (video.share_count || 0), 0);
+    const totalViews = mappedVideos.reduce((sum: number, video: any) => sum + (video.view_count || 0), 0);
+
+    const averageLikes = mappedVideos.length > 0 ? totalLikes / mappedVideos.length : 0;
+    const averageComments = mappedVideos.length > 0 ? totalComments / mappedVideos.length : 0;
+    const averageShares = mappedVideos.length > 0 ? totalShares / mappedVideos.length : 0;
+    const averageViews = mappedVideos.length > 0 ? totalViews / mappedVideos.length : 0;
 
     // Get analytics data for charts with error handling
     let analytics: {
@@ -1889,7 +1936,7 @@ export const getTikTokMediaKit = async (req: Request, res: Response) => {
         likes_count: overview.likes_count,
       },
       medias: {
-        sortedVideos: videos.slice(0, 5), // Top 5 videos for display
+        sortedVideos: mappedVideos.slice(0, 5), // Top 5 videos for display
         averageLikes: Math.round(averageLikes),
         averageComments: Math.round(averageComments),
         averageShares: Math.round(averageShares),
@@ -1907,6 +1954,13 @@ export const getTikTokMediaKit = async (req: Request, res: Response) => {
         likes_count: overview.likes_count,
       },
     };
+
+    // Debug logging for response data
+    console.log('TikTok Response Data Structure:', {
+      sortedVideosCount: responseData.medias.sortedVideos.length,
+      totalVideos: mappedVideos.length
+    });
+
 
     return res.status(200).json(responseData);
   } catch (error: any) {
