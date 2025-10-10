@@ -1003,12 +1003,12 @@ export const getPitchesV3 = async (req: Request, res: Response) => {
         // Hide pitches with PENDING_REVIEW status (admin review stage)
         if (user.role === 'client') {
           return (
-                 pitch.status === 'SENT_TO_CLIENT' || 
-                 pitch.status === 'APPROVED' || 
+                 pitch.status === 'SENT_TO_CLIENT' ||
+                 pitch.status === 'APPROVED' ||
                  pitch.status === 'REJECTED' ||
                  pitch.status === 'MAYBE' ||
-                 pitch.status === 'AGREEMENT_PENDING' || 
-                 pitch.status === 'AGREEMENT_SUBMITTED';
+                 pitch.status === 'AGREEMENT_PENDING' ||
+                 pitch.status === 'AGREEMENT_SUBMITTED'
             );
         }
         // For admin and creators: show all pitches
