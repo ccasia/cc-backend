@@ -337,7 +337,10 @@ async function deleteFileIfExists(filePath: string) {
             folder: content.folder,
             hasVideos: content.filePaths?.video?.length || 0,
             hasRawFootages: content.filePaths?.rawFootages?.length || 0,
-            hasPhotos: content.filePaths?.photos?.length || 0
+            hasPhotos: content.filePaths?.photos?.length || 0,
+            isV4: content.isV4,
+            preserveExistingMedia: content.preserveExistingMedia,
+            submissionType: content.submissionType
           });
           const { filePaths } = content;
 
@@ -720,7 +723,17 @@ async function deleteFileIfExists(filePath: string) {
             }
 
             // For photos
+            console.log('🔍 Worker: Checking if photos need processing...', {
+              hasPhotos: !!filePaths?.photos?.length,
+              photosCount: filePaths?.photos?.length || 0,
+              submissionId: submission.id,
+              contentIsV4: content.isV4,
+              contentPreserveExistingMedia: content.preserveExistingMedia,
+              submissionVersion: submission.submissionVersion
+            });
+            
             if (filePaths?.photos?.length) {
+              console.log('🖼️ Worker: Processing photos section started');
               // Debug logging for photo processing
               console.log('🖼️ Worker Photo Processing Debug:', {
                 submissionId: submission.id,
@@ -732,15 +745,28 @@ async function deleteFileIfExists(filePath: string) {
 
               // For V4 submissions with selective updates, always create new photos
               // The backend controller has already handled selective deletion
+              console.log('🔍 Worker Photo Processing Condition Check:', {
+                isV4: content.isV4,
+                preserveExistingMedia: content.preserveExistingMedia,
+                willUseV4Logic: content.isV4 && content.preserveExistingMedia
+              });
+              
               if (content.isV4 && content.preserveExistingMedia) {
-                console.log('🔄 V4 Selective Update: Creating new photos directly (backend handled existing photo preservation)');
+                console.log('🔄 V4 Additive Update: Creating new photos directly (preserving all existing photos)');
+                
+                // Log existing photos before adding new ones
+                const existingPhotosBefore = await prisma.photo.findMany({
+                  where: { submissionId: submission.id },
+                  select: { id: true, url: true }
+                });
+                console.log(`📸 Before adding new photos: ${existingPhotosBefore.length} existing photos`);
                 
                 const urls = await Promise.all(
                   filePaths.photos.map(async (photoPath: any) => {
                     const photoFileName = `${submission.id}_${path.basename(photoPath)}`;
                     const photoPublicURL = await uploadImage(photoPath, photoFileName, content.folder);
 
-                    await prisma.photo.create({
+                    const newPhoto = await prisma.photo.create({
                       data: {
                         url: photoPublicURL,
                         submissionId: submission.id,
@@ -749,12 +775,26 @@ async function deleteFileIfExists(filePath: string) {
                       },
                     });
 
-                    console.log('✅ V4 Photo entry created in the DB (selective update).');
+                    console.log(`✅ V4 Photo entry created in DB: ${newPhoto.id} - ${photoPublicURL}`);
                     return photoPublicURL;
                   }),
                 );
+                
+                // Log total photos after adding new ones
+                const existingPhotosAfter = await prisma.photo.findMany({
+                  where: { submissionId: submission.id },
+                  select: { id: true, url: true }
+                });
+                console.log(`📸 After adding new photos: ${existingPhotosAfter.length} total photos (${existingPhotosBefore.length} existing + ${urls.length} new)`);
               } else {
                 // Original logic for non-V4 or full replacement
+                console.log('⚠️ Worker using NON-V4 logic (this should not happen for V4 additive system)');
+                console.log('🔍 Worker Photo Processing - Using else branch:', {
+                  isV4: content.isV4,
+                  preserveExistingMedia: content.preserveExistingMedia,
+                  submissionVersion: submission.submissionVersion
+                });
+                
                 const requestChangePhotos = await prisma.photo.findMany({
                   where: {
                     userId: submission.userId,
