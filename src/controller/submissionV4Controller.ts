@@ -668,16 +668,27 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
       where: { id: submissionId },
       include: {
         submissionType: true,
+        user: {
+          select: {
+            name: true,
+          },
+        },
         campaign: {
           include: {
             campaignAdmin: {
               include: {
                 admin: {
-                  include: { user: true }
-                }
-              }
-            }
-          }
+                  include: {
+                    user: {
+                      select: {
+                        role: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
         },
         video: true,
         photos: true,
@@ -805,6 +816,38 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
         byClient: true,
         updatedAt: new Date().toISOString()
       });
+    }
+
+    // Notifications for admins
+    const adminUsers = submission.campaign.campaignAdmin.filter((ca) => ca.admin.user.role === 'admin');
+    const creatorName = submission.user?.name;
+
+    let title = '';
+    let message = '';
+
+    if (action === 'approve' && newSubmissionStatus === 'CLIENT_APPROVED') {
+      title = '✅ Draft Approved';
+      message = `A draft for ${submission.campaign.name} has been approved for ${creatorName}`;
+    } else if (action === 'request_changes') {
+      title = '📝 Feedback ready';
+      message = `Check client notes for ${submission.campaign.name} for ${creatorName}`;
+    }
+
+    for (const adminUser of adminUsers) {
+      const adminUserId = adminUser.admin.userId;
+      const notification = await saveNotification({
+        userId: adminUserId,
+        title: title,
+        message: message,
+        entity: 'Draft',
+        entityId: submission.campaign.id,
+      });
+
+      const adminSocketId = clients.get(adminUserId);
+
+      if (adminSocketId) {
+        io.to(adminSocketId).emit('notification', notification);
+      }
     }
     
     console.log(`✅ V4 submission ${submissionId} ${action}d by client ${clientId}`);
