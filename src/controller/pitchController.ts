@@ -555,7 +555,7 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
       const notification = await saveNotification({
         title: `📝 Agreements needed`,
         message: `Finalise your shortlisted creators to keep ${pitch.campaign.name} moving.`,
-        entity: 'Pitch',
+        entity: 'Agreement',
         campaignId: pitch.campaignId,
         pitchId: pitchId,
         userId: adminUser.admin.userId,
