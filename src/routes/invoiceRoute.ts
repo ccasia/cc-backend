@@ -30,21 +30,30 @@ const prisma = new PrismaClient();
 
 // router.get('/executeInvoice', generateMissingInvoices);
 
-router.get('/zeroConnect', isSuperAdmin, getXero);
+router.get('/xeroConnect', isSuperAdmin, getXero);
+
 router.get('/xeroCallback', xeroCallBack);
+
 router.get('/getXeroContacts', checkAndRefreshAccessToken, getXeroContacts);
+
 router.get('/checkRefreshToken', isSuperAdmin, checkRefreshToken);
+
 router.get('/creator', getInvoicesByCreatorId);
-router.get('/:id', getInvoiceById);
+
+router.get('/:id', isLoggedIn, getInvoiceById);
+
 router.get('/', isSuperAdmin, getAllInvoices);
+
 router.get('/getInvoicesByCampaignId/:id', getInvoicesByCampaignId);
 
 router.get('/creator/:creatorId/campaign/:campaignId', getInvoiceByCreatorIdAndCampaignId);
+
 router.get('/creatorInvoice/:invoiceId', isLoggedIn, creatorInvoice);
 
 router.post('/create', createInvoice);
 
 router.patch('/updateStatus', updateInvoiceStatus);
+
 router.patch('/update', updateInvoice);
 
 router.delete('/:id', isSuperAdmin, deleteInvoice);

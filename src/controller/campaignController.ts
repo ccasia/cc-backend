@@ -18,6 +18,7 @@ import {
   Submission,
   SubmissionType,
   User,
+  TimelineStatus,
 } from '@prisma/client';
 
 import amqplib from 'amqplib';
@@ -54,6 +55,7 @@ import {
 import { deliveryConfirmation, shortlisted, tracking } from '@configs/nodemailer.config';
 import { createNewSpreadSheet, upsertSheetAndWriteRows } from '@services/google_sheets/sheets';
 import { getRemainingCredits } from '@services/companyService';
+import { handleGuestForShortListing } from '@services/shortlistService';
 import getCountry from '@utils/getCountry';
 // import { applyCreditCampiagn } from '@services/packageService';
 
@@ -214,6 +216,16 @@ export const createCampaign = async (req: Request, res: Response) => {
     campaignCredits,
     country,
   }: Campaign = JSON.parse(req.body.data);
+  // Also read optional fields not in the Campaign interface
+  const rawBody: any = (() => {
+    try {
+      return JSON.parse(req.body.data);
+    } catch {
+      return {};
+    }
+  })();
+  const requestedOrigin = rawBody?.origin as 'ADMIN' | 'CLIENT' | undefined;
+  const clientManagers = Array.isArray(rawBody?.clientManagers) ? rawBody.clientManagers : [];
 
   try {
     const publicURL: any = [];
@@ -271,6 +283,21 @@ export const createCampaign = async (req: Request, res: Response) => {
             });
           }),
         );
+
+        // Attach client managers (if provided) to campaignAdmin as well
+        const clientManagerUsers = await Promise.all(
+          clientManagers.map(async (cm: any) => {
+            // Accept either {id} or email/name strings; try id first
+            if (cm?.id) {
+              return tx.user.findUnique({ where: { id: cm.id } });
+            }
+            // Try by email
+            if (typeof cm === 'string' && cm.includes('@')) {
+              return tx.user.findUnique({ where: { email: cm } });
+            }
+            return null;
+          }),
+        );
         const existingClient = await tx.company.findUnique({
           where: { id: client.id },
           include: { subscriptions: { where: { status: 'ACTIVE' } } },
@@ -293,6 +320,10 @@ export const createCampaign = async (req: Request, res: Response) => {
         const url: string = await createNewSpreadSheet({ title: campaignTitle });
 
         // Create Campaign
+        // Normalize dates for campaign brief
+        const normalizedStartDate = campaignStartDate ? dayjs(campaignStartDate).toDate() : new Date();
+        const normalizedEndDate = campaignEndDate ? dayjs(campaignEndDate).toDate() : normalizedStartDate;
+
         const campaign = await tx.campaign.create({
           data: {
             campaignId: campaignId,
@@ -300,6 +331,7 @@ export const createCampaign = async (req: Request, res: Response) => {
             campaignType: campaignType,
             description: campaignDescription,
             status: campaignStage as CampaignStatus,
+            origin: requestedOrigin === 'CLIENT' ? 'CLIENT' : 'ADMIN',
             brandTone: brandTone,
             productName: productName,
             spreadSheetURL: url,
@@ -319,8 +351,8 @@ export const createCampaign = async (req: Request, res: Response) => {
                 images: publicURL.map((image: any) => image) || '',
                 otherAttachments: otherAttachments,
                 referencesLinks: referencesLinks?.map((link: any) => link.value) || [],
-                startDate: dayjs(campaignStartDate).toDate(),
-                endDate: dayjs(campaignEndDate ?? campaignStartDate).toDate(),
+                startDate: normalizedStartDate,
+                endDate: normalizedEndDate,
                 industries: campaignIndustries,
                 campaigns_do: campaignDo,
                 campaigns_dont: campaignDont,
@@ -350,6 +382,18 @@ export const createCampaign = async (req: Request, res: Response) => {
           },
           include: {
             campaignBrief: true,
+          },
+        });
+
+        // Deduct credits from subscription
+        await tx.subscription.update({
+          where: {
+            id: existingClient.subscriptions[0].id,
+          },
+          data: {
+            creditsUsed: {
+              increment: campaignCredits,
+            },
           },
         });
 
@@ -426,6 +470,25 @@ export const createCampaign = async (req: Request, res: Response) => {
           throw new Error('Campaign creation failed or campaign ID is missing');
         }
 
+        // Check if the user creating the campaign is a Client
+        const userId = req.session.userid;
+        if (userId) {
+          const currentUser = await tx.user.findUnique({
+            where: { id: userId },
+            include: { admin: { include: { role: true } } },
+          });
+
+          // If the user is a Client, add them to campaignAdmin
+          if (currentUser?.admin?.role?.name === 'Client') {
+            await tx.campaignAdmin.create({
+              data: {
+                adminId: userId,
+                campaignId: campaign.id,
+              },
+            });
+          }
+        }
+
         await tx.thread.create({
           data: {
             title: campaign.name,
@@ -443,6 +506,20 @@ export const createCampaign = async (req: Request, res: Response) => {
             campaign: true,
           },
         });
+
+        // Add adminManager and clientManagers to campaignAdmin
+        const adminIdsToAdd = [
+          ...admins.map((a: any) => a?.id).filter(Boolean),
+          ...clientManagerUsers.map((u: any) => u?.id).filter(Boolean),
+        ] as string[];
+        for (const adminUserId of adminIdsToAdd) {
+          const exists = await tx.campaignAdmin.findUnique({
+            where: { adminId_campaignId: { adminId: adminUserId, campaignId: campaign.id } },
+          });
+          if (!exists) {
+            await tx.campaignAdmin.create({ data: { adminId: adminUserId, campaignId: campaign.id } });
+          }
+        }
 
         await Promise.all(
           admins.map(async (admin: any) => {
@@ -463,10 +540,11 @@ export const createCampaign = async (req: Request, res: Response) => {
             });
 
             if (existing) {
-              return res.status(400).json({ message: 'Admin exists' });
+              // Skip existing admin instead of aborting the whole request
+              return null;
             }
 
-            const admins = await tx.campaignAdmin.create({
+            const createdAdminRel = await tx.campaignAdmin.create({
               data: {
                 adminId: admin?.id,
                 campaignId: campaign.id,
@@ -481,7 +559,7 @@ export const createCampaign = async (req: Request, res: Response) => {
                 start: dayjs(campaign?.campaignBrief?.startDate).format(),
                 end: dayjs(campaign?.campaignBrief?.endDate).format(),
                 title: campaign?.name,
-                userId: admins.admin.userId as string,
+                userId: createdAdminRel.admin.userId as string,
                 allDay: false,
               },
             });
@@ -517,7 +595,7 @@ export const createCampaign = async (req: Request, res: Response) => {
             });
 
             io.to(clients.get(admin.id)).emit('notification', data);
-            return admins;
+            return createdAdminRel;
           }),
         );
 
@@ -549,53 +627,10 @@ export const createCampaign = async (req: Request, res: Response) => {
       },
     );
   } catch (error) {
-    return res.status(400).json(error?.message);
-  }
-};
-
-export const exportActiveCompletedToSheet = async (_req: Request, res: Response) => {
-  try {
-    const campaigns = await prisma.campaign.findMany({
-      include: {
-        brand: true,
-        company: true,
-      },
-    });
-
-    const active = campaigns.filter((c) => c.status === 'ACTIVE');
-    const completed = campaigns.filter((c) => c.status === 'COMPLETED');
-
-    const toRow = (c: any): (string | number)[] => [
-      c.name || '',
-      c.brand?.name || c.company?.name || '',
-      c.campaignCredits || 0,
-      c.creditsUtilized || 0,
-      c.creditsPending || Math.max((c.campaignCredits || 0) - (c.creditsUtilized || 0), 0),
-    ];
-
-    const header = ['Campaign', 'Client Name', 'Campaign Credits', 'Credits Utilized', 'Credits Pending'];
-
-    // Target spreadsheet provided by user
-    const spreadsheetId = '1AtuEMQDR3pblQqBStBpsW_S19bUY-4rJcjyQ_BE-YZY';
-
-    await upsertSheetAndWriteRows({
-      spreadSheetId: spreadsheetId,
-      sheetTitle: 'Active',
-      headerRow: header,
-      rows: active.map(toRow),
-    });
-
-    await upsertSheetAndWriteRows({
-      spreadSheetId: spreadsheetId,
-      sheetTitle: 'Completed',
-      headerRow: header,
-      rows: completed.map(toRow),
-    });
-
-    return res.status(200).json({ success: true });
-  } catch (error: any) {
-    console.log(error);
-    return res.status(500).json({ success: false, message: error?.message || 'Failed to export' });
+    if (!res.headersSent) {
+      return res.status(400).json(error?.message);
+    }
+    console.error('createCampaign error after response sent:', error);
   }
 };
 
@@ -671,6 +706,52 @@ async function syncCreatorsCampaignSheetInternal() {
   });
 }
 
+export const exportActiveCompletedToSheet = async (_req: Request, res: Response) => {
+  try {
+    const campaigns = await prisma.campaign.findMany({
+      include: {
+        brand: true,
+        company: true,
+      },
+    });
+
+    const active = campaigns.filter((c) => c.status === 'ACTIVE');
+    const completed = campaigns.filter((c) => c.status === 'COMPLETED');
+
+    const toRow = (c: any): (string | number)[] => [
+      c.name || '',
+      c.brand?.name || c.company?.name || '',
+      c.campaignCredits || 0,
+      c.creditsUtilized || 0,
+      c.creditsPending || Math.max((c.campaignCredits || 0) - (c.creditsUtilized || 0), 0),
+    ];
+
+    const header = ['Campaign', 'Client Name', 'Campaign Credits', 'Credits Utilized', 'Credits Pending'];
+
+    // Target spreadsheet provided by user
+    const spreadsheetId = '1AtuEMQDR3pblQqBStBpsW_S19bUY-4rJcjyQ_BE-YZY';
+
+    await upsertSheetAndWriteRows({
+      spreadSheetId: spreadsheetId,
+      sheetTitle: 'Active',
+      headerRow: header,
+      rows: active.map(toRow),
+    });
+
+    await upsertSheetAndWriteRows({
+      spreadSheetId: spreadsheetId,
+      sheetTitle: 'Completed',
+      headerRow: header,
+      rows: completed.map(toRow),
+    });
+
+    return res.status(200).json({ success: true });
+  } catch (error: any) {
+    console.log(error);
+    return res.status(500).json({ success: false, message: error?.message || 'Failed to export' });
+  }
+};
+
 export const exportCreatorsCampaignSheet = async (_req: Request, res: Response) => {
   try {
     await syncCreatorsCampaignSheetInternal();
@@ -696,13 +777,14 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
         admin: {
           select: {
             mode: true,
+            role: true,
           },
         },
         id: true,
       },
     });
 
-    if (user?.admin?.mode === 'god' || user?.admin?.mode === 'advanced') {
+    if (user?.admin?.mode === 'god' || user?.admin?.role?.name === 'CSL') {
       campaigns = await prisma.campaign.findMany({
         orderBy: {
           createdAt: 'desc',
@@ -867,6 +949,7 @@ export const getCampaignById = async (req: Request, res: Response) => {
   const { id } = req.params;
 
   try {
+    console.log(`Getting campaign by ID: ${id}`);
     const campaign = await prisma.campaign.findFirst({
       where: {
         id: id,
@@ -940,13 +1023,25 @@ export const getCampaignById = async (req: Request, res: Response) => {
         },
         shortlisted: {
           select: {
+            id: true,
             ugcVideos: true,
+            userId: true,
+            adminComments: true,
             user: {
-              include: {
-                creator: true,
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                photoURL: true,
+                status: true,
+                creator: {
+                  select: {
+                    isGuest: true,
+                  },
+                },
+                paymentForm: true,
               },
             },
-            userId: true,
           },
         },
         campaignTasks: {
@@ -959,6 +1054,14 @@ export const getCampaignById = async (req: Request, res: Response) => {
         creatorAgreement: true,
       },
     });
+
+    console.log(`Campaign found:`, {
+      id: campaign?.id,
+      name: campaign?.name,
+      origin: campaign?.origin,
+      status: campaign?.status,
+    });
+
     return res.status(200).json(campaign);
   } catch (error) {
     return res.status(400).json(error);
@@ -1026,10 +1129,57 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
         bookMarkCampaign: true,
         shortlisted: true,
         logistic: true,
+        campaignAdmin: {
+          include: {
+            admin: {
+              include: {
+                user: true,
+              },
+            },
+          },
+        },
+        campaignLogs: true,
       },
       orderBy: {
         createdAt: 'desc',
       },
+    });
+
+    console.log(`matchCampaignWithCreator - Found ${campaigns.length} ACTIVE campaigns`);
+
+    // Log each campaign's timelines and additional info before filtering
+    campaigns.forEach((campaign) => {
+      console.log(`Campaign ${campaign.id} (${campaign.name}) - Status: ${campaign.status}`);
+      console.log(`Timelines (${campaign.campaignTimeline?.length || 0}):`);
+      campaign.campaignTimeline?.forEach((timeline) => {
+        console.log(`  - ${timeline.name} (Status: ${timeline.status}, For: ${timeline.for})`);
+      });
+
+      // Log campaign admins and creator
+      console.log(`Campaign admins (${campaign.campaignAdmin?.length || 0}):`);
+      campaign.campaignAdmin?.forEach((admin) => {
+        console.log(`  - Admin ID: ${admin.adminId}, Role: ${admin.admin?.user?.role || 'unknown'}`);
+      });
+
+      // Log campaign logs to see who created it
+      console.log(`Campaign logs (${campaign.campaignLogs?.length || 0}):`);
+      campaign.campaignLogs?.forEach((log: any) => {
+        console.log(`  - Action: ${log.action}, User ID: ${log.userId}, Role: ${log.userRole}`);
+      });
+
+      // Check if this campaign would pass the filter
+      const hasOpenForPitchTimeline = campaign.campaignTimeline?.some(
+        (timeline) => timeline.name === 'Open For Pitch' && timeline.status === 'OPEN',
+      );
+      console.log(`  Will this campaign pass filter? ${hasOpenForPitchTimeline ? 'YES' : 'NO'}`);
+
+      // Check if campaign has additional requirements that might be missing
+      if (!campaign.campaignRequirement) {
+        console.log(`  WARNING: Campaign has no requirements defined`);
+      }
+      if (!campaign.campaignBrief) {
+        console.log(`  WARNING: Campaign has no brief defined`);
+      }
     });
 
     if (campaigns?.length === 0) {
@@ -1064,7 +1214,11 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
     // });
 
     const calculateInterestMatchingPercentage = (creatorInterests: Interest[], creatorPerona: []) => {
-      const totalInterests = creatorPerona.length;
+      const totalInterests = creatorPerona?.length || 0;
+
+      if (totalInterests === 0) {
+        return 0; // Return 0% if no persona interests defined
+      }
 
       const matchingInterests = creatorInterests.filter((interest) =>
         creatorPerona.includes(interest?.name?.toLowerCase() as never),
@@ -1115,7 +1269,7 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
         }
       }
 
-      return (matches / totalCriteria) * 100;
+      return totalCriteria === 0 ? 0 : (matches / totalCriteria) * 100;
     };
 
     const calculateOverallMatchingPercentage = (
@@ -1127,31 +1281,67 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       return interestMatch * interestWeight + requirementMatch * requirementWeight;
     };
 
-    const matchedCampaignWithPercentage = campaigns.map((item) => {
-      const interestPercentage = calculateInterestMatchingPercentage(
-        user?.creator?.interests as never,
-        item.campaignRequirement?.creator_persona as any,
-      );
+    const matchedCampaignWithPercentage = campaigns.map((item, index) => {
+      try {
+        const interestPercentage = calculateInterestMatchingPercentage(
+          user?.creator?.interests as never,
+          item.campaignRequirement?.creator_persona as any,
+        );
 
-      const requirementPercentage = calculateRequirementMatchingPercentage(
-        user?.creator as Creator,
-        item.campaignRequirement as CampaignRequirement,
-      );
+        const requirementPercentage = calculateRequirementMatchingPercentage(
+          user?.creator as Creator,
+          item.campaignRequirement as CampaignRequirement,
+        );
 
-      const overallMatchingPercentage = calculateOverallMatchingPercentage(interestPercentage, requirementPercentage);
+        const overallMatchingPercentage = calculateOverallMatchingPercentage(interestPercentage, requirementPercentage);
 
-      return {
-        ...item,
-        percentageMatch: overallMatchingPercentage,
-      };
+        // Debug log for problematic campaigns
+        if (index < 3) {
+          // Log first 3 campaigns for debugging
+          console.log(`Campaign ${item.id} (${item.name}) matching:`, {
+            interestPercentage: isNaN(interestPercentage) ? 'NaN' : interestPercentage,
+            requirementPercentage: isNaN(requirementPercentage) ? 'NaN' : requirementPercentage,
+            overallMatchingPercentage: isNaN(overallMatchingPercentage) ? 'NaN' : overallMatchingPercentage,
+            hasCreatorPersona: !!item.campaignRequirement?.creator_persona,
+            creatorPersonaLength: item.campaignRequirement?.creator_persona?.length || 0,
+          });
+        }
+
+        return {
+          ...item,
+          percentageMatch: isNaN(overallMatchingPercentage) ? 0 : overallMatchingPercentage,
+        };
+      } catch (error) {
+        console.error(`Error calculating percentage for campaign ${item.id}:`, error);
+        return {
+          ...item,
+          percentageMatch: 0,
+        };
+      }
     });
 
-    // const sortedMatchedCampaigns = matchedCampaignWithPercentage.sort((a, b) => b.percentageMatch - a.percentageMatch);
-    const sortedMatchedCampaigns = matchedCampaignWithPercentage.sort((a, b) => {
-      return dayjs(a.createdAt).isBefore(b.createdAt, 'date') ? 1 : -1;
+    // Keep the original order from database (newest first) instead of overriding
+    const sortedMatchedCampaigns = matchedCampaignWithPercentage;
+
+    // Debug: Check if there's any difference between campaigns and sortedMatchedCampaigns
+    console.log(`matchCampaignWithCreator - Debug counts:`, {
+      originalCampaigns: campaigns.length,
+      matchedCampaigns: matchedCampaignWithPercentage.length,
+      sortedMatchedCampaigns: sortedMatchedCampaigns.length,
+      requestedTake: Number(take),
     });
 
-    const lastCursor = campaigns.length > Number(take) - 1 ? campaigns[Number(take) - 1]?.id : null;
+    // Fix pagination logic: determine if there are more pages
+    const hasNextPage = campaigns.length === Number(take);
+    const lastCursor = hasNextPage ? campaigns[campaigns.length - 1]?.id : null;
+
+    console.log(`matchCampaignWithCreator - Pagination info:`, {
+      campaignsReturned: campaigns.length,
+      campaignsInResponse: sortedMatchedCampaigns.length,
+      requestedTake: Number(take),
+      hasNextPage: hasNextPage,
+      lastCursor: lastCursor,
+    });
 
     const data = {
       data: {
@@ -1159,7 +1349,7 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       },
       metaData: {
         lastCursor: lastCursor,
-        hasNextPage: true,
+        hasNextPage: hasNextPage,
       },
     };
 
@@ -1265,6 +1455,15 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
   let pitch;
 
   try {
+    // Get campaign to check origin
+    const campaignWithOrigin = await prisma.campaign.findUnique({
+      where: { id: campaignId },
+    });
+
+    if (!campaignWithOrigin) {
+      return res.status(404).json({ message: 'Campaign not found' });
+    }
+
     const isPitchExist = await prisma.pitch.findUnique({
       where: {
         userId_campaignId: {
@@ -1273,6 +1472,9 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
         },
       },
     });
+
+    // Determine initial status based on campaign origin
+    const initialStatus = campaignWithOrigin.origin === 'CLIENT' ? 'PENDING_REVIEW' : 'undecided';
 
     if (isPitchExist) {
       if (isPitchExist.type === 'text') {
@@ -1285,7 +1487,7 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
             content: content,
             userId: id as string,
             campaignId: campaignId,
-            status: 'undecided',
+            status: initialStatus,
           },
           include: {
             campaign: true,
@@ -1301,7 +1503,7 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
             content: content,
             userId: id as string,
             campaignId: campaignId,
-            status: 'undecided',
+            status: initialStatus,
           },
           include: {
             campaign: true,
@@ -1315,7 +1517,7 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
             content: content,
             userId: id as string,
             campaignId: campaignId,
-            status: 'undecided',
+            status: initialStatus,
           },
           include: {
             campaign: true,
@@ -1384,7 +1586,15 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
 };
 
 export const getAllPitches = async (req: Request, res: Response) => {
+  const userId = req.session.userid;
+
   try {
+    // Get user role for role-based status display
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { role: true },
+    });
+
     const pitches = await prisma.pitch.findMany({
       include: {
         campaign: true,
@@ -1401,7 +1611,45 @@ export const getAllPitches = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'No pitches found.' });
     }
 
-    return res.status(200).json({ pitches });
+    // Transform pitches to show role-based status for client-created campaigns and filter for clients
+    const transformedPitches = pitches
+      .filter((pitch) => {
+        // For clients: only show pitches that are SENT_TO_CLIENT or APPROVED
+        // Hide pitches with PENDING_REVIEW status (admin review stage)
+        if (user?.role === 'client' && pitch.campaign.origin === 'CLIENT') {
+          return pitch.status === 'SENT_TO_CLIENT' || pitch.status === 'APPROVED';
+        }
+        // For admin and creators: show all pitches
+        return true;
+      })
+      .map((pitch) => {
+        let displayStatus = pitch.status;
+
+        if (pitch.campaign.origin === 'CLIENT' && user) {
+          // Role-based status display logic for client-created campaigns
+          if (user.role === 'admin' || user.role === 'superadmin') {
+            // Admin sees: PENDING_REVIEW -> PENDING_REVIEW, SENT_TO_CLIENT -> SENT_TO_CLIENT, APPROVED -> APPROVED
+            displayStatus = pitch.status;
+          } else if (user.role === 'client') {
+            // Client sees: SENT_TO_CLIENT -> PENDING_REVIEW, APPROVED -> APPROVED
+            if (pitch.status === 'SENT_TO_CLIENT') {
+              displayStatus = 'PENDING_REVIEW';
+            }
+          } else if (user.role === 'creator') {
+            // Creator sees: PENDING_REVIEW -> PENDING_REVIEW, SENT_TO_CLIENT -> PENDING_REVIEW, APPROVED -> APPROVED
+            if (pitch.status === 'SENT_TO_CLIENT') {
+              displayStatus = 'PENDING_REVIEW';
+            }
+          }
+        }
+
+        return {
+          ...pitch,
+          displayStatus,
+        };
+      });
+
+    return res.status(200).json({ pitches: transformedPitches });
   } catch (error) {
     console.error('Error:', error);
     return res.status(500).json({ message: 'Server Error', error: error.message });
@@ -1648,8 +1896,15 @@ export const closeCampaign = async (req: Request, res: Response) => {
 
 export const getPitchById = async (req: Request, res: Response) => {
   const { id } = req.params;
+  const userId = req.session.userid;
 
   try {
+    // Get user role for role-based status display
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { role: true },
+    });
+
     const pitch = await prisma.pitch.findUnique({
       where: {
         id: id,
@@ -1673,7 +1928,39 @@ export const getPitchById = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Pitch not found.' });
     }
 
-    return res.status(200).json({ pitch });
+    // For clients: only allow access to pitches that are SENT_TO_CLIENT or APPROVED
+    // Hide pitches with PENDING_REVIEW status (admin review stage)
+    if (user?.role === 'client' && pitch.campaign.origin === 'CLIENT' && pitch.status === 'PENDING_REVIEW') {
+      return res.status(403).json({ message: 'Access denied. This pitch is still under admin review.' });
+    }
+
+    // Add role-based status display for client-created campaigns
+    let displayStatus = pitch.status;
+
+    if (pitch.campaign.origin === 'CLIENT' && user) {
+      // Role-based status display logic for client-created campaigns
+      if (user.role === 'admin' || user.role === 'superadmin') {
+        // Admin sees: PENDING_REVIEW -> PENDING_REVIEW, SENT_TO_CLIENT -> SENT_TO_CLIENT, APPROVED -> APPROVED
+        displayStatus = pitch.status;
+      } else if (user.role === 'client') {
+        // Client sees: SENT_TO_CLIENT -> PENDING_REVIEW, APPROVED -> APPROVED
+        if (pitch.status === 'SENT_TO_CLIENT') {
+          displayStatus = 'PENDING_REVIEW';
+        }
+      } else if (user.role === 'creator') {
+        // Creator sees: PENDING_REVIEW -> PENDING_REVIEW, SENT_TO_CLIENT -> PENDING_REVIEW, APPROVED -> APPROVED
+        if (pitch.status === 'SENT_TO_CLIENT') {
+          displayStatus = 'PENDING_REVIEW';
+        }
+      }
+    }
+
+    return res.status(200).json({
+      pitch: {
+        ...pitch,
+        displayStatus,
+      },
+    });
   } catch (error) {
     return res.status(400).json(error);
   }
@@ -2980,7 +3267,7 @@ export const shortlistCreator = async (req: Request, res: Response) => {
               userId: creator.id,
               campaignId,
               amount: 0,
-              currency: 'SGD',
+              currency: 'MYR',
             })),
           });
 
@@ -3164,9 +3451,9 @@ export const creatorAgreements = async (req: Request, res: Response) => {
 
 export const updateAmountAgreement = async (req: Request, res: Response) => {
   try {
-    const { paymentAmount, currency, user, campaignId, id: agreementId } = JSON.parse(req.body.data);
+    const { paymentAmount, currency, user, campaignId, id: agreementId, isNew } = JSON.parse(req.body.data);
 
-    console.log('Received update data:', { paymentAmount, currency, campaignId, agreementId });
+    console.log('Received update data:', { paymentAmount, currency, campaignId, agreementId, isNew });
 
     const creator = await prisma.user.findUnique({
       where: {
@@ -3196,9 +3483,23 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
     }
 
     // Get current agreement amount for comparison
-    const currentAgreement = await prisma.creatorAgreement.findUnique({
-      where: { id: agreementId },
-    });
+    let currentAgreement = null;
+    if (isNew) {
+      // For V3: Find by userId and campaignId
+      currentAgreement = await prisma.creatorAgreement.findUnique({
+        where: {
+          userId_campaignId: {
+            userId: creator.id,
+            campaignId: campaignId,
+          },
+        },
+      });
+    } else if (agreementId) {
+      // For V2: Find by id
+      currentAgreement = await prisma.creatorAgreement.findUnique({
+        where: { id: agreementId },
+      });
+    }
 
     // Get admin info for logging
     const adminId = req.session.userid;
@@ -3230,33 +3531,98 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
       );
     }
 
-    // Update creator agreement with new data
-    const updatedAgreement = await prisma.creatorAgreement.update({
-      where: {
-        id: agreementId,
-      },
-      data: {
-        userId: creator.id,
-        campaignId: campaignId,
-        ...(url && { agreementUrl: url }), // Only update URL if new file was uploaded
-        updatedAt: dayjs().format(),
-        amount: paymentAmount, // Remove parseInt since amount should be string
-        currency: currency,
-      },
-      include: {
-        user: {
-          include: {
-            creator: true,
-            paymentForm: true,
-            shortlisted: {
-              where: {
-                campaignId: campaignId,
+    // Handle V3 agreement creation or V2 agreement update
+    let updatedAgreement;
+
+    if (isNew) {
+      // For V3: Get the campaign's agreement template URL if no new file was uploaded
+      let finalAgreementUrl = url;
+      if (!url) {
+        // Get the campaign with its agreement template
+        const campaignWithTemplate = await prisma.campaign.findUnique({
+          where: { id: campaignId },
+          include: { agreementTemplate: true },
+        });
+        finalAgreementUrl = campaignWithTemplate?.agreementTemplate?.url || '';
+      }
+
+      // For V3: Create or update CreatorAgreement using upsert
+      updatedAgreement = await prisma.creatorAgreement.upsert({
+        where: {
+          userId_campaignId: {
+            userId: creator.id,
+            campaignId: campaignId,
+          },
+        },
+        update: {
+          agreementUrl: finalAgreementUrl, // Use template URL if no new file
+          amount: paymentAmount,
+          currency: currency,
+          isSent: false, // Not sent yet
+        },
+        create: {
+          userId: creator.id,
+          campaignId: campaignId,
+          agreementUrl: finalAgreementUrl, // Use template URL if no new file
+          amount: paymentAmount,
+          currency: currency,
+          isSent: false, // Not sent yet
+        },
+        include: {
+          user: {
+            include: {
+              creator: true,
+              paymentForm: true,
+              shortlisted: {
+                where: {
+                  campaignId: campaignId,
+                },
               },
             },
           },
         },
-      },
-    });
+      });
+
+      // Update pitch status to AGREEMENT_PENDING for V3
+      await prisma.pitch.updateMany({
+        where: {
+          userId: creator.id,
+          campaignId: campaignId,
+          status: 'APPROVED',
+        },
+        data: {
+          status: 'AGREEMENT_PENDING',
+        },
+      });
+    } else {
+      // For V2: Update existing CreatorAgreement
+      updatedAgreement = await prisma.creatorAgreement.update({
+        where: {
+          id: agreementId,
+        },
+        data: {
+          userId: creator.id,
+          campaignId: campaignId,
+          ...(url && { agreementUrl: url }), // Only update URL if new file was uploaded
+          updatedAt: dayjs().format(),
+          amount: paymentAmount,
+          currency: currency,
+        },
+        include: {
+          user: {
+            include: {
+              creator: true,
+              paymentForm: true,
+              shortlisted: {
+                where: {
+                  campaignId: campaignId,
+                },
+              },
+            },
+          },
+        },
+      });
+    }
 
     // Log admin activity for amount change if amount was actually changed (not just set for the first time)
     if (currentAgreement && currentAgreement.amount && currentAgreement.amount !== paymentAmount) {
@@ -3302,7 +3668,7 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
 };
 
 export const sendAgreement = async (req: Request, res: Response) => {
-  const { user, id: agreementId, campaignId } = req.body;
+  const { user, id: agreementId, campaignId, isNew } = req.body;
 
   const adminId = req.session.userid;
 
@@ -3320,27 +3686,61 @@ export const sendAgreement = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Creator not exist' });
     }
 
-    const agreement = await prisma.creatorAgreement.findUnique({
-      where: {
-        id: agreementId,
-      },
-    });
+    let agreement;
+
+    // Handle V3 agreements (client-created campaigns)
+    if (isNew) {
+      // For V3: Find agreement by userId and campaignId
+      agreement = await prisma.creatorAgreement.findUnique({
+        where: {
+          userId_campaignId: {
+            userId: user.id,
+            campaignId: campaignId,
+          },
+        },
+      });
+    } else {
+      // For V2: Find agreement by id
+      agreement = await prisma.creatorAgreement.findUnique({
+        where: {
+          id: agreementId,
+        },
+      });
+    }
 
     if (!agreement) {
       return res.status(404).json({ message: 'Agreement not found.' });
     }
 
     // update the status of agreement
-    await prisma.creatorAgreement.update({
-      where: {
-        id: agreement.id,
-      },
-      data: {
-        isSent: true,
-        completedAt: new Date(),
-        approvedByAdminId: adminId,
-      },
-    });
+    if (isNew) {
+      // For V3: Update by userId and campaignId
+      await prisma.creatorAgreement.update({
+        where: {
+          userId_campaignId: {
+            userId: user.id,
+            campaignId: campaignId,
+          },
+        },
+        data: {
+          isSent: true,
+          completedAt: new Date(),
+          approvedByAdminId: adminId,
+        },
+      });
+    } else {
+      // For V2: Update by id
+      await prisma.creatorAgreement.update({
+        where: {
+          id: agreement.id,
+        },
+        data: {
+          isSent: true,
+          completedAt: new Date(),
+          approvedByAdminId: adminId,
+        },
+      });
+    }
 
     const shortlistedCreator = await prisma.shortListedCreator.findFirst({
       where: {
@@ -3643,6 +4043,9 @@ export const getMyCampaigns = async (req: Request, res: Response) => {
           },
         },
       },
+      orderBy: {
+        createdAt: 'desc', // Sort by newest first to match discover page
+      },
     });
 
     // const checkCondition = (submission: any) => {
@@ -3859,6 +4262,57 @@ export const editCampaignAdmin = async (req: Request, res: Response) => {
   }
 };
 
+// Add client managers to a campaign and flip origin to CLIENT (V3)
+export const addClientManagers = async (req: Request, res: Response) => {
+  const adminId = req.session.userid;
+  const { campaignId, clientManagers } = req.body as {
+    campaignId: string;
+    clientManagers: ({ id?: string; email?: string } | string)[];
+  };
+
+  try {
+    const campaign = await prisma.campaign.findUnique({ where: { id: campaignId } });
+    if (!campaign) return res.status(404).json({ message: 'Campaign not found.' });
+
+    // Resolve client manager userIds
+    const userIds: string[] = [];
+    for (const cm of clientManagers || []) {
+      const id = typeof cm === 'string' ? cm : cm?.id || '';
+      if (id) {
+        userIds.push(id);
+        continue;
+      }
+      const email = typeof cm !== 'string' ? cm?.email : undefined;
+      if (email) {
+        const user = await prisma.user.findUnique({ where: { email } });
+        if (user) userIds.push(user.id);
+      }
+    }
+
+    // Create campaignAdmin entries for these users
+    for (const uid of userIds) {
+      const exists = await prisma.campaignAdmin.findUnique({
+        where: { adminId_campaignId: { adminId: uid, campaignId } },
+      });
+      if (!exists) {
+        await prisma.campaignAdmin.create({ data: { adminId: uid, campaignId } });
+      }
+    }
+
+    // Flip origin to CLIENT for v3 flow
+    await prisma.campaign.update({ where: { id: campaignId }, data: { origin: 'CLIENT' } });
+
+    if (adminId) {
+      const adminLogMessage = `Added ${userIds.length} client manager(s) and converted campaign to V3`;
+      logAdminChange(adminLogMessage, adminId, req);
+    }
+
+    return res.status(200).json({ message: 'Client managers added and campaign converted to V3.' });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
 export const editCampaignAttachments = async (req: Request, res: Response) => {
   const { id } = req.params;
   const { otherAttachments: currentAttachments } = req.body;
@@ -4038,7 +4492,7 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
   const { userId } = req.params;
   // const { status, limit = 9, cursor } = req.query;
   const { cursor, limit = 10, search, status } = req.query;
-  console.log(cursor);
+  console.log('getAllCampaignsByAdminId called with:', { userId, status, search, limit, cursor });
 
   try {
     const user = await prisma.user.findUnique({
@@ -4049,6 +4503,7 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
         admin: {
           select: {
             mode: true,
+            role: true,
           },
         },
         id: true,
@@ -4057,7 +4512,24 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
 
     if (!user) return res.status(404).json({ message: 'User not found.' });
 
-    if (user.admin?.mode === 'god' || user.admin?.mode === 'advanced') {
+    if (user.admin?.mode === 'god' || user.admin?.role?.name === 'CSL') {
+      // Handle comma-separated status values
+      let statusCondition = {};
+      if (status) {
+        const statusValues = (status as string).split(',');
+        if (statusValues.length > 1) {
+          statusCondition = {
+            status: {
+              in: statusValues as CampaignStatus[],
+            },
+          };
+        } else {
+          statusCondition = {
+            status: statusValues[0] as CampaignStatus,
+          };
+        }
+      }
+
       const campaigns: any = await prisma.campaign.findMany({
         take: Number(limit),
         ...(cursor && {
@@ -4066,11 +4538,7 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
         }),
         where: {
           AND: [
-            {
-              ...(status && {
-                status: status as CampaignStatus,
-              }),
-            },
+            statusCondition,
             {
               ...(search && {
                 name: {
@@ -4187,6 +4655,25 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
       return res.status(200).json(data);
     }
 
+    // Handle comma-separated status values for non-superadmin users
+    let statusCondition = {};
+    if (status) {
+      const statusValues = (status as string).split(',');
+      if (statusValues.length > 1) {
+        statusCondition = {
+          status: {
+            in: statusValues as CampaignStatus[],
+          },
+        };
+      } else {
+        statusCondition = {
+          status: statusValues[0] as CampaignStatus,
+        };
+      }
+    }
+
+    console.log('Non-superadmin user, status condition:', statusCondition);
+
     const campaigns = await prisma.campaign.findMany({
       take: Number(limit),
       ...(cursor && {
@@ -4202,9 +4689,7 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
               },
             },
           },
-          {
-            ...(status && { status: status as any }),
-          },
+          statusCondition,
           {
             ...(search && {
               name: {
@@ -4313,6 +4798,14 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
       },
     });
 
+    console.log(`Found ${campaigns.length} campaigns for non-superadmin user ${user.id}`);
+    if (campaigns.length > 0) {
+      console.log(
+        'Campaign statuses:',
+        campaigns.map((c) => ({ id: c.id, name: c.name, status: c.status })),
+      );
+    }
+
     const totalActiveCampaigns = campaigns.filter((campaign) => campaign.status === 'ACTIVE').length;
 
     const totalComletedCampaigns = campaigns.filter((campaign) => campaign.status === 'COMPLETED').length;
@@ -4354,6 +4847,8 @@ export const removeCreatorFromCampaign = async (req: Request, res: Response) => 
   const adminId = req.session.userid;
 
   try {
+    console.log(`Attempting to remove creator ${creatorId} from campaign ${campaignId}`);
+
     const user = await prisma.user.findUnique({
       where: {
         id: creatorId,
@@ -4368,72 +4863,93 @@ export const removeCreatorFromCampaign = async (req: Request, res: Response) => 
       },
       include: {
         thread: true,
+        pitch: {
+          where: {
+            userId: creatorId,
+          },
+        },
       },
     });
 
     if (!campaign) return res.status(404).json({ message: 'No campaign found.' });
 
     const threadId = campaign?.thread?.id;
+    console.log(`Found campaign: ${campaign.name}, thread ID: ${threadId}`);
+    console.log(`Creator has ${campaign.pitch?.length || 0} pitches for this campaign`);
 
     await prisma.$transaction(async (tx) => {
+      // First check if creator is shortlisted
       const shortlistedCreator = await tx.shortListedCreator.findFirst({
         where: {
           userId: user.id,
           campaignId: campaign.id,
-
-          // userId_campaignId: {
-          //   userId: user.id,
-          //   campaignId: campaign.id,
-          // },
         },
       });
 
-      if (!shortlistedCreator) throw new Error('Creator is not shorlisted');
+      console.log(`Shortlisted creator record found: ${!!shortlistedCreator}`);
 
-      if (shortlistedCreator.isCampaignDone && shortlistedCreator.ugcVideos) {
-        await tx.campaign.update({
+      // If creator is shortlisted, handle that flow
+      if (shortlistedCreator) {
+        console.log(`Processing shortlisted creator: ${shortlistedCreator.id}`);
+
+        if (shortlistedCreator.isCampaignDone && shortlistedCreator.ugcVideos) {
+          await tx.campaign.update({
+            where: {
+              id: campaign.id,
+            },
+            data: {
+              creditsUtilized: {
+                decrement: shortlistedCreator.ugcVideos!,
+              },
+              creditsPending: {
+                increment: shortlistedCreator.ugcVideos!,
+              },
+            },
+          });
+          console.log(`Updated campaign credits for shortlisted creator`);
+        }
+
+        // Delete the shortlisted creator record
+        await tx.shortListedCreator.delete({
           where: {
-            id: campaign.id,
-          },
-          data: {
-            creditsUtilized: {
-              decrement: shortlistedCreator.ugcVideos!,
-            },
-            creditsPending: {
-              increment: shortlistedCreator.ugcVideos!,
-            },
+            id: shortlistedCreator.id,
           },
         });
+        console.log(`Deleted shortlisted creator record`);
       }
 
-      await tx.shortListedCreator.delete({
-        where: {
-          id: shortlistedCreator.id,
-        },
-      });
+      // Always delete these records regardless of shortlist status
+      console.log(`Deleting creator's content and submissions for campaign`);
 
-      await tx.video.deleteMany({
+      // Delete videos
+      const deletedVideos = await tx.video.deleteMany({
         where: {
           userId: user.id,
           campaignId: campaign.id,
         },
       });
+      console.log(`Deleted ${deletedVideos.count} videos`);
 
-      await tx.photo.deleteMany({
+      // Delete photos
+      const deletedPhotos = await tx.photo.deleteMany({
         where: {
           userId: user.id,
           campaignId: campaign.id,
         },
       });
+      console.log(`Deleted ${deletedPhotos.count} photos`);
 
-      await tx.rawFootage.deleteMany({
+      // Delete raw footage
+      const deletedFootage = await tx.rawFootage.deleteMany({
         where: {
           userId: user.id,
           campaignId: campaign.id,
         },
       });
+      console.log(`Deleted ${deletedFootage.count} raw footage items`);
 
-      await tx.submission.deleteMany({
+      // Delete submissions
+      const deletedSubmissions = await tx.submission.deleteMany({
         where: {
           AND: [
             {
@@ -4445,55 +4961,86 @@ export const removeCreatorFromCampaign = async (req: Request, res: Response) => 
           ],
         },
       });
+      console.log(`Deleted ${deletedSubmissions.count} submissions`);
 
-      await tx.userThread.delete({
+      // Delete pitches
+      const deletedPitches = await tx.pitch.deleteMany({
         where: {
-          userId_threadId: {
-            userId: user.id,
-            threadId: threadId!,
-          },
+          userId: user.id,
+          campaignId: campaign.id,
         },
       });
+      console.log(`Deleted ${deletedPitches.count} pitches`);
 
-      await tx.creatorAgreement.delete({
-        where: {
-          userId_campaignId: {
-            userId: user.id,
-            campaignId: campaign.id,
-          },
-        },
-      });
-
-      const invoice = await tx.invoice.findFirst({
-        where: {
-          AND: [
-            {
-              creatorId: user.id,
+      // Delete user thread if it exists
+      if (threadId) {
+        try {
+          await tx.userThread.delete({
+            where: {
+              userId_threadId: {
+                userId: user.id,
+                threadId: threadId!,
+              },
             },
-            {
+          });
+          console.log(`Deleted user thread for creator`);
+        } catch (error) {
+          console.log('Error deleting user thread:', error);
+          // Continue with other deletions even if this one fails
+        }
+      }
+
+      // Delete creator agreement if it exists
+      try {
+        await tx.creatorAgreement.delete({
+          where: {
+            userId_campaignId: {
+              userId: user.id,
               campaignId: campaign.id,
             },
-          ],
-        },
-        include: {
-          creator: {
-            include: {
-              user: true,
-            },
           },
-        },
-      });
+        });
+        console.log(`Deleted creator agreement`);
+      } catch (error) {
+        console.log('Error deleting creator agreement:', error);
+        // Continue with other deletions
+      }
 
-      if (invoice) {
-        await tx.invoice.delete({
+      // Delete invoice if it exists
+      try {
+        const invoice = await tx.invoice.findFirst({
           where: {
-            id: invoice.id,
+            AND: [
+              {
+                creatorId: user.id,
+              },
+              {
+                campaignId: campaign.id,
+              },
+            ],
+          },
+          include: {
+            creator: {
+              include: {
+                user: true,
+              },
+            },
           },
         });
 
-        // Remove the invoice deletion logging for withdrawal - it should not appear in Invoice Actions
-        // const logMessage = `Deleted invoice ${invoice.invoiceNumber} for creator "${user.name}" during withdrawal from campaign`;
-        // await logChange(logMessage, campaign.id, req);
+        if (invoice) {
+          await tx.invoice.delete({
+            where: {
+              id: invoice.id,
+            },
+          });
+
+          // Remove the invoice deletion logging for withdrawal - it should not appear in Invoice Actions
+          // const logMessage = `Deleted invoice ${invoice.invoiceNumber} for creator "${user.name}" during withdrawal from campaign`;
+          // await logChange(logMessage, campaign.id, req);
+        }
+      } catch (error) {
+        console.log('Error deleting invoice:', error);
       }
 
       const pitch = await tx.pitch.findFirst({
@@ -4526,8 +5073,11 @@ export const removeCreatorFromCampaign = async (req: Request, res: Response) => 
 
     return res.status(200).json({ message: 'Successfully withdraw' });
   } catch (error) {
-    console.log(error);
-    return res.status(400).json(error);
+    console.log('Error removing creator from campaign:', error);
+    return res.status(400).json({
+      message: 'Failed to remove creator from campaign.',
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 };
 
@@ -4542,6 +5092,8 @@ export const getCampaignsTotal = async (req: Request, res: Response) => {
 
 export const shortlistCreatorV2 = async (req: Request, res: Response) => {
   const { creators, campaignId } = req.body;
+
+  console.log('shortlistCreatorV2 called with:', { creators, campaignId });
 
   try {
     await prisma.$transaction(async (tx) => {
@@ -4558,6 +5110,13 @@ export const shortlistCreatorV2 = async (req: Request, res: Response) => {
         });
 
         if (!campaign) throw new Error('Campaign not found');
+
+        // Check if this is an admin-created campaign
+        if (campaign.origin === 'CLIENT') {
+          throw new Error(
+            'This endpoint is for admin-created campaigns only. Use shortlistCreatorV2ForClient for client-created campaigns.',
+          );
+        }
 
         if (!campaign?.campaignCredits) throw new Error('Campaign is not assigned to any credits');
 
@@ -4870,6 +5429,1928 @@ export const resendAgreement = async (req: Request, res: Response) => {
     return res.status(200).json({ message: 'Agreement resent successfully.' });
   } catch (error) {
     return res.status(400).json(error);
+  }
+};
+
+// V3: Creator submits agreement for a client-origin campaign
+export const submitAgreementV3 = async (req: Request, res: Response) => {
+  const { pitchId } = req.params as { pitchId: string };
+  const { agreementUrl } = req.body as { agreementUrl?: string };
+  const userId = req.session.userid;
+
+  try {
+    console.log('[submitAgreementV3] start', { pitchId, userId, hasAgreementUrl: !!agreementUrl });
+    const pitch = await prisma.pitch.findUnique({
+      where: { id: pitchId },
+      include: { campaign: true },
+    });
+
+    if (!pitch) {
+      console.log('[submitAgreementV3] pitch not found');
+      return res.status(404).json({ message: 'Pitch not found' });
+    }
+
+    // Allow if current user is the pitch owner, or an admin/superadmin (to help testing)
+    const currentUser = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+    const isOwner = pitch.userId === userId;
+    const isPrivileged = currentUser?.role === 'admin' || currentUser?.role === 'superadmin';
+    console.log('[submitAgreementV3] auth', { isOwner, isPrivileged, currentUserRole: currentUser?.role });
+    if (!isOwner && !isPrivileged) {
+      return res.status(403).json({ message: 'Not allowed' });
+    }
+    if (!pitch.campaignId) return res.status(400).json({ message: 'Campaign not found for pitch' });
+
+    // Upsert creator agreement for V3
+    console.log('[submitAgreementV3] upserting agreement', { campaignId: pitch.campaignId, pitchUserId: pitch.userId });
+    await prisma.creatorAgreement.upsert({
+      where: {
+        userId_campaignId: {
+          userId: pitch.userId,
+          campaignId: pitch.campaignId,
+        },
+      },
+      update: {
+        agreementUrl: agreementUrl || undefined,
+        isSent: true,
+        completedAt: new Date(),
+      },
+      create: {
+        userId: pitch.userId,
+        campaignId: pitch.campaignId,
+        agreementUrl: agreementUrl || '',
+        isSent: true,
+        completedAt: new Date(),
+      },
+    });
+
+    // Mark pitch as AGREEMENT_SUBMITTED for V3 flow
+    console.log('[submitAgreementV3] updating pitch status to AGREEMENT_SUBMITTED');
+    const updatedPitch = await prisma.pitch.update({
+      where: { id: pitch.id },
+      data: { status: 'AGREEMENT_SUBMITTED' },
+    });
+
+    // Notify campaign admins
+    const admins = await prisma.campaignAdmin.findMany({
+      where: { campaignId: pitch.campaignId as string },
+      include: { admin: { include: { user: true } } },
+    });
+    const submitter = await prisma.user.findUnique({ where: { id: pitch.userId } });
+    const campaignName = pitch.campaign?.name || '';
+
+    // Mark shortlisted row as agreement ready so admin UI reflects new state
+    const shortlisted = await prisma.shortListedCreator.findFirst({
+      where: { userId: pitch.userId, campaignId: pitch.campaignId as string },
+    });
+    if (shortlisted) {
+      await prisma.shortListedCreator.update({
+        where: { id: shortlisted.id },
+        data: { isAgreementReady: true },
+      });
+    }
+    for (const a of admins) {
+      const notification = await saveNotification({
+        userId: a.adminId,
+        title: 'Agreement Submitted',
+        message: `${submitter?.name || 'Creator'} submitted the agreement for ${campaignName}.`,
+        entity: 'Agreement',
+        entityId: pitch.campaignId as string,
+      });
+      const socketId = clients.get(a.admin.userId);
+      if (socketId) {
+        io.to(socketId).emit('notification', notification);
+        io.to(socketId).emit('agreementReady');
+        io.to(socketId).emit('pitchUpdate');
+      }
+    }
+
+    // Log campaign change
+    await logChange(`${submitter?.name || 'Creator'} submitted agreement`, pitch.campaignId as string, req);
+
+    console.log('[submitAgreementV3] success');
+    return res.status(200).json({ message: 'Agreement submitted', pitch: updatedPitch });
+  } catch (error) {
+    console.error('submitAgreementV3 error:', error);
+    return res.status(400).json({ message: error?.message || 'Failed to submit agreement' });
+  }
+};
+
+export const getClientCampaigns = async (req: Request, res: Response) => {
+  const { userid } = req.session;
+
+  console.log('getClientCampaigns called for user ID:', userid);
+
+  // Check if user session exists
+  if (!userid) {
+    console.log('No user session found');
+    return res.status(401).json({ message: 'Unauthorized. No user session found.' });
+  }
+
+  try {
+    // Get the user first
+    const user = await prisma.user.findUnique({
+      where: {
+        id: userid,
+      },
+      include: {
+        client: true,
+      },
+    });
+
+    console.log('User found:', {
+      id: user?.id,
+      role: user?.role,
+      clientId: user?.client?.id,
+      companyId: user?.client?.companyId,
+    });
+
+    // Make sure user exists
+    if (!user) {
+      console.log('User not found');
+      return res.status(401).json({ message: 'Unauthorized. User not found.' });
+    }
+
+    // Check if the user has any campaign admin entries
+    const campaignAdminEntries = await prisma.campaignAdmin.findMany({
+      where: {
+        adminId: userid,
+      },
+    });
+
+    console.log(`Found ${campaignAdminEntries.length} campaignAdmin entries for user ${userid}`);
+
+    // Find only campaigns created by this client user
+    // We can identify this by looking at the campaignAdmin relation
+    // or by checking if the user is in the campaign's admin list
+    const campaigns = await prisma.campaign.findMany({
+      where: {
+        campaignAdmin: {
+          some: {
+            adminId: userid,
+          },
+        },
+      },
+      include: {
+        brand: { include: { company: true } },
+        company: true,
+        campaignBrief: true,
+        campaignTimeline: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    console.log(`Found ${campaigns.length} campaigns for user ${userid}`);
+    if (campaigns.length > 0) {
+      console.log(
+        'Campaign IDs:',
+        campaigns.map((c) => c.id),
+      );
+      console.log(
+        'Campaign statuses:',
+        campaigns.map((c) => c.status),
+      );
+    }
+
+    return res.status(200).json(campaigns);
+  } catch (error) {
+    console.error('Error fetching client campaigns:', error);
+    return res.status(400).json({ message: 'Error fetching campaigns', error });
+  }
+};
+
+export const activateClientCampaign = async (req: Request, res: Response) => {
+  try {
+    const userId = req.session.userid;
+    const { campaignId } = req.params;
+
+    if (!userId) {
+      return res.status(401).json({ message: 'User not authenticated' });
+    }
+
+    // Check if user is an admin/superadmin
+    const user = await prisma.user.findUnique({
+      where: {
+        id: userId,
+      },
+      include: {
+        admin: { include: { role: true } },
+      },
+    });
+
+    if (!user) {
+      return res.status(403).json({ message: 'User not found' });
+    }
+
+    // Allow both admin and superadmin roles
+    if (user.role !== 'admin' && user.role !== 'superadmin') {
+      return res.status(403).json({ message: 'Only admin or superadmin users can activate client campaigns' });
+    }
+
+    console.log('User found:', {
+      userId: user.id,
+      userName: user.name,
+      userRole: user.role,
+    });
+
+    // Parse request data
+    let data;
+    try {
+      data = JSON.parse(req.body.data);
+    } catch (error) {
+      return res.status(400).json({ message: 'Invalid data format' });
+    }
+
+    const { campaignType, deliverables, adminManager, agreementTemplateId, status } = data;
+
+    console.log('Received data:', { campaignType, deliverables, adminManager, agreementTemplateId, status });
+
+    // Validate required fields
+    if (!campaignType) {
+      return res.status(400).json({ message: 'Campaign type is required' });
+    }
+
+    if (!adminManager || (Array.isArray(adminManager) && adminManager.length === 0)) {
+      return res.status(400).json({ message: 'At least one admin manager is required' });
+    }
+
+    // Ensure adminManager is always an array
+    const adminManagerArray = Array.isArray(adminManager) ? adminManager : [adminManager];
+
+    if (!agreementTemplateId) {
+      return res.status(400).json({ message: 'Agreement template is required' });
+    }
+
+    // Check if campaign exists and is in PENDING_ADMIN_ACTIVATION status
+    const campaign = await prisma.campaign.findFirst({
+      where: {
+        id: campaignId,
+        status: 'PENDING_ADMIN_ACTIVATION',
+      },
+      include: {
+        company: true,
+      },
+    });
+
+    if (!campaign) {
+      return res
+        .status(404)
+        .json({ message: 'Campaign has already been activated or is not in pending admin activation status' });
+    }
+
+    // Log user info for debugging
+    console.log('User activating campaign:', {
+      userId: user.id,
+      userName: user.name,
+      userRole: user.role,
+      adminMode: user.admin?.mode,
+      adminRoleId: user.admin?.roleId,
+    });
+
+    // Process deliverables
+    const rawFootage = deliverables?.includes('RAW_FOOTAGES') || false;
+    const photos = deliverables?.includes('PHOTOS') || false;
+    const ads = deliverables?.includes('ADS') || false;
+    const crossPosting = deliverables?.includes('CROSS_POSTING') || false;
+
+    // Update campaign with CSM-provided information
+    const updatedCampaign = await prisma.campaign.update({
+      where: {
+        id: campaignId,
+      },
+      data: {
+        status: 'ACTIVE',
+        campaignType,
+        rawFootage,
+        photos,
+        ads,
+        crossPosting,
+        agreementTemplate: {
+          connect: {
+            id: agreementTemplateId,
+          },
+        },
+      },
+    });
+
+    // Create campaign timelines for creators
+    // This is necessary for creators to see the campaign in their discovery feed
+    console.log('Creating campaign timelines for creators');
+
+    try {
+      // Create default timeline types if they don't exist
+      const submissionTypes = await prisma.submissionType.findMany();
+      if (!submissionTypes.length) {
+        console.log('No submission types found, creating default ones');
+        await prisma.submissionType.createMany({
+          data: [
+            { type: 'AGREEMENT_FORM', description: 'Agreement Form' },
+            { type: 'FIRST_DRAFT', description: 'First Draft' },
+            { type: 'FINAL_DRAFT', description: 'Final Draft' },
+            { type: 'POSTING', description: 'Posting' },
+            { type: 'OTHER', description: 'Other' },
+          ],
+          skipDuplicates: true,
+        });
+      }
+
+      // Get campaign brief for dates
+      const campaignBrief = await prisma.campaignBrief.findUnique({
+        where: { campaignId },
+      });
+
+      if (!campaignBrief) {
+        console.error('Campaign brief not found for campaign', campaignId);
+        throw new Error('Campaign brief not found');
+      }
+
+      // Calculate timeline dates based on campaign start and end dates
+      const startDate = new Date(campaignBrief.startDate);
+      const endDate = new Date(campaignBrief.endDate);
+      const totalDays = Math.max(1, Math.floor((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
+
+      // Get submission types
+      const agreementFormType = await prisma.submissionType.findFirst({ where: { type: 'AGREEMENT_FORM' } });
+      const firstDraftType = await prisma.submissionType.findFirst({ where: { type: 'FIRST_DRAFT' } });
+      const finalDraftType = await prisma.submissionType.findFirst({ where: { type: 'FINAL_DRAFT' } });
+      const postingType = await prisma.submissionType.findFirst({ where: { type: 'POSTING' } });
+
+      if (!agreementFormType || !firstDraftType || !finalDraftType || !postingType) {
+        console.error('Required submission types not found');
+        throw new Error('Required submission types not found');
+      }
+
+      // Create timelines
+      const timelinesToCreate = [
+        {
+          name: 'Open For Pitch', // This name must exactly match what the frontend is looking for
+          for: 'creator',
+          duration: Math.max(3, Math.floor(totalDays * 0.2)),
+          startDate: startDate,
+          endDate: new Date(startDate.getTime() + Math.max(3, Math.floor(totalDays * 0.2)) * 24 * 60 * 60 * 1000),
+          order: 1,
+          status: 'OPEN' as TimelineStatus,
+          campaignId,
+        },
+        {
+          name: 'Agreement',
+          for: 'creator',
+          duration: Math.max(2, Math.floor(totalDays * 0.1)),
+          startDate: startDate,
+          endDate: new Date(startDate.getTime() + Math.max(2, Math.floor(totalDays * 0.1)) * 24 * 60 * 60 * 1000),
+          order: 2,
+          status: 'OPEN' as TimelineStatus,
+          campaignId,
+          submissionTypeId: agreementFormType.id,
+        },
+        {
+          name: 'First Draft',
+          for: 'creator',
+          duration: Math.max(3, Math.floor(totalDays * 0.2)),
+          startDate: new Date(startDate.getTime() + Math.max(2, Math.floor(totalDays * 0.1)) * 24 * 60 * 60 * 1000),
+          endDate: new Date(
+            startDate.getTime() +
+              (Math.max(2, Math.floor(totalDays * 0.1)) + Math.max(3, Math.floor(totalDays * 0.2))) *
+                24 *
+                60 *
+                60 *
+                1000,
+          ),
+          order: 3,
+          status: 'OPEN' as TimelineStatus,
+          campaignId,
+          submissionTypeId: firstDraftType.id,
+        },
+        {
+          name: 'Final Draft',
+          for: 'creator',
+          duration: Math.max(3, Math.floor(totalDays * 0.2)),
+          startDate: new Date(
+            startDate.getTime() +
+              (Math.max(2, Math.floor(totalDays * 0.1)) + Math.max(3, Math.floor(totalDays * 0.2))) *
+                24 *
+                60 *
+                60 *
+                1000,
+          ),
+          endDate: new Date(
+            startDate.getTime() +
+              (Math.max(2, Math.floor(totalDays * 0.1)) +
+                Math.max(3, Math.floor(totalDays * 0.2)) +
+                Math.max(3, Math.floor(totalDays * 0.2))) *
+                24 *
+                60 *
+                60 *
+                1000,
+          ),
+          order: 4,
+          status: 'OPEN' as TimelineStatus,
+          campaignId,
+          submissionTypeId: finalDraftType.id,
+        },
+        {
+          name: 'Posting',
+          for: 'creator',
+          duration: Math.max(2, Math.floor(totalDays * 0.1)),
+          startDate: new Date(
+            startDate.getTime() +
+              (Math.max(2, Math.floor(totalDays * 0.1)) +
+                Math.max(3, Math.floor(totalDays * 0.2)) +
+                Math.max(3, Math.floor(totalDays * 0.2))) *
+                24 *
+                60 *
+                60 *
+                1000,
+          ),
+          endDate,
+          order: 5,
+          status: 'OPEN' as TimelineStatus,
+          campaignId,
+          submissionTypeId: postingType.id,
+        },
+      ];
+
+      // Create all timelines one by one to ensure they are created correctly
+      console.log('Creating timelines one by one for better error handling...');
+
+      const createdTimelines = [];
+      for (const timeline of timelinesToCreate) {
+        try {
+          const createdTimeline = await prisma.campaignTimeline.create({
+            data: timeline,
+          });
+          createdTimelines.push(createdTimeline);
+          console.log(`Successfully created timeline: ${createdTimeline.name}`);
+        } catch (error) {
+          console.error(`Error creating timeline ${timeline.name}:`, error);
+        }
+      }
+
+      // Verify the Open For Pitch timeline was created correctly
+      const openForPitchTimeline = await prisma.campaignTimeline.findFirst({
+        where: {
+          campaignId,
+          name: 'Open For Pitch',
+          status: 'OPEN',
+        },
+      });
+
+      console.log('Open For Pitch timeline found?', openForPitchTimeline ? 'YES' : 'NO');
+      if (openForPitchTimeline) {
+        console.log('Open For Pitch timeline details:', {
+          id: openForPitchTimeline.id,
+          name: openForPitchTimeline.name,
+          status: openForPitchTimeline.status,
+          for: openForPitchTimeline.for,
+          campaignId: openForPitchTimeline.campaignId,
+        });
+      } else {
+        console.error(
+          'Failed to create Open For Pitch timeline! This will prevent the campaign from appearing in creator discovery.',
+        );
+      }
+
+      console.log('Successfully created campaign timelines for creators');
+    } catch (error) {
+      console.error('Error creating campaign timelines for creators:', error);
+      // Don't throw the error, as we still want to complete the activation process
+    }
+
+    // Add admin managers to the campaign
+    console.log('Adding admin managers:', adminManagerArray);
+
+    for (const adminId of adminManagerArray) {
+      try {
+        console.log(`Adding admin ${adminId} to campaign ${campaignId}`);
+
+        // Check if the admin exists
+        const admin = await prisma.admin.findFirst({
+          where: {
+            id: adminId,
+          },
+        });
+
+        if (!admin) {
+          console.log(`Admin with ID ${adminId} not found, trying as userId instead`);
+
+          // Try to find admin by userId
+          const adminByUserId = await prisma.admin.findFirst({
+            where: {
+              userId: adminId,
+            },
+          });
+
+          if (adminByUserId) {
+            await prisma.campaignAdmin.create({
+              data: {
+                adminId: adminByUserId.userId,
+                campaignId,
+              },
+            });
+            console.log(`Successfully added admin with userId ${adminId} to campaign`);
+          } else {
+            console.error(`No admin found with ID or userId ${adminId}`);
+          }
+        } else {
+          await prisma.campaignAdmin.create({
+            data: {
+              adminId: adminId,
+              campaignId,
+            },
+          });
+          console.log(`Successfully added admin ${adminId} to campaign`);
+        }
+      } catch (error) {
+        console.error(`Error adding admin ${adminId} to campaign:`, error);
+        // Continue with other admins even if one fails
+      }
+    }
+
+    // Create campaign log for activation
+    await prisma.campaignLog.create({
+      data: {
+        message: `Campaign activated by CSM ${user.name || user.id}`,
+        adminId: user.id,
+        campaignId,
+      },
+    });
+
+    // Check if campaign would appear in creator discovery feed
+    try {
+      console.log('Checking if campaign would appear in creator discovery feed...');
+
+      // Query the campaign with the same conditions used in matchCampaignWithCreator
+      const activatedCampaign = await prisma.campaign.findFirst({
+        where: {
+          id: campaignId,
+          status: 'ACTIVE',
+        },
+        include: {
+          campaignTimeline: true,
+        },
+      });
+
+      // Check if the campaign has an "Open For Pitch" timeline with status "OPEN"
+      const hasOpenForPitchTimeline = activatedCampaign?.campaignTimeline?.some(
+        (timeline) => timeline.name === 'Open For Pitch' && timeline.status === 'OPEN',
+      );
+
+      console.log('Campaign status:', activatedCampaign?.status);
+      console.log('Has Open For Pitch timeline with OPEN status:', hasOpenForPitchTimeline);
+      console.log(
+        'Campaign should appear in creator discovery feed:',
+        activatedCampaign?.status === 'ACTIVE' && hasOpenForPitchTimeline,
+      );
+    } catch (error) {
+      console.error('Error checking creator discovery eligibility:', error);
+    }
+
+    // Create notification for client and add clients to campaignAdmin
+    if (campaign.companyId) {
+      const clientUsers = await prisma.user.findMany({
+        where: {
+          client: {
+            companyId: campaign.companyId,
+          },
+        },
+      });
+
+      console.log(`Found ${clientUsers.length} clients for company ${campaign.companyId}`);
+
+      for (const clientUser of clientUsers) {
+        // Add client to campaignAdmin so they can see the campaign in their dashboard
+        try {
+          // Check if client is already in campaignAdmin
+          const existingCampaignAdmin = await prisma.campaignAdmin.findUnique({
+            where: {
+              adminId_campaignId: {
+                adminId: clientUser.id,
+                campaignId,
+              },
+            },
+          });
+
+          if (!existingCampaignAdmin) {
+            await prisma.campaignAdmin.create({
+              data: {
+                adminId: clientUser.id,
+                campaignId,
+              },
+            });
+            console.log(`Added client ${clientUser.id} to campaign ${campaignId}`);
+          } else {
+            console.log(`Client ${clientUser.id} already in campaignAdmin for campaign ${campaignId}`);
+          }
+        } catch (error) {
+          console.error(`Error adding client ${clientUser.id} to campaign:`, error);
+          // Continue with other clients even if one fails
+        }
+
+        // Create notification
+        await prisma.notification.create({
+          data: {
+            title: 'Campaign Activated',
+            message: `Your campaign "${campaign.name}" has been activated by CSM`,
+            entity: 'Campaign',
+            campaignId,
+            userId: clientUser.id,
+          },
+        });
+      }
+    }
+
+    // Log the campaign admin entries for this campaign
+    const campaignAdminEntries = await prisma.campaignAdmin.findMany({
+      where: {
+        campaignId,
+      },
+      include: {
+        admin: {
+          select: {
+            id: true,
+            userId: true,
+          },
+        },
+      },
+    });
+
+    console.log(`Campaign ${campaignId} now has ${campaignAdminEntries.length} admin entries`);
+    console.log(
+      'Admin IDs:',
+      campaignAdminEntries.map((entry) => entry.adminId),
+    );
+
+    // Create a thread for the campaign if it doesn't exist
+    try {
+      const existingThread = await prisma.thread.findFirst({
+        where: {
+          campaignId: campaignId,
+        },
+      });
+
+      if (!existingThread) {
+        console.log('Creating thread for client campaign');
+        await prisma.thread.create({
+          data: {
+            campaignId: campaignId,
+            title: `Campaign Thread - ${campaign.name}`,
+            description: `Thread for campaign ${campaign.name}`,
+          },
+        });
+        console.log('Thread created successfully for client campaign');
+      } else {
+        console.log('Thread already exists for this campaign');
+      }
+    } catch (error) {
+      console.error('Error creating thread for client campaign:', error);
+      // Don't fail the activation if thread creation fails
+    }
+
+    return res.status(200).json({
+      message: 'Client campaign activated successfully',
+      campaign: updatedCampaign,
+    });
+  } catch (error: any) {
+    console.error('Error activating client campaign:', error);
+    return res.status(500).json({
+      message: error.message || 'Internal server error while activating client campaign',
+    });
+  }
+};
+
+// Debug endpoint to update campaign origin for testing
+export const updateCampaignOrigin = async (req: Request, res: Response) => {
+  const { campaignId, origin } = req.body;
+
+  try {
+    const updatedCampaign = await prisma.campaign.update({
+      where: { id: campaignId },
+      data: { origin: origin as 'ADMIN' | 'CLIENT' },
+    });
+
+    console.log(`Updated campaign ${campaignId} origin to ${origin}`);
+    return res.status(200).json({
+      message: 'Campaign origin updated successfully',
+      campaign: updatedCampaign,
+    });
+  } catch (error) {
+    console.error('Error updating campaign origin:', error);
+    return res.status(500).json({ message: 'Failed to update campaign origin' });
+  }
+};
+
+// Check campaign admin entries for the current user
+export const checkCampaignAdmin = async (req: Request, res: Response) => {
+  const { userid } = req.session;
+
+  console.log('checkCampaignAdmin called for user ID:', userid);
+
+  // Check if user session exists
+  if (!userid) {
+    console.log('No user session found');
+    return res.status(401).json({ message: 'Unauthorized. No user session found.' });
+  }
+
+  try {
+    // Get all campaign admin entries for this user
+    const campaignAdminEntries = await prisma.campaignAdmin.findMany({
+      where: {
+        adminId: userid,
+      },
+      include: {
+        campaign: {
+          select: {
+            id: true,
+            name: true,
+            status: true,
+            createdAt: true,
+          },
+        },
+      },
+    });
+
+    console.log(`Found ${campaignAdminEntries.length} campaignAdmin entries for user ${userid}`);
+
+    // For debugging, let's also check if there are any campaigns for the user's company
+    const user = await prisma.user.findUnique({
+      where: {
+        id: userid,
+      },
+      include: {
+        client: true,
+      },
+    });
+
+    if (user?.client?.companyId) {
+      const companyCampaigns = await prisma.campaign.findMany({
+        where: {
+          companyId: user.client.companyId,
+        },
+        select: {
+          id: true,
+          name: true,
+          status: true,
+          createdAt: true,
+        },
+      });
+
+      console.log(`Found ${companyCampaigns.length} campaigns for company ${user.client.companyId}`);
+      if (companyCampaigns.length > 0) {
+        console.log(
+          'Company campaign IDs:',
+          companyCampaigns.map((c) => c.id),
+        );
+        console.log(
+          'Company campaign statuses:',
+          companyCampaigns.map((c) => c.status),
+        );
+      }
+    }
+
+    return res.status(200).json(campaignAdminEntries);
+  } catch (error) {
+    console.error('Error checking campaign admin entries:', error);
+    return res.status(400).json({ message: 'Error checking campaign admin entries', error });
+  }
+};
+
+// Add client to campaign admin for all company campaigns
+export const addClientToCampaignAdmin = async (req: Request, res: Response) => {
+  const { userid } = req.session;
+
+  console.log('addClientToCampaignAdmin called for user ID:', userid);
+
+  // Check if user session exists
+  if (!userid) {
+    console.log('No user session found');
+    return res.status(401).json({ message: 'Unauthorized. No user session found.' });
+  }
+
+  try {
+    // Get the user first
+    const user = await prisma.user.findUnique({
+      where: {
+        id: userid,
+      },
+      include: {
+        client: true,
+      },
+    });
+
+    // Make sure user exists and is a client
+    if (!user || user.role !== 'client' || !user.client) {
+      console.log('User not found or not a client');
+      return res.status(403).json({ message: 'Only client users can use this endpoint' });
+    }
+
+    // Check if the user has a company
+    if (!user.client.companyId) {
+      console.log('Client has no company');
+      return res.status(400).json({ message: 'Client must be associated with a company' });
+    }
+
+    // Find all campaigns for this company
+    const companyCampaigns = await prisma.campaign.findMany({
+      where: {
+        companyId: user.client.companyId,
+      },
+      select: {
+        id: true,
+        name: true,
+        status: true,
+      },
+    });
+
+    console.log(`Found ${companyCampaigns.length} campaigns for company ${user.client.companyId}`);
+
+    // Add the client to the campaignAdmin table for each campaign
+    const results = [];
+    for (const campaign of companyCampaigns) {
+      try {
+        // Check if the client is already in the campaignAdmin table
+        const existingCampaignAdmin = await prisma.campaignAdmin.findUnique({
+          where: {
+            adminId_campaignId: {
+              adminId: userid,
+              campaignId: campaign.id,
+            },
+          },
+        });
+
+        if (existingCampaignAdmin) {
+          console.log(`Client ${userid} already in campaignAdmin for campaign ${campaign.id}`);
+          results.push({
+            campaignId: campaign.id,
+            campaignName: campaign.name,
+            status: 'already_exists',
+          });
+          continue;
+        }
+
+        // Add the client to the campaignAdmin table
+        await prisma.campaignAdmin.create({
+          data: {
+            adminId: userid,
+            campaignId: campaign.id,
+          },
+        });
+
+        console.log(`Added client ${userid} to campaignAdmin for campaign ${campaign.id}`);
+        results.push({
+          campaignId: campaign.id,
+          campaignName: campaign.name,
+          status: 'added',
+        });
+      } catch (error) {
+        console.error(`Error adding client ${userid} to campaignAdmin for campaign ${campaign.id}:`, error);
+        results.push({
+          campaignId: campaign.id,
+          campaignName: campaign.name,
+          status: 'error',
+          error: error.message,
+        });
+      }
+    }
+
+    return res.status(200).json({
+      message: `Processed ${companyCampaigns.length} campaigns`,
+      results,
+    });
+  } catch (error) {
+    console.error('Error adding client to campaign admin:', error);
+    return res.status(500).json({ message: 'Error adding client to campaign admin', error });
+  }
+};
+
+// Add this function after the addClientToCampaignAdmin function
+export const fixCampaignTimelines = async (req: Request, res: Response) => {
+  try {
+    const { campaignId } = req.params;
+
+    // Find the campaign
+    const campaign = await prisma.campaign.findUnique({
+      where: {
+        id: campaignId,
+      },
+      include: {
+        campaignBrief: true,
+        campaignTimeline: true,
+      },
+    });
+
+    if (!campaign) {
+      return res.status(404).json({ message: 'Campaign not found' });
+    }
+
+    console.log(`Fixing timelines for campaign ${campaignId} (${campaign.name})`);
+
+    // Check if Open For Pitch timeline exists
+    const openForPitchExists = campaign.campaignTimeline.some(
+      (timeline) => timeline.name === 'Open For Pitch' && timeline.status === 'OPEN',
+    );
+
+    if (openForPitchExists) {
+      console.log('Campaign already has Open For Pitch timeline');
+      return res.status(200).json({
+        message: 'Campaign already has required timelines',
+        campaign,
+      });
+    }
+
+    // Get submission types
+    const submissionTypes = await prisma.submissionType.findMany();
+    if (submissionTypes.length === 0) {
+      // Create default submission types if they don't exist
+      await prisma.submissionType.createMany({
+        data: [
+          { type: 'AGREEMENT_FORM', description: 'Agreement Form' },
+          { type: 'FIRST_DRAFT', description: 'First Draft' },
+          { type: 'FINAL_DRAFT', description: 'Final Draft' },
+          { type: 'POSTING', description: 'Posting' },
+          { type: 'OTHER', description: 'Other' },
+        ],
+        skipDuplicates: true,
+      });
+    }
+
+    const agreementFormType = await prisma.submissionType.findFirst({ where: { type: 'AGREEMENT_FORM' } });
+    const firstDraftType = await prisma.submissionType.findFirst({ where: { type: 'FIRST_DRAFT' } });
+    const finalDraftType = await prisma.submissionType.findFirst({ where: { type: 'FINAL_DRAFT' } });
+    const postingType = await prisma.submissionType.findFirst({ where: { type: 'POSTING' } });
+
+    if (!agreementFormType || !firstDraftType || !finalDraftType || !postingType) {
+      return res.status(500).json({ message: 'Required submission types not found' });
+    }
+
+    // Calculate timeline dates based on campaign start and end dates
+    const startDate = new Date(campaign.campaignBrief?.startDate || new Date());
+    const endDate = new Date(campaign.campaignBrief?.endDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000));
+    const totalDays = Math.max(1, Math.floor((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
+
+    // Create timelines
+    const timelinesToCreate = [
+      {
+        name: 'Open For Pitch', // This name must exactly match what the frontend is looking for
+        for: 'creator',
+        duration: Math.max(3, Math.floor(totalDays * 0.2)),
+        startDate: startDate,
+        endDate: new Date(startDate.getTime() + Math.max(3, Math.floor(totalDays * 0.2)) * 24 * 60 * 60 * 1000),
+        order: 1,
+        status: 'OPEN' as TimelineStatus,
+        campaignId: campaign.id,
+      },
+      {
+        name: 'Agreement',
+        for: 'creator',
+        duration: Math.max(2, Math.floor(totalDays * 0.1)),
+        startDate: startDate,
+        endDate: new Date(startDate.getTime() + Math.max(2, Math.floor(totalDays * 0.1)) * 24 * 60 * 60 * 1000),
+        order: 2,
+        status: 'OPEN' as TimelineStatus,
+        campaignId: campaign.id,
+        submissionTypeId: agreementFormType.id,
+      },
+      {
+        name: 'First Draft',
+        for: 'creator',
+        duration: Math.max(3, Math.floor(totalDays * 0.2)),
+        startDate: new Date(startDate.getTime() + Math.max(2, Math.floor(totalDays * 0.1)) * 24 * 60 * 60 * 1000),
+        endDate: new Date(
+          startDate.getTime() +
+            (Math.max(2, Math.floor(totalDays * 0.1)) + Math.max(3, Math.floor(totalDays * 0.2))) * 24 * 60 * 60 * 1000,
+        ),
+        order: 3,
+        status: 'OPEN' as TimelineStatus,
+        campaignId: campaign.id,
+        submissionTypeId: firstDraftType.id,
+      },
+      {
+        name: 'Final Draft',
+        for: 'creator',
+        duration: Math.max(3, Math.floor(totalDays * 0.2)),
+        startDate: new Date(
+          startDate.getTime() +
+            (Math.max(2, Math.floor(totalDays * 0.1)) + Math.max(3, Math.floor(totalDays * 0.2))) * 24 * 60 * 60 * 1000,
+        ),
+        endDate: new Date(
+          startDate.getTime() +
+            (Math.max(2, Math.floor(totalDays * 0.1)) +
+              Math.max(3, Math.floor(totalDays * 0.2)) +
+              Math.max(3, Math.floor(totalDays * 0.2))) *
+              24 *
+              60 *
+              60 *
+              1000,
+        ),
+        order: 4,
+        status: 'OPEN' as TimelineStatus,
+        campaignId: campaign.id,
+        submissionTypeId: finalDraftType.id,
+      },
+      {
+        name: 'Posting',
+        for: 'creator',
+        duration: Math.max(2, Math.floor(totalDays * 0.1)),
+        startDate: new Date(
+          startDate.getTime() +
+            (Math.max(2, Math.floor(totalDays * 0.1)) +
+              Math.max(3, Math.floor(totalDays * 0.2)) +
+              Math.max(3, Math.floor(totalDays * 0.2))) *
+              24 *
+              60 *
+              60 *
+              1000,
+        ),
+        endDate,
+        order: 5,
+        status: 'OPEN' as TimelineStatus,
+        campaignId: campaign.id,
+        submissionTypeId: postingType.id,
+      },
+    ];
+
+    // Create timelines one by one
+    const createdTimelines = [];
+    for (const timeline of timelinesToCreate) {
+      try {
+        const createdTimeline = await prisma.campaignTimeline.create({
+          data: timeline,
+        });
+        createdTimelines.push(createdTimeline);
+        console.log(`Created timeline: ${createdTimeline.name}`);
+      } catch (error) {
+        console.error(`Error creating timeline ${timeline.name}:`, error);
+      }
+    }
+
+    // Verify the Open For Pitch timeline was created correctly
+    const openForPitchTimeline = await prisma.campaignTimeline.findFirst({
+      where: {
+        campaignId: campaign.id,
+        name: 'Open For Pitch',
+        status: 'OPEN',
+      },
+    });
+
+    if (!openForPitchTimeline) {
+      return res.status(500).json({
+        message: 'Failed to create Open For Pitch timeline',
+        createdTimelines,
+      });
+    }
+
+    // Update the campaign with the latest data
+    const updatedCampaign = await prisma.campaign.findUnique({
+      where: {
+        id: campaign.id,
+      },
+      include: {
+        campaignBrief: true,
+        campaignTimeline: true,
+      },
+    });
+
+    return res.status(200).json({
+      message: 'Campaign timelines fixed successfully',
+      campaign: updatedCampaign,
+      createdTimelines,
+    });
+  } catch (error) {
+    console.error('Error fixing campaign timelines:', error);
+    return res.status(500).json({
+      message: 'Error fixing campaign timelines',
+      error,
+    });
+  }
+};
+
+// Add this function after the fixCampaignTimelines function
+export const checkCampaignCreatorVisibility = async (req: Request, res: Response) => {
+  try {
+    const { campaignId } = req.params;
+
+    // Find the campaign with all necessary relations
+    const campaign = await prisma.campaign.findUnique({
+      where: {
+        id: campaignId,
+      },
+      include: {
+        campaignBrief: true,
+        campaignRequirement: true,
+        campaignTimeline: true,
+        brand: { include: { company: { include: { subscriptions: true } } } },
+        company: true,
+        campaignAdmin: {
+          include: {
+            admin: {
+              include: {
+                user: true,
+              },
+            },
+          },
+        },
+        campaignLogs: true,
+      },
+    });
+
+    if (!campaign) {
+      return res.status(404).json({ message: 'Campaign not found' });
+    }
+
+    // Check campaign status
+    const isActive = campaign.status === 'ACTIVE';
+
+    // Check if campaign has Open For Pitch timeline with OPEN status
+    const hasOpenForPitchTimeline = campaign.campaignTimeline.some(
+      (timeline) => timeline.name === 'Open For Pitch' && timeline.status === 'OPEN',
+    );
+
+    // Check if campaign has required fields
+    const hasBrief = !!campaign.campaignBrief;
+    const hasRequirements = !!campaign.campaignRequirement;
+
+    // Check campaign admins
+    const admins = campaign.campaignAdmin.map((admin) => ({
+      adminId: admin.adminId,
+      role: admin.admin?.user?.role || 'unknown',
+    }));
+
+    // Check campaign creation logs
+    const creationLogs = campaign.campaignLogs
+      .filter((log: any) => log.action === 'CREATE_CAMPAIGN')
+      .map((log: any) => ({
+        userId: log.userId,
+        role: log.userRole,
+        timestamp: log.createdAt,
+      }));
+
+    // Determine if campaign should be visible to creators
+    const shouldBeVisibleToCreators = isActive && hasOpenForPitchTimeline;
+
+    // Prepare response with all checks
+    const response = {
+      campaignId: campaign.id,
+      campaignName: campaign.name,
+      status: campaign.status,
+      checks: {
+        isActive,
+        hasOpenForPitchTimeline,
+        hasBrief,
+        hasRequirements,
+      },
+      timelines: campaign.campaignTimeline.map((timeline) => ({
+        name: timeline.name,
+        status: timeline.status,
+        for: timeline.for,
+      })),
+      admins,
+      creationLogs,
+      shouldBeVisibleToCreators,
+      missingRequirements: [] as string[],
+    };
+
+    // Add missing requirements to the response
+    if (!isActive) {
+      response.missingRequirements.push('Campaign status must be ACTIVE');
+    }
+    if (!hasOpenForPitchTimeline) {
+      response.missingRequirements.push('Campaign must have an "Open For Pitch" timeline with status "OPEN"');
+    }
+    if (!hasBrief) {
+      response.missingRequirements.push('Campaign must have a brief');
+    }
+    if (!hasRequirements) {
+      response.missingRequirements.push('Campaign must have requirements defined');
+    }
+
+    return res.status(200).json(response);
+  } catch (error) {
+    console.error('Error checking campaign visibility:', error);
+    return res.status(500).json({
+      message: 'Error checking campaign visibility',
+      error,
+    });
+  }
+};
+
+// Add this function after the shortlistCreatorV2 function
+export const shortlistCreatorV3 = async (req: Request, res: Response) => {
+  const { creators, campaignId, adminComments } = req.body;
+  const userId = req.session.userid;
+
+  try {
+    // Allow superadmin to bypass campaign admin check
+    const currentUser = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+    const isSuperadmin = currentUser?.role === 'superadmin';
+    console.log(`shortlistCreatorV3: Shortlisting creators for campaign ${campaignId} by user ${userId}`);
+    console.log(`Creators to shortlist:`, creators);
+
+    // Check if the user has access to this campaign (is admin or client who created it)
+    const campaignAccess = await prisma.campaignAdmin.findFirst({
+      where: {
+        campaignId,
+        adminId: userId,
+      },
+      include: {
+        admin: {
+          include: {
+            user: true,
+          },
+        },
+        campaign: {
+          include: {
+            campaignLogs: true,
+          },
+        },
+      },
+    });
+
+    // Check if user is client who created this campaign
+    const isClientCreator = campaignAccess?.admin?.user?.role === 'client';
+    // Note: campaignLogs might have different structure, we'll just check if user is a client
+    const isClientCreatedCampaign = isClientCreator;
+
+    console.log(`User role: ${campaignAccess?.admin?.user?.role}`);
+    console.log(`Is client who created campaign: ${isClientCreator && isClientCreatedCampaign}`);
+
+    // If not authorized, return error
+    if (!campaignAccess && !isSuperadmin) {
+      return res.status(403).json({ message: 'Not authorized to shortlist creators for this campaign' });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      const campaign = await tx.campaign.findUnique({
+        where: {
+          id: campaignId,
+        },
+        include: {
+          shortlisted: true,
+          thread: true,
+          campaignBrief: true,
+        },
+      });
+
+      if (!campaign) throw new Error('Campaign not found');
+
+      // For V3, we only support client-created campaigns
+      if (campaign.origin !== 'CLIENT') {
+        throw new Error('V3 shortlisting is only for client-created campaigns');
+      }
+
+      const creatorIds = creators.map((c: any) => c.id);
+
+      const creatorData = await tx.user.findMany({
+        where: { id: { in: creatorIds } },
+        include: { creator: true, paymentForm: true },
+      });
+
+      // Check if campaign has a thread
+      const threadId = campaign.thread?.id;
+
+      // For client-created campaigns, we'll continue even without a thread
+      if (!threadId) {
+        console.log('Client-created campaign without thread, continuing anyway');
+      }
+
+      // Process each creator
+      for (const creator of creators) {
+        const user = creatorData.find((u) => u.id === creator.id);
+        if (!user) continue;
+
+        console.log(`Processing creator: ${user.name} (${user.id})`);
+
+        // Check if already has a pitch for this campaign
+        const existingPitch = await tx.pitch.findFirst({
+          where: {
+            userId: user.id,
+            campaignId: campaign.id,
+          },
+        });
+
+        if (existingPitch) {
+          console.log(`Creator ${user.id} already has a pitch, skipping`);
+          continue;
+        }
+
+        // Create a pitch record for this creator
+        console.log(`Creating pitch for creator ${user.id}`);
+        await tx.pitch.create({
+          data: {
+            userId: user.id,
+            campaignId: campaign.id,
+            type: 'text', // V3 shortlist pitch type
+            status: 'SENT_TO_CLIENT', // Client can immediately approve
+            content: `Creator ${user.name} has been shortlisted for campaign "${campaign.name}"`,
+            // Set default values for V3 flow
+            amount: null, // Will be set when admin approves
+            agreementTemplateId: null, // Will be set when admin approves
+            ...(typeof adminComments === 'string' && adminComments.trim().length > 0
+              ? { adminComments: adminComments.trim(), adminCommentedBy: userId }
+              : {}),
+          },
+        });
+
+        // Add creator to thread if not already added and if thread exists
+        if (threadId) {
+          try {
+            const existingUserThread = await tx.userThread.findUnique({
+              where: {
+                userId_threadId: {
+                  userId: user.id,
+                  threadId,
+                },
+              },
+            });
+
+            if (!existingUserThread) {
+              await tx.userThread.create({
+                data: {
+                  userId: user.id,
+                  threadId,
+                },
+              });
+              console.log(`Added creator ${user.id} to thread ${threadId}`);
+            }
+          } catch (error) {
+            console.error(`Error adding creator to thread:`, error);
+          }
+        }
+
+        // Create notification for admin users
+        const adminUsers = await tx.campaignAdmin.findMany({
+          where: {
+            campaignId: campaign.id,
+            admin: {
+              user: {
+                role: { in: ['admin', 'superadmin'] },
+              },
+            },
+          },
+          include: {
+            admin: {
+              include: {
+                user: true,
+              },
+            },
+          },
+        });
+
+        for (const adminUser of adminUsers) {
+          await tx.notification.create({
+            data: {
+              title: 'New Creator Shortlisted',
+              message: `Creator ${user.name} has been shortlisted for campaign "${campaign.name}". Please review and approve.`,
+              entity: 'Pitch',
+              campaignId: campaign.id,
+              userId: adminUser.admin.userId,
+            },
+          });
+        }
+      }
+    });
+
+    return res.status(200).json({ message: 'Successfully shortlisted creators for V3 flow' });
+  } catch (error) {
+    console.error('Error shortlisting creators for V3:', error);
+    return res.status(400).json({
+      message: error instanceof Error ? error.message : 'Failed to shortlist creators',
+      error,
+    });
+  }
+};
+
+// V2 Shortlist Creator for Client-Created Campaigns
+export const shortlistCreatorV2ForClient = async (req: Request, res: Response) => {
+  const { creators, campaignId } = req.body;
+
+  console.log('shortlistCreatorV2ForClient called with:', { creators, campaignId });
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      try {
+        const campaign = await tx.campaign.findUnique({
+          where: {
+            id: campaignId,
+          },
+          include: {
+            shortlisted: true,
+            thread: true,
+            campaignBrief: true,
+          },
+        });
+
+        if (!campaign) throw new Error('Campaign not found');
+
+        // For client-created campaigns, we don't check campaignCredits as they're managed differently
+        if (campaign.origin !== 'CLIENT') {
+          throw new Error('This endpoint is only for client-created campaigns');
+        }
+
+        const existingCreators = campaign.shortlisted.reduce((acc, creator) => acc + (creator.ugcVideos ?? 0), 0);
+
+        const totalCreditsAssigned = creators.reduce(
+          (acc: number, creator: { credits: number }) => acc + creator.credits,
+          0,
+        );
+
+        // For client campaigns, we can assign credits without strict limits
+        // The client manages their own budget
+
+        const creatorIds = creators.map((c: any) => c.id);
+
+        const creatorData = await tx.user.findMany({
+          where: { id: { in: creatorIds } },
+          include: { creator: true, paymentForm: true },
+        });
+
+        // Check if campaign has a thread - for client-created campaigns, we'll continue even without a thread
+        const threadId = campaign.thread?.id;
+
+        if (!threadId) {
+          console.log('Client-created campaign without thread, continuing anyway');
+          // For client campaigns, we can proceed without a thread
+        }
+
+        await tx.shortListedCreator.createMany({
+          data: creators.map((creator: any) => ({
+            userId: creator.id,
+            campaignId,
+            ugcVideos: creator.credits,
+          })),
+        });
+
+        const boards = await tx.board.findMany({
+          where: { userId: { in: creatorIds } },
+          include: { columns: true },
+        });
+
+        const timelines = await tx.campaignTimeline.findMany({
+          where: {
+            campaignId: campaign.id,
+            for: 'creator',
+            name: { not: 'Open For Pitch' },
+          },
+          include: { submissionType: true },
+          orderBy: { order: 'asc' },
+        });
+
+        for (const creator of creatorData) {
+          const board = boards.find((b) => b.userId === creator.id);
+          if (!board) throw new Error(`Board not found for user ${creator.id}`);
+
+          const columnToDo = board.columns.find((c) => c.name.includes('To Do'));
+          const columnInProgress = board.columns.find((c) => c.name.includes('In Progress'));
+          if (!columnToDo || !columnInProgress) throw new Error('Columns not found.');
+
+          type SubmissionWithRelations = Submission & {
+            submissionType: SubmissionType;
+          };
+
+          const submissions: any[] = await Promise.all(
+            timelines.map(async (timeline, index) => {
+              return await tx.submission.create({
+                data: {
+                  dueDate: timeline.endDate,
+                  campaignId: campaign.id,
+                  userId: creator.id as string,
+                  status: timeline.submissionType?.type === 'AGREEMENT_FORM' ? 'IN_PROGRESS' : 'NOT_STARTED',
+                  submissionTypeId: timeline.submissionTypeId as string,
+                  task: {
+                    create: {
+                      name: timeline.name,
+                      position: index,
+                      columnId: timeline.submissionType?.type ? columnInProgress.id : (columnToDo?.id as string),
+                      priority: '',
+                      status: timeline.submissionType?.type ? 'In Progress' : 'To Do',
+                    },
+                  },
+                },
+                include: {
+                  submissionType: true,
+                },
+              });
+            }),
+          );
+        }
+
+        // Create notifications for shortlisted creators
+        for (const creator of creatorData) {
+          await tx.notification.create({
+            data: {
+              title: 'You have been shortlisted!',
+              message: `Congratulations! You have been shortlisted for campaign "${campaign.name}".`,
+              entity: 'Campaign',
+              campaignId: campaign.id,
+              userId: creator.id,
+            },
+          });
+
+          // Handle thread creation for client campaigns if thread doesn't exist
+          if (threadId) {
+            const isThreadExist = await tx.userThread.findFirst({
+              where: {
+                threadId: threadId,
+                userId: creator.id as string,
+              },
+            });
+
+            if (!isThreadExist) {
+              await tx.userThread.create({
+                data: {
+                  threadId: threadId,
+                  userId: creator.id as string,
+                },
+              });
+            }
+          }
+        }
+
+        console.log(`Successfully shortlisted ${creatorData.length} creators for client campaign ${campaignId}`);
+      } catch (error) {
+        console.error('Error in shortlistCreatorV2ForClient transaction:', error);
+        throw error;
+      }
+    });
+
+    return res.status(200).json({ message: 'Creators shortlisted successfully' });
+  } catch (error) {
+    console.error('Error shortlisting creators for client campaign:', error);
+    return res.status(400).json({ message: error.message || 'Failed to shortlist creators' });
+  }
+};
+
+export const initialActivateCampaign = async (req: Request, res: Response) => {
+  try {
+    const userId = req.session.userid;
+    const { campaignId } = req.params;
+
+    if (!userId) {
+      return res.status(401).json({ message: 'User not authenticated' });
+    }
+
+    // Check if user is CSL or superadmin
+    const user = await prisma.user.findUnique({
+      where: {
+        id: userId,
+      },
+      include: {
+        admin: { include: { role: true } },
+      },
+    });
+
+    if (!user) {
+      return res.status(403).json({ message: 'User not found' });
+    }
+
+    // Only allow CSL or superadmin (god mode) to do initial activation
+    const isCSL = user.admin?.role?.name === 'CSL';
+    const isSuperAdmin = user.admin?.mode === 'god';
+
+    if (!isCSL && !isSuperAdmin) {
+      return res.status(403).json({ message: 'Only CSL or Superadmin users can perform initial campaign activation' });
+    }
+
+    console.log('User performing initial activation:', {
+      userId: user.id,
+      userName: user.name,
+      userRole: user.role,
+      adminMode: user.admin?.mode,
+      adminRoleName: user.admin?.role?.name,
+    });
+
+    // Parse request data
+    let data;
+    try {
+      data = JSON.parse(req.body.data);
+    } catch (error) {
+      return res.status(400).json({ message: 'Invalid data format' });
+    }
+
+    const { adminManager } = data;
+
+    console.log('Received initial activation data:', { adminManager });
+
+    // Validate required fields
+    if (!adminManager || (Array.isArray(adminManager) && adminManager.length === 0)) {
+      return res.status(400).json({ message: 'At least one admin manager is required' });
+    }
+
+    // Ensure adminManager is always an array
+    const adminManagerArray = Array.isArray(adminManager) ? adminManager : [adminManager];
+
+    // Check if campaign exists and is in PENDING_CSM_REVIEW or SCHEDULED status
+    const campaign = await prisma.campaign.findFirst({
+      where: {
+        id: campaignId,
+        status: {
+          in: ['PENDING_CSM_REVIEW', 'SCHEDULED'] as CampaignStatus[],
+        },
+      },
+      include: {
+        company: true,
+      },
+    });
+
+    if (!campaign) {
+      return res.status(404).json({ message: 'Campaign not found or not in pending/scheduled status' });
+    }
+
+    // Update campaign status to PENDING_ADMIN_ACTIVATION
+    const updatedCampaign = await prisma.campaign.update({
+      where: {
+        id: campaignId,
+      },
+      data: {
+        status: 'PENDING_ADMIN_ACTIVATION',
+      },
+    });
+
+    // Add admin managers to the campaign
+    for (const adminId of adminManagerArray) {
+      try {
+        // Check if the admin exists
+        const admin = await prisma.admin.findFirst({
+          where: {
+            id: adminId,
+          },
+        });
+
+        if (!admin) {
+          // Try to find admin by userId
+          const adminByUserId = await prisma.admin.findFirst({
+            where: {
+              userId: adminId,
+            },
+          });
+
+          if (adminByUserId) {
+            await prisma.campaignAdmin.create({
+              data: {
+                adminId: adminByUserId.userId,
+                campaignId,
+              },
+            });
+          }
+        } else {
+          await prisma.campaignAdmin.create({
+            data: {
+              adminId: adminId,
+              campaignId,
+            },
+          });
+        }
+      } catch (error) {
+        console.error(`Error adding admin ${adminId} to campaign:`, error);
+      }
+    }
+
+    console.log('Campaign updated for initial activation:', {
+      campaignId,
+      newStatus: updatedCampaign.status,
+      adminManager: adminManagerArray,
+    });
+
+    res.status(200).json({
+      message: 'Campaign activated and assigned to admin. Waiting for admin to complete setup.',
+      campaign: updatedCampaign,
+    });
+  } catch (error) {
+    console.error('Error in initial campaign activation:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+// Add this function after the shortlistCreatorV3 function
+export const assignUGCCreditsV3 = async (req: Request, res: Response) => {
+  const { creators, campaignId } = req.body;
+  const userId = req.session.userid;
+
+  try {
+    // Allow superadmin to bypass campaign admin check
+    const currentUser = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+    const isSuperadmin = currentUser?.role === 'superadmin';
+    console.log(`assignUGCCreditsV3: Assigning UGC credits for campaign ${campaignId} by user ${userId}`);
+    console.log(`Creators with credits:`, creators);
+
+    // Check if the user has access to this campaign (is admin or client who created it)
+    const campaignAccess = await prisma.campaignAdmin.findFirst({
+      where: {
+        campaignId,
+        adminId: userId,
+      },
+      include: {
+        admin: {
+          include: {
+            user: true,
+          },
+        },
+        campaign: {
+          include: {
+            shortlisted: true,
+          },
+        },
+      },
+    });
+
+    // If not authorized, return error
+    if (!campaignAccess && !isSuperadmin) {
+      return res.status(403).json({ message: 'Not authorized to assign UGC credits for this campaign' });
+    }
+
+    // campaignAccess may be null for superadmin; fetch campaign directly in that case
+    // Always fetch a fresh campaign instance to avoid mixed types from relations
+    const campaign = await prisma.campaign.findUnique({
+      where: { id: campaignId },
+      include: { shortlisted: true },
+    });
+    if (!campaign) {
+      return res.status(404).json({ message: 'Campaign not found' });
+    }
+
+    // For V3, we only support client-created campaigns
+    if (campaign.origin !== 'CLIENT') {
+      throw new Error('V3 UGC credits assignment is only for client-created campaigns');
+    }
+
+    // Calculate total credits being assigned
+    const totalCreditsToAssign = creators.reduce((acc: number, creator: any) => acc + (creator.credits || 0), 0);
+
+    // Compute already utilized credits from shortlisted creators
+    const alreadyUtilized = (campaign.shortlisted || []).reduce((acc, item) => acc + (item.ugcVideos || 0), 0);
+
+    // Enforce remaining credits check (campaignCredits - alreadyUtilized)
+    if (campaign.campaignCredits && totalCreditsToAssign > campaign.campaignCredits - alreadyUtilized) {
+      return res.status(400).json({
+        message: `Not enough credits available. Remaining: ${
+          campaign.campaignCredits - alreadyUtilized
+        }, requested: ${totalCreditsToAssign}`,
+      });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      // Process each creator
+      for (const creator of creators) {
+        if (!creator.credits || creator.credits <= 0) continue;
+
+        console.log(`Assigning ${creator.credits} UGC credits to creator ${creator.id}`);
+
+        // Check if creator is already shortlisted
+        const existingShortlist = await tx.shortListedCreator.findUnique({
+          where: {
+            userId_campaignId: {
+              userId: creator.id,
+              campaignId: campaign.id,
+            },
+          },
+        });
+
+        if (existingShortlist) {
+          // Update existing shortlist with UGC credits
+          await tx.shortListedCreator.update({
+            where: {
+              userId_campaignId: {
+                userId: creator.id,
+                campaignId: campaign.id,
+              },
+            },
+            data: {
+              ugcVideos: creator.credits,
+            },
+          });
+          console.log(`Updated UGC credits for existing shortlisted creator ${creator.id}`);
+        } else {
+          // Create new shortlist entry with UGC credits
+          await tx.shortListedCreator.create({
+            data: {
+              userId: creator.id,
+              campaignId: campaign.id,
+              ugcVideos: creator.credits,
+              currency: 'MYR', // Default currency for V3
+            },
+          });
+          console.log(`Created new shortlist entry with UGC credits for creator ${creator.id}`);
+        }
+      }
+
+      // Update campaign credits tracking fields
+      // Get all shortlisted creators for this campaign to calculate total utilized credits
+      const allShortlistedCreators = await tx.shortListedCreator.findMany({
+        where: { campaignId: campaign.id },
+        select: { ugcVideos: true },
+      });
+
+      const totalUtilizedCredits = allShortlistedCreators.reduce((acc, creator) => acc + (creator.ugcVideos || 0), 0);
+
+      if (campaign.campaignCredits) {
+        await tx.campaign.update({
+          where: { id: campaign.id },
+          data: {
+            creditsUtilized: totalUtilizedCredits,
+            creditsPending: campaign.campaignCredits - totalUtilizedCredits,
+          },
+        });
+        console.log(
+          `Updated campaign credits: utilized=${totalUtilizedCredits}, pending=${campaign.campaignCredits - totalUtilizedCredits}`,
+        );
+      }
+    });
+
+    return res.status(200).json({
+      message: 'Successfully assigned UGC credits to creators',
+      totalCreditsAssigned: totalCreditsToAssign,
+    });
+  } catch (error) {
+    console.error('Error assigning UGC credits for V3:', error);
+    return res.status(400).json({
+      message: error instanceof Error ? error.message : 'Failed to assign UGC credits',
+      error,
+    });
+  }
+};
+
+// 3.1 Shortlisting Non-Platform (Guest) Creators
+export const shortlistGuestCreators = async (req: Request, res: Response) => {
+  const { campaignId, guestCreators } = req.body;
+  const adminId = req.session.userid;
+
+  if (!campaignId || !Array.isArray(guestCreators) || guestCreators.length === 0) {
+    return res.status(400).json({ message: 'Campaign ID and a list of guest creators are required.' });
+  }
+
+  if (guestCreators.length > 3) {
+    return res.status(400).json({ message: 'You can add a maximum of 3 guest creators at a time' });
+  }
+
+  try {
+    const campaign = await prisma.campaign.findUnique({ where: { id: campaignId } });
+
+    if (!campaign) return res.status(404).json({ message: 'Campaign not found.' });
+
+    const createdCreators: { id: string }[] = [];
+    await prisma.$transaction(async (tx) => {
+      for (const guest of guestCreators) {
+        // give guest a userId
+        const { userId } = await handleGuestForShortListing(guest, tx);
+
+        // Check if guest has already been shortlisted
+        const existingShortlist = await tx.shortListedCreator.findUnique({
+          where: {
+            userId_campaignId: {
+              userId,
+              campaignId,
+            },
+          },
+        });
+
+        if (existingShortlist) {
+          console.log(`Guest creator ${guest.profileLink} is already shortlisted. Skipping.`);
+          continue; // Skip and move to the next guest
+        }
+
+        await tx.shortListedCreator.create({
+          data: {
+            userId,
+            campaignId,
+            adminComments: guest.adminComments || null,
+            amount: 0,
+            currency: 'SGD',
+          },
+        });
+
+        // Also create a V3 pitch entry so it appears in the pitches list
+        const existingPitch = await tx.pitch.findFirst({
+          where: { userId, campaignId },
+        });
+
+        if (!existingPitch) {
+          await tx.pitch.create({
+            data: {
+              userId,
+              campaignId,
+              type: 'text',
+              status: 'SENT_TO_CLIENT',
+              content: `Non-platform creator has been shortlisted for campaign "${campaign.name}"`,
+              amount: null,
+              agreementTemplateId: null,
+              ...(guest.adminComments && guest.adminComments.trim().length > 0
+                ? { adminComments: guest.adminComments.trim(), adminCommentedBy: adminId }
+                : {}),
+            },
+          });
+        }
+
+        createdCreators.push({ id: userId });
+      }
+    });
+
+    const adminLogMessage = `Shortlisted ${guestCreators.length} guest creator(s) for Campaign "${campaign.name}"`;
+    logAdminChange(adminLogMessage, adminId, req);
+
+    return res.status(200).json({ message: 'Guest creators successfully shortlisted.', createdCreators });
+  } catch (error) {
+    console.error('GUEST SHORTLIST ERROR:', error);
+    return res.status(400).json({ message: error.message || 'Failed to shortlist guest creators.' });
   }
 };
 

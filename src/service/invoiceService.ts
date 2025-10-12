@@ -74,7 +74,8 @@ export const createInvoiceService = async (
   const invoiceTo = {
     id: '1',
     name: 'Cult Creative',
-    fullAddress: '5-3A, Block A, Jaya One, No.72A, Jalan Universiti, 46200 Petaling Jaya, Selangor',
+    fullAddress:
+      '5-3A, Block A, Jaya One, No.72A, Jalan Universiti, 46200 Petaling Jaya, Selangor',
     phoneNumber: '(+60)12-849 6499',
     company: 'Cult Creative',
     addressType: 'Hq',

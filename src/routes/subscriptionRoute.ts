@@ -1,6 +1,6 @@
 import { getAllSubscriptions, updateSubscription } from '@controllers/subscriptionController';
-import { isLoggedIn } from '@middlewares/onlyLogin';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
+import { isLoggedIn } from '@middlewares/onlyLogin';
 import { Router } from 'express';
 
 const router = Router();

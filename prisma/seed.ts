@@ -114,90 +114,123 @@ const growthRole = {
   permissions: ['list:campaign', 'view:campaign', 'list:brand', 'view:brand', 'list:metrics', 'view:metrics'],
 };
 
+const clientRole = {
+  permissions: ['list:campaign', 'view:campaign', 'list:creator', 'view:creator'],
+};
+
+const csLeadRole = {
+  permissions: [
+    'list:campaign',
+    'view:campaign',
+    'create:campaign',
+    'update:campaign',
+    'delete:campaign',
+    'list:client',
+    'view:client',
+    'create:client',
+    'update:client',
+    'delete:client',
+  ],
+};
+
 async function main() {
-  // // Uncomment code below to create list of roles and permissions
-  // // const permissions = await prisma.permisions.findMany(); //comment this line if permissions is not created yet
-  const permissions = await Promise.all(
-    scopes.map(async (elem) => {
-      return await prisma.permisions.create({
+  // Create permissions first
+  for (const scope of scopes) {
+    await prisma.permisions.upsert({
+      where: { name: scope.name },
+      update: {},
+      create: {
+        name: scope.name,
+        descriptions: scope.description,
+      },
+    });
+  }
+  console.log('Permissions created/updated successfully');
+
+  // Define all roles
+  const roles = [
+    { name: 'CSM', permissions: csmRoles.permissions },
+    { name: 'Finance', permissions: financeRole.permissions },
+    { name: 'BD', permissions: bdRole.permissions },
+    { name: 'Growth', permissions: growthRole.permissions },
+    { name: 'Client', permissions: clientRole.permissions },
+    { name: 'CSL', permissions: csLeadRole.permissions },
+  ];
+
+  // Create roles with their permissions
+  for (const role of roles) {
+    const existingRole = await prisma.role.findFirst({
+      where: { name: role.name },
+    });
+
+    if (existingRole) {
+      console.log(`${role.name} role already exists`);
+      continue;
+    }
+
+    // Fetch existing permissions
+    const permissions = await prisma.permisions.findMany();
+    const filteredPermissions = permissions.filter((item) => role.permissions.includes(item.name));
+    
+    if (filteredPermissions.length > 0) {
+      await prisma.role.create({
         data: {
-          name: elem.name,
-          descriptions: elem.description,
+          name: role.name,
+          permissions: {
+            connect: filteredPermissions.map((item) => ({ id: item.id })),
+          },
         },
       });
-    }),
-  );
+      console.log(`${role.name} role created successfully`);
+    } else {
+      console.log(`No matching permissions found for ${role.name} role`);
+    }
+  }
 
-  // Create CSM Role
-  const csmPermissions = csmRoles.permissions;
-  const filteredCSMPermissions = permissions.filter((item) => csmPermissions.includes(item.name));
-  await prisma.role.create({
-    data: {
-      name: 'CSM',
-      permissions: {
-        connect: filteredCSMPermissions.map((item) => ({ id: item.id })),
-      },
-    },
-  });
+  // Create package types
+  for (const pkg of pakcagesArray) {
+    const existingPackage = await prisma.package.findFirst({
+      where: { name: pkg.type },
+    });
 
-  // Create Finance Role
-  const financePermissions = financeRole.permissions;
-  const filteredFinancePermissions = permissions.filter((item) => financePermissions.includes(item.name));
-  await prisma.role.create({
-    data: {
-      name: 'Finance',
-      permissions: {
-        connect: filteredFinancePermissions.map((item) => ({ id: item.id })),
-      },
-    },
-  });
+    if (!existingPackage) {
+      const createdPackage = await prisma.package.create({
+        data: {
+          name: pkg.type,
+          credits: pkg.totalCredits,
+          validityPeriod: pkg.validityPeriod,
+        },
+      });
 
-  // Create BD Role
-  const bdPermissions = bdRole.permissions;
-  const filteredbdPermissions = permissions.filter((item) => bdPermissions.includes(item.name));
-  await prisma.role.create({
-    data: {
-      name: 'BD',
-      permissions: {
-        connect: filteredbdPermissions.map((item) => ({ id: item.id })),
-      },
-    },
-  });
+      // Create prices for MYR and SGD
+      await prisma.price.createMany({
+        data: [
+          {
+            packageId: createdPackage.id,
+            currency: 'MYR',
+            amount: pkg.valueMYR,
+          },
+          {
+            packageId: createdPackage.id,
+            currency: 'SGD',
+            amount: pkg.valueSGD,
+          },
+        ],
+      });
 
-  // // seed Packages
-  // await Promise.all(
-  //   pakcagesArray.map(async (item) => {
-  //     await prisma.packages.create({
-  //       data: {
-  //         type: item.type,
-  //         valueMYR: item.valueMYR,
-  //         valueSGD: item.valueSGD,
-  //         totalUGCCredits: item.totalCredits,
-  //         validityPeriod: item.validityPeriod,
-  //       },
-  //     });
-  //   }),
-  // );
-
-  // Create Growth Role
-  const growthPermissions = growthRole.permissions;
-  const filteredgrowthPermissions = permissions.filter((item) => growthPermissions.includes(item.name));
-  await prisma.role.create({
-    data: {
-      name: 'Growth',
-      permissions: {
-        connect: filteredgrowthPermissions.map((item) => ({ id: item.id })),
-      },
-    },
-  });
+      console.log(`Package ${pkg.type} created successfully with prices`);
+    } else {
+      console.log(`Package ${pkg.type} already exists`);
+    }
+  }
 }
 
-// eslint-disable-next-line promise/catch-or-return
 main()
-  .catch((e) => {
-    console.error(e);
-    process.exit(1);
-  })
-  .finally(async () => {
+  .then(async () => {
     await prisma.$disconnect();
+  })
+  .catch(async (e) => {
+    console.error(e);
+    await prisma.$disconnect();
+    process.exit(1);
   });

@@ -3,7 +3,6 @@ import {
   getInstagramMediaInsight,
   getInstagramMediaKit,
   getInstagramOverview,
-  getTikTokMediaKit,
   getTikTokVideoInsight,
   getUserInstagramData,
   handleDisconnectFacebook,
@@ -15,6 +14,7 @@ import {
   removeInstagramPermissions,
   tiktokAuthentication,
   tiktokData,
+  getTikTokMediaKit,
 } from '@controllers/socialController';
 import { Router } from 'express';
 import { isLoggedIn } from '@middlewares/onlyLogin';
@@ -51,5 +51,6 @@ router.get('/v2/mediaInsight/:userId', getInstagramMediaInsight);
 // TikTok, V2
 router.get('/v2/tiktokMediaKit/:userId', getTikTokMediaKit);
 router.get('/v2/tiktokMediaInsight/:userId', getTikTokVideoInsight);
+router.get('/v2/tiktokMediaKit/:userId', getTikTokMediaKit);
 
 export default router;

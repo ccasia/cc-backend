@@ -314,6 +314,18 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
         },
       });
 
+      // Update the corresponding pitch status to AGREEMENT_SUBMITTED when agreement is approved
+      await prisma.pitch.updateMany({
+        where: {
+          campaignId: campaignId,
+          userId: userId,
+          status: 'AGREEMENT_PENDING',
+        },
+        data: {
+          status: 'AGREEMENT_SUBMITTED',
+        },
+      });
+
       const taskInReviewColumn = inReviewColumn?.task?.find((item) => item.submissionId === agreementSubs.id);
 
       if (taskInReviewColumn) {
@@ -466,6 +478,18 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
         },
       });
 
+      // Update the corresponding pitch status back to AGREEMENT_PENDING when agreement is rejected
+      await prisma.pitch.updateMany({
+        where: {
+          campaignId: campaignId,
+          userId: userId,
+          status: 'AGREEMENT_SUBMITTED',
+        },
+        data: {
+          status: 'AGREEMENT_PENDING',
+        },
+      });
+
       // For creator from In Review to In progress
       const taskInReviewColumn = await getTaskId({
         boardId: boards.id,
@@ -586,6 +610,7 @@ export const getAllSubmissions = async (req: Request, res: Response) => {
         campaign: {
           select: {
             name: true,
+            company: true,
           },
         },
         admin: {
@@ -1251,24 +1276,25 @@ const checkAllSectionsApproved = async (submission: any, currentSection?: string
 };
 
 export const postingSubmission = async (req: Request, res: Response) => {
-  const { submissionId, postingLink, creatorId } = req.body;
+  const { submissionId, postingLinks, creatorId } = req.body;
   const currentUserId = req.session.userid;
 
   try {
     // Check if current user is admin and if they're submitting for a creator
     const currentUser = await prisma.user.findUnique({
       where: { id: currentUserId },
-      include: { admin: true }
+      include: { admin: true },
     });
 
     const isAdminSubmission = currentUser?.admin && creatorId && creatorId !== currentUserId;
-    
+
     const submission = await prisma.submission.update({
       where: {
         id: submissionId,
       },
       data: {
-        content: postingLink,
+        videos: postingLinks.filter((link: string) => link && link.trim() !== ''),
+        content: postingLinks.filter((link: string) => link && link.trim() !== '').join(', '),
         status: 'PENDING_REVIEW',
         submissionDate: dayjs().format(),
         // Note: submittedByAdminId field will be added in future database migration
@@ -1302,7 +1328,7 @@ export const postingSubmission = async (req: Request, res: Response) => {
 
     // Log activity
     if (submission.campaignId) {
-      const logMessage = isAdminSubmission 
+      const logMessage = isAdminSubmission
         ? `${currentUser?.name} (Admin) submitted Posting Link for ${submission.user.name}`
         : `${submission.user.name} submitted Posting Link`;
       await logChange(logMessage, submission.campaignId, req);
@@ -1438,7 +1464,7 @@ export const adminManagePosting = async (req: Request, res: Response) => {
             },
           },
         },
-        task: true
+        task: true,
       },
     });
 
@@ -1449,7 +1475,7 @@ export const adminManagePosting = async (req: Request, res: Response) => {
     // Check permission based on submission flow
     const currentUser = await prisma.user.findUnique({
       where: { id: userId },
-      include: { admin: true }
+      include: { admin: true },
     });
 
     // Permission logic based on new flow:
@@ -1558,7 +1584,7 @@ export const adminManagePosting = async (req: Request, res: Response) => {
         if (submission.campaignId && userId) {
           const admin = await prisma.user.findUnique({ where: { id: userId } });
           const adminName = admin?.name || 'Admin';
-          const submissionType = isAdminSubmission 
+          const submissionType = isAdminSubmission
             ? `Admin submission for ${(submission as any).user?.name || 'Creator'}`
             : `${(submission as any).user?.name || 'Creator'}'s submission`;
           const adminActivityMessage = `${adminName} approved ${submissionType} Posting Link`;
@@ -1580,7 +1606,7 @@ export const adminManagePosting = async (req: Request, res: Response) => {
         if (submission.campaignId && userId) {
           const admin = await prisma.user.findUnique({ where: { id: userId } });
           const adminName = admin?.name || 'Admin';
-          const submissionType = isAdminSubmission 
+          const submissionType = isAdminSubmission
             ? `Admin submission for ${(submission as any).user?.name || 'Creator'}`
             : `${(submission as any).user?.name || 'Creator'}'s submission`;
           const adminActivityMessage = `${adminName} requested changes on ${submissionType} Posting Link`;
@@ -1645,6 +1671,125 @@ export const adminManagePosting = async (req: Request, res: Response) => {
       return res.status(400).json({ error: error.message });
     }
     return res.status(400).json({ error: 'Error approving posting submission' });
+  }
+};
+
+// V2: CSM submits posting link for superadmin review
+export const submitPostingLinkByCSMV2 = async (req: Request, res: Response) => {
+  const { submissionId, link } = req.body;
+  const adminId = req.session.userid;
+  try {
+    const submission = await prisma.submission.findUnique({ where: { id: submissionId }, include: { campaign: true } });
+    if (!submission) return res.status(404).json({ message: 'Submission not found' });
+    // Save link and set to SENT_TO_ADMIN for superadmin review
+    await prisma.submission.update({
+      where: { id: submissionId },
+      data: { content: link, status: 'SENT_TO_ADMIN', approvedByAdminId: adminId, updatedAt: new Date() },
+    });
+    try {
+      const io: any = (req as any).app?.get?.('io');
+      if (io) io.to(submission.campaignId).emit('v2:campaign:updated', { campaignId: submission.campaignId });
+    } catch (err) {
+      console.log(err);
+    }
+    return res.status(200).json({ message: 'Posting link submitted for superadmin review' });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+// V2: Superadmin approves posting link (generate invoice)
+export const approvePostingLinkBySuperadminV2 = async (req: Request, res: Response) => {
+  const { submissionId } = req.body;
+  const superadminId = req.session.userid;
+  try {
+    const submission = await prisma.submission.findUnique({
+      where: { id: submissionId },
+      include: { campaign: true, user: true },
+    });
+    if (!submission) return res.status(404).json({ message: 'Submission not found' });
+    await prisma.submission.update({
+      where: { id: submissionId },
+      data: { status: 'APPROVED', completedAt: new Date(), approvedByAdminId: superadminId },
+    });
+    // Generate invoice using existing service, if applicable in V2
+    try {
+      const creator = await prisma.shortListedCreator.findFirst({
+        where: { campaignId: submission.campaignId, userId: submission.userId },
+        include: { user: { include: { creatorAgreement: true } }, campaign: { include: { campaignBrief: true } } },
+      });
+      if (creator && !creator.isCampaignDone) {
+        const amount = creator.user?.creatorAgreement.find((e) => e.campaignId === creator.campaign.id)?.amount;
+        const invoice = await createInvoiceService(
+          { ...creator, userId: creator.user?.id, campaignId: creator.campaign.id },
+          superadminId,
+          amount,
+          undefined,
+          undefined,
+          superadminId,
+        );
+        await prisma.shortListedCreator.update({
+          where: {
+            userId_campaignId: { userId: creator.user?.id as string, campaignId: creator.campaign.id as string },
+          },
+          data: { isCampaignDone: true },
+        });
+        const images: any = creator.campaign.campaignBrief?.images;
+        creatorInvoice(
+          creator?.user?.email as any,
+          creator.campaign.name,
+          creator?.user?.name ?? 'Creator',
+          images?.[0],
+        );
+        const { title, message } = notificationInvoiceGenerate(creator.campaign.name);
+        await saveNotification({
+          userId: creator.user?.id as any,
+          title,
+          message,
+          invoiceId: invoice?.id,
+          entity: 'Invoice',
+          entityId: creator.campaign.id,
+        });
+      }
+    } catch (err) {
+      console.log(err);
+    }
+    try {
+      const io: any = (req as any).app?.get?.('io');
+      if (io) io.to(submission.campaignId).emit('v2:campaign:updated', { campaignId: submission.campaignId });
+    } catch (err) {
+      console.log(err);
+    }
+    return res.status(200).json({ message: 'Posting link approved and invoice generated' });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+// V2: Superadmin rejects posting link
+export const rejectPostingLinkBySuperadminV2 = async (req: Request, res: Response) => {
+  const { submissionId, feedback } = req.body;
+  const superadminId = req.session.userid;
+  try {
+    const submission = await prisma.submission.findUnique({ where: { id: submissionId }, include: { campaign: true } });
+    if (!submission) return res.status(404).json({ message: 'Submission not found' });
+    await prisma.submission.update({
+      where: { id: submissionId },
+      data: { status: 'CHANGES_REQUIRED', approvedByAdminId: superadminId },
+    });
+    if (feedback)
+      await prisma.feedback.create({
+        data: { content: feedback, type: 'REASON', adminId: superadminId, submissionId },
+      });
+    try {
+      const io: any = (req as any).app?.get?.('io');
+      if (io) io.to(submission.campaignId).emit('v2:campaign:updated', { campaignId: submission.campaignId });
+    } catch (err) {
+      console.log(err);
+    }
+    return res.status(200).json({ message: 'Posting link rejected' });
+  } catch (error) {
+    return res.status(400).json(error);
   }
 };
 
@@ -2803,10 +2948,11 @@ export const getDeliverables = async (req: Request, res: Response) => {
     });
 
     // Helper function to get feedback for a specific media item
-    const getMediaFeedback = (mediaId: string, mediaType: 'video' | 'photo' | 'rawFootage') => {
+    const getMediaFeedback = (mediaId: string, mediaType: 'video' | 'photo' | 'rawFootage', mediaStatus: string) => {
       const allFeedback = submissions.flatMap((sub) => sub.feedback);
 
-      return allFeedback
+      // Get feedback specifically for this media item
+      const mediaSpecificFeedback = allFeedback
         .filter((feedback) => {
           switch (mediaType) {
             case 'video':
@@ -2830,29 +2976,50 @@ export const getDeliverables = async (req: Request, res: Response) => {
           reasons: feedback.reasons || [],
           createdAt: feedback.createdAt,
           admin: feedback.admin,
+          type: feedback.type,
         }));
+
+      // Also include client feedback for this submission when media has CLIENT_FEEDBACK status
+      const clientFeedback = allFeedback
+        .filter(
+          (feedback) =>
+            feedback.admin?.admin?.role?.name === 'client' &&
+            feedback.type === 'REASON' &&
+            mediaStatus === 'CLIENT_FEEDBACK',
+        )
+        .map((feedback) => ({
+          id: feedback.id,
+          content: feedback.content,
+          reasons: feedback.reasons || [],
+          createdAt: feedback.createdAt,
+          admin: feedback.admin,
+          type: feedback.type,
+        }));
+
+      return [...mediaSpecificFeedback, ...clientFeedback];
     };
 
     // Add feedback to each media item
     const videosWithFeedback = videos.map((video) => ({
       ...video,
-      individualFeedback: getMediaFeedback(video.id, 'video'),
+      individualFeedback: getMediaFeedback(video.id, 'video', video.status),
     }));
 
     const photosWithFeedback = photos.map((photo) => ({
       ...photo,
-      individualFeedback: getMediaFeedback(photo.id, 'photo'),
+      individualFeedback: getMediaFeedback(photo.id, 'photo', photo.status),
     }));
 
     const rawFootagesWithFeedback = rawFootages.map((footage) => ({
       ...footage,
-      individualFeedback: getMediaFeedback(footage.id, 'rawFootage'),
+      individualFeedback: getMediaFeedback(footage.id, 'rawFootage', footage.status),
     }));
 
     return res.status(200).json({
       videos: videosWithFeedback,
       rawFootages: rawFootagesWithFeedback,
       photos: photosWithFeedback,
+      submissions: submissions, // Include submissions with feedback for frontend access
     });
   } catch (error) {
     return res.status(400).json(error);

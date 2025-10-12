@@ -2,7 +2,13 @@
 import jwt, { JwtPayload, Secret } from 'jsonwebtoken';
 import { Employment, PrismaClient, RoleEnum, Prisma } from '@prisma/client';
 import { Request, Response } from 'express';
-import { AdminInvitaion, AdminInvite, creatorVerificationEmail } from '@configs/nodemailer.config';
+import {
+  AdminInvitaion,
+  AdminInvite,
+  ClientInvitation,
+  creatorVerificationEmail,
+  clientVerificationEmail,
+} from '@configs/nodemailer.config';
 import { handleChangePassword } from '@services/authServices';
 import { getUser } from '@services/userServices';
 
@@ -17,6 +23,7 @@ import bcrypt from 'bcryptjs';
 
 import { generateRandomString } from '@utils/randomString';
 import dayjs from 'dayjs';
+import { TokenSet, XeroClient } from 'xero-node';
 
 const prisma = new PrismaClient();
 
@@ -63,6 +70,18 @@ interface CreatorUpdateData {
   city: string;
   referralCode?: string;
 }
+
+const client_id: string = process.env.XERO_CLIENT_ID as string;
+const client_secret: string = process.env.XERO_CLIENT_SECRET as string;
+const redirectUrl: string = process.env.XERO_REDIRECT_URL as string;
+const scopes: string = process.env.XERO_SCOPES as string;
+
+const xero = new XeroClient({
+  clientId: client_id,
+  clientSecret: client_secret,
+  redirectUris: [redirectUrl],
+  scopes: scopes?.split(' '),
+});
 
 export const registerUser = async (req: Request, res: Response) => {
   const { email, password }: RequestData = req.body;
@@ -390,6 +409,112 @@ export const registerCreator = async (req: Request, res: Response) => {
   }
 };
 
+export const registerClient = async (req: Request, res: Response) => {
+  const { name, email, password } = req.body;
+
+  console.log('Backend received client registration data:', { name, email, password: '***' });
+
+  try {
+    const search = await prisma.user.findFirst({
+      where: {
+        email: email.toLowerCase(),
+      },
+    });
+
+    if (search) {
+      return res.status(400).json({ message: 'Email already exists' });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Create user and client in a transaction
+    const result = await prisma.$transaction(async (tx) => {
+      // Create user with pending status
+      const user = await tx.user.create({
+        data: {
+          email: email.toLowerCase(),
+          password: hashedPassword,
+          role: 'client',
+          name: name,
+          status: 'pending',
+          isActive: false,
+        },
+      });
+
+      // Get or create default client role
+      let defaultClientRole = await tx.role.findFirst({
+        where: { name: 'Client' },
+      });
+
+      if (!defaultClientRole) {
+        defaultClientRole = await tx.role.create({
+          data: {
+            name: 'Client',
+          },
+        });
+      }
+
+      // Create admin record for client with Client role
+      const admin = await tx.admin.create({
+        data: {
+          userId: user.id,
+          roleId: defaultClientRole.id,
+          mode: 'normal', // Default mode for client admins
+        },
+      });
+
+      // Create client record
+      const client = await tx.client.create({
+        data: {
+          userId: user.id,
+        },
+      });
+
+      return { user, client, admin };
+    });
+
+    // Send verification email
+    const token = jwt.sign({ id: result.user.id }, process.env.ACCESSKEY as Secret, { expiresIn: '15m' });
+
+    let shortCode;
+
+    // Generate unique short code
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      shortCode = generateRandomString();
+
+      const isShortCodeExist = await prisma.emailVerification.findFirst({
+        where: { shortCode },
+      });
+
+      if (!isShortCodeExist) break;
+    }
+
+    const code = await prisma.emailVerification.create({
+      data: {
+        shortCode: shortCode!,
+        user: {
+          connect: {
+            id: result.user.id,
+          },
+        },
+        expiredAt: dayjs().add(15, 'minute').toDate(),
+        token: token,
+      },
+    });
+
+    clientVerificationEmail(result.user.email, code.shortCode);
+
+    return res.status(201).json({
+      message: 'Client registered successfully. Please check your email to verify your account.',
+      email: result.user.email,
+    });
+  } catch (error) {
+    console.error('Client registration error:', error);
+    return res.status(400).json({ message: 'Error registering client', error: error.message });
+  }
+};
+
 export const registerFinanceUser = async (req: Request, res: Response) => {
   const { email, password, name } = req.body;
 
@@ -649,6 +774,89 @@ export const verifyCreator = async (req: Request, res: Response) => {
   }
 };
 
+export const verifyClient = async (req: Request, res: Response) => {
+  const { token } = req.body;
+
+  if (!token) return res.status(404).json({ message: 'Token is missing' });
+
+  try {
+    const { jwtToken } = await getJWTToken(token as string);
+
+    if (!jwtToken) return res.status(400).json({ message: 'Access token not found' });
+
+    const result = verifyToken(jwtToken);
+
+    if (!result) {
+      return res.status(400).json({ message: 'Unauthorized' });
+    }
+
+    const client = await prisma.user.findFirst({
+      where: {
+        id: (result as JwtPayload).id,
+      },
+      include: {
+        client: true,
+      },
+    });
+
+    if (!client) {
+      return res.status(404).json({ message: 'Not found.' });
+    }
+
+    // Update user status to active
+    const user = await prisma.user.update({
+      where: {
+        id: client.id,
+      },
+      data: {
+        status: 'active',
+        isActive: true,
+      },
+    });
+
+    if (user.emailVerificationId) {
+      await prisma.emailVerification.delete({
+        where: {
+          id: user.emailVerificationId,
+        },
+      });
+    }
+
+    const accessToken = jwt.sign({ id: client.id }, process.env.ACCESSKEY as Secret, {
+      expiresIn: '4h',
+    });
+
+    const refreshToken = jwt.sign({ id: client.id }, process.env.REFRESHKEY as Secret);
+
+    const session = req.session;
+    session.userid = client.id;
+    session.refreshToken = refreshToken;
+
+    res.cookie('userid', client.id, {
+      maxAge: 60 * 60 * 24 * 1000, // 1 Day
+      httpOnly: true,
+    });
+
+    res.cookie('accessToken', accessToken, {
+      maxAge: 60 * 60 * 4 * 1000, // 4 Hours
+      httpOnly: true,
+    });
+
+    return res.status(200).json({
+      message: 'Your email has been verified successfully!',
+      user: client,
+      accessToken,
+    });
+  } catch (error) {
+    console.log(error);
+    if (error instanceof Error) {
+      return res.status(400).json(error.message);
+    }
+    if (error.message) return res.status(400).json({ message: error.message, tokenExpired: true });
+    return res.status(400).json({ message: 'Error verifying client' });
+  }
+};
+
 // Function for logout
 export const logout = async (req: Request, res: Response) => {
   req.session.destroy((err) => {
@@ -857,9 +1065,65 @@ export const updateCreator = async (req: Request, res: Response) => {
   }
 };
 
+// Function to update client profile
+export const updateClient = async (req: Request, res: Response) => {
+  const { userid } = req.session;
+
+  if (!userid) {
+    return res.status(401).json({ message: 'User not authenticated' });
+  }
+
+  const { name, country, phoneNumber } = req.body;
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: {
+        id: userid,
+      },
+      include: {
+        client: true,
+      },
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: 'Client Not Found' });
+    }
+
+    if (user.role !== 'client') {
+      return res.status(403).json({ message: 'Access denied. User is not a client.' });
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: {
+        id: userid,
+      },
+      data: {
+        ...(name && { name }),
+        ...(country && { country }),
+        ...(phoneNumber && { phoneNumber }),
+      },
+    });
+
+    return res.status(200).json({
+      message: 'Client profile updated successfully',
+      user: {
+        id: updatedUser.id,
+        name: updatedUser.name,
+        email: updatedUser.email,
+        country: updatedUser.country,
+        phoneNumber: updatedUser.phoneNumber,
+      },
+    });
+  } catch (error) {
+    console.log(error);
+    return res.status(400).json({ message: 'Error updating client profile', error: error.message });
+  }
+};
+
 // Function to get user's information
 export const getprofile = async (req: Request, res: Response) => {
   const userId = req.session.userid as string;
+  let xeroinformation;
 
   if (!userId) {
     res.clearCookie('accessToken');
@@ -869,6 +1133,32 @@ export const getprofile = async (req: Request, res: Response) => {
 
   try {
     const user = await getUser(userId);
+
+    if (user?.role === 'admin' && user.admin?.role?.name?.toLowerCase() === 'finance') {
+      await xero.initialize();
+
+      const tokenSet = user.admin.xeroTokenSet as TokenSet;
+
+      if (tokenSet) {
+        xero.setTokenSet(tokenSet);
+
+        if (dayjs.unix(tokenSet.expires_at!).isBefore(dayjs())) {
+          const newTokenSet = await xero.refreshToken();
+
+          await prisma.admin.update({
+            where: {
+              userId: user.id,
+            },
+            data: {
+              xeroTokenSet: newTokenSet as any,
+            },
+          });
+        }
+
+        await xero.updateTenants();
+        xeroinformation = xero.tenants;
+      }
+    }
 
     if (!user) return res.status(401).json({ message: 'Unauthorized' });
 
@@ -887,7 +1177,7 @@ export const getprofile = async (req: Request, res: Response) => {
         return res.status(400).json({ message: 'Account rejected.' });
     }
 
-    return res.status(200).json({ user });
+    return res.status(200).json({ user: { ...user, xeroinformation } });
   } catch (error) {
     return res.status(404).json(error);
   }
@@ -1278,6 +1568,287 @@ export const resendVerificationLinkCreator = async (req: Request, res: Response)
   }
 };
 
+export const resendVerificationLinkClient = async (req: Request, res: Response) => {
+  const { token } = req.body;
+
+  if (!token) return res.status(404).json({ message: 'Token is missing' });
+
+  try {
+    // Get JWT token and user information from the provided token
+    const { jwtToken, user, id } = await getJWTToken(token as string);
+
+    if (!jwtToken) return res.status(400).json({ message: 'Access token not found' });
+    if (!user) return res.status(400).json({ message: 'User not found' });
+
+    // Decode the JWT token to verify it's valid
+    const decode = jwt.decode(jwtToken);
+
+    if (!decode) return res.status(400).json({ message: 'Token is invalid' });
+
+    // Create a new JWT token with 15 minutes expiration
+    const newToken = jwt.sign({ id: user.id }, process.env.ACCESSKEY as Secret, { expiresIn: '15m' });
+
+    let shortCode;
+
+    // Generate a unique short code for the verification email
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      shortCode = generateRandomString();
+
+      const isShortCodeExist = await prisma.emailVerification.findFirst({
+        where: { shortCode },
+      });
+
+      if (!isShortCodeExist) break;
+    }
+
+    // Update the existing email verification record with new token and short code
+    const newCode = await prisma.emailVerification.update({
+      where: {
+        id: id,
+      },
+      data: {
+        token: newToken,
+        shortCode: shortCode,
+        expiredAt: dayjs().add(15, 'minute').toDate(),
+      },
+    });
+
+    // Send the verification email with the new short code for clients
+    clientVerificationEmail(user.email, newCode.shortCode);
+
+    return res.status(200).json({ message: 'New verification link has been sent.' });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const inviteClient = async (req: Request, res: Response) => {
+  const { email, companyId } = req.body;
+
+  try {
+    // Check if user already exists
+    const existingUser = await prisma.user.findFirst({
+      where: { email: email.toLowerCase() },
+    });
+
+    if (existingUser) {
+      return res.status(400).json({ message: 'User already exists' });
+    }
+
+    // Get company information
+    const company = await prisma.company.findUnique({
+      where: { id: companyId },
+      include: { pic: true },
+    });
+
+    if (!company) {
+      return res.status(404).json({ message: 'Company not found' });
+    }
+
+    // Create user with client role
+    const result = await prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          email: email.toLowerCase(),
+          password: '', // Empty password initially
+          role: 'client',
+          status: 'pending',
+          name: company.name || 'Client User',
+        },
+      });
+
+      // Get or create default client role
+      let clientRole = await tx.role.findFirst({
+        where: { name: 'Client' },
+      });
+
+      if (!clientRole) {
+        clientRole = await tx.role.create({
+          data: {
+            name: 'Client',
+          },
+        });
+      }
+
+      // Generate invite token
+      const inviteToken = jwt.sign({ id: user.id, companyId }, process.env.SESSION_SECRET as Secret);
+
+      // Create admin record for client with Client role
+      const admin = await tx.admin.create({
+        data: {
+          userId: user.id,
+          roleId: clientRole.id,
+          mode: 'normal',
+        },
+      });
+
+      // Create client record linked to admin
+      const client = await tx.client.create({
+        data: {
+          userId: user.id,
+          inviteToken: inviteToken,
+          companyId: companyId, // Add the companyId from request
+        },
+      });
+
+      return { user, client, admin, company };
+    });
+
+    // Send invitation email
+    ClientInvitation(result.user.email, result.client.inviteToken!, result.company.name);
+
+    return res.status(200).json({
+      message: 'Client invitation sent successfully',
+      user: { email: result.user.email, id: result.user.id },
+    });
+  } catch (error) {
+    console.error('Client invitation error:', error);
+    return res.status(400).json({ message: 'Error sending client invitation' });
+  }
+};
+
+export const verifyClientInvite = async (req: Request, res: Response) => {
+  const { token } = req.query;
+
+  try {
+    // Verify JWT token
+    const decoded = jwt.verify(token as string, process.env.SESSION_SECRET as string) as any;
+
+    // Find client by token
+    const client = await prisma.client.findFirst({
+      where: { inviteToken: token as string },
+      include: {
+        user: true,
+      },
+    });
+
+    if (!client) {
+      return res.status(404).json({ message: 'Invalid or expired invitation' });
+    }
+
+    if (!client.user) {
+      return res.status(404).json({ message: 'Missing user information' });
+    }
+
+    // Create session for the user so they can access the app
+    const accessToken = jwt.sign({ id: client.user.id }, process.env.ACCESSKEY as Secret, {
+      expiresIn: '4h',
+    });
+
+    const refreshToken = jwt.sign({ id: client.user.id }, process.env.REFRESHKEY as Secret);
+
+    const session = req.session;
+    session.userid = client.user.id;
+    session.refreshToken = refreshToken;
+    session.role = client.user.role;
+
+    res.cookie('userid', client.user.id, {
+      maxAge: 60 * 60 * 24 * 1000, // 1 Day
+      httpOnly: true,
+    });
+
+    res.cookie('accessToken', accessToken, {
+      maxAge: 60 * 60 * 4 * 1000, // 4 hours
+      httpOnly: true,
+    });
+
+    // Return user info for password setup
+    return res.status(200).json({
+      message: 'Valid invitation',
+      user: {
+        id: client.user.id,
+        email: client.user.email,
+        name: client.user.name,
+        role: client.user.role,
+      },
+      accessToken,
+    });
+  } catch (error) {
+    console.error('Client invite verification error:', error);
+    return res.status(400).json({ message: 'Invalid or expired invitation' });
+  }
+};
+
+export const setupClientPassword = async (req: Request, res: Response) => {
+  const { token, password, confirmPassword } = req.body;
+
+  if (password !== confirmPassword) {
+    return res.status(400).json({ message: 'Passwords do not match' });
+  }
+
+  try {
+    // Verify token and get client
+    const decoded = jwt.verify(token as string, process.env.SESSION_SECRET as string) as any;
+
+    const client = await prisma.client.findFirst({
+      where: { inviteToken: token },
+      include: {
+        user: true,
+      },
+    });
+
+    if (!client) {
+      return res.status(404).json({ message: 'Invalid or expired invitation' });
+    }
+
+    // Hash password and update user
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const result = await prisma.$transaction(async (tx) => {
+      // Update user with password and activate
+      const updatedUser = await tx.user.update({
+        where: { id: client.user.id },
+        data: {
+          password: hashedPassword,
+          status: 'active',
+          isActive: true,
+        },
+      });
+
+      // Clear the invite token after successful setup
+      await tx.client.update({
+        where: { id: client.id },
+        data: {
+          inviteToken: null,
+        },
+      });
+
+      return updatedUser;
+    });
+
+    // Create session and tokens
+    const accessToken = jwt.sign({ id: result.id }, process.env.ACCESSKEY as Secret, {
+      expiresIn: '4h',
+    });
+
+    const refreshToken = jwt.sign({ id: result.id }, process.env.REFRESHKEY as Secret);
+
+    const session = req.session;
+    session.userid = result.id;
+    session.refreshToken = refreshToken;
+    session.role = result.role;
+
+    res.cookie('userid', result.id, {
+      maxAge: 60 * 60 * 24 * 1000, // 1 Day
+      httpOnly: true,
+    });
+
+    res.cookie('accessToken', accessToken, {
+      maxAge: 60 * 60 * 4 * 1000, // 4 hours
+      httpOnly: true,
+    });
+
+    return res.status(200).json({
+      message: 'Password set up successfully',
+      user: result,
+      accessToken,
+    });
+  } catch (error) {
+    console.error('Password setup error:', error);
+    return res.status(400).json({ message: 'Error setting up password' });
+  }
+};
 export const deleteAccount = async (req: Request, res: Response) => {
   const userId = req.session.userid as string;
 
