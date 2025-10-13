@@ -245,6 +245,28 @@ model Creator {
   instagramUser InstagramUser?
 }
 
+// model TiktokUser {
+//   id String @id @unique @default(cuid())
+
+//   creatorId String  @unique
+//   creator   Creator @relation(references: [id], fields: [creatorId])
+
+//   display_name String?
+//   avatar_url   String?
+
+//   following_count Int?
+//   follower_count  Int?
+//   likes_count     Int?
+
+//   averageComments Int?
+//   averageLikes    Int?
+//   engagement_rate
+
+//   createdAt   DateTime      @default(now())
+//   updatedAt   DateTime      @updatedAt
+//   tiktokVideo TiktokVideo[]
+// }
+
 model TiktokUser {
   id String @id @unique @default(cuid())
 
@@ -257,6 +279,16 @@ model TiktokUser {
   following_count Int?
   follower_count  Int?
   likes_count     Int?
+
+  totalLikes    Int?
+  totalComments Int?
+
+  averageLikes    Int?
+  averageComments Int?
+
+  engagement_rate Int?
+
+  lastUpdated DateTime? @updatedAt
 
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
