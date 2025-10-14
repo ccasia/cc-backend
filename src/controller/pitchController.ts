@@ -71,9 +71,9 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Pitch not found' });
     }
 
-    // Check if this is a client-created campaign
-    if (pitch.campaign.origin !== 'CLIENT') {
-      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
+    // Check if this is a client-created campaign OR v4 campaign (admin-created with client managers)
+    if (pitch.campaign.origin !== 'CLIENT' && pitch.campaign.submissionVersion !== 'v4') {
+      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns or v4 campaigns' });
     }
 
     // Check if pitch is in correct status - allow admin to approve from PENDING_REVIEW or MAYBE
@@ -195,9 +195,9 @@ export const rejectPitchByAdmin = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Pitch not found' });
     }
 
-    // Check if this is a client-created campaign
-    if (pitch.campaign.origin !== 'CLIENT') {
-      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
+    // Check if this is a client-created campaign OR v4 campaign (admin-created with client managers)
+    if (pitch.campaign.origin !== 'CLIENT' && pitch.campaign.submissionVersion !== 'v4') {
+      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns or v4 campaigns' });
     }
 
     // Check if pitch is in correct status - allow admin to reject from PENDING_REVIEW or MAYBE
@@ -291,9 +291,9 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
       `Client approval attempt - Pitch ID: ${pitchId}, Current status: ${pitch.status}, Client ID: ${clientId}`,
     );
 
-    // Check if this is a client-created campaign
-    if (pitch.campaign.origin !== 'CLIENT') {
-      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
+    // Check if this is a client-created campaign OR admin-created v4 campaign
+    if (pitch.campaign.origin !== 'CLIENT' && pitch.campaign.submissionVersion !== 'v4') {
+      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns or v4 campaigns' });
     }
 
     // Check if pitch was already approved by this client
@@ -584,9 +584,9 @@ export const rejectPitchByClient = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Pitch not found' });
     }
 
-    // Check if this is a client-created campaign
-    if (pitch.campaign.origin !== 'CLIENT') {
-      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
+    // Check if this is a client-created campaign OR admin-created v4 campaign
+    if (pitch.campaign.origin !== 'CLIENT' && pitch.campaign.submissionVersion !== 'v4') {
+      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns or v4 campaigns' });
     }
 
     // Check if pitch is in correct status
@@ -693,9 +693,9 @@ export const maybePitchByClient = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Pitch not found' });
     }
 
-    // Check if this is a client-created campaign
-    if (pitch.campaign.origin !== 'CLIENT') {
-      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
+    // Check if this is a client-created campaign OR admin-created v4 campaign
+    if (pitch.campaign.origin !== 'CLIENT' && pitch.campaign.submissionVersion !== 'v4') {
+      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns or v4 campaigns' });
     }
 
     // Check if pitch is in correct status
@@ -781,9 +781,9 @@ export const setPitchAgreement = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Pitch not found' });
     }
 
-    // Check if this is a client-created campaign
-    if (pitch.campaign.origin !== 'CLIENT') {
-      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
+    // Check if this is a client-created campaign OR v4 campaign (admin-created with client managers)
+    if (pitch.campaign.origin !== 'CLIENT' && pitch.campaign.submissionVersion !== 'v4') {
+      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns or v4 campaigns' });
     }
 
     // Check if pitch is in correct status
@@ -858,9 +858,9 @@ export const submitAgreement = async (req: Request, res: Response) => {
       return res.status(403).json({ message: 'You can only submit agreements for your own pitches' });
     }
 
-    // Check if this is a client-created campaign
-    if (pitch.campaign.origin !== 'CLIENT') {
-      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
+    // Check if this is a client-created campaign OR v4 campaign (admin-created with client managers)
+    if (pitch.campaign.origin !== 'CLIENT' && pitch.campaign.submissionVersion !== 'v4') {
+      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns or v4 campaigns' });
     }
 
     // Check if pitch is in correct status for agreement submission
@@ -969,12 +969,15 @@ export const getPitchesV3 = async (req: Request, res: Response) => {
       whereClause.status = status as string;
     }
 
-    // Only get pitches for client-created campaigns
+    // Get pitches for client-created campaigns OR v4 campaigns (admin-created with client managers)
     const pitches = await prisma.pitch.findMany({
       where: {
         ...whereClause,
         campaign: {
-          origin: 'CLIENT',
+          OR: [
+            { origin: 'CLIENT' },
+            { submissionVersion: 'v4' }
+          ]
         },
       },
       include: {
@@ -1006,6 +1009,17 @@ export const getPitchesV3 = async (req: Request, res: Response) => {
       orderBy: {
         createdAt: 'desc',
       },
+    });
+
+    // Debug logging for v4 campaigns
+    console.log('🔍 V3 Pitches Debug:', {
+      campaignId,
+      requestedStatus: status,
+      userRole: user.role,
+      totalPitches: pitches.length,
+      v4Pitches: pitches.filter(p => p.campaign?.submissionVersion === 'v4').length,
+      clientOriginPitches: pitches.filter(p => p.campaign?.origin === 'CLIENT').length,
+      pitchStatuses: pitches.map(p => ({ id: p.id, status: p.status, campaignOrigin: p.campaign?.origin, submissionVersion: p.campaign?.submissionVersion }))
     });
 
     // Transform pitches to show role-based status and filter for clients
@@ -1116,9 +1130,9 @@ export const getPitchByIdV3 = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Pitch not found' });
     }
 
-    // Check if this is a client-created campaign
-    if (pitch.campaign.origin !== 'CLIENT') {
-      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
+    // Check if this is a client-created campaign OR v4 campaign (admin-created with client managers)
+    if (pitch.campaign.origin !== 'CLIENT' && pitch.campaign.submissionVersion !== 'v4') {
+      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns or v4 campaigns' });
     }
 
     // For clients: only allow access to pitches that are SENT_TO_CLIENT or APPROVED
@@ -1203,9 +1217,9 @@ export const submitDraftV3 = async (req: Request, res: Response) => {
       return res.status(403).json({ message: 'You can only submit drafts for your own submissions' });
     }
 
-    // Check if this is a client-created campaign
-    if (submission.campaign.origin !== 'CLIENT') {
-      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
+    // Check if this is a client-created campaign OR v4 campaign (admin-created with client managers)
+    if (submission.campaign.origin !== 'CLIENT' && submission.campaign.submissionVersion !== 'v4') {
+      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns or v4 campaigns' });
     }
 
     // Check if submission is in correct status
@@ -1289,8 +1303,8 @@ export const approveDraftByAdminV3 = async (req: Request, res: Response) => {
     }
 
     // Check if this is a client-created campaign
-    if (submission.campaign.origin !== 'CLIENT') {
-      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
+    if (submission.campaign.origin !== 'CLIENT' && submission.campaign.submissionVersion !== 'v4') {
+      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns or v4 campaigns' });
     }
 
     // Check if submission is in correct status
@@ -1367,8 +1381,8 @@ export const requestChangesByAdminV3 = async (req: Request, res: Response) => {
     }
 
     // Check if this is a client-created campaign
-    if (submission.campaign.origin !== 'CLIENT') {
-      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
+    if (submission.campaign.origin !== 'CLIENT' && submission.campaign.submissionVersion !== 'v4') {
+      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns or v4 campaigns' });
     }
 
     // Check if submission is in correct status
@@ -1452,8 +1466,8 @@ export const approveDraftByClientV3 = async (req: Request, res: Response) => {
     }
 
     // Check if this is a client-created campaign
-    if (submission.campaign.origin !== 'CLIENT') {
-      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
+    if (submission.campaign.origin !== 'CLIENT' && submission.campaign.submissionVersion !== 'v4') {
+      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns or v4 campaigns' });
     }
 
     // Check if submission is in correct status
@@ -1596,8 +1610,8 @@ export const requestChangesByClientV3 = async (req: Request, res: Response) => {
     }
 
     // Check if this is a client-created campaign
-    if (submission.campaign.origin !== 'CLIENT') {
-      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
+    if (submission.campaign.origin !== 'CLIENT' && submission.campaign.submissionVersion !== 'v4') {
+      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns or v4 campaigns' });
     }
 
     // Check if submission is in correct status
@@ -1686,8 +1700,8 @@ export const forwardClientFeedbackV3 = async (req: Request, res: Response) => {
     }
 
     // Check if this is a client-created campaign
-    if (submission.campaign.origin !== 'CLIENT') {
-      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
+    if (submission.campaign.origin !== 'CLIENT' && submission.campaign.submissionVersion !== 'v4') {
+      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns or v4 campaigns' });
     }
     
     // Check if submission is in correct status

@@ -226,6 +226,7 @@ export const createCampaign = async (req: Request, res: Response) => {
   })();
   const requestedOrigin = rawBody?.origin as 'ADMIN' | 'CLIENT' | undefined;
   const clientManagers = Array.isArray(rawBody?.clientManagers) ? rawBody.clientManagers : [];
+  const submissionVersion = rawBody?.submissionVersion as 'v4' | undefined;
 
   try {
     const publicURL: any = [];
@@ -332,6 +333,7 @@ export const createCampaign = async (req: Request, res: Response) => {
             description: campaignDescription,
             status: campaignStage as CampaignStatus,
             origin: requestedOrigin === 'CLIENT' ? 'CLIENT' : 'ADMIN',
+            submissionVersion: submissionVersion || undefined, // Set v4 if client user is added as manager
             brandTone: brandTone,
             productName: productName,
             spreadSheetURL: url,
@@ -6699,14 +6701,6 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
       },
     });
 
-    // Check if user is client who created this campaign
-    const isClientCreator = campaignAccess?.admin?.user?.role === 'client';
-    // Note: campaignLogs might have different structure, we'll just check if user is a client
-    const isClientCreatedCampaign = isClientCreator;
-
-    console.log(`User role: ${campaignAccess?.admin?.user?.role}`);
-    console.log(`Is client who created campaign: ${isClientCreator && isClientCreatedCampaign}`);
-
     // If not authorized, return error
     if (!campaignAccess && !isSuperadmin) {
       return res.status(403).json({ message: 'Not authorized to shortlist creators for this campaign' });
@@ -6726,9 +6720,9 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
 
       if (!campaign) throw new Error('Campaign not found');
 
-      // For V3, we only support client-created campaigns
-      if (campaign.origin !== 'CLIENT') {
-        throw new Error('V3 shortlisting is only for client-created campaigns');
+      // For V3 shortlisting, we only support v4 campaigns
+      if (campaign.submissionVersion !== 'v4') {
+        throw new Error('V3 shortlisting is only for v4 campaigns');
       }
 
       const creatorIds = creators.map((c: any) => c.id);
@@ -7206,9 +7200,9 @@ export const assignUGCCreditsV3 = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Campaign not found' });
     }
 
-    // For V3, we only support client-created campaigns
-    if (campaign.origin !== 'CLIENT') {
-      throw new Error('V3 UGC credits assignment is only for client-created campaigns');
+    // For V3, we only support V4 campaigns
+    if (campaign.submissionVersion !== 'v4') {
+      throw new Error('V3 UGC credits assignment is only for V4 campaigns');
     }
 
     // Calculate total credits being assigned
@@ -7233,63 +7227,49 @@ export const assignUGCCreditsV3 = async (req: Request, res: Response) => {
 
         console.log(`Assigning ${creator.credits} UGC credits to creator ${creator.id}`);
 
-        // Check if creator is already shortlisted
-        const existingShortlist = await tx.shortListedCreator.findUnique({
+        // For v4 campaigns, store credits in the pitch record (not shortlisted)
+        // Credits will be transferred to shortlisted when pitch is approved
+        const existingPitch = await tx.pitch.findFirst({
           where: {
-            userId_campaignId: {
-              userId: creator.id,
-              campaignId: campaign.id,
-            },
+            userId: creator.id,
+            campaignId: campaign.id,
           },
         });
 
-        if (existingShortlist) {
-          // Update existing shortlist with UGC credits
-          await tx.shortListedCreator.update({
-            where: {
-              userId_campaignId: {
-                userId: creator.id,
-                campaignId: campaign.id,
-              },
-            },
-            data: {
-              ugcVideos: creator.credits,
-            },
-          });
-          console.log(`Updated UGC credits for existing shortlisted creator ${creator.id}`);
-        } else {
-          // Create new shortlist entry with UGC credits
-          await tx.shortListedCreator.create({
-            data: {
-              userId: creator.id,
-              campaignId: campaign.id,
-              ugcVideos: creator.credits,
-              currency: 'MYR', // Default currency for V3
-            },
-          });
-          console.log(`Created new shortlist entry with UGC credits for creator ${creator.id}`);
+        if (!existingPitch) {
+          console.log(`No pitch found for creator ${creator.id}, skipping credit assignment`);
+          continue;
         }
+
+        // Update pitch with UGC credits
+        await tx.pitch.update({
+          where: {
+            id: existingPitch.id,
+          },
+          data: {
+            ugcCredits: creator.credits,
+          },
+        });
+        console.log(`Updated pitch ${existingPitch.id} with ${creator.credits} UGC credits`);
       }
 
-      // Update campaign credits tracking fields
-      // Get all shortlisted creators for this campaign to calculate total utilized credits
-      const allShortlistedCreators = await tx.shortListedCreator.findMany({
-        where: { campaignId: campaign.id },
-        select: { ugcVideos: true },
+      // Update campaign credits tracking based on pitch assignments (not shortlisted yet)
+      const allPitchesWithCredits = await tx.pitch.findMany({
+        where: { campaignId: campaign.id, ugcCredits: { not: null } },
+        select: { ugcCredits: true },
       });
 
-      const totalUtilizedCredits = allShortlistedCreators.reduce((acc, creator) => acc + (creator.ugcVideos || 0), 0);
+      const totalPendingCredits = allPitchesWithCredits.reduce((acc, pitch) => acc + (pitch.ugcCredits || 0), 0);
 
       if (campaign.campaignCredits) {
         await tx.campaign.update({
           where: { id: campaign.id },
           data: {
-            creditsUtilized: totalUtilizedCredits,
-            creditsPending: campaign.campaignCredits - totalUtilizedCredits,
+            creditsPending: totalPendingCredits, // Credits assigned to pitches but not yet approved
           },
         });
         console.log(
-          `Updated campaign credits: utilized=${totalUtilizedCredits}, pending=${campaign.campaignCredits - totalUtilizedCredits}`,
+          `Updated campaign pending credits: ${totalPendingCredits} (assigned to pitches awaiting approval)`,
         );
       }
     });
