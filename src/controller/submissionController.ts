@@ -228,7 +228,20 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
   const adminId = req.session.userid;
 
   const { campaignId, userId, status, submissionId } = data;
-  const nextSubmissionId = data?.submission?.dependencies[0]?.submissionId;
+  const nextSubmissionId = data?.submission?.dependencies?.[0]?.submissionId;
+
+  // Debug logging
+  console.log('[ADMIN_MANAGE_AGREEMENT] Processing agreement approval:', {
+    campaignId,
+    userId,
+    status,
+    submissionId,
+    nextSubmissionId,
+    hasSubmission: !!data?.submission,
+    hasDependencies: !!data?.submission?.dependencies,
+    dependenciesLength: data?.submission?.dependencies?.length || 0,
+    dependencies: data?.submission?.dependencies
+  });
 
   try {
     const campaign = await prisma.campaign.findUnique({
@@ -288,6 +301,7 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
         },
       });
 
+      console.log('[ADMIN_MANAGE_AGREEMENT] Updating agreement submission to APPROVED');
       const agreementSubs = await prisma.submission.update({
         where: {
           id: submissionId,
@@ -313,9 +327,11 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
           },
         },
       });
+      console.log('[ADMIN_MANAGE_AGREEMENT] Agreement submission updated successfully');
 
       // Update the corresponding pitch status to AGREEMENT_SUBMITTED when agreement is approved
-      await prisma.pitch.updateMany({
+      console.log('[ADMIN_MANAGE_AGREEMENT] Updating pitch status to AGREEMENT_SUBMITTED');
+      const pitchUpdateResult = await prisma.pitch.updateMany({
         where: {
           campaignId: campaignId,
           userId: userId,
@@ -325,10 +341,12 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
           status: 'AGREEMENT_SUBMITTED',
         },
       });
+      console.log(`[ADMIN_MANAGE_AGREEMENT] Updated ${pitchUpdateResult.count} pitch(es)`);
 
       const taskInReviewColumn = inReviewColumn?.task?.find((item) => item.submissionId === agreementSubs.id);
 
       if (taskInReviewColumn) {
+        console.log('[ADMIN_MANAGE_AGREEMENT] Moving task from In Review to Done');
         await prisma.task.update({
           where: {
             id: taskInReviewColumn.id,
@@ -337,33 +355,43 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
             columnId: doneColumn?.id,
           },
         });
+        console.log('[ADMIN_MANAGE_AGREEMENT] Task moved successfully');
+      } else {
+        console.log('[ADMIN_MANAGE_AGREEMENT] No task found in In Review column for this submission');
       }
 
-      const submission = await prisma.submission.update({
-        where: {
-          id: nextSubmissionId as string,
-        },
-        data: {
-          status: 'IN_PROGRESS',
-          nextsubmissionDate: new Date(),
-        },
-        include: {
-          task: true,
-        },
-      });
-
-      // find by column
-      const inProgressTask = submission.task.find((item) => item.columnId === toDoColumn?.id);
-
-      if (inProgressTask) {
-        await prisma.task.update({
+      // Only update next submission if there are dependencies (nextSubmissionId exists)
+      if (nextSubmissionId) {
+        console.log('[ADMIN_MANAGE_AGREEMENT] Updating next submission to IN_PROGRESS');
+        const submission = await prisma.submission.update({
           where: {
-            id: inProgressTask.id,
+            id: nextSubmissionId as string,
           },
           data: {
-            columnId: inProgressColumn?.id,
+            status: 'IN_PROGRESS',
+            nextsubmissionDate: new Date(),
+          },
+          include: {
+            task: true,
           },
         });
+
+        // find by column
+        const inProgressTask = submission.task.find((item) => item.columnId === toDoColumn?.id);
+
+        if (inProgressTask) {
+          await prisma.task.update({
+            where: {
+              id: inProgressTask.id,
+            },
+            data: {
+              columnId: inProgressColumn?.id,
+            },
+          });
+        }
+        console.log('[ADMIN_MANAGE_AGREEMENT] Next submission updated successfully');
+      } else {
+        console.log('[ADMIN_MANAGE_AGREEMENT] No next submission found (nextSubmissionId is null/undefined), skipping next submission update');
       }
 
       for (const item of agreementSubs.campaign.campaignAdmin) {
@@ -576,7 +604,12 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
 
     return res.status(200).json({ message: 'Successfully updated' });
   } catch (error) {
-    return res.status(400).json(error);
+    console.error('[ADMIN_MANAGE_AGREEMENT] Error managing agreement submission:', error);
+    console.error('[ADMIN_MANAGE_AGREEMENT] Request data:', { campaignId, userId, status, submissionId, nextSubmissionId });
+    return res.status(400).json({ 
+      message: error instanceof Error ? error.message : 'Failed to manage agreement submission',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
   }
 };
 
