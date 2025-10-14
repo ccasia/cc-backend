@@ -63,6 +63,11 @@ import {
   changeCampaignCredit,
   getCampaignsForPublic,
 } from '@controllers/campaignController';
+import {
+  swapGuestWithPlatformCreator,
+  cleanupOrphanedGuestUsers,
+  getGuestCreatorsForCampaign,
+} from '@controllers/swapCreatorController';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 import { canActivateCampaign } from '@middlewares/adminOrClient';
 
@@ -141,6 +146,11 @@ router.post('/fixCampaignTimelines/:campaignId', isLoggedIn, fixCampaignTimeline
 router.get('/checkCreatorVisibility/:campaignId', isLoggedIn, checkCampaignCreatorVisibility);
 
 router.get('/public', getCampaignsForPublic);
+
+// Swap Creator endpoints
+router.get('/:campaignId/guestCreators', isLoggedIn, getGuestCreatorsForCampaign);
+router.post('/swapCreator', isLoggedIn, isSuperAdmin, swapGuestWithPlatformCreator);
+router.post('/cleanupGuestCreators', isLoggedIn, isSuperAdmin, cleanupOrphanedGuestUsers);
 
 router.post('/updateOrCreateDefaultTimeline', updateOrCreateDefaultTimeline);
 router.post('/createCampaign', isSuperAdmin, createCampaign);
