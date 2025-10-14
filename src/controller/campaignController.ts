@@ -4541,10 +4541,44 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
             statusCondition,
             {
               ...(search && {
-                name: {
-                  contains: search as string,
-                  mode: 'insensitive',
-                },
+                OR: [
+                  {
+                    name: {
+                      contains: search as string,
+                      mode: 'insensitive',
+                    },
+                  },
+                  {
+                    brand: {
+                      name: {
+                        contains: search as string,
+                        mode: 'insensitive',
+                      },
+                    },
+                  },
+                  {
+                    company: {
+                      name: {
+                        contains: search as string,
+                        mode: 'insensitive',
+                      },
+                    },
+                  },
+                  {
+                    campaignClients: {
+                      some: {
+                        client: {
+                          user: {
+                            name: {
+                              contains: search as string,
+                              mode: 'insensitive',
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                ],
               }),
             },
           ],

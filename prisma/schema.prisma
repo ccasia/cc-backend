@@ -656,7 +656,7 @@ model Campaign {
   updatedAt DateTime @updatedAt
 
   // V4 submission version tracking
-  submissionVersion String? @default("v3") // "v2", "v3", "v4"
+  submissionVersion String?
 
   // Add client campaign relation
   clientCampaigns ClientCampaign[]
@@ -979,7 +979,7 @@ model Submission {
 
   // V4 specific fields
   contentOrder      Int? // Order of content (Video 1, Video 2, etc.)
-  submissionVersion String?          @default("v2") // "v2", "v3", "v4"
+  submissionVersion String?
   captionHistory    CaptionHistory[]
 
   @@unique([userId, campaignId, submissionTypeId, contentOrder])
