@@ -371,7 +371,7 @@ export const createClientCampaign = async (req: Request, res: Response) => {
         description: campaignDescription,
         status: 'PENDING_CSM_REVIEW', // Set to PENDING_CSM_REVIEW so it shows up in the Pending tab for admins
         origin: 'CLIENT', // Mark as client-created campaign for v3 flow
-        submissionVersion: 'v4', // Set submission version to determine flow type
+        submissionVersion: 'v4', 
         brandTone: brandTone || '',
         productName: productName || '',
         // Skip adminManager and other fields that will be set by CSM later
