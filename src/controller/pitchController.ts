@@ -110,11 +110,11 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
     const updatedPitch = await prisma.pitch.update({
       where: { id: pitchId },
       data: {
-              ...updateData,
-              status: 'SENT_TO_CLIENT',
-              approvedByAdminId: adminId,
-              ugcCredits: parseInt(ugcCredits),
-            },
+        ...updateData,
+        status: 'SENT_TO_CLIENT',
+        approvedByAdminId: adminId,
+        ugcCredits: parseInt(ugcCredits),
+      },
       include: {
         campaign: true,
         user: true,
@@ -165,7 +165,7 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
       //     userId: clientUser.admin.userId,
       //   },
       // });
-      const {title, message} = notificationPitchForClientReview(pitch.campaign.name);
+      const { title, message } = notificationPitchForClientReview(pitch.campaign.name);
 
       const notification = await saveNotification({
         userId: clientUser.admin.userId,
@@ -403,9 +403,7 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
         },
         data: {
           isAgreementReady: false,
-          ...(creditsAssignedForThisPitch > 0
-            ? { ugcVideos: creditsAssignedForThisPitch }
-            : {}), // do not overwrite with null/0 if credits not provided
+          ...(creditsAssignedForThisPitch > 0 ? { ugcVideos: creditsAssignedForThisPitch } : {}), // do not overwrite with null/0 if credits not provided
         },
       });
     } else {
@@ -426,19 +424,13 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
         include: { shortlisted: { select: { ugcVideos: true } } },
       });
 
-      const totalUtilized = (refreshed?.shortlisted || []).reduce(
-        (acc, item) => acc + Number(item.ugcVideos || 0),
-        0,
-      );
+      const totalUtilized = (refreshed?.shortlisted || []).reduce((acc, item) => acc + Number(item.ugcVideos || 0), 0);
 
       await prisma.campaign.update({
         where: { id: pitch.campaignId },
         data: {
           creditsUtilized: Number(totalUtilized),
-          creditsPending: Math.max(
-            0,
-            Number(campaignWithShortlisted.campaignCredits) - Number(totalUtilized),
-          ),
+          creditsPending: Math.max(0, Number(campaignWithShortlisted.campaignCredits) - Number(totalUtilized)),
         },
       });
     }
@@ -542,7 +534,9 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
         // Don't fail the whole request, just log the error
       }
     } else {
-      console.log(`ℹ️  Campaign ${pitch.campaignId} is not V4 (version: ${pitch.campaign.submissionVersion}) - skipping V4 content submission creation`);
+      console.log(
+        `ℹ️  Campaign ${pitch.campaignId} is not V4 (version: ${pitch.campaign.submissionVersion}) - skipping V4 content submission creation`,
+      );
     }
 
     // Find admin users for this campaign
@@ -899,8 +893,8 @@ export const submitAgreement = async (req: Request, res: Response) => {
     // Check if pitch is in correct status for agreement submission
     // Allow AGREEMENT_PENDING (initial submission) and AGREEMENT_SUBMITTED (when resubmitting after changes requested)
     if (pitch.status !== 'AGREEMENT_PENDING' && pitch.status !== 'AGREEMENT_SUBMITTED') {
-      return res.status(400).json({ 
-        message: `Pitch is not in correct status for agreement submission. Current status: ${pitch.status}` 
+      return res.status(400).json({
+        message: `Pitch is not in correct status for agreement submission. Current status: ${pitch.status}`,
       });
     }
 
@@ -918,8 +912,8 @@ export const submitAgreement = async (req: Request, res: Response) => {
 
       // Only allow resubmission if agreement submission is in CHANGES_REQUIRED status
       if (!agreementSubmission || agreementSubmission.status !== 'CHANGES_REQUIRED') {
-        return res.status(400).json({ 
-          message: 'Agreement has already been submitted and is not pending changes' 
+        return res.status(400).json({
+          message: 'Agreement has already been submitted and is not pending changes',
         });
       }
     }
@@ -1722,11 +1716,11 @@ export const forwardClientFeedbackV3 = async (req: Request, res: Response) => {
     if (submission.campaign.origin !== 'CLIENT') {
       return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
     }
-    
+
     // Check if submission is in correct status
     if (submission.status !== 'SENT_TO_ADMIN') {
-      return res.status(400).json({ 
-        message: `Submission is not in correct status for forwarding feedback. Current status: ${submission.status}` 
+      return res.status(400).json({
+        message: `Submission is not in correct status for forwarding feedback. Current status: ${submission.status}`,
       });
     }
 
