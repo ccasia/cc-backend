@@ -6936,35 +6936,40 @@ export const shortlistCreatorV2ForClient = async (req: Request, res: Response) =
           const columnInProgress = board.columns.find((c) => c.name.includes('In Progress'));
           if (!columnToDo || !columnInProgress) throw new Error('Columns not found.');
 
-          type SubmissionWithRelations = Submission & {
-            submissionType: SubmissionType;
-          };
+          // Only create v2 submissions if campaign is NOT v4
+          if (campaign.submissionVersion !== 'v4') {
+            type SubmissionWithRelations = Submission & {
+              submissionType: SubmissionType;
+            };
 
-          const submissions: any[] = await Promise.all(
-            timelines.map(async (timeline, index) => {
-              return await tx.submission.create({
-                data: {
-                  dueDate: timeline.endDate,
-                  campaignId: campaign.id,
-                  userId: creator.id as string,
-                  status: timeline.submissionType?.type === 'AGREEMENT_FORM' ? 'IN_PROGRESS' : 'NOT_STARTED',
-                  submissionTypeId: timeline.submissionTypeId as string,
-                  task: {
-                    create: {
-                      name: timeline.name,
-                      position: index,
-                      columnId: timeline.submissionType?.type ? columnInProgress.id : (columnToDo?.id as string),
-                      priority: '',
-                      status: timeline.submissionType?.type ? 'In Progress' : 'To Do',
+            const submissions: any[] = await Promise.all(
+              timelines.map(async (timeline, index) => {
+                return await tx.submission.create({
+                  data: {
+                    dueDate: timeline.endDate,
+                    campaignId: campaign.id,
+                    userId: creator.id as string,
+                    status: timeline.submissionType?.type === 'AGREEMENT_FORM' ? 'IN_PROGRESS' : 'NOT_STARTED',
+                    submissionTypeId: timeline.submissionTypeId as string,
+                    task: {
+                      create: {
+                        name: timeline.name,
+                        position: index,
+                        columnId: timeline.submissionType?.type ? columnInProgress.id : (columnToDo?.id as string),
+                        priority: '',
+                        status: timeline.submissionType?.type ? 'In Progress' : 'To Do',
+                      },
                     },
                   },
-                },
-                include: {
-                  submissionType: true,
-                },
-              });
-            }),
-          );
+                  include: {
+                    submissionType: true,
+                  },
+                });
+              }),
+            );
+          } else {
+            console.log(`Skipping v2 submission creation for v4 campaign ${campaign.id}`);
+          }
         }
 
         // Create notifications for shortlisted creators
