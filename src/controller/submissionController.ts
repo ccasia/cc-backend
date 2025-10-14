@@ -230,19 +230,6 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
   const { campaignId, userId, status, submissionId } = data;
   const nextSubmissionId = data?.submission?.dependencies?.[0]?.submissionId;
 
-  // Debug logging
-  console.log('[ADMIN_MANAGE_AGREEMENT] Processing agreement approval:', {
-    campaignId,
-    userId,
-    status,
-    submissionId,
-    nextSubmissionId,
-    hasSubmission: !!data?.submission,
-    hasDependencies: !!data?.submission?.dependencies,
-    dependenciesLength: data?.submission?.dependencies?.length || 0,
-    dependencies: data?.submission?.dependencies
-  });
-
   try {
     const campaign = await prisma.campaign.findUnique({
       where: {
@@ -360,23 +347,41 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
         console.log('[ADMIN_MANAGE_AGREEMENT] No task found in In Review column for this submission');
       }
 
-      // Only update next submission if there are dependencies (nextSubmissionId exists)
+      // Handle next submission activation (only if nextSubmissionId exists and is valid)
+      let submission = null;
       if (nextSubmissionId) {
-        console.log('[ADMIN_MANAGE_AGREEMENT] Updating next submission to IN_PROGRESS');
-        const submission = await prisma.submission.update({
-          where: {
-            id: nextSubmissionId as string,
-          },
-          data: {
-            status: 'IN_PROGRESS',
-            nextsubmissionDate: new Date(),
-          },
-          include: {
-            task: true,
-          },
-        });
+        try {
+          // Check if the next submission exists before trying to update it
+          const nextSubmissionExists = await prisma.submission.findUnique({
+            where: { id: nextSubmissionId as string },
+          });
 
-        // find by column
+          if (nextSubmissionExists) {
+            submission = await prisma.submission.update({
+              where: {
+                id: nextSubmissionId as string,
+              },
+              data: {
+                status: 'IN_PROGRESS',
+                nextsubmissionDate: new Date(),
+              },
+              include: {
+                task: true,
+              },
+            });
+          } else {
+            console.log(`Next submission ${nextSubmissionId} not found, skipping update`);
+          }
+        } catch (error) {
+          console.error('Error updating next submission:', error);
+          // Continue with the approval process even if next submission update fails
+        }
+      } else {
+        console.log('No nextSubmissionId provided, skipping next submission update');
+      }
+
+      // Handle task updates only if we have a valid submission
+      if (submission && submission.task) {
         const inProgressTask = submission.task.find((item) => item.columnId === toDoColumn?.id);
 
         if (inProgressTask) {
@@ -389,9 +394,19 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
             },
           });
         }
-        console.log('[ADMIN_MANAGE_AGREEMENT] Next submission updated successfully');
-      } else {
-        console.log('[ADMIN_MANAGE_AGREEMENT] No next submission found (nextSubmissionId is null/undefined), skipping next submission update');
+      }
+
+      // For V4 campaigns, create content submissions when agreement is approved
+      if (campaign.submissionVersion === 'v4') {
+        console.log('V4 Campaign detected, creating content submissions after agreement approval');
+        try {
+          const { createContentSubmissionsAfterAgreement } = await import('../service/submissionV4Service.js');
+          await createContentSubmissionsAfterAgreement(agreementSubs);
+          console.log('V4 content submissions created successfully');
+        } catch (error) {
+          console.error('Error creating V4 content submissions:', error);
+          // Don't fail the agreement approval if content creation fails
+        }
       }
 
       for (const item of agreementSubs.campaign.campaignAdmin) {

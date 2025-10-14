@@ -16,6 +16,17 @@ import { checkAndCompleteV4Campaign } from '../service/submissionV4CompletionSer
 import { saveCaptionToHistory } from '../utils/captionHistoryUtils';
 
 /**
+ * Determine effective campaign origin for V4 status flow
+ * V4 campaigns with client managers should follow CLIENT flow even if origin is ADMIN
+ */
+const getEffectiveCampaignOrigin = (campaign: any): 'CLIENT' | 'ADMIN' => {
+  const hasClientManagers = campaign.campaignAdmin?.some((ca: any) => 
+    ca.admin.user.role === 'client'
+  );
+  return hasClientManagers ? 'CLIENT' : campaign.origin;
+};
+
+/**
  * Update submission status based on individual content statuses
  * For photo and raw footage submissions, if any content needs revision, 
  * the submission should allow creator to re-upload
@@ -369,9 +380,16 @@ export const approveV4Submission = async (req: Request, res: Response) => {
       include: {
         submissionType: true,
         campaign: {
-          select: {
-            id: true,
-            origin: true
+          include: {
+            campaignAdmin: {
+              include: {
+                admin: {
+                  include: {
+                    user: true
+                  }
+                }
+              }
+            }
           }
         },
         video: true,
@@ -388,10 +406,13 @@ export const approveV4Submission = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Not a v4 submission' });
     }
     
+    // Determine effective campaign type for status flow (V4 campaigns with client managers use CLIENT flow)
+    const effectiveCampaignOrigin = getEffectiveCampaignOrigin(submission.campaign);
+    
     // Use status utilities to determine next status
     const { submissionStatus: newStatus, videoStatus: contentStatus } = getNextStatusAfterAdminAction(
       action as any,
-      submission.campaign.origin as any
+      effectiveCampaignOrigin as any
     );
     
     // Save current caption to history before updating (if caption is being changed)
@@ -620,9 +641,10 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
       return res.status(400).json({ message: 'Not a v4 submission' });
     }
     
-    // Verify this is a client-created campaign
-    if (submission.campaign.origin !== 'CLIENT') {
-      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
+    // Verify this campaign has client managers (either CLIENT origin or V4 with client managers)
+    const effectiveCampaignOrigin = getEffectiveCampaignOrigin(submission.campaign);
+    if (effectiveCampaignOrigin !== 'CLIENT') {
+      return res.status(400).json({ message: 'This endpoint is only for campaigns with client approval flow' });
     }
     
     // Verify client has access to this campaign
@@ -1163,8 +1185,9 @@ export const approveIndividualContentV4 = async (req: Request, res: Response) =>
         return res.status(400).json({ message: 'Not a v4 submission' });
       }
       
-      // Determine status based on campaign origin
-      const newStatus = submission.campaign.origin === 'CLIENT' ? 'SENT_TO_CLIENT' : 'APPROVED';
+      // Determine status based on effective campaign origin (includes V4 client manager check)
+      const effectiveCampaignOrigin = getEffectiveCampaignOrigin(submission.campaign);
+      const newStatus = effectiveCampaignOrigin === 'CLIENT' ? 'SENT_TO_CLIENT' : 'APPROVED';
       
       // Update video
       updatedContent = await prisma.video.update({
@@ -1183,7 +1206,21 @@ export const approveIndividualContentV4 = async (req: Request, res: Response) =>
         where: { id: contentId },
         include: { 
           submission: { 
-            include: { campaign: true } 
+            include: { 
+              campaign: {
+                include: {
+                  campaignAdmin: {
+                    include: {
+                      admin: {
+                        include: {
+                          user: true
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            } 
           } 
         }
       });
@@ -1198,8 +1235,9 @@ export const approveIndividualContentV4 = async (req: Request, res: Response) =>
         return res.status(400).json({ message: 'Not a v4 submission' });
       }
       
-      // Determine status based on campaign origin
-      const newStatus = submission.campaign.origin === 'CLIENT' ? 'SENT_TO_CLIENT' : 'APPROVED';
+      // Determine status based on effective campaign origin (includes V4 client manager check)
+      const effectiveCampaignOrigin = getEffectiveCampaignOrigin(submission.campaign);
+      const newStatus = effectiveCampaignOrigin === 'CLIENT' ? 'SENT_TO_CLIENT' : 'APPROVED';
       
       // Update raw footage
       updatedContent = await prisma.rawFootage.update({
@@ -1218,7 +1256,21 @@ export const approveIndividualContentV4 = async (req: Request, res: Response) =>
         where: { id: contentId },
         include: { 
           submission: { 
-            include: { campaign: true } 
+            include: { 
+              campaign: {
+                include: {
+                  campaignAdmin: {
+                    include: {
+                      admin: {
+                        include: {
+                          user: true
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            } 
           } 
         }
       });
@@ -1233,8 +1285,9 @@ export const approveIndividualContentV4 = async (req: Request, res: Response) =>
         return res.status(400).json({ message: 'Not a v4 submission' });
       }
       
-      // Determine status based on campaign origin
-      const newStatus = submission.campaign.origin === 'CLIENT' ? 'SENT_TO_CLIENT' : 'APPROVED';
+      // Determine status based on effective campaign origin (includes V4 client manager check)
+      const effectiveCampaignOrigin = getEffectiveCampaignOrigin(submission.campaign);
+      const newStatus = effectiveCampaignOrigin === 'CLIENT' ? 'SENT_TO_CLIENT' : 'APPROVED';
       
       // Update photo
       updatedContent = await prisma.photo.update({
