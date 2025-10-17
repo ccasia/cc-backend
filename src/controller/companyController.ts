@@ -428,13 +428,13 @@ export const handleLinkNewPackage = async (req: Request, res: Response) => {
       const id: string = await generateSubscriptionCustomId();
       const expiredAt = dayjs(invoiceDate).add(parseInt(validityPeriod), 'months').format();
 
-      const subscription = company.subscriptions.find((sub) => sub.status === 'ACTIVE');
-      const creditsUsed = (subscription?.totalCredits ?? 0) - (subscription?.creditsUsed ?? 0);
-      const isExpired = dayjs(subscription?.expiredAt).isBefore(dayjs(), 'date');
+      // const subscription = company.subscriptions.find((sub) => sub.status === 'ACTIVE');
+      // const creditsUsed = (subscription?.totalCredits ?? 0) - (subscription?.creditsUsed ?? 0);
+      // const isExpired = dayjs(subscription?.expiredAt).isBefore(dayjs(), 'date');
 
-      if (subscription && creditsUsed > 0 && !isExpired) {
-        throw new Error('Package is still active. Please deactivate or complete the package before proceeding.');
-      }
+      // if (subscription && creditsUsed > 0 && !isExpired) {
+      //   throw new Error('Package is still active. Please deactivate or complete the package before proceeding.');
+      // }
 
       const subscriptionData = {
         creditsUsed: 0,
@@ -468,10 +468,14 @@ export const handleLinkNewPackage = async (req: Request, res: Response) => {
         throw new Error('Fixed package not found');
       }
 
-      if (subscription && isExpired) {
+      const subscriptionsExpiring = company.subscriptions.filter(
+        (sub) => sub.status === 'ACTIVE' && dayjs(sub.expiredAt).isBefore(dayjs(), 'date'),
+      );
+
+      for (const sub of subscriptionsExpiring) {
         await tx.subscription.update({
           where: {
-            id: subscription?.id,
+            id: sub.id,
           },
           data: {
             status: 'EXPIRED',
