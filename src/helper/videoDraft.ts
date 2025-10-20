@@ -8,12 +8,10 @@ import { uploadPitchVideo, uploadImage } from '@configs/cloudStorage.config';
 import amqplib from 'amqplib';
 import { activeProcesses, clients, io } from '../server';
 import { Entity, PrismaClient, Submission } from '@prisma/client';
-import { saveNotification } from '@controllers/notificationController';
 import { spawn } from 'child_process';
 import path from 'path';
 
 import dayjs from 'dayjs';
-import { notificationDraft } from './notification';
 import { createNewTask, getTaskId, updateTask } from '@services/kanbanService';
 import { createNewRowData } from '@services/google_sheets/sheets';
 
@@ -186,7 +184,6 @@ const checkCurrentSubmission = async (submissionId: string) => {
     const hasPhotos = submission.campaign.photos ? photosWithRevision === 0 : true;
 
     allDeliverablesSent = hasVideos && hasRawFootage && hasPhotos;
-    
   }
 
   // Update submission status based on deliverable checks
@@ -258,7 +255,6 @@ async function deleteFileIfExists(filePath: string) {
           const content: any = JSON.parse(msg.content.toString());
           console.log('RECIEVED', content);
           const { filePaths } = content;
-          
 
           try {
             const submission = await prisma.submission.findUnique({
@@ -426,34 +422,7 @@ async function deleteFileIfExists(filePath: string) {
                 }
               }
 
-              const { title, message } = notificationDraft(data.campaign.name, 'Creator');
-
-              const notification = await saveNotification({
-                userId: data.userId,
-                message: message,
-                title: title,
-                entity: 'Draft',
-                entityId: data.campaign.id,
-              });
-
-              io?.to(clients.get(data.userId)).emit('notification', notification);
-
-              const { title: adminTitle, message: adminMessage } = notificationDraft(
-                data.campaign.name,
-                'Admin',
-                data.user.name as string,
-              );
-
               for (const item of data.campaign.campaignAdmin) {
-                const notification = await saveNotification({
-                  userId: item.adminId,
-                  message: adminMessage,
-                  creatorId: data.user?.id,
-                  title: adminTitle,
-                  entity: 'Draft',
-                  entityId: data.campaignId,
-                });
-
                 if (item.admin.user.Board) {
                   const actionNeededColumn = item.admin.user.Board.columns.find(
                     (item) => item.name === 'Actions Needed',
@@ -482,10 +451,6 @@ async function deleteFileIfExists(filePath: string) {
                       });
                     }
                   }
-                }
-
-                if (io) {
-                  io.to(clients.get(item.adminId)).emit('notification', notification);
                 }
               }
 
@@ -560,9 +525,7 @@ async function deleteFileIfExists(filePath: string) {
 
             // For photos
             if (filePaths?.photos?.length) {
-              
               if (content.isV4 && content.preserveExistingMedia) {
-                
                 const urls = await Promise.all(
                   filePaths.photos.map(async (photoPath: any) => {
                     const photoFileName = `${submission.id}_${path.basename(photoPath)}`;
@@ -635,14 +598,6 @@ async function deleteFileIfExists(filePath: string) {
             const endUsage = process.cpuUsage(startUsage);
 
             console.log(`CPU Usage: ${endUsage.user} microseconds (user) / ${endUsage.system} microseconds (system)`);
-
-            for (const item of content.admins) {
-              if (item.admin && item.admin.user && item.admin.user.id) {
-                io.to(clients.get(item.admin.user.id)).emit('newSubmission');
-              } else {
-                console.warn('[videoDraft] Skipping admin notification: missing admin or user for item:', item);
-              }
-            }
 
             const allSuperadmins = await prisma.user.findMany({
               where: {

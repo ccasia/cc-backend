@@ -2,6 +2,8 @@ import { Request, Response } from 'express';
 import { PrismaClient, CampaignStatus } from '@prisma/client';
 import { uploadCompanyLogo } from '@configs/cloudStorage.config';
 import { getRemainingCredits } from '@services/companyService';
+import { clients, io } from '../server';
+import { saveNotification } from './notificationController';
 
 const prisma = new PrismaClient();
 
@@ -483,17 +485,42 @@ export const createClientCampaign = async (req: Request, res: Response) => {
       },
     });
 
-    // Create a notification for CSM users about the new client campaign
-    await prisma.notification.create({
-      data: {
-        title: 'New Client Campaign',
-        message: `Client ${user.name || 'Unknown'} has created a new campaign: ${campaignTitle}`,
-        entity: 'Campaign',
-        campaignId: campaign.id,
-        // This notification will be sent to all CSM users
-        // You'll need to implement logic to determine which CSM users should receive it
+    // Select CSL and superadmin for notification
+    const usersToNotify = await prisma.user.findMany({
+      where: {
+        OR: [
+          { role: 'superadmin' },
+          {
+            admin: {
+              role: {
+                name: 'CSL',
+              },
+            },
+          },
+        ],
+      },
+      select: {
+        id: true,
       },
     });
+
+    if (usersToNotify.length > 0) {
+      for (const adminUser of usersToNotify) {
+        const notification = await saveNotification({
+          userId: adminUser.id,
+          title: '🚨 Fresh Campaign Brief just landed. Review and assign CS to start. ',
+          message: `Client ${user.name || 'Unknown'} has created a new campaign: ${campaignTitle}`,
+          entity: 'Campaign',
+          campaignId: campaign.id,
+        });
+        const socketId = clients.get(adminUser.id);
+
+        if (socketId) {
+          io.to(socketId).emit('notification', notification);
+          console.log(`Sent real-time notification to user ${adminUser.id} on socket ${socketId}`);
+        }
+      }
+    }
 
     return res.status(201).json({
       message: 'Client campaign created successfully and is pending CSM review',
