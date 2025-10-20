@@ -368,18 +368,20 @@ export const createNewCompany = async (data: CompanyForm, publicURL?: string) =>
   }
 };
 
-export const getRemainingCredits = async (clientId: string) => {
+export const getRemainingCredits = async (clientId: string): Promise<number | null> => {
   try {
     const client = await prisma.company.findUnique({
       where: {
         id: clientId,
       },
-      include: {
+      select: {
         subscriptions: {
           where: { status: 'ACTIVE' },
-          include: {
-            customPackage: true,
-            package: true,
+          select: {
+            totalCredits: true,
+            creditsUsed: true,
+            // customPackage: true,
+            // package: true,
           },
         },
       },
@@ -387,14 +389,22 @@ export const getRemainingCredits = async (clientId: string) => {
 
     if (!client) return null;
 
-    const activeSubscription = client.subscriptions[0];
-
-    if (!activeSubscription || typeof activeSubscription.totalCredits !== 'number') {
+    if (!client.subscriptions || client.subscriptions.length === 0) {
       throw new Error('No active subscription or invalid total credits');
     }
 
+    const totalCredits = client.subscriptions.reduce((sum, sub) => sum + (sub.totalCredits || 0), 0);
+    const usedCredits = client.subscriptions.reduce((sum, sub) => sum + sub.creditsUsed, 0);
+    const remainingCredits = totalCredits - usedCredits;
+
+    // const activeSubscription = client.subscriptions[0];
+
+    // if (!activeSubscription || typeof activeSubscription.totalCredits !== 'number') {
+    //   throw new Error('No active subscription or invalid total credits');
+    // }
+
     // Calculate remaining credits based on subscription's creditsUsed field
-    const remainingCredits = activeSubscription.totalCredits - activeSubscription.creditsUsed;
+    // const remainingCredits = activeSubscription.totalCredits - activeSubscription.creditsUsed;
 
     return Math.max(0, remainingCredits); // Ensure we don't return negative credits
   } catch (error) {
