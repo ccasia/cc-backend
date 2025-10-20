@@ -64,6 +64,7 @@ export const agreementSubmission = async (req: Request, res: Response) => {
                   admin: {
                     select: {
                       userId: true,
+                      user: true,
                     },
                   },
                 },
@@ -151,27 +152,27 @@ export const agreementSubmission = async (req: Request, res: Response) => {
       );
 
       //for admins
-      for (const item of submission.campaign.campaignAdmin) {
+      for (const campaignAdmin of submission.campaign.campaignAdmin) {
         // get column ID
-        const board = await prisma.board.findUnique({
+        const adminBoard = await prisma.board.findUnique({
           where: {
-            userId: item.admin.userId,
+            userId: campaignAdmin.admin.userId,
           },
           include: {
             columns: true,
           },
         });
 
-        if (board) {
-          const actionNeededColumn = board.columns.find((item) => item.name === 'Actions Needed');
-          const agreementTask = await getTaskId({ boardId: board.id, submissionId: submission.id, columnName: 'Done' });
+        if (adminBoard) {
+          const actionNeededColumn = adminBoard.columns.find((item) => item.name === 'Actions Needed');
+          const agreementTask = await getTaskId({ boardId: adminBoard.id, submissionId: submission.id, columnName: 'Done' });
 
           if (actionNeededColumn) {
             if (!agreementTask) {
               await createNewTask({
                 submissionId: submission.id,
                 name: 'Agreement Submission',
-                userId: item.admin.userId,
+                userId: campaignAdmin.admin.userId,
                 position: 1,
                 columnId: actionNeededColumn.id,
               });
@@ -191,18 +192,21 @@ export const agreementSubmission = async (req: Request, res: Response) => {
             }
           }
         }
+        const isAdmin = campaignAdmin.admin.user.role === 'admin' || campaignAdmin.admin.user.role === 'superadmin';
 
-        const adminNotification = await saveNotification({
-          userId: item.adminId,
-          entity: 'Agreement',
-          creatorId: submission.userId,
-          entityId: submission.campaignId,
-          title: adminTitle,
-          message: adminMessage,
-        });
+        if (isAdmin) {
+          const adminNotification = await saveNotification({
+            userId: campaignAdmin.admin.userId,
+            entity: 'Agreement',
+            creatorId: submission.userId,
+            entityId: submission.campaignId,
+            title: adminTitle,
+            message: adminMessage,
+          });
 
-        io.to(clients.get(item.adminId)).emit('notification', adminNotification);
-        io.to(clients.get(item.adminId)).emit('newSubmission');
+          io.to(clients.get(campaignAdmin.adminId)).emit('notification', adminNotification);
+          io.to(clients.get(campaignAdmin.adminId)).emit('newSubmission');
+        }
       }
     }
 

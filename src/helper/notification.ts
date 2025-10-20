@@ -186,6 +186,14 @@ const reminderDueDate = (
   }
 };
 
+// helper function for Client notifications
+const notificationPitchForClientReview = (campaignName: string) => {
+  return {
+    title: '📬 New creator profiles are ready for you to check out',
+    message: `Admins have sent you creators for the ${campaignName} campaign. Please review their profile`,
+  };
+};
+
 export {
   notificationCampaignLive,
   notificationMaintenance,
@@ -207,4 +215,5 @@ export {
   notificationInvoiceStatus,
   notificationInvoiceUpdate,
   reminderDueDate,
+  notificationPitchForClientReview,
 };

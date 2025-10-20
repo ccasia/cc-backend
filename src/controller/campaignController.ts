@@ -51,6 +51,7 @@ import {
   notificationMaintenance,
   notificationLogisticTracking,
   notificationLogisticDelivery,
+  notificationPitchForClientReview,
 } from '@helper/notification';
 import { deliveryConfirmation, shortlisted, tracking } from '@configs/nodemailer.config';
 import { createNewSpreadSheet } from '@services/google_sheets/sheets';
@@ -1451,7 +1452,19 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
       },
       include: {
         pitch: true,
-        campaignAdmin: true,
+        campaignAdmin: {
+          include: {
+            admin: {
+              include: {
+                user: {
+                  select: {
+                    role: true,
+                  },
+                },
+              },
+            },
+          },
+        },
       },
     });
 
@@ -1474,20 +1487,25 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
 
       io.to(clients.get(user?.id)).emit('notification', newPitch);
 
-      const admins = campaign?.campaignAdmin;
+      const campaignManagers = campaign?.campaignAdmin;
 
       const notificationAdmin = notificationPitch(pitch.campaign.name, 'Admin', pitch.user.name as string);
 
-      admins?.map(async ({ adminId }) => {
-        const notification = await saveNotification({
-          userId: adminId as string,
-          message: notificationAdmin.message,
-          title: notificationAdmin.title,
-          entity: 'Pitch',
-          entityId: campaign?.id as string,
-        });
+      campaignManagers?.map(async (manager) => {
+        const userRole = manager.admin.user.role;
+        const userId = manager.adminId;
 
-        io.to(clients.get(adminId)).emit('notification', notification);
+        if (userRole !== 'client') {
+          const notification = await saveNotification({
+            userId: userId as string,
+            message: notificationAdmin.message,
+            title: notificationAdmin.title,
+            entity: 'Pitch',
+            entityId: campaign?.id as string,
+          });
+
+          io.to(clients.get(manager)).emit('notification', notification);
+        }
       });
     }
 
@@ -6081,17 +6099,6 @@ export const activateClientCampaign = async (req: Request, res: Response) => {
           console.error(`Error adding client ${clientUser.id} to campaign:`, error);
           // Continue with other clients even if one fails
         }
-
-        // Create notification
-        await prisma.notification.create({
-          data: {
-            title: 'Campaign Activated',
-            message: `Your campaign "${campaign.name}" has been activated by CSM`,
-            entity: 'Campaign',
-            campaignId,
-            userId: clientUser.id,
-          },
-        });
       }
     }
 
@@ -6140,6 +6147,59 @@ export const activateClientCampaign = async (req: Request, res: Response) => {
     } catch (error) {
       console.error('Error creating thread for client campaign:', error);
       // Don't fail the activation if thread creation fails
+    }
+
+    // Notify Client, CSL and Superadmin when campaign is activated by CSM
+    const usersToNotify = await prisma.user.findMany({
+      where: {
+        OR: [
+          {
+            role: {
+              in: ['client', 'admin'],
+            },
+          },
+          {
+            admin: {
+              role: {
+                name: 'CSL',
+              },
+            },
+          },
+        ],
+      },
+      select: {
+        id: true,
+        role: true,
+      },
+    });
+
+    if (usersToNotify.length > 0) {
+      for (const adminUser of usersToNotify) {
+        let title = '';
+        let message = '';
+
+        if (adminUser.role === 'client') {
+          title = `🚀 ${campaign.name} is now live!`;
+          message = `Your campaign "${campaign.name}" has been activated by CSM`;
+        } else {
+          title = `🚀 Campaign Activated: ${campaign.name} `;
+          message = `The campaign "${campaign.name}" has been activated and the client has been notified`;
+        }
+
+        const notification = await saveNotification({
+          userId: adminUser.id,
+          title: title,
+          message: message,
+          entity: 'Campaign',
+          campaignId: campaign.id,
+        });
+        const socketId = clients.get(adminUser.id);
+
+        if (socketId) {
+          io.to(socketId).emit('notification', notification);
+          console.log(`Sent real-time notification to user ${adminUser.id} on socket ${socketId}`);
+        }
+      }
     }
 
     return res.status(200).json({
@@ -6835,6 +6895,45 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
           });
         }
       }
+      // Only one notification for all creators
+      const clientUsers = await tx.campaignAdmin.findMany({
+        where: {
+          campaignId: campaign.id,
+          admin: {
+            user: {
+              role: 'client',
+            },
+          },
+        },
+        include: {
+          admin: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      for (const clientUser of clientUsers) {
+        const { title, message } = notificationPitchForClientReview(campaign.name);
+
+        const notification = await saveNotification({
+          userId: clientUser.admin.userId,
+          title: title,
+          message: message,
+          entity: 'Pitch',
+          entityId: campaign.id,
+        });
+
+        const clientSocketId = clients.get(clientUser.admin.userId);
+        if (clientSocketId) {
+          io.to(clientSocketId).emit('notification', notification);
+        }
+      }
     });
 
     return res.status(200).json({ message: 'Successfully shortlisted creators for V3 flow' });
@@ -7361,6 +7460,46 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
         createdCreators.push({ id: userId });
       }
     });
+
+    // creating notification for clients when campaign is activated
+    const clientUsers = await prisma.campaignAdmin.findMany({
+      where: {
+        campaignId: campaign.id,
+        admin: {
+          user: {
+            role: 'client',
+          },
+        },
+      },
+      include: {
+        admin: {
+          include: {
+            user: {
+              select: {
+                id: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    for (const clientUser of clientUsers) {
+      const { title, message } = notificationPitchForClientReview(campaign.name);
+
+      const notification = await saveNotification({
+        userId: clientUser.admin.userId,
+        title: title,
+        message: message,
+        entity: 'Pitch',
+        entityId: campaign.id,
+      });
+
+      const clientSocketId = clients.get(clientUser.admin.userId);
+      if (clientSocketId) {
+        io.to(clientSocketId).emit('notification', notification);
+      }
+    }
 
     const adminLogMessage = `Shortlisted ${guestCreators.length} guest creator(s) for Campaign "${campaign.name}"`;
     logAdminChange(adminLogMessage, adminId, req);
