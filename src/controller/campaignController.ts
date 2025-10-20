@@ -7449,6 +7449,7 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
               status: 'SENT_TO_CLIENT',
               content: `Non-platform creator has been shortlisted for campaign "${campaign.name}"`,
               amount: null,
+              followerCount: guest.followerCount || null,
               agreementTemplateId: null,
               ...(guest.adminComments && guest.adminComments.trim().length > 0
                 ? { adminComments: guest.adminComments.trim(), adminCommentedBy: adminId }

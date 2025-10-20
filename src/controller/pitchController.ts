@@ -1792,3 +1792,85 @@ export const forwardClientFeedbackV3 = async (req: Request, res: Response) => {
     return res.status(500).json({ message: 'Failed to forward feedback' });
   }
 };
+
+// Update guest creator information
+export const updateGuestCreatorInfo = async (req: Request, res: Response) => {
+  const { pitchId } = req.params;
+  const { name, followerCount, profileLink, adminComments } = req.body;
+  const userId = req.session.userid;
+
+  try {
+    console.log(`User ${userId} updating guest creator info for pitch ${pitchId}`);
+
+    // Find the pitch with user information
+    const pitch = await prisma.pitch.findUnique({
+      where: { id: pitchId },
+      include: {
+        user: {
+          include: {
+            creator: true,
+          },
+        },
+      },
+    });
+
+    if (!pitch) {
+      return res.status(404).json({ message: 'Pitch not found' });
+    }
+
+    // Check if the user is a guest creator
+    const isGuest = pitch.user?.email?.includes('@tempmail.com') ||
+                    pitch.user?.email?.startsWith('guest_') ||
+                    pitch.user?.creator?.isGuest === true;
+
+    if (!isGuest) {
+      return res.status(400).json({ message: 'This endpoint is only for guest creators' });
+    }
+
+    // Validate required fields
+    if (!name?.trim() || !profileLink?.trim()) {
+      return res.status(400).json({ message: 'Creator name and profile link are required' });
+    }
+
+    // Update user name and guestProfileLink
+    await prisma.user.update({
+      where: { id: pitch.userId },
+      data: {
+        name: name.trim(),
+        guestProfileLink: profileLink.trim(),
+      },
+    });
+
+    // Update pitch with followerCount and adminComments
+    const pitchUpdateData: any = {};
+
+    if (followerCount !== undefined) {
+      pitchUpdateData.followerCount = followerCount.trim() || null;
+    }
+
+    if (adminComments !== undefined) {
+      pitchUpdateData.adminComments = adminComments.trim() || null;
+    }
+
+    if (Object.keys(pitchUpdateData).length > 0) {
+      await prisma.pitch.update({
+        where: { id: pitchId },
+        data: pitchUpdateData,
+      });
+    }
+
+    console.log(`Guest creator info updated for pitch ${pitchId}`);
+    return res.status(200).json({
+      message: 'Guest creator information updated successfully',
+      data: {
+        name: name.trim(),
+        followerCount: followerCount.trim() || null,
+        profileLink: profileLink.trim(),
+        adminComments: adminComments?.trim() || null,
+      }
+    });
+  } catch (error) {
+    console.error('Error updating guest creator info:', error);
+    return res.status(500).json({ message: 'Failed to update guest creator information' });
+  }
+};

@@ -827,6 +827,7 @@ model Pitch {
   agreementTemplateId String?
   Notification        Notification[]
   adminComments       String?
+  followerCount       String?
   adminCommentedBy    String?
   adminCommenter      Admin?         @relation("AdminCommenter", fields: [adminCommentedBy], references: [userId])
   campaign            Campaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
