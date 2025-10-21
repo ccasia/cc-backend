@@ -7528,6 +7528,8 @@ export const changeCampaignCredit = async (req: Request, res: Response) => {
 
 export const getCampaignsForPublic = async (req: Request, res: Response) => {
   const { cursor, take = 10, search } = req.query;
+  const campaignId = req.query?.campaignId as string;
+
   try {
     const campaigns = await prisma.campaign.findMany({
       take: Number(take),
@@ -7540,6 +7542,7 @@ export const getCampaignsForPublic = async (req: Request, res: Response) => {
       where: {
         AND: [
           { status: 'ACTIVE' },
+          { ...(campaignId && { id: campaignId }) },
           {
             ...(search && {
               name: {
