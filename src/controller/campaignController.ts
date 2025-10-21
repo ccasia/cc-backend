@@ -7539,10 +7539,19 @@ export const getCampaignsForPublic = async (req: Request, res: Response) => {
       //     id: campaignId ?? (cursor as string),
       //   },
       // }),
-      ...(campaignId && {
-        skip: 1, // skip the current cursor item itself
-        cursor: { id: campaignId }, // start after this ID
-      }),
+      ...(campaignId
+        ? {
+            skip: 1, // skip the current cursor item itself
+            cursor: { id: campaignId }, // start after this ID
+          }
+        : {
+            ...(cursor && {
+              skip: 1,
+              cursor: {
+                id: campaignId ?? (cursor as string),
+              },
+            }),
+          }),
       where: {
         AND: [
           { status: 'ACTIVE' },
@@ -7590,19 +7599,19 @@ export const getCampaignsForPublic = async (req: Request, res: Response) => {
     //   (campaign) => campaign.campaignTimeline.find((timeline) => timeline.name === 'Open For Pitch')?.status === 'OPEN',
     // );
 
-    const hasNextPage = campaigns.length > Number(take);
-    const paginated = hasNextPage ? campaigns.slice(0, Number(take)) : campaigns;
-    const lastCursor = paginated.length ? paginated[paginated.length - 1].id : null;
+    // const hasNextPage = campaigns.length > Number(take);
+    // const paginated = hasNextPage ? campaigns.slice(0, Number(take)) : campaigns;
+    // const lastCursor = paginated.length ? paginated[paginated.length - 1].id : null;
 
-    // const lastCursor = campaigns.length > Number(take) - 1 ? campaigns[Number(take) - 1]?.id : null;
+    const lastCursor = campaigns.length > Number(take) - 1 ? campaigns[Number(take) - 1]?.id : null;
 
     const data = {
       data: {
-        campaigns: paginated,
+        campaigns: campaigns,
       },
       metaData: {
         lastCursor,
-        hasNextPage,
+        hasNextPage: true,
       },
     };
 
