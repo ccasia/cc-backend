@@ -7546,7 +7546,6 @@ export const getCampaignsForPublic = async (req: Request, res: Response) => {
       where: {
         AND: [
           { status: 'ACTIVE' },
-          { ...(campaignId && { id: campaignId }) },
           {
             ...(search && {
               name: {
