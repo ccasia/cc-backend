@@ -1,6 +1,9 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import dayjs from 'dayjs';
+import { clients, io } from '../server';
+import { saveNotification } from './notificationController';
+import { notificationPitchForClientReview } from '@helper/notification';
 
 const prisma = new PrismaClient();
 
@@ -130,7 +133,9 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
         include: { subscriptions: true as any },
       } as any);
       if (company) {
-        const activeSub = (company as any).subscriptions?.find((s: any) => s.status === 'ACTIVE') || (company as any).subscriptions?.[0];
+        const activeSub =
+          (company as any).subscriptions?.find((s: any) => s.status === 'ACTIVE') ||
+          (company as any).subscriptions?.[0];
         if (activeSub) {
           const currentUsed = Number((activeSub as any).creditsUsed || 0);
           const toDeduct = Number(ugcCredits || 0);
@@ -150,16 +155,30 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
     const clientUsers = pitch.campaign.campaignAdmin.filter((ca) => ca.admin.user.role === 'client');
 
     for (const clientUser of clientUsers) {
-      await prisma.notification.create({
-        data: {
-          title: 'Pitch Sent to Client',
-          message: `A pitch for campaign "${pitch.campaign.name}" has been approved by admin and sent to you for review.`,
-          entity: 'Pitch',
-          campaignId: pitch.campaignId,
-          pitchId: pitchId,
-          userId: clientUser.admin.userId,
-        },
+      // const notification = await prisma.notification.create({
+      //   data: {
+      //     title: 'Pitch Sent to Client',
+      //     message: `A pitch for campaign "${pitch.campaign.name}" has been approved by admin and sent to you for review.`,
+      //     entity: 'Pitch',
+      //     campaignId: pitch.campaignId,
+      //     pitchId: pitchId,
+      //     userId: clientUser.admin.userId,
+      //   },
+      // });
+      const { title, message } = notificationPitchForClientReview(pitch.campaign.name);
+
+      const notification = await saveNotification({
+        userId: clientUser.admin.userId,
+        title: title,
+        message: message,
+        entity: 'Pitch',
+        entityId: pitch.campaignId,
       });
+
+      const clientSocketId = clients.get(clientUser.admin.userId);
+      if (clientSocketId) {
+        io.to(clientSocketId).emit('notification', notification);
+      }
     }
 
     console.log(`Pitch ${pitchId} approved by admin with ${ugcCredits} UGC credits, status updated to SENT_TO_CLIENT`);
@@ -224,16 +243,29 @@ export const rejectPitchByAdmin = async (req: Request, res: Response) => {
     });
 
     // Create notification for creator
-    await prisma.notification.create({
-      data: {
-        title: 'Pitch Rejected',
-        message: `Your pitch for campaign "${pitch.campaign.name}" has been rejected by admin.`,
-        entity: 'Pitch',
-        campaignId: pitch.campaignId,
-        pitchId: pitchId,
-        userId: pitch.userId,
-      },
+    // await prisma.notification.create({
+    //   data: {
+    //     title: 'Pitch Rejected',
+    //     message: `Your pitch for campaign "${pitch.campaign.name}" has been rejected by admin.`,
+    //     entity: 'Pitch',
+    //     campaignId: pitch.campaignId,
+    //     pitchId: pitchId,
+    //     userId: pitch.userId,
+    //   },
+    // });
+    const notification = await saveNotification({
+      userId: pitch.userId,
+      title: 'Pitch Rejected',
+      message: `Your pitch for campaign "${pitch.campaign.name}" has been rejected by admin.`,
+      entity: 'Pitch',
+      entityId: pitch.campaignId,
     });
+
+    const socketId = clients.get(pitch.userId);
+    if (socketId) {
+      io.to(socketId).emit('notification', notification);
+      io.to(socketId).emit('pitchUpdate');
+    }
 
     // Fetch the updated pitch to return in response
     const updatedPitch = await prisma.pitch.findUnique({
@@ -245,9 +277,9 @@ export const rejectPitchByAdmin = async (req: Request, res: Response) => {
     });
 
     console.log(`Pitch ${pitchId} rejected by admin, creator removed from campaign`);
-    return res.status(200).json({ 
+    return res.status(200).json({
       message: 'Pitch rejected and creator removed from campaign',
-      pitch: updatedPitch
+      pitch: updatedPitch,
     });
   } catch (error) {
     console.error('Error rejecting pitch by admin:', error);
@@ -371,9 +403,7 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
         },
         data: {
           isAgreementReady: false,
-          ...(creditsAssignedForThisPitch > 0
-            ? { ugcVideos: creditsAssignedForThisPitch }
-            : {}), // do not overwrite with null/0 if credits not provided
+          ...(creditsAssignedForThisPitch > 0 ? { ugcVideos: creditsAssignedForThisPitch } : {}), // do not overwrite with null/0 if credits not provided
         },
       });
     } else {
@@ -394,19 +424,13 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
         include: { shortlisted: { select: { ugcVideos: true } } },
       });
 
-      const totalUtilized = (refreshed?.shortlisted || []).reduce(
-        (acc, item) => acc + Number(item.ugcVideos || 0),
-        0,
-      );
+      const totalUtilized = (refreshed?.shortlisted || []).reduce((acc, item) => acc + Number(item.ugcVideos || 0), 0);
 
       await prisma.campaign.update({
         where: { id: pitch.campaignId },
         data: {
           creditsUtilized: Number(totalUtilized),
-          creditsPending: Math.max(
-            0,
-            Number(campaignWithShortlisted.campaignCredits) - Number(totalUtilized),
-          ),
+          creditsPending: Math.max(0, Number(campaignWithShortlisted.campaignCredits) - Number(totalUtilized)),
         },
       });
     }
@@ -522,25 +546,32 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
         // Don't fail the whole request, just log the error
       }
     } else {
-      console.log(`ℹ️  Campaign ${pitch.campaignId} is not V4 (version: ${pitch.campaign.submissionVersion}) - skipping V4 content submission creation`);
+      console.log(
+        `ℹ️  Campaign ${pitch.campaignId} is not V4 (version: ${pitch.campaign.submissionVersion}) - skipping V4 content submission creation`,
+      );
     }
 
     // Find admin users for this campaign
     const adminUsers = pitch.campaign.campaignAdmin.filter(
-      (ca) => ca.admin.user.role === 'admin' || ca.admin.user.role === 'superadmin',
+      (ca) => ca.admin.user.role === 'admin' || ca.admin.user.role === 'superadmin', // should superadmin get this notif?
     );
 
     for (const adminUser of adminUsers) {
-      await prisma.notification.create({
-        data: {
-          title: 'Pitch Approved by Client',
-          message: `A pitch for campaign "${pitch.campaign.name}" has been approved by client and is ready for agreement setup.`,
-          entity: 'Pitch',
-          campaignId: pitch.campaignId,
-          pitchId: pitchId,
-          userId: adminUser.admin.userId,
-        },
+      // use saveNotification helper to store notifications
+      const notification = await saveNotification({
+        title: `📝 Agreements needed`,
+        message: `Finalise your shortlisted creators to keep ${pitch.campaign.name} moving.`,
+        entity: 'Agreement',
+        campaignId: pitch.campaignId,
+        pitchId: pitchId,
+        userId: adminUser.admin.userId,
       });
+
+      const adminSocketId = clients.get(adminUser.admin.userId);
+
+      if (adminSocketId) {
+        io.to(adminSocketId).emit('notification', notification);
+      }
     }
 
     console.log(`Pitch ${pitchId} approved by client, status updated to APPROVED`);
@@ -623,16 +654,20 @@ export const rejectPitchByClient = async (req: Request, res: Response) => {
     });
 
     // Create notification for creator
-    await prisma.notification.create({
-      data: {
-        title: 'Pitch Rejected',
-        message: `Your pitch for campaign "${pitch.campaign.name}" has been rejected by client.`,
-        entity: 'Pitch',
-        campaignId: pitch.campaignId,
-        pitchId: pitchId,
-        userId: pitch.userId,
-      },
+    const creatorNotification = await saveNotification({
+      title: 'Pitch Rejected',
+      message: `Your pitch for campaign "${pitch.campaign.name}" has been rejected by client.`,
+      entity: 'Pitch',
+      campaignId: pitch.campaignId,
+      pitchId: pitchId,
+      userId: pitch.userId,
     });
+
+    const creatorSocketId = clients.get(pitch.userId);
+
+    if (creatorSocketId) {
+      io.to(creatorSocketId).emit('notification', creatorNotification);
+    }
 
     // Create notification for admin
     const adminUsers = pitch.campaign.campaignAdmin.filter(
@@ -640,16 +675,20 @@ export const rejectPitchByClient = async (req: Request, res: Response) => {
     );
 
     for (const adminUser of adminUsers) {
-      await prisma.notification.create({
-        data: {
-          title: 'Pitch Rejected by Client',
-          message: `A pitch for campaign "${pitch.campaign.name}" has been rejected by client.`,
-          entity: 'Pitch',
-          campaignId: pitch.campaignId,
-          pitchId: pitchId,
-          userId: adminUser.admin.userId,
-        },
+      const adminNotification = await saveNotification({
+        title: 'Pitch Rejected by Client',
+        message: `A pitch for campaign "${pitch.campaign.name}" has been rejected by client.`,
+        entity: 'Pitch',
+        campaignId: pitch.campaignId,
+        pitchId: pitchId,
+        userId: adminUser.admin.userId,
       });
+
+      const adminSocketId = clients.get(adminUser.admin.userId);
+
+      if (adminSocketId) {
+        io.to(adminSocketId).emit('notification', adminNotification);
+      }
     }
 
     console.log(`Pitch ${pitchId} rejected by client, creator removed from campaign`);
@@ -866,8 +905,8 @@ export const submitAgreement = async (req: Request, res: Response) => {
     // Check if pitch is in correct status for agreement submission
     // Allow AGREEMENT_PENDING (initial submission) and AGREEMENT_SUBMITTED (when resubmitting after changes requested)
     if (pitch.status !== 'AGREEMENT_PENDING' && pitch.status !== 'AGREEMENT_SUBMITTED') {
-      return res.status(400).json({ 
-        message: `Pitch is not in correct status for agreement submission. Current status: ${pitch.status}` 
+      return res.status(400).json({
+        message: `Pitch is not in correct status for agreement submission. Current status: ${pitch.status}`,
       });
     }
 
@@ -885,8 +924,8 @@ export const submitAgreement = async (req: Request, res: Response) => {
 
       // Only allow resubmission if agreement submission is in CHANGES_REQUIRED status
       if (!agreementSubmission || agreementSubmission.status !== 'CHANGES_REQUIRED') {
-        return res.status(400).json({ 
-          message: 'Agreement has already been submitted and is not pending changes' 
+        return res.status(400).json({
+          message: 'Agreement has already been submitted and is not pending changes',
         });
       }
     }
@@ -1029,13 +1068,13 @@ export const getPitchesV3 = async (req: Request, res: Response) => {
         // Hide pitches with PENDING_REVIEW status (admin review stage)
         if (user.role === 'client') {
           return (
-                 pitch.status === 'SENT_TO_CLIENT' ||
-                 pitch.status === 'APPROVED' ||
-                 pitch.status === 'REJECTED' ||
-                 pitch.status === 'MAYBE' ||
-                 pitch.status === 'AGREEMENT_PENDING' ||
-                 pitch.status === 'AGREEMENT_SUBMITTED'
-            );
+            pitch.status === 'SENT_TO_CLIENT' ||
+            pitch.status === 'APPROVED' ||
+            pitch.status === 'REJECTED' ||
+            pitch.status === 'MAYBE' ||
+            pitch.status === 'AGREEMENT_PENDING' ||
+            pitch.status === 'AGREEMENT_SUBMITTED'
+          );
         }
         // For admin and creators: show all pitches
         return true;
@@ -1703,11 +1742,11 @@ export const forwardClientFeedbackV3 = async (req: Request, res: Response) => {
     if (submission.campaign.origin !== 'CLIENT' && submission.campaign.submissionVersion !== 'v4') {
       return res.status(400).json({ message: 'This endpoint is only for client-created campaigns or v4 campaigns' });
     }
-    
+
     // Check if submission is in correct status
     if (submission.status !== 'SENT_TO_ADMIN') {
-      return res.status(400).json({ 
-        message: `Submission is not in correct status for forwarding feedback. Current status: ${submission.status}` 
+      return res.status(400).json({
+        message: `Submission is not in correct status for forwarding feedback. Current status: ${submission.status}`,
       });
     }
 
