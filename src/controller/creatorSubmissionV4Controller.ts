@@ -3,7 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import amqplib from 'amqplib';
 import { getV4Submissions, updatePostingLink } from '../service/submissionV4Service';
 import { PostingLinkUpdate } from '../types/submissionV4Types';
-import { io, clients } from 'src/server';
+import { io, clients } from '../server';
 import { saveNotification } from './notificationController';
 import { notificationDraft } from '@helper/notification';
 import { saveCaptionToHistory } from '../utils/captionHistoryUtils';
