@@ -7532,7 +7532,7 @@ export const getCampaignsForPublic = async (req: Request, res: Response) => {
 
   try {
     const campaigns = await prisma.campaign.findMany({
-      take: Number(take),
+      take: Number(take) + 1,
       // ...(cursor && {
       //   skip: 1,
       //   cursor: {
