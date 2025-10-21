@@ -252,6 +252,7 @@ model TiktokUser {
   creator   Creator @relation(references: [id], fields: [creatorId])
 
   display_name String?
+  username     String?
   avatar_url   String?
 
   following_count Int?
@@ -261,8 +262,10 @@ model TiktokUser {
 
   totalLikes      Int?
   totalComments   Int?
+  totalShares     Int?
   averageLikes    Float?
   averageComments Float?
+  averageShares   Float?
   engagement_rate Float?
   lastUpdated     DateTime?
 
