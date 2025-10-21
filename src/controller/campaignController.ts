@@ -7533,11 +7533,15 @@ export const getCampaignsForPublic = async (req: Request, res: Response) => {
   try {
     const campaigns = await prisma.campaign.findMany({
       take: Number(take),
-      ...(cursor && {
-        skip: 1,
-        cursor: {
-          id: campaignId ?? (cursor as string),
-        },
+      // ...(cursor && {
+      //   skip: 1,
+      //   cursor: {
+      //     id: campaignId ?? (cursor as string),
+      //   },
+      // }),
+      ...(campaignId && {
+        skip: 1, // skip the current cursor item itself
+        cursor: { id: campaignId }, // start after this ID
       }),
       where: {
         AND: [
@@ -7587,19 +7591,21 @@ export const getCampaignsForPublic = async (req: Request, res: Response) => {
     //   (campaign) => campaign.campaignTimeline.find((timeline) => timeline.name === 'Open For Pitch')?.status === 'OPEN',
     // );
 
-    const lastCursor = campaigns.length > Number(take) - 1 ? campaigns[Number(take) - 1]?.id : null;
+    const hasNextPage = campaigns.length > Number(take);
+    const paginated = hasNextPage ? campaigns.slice(0, Number(take)) : campaigns;
+    const lastCursor = paginated.length ? paginated[paginated.length - 1].id : null;
+
+    // const lastCursor = campaigns.length > Number(take) - 1 ? campaigns[Number(take) - 1]?.id : null;
 
     const data = {
       data: {
-        campaigns: campaigns,
+        campaigns: paginated,
       },
       metaData: {
-        lastCursor: lastCursor,
-        hasNextPage: true,
+        lastCursor,
+        hasNextPage,
       },
     };
-
-    console.log(data);
 
     return res.status(200).json(data);
   } catch (error) {
