@@ -1796,7 +1796,7 @@ export const forwardClientFeedbackV3 = async (req: Request, res: Response) => {
 // Update guest creator information
 export const updateGuestCreatorInfo = async (req: Request, res: Response) => {
   const { pitchId } = req.params;
-  const { name, followerCount, profileLink, adminComments } = req.body;
+  const { name, username, followerCount, engagementRate, profileLink, adminComments } = req.body;
   const userId = req.session.userid;
 
   try {
@@ -1844,13 +1844,18 @@ export const updateGuestCreatorInfo = async (req: Request, res: Response) => {
     // Update pitch with followerCount and adminComments
     const pitchUpdateData: any = {};
 
-    if (followerCount !== undefined) {
-      pitchUpdateData.followerCount = followerCount.trim() || null;
-    }
+    const fieldsToUpdate = {
+      username,
+      followerCount,
+      engagementRate,
+      adminComments,
+    };
 
-    if (adminComments !== undefined) {
-      pitchUpdateData.adminComments = adminComments.trim() || null;
-    }
+    Object.entries(fieldsToUpdate).forEach(([key, value]) => {
+      if (value !== undefined) {
+        pitchUpdateData[key] = value?.trim?.() || null;
+      }
+    });
 
     if (Object.keys(pitchUpdateData).length > 0) {
       await prisma.pitch.update({
@@ -1864,7 +1869,9 @@ export const updateGuestCreatorInfo = async (req: Request, res: Response) => {
       message: 'Guest creator information updated successfully',
       data: {
         name: name.trim(),
+        username: username.trim(),
         followerCount: followerCount.trim() || null,
+        engagementRate: engagementRate.trim() || null,
         profileLink: profileLink.trim(),
         adminComments: adminComments?.trim() || null,
       }
