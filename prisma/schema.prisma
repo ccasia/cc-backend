@@ -826,8 +826,10 @@ model Pitch {
   ugcCredits          Int?
   agreementTemplateId String?
   Notification        Notification[]
-  adminComments       String?
+  username            String?
   followerCount       String?
+  engagementRate      String?
+  adminComments       String?
   adminCommentedBy    String?
   adminCommenter      Admin?         @relation("AdminCommenter", fields: [adminCommentedBy], references: [userId])
   campaign            Campaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
@@ -1464,6 +1466,8 @@ enum TimelineStatus {
 enum PitchType {
   video
   text
+  shortlisted
+  pitch
 }
 
 enum PitchStatus {
