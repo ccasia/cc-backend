@@ -6,7 +6,7 @@ import dayjs from 'dayjs';
 const prisma = new PrismaClient();
 
 // Configuration - Replace ACCESS_TOKEN with your Instagram access token
-const USER_ID = 'cmadlmyyl0006l7ugwu0m5ust';
+const USER_ID = 'cmgac552s001ruu4lgip3w9xy';
 const ACCESS_TOKEN = 'IGAANcWAm6FBFBZAFBjcmlRaWRVMU5kRXdCLTBDNEJJQVpILXIyODdlU25ULUxkUWs5Y21tSEV6dXB6YWNjT0Q4bjBUSnNMcGlvVlpPZA1J5bnFkNWF2d3R6T0c3Y0ZAvRG9YUGtvTmFUd3lWa2xkSGxGNHp2OXdReVNqZAk11RlFEYwZDZD'; // Replace this with your access token
 
 interface InstagramOverview {
@@ -152,8 +152,11 @@ const main = async () => {
     const totalComments = medias.totalComments || 0;
     const averageLikes = medias.averageLikes || 0;
     const averageComments = medias.averageComments || 0;
-    const engagement_rate = overview.followers_count 
-      ? ((totalLikes + totalComments) / overview.followers_count) * 100 
+
+    // Instagram Engagement Rate Formula: (Average Likes + Average Comments) / Followers × 100
+    // Note: Instagram Graph API doesn't provide shares/saves data for third-party apps
+    const engagement_rate = overview.followers_count
+      ? ((averageLikes + averageComments) / overview.followers_count) * 100
       : 0;
 
     console.log(`✓ Media analytics:

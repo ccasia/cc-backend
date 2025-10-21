@@ -1784,7 +1784,7 @@ export const getTikTokMediaKit = async (req: Request, res: Response) => {
     // Get TikTok user profile overview
     const overviewRes = await axios.get('https://open.tiktokapis.com/v2/user/info/', {
       params: {
-        fields: 'open_id,union_id,display_name,avatar_url,following_count,follower_count,likes_count',
+        fields: 'open_id,union_id,display_name,username,avatar_url,following_count,follower_count,likes_count',
       },
       headers: { Authorization: `Bearer ${accessToken}` },
     });
@@ -1891,8 +1891,9 @@ export const getTikTokMediaKit = async (req: Request, res: Response) => {
     }
 
     // Calculate engagement rate using the calculated values
+    // TikTok Engagement Rate Formula: (Average Likes + Average Comments + Average Shares) / Followers × 100
     const engagement_rate = overview.follower_count
-      ? ((totalLikes + totalComments) / overview.follower_count) * 100
+      ? ((averageLikes + averageComments + averageShares) / overview.follower_count) * 100
       : 0;
 
     // Update TikTok user data in database
@@ -1900,28 +1901,34 @@ export const getTikTokMediaKit = async (req: Request, res: Response) => {
       where: { creatorId: user.creator.id },
       update: {
         display_name: overview.display_name,
+        username: overview.username,
         avatar_url: overview.avatar_url,
         following_count: overview.following_count,
         follower_count: overview.follower_count,
         likes_count: overview.likes_count,
         totalLikes: totalLikes,
         totalComments: totalComments,
+        totalShares: totalShares,
         averageLikes: averageLikes,
         averageComments: averageComments,
+        averageShares: averageShares,
         engagement_rate: engagement_rate,
         lastUpdated: new Date(),
       } as any,
       create: {
         creatorId: user.creator.id,
         display_name: overview.display_name,
+        username: overview.username,
         avatar_url: overview.avatar_url,
         following_count: overview.following_count,
         follower_count: overview.follower_count,
         likes_count: overview.likes_count,
         totalLikes: totalLikes,
         totalComments: totalComments,
+        totalShares: totalShares,
         averageLikes: averageLikes,
         averageComments: averageComments,
+        averageShares: averageShares,
         engagement_rate: engagement_rate,
         lastUpdated: new Date(),
       } as any,
@@ -1931,6 +1938,7 @@ export const getTikTokMediaKit = async (req: Request, res: Response) => {
     const responseData = {
       overview: {
         display_name: overview.display_name,
+        username: overview.username,
         follower_count: overview.follower_count,
         following_count: overview.following_count,
         likes_count: overview.likes_count,
@@ -1949,7 +1957,9 @@ export const getTikTokMediaKit = async (req: Request, res: Response) => {
       analytics: analytics,
       tiktokUser: {
         display_name: overview.display_name,
+        username: overview.username,
         follower_count: overview.follower_count,
+        engagement_rate: engagement_rate,
         following_count: overview.following_count,
         likes_count: overview.likes_count,
       },

@@ -11,6 +11,7 @@ import {
   submitAgreement,
   getPitchesV3,
   getPitchByIdV3,
+  updateGuestCreatorInfo,
 } from '@controllers/pitchController';
 
 const router = express.Router();
@@ -25,5 +26,6 @@ router.patch('/v3/:pitchId/reject/client', isLoggedIn, isAdminOrClient, rejectPi
 router.patch('/v3/:pitchId/maybe/client', isLoggedIn, isAdminOrClient, maybePitchByClient);
 router.patch('/v3/:pitchId/agreement', isLoggedIn, isAdminOrClient, setPitchAgreement);
 router.patch('/v3/:pitchId/submit-agreement', isLoggedIn, submitAgreement);
+router.patch('/v3/:pitchId/updateGuest', isLoggedIn, isAdminOrClient, updateGuestCreatorInfo);
 
 export default router;
