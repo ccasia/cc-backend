@@ -13,7 +13,7 @@ import {
   getStatusAfterForwardingClientFeedback,
 } from '../utils/v4StatusUtils';
 import { checkAndCompleteV4Campaign } from '../service/submissionV4CompletionService';
-import { clients, io } from 'src/server';
+import { clients, io } from '../server';
 import { saveNotification } from './notificationController';
 import { notificationDraft } from '@helper/notification';
 import { saveCaptionToHistory } from '../utils/captionHistoryUtils';
