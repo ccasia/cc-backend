@@ -7541,7 +7541,6 @@ export const getCampaignsForPublic = async (req: Request, res: Response) => {
       // }),
       ...(campaignId
         ? {
-            skip: 1, // skip the current cursor item itself
             cursor: { id: campaignId }, // start after this ID
           }
         : {
