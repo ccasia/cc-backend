@@ -7585,6 +7585,7 @@ export const getCampaignsForPublic = async (req: Request, res: Response) => {
     campaigns = campaigns.filter(
       (campaign) => campaign.campaignTimeline.find((timeline) => timeline.name === 'Open For Pitch')?.status === 'OPEN',
     );
+
     const lastCursor = campaigns.length > Number(take) - 1 ? campaigns[Number(take) - 1]?.id : null;
 
     const data = {
@@ -7596,6 +7597,8 @@ export const getCampaignsForPublic = async (req: Request, res: Response) => {
         hasNextPage: true,
       },
     };
+
+    console.log(data);
 
     return res.status(200).json(data);
   } catch (error) {
