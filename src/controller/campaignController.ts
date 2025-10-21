@@ -7536,7 +7536,7 @@ export const getCampaignsForPublic = async (req: Request, res: Response) => {
       ...(cursor && {
         skip: 1,
         cursor: {
-          id: cursor as string,
+          id: campaignId ?? (cursor as string),
         },
       }),
       where: {
