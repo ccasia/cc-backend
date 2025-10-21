@@ -252,6 +252,7 @@ model TiktokUser {
   creator   Creator @relation(references: [id], fields: [creatorId])
 
   display_name String?
+  username     String?
   avatar_url   String?
 
   following_count Int?
@@ -261,8 +262,10 @@ model TiktokUser {
 
   totalLikes      Int?
   totalComments   Int?
+  totalShares     Int?
   averageLikes    Float?
   averageComments Float?
+  averageShares   Float?
   engagement_rate Float?
   lastUpdated     DateTime?
 
@@ -826,6 +829,9 @@ model Pitch {
   ugcCredits          Int?
   agreementTemplateId String?
   Notification        Notification[]
+  username            String?
+  followerCount       String?
+  engagementRate      String?
   adminComments       String?
   adminCommentedBy    String?
   adminCommenter      Admin?         @relation("AdminCommenter", fields: [adminCommentedBy], references: [userId])
@@ -1463,6 +1469,8 @@ enum TimelineStatus {
 enum PitchType {
   video
   text
+  shortlisted
+  pitch
 }
 
 enum PitchStatus {
