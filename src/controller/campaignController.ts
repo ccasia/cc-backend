@@ -1071,6 +1071,7 @@ export const getCampaignById = async (req: Request, res: Response) => {
 export const matchCampaignWithCreator = async (req: Request, res: Response) => {
   const { userid } = req.session;
   const { cursor, take = 10, search } = req.query;
+  const campaignId = req.query?.campaignId as string;
 
   try {
     const user = await prisma.user.findUnique({
@@ -1092,12 +1093,24 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
 
     const campaigns = await prisma.campaign.findMany({
       take: Number(take),
-      ...(cursor && {
-        skip: 1,
-        cursor: {
-          id: cursor as string,
-        },
-      }),
+      // ...(cursor && {
+      //   skip: 1,
+      //   cursor: {
+      //     id: cursor as string,
+      //   },
+      // }),
+      ...(campaignId
+        ? {
+            cursor: { id: campaignId }, // start after this ID
+          }
+        : {
+            ...(cursor && {
+              skip: 1,
+              cursor: {
+                id: campaignId ?? (cursor as string),
+              },
+            }),
+          }),
       where: {
         AND: [
           { status: 'ACTIVE' },
