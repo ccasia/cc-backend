@@ -7529,7 +7529,7 @@ export const changeCampaignCredit = async (req: Request, res: Response) => {
 export const getCampaignsForPublic = async (req: Request, res: Response) => {
   const { cursor, take = 10, search } = req.query;
   try {
-    let campaigns = await prisma.campaign.findMany({
+    const campaigns = await prisma.campaign.findMany({
       take: Number(take),
       ...(cursor && {
         skip: 1,
@@ -7538,8 +7538,6 @@ export const getCampaignsForPublic = async (req: Request, res: Response) => {
         },
       }),
       where: {
-        // status: 'ACTIVE',
-
         AND: [
           { status: 'ACTIVE' },
           {
@@ -7582,9 +7580,9 @@ export const getCampaignsForPublic = async (req: Request, res: Response) => {
       return res.status(200).json(data);
     }
 
-    campaigns = campaigns.filter(
-      (campaign) => campaign.campaignTimeline.find((timeline) => timeline.name === 'Open For Pitch')?.status === 'OPEN',
-    );
+    // campaigns = campaigns.filter(
+    //   (campaign) => campaign.campaignTimeline.find((timeline) => timeline.name === 'Open For Pitch')?.status === 'OPEN',
+    // );
 
     const lastCursor = campaigns.length > Number(take) - 1 ? campaigns[Number(take) - 1]?.id : null;
 
