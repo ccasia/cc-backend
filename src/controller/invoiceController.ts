@@ -809,7 +809,7 @@ export const updateInvoice = async (req: Request, res: Response) => {
             undefined, // IDs
             // `EmailAddress=="${creatorUser.email}"`,
             // `EmailAddress=="${creatorUser.email}" || Name=="${creatorUser.name}"`,
-            `Name=="${creatorUser.name?.trim()}"`,
+            `Name=="${invoiceFrom.name?.trim()}"`,
           );
 
           if (result.body.contacts && result.body.contacts.length > 0) {
