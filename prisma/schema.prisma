@@ -143,11 +143,16 @@ model Client {
   createdAt  DateTime   @default(now())
   updatedAt  DateTime   @default(now()) @updatedAt
 
+  isParentAccount Boolean @default(false)
+  parentClientId  String? 
+  parentClient    Client? @relation("ParentChildClients", fields: [parentClientId], references: [id])
+  childClients     Client[] @relation("ParentChildClients")
 
   // Client-specific relations
   clientCampaigns     ClientCampaign[]
   clientNotifications ClientNotification[]
   campaignClients     CampaignClient[]
+  childAccounts       ChildAccount[]
 }
 
 // New enum for client types
@@ -191,6 +196,26 @@ model ClientNotification {
   createdAt DateTime @default(now())
 
   client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+}
+
+model ChildAccount {
+  id          String   @id @unique @default(cuid())
+  email       String   @unique
+  password    String?  
+  firstName   String?
+  lastName    String?
+  isActive    Boolean  @default(false) 
+  invitedAt   DateTime @default(now())
+  activatedAt DateTime?
+  
+  parentClientId String
+  parentClient   Client @relation(fields: [parentClientId], references: [id], onDelete: Cascade)
+  
+  invitationToken String? @unique
+  tokenExpiresAt  DateTime?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Role {
