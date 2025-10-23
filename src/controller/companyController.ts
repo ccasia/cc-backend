@@ -112,6 +112,9 @@ export const getCompanyById = async (req: Request, res: Response) => {
     if (!company) return res.status(404).json({ message: 'Company not found' });
 
     const activeSubscriptions = company.subscriptions.filter((sub) => sub.status === 'ACTIVE');
+    const packagesWithRemainingCredits = activeSubscriptions.filter((sub) => (sub.totalCredits || 0) > sub.creditsUsed);
+    packagesWithRemainingCredits.sort((a, b) => new Date(a.expiredAt).getTime() - new Date(b.expiredAt).getTime());
+    const validityTrackingPackage = packagesWithRemainingCredits[0] || null;
 
     const totalCredits = activeSubscriptions.reduce((sum, sub) => sum + (sub.totalCredits || 0), 0);
     const usedCredits = activeSubscriptions.reduce((sum, sub) => sum + (sub.creditsUsed || 0), 0);
@@ -120,7 +123,8 @@ export const getCompanyById = async (req: Request, res: Response) => {
       totalCredits,
       usedCredits,
       remainingCredits: totalCredits - usedCredits,
-      activePackagesCound: activeSubscriptions.length,
+      validityPackageExpiry: validityTrackingPackage ? validityTrackingPackage.expiredAt : null,
+      activePackagesCount: activeSubscriptions.length,
       nextExpiryDate:
         activeSubscriptions.length > 0
           ? activeSubscriptions.sort((a, b) => new Date(a.expiredAt).getTime() - new Date(b.expiredAt).getTime())[0]
