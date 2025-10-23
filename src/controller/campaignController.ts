@@ -632,6 +632,18 @@ export const createCampaign = async (req: Request, res: Response) => {
         if (io) {
           io.emit('campaign');
         }
+
+        // Add child accounts to the new campaign if it's a client-created campaign
+        if (campaign.origin === 'CLIENT' && client) {
+          try {
+            const { addChildAccountsToCampaign } = await import('./childAccountController.js');
+            await addChildAccountsToCampaign(client.id, campaign.id);
+          } catch (error) {
+            console.error('Error adding child accounts to campaign:', error);
+            // Don't fail the campaign creation if child account integration fails
+          }
+        }
+
         return res.status(200).json({ campaign, message: 'Campaign created successfully.' });
       },
       {
@@ -4481,6 +4493,24 @@ export const addClientManagers = async (req: Request, res: Response) => {
     // Flip origin to CLIENT for v3 flow
     await prisma.campaign.update({ where: { id: campaignId }, data: { origin: 'CLIENT' } });
 
+    // Add child accounts to the campaign for each client manager
+    for (const userId of userIds) {
+      try {
+        const user = await prisma.user.findUnique({
+          where: { id: userId },
+          include: { client: true },
+        });
+        
+        if (user?.client) {
+          const { addChildAccountsToCampaign } = await import('./childAccountController.js');
+          await addChildAccountsToCampaign(user.client.id, campaignId);
+        }
+      } catch (error) {
+        console.error('Error adding child accounts to campaign for user:', userId, error);
+        // Don't fail the request if child account integration fails
+      }
+    }
+
     if (adminId) {
       const adminLogMessage = `Added ${userIds.length} client manager(s) and converted campaign to V3`;
       logAdminChange(adminLogMessage, adminId, req);
@@ -5290,7 +5320,8 @@ export const changeCampaignCredit = async (req: Request, res: Response) => {
 export const getClientCampaigns = async (req: Request, res: Response) => {
   const { userid } = req.session;
 
-  console.log('getClientCampaigns called for user ID:', userid);
+  console.log('=== getClientCampaigns called ===');
+  console.log('User ID from session:', userid);
 
   // Check if user session exists
   if (!userid) {
@@ -5311,6 +5342,7 @@ export const getClientCampaigns = async (req: Request, res: Response) => {
 
     console.log('User found:', {
       id: user?.id,
+      email: user?.email,
       role: user?.role,
       clientId: user?.client?.id,
       companyId: user?.client?.companyId,
@@ -5330,6 +5362,9 @@ export const getClientCampaigns = async (req: Request, res: Response) => {
     });
 
     console.log(`Found ${campaignAdminEntries.length} campaignAdmin entries for user ${userid}`);
+    if (campaignAdminEntries.length > 0) {
+      console.log('Campaign IDs from campaignAdmin:', campaignAdminEntries.map(ca => ca.campaignId));
+    }
 
     // Find only campaigns created by this client user
     // We can identify this by looking at the campaignAdmin relation
