@@ -841,7 +841,7 @@ export const updateInvoice = async (req: Request, res: Response) => {
               invoiceFrom,
               updatedInvoice.creator,
               bankInfo,
-              agreement?.currency?.toUpperCase() as 'MYR' | 'SGD',
+              (agreement?.currency?.toUpperCase() as 'MYR' | 'SGD') ?? 'MYR',
             );
           }
 
