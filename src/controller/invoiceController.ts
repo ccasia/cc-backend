@@ -797,7 +797,8 @@ export const updateInvoice = async (req: Request, res: Response) => {
 
           const activeTenant = xero.tenants.find(
             (item) =>
-              item?.orgData.baseCurrency.toUpperCase() === (agreement?.currency?.toUpperCase() as 'MYR' | 'SGD'),
+              item?.orgData.baseCurrency.toUpperCase() ===
+              ((agreement?.currency?.toUpperCase() as 'MYR' | 'SGD') ?? 'MYR'),
           );
 
           const result = await xero.accountingApi.getContacts(
