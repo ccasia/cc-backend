@@ -38,6 +38,26 @@ const transport = nodemailer.createTransport({
 
 // sendMail(transport, mailOptions);
 
+// Generic email sending function
+export const sendEmail = async (mailOptions: {
+  to: string;
+  subject: string;
+  html: string;
+  from?: string;
+}) => {
+  try {
+    await transport.sendMail({
+      from: mailOptions.from || user,
+      to: mailOptions.to,
+      subject: mailOptions.subject,
+      html: mailOptions.html,
+    });
+  } catch (error) {
+    console.error('Error sending email:', error);
+    throw error;
+  }
+};
+
 export const ClientInvitation = (email: string, inviteToken: string, companyName: string) => {
   transport
     .sendMail({

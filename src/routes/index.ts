@@ -25,6 +25,7 @@ import kwspRoute from './kwspRoute';
 import clientRoute from './clientRoute';
 import pitchRoute from './pitchRoute';
 import pdfRoute from './pdfRoute';
+import childAccountRoute from './childAccountRoute';
 
 export const router = express.Router();
 
@@ -54,3 +55,4 @@ router.use('/kwsp', kwspRoute);
 router.use('/client', clientRoute);
 router.use('/pitch', pitchRoute);
 router.use('/agreement', pdfRoute);
+router.use('/child-account', childAccountRoute);
