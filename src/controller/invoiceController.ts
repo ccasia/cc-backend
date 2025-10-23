@@ -801,12 +801,15 @@ export const updateInvoice = async (req: Request, res: Response) => {
               ((agreement?.currency?.toUpperCase() as 'MYR' | 'SGD') ?? 'MYR'),
           );
 
+          console.log('ACTIVE UPDATE:', activeTenant);
+          console.log('CREATOR NAME:', creatorUser.name?.trim());
+
           const result = await xero.accountingApi.getContacts(
             activeTenant.tenantId,
             undefined, // IDs
             // `EmailAddress=="${creatorUser.email}"`,
             // `EmailAddress=="${creatorUser.email}" || Name=="${creatorUser.name}"`,
-            `Name=="${creatorUser.name}"`,
+            `Name=="${creatorUser.name?.trim()}"`,
           );
 
           if (result.body.contacts && result.body.contacts.length > 0) {
