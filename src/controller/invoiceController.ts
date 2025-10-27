@@ -751,7 +751,7 @@ export const updateInvoice = async (req: Request, res: Response) => {
         const creatorUser = updatedInvoice.creator.user;
         const creatorPaymentForm = creatorUser?.paymentForm;
         const campaign = updatedInvoice.campaign;
-        const agreement = updatedInvoice.user?.creatorAgreement.find((item) => item.campaignId === campaignId);
+        const agreement = updatedInvoice.creator.user.creatorAgreement.find((item) => item.campaignId === campaignId);
 
         console.log('AGREEMENT:', agreement);
 
