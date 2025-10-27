@@ -39,12 +39,7 @@ const transport = nodemailer.createTransport({
 // sendMail(transport, mailOptions);
 
 // Generic email sending function
-export const sendEmail = async (mailOptions: {
-  to: string;
-  subject: string;
-  html: string;
-  from?: string;
-}) => {
+export const sendEmail = async (mailOptions: { to: string; subject: string; html: string; from?: string }) => {
   try {
     await transport.sendMail({
       from: mailOptions.from || user,
@@ -1111,6 +1106,154 @@ export const rejectInvoiceEmail = async (email: string, campaignName: string, re
     });
 };
 
+export const agreementSent = (
+  email: string,
+  campaignName: string,
+  creatorName: string,
+  campaignImage: string,
+  campaignId: string,
+) => {
+  transport
+    .sendMail({
+      from: user,
+      to: email,
+      subject: `Confirm Your Spot in ${campaignName}`,
+      html: `
+      <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Confirm Your Spot in ${campaignName}</title>
+      </head>
+      
+      <body style="margin: 0; padding: 20px; background-color: #f5f5f7; font-family: Arial, sans-serif;">
+      <div class="container" style="max-width: 420px; margin: 0 auto; background-color: #ffffff; padding: 40px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); border: 0.1px dashed #777777; border-radius: 10px;">
+      <div class="header" style="display: flex; align-items: center; margin-bottom: 30px;">
+            <img src="https://drive.google.com/uc?id=13ICuo00aWLG8XUikZ_6vSP7ej_CFQdjQ" alt="Company Logo" class="logo" style="max-width: 150px; margin-right: 30px;">
+      </div>
+        <h2 style="color: #686464; font-size: 24px; font-weight: bold; margin-top: 40px; margin-bottom: 40px;">Confirm Your Spot in ${campaignName}</h2>
+        <img src="${campaignImage}" alt="Campaign Image" class="campaign-image" style="display: block; width: 100%; max-height: 300px; object-fit: cover; margin: 30px 0;">
+        <p style="color: #686464; text-align: left; font-size: 14px; line-height: 1.6; font-family: 'Roboto', sans-serif;">Hi ${creatorName}, <br/> Congrats! You've been shortlisted for ${campaignName}. Sign the agreement now to secure your spot</p>
+        <a href="${process.env.BASE_EMAIL_URL}/dashboard/campaign/VUquQR/HJUboKDBwJi71KQ==/manage/detail/${campaignId}" class="button" style="display: inline-block; padding: 15px 30px; background-color: #0874dc; text-decoration: none; border-radius: 6px; font-size: 16px; color: #ffffff; text-align: center; margin: 30px auto; display: block; font-weight: bold; transition: background-color 0.3s;">Sign Agreement</a>
+        <div class="separator" style="border-top: 1px solid #ddd; margin: 35px 0;"></div>
+        <p id="slogan" style="color: #686464; font-size: 12px; padding-top: 0px; display: block; text-align: center; font-weight: bold; margin-bottom: 20px;">Where Brands and Creatives Co-create</p>
+
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="margin-bottom: 20px;">
+            <tr>
+                <td align="center" style="padding: 0 10px;">
+                    <a href="https://www.instagram.com/cultcreativeasia/" target="_blank" style="text-decoration: none;">
+                        <img src="https://drive.google.com/uc?id=1WTjbjcjJ7JW_gC5rL426nLs_EmZi98Qp" alt="Instagram" style="width: 25px; height: auto;">
+                    </a>
+                </td>
+                <td align="center" style="padding: 0 10px;">
+                    <a href="https://www.youtube.com/@cultcreativeapp" target="_blank" style="text-decoration: none;">
+                        <img src="https://drive.google.com/uc?id=18P3sGw7JTbeHIZVYA1XB_psp9bZvngHr" alt="YouTube" style="width: 25px; height: auto;">
+                    </a>
+                </td>
+                <td align="center" style="padding: 0 10px;">
+                    <a href="https://www.facebook.com/CultCreativeAsia/" target="_blank" style="text-decoration: none;">
+                        <img src="https://drive.google.com/uc?id=15qY40yjw3Jeh5BoKUkjj6730RsolyK9E" alt="Facebook" style="width: 25px; height: auto;">
+                    </a>
+                </td>
+                <td align="center" style="padding: 0 10px;">
+                    <a href="https://www.cultcreative.asia" target="_blank" style="text-decoration: none;">
+                        <img src="https://drive.google.com/uc?id=1yt8fs0K1om0wsHD8LWFFysovkeIMgmg2" alt="Website" style="width: 25px; height: auto;">
+                    </a>
+                </td>
+            </tr>
+        </table>
+
+        <div class="footer" style="font-size: 12px; color: #686464; text-align: left; margin-top: 40px; padding: 0 20px; position: relative;">
+            <a href="https://www.cultcreative.asia" target="_blank" style="text-decoration: none;">
+                <img src="https://drive.google.com/uc?id=13ICuo00aWLG8XUikZ_6vSP7ej_CFQdjQ" alt="Footer Logo" style="max-width: 60px; display: block;">
+            </a>
+            <p id="company-reg" style="color: #686464; font-size: 11px; padding-top: 0px;">202001018157 (1374477-W) <br> 2024 &copy; Cult Creative. All Rights Reserved.</p>
+            <p>If you have any questions, please email us at <a href="mailto:hello@cultcreative.asia" style="color: #0874dc; font-weight: bold; font-size: 12px; text-decoration: none;">hello@cultcreative.asia</a> or send us a text on <a href="https://api.whatsapp.com/send/?phone=60162678757&text&type=phone_number&app_absent=0" style="color: #0874dc; font-weight: bold; font-size: 12px; text-decoration: none;">Whatsapp at +60162678757</a>.</p>
+        </div>
+    </div>
+
+</body>
+</html>
+          `,
+    })
+    .catch((err) => {
+      return err;
+    });
+};
+
+// export const agreementApproved = (
+//   email: string,
+//   campaignName: string,
+//   creatorName: string,
+//   campaignImage: string,
+//   campaignId: string,
+// ) => {
+//   transport
+//     .sendMail({
+//       from: user,
+//       to: email,
+//       subject: `Action Needed: Submit First Draft for ${campaignName}`,
+//       html: `
+//       <head>
+//       <meta charset="UTF-8">
+//       <meta name="viewport" content="width=device-width, initial-scale=1.0">
+//       <title>Action Needed: Submit First Draft for ${campaignName}</title>
+//       </head>
+      
+//       <body style="margin: 0; padding: 20px; background-color: #f5f5f7; font-family: Arial, sans-serif;">
+//       <div class="container" style="max-width: 420px; margin: 0 auto; background-color: #ffffff; padding: 40px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); border: 0.1px dashed #777777; border-radius: 10px;">
+//       <div class="header" style="display: flex; align-items: center; margin-bottom: 30px;">
+//             <img src="https://drive.google.com/uc?id=13ICuo00aWLG8XUikZ_6vSP7ej_CFQdjQ" alt="Company Logo" class="logo" style="max-width: 150px; margin-right: 30px;">
+//       </div>
+//         <h2 style="color: #686464; font-size: 24px; font-weight: bold; margin-top: 40px; margin-bottom: 40px;">Confirm Your Spot in ${campaignName}</h2>
+//         <img src="${campaignImage}" alt="Campaign Image" class="campaign-image" style="display: block; width: 100%; max-height: 300px; object-fit: cover; margin: 30px 0;">
+//         <p style="color: #686464; text-align: left; font-size: 14px; line-height: 1.6; font-family: 'Roboto', sans-serif;">Hi ${creatorName}, Your first draft for ${campaignName}</p>
+//         <a href="${process.env.BASE_EMAIL_URL}/dashboard/campaign/VUquQR/HJUboKDBwJi71KQ==/manage/detail/${campaignId}" class="button" style="display: inline-block; padding: 15px 30px; background-color: #0874dc; text-decoration: none; border-radius: 6px; font-size: 16px; color: #ffffff; text-align: center; margin: 30px auto; display: block; font-weight: bold; transition: background-color 0.3s;">Sign Agreement</a>
+//         <div class="separator" style="border-top: 1px solid #ddd; margin: 35px 0;"></div>
+//         <p id="slogan" style="color: #686464; font-size: 12px; padding-top: 0px; display: block; text-align: center; font-weight: bold; margin-bottom: 20px;">Where Brands and Creatives Co-create</p>
+
+//         <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="margin-bottom: 20px;">
+//             <tr>
+//                 <td align="center" style="padding: 0 10px;">
+//                     <a href="https://www.instagram.com/cultcreativeasia/" target="_blank" style="text-decoration: none;">
+//                         <img src="https://drive.google.com/uc?id=1WTjbjcjJ7JW_gC5rL426nLs_EmZi98Qp" alt="Instagram" style="width: 25px; height: auto;">
+//                     </a>
+//                 </td>
+//                 <td align="center" style="padding: 0 10px;">
+//                     <a href="https://www.youtube.com/@cultcreativeapp" target="_blank" style="text-decoration: none;">
+//                         <img src="https://drive.google.com/uc?id=18P3sGw7JTbeHIZVYA1XB_psp9bZvngHr" alt="YouTube" style="width: 25px; height: auto;">
+//                     </a>
+//                 </td>
+//                 <td align="center" style="padding: 0 10px;">
+//                     <a href="https://www.facebook.com/CultCreativeAsia/" target="_blank" style="text-decoration: none;">
+//                         <img src="https://drive.google.com/uc?id=15qY40yjw3Jeh5BoKUkjj6730RsolyK9E" alt="Facebook" style="width: 25px; height: auto;">
+//                     </a>
+//                 </td>
+//                 <td align="center" style="padding: 0 10px;">
+//                     <a href="https://www.cultcreative.asia" target="_blank" style="text-decoration: none;">
+//                         <img src="https://drive.google.com/uc?id=1yt8fs0K1om0wsHD8LWFFysovkeIMgmg2" alt="Website" style="width: 25px; height: auto;">
+//                     </a>
+//                 </td>
+//             </tr>
+//         </table>
+
+//         <div class="footer" style="font-size: 12px; color: #686464; text-align: left; margin-top: 40px; padding: 0 20px; position: relative;">
+//             <a href="https://www.cultcreative.asia" target="_blank" style="text-decoration: none;">
+//                 <img src="https://drive.google.com/uc?id=13ICuo00aWLG8XUikZ_6vSP7ej_CFQdjQ" alt="Footer Logo" style="max-width: 60px; display: block;">
+//             </a>
+//             <p id="company-reg" style="color: #686464; font-size: 11px; padding-top: 0px;">202001018157 (1374477-W) <br> 2024 &copy; Cult Creative. All Rights Reserved.</p>
+//             <p>If you have any questions, please email us at <a href="mailto:hello@cultcreative.asia" style="color: #0874dc; font-weight: bold; font-size: 12px; text-decoration: none;">hello@cultcreative.asia</a> or send us a text on <a href="https://api.whatsapp.com/send/?phone=60162678757&text&type=phone_number&app_absent=0" style="color: #0874dc; font-weight: bold; font-size: 12px; text-decoration: none;">Whatsapp at +60162678757</a>.</p>
+//         </div>
+//     </div>
+
+// </body>
+// </html>
+//           `,
+//     })
+//     .catch((err) => {
+//       return err;
+//     });
+// };
+
 // Admin Notifications
 
 export const csmAdminInvoice = (email: string, campaignName: string, adminName: string, campaignImage: string) => {
@@ -1323,3 +1466,9 @@ export const forgetPasswordEmail = (email: string, token: string, name?: string)
       return err;
     });
 };
+
+// Client Notifications
+
+export const csAprroveDraft = (email: string, campaignName: string, campaignId: string) => {};
+
+export const csShortlistCreators = (email: string, campaignName: string) => {};
