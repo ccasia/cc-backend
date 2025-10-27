@@ -753,6 +753,8 @@ export const updateInvoice = async (req: Request, res: Response) => {
         const campaign = updatedInvoice.campaign;
         const agreement = updatedInvoice.user?.creatorAgreement.find((item) => item.campaignId === campaignId);
 
+        console.log('AGREEMENT:', agreement);
+
         let contactID = updatedInvoice.creator.xeroContactId;
 
         if (status === 'approved') {
