@@ -797,6 +797,8 @@ export const updateInvoice = async (req: Request, res: Response) => {
 
           await xero.updateTenants();
 
+          console.log('TENANTS:', xero.tenants);
+
           const activeTenant = xero.tenants.find(
             (item) =>
               item?.orgData.baseCurrency.toUpperCase() ===
