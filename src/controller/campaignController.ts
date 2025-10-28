@@ -1850,7 +1850,7 @@ export const getCampaignForCreatorById = async (req: Request, res: Response) => 
 
     submissions?.forEach((submission) => {
       if (
-        submission.status === 'APPROVED' ||
+        submission.status === 'APPROVED' || submission.status === 'POSTED' || submission.status === 'CLIENT_APPROVED' ||
         (submission.submissionType?.type === 'FIRST_DRAFT' && submission.status === 'CHANGES_REQUIRED')
       ) {
         completed++;
@@ -2599,7 +2599,7 @@ export const getMyCampaigns = async (req: Request, res: Response) => {
 
       submissions?.forEach((submission) => {
         if (
-          submission.status === 'APPROVED' ||
+          submission.status === 'APPROVED' || submission.status === 'POSTED' || submission.status === 'CLIENT_APPROVED' ||
           (submission.submissionType?.type === 'FIRST_DRAFT' && submission.status === 'CHANGES_REQUIRED')
         ) {
           completed++;
