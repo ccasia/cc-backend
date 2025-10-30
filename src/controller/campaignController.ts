@@ -784,7 +784,7 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
       },
     });
 
-    if (user?.admin?.mode === 'god' || user?.admin?.role?.name === 'CSL') {
+    if (user?.admin?.mode === 'god' || user?.admin?.role?.name === 'CSL' || user?.admin?.mode === 'advanced') {
       campaigns = await prisma.campaign.findMany({
         orderBy: {
           createdAt: 'desc',
