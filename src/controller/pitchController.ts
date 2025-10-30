@@ -1106,8 +1106,18 @@ export const getPitchesV3 = async (req: Request, res: Response) => {
           }
         }
 
+
+        let sanitizedUser = undefined;
+        if (pitch.user) {
+          const { password, xeroRefreshToken, ...restUser } = pitch.user;
+          sanitizedUser = { ...restUser };
+          if (sanitizedUser.creator) {
+          }
+        }
+
         return {
           ...pitch,
+          user: sanitizedUser,
           displayStatus, // Add display status for frontend
         };
       });
