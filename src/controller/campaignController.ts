@@ -2786,7 +2786,7 @@ export const closeCampaign = async (req: Request, res: Response) => {
 // };
 
 export const editCampaignInfo = async (req: Request, res: Response) => {
-  const { id, name, description, campaignInterests, campaignIndustries, isKWSPCampaign } = req.body;
+  const { id, name, description, campaignInterests, campaignIndustries, isKWSPCampaign, spreadSheetURL } = req.body;
   const adminId = req.session.userid;
   try {
     const updatedCampaign = await prisma.campaign.update({
@@ -2797,6 +2797,7 @@ export const editCampaignInfo = async (req: Request, res: Response) => {
         name: name,
         description: description,
         isKWSPCampaign,
+        spreadSheetURL, // <-- allow updating spreadsheet link!
       },
     });
 
