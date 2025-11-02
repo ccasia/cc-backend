@@ -22,7 +22,11 @@ import {
 import { isLoggedIn } from '@middlewares/onlyLogin';
 import { isSuperAdmin, isAdmin } from '@middlewares/onlySuperadmin';
 import { generateInvoice } from '@controllers/invoiceController';
-import { submitPostingLinkByCSMV2, approvePostingLinkBySuperadminV2, rejectPostingLinkBySuperadminV2 } from '@controllers/submissionController';
+import {
+  submitPostingLinkByCSMV2,
+  approvePostingLinkBySuperadminV2,
+  rejectPostingLinkBySuperadminV2,
+} from '@controllers/submissionController';
 
 const router = Router();
 
@@ -59,6 +63,5 @@ router.patch('/status', isSuperAdmin, updateSubmissionStatus);
 router.patch('/v2/managePhotos', isSuperAdmin, adminManagePhotosV2);
 router.patch('/v2/manageDraftVideos', isSuperAdmin, adminManageDraftVideosV2);
 router.patch('/v2/manageRawFootages', isSuperAdmin, adminManageRawFootagesV2);
-
 
 export default router;
