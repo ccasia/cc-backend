@@ -3812,7 +3812,7 @@ export const creatorAgreements = async (req: Request, res: Response) => {
       },
       include: {
         user: {
-          include: {
+          select: {
             creator: true,
             paymentForm: true,
             shortlisted: {

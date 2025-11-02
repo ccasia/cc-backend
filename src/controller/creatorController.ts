@@ -326,7 +326,7 @@ export const getCreatorFullInfoById = async (req: Request, res: Response) => {
       where: {
         id: id,
       },
-      include: {
+      select: {
         paymentForm: true,
         creator: {
           include: {
