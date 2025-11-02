@@ -30,17 +30,17 @@ async function seedV4SubmissionTypes() {
     const existingTypes = await prisma.submissionType.findMany({
       where: {
         type: {
-          in: v4SubmissionTypes.map((t) => t.type) as any,
+          in: v4SubmissionTypes.map((t) => t.type),
         },
       },
     });
 
-    const existingTypeValues = existingTypes.map((t) => t.type) as any;
+    const existingTypeValues = existingTypes.map((t) => t.type);
     const typesToCreate = v4SubmissionTypes.filter((type) => !existingTypeValues.includes(type.type));
 
     if (typesToCreate.length > 0) {
       const result = await prisma.submissionType.createMany({
-        data: typesToCreate as any,
+        data: typesToCreate,
       });
 
       console.log(
@@ -67,7 +67,6 @@ async function main() {
 }
 
 main()
-  // eslint-disable-next-line promise/always-return
   .then(async () => {
     await prisma.$disconnect();
   })

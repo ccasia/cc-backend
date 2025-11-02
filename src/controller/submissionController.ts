@@ -64,6 +64,7 @@ export const agreementSubmission = async (req: Request, res: Response) => {
                   admin: {
                     select: {
                       userId: true,
+                      user: true,
                     },
                   },
                 },
@@ -151,27 +152,31 @@ export const agreementSubmission = async (req: Request, res: Response) => {
       );
 
       //for admins
-      for (const item of submission.campaign.campaignAdmin) {
+      for (const campaignAdmin of submission.campaign.campaignAdmin) {
         // get column ID
-        const board = await prisma.board.findUnique({
+        const adminBoard = await prisma.board.findUnique({
           where: {
-            userId: item.admin.userId,
+            userId: campaignAdmin.admin.userId,
           },
           include: {
             columns: true,
           },
         });
 
-        if (board) {
-          const actionNeededColumn = board.columns.find((item) => item.name === 'Actions Needed');
-          const agreementTask = await getTaskId({ boardId: board.id, submissionId: submission.id, columnName: 'Done' });
+        if (adminBoard) {
+          const actionNeededColumn = adminBoard.columns.find((item) => item.name === 'Actions Needed');
+          const agreementTask = await getTaskId({
+            boardId: adminBoard.id,
+            submissionId: submission.id,
+            columnName: 'Done',
+          });
 
           if (actionNeededColumn) {
             if (!agreementTask) {
               await createNewTask({
                 submissionId: submission.id,
                 name: 'Agreement Submission',
-                userId: item.admin.userId,
+                userId: campaignAdmin.admin.userId,
                 position: 1,
                 columnId: actionNeededColumn.id,
               });
@@ -191,18 +196,21 @@ export const agreementSubmission = async (req: Request, res: Response) => {
             }
           }
         }
+        const isAdmin = campaignAdmin.admin.user.role === 'admin' || campaignAdmin.admin.user.role === 'superadmin';
 
-        const adminNotification = await saveNotification({
-          userId: item.adminId,
-          entity: 'Agreement',
-          creatorId: submission.userId,
-          entityId: submission.campaignId,
-          title: adminTitle,
-          message: adminMessage,
-        });
+        if (isAdmin) {
+          const adminNotification = await saveNotification({
+            userId: campaignAdmin.admin.userId,
+            entity: 'Agreement',
+            creatorId: submission.userId,
+            entityId: submission.campaignId,
+            title: adminTitle,
+            message: adminMessage,
+          });
 
-        io.to(clients.get(item.adminId)).emit('notification', adminNotification);
-        io.to(clients.get(item.adminId)).emit('newSubmission');
+          io.to(clients.get(campaignAdmin.adminId)).emit('notification', adminNotification);
+          io.to(clients.get(campaignAdmin.adminId)).emit('newSubmission');
+        }
       }
     }
 
@@ -228,7 +236,7 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
   const adminId = req.session.userid;
 
   const { campaignId, userId, status, submissionId } = data;
-  const nextSubmissionId = data?.submission?.dependencies[0]?.submissionId;
+  const nextSubmissionId = data?.submission?.dependencies?.[0]?.submissionId;
 
   try {
     const campaign = await prisma.campaign.findUnique({
@@ -288,6 +296,7 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
         },
       });
 
+      console.log('[ADMIN_MANAGE_AGREEMENT] Updating agreement submission to APPROVED');
       const agreementSubs = await prisma.submission.update({
         where: {
           id: submissionId,
@@ -313,9 +322,11 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
           },
         },
       });
+      console.log('[ADMIN_MANAGE_AGREEMENT] Agreement submission updated successfully');
 
       // Update the corresponding pitch status to AGREEMENT_SUBMITTED when agreement is approved
-      await prisma.pitch.updateMany({
+      console.log('[ADMIN_MANAGE_AGREEMENT] Updating pitch status to AGREEMENT_SUBMITTED');
+      const pitchUpdateResult = await prisma.pitch.updateMany({
         where: {
           campaignId: campaignId,
           userId: userId,
@@ -325,10 +336,12 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
           status: 'AGREEMENT_SUBMITTED',
         },
       });
+      console.log(`[ADMIN_MANAGE_AGREEMENT] Updated ${pitchUpdateResult.count} pitch(es)`);
 
       const taskInReviewColumn = inReviewColumn?.task?.find((item) => item.submissionId === agreementSubs.id);
 
       if (taskInReviewColumn) {
+        console.log('[ADMIN_MANAGE_AGREEMENT] Moving task from In Review to Done');
         await prisma.task.update({
           where: {
             id: taskInReviewColumn.id,
@@ -337,33 +350,71 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
             columnId: doneColumn?.id,
           },
         });
+        console.log('[ADMIN_MANAGE_AGREEMENT] Task moved successfully');
+      } else {
+        console.log('[ADMIN_MANAGE_AGREEMENT] No task found in In Review column for this submission');
       }
 
-      const submission = await prisma.submission.update({
-        where: {
-          id: nextSubmissionId as string,
-        },
-        data: {
-          status: 'IN_PROGRESS',
-          nextsubmissionDate: new Date(),
-        },
-        include: {
-          task: true,
-        },
-      });
+      // Handle next submission activation (only if nextSubmissionId exists and is valid)
+      let submission = null;
+      if (nextSubmissionId) {
+        try {
+          // Check if the next submission exists before trying to update it
+          const nextSubmissionExists = await prisma.submission.findUnique({
+            where: { id: nextSubmissionId as string },
+          });
 
-      // find by column
-      const inProgressTask = submission.task.find((item) => item.columnId === toDoColumn?.id);
+          if (nextSubmissionExists) {
+            submission = await prisma.submission.update({
+              where: {
+                id: nextSubmissionId as string,
+              },
+              data: {
+                status: 'IN_PROGRESS',
+                nextsubmissionDate: new Date(),
+              },
+              include: {
+                task: true,
+              },
+            });
+          } else {
+            console.log(`Next submission ${nextSubmissionId} not found, skipping update`);
+          }
+        } catch (error) {
+          console.error('Error updating next submission:', error);
+          // Continue with the approval process even if next submission update fails
+        }
+      } else {
+        console.log('No nextSubmissionId provided, skipping next submission update');
+      }
 
-      if (inProgressTask) {
-        await prisma.task.update({
-          where: {
-            id: inProgressTask.id,
-          },
-          data: {
-            columnId: inProgressColumn?.id,
-          },
-        });
+      // Handle task updates only if we have a valid submission
+      if (submission && submission.task) {
+        const inProgressTask = submission.task.find((item) => item.columnId === toDoColumn?.id);
+
+        if (inProgressTask) {
+          await prisma.task.update({
+            where: {
+              id: inProgressTask.id,
+            },
+            data: {
+              columnId: inProgressColumn?.id,
+            },
+          });
+        }
+      }
+
+      // For V4 campaigns, create content submissions when agreement is approved
+      if (campaign.submissionVersion === 'v4') {
+        console.log('V4 Campaign detected, creating content submissions after agreement approval');
+        try {
+          const { createContentSubmissionsAfterAgreement } = await import('../service/submissionV4Service.js');
+          await createContentSubmissionsAfterAgreement(agreementSubs);
+          console.log('V4 content submissions created successfully');
+        } catch (error) {
+          console.error('Error creating V4 content submissions:', error);
+          // Don't fail the agreement approval if content creation fails
+        }
       }
 
       for (const item of agreementSubs.campaign.campaignAdmin) {
@@ -576,7 +627,18 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
 
     return res.status(200).json({ message: 'Successfully updated' });
   } catch (error) {
-    return res.status(400).json(error);
+    console.error('[ADMIN_MANAGE_AGREEMENT] Error managing agreement submission:', error);
+    console.error('[ADMIN_MANAGE_AGREEMENT] Request data:', {
+      campaignId,
+      userId,
+      status,
+      submissionId,
+      nextSubmissionId,
+    });
+    return res.status(400).json({
+      message: error instanceof Error ? error.message : 'Failed to manage agreement submission',
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
   }
 };
 
@@ -1280,7 +1342,6 @@ export const postingSubmission = async (req: Request, res: Response) => {
   const currentUserId = req.session.userid;
 
   try {
-    // Check if current user is admin and if they're submitting for a creator
     const currentUser = await prisma.user.findUnique({
       where: { id: currentUserId },
       include: { admin: true },

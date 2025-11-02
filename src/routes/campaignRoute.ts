@@ -65,6 +65,11 @@ import {
   exportActiveCompletedToSheet,
   exportCreatorsCampaignSheet,
 } from '@controllers/campaignController';
+import {
+  swapGuestWithPlatformCreator,
+  cleanupOrphanedGuestUsers,
+  getGuestCreatorsForCampaign,
+} from '@controllers/swapCreatorController';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 import { canActivateCampaign } from '@middlewares/adminOrClient';
 
@@ -123,6 +128,31 @@ router.get('/getMyCampaigns/:userId', isLoggedIn, getMyCampaigns);
 
 // Get Campaigns by Admin ID
 router.get('/getAllCampaignsByAdminId/:userId', getAllCampaignsByAdminId);
+
+// Get Campaigns for Client users
+router.get('/getClientCampaigns', isLoggedIn, getClientCampaigns);
+
+// Debug endpoint to check campaign admin entries
+router.get('/checkCampaignAdmin', isLoggedIn, checkCampaignAdmin);
+
+// Debug endpoint to update campaign origin for testing
+router.post('/updateCampaignOrigin', isLoggedIn, updateCampaignOrigin);
+
+// Debug endpoint to add client to campaign admin for all company campaigns
+router.post('/addClientToCampaignAdmin', isLoggedIn, addClientToCampaignAdmin);
+
+// Fix campaign timelines for creator discovery
+router.post('/fixCampaignTimelines/:campaignId', isLoggedIn, fixCampaignTimelines);
+
+// Check if a campaign meets all requirements to be visible to creators
+router.get('/checkCreatorVisibility/:campaignId', isLoggedIn, checkCampaignCreatorVisibility);
+
+router.get('/public', getCampaignsForPublic);
+
+// Swap Creator endpoints
+router.get('/:campaignId/guestCreators', isLoggedIn, getGuestCreatorsForCampaign);
+router.post('/swapCreator', isLoggedIn, isSuperAdmin, swapGuestWithPlatformCreator);
+router.post('/cleanupGuestCreators', isLoggedIn, isSuperAdmin, cleanupOrphanedGuestUsers);
 
 // Get Campaigns for Client users
 router.get('/getClientCampaigns', isLoggedIn, getClientCampaigns);

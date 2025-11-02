@@ -130,7 +130,7 @@ const checkCurrentSubmission = async (submissionId: string) => {
     campaignCredits: submission.campaign.campaignCredits,
     hasVideos: submission.video.length,
     hasRawFootages: submission.rawFootages.length,
-    hasPhotos: submission.photos.length
+    hasPhotos: submission.photos.length,
   });
 
   // Special handling for V3 campaigns (origin: 'CLIENT')
@@ -163,7 +163,7 @@ const checkCurrentSubmission = async (submissionId: string) => {
     videos,
     rawFootages,
     photos,
-    expectedUgcVideos: user?.ugcVideos || 0
+    expectedUgcVideos: user?.ugcVideos || 0,
   });
 
   let allDeliverablesSent = false;
@@ -185,7 +185,7 @@ const checkCurrentSubmission = async (submissionId: string) => {
       allDeliverablesSent,
       campaignRequiresRawFootage: submission.campaign.rawFootage,
       campaignRequiresPhotos: submission.campaign.photos,
-      isV3Campaign
+      isV3Campaign,
     });
 
     // For V3 campaigns, use the same logic but with enhanced logging
@@ -195,14 +195,14 @@ const checkCurrentSubmission = async (submissionId: string) => {
         campaignRequiresRawFootage: submission.campaign.rawFootage,
         campaignRequiresPhotos: submission.campaign.photos,
         actualVideos: videos,
-        actualRawFootages: rawFootages, 
+        actualRawFootages: rawFootages,
         actualPhotos: photos,
         hasVideo,
         hasRawFootage,
         hasPhotos,
-        allDeliverablesSent
+        allDeliverablesSent,
       });
-      
+
       // V3 uses same logic as V2 - allDeliverablesSent already calculated above
       // hasVideo && hasRawFootage && hasPhotos
       // where hasRawFootage/hasPhotos are true if not required by campaign
@@ -244,7 +244,7 @@ const checkCurrentSubmission = async (submissionId: string) => {
       hasVideos,
       hasRawFootage,
       hasPhotos,
-      allDeliverablesSent
+      allDeliverablesSent,
     });
   }
 
@@ -252,7 +252,7 @@ const checkCurrentSubmission = async (submissionId: string) => {
   // If status is already PENDING_REVIEW, don't override it
   const currentSubmission = await prisma.submission.findUnique({
     where: { id: submission.id },
-    select: { status: true }
+    select: { status: true },
   });
 
   console.log(`🔍 FIXED: Worker - Current submission ${submissionId} status: ${currentSubmission?.status}`);
@@ -263,36 +263,36 @@ const checkCurrentSubmission = async (submissionId: string) => {
   } else if (currentSubmission?.status === 'PENDING_REVIEW' && submission.submissionVersion !== 'v4') {
     console.log(`🔍 FIXED: Worker - Submission ${submissionId} already PENDING_REVIEW, skipping status update`);
   } else {
-  // Update submission status based on deliverable checks
-  // For UGC campaigns (no posting required), set to PENDING_REVIEW when all deliverables are sent
-  // For normal campaigns, also consider campaignCredits condition
-  if (allDeliverablesSent) {
-    console.log(`Worker - Updating submission ${submissionId} to PENDING_REVIEW`);
-    await prisma.submission.update({
-      where: { id: submission.id },
-      data: {
-        status: 'PENDING_REVIEW',
-        submissionDate: dayjs().format(),
-      },
-    });
-    console.log(`Worker - Successfully updated submission ${submissionId} to PENDING_REVIEW`);
-  } else {
-    if (submission.submissionType.type === 'FIRST_DRAFT') {
-      console.log(`Worker - Updating submission ${submissionId} to IN_PROGRESS (not all deliverables sent)`);
+    // Update submission status based on deliverable checks
+    // For UGC campaigns (no posting required), set to PENDING_REVIEW when all deliverables are sent
+    // For normal campaigns, also consider campaignCredits condition
+    if (allDeliverablesSent) {
+      console.log(`Worker - Updating submission ${submissionId} to PENDING_REVIEW`);
       await prisma.submission.update({
         where: { id: submission.id },
         data: {
-          status: 'IN_PROGRESS',
+          status: 'PENDING_REVIEW',
+          submissionDate: dayjs().format(),
         },
       });
+      console.log(`Worker - Successfully updated submission ${submissionId} to PENDING_REVIEW`);
     } else {
-      console.log(`Worker - Updating submission ${submissionId} to CHANGES_REQUIRED`);
-      await prisma.submission.update({
-        where: { id: submission.id },
-        data: {
-          status: 'CHANGES_REQUIRED',
-        },
-      });
+      if (submission.submissionType.type === 'FIRST_DRAFT') {
+        console.log(`Worker - Updating submission ${submissionId} to IN_PROGRESS (not all deliverables sent)`);
+        await prisma.submission.update({
+          where: { id: submission.id },
+          data: {
+            status: 'IN_PROGRESS',
+          },
+        });
+      } else {
+        console.log(`Worker - Updating submission ${submissionId} to CHANGES_REQUIRED`);
+        await prisma.submission.update({
+          where: { id: submission.id },
+          data: {
+            status: 'CHANGES_REQUIRED',
+          },
+        });
       }
     }
   }
@@ -340,7 +340,7 @@ async function deleteFileIfExists(filePath: string) {
             hasPhotos: content.filePaths?.photos?.length || 0,
             isV4: content.isV4,
             preserveExistingMedia: content.preserveExistingMedia,
-            submissionType: content.submissionType
+            submissionType: content.submissionType,
           });
           const { filePaths } = content;
 
@@ -380,7 +380,7 @@ async function deleteFileIfExists(filePath: string) {
               submissionType: submission.submissionType.type,
               currentStatus: submission.status,
               campaignOrigin: submission.campaign.origin,
-              campaignCredits: submission.campaign.campaignCredits
+              campaignCredits: submission.campaign.campaignCredits,
             });
 
             const requestChangeVideos = await prisma.video.findMany({
@@ -608,14 +608,16 @@ async function deleteFileIfExists(filePath: string) {
                 newRawFootagesToProcess: filePaths.rawFootages.length,
                 preserveExistingMedia: content.preserveExistingMedia,
                 isV4: content.isV4,
-                existingMediaInfo: content.existingMedia?.rawFootages || []
+                existingMediaInfo: content.existingMedia?.rawFootages || [],
               });
 
               // For V4 submissions with selective updates, always create new raw footages
               // The backend controller has already handled selective deletion
               if (content.isV4 && content.preserveExistingMedia) {
-                console.log('🔄 V4 Selective Update: Creating new raw footages directly (backend handled existing raw footage preservation)');
-                
+                console.log(
+                  '🔄 V4 Selective Update: Creating new raw footages directly (backend handled existing raw footage preservation)',
+                );
+
                 const urls = await Promise.all(
                   filePaths.rawFootages.map(async (rawFootagePath: any) => {
                     const rawFootageFileName = `${submission.id}_${path.basename(rawFootagePath)}`;
@@ -662,7 +664,10 @@ async function deleteFileIfExists(filePath: string) {
                   },
                 });
 
-                console.log('🔍 Worker found raw footages with REVISION_REQUESTED status:', requestChangeRawFootages.length);
+                console.log(
+                  '🔍 Worker found raw footages with REVISION_REQUESTED status:',
+                  requestChangeRawFootages.length,
+                );
 
                 const urls = await Promise.all(
                   filePaths.rawFootages.map(async (rawFootagePath: any) => {
@@ -729,9 +734,9 @@ async function deleteFileIfExists(filePath: string) {
               submissionId: submission.id,
               contentIsV4: content.isV4,
               contentPreserveExistingMedia: content.preserveExistingMedia,
-              submissionVersion: submission.submissionVersion
+              submissionVersion: submission.submissionVersion,
             });
-            
+
             if (filePaths?.photos?.length) {
               console.log('🖼️ Worker: Processing photos section started');
               // Debug logging for photo processing
@@ -740,7 +745,7 @@ async function deleteFileIfExists(filePath: string) {
                 newPhotosToProcess: filePaths.photos.length,
                 preserveExistingMedia: content.preserveExistingMedia,
                 isV4: content.isV4,
-                existingMediaInfo: content.existingMedia?.photos || []
+                existingMediaInfo: content.existingMedia?.photos || [],
               });
 
               // For V4 submissions with selective updates, always create new photos
@@ -748,19 +753,19 @@ async function deleteFileIfExists(filePath: string) {
               console.log('🔍 Worker Photo Processing Condition Check:', {
                 isV4: content.isV4,
                 preserveExistingMedia: content.preserveExistingMedia,
-                willUseV4Logic: content.isV4 && content.preserveExistingMedia
+                willUseV4Logic: content.isV4 && content.preserveExistingMedia,
               });
-              
+
               if (content.isV4 && content.preserveExistingMedia) {
                 console.log('🔄 V4 Additive Update: Creating new photos directly (preserving all existing photos)');
-                
+
                 // Log existing photos before adding new ones
                 const existingPhotosBefore = await prisma.photo.findMany({
                   where: { submissionId: submission.id },
-                  select: { id: true, url: true }
+                  select: { id: true, url: true },
                 });
                 console.log(`📸 Before adding new photos: ${existingPhotosBefore.length} existing photos`);
-                
+
                 const urls = await Promise.all(
                   filePaths.photos.map(async (photoPath: any) => {
                     const photoFileName = `${submission.id}_${path.basename(photoPath)}`;
@@ -779,22 +784,24 @@ async function deleteFileIfExists(filePath: string) {
                     return photoPublicURL;
                   }),
                 );
-                
+
                 // Log total photos after adding new ones
                 const existingPhotosAfter = await prisma.photo.findMany({
                   where: { submissionId: submission.id },
-                  select: { id: true, url: true }
+                  select: { id: true, url: true },
                 });
-                console.log(`📸 After adding new photos: ${existingPhotosAfter.length} total photos (${existingPhotosBefore.length} existing + ${urls.length} new)`);
+                console.log(
+                  `📸 After adding new photos: ${existingPhotosAfter.length} total photos (${existingPhotosBefore.length} existing + ${urls.length} new)`,
+                );
               } else {
                 // Original logic for non-V4 or full replacement
                 console.log('⚠️ Worker using NON-V4 logic (this should not happen for V4 additive system)');
                 console.log('🔍 Worker Photo Processing - Using else branch:', {
                   isV4: content.isV4,
                   preserveExistingMedia: content.preserveExistingMedia,
-                  submissionVersion: submission.submissionVersion
+                  submissionVersion: submission.submissionVersion,
                 });
-                
+
                 const requestChangePhotos = await prisma.photo.findMany({
                   where: {
                     userId: submission.userId,
@@ -845,7 +852,9 @@ async function deleteFileIfExists(filePath: string) {
               }
             }
 
-            console.log(`Worker - All file processing complete for submission ${submission.id}, calling checkCurrentSubmission...`);
+            console.log(
+              `Worker - All file processing complete for submission ${submission.id}, calling checkCurrentSubmission...`,
+            );
             await checkCurrentSubmission(submission.id);
             console.log(`Worker - checkCurrentSubmission completed for submission ${submission.id}`);
 
@@ -858,7 +867,7 @@ async function deleteFileIfExists(filePath: string) {
                 hasPhotos: filePaths?.photos?.length > 0,
                 hasRawFootage: filePaths?.rawFootages?.length > 0,
                 processedAt: new Date().toISOString(),
-                creatorId: content.userid
+                creatorId: content.userid,
               });
               console.log(`🚀 Emitted v4:content:processed for submission ${submission.id}`);
             }

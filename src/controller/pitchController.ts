@@ -1,6 +1,9 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import dayjs from 'dayjs';
+import { clients, io } from '../server';
+import { saveNotification } from './notificationController';
+import { notificationPitchForClientReview } from '@helper/notification';
 
 const prisma = new PrismaClient();
 
@@ -71,9 +74,9 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Pitch not found' });
     }
 
-    // Check if this is a client-created campaign
-    if (pitch.campaign.origin !== 'CLIENT') {
-      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
+    // Check if this is a client-created campaign OR v4 campaign (admin-created with client managers)
+    if (pitch.campaign.origin !== 'CLIENT' && pitch.campaign.submissionVersion !== 'v4') {
+      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns or v4 campaigns' });
     }
 
     // Check if pitch is in correct status - allow admin to approve from PENDING_REVIEW or MAYBE
@@ -130,7 +133,9 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
         include: { subscriptions: true as any },
       } as any);
       if (company) {
-        const activeSub = (company as any).subscriptions?.find((s: any) => s.status === 'ACTIVE') || (company as any).subscriptions?.[0];
+        const activeSub =
+          (company as any).subscriptions?.find((s: any) => s.status === 'ACTIVE') ||
+          (company as any).subscriptions?.[0];
         if (activeSub) {
           const currentUsed = Number((activeSub as any).creditsUsed || 0);
           const toDeduct = Number(ugcCredits || 0);
@@ -150,16 +155,30 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
     const clientUsers = pitch.campaign.campaignAdmin.filter((ca) => ca.admin.user.role === 'client');
 
     for (const clientUser of clientUsers) {
-      await prisma.notification.create({
-        data: {
-          title: 'Pitch Sent to Client',
-          message: `A pitch for campaign "${pitch.campaign.name}" has been approved by admin and sent to you for review.`,
-          entity: 'Pitch',
-          campaignId: pitch.campaignId,
-          pitchId: pitchId,
-          userId: clientUser.admin.userId,
-        },
+      // const notification = await prisma.notification.create({
+      //   data: {
+      //     title: 'Pitch Sent to Client',
+      //     message: `A pitch for campaign "${pitch.campaign.name}" has been approved by admin and sent to you for review.`,
+      //     entity: 'Pitch',
+      //     campaignId: pitch.campaignId,
+      //     pitchId: pitchId,
+      //     userId: clientUser.admin.userId,
+      //   },
+      // });
+      const { title, message } = notificationPitchForClientReview(pitch.campaign.name);
+
+      const notification = await saveNotification({
+        userId: clientUser.admin.userId,
+        title: title,
+        message: message,
+        entity: 'Pitch',
+        entityId: pitch.campaignId,
       });
+
+      const clientSocketId = clients.get(clientUser.admin.userId);
+      if (clientSocketId) {
+        io.to(clientSocketId).emit('notification', notification);
+      }
     }
 
     console.log(`Pitch ${pitchId} approved by admin with ${ugcCredits} UGC credits, status updated to SENT_TO_CLIENT`);
@@ -195,9 +214,9 @@ export const rejectPitchByAdmin = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Pitch not found' });
     }
 
-    // Check if this is a client-created campaign
-    if (pitch.campaign.origin !== 'CLIENT') {
-      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
+    // Check if this is a client-created campaign OR v4 campaign (admin-created with client managers)
+    if (pitch.campaign.origin !== 'CLIENT' && pitch.campaign.submissionVersion !== 'v4') {
+      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns or v4 campaigns' });
     }
 
     // Check if pitch is in correct status - allow admin to reject from PENDING_REVIEW or MAYBE
@@ -224,16 +243,29 @@ export const rejectPitchByAdmin = async (req: Request, res: Response) => {
     });
 
     // Create notification for creator
-    await prisma.notification.create({
-      data: {
-        title: 'Pitch Rejected',
-        message: `Your pitch for campaign "${pitch.campaign.name}" has been rejected by admin.`,
-        entity: 'Pitch',
-        campaignId: pitch.campaignId,
-        pitchId: pitchId,
-        userId: pitch.userId,
-      },
+    // await prisma.notification.create({
+    //   data: {
+    //     title: 'Pitch Rejected',
+    //     message: `Your pitch for campaign "${pitch.campaign.name}" has been rejected by admin.`,
+    //     entity: 'Pitch',
+    //     campaignId: pitch.campaignId,
+    //     pitchId: pitchId,
+    //     userId: pitch.userId,
+    //   },
+    // });
+    const notification = await saveNotification({
+      userId: pitch.userId,
+      title: 'Pitch Rejected',
+      message: `Your pitch for campaign "${pitch.campaign.name}" has been rejected by admin.`,
+      entity: 'Pitch',
+      entityId: pitch.campaignId,
     });
+
+    const socketId = clients.get(pitch.userId);
+    if (socketId) {
+      io.to(socketId).emit('notification', notification);
+      io.to(socketId).emit('pitchUpdate');
+    }
 
     // Fetch the updated pitch to return in response
     const updatedPitch = await prisma.pitch.findUnique({
@@ -245,9 +277,9 @@ export const rejectPitchByAdmin = async (req: Request, res: Response) => {
     });
 
     console.log(`Pitch ${pitchId} rejected by admin, creator removed from campaign`);
-    return res.status(200).json({ 
+    return res.status(200).json({
       message: 'Pitch rejected and creator removed from campaign',
-      pitch: updatedPitch
+      pitch: updatedPitch,
     });
   } catch (error) {
     console.error('Error rejecting pitch by admin:', error);
@@ -291,9 +323,9 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
       `Client approval attempt - Pitch ID: ${pitchId}, Current status: ${pitch.status}, Client ID: ${clientId}`,
     );
 
-    // Check if this is a client-created campaign
-    if (pitch.campaign.origin !== 'CLIENT') {
-      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
+    // Check if this is a client-created campaign OR admin-created v4 campaign
+    if (pitch.campaign.origin !== 'CLIENT' && pitch.campaign.submissionVersion !== 'v4') {
+      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns or v4 campaigns' });
     }
 
     // Check if pitch was already approved by this client
@@ -371,9 +403,7 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
         },
         data: {
           isAgreementReady: false,
-          ...(creditsAssignedForThisPitch > 0
-            ? { ugcVideos: creditsAssignedForThisPitch }
-            : {}), // do not overwrite with null/0 if credits not provided
+          ...(creditsAssignedForThisPitch > 0 ? { ugcVideos: creditsAssignedForThisPitch } : {}), // do not overwrite with null/0 if credits not provided
         },
       });
     } else {
@@ -394,19 +424,13 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
         include: { shortlisted: { select: { ugcVideos: true } } },
       });
 
-      const totalUtilized = (refreshed?.shortlisted || []).reduce(
-        (acc, item) => acc + Number(item.ugcVideos || 0),
-        0,
-      );
+      const totalUtilized = (refreshed?.shortlisted || []).reduce((acc, item) => acc + Number(item.ugcVideos || 0), 0);
 
       await prisma.campaign.update({
         where: { id: pitch.campaignId },
         data: {
           creditsUtilized: Number(totalUtilized),
-          creditsPending: Math.max(
-            0,
-            Number(campaignWithShortlisted.campaignCredits) - Number(totalUtilized),
-          ),
+          creditsPending: Math.max(0, Number(campaignWithShortlisted.campaignCredits) - Number(totalUtilized)),
         },
       });
     }
@@ -433,9 +457,18 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
       const columnInProgress = board.columns.find((c) => c.name.includes('In Progress'));
 
       if (columnToDo && columnInProgress) {
-        // Create submissions for all timeline items
+        const isV4Campaign = pitch.campaign.submissionVersion === 'v4';
+        const v2SubmissionTypes = ['FIRST_DRAFT', 'FINAL_DRAFT', 'POSTING'];
+
+        const timelinesFiltered = isV4Campaign
+          ? timelines.filter(t => !v2SubmissionTypes.includes(t.submissionType?.type || ''))
+          : timelines;
+
+        console.log(`Creating submissions for ${isV4Campaign ? 'v4' : 'v2'} campaign - ${timelinesFiltered.length} timeline(s)`);
+
+        // Create submissions for timeline items
         const submissions = await Promise.all(
-          timelines.map(async (timeline, index) => {
+          timelinesFiltered.map(async (timeline, index) => {
             return await prisma.submission.create({
               data: {
                 dueDate: timeline.endDate,
@@ -443,6 +476,7 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
                 userId: pitch.userId,
                 status: timeline.submissionType?.type === 'AGREEMENT_FORM' ? 'IN_PROGRESS' : 'NOT_STARTED',
                 submissionTypeId: timeline.submissionTypeId as string,
+                submissionVersion: isV4Campaign ? 'v4' : undefined, // Explicitly set v4 for v4 campaigns
                 task: {
                   create: {
                     name: timeline.name,
@@ -460,20 +494,22 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
           }),
         );
 
-        // Create dependencies between submissions
-        const agreement = submissions.find((s) => s.submissionType?.type === 'AGREEMENT_FORM');
-        const draft = submissions.find((s) => s.submissionType?.type === 'FIRST_DRAFT');
-        const finalDraft = submissions.find((s) => s.submissionType?.type === 'FINAL_DRAFT');
-        const posting = submissions.find((s) => s.submissionType?.type === 'POSTING');
+        // Create dependencies between submissions (only for v2 campaigns)
+        if (!isV4Campaign) {
+          const agreement = submissions.find((s) => s.submissionType?.type === 'AGREEMENT_FORM');
+          const draft = submissions.find((s) => s.submissionType?.type === 'FIRST_DRAFT');
+          const finalDraft = submissions.find((s) => s.submissionType?.type === 'FINAL_DRAFT');
+          const posting = submissions.find((s) => s.submissionType?.type === 'POSTING');
 
-        const dependencies = [
-          { submissionId: draft?.id, dependentSubmissionId: agreement?.id },
-          { submissionId: finalDraft?.id, dependentSubmissionId: draft?.id },
-          { submissionId: posting?.id, dependentSubmissionId: finalDraft?.id },
-        ].filter((dep) => dep.submissionId && dep.dependentSubmissionId);
+          const dependencies = [
+            { submissionId: draft?.id, dependentSubmissionId: agreement?.id },
+            { submissionId: finalDraft?.id, dependentSubmissionId: draft?.id },
+            { submissionId: posting?.id, dependentSubmissionId: finalDraft?.id },
+          ].filter((dep) => dep.submissionId && dep.dependentSubmissionId);
 
-        if (dependencies.length > 0) {
-          await prisma.submissionDependency.createMany({ data: dependencies });
+          if (dependencies.length > 0) {
+            await prisma.submissionDependency.createMany({ data: dependencies });
+          }
         }
 
         console.log(`Created ${submissions.length} submissions for V3 pitch approval`);
@@ -510,25 +546,32 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
         // Don't fail the whole request, just log the error
       }
     } else {
-      console.log(`ℹ️  Campaign ${pitch.campaignId} is not V4 (version: ${pitch.campaign.submissionVersion}) - skipping V4 content submission creation`);
+      console.log(
+        `ℹ️  Campaign ${pitch.campaignId} is not V4 (version: ${pitch.campaign.submissionVersion}) - skipping V4 content submission creation`,
+      );
     }
 
     // Find admin users for this campaign
     const adminUsers = pitch.campaign.campaignAdmin.filter(
-      (ca) => ca.admin.user.role === 'admin' || ca.admin.user.role === 'superadmin',
+      (ca) => ca.admin.user.role === 'admin' || ca.admin.user.role === 'superadmin', // should superadmin get this notif?
     );
 
     for (const adminUser of adminUsers) {
-      await prisma.notification.create({
-        data: {
-          title: 'Pitch Approved by Client',
-          message: `A pitch for campaign "${pitch.campaign.name}" has been approved by client and is ready for agreement setup.`,
-          entity: 'Pitch',
-          campaignId: pitch.campaignId,
-          pitchId: pitchId,
-          userId: adminUser.admin.userId,
-        },
+      // use saveNotification helper to store notifications
+      const notification = await saveNotification({
+        title: `📝 Agreements needed`,
+        message: `Finalise your shortlisted creators to keep ${pitch.campaign.name} moving.`,
+        entity: 'Agreement',
+        campaignId: pitch.campaignId,
+        pitchId: pitchId,
+        userId: adminUser.admin.userId,
       });
+
+      const adminSocketId = clients.get(adminUser.admin.userId);
+
+      if (adminSocketId) {
+        io.to(adminSocketId).emit('notification', notification);
+      }
     }
 
     console.log(`Pitch ${pitchId} approved by client, status updated to APPROVED`);
@@ -572,9 +615,9 @@ export const rejectPitchByClient = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Pitch not found' });
     }
 
-    // Check if this is a client-created campaign
-    if (pitch.campaign.origin !== 'CLIENT') {
-      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
+    // Check if this is a client-created campaign OR admin-created v4 campaign
+    if (pitch.campaign.origin !== 'CLIENT' && pitch.campaign.submissionVersion !== 'v4') {
+      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns or v4 campaigns' });
     }
 
     // Check if pitch is in correct status
@@ -611,16 +654,20 @@ export const rejectPitchByClient = async (req: Request, res: Response) => {
     });
 
     // Create notification for creator
-    await prisma.notification.create({
-      data: {
-        title: 'Pitch Rejected',
-        message: `Your pitch for campaign "${pitch.campaign.name}" has been rejected by client.`,
-        entity: 'Pitch',
-        campaignId: pitch.campaignId,
-        pitchId: pitchId,
-        userId: pitch.userId,
-      },
+    const creatorNotification = await saveNotification({
+      title: 'Pitch Rejected',
+      message: `Your pitch for campaign "${pitch.campaign.name}" has been rejected by client.`,
+      entity: 'Pitch',
+      campaignId: pitch.campaignId,
+      pitchId: pitchId,
+      userId: pitch.userId,
     });
+
+    const creatorSocketId = clients.get(pitch.userId);
+
+    if (creatorSocketId) {
+      io.to(creatorSocketId).emit('notification', creatorNotification);
+    }
 
     // Create notification for admin
     const adminUsers = pitch.campaign.campaignAdmin.filter(
@@ -628,16 +675,20 @@ export const rejectPitchByClient = async (req: Request, res: Response) => {
     );
 
     for (const adminUser of adminUsers) {
-      await prisma.notification.create({
-        data: {
-          title: 'Pitch Rejected by Client',
-          message: `A pitch for campaign "${pitch.campaign.name}" has been rejected by client.`,
-          entity: 'Pitch',
-          campaignId: pitch.campaignId,
-          pitchId: pitchId,
-          userId: adminUser.admin.userId,
-        },
+      const adminNotification = await saveNotification({
+        title: 'Pitch Rejected by Client',
+        message: `A pitch for campaign "${pitch.campaign.name}" has been rejected by client.`,
+        entity: 'Pitch',
+        campaignId: pitch.campaignId,
+        pitchId: pitchId,
+        userId: adminUser.admin.userId,
       });
+
+      const adminSocketId = clients.get(adminUser.admin.userId);
+
+      if (adminSocketId) {
+        io.to(adminSocketId).emit('notification', adminNotification);
+      }
     }
 
     console.log(`Pitch ${pitchId} rejected by client, creator removed from campaign`);
@@ -681,9 +732,9 @@ export const maybePitchByClient = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Pitch not found' });
     }
 
-    // Check if this is a client-created campaign
-    if (pitch.campaign.origin !== 'CLIENT') {
-      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
+    // Check if this is a client-created campaign OR admin-created v4 campaign
+    if (pitch.campaign.origin !== 'CLIENT' && pitch.campaign.submissionVersion !== 'v4') {
+      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns or v4 campaigns' });
     }
 
     // Check if pitch is in correct status
@@ -769,9 +820,9 @@ export const setPitchAgreement = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Pitch not found' });
     }
 
-    // Check if this is a client-created campaign
-    if (pitch.campaign.origin !== 'CLIENT') {
-      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
+    // Check if this is a client-created campaign OR v4 campaign (admin-created with client managers)
+    if (pitch.campaign.origin !== 'CLIENT' && pitch.campaign.submissionVersion !== 'v4') {
+      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns or v4 campaigns' });
     }
 
     // Check if pitch is in correct status
@@ -846,16 +897,16 @@ export const submitAgreement = async (req: Request, res: Response) => {
       return res.status(403).json({ message: 'You can only submit agreements for your own pitches' });
     }
 
-    // Check if this is a client-created campaign
-    if (pitch.campaign.origin !== 'CLIENT') {
-      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
+    // Check if this is a client-created campaign OR v4 campaign (admin-created with client managers)
+    if (pitch.campaign.origin !== 'CLIENT' && pitch.campaign.submissionVersion !== 'v4') {
+      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns or v4 campaigns' });
     }
 
     // Check if pitch is in correct status for agreement submission
     // Allow AGREEMENT_PENDING (initial submission) and AGREEMENT_SUBMITTED (when resubmitting after changes requested)
     if (pitch.status !== 'AGREEMENT_PENDING' && pitch.status !== 'AGREEMENT_SUBMITTED') {
-      return res.status(400).json({ 
-        message: `Pitch is not in correct status for agreement submission. Current status: ${pitch.status}` 
+      return res.status(400).json({
+        message: `Pitch is not in correct status for agreement submission. Current status: ${pitch.status}`,
       });
     }
 
@@ -873,8 +924,8 @@ export const submitAgreement = async (req: Request, res: Response) => {
 
       // Only allow resubmission if agreement submission is in CHANGES_REQUIRED status
       if (!agreementSubmission || agreementSubmission.status !== 'CHANGES_REQUIRED') {
-        return res.status(400).json({ 
-          message: 'Agreement has already been submitted and is not pending changes' 
+        return res.status(400).json({
+          message: 'Agreement has already been submitted and is not pending changes',
         });
       }
     }
@@ -957,12 +1008,15 @@ export const getPitchesV3 = async (req: Request, res: Response) => {
       whereClause.status = status as string;
     }
 
-    // Only get pitches for client-created campaigns
+    // Get pitches for client-created campaigns OR v4 campaigns (admin-created with client managers)
     const pitches = await prisma.pitch.findMany({
       where: {
         ...whereClause,
         campaign: {
-          origin: 'CLIENT',
+          OR: [
+            { origin: 'CLIENT' },
+            { submissionVersion: 'v4' }
+          ]
         },
       },
       include: {
@@ -996,6 +1050,17 @@ export const getPitchesV3 = async (req: Request, res: Response) => {
       },
     });
 
+    // Debug logging for v4 campaigns
+    console.log('🔍 V3 Pitches Debug:', {
+      campaignId,
+      requestedStatus: status,
+      userRole: user.role,
+      totalPitches: pitches.length,
+      v4Pitches: pitches.filter(p => p.campaign?.submissionVersion === 'v4').length,
+      clientOriginPitches: pitches.filter(p => p.campaign?.origin === 'CLIENT').length,
+      pitchStatuses: pitches.map(p => ({ id: p.id, status: p.status, campaignOrigin: p.campaign?.origin, submissionVersion: p.campaign?.submissionVersion }))
+    });
+
     // Transform pitches to show role-based status and filter for clients
     const transformedPitches = pitches
       .filter((pitch) => {
@@ -1003,13 +1068,13 @@ export const getPitchesV3 = async (req: Request, res: Response) => {
         // Hide pitches with PENDING_REVIEW status (admin review stage)
         if (user.role === 'client') {
           return (
-                 pitch.status === 'SENT_TO_CLIENT' ||
-                 pitch.status === 'APPROVED' ||
-                 pitch.status === 'REJECTED' ||
-                 pitch.status === 'MAYBE' ||
-                 pitch.status === 'AGREEMENT_PENDING' ||
-                 pitch.status === 'AGREEMENT_SUBMITTED'
-            );
+            pitch.status === 'SENT_TO_CLIENT' ||
+            pitch.status === 'APPROVED' ||
+            pitch.status === 'REJECTED' ||
+            pitch.status === 'MAYBE' ||
+            pitch.status === 'AGREEMENT_PENDING' ||
+            pitch.status === 'AGREEMENT_SUBMITTED'
+          );
         }
         // For admin and creators: show all pitches
         return true;
@@ -1041,8 +1106,18 @@ export const getPitchesV3 = async (req: Request, res: Response) => {
           }
         }
 
+
+        let sanitizedUser = undefined;
+        if (pitch.user) {
+          const { password, xeroRefreshToken, ...restUser } = pitch.user;
+          sanitizedUser = { ...restUser };
+          if (sanitizedUser.creator) {
+          }
+        }
+
         return {
           ...pitch,
+          user: sanitizedUser,
           displayStatus, // Add display status for frontend
         };
       });
@@ -1104,9 +1179,9 @@ export const getPitchByIdV3 = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Pitch not found' });
     }
 
-    // Check if this is a client-created campaign
-    if (pitch.campaign.origin !== 'CLIENT') {
-      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
+    // Check if this is a client-created campaign OR v4 campaign (admin-created with client managers)
+    if (pitch.campaign.origin !== 'CLIENT' && pitch.campaign.submissionVersion !== 'v4') {
+      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns or v4 campaigns' });
     }
 
     // For clients: only allow access to pitches that are SENT_TO_CLIENT or APPROVED
@@ -1191,9 +1266,9 @@ export const submitDraftV3 = async (req: Request, res: Response) => {
       return res.status(403).json({ message: 'You can only submit drafts for your own submissions' });
     }
 
-    // Check if this is a client-created campaign
-    if (submission.campaign.origin !== 'CLIENT') {
-      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
+    // Check if this is a client-created campaign OR v4 campaign (admin-created with client managers)
+    if (submission.campaign.origin !== 'CLIENT' && submission.campaign.submissionVersion !== 'v4') {
+      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns or v4 campaigns' });
     }
 
     // Check if submission is in correct status
@@ -1277,8 +1352,8 @@ export const approveDraftByAdminV3 = async (req: Request, res: Response) => {
     }
 
     // Check if this is a client-created campaign
-    if (submission.campaign.origin !== 'CLIENT') {
-      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
+    if (submission.campaign.origin !== 'CLIENT' && submission.campaign.submissionVersion !== 'v4') {
+      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns or v4 campaigns' });
     }
 
     // Check if submission is in correct status
@@ -1355,8 +1430,8 @@ export const requestChangesByAdminV3 = async (req: Request, res: Response) => {
     }
 
     // Check if this is a client-created campaign
-    if (submission.campaign.origin !== 'CLIENT') {
-      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
+    if (submission.campaign.origin !== 'CLIENT' && submission.campaign.submissionVersion !== 'v4') {
+      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns or v4 campaigns' });
     }
 
     // Check if submission is in correct status
@@ -1440,8 +1515,8 @@ export const approveDraftByClientV3 = async (req: Request, res: Response) => {
     }
 
     // Check if this is a client-created campaign
-    if (submission.campaign.origin !== 'CLIENT') {
-      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
+    if (submission.campaign.origin !== 'CLIENT' && submission.campaign.submissionVersion !== 'v4') {
+      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns or v4 campaigns' });
     }
 
     // Check if submission is in correct status
@@ -1584,8 +1659,8 @@ export const requestChangesByClientV3 = async (req: Request, res: Response) => {
     }
 
     // Check if this is a client-created campaign
-    if (submission.campaign.origin !== 'CLIENT') {
-      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
+    if (submission.campaign.origin !== 'CLIENT' && submission.campaign.submissionVersion !== 'v4') {
+      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns or v4 campaigns' });
     }
 
     // Check if submission is in correct status
@@ -1674,14 +1749,14 @@ export const forwardClientFeedbackV3 = async (req: Request, res: Response) => {
     }
 
     // Check if this is a client-created campaign
-    if (submission.campaign.origin !== 'CLIENT') {
-      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
+    if (submission.campaign.origin !== 'CLIENT' && submission.campaign.submissionVersion !== 'v4') {
+      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns or v4 campaigns' });
     }
-    
+
     // Check if submission is in correct status
     if (submission.status !== 'SENT_TO_ADMIN') {
-      return res.status(400).json({ 
-        message: `Submission is not in correct status for forwarding feedback. Current status: ${submission.status}` 
+      return res.status(400).json({
+        message: `Submission is not in correct status for forwarding feedback. Current status: ${submission.status}`,
       });
     }
 
@@ -1725,5 +1800,94 @@ export const forwardClientFeedbackV3 = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error forwarding client feedback V3:', error);
     return res.status(500).json({ message: 'Failed to forward feedback' });
+  }
+};
+
+// Update guest creator information
+export const updateGuestCreatorInfo = async (req: Request, res: Response) => {
+  const { pitchId } = req.params;
+  const { name, username, followerCount, engagementRate, profileLink, adminComments } = req.body;
+  const userId = req.session.userid;
+
+  try {
+    console.log(`User ${userId} updating guest creator info for pitch ${pitchId}`);
+
+    // Find the pitch with user information
+    const pitch = await prisma.pitch.findUnique({
+      where: { id: pitchId },
+      include: {
+        user: {
+          include: {
+            creator: true,
+          },
+        },
+      },
+    });
+
+    if (!pitch) {
+      return res.status(404).json({ message: 'Pitch not found' });
+    }
+
+    // Check if the user is a guest creator
+    const isGuest = pitch.user?.email?.includes('@tempmail.com') ||
+                    pitch.user?.email?.startsWith('guest_') ||
+                    pitch.user?.creator?.isGuest === true;
+
+    if (!isGuest) {
+      return res.status(400).json({ message: 'This endpoint is only for guest creators' });
+    }
+
+    // Validate required fields
+    if (!name?.trim() || !profileLink?.trim()) {
+      return res.status(400).json({ message: 'Creator name and profile link are required' });
+    }
+
+    // Update user name and guestProfileLink
+    await prisma.user.update({
+      where: { id: pitch.userId },
+      data: {
+        name: name.trim(),
+        guestProfileLink: profileLink.trim(),
+      },
+    });
+
+    // Update pitch with followerCount and adminComments
+    const pitchUpdateData: any = {};
+
+    const fieldsToUpdate = {
+      username,
+      followerCount,
+      engagementRate,
+      adminComments,
+    };
+
+    Object.entries(fieldsToUpdate).forEach(([key, value]) => {
+      if (value !== undefined) {
+        pitchUpdateData[key] = value?.trim?.() || null;
+      }
+    });
+
+    if (Object.keys(pitchUpdateData).length > 0) {
+      await prisma.pitch.update({
+        where: { id: pitchId },
+        data: pitchUpdateData,
+      });
+    }
+
+    console.log(`Guest creator info updated for pitch ${pitchId}`);
+    return res.status(200).json({
+      message: 'Guest creator information updated successfully',
+      data: {
+        name: name.trim(),
+        username: username.trim(),
+        followerCount: followerCount.trim() || null,
+        engagementRate: engagementRate.trim() || null,
+        profileLink: profileLink.trim(),
+        adminComments: adminComments?.trim() || null,
+      }
+    });
+  } catch (error) {
+    console.error('Error updating guest creator info:', error);
+    return res.status(500).json({ message: 'Failed to update guest creator information' });
   }
 };

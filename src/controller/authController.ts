@@ -932,7 +932,17 @@ export const getCurrentUser = async (req: Request, res: Response) => {
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
-    return res.status(200).json({ user });
+
+    const isChildAccount = await prisma.childAccount.findUnique({
+      where: { email: user.email },
+    });
+
+    return res.status(200).json({ 
+      user: {
+        ...user,
+        isChildAccount: !!isChildAccount,
+      }
+    });
   } catch (error) {
     return res.status(400).json({ message: 'Error fetching user' });
   }
@@ -1177,7 +1187,18 @@ export const getprofile = async (req: Request, res: Response) => {
         return res.status(400).json({ message: 'Account rejected.' });
     }
 
-    return res.status(200).json({ user: { ...user, xeroinformation } });
+    // Check if user is a child account
+    const isChildAccount = await prisma.childAccount.findUnique({
+      where: { email: user.email },
+    });
+
+    return res.status(200).json({ 
+      user: { 
+        ...user, 
+        xeroinformation,
+        isChildAccount: !!isChildAccount,
+      } 
+    });
   } catch (error) {
     return res.status(404).json(error);
   }
@@ -1313,8 +1334,16 @@ export const login = async (req: Request, res: Response) => {
       httpOnly: true,
     });
 
+    // Check if user is a child account
+    const isChildAccount = await prisma.childAccount.findUnique({
+      where: { email: data.email },
+    });
+
     return res.status(200).json({
-      user: data,
+      user: {
+        ...data,
+        isChildAccount: !!isChildAccount,
+      },
       accessToken: accessToken,
     });
   } catch (error) {

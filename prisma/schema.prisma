@@ -17,17 +17,17 @@ model User {
   emailVerificationId String?            @unique
   emailVerifcation    EmailVerification? @relation(fields: [emailVerificationId], references: [id])
 
-  createdAt          DateTime             @default(now())
-  name               String?              @db.VarChar(255)
-  photoURL           String?              @db.VarChar(255)
-  country            String?              @db.VarChar(100)
-  city               String?              @db.VarChar(100)
-  phoneNumber        String?              @db.VarChar(100)
-  updatedAt          DateTime             @updatedAt
-  status             Status               @default(pending)
+  createdAt          DateTime            @default(now())
+  name               String?             @db.VarChar(255)
+  photoURL           String?             @db.VarChar(255)
+  country            String?             @db.VarChar(100)
+  city               String?             @db.VarChar(100)
+  phoneNumber        String?             @db.VarChar(100)
+  updatedAt          DateTime            @updatedAt
+  status             Status              @default(pending)
   eventId            String?
   role               RoleEnum
-  photoBackgroundURL String?              @db.VarChar(255)
+  photoBackgroundURL String?             @db.VarChar(255)
   updateRefershToken DateTime?
   xeroRefreshToken   String?
   admin              Admin?
@@ -41,15 +41,16 @@ model User {
   creatorAgreement   CreatorAgreement[]
   feedback           Feedback[]
   finance            Finance?
-  invoice            Invoice[]            @relation("CreatedBy")
+  invoice            Invoice[]           @relation("CreatedBy")
   logistic           Logistic[]
-  sentMessages       Message[]            @relation("UserMessages")
+  sentMessages       Message[]           @relation("UserMessages")
   notifications      Notification[]
   paymentForm        PaymentForm?
   pitch              Pitch[]
-  approvedPitches    Pitch[]              @relation("ApprovedByClient")
-  rejectedPitches    Pitch[]              @relation("RejectedByClient")
-  maybePitches       Pitch[]              @relation("MaybeByClient")
+  approvedPitches    Pitch[]             @relation("ApprovedByClient")
+  rejectedPitches    Pitch[]             @relation("RejectedByClient")
+  maybePitches       Pitch[]             @relation("MaybeByClient")
+
   resetPasswordToken ResetPasswordToken?
   seenMessages       SeenMessage[]
   shortlisted        ShortListedCreator[]
@@ -144,10 +145,16 @@ model Client {
   createdAt  DateTime   @default(now())
   updatedAt  DateTime   @default(now()) @updatedAt
 
+  isParentAccount Boolean  @default(false)
+  parentClientId  String?
+  parentClient    Client?  @relation("ParentChildClients", fields: [parentClientId], references: [id])
+  childClients    Client[] @relation("ParentChildClients")
+
   // Client-specific relations
   clientCampaigns     ClientCampaign[]
   clientNotifications ClientNotification[]
   campaignClients     CampaignClient[]
+  childAccounts       ChildAccount[]
 }
 
 // New enum for client types
@@ -191,6 +198,26 @@ model ClientNotification {
   createdAt DateTime @default(now())
 
   client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+}
+
+model ChildAccount {
+  id          String    @id @unique @default(cuid())
+  email       String    @unique
+  password    String?
+  firstName   String?
+  lastName    String?
+  isActive    Boolean   @default(false)
+  invitedAt   DateTime  @default(now())
+  activatedAt DateTime?
+
+  parentClientId String
+  parentClient   Client @relation(fields: [parentClientId], references: [id], onDelete: Cascade)
+
+  invitationToken String?   @unique
+  tokenExpiresAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Role {
@@ -274,21 +301,21 @@ model TiktokUser {
   creator   Creator @relation(references: [id], fields: [creatorId])
 
   display_name String?
+  username     String?
   avatar_url   String?
 
   following_count Int?
   follower_count  Int?
   likes_count     Int?
 
-  totalLikes    Int?
-  totalComments Int?
-
-  averageLikes    Int?
-  averageComments Int?
-
-  engagement_rate Int?
-
-  lastUpdated DateTime? @updatedAt
+  totalLikes      Int?
+  totalComments   Int?
+  totalShares     Int?
+  averageLikes    Float?
+  averageComments Float?
+  averageShares   Float?
+  engagement_rate Float?
+  lastUpdated     DateTime?
 
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
@@ -656,7 +683,7 @@ model Campaign {
   updatedAt DateTime @updatedAt
 
   // V4 submission version tracking
-  submissionVersion String?
+  submissionVersion String? @default("v3") // "v2", "v3", "v4"
 
   // Add client campaign relation
   clientCampaigns ClientCampaign[]
@@ -850,6 +877,9 @@ model Pitch {
   ugcCredits          Int?
   agreementTemplateId String?
   Notification        Notification[]
+  username            String?
+  followerCount       String?
+  engagementRate      String?
   adminComments       String?
   adminCommentedBy    String?
   adminCommenter      Admin?         @relation("AdminCommenter", fields: [adminCommentedBy], references: [userId])
@@ -979,7 +1009,7 @@ model Submission {
 
   // V4 specific fields
   contentOrder      Int? // Order of content (Video 1, Video 2, etc.)
-  submissionVersion String?
+  submissionVersion String?          @default("v2") // "v2", "v3", "v4"
   captionHistory    CaptionHistory[]
 
   @@unique([userId, campaignId, submissionTypeId, contentOrder])
@@ -1489,6 +1519,8 @@ enum TimelineStatus {
 enum PitchType {
   video
   text
+  shortlisted
+  pitch
 }
 
 enum PitchStatus {

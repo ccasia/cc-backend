@@ -4,16 +4,30 @@ import {
   createV4SubmissionsForCreator,
   getV4Submissions,
   updatePostingLink,
-  submitV4Content
+  submitV4Content,
 } from '../service/submissionV4Service';
 import { V4SubmissionCreateData, PostingLinkUpdate, V4ContentSubmission } from '../types/submissionV4Types';
 import {
   getNextStatusAfterAdminAction,
   getNextStatusAfterClientAction,
-  getStatusAfterForwardingClientFeedback
+  getStatusAfterForwardingClientFeedback,
 } from '../utils/v4StatusUtils';
 import { checkAndCompleteV4Campaign } from '../service/submissionV4CompletionService';
+import { clients, io } from '../server';
+import { saveNotification } from './notificationController';
+import { notificationDraft } from '@helper/notification';
 import { saveCaptionToHistory } from '../utils/captionHistoryUtils';
+
+/**
+ * Determine effective campaign origin for V4 status flow
+ * V4 campaigns with client managers should follow CLIENT flow even if origin is ADMIN
+ */
+const getEffectiveCampaignOrigin = (campaign: any): 'CLIENT' | 'ADMIN' => {
+  const hasClientManagers = campaign.campaignAdmin?.some((ca: any) => 
+    ca.admin.user.role === 'client'
+  );
+  return hasClientManagers ? 'CLIENT' : campaign.origin;
+};
 
 /**
  * Update submission status based on individual content statuses
@@ -368,16 +382,32 @@ export const approveV4Submission = async (req: Request, res: Response) => {
       where: { id: submissionId },
       include: {
         submissionType: true,
-        campaign: {
+        user: {
           select: {
-            id: true,
-            origin: true
+            name: true,
+          },
+        },
+        campaign: {
+          include: {
+            campaignAdmin: {
+              include: {
+                admin: {
+                  include: {
+                    user: {
+                      select: {
+                        role: true,
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         },
         video: true,
         photos: true,
-        rawFootages: true
-      }
+        rawFootages: true,
+      },
     });
     
     if (!submission) {
@@ -388,10 +418,13 @@ export const approveV4Submission = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Not a v4 submission' });
     }
     
+    // Determine effective campaign type for status flow (V4 campaigns with client managers use CLIENT flow)
+    const effectiveCampaignOrigin = getEffectiveCampaignOrigin(submission.campaign);
+    
     // Use status utilities to determine next status
     const { submissionStatus: newStatus, videoStatus: contentStatus } = getNextStatusAfterAdminAction(
       action as any,
-      submission.campaign.origin as any
+      effectiveCampaignOrigin as any
     );
     
     // Save current caption to history before updating (if caption is being changed)
@@ -537,11 +570,62 @@ export const approveV4Submission = async (req: Request, res: Response) => {
     
     // Note: Content submissions are created when agreements are approved in the main submission workflow
     // This controller only handles the actual content submissions (VIDEO, PHOTO, RAW_FOOTAGE)
-    
-    const actionMessage = submission.campaign.origin === 'CLIENT' && action === 'approve' 
-      ? 'approved and sent to client for review'
-      : `${action}d successfully`;
-    
+
+    const actionMessage =
+      submission.campaign.origin === 'CLIENT' && action === 'approve'
+        ? 'approved and sent to client for review'
+        : `${action}d successfully`;
+
+    if (submission.campaign.origin === 'CLIENT' && action === 'approve') {
+      const clientUsers = submission.campaign.campaignAdmin.filter((ca) => ca.admin.user.role === 'client');
+
+      for (const clientUser of clientUsers) {
+        const { title, message } = notificationDraft(submission.campaign.name, 'Admin', submission.user.name as string);
+        const clientUserId = clientUser.admin.userId;
+
+        const notification = saveNotification({
+          userId: clientUserId,
+          message: message,
+          title: title,
+          entity: 'Draft',
+          entityId: submission.campaign.id,
+        });
+
+        const clientSocketId = clients.get(clientUserId);
+        if (clientSocketId) {
+          io.to(clientSocketId).emit('notification', notification);
+        }
+      }
+    } else if (action === 'request_revision' || action === 'rejected') {
+      const creatorId = submission.userId;
+      const contentType = submission.submissionType.type;
+
+      let content = '';
+
+      if (contentType === 'VIDEO') {
+        content = 'Video';
+      } else if (contentType === 'RAW_FOOTAGE') {
+        content = 'Raw Footage';
+      } else if (contentType === 'PHOTO') {
+        content = 'Photo';
+      } else if (contentType === 'POSTING') {
+        content = 'Posting Link';
+      }
+
+      const notification = await saveNotification({
+        userId: creatorId,
+        title: `📝 Feedback for ${content} for ${submission.campaign.name} is ready to view.`, // Double check with Naylisa for title/messages
+        message: `CSM has requested changes for your submission to the "${submission.campaign.name}" campaign. Please review the feedback.`,
+        entity: 'Draft',
+        entityId: submission.campaign.id,
+      });
+
+      const creatorSocketId = clients.get(creatorId);
+      if (io && creatorSocketId) {
+        io.to(creatorSocketId).emit('notification', notification);
+      }
+    }
+
     console.log(`✅ V4 submission ${submissionId} ${actionMessage} by admin ${currentUserId}`);
     
     // Check if campaign is now complete and generate invoice if needed
@@ -595,16 +679,27 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
       where: { id: submissionId },
       include: {
         submissionType: true,
+        user: {
+          select: {
+            name: true,
+          },
+        },
         campaign: {
           include: {
             campaignAdmin: {
               include: {
                 admin: {
-                  include: { user: true }
-                }
-              }
-            }
-          }
+                  include: {
+                    user: {
+                      select: {
+                        role: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
         },
         video: true,
         photos: true,
@@ -620,9 +715,10 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
       return res.status(400).json({ message: 'Not a v4 submission' });
     }
     
-    // Verify this is a client-created campaign
-    if (submission.campaign.origin !== 'CLIENT') {
-      return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
+    // Verify this campaign has client managers (either CLIENT origin or V4 with client managers)
+    const effectiveCampaignOrigin = getEffectiveCampaignOrigin(submission.campaign);
+    if (effectiveCampaignOrigin !== 'CLIENT') {
+      return res.status(400).json({ message: 'This endpoint is only for campaigns with client approval flow' });
     }
     
     // Verify client has access to this campaign
@@ -732,6 +828,38 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
         byClient: true,
         updatedAt: new Date().toISOString()
       });
+    }
+
+    // Notifications for admins
+    const adminUsers = submission.campaign.campaignAdmin.filter((ca) => ca.admin.user.role === 'admin');
+    const creatorName = submission.user?.name;
+
+    let title = '';
+    let message = '';
+
+    if (action === 'approve' && newSubmissionStatus === 'CLIENT_APPROVED') {
+      title = '✅ Draft Approved';
+      message = `A draft for ${submission.campaign.name} has been approved for ${creatorName}`;
+    } else if (action === 'request_changes') {
+      title = '📝 Feedback ready';
+      message = `Check client notes for ${submission.campaign.name} for ${creatorName}`;
+    }
+
+    for (const adminUser of adminUsers) {
+      const adminUserId = adminUser.admin.userId;
+      const notification = await saveNotification({
+        userId: adminUserId,
+        title: title,
+        message: message,
+        entity: 'Draft',
+        entityId: submission.campaign.id,
+      });
+
+      const adminSocketId = clients.get(adminUserId);
+
+      if (adminSocketId) {
+        io.to(adminSocketId).emit('notification', notification);
+      }
     }
     
     console.log(`✅ V4 submission ${submissionId} ${action}d by client ${clientId}`);
@@ -1163,8 +1291,9 @@ export const approveIndividualContentV4 = async (req: Request, res: Response) =>
         return res.status(400).json({ message: 'Not a v4 submission' });
       }
       
-      // Determine status based on campaign origin
-      const newStatus = submission.campaign.origin === 'CLIENT' ? 'SENT_TO_CLIENT' : 'APPROVED';
+      // Determine status based on effective campaign origin (includes V4 client manager check)
+      const effectiveCampaignOrigin = getEffectiveCampaignOrigin(submission.campaign);
+      const newStatus = effectiveCampaignOrigin === 'CLIENT' ? 'SENT_TO_CLIENT' : 'APPROVED';
       
       // Update video
       updatedContent = await prisma.video.update({
@@ -1183,7 +1312,21 @@ export const approveIndividualContentV4 = async (req: Request, res: Response) =>
         where: { id: contentId },
         include: { 
           submission: { 
-            include: { campaign: true } 
+            include: { 
+              campaign: {
+                include: {
+                  campaignAdmin: {
+                    include: {
+                      admin: {
+                        include: {
+                          user: true
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            } 
           } 
         }
       });
@@ -1198,8 +1341,9 @@ export const approveIndividualContentV4 = async (req: Request, res: Response) =>
         return res.status(400).json({ message: 'Not a v4 submission' });
       }
       
-      // Determine status based on campaign origin
-      const newStatus = submission.campaign.origin === 'CLIENT' ? 'SENT_TO_CLIENT' : 'APPROVED';
+      // Determine status based on effective campaign origin (includes V4 client manager check)
+      const effectiveCampaignOrigin = getEffectiveCampaignOrigin(submission.campaign);
+      const newStatus = effectiveCampaignOrigin === 'CLIENT' ? 'SENT_TO_CLIENT' : 'APPROVED';
       
       // Update raw footage
       updatedContent = await prisma.rawFootage.update({
@@ -1218,7 +1362,21 @@ export const approveIndividualContentV4 = async (req: Request, res: Response) =>
         where: { id: contentId },
         include: { 
           submission: { 
-            include: { campaign: true } 
+            include: { 
+              campaign: {
+                include: {
+                  campaignAdmin: {
+                    include: {
+                      admin: {
+                        include: {
+                          user: true
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            } 
           } 
         }
       });
@@ -1233,8 +1391,9 @@ export const approveIndividualContentV4 = async (req: Request, res: Response) =>
         return res.status(400).json({ message: 'Not a v4 submission' });
       }
       
-      // Determine status based on campaign origin
-      const newStatus = submission.campaign.origin === 'CLIENT' ? 'SENT_TO_CLIENT' : 'APPROVED';
+      // Determine status based on effective campaign origin (includes V4 client manager check)
+      const effectiveCampaignOrigin = getEffectiveCampaignOrigin(submission.campaign);
+      const newStatus = effectiveCampaignOrigin === 'CLIENT' ? 'SENT_TO_CLIENT' : 'APPROVED';
       
       // Update photo
       updatedContent = await prisma.photo.update({

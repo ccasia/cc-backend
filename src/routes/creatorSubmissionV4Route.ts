@@ -1,10 +1,10 @@
 import { Router } from 'express';
-import {
+import { 
   getMyV4Submissions,
   submitMyV4Content,
   updateMyPostingLink,
   getMySubmissionDetails,
-  getMyCampaignOverview,
+  getMyCampaignOverview
 } from '../controller/creatorSubmissionV4Controller';
 import { isLoggedIn } from '../middleware/onlyLogin';
 import { isCreator } from '../middleware/isCreator';

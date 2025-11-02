@@ -3,6 +3,9 @@ import { PrismaClient } from '@prisma/client';
 import amqplib from 'amqplib';
 import { getV4Submissions, updatePostingLink } from '../service/submissionV4Service';
 import { PostingLinkUpdate } from '../types/submissionV4Types';
+import { io, clients } from '../server';
+import { saveNotification } from './notificationController';
+import { notificationDraft } from '@helper/notification';
 import { saveCaptionToHistory } from '../utils/captionHistoryUtils';
 
 const prisma = new PrismaClient();
@@ -15,14 +18,15 @@ export const getMyV4Submissions = async (req: Request, res: Response) => {
   const { campaignId } = req.query;
   const creatorId = req.session.userid;
 
-  if (!creatorId) {
-    return res.status(401).json({ message: 'You are not logged in' });
-  }
-
-  if (!campaignId) {
-    return res.status(400).json({ message: 'campaignId is required' });
-  }
   try {
+    if (!creatorId) {
+      return res.status(401).json({ message: 'You are not logged in' });
+    }
+
+    if (!campaignId) {
+      return res.status(400).json({ message: 'campaignId is required' });
+    }
+
     // Verify creator has access to this campaign
     const creatorAccess = await prisma.shortListedCreator.findFirst({
       where: {
@@ -38,8 +42,6 @@ export const getMyV4Submissions = async (req: Request, res: Response) => {
     }
 
     const submissions = await getV4Submissions(campaignId as string, creatorId);
-
-    console.log(submissions);
 
     // Filter feedback for each submission based on submission status and type
     const submissionsWithFilteredFeedback = submissions.map((submission) => {
@@ -137,6 +139,7 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
     const submission = await prisma.submission.findUnique({
       where: { id: submissionId },
       include: {
+        user: true,
         submissionType: true,
         campaign: {
           include: {
@@ -243,41 +246,47 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
     }
 
     // Handle raw footage replacement for V4 resubmissions
-    if (isResubmission && uploadedRawFootages.length > 0) {
-      if (isSelectiveUpdate && keepExistingRawFootages.length > 0) {
-        // Selective update: only delete raw footages that are NOT in the keepExistingRawFootages list
-        const existingRawFootageIds = submission.rawFootages?.map((rawFootage) => rawFootage.id) || [];
-        const keepRawFootageIds = keepExistingRawFootages.map((rawFootage) => rawFootage.id);
-        const rawFootagesToDelete = existingRawFootageIds.filter((id) => !keepRawFootageIds.includes(id));
+    if (isResubmission) {
+      // ✅ Run regardless of new files
+      // Check if we have raw footages to manage (either keeping some or uploading new ones)
+      const hasRawFootageChanges =
+        uploadedRawFootages.length > 0 || (isSelectiveUpdate && keepExistingRawFootages.length > 0);
 
-        console.log(
-          `🎬 V4 Controller - Selective update: keeping ${keepRawFootageIds.length} raw footages, deleting ${rawFootagesToDelete.length} raw footages`,
-        );
-        console.log(`🎬 V4 Controller - Raw footages to keep:`, keepRawFootageIds);
-        console.log(`🎬 V4 Controller - Raw footages to delete:`, rawFootagesToDelete);
+      if (hasRawFootageChanges) {
+        if (isSelectiveUpdate && keepExistingRawFootages.length >= 0) {
+          const existingRawFootageIds = submission.rawFootages?.map((rawFootage) => rawFootage.id) || [];
+          const keepRawFootageIds = keepExistingRawFootages.map((rawFootage) => rawFootage.id);
+          const rawFootagesToDelete = existingRawFootageIds.filter((id) => !keepRawFootageIds.includes(id));
 
-        if (rawFootagesToDelete.length > 0) {
-          await prisma.rawFootage.deleteMany({
-            where: {
-              id: { in: rawFootagesToDelete },
-              submissionId: submissionId,
-            },
-          });
-          console.log(`🎬 V4 Controller - Selectively deleted ${rawFootagesToDelete.length} raw footages`);
-        }
-      } else {
-        // Full replacement: delete all existing raw footages (original behavior)
-        console.log(
-          `🎬 V4 Controller - Full replacement detected, deleting ${submission.rawFootages?.length || 0} existing raw footages`,
-        );
+          console.log(
+            `🎬 V4 Controller - Selective update: keeping ${keepRawFootageIds.length} raw footages, deleting ${rawFootagesToDelete.length} raw footages`,
+          );
+          console.log(`🎬 V4 Controller - Raw footages to keep:`, keepRawFootageIds);
+          console.log(`🎬 V4 Controller - Raw footages to delete:`, rawFootagesToDelete);
 
-        if (submission.rawFootages?.length > 0) {
-          await prisma.rawFootage.deleteMany({
-            where: {
-              submissionId: submissionId,
-            },
-          });
-          console.log(`🎬 V4 Controller - Deleted ${submission.rawFootages.length} existing raw footages`);
+          if (rawFootagesToDelete.length > 0) {
+            await prisma.rawFootage.deleteMany({
+              where: {
+                id: { in: rawFootagesToDelete },
+                submissionId: submissionId,
+              },
+            });
+            console.log(`🎬 V4 Controller - Selectively deleted ${rawFootagesToDelete.length} raw footages`);
+          }
+        } else if (uploadedRawFootages.length > 0) {
+          // Full replacement: delete all existing raw footages (original behavior)
+          console.log(
+            `🎬 V4 Controller - Full replacement detected, deleting ${submission.rawFootages?.length || 0} existing raw footages`,
+          );
+
+          if (submission.rawFootages?.length > 0) {
+            await prisma.rawFootage.deleteMany({
+              where: {
+                submissionId: submissionId,
+              },
+            });
+            console.log(`🎬 V4 Controller - Deleted ${submission.rawFootages.length} existing raw footages`);
+          }
         }
       }
     }
@@ -368,11 +377,25 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
       }
     }
 
+    // Calculate if raw footages were removed
+    const hasRawFootageRemoval =
+      isResubmission && isSelectiveUpdate && keepExistingRawFootages.length < (submission.rawFootages?.length || 0);
+
     // Check if there are meaningful changes that warrant status update
     const hasMeaningfulChanges =
       hasUploadedFiles ||
+      photosToRemove.length > 0 || // photos removed
+      hasRawFootageRemoval || // raw footages removed
       (isResubmission && isSelectiveUpdate && keepExistingPhotos.length !== (submission.photos?.length || 0)) ||
       (caption && caption.trim() !== (submission.caption || '').trim());
+
+    console.log('🔍 Checking for meaningful changes:', {
+      hasUploadedFiles,
+      photosToRemove: photosToRemove.length,
+      hasRawFootageRemoval,
+      hasCaptionChange: caption && caption.trim() !== (submission.caption || '').trim(),
+      hasMeaningfulChanges,
+    });
 
     // Update submission status to PENDING_REVIEW if there are meaningful changes
     if (hasMeaningfulChanges) {
@@ -393,6 +416,8 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
           hasVideo: uploadedVideos.length > 0,
           hasPhotos: uploadedPhotos.length > 0,
           hasRawFootage: uploadedRawFootages.length > 0,
+          hasPhotoRemoval: photosToRemove.length > 0,
+          hasRawFootageRemoval,
           submittedAt: new Date().toISOString(),
           creatorId,
           newStatus: 'PENDING_REVIEW',
@@ -402,6 +427,69 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
       console.log(
         `📤 Creator ${creatorId} submitted V4 content changes for submission ${submissionId}, status updated to PENDING_REVIEW`,
       );
+    }
+
+    // Update individual photo statuses to PENDING when resubmitting
+    if (hasMeaningfulChanges && submission.photos && submission.photos.length > 0) {
+      // Get all photo IDs that are NOT being removed
+      const remainingPhotoIds = submission.photos
+        .filter((photo) => !photosToRemove.includes(photo.id))
+        .map((photo) => photo.id);
+
+      if (remainingPhotoIds.length > 0) {
+        await prisma.photo.updateMany({
+          where: {
+            id: { in: remainingPhotoIds },
+            submissionId: submissionId,
+          },
+          data: {
+            status: 'PENDING',
+            feedbackAt: null, // Clear previous feedback timestamp
+          },
+        });
+        console.log(`📸 Updated ${remainingPhotoIds.length} photo statuses to PENDING`);
+      }
+    }
+
+    // Update individual raw footage statuses to PENDING when resubmitting
+    if (hasMeaningfulChanges && isResubmission && isSelectiveUpdate) {
+      const keepRawFootageIds = keepExistingRawFootages.map((rf) => rf.id);
+
+      if (keepRawFootageIds.length > 0) {
+        await prisma.rawFootage.updateMany({
+          where: {
+            id: { in: keepRawFootageIds },
+            submissionId: submissionId,
+          },
+          data: {
+            status: 'PENDING',
+            feedbackAt: null, // Clear previous feedback timestamp
+          },
+        });
+        console.log(`🎬 Updated ${keepRawFootageIds.length} raw footage statuses to PENDING`);
+      }
+    }
+
+    const adminUsers = submission.campaign.campaignAdmin.filter(
+      (ca) => ca.admin.user.role === 'admin' || ca.admin.user.role === 'superadmin',
+    );
+
+    for (const adminUser of adminUsers) {
+      const { title, message } = notificationDraft(submission.campaign.name, 'Admin', submission.user.name as string);
+      const adminUserId = adminUser.admin.userId;
+
+      const notification = saveNotification({
+        userId: adminUserId,
+        message: message,
+        title: title,
+        entity: 'Draft',
+        entityId: submission.campaign.id,
+      });
+
+      const adminSocketId = clients.get(adminUserId);
+      if (adminSocketId) {
+        io.to(adminSocketId).emit('notification', notification);
+      }
     }
 
     res.status(200).json({

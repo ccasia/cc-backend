@@ -8,14 +8,14 @@ import { uploadPitchVideo, uploadImage } from '@configs/cloudStorage.config';
 import amqplib from 'amqplib';
 import { activeProcesses, clients, io } from '../server';
 import { Entity, PrismaClient, Submission } from '@prisma/client';
-import { saveNotification } from '@controllers/notificationController';
 import { spawn } from 'child_process';
 import path from 'path';
 
 import dayjs from 'dayjs';
-import { notificationDraft } from './notification';
 import { createNewTask, getTaskId, updateTask } from '@services/kanbanService';
 import { createNewRowData } from '@services/google_sheets/sheets';
+import { saveNotification } from '@controllers/notificationController';
+import { notificationDraft } from './notification';
 
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
 Ffmpeg.setFfprobePath(ffprobePath.path);
@@ -186,7 +186,6 @@ const checkCurrentSubmission = async (submissionId: string) => {
     const hasPhotos = submission.campaign.photos ? photosWithRevision === 0 : true;
 
     allDeliverablesSent = hasVideos && hasRawFootage && hasPhotos;
-    
   }
 
   // Update submission status based on deliverable checks
@@ -258,7 +257,6 @@ async function deleteFileIfExists(filePath: string) {
           const content: any = JSON.parse(msg.content.toString());
           console.log('RECIEVED', content);
           const { filePaths } = content;
-          
 
           try {
             const submission = await prisma.submission.findUnique({
@@ -426,18 +424,6 @@ async function deleteFileIfExists(filePath: string) {
                 }
               }
 
-              const { title, message } = notificationDraft(data.campaign.name, 'Creator');
-
-              const notification = await saveNotification({
-                userId: data.userId,
-                message: message,
-                title: title,
-                entity: 'Draft',
-                entityId: data.campaign.id,
-              });
-
-              io?.to(clients.get(data.userId)).emit('notification', notification);
-
               const { title: adminTitle, message: adminMessage } = notificationDraft(
                 data.campaign.name,
                 'Admin',
@@ -482,10 +468,6 @@ async function deleteFileIfExists(filePath: string) {
                       });
                     }
                   }
-                }
-
-                if (io) {
-                  io.to(clients.get(item.adminId)).emit('notification', notification);
                 }
               }
 
@@ -560,9 +542,7 @@ async function deleteFileIfExists(filePath: string) {
 
             // For photos
             if (filePaths?.photos?.length) {
-              
               if (content.isV4 && content.preserveExistingMedia) {
-                
                 const urls = await Promise.all(
                   filePaths.photos.map(async (photoPath: any) => {
                     const photoFileName = `${submission.id}_${path.basename(photoPath)}`;
@@ -594,23 +574,57 @@ async function deleteFileIfExists(filePath: string) {
                   filePaths.photos.map(async (photoPath: any) => {
                     const photoFileName = `${submission.id}_${path.basename(photoPath)}`;
                     const photoPublicURL = await uploadImage(photoPath, photoFileName, content.folder);
+                    const urls = await Promise.all(
+                      filePaths.photos.map(async (photoPath: any) => {
+                        const photoFileName = `${submission.id}_${path.basename(photoPath)}`;
+                        const photoPublicURL = await uploadImage(photoPath, photoFileName, content.folder);
 
-                    if (!requestChangePhotos.length) {
-                      await prisma.photo.create({
-                        data: {
-                          url: photoPublicURL,
-                          submissionId: submission.id,
-                          campaignId: content.campaignId,
-                          userId: submission.userId,
-                        },
-                      });
-                    }
-                    // await fs.promises.unlink(photoPath);
+                        if (!requestChangePhotos.length) {
+                          await prisma.photo.create({
+                            data: {
+                              url: photoPublicURL,
+                              submissionId: submission.id,
+                              campaignId: content.campaignId,
+                              userId: submission.userId,
+                            },
+                          });
+                        }
+                        // await fs.promises.unlink(photoPath);
+                        if (!requestChangePhotos.length) {
+                          await prisma.photo.create({
+                            data: {
+                              url: photoPublicURL,
+                              submissionId: submission.id,
+                              campaignId: content.campaignId,
+                              userId: submission.userId,
+                            },
+                          });
+                        }
+                        // await fs.promises.unlink(photoPath);
 
+                        return photoPublicURL;
+                      }),
+                    );
                     return photoPublicURL;
                   }),
                 );
 
+                if (requestChangePhotos.length) {
+                  await Promise.all(
+                    requestChangePhotos.map((photo, index) =>
+                      prisma.photo.update({
+                        where: { id: photo.id },
+                        data: {
+                          url: urls[index],
+                          submissionId: submission.id,
+                          campaignId: content.campaignId,
+                          userId: submission.userId,
+                          status: 'PENDING',
+                        },
+                      }),
+                    ),
+                  );
+                }
                 if (requestChangePhotos.length) {
                   await Promise.all(
                     requestChangePhotos.map((photo, index) =>
