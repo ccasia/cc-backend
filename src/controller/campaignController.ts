@@ -5924,6 +5924,7 @@ export const activateClientCampaign = async (req: Request, res: Response) => {
           title: title,
           message: message,
           entity: 'Campaign',
+          entityId: campaign.id,
           campaignId: campaign.id,
         });
         const socketId = clients.get(adminUser.id);
