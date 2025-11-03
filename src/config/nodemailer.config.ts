@@ -38,13 +38,16 @@ const transport = nodemailer.createTransport({
 
 // sendMail(transport, mailOptions);
 
+export interface CreatorProfile {
+  profilePicUrl: string;
+  name: string;
+  instagramHandle: string;
+  followers: string;
+  engagement: string;
+}
+
 // Generic email sending function
-export const sendEmail = async (mailOptions: {
-  to: string;
-  subject: string;
-  html: string;
-  from?: string;
-}) => {
+export const sendEmail = async (mailOptions: { to: string; subject: string; html: string; from?: string }) => {
   try {
     await transport.sendMail({
       from: mailOptions.from || user,
@@ -68,18 +71,132 @@ export const ClientInvitation = (email: string, inviteToken: string, companyName
         <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Client Portal Invitation</title>
-        </head>
-        <body style="font-family: Arial, sans-serif; line-height: 1.6; background-color: #f4f4f4; margin: 0; padding: 0;">
-          <div style="max-width: 600px; margin: auto; padding: 20px; background: #fff; border-radius: 5px; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);">
-            <h1 style="margin: 0 0 20px;">Welcome to Cult Creative Client Portal!</h1>
-            <p style="margin: 0 0 20px;">Hello,</p>
-            <p style="margin: 0 0 20px;">You have been invited to access the client portal for ${companyName}.</p>
-            <p style="margin: 0 0 20px;">Please click on the following link to set up your password and access your account:</p>
-            <a href="${process.env.BASE_EMAIL_URL}/auth/jwt/client/setup-password?token=${inviteToken}" style="display: inline-block; padding: 10px 20px; background-color: #007bff; color: #fff; text-decoration: none; border-radius: 5px;">Set Up Your Account</a>
-            <p style="margin: 20px 0 0;">If you did not expect this invitation, please contact support.</p>
-          </div>
-        </body>
+        <title>Verify Your Email Address</title>
+        <style type="text/css">
+          @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap');
+          @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
+        </style>
+      </head>
+      <body style="margin: 0; padding: 0; background-color: #f0f2f5; font-family: 'Inter', Arial, sans-serif;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #f0f2f5;">
+          <tr>
+            <td align="center" style="padding: 20px 10px;">
+              <!-- Main Content Wrapper -->
+              <table role="presentation" width="500" cellspacing="0" cellpadding="0" border="0" align="center" style="max-width: 400px; width: 100%; background-color: #ffffff; border-radius: 12px; overflow: hidden;">
+                
+                <!-- Header: Logo -->
+                <tr>
+                  <td style="padding: 30px 20px 10px 20px;">
+                    <img src="https://drive.google.com/uc?id=1wbwEJp2qX5Hb9iirUQJVCmdpq-fg34oE" alt="Cult Creative Logo" width="120">
+                  </td>
+                </tr>
+
+                <!-- Headline -->
+                <tr>
+                  <td style="padding: 10px 30px 20px 30px;">
+                    <h1 style="margin: 0; font-family: 'Instrument Serif', Georgia, serif; font-size: 32px; color: #000000; font-weight: 400; line-height: 1.2;">
+                      Action Required: Please Verify Your Email Address
+                    </h1>
+                  </td>
+                </tr>
+
+                <!-- Rocket Icon -->
+                <tr>
+                  <td align="center" style="padding: 10px 20px;">
+                    <img src="https://drive.google.com/uc?id=1UWOHdVIMEgCDwquGxSPkCp1TAx5Tu76G" alt="Rocket Icon" width="80" style="width: 80px; height: auto;">
+                  </td>
+                </tr>
+
+                <!-- Body Text -->
+                <tr>
+                  <td style="padding: 20px 20px;">
+                    <p style="margin: 0 0 15px 0; font-family: 'Inter', Arial, sans-serif; font-size: 16px; color: #000000; line-height: 1.5;">
+                      Hi <strong>${companyName}</strong>,
+                    </p>
+                    <p style="margin: 0; font-family: 'Inter', Arial, sans-serif; font-size: 16px; color: #000000; line-height: 1.5;">
+                      Thanks for signing up with Cult Creative! We just need to confirm that this is your email address before we can activate your account and let you get started. Click the button below to <a href="${process.env.BASE_EMAIL_URL}/auth/jwt/client/setup-password?token=${inviteToken}" target="_blank" style="color: #1c4dff; text-decoration: none;">confirm your email</a> and unlock all features.
+                    </p>
+                  </td>
+                </tr>
+
+                <!-- Main CTA Button -->
+                <tr>
+                  <td style="padding: 20px 20px;">
+                    <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" width="100%">
+                      <tr>
+                        <td align="center" style="background-color: #1340FF; border-radius: 50px;">
+                          <a href="${process.env.BASE_EMAIL_URL}/auth/jwt/client/setup-password?token=${inviteToken}" target="_blank" style="display: block; padding: 16px 20px; font-family: 'Inter', Arial, sans-serif; font-size: 16px; font-weight: bold; color: #ffffff; text-decoration: none; border-radius: 50px;">Confirm My Email</a>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+
+                <!-- Fallback Link -->
+                <tr>
+                  <td style="padding: 20px 20px;">
+                    <p style="margin: 0; font-family: 'Inter', Arial, sans-serif; font-size: 14px; color: #919191; line-height: 1.5;">
+                      If the button above does not work, please copy and paste the following link into your web browser:
+                      <br>
+                      <p target="_blank" style="color: #1340FF; text-decoration: underline;">${process.env.BASE_EMAIL_URL}/auth/jwt/client/setup-password?token=${inviteToken}</p>
+                    </p>
+                  </td>
+                </tr>
+
+                <!-- Disclaimer -->
+                <tr>
+                  <td style="padding: 0 20px 20px 20px;">
+                     <p style="margin: 0; font-family: 'Inter', Arial, sans-serif; font-size: 14px; color: #919191; line-height: 1.5;">
+                      Didn't sign up for this? You can safely ignore this email and your account will not be created.
+                    </p>
+                  </td>
+                </tr>
+
+
+               <!-- Footer Section -->
+                    <tr>
+                      <td style="padding: 20px 20px 40px;">
+                        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #f7f7f7;">
+                          
+                        <!-- Social Icons -->
+                          <tr>
+                            <td align="center" style="padding: 20px 0 0;">
+                              <table role="presentation" cellspacing="0" cellpadding="0" border="0">
+                                <tr>
+                                  <td style="padding: 0 15px;"><a href="https://www.instagram.com/cultcreativeasia/" target="_blank"><img src="https://drive.google.com/uc?id=1OA2BS5tMo30D_OG-u78ZgpOcLw5BAv1F" alt="Instagram" width="28"></a></td>
+                                  <td style="padding: 0 15px;"><a href="https://www.linkedin.com/company/cultcreativeapp/" target="_blank"><img src="https://drive.google.com/uc?id=1qIDwkECdjVjm2ILZCSdHrhzJ4YspKzMX" alt="LinkedIn" width="28"></a></td>
+                                  <td style="padding: 0 15px;"><a href="https://www.cultcreative.asia" target="_blank"><img src="https://drive.google.com/uc?id=1FcowsKfDi6EpQF8n59VcG7zU5Txe8NMA" alt="Website" width="28"></a></td>
+                                </tr>
+                              </table>
+                            </td>
+                          </tr>
+                          
+                          <!-- Email Link -->
+                          <tr>
+                            <td align="center" style="padding-bottom: 15px;">
+                              <a href="mailto:hello@cultcreative.asia" style="font-family: Arial, sans-serif; font-size: 14px; color: #333333; text-decoration: underline; font-weight: bold;">hello@cultcreative.asia</a>
+                            </td>
+                          </tr>
+                          <!-- Company Info -->
+                          <tr>
+                            <td align="center">
+                              <p style="margin: 0; font-family: Arial, sans-serif; font-size: 11px; color: #aaaaaa; line-height: 1.5;">
+                                Cult Creative Sdn. Bhd.<br>
+                                A-5-3A, Block A, Jaya One, Jln Profesor Diraja Ungku Aziz,<br>
+                                Seksyen 13, 46200 Petaling Jaya, Selangor, Malaysia<br>
+                                Copyright © ${new Date().getFullYear()} Cult Creative, All rights reserved
+                              </p>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+    </body>
+        
       `,
     })
     .catch((err) => {
@@ -1111,6 +1228,131 @@ export const rejectInvoiceEmail = async (email: string, campaignName: string, re
     });
 };
 
+export const sentAgreement = (
+  email: string,
+  campaignName: string,
+  campaignId: string,
+  campaignImage: string,
+  creatorName: string,
+) => {
+  transport
+    .sendMail({
+      from: user,
+      to: email,
+      subject: `🎉 Confirm Your Spot in ${campaignName}`,
+      html: `
+      <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>🎉 Confirm Your Spot in${campaignName}</title>
+      <style type="text/css">
+          @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap');
+          @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400&display=swap');
+      </style>
+      </head>
+            <body style="margin: 0; padding: 0; background-color: #f0f2f5; font-family: Arial, sans-serif;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #f0f2f5;">
+          <tr>
+            <td align="center" style="padding: 20px 10px;">
+              <!-- Main Content Wrapper -->
+              <table role="presentation" width="500" cellspacing="0" cellpadding="0" border="0" align="center" style="max-width: 600px; width: 100%; background-color: #ffffff; border-radius: 8px; overflow: hidden;">
+
+                <!-- Header: Logo -->
+                <tr>
+                  <td>
+                    <img src="https://drive.google.com/uc?id=1wbwEJp2qX5Hb9iirUQJVCmdpq-fg34oE" alt="Cult Creative Logo" width="100" style="display: block; width: 100px; padding: 20px 20px 10px 20px;">
+                  </td>
+                </tr>
+
+                <!-- Headline -->
+                <tr>
+                  <td style="padding: 20px 20px; text-align: left;">
+                    <h1 style="margin: 0; font-family: 'Instrument Serif', Georgia, 'Times New Roman', Times, serif; font-size: 28px; color: #1c1e21; font-weight: 400; line-height: 36px;">
+                      🎉 Confirm Your Spot in ${campaignName} ✨
+                    </h1>
+                  </td>
+                </tr>
+
+                <!-- Campaign Image -->
+                <tr>
+                  <td style="padding: 20px 20px;">
+                    <img src="${campaignImage}" alt="Campaign Image" width="520" style="display: block; width: 100%; height: auto; border-radius: 8px;">
+                  </td>
+                </tr>
+
+                <!-- Body Text -->
+                <tr>
+                  <td style="padding: 20px 40px; text-align: center;">
+                    <p style="margin: 0; font-family: 'Inter', Arial, Helvetica, san-serif; font-size: 16px; color: #333333; line-height: 20px;">
+                      Hi ${creatorName}, Congrats! You've been shortlisted for <a href="${process.env.BASE_EMAIL_URL}/dashboard/campaign/VUquQR/HJUboKDBwJi71KQ==/manage/detail/${campaignId}" target="_blank" style="color: #007bff; text-decoration: none;">${campaignName}</a>.
+                      <br>
+                      Stay tuned for updates!
+                    </p>
+                  </td>
+                </tr>
+
+                <!-- CTA Button -->
+                <tr>
+                  <td style="padding: 20px 20px;">
+                    <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" width="100%">
+                      <tr>
+                        <td align="center" style="background-color: #1c4dff; border-radius: 50px;">
+                          <a href="${process.env.BASE_EMAIL_URL}/dashboard/campaign/VUquQR/HJUboKDBwJi71KQ==/manage/detail/${campaignId}" target="_blank" style="display: inline-block; padding: 16px 40px; font-family: Arial, sans-serif; font-size: 18px; font-weight: bold; color: #ffffff; text-decoration: none; border-radius: 50px;">View Campaign Details</a>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+
+                <!-- Footer Section -->
+                <tr>
+                  <td style="padding: 20px 20px 40px;">
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #f7f7f7;">
+                      <!-- Social Icons -->
+                      <tr>
+                        <td align="center" style="padding: 20px 0 0;">
+                          <table role="presentation" cellspacing="0" cellpadding="0" border="0">
+                            <tr>
+                              <td style="padding: 0 15px;"><a href="https://www.instagram.com/cultcreativeasia/" target="_blank"><img src="https://drive.google.com/uc?id=1OA2BS5tMo30D_OG-u78ZgpOcLw5BAv1F" alt="Instagram" width="28"></a></td>
+                              <td style="padding: 0 15px;"><a href="https://www.linkedin.com/company/cultcreativeapp/" target="_blank"><img src="https://drive.google.com/uc?id=1qIDwkECdjVjm2ILZCSdHrhzJ4YspKzMX" alt="LinkedIn" width="28"></a></td>
+                              <td style="padding: 0 15px;"><a href="https://www.cultcreative.asia" target="_blank"><img src="https://drive.google.com/uc?id=1FcowsKfDi6EpQF8n59VcG7zU5Txe8NMA" alt="Website" width="28"></a></td>
+                            </tr>
+                          </table>
+                        </td>
+                      </tr>
+                      <!-- Email Link -->
+                      <tr>
+                        <td align="center" style="padding-bottom: 15px;">
+                          <a href="mailto:hello@cultcreative.asia" style="font-family: Arial, sans-serif; font-size: 14px; color: #333333; text-decoration: underline; font-weight: bold;">hello@cultcreative.asia</a>
+                        </td>
+                      </tr>
+                      <!-- Company Info -->
+                      <tr>
+                        <td align="center">
+                          <p style="margin: 0; font-family: Arial, sans-serif; font-size: 11px; color: #aaaaaa; line-height: 1.5;">
+                            Cult Creative Sdn. Bhd.<br>
+                            A-5-3A, Block A, Jaya One, Jln Profesor Diraja Ungku Aziz,<br>
+                            Seksyen 13, 46200 Petaling Jaya, Selangor, Malaysia<br>
+                            Copyright © ${new Date().getFullYear()} Cult Creative, All rights reserved
+                          </p>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </body>
+      `,
+    })
+    .catch((err) => {
+      console.log(err);
+      return err;
+    });
+};
+
 // Admin Notifications
 
 export const csmAdminInvoice = (email: string, campaignName: string, adminName: string, campaignImage: string) => {
@@ -1318,6 +1560,190 @@ export const forgetPasswordEmail = (email: string, token: string, name?: string)
     </div>
 </body>
           `,
+    })
+    .catch((err) => {
+      return err;
+    });
+};
+
+// Client Notifications
+export const csShortlistCreators = (
+  email: string,
+  companyName: string,
+  actionCount: number,
+  creators: CreatorProfile[],
+  campaignId: string,
+) => {
+  const creatorList = creators
+    .map(
+      (creator) => `
+   <tr>
+    <td style="padding: 10px 20px 0;">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+        <tr>
+          <td style="padding-bottom: 0;">
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border: 1px solid #e7e7e7; border-radius: 12px;">
+              <tr>
+                  <td style="padding: 16px;">
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                      <tr>
+                        <td width="50" valign="top" style="padding-right: 15px;">
+                          <img src="${creator.profilePicUrl}" alt="${creator.name}" width="32" style="width: 32px; border-radius: 50%;">
+                        </td>
+                        <td valign="top">
+                          <p style="margin: 0 0 4px 0; font-family: 'Inter', Arial, sans-serif; font-size: 14px; color: #1c1e21; font-weight: 600;">${creator.name}</p>
+                          <p style="margin: 0 0 8px 0; font-family: 'Inter', Arial, sans-serif; font-size: 12px; color: #888888;"> @${creator.instagramHandle}</p>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td colspan="3" style="padding-left: 65px">
+                          <p style="margin: 0; font-family: 'Inter', Arial, sans-serif; font-size: 12px; color: #231F23;">
+                            <img src="https://drive.google.com/uc?id=1C-IM3zn9n_4AWu6d39XSuykmWrh-Y5Fm" alt="Followers" width="12" style="vertical-align: middle; margin-right: 4px;"> ${creator.followers} Followers 
+                            <img src="https://drive.google.com/uc?id=1ixJAl-1g3p4LXfOmP3l3WgSCSKZlH_-R" alt="Engagement" width="12" style="vertical-align: middle; margin-right: 4px;"> ${creator.engagement} Engagement
+                          </p>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+  `,
+    )
+    .join('');
+
+  transport
+    .sendMail({
+      from: user,
+      to: email,
+      subject: `📣 You have ${actionCount} pending actions for your campaign`,
+      html: `
+      <!DOCTYPE html>
+      <html>
+        <head>
+        <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>You Have Pending Actions</title>
+            <style type="text/css">
+              @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap');
+              @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
+            </style>
+        </head>
+        <body style="margin: 0; padding: 0; background-color: #f0f2f5; font-family: 'Inter', Arial, sans-serif;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #f0f2f5;">
+              <tr>
+                <td align="center" style="padding: 20px 10px;">
+                  <!-- Main Content Wrapper -->
+                  <table role="presentation" width="400" cellspacing="0" cellpadding="0" border="0" align="center" style="max-width: 400px; width: 100%; background-color: #ffffff; border-radius: 12px; overflow: hidden;">
+                    
+                    <!-- Header: Logo -->
+                    <tr>
+                      <td style="padding: 20px 20px 10px 20px;">
+                        <img src="https://drive.google.com/uc?id=1wbwEJp2qX5Hb9iirUQJVCmdpq-fg34oE" alt="Cult Creative Logo" width="120">
+                      </td>
+                    </tr>
+
+                    <!-- Headline -->
+                    <tr>
+                      <td style="padding: 20px 20px 20px 20px;">
+                        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                          <tr>
+                            <td valign="middle">
+                              <h1 style="margin: 0; font-family: 'Instrument Serif', Georgia, serif; font-size: 32px; color: #1c1e21; font-weight: 400; line-height: 1.2;">
+                                📢 You Have ${actionCount} Pending Actions
+                              </h1>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+
+                    <!-- Body Text -->
+                    <tr>
+                      <td style="padding: 20px 20px 20px 20px;">
+                        <p style="margin: 0; font-family: 'Inter', Arial, sans-serif; font-size: 16px; color: #333333; line-height: 1.5;">
+                          Hi <strong>${companyName}</strong>,
+                        </p>
+                        <p style="margin: 10px 0 0 0; font-family: 'Inter', Arial, sans-serif; font-size: 16px; color: #333333; line-height: 1.2;">
+                          We've shared some creator profiles for your campaign.
+                        </p>
+                      </td>
+                    </tr>
+                    ${creatorList}
+
+                    <!-- Main CTA Button -->
+                    <tr>
+                      <td style="padding: 20px 20px;">
+                        <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" width="100%">
+                          <tr>
+                            <td align="center" style="background-color: #1c4dff; border-radius: 50px;">
+                              <a href="${process.env.BASE_EMAIL_URL}/dashboard/campaign/details/${campaignId}?tab=creator-master-list" target="_blank" style="display: block; padding: 16px 20px; font-family: 'Inter', Arial, sans-serif; font-size: 16px; font-weight: bold; color: #ffffff; text-decoration: none; border-radius: 50px;">Review Creators</a>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+
+                    <!-- Closing Text -->
+                    <tr>
+                      <td style="padding: 20px 20px 20px 20px;">
+                        <p style="margin: 0; font-family: 'Inter', Arial, sans-serif; font-size: 16px; color: #333333; line-height: 1.2;">
+                          Looking forward to your selections,
+                          <br>
+                          Cult Creative.
+                        </p>
+                      </td>
+                    </tr>
+
+                    <!-- Footer Section -->
+                    <tr>
+                      <td style="padding: 20px 20px 40px;">
+                        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #f7f7f7;">
+                          
+                        <!-- Social Icons -->
+                          <tr>
+                            <td align="center" style="padding: 20px 0 0;">
+                              <table role="presentation" cellspacing="0" cellpadding="0" border="0">
+                                <tr>
+                                  <td style="padding: 0 15px;"><a href="https://www.instagram.com/cultcreativeasia/" target="_blank"><img src="https://drive.google.com/uc?id=1OA2BS5tMo30D_OG-u78ZgpOcLw5BAv1F" alt="Instagram" width="28"></a></td>
+                                  <td style="padding: 0 15px;"><a href="https://www.linkedin.com/company/cultcreativeapp/" target="_blank"><img src="https://drive.google.com/uc?id=1qIDwkECdjVjm2ILZCSdHrhzJ4YspKzMX" alt="LinkedIn" width="28"></a></td>
+                                  <td style="padding: 0 15px;"><a href="https://www.cultcreative.asia" target="_blank"><img src="https://drive.google.com/uc?id=1FcowsKfDi6EpQF8n59VcG7zU5Txe8NMA" alt="Website" width="28"></a></td>
+                                </tr>
+                              </table>
+                            </td>
+                          </tr>
+                          
+                          <!-- Email Link -->
+                          <tr>
+                            <td align="center" style="padding-bottom: 15px;">
+                              <a href="mailto:hello@cultcreative.asia" style="font-family: Arial, sans-serif; font-size: 14px; color: #333333; text-decoration: underline; font-weight: bold;">hello@cultcreative.asia</a>
+                            </td>
+                          </tr>
+                          <!-- Company Info -->
+                          <tr>
+                            <td align="center">
+                              <p style="margin: 0; font-family: Arial, sans-serif; font-size: 11px; color: #aaaaaa; line-height: 1.5; style="padding-bottom: 20px">
+                                Cult Creative Sdn. Bhd.<br>
+                                A-5-3A, Block A, Jaya One, Jln Profesor Diraja Ungku Aziz,<br>
+                                Seksyen 13, 46200 Petaling Jaya, Selangor, Malaysia<br>
+                                Copyright © ${new Date().getFullYear()} Cult Creative, All rights reserved
+                              </p>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+          </body>
+        </html>
+      `,
     })
     .catch((err) => {
       return err;
