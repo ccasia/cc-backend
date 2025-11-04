@@ -1850,7 +1850,10 @@ export const getCampaignForCreatorById = async (req: Request, res: Response) => 
 
     submissions?.forEach((submission) => {
       if (
-        submission.status === 'APPROVED' || submission.status === 'POSTED' || submission.status === 'CLIENT_APPROVED' ||
+        (submission.submissionType?.type === 'AGREEMENT_FORM' && submission.status === 'APPROVED') ||
+        (submission.submissionType?.type === 'VIDEO' && submission.status === 'POSTED') ||
+        (submission.submissionType?.type === 'PHOTO' && submission.status === 'POSTED') ||
+        (submission.submissionType?.type === 'RAW_FOOTAGE' && submission.status === 'CLIENT_APPROVED') ||
         (submission.submissionType?.type === 'FIRST_DRAFT' && submission.status === 'CHANGES_REQUIRED')
       ) {
         completed++;
@@ -1862,6 +1865,12 @@ export const getCampaignForCreatorById = async (req: Request, res: Response) => 
       'CHANGES_REQUIRED';
 
     totalSubmissions = campaign.campaignType === 'ugc' ? (isChangesRequired ? 3 : 2) : isChangesRequired ? 4 : 3;
+
+    const hasRawFootage = campaign.submission.some((submission) => submission.submissionType?.type === 'RAW_FOOTAGE');
+
+    if (hasRawFootage) {
+      totalSubmissions++;
+    }
 
     const adjustedData = {
       ...campaign,
