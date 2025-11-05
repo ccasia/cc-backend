@@ -80,10 +80,43 @@ export const getAdmins = async (req: Request, res: Response) => {
               role: true,
             },
           },
+          client: {
+            select: {
+              id: true,
+              company: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
+            },
+          },
         },
       });
 
-      return res.status(200).json(admins);
+      // Transform data for frontend consumption
+      const transformedAdmins = admins.map((admin) => {
+        const isClient = admin.admin?.role?.name === 'Client';
+        const displayName = isClient && admin.client?.company?.name
+          ? admin.client.company.name
+          : admin.name;
+
+        return {
+          id: admin.id,
+          name: displayName,
+          originalName: admin.name, // Keep original name for "Me" display logic
+          status: admin.status,
+          phoneNumber: admin.phoneNumber,
+          country: admin.country,
+          email: admin.email,
+          photoURL: admin.photoURL,
+          role: admin.admin?.role?.name,
+          admin: admin.admin,
+          client: admin.client,
+        };
+      });
+
+      return res.status(200).json(transformedAdmins);
     }
 
     const data = await handleGetAdmins(userid as string);
@@ -465,4 +498,41 @@ const submissionMapping: any = {
   FIRST_DRAFT: 'Draft',
   FINAL_DRAFT: 'Draft',
   POSTING: 'Posting',
+};
+
+/**
+ * Get user by email
+ * Used by frontend to fetch user status for PIC
+ */
+export const getUserByEmail = async (req: Request, res: Response) => {
+  try {
+    const { email } = req.params;
+
+    if (!email) {
+      return res.status(400).json({ message: 'Email is required' });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { email },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        status: true,
+        role: true,
+        isActive: true,
+      },
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    return res.status(200).json(user);
+  } catch (error: any) {
+    console.error('Error fetching user by email:', error);
+    return res.status(500).json({
+      message: error.message || 'Internal server error while fetching user',
+    });
+  }
 };

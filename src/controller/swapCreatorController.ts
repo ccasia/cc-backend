@@ -131,6 +131,17 @@ export const swapGuestWithPlatformCreator = async (req: Request, res: Response) 
         shortlisted_date: guestShortlist.shortlisted_date,
       };
 
+      // Transfer guestProfileLink to platform creator's profileLink
+      if (guestUser.guestProfileLink && platformUser.creator) {
+        await tx.creator.update({
+          where: { id: platformUser.creator.id },
+          data: {
+            profileLink: guestUser.guestProfileLink,
+          },
+        });
+        console.log(`[SWAP] Transferred guest profile link to platform creator: ${guestUser.guestProfileLink}`);
+      }
+
       // 2. Delete old shortlist entry for guest
       await tx.shortListedCreator.delete({
         where: {

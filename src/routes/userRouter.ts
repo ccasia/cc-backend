@@ -10,6 +10,7 @@ import {
   changePassword,
   getOverview,
   getAdminLogs,
+  getUserByEmail,
 } from '@controllers/userController';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 import { isLoggedIn } from '@middlewares/onlyLogin';
@@ -20,6 +21,7 @@ router.get('/admins', isSuperAdmin, getAdmins);
 router.get('/alladmins', getAdmins);
 router.get('/forget-password-token/:token', checkForgetPasswordToken);
 router.get('/overview/:userId', isLoggedIn, getOverview);
+router.get('/by-email/:email', isSuperAdmin, getUserByEmail);
 // router.get('/getAdmins', isSuperAdmin, getAllActiveAdmins);
 
 router.get('/admin-logs/:adminId', getAdminLogs);

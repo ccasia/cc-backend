@@ -26,6 +26,7 @@ import clientRoute from './clientRoute';
 import pitchRoute from './pitchRoute';
 import pdfRoute from './pdfRoute';
 import childAccountRoute from './childAccountRoute';
+import picRoute from './picRoute';
 
 export const router = express.Router();
 
@@ -56,3 +57,4 @@ router.use('/client', clientRoute);
 router.use('/pitch', pitchRoute);
 router.use('/agreement', pdfRoute);
 router.use('/child-account', childAccountRoute);
+router.use('/pic', picRoute);
