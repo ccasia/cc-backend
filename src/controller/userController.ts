@@ -466,3 +466,40 @@ const submissionMapping: any = {
   FINAL_DRAFT: 'Draft',
   POSTING: 'Posting',
 };
+
+/**
+ * Get user by email
+ * Used by frontend to fetch user status for PIC
+ */
+export const getUserByEmail = async (req: Request, res: Response) => {
+  try {
+    const { email } = req.params;
+
+    if (!email) {
+      return res.status(400).json({ message: 'Email is required' });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { email },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        status: true,
+        role: true,
+        isActive: true,
+      },
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    return res.status(200).json(user);
+  } catch (error: any) {
+    console.error('Error fetching user by email:', error);
+    return res.status(500).json({
+      message: error.message || 'Internal server error while fetching user',
+    });
+  }
+};
