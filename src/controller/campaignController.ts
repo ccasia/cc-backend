@@ -7541,7 +7541,7 @@ export const assignUGCCreditsV3 = async (req: Request, res: Response) => {
     
     // Calculate total credits being assigned (for logging purposes, even for v4 campaigns)
     const totalCreditsToAssign = creators.reduce((acc: number, creator: any) => acc + (creator.credits || 0), 0);
-    
+
     if (!isV4Campaign) {
       // Compute already utilized credits from shortlisted creators
       const alreadyUtilized = (campaign.shortlisted || []).reduce((acc, item) => acc + (item.ugcVideos || 0), 0);
