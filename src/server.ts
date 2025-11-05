@@ -79,7 +79,7 @@ app.use(cors());
 app.use(morgan('combined'));
 app.disable('x-powered-by');
 
-// app.set('trust proxy', true);
+app.set('trust proxy', true);
 
 // create the session here
 declare module 'express-session' {

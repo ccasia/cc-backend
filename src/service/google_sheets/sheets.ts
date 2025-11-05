@@ -219,6 +219,49 @@ export const createCampaignCreatorSpreadSheet = async ({
   }
 };
 
+export const upsertSheetAndWriteRows = async ({
+  spreadSheetId,
+  sheetTitle,
+  headerRow,
+  rows,
+}: {
+  spreadSheetId: string;
+  sheetTitle: string;
+  headerRow: string[];
+  rows: (string | number)[][];
+}) => {
+  try {
+    const doc = await accessGoogleSheetAPI(spreadSheetId);
+
+    if (!doc) {
+      throw new Error('Spreadsheet not found.');
+    }
+
+    let currentSheet = doc.sheetsByTitle[sheetTitle];
+
+    if (!currentSheet) {
+      currentSheet = await doc.addSheet({ title: sheetTitle });
+    }
+
+    // Clear existing content to avoid duplicates, then set header and add rows
+    if ((currentSheet as any).clear) {
+      await (currentSheet as any).clear();
+    }
+
+    await currentSheet.setHeaderRow(headerRow);
+
+    if (rows?.length) {
+      // google-spreadsheet accepts array of objects or array of arrays when header is set
+      await currentSheet.addRows(rows as any);
+    }
+
+    return true;
+  } catch (error) {
+    console.log(error);
+    throw new Error(error as any);
+  }
+};
+
 // async function withRetries(fn: any, retries = 3, delay = 1000) {
 //   for (let attempt = 1; attempt <= retries; attempt++) {
 //     try {
@@ -233,6 +276,81 @@ export const createCampaignCreatorSpreadSheet = async ({
 //     }
 //   }
 // }
+
+export const addReferralData = async ({
+  spreadSheetId,
+  sheetByTitle,
+  data,
+}: {
+  spreadSheetId: string;
+  sheetByTitle: string;
+  data: {
+    name: string;
+    email: string;
+    phoneNumber: string;
+    referralCode: string;
+  };
+}) => {
+  try {
+    console.log('Starting addReferralData with:', { spreadSheetId, sheetByTitle, data });
+
+    console.log('Attempting to access Google Sheet API...');
+    const sheet = await accessGoogleSheetAPI(spreadSheetId);
+    console.log('Google Sheet accessed successfully');
+
+    if (!sheet) {
+      throw new Error('Sheet not found.');
+    }
+
+    console.log('Available sheets:', Object.keys(sheet.sheetsByTitle));
+    let currentSheet = sheet.sheetsByTitle[sheetByTitle];
+
+    if (!currentSheet) {
+      // Check if Sheet1 exists and rename it to the desired name
+      const sheet1 = sheet.sheetsByTitle['Sheet1'];
+      if (sheet1) {
+        console.log(`Renaming Sheet1 to "${sheetByTitle}"...`);
+        await sheet1.updateProperties({ title: sheetByTitle });
+        currentSheet = sheet1;
+        console.log(`Renamed Sheet1 to: ${sheetByTitle}`);
+      } else {
+        console.log(`Sheet "${sheetByTitle}" not found. Creating new sheet...`);
+        currentSheet = await sheet.addSheet({
+          title: sheetByTitle,
+          headerValues: ['Name', 'Email', 'Phone Number', 'Referral Code'],
+        });
+        console.log(`Created new sheet: ${sheetByTitle}`);
+      }
+    }
+
+    console.log('Found target sheet, preparing to add row...');
+    console.log('Adding row to sheet with data:', {
+      Name: data.name,
+      Email: data.email,
+      'Phone Number': data.phoneNumber,
+      'Referral Code': data.referralCode,
+    });
+
+    console.log('Calling addRow...');
+    const updatedRow = await currentSheet.addRow({
+      Name: data.name,
+      Email: data.email,
+      'Phone Number': data.phoneNumber,
+      'Referral Code': data.referralCode,
+    });
+
+    console.log('Row added successfully:', updatedRow);
+    return updatedRow;
+  } catch (error) {
+    console.error('Error adding referral data to Google Sheets:', error);
+    console.error('Error details:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name,
+    });
+    throw new Error(`Failed to add referral data: ${error}`);
+  }
+};
 
 // async function batchUpdateRows(spreadsheetId: string, range: string, rows: any, chunkSize = 100) {
 //   const client = await auth.getClient();

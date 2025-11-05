@@ -50,6 +50,7 @@ import {
   shortlistCreatorV3,
   assignUGCCreditsV3,
   shortlistGuestCreators,
+  assignCreditOnAgreementSend,
   getAllPitches,
   getAllCreatorAgreements,
   getClientCampaigns,
@@ -62,6 +63,8 @@ import {
   updateCampaignOrigin,
   changeCampaignCredit,
   getCampaignsForPublic,
+  exportActiveCompletedToSheet,
+  exportCreatorsCampaignSheet,
 } from '@controllers/campaignController';
 import {
   swapGuestWithPlatformCreator,
@@ -152,6 +155,26 @@ router.get('/:campaignId/guestCreators', isLoggedIn, getGuestCreatorsForCampaign
 router.post('/swapCreator', isLoggedIn, isSuperAdmin, swapGuestWithPlatformCreator);
 router.post('/cleanupGuestCreators', isLoggedIn, isSuperAdmin, cleanupOrphanedGuestUsers);
 
+// Get Campaigns for Client users
+router.get('/getClientCampaigns', isLoggedIn, getClientCampaigns);
+
+// Debug endpoint to check campaign admin entries
+router.get('/checkCampaignAdmin', isLoggedIn, checkCampaignAdmin);
+
+// Debug endpoint to update campaign origin for testing
+router.post('/updateCampaignOrigin', isLoggedIn, updateCampaignOrigin);
+
+// Debug endpoint to add client to campaign admin for all company campaigns
+router.post('/addClientToCampaignAdmin', isLoggedIn, addClientToCampaignAdmin);
+
+// Fix campaign timelines for creator discovery
+router.post('/fixCampaignTimelines/:campaignId', isLoggedIn, fixCampaignTimelines);
+
+// Check if a campaign meets all requirements to be visible to creators
+router.get('/checkCreatorVisibility/:campaignId', isLoggedIn, checkCampaignCreatorVisibility);
+
+router.get('/public', getCampaignsForPublic);
+
 router.post('/updateOrCreateDefaultTimeline', updateOrCreateDefaultTimeline);
 router.post('/createCampaign', isSuperAdmin, createCampaign);
 router.post('/createNewTimeline', isSuperAdmin, createNewTimeline);
@@ -163,12 +186,15 @@ router.post('/shortlistCreator', isSuperAdmin, shortlistCreator);
 router.post('/template/:id', isSuperAdmin, createNewTemplate);
 router.post('/draftPitch', isLoggedIn, draftPitch);
 router.post('/spreadsheet', isLoggedIn, isSuperAdmin, createNewSpreadSheets);
+router.post('/export/active-completed', isSuperAdmin, exportActiveCompletedToSheet);
+router.post('/export/campaign-creators', isSuperAdmin, exportCreatorsCampaignSheet);
 router.post('/removeCreatorFromCampaign', isLoggedIn, isSuperAdmin, removeCreatorFromCampaign);
 router.post('/v2/shortlistCreator', isSuperAdmin, shortlistCreatorV2);
 router.post('/v2/shortlistCreator/client', isSuperAdmin, shortlistCreatorV2ForClient);
 router.post('/v3/shortlistCreator', isLoggedIn, shortlistCreatorV3);
 router.post('/v3/shortlistCreator/guest', isLoggedIn, shortlistGuestCreators);
 router.post('/v3/assignUGCCredits', isLoggedIn, assignUGCCreditsV3);
+router.post('/v4/assignCreditOnAgreementSend', isLoggedIn, isSuperAdmin, assignCreditOnAgreementSend);
 
 router.patch('/v4/changeCredits', isLoggedIn, isSuperAdmin, changeCampaignCredit);
 

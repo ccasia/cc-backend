@@ -131,21 +131,21 @@ export const getAllInvoices = async (req: Request, res: Response) => {
         },
         campaign: {
           include: {
-            creatorAgreement: true
-          }
+            creatorAgreement: true,
+          },
         },
       },
     });
 
     // Map through invoices to include the specific creator agreement with currency
-    const invoicesWithCurrency = invoices.map(invoice => {
+    const invoicesWithCurrency = invoices.map((invoice) => {
       const creatorAgreement = invoice.campaign?.creatorAgreement?.find(
-        agreement => agreement.campaignId === invoice.campaignId && agreement.userId === invoice.creatorId
+        (agreement) => agreement.campaignId === invoice.campaignId && agreement.userId === invoice.creatorId,
       );
-      
+
       return {
         ...invoice,
-        currency: creatorAgreement?.currency || null
+        currency: creatorAgreement?.currency || null,
       };
     });
 
@@ -176,7 +176,7 @@ export const getInvoicesByCreatorId = async (req: Request, res: Response) => {
             },
           },
         },
-        user: true
+        user: true,
       },
     });
     return res.status(200).json(invoices);
@@ -200,7 +200,7 @@ export const getInvoicesByCampaignId = async (req: Request, res: Response) => {
         campaign: {
           include: {
             subscription: true,
-            creatorAgreement: true
+            creatorAgreement: true,
           },
         },
         user: true,
@@ -208,14 +208,14 @@ export const getInvoicesByCampaignId = async (req: Request, res: Response) => {
     });
 
     // Map through invoices to include the specific creator agreement with currency
-    const invoicesWithCurrency = invoices.map(invoice => {
+    const invoicesWithCurrency = invoices.map((invoice) => {
       const creatorAgreement = invoice.campaign?.creatorAgreement?.find(
-        agreement => agreement.campaignId === invoice.campaignId && agreement.userId === invoice.creatorId
+        (agreement) => agreement.campaignId === invoice.campaignId && agreement.userId === invoice.creatorId,
       );
-      
+
       return {
         ...invoice,
-        currency: creatorAgreement?.currency || null
+        currency: creatorAgreement?.currency || null,
       };
     });
 
@@ -271,7 +271,7 @@ export const getInvoiceById = async (req: Request, res: Response) => {
                 name: true,
               },
             },
-            creatorAgreement: { where: { userId: creatorId } }
+            creatorAgreement: { where: { userId: creatorId } },
           },
         },
         user: {
@@ -726,7 +726,7 @@ export const updateInvoice = async (req: Request, res: Response) => {
           include: {
             creator: {
               include: {
-                user: { select: { id: true, name: true, paymentForm: true } },
+                user: { select: { id: true, name: true, paymentForm: true, creatorAgreement: true, email: true } },
               },
             },
             user: {
@@ -751,7 +751,9 @@ export const updateInvoice = async (req: Request, res: Response) => {
         const creatorUser = updatedInvoice.creator.user;
         const creatorPaymentForm = creatorUser?.paymentForm;
         const campaign = updatedInvoice.campaign;
-        const agreement = updatedInvoice.user?.creatorAgreement.find((item) => item.campaignId === campaignId);
+        const agreement = updatedInvoice.creator.user.creatorAgreement.find((item) => item.campaignId === campaignId);
+
+        console.log('AGREEMENT:', agreement);
 
         let contactID = updatedInvoice.creator.xeroContactId;
 
@@ -795,26 +797,33 @@ export const updateInvoice = async (req: Request, res: Response) => {
 
           await xero.updateTenants();
 
-          await sendToSpreadSheet(
-            {
-              createdAt: dayjs().format('YYYY-MM-DD'),
-              name: creatorUser?.name || '',
-              icNumber: creatorPaymentForm?.icNumber || '',
-              bankName: creatorPaymentForm?.bankAccountName || '',
-              bankAccountNumber: creatorPaymentForm?.bankAccountNumber || '',
-              campaignName: campaign.name,
-              amount: updatedInvoice.amount,
-            },
-            '1VClmvYJV9R4HqjADhGA6KYIR9KCFoXTag5SMVSL4rFc',
-            'Invoices',
+          console.log('TENANTS:', xero.tenants);
+
+          const activeTenant = xero.tenants.find(
+            (item) =>
+              item?.orgData.baseCurrency.toUpperCase() ===
+              ((agreement?.currency?.toUpperCase() as 'MYR' | 'SGD') ?? 'MYR'),
           );
 
-          if (newContact) {
+          console.log('ACTIVE UPDATE:', activeTenant);
+          console.log('CREATOR NAME:', creatorUser.name?.trim());
+
+          const result = await xero.accountingApi.getContacts(
+            activeTenant.tenantId,
+            undefined, // IDs
+            // `EmailAddress=="${creatorUser.email}"`,
+            // `EmailAddress=="${creatorUser.email}" || Name=="${creatorUser.name}"`,
+            `Name=="${invoiceFrom.name?.trim()}"`,
+          );
+
+          if (result.body.contacts && result.body.contacts.length > 0) {
+            contactID = result.body.contacts[0].contactID || null;
+          } else {
             const [contact] = await createXeroContact(
               bankInfo,
               updatedInvoice.creator,
               invoiceFrom,
-              agreement?.currency?.toUpperCase() as 'MYR' | 'SGD',
+              (agreement?.currency?.toUpperCase() as 'MYR' | 'SGD') ?? 'MYR',
             );
 
             contactID = contact.contactID || null;
@@ -836,7 +845,7 @@ export const updateInvoice = async (req: Request, res: Response) => {
               invoiceFrom,
               updatedInvoice.creator,
               bankInfo,
-              agreement?.currency?.toUpperCase() as 'MYR' | 'SGD',
+              (agreement?.currency?.toUpperCase() as 'MYR' | 'SGD') ?? 'MYR',
             );
           }
 
@@ -873,6 +882,20 @@ export const updateInvoice = async (req: Request, res: Response) => {
             const logMessage = `Approved invoice ${updatedInvoice.invoiceNumber} for ${creatorName}`;
             await logChange(logMessage, updatedInvoice.campaignId, req);
           }
+
+          await sendToSpreadSheet(
+            {
+              createdAt: dayjs().format('YYYY-MM-DD'),
+              name: creatorUser?.name || '',
+              icNumber: creatorPaymentForm?.icNumber || '',
+              bankName: creatorPaymentForm?.bankAccountName || '',
+              bankAccountNumber: creatorPaymentForm?.bankAccountNumber || '',
+              campaignName: campaign.name,
+              amount: updatedInvoice.amount,
+            },
+            '1VClmvYJV9R4HqjADhGA6KYIR9KCFoXTag5SMVSL4rFc',
+            'Invoices',
+          );
 
           // Notify creator
           const creatorNotification = await saveNotification({
@@ -1129,7 +1152,12 @@ export const createXeroContact = async (
   try {
     await xero.updateTenants();
 
+    console.log('TENANTS', xero.tenants);
+    console.log('CURRENCY', currency);
+
     activeTenant = xero.tenants.find((item) => item?.orgData.baseCurrency.toUpperCase() === currency);
+
+    console.log('SELECTED TENANT', activeTenant);
 
     const response = await xero.accountingApi.createContacts(activeTenant.tenantId, { contacts: [contact] });
 
@@ -1156,9 +1184,9 @@ export const createXeroInvoiceLocal = async (
   let activeTenant;
 
   try {
-    await xero.updateTenants();
+    // await xero.updateTenants();
 
-    let contact: Contact = { contactID: contactId };
+    // let contact: Contact = { contactID: contactId };
 
     const where = 'Status=="ACTIVE"';
 
@@ -1166,31 +1194,31 @@ export const createXeroInvoiceLocal = async (
       activeTenant = xero.tenants.find((item) => item?.orgData.baseCurrency.toUpperCase() === currency);
     }
 
-    const result = await xero.accountingApi.getContacts(
-      activeTenant.tenantId,
-      undefined, // IDs
-      `EmailAddress=="${creatorEmail}"`,
-    );
+    // const result = await xero.accountingApi.getContacts(
+    //   activeTenant.tenantId,
+    //   undefined, // IDs
+    //   `EmailAddress=="${creatorEmail}"`,
+    // );
 
-    if (result.body.contacts && result.body.contacts.length > 0) {
-      contact = { contactID: result.body.contacts[0].contactID };
-    } else {
-      const contactInfo: Contact = {
-        name: invoiceFrom.name,
-        emailAddress: invoiceFrom.email,
-        phones: [{ phoneType: Phone.PhoneTypeEnum.MOBILE, phoneNumber: invoiceFrom.phoneNumber }],
-        addresses: [
-          {
-            addressLine1: creator.address,
-          },
-        ],
-        bankAccountDetails: bankInfo.accountNumber,
-      };
+    // if (result.body.contacts && result.body.contacts.length > 0) {
+    //   contact = { contactID: result.body.contacts[0].contactID };
+    // } else {
+    //   const contactInfo: Contact = {
+    //     name: invoiceFrom.name,
+    //     emailAddress: invoiceFrom.email,
+    //     phones: [{ phoneType: Phone.PhoneTypeEnum.MOBILE, phoneNumber: invoiceFrom.phoneNumber }],
+    //     addresses: [
+    //       {
+    //         addressLine1: creator.address,
+    //       },
+    //     ],
+    //     bankAccountDetails: bankInfo.accountNumber,
+    //   };
 
-      const response = await xero.accountingApi.createContacts(activeTenant.tenantId, { contacts: [contactInfo] });
+    //   const response = await xero.accountingApi.createContacts(activeTenant.tenantId, { contacts: [contactInfo] });
 
-      contact = { contactID: (response.body as any).contacts[0].contactID };
-    }
+    //   contact = { contactID: (response.body as any).contacts[0].contactID };
+    // }
 
     const accounts: any = await xero.accountingApi.getAccounts(activeTenant.tenantId, undefined, where);
 
@@ -1205,7 +1233,7 @@ export const createXeroInvoiceLocal = async (
 
     const invoice: Invoice = {
       type: 'ACCPAY' as any,
-      contact: contact,
+      contact: { contactID: contactId as any },
       dueDate: dueDate,
       lineItems: lineItemsArray,
       status: 'AUTHORISED' as any,
@@ -1216,6 +1244,7 @@ export const createXeroInvoiceLocal = async (
     const response: any = await xero.accountingApi.createInvoices(activeTenant.tenantId, { invoices: [invoice] });
     return response;
   } catch (error) {
+    console.log('Testing', error);
     throw new Error(error);
   }
 };

@@ -17,17 +17,17 @@ model User {
   emailVerificationId String?            @unique
   emailVerifcation    EmailVerification? @relation(fields: [emailVerificationId], references: [id])
 
-  createdAt          DateTime             @default(now())
-  name               String?              @db.VarChar(255)
-  photoURL           String?              @db.VarChar(255)
-  country            String?              @db.VarChar(100)
-  city               String?              @db.VarChar(100)
-  phoneNumber        String?              @db.VarChar(100)
-  updatedAt          DateTime             @updatedAt
-  status             Status               @default(pending)
+  createdAt          DateTime            @default(now())
+  name               String?             @db.VarChar(255)
+  photoURL           String?             @db.VarChar(255)
+  country            String?             @db.VarChar(100)
+  city               String?             @db.VarChar(100)
+  phoneNumber        String?             @db.VarChar(100)
+  updatedAt          DateTime            @updatedAt
+  status             Status              @default(pending)
   eventId            String?
   role               RoleEnum
-  photoBackgroundURL String?              @db.VarChar(255)
+  photoBackgroundURL String?             @db.VarChar(255)
   updateRefershToken DateTime?
   xeroRefreshToken   String?
   admin              Admin?
@@ -41,15 +41,16 @@ model User {
   creatorAgreement   CreatorAgreement[]
   feedback           Feedback[]
   finance            Finance?
-  invoice            Invoice[]            @relation("CreatedBy")
+  invoice            Invoice[]           @relation("CreatedBy")
   logistic           Logistic[]
-  sentMessages       Message[]            @relation("UserMessages")
+  sentMessages       Message[]           @relation("UserMessages")
   notifications      Notification[]
   paymentForm        PaymentForm?
   pitch              Pitch[]
-  approvedPitches    Pitch[]              @relation("ApprovedByClient")
-  rejectedPitches    Pitch[]              @relation("RejectedByClient")
-  maybePitches       Pitch[]              @relation("MaybeByClient")
+  approvedPitches    Pitch[]             @relation("ApprovedByClient")
+  rejectedPitches    Pitch[]             @relation("RejectedByClient")
+  maybePitches       Pitch[]             @relation("MaybeByClient")
+
   resetPasswordToken ResetPasswordToken?
   seenMessages       SeenMessage[]
   shortlisted        ShortListedCreator[]
@@ -68,6 +69,8 @@ model User {
   isVerified         Boolean              @default(false)
   isKWSPCampaign     Boolean?             @default(false)
   hasSubmittedKWSP   Boolean              @default(false)
+
+  referralCode String? @db.VarChar(50)
 
   // Individual feedback relations
   videoFeedback      Video[]      @relation("VideoFeedback")
@@ -116,6 +119,7 @@ model Admin {
   rejectedPitches       Pitch[]                 @relation("RejectedByAdmin")
   adminCommentedPitches Pitch[]                 @relation("AdminCommenter")
   approvedSubmissions   Submission[]            @relation("ApprovedByAdmin")
+  submittedSubmissions  Submission[]            @relation("SubmittedByAdmin")
   completedAgreements   CreatorAgreement[]      @relation("CompletedByAdmin")
 }
 
@@ -132,10 +136,8 @@ model Client {
   userId String @unique
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-
   // Keep company relation
   company Company? @relation(fields: [companyId], references: [id])
-
 
   // Add client-specific fields
   clientType ClientType @default(directClient)
@@ -143,10 +145,10 @@ model Client {
   createdAt  DateTime   @default(now())
   updatedAt  DateTime   @default(now()) @updatedAt
 
-  isParentAccount Boolean @default(false)
-  parentClientId  String? 
-  parentClient    Client? @relation("ParentChildClients", fields: [parentClientId], references: [id])
-  childClients     Client[] @relation("ParentChildClients")
+  isParentAccount Boolean  @default(false)
+  parentClientId  String?
+  parentClient    Client?  @relation("ParentChildClients", fields: [parentClientId], references: [id])
+  childClients    Client[] @relation("ParentChildClients")
 
   // Client-specific relations
   clientNotifications ClientNotification[]
@@ -183,21 +185,21 @@ model ClientNotification {
 }
 
 model ChildAccount {
-  id          String   @id @unique @default(cuid())
-  email       String   @unique
-  password    String?  
+  id          String    @id @unique @default(cuid())
+  email       String    @unique
+  password    String?
   firstName   String?
   lastName    String?
-  isActive    Boolean  @default(false) 
-  invitedAt   DateTime @default(now())
+  isActive    Boolean   @default(false)
+  invitedAt   DateTime  @default(now())
   activatedAt DateTime?
-  
+
   parentClientId String
   parentClient   Client @relation(fields: [parentClientId], references: [id], onDelete: Cascade)
-  
-  invitationToken String? @unique
+
+  invitationToken String?   @unique
   tokenExpiresAt  DateTime?
-  
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -254,6 +256,28 @@ model Creator {
   instagramUser InstagramUser?
 }
 
+// model TiktokUser {
+//   id String @id @unique @default(cuid())
+
+//   creatorId String  @unique
+//   creator   Creator @relation(references: [id], fields: [creatorId])
+
+//   display_name String?
+//   avatar_url   String?
+
+//   following_count Int?
+//   follower_count  Int?
+//   likes_count     Int?
+
+//   averageComments Int?
+//   averageLikes    Int?
+//   engagement_rate
+
+//   createdAt   DateTime      @default(now())
+//   updatedAt   DateTime      @updatedAt
+//   tiktokVideo TiktokVideo[]
+// }
+
 model TiktokUser {
   id String @id @unique @default(cuid())
 
@@ -267,7 +291,6 @@ model TiktokUser {
   following_count Int?
   follower_count  Int?
   likes_count     Int?
-
 
   totalLikes      Int?
   totalComments   Int?
@@ -642,7 +665,7 @@ model Campaign {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  
+
   // V4 submission version tracking
   submissionVersion String? @default("v3") // "v2", "v3", "v4"
 }
@@ -947,12 +970,14 @@ model Submission {
   isReview             Boolean                @default(false)
   startDate            DateTime?
   endDate              DateTime?
+  submittedByAdminId   String? // Track if admin submitted for creator
   feedback             Feedback[]
   Notification         Notification[]
   campaign             Campaign               @relation(fields: [campaignId], references: [id])
   submissionType       SubmissionType         @relation(fields: [submissionTypeId], references: [id])
   user                 User                   @relation(fields: [userId], references: [id])
   admin                Admin?                 @relation(fields: [approvedByAdminId], references: [userId], name: "ApprovedByAdmin")
+  submittedByAdmin     Admin?                 @relation(fields: [submittedByAdminId], references: [userId], name: "SubmittedByAdmin")
   dependencies         SubmissionDependency[] @relation("Dependencies")
   dependentOn          SubmissionDependency[] @relation("DependentOn")
   task                 Task[]
@@ -962,9 +987,9 @@ model Submission {
   publicFeedback       PublicFeedback[]
   photosDriveLink      String?
   rawFootagesDriveLink String?
-  
+
   // V4 specific fields
-  contentOrder      Int?             // Order of content (Video 1, Video 2, etc.)
+  contentOrder      Int? // Order of content (Video 1, Video 2, etc.)
   submissionVersion String?          @default("v2") // "v2", "v3", "v4"
   captionHistory    CaptionHistory[]
 
@@ -1603,14 +1628,14 @@ enum CampaignOrigin {
 }
 
 model CaptionHistory {
-  id              String     @id @default(cuid())
-  submissionId    String
-  caption         String?
-  author   String     // userId or adminId who wrote this caption
-  authorType String   // "creator" or "admin" - who wrote this caption
-  createdAt       DateTime   @default(now())
+  id           String   @id @default(cuid())
+  submissionId String
+  caption      String?
+  author       String // userId or adminId who wrote this caption
+  authorType   String // "creator" or "admin" - who wrote this caption
+  createdAt    DateTime @default(now())
 
-  submission      Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
 
   @@index([submissionId])
   @@index([createdAt])
