@@ -1222,13 +1222,13 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
             cursor: { id: campaignId }, // start after this ID
           }
         : {
-            ...(cursor && {
-              skip: 1,
-              cursor: {
+      ...(cursor && {
+        skip: 1,
+        cursor: {
                 id: campaignId ?? (cursor as string),
-              },
+        },
             }),
-          }),
+      }),
       where: {
         AND: [
           { status: 'ACTIVE' },
@@ -1373,7 +1373,7 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
     // TODO: Re-enable proper country filtering once country detection is working correctly
     // TEMPORARILY DISABLE ALL COUNTRY FILTERING to fix creator discovery issue
     // The country filtering was preventing creators from seeing all available campaigns
-
+    
     // COMMENTED OUT: Country filtering is disabled for now
     if (process.env.NODE_ENV !== 'development') {
       campaigns = campaigns.filter((campaign) => {
@@ -1381,12 +1381,12 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
         return campaign.campaignRequirement.country.toLocaleLowerCase() === country?.toLowerCase();
       });
     }
-
+    
     const afterCountryFilterCount = campaigns.length;
     console.log(
       `Country filtering completely bypassed: ${afterCountryFilterCount}/${beforeCountryFilterCount} campaigns remain (no filtering applied)`,
     );
-
+    
     // Original filtering logic (DISABLED):
     // campaigns = campaigns.filter((campaign) => {
     //   if (!campaign.campaignRequirement?.country) return true;
@@ -1398,7 +1398,7 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
 
     const calculateInterestMatchingPercentage = (creatorInterests: Interest[], creatorPerona: []) => {
       const totalInterests = creatorPerona?.length || 0;
-
+      
       if (totalInterests === 0) {
         return 0; // Return 0% if no persona interests defined
       }
@@ -4250,14 +4250,14 @@ export const sendAgreement = async (req: Request, res: Response) => {
     }
 
     // update shortlisted creator table
-    await prisma.shortListedCreator.update({
-      where: {
-        id: shortlistedCreator.id,
-      },
-      data: {
-        isAgreementReady: true,
-      },
-    });
+        await prisma.shortListedCreator.update({
+          where: {
+            id: shortlistedCreator.id,
+          },
+          data: {
+            isAgreementReady: true,
+          },
+        });
 
     // Get admin info for logging
     const admin = await prisma.user.findUnique({
@@ -4713,7 +4713,7 @@ export const addClientManagers = async (req: Request, res: Response) => {
           where: { id: userId },
           include: { client: true },
         });
-
+        
         if (user?.client) {
           const { addChildAccountsToCampaign } = await import('./childAccountController.js');
           await addChildAccountsToCampaign(user.client.id, campaignId);
@@ -5371,7 +5371,7 @@ export const shortlistCreator = async (req: Request, res: Response) => {
           if (!campaign) throw new Error('Campaign not found.');
 
           const timelines = await tx.campaignTimeline.findMany({
-            where: {
+      where: {
               campaignId: campaign.id,
               for: 'creator',
               name: { not: 'Open For Pitch' },
@@ -5447,8 +5447,8 @@ export const shortlistCreator = async (req: Request, res: Response) => {
                   },
                   include: {
                     submissionType: true,
-                  },
-                });
+      },
+    });
               }),
             );
 
@@ -5506,11 +5506,11 @@ export const shortlistCreator = async (req: Request, res: Response) => {
 
             if (!isThreadExist) {
               await tx.userThread.create({
-                data: {
+              data: {
                   threadId: campaign.thread.id,
                   userId: creator.id as string,
-                },
-              });
+              },
+            });
             }
           }
         } catch (error) {
@@ -5540,15 +5540,15 @@ export const shortlistCreatorV2 = async (req: Request, res: Response) => {
     await prisma.$transaction(async (tx) => {
       try {
         const campaign = await tx.campaign.findUnique({
-          where: {
+      where: {
             id: campaignId,
-          },
+      },
           include: {
             shortlisted: true,
             thread: true,
             campaignBrief: true,
-          },
-        });
+      },
+    });
 
         if (!campaign) throw new Error('Campaign not found');
 
@@ -5594,7 +5594,7 @@ export const shortlistCreatorV2 = async (req: Request, res: Response) => {
         await Promise.all(
           creatorData.map((creator) =>
             tx.creatorAgreement.upsert({
-              where: {
+        where: {
                 userId_campaignId: {
                   userId: creator.id,
                   campaignId: campaign.id,
@@ -5731,19 +5731,19 @@ export const shortlistCreatorV2 = async (req: Request, res: Response) => {
           if (!campaign.thread) throw new Error('Campaign thread not found');
 
           const isThreadExist = await tx.userThread.findFirst({
-            where: {
+          where: {
               threadId: campaign.thread.id,
               userId: creator.id as string,
-            },
-          });
+          },
+        });
 
           if (!isThreadExist) {
             await tx.userThread.create({
-              data: {
+          data: {
                 threadId: campaign.thread.id,
                 userId: creator.id as string,
-              },
-            });
+          },
+        });
           }
         }
       } catch (error) {
@@ -7184,35 +7184,35 @@ export const shortlistCreatorV2ForClient = async (req: Request, res: Response) =
           const columnInProgress = board.columns.find((c) => c.name.includes('In Progress'));
           if (!columnToDo || !columnInProgress) throw new Error('Columns not found.');
 
-          type SubmissionWithRelations = Submission & {
-            submissionType: SubmissionType;
-          };
+            type SubmissionWithRelations = Submission & {
+              submissionType: SubmissionType;
+            };
 
-          const submissions: any[] = await Promise.all(
-            timelines.map(async (timeline, index) => {
-              return await tx.submission.create({
-                data: {
-                  dueDate: timeline.endDate,
-                  campaignId: campaign.id,
-                  userId: creator.id as string,
-                  status: timeline.submissionType?.type === 'AGREEMENT_FORM' ? 'IN_PROGRESS' : 'NOT_STARTED',
-                  submissionTypeId: timeline.submissionTypeId as string,
-                  task: {
-                    create: {
-                      name: timeline.name,
-                      position: index,
-                      columnId: timeline.submissionType?.type ? columnInProgress.id : (columnToDo?.id as string),
-                      priority: '',
-                      status: timeline.submissionType?.type ? 'In Progress' : 'To Do',
+            const submissions: any[] = await Promise.all(
+              timelines.map(async (timeline, index) => {
+                return await tx.submission.create({
+                  data: {
+                    dueDate: timeline.endDate,
+                    campaignId: campaign.id,
+                    userId: creator.id as string,
+                    status: timeline.submissionType?.type === 'AGREEMENT_FORM' ? 'IN_PROGRESS' : 'NOT_STARTED',
+                    submissionTypeId: timeline.submissionTypeId as string,
+                    task: {
+                      create: {
+                        name: timeline.name,
+                        position: index,
+                        columnId: timeline.submissionType?.type ? columnInProgress.id : (columnToDo?.id as string),
+                        priority: '',
+                        status: timeline.submissionType?.type ? 'In Progress' : 'To Do',
+                      },
                     },
                   },
-                },
-                include: {
-                  submissionType: true,
-                },
-              });
-            }),
-          );
+                  include: {
+                    submissionType: true,
+                  },
+                });
+              }),
+            );
         }
 
         // Create notifications for shortlisted creators
@@ -7322,7 +7322,7 @@ export const initialActivateCampaign = async (req: Request, res: Response) => {
 
     // Check if campaign exists and is in PENDING_CSM_REVIEW or SCHEDULED status
     const campaign = await prisma.campaign.findFirst({
-      where: {
+          where: {
         id: campaignId,
         status: {
           in: ['PENDING_CSM_REVIEW', 'SCHEDULED'] as CampaignStatus[],
@@ -7342,10 +7342,10 @@ export const initialActivateCampaign = async (req: Request, res: Response) => {
       where: {
         id: campaignId,
       },
-      data: {
+          data: {
         status: 'PENDING_ADMIN_ACTIVATION',
-      },
-    });
+          },
+        });
 
     // Add admin managers to the campaign
     for (const adminId of adminManagerArray) {
@@ -7367,12 +7367,12 @@ export const initialActivateCampaign = async (req: Request, res: Response) => {
 
           if (adminByUserId) {
             await prisma.campaignAdmin.create({
-              data: {
+            data: {
                 adminId: adminByUserId.userId,
-                campaignId,
-              },
-            });
-          }
+              campaignId,
+            },
+          });
+        }
         } else {
           await prisma.campaignAdmin.create({
             data: {
@@ -7524,19 +7524,24 @@ export const assignUGCCreditsV3 = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Campaign not found' });
     }
 
-    // Calculate total credits being assigned
+    // For v4 campaigns, skip credit validation - credits are only validated when "Generate and Send" is clicked
+    const isV4Campaign = campaign.submissionVersion === 'v4';
+    
+    // Calculate total credits being assigned (for logging purposes, even for v4 campaigns)
     const totalCreditsToAssign = creators.reduce((acc: number, creator: any) => acc + (creator.credits || 0), 0);
 
-    // Compute already utilized credits from shortlisted creators
-    const alreadyUtilized = (campaign.shortlisted || []).reduce((acc, item) => acc + (item.ugcVideos || 0), 0);
+    if (!isV4Campaign) {
+      // Compute already utilized credits from shortlisted creators
+      const alreadyUtilized = (campaign.shortlisted || []).reduce((acc, item) => acc + (item.ugcVideos || 0), 0);
 
-    // Enforce remaining credits check (campaignCredits - alreadyUtilized)
-    if (campaign.campaignCredits && totalCreditsToAssign > campaign.campaignCredits - alreadyUtilized) {
-      return res.status(400).json({
-        message: `Not enough credits available. Remaining: ${
-          campaign.campaignCredits - alreadyUtilized
-        }, requested: ${totalCreditsToAssign}`,
-      });
+      // Enforce remaining credits check (campaignCredits - alreadyUtilized) - only for non-v4 campaigns
+      if (campaign.campaignCredits && totalCreditsToAssign > campaign.campaignCredits - alreadyUtilized) {
+        return res.status(400).json({
+          message: `Not enough credits available. Remaining: ${
+            campaign.campaignCredits - alreadyUtilized
+          }, requested: ${totalCreditsToAssign}`,
+        });
+      }
     }
 
     await prisma.$transaction(async (tx) => {
@@ -7550,8 +7555,8 @@ export const assignUGCCreditsV3 = async (req: Request, res: Response) => {
         const existingShortlist = await tx.shortListedCreator.findUnique({
           where: {
             userId_campaignId: {
-              userId: creator.id,
-              campaignId: campaign.id,
+            userId: creator.id,
+            campaignId: campaign.id,
             },
           },
         });
@@ -7559,16 +7564,16 @@ export const assignUGCCreditsV3 = async (req: Request, res: Response) => {
         if (existingShortlist) {
           // Update existing shortlist with UGC credits
           await tx.shortListedCreator.update({
-            where: {
+          where: {
               userId_campaignId: {
                 userId: creator.id,
                 campaignId: campaign.id,
               },
-            },
-            data: {
+          },
+          data: {
               ugcVideos: creator.credits,
-            },
-          });
+          },
+        });
           console.log(`Updated UGC credits for existing shortlisted creator ${creator.id}`);
         } else {
           // Create new shortlist entry with UGC credits
@@ -7601,9 +7606,9 @@ export const assignUGCCreditsV3 = async (req: Request, res: Response) => {
             creditsPending: campaign.campaignCredits - totalUtilizedCredits,
           },
         });
-        console.log(
+      console.log(
           `Updated campaign credits: utilized=${totalUtilizedCredits}, pending=${campaign.campaignCredits - totalUtilizedCredits}`,
-        );
+      );
       }
     });
 
