@@ -6979,12 +6979,6 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
 
       if (!campaign) throw new Error('Campaign not found');
 
-      // For V3, we support client-created campaigns and v4 campaigns
-      // For v4 campaigns, allow shortlisting without credit validation (credits are validated when "Generate and Send" is clicked)
-      if (campaign.origin !== 'CLIENT' && campaign.submissionVersion !== 'v4') {
-        throw new Error('V3 shortlisting is only for client-created campaigns or v4 campaigns');
-      }
-
       const creatorIds = creators.map((c: any) => c.id);
 
       const creatorData = await tx.user.findMany({
@@ -7530,12 +7524,6 @@ export const assignUGCCreditsV3 = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Campaign not found' });
     }
 
-    // For V3, we support client-created campaigns and v4 campaigns
-    // For v4 campaigns, skip credit validation here - credits are validated when "Generate and Send" is clicked
-    if (campaign.origin !== 'CLIENT' && campaign.submissionVersion !== 'v4') {
-      throw new Error('V3 UGC credits assignment is only for client-created campaigns or v4 campaigns');
-    }
-
     // For v4 campaigns, skip credit validation - credits are only validated when "Generate and Send" is clicked
     const isV4Campaign = campaign.submissionVersion === 'v4';
     
@@ -7701,6 +7689,9 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
               content: `Non-platform creator has been shortlisted for campaign "${campaign.name}"`,
               amount: null,
               agreementTemplateId: null,
+              ...(guest.username && { username: guest.username }),
+              ...(guest.followerCount && { followerCount: guest.followerCount }),
+              ...(guest.engagementRate && { engagementRate: guest.engagementRate }),
               ...(guest.adminComments && guest.adminComments.trim().length > 0
                 ? { adminComments: guest.adminComments.trim(), adminCommentedBy: adminId }
                 : {}),
