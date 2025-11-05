@@ -7313,18 +7313,7 @@ export const initialActivateCampaign = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Invalid data format' });
     }
 
-      const creatorData = await tx.user.findMany({
-        where: { id: { in: creatorIds } },
-        include: {
-          creator: {
-            include: {
-              instagramUser: true,
-              tiktokUser: true,
-            },
-          },
-          paymentForm: true,
-        },
-      });
+    const { adminManager, creatorIds } = data;
 
     console.log('Received initial activation data:', { adminManager });
 
@@ -7400,14 +7389,30 @@ export const initialActivateCampaign = async (req: Request, res: Response) => {
       } catch (error) {
         console.error(`Error adding admin ${adminId} to campaign:`, error);
       }
+    }
+
+    // Handle creator notifications if creatorIds are provided
+    if (creatorIds && Array.isArray(creatorIds) && creatorIds.length > 0) {
+      const creatorData = await prisma.user.findMany({
+        where: { id: { in: creatorIds } },
+        include: {
+          creator: {
+            include: {
+              instagramUser: true,
+              tiktokUser: true,
+            },
+          },
+          paymentForm: true,
+        },
+      });
 
       if (creatorData.length > 0) {
         const creatorsForNotification: ShortlistedCreatorInput[] = creatorData.map((user) => {
-          const instagramUser = user.creator?.instagramUser
-          const tiktokUser = user.creator?.tiktokUser
+          const instagramUser = user.creator?.instagramUser;
+          const tiktokUser = user.creator?.tiktokUser;
 
-          const metrics = calculateAverageMetrics(instagramUser ?? null, tiktokUser ?? null)
-          const primaryUsername = instagramUser?.username || tiktokUser?.username
+          const metrics = calculateAverageMetrics(instagramUser ?? null, tiktokUser ?? null);
+          const primaryUsername = instagramUser?.username || tiktokUser?.username;
           
           return {
             id: user.id,
@@ -7420,42 +7425,46 @@ export const initialActivateCampaign = async (req: Request, res: Response) => {
         });
         console.log('Handing off to notification service with combined data...');
 
-        await sendShortlistEmailToClients(campaignId, creatorsForNotification, tx);
+        await prisma.$transaction(async (tx) => {
+          await sendShortlistEmailToClients(campaignId, creatorsForNotification, tx);
+        });
       }
+    }
 
-      // Only one notification for all creators
-      const clientUsers = await tx.campaignAdmin.findMany({
-        where: {
-          campaignId: campaign.id,
-          admin: {
-            user: {
-              role: 'client',
-            },
+    // Only one notification for all creators
+    const clientUsers = await prisma.campaignAdmin.findMany({
+      where: {
+        campaignId: campaign.id,
+        admin: {
+          user: {
+            role: 'client',
           },
         },
-        include: {
-          admin: {
-            include: {
-              user: {
-                select: {
-                  id: true,
-                },
+      },
+      include: {
+        admin: {
+          include: {
+            user: {
+              select: {
+                id: true,
               },
             },
           },
         },
+      },
+    });
+
+    for (const clientUser of clientUsers) {
+      const { title, message } = notificationPitchForClientReview(campaign.name);
+
+      await saveNotification({
+        userId: clientUser.admin.userId,
+        title: title,
+        message: message,
+        entity: 'Pitch',
+        entityId: campaign.id,
       });
-
-      for (const clientUser of clientUsers) {
-        const { title, message } = notificationPitchForClientReview(campaign.name);
-
-        const notification = await saveNotification({
-          userId: clientUser.admin.userId,
-          title: title,
-          message: message,
-          entity: 'Pitch',
-          entityId: campaign.id,
-        });
+    }
 
     console.log('Campaign updated for initial activation:', {
       campaignId,
