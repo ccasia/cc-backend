@@ -50,6 +50,7 @@ import {
   shortlistCreatorV3,
   assignUGCCreditsV3,
   shortlistGuestCreators,
+  assignCreditOnAgreementSend,
   getAllPitches,
   getAllCreatorAgreements,
   getClientCampaigns,
@@ -193,6 +194,7 @@ router.post('/v2/shortlistCreator/client', isSuperAdmin, shortlistCreatorV2ForCl
 router.post('/v3/shortlistCreator', isLoggedIn, shortlistCreatorV3);
 router.post('/v3/shortlistCreator/guest', isLoggedIn, shortlistGuestCreators);
 router.post('/v3/assignUGCCredits', isLoggedIn, assignUGCCreditsV3);
+router.post('/v4/assignCreditOnAgreementSend', isLoggedIn, isSuperAdmin, assignCreditOnAgreementSend);
 
 router.patch('/v4/changeCredits', isLoggedIn, isSuperAdmin, changeCampaignCredit);
 

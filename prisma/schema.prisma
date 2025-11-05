@@ -151,7 +151,6 @@ model Client {
   childClients    Client[] @relation("ParentChildClients")
 
   // Client-specific relations
-  clientCampaigns     ClientCampaign[]
   clientNotifications ClientNotification[]
   campaignClients     CampaignClient[]
   childAccounts       ChildAccount[]
@@ -162,21 +161,6 @@ enum ClientType {
   directClient
   agencyClient
   enterpriseClient
-}
-
-// Separate client campaign model for better organization
-model ClientCampaign {
-  id         String             @id @unique @default(cuid())
-  clientId   String
-  campaignId String
-  role       ClientCampaignRole @default(viewer)
-  createdAt  DateTime           @default(now())
-  updatedAt  DateTime           @updatedAt
-
-  client   Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-
-  @@unique([clientId, campaignId])
 }
 
 enum ClientCampaignRole {
@@ -267,6 +251,8 @@ model Creator {
   isGuest                Boolean     @default(false)
 
   isOnBoardingFormCompleted Boolean?
+
+  profileLink String? // Profile link for creator (Instagram/TikTok/etc.)
 
   tiktokUser    TiktokUser?
   instagramUser InstagramUser?
@@ -684,9 +670,6 @@ model Campaign {
 
   // V4 submission version tracking
   submissionVersion String? @default("v3") // "v2", "v3", "v4"
-
-  // Add client campaign relation
-  clientCampaigns ClientCampaign[]
 }
 
 model BookMarkCampaign {
