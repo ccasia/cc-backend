@@ -80,10 +80,43 @@ export const getAdmins = async (req: Request, res: Response) => {
               role: true,
             },
           },
+          client: {
+            select: {
+              id: true,
+              company: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
+            },
+          },
         },
       });
 
-      return res.status(200).json(admins);
+      // Transform data for frontend consumption
+      const transformedAdmins = admins.map((admin) => {
+        const isClient = admin.admin?.role?.name === 'Client';
+        const displayName = isClient && admin.client?.company?.name
+          ? admin.client.company.name
+          : admin.name;
+
+        return {
+          id: admin.id,
+          name: displayName,
+          originalName: admin.name, // Keep original name for "Me" display logic
+          status: admin.status,
+          phoneNumber: admin.phoneNumber,
+          country: admin.country,
+          email: admin.email,
+          photoURL: admin.photoURL,
+          role: admin.admin?.role?.name,
+          admin: admin.admin,
+          client: admin.client,
+        };
+      });
+
+      return res.status(200).json(transformedAdmins);
     }
 
     const data = await handleGetAdmins(userid as string);
