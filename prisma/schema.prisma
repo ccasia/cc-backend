@@ -1610,7 +1610,6 @@ enum Entity {
   Live
   Status
   PaymentForm
-  Creator
 }
 
 enum SubmissionEnum {

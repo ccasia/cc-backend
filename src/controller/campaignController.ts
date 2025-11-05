@@ -19,8 +19,6 @@ import {
   SubmissionType,
   User,
   TimelineStatus,
-  TiktokUser,
-  InstagramUser,
 } from '@prisma/client';
 
 import amqplib from 'amqplib';
@@ -61,8 +59,6 @@ import { getRemainingCredits } from '@services/companyService';
 import { handleGuestForShortListing } from '@services/shortlistService';
 import getCountry from '@utils/getCountry';
 // import { applyCreditCampiagn } from '@services/packageService';
-import { sendShortlistEmailToClients, ShortlistedCreatorInput } from '@services/notificationService';
-import { calculateAverageMetrics } from '@utils/averagingMetrics';
 
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
 Ffmpeg.setFfprobePath(ffprobePath.path);
@@ -6220,60 +6216,6 @@ export const activateClientCampaign = async (req: Request, res: Response) => {
       // Don't fail the activation if thread creation fails
     }
 
-    // Notify Client, CSL and Superadmin when campaign is activated by CSM
-    const usersToNotify = await prisma.user.findMany({
-      where: {
-        OR: [
-          {
-            role: {
-              in: ['client', 'admin'],
-            },
-          },
-          {
-            admin: {
-              role: {
-                name: 'CSL',
-              },
-            },
-          },
-        ],
-      },
-      select: {
-        id: true,
-        role: true,
-      },
-    });
-
-    if (usersToNotify.length > 0) {
-      for (const adminUser of usersToNotify) {
-        let title = '';
-        let message = '';
-
-        if (adminUser.role === 'client') {
-          title = `🚀 ${campaign.name} is now live!`;
-          message = `Your campaign "${campaign.name}" has been activated by CSM`;
-        } else {
-          title = `🚀 Campaign Activated: ${campaign.name} `;
-          message = `The campaign "${campaign.name}" has been activated and the client has been notified`;
-        }
-
-        const notification = await saveNotification({
-          userId: adminUser.id,
-          title: title,
-          message: message,
-          entity: 'Campaign',
-          entityId: campaign.id,
-          campaignId: campaign.id,
-        });
-        const socketId = clients.get(adminUser.id);
-
-        if (socketId) {
-          io.to(socketId).emit('notification', notification);
-          console.log(`Sent real-time notification to user ${adminUser.id} on socket ${socketId}`);
-        }
-      }
-    }
-
     return res.status(200).json({
       message: 'Client campaign activated successfully',
       campaign: updatedCampaign,
@@ -7194,18 +7136,7 @@ export const initialActivateCampaign = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Invalid data format' });
     }
 
-      const creatorData = await tx.user.findMany({
-        where: { id: { in: creatorIds } },
-        include: {
-          creator: {
-            include: {
-              instagramUser: true,
-              tiktokUser: true,
-            },
-          },
-          paymentForm: true,
-        },
-      });
+    const { adminManager } = data;
 
     console.log('Received initial activation data:', { adminManager });
 
@@ -7281,62 +7212,7 @@ export const initialActivateCampaign = async (req: Request, res: Response) => {
       } catch (error) {
         console.error(`Error adding admin ${adminId} to campaign:`, error);
       }
-
-      if (creatorData.length > 0) {
-        const creatorsForNotification: ShortlistedCreatorInput[] = creatorData.map((user) => {
-          const instagramUser = user.creator?.instagramUser
-          const tiktokUser = user.creator?.tiktokUser
-
-          const metrics = calculateAverageMetrics(instagramUser ?? null, tiktokUser ?? null)
-          const primaryUsername = instagramUser?.username || tiktokUser?.username
-          
-          return {
-            id: user.id,
-            name: user.name,
-            photoURL: user.photoURL,
-            username: primaryUsername,
-            followerCount: metrics.totalFollowerCount,
-            engagementRate: metrics.averageEngagementRate,
-          };
-        });
-        console.log('Handing off to notification service with combined data...');
-
-        await sendShortlistEmailToClients(campaignId, creatorsForNotification, tx);
-      }
-
-      // Only one notification for all creators
-      const clientUsers = await tx.campaignAdmin.findMany({
-        where: {
-          campaignId: campaign.id,
-          admin: {
-            user: {
-              role: 'client',
-            },
-          },
-        },
-        include: {
-          admin: {
-            include: {
-              user: {
-                select: {
-                  id: true,
-                },
-              },
-            },
-          },
-        },
-      });
-
-      for (const clientUser of clientUsers) {
-        const { title, message } = notificationPitchForClientReview(campaign.name);
-
-        const notification = await saveNotification({
-          userId: clientUser.admin.userId,
-          title: title,
-          message: message,
-          entity: 'Pitch',
-          entityId: campaign.id,
-        });
+    }
 
     console.log('Campaign updated for initial activation:', {
       campaignId,
