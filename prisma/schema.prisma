@@ -252,6 +252,8 @@ model Creator {
 
   isOnBoardingFormCompleted Boolean?
 
+  profileLink String? // Profile link for creator (Instagram/TikTok/etc.)
+
   tiktokUser    TiktokUser?
   instagramUser InstagramUser?
 }
