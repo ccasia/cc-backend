@@ -19,6 +19,8 @@ import {
   SubmissionType,
   User,
   TimelineStatus,
+  TiktokUser,
+  InstagramUser,
 } from '@prisma/client';
 
 import amqplib from 'amqplib';
@@ -59,6 +61,8 @@ import { getRemainingCredits } from '@services/companyService';
 import { handleGuestForShortListing } from '@services/shortlistService';
 import getCountry from '@utils/getCountry';
 // import { applyCreditCampiagn } from '@services/packageService';
+import { sendShortlistEmailToClients, ShortlistedCreatorInput } from '@services/notificationService';
+import { calculateAverageMetrics } from '@utils/averagingMetrics';
 
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
 Ffmpeg.setFfprobePath(ffprobePath.path);
@@ -5924,6 +5928,7 @@ export const activateClientCampaign = async (req: Request, res: Response) => {
           title: title,
           message: message,
           entity: 'Campaign',
+          entityId: campaign.id,
           campaignId: campaign.id,
         });
         const socketId = clients.get(adminUser.id);
@@ -7045,7 +7050,15 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
 
       const creatorData = await tx.user.findMany({
         where: { id: { in: creatorIds } },
-        include: { creator: true, paymentForm: true },
+        include: {
+          creator: {
+            include: {
+              instagramUser: true,
+              tiktokUser: true,
+            },
+          },
+          paymentForm: true,
+        },
       });
 
       // Check if campaign has a thread
@@ -7150,6 +7163,29 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
           });
         }
       }
+
+      if (creatorData.length > 0) {
+        const creatorsForNotification: ShortlistedCreatorInput[] = creatorData.map((user) => {
+          const instagramUser = user.creator?.instagramUser
+          const tiktokUser = user.creator?.tiktokUser
+
+          const metrics = calculateAverageMetrics(instagramUser ?? null, tiktokUser ?? null)
+          const primaryUsername = instagramUser?.username || tiktokUser?.username
+          
+          return {
+            id: user.id,
+            name: user.name,
+            photoURL: user.photoURL,
+            username: primaryUsername,
+            followerCount: metrics.totalFollowerCount,
+            engagementRate: metrics.averageEngagementRate,
+          };
+        });
+        console.log('Handing off to notification service with combined data...');
+
+        await sendShortlistEmailToClients(campaignId, creatorsForNotification, tx);
+      }
+
       // Only one notification for all creators
       const clientUsers = await tx.campaignAdmin.findMany({
         where: {

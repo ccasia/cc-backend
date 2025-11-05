@@ -533,6 +533,7 @@ export const createClientCampaign = async (req: Request, res: Response) => {
           title: '🚨 Fresh Campaign Brief just landed. Review and assign CS to start. ',
           message: `Client ${user.name || 'Unknown'} has created a new campaign: ${campaignTitle}`,
           entity: 'Campaign',
+          entityId: newCampaign.id,
           campaignId: newCampaign.id,
         });
         const socketId = clients.get(adminUser.id);
