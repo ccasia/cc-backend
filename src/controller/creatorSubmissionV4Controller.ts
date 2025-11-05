@@ -112,8 +112,8 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
     // Parse JSON data from form data
     let isSelectiveUpdate = false;
     let caption = '';
-    let keepExistingPhotos: Array<{ id: string; url: string }> = [];
-    let keepExistingRawFootages: Array<{ id: string; url: string }> = [];
+    let keepExistingPhotos: { id: string; url: string }[] = [];
+    let keepExistingRawFootages: { id: string; url: string }[] = [];
     let photosToRemove: string[] = []; // Array of photo IDs to be removed
 
     try {
@@ -239,18 +239,19 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
 
     // V4 Photo Additive System: Never delete existing photos, only add new ones
     const isResubmission = ['CHANGES_REQUIRED', 'REJECTED'].includes(submission.status);
-    
+
     if (isResubmission) {
       // In V4, we can now both remove existing photos and add new ones
       // This creates a flexible system where creators can manage their photo collection
     }
 
     // Handle raw footage replacement for V4 resubmissions
-    if (isResubmission) {  // ✅ Run regardless of new files
+    if (isResubmission) {
+      // ✅ Run regardless of new files
       // Check if we have raw footages to manage (either keeping some or uploading new ones)
-      const hasRawFootageChanges = uploadedRawFootages.length > 0 || 
-        (isSelectiveUpdate && keepExistingRawFootages.length > 0);
-      
+      const hasRawFootageChanges =
+        uploadedRawFootages.length > 0 || (isSelectiveUpdate && keepExistingRawFootages.length > 0);
+
       if (hasRawFootageChanges) {
         if (isSelectiveUpdate && keepExistingRawFootages.length >= 0) {
           const existingRawFootageIds = submission.rawFootages?.map((rawFootage) => rawFootage.id) || [];
@@ -339,13 +340,12 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
     // Always trigger worker if there are changes (new files OR photos to remove)
     const hasNewFiles = uploadedVideos.length > 0 || uploadedPhotos.length > 0 || uploadedRawFootages.length > 0;
     const hasPhotosToRemove = photosToRemove.length > 0;
-    
+
     if (hasNewFiles || hasPhotosToRemove) {
       try {
         amqp = await amqplib.connect(process.env.RABBIT_MQ!);
         channel = await amqp.createChannel();
         await channel.assertQueue('draft', { durable: true });
-
 
         const payload = {
           userid: creatorId,
@@ -378,16 +378,14 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
     }
 
     // Calculate if raw footages were removed
-    const hasRawFootageRemoval = 
-      isResubmission && 
-      isSelectiveUpdate && 
-      keepExistingRawFootages.length < (submission.rawFootages?.length || 0);
+    const hasRawFootageRemoval =
+      isResubmission && isSelectiveUpdate && keepExistingRawFootages.length < (submission.rawFootages?.length || 0);
 
     // Check if there are meaningful changes that warrant status update
     const hasMeaningfulChanges =
       hasUploadedFiles ||
-      photosToRemove.length > 0 ||  // photos removed
-      hasRawFootageRemoval ||  // raw footages removed
+      photosToRemove.length > 0 || // photos removed
+      hasRawFootageRemoval || // raw footages removed
       (isResubmission && isSelectiveUpdate && keepExistingPhotos.length !== (submission.photos?.length || 0)) ||
       (caption && caption.trim() !== (submission.caption || '').trim());
 
@@ -435,9 +433,9 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
     if (hasMeaningfulChanges && submission.photos && submission.photos.length > 0) {
       // Get all photo IDs that are NOT being removed
       const remainingPhotoIds = submission.photos
-        .filter(photo => !photosToRemove.includes(photo.id))
-        .map(photo => photo.id);
-      
+        .filter((photo) => !photosToRemove.includes(photo.id))
+        .map((photo) => photo.id);
+
       if (remainingPhotoIds.length > 0) {
         await prisma.photo.updateMany({
           where: {
@@ -446,7 +444,7 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
           },
           data: {
             status: 'PENDING',
-            feedbackAt: null,  // Clear previous feedback timestamp
+            feedbackAt: null, // Clear previous feedback timestamp
           },
         });
         console.log(`📸 Updated ${remainingPhotoIds.length} photo statuses to PENDING`);
@@ -456,7 +454,7 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
     // Update individual raw footage statuses to PENDING when resubmitting
     if (hasMeaningfulChanges && isResubmission && isSelectiveUpdate) {
       const keepRawFootageIds = keepExistingRawFootages.map((rf) => rf.id);
-      
+
       if (keepRawFootageIds.length > 0) {
         await prisma.rawFootage.updateMany({
           where: {
@@ -465,7 +463,7 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
           },
           data: {
             status: 'PENDING',
-            feedbackAt: null,  // Clear previous feedback timestamp
+            feedbackAt: null, // Clear previous feedback timestamp
           },
         });
         console.log(`🎬 Updated ${keepRawFootageIds.length} raw footage statuses to PENDING`);

@@ -17,6 +17,7 @@ import { uploadProfileImage } from '@configs/cloudStorage.config';
 
 import { createKanbanBoard } from './kanbanController';
 import { saveCreatorToSpreadsheet } from '@helper/registeredCreatorSpreadsheet';
+import { addReferralData } from '@services/google_sheets/sheets';
 import axios from 'axios';
 import bcrypt from 'bcryptjs';
 
@@ -67,6 +68,7 @@ interface CreatorUpdateData {
   tiktok: string;
   socialMediaData: Prisma.InputJsonValue;
   city: string;
+  referralCode?: string;
 }
 
 const client_id: string = process.env.XERO_CLIENT_ID as string;
@@ -236,6 +238,7 @@ export const registerCreator = async (req: Request, res: Response) => {
             phoneNumber: creatorData?.phone || '',
             country: creatorData?.Nationality || '',
             city: creatorData?.city || '',
+            referralCode: creatorData?.referralCode || null,
           },
         });
 
@@ -341,6 +344,60 @@ export const registerCreator = async (req: Request, res: Response) => {
       }).catch((error) => {
         console.error('Error saving creator to spreadsheet:', error);
       });
+
+      // Add referral data to Google Sheets if referral code exists
+      if (creatorData?.referralCode && creatorData.referralCode.trim() !== '') {
+        console.log('Adding referral data to Google Sheets:', {
+          name: result.user.name || '',
+          email: result.user.email,
+          phoneNumber: result.user.phoneNumber || '',
+          referralCode: creatorData.referralCode,
+        });
+
+        // Try to add referral data to the same spreadsheet that's already working
+        const existingSpreadsheetId = process.env.REGISTERED_CREATORS_SPREADSHEET_ID;
+        if (existingSpreadsheetId) {
+          console.log('Using existing working spreadsheet ID:', existingSpreadsheetId);
+          addReferralData({
+            spreadSheetId: existingSpreadsheetId,
+            sheetByTitle: 'Referral Code', // Will rename Sheet1 to this name
+            data: {
+              name: result.user.name || '',
+              email: result.user.email,
+              phoneNumber: result.user.phoneNumber || '',
+              referralCode: creatorData.referralCode,
+            },
+          })
+            .then(() => {
+              console.log('Successfully added referral data to Google Sheets');
+              return;
+            })
+            .catch((error) => {
+              console.error('Error adding referral data to Google Sheets:', error);
+            });
+        } else {
+          console.log('No existing spreadsheet ID found, trying with provided ID...');
+          addReferralData({
+            spreadSheetId: '1ZiygBUJOa-OQPc8ybZ1tKDoJouTeynNVsYc2YfwH9ko', // Your Google Sheets ID
+            sheetByTitle: 'Referral Code', // Try with default sheet name first
+            data: {
+              name: result.user.name || '',
+              email: result.user.email,
+              phoneNumber: result.user.phoneNumber || '',
+              referralCode: creatorData.referralCode,
+            },
+          })
+            .then(() => {
+              console.log('Successfully added referral data to Google Sheets');
+              return;
+            })
+            .catch((error) => {
+              console.error('Error adding referral data to Google Sheets:', error);
+            });
+        }
+      } else {
+        console.log('No referral code provided or referral code is empty');
+      }
 
       return res.status(201).json({ user: result.user.email });
     }
@@ -912,6 +969,7 @@ export const updateCreator = async (req: Request, res: Response) => {
     Nationality,
     socialMediaData,
     city,
+    referralCode,
   }: CreatorUpdateData = req.body;
 
   try {
@@ -961,6 +1019,7 @@ export const updateCreator = async (req: Request, res: Response) => {
             country: Nationality,
             status: 'active',
             city: city,
+            referralCode: referralCode,
           },
         },
         instagram,
@@ -988,6 +1047,25 @@ export const updateCreator = async (req: Request, res: Response) => {
 
     if (!user.Board) {
       await createKanbanBoard(creator.user.id, 'creator');
+    }
+
+    // Add referral data to Google Sheets if referral code exists and user doesn't already have one
+    if (referralCode && referralCode.trim() !== '' && !user.referralCode) {
+      const existingSpreadsheetId = process.env.REGISTERED_CREATORS_SPREADSHEET_ID;
+      if (existingSpreadsheetId) {
+        addReferralData({
+          spreadSheetId: existingSpreadsheetId,
+          sheetByTitle: 'Referral Code', // Will rename Sheet1 to this name
+          data: {
+            name: creator.user.name || '',
+            email: creator.user.email,
+            phoneNumber: creator.user.phoneNumber || '',
+            referralCode: referralCode,
+          },
+        }).catch((error) => {
+          console.error('Error adding referral data to Google Sheets:', error);
+        });
+      }
     }
 
     return res.status(200).json({ name: creator.user.name });

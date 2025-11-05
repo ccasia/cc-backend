@@ -22,7 +22,11 @@ import {
 import { isLoggedIn } from '@middlewares/onlyLogin';
 import { isSuperAdmin, isAdmin } from '@middlewares/onlySuperadmin';
 import { generateInvoice } from '@controllers/invoiceController';
-import { submitPostingLinkByCSMV2, approvePostingLinkBySuperadminV2, rejectPostingLinkBySuperadminV2 } from '@controllers/submissionController';
+import {
+  submitPostingLinkByCSMV2,
+  approvePostingLinkBySuperadminV2,
+  rejectPostingLinkBySuperadminV2,
+} from '@controllers/submissionController';
 
 const router = Router();
 
@@ -33,6 +37,7 @@ router.get('/deliverables/:userId/:campaignId', isLoggedIn, getDeliverables);
 router.post('/submitAgreement', isLoggedIn, agreementSubmission);
 router.post('/draftSubmission', isLoggedIn, draftSubmission);
 router.post('/postSubmission', isLoggedIn, postingSubmission);
+router.post('/adminPostSubmission', isLoggedIn, postingSubmission);
 router.post('/generateInvoice', isSuperAdmin, generateInvoice);
 // New posting link flow (V2)
 // Allow admin/CSM to submit link in V2 as well (not only superadmin)
@@ -42,7 +47,7 @@ router.post('/v2/posting/superadmin/reject', isSuperAdmin, rejectPostingLinkBySu
 
 router.patch('/adminManageAgreementSubmission', isSuperAdmin, adminManageAgreementSubmission);
 router.patch('/adminManageDraft', isSuperAdmin, adminManageDraft);
-router.patch('/adminManagePosting', isSuperAdmin, adminManagePosting);
+router.patch('/adminManagePosting', isLoggedIn, adminManagePosting);
 router.patch('/posting', isLoggedIn, isSuperAdmin, changePostingDate);
 
 // Section-specific management routes
@@ -58,6 +63,5 @@ router.patch('/status', isSuperAdmin, updateSubmissionStatus);
 router.patch('/v2/managePhotos', isSuperAdmin, adminManagePhotosV2);
 router.patch('/v2/manageDraftVideos', isSuperAdmin, adminManageDraftVideosV2);
 router.patch('/v2/manageRawFootages', isSuperAdmin, adminManageRawFootagesV2);
-
 
 export default router;
