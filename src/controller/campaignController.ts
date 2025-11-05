@@ -4298,6 +4298,125 @@ export const sendAgreement = async (req: Request, res: Response) => {
   }
 };
 
+export const assignCreditOnAgreementSend = async (req: Request, res: Response) => {
+  try {
+    const { userId, campaignId } = req.body;
+
+    if (!userId || !campaignId) {
+      return res.status(400).json({ message: 'Missing required fields: userId, campaignId' });
+    }
+
+    const campaign = await prisma.campaign.findUnique({
+      where: { id: campaignId },
+      include: { shortlisted: true },
+    });
+
+    if (!campaign) {
+      return res.status(404).json({ message: 'Campaign not found' });
+    }
+
+    if (campaign.submissionVersion !== 'v4') {
+      return res.status(400).json({ message: 'This endpoint is only for v4 campaigns' });
+    }
+
+    if (!campaign.campaignCredits) {
+      return res.status(400).json({ message: 'Campaign has no credits configured' });
+    }
+
+    const shortlistedCreator = await prisma.shortListedCreator.findFirst({
+      where: {
+        userId,
+        campaignId,
+      },
+      include: {
+        user: {
+          include: {
+            creator: true,
+          },
+        },
+      },
+    });
+
+    if (!shortlistedCreator) {
+      return res.status(404).json({ message: 'Shortlisted creator not found' });
+    }
+
+    const isGuestCreator = shortlistedCreator.user?.creator?.isGuest === true;
+    
+    if (isGuestCreator) {
+      return res.status(200).json({ 
+        message: 'Non-Platform creator - no credit assigned (Non-Platform creators do not count toward campaign credits)',
+        creditsUsed: 0,
+        creditsTotal: campaign.campaignCredits,
+        isGuestCreator: true,
+      });
+    }
+
+    if (shortlistedCreator.ugcVideos && shortlistedCreator.ugcVideos > 0) {
+      return res.status(200).json({ 
+        message: 'Credit already assigned to this creator',
+        alreadyAssigned: true,
+      });
+    }
+
+    const pitch = await prisma.pitch.findFirst({
+      where: {
+        userId,
+        campaignId,
+      },
+      select: {
+        ugcCredits: true,
+      },
+    });
+
+    const creditsToAssign = pitch?.ugcCredits && pitch.ugcCredits > 0 ? pitch.ugcCredits : 1;
+
+    const totalUsedCredits = await prisma.shortListedCreator.aggregate({
+      where: {
+        campaignId,
+        ugcVideos: { gt: 0 },
+        user: {
+          creator: {
+            isGuest: { not: true }, 
+          },
+        },
+      },
+      _sum: {
+        ugcVideos: true,
+      },
+    });
+
+    const creditsUsed = totalUsedCredits._sum.ugcVideos || 0;
+
+    if (creditsUsed + creditsToAssign > campaign.campaignCredits) {
+      return res.status(400).json({ 
+        message: `Not enough credits available. Remaining: ${campaign.campaignCredits - creditsUsed}, requested: ${creditsToAssign}`,
+        creditsUsed: creditsUsed,
+        creditsTotal: campaign.campaignCredits,
+        creditsRequested: creditsToAssign,
+      });
+    }
+
+    await prisma.shortListedCreator.update({
+      where: { id: shortlistedCreator.id },
+      data: { ugcVideos: creditsToAssign },
+    });
+
+    return res.status(200).json({ 
+      message: `Credit assigned successfully (${creditsToAssign} credit${creditsToAssign > 1 ? 's' : ''})`,
+      creditsUsed: creditsUsed + creditsToAssign,
+      creditsTotal: campaign.campaignCredits,
+      creditsAssigned: creditsToAssign,
+    });
+  } catch (error) {
+    console.error('Error assigning credit on agreement send:', error);
+    return res.status(500).json({ 
+      message: 'Error assigning credit',
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+};
+
 export const editCampaignImages = async (req: Request, res: Response) => {
   const { campaignImages, campaignId } = req.body;
   const newImages: string[] = [];
