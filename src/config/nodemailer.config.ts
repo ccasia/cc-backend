@@ -1644,7 +1644,7 @@ export const csShortlistCreators = (
                     
                     <!-- Header: Logo -->
                     <tr>
-                      <td style="padding: 20px 20px 10px 20px;">
+                      <td style="padding: 30px 20px 10px 20px;">
                         <img src="https://drive.google.com/uc?id=1wbwEJp2qX5Hb9iirUQJVCmdpq-fg34oE" alt="Cult Creative Logo" width="120">
                       </td>
                     </tr>
@@ -1711,9 +1711,9 @@ export const csShortlistCreators = (
                             <td align="center" style="padding: 20px 0 0;">
                               <table role="presentation" cellspacing="0" cellpadding="0" border="0">
                                 <tr>
-                                  <td style="padding: 0 15px;"><a href="https://www.instagram.com/cultcreativeasia/" target="_blank"><img src="https://drive.google.com/uc?id=1OA2BS5tMo30D_OG-u78ZgpOcLw5BAv1F" alt="Instagram" width="28"></a></td>
-                                  <td style="padding: 0 15px;"><a href="https://www.linkedin.com/company/cultcreativeapp/" target="_blank"><img src="https://drive.google.com/uc?id=1qIDwkECdjVjm2ILZCSdHrhzJ4YspKzMX" alt="LinkedIn" width="28"></a></td>
-                                  <td style="padding: 0 15px;"><a href="https://www.cultcreative.asia" target="_blank"><img src="https://drive.google.com/uc?id=1FcowsKfDi6EpQF8n59VcG7zU5Txe8NMA" alt="Website" width="28"></a></td>
+                                  <td style="padding: 0 15px;"><a href="https://www.instagram.com/cultcreativeasia/" target="_blank"><img src="https://drive.google.com/uc?id=18U5OsbRLVFGBXpG3Tod3_E_V-CKCoPxn" alt="Instagram" width="28"></a></td>
+                                  <td style="padding: 0 15px;"><a href="https://www.linkedin.com/company/cultcreativeapp/" target="_blank"><img src="https://drive.google.com/uc?id=1-OLY5OezbzS7m37xcfLNXvmJyoNhAtTL" alt="LinkedIn" width="28"></a></td>
+                                  <td style="padding: 0 15px;"><a href="https://www.cultcreative.asia" target="_blank"><img src="https://drive.google.com/uc?id=1L5rZbPbK3zouf40Krj-CRtmMa94qc_sP" alt="Website" width="28"></a></td>
                                 </tr>
                               </table>
                             </td>
@@ -1721,14 +1721,14 @@ export const csShortlistCreators = (
                           
                           <!-- Email Link -->
                           <tr>
-                            <td align="center" style="padding-bottom: 15px;">
+                            <td align="center">
                               <a href="mailto:hello@cultcreative.asia" style="font-family: Arial, sans-serif; font-size: 14px; color: #333333; text-decoration: underline; font-weight: bold;">hello@cultcreative.asia</a>
                             </td>
                           </tr>
                           <!-- Company Info -->
                           <tr>
                             <td align="center">
-                              <p style="margin: 0; font-family: Arial, sans-serif; font-size: 11px; color: #aaaaaa; line-height: 1.5; style="padding-bottom: 20px">
+                              <p style="padding: 20px; margin: 0; font-family: Arial, sans-serif; font-size: 11px; color: #aaaaaa; line-height: 1.5; text-decoration: none">
                                 Cult Creative Sdn. Bhd.<br>
                                 A-5-3A, Block A, Jaya One, Jln Profesor Diraja Ungku Aziz,<br>
                                 Seksyen 13, 46200 Petaling Jaya, Selangor, Malaysia<br>
