@@ -78,7 +78,7 @@ export const ClientInvitation = (email: string, inviteToken: string, companyName
         </style>
       </head>
       <body style="margin: 0; padding: 0; background-color: #f0f2f5; font-family: 'Inter', Arial, sans-serif;">
-        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #f0f2f5;">
+         <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #f0f2f5;">
           <tr>
             <td align="center" style="padding: 20px 10px;">
               <!-- Main Content Wrapper -->
@@ -94,27 +94,29 @@ export const ClientInvitation = (email: string, inviteToken: string, companyName
                 <!-- Headline -->
                 <tr>
                   <td style="padding: 10px 30px 20px 30px;">
-                    <h1 style="margin: 0; font-family: 'Instrument Serif', Georgia, serif; font-size: 32px; color: #000000; font-weight: 400; line-height: 1.2;">
-                      Action Required: Please Verify Your Email Address
+                    <h1 style="margin: 0; font-family: 'Instrument Serif', Georgia, serif; font-size: 32px; color: #000000; font-weight: 400; line-height: 32px; ">
+                      Welcome to Your Client Portal
                     </h1>
                   </td>
                 </tr>
 
-                <!-- Rocket Icon -->
+                <!-- Emoji Icon -->
                 <tr>
                   <td align="center" style="padding: 10px 20px;">
-                    <img src="https://drive.google.com/uc?id=1UWOHdVIMEgCDwquGxSPkCp1TAx5Tu76G" alt="Rocket Icon" width="80" style="width: 80px; height: auto;">
+                    <img src="https://drive.google.com/uc?id=13c5VhONNva9BMQIwXzn7t8stQrnT0OvV" alt="Rocket Icon" width="80" style="width: 80px; height: auto;">
                   </td>
                 </tr>
 
                 <!-- Body Text -->
                 <tr>
                   <td style="padding: 20px 20px;">
-                    <p style="margin: 0 0 15px 0; font-family: 'Inter', Arial, sans-serif; font-size: 16px; color: #000000; line-height: 1.5;">
-                      Hi <strong>${companyName}</strong>,
+                    <p style="margin: 0 0 15px 0; font-family: 'Inter', Arial, sans-serif; font-size: 16px; color: #000000; line-height: 1.5; text-transform: capitalize">
+                      Hey <strong>${companyName}</strong>,
                     </p>
                     <p style="margin: 0; font-family: 'Inter', Arial, sans-serif; font-size: 16px; color: #000000; line-height: 1.5;">
-                      Thanks for signing up with Cult Creative! We just need to confirm that this is your email address before we can activate your account and let you get started. Click the button below to <a href="${process.env.BASE_EMAIL_URL}/auth/jwt/client/setup-password?token=${inviteToken}" target="_blank" style="color: #1c4dff; text-decoration: none;">confirm your email</a> and unlock all features.
+                      Awesome news your account’s all set up! 🙌<br>
+                      <br>
+                      For your final step click the button below  and set your password to get started!
                     </p>
                   </td>
                 </tr>
@@ -136,9 +138,9 @@ export const ClientInvitation = (email: string, inviteToken: string, companyName
                 <tr>
                   <td style="padding: 20px 20px;">
                     <p style="margin: 0; font-family: 'Inter', Arial, sans-serif; font-size: 14px; color: #919191; line-height: 1.5;">
-                      If the button above does not work, please copy and paste the following link into your web browser:
+                      This invitation will expire in 7 days.
                       <br>
-                      <p target="_blank" style="color: #1340FF; text-decoration: underline;">${process.env.BASE_EMAIL_URL}/auth/jwt/client/setup-password?token=${inviteToken}</p>
+                      If you didn't expect this invitation, you can safely ignore this email.
                     </p>
                   </td>
                 </tr>
@@ -163,9 +165,9 @@ export const ClientInvitation = (email: string, inviteToken: string, companyName
                             <td align="center" style="padding: 20px 0 0;">
                               <table role="presentation" cellspacing="0" cellpadding="0" border="0">
                                 <tr>
-                                  <td style="padding: 0 15px;"><a href="https://www.instagram.com/cultcreativeasia/" target="_blank"><img src="https://drive.google.com/uc?id=1OA2BS5tMo30D_OG-u78ZgpOcLw5BAv1F" alt="Instagram" width="28"></a></td>
-                                  <td style="padding: 0 15px;"><a href="https://www.linkedin.com/company/cultcreativeapp/" target="_blank"><img src="https://drive.google.com/uc?id=1qIDwkECdjVjm2ILZCSdHrhzJ4YspKzMX" alt="LinkedIn" width="28"></a></td>
-                                  <td style="padding: 0 15px;"><a href="https://www.cultcreative.asia" target="_blank"><img src="https://drive.google.com/uc?id=1FcowsKfDi6EpQF8n59VcG7zU5Txe8NMA" alt="Website" width="28"></a></td>
+                                  <td style="padding: 0 15px;"><a href="https://www.instagram.com/cultcreativeasia/" target="_blank"><img src="https://drive.google.com/uc?id=18U5OsbRLVFGBXpG3Tod3_E_V-CKCoPxn" alt="Instagram" width="28"></a></td>
+                                  <td style="padding: 0 15px;"><a href="https://www.linkedin.com/company/cultcreativeapp/" target="_blank"><img src="https://drive.google.com/uc?id=1-OLY5OezbzS7m37xcfLNXvmJyoNhAtTL" alt="LinkedIn" width="28"></a></td>
+                                  <td style="padding: 0 15px;"><a href="https://www.cultcreative.asia" target="_blank"><img src="https://drive.google.com/uc?id=1L5rZbPbK3zouf40Krj-CRtmMa94qc_sP" alt="Website" width="28"></a></td>
                                 </tr>
                               </table>
                             </td>
@@ -173,14 +175,14 @@ export const ClientInvitation = (email: string, inviteToken: string, companyName
                           
                           <!-- Email Link -->
                           <tr>
-                            <td align="center" style="padding-bottom: 15px;">
+                            <td align="center">
                               <a href="mailto:hello@cultcreative.asia" style="font-family: Arial, sans-serif; font-size: 14px; color: #333333; text-decoration: underline; font-weight: bold;">hello@cultcreative.asia</a>
                             </td>
                           </tr>
                           <!-- Company Info -->
                           <tr>
                             <td align="center">
-                              <p style="margin: 0; font-family: Arial, sans-serif; font-size: 11px; color: #aaaaaa; line-height: 1.5;">
+                              <p style="padding: 20px; margin: 0; font-family: Arial, sans-serif; font-size: 11px; color: #aaaaaa; line-height: 1.5; text-decoration: none">
                                 Cult Creative Sdn. Bhd.<br>
                                 A-5-3A, Block A, Jaya One, Jln Profesor Diraja Ungku Aziz,<br>
                                 Seksyen 13, 46200 Petaling Jaya, Selangor, Malaysia<br>
