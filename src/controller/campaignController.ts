@@ -6979,11 +6979,6 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
 
       if (!campaign) throw new Error('Campaign not found');
 
-      // For V3, we only support client-created campaigns
-      if (campaign.origin !== 'CLIENT') {
-        throw new Error('V3 shortlisting is only for client-created campaigns');
-      }
-
       const creatorIds = creators.map((c: any) => c.id);
 
       const creatorData = await tx.user.findMany({
@@ -7527,11 +7522,6 @@ export const assignUGCCreditsV3 = async (req: Request, res: Response) => {
     });
     if (!campaign) {
       return res.status(404).json({ message: 'Campaign not found' });
-    }
-
-    // For V3, we only support client-created campaigns
-    if (campaign.origin !== 'CLIENT') {
-      throw new Error('V3 UGC credits assignment is only for client-created campaigns');
     }
 
     // Calculate total credits being assigned
