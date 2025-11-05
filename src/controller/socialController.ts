@@ -1,5 +1,5 @@
 import { decryptToken, encryptToken } from '@helper/encrypt';
-import axios from 'axios';
+import axios, { get } from 'axios';
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import dayjs from 'dayjs';
@@ -1813,14 +1813,14 @@ export const getTikTokMediaKit = async (req: Request, res: Response) => {
         status: videoError.response?.status,
         statusText: videoError.response?.statusText,
         data: videoError.response?.data,
-        message: videoError.message
+        message: videoError.message,
       });
-      
+
       // If it's a permission error, the user might need to reconnect
       if (videoError.response?.status === 403 || videoError.response?.status === 401) {
         throw new Error('TikTok permissions expired. Please reconnect your TikTok account.');
       }
-      
+
       // For other errors, continue with empty videos array
       videosRes = { data: { data: { videos: [] } } };
     }
@@ -1850,8 +1850,8 @@ export const getTikTokMediaKit = async (req: Request, res: Response) => {
       responseStructure: {
         hasVideos: !!videosRes.data.data?.videos,
         videosType: typeof videosRes.data.data?.videos,
-        videosLength: videosRes.data.data?.videos?.length
-      }
+        videosLength: videosRes.data.data?.videos?.length,
+      },
     });
 
     // Calculate analytics from videos
@@ -1968,9 +1968,8 @@ export const getTikTokMediaKit = async (req: Request, res: Response) => {
     // Debug logging for response data
     console.log('TikTok Response Data Structure:', {
       sortedVideosCount: responseData.medias.sortedVideos.length,
-      totalVideos: mappedVideos.length
+      totalVideos: mappedVideos.length,
     });
-
 
     return res.status(200).json(responseData);
   } catch (error: any) {
