@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { PrismaClient, CampaignStatus } from '@prisma/client';
-import { uploadCompanyLogo } from '@configs/cloudStorage.config';
+import { uploadCompanyLogo, uploadAttachments } from '@configs/cloudStorage.config';
 import { getRemainingCredits } from '@services/companyService';
 import { clients, io } from '../server';
 import { saveNotification } from './notificationController';
@@ -311,6 +311,7 @@ export const createClientCampaign = async (req: Request, res: Response) => {
       videoAngle,
       campaignDo,
       campaignDont,
+      referencesLinks,
       // submissionVersion,
     } = campaignData;
 
@@ -363,6 +364,29 @@ export const createClientCampaign = async (req: Request, res: Response) => {
       }
     }
 
+    const otherAttachments: string[] = [];
+    if (req.files && req.files.otherAttachments) {
+      const attachments: any = (req.files as any).otherAttachments as [];
+
+      if (attachments.length) {
+        for (const item of attachments as any) {
+          const url: string = await uploadAttachments({
+            tempFilePath: item.tempFilePath,
+            fileName: item.name,
+            folderName: 'otherAttachments',
+          });
+          otherAttachments.push(url);
+        }
+      } else {
+        const url: string = await uploadAttachments({
+          tempFilePath: attachments.tempFilePath,
+          fileName: attachments.name,
+          folderName: 'otherAttachments',
+        });
+        otherAttachments.push(url);
+      }
+    }
+
     const newCampaign = await prisma.$transaction(async (tx) => {
       // Create campaign with PENDING status
       const campaign = await tx.campaign.create({
@@ -388,6 +412,8 @@ export const createClientCampaign = async (req: Request, res: Response) => {
               campaigns_dont: campaignDont || [],
               videoAngle: videoAngle || [],
               socialMediaPlatform: socialMediaPlatform || [],
+              otherAttachments: otherAttachments,
+              referencesLinks: referencesLinks?.map((link: any) => link.value) || [],
             },
           },
           campaignRequirement: {
