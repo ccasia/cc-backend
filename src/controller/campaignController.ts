@@ -118,7 +118,7 @@ interface Campaign {
   audienceLanguage: string[];
   audienceCreatorPersona: string[];
   audienceUserPersona: string;
-  adminManager: [];
+  campaignManager: [];
   campaignStage: string;
   campaignImages: image[];
   agreementFrom: { id: string };
@@ -213,7 +213,7 @@ export const createCampaign = async (req: Request, res: Response) => {
     audienceUserPersona,
     campaignDo,
     campaignDont,
-    adminManager,
+    campaignManager,
     campaignStage,
     campaignIndustries,
     timeline,
@@ -286,7 +286,7 @@ export const createCampaign = async (req: Request, res: Response) => {
     await prisma.$transaction(
       async (tx) => {
         const admins = await Promise.all(
-          adminManager.map(async (admin) => {
+          campaignManager.map(async (admin) => {
             return await tx.user.findUnique({
               where: {
                 id: (admin as any).id as string,
@@ -522,7 +522,7 @@ export const createCampaign = async (req: Request, res: Response) => {
           },
         });
 
-        // Add adminManager and clientManagers to campaignAdmin
+        // Add campaignManager and clientManagers to campaignAdmin
         const adminIdsToAdd = [
           ...admins.map((a: any) => a?.id).filter(Boolean),
           ...clientManagerUsers.map((u: any) => u?.id).filter(Boolean),
@@ -5894,21 +5894,21 @@ export const activateClientCampaign = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Invalid data format' });
     }
 
-    const { campaignType, deliverables, adminManager, agreementTemplateId, status } = data;
+    const { campaignType, deliverables, campaignManager, agreementTemplateId, status } = data;
 
-    console.log('Received data:', { campaignType, deliverables, adminManager, agreementTemplateId, status });
+    console.log('Received data:', { campaignType, deliverables, campaignManager, agreementTemplateId, status });
 
     // Validate required fields
     if (!campaignType) {
       return res.status(400).json({ message: 'Campaign type is required' });
     }
 
-    if (!adminManager || (Array.isArray(adminManager) && adminManager.length === 0)) {
+    if (!campaignManager || (Array.isArray(campaignManager) && campaignManager.length === 0)) {
       return res.status(400).json({ message: 'At least one admin manager is required' });
     }
 
-    // Ensure adminManager is always an array
-    const adminManagerArray = Array.isArray(adminManager) ? adminManager : [adminManager];
+    // Ensure campaignManager is always an array
+    const campaignManagerArray = Array.isArray(campaignManager) ? campaignManager : [campaignManager];
 
     if (!agreementTemplateId) {
       return res.status(400).json({ message: 'Agreement template is required' });
@@ -6150,9 +6150,9 @@ export const activateClientCampaign = async (req: Request, res: Response) => {
     }
 
     // Add admin managers to the campaign
-    console.log('Adding admin managers:', adminManagerArray);
+    console.log('Adding admin managers:', campaignManagerArray);
 
-    for (const adminId of adminManagerArray) {
+    for (const adminId of campaignManagerArray) {
       try {
         console.log(`Adding admin ${adminId} to campaign ${campaignId}`);
 
@@ -7308,17 +7308,17 @@ export const initialActivateCampaign = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Invalid data format' });
     }
 
-    const { adminManager, creatorIds } = data;
+    const { campaignManager, creatorIds } = data;
 
-    console.log('Received initial activation data:', { adminManager });
+    console.log('Received initial activation data:', { campaignManager });
 
     // Validate required fields
-    if (!adminManager || (Array.isArray(adminManager) && adminManager.length === 0)) {
+    if (!campaignManager || (Array.isArray(campaignManager) && campaignManager.length === 0)) {
       return res.status(400).json({ message: 'At least one admin manager is required' });
     }
 
-    // Ensure adminManager is always an array
-    const adminManagerArray = Array.isArray(adminManager) ? adminManager : [adminManager];
+    // Ensure campaignManager is always an array
+    const campaignManagerArray = Array.isArray(campaignManager) ? campaignManager : [campaignManager];
 
     // Check if campaign exists and is in PENDING_CSM_REVIEW or SCHEDULED status
     const campaign = await prisma.campaign.findFirst({
@@ -7348,7 +7348,7 @@ export const initialActivateCampaign = async (req: Request, res: Response) => {
         });
 
     // Add admin managers to the campaign
-    for (const adminId of adminManagerArray) {
+    for (const adminId of campaignManagerArray) {
       try {
         // Check if the admin exists
         const admin = await prisma.admin.findFirst({
@@ -7464,7 +7464,7 @@ export const initialActivateCampaign = async (req: Request, res: Response) => {
     console.log('Campaign updated for initial activation:', {
       campaignId,
       newStatus: updatedCampaign.status,
-      adminManager: adminManagerArray,
+      campaignManager: campaignManagerArray,
     });
 
     res.status(200).json({
