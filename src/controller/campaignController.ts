@@ -1566,8 +1566,9 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
       },
     });
 
-    // Determine initial status based on campaign origin
-    const initialStatus = campaignWithOrigin.origin === 'CLIENT' ? 'PENDING_REVIEW' : 'undecided';
+    const isClientManagedFlow =
+      campaignWithOrigin.origin === 'CLIENT' || campaignWithOrigin.submissionVersion === 'v4';
+    const initialStatus = isClientManagedFlow ? 'PENDING_REVIEW' : 'undecided';
 
     if (isPitchExist) {
       if (isPitchExist.type === 'text') {
