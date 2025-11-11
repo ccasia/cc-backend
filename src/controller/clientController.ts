@@ -413,7 +413,7 @@ export const createClientCampaign = async (req: Request, res: Response) => {
               videoAngle: videoAngle || [],
               socialMediaPlatform: socialMediaPlatform || [],
               otherAttachments: otherAttachments,
-              referencesLinks: referencesLinks?.map((link: any) => link.value) || [],
+              referencesLinks: referencesLinks?.map((link: any) => link?.value).filter(Boolean) || [],
             },
           },
           campaignRequirement: {
