@@ -1566,8 +1566,6 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
       },
     });
 
-    // Determine initial status based on campaign origin
-    const initialStatus = campaignWithOrigin.origin === 'CLIENT' ? 'PENDING_REVIEW' : 'undecided';
 
     if (isPitchExist) {
       if (isPitchExist.type === 'text') {
@@ -1580,7 +1578,7 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
             content: content,
             userId: id as string,
             campaignId: campaignId,
-            status: initialStatus,
+            status: 'PENDING_REVIEW',
           },
           include: {
             campaign: true,
@@ -1596,7 +1594,7 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
             content: content,
             userId: id as string,
             campaignId: campaignId,
-            status: initialStatus,
+            status: 'PENDING_REVIEW',
           },
           include: {
             campaign: true,
@@ -1610,7 +1608,7 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
             content: content,
             userId: id as string,
             campaignId: campaignId,
-            status: initialStatus,
+            status: 'PENDING_REVIEW',
           },
           include: {
             campaign: true,
@@ -7042,7 +7040,7 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
           data: {
             userId: user.id,
             campaignId: campaign.id,
-            type: 'text', // V3 shortlist pitch type
+            type: 'shortlisted', // V3 shortlist pitch type
             status: 'SENT_TO_CLIENT', // Client can immediately approve
             content: `Creator ${user.name} has been shortlisted for campaign "${campaign.name}"`,
             // Set default values for V3 flow
@@ -7706,7 +7704,7 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
             data: {
               userId,
               campaignId,
-              type: 'text',
+              type: 'shortlisted',
               status: 'SENT_TO_CLIENT',
               content: `Non-platform creator has been shortlisted for campaign "${campaign.name}"`,
               amount: null,
