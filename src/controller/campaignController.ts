@@ -1581,7 +1581,7 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
             content: content,
             userId: id as string,
             campaignId: campaignId,
-            status: initialStatus,
+            status: 'PENDING_REVIEW',
           },
           include: {
             campaign: true,
@@ -1597,7 +1597,7 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
             content: content,
             userId: id as string,
             campaignId: campaignId,
-            status: initialStatus,
+            status: 'PENDING_REVIEW',
           },
           include: {
             campaign: true,
@@ -1611,7 +1611,7 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
             content: content,
             userId: id as string,
             campaignId: campaignId,
-            status: initialStatus,
+            status: 'PENDING_REVIEW',
           },
           include: {
             campaign: true,
@@ -4588,6 +4588,19 @@ export const editCampaignAdmin = async (req: Request, res: Response) => {
           where: {
             userId: admin.id,
           },
+          include: {
+            user: {
+              select: {
+                id: true,
+                role: true,
+              },
+            },
+            role: {
+              select: {
+                name: true,
+              },
+            },
+          },
         });
         return data;
       }),
@@ -4612,12 +4625,18 @@ export const editCampaignAdmin = async (req: Request, res: Response) => {
       admins.every((item: any) => item.id !== admin.admin.userId),
     );
 
+    // Check if any new admin being added is a client user
+    const hasClientAdmin = adjustedAdmins.some((admin: any) => {
+      return admin?.user?.role === 'client' || admin?.role?.name === 'Client';
+    });
+
     await prisma.campaignAdmin.deleteMany({
       where: {
         campaignId: campaign?.id,
       },
     });
 
+    // Update campaign with new admins and set submissionVersion to v4 if client is added
     await prisma.campaign.update({
       where: {
         id: campaign?.id,
@@ -4628,6 +4647,7 @@ export const editCampaignAdmin = async (req: Request, res: Response) => {
             adminId: admin.userId,
           })),
         },
+        ...(hasClientAdmin && { submissionVersion: 'v4' }),
       },
     });
 
@@ -4656,7 +4676,9 @@ export const editCampaignAdmin = async (req: Request, res: Response) => {
     }
 
     if (adminId) {
-      const adminLogMessage = `Updated Admins list in ${campaign.name} `;
+      const adminLogMessage = hasClientAdmin
+        ? `Updated Admins list in ${campaign.name} and converted to V4 (client added)`
+        : `Updated Admins list in ${campaign.name} `;
       logAdminChange(adminLogMessage, adminId, req);
     }
 
@@ -7021,7 +7043,7 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
           data: {
             userId: user.id,
             campaignId: campaign.id,
-            type: 'text', // V3 shortlist pitch type
+            type: 'shortlisted', // V3 shortlist pitch type
             status: 'SENT_TO_CLIENT', // Client can immediately approve
             content: `Creator ${user.name} has been shortlisted for campaign "${campaign.name}"`,
             // Set default values for V3 flow
@@ -7685,7 +7707,7 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
             data: {
               userId,
               campaignId,
-              type: 'text',
+              type: 'shortlisted',
               status: 'SENT_TO_CLIENT',
               content: `Non-platform creator has been shortlisted for campaign "${campaign.name}"`,
               amount: null,
