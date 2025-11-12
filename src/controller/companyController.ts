@@ -32,12 +32,14 @@ export const createCompany = async (req: Request, res: Response) => {
     const adminLogMessage = `Created A New company ${company.name} `;
     logAdminChange(adminLogMessage, adminId, req);
     return res.status(201).json({ company, message: 'A new company has been created' });
-  } catch (error) {
-    console.log(error);
+  } catch (error: any) {
+    console.log('Error creating company:', error);
     if (error.message.includes('Company already exists')) {
       return res.status(400).json({ message: 'Company already exists' });
     }
-    return res.status(400).json(error);
+    return res.status(400).json({
+      message: error.message || 'An unexpected error occurred while creating the company.',
+    });
   }
 };
 
@@ -60,7 +62,26 @@ export const getAllCompanies = async (_req: Request, res: Response) => {
         campaign: true,
       },
     });
-    return res.status(200).json(companies);
+
+    const companiesWithSummary = companies.map((company) => {
+      const activeSubscriptions = company.subscriptions.filter((sub) => sub.status === 'ACTIVE');
+      const totalCredits = activeSubscriptions.reduce((sum, sub) => sum + (sub.totalCredits || 0), 0);
+      const usedCredits = activeSubscriptions.reduce((sum, sub) => sum + sub.creditsUsed, 0);
+
+      const creditSummary = {
+        totalCredits,
+        usedCredits,
+        remainingCredits: totalCredits - usedCredits,
+        activePackagesCount: activeSubscriptions.length,
+        nextExpiryDate:
+          activeSubscriptions.length > 0
+            ? activeSubscriptions.sort((a, b) => new Date(a.expiredAt).getTime() - new Date(b.expiredAt).getTime())[0]
+                .expiredAt
+            : null,
+      };
+      return { ...company, creditSummary };
+    });
+    return res.status(200).json(companiesWithSummary);
   } catch (err) {
     return res.status(400).json({ message: err });
   }
@@ -559,8 +580,8 @@ export const activateClient = async (req: Request, res: Response) => {
     const company = await prisma.company.findUnique({
       where: { id: companyId },
       include: {
-        pic: true // Get person in charge details
-      }
+        pic: true, // Get person in charge details
+      },
     });
 
     if (!company) {
@@ -573,7 +594,7 @@ export const activateClient = async (req: Request, res: Response) => {
 
     // Check if client user already exists
     const existingUser = await prisma.user.findFirst({
-      where: { email: company.pic[0].email.toLowerCase() }
+      where: { email: company.pic[0].email.toLowerCase() },
     });
 
     if (existingUser) {
@@ -588,20 +609,20 @@ export const activateClient = async (req: Request, res: Response) => {
           password: '', // Empty password initially
           role: 'client',
           status: 'pending',
-          name: company.pic[0].name || 'Client User'
-        }
+          name: company.pic[0].name || 'Client User',
+        },
       });
 
       // Get or create default client role
       let clientRole = await tx.role.findFirst({
-        where: { name: 'Client' }
+        where: { name: 'Client' },
       });
 
       if (!clientRole) {
         clientRole = await tx.role.create({
           data: {
             name: 'Client',
-          }
+          },
         });
       }
 
@@ -609,7 +630,7 @@ export const activateClient = async (req: Request, res: Response) => {
       const inviteToken = jwt.sign(
         { id: user.id, companyId },
         process.env.SESSION_SECRET as Secret,
-        { expiresIn: '24h' } // 24 hour expiry for client setup
+        { expiresIn: '24h' }, // 24 hour expiry for client setup
       );
 
       // Create admin record for client with Client role
@@ -628,7 +649,7 @@ export const activateClient = async (req: Request, res: Response) => {
           userId: user.id,
           inviteToken: inviteToken,
           companyId: companyId, // Connect client to company
-        }
+        },
       });
 
       return { user, admin, client, company };
@@ -643,9 +664,8 @@ export const activateClient = async (req: Request, res: Response) => {
 
     return res.status(200).json({
       message: 'Client activation email sent successfully',
-      email: company.email
+      email: company.email,
     });
-
   } catch (error) {
     console.error('Client activation error:', error);
     return res.status(400).json({ message: 'Error activating client' });

@@ -232,12 +232,15 @@ export const generateCustomId = async (type: any) => {
     orderBy: { clientId: 'desc' }, // Get the latest ID
   });
 
-  let nextId = `${firstLetter}01`; // Default if no user exists
+  let nextId; // Default if no user exists
 
-  if (lastUser?.clientId && lastUser?.clientId.includes(firstLetter)) {
-    const lastNumber = parseInt(lastUser?.clientId.slice(type === 'agency' ? 1 : 2), 10); // Extract number part
+  if (lastUser?.clientId) {
+    const prefixLength = firstLetter.length;
+    const lastNumber = parseInt(lastUser?.clientId.slice(prefixLength), 10); // Extract number part
     const nextNumber = lastNumber + 1;
-    nextId = `${firstLetter}${nextNumber.toString().padStart(2, '0')}`; // Format to A01, A02, etc.
+    nextId = `${firstLetter}${nextNumber.toString().padStart(4, '0')}`; // Format to A0001, A00002, etc.
+  } else {
+    nextId = `${firstLetter}${'1'.toString().padStart(4, '0')}`;
   }
 
   return nextId;

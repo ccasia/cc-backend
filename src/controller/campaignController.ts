@@ -1566,6 +1566,9 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
       },
     });
 
+    const isClientManagedFlow =
+      campaignWithOrigin.origin === 'CLIENT' || campaignWithOrigin.submissionVersion === 'v4';
+    const initialStatus = isClientManagedFlow ? 'PENDING_REVIEW' : 'undecided';
 
     if (isPitchExist) {
       if (isPitchExist.type === 'text') {
