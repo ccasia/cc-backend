@@ -193,9 +193,12 @@ export const swapGuestWithPlatformCreator = async (req: Request, res: Response) 
               amount: guestPitch.amount,
               ugcCredits: guestPitch.ugcCredits,
               agreementTemplateId: guestPitch.agreementTemplateId,
+              username: guestPitch.username,
+              followerCount: guestPitch.followerCount,
+              engagementRate: guestPitch.engagementRate,
             },
           });
-          console.log(`[SWAP] Updated existing platform pitch`);
+          console.log(`[SWAP] Updated existing platform pitch with guest data including username: ${guestPitch.username}`);
         } else {
           // Create new pitch for platform creator
           await tx.pitch.create({
@@ -210,9 +213,12 @@ export const swapGuestWithPlatformCreator = async (req: Request, res: Response) 
               amount: guestPitch.amount,
               ugcCredits: guestPitch.ugcCredits,
               agreementTemplateId: guestPitch.agreementTemplateId,
+              username: guestPitch.username,
+              followerCount: guestPitch.followerCount,
+              engagementRate: guestPitch.engagementRate,
             },
           });
-          console.log(`[SWAP] Created new platform pitch`);
+          console.log(`[SWAP] Created new platform pitch with guest data including username: ${guestPitch.username}`);
         }
 
         // Delete guest pitch

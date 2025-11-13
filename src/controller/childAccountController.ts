@@ -100,6 +100,40 @@ export const getChildAccounts = async (req: Request, res: Response) => {
   }
 };
 
+// Get all child accounts (for admin use)
+export const getAllChildAccounts = async (req: Request, res: Response) => {
+  try {
+    const childAccounts = await prisma.childAccount.findMany({
+      include: {
+        parentClient: {
+          include: {
+            user: {
+              select: {
+                email: true,
+                name: true,
+              }
+            },
+            company: {
+              select: {
+                id: true,
+                name: true,
+              }
+            }
+          }
+        }
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    return res.status(200).json(childAccounts);
+  } catch (error) {
+    console.error('Error fetching all child accounts:', error);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
 // Create a new child account invitation
 export const createChildAccount = async (req: Request, res: Response) => {
   try {

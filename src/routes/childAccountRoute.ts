@@ -3,6 +3,7 @@ import { isLoggedIn } from '@middlewares/onlyLogin';
 import { isAdminOrClient } from '@middlewares/adminOrClient';
 import {
   getChildAccounts,
+  getAllChildAccounts,
   createChildAccount,
   resendInvitation,
   grantAccess,
@@ -14,6 +15,7 @@ import {
 
 const router = express.Router();
 
+router.get('/all', isLoggedIn, getAllChildAccounts);
 router.get('/client/:clientId', isLoggedIn, getChildAccounts);
 router.post('/client/:clientId', isLoggedIn, isAdminOrClient, createChildAccount);
 router.post('/:childAccountId/resend', isLoggedIn, isAdminOrClient, resendInvitation);
