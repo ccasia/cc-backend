@@ -1702,9 +1702,9 @@ model Logistic {
   type   LogisticType
   status LogisticStatus @default(PENDING_ASSIGNMENT)
 
-  shippedAt DateTime?
+  shippedAt   DateTime?
   deliveredAt DateTime?
-  receivedAt DateTime?
+  receivedAt  DateTime?
   completedAt DateTime?
 
   //relations
@@ -1730,9 +1730,9 @@ model Logistic {
 model DeliveryDetails {
   id                   String    @id @unique @default(cuid())
   trackingLink         String?
-  address String?
+  address              String?
   expectedDeliveryDate DateTime?
-  dietaryRestrictions String?
+  dietaryRestrictions  String?
 
   logisticId String   @unique
   logistic   Logistic @relation(fields: [logisticId], references: [id], onDelete: Cascade)
