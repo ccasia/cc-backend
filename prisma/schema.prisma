@@ -42,7 +42,6 @@ model User {
   feedback           Feedback[]
   finance            Finance?
   invoice            Invoice[]           @relation("CreatedBy")
-  logistic           Logistic[]
   sentMessages       Message[]           @relation("UserMessages")
   notifications      Notification[]
   paymentForm        PaymentForm?
@@ -76,6 +75,11 @@ model User {
   videoFeedback      Video[]      @relation("VideoFeedback")
   rawFootageFeedback RawFootage[] @relation("RawFootageFeedback")
   photoFeedback      Photo[]      @relation("PhotoFeedback")
+
+  // logistics
+  assignedLogistics Logistic[]      @relation("AssignedLogistics")
+  createdLogistics  Logistic[]      @relation("CreatedLogistics")
+  reportedIssues    LogisticIssue[]
 }
 
 model EmailVerification {
@@ -519,6 +523,7 @@ model Company {
   pic           Pic[]
   subscriptions Subscription[]
   clients       Client[]
+  products      Product[]
 
   @@index([clientId])
 }
@@ -648,7 +653,7 @@ model Campaign {
   campaignTimeline              CampaignTimeline[]
   creatorAgreement              CreatorAgreement[]
   invoice                       Invoice[]
-  logistic                      Logistic[]
+  logistics                     Logistic[]
   notifications                 Notification[]
   pitch                         Pitch[]
   shortlisted                   ShortListedCreator[]
@@ -1174,19 +1179,19 @@ model Invoice {
   creator       Creator       @relation(fields: [creatorId], references: [userId])
 }
 
-model Logistic {
-  id             String         @id @unique @default(cuid())
-  trackingNumber String
-  itemName       String
-  courier        String
-  status         LogisticStatus @default(Product_is_being_packaged)
-  updateAt       DateTime       @updatedAt
-  createdAt      DateTime       @default(now())
-  userId         String
-  campaignId     String
-  campaign       Campaign       @relation(fields: [campaignId], references: [id])
-  user           User           @relation(fields: [userId], references: [id])
-}
+// model Logistic {
+//   id             String         @id @unique @default(cuid())
+//   trackingNumber String
+//   itemName       String
+//   courier        String
+//   status         LogisticStatus @default(Product_is_being_packaged)
+//   updateAt       DateTime       @updatedAt
+//   createdAt      DateTime       @default(now())
+//   userId         String
+//   campaignId     String
+//   campaign       Campaign       @relation(fields: [campaignId], references: [id])
+//   user           User           @relation(fields: [userId], references: [id])
+// }
 
 model PaymentForm {
   id                String             @id @unique @default(cuid())
@@ -1398,12 +1403,12 @@ model PublicFeedback {
   submission   Submission    @relation(fields: [submissionId], references: [id], onDelete: Cascade)
 }
 
-enum LogisticStatus {
-  Product_is_being_packaged
-  Proudct_is_at_delivery_warehouse_in_transit
-  Product_is_out_for_delivery
-  Product_has_been_received
-}
+// enum LogisticStatus {
+//   Product_is_being_packaged
+//   Proudct_is_at_delivery_warehouse_in_transit
+//   Product_is_out_for_delivery
+//   Product_has_been_received
+// }
 
 enum Designation {
   Finance
@@ -1643,4 +1648,134 @@ model CaptionHistory {
 
   @@index([submissionId])
   @@index([createdAt])
+}
+
+enum LogisticType {
+  PRODUCT_DELIVERY
+  RESERVATION
+  STORE_VISIT
+}
+
+enum LogisticStatus {
+  // initial status
+  PENDING_ASSIGNMENT
+  SCHEDULED
+
+  // delivery specific
+  SHIPPED
+  DELIVERED
+  RECEIVED
+
+  // general completion
+  COMPLETED
+  ISSUE_REPORTED
+  ISSUE_RESOLVED
+  CANCELLED
+}
+
+enum LogisticIssueStatus {
+  OPEN
+  RESOLVED
+}
+
+model Product {
+  id          String   @id @unique @default(cuid())
+  productName String
+  description String?
+  sku         String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  deliveryDetails DeliveryDetails[]
+
+  @@index([companyId])
+}
+
+model Logistic {
+  id        String   @id @unique @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  type   LogisticType
+  status LogisticStatus @default(PENDING_ASSIGNMENT)
+
+  shippedAt DateTime?
+  deliveredAt DateTime?
+  receivedAt DateTime?
+  completedAt DateTime?
+
+  //relations
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  creatorId String
+  creator   User   @relation("AssignedLogistics", fields: [creatorId], references: [id], onDelete: Cascade)
+
+  createdById String
+  createdBy   User   @relation("CreatedLogistics", fields: [createdById], references: [id], onDelete: Cascade)
+
+  deliveryDetails    DeliveryDetails?
+  reservationDetails ReservationDetails?
+  storeVisitDetails  StoreVisitDetails?
+
+  issues LogisticIssue[]
+
+  @@index([campaignId])
+  @@index([creatorId])
+}
+
+model DeliveryDetails {
+  id                   String    @id @unique @default(cuid())
+  trackingLink         String?
+  address String?
+  expectedDeliveryDate DateTime?
+  dietaryRestrictions String?
+
+  logisticId String   @unique
+  logistic   Logistic @relation(fields: [logisticId], references: [id], onDelete: Cascade)
+
+  productId String?
+  product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+}
+
+model ReservationDetails {
+  id              String   @id @unique @default(cuid())
+  restaurantName  String
+  address         String?
+  reservationTime DateTime
+  numberOfGuests  Int?
+
+  logisticId String   @unique
+  logistic   Logistic @relation(fields: [logisticId], references: [id], onDelete: Cascade)
+}
+
+model StoreVisitDetails {
+  id              String   @id @unique @default(cuid())
+  storeName       String
+  address         String
+  appointmentTime DateTime
+  contactPerson   String?
+  proofOfVisitUrl String? // URL to the uploaded photo/receipt
+
+  logisticId String   @unique
+  logistic   Logistic @relation(fields: [logisticId], references: [id], onDelete: Cascade)
+}
+
+model LogisticIssue {
+  id         String              @id @unique @default(cuid())
+  reason     String
+  status     LogisticIssueStatus @default(OPEN)
+  createdAt  DateTime            @default(now())
+  resolvedAt DateTime?
+
+  resolutionNotes String?
+
+  logisticId String
+  logistic   Logistic @relation(fields: [logisticId], references: [id], onDelete: Cascade)
+
+  reportedById String
+  reportedBy   User   @relation(fields: [reportedById], references: [id])
 }
