@@ -880,9 +880,9 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
               campaignTaskAdmin: true,
             },
           },
-          logistic: {
+          logistics: {
             include: {
-              user: true,
+              creator: true,
             },
           },
           creatorAgreement: true,
@@ -960,7 +960,7 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
               campaignTaskAdmin: true,
             },
           },
-          logistic: true,
+          logistics: true,
           creatorAgreement: true,
         },
       });
@@ -1076,7 +1076,7 @@ export const getCampaignById = async (req: Request, res: Response) => {
             campaignTaskAdmin: true,
           },
         },
-        logistic: true,
+        logistics: true,
 
         creatorAgreement: true,
       },
@@ -1110,7 +1110,7 @@ export const getAllActiveCampaign = async (_req: Request, res: Response) => {
         pitch: true,
         shortlisted: true,
         submission: true,
-        logistic: true,
+        logistics: true,
       },
     });
 
@@ -1259,7 +1259,7 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
         pitch: true,
         bookMarkCampaign: true,
         shortlisted: true,
-        logistic: true,
+        logistics: true,
         campaignAdmin: {
           include: {
             admin: {
@@ -1834,7 +1834,7 @@ export const getCampaignsByCreatorId = async (req: Request, res: Response) => {
           },
           include: {
             creatorAgreement: true,
-            logistic: true,
+            logistics: true,
             company: true,
             brand: { include: { company: { include: { subscriptions: true } } } },
             campaignBrief: true,
@@ -1872,7 +1872,7 @@ export const getCampaignForCreatorById = async (req: Request, res: Response) => 
         id: id,
       },
       include: {
-        logistic: true,
+        logistics: true,
         campaignAdmin: {
           include: {
             admin: {
@@ -2291,9 +2291,9 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
               campaignTaskAdmin: true,
             },
           },
-          logistic: {
+          logistics: {
             include: {
-              user: true,
+              creator: true,
             },
           },
           creatorAgreement: true,
@@ -2466,9 +2466,9 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
             campaignTaskAdmin: true,
           },
         },
-        logistic: {
+        logistics: {
           include: {
-            user: true,
+            creator: true,
           },
         },
         creatorAgreement: true,
@@ -2556,7 +2556,7 @@ export const getMyCampaigns = async (req: Request, res: Response) => {
         ],
       },
       include: {
-        logistic: true,
+        logistics: true,
         brand: { include: { company: { include: { subscriptions: true } } } },
         company: true,
         invoice: true,
@@ -3721,178 +3721,178 @@ export const unSaveCampaign = async (req: Request, res: Response) => {
   }
 };
 
-export const createLogistics = async (req: Request, res: Response) => {
-  const {
-    data: { trackingNumber, itemName, courier, otherCourier },
-    campaignId,
-    creatorId: userId,
-  } = req.body;
+// export const createLogistics = async (req: Request, res: Response) => {
+//   const {
+//     data: { trackingNumber, itemName, courier, otherCourier },
+//     campaignId,
+//     creatorId: userId,
+//   } = req.body;
 
-  const adminId = req.session.userid;
+//   const adminId = req.session.userid;
 
-  try {
-    const logistic = await prisma.logistic.create({
-      data: {
-        trackingNumber: trackingNumber,
-        itemName: itemName,
-        courier: courier === 'Other' ? otherCourier : courier,
-        campaignId: campaignId as string,
-        userId: userId as string,
-      },
-      include: {
-        user: true,
-        campaign: {
-          include: {
-            campaignBrief: true,
-          },
-        },
-      },
-    });
+//   try {
+//     const logistics = await prisma.logistics.create({
+//       data: {
+//         trackingNumber: trackingNumber,
+//         itemName: itemName,
+//         courier: courier === 'Other' ? otherCourier : courier,
+//         campaignId: campaignId as string,
+//         userId: userId as string,
+//       },
+//       include: {
+//         user: true,
+//         campaign: {
+//           include: {
+//             campaignBrief: true,
+//           },
+//         },
+//       },
+//     });
 
-    const image: any = logistic?.campaign?.campaignBrief?.images;
+//     const image: any = logistics?.campaign?.campaignBrief?.images;
 
-    //Email for tracking logistics
-    tracking(
-      logistic.user.email,
-      logistic.campaign.name,
-      logistic.user.name ?? 'Creator',
-      logistic.trackingNumber,
-      logistic.campaignId,
-      image[0],
-    );
+//     //Email for tracking logistics
+//     tracking(
+//       logistics.user.email,
+//       logistics.campaign.name,
+//       logistics.user.name ?? 'Creator',
+//       logistics.trackingNumber,
+//       logistics.campaignId,
+//       image[0],
+//     );
 
-    const { title, message } = notificationLogisticTracking(logistic.campaign.name, logistic.trackingNumber);
+//     const { title, message } = notificationLogisticTracking(logistics.campaign.name, logistics.trackingNumber);
 
-    const notification = await saveNotification({
-      userId: userId,
-      title,
-      message,
-      // message: `Hi ${logistic.user.name}, your logistics details for the ${logistic.campaign.name} campaign are now available. Please check the logistics section for shipping information and tracking details. If you have any questions, don't hesitate to reach out!`,
-      entity: 'Logistic',
-    });
+//     const notification = await saveNotification({
+//       userId: userId,
+//       title,
+//       message,
+//       // message: `Hi ${logistics.user.name}, your logistics details for the ${logistics.campaign.name} campaign are now available. Please check the logistics section for shipping information and tracking details. If you have any questions, don't hesitate to reach out!`,
+//       entity: 'Logistic',
+//     });
 
-    io.to(clients.get(userId)).emit('notification', notification);
+//     io.to(clients.get(userId)).emit('notification', notification);
 
-    const adminLogMessage = `Created New Logistic for campaign - ${logistic.campaign.name} `;
-    logAdminChange(adminLogMessage, adminId, req);
+//     const adminLogMessage = `Created New Logistic for campaign - ${logistics.campaign.name} `;
+//     logAdminChange(adminLogMessage, adminId, req);
 
-    return res.status(200).json({ message: 'Logistics created successfully.' });
-  } catch (error) {
-    //console.log(error);
-    return res.status(400).json(error);
-  }
-};
+//     return res.status(200).json({ message: 'Logistics created successfully.' });
+//   } catch (error) {
+//     //console.log(error);
+//     return res.status(400).json(error);
+//   }
+// };
 
-export const getLogisticById = async (req: Request, res: Response) => {
-  try {
-    const logistics = await prisma.logistic.findMany();
-    return res.status(200).json(logistics);
-  } catch (error) {
-    return res.status(400).json(error);
-  }
-};
+// export const getLogisticById = async (req: Request, res: Response) => {
+//   try {
+//     const logistics = await prisma.logistics.findMany();
+//     return res.status(200).json(logistics);
+//   } catch (error) {
+//     return res.status(400).json(error);
+//   }
+// };
 
-export const updateStatusLogistic = async (req: Request, res: Response) => {
-  // eslint-disable-next-line prefer-const
-  let { logisticId, status } = req.body;
-  const adminId = req.session.userid;
+// export const updateStatusLogistic = async (req: Request, res: Response) => {
+//   // eslint-disable-next-line prefer-const
+//   let { logisticId, status } = req.body;
+//   const adminId = req.session.userid;
 
-  if (status === 'Pending Delivery Confirmation') {
-    status = status.split(' ').join('_');
-  }
-  try {
-    const updated = await prisma.logistic.update({
-      where: {
-        id: logisticId,
-      },
-      data: {
-        status: status as LogisticStatus,
-      },
-      include: {
-        user: {
-          select: {
-            name: true,
-            email: true,
-          },
-        },
-        campaign: {
-          select: {
-            name: true,
-            campaignBrief: {
-              select: {
-                images: true,
-              },
-            },
-          },
-        },
-      },
-    });
+//   if (status === 'Pending Delivery Confirmation') {
+//     status = status.split(' ').join('_');
+//   }
+//   try {
+//     const updated = await prisma.logistics.update({
+//       where: {
+//         id: logisticId,
+//       },
+//       data: {
+//         status: status as LogisticStatus,
+//       },
+//       include: {
+//         user: {
+//           select: {
+//             name: true,
+//             email: true,
+//           },
+//         },
+//         campaign: {
+//           select: {
+//             name: true,
+//             campaignBrief: {
+//               select: {
+//                 images: true,
+//               },
+//             },
+//           },
+//         },
+//       },
+//     });
 
-    const images: any = updated.campaign.campaignBrief?.images;
+//     const images: any = updated.campaign.campaignBrief?.images;
 
-    if (status === 'Product_has_been_received') {
-      // Call deliveryConfirmation function
-      deliveryConfirmation(
-        updated.user.email,
-        updated.campaign.name,
-        updated.user.name ?? 'Creator',
-        updated.campaignId,
-        images[0],
-      );
+//     if (status === 'Product_has_been_received') {
+//       // Call deliveryConfirmation function
+//       deliveryConfirmation(
+//         updated.user.email,
+//         updated.campaign.name,
+//         updated.user.name ?? 'Creator',
+//         updated.campaignId,
+//         images[0],
+//       );
 
-      // Create and send the notification
-      const { title, message } = notificationLogisticDelivery(updated.campaign.name);
-      const notification = await saveNotification({
-        userId: updated.userId,
-        title,
-        message,
-        entity: 'Logistic',
-      });
+//       // Create and send the notification
+//       const { title, message } = notificationLogisticDelivery(updated.campaign.name);
+//       const notification = await saveNotification({
+//         userId: updated.userId,
+//         title,
+//         message,
+//         entity: 'Logistic',
+//       });
 
-      io.to(clients.get(updated.userId)).emit('notification', notification);
-    }
+//       io.to(clients.get(updated.userId)).emit('notification', notification);
+//     }
 
-    // // deliveryConfirmation
-    // deliveryConfirmation(updated.user.email, updated.campaign.name, updated.user.name ?? 'Creator', updated.campaignId);
+//     // // deliveryConfirmation
+//     // deliveryConfirmation(updated.user.email, updated.campaign.name, updated.user.name ?? 'Creator', updated.campaignId);
 
-    // const { title, message } = notificationLogisticDelivery(updated.campaign.name,);
+//     // const { title, message } = notificationLogisticDelivery(updated.campaign.name,);
 
-    // const notification = await saveNotification({
-    //   userId: updated.userId,
-    //   title,
-    //   message,
-    //   entity: 'Logistic',
-    // });
+//     // const notification = await saveNotification({
+//     //   userId: updated.userId,
+//     //   title,
+//     //   message,
+//     //   entity: 'Logistic',
+//     // });
 
-    // io.to(clients.get(updated.userId)).emit('notification', notification);
+//     // io.to(clients.get(updated.userId)).emit('notification', notification);
 
-    const adminLogMessage = `Updated Logistic status for campaign - ${updated.campaign.name} `;
-    logAdminChange(adminLogMessage, adminId, req);
+//     const adminLogMessage = `Updated Logistic status for campaign - ${updated.campaign.name} `;
+//     logAdminChange(adminLogMessage, adminId, req);
 
-    return res.status(200).json({ message: 'Logistic status updated successfully.' });
-  } catch (error) {
-    console.log(error);
-    return res.status(400).json(error);
-  }
-};
+//     return res.status(200).json({ message: 'Logistic status updated successfully.' });
+//   } catch (error) {
+//     console.log(error);
+//     return res.status(400).json(error);
+//   }
+// };
 
-export const receiveLogistic = async (req: Request, res: Response) => {
-  const { logisticId } = req.body;
-  try {
-    await prisma.logistic.update({
-      where: {
-        id: logisticId,
-      },
-      data: {
-        status: 'Product_has_been_received',
-      },
-    });
+// export const receiveLogistic = async (req: Request, res: Response) => {
+//   const { logisticId } = req.body;
+//   try {
+//     await prisma.logistics.update({
+//       where: {
+//         id: logisticId,
+//       },
+//       data: {
+//         status: 'Product_has_been_received',
+//       },
+//     });
 
-    return res.status(200).json({ message: 'Item has been successfully delivered.' });
-  } catch (error) {
-    return res.status(400).json(error);
-  }
-};
+//     return res.status(200).json({ message: 'Item has been successfully delivered.' });
+//   } catch (error) {
+//     return res.status(400).json(error);
+//   }
+// };
 
 export const creatorAgreements = async (req: Request, res: Response) => {
   const { campaignId } = req.params;
@@ -7946,7 +7946,7 @@ export const getCampaignsForPublic = async (req: Request, res: Response) => {
         pitch: true,
         bookMarkCampaign: true,
         shortlisted: true,
-        logistic: true,
+        logistics: true,
       },
       orderBy: {
         createdAt: 'desc',
