@@ -111,16 +111,16 @@ export const getAllChildAccounts = async (req: Request, res: Response) => {
               select: {
                 email: true,
                 name: true,
-              }
+              },
             },
             company: {
               select: {
                 id: true,
                 name: true,
-              }
-            }
-          }
-        }
+              },
+            },
+          },
+        },
       },
       orderBy: {
         createdAt: 'desc',
@@ -189,6 +189,35 @@ export const createChildAccount = async (req: Request, res: Response) => {
           parentClientId: clientId,
         },
       });
+
+      const parentUserId = parentClient.user?.id;
+
+      if (parentUserId) {
+        const parentCampaigns = await prisma.campaignAdmin.findMany({
+          where: {
+            adminId: parentUserId,
+          },
+          select: {
+            campaignId: true,
+          },
+        });
+        const campaignIds = parentCampaigns.map((c) => c.campaignId);
+
+        const newAdminEntries = campaignIds.map((campaignId) => ({
+          campaignId: campaignId,
+          adminId: existingUser.id,
+        }));
+
+        if (newAdminEntries.length > 0) {
+          await prisma.campaignAdmin.createMany({
+            data: newAdminEntries,
+            skipDuplicates: true,
+          });
+          console.log(
+            `Added existing child ${email} to ${newAdminEntries.length} campaigns from new parent ${clientId}`,
+          );
+        }
+      }
 
       return res.status(201).json({
         message: 'Child account invitation sent successfully',
