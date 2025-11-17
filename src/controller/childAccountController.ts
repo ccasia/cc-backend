@@ -55,7 +55,7 @@ export const getChildAccounts = async (req: Request, res: Response) => {
     // Get the current client's company ID
     const currentClient = await prisma.client.findUnique({
       where: { id: clientId },
-      select: { companyId: true }
+      select: { companyId: true },
     });
 
     if (!currentClient) {
@@ -65,28 +65,28 @@ export const getChildAccounts = async (req: Request, res: Response) => {
     // Get all clients in the same company
     const companyClients = await prisma.client.findMany({
       where: { companyId: currentClient.companyId },
-      select: { id: true }
+      select: { id: true },
     });
 
-    const companyClientIds = companyClients.map(client => client.id);
+    const companyClientIds = companyClients.map((client) => client.id);
 
     // Fetch all child accounts for all clients in the same company
     const childAccounts = await prisma.childAccount.findMany({
       where: {
         parentClientId: {
-          in: companyClientIds
-        }
+          in: companyClientIds,
+        },
       },
       include: {
         parentClient: {
           include: {
             user: {
               select: {
-                email: true
-              }
-            }
-          }
-        }
+                email: true,
+              },
+            },
+          },
+        },
       },
       orderBy: {
         createdAt: 'desc',
@@ -111,16 +111,16 @@ export const getAllChildAccounts = async (req: Request, res: Response) => {
               select: {
                 email: true,
                 name: true,
-              }
+              },
             },
             company: {
               select: {
                 id: true,
                 name: true,
-              }
-            }
-          }
-        }
+              },
+            },
+          },
+        },
       },
       orderBy: {
         createdAt: 'desc',
@@ -160,12 +160,18 @@ export const createChildAccount = async (req: Request, res: Response) => {
     console.log('Parent client found:', parentClient.id);
 
     // Check if email already exists
-    const existingChildAccount = await prisma.childAccount.findUnique({
-      where: { email },
+    const existingChildAccount = await prisma.childAccount.findFirst({
+      where: {
+        email: email,
+        parentClientId: clientId,
+      },
     });
 
     if (existingChildAccount) {
-      return res.status(400).json({ message: 'Email already exists' });
+      return res.status(400).json({
+        message: 'This email is already associated with this parent client',
+        childAccount: existingChildAccount,
+      });
     }
 
     // Check if email is already a user
@@ -174,190 +180,235 @@ export const createChildAccount = async (req: Request, res: Response) => {
     });
 
     if (existingUser) {
-      return res.status(400).json({ message: 'Email is already registered as a user' });
-    }
+      const childAccount = await prisma.childAccount.create({
+        data: {
+          email,
+          firstName,
+          lastName,
+          isActive: true,
+          parentClientId: clientId,
+        },
+      });
 
-    // Generate invitation token
-    const invitationToken = crypto.randomBytes(32).toString('hex');
-    const tokenExpiresAt = new Date();
-    tokenExpiresAt.setDate(tokenExpiresAt.getDate() + 7); // Token expires in 7 days
+      const parentUserId = parentClient.user?.id;
 
-    // Create child account
-    const childAccount = await prisma.childAccount.create({
-      data: {
-        email,
-        firstName,
-        lastName,
-        parentClientId: clientId,
-        invitationToken,
-        tokenExpiresAt,
-      },
-    });
+      if (parentUserId) {
+        const parentCampaigns = await prisma.campaignAdmin.findMany({
+          where: {
+            adminId: parentUserId,
+          },
+          select: {
+            campaignId: true,
+          },
+        });
+        const campaignIds = parentCampaigns.map((c) => c.campaignId);
 
-    // Send invitation email
-    // const parentClientWithDetails = await prisma.client.findUnique({
-    //   where: { id: clientId },
-    //   include: {
-    //     user: true,
-    //     company: true,
-    //   },
-    // });
+        const newAdminEntries = campaignIds.map((campaignId) => ({
+          campaignId: campaignId,
+          adminId: existingUser.id,
+        }));
 
-    const baseUrl = process.env.BASE_EMAIL_URL || 'http://localhost:3000';
-    const invitationLink = `${baseUrl}/auth/child-account-setup/${invitationToken}`;
+        if (newAdminEntries.length > 0) {
+          await prisma.campaignAdmin.createMany({
+            data: newAdminEntries,
+            skipDuplicates: true,
+          });
+          console.log(
+            `Added existing child ${email} to ${newAdminEntries.length} campaigns from new parent ${clientId}`,
+          );
+        }
+      }
 
-    console.log('BASE_EMAIL_URL:', process.env.BASE_EMAIL_URL);
-    console.log('Generated invitation link:', invitationLink);
+      return res.status(201).json({
+        message: 'Child account invitation sent successfully',
+        childAccount,
+      });
+    } else {
+      // Generate invitation token
+      const invitationToken = crypto.randomBytes(32).toString('hex');
+      const tokenExpiresAt = new Date();
+      tokenExpiresAt.setDate(tokenExpiresAt.getDate() + 7); // Token expires in 7 days
 
-    const emailContent = {
-      to: email,
-      subject: `Welcome to Your Client Portal`,
-      html: `
-        <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Verify Your Email Address</title>
-          <style type="text/css">
-            @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap');
-            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
-          </style>
-        </head>
-        <body style="margin: 0; padding: 0; background-color: #f0f2f5; font-family: 'Inter', Arial, sans-serif;">
-        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #f0f2f5;">
-          <tr>
-            <td align="center" style="padding: 20px 10px;">
-              <!-- Main Content Wrapper -->
-              <table role="presentation" width="500" cellspacing="0" cellpadding="0" border="0" align="center" style="max-width: 400px; width: 100%; background-color: #ffffff; border-radius: 12px; overflow: hidden;">
-                
-                <!-- Header: Logo -->
-                <tr>
-                  <td style="padding: 30px 20px 10px 20px;">
-                    <img src="https://drive.google.com/uc?id=1wbwEJp2qX5Hb9iirUQJVCmdpq-fg34oE" alt="Cult Creative Logo" width="120">
-                  </td>
-                </tr>
+      // Create child account
+      const childAccount = await prisma.childAccount.create({
+        data: {
+          email,
+          firstName,
+          lastName,
+          parentClientId: clientId,
+          invitationToken,
+          tokenExpiresAt,
+        },
+      });
 
-                <!-- Headline -->
-                <tr>
-                  <td style="padding: 10px 30px 20px 30px;">
-                    <h1 style="margin: 0; font-family: 'Instrument Serif', Georgia, serif; font-size: 32px; color: #000000; font-weight: 400; line-height: 32px; ">
-                      Welcome to Your Client Portal
-                    </h1>
-                  </td>
-                </tr>
+      // Send invitation email
+      // const parentClientWithDetails = await prisma.client.findUnique({
+      //   where: { id: clientId },
+      //   include: {
+      //     user: true,
+      //     company: true,
+      //   },
+      // });
 
-                <!-- Emoji Icon -->
-                <tr>
-                  <td align="center" style="padding: 10px 20px;">
-                    <img src="https://drive.google.com/uc?id=13c5VhONNva9BMQIwXzn7t8stQrnT0OvV" alt="Rocket Icon" width="80" style="width: 80px; height: auto;">
-                  </td>
-                </tr>
+      const baseUrl = process.env.BASE_EMAIL_URL || 'http://localhost:3000';
+      const invitationLink = `${baseUrl}/auth/child-account-setup/${invitationToken}`;
 
-                <!-- Body Text -->
-                <tr>
-                  <td style="padding: 20px 20px;">
-                    <p style="margin: 0 0 15px 0; font-family: 'Inter', Arial, sans-serif; font-size: 16px; color: #000000; line-height: 1.5; text-transform: capitalize">
-                      Hey <strong>${firstName || ''}</strong>,
-                    </p>
-                    <p style="margin: 0; font-family: 'Inter', Arial, sans-serif; font-size: 16px; color: #000000; line-height: 1.5;">
-                      Awesome news your account’s all set up! 🙌<br>
-                      <br>
-                      For your final step click the button below  and set your password to get started!
-                    </p>
-                  </td>
-                </tr>
+      console.log('BASE_EMAIL_URL:', process.env.BASE_EMAIL_URL);
+      console.log('Generated invitation link:', invitationLink);
 
-                <!-- Main CTA Button -->
-                <tr>
-                  <td style="padding: 20px 20px;">
-                    <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" width="100%">
+      const emailContent = {
+        to: email,
+        subject: `Welcome to Your Client Portal`,
+        html: `
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Verify Your Email Address</title>
+            <style type="text/css">
+              @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap');
+              @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
+            </style>
+          </head>
+          <body style="margin: 0; padding: 0; background-color: #f0f2f5; font-family: 'Inter', Arial, sans-serif;">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #f0f2f5;">
+            <tr>
+              <td align="center" style="padding: 20px 10px;">
+                <!-- Main Content Wrapper -->
+                <table role="presentation" width="500" cellspacing="0" cellpadding="0" border="0" align="center" style="max-width: 400px; width: 100%; background-color: #ffffff; border-radius: 12px; overflow: hidden;">
+                  
+                  <!-- Header: Logo -->
+                  <tr>
+                    <td style="padding: 30px 20px 10px 20px;">
+                      <img src="https://drive.google.com/uc?id=1wbwEJp2qX5Hb9iirUQJVCmdpq-fg34oE" alt="Cult Creative Logo" width="120">
+                    </td>
+                  </tr>
+  
+                  <!-- Headline -->
+                  <tr>
+                    <td style="padding: 10px 30px 20px 30px;">
+                      <h1 style="margin: 0; font-family: 'Instrument Serif', Georgia, serif; font-size: 32px; color: #000000; font-weight: 400; line-height: 32px; ">
+                        Welcome to Your Client Portal
+                      </h1>
+                    </td>
+                  </tr>
+  
+                  <!-- Emoji Icon -->
+                  <tr>
+                    <td align="center" style="padding: 10px 20px;">
+                      <img src="https://drive.google.com/uc?id=13c5VhONNva9BMQIwXzn7t8stQrnT0OvV" alt="Rocket Icon" width="80" style="width: 80px; height: auto;">
+                    </td>
+                  </tr>
+  
+                  <!-- Body Text -->
+                  <tr>
+                    <td style="padding: 20px 20px;">
+                      <p style="margin: 0 0 15px 0; font-family: 'Inter', Arial, sans-serif; font-size: 16px; color: #000000; line-height: 1.5; text-transform: capitalize">
+                        Hey <strong>${firstName || ''}</strong>,
+                      </p>
+                      <p style="margin: 0; font-family: 'Inter', Arial, sans-serif; font-size: 16px; color: #000000; line-height: 1.5;">
+                        Awesome news your account’s all set up! 🙌<br>
+                        <br>
+                        For your final step click the button below  and set your password to get started!
+                      </p>
+                    </td>
+                  </tr>
+  
+                  <!-- Main CTA Button -->
+                  <tr>
+                    <td style="padding: 20px 20px;">
+                      <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" width="100%">
+                        <tr>
+                          <td align="center" style="background-color: #1340FF; border-radius: 50px;">
+                            <a href="${invitationLink}" style="display: block; padding: 16px 20px; font-family: 'Inter', Arial, sans-serif; font-size: 16px; font-weight: bold; color: #ffffff; text-decoration: none; border-radius: 50px;">Set Up Account</a>
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+  
+                  <!-- Fallback Link -->
+                  <tr>
+                    <td style="padding: 20px 20px;">
+                      <p style="margin: 0; font-family: 'Inter', Arial, sans-serif; font-size: 14px; color: #919191; line-height: 1.5;">
+                        This invitation will expire in 7 days.
+                        <br>
+                        If you didn't expect this invitation, you can safely ignore this email.
+                      </p>
+                    </td>
+                  </tr>
+  
+                  <!-- Disclaimer -->
+                  <tr>
+                    <td style="padding: 0 20px 20px 20px;">
+                       <p style="margin: 0; font-family: 'Inter', Arial, sans-serif; font-size: 14px; color: #919191; line-height: 1.5;">
+                        Didn't sign up for this? You can safely ignore this email and your account will not be created.
+                      </p>
+                    </td>
+                  </tr>
+  
+  
+                 <!-- Footer Section -->
                       <tr>
-                        <td align="center" style="background-color: #1340FF; border-radius: 50px;">
-                          <a href="${invitationLink}" style="display: block; padding: 16px 20px; font-family: 'Inter', Arial, sans-serif; font-size: 16px; font-weight: bold; color: #ffffff; text-decoration: none; border-radius: 50px;">Set Up Account</a>
+                        <td style="padding: 20px 20px 40px;">
+                          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #f7f7f7;">
+                            
+                          <!-- Social Icons -->
+                            <tr>
+                              <td align="center" style="padding: 20px 0 0;">
+                                <table role="presentation" cellspacing="0" cellpadding="0" border="0">
+                                  <tr>
+                                    <td style="padding: 0 15px;"><a href="https://www.instagram.com/cultcreativeasia/" target="_blank"><img src="https://drive.google.com/uc?id=18U5OsbRLVFGBXpG3Tod3_E_V-CKCoPxn" alt="Instagram" width="28"></a></td>
+                                    <td style="padding: 0 15px;"><a href="https://www.linkedin.com/company/cultcreativeapp/" target="_blank"><img src="https://drive.google.com/uc?id=1-OLY5OezbzS7m37xcfLNXvmJyoNhAtTL" alt="LinkedIn" width="28"></a></td>
+                                    <td style="padding: 0 15px;"><a href="https://www.cultcreative.asia" target="_blank"><img src="https://drive.google.com/uc?id=1L5rZbPbK3zouf40Krj-CRtmMa94qc_sP" alt="Website" width="28"></a></td>
+                                  </tr>
+                                </table>
+                              </td>
+                            </tr>
+                            
+                            <!-- Email Link -->
+                            <tr>
+                              <td align="center">
+                                <a href="mailto:hello@cultcreative.asia" style="font-family: Arial, sans-serif; font-size: 14px; color: #333333; text-decoration: underline; font-weight: bold;">hello@cultcreative.asia</a>
+                              </td>
+                            </tr>
+                            <!-- Company Info -->
+                            <tr>
+                              <td align="center">
+                                <p style="padding: 20px; margin: 0; font-family: Arial, sans-serif; font-size: 11px; color: #aaaaaa; line-height: 1.5; text-decoration: none">
+                                  Cult Creative Sdn. Bhd.<br>
+                                  A-5-3A, Block A, Jaya One, Jln Profesor Diraja Ungku Aziz,<br>
+                                  Seksyen 13, 46200 Petaling Jaya, Selangor, Malaysia<br>
+                                  Copyright © ${new Date().getFullYear()} Cult Creative, All rights reserved
+                                </p>
+                              </td>
+                            </tr>
+                          </table>
                         </td>
                       </tr>
-                    </table>
-                  </td>
-                </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+      </body>
+          `,
+      };
 
-                <!-- Fallback Link -->
-                <tr>
-                  <td style="padding: 20px 20px;">
-                    <p style="margin: 0; font-family: 'Inter', Arial, sans-serif; font-size: 14px; color: #919191; line-height: 1.5;">
-                      This invitation will expire in 7 days.
-                      <br>
-                      If you didn't expect this invitation, you can safely ignore this email.
-                    </p>
-                  </td>
-                </tr>
+      sendEmail(emailContent).catch((emailError) => {
+        console.error('Error sending invitation email:', emailError);
+        return res.status(500).json({ message: 'Failed to send invitation email' });
+      });
 
-                <!-- Disclaimer -->
-                <tr>
-                  <td style="padding: 0 20px 20px 20px;">
-                     <p style="margin: 0; font-family: 'Inter', Arial, sans-serif; font-size: 14px; color: #919191; line-height: 1.5;">
-                      Didn't sign up for this? You can safely ignore this email and your account will not be created.
-                    </p>
-                  </td>
-                </tr>
-
-
-               <!-- Footer Section -->
-                    <tr>
-                      <td style="padding: 20px 20px 40px;">
-                        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #f7f7f7;">
-                          
-                        <!-- Social Icons -->
-                          <tr>
-                            <td align="center" style="padding: 20px 0 0;">
-                              <table role="presentation" cellspacing="0" cellpadding="0" border="0">
-                                <tr>
-                                  <td style="padding: 0 15px;"><a href="https://www.instagram.com/cultcreativeasia/" target="_blank"><img src="https://drive.google.com/uc?id=18U5OsbRLVFGBXpG3Tod3_E_V-CKCoPxn" alt="Instagram" width="28"></a></td>
-                                  <td style="padding: 0 15px;"><a href="https://www.linkedin.com/company/cultcreativeapp/" target="_blank"><img src="https://drive.google.com/uc?id=1-OLY5OezbzS7m37xcfLNXvmJyoNhAtTL" alt="LinkedIn" width="28"></a></td>
-                                  <td style="padding: 0 15px;"><a href="https://www.cultcreative.asia" target="_blank"><img src="https://drive.google.com/uc?id=1L5rZbPbK3zouf40Krj-CRtmMa94qc_sP" alt="Website" width="28"></a></td>
-                                </tr>
-                              </table>
-                            </td>
-                          </tr>
-                          
-                          <!-- Email Link -->
-                          <tr>
-                            <td align="center">
-                              <a href="mailto:hello@cultcreative.asia" style="font-family: Arial, sans-serif; font-size: 14px; color: #333333; text-decoration: underline; font-weight: bold;">hello@cultcreative.asia</a>
-                            </td>
-                          </tr>
-                          <!-- Company Info -->
-                          <tr>
-                            <td align="center">
-                              <p style="padding: 20px; margin: 0; font-family: Arial, sans-serif; font-size: 11px; color: #aaaaaa; line-height: 1.5; text-decoration: none">
-                                Cult Creative Sdn. Bhd.<br>
-                                A-5-3A, Block A, Jaya One, Jln Profesor Diraja Ungku Aziz,<br>
-                                Seksyen 13, 46200 Petaling Jaya, Selangor, Malaysia<br>
-                                Copyright © ${new Date().getFullYear()} Cult Creative, All rights reserved
-                              </p>
-                            </td>
-                          </tr>
-                        </table>
-                      </td>
-                    </tr>
-              </table>
-            </td>
-          </tr>
-        </table>
-    </body>
-        `,
-    };
-
-    sendEmail(emailContent).catch((emailError) => {
-      console.error('Error sending invitation email:', emailError);
-      return res.status(500).json({ message: 'Failed to send invitation email' });
-    });
-
-    return res.status(201).json({
-      message: 'Child account invitation sent successfully',
-      childAccount,
-    });
+      return res.status(201).json({
+        message: 'Child account invitation sent successfully',
+        childAccount,
+      });
+    }
   } catch (error) {
     console.error('Error creating child account:', error);
-    return res.status(500).json({ message: 'Internal server error' });
+    console.error('Full error details:', JSON.stringify(error, null, 2));
+    return res.status(500).json({
+      message: 'Internal server error',
+    });
   }
 };
 
@@ -400,7 +451,7 @@ export const resendInvitation = async (req: Request, res: Response) => {
     // Send new invitation email
     const baseUrl = process.env.BASE_EMAIL_URL || 'http://localhost:3000';
     const invitationLink = `${baseUrl}/auth/child-account-setup/${invitationToken}`;
-    
+
     const emailContent = {
       to: childAccount.email,
       subject: `Welcome to Your Client Portal`,
@@ -561,10 +612,10 @@ export const grantAccess = async (req: Request, res: Response) => {
       include: {
         parentClient: {
           include: {
-            user: true
-          }
-        }
-      }
+            user: true,
+          },
+        },
+      },
     });
 
     if (!childAccount) {
@@ -625,7 +676,9 @@ export const grantAccess = async (req: Request, res: Response) => {
         },
       });
 
-      console.log(`Granted access to child account ${childAccount.email} and added to ${parentCampaigns.length} campaigns`);
+      console.log(
+        `Granted access to child account ${childAccount.email} and added to ${parentCampaigns.length} campaigns`,
+      );
     } else {
       // If no user record exists, just reactivate the child account
       await prisma.childAccount.update({
@@ -654,10 +707,10 @@ export const removeAccess = async (req: Request, res: Response) => {
       include: {
         parentClient: {
           include: {
-            user: true
-          }
-        }
-      }
+            user: true,
+          },
+        },
+      },
     });
 
     if (!childAccount) {
@@ -780,7 +833,7 @@ export const activateChildAccount = async (req: Request, res: Response) => {
   try {
     const { token } = req.params;
     const { password } = req.body;
-    
+
     console.log('=== CHILD ACCOUNT ACTIVATION STARTED ===');
     console.log('Activating child account with token:', token);
     console.log('Password provided:', !!password);
@@ -796,7 +849,7 @@ export const activateChildAccount = async (req: Request, res: Response) => {
         id: childAccount.id,
         email: childAccount.email,
         isActive: childAccount.isActive,
-        tokenExpiresAt: childAccount.tokenExpiresAt
+        tokenExpiresAt: childAccount.tokenExpiresAt,
       });
     }
 
@@ -815,15 +868,15 @@ export const activateChildAccount = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Account is already activated' });
     }
 
-    const hashedPassword = password; 
+    const hashedPassword = password;
 
     // Update child account and create User record
     console.log('Updating child account with ID:', childAccount.id);
-    
+
     // First, get the parent client to get the company info
     const parentClient = await prisma.client.findUnique({
       where: { id: childAccount.parentClientId },
-      include: { company: true }
+      include: { company: true },
     });
 
     if (!parentClient) {

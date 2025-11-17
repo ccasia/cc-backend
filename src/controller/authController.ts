@@ -933,7 +933,7 @@ export const getCurrentUser = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    const isChildAccount = await prisma.childAccount.findUnique({
+    const isChildAccount = await prisma.childAccount.findFirst({
       where: { email: user.email },
     });
 
@@ -1188,7 +1188,7 @@ export const getprofile = async (req: Request, res: Response) => {
     }
 
     // Check if user is a child account
-    const isChildAccount = await prisma.childAccount.findUnique({
+    const isChildAccount = await prisma.childAccount.findFirst({
       where: { email: user.email },
     });
 
@@ -1335,7 +1335,7 @@ export const login = async (req: Request, res: Response) => {
     });
 
     // Check if user is a child account
-    const isChildAccount = await prisma.childAccount.findUnique({
+    const isChildAccount = await prisma.childAccount.findFirst({
       where: { email: data.email },
     });
 
