@@ -24,11 +24,11 @@ import {
   getAllCampaignsFinance,
   saveCampaign,
   unSaveCampaign,
-  createLogistics,
-  getLogisticById,
-  updateStatusLogistic,
+  // createLogistics,
+  // getLogisticById,
+  // updateStatusLogistic,
+  // receiveLogistic,
   shortlistCreator,
-  receiveLogistic,
   creatorAgreements,
   updateAmountAgreement,
   sendAgreement,
@@ -115,7 +115,7 @@ router.get('/defaultTimeline', isSuperAdmin, getDefaultTimeline);
 router.get('/getCampaignsBySessionId', isLoggedIn, getCampaignsByCreatorId);
 router.get('/getCampaignForCreatorById/:id', isLoggedIn, getCampaignForCreatorById);
 router.get('/getCampaignPitch', isLoggedIn, getCampaignPitchForCreator);
-router.get('/getLogistics', isSuperAdmin, getLogisticById);
+// router.get('/getLogistics', isSuperAdmin, getLogisticById);
 router.get('/getSubmissions', getSubmission);
 // router.get('/pitch/:campaignId', getPitchByCampaignId);
 router.get('/getCampaignLog/:id', getCampaignLog);
@@ -181,7 +181,7 @@ router.post('/createNewTimeline', isSuperAdmin, createNewTimeline);
 router.post('/createSingleTimelineType', isSuperAdmin, createSingleTimelineType);
 router.post('/uploadVideo', uploadVideoTest);
 router.post('/saveCampaign', isLoggedIn, saveCampaign);
-router.post('/createLogistic', isLoggedIn, createLogistics);
+// router.post('/createLogistic', isLoggedIn, createLogistics);
 router.post('/shortlistCreator', isSuperAdmin, shortlistCreator);
 router.post('/template/:id', isSuperAdmin, createNewTemplate);
 router.post('/draftPitch', isLoggedIn, draftPitch);
@@ -211,8 +211,8 @@ router.patch('/editCampaignAdmins/:id', isSuperAdmin, editCampaignAdmin);
 router.patch('/editCampaignAttachments/:id', isSuperAdmin, editCampaignAttachments);
 router.patch('/editCampaignReference/:id', isSuperAdmin, editCampaignReference);
 router.patch('/changePitchStatus', isSuperAdmin, changePitchStatus);
-router.patch('/changeLogisticStatus', isSuperAdmin, updateStatusLogistic); //need permission later
-router.patch('/receiveLogistic', isLoggedIn, receiveLogistic);
+// router.patch('/changeLogisticStatus', isSuperAdmin, updateStatusLogistic); //need permission later
+// router.patch('/receiveLogistic', isLoggedIn, receiveLogistic);
 router.patch('/updateAmountAgreement', isLoggedIn, isSuperAdmin, updateAmountAgreement);
 router.patch('/sendAgreement', isLoggedIn, isSuperAdmin, sendAgreement);
 router.patch('/resendAgreement', isLoggedIn, resendAgreement);
