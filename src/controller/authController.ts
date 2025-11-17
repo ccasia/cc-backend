@@ -1921,7 +1921,7 @@ export const deleteAccount = async (req: Request, res: Response) => {
       await tx.userThread.deleteMany({ where: { userId } });
       await tx.creatorAgreement.deleteMany({ where: { userId } });
       await tx.submission.deleteMany({ where: { userId } });
-      await tx.logistic.deleteMany({ where: { userId } });
+      // await tx.logistic.deleteMany({ where: { userId } });
 
       // Role-specific deletions
       if (user.role === 'creator') {
