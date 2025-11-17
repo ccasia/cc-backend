@@ -4934,6 +4934,9 @@ export const removeCreatorFromCampaign = async (req: Request, res: Response) => 
       where: {
         id: creatorId,
       },
+      include: {
+        creator: true,
+      },
     });
 
     if (!user) return res.status(404).json({ message: 'No user found.' });
@@ -5133,6 +5136,31 @@ export const removeCreatorFromCampaign = async (req: Request, res: Response) => 
 
       if (pitch) {
         await tx.pitch.delete({ where: { id: pitch.id } });
+      }
+
+      // If this is a guest creator, delete the creator and user from the database
+      const isGuestUser = user.status === 'guest';
+      const isGuestCreator = user.creator?.isGuest === true;
+
+      if (isGuestUser && isGuestCreator) {
+        console.log(`Deleting guest user ${user.name} (${user.id}) from database`);
+
+        if (user.creator) {
+          await tx.creator.delete({
+            where: {
+              id: user.creator.id,
+            },
+          });
+          console.log(`Deleted Creator record`);
+        }
+
+        // Then delete the User record
+        await tx.user.delete({
+          where: {
+            id: user.id,
+          },
+        });
+        console.log(`Successfully deleted guest user from User table`);
       }
     });
 
