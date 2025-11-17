@@ -186,7 +186,7 @@ model ClientNotification {
 
 model ChildAccount {
   id          String    @id @unique @default(cuid())
-  email       String    @unique
+  email       String    
   password    String?
   firstName   String?
   lastName    String?
@@ -202,6 +202,8 @@ model ChildAccount {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@unique([email, parentClientId])
 }
 
 model Role {
