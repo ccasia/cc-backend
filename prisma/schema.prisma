@@ -523,7 +523,6 @@ model Company {
   pic           Pic[]
   subscriptions Subscription[]
   clients       Client[]
-  products      Product[]
 
   @@index([clientId])
 }
@@ -660,6 +659,7 @@ model Campaign {
   submission                    Submission[]
   thread                        Thread?
   publicAccess                  PublicAccess[]
+  products                      Product[]
 
   rawFootage   Boolean @default(false)
   photos       Boolean @default(false)
@@ -1686,12 +1686,12 @@ model Product {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  companyId String
-  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
   deliveryDetails DeliveryDetails[]
 
-  @@index([companyId])
+  @@index([campaignId])
 }
 
 model Logistic {
@@ -1723,6 +1723,7 @@ model Logistic {
 
   issues LogisticIssue[]
 
+  @@unique([creatorId, campaignId])
   @@index([campaignId])
   @@index([creatorId])
 }
