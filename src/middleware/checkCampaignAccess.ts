@@ -7,10 +7,14 @@ export const checkCampaignAccess = async (req: Request, res: Response, next: Nex
   try {
     const { campaignId } = req.params;
 
-    const { userId } = req.session as any;
+    if (!campaignId) {
+      return res.status(400).json({ message: 'Campaign ID is required in the URL or request body.' });
+    }
+
+    const { userid } = req.session as any;
 
     const user = await prisma.user.findUnique({
-      where: { id: userId },
+      where: { id: userid },
       select: {
         id: true,
         role: true,

@@ -43,7 +43,6 @@ export const fetchAllLogisticsForCampaign = async (campaignId: string) => {
 };
 
 export const fetchAllLogisticsForCreator = async (creatorId: string) => {
-  // TODO: ask about number of logistics per creator per campaign
   const logistics = await prisma.logistic.findMany({
     where: {
       creatorId: creatorId,
@@ -73,4 +72,64 @@ export const fetchAllLogisticsForCreator = async (creatorId: string) => {
     },
   });
   return logistics;
+};
+
+export const fetchCampaignLogisticForCreator = async (creatorId: string, campaignId: string) => {
+  const logistics = await prisma.logistic.findUnique({
+    where: {
+      creatorId_campaignId: {
+        creatorId: creatorId,
+        campaignId: campaignId,
+      },
+    },
+    include: {
+      deliveryDetails: {
+        include: {
+          product: {
+            select: {
+              id: true,
+              productName: true,
+            },
+          },
+        },
+      },
+    },
+  });
+  return logistics;
+};
+
+type ProductCreateData = {
+  productName: string;
+  campaignId: string;
+  description?: string;
+  sku?: string;
+};
+
+export const createProductForLogistic = async (data: ProductCreateData) => {
+  const { productName, campaignId, description, sku } = data;
+
+  const newProduct = await prisma.product.create({
+    data: {
+      productName,
+      description,
+      campaign: {
+        connect: { id: campaignId },
+      },
+    },
+  });
+
+  return newProduct;
+};
+
+export const fetchProductsForCampaign = async (campaignId: string) => {
+  const products = await prisma.product.findMany({
+    where: {
+      campaignId: campaignId,
+    },
+    orderBy: {
+      createdAt: 'desc',
+    },
+  });
+
+  return products;
 };
