@@ -11,6 +11,9 @@ import {
   getCreatorLogisticForCampaign,
   getProductsForCampaign,
   createProduct,
+  singleAssignmentLogistics,
+  bulkAssignmentLogistics,
+  scheduleDelivery,
 } from '@controllers/logisticsController';
 
 const router = express.Router();
@@ -30,5 +33,14 @@ router.get(
 );
 router.get('/products/campaign/:campaignId', isLoggedIn, isAdminOrClient, checkCampaignAccess, getProductsForCampaign);
 router.post('/products/:campaignId', isLoggedIn, isAdminOrClient, checkCampaignAccess, createProduct);
+router.post('/bulk-assign/:campaignId', isLoggedIn, isAdminOrClient, checkCampaignAccess, bulkAssignmentLogistics);
+router.post('/single-assign/:campaignId', isLoggedIn, isAdminOrClient, checkCampaignAccess, singleAssignmentLogistics);
+router.patch(
+  '/campaign/:campaignId/:logisticId/schedule',
+  isLoggedIn,
+  isAdminOrClient,
+  checkCampaignAccess,
+  scheduleDelivery,
+);
 
 export default router;

@@ -26,18 +26,15 @@ export const fetchAllLogisticsForCampaign = async (campaignId: string) => {
       },
       deliveryDetails: {
         include: {
-          product: {
-            select: {
-              id: true,
-              productName: true,
+          items: {
+            include: {
+              product: { select: { id: true, productName: true } },
             },
           },
         },
       },
     },
-    orderBy: {
-      createdAt: 'desc',
-    },
+    orderBy: { createdAt: 'desc' },
   });
   return logistics;
 };
@@ -56,10 +53,9 @@ export const fetchAllLogisticsForCreator = async (creatorId: string) => {
       },
       deliveryDetails: {
         include: {
-          product: {
-            select: {
-              id: true,
-              productName: true,
+          items: {
+            include: {
+              product: { select: { id: true, productName: true } },
             },
           },
         },
@@ -67,9 +63,7 @@ export const fetchAllLogisticsForCreator = async (creatorId: string) => {
       reservationDetails: {}, //TODO
       storeVisitDetails: {}, //TODO
     },
-    orderBy: {
-      createdAt: 'desc',
-    },
+    orderBy: { createdAt: 'desc' },
   });
   return logistics;
 };
@@ -85,10 +79,9 @@ export const fetchCampaignLogisticForCreator = async (creatorId: string, campaig
     include: {
       deliveryDetails: {
         include: {
-          product: {
-            select: {
-              id: true,
-              productName: true,
+          items: {
+            include: {
+              product: { select: { id: true, productName: true } },
             },
           },
         },
@@ -132,4 +125,118 @@ export const fetchProductsForCampaign = async (campaignId: string) => {
   });
 
   return products;
+};
+
+type ProductInput = {
+  productId: string;
+  quantity: number;
+};
+
+//
+type AssignmentPerCreatorInput = {
+  creatorId: string;
+  items: ProductInput[];
+};
+
+type BulkAssignData = {
+  campaignId: string;
+  createdById: string;
+  assignments: AssignmentPerCreatorInput[];
+};
+
+type SingleAssignData = {
+  campaignId: string;
+  creatorId: string;
+  createdById: string;
+  items: ProductInput[];
+};
+
+type SchedulingData = {
+  trackingLink: string;
+  expectedDeliveryDate: string;
+  address: string;
+};
+
+export const assignSingleCreator = async (data: SingleAssignData) => {
+  const { campaignId, creatorId, createdById, items } = data;
+
+  return await prisma.logistic.create({
+    data: {
+      type: 'PRODUCT_DELIVERY',
+      status: 'SCHEDULED',
+      campaignId: campaignId,
+      creatorId: creatorId,
+      createdById: createdById,
+      deliveryDetails: {
+        create: {
+          items: {
+            create: items.map((item) => ({
+              productId: item.productId,
+              quantity: item.quantity,
+            })),
+          },
+        },
+      },
+    },
+    include: {
+      deliveryDetails: { include: { items: true } },
+    },
+  });
+};
+
+export const assignBulkCreators = async (data: BulkAssignData) => {
+  const { campaignId, createdById, assignments } = data;
+
+  const operations = assignments.map((assignment) => {
+    return prisma.logistic.create({
+      data: {
+        type: 'PRODUCT_DELIVERY',
+        status: 'SCHEDULED',
+        campaignId: campaignId,
+        creatorId: assignment.creatorId,
+        createdById: createdById,
+        deliveryDetails: {
+          create: {
+            items: {
+              create: assignment.items.map((item) => ({
+                productId: item.productId,
+                quantity: item.quantity,
+              })),
+            },
+          },
+        },
+      },
+      include: {
+        deliveryDetails: {
+          include: { items: true },
+        },
+      },
+    });
+  });
+
+  return await prisma.$transaction(operations);
+};
+
+export const scheduleDeliveryService = async (logisticId: string, data: SchedulingData) => {
+  const { trackingLink, expectedDeliveryDate, address } = data;
+
+  return await prisma.logistic.update({
+    where: { id: logisticId },
+    data: {
+      status: 'SHIPPED',
+      shippedAt: new Date(),
+      deliveryDetails: {
+        update: {
+          trackingLink,
+          address,
+          expectedDeliveryDate: expectedDeliveryDate ? new Date(expectedDeliveryDate) : undefined,
+        },
+      },
+    },
+    include: {
+      deliveryDetails: {
+        include: { items: true },
+      },
+    },
+  });
 };

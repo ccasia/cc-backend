@@ -187,7 +187,7 @@ model ClientNotification {
 
 model ChildAccount {
   id          String    @id @unique @default(cuid())
-  email       String    
+  email       String
   password    String?
   firstName   String?
   lastName    String?
@@ -1682,14 +1682,13 @@ model Product {
   id          String   @id @unique @default(cuid())
   productName String
   description String?
-  sku         String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   campaignId String
   campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
-  deliveryDetails DeliveryDetails[]
+  deliveryItems DeliveryItem[]
 
   @@index([campaignId])
 }
@@ -1738,8 +1737,7 @@ model DeliveryDetails {
   logisticId String   @unique
   logistic   Logistic @relation(fields: [logisticId], references: [id], onDelete: Cascade)
 
-  productId String?
-  product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  items DeliveryItem[]
 }
 
 model ReservationDetails {
@@ -1779,4 +1777,18 @@ model LogisticIssue {
 
   reportedById String
   reportedBy   User   @relation(fields: [reportedById], references: [id])
+}
+
+model DeliveryItem {
+  id String @id @unique @default(cuid())
+
+  deliveryDetailsId String
+  deliveryDetails   DeliveryDetails @relation(fields: [deliveryDetailsId], references: [id], onDelete: Cascade)
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  quantity Int @default(1)
+
+  @@unique([deliveryDetailsId, productId])
 }
