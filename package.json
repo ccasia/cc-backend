@@ -22,7 +22,9 @@
     "update-kanban": "ts-node prisma/updateBoardAdmin.ts",
     "try": "ts-node src/config/nodemailer.config.ts",
     "db-push": "npx prisma db push && docker exec -it cc-backend npx prisma db push",
-    "push-campaigns": "ts-node campaignLogs.ts"
+    "push-campaigns": "ts-node campaignLogs.ts",
+    "env:logistics": "cp .env.logistics .env && npx prisma generate",
+    "env:staging": "cp .env.staging .env && npx prisma generate"
   },
   "dependencies": {
     "@dotenvx/dotenvx": "^1.9.0",
