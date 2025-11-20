@@ -187,34 +187,29 @@ export const assignSingleCreator = async (data: SingleAssignData) => {
 export const assignBulkCreators = async (data: BulkAssignData) => {
   const { campaignId, createdById, assignments } = data;
 
-  const operations = assignments.map((assignment) => {
-    return prisma.logistic.create({
-      data: {
-        type: 'PRODUCT_DELIVERY',
-        status: 'SCHEDULED',
-        campaignId: campaignId,
-        creatorId: assignment.creatorId,
-        createdById: createdById,
-        deliveryDetails: {
-          create: {
-            items: {
-              create: assignment.items.map((item) => ({
-                productId: item.productId,
-                quantity: item.quantity,
-              })),
-            },
-          },
-        },
-      },
-      include: {
-        deliveryDetails: {
-          include: { items: true },
-        },
-      },
-    });
-  });
+  const results = [];
 
-  return await prisma.$transaction(operations);
+  for (const assignment of assignments) {
+    const existingLogistic = await prisma.logistic.findUnique({
+      where: {
+        creatorId_campaignId: {
+          creatorId: assignment.creatorId,
+          campaignId: campaignId,
+        },
+      },
+      include: { deliveryDetails: true },
+    });
+
+    if (existingLogistic) {
+      if (['SHIPPED', 'DELIVERED', 'RECEIVED', 'COMPLETED'].includes(existingLogistic.status)) {
+        throw new Error(
+          `Cannot assign items to Creator ${assignment.creatorId}: Order is already ${existingLogistic.status}`,
+        );
+      }
+    }
+  }
+
+  return await prisma.$transaction(results);
 };
 
 export const scheduleDeliveryService = async (logisticId: string, data: SchedulingData) => {
