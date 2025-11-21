@@ -206,6 +206,54 @@ export const assignBulkCreators = async (data: BulkAssignData) => {
           `Cannot assign items to Creator ${assignment.creatorId}: Order is already ${existingLogistic.status}`,
         );
       }
+
+      const deliveryDetailsId = existingLogistic.deliveryDetails?.id;
+
+      if (deliveryDetailsId) {
+        const updatedItems = assignment.items.map((item) => {
+          return prisma.deliveryItem.upsert({
+            where: {
+              deliveryDetailsId_productId: {
+                deliveryDetailsId: deliveryDetailsId,
+                productId: item.productId,
+              },
+            },
+            update: {
+              quantity: item.quantity,
+            },
+            create: {
+              deliveryDetailsId,
+              productId: item.productId,
+              quantity: item.quantity,
+            },
+          });
+        });
+
+        results.push(...updatedItems);
+      }
+    } else {
+      const createLogistic = prisma.logistic.create({
+        data: {
+          type: 'PRODUCT_DELIVERY',
+          status: 'SCHEDULED',
+          campaignId: campaignId,
+          creatorId: assignment.creatorId,
+          createdById: createdById,
+          deliveryDetails: {
+            create: {
+              items: {
+                create: assignment.items.map((item) => ({
+                  productId: item.productId,
+                  quantity: item.quantity,
+                })),
+              },
+            },
+          },
+        },
+        include: { deliveryDetails: { include: { items: true } } },
+      });
+
+      results.push(createLogistic);
     }
   }
 
