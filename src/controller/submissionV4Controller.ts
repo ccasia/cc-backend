@@ -628,6 +628,30 @@ export const approveV4Submission = async (req: Request, res: Response) => {
 
     console.log(`✅ V4 submission ${submissionId} ${actionMessage} by admin ${currentUserId}`);
     
+    // Create campaign log for admin/superadmin action
+    const admin = await prisma.user.findUnique({
+      where: { id: currentUserId },
+    });
+    
+    let logMessage = '';
+    if (action === 'approve') {
+      logMessage = `Draft approved by admin "${admin?.name || 'Unknown'}" from Creator "${submission.user?.name || 'Unknown'}"`;
+    } else if (action === 'request_revision') {
+      logMessage = `Changes requested on draft by admin "${admin?.name || 'Unknown'}" from Creator "${submission.user?.name || 'Unknown'}"`;
+    } else if (action === 'reject') {
+      logMessage = `Draft rejected by admin "${admin?.name || 'Unknown'}" from Creator "${submission.user?.name || 'Unknown'}"`;
+    }
+    
+    if (logMessage) {
+      await prisma.campaignLog.create({
+        data: {
+          message: logMessage,
+          adminId: currentUserId!,
+          campaignId: submission.campaignId,
+        },
+      });
+    }
+    
     // Check if campaign is now complete and generate invoice if needed
     if (action === 'approve' && (newStatus === 'APPROVED' || newStatus === 'SENT_TO_CLIENT')) {
       try {
@@ -863,6 +887,23 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
     }
     
     console.log(`✅ V4 submission ${submissionId} ${action}d by client ${clientId}`);
+    
+    // Create campaign log for client action
+    const client = await prisma.user.findUnique({
+      where: { id: clientId },
+    });
+    
+    const logMessage = action === 'approve' 
+      ? `Draft approved by client "${client?.name || 'Unknown'}" from Creator "${submission.user?.name || 'Unknown'}"`
+      : `Changes requested on draft by client "${client?.name || 'Unknown'}" from Creator "${submission.user?.name || 'Unknown'}"`;
+    
+    await prisma.campaignLog.create({
+      data: {
+        message: logMessage,
+        adminId: clientId,
+        campaignId: submission.campaignId,
+      },
+    });
     
     // Check if campaign is now complete and generate invoice if needed
     if (action === 'approve' && newSubmissionStatus === 'CLIENT_APPROVED') {
@@ -1769,6 +1810,23 @@ export const approveIndividualContentByClientV4 = async (req: Request, res: Resp
     
     console.log(`✅ V4 ${contentType} ${contentId} approved by client ${clientId}`);
     
+    // Create campaign log for client approval
+    const client = await prisma.user.findUnique({
+      where: { id: clientId },
+    });
+    
+    const creator = await prisma.user.findUnique({
+      where: { id: submission.userId },
+    });
+    
+    await prisma.campaignLog.create({
+      data: {
+        message: `${contentType} approved by client "${client?.name || 'Unknown'}" from Creator "${creator?.name || 'Unknown'}"`,
+        adminId: clientId,
+        campaignId: submission.campaignId,
+      },
+    });
+    
     // Check if campaign is now complete and generate invoice if needed
     if (updatedContent.status === 'APPROVED') {
       try {
@@ -1954,6 +2012,23 @@ export const requestChangesIndividualContentByClientV4 = async (req: Request, re
     await updateSubmissionStatusBasedOnContent(submission.id);
     
     console.log(`✅ V4 ${contentType} ${contentId} changes requested by client ${clientId}`);
+    
+    // Create campaign log for client change request
+    const client = await prisma.user.findUnique({
+      where: { id: clientId },
+    });
+    
+    const creator = await prisma.user.findUnique({
+      where: { id: submission.userId },
+    });
+    
+    await prisma.campaignLog.create({
+      data: {
+        message: `Changes requested on ${contentType} by client "${client?.name || 'Unknown'}" from Creator "${creator?.name || 'Unknown'}"`,
+        adminId: clientId,
+        campaignId: submission.campaignId,
+      },
+    });
     
     res.status(200).json({
       message: `Changes requested for ${contentType} by client successfully`,
