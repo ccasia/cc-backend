@@ -382,7 +382,7 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
 
     const isV4Campaign = pitch.campaign.submissionVersion === 'v4';
     const creditsAssignedForThisPitch = Number(pitch.ugcCredits || 0);
-    
+
     if (!isV4Campaign) {
       const totalUtilizedBefore = (campaignWithShortlisted?.shortlisted || []).reduce(
         (acc, item) => acc + Number(item.ugcVideos || 0),
@@ -429,11 +429,7 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
         },
         data: {
           isAgreementReady: false,
-          ...(isV4Campaign
-            ? {}
-            : creditsAssignedForThisPitch > 0
-              ? { ugcVideos: creditsAssignedForThisPitch }
-              : {}), 
+          ...(isV4Campaign ? {} : creditsAssignedForThisPitch > 0 ? { ugcVideos: creditsAssignedForThisPitch } : {}),
         },
       });
     } else {
@@ -491,10 +487,12 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
         const v2SubmissionTypes = ['FIRST_DRAFT', 'FINAL_DRAFT', 'POSTING'];
 
         const timelinesFiltered = isV4Campaign
-          ? timelines.filter(t => !v2SubmissionTypes.includes(t.submissionType?.type || ''))
+          ? timelines.filter((t) => !v2SubmissionTypes.includes(t.submissionType?.type || ''))
           : timelines;
 
-        console.log(`Creating submissions for ${isV4Campaign ? 'v4' : 'v2'} campaign - ${timelinesFiltered.length} timeline(s)`);
+        console.log(
+          `Creating submissions for ${isV4Campaign ? 'v4' : 'v2'} campaign - ${timelinesFiltered.length} timeline(s)`,
+        );
 
         // Create submissions for timeline items
         const submissions = await Promise.all(
@@ -579,6 +577,35 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
       console.log(
         `ℹ️  Campaign ${pitch.campaignId} is not V4 (version: ${pitch.campaign.submissionVersion}) - skipping V4 content submission creation`,
       );
+    }
+    
+    try {
+      const existingLogistic = await prisma.logistic.findUnique({
+        where: {
+          creatorId_campaignId: {
+            creatorId: pitch.userId,
+            campaignId: pitch.campaignId,
+          },
+        },
+      });
+
+      if (!existingLogistic) {
+        await prisma.logistic.create({
+          data: {
+            campaignId: pitch.campaignId,
+            creatorId: pitch.userId,
+            createdById: clientId, // The client who approved it
+            type: 'PRODUCT_DELIVERY', // Default
+            status: 'PENDING_ASSIGNMENT', // Default
+            // Initialize empty details so we have an ID to update later
+            deliveryDetails: {
+              create: {},
+            },
+          },
+        });
+      }
+    } catch (error) {
+      console.error('❌ Error creating logistic record:', error);
     }
 
     // Find admin users for this campaign
@@ -1082,10 +1109,7 @@ export const getPitchesV3 = async (req: Request, res: Response) => {
       where: {
         ...whereClause,
         campaign: {
-          OR: [
-            { origin: 'CLIENT' },
-            { submissionVersion: 'v4' }
-          ]
+          OR: [{ origin: 'CLIENT' }, { submissionVersion: 'v4' }],
         },
       },
       include: {
@@ -1125,9 +1149,14 @@ export const getPitchesV3 = async (req: Request, res: Response) => {
       requestedStatus: status,
       userRole: user.role,
       totalPitches: pitches.length,
-      v4Pitches: pitches.filter(p => p.campaign?.submissionVersion === 'v4').length,
-      clientOriginPitches: pitches.filter(p => p.campaign?.origin === 'CLIENT').length,
-      pitchStatuses: pitches.map(p => ({ id: p.id, status: p.status, campaignOrigin: p.campaign?.origin, submissionVersion: p.campaign?.submissionVersion }))
+      v4Pitches: pitches.filter((p) => p.campaign?.submissionVersion === 'v4').length,
+      clientOriginPitches: pitches.filter((p) => p.campaign?.origin === 'CLIENT').length,
+      pitchStatuses: pitches.map((p) => ({
+        id: p.id,
+        status: p.status,
+        campaignOrigin: p.campaign?.origin,
+        submissionVersion: p.campaign?.submissionVersion,
+      })),
     });
 
     // Transform pitches to show role-based status and filter for clients
@@ -1174,7 +1203,6 @@ export const getPitchesV3 = async (req: Request, res: Response) => {
             displayStatus = 'APPROVED';
           }
         }
-
 
         let sanitizedUser = undefined;
         if (pitch.user) {
@@ -1898,9 +1926,10 @@ export const updateGuestCreatorInfo = async (req: Request, res: Response) => {
     }
 
     // Check if the user is a guest creator
-    const isGuest = pitch.user?.email?.includes('@tempmail.com') ||
-                    pitch.user?.email?.startsWith('guest_') ||
-                    pitch.user?.creator?.isGuest === true;
+    const isGuest =
+      pitch.user?.email?.includes('@tempmail.com') ||
+      pitch.user?.email?.startsWith('guest_') ||
+      pitch.user?.creator?.isGuest === true;
 
     if (!isGuest) {
       return res.status(400).json({ message: 'This endpoint is only for guest creators' });
@@ -1953,7 +1982,7 @@ export const updateGuestCreatorInfo = async (req: Request, res: Response) => {
         engagementRate: engagementRate.trim() || null,
         profileLink: profileLink.trim(),
         adminComments: adminComments?.trim() || null,
-      }
+      },
     });
   } catch (error) {
     console.error('Error updating guest creator info:', error);

@@ -61,7 +61,6 @@ export const fetchAllLogisticsForCreator = async (creatorId: string) => {
         },
       },
       reservationDetails: {}, //TODO
-      storeVisitDetails: {}, //TODO
     },
     orderBy: { createdAt: 'desc' },
   });
@@ -160,28 +159,79 @@ type SchedulingData = {
 export const assignSingleCreator = async (data: SingleAssignData) => {
   const { campaignId, creatorId, createdById, items } = data;
 
-  return await prisma.logistic.create({
-    data: {
-      type: 'PRODUCT_DELIVERY',
-      status: 'SCHEDULED',
-      campaignId: campaignId,
-      creatorId: creatorId,
-      createdById: createdById,
-      deliveryDetails: {
-        create: {
-          items: {
-            create: items.map((item) => ({
-              productId: item.productId,
-              quantity: item.quantity,
-            })),
-          },
-        },
+  const existingLogistic = await prisma.logistic.findUnique({
+    where: {
+      creatorId_campaignId: {
+        creatorId: creatorId,
+        campaignId: campaignId,
       },
     },
     include: {
-      deliveryDetails: { include: { items: true } },
+      deliveryDetails: true,
     },
   });
+
+  if (existingLogistic) {
+    if (['SHIPPED', 'DELIVERED', 'RECEIVED', 'COMPLETED'].includes(existingLogistic.status)) {
+      throw new Error(`Cannot assign items: Order is already ${existingLogistic.status}`);
+    }
+
+    let deliveryDetailsId = existingLogistic.deliveryDetails?.id;
+
+    if (!deliveryDetailsId) {
+      const newDetails = await prisma.deliveryDetails.create({
+        data: {
+          logistic: { connect: { id: existingLogistic.id } },
+        },
+      });
+      deliveryDetailsId = newDetails.id;
+    }
+
+    await prisma.$transaction(async (tx) => {
+      const incomingProductIds = items.map((i) => i.productId);
+
+      await tx.deliveryItem.deleteMany({
+        where: {
+          deliveryDetailsId: deliveryDetailsId,
+          productId: {
+            notIn: incomingProductIds,
+          },
+        },
+      });
+
+      for (const item of items) {
+        await tx.deliveryItem.upsert({
+          where: {
+            deliveryDetailsId_productId: {
+              deliveryDetailsId: deliveryDetailsId!,
+              productId: item.productId,
+            },
+          },
+          // If item exists, update quantity
+          update: {
+            quantity: item.quantity,
+          },
+          // If item doesn't exist, create it
+          create: {
+            deliveryDetailsId: deliveryDetailsId!,
+            productId: item.productId,
+            quantity: item.quantity,
+          },
+        });
+      }
+      if (existingLogistic.status === 'PENDING_ASSIGNMENT') {
+        await tx.logistic.update({
+          where: { id: existingLogistic.id },
+          data: { status: 'SCHEDULED' },
+        });
+      }
+    });
+    // Return the updated full object
+    return await prisma.logistic.findUnique({
+      where: { id: existingLogistic.id },
+      include: { deliveryDetails: { include: { items: true } } },
+    });
+  }
 };
 
 export const assignBulkCreators = async (data: BulkAssignData) => {
