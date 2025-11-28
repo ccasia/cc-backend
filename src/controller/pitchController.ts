@@ -381,7 +381,12 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
     });
 
     const isV4Campaign = pitch.campaign.submissionVersion === 'v4';
+    
     const creditsAssignedForThisPitch = Number(pitch.ugcCredits || 0);
+
+    const hasAssignedCredits = Number.isFinite(creditsAssignedForThisPitch) && creditsAssignedForThisPitch > 0;
+
+    const creditsAssignedForThisPitchFinal = hasAssignedCredits ? creditsAssignedForThisPitch : 0;
     
     if (!isV4Campaign) {
       const totalUtilizedBefore = (campaignWithShortlisted?.shortlisted || []).reduce(
@@ -391,13 +396,13 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
 
       if (
         campaignWithShortlisted?.campaignCredits &&
-        creditsAssignedForThisPitch > 0 &&
-        totalUtilizedBefore + creditsAssignedForThisPitch > campaignWithShortlisted.campaignCredits
+        creditsAssignedForThisPitchFinal > 0 &&
+        totalUtilizedBefore + creditsAssignedForThisPitchFinal > campaignWithShortlisted.campaignCredits
       ) {
         return res.status(400).json({
           message: `Not enough campaign credits. Remaining: ${
             campaignWithShortlisted.campaignCredits - totalUtilizedBefore
-          }, requested: ${creditsAssignedForThisPitch}`,
+          }, requested: ${creditsAssignedForThisPitchFinal}`,
         });
       }
     }
@@ -429,11 +434,7 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
         },
         data: {
           isAgreementReady: false,
-          ...(isV4Campaign
-            ? {}
-            : creditsAssignedForThisPitch > 0
-              ? { ugcVideos: creditsAssignedForThisPitch }
-              : {}), 
+          ...(hasAssignedCredits ? { ugcVideos: creditsAssignedForThisPitch } : {}),
         },
       });
     } else {
@@ -442,7 +443,7 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
           userId: pitch.userId,
           campaignId: pitch.campaignId,
           isAgreementReady: false,
-          ugcVideos: isV4Campaign ? 0 : creditsAssignedForThisPitch > 0 ? creditsAssignedForThisPitch : 0,
+          ugcVideos: creditsAssignedForThisPitch,
           currency: 'MYR',
         },
       });

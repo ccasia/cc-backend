@@ -31,7 +31,11 @@ export const getAllThreads = async (_req: Request, res: Response) => {
             user: true,
           },
         },
-        campaign: true,
+        campaign: {
+          include: {
+            campaignBrief: true,
+          },
+        },
         latestMessage: true,
       },
       orderBy: {
@@ -59,7 +63,11 @@ export const getThreadById = async (req: Request, res: Response) => {
             user: true,
           },
         },
-        campaign: true,
+        campaign: {
+          include: {
+            campaignBrief: true,
+          },
+        },
         latestMessage: true,
       },
     });
