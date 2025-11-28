@@ -13,9 +13,15 @@ export const fetchAllLogisticsForCampaign = async (campaignId: string) => {
           id: true,
           name: true,
           photoURL: true,
+          phoneNumber: true,
           creator: {
             select: {
               instagramUser: {
+                select: {
+                  username: true,
+                },
+              },
+              tiktokUser: {
                 select: {
                   username: true,
                 },
