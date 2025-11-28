@@ -201,6 +201,19 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
       }
     }
 
+    // Create campaign log for admin approval
+    const admin = await prisma.user.findUnique({
+      where: { id: adminId },
+    });
+    
+    await prisma.campaignLog.create({
+      data: {
+        message: `Admin "${admin?.name || 'Unknown'}" approved pitch from Creator "${pitch.user.name}" and sent to client`,
+        adminId: adminId,
+        campaignId: pitch.campaignId,
+      },
+    });
+
     console.log(`Pitch ${pitchId} approved by admin with ${ugcCredits} UGC credits, status updated to SENT_TO_CLIENT`);
     console.log(adminComments ? `Comments: ${adminComments}` : 'No comments provided');
     return res.status(200).json({
@@ -296,6 +309,19 @@ export const rejectPitchByAdmin = async (req: Request, res: Response) => {
       },
     });
 
+    // Create campaign log for admin rejection
+    const admin = await prisma.user.findUnique({
+      where: { id: adminId },
+    });
+    
+    await prisma.campaignLog.create({
+      data: {
+        message: `Admin "${admin?.name || 'Unknown'}" rejected pitch from Creator "${pitch.user.name}"`,
+        adminId: adminId,
+        campaignId: pitch.campaignId,
+      },
+    });
+
     console.log(`Pitch ${pitchId} rejected by admin, creator removed from campaign`);
     return res.status(200).json({
       message: 'Pitch rejected and creator removed from campaign',
@@ -375,7 +401,12 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
     });
 
     const isV4Campaign = pitch.campaign.submissionVersion === 'v4';
+    
     const creditsAssignedForThisPitch = Number(pitch.ugcCredits || 0);
+
+    const hasAssignedCredits = Number.isFinite(creditsAssignedForThisPitch) && creditsAssignedForThisPitch > 0;
+
+    const creditsAssignedForThisPitchFinal = hasAssignedCredits ? creditsAssignedForThisPitch : 0;
     
     if (!isV4Campaign) {
       const totalUtilizedBefore = (campaignWithShortlisted?.shortlisted || []).reduce(
@@ -385,13 +416,13 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
 
       if (
         campaignWithShortlisted?.campaignCredits &&
-        creditsAssignedForThisPitch > 0 &&
-        totalUtilizedBefore + creditsAssignedForThisPitch > campaignWithShortlisted.campaignCredits
+        creditsAssignedForThisPitchFinal > 0 &&
+        totalUtilizedBefore + creditsAssignedForThisPitchFinal > campaignWithShortlisted.campaignCredits
       ) {
         return res.status(400).json({
           message: `Not enough campaign credits. Remaining: ${
             campaignWithShortlisted.campaignCredits - totalUtilizedBefore
-          }, requested: ${creditsAssignedForThisPitch}`,
+          }, requested: ${creditsAssignedForThisPitchFinal}`,
         });
       }
     }
@@ -423,11 +454,7 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
         },
         data: {
           isAgreementReady: false,
-          ...(isV4Campaign
-            ? {}
-            : creditsAssignedForThisPitch > 0
-              ? { ugcVideos: creditsAssignedForThisPitch }
-              : {}), 
+          ...(hasAssignedCredits ? { ugcVideos: creditsAssignedForThisPitch } : {}),
         },
       });
     } else {
@@ -436,7 +463,7 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
           userId: pitch.userId,
           campaignId: pitch.campaignId,
           isAgreementReady: false,
-          ugcVideos: isV4Campaign ? 0 : creditsAssignedForThisPitch > 0 ? creditsAssignedForThisPitch : 0,
+          ugcVideos: creditsAssignedForThisPitch,
           currency: 'MYR',
         },
       });
@@ -598,6 +625,19 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
       }
     }
 
+    // Create campaign log for client approval
+    const client = await prisma.user.findUnique({
+      where: { id: clientId },
+    });
+    
+    await prisma.campaignLog.create({
+      data: {
+        message: `Client "${client?.name || 'Unknown'}" approved pitch from Creator "${pitch.user.name}"`,
+        adminId: clientId,
+        campaignId: pitch.campaignId,
+      },
+    });
+
     console.log(`Pitch ${pitchId} approved by client, status updated to APPROVED`);
     return res.status(200).json({ message: 'Pitch approved by client' });
   } catch (error) {
@@ -715,6 +755,19 @@ export const rejectPitchByClient = async (req: Request, res: Response) => {
       }
     }
 
+    // Create campaign log for client rejection
+    const client = await prisma.user.findUnique({
+      where: { id: clientId },
+    });
+    
+    await prisma.campaignLog.create({
+      data: {
+        message: `Client "${client?.name || 'Unknown'}" rejected pitch from Creator "${pitch.user.name}"`,
+        adminId: clientId,
+        campaignId: pitch.campaignId,
+      },
+    });
+
     console.log(`Pitch ${pitchId} rejected by client, creator removed from campaign`);
     return res.status(200).json({ message: 'Pitch rejected and creator removed from campaign' });
   } catch (error) {
@@ -814,6 +867,19 @@ export const maybePitchByClient = async (req: Request, res: Response) => {
         },
       });
     }
+
+    // Create campaign log for client maybe
+    const client = await prisma.user.findUnique({
+      where: { id: clientId },
+    });
+    
+    await prisma.campaignLog.create({
+      data: {
+        message: `Client "${client?.name || 'Unknown'}" set pitch from Creator "${pitch.user.name}" to maybe`,
+        adminId: clientId,
+        campaignId: pitch.campaignId,
+      },
+    });
 
     console.log(`Pitch ${pitchId} set to maybe by client`);
     return res.status(200).json({ message: 'Pitch status updated to maybe' });

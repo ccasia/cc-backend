@@ -6477,20 +6477,47 @@ export const activateClientCampaign = async (req: Request, res: Response) => {
         where: {
           campaignId: campaignId,
         },
+        include: {
+          UserThread: true,
+        },
       });
 
+      // Collect all user IDs that should be in the thread (clients + admins from campaignAdmin)
+      const userIdsForThread = campaignAdminEntries.map((entry) => entry.adminId);
+
       if (!existingThread) {
-        console.log('Creating thread for client campaign');
+        console.log('Creating thread for client campaign with users:', userIdsForThread);
         await prisma.thread.create({
           data: {
             campaignId: campaignId,
             title: `Campaign Thread - ${campaign.name}`,
             description: `Thread for campaign ${campaign.name}`,
+            isGroup: userIdsForThread.length > 2,
+            UserThread: {
+              create: userIdsForThread.map((userId) => ({
+                userId,
+              })),
+            },
           },
         });
-        console.log('Thread created successfully for client campaign');
+        console.log('Thread created successfully for client campaign with users added to UserThread');
       } else {
-        console.log('Thread already exists for this campaign');
+        console.log('Thread already exists for this campaign, checking if users need to be added');
+        // Add any missing users to the existing thread
+        const existingUserIds = existingThread.UserThread.map((ut) => ut.userId);
+        const missingUserIds = userIdsForThread.filter((id) => !existingUserIds.includes(id));
+
+        if (missingUserIds.length > 0) {
+          console.log('Adding missing users to thread:', missingUserIds);
+          await prisma.userThread.createMany({
+            data: missingUserIds.map((userId) => ({
+              userId,
+              threadId: existingThread.id,
+            })),
+            skipDuplicates: true,
+          });
+          console.log('Missing users added to thread successfully');
+        }
       }
     } catch (error) {
       console.error('Error creating thread for client campaign:', error);
