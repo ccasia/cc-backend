@@ -1566,6 +1566,9 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
       },
     });
 
+    const isClientManagedFlow =
+      campaignWithOrigin.origin === 'CLIENT' || campaignWithOrigin.submissionVersion === 'v4';
+    const initialStatus = isClientManagedFlow ? 'PENDING_REVIEW' : 'undecided';
 
     if (isPitchExist) {
       if (isPitchExist.type === 'text') {
@@ -2207,6 +2210,87 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
         }
       }
 
+      let companyIds: string[] = [];
+      let brandIds: string[] = [];
+      let clientIds: string[] = [];
+      
+      if (search) {
+        // 1. Find companies with matching names
+        const companies = await prisma.company.findMany({
+          where: {
+            name: {
+              contains: search as string,
+              mode: 'insensitive',
+            },
+          },
+          select: {
+            id: true,
+            name: true,
+          },
+        });
+        
+        companyIds = companies.map(company => company.id);
+        console.log('Found companies with matching names:', companies.map(c => c.name));
+        
+        // 2. Find brands with matching names directly
+        const brandsByName = await prisma.brand.findMany({
+          where: {
+            name: {
+              contains: search as string,
+              mode: 'insensitive',
+            },
+          },
+          select: {
+            id: true,
+            name: true,
+          },
+        });
+        
+        // 3. Also find brands that belong to companies with matching names
+        let brandsByCompany: { id: string, name: string }[] = [];
+        if (companyIds.length > 0) {
+          brandsByCompany = await prisma.brand.findMany({
+            where: {
+              companyId: {
+                in: companyIds,
+              },
+            },
+            select: {
+              id: true,
+              name: true,
+            },
+          });
+        }
+        
+        // Combine and deduplicate brand IDs
+        const allBrands = [...brandsByName, ...brandsByCompany];
+        brandIds = [...new Set(allBrands.map(brand => brand.id))];
+        console.log('Found brands:', allBrands.map(b => b.name));
+        
+        // 4. Find clients with matching names
+        const clients = await prisma.client.findMany({
+          where: {
+            user: {
+              name: {
+                contains: search as string,
+                mode: 'insensitive',
+              },
+            },
+          },
+          select: {
+            userId: true,
+            user: {
+              select: {
+                name: true,
+              },
+            },
+          },
+        });
+        
+        clientIds = clients.map(client => client.userId);
+        console.log('Found clients with matching names:', clients.map(c => c.user?.name));
+      }
+      
       const campaigns: any = await prisma.campaign.findMany({
         take: Number(limit),
         ...(cursor && {
@@ -2218,10 +2302,36 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
             statusCondition,
             {
               ...(search && {
-                name: {
-                  contains: search as string,
-                  mode: 'insensitive',
-                },
+                OR: [
+                  {
+                    name: {
+                      contains: search as string,
+                      mode: 'insensitive',
+                    },
+                  },
+                  ...(companyIds.length > 0 ? [{
+                    companyId: {
+                      in: companyIds,
+                    },
+                  }] : []),
+                
+                  ...(brandIds.length > 0 ? [{
+                    brandId: {
+                      in: brandIds,
+                    },
+                  }] : []),
+                  
+                  // Search by client ID (if any clients matched the search)
+                  ...(clientIds.length > 0 ? [{
+                    campaignClient: {
+                      some: {
+                        clientId: {
+                          in: clientIds,
+                        },
+                      },
+                    },
+                  }] : []),
+                ],
               }),
             },
           ],

@@ -39,6 +39,26 @@ const getEntityFromSubmissionType = (submissionType: string, userRole?: 'admin' 
   return baseEntity; // Fallback to generic entities
 };
 
+const normalizePitchStatusForV4 = (pitch: any): string | null => {
+  const originalStatus: string | null = pitch?.status ?? null;
+  const submissionVersion: string | undefined = pitch?.campaign?.submissionVersion;
+
+  if (!originalStatus || submissionVersion !== 'v4') {
+    return originalStatus;
+  }
+
+  const legacyStatusMap: Record<string, string> = {
+    undecided: 'PENDING_REVIEW',
+    pending: 'PENDING_REVIEW',
+    approved: 'APPROVED',
+    rejected: 'REJECTED',
+    filtered: 'REJECTED',
+    draft: 'DRAFT',
+  };
+
+  return legacyStatusMap[originalStatus] || originalStatus;
+};
+
 // New Flow: Admin approves pitch and sends to client
 export const approvePitchByAdmin = async (req: Request, res: Response) => {
   const { pitchId } = req.params;
@@ -1131,51 +1151,45 @@ export const getPitchesV3 = async (req: Request, res: Response) => {
       pitchStatuses: pitches.map(p => ({ id: p.id, status: p.status, campaignOrigin: p.campaign?.origin, submissionVersion: p.campaign?.submissionVersion }))
     });
 
-    // Transform pitches to show role-based status and filter for clients
     const transformedPitches = pitches
       .filter((pitch) => {
-        // For clients: show pitches that are SENT_TO_CLIENT, APPROVED, REJECTED, MAYBE, or in agreement stages
-        // Hide pitches with PENDING_REVIEW status (admin review stage)
+        const normalizedStatus = normalizePitchStatusForV4(pitch);
+
         if (user.role === 'client') {
           return (
-            pitch.status === 'SENT_TO_CLIENT' ||
-            pitch.status === 'APPROVED' ||
-            pitch.status === 'REJECTED' ||
-            pitch.status === 'MAYBE' ||
-            pitch.status === 'AGREEMENT_PENDING' ||
-            pitch.status === 'AGREEMENT_SUBMITTED'
+            normalizedStatus === 'SENT_TO_CLIENT' ||
+            normalizedStatus === 'APPROVED' ||
+            normalizedStatus === 'REJECTED' ||
+            normalizedStatus === 'MAYBE' ||
+            normalizedStatus === 'AGREEMENT_PENDING' ||
+            normalizedStatus === 'AGREEMENT_SUBMITTED'
           );
         }
-        // For admin and creators: show all pitches
         return true;
       })
       .map((pitch) => {
-        let displayStatus: string | null = pitch.status;
+        const normalizedStatus = normalizePitchStatusForV4(pitch);
+        let displayStatus: string | null = normalizedStatus;
 
-        // Role-based status display logic
         if (user.role === 'admin' || user.role === 'superadmin') {
-          // Admin sees: PENDING_REVIEW -> PENDING_REVIEW, SENT_TO_CLIENT -> SENT_TO_CLIENT, APPROVED -> APPROVED
-          if (pitch.status === 'SENT_TO_CLIENT' && pitch.adminComments) {
+          if (normalizedStatus === 'SENT_TO_CLIENT' && pitch.adminComments) {
             displayStatus = 'SENT_TO_CLIENT_WITH_COMMENTS';
           } else {
-            displayStatus = pitch.status;
+            displayStatus = normalizedStatus;
           }
         } else if (user.role === 'client') {
-          // Client sees: SENT_TO_CLIENT -> PENDING_REVIEW, APPROVED -> APPROVED
-          if (pitch.status === 'SENT_TO_CLIENT') {
+          if (normalizedStatus === 'SENT_TO_CLIENT') {
             displayStatus = 'PENDING_REVIEW';
-          } else if (pitch.status === 'AGREEMENT_PENDING' || pitch.status === 'AGREEMENT_SUBMITTED') {
+          } else if (normalizedStatus === 'AGREEMENT_PENDING' || normalizedStatus === 'AGREEMENT_SUBMITTED') {
             displayStatus = 'APPROVED';
           }
         } else if (user.role === 'creator') {
-          // Creator sees: PENDING_REVIEW -> PENDING_REVIEW, SENT_TO_CLIENT -> PENDING_REVIEW, APPROVED -> APPROVED
-          if (pitch.status === 'SENT_TO_CLIENT') {
+          if (normalizedStatus === 'SENT_TO_CLIENT') {
             displayStatus = 'PENDING_REVIEW';
-          } else if (pitch.status === 'AGREEMENT_PENDING' || pitch.status === 'AGREEMENT_SUBMITTED') {
+          } else if (normalizedStatus === 'AGREEMENT_PENDING' || normalizedStatus === 'AGREEMENT_SUBMITTED') {
             displayStatus = 'APPROVED';
           }
         }
-
 
         let sanitizedUser = undefined;
         if (pitch.user) {
@@ -1187,6 +1201,7 @@ export const getPitchesV3 = async (req: Request, res: Response) => {
 
         return {
           ...pitch,
+          status: normalizedStatus,
           user: sanitizedUser,
           displayStatus, // Add display status for frontend
         };
