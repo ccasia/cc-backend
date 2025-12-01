@@ -201,6 +201,25 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
         });
       }
 
+      // Create creatorAgreement for non-v4 campaigns (if it doesn't exist)
+      const existingAgreement = await prisma.creatorAgreement.findFirst({
+        where: {
+          userId: pitch.userId,
+          campaignId: pitch.campaignId,
+        },
+      });
+
+      if (!existingAgreement) {
+        console.log(`Creating creatorAgreement for non-v4 pitch approval - ${pitch.userId}`);
+        await prisma.creatorAgreement.create({
+          data: {
+            userId: pitch.userId,
+            campaignId: pitch.campaignId,
+            agreementUrl: '',
+          },
+        });
+      }
+
       // Note: Credits are now only utilized when agreement is sent (in sendAgreement function)
       // ugcVideos is still assigned to shortlistedCreator for submission creation
 
@@ -618,6 +637,27 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
         },
       });
     }
+
+    // Create creatorAgreement for v4 campaigns (if it doesn't exist)
+    // This ensures the agreement record exists before admin sets amount and sends it
+    const existingAgreement = await prisma.creatorAgreement.findFirst({
+      where: {
+        userId: pitch.userId,
+        campaignId: pitch.campaignId,
+      },
+    });
+
+    if (!existingAgreement) {
+      console.log(`Creating creatorAgreement for v4 client approval - ${pitch.userId}`);
+      await prisma.creatorAgreement.create({
+        data: {
+          userId: pitch.userId,
+          campaignId: pitch.campaignId,
+          agreementUrl: '',
+        },
+      });
+    }
+
     // Note: Credits are now only utilized when agreement is sent (in sendAgreement function)
     // ugcVideos is still assigned to shortlistedCreator for submission creation
 

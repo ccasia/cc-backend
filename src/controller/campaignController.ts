@@ -4008,6 +4008,67 @@ export const creatorAgreements = async (req: Request, res: Response) => {
   const { campaignId } = req.params;
 
   try {
+    // First, ensure all approved shortlisted creators have agreement records
+    const campaign = await prisma.campaign.findUnique({
+      where: { id: campaignId },
+      include: {
+        shortlisted: {
+          include: {
+            user: {
+              include: {
+                creator: true,
+              },
+            },
+          },
+        },
+        pitch: {
+          where: {
+            status: {
+              in: ['APPROVED', 'approved', 'AGREEMENT_PENDING', 'AGREEMENT_SUBMITTED'],
+            },
+          },
+        },
+      },
+    });
+
+    if (campaign) {
+      // Get all approved user IDs from pitches and shortlisted creators
+      const approvedUserIds = new Set<string>();
+      
+      // Add users from approved pitches
+      campaign.pitch.forEach((p) => {
+        if (p.userId) approvedUserIds.add(p.userId);
+      });
+      
+      // Add users from shortlisted creators
+      campaign.shortlisted.forEach((s) => {
+        if (s.userId) approvedUserIds.add(s.userId);
+      });
+
+      // Get existing agreements for this campaign
+      const existingAgreements = await prisma.creatorAgreement.findMany({
+        where: { campaignId },
+        select: { userId: true },
+      });
+      const existingUserIds = new Set(existingAgreements.map((a) => a.userId));
+
+      // Create missing agreements
+      const missingUserIds = [...approvedUserIds].filter((userId) => !existingUserIds.has(userId));
+      
+      if (missingUserIds.length > 0) {
+        console.log(`Creating ${missingUserIds.length} missing agreements for campaign ${campaignId}`);
+        await prisma.creatorAgreement.createMany({
+          data: missingUserIds.map((userId) => ({
+            userId,
+            campaignId,
+            agreementUrl: '',
+          })),
+          skipDuplicates: true,
+        });
+      }
+    }
+
+    // Now fetch all agreements including any newly created ones
     const agreements = await prisma.creatorAgreement.findMany({
       where: {
         campaignId: campaignId,
@@ -4029,6 +4090,7 @@ export const creatorAgreements = async (req: Request, res: Response) => {
 
     return res.status(200).json(agreements);
   } catch (error) {
+    console.error('Error fetching/creating agreements:', error);
     return res.status(400).json(error);
   }
 };
