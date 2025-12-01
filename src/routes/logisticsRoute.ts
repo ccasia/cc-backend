@@ -14,6 +14,7 @@ import {
   singleAssignmentLogistics,
   bulkAssignmentLogistics,
   scheduleDelivery,
+  deleteProduct,
 } from '@controllers/logisticsController';
 
 const router = express.Router();
@@ -33,6 +34,7 @@ router.get(
 );
 router.get('/products/campaign/:campaignId', isLoggedIn, isAdminOrClient, checkCampaignAccess, getProductsForCampaign);
 router.post('/products/:campaignId', isLoggedIn, isAdminOrClient, checkCampaignAccess, createProduct);
+router.delete('/products/:productId', isLoggedIn, isAdminOrClient, deleteProduct);
 router.post('/bulk-assign/:campaignId', isLoggedIn, isAdminOrClient, checkCampaignAccess, bulkAssignmentLogistics);
 router.post('/assign/:campaignId', isLoggedIn, isAdminOrClient, checkCampaignAccess, singleAssignmentLogistics);
 router.patch(

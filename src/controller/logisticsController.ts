@@ -5,6 +5,7 @@ import {
   fetchCampaignLogisticForCreator,
   fetchProductsForCampaign,
   createProductForLogistic,
+  deleteProductService,
   assignBulkCreators,
   assignSingleCreator,
   scheduleDeliveryService,
@@ -70,6 +71,22 @@ export const createProduct = async (req: Request, res: Response) => {
     return res.status(201).json(newProduct);
   } catch (error) {
     console.error('Error creating product:', error);
+    return res.status(500).json({ message: 'Internal Server Error' });
+  }
+};
+
+export const deleteProduct = async (req: Request, res: Response) => {
+  try {
+    const { productId } = req.params;
+
+    if (!productId) {
+      return res.status(400).json({ message: 'Product ID is required.' });
+    }
+
+    await deleteProductService(productId);
+    return res.status(200).json({ message: 'Product deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting product:', error);
     return res.status(500).json({ message: 'Internal Server Error' });
   }
 };

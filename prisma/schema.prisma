@@ -1738,6 +1738,8 @@ model DeliveryDetails {
   logistic   Logistic @relation(fields: [logisticId], references: [id], onDelete: Cascade)
 
   items DeliveryItem[]
+
+  createdAt DateTime @default(now())
 }
 
 model ReservationDetails {
