@@ -4383,7 +4383,6 @@ export const sendAgreement = async (req: Request, res: Response) => {
     });
 
     // Update campaign credits tracking - credits are utilized when agreement is sent
-    // Only count non-guest creators toward credit utilization
     if (campaign.campaignCredits) {
       const totalUtilized = (campaign.shortlisted || []).reduce((acc, item) => {
         // Skip guest creators
