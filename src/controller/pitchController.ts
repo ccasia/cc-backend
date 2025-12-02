@@ -660,6 +660,15 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
 
     // Note: Credits are now only utilized when agreement is sent (in sendAgreement function)
     // ugcVideos is still assigned to shortlistedCreator for submission creation
+    
+    // Check if submissions already exist for this user/campaign to prevent duplicates
+    const existingSubmissions = await prisma.submission.findMany({
+      where: {
+        userId: pitch.userId,
+        campaignId: pitch.campaignId,
+      },
+      include: { submissionType: true },
+    });
 
     // Create submission records for V3 approved pitches (similar to V2 shortlisting)
     const timelines = await prisma.campaignTimeline.findMany({
@@ -689,15 +698,27 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
         const timelinesFiltered = isV4Campaign
           ? timelines.filter(t => !v2SubmissionTypes.includes(t.submissionType?.type || ''))
           : timelines;
+        
+        // Get existing submission types for this user/campaign to avoid duplicates
+        const existingSubmissionTypes = new Set<string | undefined>(
+          existingSubmissions.map(s => s.submissionType?.type)
+        );
 
-        console.log(`Creating submissions for ${isV4Campaign ? 'v4' : 'v2'} campaign - ${timelinesFiltered.length} timeline(s)`);
+        // Filter out timelines that already have submissions
+        const timelinesWithoutExisting = timelinesFiltered.filter(
+          t => t.submissionType?.type && !existingSubmissionTypes.has(t.submissionType.type)
+        );
 
-        // Create submissions for timeline items
-        const submissions = await Promise.all(
-          timelinesFiltered.map(async (timeline, index) => {
-            return await prisma.submission.create({
-              data: {
-                dueDate: timeline.endDate,
+        console.log(`Creating submissions for ${isV4Campaign ? 'v4' : 'v2'} campaign - ${timelinesWithoutExisting.length} timeline(s) (${existingSubmissions.length} already exist)`);
+
+        // Only create submissions if there are new ones to create
+        if (timelinesWithoutExisting.length > 0) {
+          // Create submissions for timeline items
+          const submissions = await Promise.all(
+            timelinesWithoutExisting.map(async (timeline, index) => {
+              return await prisma.submission.create({
+                data: {
+                  dueDate: timeline.endDate,
                 campaignId: timeline.campaignId,
                 userId: pitch.userId,
                 status: timeline.submissionType?.type === 'AGREEMENT_FORM' ? 'IN_PROGRESS' : 'NOT_STARTED',
@@ -738,7 +759,10 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
           }
         }
 
-        console.log(`Created ${submissions.length} submissions for V3 pitch approval`);
+          console.log(`Created ${submissions.length} submissions for V3 pitch approval`);
+        } else {
+          console.log(`No new submissions to create - ${existingSubmissions.length} already exist for this user/campaign`);
+        }
       }
     }
 
