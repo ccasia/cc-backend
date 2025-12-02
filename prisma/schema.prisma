@@ -1523,6 +1523,7 @@ enum PitchStatus {
   REJECTED
   AGREEMENT_PENDING
   AGREEMENT_SUBMITTED
+  WITHDRAWN
 }
 
 enum DraftStatus {

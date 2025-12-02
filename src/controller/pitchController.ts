@@ -951,6 +951,112 @@ export const rejectPitchByClient = async (req: Request, res: Response) => {
   }
 };
 
+// Withdraw an approved creator from the campaign
+export const withdrawCreatorFromCampaign = async (req: Request, res: Response) => {
+  const { pitchId } = req.params;
+  const { reason } = req.body;
+  const adminId = req.session.userid;
+
+  try {
+    console.log(`Admin ${adminId} withdrawing creator from pitch ${pitchId}`);
+
+    const pitch = await prisma.pitch.findUnique({
+      where: { id: pitchId },
+      include: {
+        campaign: true,
+        user: true,
+      },
+    });
+
+    if (!pitch) {
+      return res.status(404).json({ message: 'Pitch not found' });
+    }
+
+    // Only allow withdrawal for approved pitches (APPROVED, AGREEMENT_PENDING, AGREEMENT_SUBMITTED)
+    const withdrawableStatuses = ['APPROVED', 'AGREEMENT_PENDING', 'AGREEMENT_SUBMITTED', 'approved'];
+    if (!withdrawableStatuses.includes(pitch.status || '')) {
+      return res.status(400).json({ 
+        message: 'Creator can only be withdrawn after being approved. Use reject for non-approved pitches.' 
+      });
+    }
+
+    // Update pitch status to WITHDRAWN
+    const updatedPitch = await prisma.pitch.update({
+      where: { id: pitchId },
+      data: {
+        status: 'WITHDRAWN',
+        rejectionReason: reason || 'Withdrawn by admin',
+        rejectedByAdminId: adminId,
+      },
+      include: {
+        campaign: true,
+        user: true,
+      },
+    });
+
+    // Remove creator from shortlisted
+    await prisma.shortListedCreator.deleteMany({
+      where: {
+        userId: pitch.userId,
+        campaignId: pitch.campaignId,
+      },
+    });
+
+    // Delete any existing creator agreement for this campaign
+    await prisma.creatorAgreement.deleteMany({
+      where: {
+        userId: pitch.userId,
+        campaignId: pitch.campaignId,
+      },
+    });
+
+    // Delete any submissions for this creator in this campaign
+    await prisma.submission.deleteMany({
+      where: {
+        userId: pitch.userId,
+        campaignId: pitch.campaignId,
+      },
+    });
+
+    // Create notification for creator
+    const notification = await saveNotification({
+      userId: pitch.userId,
+      title: 'Withdrawn from Campaign',
+      message: `You have been withdrawn from campaign "${pitch.campaign.name}".`,
+      entity: 'Pitch',
+      entityId: pitch.campaignId,
+    });
+
+    const socketId = clients.get(pitch.userId);
+    if (socketId) {
+      io.to(socketId).emit('notification', notification);
+      io.to(socketId).emit('pitchUpdate');
+    }
+
+    // Create campaign log
+    const admin = await prisma.user.findUnique({
+      where: { id: adminId },
+    });
+
+    await prisma.campaignLog.create({
+      data: {
+        message: `Admin "${admin?.name || 'Unknown'}" withdrew Creator "${pitch.user.name}" from the campaign`,
+        adminId: adminId,
+        campaignId: pitch.campaignId,
+      },
+    });
+
+    console.log(`Creator ${pitch.userId} withdrawn from campaign ${pitch.campaignId}`);
+    return res.status(200).json({
+      message: 'Creator successfully withdrawn from campaign',
+      pitch: updatedPitch,
+    });
+  } catch (error) {
+    console.error('Error withdrawing creator from campaign:', error);
+    return res.status(500).json({ message: 'Failed to withdraw creator from campaign' });
+  }
+};
+
 // V3.1 Flow: Client maybe option
 export const maybePitchByClient = async (req: Request, res: Response) => {
   const { pitchId } = req.params;
