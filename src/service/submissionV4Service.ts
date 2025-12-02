@@ -153,6 +153,9 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
     });
     
     // Also get AGREEMENT_FORM submissions from v3 campaigns (needed for approval check)
+    // Only fetch AGREEMENT_FORM that are NOT already in v4Submissions (to avoid duplicates)
+    const v4SubmissionIds = new Set(v4Submissions.map(s => s.id));
+    
     const agreementSubmissions = await prisma.submission.findMany({
       where: {
         ...baseWhereClause,
@@ -193,8 +196,11 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
       }
     });
     
-    // Combine both sets of submissions
-    const allSubmissions = [...v4Submissions, ...agreementSubmissions];
+    // Filter out any AGREEMENT_FORM submissions that are already in v4Submissions to prevent duplicates
+    const uniqueAgreementSubmissions = agreementSubmissions.filter(s => !v4SubmissionIds.has(s.id));
+    
+    // Combine both sets of submissions (now without duplicates)
+    const allSubmissions = [...v4Submissions, ...uniqueAgreementSubmissions];
     
     // Sort combined submissions
     allSubmissions.sort((a, b) => {
