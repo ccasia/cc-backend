@@ -4008,6 +4008,67 @@ export const creatorAgreements = async (req: Request, res: Response) => {
   const { campaignId } = req.params;
 
   try {
+    // First, ensure all approved shortlisted creators have agreement records
+    const campaign = await prisma.campaign.findUnique({
+      where: { id: campaignId },
+      include: {
+        shortlisted: {
+          include: {
+            user: {
+              include: {
+                creator: true,
+              },
+            },
+          },
+        },
+        pitch: {
+          where: {
+            status: {
+              in: ['APPROVED', 'approved', 'AGREEMENT_PENDING', 'AGREEMENT_SUBMITTED'],
+            },
+          },
+        },
+      },
+    });
+
+    if (campaign) {
+      // Get all approved user IDs from pitches and shortlisted creators
+      const approvedUserIds = new Set<string>();
+      
+      // Add users from approved pitches
+      campaign.pitch.forEach((p) => {
+        if (p.userId) approvedUserIds.add(p.userId);
+      });
+      
+      // Add users from shortlisted creators
+      campaign.shortlisted.forEach((s) => {
+        if (s.userId) approvedUserIds.add(s.userId);
+      });
+
+      // Get existing agreements for this campaign
+      const existingAgreements = await prisma.creatorAgreement.findMany({
+        where: { campaignId },
+        select: { userId: true },
+      });
+      const existingUserIds = new Set(existingAgreements.map((a) => a.userId));
+
+      // Create missing agreements
+      const missingUserIds = [...approvedUserIds].filter((userId) => !existingUserIds.has(userId));
+      
+      if (missingUserIds.length > 0) {
+        console.log(`Creating ${missingUserIds.length} missing agreements for campaign ${campaignId}`);
+        await prisma.creatorAgreement.createMany({
+          data: missingUserIds.map((userId) => ({
+            userId,
+            campaignId,
+            agreementUrl: '',
+          })),
+          skipDuplicates: true,
+        });
+      }
+    }
+
+    // Now fetch all agreements including any newly created ones
     const agreements = await prisma.creatorAgreement.findMany({
       where: {
         campaignId: campaignId,
@@ -4029,6 +4090,7 @@ export const creatorAgreements = async (req: Request, res: Response) => {
 
     return res.status(200).json(agreements);
   } catch (error) {
+    console.error('Error fetching/creating agreements:', error);
     return res.status(400).json(error);
   }
 };
@@ -4350,6 +4412,21 @@ export const sendAgreement = async (req: Request, res: Response) => {
       select: {
         name: true,
         agreementTemplate: true,
+        campaignCredits: true,
+        shortlisted: {
+          select: {
+            ugcVideos: true,
+            user: {
+              select: {
+                creator: {
+                  select: {
+                    isGuest: true,
+                  },
+                },
+              },
+            },
+          },
+        },
       },
     });
 
@@ -4358,14 +4435,31 @@ export const sendAgreement = async (req: Request, res: Response) => {
     }
 
     // update shortlisted creator table
-        await prisma.shortListedCreator.update({
-          where: {
-            id: shortlistedCreator.id,
-          },
-          data: {
-            isAgreementReady: true,
-          },
-        });
+    await prisma.shortListedCreator.update({
+      where: {
+        id: shortlistedCreator.id,
+      },
+      data: {
+        isAgreementReady: true,
+      },
+    });
+
+    // Update campaign credits tracking - credits are utilized when agreement is sent
+    if (campaign.campaignCredits) {
+      const totalUtilized = (campaign.shortlisted || []).reduce((acc, item) => {
+        // Skip guest creators
+        if (item.user?.creator?.isGuest === true) return acc;
+        return acc + Number(item.ugcVideos || 0);
+      }, 0);
+
+      await prisma.campaign.update({
+        where: { id: campaignId },
+        data: {
+          creditsUtilized: Number(totalUtilized),
+          creditsPending: Math.max(0, Number(campaign.campaignCredits) - Number(totalUtilized)),
+        },
+      });
+    }
 
     // Get admin info for logging
     const admin = await prisma.user.findUnique({
@@ -7107,7 +7201,7 @@ export const checkCampaignCreatorVisibility = async (req: Request, res: Response
 
 // Add this function after the shortlistCreatorV2 function
 export const shortlistCreatorV3 = async (req: Request, res: Response) => {
-  const { creators, campaignId, adminComments } = req.body;
+  const { creators, campaignId, adminComments, ugcCredits } = req.body;
   const userId = req.session.userid;
 
   try {
@@ -7164,6 +7258,7 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
 
       if (!campaign) throw new Error('Campaign not found');
 
+      const isV4Campaign = campaign.submissionVersion === 'v4';
       const creatorIds = creators.map((c: any) => c.id);
 
       const creatorData = await tx.user.findMany({
@@ -7177,6 +7272,26 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
       // For client-created campaigns, we'll continue even without a thread
       if (!threadId) {
         console.log('Client-created campaign without thread, continuing anyway');
+      }
+
+      // For non-v4 campaigns with UGC credits, validate credits before proceeding
+      if (!isV4Campaign && ugcCredits) {
+        const creditsPerCreator = parseInt(ugcCredits) || 1;
+        const totalCreditsNeeded = creditsPerCreator * creators.length;
+        const totalUtilizedBefore = (campaign.shortlisted || []).reduce(
+          (acc, item) => acc + Number(item.ugcVideos || 0),
+          0,
+        );
+
+        if (
+          campaign.campaignCredits &&
+          totalCreditsNeeded > 0 &&
+          totalUtilizedBefore + totalCreditsNeeded > campaign.campaignCredits
+        ) {
+          throw new Error(
+            `Not enough campaign credits. Remaining: ${campaign.campaignCredits - totalUtilizedBefore}, requested: ${totalCreditsNeeded}`,
+          );
+        }
       }
 
       // Process each creator
@@ -7199,23 +7314,160 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
           continue;
         }
 
+        // Determine status based on campaign type:
+        // - v4 campaigns: SENT_TO_CLIENT (needs client approval)
+        // - non-v4 campaigns: APPROVED directly
+        const pitchStatus = isV4Campaign ? 'SENT_TO_CLIENT' : 'APPROVED';
+        const creditsAssigned = parseInt(ugcCredits) || (isV4Campaign ? undefined : 1);
+
         // Create a pitch record for this creator
-        console.log(`Creating pitch for creator ${user.id}`);
+        console.log(`Creating pitch for creator ${user.id} with status ${pitchStatus}`);
         await tx.pitch.create({
           data: {
             userId: user.id,
             campaignId: campaign.id,
-            type: 'shortlisted', // V3 shortlist pitch type
-            status: 'SENT_TO_CLIENT', // Client can immediately approve
+            type: 'shortlisted',
+            status: pitchStatus,
             content: `Creator ${user.name} has been shortlisted for campaign "${campaign.name}"`,
-            // Set default values for V3 flow
-            amount: null, // Will be set when admin approves
-            agreementTemplateId: null, // Will be set when admin approves
+            amount: null,
+            agreementTemplateId: null,
+            approvedByAdminId: userId,
+            ugcCredits: creditsAssigned,
             ...(typeof adminComments === 'string' && adminComments.trim().length > 0
               ? { adminComments: adminComments.trim(), adminCommentedBy: userId }
               : {}),
           },
         });
+
+        // For non-v4 campaigns: Also create ShortListedCreator and submissions (direct approval)
+        if (!isV4Campaign) {
+          console.log(`Non-v4 campaign: Creating ShortListedCreator for ${user.id}`);
+
+          // Create or update ShortListedCreator
+          const existingShortlist = await tx.shortListedCreator.findUnique({
+            where: {
+              userId_campaignId: {
+                userId: user.id,
+                campaignId: campaign.id,
+              },
+            },
+          });
+
+          if (existingShortlist) {
+            await tx.shortListedCreator.update({
+              where: {
+                userId_campaignId: {
+                  userId: user.id,
+                  campaignId: campaign.id,
+                },
+              },
+              data: {
+                isAgreementReady: false,
+                ugcVideos: creditsAssigned,
+              },
+            });
+          } else {
+            await tx.shortListedCreator.create({
+              data: {
+                userId: user.id,
+                campaignId: campaign.id,
+                isAgreementReady: false,
+                ugcVideos: creditsAssigned,
+                currency: 'MYR',
+              },
+            });
+          }
+
+          // Create creatorAgreement for non-v4 campaigns
+          const existingAgreement = await tx.creatorAgreement.findFirst({
+            where: {
+              userId: user.id,
+              campaignId: campaign.id,
+            },
+          });
+
+          if (!existingAgreement) {
+            console.log(`Creating creatorAgreement for non-v4 shortlist - ${user.id}`);
+            await tx.creatorAgreement.create({
+              data: {
+                userId: user.id,
+                campaignId: campaign.id,
+                agreementUrl: '',
+              },
+            });
+          }
+
+          // Create submission records for non-v4 campaigns
+          const timelines = await tx.campaignTimeline.findMany({
+            where: {
+              campaignId: campaign.id,
+              for: 'creator',
+              name: { not: 'Open For Pitch' },
+            },
+            include: { submissionType: true },
+            orderBy: { order: 'asc' },
+          });
+
+          // Get creator's board
+          const board = await tx.board.findUnique({
+            where: { userId: user.id },
+            include: { columns: true },
+          });
+
+          if (board) {
+            const columnToDo = board.columns.find((c) => c.name.includes('To Do'));
+            const columnInProgress = board.columns.find((c) => c.name.includes('In Progress'));
+
+            if (columnToDo && columnInProgress) {
+              console.log(`Creating submissions for non-v4 shortlist - ${timelines.length} timeline(s)`);
+
+              // Create submissions for timeline items
+              const submissions = await Promise.all(
+                timelines.map(async (timeline, index) => {
+                  return await tx.submission.create({
+                    data: {
+                      dueDate: timeline.endDate,
+                      campaignId: timeline.campaignId,
+                      userId: user.id,
+                      status: timeline.submissionType?.type === 'AGREEMENT_FORM' ? 'IN_PROGRESS' : 'NOT_STARTED',
+                      submissionTypeId: timeline.submissionTypeId as string,
+                      task: {
+                        create: {
+                          name: timeline.name,
+                          position: index,
+                          columnId: timeline.submissionType?.type ? columnInProgress.id : columnToDo.id,
+                          priority: '',
+                          status: timeline.submissionType?.type ? 'In Progress' : 'To Do',
+                        },
+                      },
+                    },
+                    include: {
+                      submissionType: true,
+                    },
+                  });
+                }),
+              );
+
+              // Create dependencies between submissions for non-v4 campaigns
+              const agreement = submissions.find((s) => s.submissionType?.type === 'AGREEMENT_FORM');
+              const draft = submissions.find((s) => s.submissionType?.type === 'FIRST_DRAFT');
+              const finalDraft = submissions.find((s) => s.submissionType?.type === 'FINAL_DRAFT');
+              const posting = submissions.find((s) => s.submissionType?.type === 'POSTING');
+
+              const dependencies = [
+                { submissionId: draft?.id, dependentSubmissionId: agreement?.id },
+                { submissionId: finalDraft?.id, dependentSubmissionId: draft?.id },
+                { submissionId: posting?.id, dependentSubmissionId: finalDraft?.id },
+              ].filter((dep) => dep.submissionId && dep.dependentSubmissionId);
+
+              if (dependencies.length > 0) {
+                await tx.submissionDependency.createMany({ data: dependencies });
+              }
+
+              console.log(`Created ${submissions.length} submissions for non-v4 shortlist`);
+            }
+          }
+        }
 
         // Add creator to thread if not already added and if thread exists
         if (threadId) {
@@ -7243,37 +7495,54 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
           }
         }
 
-        // Create notification for admin users
-        const adminUsers = await tx.campaignAdmin.findMany({
-          where: {
-            campaignId: campaign.id,
-            admin: {
-              user: {
-                role: { in: ['admin', 'superadmin'] },
+        // Create appropriate notifications based on campaign type
+        if (isV4Campaign) {
+          // For v4: Notify client users for review
+          const clientUsers = await tx.campaignAdmin.findMany({
+            where: {
+              campaignId: campaign.id,
+              admin: {
+                user: {
+                  role: 'client',
+                },
               },
             },
-          },
-          include: {
-            admin: {
-              include: {
-                user: true,
+            include: {
+              admin: {
+                include: {
+                  user: true,
+                },
               },
             },
-          },
-        });
+          });
 
-        for (const adminUser of adminUsers) {
+          for (const clientUser of clientUsers) {
+            await tx.notification.create({
+              data: {
+                title: 'New Creator Shortlisted',
+                message: `Creator ${user.name} has been shortlisted for campaign "${campaign.name}". Please review and approve.`,
+                entity: 'Pitch',
+                campaignId: campaign.id,
+                userId: clientUser.admin.userId,
+              },
+            });
+          }
+        } else {
+          // For non-v4: Notify the creator they've been approved
           await tx.notification.create({
             data: {
-              title: 'New Creator Shortlisted',
-              message: `Creator ${user.name} has been shortlisted for campaign "${campaign.name}". Please review and approve.`,
+              title: 'You have been selected! 🎉',
+              message: `You have been approved for campaign "${campaign.name}". Check your agreements to get started.`,
               entity: 'Pitch',
               campaignId: campaign.id,
-              userId: adminUser.admin.userId,
+              userId: user.id,
             },
           });
         }
       }
+
+      // Note: Credits are now only utilized when agreement is sent (in sendAgreement function)
+      // ugcVideos is still assigned to shortlistedCreator for submission creation
     });
 
     return res.status(200).json({ message: 'Successfully shortlisted creators for V3 flow' });
@@ -7774,27 +8043,9 @@ export const assignUGCCreditsV3 = async (req: Request, res: Response) => {
         }
       }
 
-      // Update campaign credits tracking fields
-      // Get all shortlisted creators for this campaign to calculate total utilized credits
-      const allShortlistedCreators = await tx.shortListedCreator.findMany({
-        where: { campaignId: campaign.id },
-        select: { ugcVideos: true },
-      });
-
-      const totalUtilizedCredits = allShortlistedCreators.reduce((acc, creator) => acc + (creator.ugcVideos || 0), 0);
-
-      if (campaign.campaignCredits) {
-        await tx.campaign.update({
-          where: { id: campaign.id },
-          data: {
-            creditsUtilized: totalUtilizedCredits,
-            creditsPending: campaign.campaignCredits - totalUtilizedCredits,
-          },
-        });
-      console.log(
-          `Updated campaign credits: utilized=${totalUtilizedCredits}, pending=${campaign.campaignCredits - totalUtilizedCredits}`,
-      );
-      }
+      // Note: Credits are now only utilized when agreement is sent (in sendAgreement function)
+      // ugcVideos is still assigned to shortlistedCreator for submission creation
+      console.log(`UGC credits assigned to shortlisted creators - credits will be utilized when agreement is sent`);
     });
 
     return res.status(200).json({
@@ -7812,7 +8063,7 @@ export const assignUGCCreditsV3 = async (req: Request, res: Response) => {
 
 // 3.1 Shortlisting Non-Platform (Guest) Creators
 export const shortlistGuestCreators = async (req: Request, res: Response) => {
-  const { campaignId, guestCreators } = req.body;
+  const { campaignId, guestCreators, ugcCredits } = req.body;
   const adminId = req.session.userid;
 
   if (!campaignId || !Array.isArray(guestCreators) || guestCreators.length === 0) {
@@ -7824,9 +8075,21 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
   }
 
   try {
-    const campaign = await prisma.campaign.findUnique({ where: { id: campaignId } });
+    const campaign = await prisma.campaign.findUnique({
+      where: { id: campaignId },
+      include: {
+        campaignTimeline: true,
+      },
+    });
 
     if (!campaign) return res.status(404).json({ message: 'Campaign not found.' });
+
+    const isV4Campaign = campaign.submissionVersion === 'v4';
+
+    // For non-v4 campaigns, ugcCredits is required
+    if (!isV4Campaign && (ugcCredits === undefined || ugcCredits === null)) {
+      return res.status(400).json({ message: 'UGC credits are required for non-v4 campaigns.' });
+    }
 
     const createdCreators: { id: string }[] = [];
     await prisma.$transaction(async (tx) => {
@@ -7849,13 +8112,16 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
           continue; // Skip and move to the next guest
         }
 
-        await tx.shortListedCreator.create({
+        // For V4 campaigns: Create ShortListedCreator with minimal data (client approval needed)
+        // For non-v4 campaigns: Create ShortListedCreator with ugcVideos (admin approval is final)
+        const shortlistedCreator = await tx.shortListedCreator.create({
           data: {
             userId,
             campaignId,
             adminComments: guest.adminComments || null,
             amount: 0,
             currency: 'SGD',
+            ...(isV4Campaign ? {} : { ugcVideos: parseInt(ugcCredits) || 0 }),
           },
         });
 
@@ -7865,15 +8131,21 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
         });
 
         if (!existingPitch) {
+          // For V4 campaigns: SENT_TO_CLIENT (awaiting client approval)
+          // For non-v4 campaigns: APPROVED (admin approval is final)
+          const pitchStatus = isV4Campaign ? 'SENT_TO_CLIENT' : 'APPROVED';
+
           await tx.pitch.create({
             data: {
               userId,
               campaignId,
               type: 'shortlisted',
-              status: 'SENT_TO_CLIENT',
+              status: pitchStatus,
               content: `Non-platform creator has been shortlisted for campaign "${campaign.name}"`,
               amount: null,
               agreementTemplateId: null,
+              ugcCredits: parseInt(ugcCredits) || 0,
+              approvedByAdminId: adminId,
               ...(guest.username && { username: guest.username }),
               ...(guest.followerCount && { followerCount: guest.followerCount }),
               ...(guest.engagementRate && { engagementRate: guest.engagementRate }),
@@ -7884,14 +8156,118 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
           });
         }
 
+        // For non-v4 campaigns, create submissions and agreement immediately since admin approval is final
+        if (!isV4Campaign) {
+          // Create creatorAgreement for non-v4 campaigns
+          const existingAgreement = await tx.creatorAgreement.findFirst({
+            where: {
+              userId,
+              campaignId,
+            },
+          });
+
+          if (!existingAgreement) {
+            console.log(`Creating creatorAgreement for non-v4 guest shortlist - ${userId}`);
+            await tx.creatorAgreement.create({
+              data: {
+                userId,
+                campaignId,
+                agreementUrl: '',
+              },
+            });
+          }
+
+          // Get timelines for creator submissions
+          const timelines = await tx.campaignTimeline.findMany({
+            where: {
+              campaignId: campaign.id,
+              for: 'creator',
+              name: { not: 'Open For Pitch' },
+            },
+            include: { submissionType: true },
+            orderBy: { order: 'asc' },
+          });
+
+          // Get guest user's board
+          const guestUser = await tx.user.findUnique({
+            where: { id: userId },
+            include: {
+              Board: {
+                include: { columns: true },
+              },
+            },
+          });
+
+          const board = guestUser?.Board;
+
+          if (board) {
+            const columnToDo = board.columns.find((c: { name: string }) => c.name.includes('To Do'));
+            const columnInProgress = board.columns.find((c: { name: string }) => c.name.includes('In Progress'));
+
+            if (columnToDo && columnInProgress) {
+              console.log(`Creating submissions for non-v4 guest shortlist - ${timelines.length} timeline(s)`);
+
+              // Create submissions for timeline items
+              const submissions = await Promise.all(
+                timelines.map(async (timeline, index) => {
+                  return await tx.submission.create({
+                    data: {
+                      dueDate: timeline.endDate,
+                      campaignId: timeline.campaignId,
+                      userId,
+                      status: timeline.submissionType?.type === 'AGREEMENT_FORM' ? 'IN_PROGRESS' : 'NOT_STARTED',
+                      submissionTypeId: timeline.submissionTypeId as string,
+                      task: {
+                        create: {
+                          name: timeline.name,
+                          position: index,
+                          columnId: timeline.submissionType?.type ? columnInProgress.id : columnToDo.id,
+                          priority: '',
+                          status: timeline.submissionType?.type ? 'In Progress' : 'To Do',
+                        },
+                      },
+                    },
+                    include: {
+                      submissionType: true,
+                    },
+                  });
+                }),
+              );
+
+              // Create dependencies between submissions for non-v4 campaigns
+              const agreement = submissions.find((s) => s.submissionType?.type === 'AGREEMENT_FORM');
+              const draft = submissions.find((s) => s.submissionType?.type === 'FIRST_DRAFT');
+              const finalDraft = submissions.find((s) => s.submissionType?.type === 'FINAL_DRAFT');
+              const posting = submissions.find((s) => s.submissionType?.type === 'POSTING');
+
+              const dependencies = [
+                { submissionId: draft?.id, dependentSubmissionId: agreement?.id },
+                { submissionId: finalDraft?.id, dependentSubmissionId: draft?.id },
+                { submissionId: posting?.id, dependentSubmissionId: finalDraft?.id },
+              ].filter((dep) => dep.submissionId && dep.dependentSubmissionId);
+
+              if (dependencies.length > 0) {
+                await tx.submissionDependency.createMany({ data: dependencies });
+              }
+
+              console.log(`Created ${submissions.length} submissions for non-v4 guest shortlist`);
+            }
+          }
+        }
+
         createdCreators.push({ id: userId });
       }
     });
 
-    const adminLogMessage = `Shortlisted ${guestCreators.length} guest creator(s) for Campaign "${campaign.name}"`;
+    const statusText = isV4Campaign ? 'sent to client for review' : 'approved and added';
+    const adminLogMessage = `Shortlisted ${guestCreators.length} guest creator(s) for Campaign "${campaign.name}" - ${statusText}`;
     logAdminChange(adminLogMessage, adminId, req);
 
-    return res.status(200).json({ message: 'Guest creators successfully shortlisted.', createdCreators });
+    return res.status(200).json({
+      message: `Guest creators successfully ${isV4Campaign ? 'shortlisted' : 'approved'}.`,
+      createdCreators,
+      isV4Campaign,
+    });
   } catch (error) {
     console.error('GUEST SHORTLIST ERROR:', error);
     return res.status(400).json({ message: error.message || 'Failed to shortlist guest creators.' });
