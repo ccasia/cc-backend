@@ -9,6 +9,9 @@ import {
   assignBulkCreators,
   assignSingleCreator,
   scheduleDeliveryService,
+  creatorDeliveryDetails,
+  updateDeliveryStatus,
+  reportLogisticIssue,
 } from '@services/logisticsService';
 
 export const getLogisticsForCampaign = async (req: Request, res: Response) => {
@@ -160,6 +163,48 @@ export const scheduleDelivery = async (req: Request, res: Response) => {
     return res.status(200).json(logistic);
   } catch (error) {
     console.error('Error in scheduleDelivery controller:', error);
+    return res.status(500).json({ message: 'Internal Server Error' });
+  }
+};
+
+export const updateCreatorDeliveryDetails = async (req: Request, res: Response) => {
+  try {
+    const { logisticId } = req.params;
+    const { address, phoneNumber, remarks } = req.body;
+
+    const updatedDetails = await creatorDeliveryDetails(logisticId, {
+      address,
+      phoneNumber,
+      dietaryRestrictions: remarks,
+    });
+    return res.status(200).json(updatedDetails);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: 'Internal Server Error' });
+  }
+};
+
+export const markLogisticReceived = async (req: Request, res: Response) => {
+  try {
+    const { logisticId } = req.params;
+    const updated = await updateDeliveryStatus(logisticId, 'RECEIVED');
+    return res.status(200).json(updated);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: 'Internal Server Error' });
+  }
+};
+
+export const reportIssue = async (req: Request, res: Response) => {
+  try {
+    const { logisticId } = req.params;
+    const { reason } = req.body;
+    const { userid } = (req as any).session;
+
+    const updated = await reportLogisticIssue(logisticId, reason, userid);
+    return res.status(200).json(updated);
+  } catch (error) {
+    console.error(error);
     return res.status(500).json({ message: 'Internal Server Error' });
   }
 };

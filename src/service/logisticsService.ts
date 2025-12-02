@@ -127,7 +127,7 @@ export const deleteProductService = async (productId: string) => {
   if (!product) {
     throw new Error('Product not found');
   }
-  
+
   return await prisma.product.delete({
     where: { id: productId },
   });
@@ -376,5 +376,67 @@ export const scheduleDeliveryService = async (logisticId: string, data: Scheduli
         include: { items: true },
       },
     },
+  });
+};
+
+type CreatorDetailsData = {
+  address: string;
+  phoneNumber: string;
+  dietaryRestrictions?: string;
+};
+
+export const creatorDeliveryDetails = async (logisticId: string, data: CreatorDetailsData) => {
+  const { address, phoneNumber, dietaryRestrictions } = data;
+
+  return await prisma.logistic.update({
+    where: { id: logisticId },
+    data: {
+      creator: {
+        update: {
+          phoneNumber: phoneNumber,
+        },
+      },
+      deliveryDetails: {
+        update: {
+          address,
+          dietaryRestrictions,
+        },
+      },
+    },
+    include: {
+      deliveryDetails: { include: { items: { include: { product: true } } } },
+      creator: true,
+    },
+  });
+};
+
+export const updateDeliveryStatus = async (logisticId: string, status: 'RECEIVED' | 'COMPLETED') => {
+  return await prisma.logistic.update({
+    where: { id: logisticId },
+    data: {
+      status,
+      receivedAt: new Date(),
+      completedAt: status === 'COMPLETED' ? new Date() : undefined,
+    },
+  });
+};
+
+export const reportLogisticIssue = async (logisticId: string, reason: string, reportedById: string) => {
+  return await prisma.$transaction(async (tx) => {
+    await tx.logisticIssue.create({
+      data: {
+        logisticId,
+        reason,
+        reportedById,
+        status: 'OPEN',
+      },
+    });
+
+    return await tx.logistic.update({
+      where: { id: logisticId },
+      data: {
+        status: 'ISSUE_REPORTED',
+      },
+    });
   });
 };
