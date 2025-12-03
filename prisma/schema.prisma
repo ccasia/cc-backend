@@ -76,9 +76,6 @@ model User {
   videoFeedback      Video[]      @relation("VideoFeedback")
   rawFootageFeedback RawFootage[] @relation("RawFootageFeedback")
   photoFeedback      Photo[]      @relation("PhotoFeedback")
-
-  // Guest profile link 
-  guestProfileLink String? @unique // unique for guests, but null for platform users
 }
 
 model EmailVerification {
@@ -865,7 +862,6 @@ model Pitch {
   ugcCredits          Int?
   agreementTemplateId String?
   Notification        Notification[]
-  username            String?
   followerCount       String?
   engagementRate      String?
   adminComments       String?
