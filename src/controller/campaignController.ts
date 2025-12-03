@@ -8163,7 +8163,6 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
               agreementTemplateId: null,
               ugcCredits: parseInt(ugcCredits) || 0,
               approvedByAdminId: adminId,
-              ...(guest.username && { username: guest.username }),
               ...(guest.followerCount && { followerCount: guest.followerCount }),
               ...(guest.engagementRate && { engagementRate: guest.engagementRate }),
               ...(guest.adminComments && guest.adminComments.trim().length > 0
