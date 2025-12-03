@@ -131,15 +131,15 @@ export const swapGuestWithPlatformCreator = async (req: Request, res: Response) 
         shortlisted_date: guestShortlist.shortlisted_date,
       };
 
-      // Transfer guestProfileLink to platform creator's profileLink
-      if (guestUser.guestProfileLink && platformUser.creator) {
+      // Transfer guest creator's profileLink to platform creator
+      if (guestUser.creator?.profileLink && platformUser.creator) {
         await tx.creator.update({
           where: { id: platformUser.creator.id },
           data: {
-            profileLink: guestUser.guestProfileLink,
+            profileLink: guestUser.creator.profileLink,
           },
         });
-        console.log(`[SWAP] Transferred guest profile link to platform creator: ${guestUser.guestProfileLink}`);
+        console.log(`[SWAP] Transferred guest profile link to platform creator: ${guestUser.creator.profileLink}`);
       }
 
       // 2. Delete old shortlist entry for guest
@@ -193,12 +193,11 @@ export const swapGuestWithPlatformCreator = async (req: Request, res: Response) 
               amount: guestPitch.amount,
               ugcCredits: guestPitch.ugcCredits,
               agreementTemplateId: guestPitch.agreementTemplateId,
-              username: guestPitch.username,
               followerCount: guestPitch.followerCount,
               engagementRate: guestPitch.engagementRate,
             },
           });
-          console.log(`[SWAP] Updated existing platform pitch with guest data including username: ${guestPitch.username}`);
+          console.log(`[SWAP] Updated existing platform pitch with guest data`);
         } else {
           // Create new pitch for platform creator
           await tx.pitch.create({
@@ -213,12 +212,11 @@ export const swapGuestWithPlatformCreator = async (req: Request, res: Response) 
               amount: guestPitch.amount,
               ugcCredits: guestPitch.ugcCredits,
               agreementTemplateId: guestPitch.agreementTemplateId,
-              username: guestPitch.username,
               followerCount: guestPitch.followerCount,
               engagementRate: guestPitch.engagementRate,
             },
           });
-          console.log(`[SWAP] Created new platform pitch with guest data including username: ${guestPitch.username}`);
+          console.log(`[SWAP] Created new platform pitch with guest data`);
         }
 
         // Delete guest pitch
@@ -574,7 +572,6 @@ export const getGuestCreatorsForCampaign = async (req: Request, res: Response) =
         userId: sc.userId,
         name: sc.user?.name,
         email: sc.user?.email,
-        guestProfileLink: sc.user?.guestProfileLink,
         ugcVideos: sc.ugcVideos,
         amount: sc.amount,
         currency: sc.currency,

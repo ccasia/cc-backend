@@ -5322,24 +5322,9 @@ export const removeCreatorFromCampaign = async (req: Request, res: Response) => 
               id: invoice.id,
             },
           });
-
-          // Remove the invoice deletion logging for withdrawal - it should not appear in Invoice Actions
-          // const logMessage = `Deleted invoice ${invoice.invoiceNumber} for creator "${user.name}" during withdrawal from campaign`;
-          // await logChange(logMessage, campaign.id, req);
         }
       } catch (error) {
         console.log('Error deleting invoice:', error);
-      }
-
-      const pitch = await tx.pitch.findFirst({
-        where: {
-          userId: user.id,
-          campaignId: campaign.id,
-        },
-      });
-
-      if (pitch) {
-        await tx.pitch.delete({ where: { id: pitch.id } });
       }
 
       // If this is a guest creator, delete the creator and user from the database
@@ -5348,6 +5333,39 @@ export const removeCreatorFromCampaign = async (req: Request, res: Response) => 
 
       if (isGuestUser && isGuestCreator) {
         console.log(`Deleting guest user ${user.name} (${user.id}) from database`);
+
+        // For guest users, we need to delete ALL records referencing this user
+        // (not just for this campaign) to avoid foreign key constraint violations
+        
+        // Delete all remaining pitches for this user (from any campaign)
+        const deletedAllPitches = await tx.pitch.deleteMany({
+          where: { userId: user.id },
+        });
+        console.log(`Deleted ${deletedAllPitches.count} total pitches for guest user`);
+
+        // Delete all remaining submissions for this user (from any campaign)
+        const deletedAllSubmissions = await tx.submission.deleteMany({
+          where: { userId: user.id },
+        });
+        console.log(`Deleted ${deletedAllSubmissions.count} total submissions for guest user`);
+
+        // Delete all shortlisted records for this user
+        const deletedAllShortlisted = await tx.shortListedCreator.deleteMany({
+          where: { userId: user.id },
+        });
+        console.log(`Deleted ${deletedAllShortlisted.count} total shortlisted records for guest user`);
+
+        // Delete all creator agreements for this user
+        const deletedAllAgreements = await tx.creatorAgreement.deleteMany({
+          where: { userId: user.id },
+        });
+        console.log(`Deleted ${deletedAllAgreements.count} total agreements for guest user`);
+
+        // Delete all notifications for this user
+        const deletedAllNotifications = await tx.userNotification.deleteMany({
+          where: { userId: user.id },
+        });
+        console.log(`Deleted ${deletedAllNotifications.count} total notifications for guest user`);
 
         if (user.creator) {
           await tx.creator.delete({
@@ -5358,7 +5376,6 @@ export const removeCreatorFromCampaign = async (req: Request, res: Response) => 
           console.log(`Deleted Creator record`);
         }
 
-        // Then delete the User record
         await tx.user.delete({
           where: {
             id: user.id,
@@ -8146,7 +8163,6 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
               agreementTemplateId: null,
               ugcCredits: parseInt(ugcCredits) || 0,
               approvedByAdminId: adminId,
-              ...(guest.username && { username: guest.username }),
               ...(guest.followerCount && { followerCount: guest.followerCount }),
               ...(guest.engagementRate && { engagementRate: guest.engagementRate }),
               ...(guest.adminComments && guest.adminComments.trim().length > 0

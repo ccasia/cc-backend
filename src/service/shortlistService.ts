@@ -11,75 +11,59 @@ export const handleGuestForShortListing = async (
     throw new Error(`Guest creator is missing required fields: ${JSON.stringify(creator)}`);
   }
 
-  const existingGuest = await tx.user.findUnique({
+  // Check if a guest creator already exists with this profile link on Creator model
+  const existingCreatorWithProfileLink = await tx.creator.findFirst({
     where: {
-      guestProfileLink: creator.profileLink,
+      profileLink: creator.profileLink,
+      isGuest: true,
     },
     include: {
-      creator: true,
+      user: true,
     },
   });
 
-  if (existingGuest) {
-    if (!existingGuest.creator) {
-      await tx.creator.create({
-        data: {
-          userId: existingGuest.id,
-          isGuest: true,
-        },
-      });
-    } else if (!existingGuest.creator.isGuest) {
-      await tx.creator.update({
-        where: { userId: existingGuest.id },
-        data: { isGuest: true },
-      });
-    }
-
-    if (existingGuest.name !== creator.name) {
+  if (existingCreatorWithProfileLink) {
+    // Update name if changed
+    if (existingCreatorWithProfileLink.user.name !== creator.name) {
       await tx.user.update({
-        where: { id: existingGuest.id },
+        where: { id: existingCreatorWithProfileLink.userId },
         data: { name: creator.name },
       });
     }
 
-    return { userId: existingGuest.id, isGuest: true };
+    return { userId: existingCreatorWithProfileLink.userId, isGuest: true };
   }
 
   try {
-    const guestCreator = await tx.user.create({
+    // Create new guest user and creator with profileLink on Creator model
+    const guestUser = await tx.user.create({
       data: {
         name: creator.name,
         email: `guest_${Date.now()}_${Math.random()}@tempmail.com`,
-        guestProfileLink: creator.profileLink,
         status: Status.guest,
         role: 'creator',
-        creator: { create: { isGuest: true } },
+        creator: {
+          create: {
+            isGuest: true,
+            profileLink: creator.profileLink, // Store profile link on Creator model
+          },
+        },
       },
     });
 
-    return { userId: guestCreator.id, isGuest: true };
+    return { userId: guestUser.id, isGuest: true };
   } catch (error: any) {
-    if (error?.code === 'P2002' && error?.meta?.target?.includes('guestProfileLink')) {
-      const existingUser = await tx.user.findUnique({
+    // Handle race condition - if another request created a creator with the same profile link
+    if (error?.code === 'P2002') {
+      const existingCreator = await tx.creator.findFirst({
         where: {
-          guestProfileLink: creator.profileLink,
-        },
-        include: {
-          creator: true,
+          profileLink: creator.profileLink,
+          isGuest: true,
         },
       });
 
-      if (existingUser) {
-        if (!existingUser.creator) {
-          await tx.creator.create({
-            data: {
-              userId: existingUser.id,
-              isGuest: true,
-            },
-          });
-        }
-
-        return { userId: existingUser.id, isGuest: true };
+      if (existingCreator) {
+        return { userId: existingCreator.userId, isGuest: true };
       }
     }
     throw error;
