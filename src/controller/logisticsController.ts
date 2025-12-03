@@ -12,6 +12,8 @@ import {
   creatorDeliveryDetails,
   updateDeliveryStatus,
   reportLogisticIssue,
+  updateStatusService,
+  adminUpdateService,
 } from '@services/logisticsService';
 
 export const getLogisticsForCampaign = async (req: Request, res: Response) => {
@@ -205,6 +207,43 @@ export const reportIssue = async (req: Request, res: Response) => {
     return res.status(200).json(updated);
   } catch (error) {
     console.error(error);
+    return res.status(500).json({ message: 'Internal Server Error' });
+  }
+};
+
+export const updateLogisticStatus = async (req: Request, res: Response) => {
+  try {
+    const { logisticId } = req.params;
+    const { status } = req.body;
+
+    if (!status) return res.status(400).json({ message: 'Status is required' });
+
+    const updatedStatus = await updateStatusService(logisticId, status);
+    return res.status(200).json(updatedStatus);
+  } catch (error) {
+    console.error('Error updating status:', error);
+    return res.status(500).json({ message: 'Internal Server Error' });
+  }
+};
+
+export const adminUpdateLogisticDetails = async (req: Request, res: Response) => {
+  try {
+    const { logisticId } = req.params;
+
+    const { items, address, phoneNumber, trackingLink, expectedDeliveryDate, dietaryRestrictions } = req.body;
+
+    const updatedLogistic = await adminUpdateService(logisticId, {
+      items,
+      address,
+      phoneNumber,
+      trackingLink,
+      expectedDeliveryDate,
+      dietaryRestrictions,
+    });
+
+    return res.status(200).json(updatedLogistic);
+  } catch (error) {
+    console.error('Error admin updating logistic:', error);
     return res.status(500).json({ message: 'Internal Server Error' });
   }
 };

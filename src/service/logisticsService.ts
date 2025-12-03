@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, LogisticStatus } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
@@ -436,6 +436,113 @@ export const reportLogisticIssue = async (logisticId: string, reason: string, re
       where: { id: logisticId },
       data: {
         status: 'ISSUE_REPORTED',
+      },
+    });
+  });
+};
+
+export const updateStatusService = async (logisticId: string, status: LogisticStatus) => {
+  const data: any = { status };
+
+  const now = new Date();
+  if (status === 'SHIPPED') data.shippedAt = now;
+  if (status === 'DELIVERED') data.deliveredAt = now;
+  if (status === 'RECEIVED') data.receivededAt = now;
+  if (status === 'COMPLETED') data.completedAt = now;
+
+  return await prisma.logistic.update({
+    where: { id: logisticId },
+    data: data,
+  });
+};
+
+type AdminUpdateData = {
+  items?: ProductInput[];
+  address?: string;
+  phoneNumber?: string;
+  trackingLink?: string;
+  expectedDeliveryDate?: string | Date;
+  dietaryRestrictions?: string;
+};
+
+export const adminUpdateService = async (logisticId: string, data: AdminUpdateData) => {
+  const { items, address, phoneNumber, trackingLink, expectedDeliveryDate, dietaryRestrictions } = data;
+
+  return await prisma.$transaction(async (tx) => {
+    const logistic = await tx.logistic.findUnique({
+      where: { id: logisticId },
+      include: { deliveryDetails: true },
+    });
+
+    if (!logistic) throw new Error('Logistic not found');
+
+    let deliveryDetailsId = logistic.deliveryDetails?.id;
+
+    if (!deliveryDetailsId) {
+      const newDetails = await tx.deliveryDetails.create({ data: { logistic: { connect: { id: logisticId } } } });
+      deliveryDetailsId = newDetails.id;
+    }
+
+    await tx.logistic.update({
+      where: { id: logisticId },
+      data: {
+        creator: phoneNumber
+          ? {
+              update: { phoneNumber },
+            }
+          : undefined,
+        deliveryDetails: {
+          update: {
+            address,
+            trackingLink,
+            dietaryRestrictions,
+            expectedDeliveryDate: expectedDeliveryDate ? new Date(expectedDeliveryDate) : undefined,
+          },
+        },
+      },
+    });
+
+    if (items && Array.isArray(items)) {
+      const inputProductIds = items.map((i) => i.productId);
+
+      await tx.deliveryItem.deleteMany({
+        where: {
+          deliveryDetailsId: deliveryDetailsId,
+          productId: { notIn: inputProductIds },
+        },
+      });
+
+      for (const item of items) {
+        if (item.quantity <= 0) continue;
+
+        await tx.deliveryItem.upsert({
+          where: {
+            deliveryDetailsId_productId: {
+              deliveryDetailsId: deliveryDetailsId!,
+              productId: item.productId,
+            },
+          },
+          update: {
+            quantity: item.quantity,
+          },
+          create: {
+            deliveryDetailsId: deliveryDetailsId!,
+            productId: item.productId,
+            quantity: item.quantity,
+          },
+        });
+      }
+    }
+
+    return await tx.logistic.findUnique({
+      where: { id: logisticId },
+      include: {
+        creator: true,
+        deliveryDetails: {
+          include: {
+            items: { include: { product: true } },
+          },
+        },
       },
     });
   });

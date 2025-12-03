@@ -18,6 +18,8 @@ import {
   updateCreatorDeliveryDetails,
   markLogisticReceived,
   reportIssue,
+  updateLogisticStatus,
+  adminUpdateLogisticDetails,
 } from '@controllers/logisticsController';
 
 const router = express.Router();
@@ -38,9 +40,12 @@ router.get(
   checkCampaignAccess,
   getLogisticsForCampaign,
 );
+
+// product specific routes
 router.get('/products/campaign/:campaignId', isLoggedIn, isAdminOrClient, checkCampaignAccess, getProductsForCampaign);
 router.post('/products/:campaignId', isLoggedIn, isAdminOrClient, checkCampaignAccess, createProduct);
 router.delete('/products/:productId', isLoggedIn, isAdminOrClient, deleteProduct);
+
 router.post('/bulk-assign/:campaignId', isLoggedIn, isAdminOrClient, checkCampaignAccess, bulkAssignmentLogistics);
 router.post('/assign/:campaignId', isLoggedIn, isAdminOrClient, checkCampaignAccess, singleAssignmentLogistics);
 router.patch(
@@ -50,5 +55,7 @@ router.patch(
   checkCampaignAccess,
   scheduleDelivery,
 );
+router.patch('/admin/:logisticId/status', isLoggedIn, isAdminOrClient, updateLogisticStatus);
+router.put('/admin/:logisticId/details', isLoggedIn, isAdminOrClient, checkCampaignAccess, adminUpdateLogisticDetails);
 
 export default router;
