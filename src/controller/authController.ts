@@ -69,6 +69,8 @@ interface CreatorUpdateData {
   socialMediaData: Prisma.InputJsonValue;
   city: string;
   referralCode?: string;
+  instagramProfileLink?: string;
+  tiktokProfileLink?: string;
 }
 
 const client_id: string = process.env.XERO_CLIENT_ID as string;
@@ -256,6 +258,8 @@ export const registerCreator = async (req: Request, res: Response) => {
             employment: creatorData.employment || '',
             tiktok: creatorData.tiktok || '',
             languages: creatorData.languages || [],
+            instagramProfileLink: creatorData.instagramProfileLink || '',
+            tiktokProfileLink: creatorData.tiktokProfileLink || '',
           });
         }
 
@@ -970,6 +974,8 @@ export const updateCreator = async (req: Request, res: Response) => {
     socialMediaData,
     city,
     referralCode,
+    instagramProfileLink,
+    tiktokProfileLink,
   }: CreatorUpdateData = req.body;
 
   try {
@@ -1029,6 +1035,8 @@ export const updateCreator = async (req: Request, res: Response) => {
         employment: employment as Employment,
         tiktok,
         languages: languages,
+        instagramProfileLink,
+        tiktokProfileLink,
         ...(Array.isArray(interests) && interests.length > 0
           ? {
               interests: {
