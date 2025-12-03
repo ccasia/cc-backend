@@ -255,6 +255,9 @@ model Creator {
   isOnBoardingFormCompleted Boolean?
 
   profileLink String? // Profile link for creator (Instagram/TikTok/etc.)
+  
+  instagramProfileLink String? @db.VarChar(255) 
+  tiktokProfileLink    String? @db.VarChar(255)
 
   tiktokUser    TiktokUser?
   instagramUser InstagramUser?
