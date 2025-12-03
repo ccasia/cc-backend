@@ -56,6 +56,6 @@ router.patch(
   scheduleDelivery,
 );
 router.patch('/admin/:logisticId/status', isLoggedIn, isAdminOrClient, updateLogisticStatus);
-router.put('/admin/:logisticId/details', isLoggedIn, isAdminOrClient, checkCampaignAccess, adminUpdateLogisticDetails);
+router.put('/admin/:logisticId/details', isLoggedIn, isAdminOrClient, adminUpdateLogisticDetails);
 
 export default router;
