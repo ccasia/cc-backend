@@ -30,6 +30,7 @@ export const fetchAllLogisticsForCampaign = async (campaignId: string) => {
           },
         },
       },
+      issues: true,
       deliveryDetails: {
         include: {
           items: {
@@ -538,11 +539,61 @@ export const adminUpdateService = async (logisticId: string, data: AdminUpdateDa
       where: { id: logisticId },
       include: {
         creator: true,
+        issues: true,
         deliveryDetails: {
           include: {
             items: { include: { product: true } },
           },
         },
+      },
+    });
+  });
+};
+
+export const resolveIssueService = async (logisticId: string, resolvedBy: string) => {
+  return await prisma.$transaction(async (tx) => {
+    await tx.logisticIssue.updateMany({
+      where: {
+        logisticId,
+        status: 'OPEN',
+      },
+      data: {
+        status: 'RESOLVED',
+        resolvedAt: new Date(),
+        resolutionNotes: 'Marked as Resolved',
+      },
+    });
+
+    return await tx.logistic.update({
+      where: { id: logisticId },
+      data: {
+        status: 'COMPLETED',
+        completedAt: new Date(),
+      },
+    });
+  });
+};
+
+export const retryDeliveryService = async (logisticId: string, resolvedBy: string) => {
+  return await prisma.$transaction(async (tx) => {
+    await tx.logisticIssue.updateMany({
+      where: {
+        logisticId,
+        status: 'OPEN',
+      },
+      data: {
+        status: 'RESOLVED',
+        resolvedAt: new Date(),
+        resolutionNotes: 'Retry requested by Client/Admin',
+      },
+    });
+
+    return await tx.logistic.update({
+      where: { id: logisticId },
+      data: {
+        status: 'SCHEDULED',
+        shippedAt: null,
+        deliveredAt: null,
       },
     });
   });

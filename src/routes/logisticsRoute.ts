@@ -20,6 +20,8 @@ import {
   reportIssue,
   updateLogisticStatus,
   adminUpdateLogisticDetails,
+  resolveLogisticIssue,
+  retryLogisticDelivery,
 } from '@controllers/logisticsController';
 
 const router = express.Router();
@@ -54,6 +56,20 @@ router.patch(
   isAdminOrClient,
   checkCampaignAccess,
   scheduleDelivery,
+);
+router.patch(
+  '/campaign/:campaignId/:logisticId/resolve',
+  isLoggedIn,
+  isAdminOrClient,
+  checkCampaignAccess,
+  resolveLogisticIssue,
+);
+router.patch(
+  '/campaign/:campaignId/:logisticId/retry',
+  isLoggedIn,
+  isAdminOrClient,
+  checkCampaignAccess,
+  retryLogisticDelivery,
 );
 router.patch('/admin/:logisticId/status', isLoggedIn, isAdminOrClient, updateLogisticStatus);
 router.put('/admin/:logisticId/details', isLoggedIn, isAdminOrClient, adminUpdateLogisticDetails);

@@ -14,6 +14,8 @@ import {
   reportLogisticIssue,
   updateStatusService,
   adminUpdateService,
+  resolveIssueService,
+  retryDeliveryService,
 } from '@services/logisticsService';
 
 export const getLogisticsForCampaign = async (req: Request, res: Response) => {
@@ -244,6 +246,32 @@ export const adminUpdateLogisticDetails = async (req: Request, res: Response) =>
     return res.status(200).json(updatedLogistic);
   } catch (error) {
     console.error('Error admin updating logistic:', error);
+    return res.status(500).json({ message: 'Internal Server Error' });
+  }
+};
+
+export const resolveLogisticIssue = async (req: Request, res: Response) => {
+  try {
+    const { logisticId } = req.params;
+    const { userid } = (req as any).session;
+
+    const result = await resolveIssueService(logisticId, userid);
+    return res.status(200).json(result);
+  } catch (error) {
+    console.error('Error resolving issue:', error);
+    res.status(500).json({ message: 'Internal Server Error' });
+  }
+};
+
+export const retryLogisticDelivery = async (req: Request, res: Response) => {
+  try {
+    const { logisticId } = req.params;
+    const { userid } = (req as any).session;
+
+    const result = await retryDeliveryService(logisticId, userid);
+    return res.status(200).json(result);
+  } catch (error) {
+    console.error('Error retrying delivery:', error);
     return res.status(500).json({ message: 'Internal Server Error' });
   }
 };
