@@ -52,6 +52,28 @@ export const fetchAllLogisticsForCreator = async (creatorId: string) => {
       creatorId: creatorId,
     },
     include: {
+      creator: {
+        select: {
+          id: true,
+          name: true,
+          photoURL: true,
+          phoneNumber: true,
+          creator: {
+            select: {
+              instagramUser: {
+                select: {
+                  username: true,
+                },
+              },
+              tiktokUser: {
+                select: {
+                  username: true,
+                },
+              },
+            },
+          },
+        },
+      },
       campaign: {
         select: {
           id: true,
@@ -83,6 +105,28 @@ export const fetchCampaignLogisticForCreator = async (creatorId: string, campaig
       },
     },
     include: {
+      creator: {
+        select: {
+          id: true,
+          name: true,
+          photoURL: true,
+          phoneNumber: true,
+          creator: {
+            select: {
+              instagramUser: {
+                select: {
+                  username: true,
+                },
+              },
+              tiktokUser: {
+                select: {
+                  username: true,
+                },
+              },
+            },
+          },
+        },
+      },
       deliveryDetails: {
         include: {
           items: {
@@ -487,6 +531,7 @@ export const adminUpdateService = async (logisticId: string, data: AdminUpdateDa
     await tx.logistic.update({
       where: { id: logisticId },
       data: {
+        status: 'SCHEDULED',
         creator: phoneNumber
           ? {
               update: { phoneNumber },
