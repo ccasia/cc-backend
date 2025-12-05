@@ -496,11 +496,15 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
     const logistic = await prisma.logistic.findFirst({
       where: {
         campaignId: submission.campaignId,
+        creatorId: submission.userId,
       },
     });
 
+    let currentStatus = logistic?.status;
+
     if (logistic) {
-      await updateDeliveryStatus(logistic.id, 'COMPLETED');
+      const updatedLogistic = await updateDeliveryStatus(logistic.id, 'COMPLETED');
+      currentStatus = updatedLogistic.status;
     }
 
     res.status(200).json({
@@ -511,6 +515,7 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
         photos: uploadedPhotos.length,
         rawFootages: uploadedRawFootages.length,
       },
+      logisticStatus: currentStatus,
     });
   } catch (error) {
     console.error('Error submitting creator v4 content:', error);
