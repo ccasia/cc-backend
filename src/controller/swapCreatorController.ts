@@ -321,11 +321,11 @@ export const swapGuestWithPlatformCreator = async (req: Request, res: Response) 
       // 7. Update Logistics (if any)
       const logisticUpdates = await tx.logistic.updateMany({
         where: {
-          userId: guestUserId,
+          creatorId: guestUserId,
           campaignId,
         },
         data: {
-          userId: platformUserId,
+          creatorId: platformUserId,
         },
       });
       console.log(`[SWAP] Updated ${logisticUpdates.count} logistic record(s)`);
