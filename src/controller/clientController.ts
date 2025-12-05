@@ -313,6 +313,8 @@ export const createClientCampaign = async (req: Request, res: Response) => {
       campaignDont,
       referencesLinks,
       // submissionVersion,
+      logisticsType,
+      products,
     } = campaignData;
 
     // Validate required fields
@@ -388,6 +390,15 @@ export const createClientCampaign = async (req: Request, res: Response) => {
     }
 
     const newCampaign = await prisma.$transaction(async (tx) => {
+      // --- LOGISTICS: Process Products ---
+      let productsToCreate: any[] = [];
+
+      if (logisticsType === 'PRODUCT_DELIVERY' && Array.isArray(products)) {
+        productsToCreate = products
+          .filter((product: any) => product.name && product.name.trim() !== '')
+          .map((product: any) => ({ productName: product.name }));
+      }
+
       // Create campaign with PENDING status
       const campaign = await tx.campaign.create({
         data: {
@@ -399,6 +410,9 @@ export const createClientCampaign = async (req: Request, res: Response) => {
           submissionVersion: 'v4', // Set submission version to determine flow type
           brandTone: brandTone || '',
           productName: productName || '',
+          products: {
+            create: productsToCreate,
+          },
           // Skip adminManager and other fields that will be set by CSM later
           campaignBrief: {
             create: {
@@ -439,6 +453,7 @@ export const createClientCampaign = async (req: Request, res: Response) => {
         include: {
           campaignBrief: true,
           campaignRequirement: true,
+          products: true,
         },
       });
 
