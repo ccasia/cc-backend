@@ -576,7 +576,7 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
     const hasAssignedCredits = Number.isFinite(creditsAssignedForThisPitch) && creditsAssignedForThisPitch > 0;
 
     const creditsAssignedForThisPitchFinal = hasAssignedCredits ? creditsAssignedForThisPitch : 0;
-    
+
     if (!isV4Campaign) {
       const totalUtilizedBefore = (campaignWithShortlisted?.shortlisted || []).reduce(
         (acc, item) => acc + Number(item.ugcVideos || 0),
@@ -696,7 +696,7 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
         const v2SubmissionTypes = ['FIRST_DRAFT', 'FINAL_DRAFT', 'POSTING'];
 
         const timelinesFiltered = isV4Campaign
-          ? timelines.filter(t => !v2SubmissionTypes.includes(t.submissionType?.type || ''))
+          ? timelines.filter((t) => !v2SubmissionTypes.includes(t.submissionType?.type || ''))
           : timelines;
         
         // Get existing submission types for this user/campaign to avoid duplicates
@@ -799,6 +799,35 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
       console.log(
         `ℹ️  Campaign ${pitch.campaignId} is not V4 (version: ${pitch.campaign.submissionVersion}) - skipping V4 content submission creation`,
       );
+    }
+    
+    try {
+      const existingLogistic = await prisma.logistic.findUnique({
+        where: {
+          creatorId_campaignId: {
+            creatorId: pitch.userId,
+            campaignId: pitch.campaignId,
+          },
+        },
+      });
+
+      if (!existingLogistic) {
+        await prisma.logistic.create({
+          data: {
+            campaignId: pitch.campaignId,
+            creatorId: pitch.userId,
+            createdById: clientId, // The client who approved it
+            type: 'PRODUCT_DELIVERY', // Default
+            status: 'PENDING_ASSIGNMENT', // Default
+            // Initialize empty details so we have an ID to update later
+            deliveryDetails: {
+              create: {},
+            },
+          },
+        });
+      }
+    } catch (error) {
+      console.error('❌ Error creating logistic record:', error);
     }
 
     // Find admin users for this campaign
@@ -2211,9 +2240,10 @@ export const updateGuestCreatorInfo = async (req: Request, res: Response) => {
     }
 
     // Check if the user is a guest creator
-    const isGuest = pitch.user?.email?.includes('@tempmail.com') ||
-                    pitch.user?.email?.startsWith('guest_') ||
-                    pitch.user?.creator?.isGuest === true;
+    const isGuest =
+      pitch.user?.email?.includes('@tempmail.com') ||
+      pitch.user?.email?.startsWith('guest_') ||
+      pitch.user?.creator?.isGuest === true;
 
     if (!isGuest) {
       return res.status(400).json({ message: 'This endpoint is only for guest creators' });
@@ -2273,7 +2303,7 @@ export const updateGuestCreatorInfo = async (req: Request, res: Response) => {
         engagementRate: engagementRate?.trim?.() || null,
         profileLink: profileLink.trim(),
         adminComments: adminComments?.trim() || null,
-      }
+      },
     });
   } catch (error) {
     console.error('Error updating guest creator info:', error);

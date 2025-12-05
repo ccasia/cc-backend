@@ -7,6 +7,7 @@ import { io, clients } from '../server';
 import { saveNotification } from './notificationController';
 import { notificationDraft } from '@helper/notification';
 import { saveCaptionToHistory } from '../utils/captionHistoryUtils';
+import { updateDeliveryStatus } from '@services/logisticsService';
 
 const prisma = new PrismaClient();
 
@@ -490,6 +491,16 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
       if (adminSocketId) {
         io.to(adminSocketId).emit('notification', notification);
       }
+    }
+
+    const logistic = await prisma.logistic.findFirst({
+      where: {
+        campaignId: submission.campaignId,
+      },
+    });
+
+    if (logistic) {
+      await updateDeliveryStatus(logistic.id, 'COMPLETED');
     }
 
     res.status(200).json({
