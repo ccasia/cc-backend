@@ -2295,7 +2295,7 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
         });
 
         // 3. Also find brands that belong to companies with matching names
-        let brandsByCompany: { id: string, name: string }[] = [];
+        let brandsByCompany: { id: string; name: string }[] = [];
         if (companyIds.length > 0) {
           brandsByCompany = await prisma.brand.findMany({
             where: {
@@ -2309,12 +2309,15 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
             },
           });
         }
-        
+
         // Combine and deduplicate brand IDs
         const allBrands = [...brandsByName, ...brandsByCompany];
-        brandIds = [...new Set(allBrands.map(brand => brand.id))];
-        console.log('Found brands:', allBrands.map(b => b.name));
-        
+        brandIds = [...new Set(allBrands.map((brand) => brand.id))];
+        console.log(
+          'Found brands:',
+          allBrands.map((b) => b.name),
+        );
+
         // 4. Find clients with matching names
         const clients = await prisma.client.findMany({
           where: {
@@ -3099,7 +3102,9 @@ export const editCampaignInfo = async (req: Request, res: Response) => {
       const adminLogMessage = `Updated campaign info for campaign - ${name}`;
       logAdminChange(adminLogMessage, adminId, req);
     }
-    return res.status(200).json({ message: 'Campaign information updated successfully', ...updatedCampaign, ...updatedCampaignBrief });
+    return res
+      .status(200)
+      .json({ message: 'Campaign information updated successfully', ...updatedCampaign, ...updatedCampaignBrief });
   } catch (error) {
     return res.status(400).json(error);
   }
@@ -3135,7 +3140,7 @@ export const editCampaignBrandOrCompany = async (req: Request, res: Response) =>
     });
 
     const adminId = req.session.userid;
-    
+
     // Get admin info for logging
     if (adminId) {
       // Log campaign activity for editing company
@@ -3172,7 +3177,7 @@ export const editCampaignDosAndDonts = async (req: Request, res: Response) => {
     });
 
     const adminId = req.session.userid;
-    
+
     // Get admin info for logging
     if (adminId) {
       // Log campaign activity for editing do's and don'ts
@@ -3226,7 +3231,7 @@ export const editCampaignRequirements = async (req: Request, res: Response) => {
     });
 
     const adminId = req.session.userid;
-    
+
     // Get admin info for logging
     if (adminId) {
       // Log campaign activity for editing campaign requirements
@@ -3243,7 +3248,9 @@ export const editCampaignRequirements = async (req: Request, res: Response) => {
       logAdminChange(adminmessage, adminId, req);
     }
 
-    return res.status(200).json({ message: 'Campaign requirements updated successfully', newRequirement: updatedCampaignRequirement });
+    return res
+      .status(200)
+      .json({ message: 'Campaign requirements updated successfully', newRequirement: updatedCampaignRequirement });
   } catch (error) {
     return res.status(400).json(error);
   }
@@ -3377,7 +3384,7 @@ export const editCampaignTimeline = async (req: Request, res: Response) => {
     });
 
     const adminId = req.session.userid;
-    
+
     // Get admin info for logging
     if (adminId) {
       // Log campaign activity for editing timeline
@@ -4150,12 +4157,12 @@ export const creatorAgreements = async (req: Request, res: Response) => {
     if (campaign) {
       // Get all approved user IDs from pitches and shortlisted creators
       const approvedUserIds = new Set<string>();
-      
+
       // Add users from approved pitches
       campaign.pitch.forEach((p) => {
         if (p.userId) approvedUserIds.add(p.userId);
       });
-      
+
       // Add users from shortlisted creators
       campaign.shortlisted.forEach((s) => {
         if (s.userId) approvedUserIds.add(s.userId);
@@ -4170,7 +4177,7 @@ export const creatorAgreements = async (req: Request, res: Response) => {
 
       // Create missing agreements
       const missingUserIds = [...approvedUserIds].filter((userId) => !existingUserIds.has(userId));
-      
+
       if (missingUserIds.length > 0) {
         console.log(`Creating ${missingUserIds.length} missing agreements for campaign ${campaignId}`);
         await prisma.creatorAgreement.createMany({
@@ -5508,7 +5515,7 @@ export const removeCreatorFromCampaign = async (req: Request, res: Response) => 
 
         // For guest users, we need to delete ALL records referencing this user
         // (not just for this campaign) to avoid foreign key constraint violations
-        
+
         // Delete all remaining pitches for this user (from any campaign)
         const deletedAllPitches = await tx.pitch.deleteMany({
           where: { userId: user.id },

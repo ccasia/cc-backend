@@ -3465,7 +3465,7 @@ export const updateSubmissionStatus = async (req: Request, res: Response) => {
       const user = await prisma.user.findUnique({
         where: { id: result.submission.userId },
       });
-      
+
       if (status === 'APPROVED') {
         await prisma.campaignLog.create({
           data: {

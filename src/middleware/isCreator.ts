@@ -13,7 +13,7 @@ export const isCreator = async (req: Request, res: Response, next: NextFunction)
   try {
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { role: true }
+      select: { role: true },
     });
 
     if (!user) {
@@ -21,8 +21,8 @@ export const isCreator = async (req: Request, res: Response, next: NextFunction)
     }
 
     if (user.role !== 'creator') {
-      return res.status(403).json({ 
-        message: 'Access denied: Creator access required' 
+      return res.status(403).json({
+        message: 'Access denied: Creator access required',
       });
     }
 
@@ -43,7 +43,7 @@ export const isCreatorOrClient = async (req: Request, res: Response, next: NextF
   try {
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { role: true }
+      select: { role: true },
     });
 
     if (!user) {
@@ -51,8 +51,8 @@ export const isCreatorOrClient = async (req: Request, res: Response, next: NextF
     }
 
     if (user.role !== 'creator' && user.role !== 'client') {
-      return res.status(403).json({ 
-        message: 'Access denied: Creator or client access required' 
+      return res.status(403).json({
+        message: 'Access denied: Creator or client access required',
       });
     }
 

@@ -32,29 +32,29 @@ export const canActivateCampaign = async (req: Request, res: Response, next: Nex
       userId: user?.id,
       role: user?.role,
       adminMode: user?.admin?.mode,
-      adminRoleId: user?.admin?.roleId
+      adminRoleId: user?.admin?.roleId,
     });
-    
+
     // Check if user has admin or superadmin role
     if (user?.role !== 'admin' && user?.role !== 'superadmin') {
       return res.status(403).json({ message: 'Access denied. Admin role required.' });
     }
-    
+
     // If user is superadmin role, allow access
     if (user?.role === 'superadmin') {
       console.log('Access granted: User has superadmin role');
       return next();
     }
-    
+
     // Check if user is a superadmin (god or advanced mode)
     const isSuperAdmin = ['god', 'advanced'].includes(user?.admin?.mode || '');
-    
+
     // If user is superadmin mode, allow access
     if (isSuperAdmin) {
       console.log('Access granted: User has superadmin mode');
       return next();
     }
-    
+
     // For now, just allow all admin users to activate campaigns
     console.log('Access granted: User is admin');
     return next();

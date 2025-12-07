@@ -20,7 +20,7 @@ import {
   forwardRawFootageFeedbackV4,
   getSubmissionStatusInfo,
   updateSubmissionDueDate,
-  getCaptionHistory
+  getCaptionHistory,
 } from '../controller/submissionV4Controller';
 import { isLoggedIn } from '../middleware/onlyLogin';
 import { isAdmin } from '../middleware/onlySuperadmin';

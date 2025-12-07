@@ -7,7 +7,8 @@ const prisma = new PrismaClient();
 
 // Configuration - Replace ACCESS_TOKEN with your Instagram access token
 const USER_ID = 'cmgac552s001ruu4lgip3w9xy';
-const ACCESS_TOKEN = 'IGAANcWAm6FBFBZAFBjcmlRaWRVMU5kRXdCLTBDNEJJQVpILXIyODdlU25ULUxkUWs5Y21tSEV6dXB6YWNjT0Q4bjBUSnNMcGlvVlpPZA1J5bnFkNWF2d3R6T0c3Y0ZAvRG9YUGtvTmFUd3lWa2xkSGxGNHp2OXdReVNqZAk11RlFEYwZDZD'; // Replace this with your access token
+const ACCESS_TOKEN =
+  'IGAANcWAm6FBFBZAFBjcmlRaWRVMU5kRXdCLTBDNEJJQVpILXIyODdlU25ULUxkUWs5Y21tSEV6dXB6YWNjT0Q4bjBUSnNMcGlvVlpPZA1J5bnFkNWF2d3R6T0c3Y0ZAvRG9YUGtvTmFUd3lWa2xkSGxGNHp2OXdReVNqZAk11RlFEYwZDZD'; // Replace this with your access token
 
 interface InstagramOverview {
   user_id: string;
@@ -75,7 +76,7 @@ export const getAllMediaObject = async (
         averageLikes: 0,
         averageComments: 0,
         totalComments: 0,
-        totalLikes: 0
+        totalLikes: 0,
       };
     }
 
@@ -99,11 +100,11 @@ const main = async () => {
   try {
     console.log('\n🚀 Starting Instagram Account Connection');
     console.log('=====================================');
-    
+
     // Step 1: Verify user exists and is a creator
     const user = await prisma.user.findUnique({
       where: { id: USER_ID },
-      include: { creator: true }
+      include: { creator: true },
     });
 
     if (!user) {
@@ -119,7 +120,7 @@ const main = async () => {
     // Step 2: Fetch Instagram account overview
     console.log('\n📊 Fetching Instagram account overview...');
     const overview = await getInstagramOverviewService(ACCESS_TOKEN);
-    
+
     console.log(`✓ Instagram account details:
     Username: @${overview.username}
     User ID: ${overview.user_id}
@@ -169,7 +170,7 @@ const main = async () => {
     // Step 7: Generate unique test user_id
     const uniqueTestUserId = `test_${overview.user_id}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     console.log(`\n📝 Using unique test user_id: ${uniqueTestUserId}`);
-    
+
     await prisma.$transaction(async (tx) => {
       if (!user.creator) {
         throw new Error('Creator profile not found');
@@ -252,7 +253,6 @@ const main = async () => {
     console.log(`Token Expiry: ${dayjs.unix(expiryTimestamp).format('YYYY-MM-DD HH:mm:ss')}`);
     console.log(`Connection Status: Connected ✅`);
     console.log(`MediaKit Status: Created/Updated ✅`);
-
   } catch (error: any) {
     console.error('\n❌ Error connecting Instagram account:', error.message);
     if (error.response?.data) {
@@ -272,4 +272,4 @@ main()
   })
   .finally(async () => {
     await prisma.$disconnect();
-  }); 
+  });

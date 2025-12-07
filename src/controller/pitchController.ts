@@ -358,7 +358,9 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
         },
       });
 
-      console.log(`Pitch ${pitchId} approved by admin with ${creditsAssigned} UGC credits, status updated to SENT_TO_CLIENT (v4 flow)`);
+      console.log(
+        `Pitch ${pitchId} approved by admin with ${creditsAssigned} UGC credits, status updated to SENT_TO_CLIENT (v4 flow)`,
+      );
       console.log(adminComments ? `Comments: ${adminComments}` : 'No comments provided');
       return res.status(200).json({
         message: 'Pitch approved and sent to client for review',
@@ -389,7 +391,9 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
         },
       });
 
-      console.log(`Pitch ${pitchId} approved by admin with ${creditsAssigned} UGC credits, status updated to APPROVED (non-v4 direct approval)`);
+      console.log(
+        `Pitch ${pitchId} approved by admin with ${creditsAssigned} UGC credits, status updated to APPROVED (non-v4 direct approval)`,
+      );
       console.log(adminComments ? `Comments: ${adminComments}` : 'No comments provided');
       return res.status(200).json({
         message: 'Pitch approved successfully',
@@ -568,7 +572,7 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
     });
 
     const isV4Campaign = pitch.campaign.submissionVersion === 'v4';
-    
+
     const creditsAssignedForThisPitch = Number(pitch.ugcCredits || 0);
 
     const hasAssignedCredits = Number.isFinite(creditsAssignedForThisPitch) && creditsAssignedForThisPitch > 0;
@@ -658,7 +662,7 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
 
     // Note: Credits are now only utilized when agreement is sent (in sendAgreement function)
     // ugcVideos is still assigned to shortlistedCreator for submission creation
-    
+
     // Check if submissions already exist for this user/campaign to prevent duplicates
     const existingSubmissions = await prisma.submission.findMany({
       where: {
@@ -696,18 +700,20 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
         const timelinesFiltered = isV4Campaign
           ? timelines.filter((t) => !v2SubmissionTypes.includes(t.submissionType?.type || ''))
           : timelines;
-        
+
         // Get existing submission types for this user/campaign to avoid duplicates
         const existingSubmissionTypes = new Set<string | undefined>(
-          existingSubmissions.map(s => s.submissionType?.type)
+          existingSubmissions.map((s) => s.submissionType?.type),
         );
 
         // Filter out timelines that already have submissions
         const timelinesWithoutExisting = timelinesFiltered.filter(
-          t => t.submissionType?.type && !existingSubmissionTypes.has(t.submissionType.type)
+          (t) => t.submissionType?.type && !existingSubmissionTypes.has(t.submissionType.type),
         );
 
-        console.log(`Creating submissions for ${isV4Campaign ? 'v4' : 'v2'} campaign - ${timelinesWithoutExisting.length} timeline(s) (${existingSubmissions.length} already exist)`);
+        console.log(
+          `Creating submissions for ${isV4Campaign ? 'v4' : 'v2'} campaign - ${timelinesWithoutExisting.length} timeline(s) (${existingSubmissions.length} already exist)`,
+        );
 
         // Only create submissions if there are new ones to create
         if (timelinesWithoutExisting.length > 0) {
@@ -717,49 +723,51 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
               return await prisma.submission.create({
                 data: {
                   dueDate: timeline.endDate,
-                campaignId: timeline.campaignId,
-                userId: pitch.userId,
-                status: timeline.submissionType?.type === 'AGREEMENT_FORM' ? 'IN_PROGRESS' : 'NOT_STARTED',
-                submissionTypeId: timeline.submissionTypeId as string,
-                submissionVersion: isV4Campaign ? 'v4' : undefined, // Explicitly set v4 for v4 campaigns
-                task: {
-                  create: {
-                    name: timeline.name,
-                    position: index,
-                    columnId: timeline.submissionType?.type ? columnInProgress.id : columnToDo.id,
-                    priority: '',
-                    status: timeline.submissionType?.type ? 'In Progress' : 'To Do',
+                  campaignId: timeline.campaignId,
+                  userId: pitch.userId,
+                  status: timeline.submissionType?.type === 'AGREEMENT_FORM' ? 'IN_PROGRESS' : 'NOT_STARTED',
+                  submissionTypeId: timeline.submissionTypeId as string,
+                  submissionVersion: isV4Campaign ? 'v4' : undefined, // Explicitly set v4 for v4 campaigns
+                  task: {
+                    create: {
+                      name: timeline.name,
+                      position: index,
+                      columnId: timeline.submissionType?.type ? columnInProgress.id : columnToDo.id,
+                      priority: '',
+                      status: timeline.submissionType?.type ? 'In Progress' : 'To Do',
+                    },
                   },
                 },
-              },
-              include: {
-                submissionType: true,
-              },
-            });
-          }),
-        );
+                include: {
+                  submissionType: true,
+                },
+              });
+            }),
+          );
 
-        // Create dependencies between submissions (only for v2 campaigns)
-        if (!isV4Campaign) {
-          const agreement = submissions.find((s) => s.submissionType?.type === 'AGREEMENT_FORM');
-          const draft = submissions.find((s) => s.submissionType?.type === 'FIRST_DRAFT');
-          const finalDraft = submissions.find((s) => s.submissionType?.type === 'FINAL_DRAFT');
-          const posting = submissions.find((s) => s.submissionType?.type === 'POSTING');
+          // Create dependencies between submissions (only for v2 campaigns)
+          if (!isV4Campaign) {
+            const agreement = submissions.find((s) => s.submissionType?.type === 'AGREEMENT_FORM');
+            const draft = submissions.find((s) => s.submissionType?.type === 'FIRST_DRAFT');
+            const finalDraft = submissions.find((s) => s.submissionType?.type === 'FINAL_DRAFT');
+            const posting = submissions.find((s) => s.submissionType?.type === 'POSTING');
 
-          const dependencies = [
-            { submissionId: draft?.id, dependentSubmissionId: agreement?.id },
-            { submissionId: finalDraft?.id, dependentSubmissionId: draft?.id },
-            { submissionId: posting?.id, dependentSubmissionId: finalDraft?.id },
-          ].filter((dep) => dep.submissionId && dep.dependentSubmissionId);
+            const dependencies = [
+              { submissionId: draft?.id, dependentSubmissionId: agreement?.id },
+              { submissionId: finalDraft?.id, dependentSubmissionId: draft?.id },
+              { submissionId: posting?.id, dependentSubmissionId: finalDraft?.id },
+            ].filter((dep) => dep.submissionId && dep.dependentSubmissionId);
 
-          if (dependencies.length > 0) {
-            await prisma.submissionDependency.createMany({ data: dependencies });
+            if (dependencies.length > 0) {
+              await prisma.submissionDependency.createMany({ data: dependencies });
+            }
           }
-        }
 
           console.log(`Created ${submissions.length} submissions for V3 pitch approval`);
         } else {
-          console.log(`No new submissions to create - ${existingSubmissions.length} already exist for this user/campaign`);
+          console.log(
+            `No new submissions to create - ${existingSubmissions.length} already exist for this user/campaign`,
+          );
         }
       }
     }
@@ -798,7 +806,7 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
         `ℹ️  Campaign ${pitch.campaignId} is not V4 (version: ${pitch.campaign.submissionVersion}) - skipping V4 content submission creation`,
       );
     }
-    
+
     try {
       const existingLogistic = await prisma.logistic.findUnique({
         where: {
@@ -1020,8 +1028,8 @@ export const withdrawCreatorFromCampaign = async (req: Request, res: Response) =
     // Only allow withdrawal for approved pitches (APPROVED, AGREEMENT_PENDING, AGREEMENT_SUBMITTED)
     const withdrawableStatuses = ['APPROVED', 'AGREEMENT_PENDING', 'AGREEMENT_SUBMITTED', 'approved'];
     if (!withdrawableStatuses.includes(pitch.status || '')) {
-      return res.status(400).json({ 
-        message: 'Creator can only be withdrawn after being approved. Use reject for non-approved pitches.' 
+      return res.status(400).json({
+        message: 'Creator can only be withdrawn after being approved. Use reject for non-approved pitches.',
       });
     }
 
@@ -1467,9 +1475,14 @@ export const getPitchesV3 = async (req: Request, res: Response) => {
       requestedStatus: status,
       userRole: user.role,
       totalPitches: pitches.length,
-      v4Pitches: pitches.filter(p => p.campaign?.submissionVersion === 'v4').length,
-      v2Pitches: pitches.filter(p => p.campaign?.submissionVersion === 'v2').length,
-      pitchStatuses: pitches.map(p => ({ id: p.id, status: p.status, campaignOrigin: p.campaign?.origin, submissionVersion: p.campaign?.submissionVersion }))
+      v4Pitches: pitches.filter((p) => p.campaign?.submissionVersion === 'v4').length,
+      v2Pitches: pitches.filter((p) => p.campaign?.submissionVersion === 'v2').length,
+      pitchStatuses: pitches.map((p) => ({
+        id: p.id,
+        status: p.status,
+        campaignOrigin: p.campaign?.origin,
+        submissionVersion: p.campaign?.submissionVersion,
+      })),
     });
 
     const transformedPitches = pitches
@@ -1516,8 +1529,6 @@ export const getPitchesV3 = async (req: Request, res: Response) => {
         if (pitch.user) {
           const { password, xeroRefreshToken, ...restUser } = pitch.user;
           sanitizedUser = { ...restUser };
-          if (sanitizedUser.creator) {
-          }
         }
 
         return {

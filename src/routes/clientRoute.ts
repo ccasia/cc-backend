@@ -1,11 +1,11 @@
 import { Router } from 'express';
-import { 
-  updateClient, 
-  checkClientCompany, 
-  createClientCompany, 
-  createClientCampaign, 
+import {
+  updateClient,
+  checkClientCompany,
+  createClientCompany,
+  createClientCampaign,
   createClientRecord,
-  createClientWithCompany
+  createClientWithCompany,
 } from '@controllers/clientController';
 import { isClient } from '@middlewares/clientOnly';
 

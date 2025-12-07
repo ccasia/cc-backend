@@ -31,19 +31,13 @@ export const calculateInstagramAnalytics = async (creatorId: string): Promise<So
     };
   }
 
-  const {
-    followers_count,
-    totalLikes,
-    totalComments,
-    averageLikes,
-    averageComments,
-  } = instagramUser;
+  const { followers_count, totalLikes, totalComments, averageLikes, averageComments } = instagramUser;
 
   // Calculate engagement rate using industry standard formula
   // Formula: (Average Likes + Average Comments) / Followers × 100
   // Note: Instagram Graph API doesn't provide shares/saves to third-party apps
   const engagement_rate = followers_count
-    ? ((averageLikes || 0) + (averageComments || 0)) / followers_count * 100
+    ? (((averageLikes || 0) + (averageComments || 0)) / followers_count) * 100
     : 0;
 
   return {
@@ -72,19 +66,12 @@ export const calculateTikTokAnalytics = async (creatorId: string): Promise<Socia
     };
   }
 
-  const {
-    follower_count,
-    averageLikes,
-    averageComments,
-    averageShares,
-    totalLikes,
-    totalComments,
-  } = tiktokUser;
+  const { follower_count, averageLikes, averageComments, averageShares, totalLikes, totalComments } = tiktokUser;
 
   // Calculate engagement rate for TikTok using industry standard formula
   // Formula: (Average Likes + Average Comments + Average Shares) / Followers × 100
   const engagement_rate = follower_count
-    ? ((averageLikes || 0) + (averageComments || 0) + (averageShares || 0)) / follower_count * 100
+    ? (((averageLikes || 0) + (averageComments || 0) + (averageShares || 0)) / follower_count) * 100
     : 0;
 
   return {
@@ -95,4 +82,4 @@ export const calculateTikTokAnalytics = async (creatorId: string): Promise<Socia
     totalLikes: totalLikes || 0,
     totalComments: totalComments || 0,
   };
-}; 
+};
