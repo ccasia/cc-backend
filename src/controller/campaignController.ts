@@ -641,10 +641,17 @@ export const createCampaign = async (req: Request, res: Response) => {
           where: { id: req.session.userid },
         });
         const adminName = admin?.name || 'Admin';
+        const userRole = admin?.role || 'admin';
 
-        // Log admin activity for campaign creation
-        const adminActivityMessage = `${adminName} created ${campaign.name}`;
-        await logChange(adminActivityMessage, campaign.id, req);
+        // Log campaign activity for campaign creation
+        const campaignActivityMessage = `Campaign Created`;
+        await prisma.campaignLog.create({
+          data: {
+            message: campaignActivityMessage,
+            adminId: req.session.userid,
+            campaignId: campaign.id,
+          },
+        });
 
         const adminId = req.session.userid;
         if (adminId) {
@@ -1670,10 +1677,15 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
 
     if (pitch) {
       // Log the pitch submission in campaign logs for Creator Activities tab
-      const creatorName = user?.name || 'Unknown Creator';
-      const campaignName = campaign?.name || 'Unknown Campaign';
-      const logMessage = `${creatorName} pitched for ${campaignName}`;
-      await logChange(logMessage, campaignId, req);
+      const creatorName = user?.name || 'Creator';
+      const campaignName = campaign?.name || 'Campaign';
+      await prisma.campaignLog.create({
+        data: {
+          message: `${creatorName} submitted a pitch for ${campaignName}`,
+          adminId: id as string,
+          campaignId: campaignId,
+        },
+      });
 
       const notification = notificationPitch(pitch.campaign.name, 'Creator');
       const newPitch = await saveNotification({
@@ -2105,6 +2117,19 @@ export const getCampaignLog = async (req: Request, res: Response) => {
       where: {
         campaignId: id,
       },
+      include: {
+        admin: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
     });
     return res.status(200).json(campaignLog);
   } catch (error) {
@@ -2112,6 +2137,7 @@ export const getCampaignLog = async (req: Request, res: Response) => {
     //console.log('=== BEGIN getCampaignLog error ===');
     //console.log(error);
     //console.log('=== END getCampaignLog error ===');
+    return res.status(400).json({ message: 'Error fetching campaign logs', error });
   }
 };
 
@@ -2949,6 +2975,23 @@ export const changeCampaignStage = async (req: Request, res: Response) => {
     }
 
     if (updatedCampaign?.status === 'ACTIVE') {
+      // Get admin info for logging
+      const admin = await prisma.user.findUnique({
+        where: { id: adminId },
+      });
+      const adminName = admin?.name || 'Admin';
+      const userRole = admin?.role || 'admin';
+
+      // Log campaign activity for activation
+      const campaignActivityMessage = `Campaign Activated`;
+      await prisma.campaignLog.create({
+        data: {
+          message: campaignActivityMessage,
+          adminId: adminId,
+          campaignId: campaignId,
+        },
+      });
+
       const adminLogMessage = `Resumed the campaign - ${campaign.name} `;
       logAdminChange(adminLogMessage, adminId, req);
     }
@@ -3042,24 +3085,21 @@ export const editCampaignInfo = async (req: Request, res: Response) => {
       },
     });
 
-    const message = 'Updated campaign information';
-    logChange(message, id, req);
-
     // Get admin info for logging
-    const admin = await prisma.user.findUnique({
-      where: { id: adminId },
-    });
-    const adminName = admin?.name || 'Admin';
-
-    // Log admin activity for editing campaign details
-    const adminActivityMessage = `${adminName} edited the Campaign Details`;
-    await logChange(adminActivityMessage, id, req);
-
     if (adminId) {
+      const campaignActivityMessage = `Campaign Details edited - [Campaign General Information]`;
+      await prisma.campaignLog.create({
+        data: {
+          message: campaignActivityMessage,
+          adminId: adminId,
+          campaignId: id,
+        },
+      });
+
       const adminLogMessage = `Updated campaign info for campaign - ${name}`;
       logAdminChange(adminLogMessage, adminId, req);
     }
-    return res.status(200).json({ message: message, ...updatedCampaign, ...updatedCampaignBrief });
+    return res.status(200).json({ message: 'Campaign information updated successfully', ...updatedCampaign, ...updatedCampaignBrief });
   } catch (error) {
     return res.status(400).json(error);
   }
@@ -3094,15 +3134,24 @@ export const editCampaignBrandOrCompany = async (req: Request, res: Response) =>
           },
     });
 
-    const message = `Updated ${brand ? 'brand' : 'company'}`;
-    logChange(message, updatedCampaign.id, req);
-
     const adminId = req.session.userid;
+    
+    // Get admin info for logging
     if (adminId) {
+      // Log campaign activity for editing company
+      const campaignActivityMessage = `Campaign Details edited - [Company]`;
+      await prisma.campaignLog.create({
+        data: {
+          message: campaignActivityMessage,
+          adminId: adminId,
+          campaignId: updatedCampaign.id,
+        },
+      });
+
       const adminLogMessage = `Updated ${brand ? 'brand' : 'company'}`;
       logAdminChange(adminLogMessage, adminId, req);
     }
-    return res.status(200).json({ message: message, ...updatedCampaign });
+    return res.status(200).json({ message: 'Company updated successfully', ...updatedCampaign });
   } catch (error) {
     return res.status(400).json(error);
   }
@@ -3122,14 +3171,24 @@ export const editCampaignDosAndDonts = async (req: Request, res: Response) => {
       },
     });
 
-    const message = "Dos and don'ts updated successfully.";
-    logChange(message, campaignId, req);
     const adminId = req.session.userid;
+    
+    // Get admin info for logging
     if (adminId) {
+      // Log campaign activity for editing do's and don'ts
+      const campaignActivityMessage = `Campaign Details edited - [Do's and Don'ts]`;
+      await prisma.campaignLog.create({
+        data: {
+          message: campaignActivityMessage,
+          adminId: adminId,
+          campaignId: campaignId,
+        },
+      });
+
       const adminLogMessage = "Updated do's and don'ts.";
       logAdminChange(adminLogMessage, adminId, req);
     }
-    return res.status(200).json({ message: message, ...updatedCampaignBrief });
+    return res.status(200).json({ message: "Do's and don'ts updated successfully", ...updatedCampaignBrief });
   } catch (error) {
     return res.status(400).json(error);
   }
@@ -3166,14 +3225,25 @@ export const editCampaignRequirements = async (req: Request, res: Response) => {
       },
     });
 
-    const message = 'Updated campaign requirements';
-    logChange(message, campaignId, req);
-
-    const adminmessage = `Update Campaign requirements for campaign - ${updatedCampaignRequirement.campaign.name} `;
     const adminId = req.session.userid;
-    logAdminChange(adminmessage, adminId, req);
+    
+    // Get admin info for logging
+    if (adminId) {
+      // Log campaign activity for editing campaign requirements
+      const campaignActivityMessage = `Campaign Details edited - [Campaign Requirements]`;
+      await prisma.campaignLog.create({
+        data: {
+          message: campaignActivityMessage,
+          adminId: adminId,
+          campaignId: campaignId,
+        },
+      });
 
-    return res.status(200).json({ message: message, newRequirement: updatedCampaignRequirement });
+      const adminmessage = `Update Campaign requirements for campaign - ${updatedCampaignRequirement.campaign.name} `;
+      logAdminChange(adminmessage, adminId, req);
+    }
+
+    return res.status(200).json({ message: 'Campaign requirements updated successfully', newRequirement: updatedCampaignRequirement });
   } catch (error) {
     return res.status(400).json(error);
   }
@@ -3306,15 +3376,24 @@ export const editCampaignTimeline = async (req: Request, res: Response) => {
       },
     });
 
-    const message = 'Updated timeline';
-    logChange(message, id, req);
-
     const adminId = req.session.userid;
+    
+    // Get admin info for logging
     if (adminId) {
+      // Log campaign activity for editing timeline
+      const campaignActivityMessage = `Campaign Details edited - [Timeline]`;
+      await prisma.campaignLog.create({
+        data: {
+          message: campaignActivityMessage,
+          adminId: adminId,
+          campaignId: id,
+        },
+      });
+
       const adminLogMessage = `Updated timeline for ${campaign.name} `;
       logAdminChange(adminLogMessage, adminId, req);
     }
-    return res.status(200).json({ message: message });
+    return res.status(200).json({ message: 'Timeline updated successfully' });
   } catch (error) {
     return res.status(400).json(error);
   }
@@ -4531,6 +4610,15 @@ export const sendAgreement = async (req: Request, res: Response) => {
       io.to(clients.get(isUserExist.id)).emit('agreementReady');
     }
 
+    // Log campaign activity for sending agreement
+    await prisma.campaignLog.create({
+      data: {
+        message: `Agreement has been sent to ${isUserExist.name || 'Creator'}`,
+        adminId: adminId,
+        campaignId: campaignId,
+      },
+    });
+
     return res.status(200).json({ message: 'Agreement has been sent.' });
   } catch (error) {
     return res.status(400).json(error);
@@ -4914,7 +5002,18 @@ export const editCampaignAdmin = async (req: Request, res: Response) => {
       });
     }
 
+    // Get admin info for logging
     if (adminId) {
+      // Log campaign activity for editing campaign manager
+      const campaignActivityMessage = `Campaign Details edited - [Campaign Manager]`;
+      await prisma.campaignLog.create({
+        data: {
+          message: campaignActivityMessage,
+          adminId: adminId,
+          campaignId: campaign.id,
+        },
+      });
+
       const adminLogMessage = hasClientAdmin
         ? `Updated Admins list in ${campaign.name} and converted to V4 (client added)`
         : `Updated Admins list in ${campaign.name} `;
@@ -5054,8 +5153,21 @@ export const editCampaignAttachments = async (req: Request, res: Response) => {
       },
     });
 
-    const adminLogMessage = `Updated Other Attachments in - ${campaign.name}`;
-    logAdminChange(adminLogMessage, adminId, req);
+    // Get admin info for logging
+    if (adminId) {
+      // Log campaign activity for editing other attachment
+      const campaignActivityMessage = `Campaign Details edited - [Other Attachment]`;
+      await prisma.campaignLog.create({
+        data: {
+          message: campaignActivityMessage,
+          adminId: adminId,
+          campaignId: campaign.id,
+        },
+      });
+
+      const adminLogMessage = `Updated Other Attachments in - ${campaign.name}`;
+      logAdminChange(adminLogMessage, adminId, req);
+    }
 
     return res.status(200).json({ message: 'Update Success.' });
   } catch (error) {
@@ -5118,7 +5230,18 @@ export const editCampaignReference = async (req: Request, res: Response) => {
       },
     });
 
+    // Get admin info for logging
     if (adminId) {
+      // Log campaign activity for editing reference
+      const campaignActivityMessage = `Campaign Details edited - [Reference]`;
+      await prisma.campaignLog.create({
+        data: {
+          message: campaignActivityMessage,
+          adminId: adminId,
+          campaignId: campaign.id,
+        },
+      });
+
       const Message = `Updated reference links in campaign - ${campaign.name}`;
       logAdminChange(Message, adminId, req);
     }
@@ -5154,7 +5277,18 @@ export const linkNewAgreement = async (req: Request, res: Response) => {
       },
     });
 
+    // Get admin info for logging
     if (adminId) {
+      // Log campaign activity for editing agreement
+      const campaignActivityMessage = `Campaign Details edited - [Agreement]`;
+      await prisma.campaignLog.create({
+        data: {
+          message: campaignActivityMessage,
+          adminId: adminId,
+          campaignId: campaign.id,
+        },
+      });
+
       const adminLogMessage = `Linked/Updated Agreement to - "${campaign.name}" `;
       logAdminChange(adminLogMessage, adminId, req);
     }
@@ -5426,11 +5560,14 @@ export const removeCreatorFromCampaign = async (req: Request, res: Response) => 
     const adminLogMessage = `Withdrew Creator "${user.name}" From - ${campaign.name} `;
     logAdminChange(adminLogMessage, adminId, req);
 
-    // Log the creator withdrawal in campaign logs
-    const admin = await prisma.user.findUnique({ where: { id: adminId } });
-    const adminName = admin?.name || 'Admin';
-    const adminActivityMessage = `${adminName} withdrew ${user.name} from the campaign`;
-    await logChange(adminActivityMessage, campaign.id, req);
+    // Log the creator removal in campaign logs
+    await prisma.campaignLog.create({
+      data: {
+        message: `${user.name || 'Creator'} has been removed from the campaign`,
+        adminId: adminId,
+        campaignId: campaign.id,
+      },
+    });
 
     return res.status(200).json({ message: 'Successfully withdraw' });
   } catch (error) {
@@ -5649,8 +5786,14 @@ export const submitAgreementV3 = async (req: Request, res: Response) => {
       }
     }
 
-    // Log campaign change
-    await logChange(`${submitter?.name || 'Creator'} submitted agreement`, pitch.campaignId as string, req);
+    // Log campaign activity for agreement submission
+    await prisma.campaignLog.create({
+      data: {
+        message: `${submitter?.name || 'Creator'} submitted agreement`,
+        adminId: userId,
+        campaignId: pitch.campaignId as string,
+      },
+    });
 
     console.log('[submitAgreementV3] success');
     return res.status(200).json({ message: 'Agreement submitted', pitch: updatedPitch });
@@ -6507,9 +6650,10 @@ export const activateClientCampaign = async (req: Request, res: Response) => {
     }
 
     // Create campaign log for activation
+    const campaignActivityMessage = `Campaign Activated`;
     await prisma.campaignLog.create({
       data: {
-        message: `Campaign activated by CSM ${user.name || user.id}`,
+        message: campaignActivityMessage,
         adminId: user.id,
         campaignId,
       },
@@ -7598,6 +7742,22 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
 
       // Note: Credits are now only utilized when agreement is sent (in sendAgreement function)
       // ugcVideos is still assigned to shortlistedCreator for submission creation
+
+      // Log campaign activity for each shortlisted creator
+      for (const creator of creators) {
+        const creatorUser = await tx.user.findUnique({
+          where: { id: creator.id },
+        });
+        if (creatorUser) {
+          await tx.campaignLog.create({
+            data: {
+              message: `${creatorUser.name || 'Creator'} has been shortlisted`,
+              adminId: userId,
+              campaignId: campaignId,
+            },
+          });
+        }
+      }
     });
 
     return res.status(200).json({ message: 'Successfully shortlisted creators for V3 flow' });
@@ -8310,6 +8470,22 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
         }
 
         createdCreators.push({ id: userId });
+      }
+
+      // Log campaign activity for each guest creator shortlisted
+      for (const creatorId of createdCreators) {
+        const guestUser = await tx.user.findUnique({
+          where: { id: creatorId.id },
+        });
+        if (guestUser) {
+          await tx.campaignLog.create({
+            data: {
+              message: `${guestUser.name || 'Guest Creator'} has been shortlisted`,
+              adminId: adminId,
+              campaignId: campaignId,
+            },
+          });
+        }
       }
     });
 
