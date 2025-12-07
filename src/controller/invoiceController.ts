@@ -339,10 +339,10 @@ export const createInvoice = async (req: Request, res: Response) => {
     currency,
     currencySymbol,
   }: invoiceData = req.body;
-  
+
   // Process the first item in the items array
   let item: InvoiceItem = items[0];
-  
+
   // Handle 'Others' service type with custom description
   if (item.service === 'Others' && item.description) {
     // Update the service field to include the custom description
@@ -350,19 +350,19 @@ export const createInvoice = async (req: Request, res: Response) => {
       ...item,
       service: `Others: ${item.description}`,
       // Keep the original description field as well
-      description: item.description
+      description: item.description,
     };
   }
-  
+
   // Add currency information to the item if provided
   if (currency) {
     item = {
       ...item,
       currency,
-      currencySymbol
+      currencySymbol,
     };
   }
-  
+
   const creatorIdInfo = invoiceFrom.id;
 
   try {

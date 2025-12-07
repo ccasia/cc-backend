@@ -6,13 +6,13 @@ const prisma = new PrismaClient();
 
 // Your token data from the successful auth
 const tokenData = {
-  access_token: "act.zwIO2vmHVwOVrdqXMrKo7xuvgav6g6u7SA9WGEPLYeU8ySEM6BsQZJv62yuW!5572.va",
+  access_token: 'act.zwIO2vmHVwOVrdqXMrKo7xuvgav6g6u7SA9WGEPLYeU8ySEM6BsQZJv62yuW!5572.va',
   expires_in: 86400,
-  open_id: "-000HCRiW50kT3njxhgF9pdaXVLcx6aCGeGt",
+  open_id: '-000HCRiW50kT3njxhgF9pdaXVLcx6aCGeGt',
   refresh_expires_in: 31536000,
-  refresh_token: "rft.ajfAgtW6U6aIotrENqergVjZwI3KMkNY9knnmY3cETeFxVuX6OTlqtHjDWcY!5576.va",
-  scope: "user.info.basic,video.list,user.info.profile,user.info.stats",
-  token_type: "Bearer"
+  refresh_token: 'rft.ajfAgtW6U6aIotrENqergVjZwI3KMkNY9knnmY3cETeFxVuX6OTlqtHjDWcY!5576.va',
+  scope: 'user.info.basic,video.list,user.info.profile,user.info.stats',
+  token_type: 'Bearer',
 };
 
 /**
@@ -143,7 +143,7 @@ async function connectTikTokUser(userId: string) {
         tiktokData: {
           ...tokenData,
           access_token: encryptedAccessToken,
-          refresh_token: encryptedRefreshToken
+          refresh_token: encryptedRefreshToken,
         },
         isTiktokConnected: true,
       },
@@ -197,8 +197,8 @@ async function connectTikTokUser(userId: string) {
       where: { userId: userId },
       include: {
         user: { select: { name: true, email: true } },
-        tiktokUser: true
-      }
+        tiktokUser: true,
+      },
     });
 
     console.log('\n🎉 TikTok Account Successfully Connected!');
@@ -210,7 +210,6 @@ async function connectTikTokUser(userId: string) {
     console.log(`💖 Likes: ${finalCreator?.tiktokUser?.likes_count}`);
     console.log(`📊 Engagement Rate: ${engagement_rate.toFixed(2)}%`);
     console.log(`🔗 Connected: ${finalCreator?.isTiktokConnected ? 'Yes' : 'No'}`);
-
   } catch (error: any) {
     console.error('❌ Error connecting TikTok account:', error.message);
     if (error.response) {
@@ -225,15 +224,13 @@ async function connectTikTokUser(userId: string) {
 
 async function main() {
   // Your test user IDs
-  const userIds = [
-    'cmgac552c000kuu4l728worq4',
-  ];
+  const userIds = ['cmgac552c000kuu4l728worq4'];
 
   console.log('🎯 TikTok User Connection Script');
   console.log('================================\n');
 
   const testUserId = userIds[0];
-  
+
   try {
     await connectTikTokUser(testUserId);
   } catch (error) {
@@ -248,4 +245,4 @@ main()
   .catch(console.error)
   .finally(() => prisma.$disconnect());
 
-export { connectTikTokUser }; 
+export { connectTikTokUser };

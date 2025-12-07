@@ -10,12 +10,12 @@ export const saveCaptionToHistory = async (
   submissionId: string,
   newCaption: string | null | undefined,
   author: string, // userId or adminId who wrote this caption
-  authorType: 'creator' | 'admin'
+  authorType: 'creator' | 'admin',
 ) => {
   // Get current submission caption to check if it's changing
   const submission = await prisma.submission.findUnique({
     where: { id: submissionId },
-    select: { caption: true }
+    select: { caption: true },
   });
 
   if (!submission) {
@@ -34,8 +34,8 @@ export const saveCaptionToHistory = async (
         submissionId: submissionId,
         caption: newCaption,
         author: author,
-        authorType: authorType
-      }
+        authorType: authorType,
+      },
     });
   }
 };

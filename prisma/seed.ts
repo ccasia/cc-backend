@@ -171,7 +171,7 @@ async function main() {
     // Fetch existing permissions
     const permissions = await prisma.permisions.findMany();
     const filteredPermissions = permissions.filter((item) => role.permissions.includes(item.name));
-    
+
     if (filteredPermissions.length > 0) {
       await prisma.role.create({
         data: {

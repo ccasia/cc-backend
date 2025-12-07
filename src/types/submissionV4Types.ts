@@ -2,7 +2,7 @@ export interface V4SubmissionCreateData {
   campaignId: string;
   userId: string;
   ugcVideos: number; // Number of regular videos
-  rawFootage: number; // Number of raw footage videos  
+  rawFootage: number; // Number of raw footage videos
   photos: boolean; // Whether photos are required
 }
 
@@ -16,21 +16,21 @@ export interface V4SubmissionResponse {
   contentOrder: number | null;
   submissionVersion: string;
   createdAt: string;
-  video: Array<{
+  video: {
     id: string;
     url: string | null;
     status: string;
-  }>;
-  photos: Array<{
+  }[];
+  photos: {
     id: string;
     url: string;
     status: string;
-  }>;
-  rawFootages: Array<{
+  }[];
+  rawFootages: {
     id: string;
     url: string;
     status: string;
-  }>;
+  }[];
 }
 
 export interface PostingLinkUpdate {
@@ -48,12 +48,12 @@ export interface V4ContentSubmission {
 
 export type V4SubmissionType = 'AGREEMENT_FORM' | 'VIDEO' | 'PHOTO' | 'RAW_FOOTAGE';
 
-export type V4SubmissionStatus = 
-  | 'PENDING_REVIEW' 
-  | 'IN_PROGRESS' 
-  | 'APPROVED' 
-  | 'REJECTED' 
-  | 'SENT_TO_CLIENT' 
-  | 'CLIENT_APPROVED' 
+export type V4SubmissionStatus =
+  | 'PENDING_REVIEW'
+  | 'IN_PROGRESS'
+  | 'APPROVED'
+  | 'REJECTED'
+  | 'SENT_TO_CLIENT'
+  | 'CLIENT_APPROVED'
   | 'CLIENT_FEEDBACK'
   | 'SENT_TO_ADMIN';

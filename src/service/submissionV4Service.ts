@@ -6,16 +6,16 @@ const prisma = new PrismaClient();
 
 /**
  * Create V4 submissions for an approved creator
- * This function is now mainly for consistency - actual content submissions 
+ * This function is now mainly for consistency - actual content submissions
  * are created when the agreement is approved via createContentSubmissionsAfterAgreement
  */
 export const createV4SubmissionsForCreator = async (data: V4SubmissionCreateData) => {
   const { campaignId, userId } = data;
-  
+
   try {
     console.log(`🔄 V4 submission creation requested for user ${userId} in campaign ${campaignId}`);
     console.log(`ℹ️  Content submissions will be created when agreement is approved`);
-    
+
     // Return empty result since we don't create any submissions here anymore
     // Content submissions are created via createContentSubmissionsAfterAgreement
     return { count: 0 };
@@ -34,19 +34,19 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
     const baseWhereClause: any = {
       campaignId,
     };
-    
+
     if (userId) {
       baseWhereClause.userId = userId;
     }
-    
+
     // Get v4 submissions
     const v4Submissions = await prisma.submission.findMany({
       where: {
         ...baseWhereClause,
         submissionVersion: 'v4',
         campaign: {
-          submissionVersion: 'v4'
-        }
+          submissionVersion: 'v4',
+        },
       },
       include: {
         submissionType: true,
@@ -54,26 +54,26 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
           select: {
             id: true,
             name: true,
-            campaignType: true
-          }
+            campaignType: true,
+          },
         },
         admin: {
           select: {
             userId: true,
             user: {
               select: {
-                name: true
-              }
+                name: true,
+              },
             },
-            role: true
-          }
+            role: true,
+          },
         },
         user: {
           select: {
             id: true,
             name: true,
-            email: true
-          }
+            email: true,
+          },
         },
         video: {
           select: {
@@ -88,10 +88,10 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
             admin: {
               select: {
                 id: true,
-                name: true
-              }
-            }
-          }
+                name: true,
+              },
+            },
+          },
         },
         photos: {
           select: {
@@ -102,7 +102,7 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
             reasons: true,
             feedbackAt: true,
             createdAt: true,
-          }
+          },
         },
         rawFootages: {
           select: {
@@ -117,10 +117,10 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
             admin: {
               select: {
                 id: true,
-                name: true
-              }
-            }
-          }
+                name: true,
+              },
+            },
+          },
         },
         feedback: {
           include: {
@@ -128,40 +128,40 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
               select: {
                 id: true,
                 name: true,
-                role: true
-              }
-            }
+                role: true,
+              },
+            },
           },
           orderBy: {
-            createdAt: 'desc'
-          }
-        }
+            createdAt: 'desc',
+          },
+        },
       },
       orderBy: [
         {
           submissionType: {
-            type: 'asc'
-          }
+            type: 'asc',
+          },
         },
         {
-          contentOrder: 'asc'
+          contentOrder: 'asc',
         },
         {
-          createdAt: 'asc'
-        }
-      ]
+          createdAt: 'asc',
+        },
+      ],
     });
-    
+
     // Also get AGREEMENT_FORM submissions from v3 campaigns (needed for approval check)
     // Only fetch AGREEMENT_FORM that are NOT already in v4Submissions (to avoid duplicates)
-    const v4SubmissionIds = new Set(v4Submissions.map(s => s.id));
-    
+    const v4SubmissionIds = new Set(v4Submissions.map((s) => s.id));
+
     const agreementSubmissions = await prisma.submission.findMany({
       where: {
         ...baseWhereClause,
         submissionType: {
-          type: 'AGREEMENT_FORM'
-        }
+          type: 'AGREEMENT_FORM',
+        },
       },
       include: {
         submissionType: true,
@@ -169,15 +169,15 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
           select: {
             id: true,
             name: true,
-            campaignType: true
-          }
+            campaignType: true,
+          },
         },
         user: {
           select: {
             id: true,
             name: true,
-            email: true
-          }
+            email: true,
+          },
         },
         feedback: {
           include: {
@@ -185,23 +185,23 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
               select: {
                 id: true,
                 name: true,
-                role: true
-              }
-            }
+                role: true,
+              },
+            },
           },
           orderBy: {
-            createdAt: 'desc'
-          }
-        }
-      }
+            createdAt: 'desc',
+          },
+        },
+      },
     });
-    
+
     // Filter out any AGREEMENT_FORM submissions that are already in v4Submissions to prevent duplicates
-    const uniqueAgreementSubmissions = agreementSubmissions.filter(s => !v4SubmissionIds.has(s.id));
-    
+    const uniqueAgreementSubmissions = agreementSubmissions.filter((s) => !v4SubmissionIds.has(s.id));
+
     // Combine both sets of submissions (now without duplicates)
     const allSubmissions = [...v4Submissions, ...uniqueAgreementSubmissions];
-    
+
     // Sort combined submissions
     allSubmissions.sort((a, b) => {
       // Agreement forms first, then by type, then by content order
@@ -211,15 +211,15 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
       if (b.submissionType.type === 'AGREEMENT_FORM' && a.submissionType.type !== 'AGREEMENT_FORM') {
         return 1;
       }
-      
+
       const typeComparison = a.submissionType.type.localeCompare(b.submissionType.type);
       if (typeComparison !== 0) return typeComparison;
-      
+
       const orderA = a.contentOrder || 0;
       const orderB = b.contentOrder || 0;
       return orderA - orderB;
     });
-    
+
     return allSubmissions;
   } catch (error) {
     console.error('Error getting v4 submissions:', error);
@@ -235,56 +235,58 @@ export const updatePostingLink = async (submissionId: string, postingLink: strin
     // Verify submission is approved and v4
     const submission = await prisma.submission.findUnique({
       where: { id: submissionId },
-      include: { 
+      include: {
         submissionType: true,
         campaign: {
-          select: { campaignType: true }
+          select: { campaignType: true },
         },
         video: {
-          select: { status: true }
-        }
-      }
+          select: { status: true },
+        },
+      },
     });
-    
+
     if (!submission) {
       throw new Error('Submission not found');
     }
-    
+
     if (submission.submissionVersion !== 'v4') {
       throw new Error('Not a v4 submission');
     }
-    
+
     // Check if campaign type allows posting links
     if (submission.campaign?.campaignType === 'ugc') {
       throw new Error('Posting links are not required for UGC (No posting) campaigns');
     }
-    
+
     // Check if posting link can be added based on approval status
     const { canAddPostingLink } = require('../utils/v4StatusUtils');
     const videoStatus = submission.video[0]?.status || 'PENDING';
-    
+
     if (!canAddPostingLink(submission.status, videoStatus as any)) {
-      throw new Error(`Cannot add posting link. Video must be fully approved first. Current status: ${submission.status}, Video status: ${videoStatus}`);
+      throw new Error(
+        `Cannot add posting link. Video must be fully approved first. Current status: ${submission.status}, Video status: ${videoStatus}`,
+      );
     }
-    
+
     // Update the posting link and set status to PENDING_REVIEW
     // Track who added the posting link (admin or creator)
     const updatedSubmission = await prisma.submission.update({
       where: { id: submissionId },
-      data: { 
+      data: {
         content: postingLink,
         status: 'CLIENT_APPROVED',
         approvedByAdminId: adminId || null, // Track if admin added the link
-        updatedAt: new Date()
+        updatedAt: new Date(),
       },
       include: {
         submissionType: true,
         video: true,
         photos: true,
-        rawFootages: true
-      }
+        rawFootages: true,
+      },
     });
-    
+
     return updatedSubmission;
   } catch (error) {
     console.error('Error updating posting link:', error);
@@ -296,47 +298,49 @@ export const updatePostingLink = async (submissionId: string, postingLink: strin
  * Submit content for a V4 submission
  */
 export const submitV4Content = async (
-  submissionId: string, 
+  submissionId: string,
   contentData: {
     videoUrls?: string[];
     photoUrls?: string[];
     rawFootageUrls?: string[];
     caption?: string;
-  }
+  },
 ) => {
   try {
     const submission = await prisma.submission.findUnique({
       where: { id: submissionId },
-      include: { 
+      include: {
         submissionType: true,
         campaign: true,
         video: {
-          select: { status: true }
-        }
-      }
+          select: { status: true },
+        },
+      },
     });
-    
+
     if (!submission) {
       throw new Error('Submission not found');
     }
-    
+
     if (submission.submissionVersion !== 'v4') {
       throw new Error('Not a v4 submission');
     }
-    
+
     // Check if creator can upload based on current status
     const { canCreatorUpload } = require('../utils/v4StatusUtils');
     const videoStatus = submission.video[0]?.status || 'PENDING';
-    
+
     if (!canCreatorUpload(submission.status, videoStatus as any)) {
-      throw new Error(`Cannot upload content. Current status: ${submission.status}. Please wait for review to complete.`);
+      throw new Error(
+        `Cannot upload content. Current status: ${submission.status}. Please wait for review to complete.`,
+      );
     }
-    
+
     const submissionType = submission.submissionType.type as string;
-    
+
     // Create content records based on submission type
     const updates: any[] = [];
-    
+
     if (submissionType === 'VIDEO' && contentData.videoUrls) {
       for (const url of contentData.videoUrls) {
         updates.push(
@@ -346,13 +350,13 @@ export const submitV4Content = async (
               campaignId: submission.campaignId,
               userId: submission.userId,
               submissionId: submission.id,
-              status: 'PENDING'
-            }
-          })
+              status: 'PENDING',
+            },
+          }),
         );
       }
     }
-    
+
     if (submissionType === 'PHOTO' && contentData.photoUrls) {
       for (const url of contentData.photoUrls) {
         updates.push(
@@ -362,13 +366,13 @@ export const submitV4Content = async (
               campaignId: submission.campaignId,
               userId: submission.userId,
               submissionId: submission.id,
-              status: 'PENDING'
-            }
-          })
+              status: 'PENDING',
+            },
+          }),
         );
       }
     }
-    
+
     if (submissionType === 'RAW_FOOTAGE' && contentData.rawFootageUrls) {
       for (const url of contentData.rawFootageUrls) {
         updates.push(
@@ -378,9 +382,9 @@ export const submitV4Content = async (
               campaignId: submission.campaignId,
               userId: submission.userId,
               submissionId: submission.id,
-              status: 'PENDING'
-            }
-          })
+              status: 'PENDING',
+            },
+          }),
         );
       }
     }
@@ -396,14 +400,14 @@ export const submitV4Content = async (
           caption: contentData.caption,
           status: 'PENDING_REVIEW',
           submissionDate: new Date(),
-          updatedAt: new Date()
-        }
-      })
+          updatedAt: new Date(),
+        },
+      }),
     );
 
     // Execute all updates in transaction
     const results = await prisma.$transaction(updates);
-    
+
     return results[results.length - 1]; // Return updated submission
   } catch (error) {
     console.error('Error submitting v4 content:', error);
@@ -417,16 +421,18 @@ export const submitV4Content = async (
  */
 export const createContentSubmissionsAfterAgreement = async (agreementSubmission: any) => {
   try {
-    console.log(`🔍 Creating content submissions for user ${agreementSubmission.userId} in campaign ${agreementSubmission.campaignId}`);
-    
+    console.log(
+      `🔍 Creating content submissions for user ${agreementSubmission.userId} in campaign ${agreementSubmission.campaignId}`,
+    );
+
     // Get campaign details and shortlisted creator info
     const campaign = await prisma.campaign.findUnique({
       where: { id: agreementSubmission.campaignId },
       include: {
         shortlisted: {
-          where: { userId: agreementSubmission.userId }
-        }
-      }
+          where: { userId: agreementSubmission.userId },
+        },
+      },
     });
 
     if (!campaign) {
@@ -439,26 +445,37 @@ export const createContentSubmissionsAfterAgreement = async (agreementSubmission
 
     const shortlistedCreator = campaign.shortlisted[0];
     if (!shortlistedCreator) {
-      console.error(`❌ Creator ${agreementSubmission.userId} not found in shortlisted creators for campaign ${agreementSubmission.campaignId}`);
+      console.error(
+        `❌ Creator ${agreementSubmission.userId} not found in shortlisted creators for campaign ${agreementSubmission.campaignId}`,
+      );
       throw new Error('Creator not found in shortlisted creators');
     }
 
-    console.log(`🎬 Shortlisted creator found - ugcVideos: ${shortlistedCreator.ugcVideos}, campaign photos: ${campaign.photos}, rawFootage: ${campaign.rawFootage}`);
+    console.log(
+      `🎬 Shortlisted creator found - ugcVideos: ${shortlistedCreator.ugcVideos}, campaign photos: ${campaign.photos}, rawFootage: ${campaign.rawFootage}`,
+    );
 
     // Get submission type records
     const allSubmissionTypes = await prisma.submissionType.findMany();
-    console.log(`📋 All submission types in database:`, allSubmissionTypes.map(st => ({ id: st.id, type: st.type })));
-    
-    const submissionTypes = allSubmissionTypes.filter(st => 
-      ['VIDEO', 'PHOTO', 'RAW_FOOTAGE'].includes(st.type)
+    console.log(
+      `📋 All submission types in database:`,
+      allSubmissionTypes.map((st) => ({ id: st.id, type: st.type })),
     );
 
-    console.log(`📋 Found ${submissionTypes.length} matching submissionn types:`, submissionTypes.map(st => ({ id: st.id, type: st.type })));
+    const submissionTypes = allSubmissionTypes.filter((st) => ['VIDEO', 'PHOTO', 'RAW_FOOTAGE'].includes(st.type));
+
+    console.log(
+      `📋 Found ${submissionTypes.length} matching submissionn types:`,
+      submissionTypes.map((st) => ({ id: st.id, type: st.type })),
+    );
 
     const getSubmissionTypeId = (type: string) => {
-      const foundType = submissionTypes.find(st => st.type === type);
+      const foundType = submissionTypes.find((st) => st.type === type);
       if (!foundType) {
-        console.error(`❌ Submission type '${type}' not found! Available types:`, submissionTypes.map(st => st.type));
+        console.error(
+          `❌ Submission type '${type}' not found! Available types:`,
+          submissionTypes.map((st) => st.type),
+        );
         throw new Error(`Submission type '${type}' not found`);
       }
       return foundType.id;
@@ -476,7 +493,7 @@ export const createContentSubmissionsAfterAgreement = async (agreementSubmission
         contentOrder: i,
         submissionVersion: 'v4',
         status: 'NOT_STARTED' as const,
-        content: null
+        content: null,
       });
     }
 
@@ -489,7 +506,7 @@ export const createContentSubmissionsAfterAgreement = async (agreementSubmission
         contentOrder: 1, // Single photo submission
         submissionVersion: 'v4',
         status: 'NOT_STARTED' as const,
-        content: null
+        content: null,
       });
     }
 
@@ -502,21 +519,22 @@ export const createContentSubmissionsAfterAgreement = async (agreementSubmission
         contentOrder: 1, // Single raw footage submission
         submissionVersion: 'v4',
         status: 'NOT_STARTED' as const,
-        content: null
+        content: null,
       });
     }
 
-    console.log(`📝 Prepared ${contentSubmissions.length} content submissions:`, 
-      contentSubmissions.map(s => ({ 
-        submissionTypeId: s.submissionTypeId, 
+    console.log(
+      `📝 Prepared ${contentSubmissions.length} content submissions:`,
+      contentSubmissions.map((s) => ({
+        submissionTypeId: s.submissionTypeId,
         order: s.contentOrder,
         campaignId: s.campaignId,
-        userId: s.userId
-      }))
+        userId: s.userId,
+      })),
     );
 
     // Validate all submissions have valid submissionTypeId
-    const invalidSubmissions = contentSubmissions.filter(s => !s.submissionTypeId);
+    const invalidSubmissions = contentSubmissions.filter((s) => !s.submissionTypeId);
     if (invalidSubmissions.length > 0) {
       console.error(`❌ Found ${invalidSubmissions.length} submissions with invalid submissionTypeId`);
       throw new Error('Some submissions have undefined submissionTypeId');
@@ -525,15 +543,19 @@ export const createContentSubmissionsAfterAgreement = async (agreementSubmission
     // Create all content submissions
     if (contentSubmissions.length > 0) {
       const createdSubmissions = await prisma.submission.createMany({
-        data: contentSubmissions
+        data: contentSubmissions,
       });
 
-      console.log(`✅ Created ${createdSubmissions.count} content submissions for user ${agreementSubmission.userId} in campaign ${agreementSubmission.campaignId}`);
-      
+      console.log(
+        `✅ Created ${createdSubmissions.count} content submissions for user ${agreementSubmission.userId} in campaign ${agreementSubmission.campaignId}`,
+      );
+
       return createdSubmissions;
     }
 
-    console.log(`⚠️  No content submissions created - ugcVideos: ${shortlistedCreator.ugcVideos}, photos: ${campaign.photos}, rawFootage: ${campaign.rawFootage}`);
+    console.log(
+      `⚠️  No content submissions created - ugcVideos: ${shortlistedCreator.ugcVideos}, photos: ${campaign.photos}, rawFootage: ${campaign.rawFootage}`,
+    );
     return { count: 0 };
   } catch (error) {
     console.error('Error creating content submissions after agreement:', error);
@@ -549,35 +571,35 @@ export const updateDueDateService = async (submissionId: string, dueDate: string
     // Verify submission exists and is v4
     const submission = await prisma.submission.findUnique({
       where: { id: submissionId },
-      include: { 
+      include: {
         submissionType: true,
-        campaign: true
-      }
+        campaign: true,
+      },
     });
-    
+
     if (!submission) {
       throw new Error('Submission not found');
     }
-    
+
     if (submission.submissionVersion !== 'v4') {
       throw new Error('Not a v4 submission');
     }
-    
+
     // Update the due date
     const updatedSubmission = await prisma.submission.update({
       where: { id: submissionId },
-      data: { 
+      data: {
         dueDate: new Date(dueDate),
-        updatedAt: new Date()
+        updatedAt: new Date(),
       },
       include: {
         submissionType: true,
         video: true,
         photos: true,
-        rawFootages: true
-      }
+        rawFootages: true,
+      },
     });
-    
+
     return updatedSubmission;
   } catch (error) {
     console.error('Error in updateDueDateService:', error);

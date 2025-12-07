@@ -1,9 +1,9 @@
 /**
  * Migration script to copy guestProfileLink values from User to Creator.profileLink
- * 
+ *
  * This ensures backwards compatibility when removing the guestProfileLink field from User model.
  * Run this script BEFORE applying the schema migration that removes guestProfileLink.
- * 
+ *
  * Usage: npx ts-node prisma/migrateGuestProfileLinks.ts
  */
 
