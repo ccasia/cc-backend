@@ -539,7 +539,7 @@ export const createClientCampaign = async (req: Request, res: Response) => {
       // Create a campaign log entry to track that this client created the campaign
       await tx.campaignLog.create({
         data: {
-          message: `Campaign created by client ${user.name || user.id}`,
+          message: `Campaign Created`,
           adminId: userId,
           campaignId: campaign.id,
         },

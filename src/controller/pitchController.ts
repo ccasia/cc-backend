@@ -349,9 +349,10 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
         }
       }
 
+      // Log campaign activity for admin pitch approval (v4 - sent to client)
       await prisma.campaignLog.create({
         data: {
-          message: `Admin "${admin?.name || 'Unknown'}" approved pitch from Creator "${pitch.user.name}" and sent to client`,
+          message: `${pitch.user.name || 'Creator'}'s pitch has been approved`,
           adminId: adminId,
           campaignId: pitch.campaignId,
         },
@@ -379,9 +380,10 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
         io.to(creatorSocketId).emit('pitchUpdate');
       }
 
+      // Log campaign activity for admin pitch approval
       await prisma.campaignLog.create({
         data: {
-          message: `Admin "${admin?.name || 'Unknown'}" approved pitch from Creator "${pitch.user.name}" (non-v4 direct approval)`,
+          message: `${pitch.user.name || 'Creator'}'s pitch has been approved`,
           adminId: adminId,
           campaignId: pitch.campaignId,
         },
@@ -479,13 +481,9 @@ export const rejectPitchByAdmin = async (req: Request, res: Response) => {
     });
 
     // Create campaign log for admin rejection
-    const admin = await prisma.user.findUnique({
-      where: { id: adminId },
-    });
-    
     await prisma.campaignLog.create({
       data: {
-        message: `Admin "${admin?.name || 'Unknown'}" rejected pitch from Creator "${pitch.user.name}"`,
+        message: `${pitch.user.name || 'Creator'}'s pitch has been rejected`,
         adminId: adminId,
         campaignId: pitch.campaignId,
       },
@@ -854,13 +852,10 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
     }
 
     // Create campaign log for client approval
-    const client = await prisma.user.findUnique({
-      where: { id: clientId },
-    });
-    
+    // Log campaign activity for client pitch approval
     await prisma.campaignLog.create({
       data: {
-        message: `Client "${client?.name || 'Unknown'}" approved pitch from Creator "${pitch.user.name}"`,
+        message: `${pitch.user.name || 'Creator'}'s profile has been approved`,
         adminId: clientId,
         campaignId: pitch.campaignId,
       },
@@ -984,13 +979,10 @@ export const rejectPitchByClient = async (req: Request, res: Response) => {
     }
 
     // Create campaign log for client rejection
-    const client = await prisma.user.findUnique({
-      where: { id: clientId },
-    });
-    
+    // Log campaign activity for client pitch rejection
     await prisma.campaignLog.create({
       data: {
-        message: `Client "${client?.name || 'Unknown'}" rejected pitch from Creator "${pitch.user.name}"`,
+        message: `${pitch.user.name || 'Creator'}'s profile has been rejected`,
         adminId: clientId,
         campaignId: pitch.campaignId,
       },
@@ -1087,13 +1079,10 @@ export const withdrawCreatorFromCampaign = async (req: Request, res: Response) =
     }
 
     // Create campaign log
-    const admin = await prisma.user.findUnique({
-      where: { id: adminId },
-    });
-
+    // Log campaign activity for admin withdrawal
     await prisma.campaignLog.create({
       data: {
-        message: `Admin "${admin?.name || 'Unknown'}" withdrew Creator "${pitch.user.name}" from the campaign`,
+        message: `${pitch.user.name || 'Creator'} has been withdrawn from the campaign`,
         adminId: adminId,
         campaignId: pitch.campaignId,
       },
@@ -1203,13 +1192,10 @@ export const maybePitchByClient = async (req: Request, res: Response) => {
     }
 
     // Create campaign log for client maybe
-    const client = await prisma.user.findUnique({
-      where: { id: clientId },
-    });
-    
+    // Log campaign activity for client setting pitch to maybe
     await prisma.campaignLog.create({
       data: {
-        message: `Client "${client?.name || 'Unknown'}" set pitch from Creator "${pitch.user.name}" to maybe`,
+        message: `Chose maybe for ${pitch.user.name || 'Creator'}`,
         adminId: clientId,
         campaignId: pitch.campaignId,
       },
@@ -1397,6 +1383,15 @@ export const submitAgreement = async (req: Request, res: Response) => {
         },
       });
     }
+
+    // Log campaign activity for agreement submission
+    await prisma.campaignLog.create({
+      data: {
+        message: `${pitch.user.name || 'Creator'} submitted agreement`,
+        adminId: creatorId,
+        campaignId: pitch.campaignId,
+      },
+    });
 
     console.log(`Agreement submitted for pitch ${pitchId}, status updated to AGREEMENT_SUBMITTED`);
     return res.status(200).json({ message: 'Agreement submitted successfully' });
