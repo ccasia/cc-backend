@@ -141,12 +141,12 @@ export const fetchCampaignLogisticForCreator = async (creatorId: string, campaig
   return logistics;
 };
 
-type ProductCreateData = {
+interface ProductCreateData {
   productName: string;
   campaignId: string;
   description?: string;
   sku?: string;
-};
+}
 
 export const createProductForLogistic = async (data: ProductCreateData) => {
   const { productName, campaignId, description, sku } = data;
@@ -191,35 +191,35 @@ export const fetchProductsForCampaign = async (campaignId: string) => {
   return products;
 };
 
-type ProductInput = {
+interface ProductInput {
   productId: string;
   quantity: number;
-};
+}
 
 //
-type AssignmentPerCreatorInput = {
+interface AssignmentPerCreatorInput {
   creatorId: string;
   items: ProductInput[];
-};
+}
 
-type BulkAssignData = {
+interface BulkAssignData {
   campaignId: string;
   createdById: string;
   assignments: AssignmentPerCreatorInput[];
-};
+}
 
-type SingleAssignData = {
+interface SingleAssignData {
   campaignId: string;
   creatorId: string;
   createdById: string;
   items: ProductInput[];
-};
+}
 
-type SchedulingData = {
+interface SchedulingData {
   trackingLink: string;
   expectedDeliveryDate: string;
   address: string;
-};
+}
 
 export const assignSingleCreator = async (data: SingleAssignData) => {
   const { campaignId, creatorId, createdById, items } = data;
@@ -424,11 +424,11 @@ export const scheduleDeliveryService = async (logisticId: string, data: Scheduli
   });
 };
 
-type CreatorDetailsData = {
+interface CreatorDetailsData {
   address: string;
   phoneNumber: string;
   dietaryRestrictions?: string;
-};
+}
 
 export const creatorDeliveryDetails = async (logisticId: string, data: CreatorDetailsData) => {
   const { address, phoneNumber, dietaryRestrictions } = data;
@@ -501,14 +501,14 @@ export const updateStatusService = async (logisticId: string, status: LogisticSt
   });
 };
 
-type AdminUpdateData = {
+interface AdminUpdateData {
   items?: ProductInput[];
   address?: string;
   phoneNumber?: string;
   trackingLink?: string;
   expectedDeliveryDate?: string | Date;
   dietaryRestrictions?: string;
-};
+}
 
 export const adminUpdateService = async (logisticId: string, data: AdminUpdateData) => {
   const { items, address, phoneNumber, trackingLink, expectedDeliveryDate, dietaryRestrictions } = data;

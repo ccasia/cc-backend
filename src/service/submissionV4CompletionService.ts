@@ -15,19 +15,16 @@ interface CompletionStatus {
 /**
  * Check if all V4 deliverables are complete for a creator in a campaign
  * This function implements the completion criteria specified:
- * 
+ *
  * For normal campaigns:
  * 1. Video submissions (if any) must be POSTED
- * 2. Photo submissions (if any) must be POSTED  
+ * 2. Photo submissions (if any) must be POSTED
  * 3. Raw Footage submissions (if any) must be CLIENT_APPROVED
  *
  * For UGC campaigns:
  * All submissions must be CLIENT_APPROVED (posting links not required)
  */
-export const checkV4SubmissionCompletion = async (
-  campaignId: string, 
-  userId: string
-): Promise<CompletionStatus> => {
+export const checkV4SubmissionCompletion = async (campaignId: string, userId: string): Promise<CompletionStatus> => {
   try {
     console.log(`🔍 Checking V4 completion for user ${userId} in campaign ${campaignId}`);
 
@@ -39,17 +36,17 @@ export const checkV4SubmissionCompletion = async (
           where: { userId },
           select: {
             isCampaignDone: true,
-            ugcVideos: true
-          }
-        }
-      }
+            ugcVideos: true,
+          },
+        },
+      },
     });
 
     if (!campaign) {
       return {
         isComplete: false,
         reason: 'Campaign not found',
-        missingDeliverables: []
+        missingDeliverables: [],
       };
     }
 
@@ -58,7 +55,7 @@ export const checkV4SubmissionCompletion = async (
       return {
         isComplete: false,
         reason: 'Creator not found in campaign',
-        missingDeliverables: []
+        missingDeliverables: [],
       };
     }
 
@@ -68,7 +65,7 @@ export const checkV4SubmissionCompletion = async (
       return {
         isComplete: true,
         reason: 'Already completed',
-        missingDeliverables: []
+        missingDeliverables: [],
       };
     }
 
@@ -80,17 +77,14 @@ export const checkV4SubmissionCompletion = async (
         submissionVersion: 'v4',
         submissionType: {
           type: {
-            in: ['VIDEO', 'PHOTO', 'RAW_FOOTAGE']
-          }
-        }
+            in: ['VIDEO', 'PHOTO', 'RAW_FOOTAGE'],
+          },
+        },
       },
       include: {
-        submissionType: true
+        submissionType: true,
       },
-      orderBy: [
-        { submissionType: { type: 'asc' } },
-        { contentOrder: 'asc' }
-      ]
+      orderBy: [{ submissionType: { type: 'asc' } }, { contentOrder: 'asc' }],
     });
 
     console.log(`📋 Found ${submissions.length} V4 content submissions for user ${userId}`);
@@ -99,7 +93,7 @@ export const checkV4SubmissionCompletion = async (
       return {
         isComplete: false,
         reason: 'No content submissions found',
-        missingDeliverables: []
+        missingDeliverables: [],
       };
     }
 
@@ -108,11 +102,13 @@ export const checkV4SubmissionCompletion = async (
     let allComplete = true;
 
     // Group submissions by type for easier analysis
-    const videoSubmissions = submissions.filter(s => s.submissionType.type === 'VIDEO');
-    const photoSubmissions = submissions.filter(s => s.submissionType.type === 'PHOTO');
-    const rawFootageSubmissions = submissions.filter(s => s.submissionType.type === 'RAW_FOOTAGE');
+    const videoSubmissions = submissions.filter((s) => s.submissionType.type === 'VIDEO');
+    const photoSubmissions = submissions.filter((s) => s.submissionType.type === 'PHOTO');
+    const rawFootageSubmissions = submissions.filter((s) => s.submissionType.type === 'RAW_FOOTAGE');
 
-    console.log(`📊 Submission breakdown - Videos: ${videoSubmissions.length}, Photos: ${photoSubmissions.length}, Raw Footage: ${rawFootageSubmissions.length}`);
+    console.log(
+      `📊 Submission breakdown - Videos: ${videoSubmissions.length}, Photos: ${photoSubmissions.length}, Raw Footage: ${rawFootageSubmissions.length}`,
+    );
     console.log(`🏷️  Campaign type: ${campaign.campaignType} (UGC: ${isUGCCampaign})`);
 
     if (isUGCCampaign) {
@@ -144,7 +140,9 @@ export const checkV4SubmissionCompletion = async (
       }
     } else {
       // For normal campaigns: Videos and Photos must be POSTED, Raw Footage must be CLIENT_APPROVED
-      console.log(`📱 Checking normal campaign completion - Videos/Photos must be POSTED, Raw Footage must be CLIENT_APPROVED`);
+      console.log(
+        `📱 Checking normal campaign completion - Videos/Photos must be POSTED, Raw Footage must be CLIENT_APPROVED`,
+      );
 
       // Check video submissions - must be POSTED
       for (const submission of videoSubmissions) {
@@ -173,22 +171,21 @@ export const checkV4SubmissionCompletion = async (
 
     const completionStatus: CompletionStatus = {
       isComplete: allComplete,
-      reason: allComplete 
+      reason: allComplete
         ? `All deliverables complete for ${isUGCCampaign ? 'UGC' : 'normal'} campaign`
         : `Missing deliverables: ${missingDeliverables.join(', ')}`,
-      missingDeliverables
+      missingDeliverables,
     };
 
     console.log(`📋 V4 Completion check result for user ${userId}:`, completionStatus);
-    
-    return completionStatus;
 
+    return completionStatus;
   } catch (error) {
     console.error('Error checking V4 submission completion:', error);
     return {
       isComplete: false,
       reason: `Error checking completion: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      missingDeliverables: []
+      missingDeliverables: [],
     };
   }
 };
@@ -200,14 +197,14 @@ export const checkV4SubmissionCompletion = async (
 export const handleV4CompletedCampaign = async (
   campaignId: string,
   userId: string,
-  adminId?: string
+  adminId?: string,
 ): Promise<boolean> => {
   try {
     console.log(`🎯 Handling V4 campaign completion for user ${userId} in campaign ${campaignId}`);
 
     // Check if campaign is actually complete
     const completionStatus = await checkV4SubmissionCompletion(campaignId, userId);
-    
+
     if (!completionStatus.isComplete) {
       console.log(`⏳ Campaign not yet complete: ${completionStatus.reason}`);
       return false;
@@ -217,7 +214,7 @@ export const handleV4CompletedCampaign = async (
     const creatorData = await prisma.shortListedCreator.findFirst({
       where: {
         campaignId,
-        userId
+        userId,
       },
       include: {
         user: {
@@ -225,16 +222,16 @@ export const handleV4CompletedCampaign = async (
             creator: true,
             paymentForm: true,
             creatorAgreement: {
-              where: { campaignId }
-            }
-          }
+              where: { campaignId },
+            },
+          },
         },
         campaign: {
           include: {
-            campaignBrief: true
-          }
-        }
-      }
+            campaignBrief: true,
+          },
+        },
+      },
     });
 
     if (!creatorData) {
@@ -264,13 +261,13 @@ export const handleV4CompletedCampaign = async (
       {
         user: creatorData.user,
         campaignId,
-        updatedAt: new Date()
+        updatedAt: new Date(),
       },
       userId,
       creatorAgreement.amount,
       undefined, // invoiceItems - V4 doesn't use detailed items
       undefined, // tx - not in transaction
-      adminId
+      adminId,
     );
 
     // Mark campaign as done
@@ -278,12 +275,12 @@ export const handleV4CompletedCampaign = async (
       where: {
         userId_campaignId: {
           userId,
-          campaignId
-        }
+          campaignId,
+        },
       },
       data: {
-        isCampaignDone: true
-      }
+        isCampaignDone: true,
+      },
     });
 
     console.log(`✅ V4 Campaign completed for user ${userId} - invoice generated: ${invoice?.id}`);
@@ -292,7 +289,6 @@ export const handleV4CompletedCampaign = async (
     // TODO: Send email notification (similar to V3 flow)
 
     return true;
-
   } catch (error) {
     console.error('Error handling V4 campaign completion:', error);
     throw error;
@@ -303,10 +299,7 @@ export const handleV4CompletedCampaign = async (
  * Check and potentially complete campaign after a status change
  * This is the main entry point that should be called from V4 controllers
  */
-export const checkAndCompleteV4Campaign = async (
-  submissionId: string,
-  adminId?: string
-): Promise<void> => {
+export const checkAndCompleteV4Campaign = async (submissionId: string, adminId?: string): Promise<void> => {
   try {
     // Get submission details
     const submission = await prisma.submission.findUnique({
@@ -315,8 +308,8 @@ export const checkAndCompleteV4Campaign = async (
         campaignId: true,
         userId: true,
         status: true,
-        submissionVersion: true
-      }
+        submissionVersion: true,
+      },
     });
 
     if (!submission) {
@@ -339,12 +332,7 @@ export const checkAndCompleteV4Campaign = async (
     console.log(`🔄 Checking V4 campaign completion for submission ${submissionId} with status ${submission.status}`);
 
     // Attempt to complete the campaign
-    await handleV4CompletedCampaign(
-      submission.campaignId,
-      submission.userId,
-      adminId
-    );
-
+    await handleV4CompletedCampaign(submission.campaignId, submission.userId, adminId);
   } catch (error) {
     console.error('Error in checkAndCompleteV4Campaign:', error);
     // Don't throw - we don't want submission approval to fail if completion check fails

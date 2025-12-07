@@ -353,7 +353,7 @@ export const createClientCampaign = async (req: Request, res: Response) => {
     const campaignId = `C${Math.floor(Math.random() * 1000)}`;
 
     // Process uploaded images
-    let publicURL: string[] = [];
+    const publicURL: string[] = [];
     if (req.files && (req.files as any).campaignImages) {
       const images = Array.isArray((req.files as any).campaignImages)
         ? (req.files as any).campaignImages
