@@ -487,17 +487,40 @@ export const reportLogisticIssue = async (logisticId: string, reason: string, re
 };
 
 export const updateStatusService = async (logisticId: string, status: LogisticStatus) => {
-  const data: any = { status };
+  return await prisma.$transaction(async (tx) => {
+    const data: any = { status };
+    const now = new Date();
 
-  const now = new Date();
-  if (status === 'SHIPPED') data.shippedAt = now;
-  if (status === 'DELIVERED') data.deliveredAt = now;
-  if (status === 'RECEIVED') data.receivededAt = now;
-  if (status === 'COMPLETED') data.completedAt = now;
+    if (status === 'SHIPPED') data.shippedAt = now;
+    if (status === 'DELIVERED') data.deliveredAt = now;
+    if (status === 'RECEIVED') data.receivededAt = now;
+    if (status === 'COMPLETED') data.completedAt = now;
 
-  return await prisma.logistic.update({
-    where: { id: logisticId },
-    data: data,
+    if (status === 'PENDING_ASSIGNMENT') {
+      const currentLogistic = await tx.logistic.findUnique({
+        where: { id: logisticId },
+        include: { deliveryDetails: true },
+      });
+
+      if (currentLogistic?.deliveryDetails?.id) {
+        await tx.deliveryItem.deleteMany({
+          where: {
+            deliveryDetailsId: currentLogistic.deliveryDetails.id,
+          },
+        });
+      }
+
+      data.deliveryDetails = {
+        update: {
+          trackingLink: null,
+          expectedDeliveryDate: null,
+        },
+      };
+    }
+    return await prisma.logistic.update({
+      where: { id: logisticId },
+      data: data,
+    });
   });
 };
 

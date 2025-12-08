@@ -257,7 +257,7 @@ model Creator {
 
   profileLink String? // Profile link for creator (Instagram/TikTok/etc.)
   
-  instagramProfileLink String? @db.VarChar(255) 
+  instagramProfileLink String? @db.VarChar(255)
   tiktokProfileLink    String? @db.VarChar(255)
 
   tiktokUser    TiktokUser?
@@ -653,6 +653,7 @@ model Campaign {
   creatorAgreement              CreatorAgreement[]
   invoice                       Invoice[]
   logistics                     Logistic[]
+  logisticsType                 LogisticType?
   notifications                 Notification[]
   pitch                         Pitch[]
   shortlisted                   ShortListedCreator[]

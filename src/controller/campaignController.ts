@@ -21,6 +21,7 @@ import {
   TimelineStatus,
   TiktokUser,
   InstagramUser,
+  LogisticType,
 } from '@prisma/client';
 
 import amqplib from 'amqplib';
@@ -367,6 +368,7 @@ export const createCampaign = async (req: Request, res: Response) => {
             ads: ads || false,
             photos: photos || false,
             crossPosting: crossPosting || false,
+            logisticsType: (logisticsType && logisticsType !== '') ? (logisticsType as LogisticType) : null,
             agreementTemplate: {
               connect: {
                 id: agreementFrom.id,
