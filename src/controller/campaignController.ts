@@ -637,7 +637,7 @@ export const createCampaign = async (req: Request, res: Response) => {
         logChange('Created the Campaign', campaign.id, req);
 
         // Get admin info for logging
-        const admin = await prisma.user.findUnique({
+        const admin = await tx.user.findUnique({
           where: { id: req.session.userid },
         });
         const adminName = admin?.name || 'Admin';
@@ -645,7 +645,7 @@ export const createCampaign = async (req: Request, res: Response) => {
 
         // Log campaign activity for campaign creation
         const campaignActivityMessage = `Campaign Created`;
-        await prisma.campaignLog.create({
+        await tx.campaignLog.create({
           data: {
             message: campaignActivityMessage,
             adminId: req.session.userid,
