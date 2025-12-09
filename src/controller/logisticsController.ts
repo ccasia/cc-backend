@@ -16,6 +16,7 @@ import {
   adminUpdateService,
   resolveIssueService,
   retryDeliveryService,
+  creatorProductInfoService,
 } from '@services/logisticsService';
 
 export const getLogisticsForCampaign = async (req: Request, res: Response) => {
@@ -272,6 +273,26 @@ export const retryLogisticDelivery = async (req: Request, res: Response) => {
     return res.status(200).json(result);
   } catch (error) {
     console.error('Error retrying delivery:', error);
+    return res.status(500).json({ message: 'Internal Server Error' });
+  }
+};
+
+export const submitCreatorProductInfo = async (req: Request, res: Response) => {
+  try {
+    const { campaignId } = req.params;
+    const { userid } = (req as any).session;
+    const { address, location, city, state, country, postcode, dietaryRestrictions } = req.body;
+
+    const result = await creatorProductInfoService({
+      userId: userid,
+      campaignId,
+      userData: { address, location, city, state, country, postcode },
+      dietaryRestrictions,
+    });
+
+    return res.status(200).json(result);
+  } catch (error) {
+    console.error('Error submitting logistics info:', error);
     return res.status(500).json({ message: 'Internal Server Error' });
   }
 };
