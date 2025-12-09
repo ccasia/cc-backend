@@ -666,3 +666,97 @@ export const retryDeliveryService = async (logisticId: string, resolvedBy: strin
     });
   });
 };
+
+type LogisticsInfoInput = {
+  userId: string;
+  campaignId: string;
+  dietaryRestrictions?: string;
+  userData: {
+    address: string;
+    location?: string;
+    city: string;
+    state: string;
+    country: string;
+    postcode: string;
+  };
+};
+
+export const creatorProductInfoService = async ({
+  userId,
+  campaignId,
+  userData,
+  dietaryRestrictions,
+}: LogisticsInfoInput) => {
+  return await prisma.$transaction(async (tx) => {
+    await tx.creator.update({
+      where: {
+        userId: userId,
+      },
+      data: {
+        address: userData.address,
+        location: userData.location,
+        city: userData.city,
+        state: userData.state,
+        country: userData.country,
+        postcode: userData.postcode,
+        dietaryRestrictions: dietaryRestrictions,
+      },
+    });
+
+    const logistic = await tx.logistic.findUnique({
+      where: {
+        creatorId_campaignId: {
+          creatorId: userId,
+          campaignId: campaignId,
+        },
+      },
+    });
+
+    const fullAddressString = [
+      userData.location,
+      userData.address,
+      userData.city,
+      userData.postcode,
+      userData.state,
+      userData.country,
+    ]
+      .filter(Boolean)
+      .join(', ');
+
+    if (logistic) {
+      return await tx.logistic.update({
+        where: { id: logistic.id },
+        data: {
+          deliveryDetails: {
+            upsert: {
+              create: {
+                dietaryRestrictions,
+                address: fullAddressString,
+              },
+              update: {
+                dietaryRestrictions,
+                address: fullAddressString,
+              },
+            },
+          },
+        },
+      });
+    } else {
+      return await tx.logistic.create({
+        data: {
+          campaignId,
+          creatorId: userId,
+          createdById: userId,
+          type: 'PRODUCT_DELIVERY',
+          status: 'PENDING_ASSIGNMENT',
+          deliveryDetails: {
+            create: {
+              dietaryRestrictions,
+              address: fullAddressString,
+            },
+          },
+        },
+      });
+    }
+  });
+};

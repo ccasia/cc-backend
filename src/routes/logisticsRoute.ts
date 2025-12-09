@@ -22,6 +22,7 @@ import {
   adminUpdateLogisticDetails,
   resolveLogisticIssue,
   retryLogisticDelivery,
+  submitCreatorProductInfo,
 } from '@controllers/logisticsController';
 
 const router = express.Router();
@@ -32,6 +33,7 @@ router.get('/creator/campaign/:campaignId', isLoggedIn, isCreator, getCreatorLog
 router.patch('/creator/:logisticId/details', isLoggedIn, isCreator, updateCreatorDeliveryDetails);
 router.patch('/creator/:logisticId/received', isLoggedIn, isCreator, markLogisticReceived);
 router.post('/creator/:logisticId/issue', isLoggedIn, isCreator, reportIssue);
+router.post('/creator/campaign/:campaignId/onboarding-details', isLoggedIn, isCreator, submitCreatorProductInfo);
 
 // admin & client routes
 router.get(

@@ -229,7 +229,10 @@ model Creator {
   id                     String      @id @unique @default(cuid())
   pronounce              String?     @db.VarChar(100)
   address                String?
-  state                  String?
+  state                  String?     
+  city                   String?     @db.VarChar(100)
+  postcode               String?     @db.VarChar(20)
+  country                String?     
   location               String?
   birthDate              DateTime?
   instagram              String?     @db.VarChar(100)
@@ -256,12 +259,13 @@ model Creator {
   isOnBoardingFormCompleted Boolean?
 
   profileLink String? // Profile link for creator (Instagram/TikTok/etc.)
-  
+
   instagramProfileLink String? @db.VarChar(255)
   tiktokProfileLink    String? @db.VarChar(255)
 
-  tiktokUser    TiktokUser?
-  instagramUser InstagramUser?
+  tiktokUser          TiktokUser?
+  instagramUser       InstagramUser?
+  dietaryRestrictions String?
 }
 
 // model TiktokUser {

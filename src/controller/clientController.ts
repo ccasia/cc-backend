@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { PrismaClient, CampaignStatus } from '@prisma/client';
+import { PrismaClient, CampaignStatus, LogisticType } from '@prisma/client';
 import { uploadCompanyLogo, uploadAttachments } from '@configs/cloudStorage.config';
 import { getRemainingCredits } from '@services/companyService';
 import { clients, io } from '../server';
@@ -413,6 +413,8 @@ export const createClientCampaign = async (req: Request, res: Response) => {
           products: {
             create: productsToCreate,
           },
+          logisticsType: logisticsType && logisticsType !== '' ? (logisticsType as LogisticType) : null,
+
           // Skip adminManager and other fields that will be set by CSM later
           campaignBrief: {
             create: {

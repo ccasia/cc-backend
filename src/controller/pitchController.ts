@@ -807,35 +807,6 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
       );
     }
 
-    try {
-      const existingLogistic = await prisma.logistic.findUnique({
-        where: {
-          creatorId_campaignId: {
-            creatorId: pitch.userId,
-            campaignId: pitch.campaignId,
-          },
-        },
-      });
-
-      if (!existingLogistic) {
-        await prisma.logistic.create({
-          data: {
-            campaignId: pitch.campaignId,
-            creatorId: pitch.userId,
-            createdById: clientId, // The client who approved it
-            type: 'PRODUCT_DELIVERY', // Default
-            status: 'PENDING_ASSIGNMENT', // Default
-            // Initialize empty details so we have an ID to update later
-            deliveryDetails: {
-              create: {},
-            },
-          },
-        });
-      }
-    } catch (error) {
-      console.error('❌ Error creating logistic record:', error);
-    }
-
     // Find admin users for this campaign
     const adminUsers = pitch.campaign.campaignAdmin.filter(
       (ca) => ca.admin.user.role === 'admin' || ca.admin.user.role === 'superadmin', // should superadmin get this notif?
