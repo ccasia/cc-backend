@@ -4222,9 +4222,9 @@ export const creatorAgreements = async (req: Request, res: Response) => {
 
 export const updateAmountAgreement = async (req: Request, res: Response) => {
   try {
-    const { paymentAmount, currency, user, campaignId, id: agreementId, isNew } = JSON.parse(req.body.data);
+    const { paymentAmount, currency, user, campaignId, id: agreementId, isNew, credits } = JSON.parse(req.body.data);
 
-    console.log('Received update data:', { paymentAmount, currency, campaignId, agreementId, isNew });
+    console.log('Received update data:', { paymentAmount, currency, campaignId, agreementId, isNew, credits });
 
     const creator = await prisma.user.findUnique({
       where: {
@@ -4272,6 +4272,16 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
       });
     }
 
+    // Get current shortlisted creator for comparison
+    const currentShortlisted = await prisma.shortListedCreator.findUnique({
+      where: {
+        userId_campaignId: {
+          userId: creator.id,
+          campaignId: campaignId,
+        },
+      },
+    });
+
     // Get admin info for logging
     const adminId = req.session.userid;
     const admin = await prisma.user.findUnique({
@@ -4280,7 +4290,12 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
     const adminName = admin?.name || 'Admin';
     const creatorName = creator.name || 'Creator';
 
-    // Update shortlisted creator first
+    // Determine if credits are being updated
+    const newCredits = credits !== undefined && credits !== null ? Math.floor(Number(credits)) : null;
+    const oldCredits = currentShortlisted?.ugcVideos || 0;
+    const creditsChanged = newCredits !== null && newCredits !== oldCredits;
+
+    // Update shortlisted creator with amount, currency, and optionally credits
     await prisma.shortListedCreator.updateMany({
       where: {
         userId: creator.id,
@@ -4289,8 +4304,22 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
       data: {
         amount: parseInt(paymentAmount),
         currency: currency,
+        ...(newCredits !== null && { ugcVideos: newCredits }),
       },
     });
+
+    // If credits changed, also update the pitch record
+    if (creditsChanged && newCredits !== null) {
+      await prisma.pitch.updateMany({
+        where: {
+          userId: creator.id,
+          campaignId: campaignId,
+        },
+        data: {
+          ugcCredits: newCredits,
+        },
+      });
+    }
 
     let url = '';
     if (req?.files && (req?.files as any)?.agreementForm) {
@@ -4424,6 +4453,69 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
       const newCurrencySymbol = getCurrencySymbol(newCurrency);
       const adminActivityMessage = `${adminName} changed the amount from ${oldCurrencySymbol}${oldAmount} to ${newCurrencySymbol}${newAmount} on the Agreement for ${creatorName}`;
       await logChange(adminActivityMessage, campaignId, req);
+    }
+
+    // Log admin activity for credits change
+    if (creditsChanged && newCredits !== null) {
+      const adminActivityMessage = `${adminName} changed UGC credits from ${oldCredits} to ${newCredits} for ${creatorName}`;
+      await logChange(adminActivityMessage, campaignId, req);
+    }
+
+    // For V4 campaigns with sent agreements, update submissions when credits change
+    const isV4Campaign = campaign.submissionVersion === 'v4';
+    const agreementIsSent = currentAgreement?.isSent === true;
+
+    if (isV4Campaign && agreementIsSent && creditsChanged && newCredits !== null) {
+      try {
+        console.log(`📋 V4 agreement already sent, updating submissions for credits change`);
+        const { updateV4Submissions } = require('../service/submissionV4Service');
+        const result = await updateV4Submissions(creator.id, campaignId, newCredits);
+        console.log(`✅ V4 submissions updated: ${result.deleted} deleted, ${result.created} created`);
+
+        // Recalculate campaign credits utilized
+        if (campaign.campaignCredits) {
+          const sentAgreements = await prisma.creatorAgreement.findMany({
+            where: { campaignId, isSent: true },
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  creator: { select: { isGuest: true } },
+                },
+              },
+            },
+          });
+
+          const sentNonGuestUserIds = sentAgreements
+            .filter((a) => a.user?.creator?.isGuest !== true)
+            .map((a) => a.userId);
+
+          let totalUtilized = 0;
+          if (sentNonGuestUserIds.length) {
+            const shortlistedForCredits = await prisma.shortListedCreator.findMany({
+              where: {
+                campaignId,
+                userId: { in: sentNonGuestUserIds },
+                ugcVideos: { gt: 0 },
+              },
+              select: { ugcVideos: true },
+            });
+            totalUtilized = shortlistedForCredits.reduce((sum, item) => sum + Number(item.ugcVideos || 0), 0);
+          }
+
+          await prisma.campaign.update({
+            where: { id: campaignId },
+            data: {
+              creditsUtilized: totalUtilized,
+              creditsPending: Math.max(0, Number(campaign.campaignCredits) - totalUtilized),
+            },
+          });
+          console.log(`📊 Campaign credits recalculated: utilized=${totalUtilized}`);
+        }
+      } catch (error) {
+        console.error('Error updating V4 submissions after credits change:', error);
+        // Don't fail the whole request, just log the error
+      }
     }
 
     console.log('Updated agreement:', updatedAgreement);
@@ -4676,8 +4768,11 @@ export const sendAgreement = async (req: Request, res: Response) => {
 
     if (isV4Campaign && !isGuestCreator) {
       try {
-        const { createContentSubmissionsAfterAgreement } = require('../service/submissionV4Service');
-        await createContentSubmissionsAfterAgreement(shortlistedCreator);
+        // Use updateV4Submissions which handles both initial creation and updates
+        // It deletes existing VIDEO submissions and creates new ones based on current credits
+        const { updateV4Submissions } = require('../service/submissionV4Service');
+        const result = await updateV4Submissions(isUserExist.id, campaignId, shortlistedCreator.ugcVideos || 0);
+        console.log(`✅ V4 submissions updated: ${result.deleted} deleted, ${result.created} created`);
       } catch (error) {
         console.error('Error creating V4 content submissions after agreement send:', error);
         return res.status(500).json({
