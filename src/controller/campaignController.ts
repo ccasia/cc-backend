@@ -7554,26 +7554,6 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
         console.log('Client-created campaign without thread, continuing anyway');
       }
 
-      // For non-v4 campaigns with UGC credits, validate credits before proceeding
-      if (!isV4Campaign && ugcCredits) {
-        const creditsPerCreator = parseInt(ugcCredits) || 1;
-        const totalCreditsNeeded = creditsPerCreator * creators.length;
-        const totalUtilizedBefore = (campaign.shortlisted || []).reduce(
-          (acc, item) => acc + Number(item.ugcVideos || 0),
-          0,
-        );
-
-        if (
-          campaign.campaignCredits &&
-          totalCreditsNeeded > 0 &&
-          totalUtilizedBefore + totalCreditsNeeded > campaign.campaignCredits
-        ) {
-          throw new Error(
-            `Not enough campaign credits. Remaining: ${campaign.campaignCredits - totalUtilizedBefore}, requested: ${totalCreditsNeeded}`,
-          );
-        }
-      }
-
       // Process each creator
       for (const creator of creators) {
         const user = creatorData.find((u) => u.id === creator.id);
@@ -7598,7 +7578,6 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
         // - v4 campaigns: SENT_TO_CLIENT (needs client approval)
         // - non-v4 campaigns: APPROVED directly
         const pitchStatus = isV4Campaign ? 'SENT_TO_CLIENT' : 'APPROVED';
-        const creditsAssigned = parseInt(ugcCredits) || (isV4Campaign ? undefined : 1);
 
         // Create a pitch record for this creator
         console.log(`Creating pitch for creator ${user.id} with status ${pitchStatus}`);
@@ -7612,7 +7591,6 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
             amount: null,
             agreementTemplateId: null,
             approvedByAdminId: userId,
-            ugcCredits: creditsAssigned,
             ...(typeof adminComments === 'string' && adminComments.trim().length > 0
               ? { adminComments: adminComments.trim(), adminCommentedBy: userId }
               : {}),
@@ -7643,7 +7621,6 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
               },
               data: {
                 isAgreementReady: false,
-                ugcVideos: creditsAssigned,
               },
             });
           } else {
@@ -7652,7 +7629,6 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
                 userId: user.id,
                 campaignId: campaign.id,
                 isAgreementReady: false,
-                ugcVideos: creditsAssigned,
                 currency: 'MYR',
               },
             });
@@ -8359,7 +8335,7 @@ export const assignUGCCreditsV3 = async (req: Request, res: Response) => {
 
 // 3.1 Shortlisting Non-Platform (Guest) Creators
 export const shortlistGuestCreators = async (req: Request, res: Response) => {
-  const { campaignId, guestCreators, ugcCredits } = req.body;
+  const { campaignId, guestCreators } = req.body;
   const adminId = req.session.userid;
 
   if (!campaignId || !Array.isArray(guestCreators) || guestCreators.length === 0) {
@@ -8382,11 +8358,6 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
 
     const isV4Campaign = campaign.submissionVersion === 'v4';
 
-    // For non-v4 campaigns, ugcCredits is required
-    if (!isV4Campaign && (ugcCredits === undefined || ugcCredits === null)) {
-      return res.status(400).json({ message: 'UGC credits are required for non-v4 campaigns.' });
-    }
-
     const createdCreators: { id: string }[] = [];
     await prisma.$transaction(async (tx) => {
       for (const guest of guestCreators) {
@@ -8408,19 +8379,6 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
           continue; // Skip and move to the next guest
         }
 
-        // For V4 campaigns: Create ShortListedCreator with minimal data (client approval needed)
-        // For non-v4 campaigns: Create ShortListedCreator with ugcVideos (admin approval is final)
-        const shortlistedCreator = await tx.shortListedCreator.create({
-          data: {
-            userId,
-            campaignId,
-            adminComments: guest.adminComments || null,
-            amount: 0,
-            currency: 'SGD',
-            ...(isV4Campaign ? {} : { ugcVideos: parseInt(ugcCredits) || 0 }),
-          },
-        });
-
         // Also create a V3 pitch entry so it appears in the pitches list
         const existingPitch = await tx.pitch.findFirst({
           where: { userId, campaignId },
@@ -8440,7 +8398,6 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
               content: `Non-platform creator has been shortlisted for campaign "${campaign.name}"`,
               amount: null,
               agreementTemplateId: null,
-              ugcCredits: parseInt(ugcCredits) || 0,
               approvedByAdminId: adminId,
               ...(guest.followerCount && { followerCount: guest.followerCount }),
               ...(guest.engagementRate && { engagementRate: guest.engagementRate }),
