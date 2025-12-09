@@ -889,14 +889,6 @@ export const withdrawCreatorFromCampaign = async (req: Request, res: Response) =
       },
     });
 
-    // Remove creator from shortlisted
-    await prisma.shortListedCreator.deleteMany({
-      where: {
-        userId: pitch.userId,
-        campaignId: pitch.campaignId,
-      },
-    });
-
     // Delete any existing creator agreement for this campaign
     await prisma.creatorAgreement.deleteMany({
       where: {
