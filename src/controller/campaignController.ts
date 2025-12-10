@@ -1083,6 +1083,7 @@ export const getCampaignById = async (req: Request, res: Response) => {
             ugcVideos: true,
             userId: true,
             adminComments: true,
+            isAgreementReady: true,
             user: {
               select: {
                 id: true,

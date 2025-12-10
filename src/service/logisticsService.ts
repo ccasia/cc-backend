@@ -445,6 +445,7 @@ export const creatorDeliveryDetails = async (logisticId: string, data: CreatorDe
         update: {
           address,
           dietaryRestrictions,
+          isConfirmed: true,
         },
       },
     },
@@ -724,6 +725,7 @@ export const creatorProductInfoService = async ({
       .join(', ');
 
     if (logistic) {
+
       return await tx.logistic.update({
         where: { id: logistic.id },
         data: {
