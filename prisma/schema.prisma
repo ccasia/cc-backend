@@ -1745,6 +1745,7 @@ model DeliveryDetails {
   items DeliveryItem[]
 
   createdAt DateTime @default(now())
+  isConfirmed Boolean @default(false)
 }
 
 model ReservationDetails {
