@@ -64,6 +64,8 @@ import {
   getCampaignsForPublic,
   exportActiveCompletedToSheet,
   exportCreatorsCampaignSheet,
+  syncCampaignCredits,
+  updateAllCampaignCredits,
 } from '@controllers/campaignController';
 import {
   swapGuestWithPlatformCreator,
@@ -195,6 +197,10 @@ router.post('/v3/shortlistCreator/guest', isLoggedIn, shortlistGuestCreators);
 router.post('/v3/assignUGCCredits', isLoggedIn, assignUGCCreditsV3);
 
 router.patch('/v4/changeCredits', isLoggedIn, isSuperAdmin, changeCampaignCredit);
+
+// Credit management routes
+router.post('/syncCredits/:campaignId', isLoggedIn, syncCampaignCredits);
+router.patch('/updateAllCredits', isLoggedIn, isSuperAdmin, updateAllCampaignCredits);
 
 router.patch('/pitch', isLoggedIn, creatorMakePitch);
 router.patch('/changeCampaignStage/:campaignId', changeCampaignStage);

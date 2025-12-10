@@ -5433,7 +5433,7 @@ export const removeCreatorFromCampaign = async (req: Request, res: Response) => 
       if (shortlistedCreator) {
         console.log(`Processing shortlisted creator: ${shortlistedCreator.id}`);
 
-        if (shortlistedCreator.isCampaignDone && shortlistedCreator.ugcVideos) {
+        if (shortlistedCreator.ugcVideos) {
           await tx.campaign.update({
             where: {
               id: campaign.id,
@@ -8680,9 +8680,217 @@ export const changeCampaignCredit = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * Syncs campaign credits based on shortlisted creators with sent agreements.
+ * This recalculates creditsUtilized based on actual data and updates creditsPending accordingly.
+ * 
+ * Formula:
+ * - creditsUtilized = sum of ugcVideos for shortlisted creators (non-guest) whose agreements have been sent
+ * - creditsPending = campaignCredits - creditsUtilized
+ */
+export const syncCampaignCredits = async (req: Request, res: Response) => {
+  const { campaignId } = req.params;
+
+  try {
+    const campaign = await prisma.campaign.findUnique({
+      where: { id: campaignId },
+      include: {
+        shortlisted: {
+          include: {
+            user: {
+              include: {
+                creator: { select: { isGuest: true } },
+              },
+            },
+          },
+        },
+        creatorAgreement: {
+          select: {
+            userId: true,
+            isSent: true,
+          },
+        },
+      },
+    });
+
+    if (!campaign) {
+      return res.status(404).json({ message: 'Campaign not found' });
+    }
+
+    // Calculate utilized credits: sum of ugcVideos for shortlisted non-guest creators with sent agreements
+    const creditsUtilized = campaign.shortlisted.reduce((total, creator) => {
+      const isGuest = creator.user?.creator?.isGuest === true;
+      
+      if (!isGuest) {
+        return total + (creator.ugcVideos || 0);
+      }
+      return total;
+    }, 0);
+
+    // Calculate pending credits
+    const campaignCredits = campaign.campaignCredits || 0;
+    const creditsPending = Math.max(0, campaignCredits - creditsUtilized);
+
+    // Update campaign with synced credits
+    const updatedCampaign = await prisma.campaign.update({
+      where: { id: campaignId },
+      data: {
+        creditsUtilized,
+        creditsPending,
+      },
+      select: {
+        id: true,
+        campaignCredits: true,
+        creditsUtilized: true,
+        creditsPending: true,
+      },
+    });
+
+    console.log(`📊 Campaign credits synced for ${campaignId}: campaignCredits=${campaignCredits}, utilized=${creditsUtilized}, pending=${creditsPending}`);
+
+    return res.status(200).json({
+      message: 'Credits synced successfully',
+      credits: updatedCampaign,
+    });
+  } catch (error) {
+    console.error('Error syncing campaign credits:', error);
+    return res.status(500).json({ message: 'Error syncing credits', error: error.message });
+  }
+};
+
+/**
+ * Allows superadmin to directly update all campaign credit values.
+ * This gives full control to adjust campaignCredits, creditsUtilized, and creditsPending independently.
+ */
+export const updateAllCampaignCredits = async (req: Request, res: Response) => {
+  const { campaignId, campaignCredits, creditsUtilized, creditsPending } = req.body;
+  const { userid } = req.session;
+
+  try {
+    const user = await prisma.user.findFirst({
+      where: { id: userid },
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const campaign = await prisma.campaign.findUnique({
+      where: { id: campaignId },
+      include: {
+        subscription: true,
+      },
+    });
+
+    if (!campaign) {
+      return res.status(404).json({ message: 'Campaign not found' });
+    }
+
+    // Build update data object - only include fields that are provided
+    const updateData: {
+      campaignCredits?: number;
+      creditsUtilized?: number;
+      creditsPending?: number;
+    } = {};
+
+    if (campaignCredits !== undefined && campaignCredits !== null) {
+      // Validate against subscription limits if subscription exists
+      if (campaign.subscription) {
+        const subscribedCampaigns = await prisma.subscription.findFirst({
+          where: { id: campaign.subscription.id },
+          select: {
+            totalCredits: true,
+            campaign: {
+              select: {
+                campaignCredits: true,
+                id: true,
+              },
+            },
+          },
+        });
+
+        // Calculate total assigned credits excluding current campaign
+        const otherCampaignsCredits = subscribedCampaigns?.campaign
+          .filter((c) => c.id !== campaignId)
+          .reduce((acc, cur) => acc + (cur.campaignCredits ?? 0), 0) || 0;
+
+        const totalAfterUpdate = otherCampaignsCredits + campaignCredits;
+
+        if (totalAfterUpdate > (subscribedCampaigns?.totalCredits ?? 0)) {
+          return res.status(400).json({
+            message: `Cannot exceed subscription limit. Maximum available: ${(subscribedCampaigns?.totalCredits ?? 0) - otherCampaignsCredits} credits.`,
+          });
+        }
+      }
+
+      updateData.campaignCredits = campaignCredits;
+    }
+
+    if (creditsUtilized !== undefined && creditsUtilized !== null) {
+      updateData.creditsUtilized = creditsUtilized;
+    }
+
+    if (creditsPending !== undefined && creditsPending !== null) {
+      updateData.creditsPending = creditsPending;
+    }
+
+    // Perform the update in a transaction with logging
+    const updatedCampaign = await prisma.$transaction(async (tx) => {
+      const updated = await tx.campaign.update({
+        where: { id: campaignId },
+        data: updateData,
+        select: {
+          id: true,
+          name: true,
+          campaignCredits: true,
+          creditsUtilized: true,
+          creditsPending: true,
+        },
+      });
+
+      // Log the change
+      const changes: string[] = [];
+      if (updateData.campaignCredits !== undefined) {
+        changes.push(`campaignCredits: ${campaign.campaignCredits} → ${updateData.campaignCredits}`);
+      }
+      if (updateData.creditsUtilized !== undefined) {
+        changes.push(`creditsUtilized: ${campaign.creditsUtilized} → ${updateData.creditsUtilized}`);
+      }
+      if (updateData.creditsPending !== undefined) {
+        changes.push(`creditsPending: ${campaign.creditsPending} → ${updateData.creditsPending}`);
+      }
+
+      await tx.adminLog.create({
+        data: {
+          message: `${user?.name} updated campaign credits for "${campaign.name}": ${changes.join(', ')}`,
+          admin: {
+            connect: {
+              userId: user?.id,
+            },
+          },
+          performedBy: user?.name,
+        },
+      });
+
+      return updated;
+    });
+
+    console.log(`📊 Campaign credits updated by ${user?.name} for ${campaignId}`);
+
+    return res.status(200).json({
+      message: 'Credits updated successfully',
+      credits: updatedCampaign,
+    });
+  } catch (error) {
+    console.error('Error updating campaign credits:', error);
+    return res.status(500).json({ message: 'Error updating credits', error: error.message });
+  }
+};
+
 export const getCampaignsForPublic = async (req: Request, res: Response) => {
   const { cursor, take = 10, search } = req.query;
   const campaignId = req.query?.campaignId as string;
+
 
   try {
     const campaigns = await prisma.campaign.findMany({
