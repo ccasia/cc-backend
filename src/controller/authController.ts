@@ -69,6 +69,8 @@ interface CreatorUpdateData {
   socialMediaData: Prisma.InputJsonValue;
   city: string;
   referralCode?: string;
+  instagramProfileLink?: string;
+  tiktokProfileLink?: string;
 }
 
 const client_id: string = process.env.XERO_CLIENT_ID as string;
@@ -256,6 +258,8 @@ export const registerCreator = async (req: Request, res: Response) => {
             employment: creatorData.employment || '',
             tiktok: creatorData.tiktok || '',
             languages: creatorData.languages || [],
+            instagramProfileLink: creatorData.instagramProfileLink || '',
+            tiktokProfileLink: creatorData.tiktokProfileLink || '',
           });
         }
 
@@ -937,11 +941,11 @@ export const getCurrentUser = async (req: Request, res: Response) => {
       where: { email: user.email },
     });
 
-    return res.status(200).json({ 
+    return res.status(200).json({
       user: {
         ...user,
         isChildAccount: !!isChildAccount,
-      }
+      },
     });
   } catch (error) {
     return res.status(400).json({ message: 'Error fetching user' });
@@ -970,6 +974,8 @@ export const updateCreator = async (req: Request, res: Response) => {
     socialMediaData,
     city,
     referralCode,
+    instagramProfileLink,
+    tiktokProfileLink,
   }: CreatorUpdateData = req.body;
 
   try {
@@ -1029,6 +1035,8 @@ export const updateCreator = async (req: Request, res: Response) => {
         employment: employment as Employment,
         tiktok,
         languages: languages,
+        instagramProfileLink,
+        tiktokProfileLink,
         ...(Array.isArray(interests) && interests.length > 0
           ? {
               interests: {
@@ -1192,12 +1200,12 @@ export const getprofile = async (req: Request, res: Response) => {
       where: { email: user.email },
     });
 
-    return res.status(200).json({ 
-      user: { 
-        ...user, 
+    return res.status(200).json({
+      user: {
+        ...user,
         xeroinformation,
         isChildAccount: !!isChildAccount,
-      } 
+      },
     });
   } catch (error) {
     return res.status(404).json(error);
@@ -1913,7 +1921,7 @@ export const deleteAccount = async (req: Request, res: Response) => {
       await tx.userThread.deleteMany({ where: { userId } });
       await tx.creatorAgreement.deleteMany({ where: { userId } });
       await tx.submission.deleteMany({ where: { userId } });
-      await tx.logistic.deleteMany({ where: { userId } });
+      // await tx.logistic.deleteMany({ where: { userId } });
 
       // Role-specific deletions
       if (user.role === 'creator') {

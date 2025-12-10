@@ -24,11 +24,11 @@ import {
   getAllCampaignsFinance,
   saveCampaign,
   unSaveCampaign,
-  createLogistics,
-  getLogisticById,
-  updateStatusLogistic,
+  // createLogistics,
+  // getLogisticById,
+  // updateStatusLogistic,
+  // receiveLogistic,
   shortlistCreator,
-  receiveLogistic,
   creatorAgreements,
   updateAmountAgreement,
   sendAgreement,
@@ -50,7 +50,6 @@ import {
   shortlistCreatorV3,
   assignUGCCreditsV3,
   shortlistGuestCreators,
-  assignCreditOnAgreementSend,
   getAllPitches,
   getAllCreatorAgreements,
   getClientCampaigns,
@@ -65,6 +64,8 @@ import {
   getCampaignsForPublic,
   exportActiveCompletedToSheet,
   exportCreatorsCampaignSheet,
+  syncCampaignCredits,
+  updateAllCampaignCredits,
 } from '@controllers/campaignController';
 import {
   swapGuestWithPlatformCreator,
@@ -115,7 +116,7 @@ router.get('/defaultTimeline', isSuperAdmin, getDefaultTimeline);
 router.get('/getCampaignsBySessionId', isLoggedIn, getCampaignsByCreatorId);
 router.get('/getCampaignForCreatorById/:id', isLoggedIn, getCampaignForCreatorById);
 router.get('/getCampaignPitch', isLoggedIn, getCampaignPitchForCreator);
-router.get('/getLogistics', isSuperAdmin, getLogisticById);
+// router.get('/getLogistics', isSuperAdmin, getLogisticById);
 router.get('/getSubmissions', getSubmission);
 // router.get('/pitch/:campaignId', getPitchByCampaignId);
 router.get('/getCampaignLog/:id', getCampaignLog);
@@ -181,7 +182,7 @@ router.post('/createNewTimeline', isSuperAdmin, createNewTimeline);
 router.post('/createSingleTimelineType', isSuperAdmin, createSingleTimelineType);
 router.post('/uploadVideo', uploadVideoTest);
 router.post('/saveCampaign', isLoggedIn, saveCampaign);
-router.post('/createLogistic', isLoggedIn, createLogistics);
+// router.post('/createLogistic', isLoggedIn, createLogistics);
 router.post('/shortlistCreator', isSuperAdmin, shortlistCreator);
 router.post('/template/:id', isSuperAdmin, createNewTemplate);
 router.post('/draftPitch', isLoggedIn, draftPitch);
@@ -194,9 +195,12 @@ router.post('/v2/shortlistCreator/client', isSuperAdmin, shortlistCreatorV2ForCl
 router.post('/v3/shortlistCreator', isLoggedIn, shortlistCreatorV3);
 router.post('/v3/shortlistCreator/guest', isLoggedIn, shortlistGuestCreators);
 router.post('/v3/assignUGCCredits', isLoggedIn, assignUGCCreditsV3);
-router.post('/v4/assignCreditOnAgreementSend', isLoggedIn, isSuperAdmin, assignCreditOnAgreementSend);
 
 router.patch('/v4/changeCredits', isLoggedIn, isSuperAdmin, changeCampaignCredit);
+
+// Credit management routes
+router.post('/syncCredits/:campaignId', isLoggedIn, syncCampaignCredits);
+router.patch('/updateAllCredits', isLoggedIn, isSuperAdmin, updateAllCampaignCredits);
 
 router.patch('/pitch', isLoggedIn, creatorMakePitch);
 router.patch('/changeCampaignStage/:campaignId', changeCampaignStage);
@@ -211,8 +215,8 @@ router.patch('/editCampaignAdmins/:id', isSuperAdmin, editCampaignAdmin);
 router.patch('/editCampaignAttachments/:id', isSuperAdmin, editCampaignAttachments);
 router.patch('/editCampaignReference/:id', isSuperAdmin, editCampaignReference);
 router.patch('/changePitchStatus', isSuperAdmin, changePitchStatus);
-router.patch('/changeLogisticStatus', isSuperAdmin, updateStatusLogistic); //need permission later
-router.patch('/receiveLogistic', isLoggedIn, receiveLogistic);
+// router.patch('/changeLogisticStatus', isSuperAdmin, updateStatusLogistic); //need permission later
+// router.patch('/receiveLogistic', isLoggedIn, receiveLogistic);
 router.patch('/updateAmountAgreement', isLoggedIn, isSuperAdmin, updateAmountAgreement);
 router.patch('/sendAgreement', isLoggedIn, isSuperAdmin, sendAgreement);
 router.patch('/resendAgreement', isLoggedIn, resendAgreement);

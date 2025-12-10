@@ -23,15 +23,13 @@ import { saveCaptionToHistory } from '../utils/captionHistoryUtils';
  * V4 campaigns with client managers should follow CLIENT flow even if origin is ADMIN
  */
 const getEffectiveCampaignOrigin = (campaign: any): 'CLIENT' | 'ADMIN' => {
-  const hasClientManagers = campaign.campaignAdmin?.some((ca: any) => 
-    ca.admin.user.role === 'client'
-  );
+  const hasClientManagers = campaign.campaignAdmin?.some((ca: any) => ca.admin.user.role === 'client');
   return hasClientManagers ? 'CLIENT' : campaign.origin;
 };
 
 /**
  * Update submission status based on individual content statuses
- * For photo and raw footage submissions, if any content needs revision, 
+ * For photo and raw footage submissions, if any content needs revision,
  * the submission should allow creator to re-upload
  */
 const updateSubmissionStatusBasedOnContent = async (submissionId: string) => {
@@ -42,8 +40,8 @@ const updateSubmissionStatusBasedOnContent = async (submissionId: string) => {
       campaign: true,
       photos: true,
       rawFootages: true,
-      video: true
-    }
+      video: true,
+    },
   });
 
   if (!submission) return;
@@ -51,7 +49,7 @@ const updateSubmissionStatusBasedOnContent = async (submissionId: string) => {
   // Only update status for photo and raw footage submissions
   const isPhotoSubmission = submission.submissionType.type === 'PHOTO';
   const isRawFootageSubmission = submission.submissionType.type === 'RAW_FOOTAGE';
-  
+
   if (!isPhotoSubmission && !isRawFootageSubmission) return;
 
   let hasRevisionRequested = false;
@@ -62,7 +60,7 @@ const updateSubmissionStatusBasedOnContent = async (submissionId: string) => {
 
   // Check photo statuses
   if (isPhotoSubmission && submission.photos?.length > 0) {
-    submission.photos.forEach(photo => {
+    submission.photos.forEach((photo) => {
       if (['REVISION_REQUESTED', 'REJECTED'].includes(photo.status)) {
         hasRevisionRequested = true;
       } else if (photo.status === 'APPROVED') {
@@ -79,7 +77,7 @@ const updateSubmissionStatusBasedOnContent = async (submissionId: string) => {
 
   // Check raw footage statuses
   if (isRawFootageSubmission && submission.rawFootages?.length > 0) {
-    submission.rawFootages.forEach(rawFootage => {
+    submission.rawFootages.forEach((rawFootage) => {
       if (['REVISION_REQUESTED', 'REJECTED'].includes(rawFootage.status)) {
         hasRevisionRequested = true;
       } else if (rawFootage.status === 'APPROVED') {
@@ -106,17 +104,17 @@ const updateSubmissionStatusBasedOnContent = async (submissionId: string) => {
   } else if ((hasApproved || hasSentToClient) && allProcessed) {
     // Check what the final status should be based on content statuses
     const isClientCampaign = submission.campaign?.origin === 'CLIENT';
-    
+
     if (isClientCampaign) {
       // For client campaigns
-      const allContentApproved = isPhotoSubmission 
-        ? submission.photos?.every(p => p.status === 'APPROVED')
-        : submission.rawFootages?.every(r => r.status === 'APPROVED');
-      
-      const allContentSentToClient = isPhotoSubmission 
-        ? submission.photos?.every(p => p.status === 'SENT_TO_CLIENT')
-        : submission.rawFootages?.every(r => r.status === 'SENT_TO_CLIENT');
-      
+      const allContentApproved = isPhotoSubmission
+        ? submission.photos?.every((p) => p.status === 'APPROVED')
+        : submission.rawFootages?.every((r) => r.status === 'APPROVED');
+
+      const allContentSentToClient = isPhotoSubmission
+        ? submission.photos?.every((p) => p.status === 'SENT_TO_CLIENT')
+        : submission.rawFootages?.every((r) => r.status === 'SENT_TO_CLIENT');
+
       if (allContentApproved) {
         // All content is fully approved by client - final approval state
         newSubmissionStatus = 'CLIENT_APPROVED';
@@ -125,14 +123,14 @@ const updateSubmissionStatusBasedOnContent = async (submissionId: string) => {
         newSubmissionStatus = 'SENT_TO_CLIENT';
       } else {
         // Mixed statuses - check what the majority status should be
-        const hasAnyApproved = isPhotoSubmission 
-          ? submission.photos?.some(p => p.status === 'APPROVED')
-          : submission.rawFootages?.some(r => r.status === 'APPROVED');
-        
-        const hasAnySentToClient = isPhotoSubmission 
-          ? submission.photos?.some(p => p.status === 'SENT_TO_CLIENT')
-          : submission.rawFootages?.some(r => r.status === 'SENT_TO_CLIENT');
-        
+        const hasAnyApproved = isPhotoSubmission
+          ? submission.photos?.some((p) => p.status === 'APPROVED')
+          : submission.rawFootages?.some((r) => r.status === 'APPROVED');
+
+        const hasAnySentToClient = isPhotoSubmission
+          ? submission.photos?.some((p) => p.status === 'SENT_TO_CLIENT')
+          : submission.rawFootages?.some((r) => r.status === 'SENT_TO_CLIENT');
+
         if (hasAnySentToClient && !hasAnyApproved) {
           // All content is either sent to client or in review - keep as sent to client
           newSubmissionStatus = 'SENT_TO_CLIENT';
@@ -146,10 +144,10 @@ const updateSubmissionStatusBasedOnContent = async (submissionId: string) => {
       }
     } else {
       // For regular campaigns, mark as approved when all content is approved
-      const allContentApproved = isPhotoSubmission 
-        ? submission.photos?.every(p => p.status === 'APPROVED')
-        : submission.rawFootages?.every(r => r.status === 'APPROVED');
-      
+      const allContentApproved = isPhotoSubmission
+        ? submission.photos?.every((p) => p.status === 'APPROVED')
+        : submission.rawFootages?.every((r) => r.status === 'APPROVED');
+
       if (allContentApproved) {
         newSubmissionStatus = 'APPROVED';
       }
@@ -163,9 +161,9 @@ const updateSubmissionStatusBasedOnContent = async (submissionId: string) => {
   if (newSubmissionStatus !== submission.status) {
     await prisma.submission.update({
       where: { id: submissionId },
-      data: { status: newSubmissionStatus as any }
+      data: { status: newSubmissionStatus as any },
     });
-    
+
     console.log(`📝 Updated submission ${submissionId} status from ${submission.status} to ${newSubmissionStatus}`);
   }
 };
@@ -178,57 +176,57 @@ const prisma = new PrismaClient();
  */
 export const createV4Submissions = async (req: Request, res: Response) => {
   const { campaignId, userId, ugcVideos, rawFootage, photos } = req.body as V4SubmissionCreateData;
-  
+
   try {
     // Validate required fields
     if (!campaignId || !userId || ugcVideos === undefined) {
       return res.status(400).json({
-        message: 'Missing required fields: campaignId, userId, ugcVideos'
+        message: 'Missing required fields: campaignId, userId, ugcVideos',
       });
     }
-    
+
     // Verify this is a v4 campaign
     const campaign = await prisma.campaign.findUnique({
-      where: { id: campaignId }
+      where: { id: campaignId },
     });
-    
+
     if (!campaign) {
       return res.status(404).json({ message: 'Campaign not found' });
     }
-    
+
     if (campaign.submissionVersion !== 'v4') {
-      return res.status(400).json({ 
-        message: 'This endpoint is only for v4 campaigns' 
+      return res.status(400).json({
+        message: 'This endpoint is only for v4 campaigns',
       });
     }
-    
+
     // Check if submissions already exist for this creator
     const existingSubmissions = await prisma.submission.findFirst({
       where: {
         campaignId,
         userId,
-        submissionVersion: 'v4'
-      }
+        submissionVersion: 'v4',
+      },
     });
-    
+
     if (existingSubmissions) {
       return res.status(409).json({
-        message: 'V4 submissions already exist for this creator'
+        message: 'V4 submissions already exist for this creator',
       });
     }
-    
+
     // Create the submissions
     const result = await createV4SubmissionsForCreator({
       campaignId,
       userId,
       ugcVideos: ugcVideos || 0,
       rawFootage: rawFootage || 0,
-      photos: photos || false
+      photos: photos || false,
     });
-    
+
     // Get the created submissions with full data
     const submissions = await getV4Submissions(campaignId, userId);
-    
+
     // Emit socket event for real-time updates
     const io = req.app.get('io');
     if (io) {
@@ -237,23 +235,22 @@ export const createV4Submissions = async (req: Request, res: Response) => {
         userId,
         count: result.count,
         submissions,
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
       });
     }
-    
+
     console.log(`✅ Created ${result.count} v4 submissions for creator ${userId} in campaign ${campaignId}`);
-    
+
     res.status(201).json({
       message: 'V4 submissions created successfully',
       count: result.count,
-      submissions
+      submissions,
     });
-    
   } catch (error) {
     console.error('Error creating v4 submissions:', error);
     res.status(500).json({
       message: 'Failed to create v4 submissions',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 };
@@ -264,38 +261,34 @@ export const createV4Submissions = async (req: Request, res: Response) => {
  */
 export const getV4SubmissionsController = async (req: Request, res: Response) => {
   const { campaignId, userId } = req.query;
-  
+
   try {
     if (!campaignId) {
       return res.status(400).json({ message: 'campaignId is required' });
     }
-    
-    const submissions = await getV4Submissions(
-      campaignId as string, 
-      userId as string | undefined
-    );
-    
+
+    const submissions = await getV4Submissions(campaignId as string, userId as string | undefined);
+
     // Group submissions by type for easier frontend consumption
     const groupedSubmissions = {
-      agreement: submissions.find(s => s.submissionType.type === 'AGREEMENT_FORM'),
-      videos: submissions.filter(s => s.submissionType.type === 'VIDEO'),
-      photos: submissions.filter(s => s.submissionType.type === 'PHOTO'),
-      rawFootage: submissions.filter(s => s.submissionType.type === 'RAW_FOOTAGE')
+      agreement: submissions.find((s) => s.submissionType.type === 'AGREEMENT_FORM'),
+      videos: submissions.filter((s) => s.submissionType.type === 'VIDEO'),
+      photos: submissions.filter((s) => s.submissionType.type === 'PHOTO'),
+      rawFootage: submissions.filter((s) => s.submissionType.type === 'RAW_FOOTAGE'),
     };
-    
+
     console.log(`🔍 Found ${submissions.length} v4 submissions for campaign ${campaignId}`);
-    
+
     res.status(200).json({
       submissions,
       grouped: groupedSubmissions,
-      total: submissions.length
+      total: submissions.length,
     });
-    
   } catch (error) {
     console.error('Error getting v4 submissions:', error);
     res.status(500).json({
       message: 'Failed to get v4 submissions',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 };
@@ -306,28 +299,28 @@ export const getV4SubmissionsController = async (req: Request, res: Response) =>
  */
 export const submitV4ContentController = async (req: Request, res: Response) => {
   const { submissionId, videoUrls, photoUrls, rawFootageUrls, caption } = req.body as V4ContentSubmission;
-  
+
   try {
     if (!submissionId) {
       return res.status(400).json({ message: 'submissionId is required' });
     }
-    
+
     const result = await submitV4Content(submissionId, {
       videoUrls,
       photoUrls,
       rawFootageUrls,
-      caption
+      caption,
     });
-    
+
     // Emit socket event for real-time updates
     const io = req.app.get('io');
     if (io) {
       // Get campaign ID for socket room
       const submission = await prisma.submission.findUnique({
         where: { id: submissionId },
-        select: { campaign: { select: { id: true } } }
+        select: { campaign: { select: { id: true } } },
       });
-      
+
       if (submission) {
         io.to(submission.campaign.id).emit('v4:content:submitted', {
           submissionId,
@@ -335,23 +328,22 @@ export const submitV4ContentController = async (req: Request, res: Response) => 
           hasVideo: videoUrls && videoUrls.length > 0,
           hasPhotos: photoUrls && photoUrls.length > 0,
           hasRawFootage: rawFootageUrls && rawFootageUrls.length > 0,
-          submittedAt: new Date().toISOString()
+          submittedAt: new Date().toISOString(),
         });
       }
     }
-    
+
     console.log(`📤 Content submitted for v4 submission ${submissionId}`);
-    
+
     res.status(200).json({
       message: 'Content submitted successfully',
-      submission: result
+      submission: result,
     });
-    
   } catch (error) {
     console.error('Error submitting v4 content:', error);
     res.status(500).json({
       message: 'Failed to submit content',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 };
@@ -363,20 +355,20 @@ export const submitV4ContentController = async (req: Request, res: Response) => 
 export const approveV4Submission = async (req: Request, res: Response) => {
   const { submissionId, action, feedback, reasons, caption } = req.body;
   const currentUserId = req.session.userid;
-  
+
   try {
     if (!submissionId || !action) {
-      return res.status(400).json({ 
-        message: 'submissionId and action are required' 
+      return res.status(400).json({
+        message: 'submissionId and action are required',
       });
     }
-    
+
     if (!['approve', 'reject', 'request_revision'].includes(action)) {
-      return res.status(400).json({ 
-        message: 'action must be approve, reject, or request_revision' 
+      return res.status(400).json({
+        message: 'action must be approve, reject, or request_revision',
       });
     }
-    
+
     // Get submission with content and campaign info
     const submission = await prisma.submission.findUnique({
       where: { id: submissionId },
@@ -396,37 +388,37 @@ export const approveV4Submission = async (req: Request, res: Response) => {
                     user: {
                       select: {
                         role: true,
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
         },
         video: true,
         photos: true,
         rawFootages: true,
       },
     });
-    
+
     if (!submission) {
       return res.status(404).json({ message: 'Submission not found' });
     }
-    
+
     if (submission.submissionVersion !== 'v4') {
       return res.status(400).json({ message: 'Not a v4 submission' });
     }
-    
+
     // Determine effective campaign type for status flow (V4 campaigns with client managers use CLIENT flow)
     const effectiveCampaignOrigin = getEffectiveCampaignOrigin(submission.campaign);
-    
+
     // Use status utilities to determine next status
     const { submissionStatus: newStatus, videoStatus: contentStatus } = getNextStatusAfterAdminAction(
       action as any,
-      effectiveCampaignOrigin as any
+      effectiveCampaignOrigin as any,
     );
-    
+
     // Save current caption to history before updating (if caption is being changed)
     if (caption !== undefined) {
       await saveCaptionToHistory(submissionId, caption, currentUserId!, 'admin');
@@ -438,7 +430,7 @@ export const approveV4Submission = async (req: Request, res: Response) => {
     // Update submission status and caption if provided
     const updateData: any = {
       status: newStatus as any,
-      updatedAt: new Date()
+      updatedAt: new Date(),
     };
 
     // Update caption if provided (only for admin actions)
@@ -449,12 +441,12 @@ export const approveV4Submission = async (req: Request, res: Response) => {
     updates.push(
       prisma.submission.update({
         where: { id: submissionId },
-        data: updateData
-      })
+        data: updateData,
+      }),
     );
-    
+
     // contentStatus already determined above based on campaign origin
-    
+
     // Update videos
     if (submission.video && submission.video.length > 0) {
       updates.push(
@@ -465,20 +457,20 @@ export const approveV4Submission = async (req: Request, res: Response) => {
             feedback: feedback,
             reasons: reasons || [],
             adminId: currentUserId,
-            feedbackAt: new Date()
-          }
-        })
+            feedbackAt: new Date(),
+          },
+        }),
       );
     }
-    
+
     // Update photos
     if (submission.photos && submission.photos.length > 0) {
       console.log('🖼️ V4 Approve - Before photo status update:', {
         submissionId,
         action,
         currentPhotoCount: submission.photos.length,
-        photoIds: submission.photos.map(p => p.id),
-        newContentStatus: contentStatus
+        photoIds: submission.photos.map((p) => p.id),
+        newContentStatus: contentStatus,
       });
 
       updates.push(
@@ -489,14 +481,14 @@ export const approveV4Submission = async (req: Request, res: Response) => {
             feedback: feedback,
             reasons: reasons || [],
             adminId: currentUserId,
-            feedbackAt: new Date()
-          }
-        })
+            feedbackAt: new Date(),
+          },
+        }),
       );
 
       console.log('🔄 V4 Approve - Photo status update queued for transaction');
     }
-    
+
     // Update raw footage
     if (submission.rawFootages && submission.rawFootages.length > 0) {
       updates.push(
@@ -507,16 +499,16 @@ export const approveV4Submission = async (req: Request, res: Response) => {
             feedback: feedback,
             reasons: reasons || [],
             adminId: currentUserId,
-            feedbackAt: new Date()
-          }
-        })
+            feedbackAt: new Date(),
+          },
+        }),
       );
     }
-    
+
     // Always add feedback record to maintain consistent display
     // Determine feedback type based on action and campaign origin
     let feedbackType: 'REQUEST' | 'COMMENT' = 'COMMENT';
-    
+
     if (action === 'request_revision' || action === 'reject') {
       // Admin requesting changes = REQUEST type
       feedbackType = 'REQUEST';
@@ -524,7 +516,7 @@ export const approveV4Submission = async (req: Request, res: Response) => {
       // Send to Client = COMMENT type
       feedbackType = 'COMMENT';
     }
-    
+
     updates.push(
       prisma.feedback.create({
         data: {
@@ -533,29 +525,29 @@ export const approveV4Submission = async (req: Request, res: Response) => {
           submissionId,
           adminId: currentUserId,
           type: feedbackType,
-          sentToCreator: action !== 'approve' // Set to true for reject and request_revision
-        }
-      })
+          sentToCreator: action !== 'approve', // Set to true for reject and request_revision
+        },
+      }),
     );
-    
+
     // Execute all updates
     await prisma.$transaction(updates);
-    
+
     console.log('✅ V4 Approve - Transaction completed, checking photo count...');
-    
+
     // Verify photos after transaction
     const updatedSubmission = await prisma.submission.findUnique({
       where: { id: submissionId },
-      include: { photos: true }
+      include: { photos: true },
     });
-    
+
     console.log('🔍 V4 Approve - After transaction photo count:', {
       submissionId,
       action,
       photoCountAfterTransaction: updatedSubmission?.photos?.length || 0,
-      photoIdsAfterTransaction: updatedSubmission?.photos?.map(p => p.id) || []
+      photoIdsAfterTransaction: updatedSubmission?.photos?.map((p) => p.id) || [],
     });
-    
+
     // Emit socket event for real-time updates
     const io = req.app.get('io');
     if (io) {
@@ -564,10 +556,10 @@ export const approveV4Submission = async (req: Request, res: Response) => {
         campaignId: submission.campaign.id,
         newStatus,
         action,
-        updatedAt: new Date().toISOString()
+        updatedAt: new Date().toISOString(),
       });
     }
-    
+
     // Note: Content submissions are created when agreements are approved in the main submission workflow
     // This controller only handles the actual content submissions (VIDEO, PHOTO, RAW_FOOTAGE)
 
@@ -627,12 +619,12 @@ export const approveV4Submission = async (req: Request, res: Response) => {
     }
 
     console.log(`✅ V4 submission ${submissionId} ${actionMessage} by admin ${currentUserId}`);
-    
+
     // Create campaign log for admin/superadmin action
     const admin = await prisma.user.findUnique({
       where: { id: currentUserId },
     });
-    
+
     let logMessage = '';
     if (action === 'approve') {
       logMessage = `Draft approved by admin "${admin?.name || 'Unknown'}" from Creator "${submission.user?.name || 'Unknown'}"`;
@@ -641,7 +633,7 @@ export const approveV4Submission = async (req: Request, res: Response) => {
     } else if (action === 'reject') {
       logMessage = `Draft rejected by admin "${admin?.name || 'Unknown'}" from Creator "${submission.user?.name || 'Unknown'}"`;
     }
-    
+
     if (logMessage) {
       await prisma.campaignLog.create({
         data: {
@@ -651,7 +643,7 @@ export const approveV4Submission = async (req: Request, res: Response) => {
         },
       });
     }
-    
+
     // Check if campaign is now complete and generate invoice if needed
     if (action === 'approve' && (newStatus === 'APPROVED' || newStatus === 'SENT_TO_CLIENT')) {
       try {
@@ -661,18 +653,17 @@ export const approveV4Submission = async (req: Request, res: Response) => {
         // Don't fail the request if completion check fails
       }
     }
-    
+
     res.status(200).json({
       message: `Submission ${actionMessage}`,
       submissionId,
-      newStatus
+      newStatus,
     });
-    
   } catch (error) {
     console.error('Error approving v4 submission:', error);
     res.status(500).json({
       message: 'Failed to update submission',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 };
@@ -684,20 +675,20 @@ export const approveV4Submission = async (req: Request, res: Response) => {
 export const approveV4SubmissionByClient = async (req: Request, res: Response) => {
   const { submissionId, action, feedback, reasons } = req.body;
   const clientId = req.session.userid;
-  
+
   try {
     if (!submissionId || !action) {
-      return res.status(400).json({ 
-        message: 'submissionId and action are required' 
+      return res.status(400).json({
+        message: 'submissionId and action are required',
       });
     }
-    
+
     if (!['approve', 'request_changes'].includes(action)) {
-      return res.status(400).json({ 
-        message: 'action must be approve or request_changes' 
+      return res.status(400).json({
+        message: 'action must be approve or request_changes',
       });
     }
-    
+
     // Get submission with content and campaign info
     const submission = await prisma.submission.findUnique({
       where: { id: submissionId },
@@ -727,58 +718,58 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
         },
         video: true,
         photos: true,
-        rawFootages: true
-      }
+        rawFootages: true,
+      },
     });
-    
+
     if (!submission) {
       return res.status(404).json({ message: 'Submission not found' });
     }
-    
+
     if (submission.submissionVersion !== 'v4') {
       return res.status(400).json({ message: 'Not a v4 submission' });
     }
-    
+
     // Verify this campaign has client managers (either CLIENT origin or V4 with client managers)
     const effectiveCampaignOrigin = getEffectiveCampaignOrigin(submission.campaign);
     if (effectiveCampaignOrigin !== 'CLIENT') {
       return res.status(400).json({ message: 'This endpoint is only for campaigns with client approval flow' });
     }
-    
+
     // Verify client has access to this campaign
-    const clientAccess = submission.campaign.campaignAdmin.find(ca => 
-      ca.admin.userId === clientId && ca.admin.user.role === 'client'
+    const clientAccess = submission.campaign.campaignAdmin.find(
+      (ca) => ca.admin.userId === clientId && ca.admin.user.role === 'client',
     );
-    
+
     if (!clientAccess) {
       return res.status(403).json({ message: 'You do not have access to this campaign' });
     }
-    
+
     // Verify submission is in correct status (sent to client)
     if (submission.status !== 'SENT_TO_CLIENT') {
-      return res.status(400).json({ 
-        message: `Cannot ${action} submission. Current status: ${submission.status}` 
+      return res.status(400).json({
+        message: `Cannot ${action} submission. Current status: ${submission.status}`,
       });
     }
-    
-    // Use status utilities to determine next status  
+
+    // Use status utilities to determine next status
     const { submissionStatus: newSubmissionStatus, videoStatus: newContentStatus } = getNextStatusAfterClientAction(
-      action as any
+      action as any,
     );
-    
+
     // Update submission and individual content items
     const updates = [];
-    
+
     // Update submission status
     updates.push(
       prisma.submission.update({
         where: { id: submissionId },
         data: {
-          status: newSubmissionStatus as SubmissionStatus
-        }
-      })
+          status: newSubmissionStatus as SubmissionStatus,
+        },
+      }),
     );
-    
+
     // Update videos
     if (submission.video && submission.video.length > 0) {
       updates.push(
@@ -787,12 +778,12 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
           data: {
             status: newContentStatus as FeedbackStatus,
             feedback: feedback || null,
-            reasons: reasons || []
-          }
-        })
+            reasons: reasons || [],
+          },
+        }),
       );
     }
-    
+
     // Update photos
     if (submission.photos && submission.photos.length > 0) {
       updates.push(
@@ -801,12 +792,12 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
           data: {
             status: newContentStatus as FeedbackStatus,
             feedback: feedback || null,
-            reasons: reasons || []
-          }
-        })
+            reasons: reasons || [],
+          },
+        }),
       );
     }
-    
+
     // Update raw footages
     if (submission.rawFootages && submission.rawFootages.length > 0) {
       updates.push(
@@ -815,16 +806,16 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
           data: {
             status: newContentStatus as FeedbackStatus,
             feedback: feedback || null,
-            reasons: reasons || []
-          }
-        })
+            reasons: reasons || [],
+          },
+        }),
       );
     }
-    
+
     // Always add client feedback record to maintain consistent display
     // Determine feedback type based on action
     const feedbackType = action === 'request_changes' ? 'REQUEST' : 'COMMENT';
-    
+
     updates.push(
       prisma.feedback.create({
         data: {
@@ -833,14 +824,14 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
           submissionId,
           adminId: clientId,
           sentToCreator: false, // Client feedback needs admin to forward
-          type: feedbackType
-        }
-      })
+          type: feedbackType,
+        },
+      }),
     );
-    
+
     // Execute all updates
     await prisma.$transaction(updates);
-    
+
     // Emit socket event for real-time updates
     const io = req.app.get('io');
     if (io) {
@@ -850,7 +841,7 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
         newStatus: newSubmissionStatus,
         action,
         byClient: true,
-        updatedAt: new Date().toISOString()
+        updatedAt: new Date().toISOString(),
       });
     }
 
@@ -885,18 +876,19 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
         io.to(adminSocketId).emit('notification', notification);
       }
     }
-    
+
     console.log(`✅ V4 submission ${submissionId} ${action}d by client ${clientId}`);
-    
+
     // Create campaign log for client action
     const client = await prisma.user.findUnique({
       where: { id: clientId },
     });
-    
-    const logMessage = action === 'approve' 
-      ? `Draft approved by client "${client?.name || 'Unknown'}" from Creator "${submission.user?.name || 'Unknown'}"`
-      : `Changes requested on draft by client "${client?.name || 'Unknown'}" from Creator "${submission.user?.name || 'Unknown'}"`;
-    
+
+    const logMessage =
+      action === 'approve'
+        ? `Draft approved by client "${client?.name || 'Unknown'}" from Creator "${submission.user?.name || 'Unknown'}"`
+        : `Changes requested on draft by client "${client?.name || 'Unknown'}" from Creator "${submission.user?.name || 'Unknown'}"`;
+
     await prisma.campaignLog.create({
       data: {
         message: logMessage,
@@ -904,7 +896,7 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
         campaignId: submission.campaignId,
       },
     });
-    
+
     // Check if campaign is now complete and generate invoice if needed
     if (action === 'approve' && newSubmissionStatus === 'CLIENT_APPROVED') {
       try {
@@ -914,18 +906,17 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
         // Don't fail the request if completion check fails
       }
     }
-    
+
     res.status(200).json({
       message: `Submission ${action}d by client successfully`,
       submissionId,
-      newStatus: newSubmissionStatus
+      newStatus: newSubmissionStatus,
     });
-    
   } catch (error) {
     console.error('Error processing client v4 submission:', error);
     res.status(500).json({
       message: 'Failed to process client decision',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 };
@@ -937,12 +928,12 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
 export const forwardClientFeedbackV4 = async (req: Request, res: Response) => {
   const { submissionId, adminFeedback } = req.body;
   const adminId = req.session.userid;
-  
+
   try {
     if (!submissionId) {
       return res.status(400).json({ message: 'submissionId is required' });
     }
-    
+
     // Get submission with client feedback
     const submission = await prisma.submission.findUnique({
       where: { id: submissionId },
@@ -955,43 +946,44 @@ export const forwardClientFeedbackV4 = async (req: Request, res: Response) => {
         feedback: {
           where: { type: 'COMMENT' }, // Using existing enum, would filter by clientId in practice
           orderBy: { createdAt: 'desc' },
-          take: 1
-        }
-      }
+          take: 1,
+        },
+      },
     });
-    
+
     if (!submission) {
       return res.status(404).json({ message: 'Submission not found' });
     }
-    
+
     if (submission.submissionVersion !== 'v4') {
       return res.status(400).json({ message: 'Not a v4 submission' });
     }
-    
+
     // Verify submission has client feedback to forward
     if (submission.status !== 'CLIENT_FEEDBACK') {
-      return res.status(400).json({ 
-        message: `Cannot forward feedback. Current status: ${submission.status}` 
+      return res.status(400).json({
+        message: `Cannot forward feedback. Current status: ${submission.status}`,
       });
     }
-    
+
     // Use status utilities to determine next status
-    const { submissionStatus: newSubmissionStatus, videoStatus: contentStatus } = getStatusAfterForwardingClientFeedback();
-    
+    const { submissionStatus: newSubmissionStatus, videoStatus: contentStatus } =
+      getStatusAfterForwardingClientFeedback();
+
     // Update submission and content to changes required
     const updates = [];
-    
+
     // Update submission status to changes required
     updates.push(
       prisma.submission.update({
         where: { id: submissionId },
         data: {
           status: newSubmissionStatus,
-          updatedAt: new Date()
-        }
-      })
+          updatedAt: new Date(),
+        },
+      }),
     );
-    
+
     if (submission.video && submission.video.length > 0) {
       updates.push(
         prisma.video.updateMany({
@@ -999,12 +991,12 @@ export const forwardClientFeedbackV4 = async (req: Request, res: Response) => {
           data: {
             status: contentStatus as any,
             adminId: adminId,
-            feedbackAt: new Date()
-          }
-        })
+            feedbackAt: new Date(),
+          },
+        }),
       );
     }
-    
+
     if (submission.photos && submission.photos.length > 0) {
       updates.push(
         prisma.photo.updateMany({
@@ -1012,12 +1004,12 @@ export const forwardClientFeedbackV4 = async (req: Request, res: Response) => {
           data: {
             status: contentStatus as any,
             adminId: adminId,
-            feedbackAt: new Date()
-          }
-        })
+            feedbackAt: new Date(),
+          },
+        }),
       );
     }
-    
+
     if (submission.rawFootages && submission.rawFootages.length > 0) {
       updates.push(
         prisma.rawFootage.updateMany({
@@ -1025,12 +1017,12 @@ export const forwardClientFeedbackV4 = async (req: Request, res: Response) => {
           data: {
             status: contentStatus as any,
             adminId: adminId,
-            feedbackAt: new Date()
-          }
-        })
+            feedbackAt: new Date(),
+          },
+        }),
       );
     }
-    
+
     // Update original client feedback to be visible to creator
     if (submission.feedback && submission.feedback.length > 0) {
       const latestClientFeedback = submission.feedback[0]; // Most recent feedback
@@ -1038,9 +1030,9 @@ export const forwardClientFeedbackV4 = async (req: Request, res: Response) => {
         prisma.feedback.update({
           where: { id: latestClientFeedback.id },
           data: {
-            sentToCreator: true // Mark client feedback as sent to creator
-          }
-        })
+            sentToCreator: true, // Mark client feedback as sent to creator
+          },
+        }),
       );
     }
 
@@ -1053,28 +1045,27 @@ export const forwardClientFeedbackV4 = async (req: Request, res: Response) => {
             type: 'COMMENT', // Admin forwarding client feedback = COMMENT type
             adminId: adminId,
             submissionId,
-            sentToCreator: true // Admin forwarded feedback is sent to creator
-          }
-        })
+            sentToCreator: true, // Admin forwarded feedback is sent to creator
+          },
+        }),
       );
     }
-    
+
     // Execute all updates
     await prisma.$transaction(updates);
-    
+
     console.log(`✅ V4 submission ${submissionId} client feedback forwarded by admin ${adminId}`);
-    
+
     res.status(200).json({
       message: 'Client feedback forwarded to creator successfully',
       submissionId,
-      newStatus: 'CHANGES_REQUIRED'
+      newStatus: 'CHANGES_REQUIRED',
     });
-    
   } catch (error) {
     console.error('Error forwarding client feedback v4:', error);
     res.status(500).json({
       message: 'Failed to forward client feedback',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 };
@@ -1086,33 +1077,32 @@ export const forwardClientFeedbackV4 = async (req: Request, res: Response) => {
 export const updatePostingLinkController = async (req: Request, res: Response) => {
   const { submissionId, postingLink } = req.body as PostingLinkUpdate;
   const currentUserId = req.session.userid;
-  
+
   try {
     if (!submissionId || !postingLink) {
-      return res.status(400).json({ 
-        message: 'submissionId and postingLink are required' 
+      return res.status(400).json({
+        message: 'submissionId and postingLink are required',
       });
     }
-    
+
     // Validate URL format
     try {
       new URL(postingLink);
     } catch {
       return res.status(400).json({ message: 'Invalid posting link URL' });
     }
-    
+
     const result = await updatePostingLink(submissionId, postingLink, currentUserId);
-    
+
     console.log(`🔗 Posting link updated for v4 submission ${submissionId}`);
-    
+
     res.status(200).json({
       message: 'Posting link updated successfully',
-      submission: result
+      submission: result,
     });
-    
   } catch (error) {
     console.error('Error updating posting link:', error);
-    
+
     if (error instanceof Error) {
       if (error.message.includes('not found')) {
         return res.status(404).json({ message: error.message });
@@ -1124,10 +1114,10 @@ export const updatePostingLinkController = async (req: Request, res: Response) =
         return res.status(400).json({ message: error.message });
       }
     }
-    
+
     res.status(500).json({
       message: 'Failed to update posting link',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 };
@@ -1139,56 +1129,56 @@ export const updatePostingLinkController = async (req: Request, res: Response) =
 export const approvePostingLinkV4 = async (req: Request, res: Response) => {
   const { submissionId, action, reasons } = req.body;
   const adminId = req.session.userid;
-  
+
   try {
     if (!submissionId || !action) {
-      return res.status(400).json({ 
-        message: 'submissionId and action are required' 
+      return res.status(400).json({
+        message: 'submissionId and action are required',
       });
     }
-    
+
     if (!['approve', 'reject'].includes(action)) {
-      return res.status(400).json({ 
-        message: 'action must be approve or reject' 
+      return res.status(400).json({
+        message: 'action must be approve or reject',
       });
     }
-    
+
     const submission = await prisma.submission.findUnique({
       where: { id: submissionId },
       include: {
         submissionType: true,
         campaign: {
-          select: { campaignType: true }
-        }
-      }
+          select: { campaignType: true },
+        },
+      },
     });
-    
+
     if (!submission) {
       return res.status(404).json({ message: 'Submission not found' });
     }
-    
+
     if (submission.submissionVersion !== 'v4') {
       return res.status(400).json({ message: 'Not a v4 submission' });
     }
-    
+
     // Check if campaign type allows posting links
     if (submission.campaign?.campaignType === 'ugc') {
-      return res.status(400).json({ 
-        message: 'Posting links are not required for UGC (No posting) campaigns' 
+      return res.status(400).json({
+        message: 'Posting links are not required for UGC (No posting) campaigns',
       });
     }
-    
+
     // Check if submission has posting link to approve
     if (!submission.content) {
-      return res.status(400).json({ 
-        message: 'No posting link found to approve' 
+      return res.status(400).json({
+        message: 'No posting link found to approve',
       });
     }
-    
+
     // Determine new status and content action
     let newStatus: string;
     let newContent: string | null;
-    
+
     switch (action) {
       case 'approve':
         newStatus = 'POSTED';
@@ -1204,7 +1194,7 @@ export const approvePostingLinkV4 = async (req: Request, res: Response) => {
     }
 
     let feedbackType: 'REQUEST' | 'COMMENT' = 'COMMENT';
-    
+
     if (action === 'reject') {
       feedbackType = 'REQUEST';
     }
@@ -1216,9 +1206,9 @@ export const approvePostingLinkV4 = async (req: Request, res: Response) => {
         submissionId,
         adminId: adminId,
         type: feedbackType,
-        sentToCreator: action !== 'approve' // True for reject
-      }
-    })
+        sentToCreator: action !== 'approve', // True for reject
+      },
+    });
 
     // Update submission
     await prisma.submission.update({
@@ -1226,19 +1216,19 @@ export const approvePostingLinkV4 = async (req: Request, res: Response) => {
       data: {
         status: newStatus as SubmissionStatus,
         content: newContent,
-        updatedAt: new Date()
-      }
+        updatedAt: new Date(),
+      },
     });
-    
+
     // Emit socket event for real-time updates
     const io = req.app.get('io');
     if (io) {
       // Get campaign ID for socket room
       const submissionWithCampaign = await prisma.submission.findUnique({
         where: { id: submissionId },
-        select: { campaign: { select: { id: true } } }
+        select: { campaign: { select: { id: true } } },
       });
-      
+
       if (submissionWithCampaign) {
         // Emit submission update event
         io.to(submissionWithCampaign.campaign.id).emit('v4:submission:updated', {
@@ -1246,22 +1236,22 @@ export const approvePostingLinkV4 = async (req: Request, res: Response) => {
           campaignId: submissionWithCampaign.campaign.id,
           newStatus,
           action: `posting_link_${action}`,
-          updatedAt: new Date().toISOString()
+          updatedAt: new Date().toISOString(),
         });
-        
+
         // Emit campaign update event for analytics consistency with V3
         io.to(submissionWithCampaign.campaign.id).emit('v4:campaign:updated', {
           campaignId: submissionWithCampaign.campaign.id,
           action: `posting_link_${action}`,
           submissionId,
           newStatus,
-          updatedAt: new Date().toISOString()
+          updatedAt: new Date().toISOString(),
         });
       }
     }
-    
+
     console.log(`✅ V4 submission ${submissionId} posting link ${action}d by admin ${adminId}`);
-    
+
     // Check if campaign is now complete and generate invoice if needed
     if (action === 'approve' && newStatus === 'POSTED') {
       try {
@@ -1271,18 +1261,17 @@ export const approvePostingLinkV4 = async (req: Request, res: Response) => {
         // Don't fail the request if completion check fails
       }
     }
-    
+
     res.status(200).json({
       message: `Posting link ${action}d successfully`,
       submissionId,
-      newStatus
+      newStatus,
     });
-    
   } catch (error) {
     console.error('Error approving posting link v4:', error);
     res.status(500).json({
       message: 'Failed to process posting link approval',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 };
@@ -1294,48 +1283,48 @@ export const approvePostingLinkV4 = async (req: Request, res: Response) => {
 export const approveIndividualContentV4 = async (req: Request, res: Response) => {
   const { contentType, contentId, feedback, reasons } = req.body;
   const adminId = req.session.userid;
-  
+
   try {
     if (!contentType || !contentId) {
-      return res.status(400).json({ 
-        message: 'contentType and contentId are required' 
+      return res.status(400).json({
+        message: 'contentType and contentId are required',
       });
     }
-    
+
     if (!['video', 'rawFootage', 'photo'].includes(contentType)) {
-      return res.status(400).json({ 
-        message: 'contentType must be video, rawFootage, or photo' 
+      return res.status(400).json({
+        message: 'contentType must be video, rawFootage, or photo',
       });
     }
-    
+
     let updatedContent;
     let submission;
-    
+
     if (contentType === 'video') {
       // Get video and its submission
       const video = await prisma.video.findUnique({
         where: { id: contentId },
-        include: { 
-          submission: { 
-            include: { campaign: true } 
-          } 
-        }
+        include: {
+          submission: {
+            include: { campaign: true },
+          },
+        },
       });
-      
+
       if (!video) {
         return res.status(404).json({ message: 'Video not found' });
       }
-      
+
       submission = video.submission;
-      
+
       if (!submission || submission.submissionVersion !== 'v4') {
         return res.status(400).json({ message: 'Not a v4 submission' });
       }
-      
+
       // Determine status based on effective campaign origin (includes V4 client manager check)
       const effectiveCampaignOrigin = getEffectiveCampaignOrigin(submission.campaign);
       const newStatus = effectiveCampaignOrigin === 'CLIENT' ? 'SENT_TO_CLIENT' : 'APPROVED';
-      
+
       // Update video
       updatedContent = await prisma.video.update({
         where: { id: contentId },
@@ -1344,48 +1333,48 @@ export const approveIndividualContentV4 = async (req: Request, res: Response) =>
           feedback: feedback || null,
           reasons: reasons || [],
           adminId,
-          feedbackAt: new Date()
-        }
+          feedbackAt: new Date(),
+        },
       });
     } else if (contentType === 'rawFootage') {
       // Handle raw footage
       const rawFootage = await prisma.rawFootage.findUnique({
         where: { id: contentId },
-        include: { 
-          submission: { 
-            include: { 
+        include: {
+          submission: {
+            include: {
               campaign: {
                 include: {
                   campaignAdmin: {
                     include: {
                       admin: {
                         include: {
-                          user: true
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            } 
-          } 
-        }
+                          user: true,
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
       });
-      
+
       if (!rawFootage) {
         return res.status(404).json({ message: 'Raw footage not found' });
       }
-      
+
       submission = rawFootage.submission;
-      
+
       if (!submission || submission.submissionVersion !== 'v4') {
         return res.status(400).json({ message: 'Not a v4 submission' });
       }
-      
+
       // Determine status based on effective campaign origin (includes V4 client manager check)
       const effectiveCampaignOrigin = getEffectiveCampaignOrigin(submission.campaign);
       const newStatus = effectiveCampaignOrigin === 'CLIENT' ? 'SENT_TO_CLIENT' : 'APPROVED';
-      
+
       // Update raw footage
       updatedContent = await prisma.rawFootage.update({
         where: { id: contentId },
@@ -1394,48 +1383,48 @@ export const approveIndividualContentV4 = async (req: Request, res: Response) =>
           feedback: feedback || null,
           reasons: reasons || [],
           adminId,
-          feedbackAt: new Date()
-        }
+          feedbackAt: new Date(),
+        },
       });
     } else {
       // Handle photo
       const photo = await prisma.photo.findUnique({
         where: { id: contentId },
-        include: { 
-          submission: { 
-            include: { 
+        include: {
+          submission: {
+            include: {
               campaign: {
                 include: {
                   campaignAdmin: {
                     include: {
                       admin: {
                         include: {
-                          user: true
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            } 
-          } 
-        }
+                          user: true,
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
       });
-      
+
       if (!photo) {
         return res.status(404).json({ message: 'Photo not found' });
       }
-      
+
       submission = photo.submission;
-      
+
       if (!submission || submission.submissionVersion !== 'v4') {
         return res.status(400).json({ message: 'Not a v4 submission' });
       }
-      
+
       // Determine status based on effective campaign origin (includes V4 client manager check)
       const effectiveCampaignOrigin = getEffectiveCampaignOrigin(submission.campaign);
       const newStatus = effectiveCampaignOrigin === 'CLIENT' ? 'SENT_TO_CLIENT' : 'APPROVED';
-      
+
       // Update photo
       updatedContent = await prisma.photo.update({
         where: { id: contentId },
@@ -1444,20 +1433,20 @@ export const approveIndividualContentV4 = async (req: Request, res: Response) =>
           feedback: feedback || null,
           reasons: reasons || [],
           adminId,
-          feedbackAt: new Date()
-        }
+          feedbackAt: new Date(),
+        },
       });
     }
-    
+
     // Always add to submission-level feedback to maintain consistent display
     const feedbackData: any = {
       submissionId: submission.id,
       adminId,
       type: 'COMMENT', // Admin approving individual content = COMMENT type
       reasons: reasons || [],
-      sentToCreator: false
+      sentToCreator: false,
     };
-    
+
     if (contentType === 'video') {
       feedbackData.content = feedback || '';
       feedbackData.videosToUpdate = [contentId];
@@ -1468,14 +1457,14 @@ export const approveIndividualContentV4 = async (req: Request, res: Response) =>
       feedbackData.photoContent = feedback || '';
       feedbackData.photosToUpdate = [contentId];
     }
-    
+
     await prisma.feedback.create({ data: feedbackData });
-    
+
     // Update submission status based on individual content statuses
     await updateSubmissionStatusBasedOnContent(submission.id);
-    
+
     console.log(`✅ V4 ${contentType} ${contentId} approved by admin ${adminId}`);
-    
+
     // Check if campaign is now complete and generate invoice if needed
     if (updatedContent.status === 'APPROVED' || updatedContent.status === 'SENT_TO_CLIENT') {
       try {
@@ -1485,18 +1474,17 @@ export const approveIndividualContentV4 = async (req: Request, res: Response) =>
         // Don't fail the request if completion check fails
       }
     }
-    
+
     res.status(200).json({
       message: `${contentType} approved successfully`,
       content: updatedContent,
-      status: updatedContent.status
+      status: updatedContent.status,
     });
-    
   } catch (error) {
     console.error('Error approving individual content v4:', error);
     res.status(500).json({
       message: 'Failed to approve content',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 };
@@ -1508,40 +1496,40 @@ export const approveIndividualContentV4 = async (req: Request, res: Response) =>
 export const requestChangesIndividualContentV4 = async (req: Request, res: Response) => {
   const { contentType, contentId, feedback, reasons } = req.body;
   const adminId = req.session.userid;
-  
+
   try {
     if (!contentType || !contentId || !feedback) {
-      return res.status(400).json({ 
-        message: 'contentType, contentId, and feedback are required' 
+      return res.status(400).json({
+        message: 'contentType, contentId, and feedback are required',
       });
     }
-    
+
     if (!['video', 'rawFootage', 'photo'].includes(contentType)) {
-      return res.status(400).json({ 
-        message: 'contentType must be video, rawFootage, or photo' 
+      return res.status(400).json({
+        message: 'contentType must be video, rawFootage, or photo',
       });
     }
-    
+
     let updatedContent;
     let submission;
-    
+
     if (contentType === 'video') {
       // Get video and its submission
       const video = await prisma.video.findUnique({
         where: { id: contentId },
-        include: { submission: true }
+        include: { submission: true },
       });
-      
+
       if (!video) {
         return res.status(404).json({ message: 'Video not found' });
       }
-      
+
       submission = video.submission;
-      
+
       if (!submission || submission.submissionVersion !== 'v4') {
         return res.status(400).json({ message: 'Not a v4 submission' });
       }
-      
+
       // Update video
       updatedContent = await prisma.video.update({
         where: { id: contentId },
@@ -1550,26 +1538,26 @@ export const requestChangesIndividualContentV4 = async (req: Request, res: Respo
           feedback,
           reasons: reasons || [],
           adminId,
-          feedbackAt: new Date()
-        }
+          feedbackAt: new Date(),
+        },
       });
     } else if (contentType === 'rawFootage') {
       // Handle raw footage
       const rawFootage = await prisma.rawFootage.findUnique({
         where: { id: contentId },
-        include: { submission: true }
+        include: { submission: true },
       });
-      
+
       if (!rawFootage) {
         return res.status(404).json({ message: 'Raw footage not found' });
       }
-      
+
       submission = rawFootage.submission;
-      
+
       if (!submission || submission.submissionVersion !== 'v4') {
         return res.status(400).json({ message: 'Not a v4 submission' });
       }
-      
+
       // Update raw footage
       updatedContent = await prisma.rawFootage.update({
         where: { id: contentId },
@@ -1578,26 +1566,26 @@ export const requestChangesIndividualContentV4 = async (req: Request, res: Respo
           feedback,
           reasons: reasons || [],
           adminId,
-          feedbackAt: new Date()
-        }
+          feedbackAt: new Date(),
+        },
       });
     } else {
       // Handle photo
       const photo = await prisma.photo.findUnique({
         where: { id: contentId },
-        include: { submission: true }
+        include: { submission: true },
       });
-      
+
       if (!photo) {
         return res.status(404).json({ message: 'Photo not found' });
       }
-      
+
       submission = photo.submission;
-      
+
       if (!submission || submission.submissionVersion !== 'v4') {
         return res.status(400).json({ message: 'Not a v4 submission' });
       }
-      
+
       // Update photo
       updatedContent = await prisma.photo.update({
         where: { id: contentId },
@@ -1606,20 +1594,20 @@ export const requestChangesIndividualContentV4 = async (req: Request, res: Respo
           feedback,
           reasons: reasons || [],
           adminId,
-          feedbackAt: new Date()
-        }
+          feedbackAt: new Date(),
+        },
       });
     }
-    
+
     // Add to submission-level feedback
     const feedbackData: any = {
       submissionId: submission.id,
       adminId,
       type: 'REQUEST', // Admin requesting changes = REQUEST type
       reasons: reasons || [],
-      sentToCreator: true // Admin feedback is automatically sent to creator
+      sentToCreator: true, // Admin feedback is automatically sent to creator
     };
-    
+
     if (contentType === 'video') {
       feedbackData.content = feedback;
       feedbackData.videosToUpdate = [contentId];
@@ -1630,25 +1618,24 @@ export const requestChangesIndividualContentV4 = async (req: Request, res: Respo
       feedbackData.photoContent = feedback;
       feedbackData.photosToUpdate = [contentId];
     }
-    
+
     await prisma.feedback.create({ data: feedbackData });
-    
+
     // Update submission status based on individual content statuses
     await updateSubmissionStatusBasedOnContent(submission.id);
-    
+
     console.log(`✅ V4 ${contentType} ${contentId} changes requested by admin ${adminId}`);
-    
+
     res.status(200).json({
       message: `Changes requested for ${contentType} successfully`,
       content: updatedContent,
-      status: updatedContent.status
+      status: updatedContent.status,
     });
-    
   } catch (error) {
     console.error('Error requesting changes for individual content v4:', error);
     res.status(500).json({
       message: 'Failed to request changes',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 };
@@ -1660,48 +1647,48 @@ export const requestChangesIndividualContentV4 = async (req: Request, res: Respo
 export const approveIndividualContentByClientV4 = async (req: Request, res: Response) => {
   const { contentType, contentId, feedback } = req.body;
   const clientId = req.session.userid;
-  
+
   try {
     if (!contentType || !contentId) {
-      return res.status(400).json({ 
-        message: 'contentType and contentId are required' 
+      return res.status(400).json({
+        message: 'contentType and contentId are required',
       });
     }
-    
+
     if (!['video', 'rawFootage', 'photo'].includes(contentType)) {
-      return res.status(400).json({ 
-        message: 'contentType must be video, rawFootage, or photo' 
+      return res.status(400).json({
+        message: 'contentType must be video, rawFootage, or photo',
       });
     }
-    
+
     let updatedContent;
     let submission;
-    
+
     if (contentType === 'video') {
       // Get video and its submission
       const video = await prisma.video.findUnique({
         where: { id: contentId },
-        include: { 
-          submission: { 
-            include: { campaign: true } 
-          } 
-        }
+        include: {
+          submission: {
+            include: { campaign: true },
+          },
+        },
       });
-      
+
       if (!video) {
         return res.status(404).json({ message: 'Video not found' });
       }
-      
+
       submission = video.submission;
-      
+
       if (!submission || submission.submissionVersion !== 'v4') {
         return res.status(400).json({ message: 'Not a v4 submission' });
       }
-      
+
       if (submission.campaign.origin !== 'CLIENT') {
         return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
       }
-      
+
       // Update video
       updatedContent = await prisma.video.update({
         where: { id: contentId },
@@ -1709,34 +1696,34 @@ export const approveIndividualContentByClientV4 = async (req: Request, res: Resp
           status: 'APPROVED',
           feedback: feedback || null,
           adminId: clientId,
-          feedbackAt: new Date()
-        }
+          feedbackAt: new Date(),
+        },
       });
     } else if (contentType === 'rawFootage') {
       // Handle raw footage
       const rawFootage = await prisma.rawFootage.findUnique({
         where: { id: contentId },
-        include: { 
-          submission: { 
-            include: { campaign: true } 
-          } 
-        }
+        include: {
+          submission: {
+            include: { campaign: true },
+          },
+        },
       });
-      
+
       if (!rawFootage) {
         return res.status(404).json({ message: 'Raw footage not found' });
       }
-      
+
       submission = rawFootage.submission;
-      
+
       if (!submission || submission.submissionVersion !== 'v4') {
         return res.status(400).json({ message: 'Not a v4 submission' });
       }
-      
+
       if (submission.campaign.origin !== 'CLIENT') {
         return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
       }
-      
+
       // Update raw footage
       updatedContent = await prisma.rawFootage.update({
         where: { id: contentId },
@@ -1744,34 +1731,34 @@ export const approveIndividualContentByClientV4 = async (req: Request, res: Resp
           status: 'APPROVED',
           feedback: feedback || null,
           adminId: clientId,
-          feedbackAt: new Date()
-        }
+          feedbackAt: new Date(),
+        },
       });
     } else {
       // Handle photo
       const photo = await prisma.photo.findUnique({
         where: { id: contentId },
-        include: { 
-          submission: { 
-            include: { campaign: true } 
-          } 
-        }
+        include: {
+          submission: {
+            include: { campaign: true },
+          },
+        },
       });
-      
+
       if (!photo) {
         return res.status(404).json({ message: 'Photo not found' });
       }
-      
+
       submission = photo.submission;
-      
+
       if (!submission || submission.submissionVersion !== 'v4') {
         return res.status(400).json({ message: 'Not a v4 submission' });
       }
-      
+
       if (submission.campaign.origin !== 'CLIENT') {
         return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
       }
-      
+
       // Update photo
       updatedContent = await prisma.photo.update({
         where: { id: contentId },
@@ -1779,19 +1766,19 @@ export const approveIndividualContentByClientV4 = async (req: Request, res: Resp
           status: 'APPROVED',
           feedback: feedback || null,
           adminId: clientId,
-          feedbackAt: new Date()
-        }
+          feedbackAt: new Date(),
+        },
       });
     }
-    
+
     // Always add to submission-level feedback to maintain consistent display
     const feedbackData: any = {
       submissionId: submission.id,
       adminId: clientId,
       type: 'COMMENT', // Client approving individual content = COMMENT type
-      sentToCreator: false // Client feedback needs admin to forward
+      sentToCreator: false, // Client feedback needs admin to forward
     };
-    
+
     if (contentType === 'video') {
       feedbackData.content = feedback || '';
       feedbackData.videosToUpdate = [contentId];
@@ -1802,23 +1789,23 @@ export const approveIndividualContentByClientV4 = async (req: Request, res: Resp
       feedbackData.photoContent = feedback || '';
       feedbackData.photosToUpdate = [contentId];
     }
-    
+
     await prisma.feedback.create({ data: feedbackData });
-    
+
     // Update submission status based on individual content statuses
     await updateSubmissionStatusBasedOnContent(submission.id);
-    
+
     console.log(`✅ V4 ${contentType} ${contentId} approved by client ${clientId}`);
-    
+
     // Create campaign log for client approval
     const client = await prisma.user.findUnique({
       where: { id: clientId },
     });
-    
+
     const creator = await prisma.user.findUnique({
       where: { id: submission.userId },
     });
-    
+
     await prisma.campaignLog.create({
       data: {
         message: `${contentType} approved by client "${client?.name || 'Unknown'}" from Creator "${creator?.name || 'Unknown'}"`,
@@ -1826,7 +1813,7 @@ export const approveIndividualContentByClientV4 = async (req: Request, res: Resp
         campaignId: submission.campaignId,
       },
     });
-    
+
     // Check if campaign is now complete and generate invoice if needed
     if (updatedContent.status === 'APPROVED') {
       try {
@@ -1836,18 +1823,17 @@ export const approveIndividualContentByClientV4 = async (req: Request, res: Resp
         // Don't fail the request if completion check fails
       }
     }
-    
+
     res.status(200).json({
       message: `${contentType} approved by client successfully`,
       content: updatedContent,
-      status: updatedContent.status
+      status: updatedContent.status,
     });
-    
   } catch (error) {
     console.error('Error approving individual content by client v4:', error);
     res.status(500).json({
       message: 'Failed to approve content',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 };
@@ -1859,48 +1845,48 @@ export const approveIndividualContentByClientV4 = async (req: Request, res: Resp
 export const requestChangesIndividualContentByClientV4 = async (req: Request, res: Response) => {
   const { contentType, contentId, feedback, reasons } = req.body;
   const clientId = req.session.userid;
-  
+
   try {
     if (!contentType || !contentId || !feedback) {
-      return res.status(400).json({ 
-        message: 'contentType, contentId, and feedback are required' 
+      return res.status(400).json({
+        message: 'contentType, contentId, and feedback are required',
       });
     }
-    
+
     if (!['video', 'rawFootage', 'photo'].includes(contentType)) {
-      return res.status(400).json({ 
-        message: 'contentType must be video, rawFootage, or photo' 
+      return res.status(400).json({
+        message: 'contentType must be video, rawFootage, or photo',
       });
     }
-    
+
     let updatedContent;
     let submission;
-    
+
     if (contentType === 'video') {
       // Get video and its submission
       const video = await prisma.video.findUnique({
         where: { id: contentId },
-        include: { 
-          submission: { 
-            include: { campaign: true } 
-          } 
-        }
+        include: {
+          submission: {
+            include: { campaign: true },
+          },
+        },
       });
-      
+
       if (!video) {
         return res.status(404).json({ message: 'Video not found' });
       }
-      
+
       submission = video.submission;
-      
+
       if (!submission || submission.submissionVersion !== 'v4') {
         return res.status(400).json({ message: 'Not a v4 submission' });
       }
-      
+
       if (submission.campaign.origin !== 'CLIENT') {
         return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
       }
-      
+
       // Update video
       updatedContent = await prisma.video.update({
         where: { id: contentId },
@@ -1909,34 +1895,34 @@ export const requestChangesIndividualContentByClientV4 = async (req: Request, re
           feedback,
           reasons: reasons || [],
           adminId: clientId,
-          feedbackAt: new Date()
-        }
+          feedbackAt: new Date(),
+        },
       });
     } else if (contentType === 'rawFootage') {
       // Handle raw footage
       const rawFootage = await prisma.rawFootage.findUnique({
         where: { id: contentId },
-        include: { 
-          submission: { 
-            include: { campaign: true } 
-          } 
-        }
+        include: {
+          submission: {
+            include: { campaign: true },
+          },
+        },
       });
-      
+
       if (!rawFootage) {
         return res.status(404).json({ message: 'Raw footage not found' });
       }
-      
+
       submission = rawFootage.submission;
-      
+
       if (!submission || submission.submissionVersion !== 'v4') {
         return res.status(400).json({ message: 'Not a v4 submission' });
       }
-      
+
       if (submission.campaign.origin !== 'CLIENT') {
         return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
       }
-      
+
       // Update raw footage
       updatedContent = await prisma.rawFootage.update({
         where: { id: contentId },
@@ -1945,34 +1931,34 @@ export const requestChangesIndividualContentByClientV4 = async (req: Request, re
           feedback,
           reasons: reasons || [],
           adminId: clientId,
-          feedbackAt: new Date()
-        }
+          feedbackAt: new Date(),
+        },
       });
     } else {
       // Handle photo
       const photo = await prisma.photo.findUnique({
         where: { id: contentId },
-        include: { 
-          submission: { 
-            include: { campaign: true } 
-          } 
-        }
+        include: {
+          submission: {
+            include: { campaign: true },
+          },
+        },
       });
-      
+
       if (!photo) {
         return res.status(404).json({ message: 'Photo not found' });
       }
-      
+
       submission = photo.submission;
-      
+
       if (!submission || submission.submissionVersion !== 'v4') {
         return res.status(400).json({ message: 'Not a v4 submission' });
       }
-      
+
       if (submission.campaign.origin !== 'CLIENT') {
         return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
       }
-      
+
       // Update photo
       updatedContent = await prisma.photo.update({
         where: { id: contentId },
@@ -1981,20 +1967,20 @@ export const requestChangesIndividualContentByClientV4 = async (req: Request, re
           feedback,
           reasons: reasons || [],
           adminId: clientId,
-          feedbackAt: new Date()
-        }
+          feedbackAt: new Date(),
+        },
       });
     }
-    
+
     // Add to submission-level feedback
     const feedbackData: any = {
       submissionId: submission.id,
       adminId: clientId,
       type: 'REQUEST', // Client requesting changes = REQUEST type
       reasons: reasons || [],
-      sentToCreator: false // Client feedback needs admin to forward
+      sentToCreator: false, // Client feedback needs admin to forward
     };
-    
+
     if (contentType === 'video') {
       feedbackData.content = feedback;
       feedbackData.videosToUpdate = [contentId];
@@ -2005,23 +1991,23 @@ export const requestChangesIndividualContentByClientV4 = async (req: Request, re
       feedbackData.photoContent = feedback;
       feedbackData.photosToUpdate = [contentId];
     }
-    
+
     await prisma.feedback.create({ data: feedbackData });
-    
+
     // Update submission status based on individual content statuses
     await updateSubmissionStatusBasedOnContent(submission.id);
-    
+
     console.log(`✅ V4 ${contentType} ${contentId} changes requested by client ${clientId}`);
-    
+
     // Create campaign log for client change request
     const client = await prisma.user.findUnique({
       where: { id: clientId },
     });
-    
+
     const creator = await prisma.user.findUnique({
       where: { id: submission.userId },
     });
-    
+
     await prisma.campaignLog.create({
       data: {
         message: `Changes requested on ${contentType} by client "${client?.name || 'Unknown'}" from Creator "${creator?.name || 'Unknown'}"`,
@@ -2029,18 +2015,17 @@ export const requestChangesIndividualContentByClientV4 = async (req: Request, re
         campaignId: submission.campaignId,
       },
     });
-    
+
     res.status(200).json({
       message: `Changes requested for ${contentType} by client successfully`,
       content: updatedContent,
-      status: updatedContent.status
+      status: updatedContent.status,
     });
-    
   } catch (error) {
     console.error('Error requesting changes by client for individual content v4:', error);
     res.status(500).json({
       message: 'Failed to request changes',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 };
@@ -2051,51 +2036,51 @@ export const requestChangesIndividualContentByClientV4 = async (req: Request, re
  */
 export const getIndividualContentFeedbackV4 = async (req: Request, res: Response) => {
   const { contentType, contentId } = req.params;
-  
+
   try {
     if (!['video', 'rawFootage', 'photo'].includes(contentType)) {
-      return res.status(400).json({ 
-        message: 'contentType must be video, rawFootage, or photo' 
+      return res.status(400).json({
+        message: 'contentType must be video, rawFootage, or photo',
       });
     }
-    
+
     // Get content item and its submission
     let content;
     let submissionId;
-    
+
     if (contentType === 'video') {
       content = await prisma.video.findUnique({
         where: { id: contentId },
-        include: { 
+        include: {
           admin: { select: { id: true, name: true } },
-          submission: { select: { id: true } }
-        }
+          submission: { select: { id: true } },
+        },
       });
       submissionId = content?.submissionId;
     } else if (contentType === 'rawFootage') {
       content = await prisma.rawFootage.findUnique({
         where: { id: contentId },
-        include: { 
+        include: {
           admin: { select: { id: true, name: true } },
-          submission: { select: { id: true } }
-        }
+          submission: { select: { id: true } },
+        },
       });
       submissionId = content?.submissionId;
     } else {
       content = await prisma.photo.findUnique({
         where: { id: contentId },
-        include: { 
+        include: {
           admin: { select: { id: true, name: true } },
-          submission: { select: { id: true } }
-        }
+          submission: { select: { id: true } },
+        },
       });
       submissionId = content?.submissionId;
     }
-    
+
     if (!content) {
       return res.status(404).json({ message: `${contentType} not found` });
     }
-    
+
     // Get submission-level feedback for this content
     const submissionFeedback = await prisma.feedback.findMany({
       where: {
@@ -2103,18 +2088,18 @@ export const getIndividualContentFeedbackV4 = async (req: Request, res: Response
         OR: [
           { videosToUpdate: { has: contentId } },
           { rawFootageToUpdate: { has: contentId } },
-          { photosToUpdate: { has: contentId } }
-        ]
+          { photosToUpdate: { has: contentId } },
+        ],
       },
       include: {
-        admin: { select: { id: true, name: true } }
+        admin: { select: { id: true, name: true } },
       },
-      orderBy: { createdAt: 'asc' }
+      orderBy: { createdAt: 'asc' },
     });
-    
+
     // Combine individual content feedback with submission feedback
     const feedbackHistory = [];
-    
+
     // Add individual content feedback if exists
     if (content.feedback) {
       feedbackHistory.push({
@@ -2124,12 +2109,12 @@ export const getIndividualContentFeedbackV4 = async (req: Request, res: Response
         reasons: content.reasons || [],
         admin: content.admin,
         createdAt: content.feedbackAt || content.updatedAt,
-        status: content.status
+        status: content.status,
       });
     }
-    
+
     // Add submission-level feedback
-    submissionFeedback.forEach(fb => {
+    submissionFeedback.forEach((fb) => {
       let feedbackText;
       if (contentType === 'video') {
         feedbackText = fb.content;
@@ -2138,7 +2123,7 @@ export const getIndividualContentFeedbackV4 = async (req: Request, res: Response
       } else {
         feedbackText = fb.photoContent;
       }
-      
+
       if (feedbackText) {
         feedbackHistory.push({
           id: fb.id,
@@ -2147,25 +2132,26 @@ export const getIndividualContentFeedbackV4 = async (req: Request, res: Response
           reasons: fb.reasons || [],
           admin: fb.adminId,
           createdAt: fb.createdAt,
-          sentToCreator: fb.sentToCreator
+          sentToCreator: fb.sentToCreator,
         });
       }
     });
-    
+
     // Sort by creation date
-    feedbackHistory.sort((a, b) => new Date(a.createdAt || new Date(0)).getTime() - new Date(b.createdAt || new Date(0)).getTime());
-    
+    feedbackHistory.sort(
+      (a, b) => new Date(a.createdAt || new Date(0)).getTime() - new Date(b.createdAt || new Date(0)).getTime(),
+    );
+
     res.status(200).json({
       content,
       feedbackHistory,
-      totalFeedback: feedbackHistory.length
+      totalFeedback: feedbackHistory.length,
     });
-    
   } catch (error) {
     console.error('Error getting individual content feedback v4:', error);
     res.status(500).json({
       message: 'Failed to get feedback history',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 };
@@ -2176,7 +2162,7 @@ export const getIndividualContentFeedbackV4 = async (req: Request, res: Response
  */
 export const getPhotoFeedbackV4 = async (req: Request, res: Response) => {
   const { photoId } = req.params;
-  
+
   try {
     // Get photo with submission info
     const photo = await prisma.photo.findUnique({
@@ -2187,18 +2173,18 @@ export const getPhotoFeedbackV4 = async (req: Request, res: Response) => {
             feedback: {
               where: {
                 photosToUpdate: { has: photoId },
-                photoContent: { not: null }
+                photoContent: { not: null },
               },
               include: {
                 admin: {
-                  select: { id: true, name: true, role: true }
-                }
+                  select: { id: true, name: true, role: true },
+                },
               },
-              orderBy: { createdAt: 'asc' }
-            }
-          }
-        }
-      }
+              orderBy: { createdAt: 'asc' },
+            },
+          },
+        },
+      },
     });
 
     if (!photo) {
@@ -2212,9 +2198,9 @@ export const getPhotoFeedbackV4 = async (req: Request, res: Response) => {
       feedback: string | null;
       reasons: string[];
       admin: {
-      id: string;
-      name: string;
-      role?: string;
+        id: string;
+        name: string;
+        role?: string;
       } | null;
       createdAt: Date;
       sentToCreator: boolean;
@@ -2223,19 +2209,21 @@ export const getPhotoFeedbackV4 = async (req: Request, res: Response) => {
     const feedbackHistory: FeedbackHistoryItem[] = [];
 
     // Add feedback from feedback table that targets this photo
-    photo.submission?.feedback.forEach(fb => {
+    photo.submission?.feedback.forEach((fb) => {
       feedbackHistory.push({
         id: fb.id,
         type: fb.admin?.role === 'client' ? 'client_feedback' : 'admin_feedback',
         feedback: fb.photoContent,
         reasons: fb.reasons || [],
-        admin: fb.admin ? {
-          id: fb.admin.id,
-          name: fb.admin.name ?? 'Unknown',
-          role: fb.admin.role
-        } : null,
+        admin: fb.admin
+          ? {
+              id: fb.admin.id,
+              name: fb.admin.name ?? 'Unknown',
+              role: fb.admin.role,
+            }
+          : null,
         createdAt: fb.createdAt,
-        sentToCreator: fb.sentToCreator
+        sentToCreator: fb.sentToCreator,
       });
     });
 
@@ -2250,17 +2238,16 @@ export const getPhotoFeedbackV4 = async (req: Request, res: Response) => {
         url: photo.url,
         status: photo.status,
         feedback: photo.feedback,
-        reasons: photo.reasons
+        reasons: photo.reasons,
       },
       feedbackHistory,
-      totalFeedback: feedbackHistory.length
+      totalFeedback: feedbackHistory.length,
     });
-
   } catch (error) {
     console.error('Error getting photo feedback v4:', error);
     res.status(500).json({
       message: 'Failed to get photo feedback',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 };
@@ -2272,7 +2259,7 @@ export const getPhotoFeedbackV4 = async (req: Request, res: Response) => {
 export const forwardPhotoFeedbackV4 = async (req: Request, res: Response) => {
   const { feedbackId } = req.body;
   const adminId = req.session.userid;
-  
+
   try {
     if (!feedbackId) {
       return res.status(400).json({ message: 'feedbackId is required' });
@@ -2284,10 +2271,10 @@ export const forwardPhotoFeedbackV4 = async (req: Request, res: Response) => {
       include: {
         submission: {
           include: {
-            photos: true
-          }
-        }
-      }
+            photos: true,
+          },
+        },
+      },
     });
 
     if (!feedback) {
@@ -2307,37 +2294,36 @@ export const forwardPhotoFeedbackV4 = async (req: Request, res: Response) => {
       where: { id: feedbackId },
       data: {
         sentToCreator: true,
-        updatedAt: new Date()
-      }
+        updatedAt: new Date(),
+      },
     });
 
     // Update the associated photos to REVISION_REQUESTED status
     await prisma.photo.updateMany({
       where: {
-        id: { in: feedback.photosToUpdate }
+        id: { in: feedback.photosToUpdate },
       },
       data: {
         status: 'REVISION_REQUESTED',
         adminId,
-        feedbackAt: new Date()
-      }
+        feedbackAt: new Date(),
+      },
     });
 
     // Update submission status based on individual content statuses
     await updateSubmissionStatusBasedOnContent(feedback.submissionId);
 
     console.log(`✅ Photo feedback ${feedbackId} forwarded to creator by admin ${adminId}`);
-    
+
     res.status(200).json({
       message: 'Feedback forwarded to creator successfully',
-      feedbackId
+      feedbackId,
     });
-
   } catch (error) {
     console.error('Error forwarding photo feedback:', error);
     res.status(500).json({
       message: 'Failed to forward feedback',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 };
@@ -2348,7 +2334,7 @@ export const forwardPhotoFeedbackV4 = async (req: Request, res: Response) => {
  */
 export const getRawFootageFeedbackV4 = async (req: Request, res: Response) => {
   const { rawFootageId } = req.params;
-  
+
   try {
     // Get raw footage with submission info
     const rawFootage = await prisma.rawFootage.findUnique({
@@ -2359,18 +2345,18 @@ export const getRawFootageFeedbackV4 = async (req: Request, res: Response) => {
             feedback: {
               where: {
                 rawFootageToUpdate: { has: rawFootageId },
-                rawFootageContent: { not: null }
+                rawFootageContent: { not: null },
               },
               include: {
                 admin: {
-                  select: { id: true, name: true, role: true }
-                }
+                  select: { id: true, name: true, role: true },
+                },
               },
-              orderBy: { createdAt: 'asc' }
-            }
-          }
-        }
-      }
+              orderBy: { createdAt: 'asc' },
+            },
+          },
+        },
+      },
     });
 
     if (!rawFootage) {
@@ -2384,9 +2370,9 @@ export const getRawFootageFeedbackV4 = async (req: Request, res: Response) => {
       feedback: string | null;
       reasons: string[];
       admin: {
-      id: string;
-      name: string;
-      role?: string;
+        id: string;
+        name: string;
+        role?: string;
       } | null;
       createdAt: Date;
       sentToCreator: boolean;
@@ -2396,20 +2382,22 @@ export const getRawFootageFeedbackV4 = async (req: Request, res: Response) => {
     const feedbackHistory: FeedbackHistoryItem[] = [];
 
     // Add feedback from feedback table that targets this raw footage
-    rawFootage.submission?.feedback.forEach(fb => {
+    rawFootage.submission?.feedback.forEach((fb) => {
       feedbackHistory.push({
         id: fb.id,
         type: fb.admin?.role === 'client' ? 'individual' : 'individual', // Using 'individual' to match frontend expectations
         feedback: fb.rawFootageContent,
         reasons: fb.reasons || [],
-        admin: fb.admin ? {
-          id: fb.admin.id,
-          name: fb.admin.name ?? 'Unknown',
-          role: fb.admin.role
-        } : null,
+        admin: fb.admin
+          ? {
+              id: fb.admin.id,
+              name: fb.admin.name ?? 'Unknown',
+              role: fb.admin.role,
+            }
+          : null,
         createdAt: fb.createdAt,
         sentToCreator: fb.sentToCreator,
-        status: fb.admin?.role === 'client' ? 'CLIENT_FEEDBACK' : 'ADMIN_FEEDBACK'
+        status: fb.admin?.role === 'client' ? 'CLIENT_FEEDBACK' : 'ADMIN_FEEDBACK',
       });
     });
 
@@ -2424,17 +2412,16 @@ export const getRawFootageFeedbackV4 = async (req: Request, res: Response) => {
         url: rawFootage.url,
         status: rawFootage.status,
         feedback: rawFootage.feedback,
-        reasons: rawFootage.reasons
+        reasons: rawFootage.reasons,
       },
       feedbackHistory,
-      totalFeedback: feedbackHistory.length
+      totalFeedback: feedbackHistory.length,
     });
-
   } catch (error) {
     console.error('Error getting raw footage feedback v4:', error);
     res.status(500).json({
       message: 'Failed to get raw footage feedback',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 };
@@ -2446,7 +2433,7 @@ export const getRawFootageFeedbackV4 = async (req: Request, res: Response) => {
 export const forwardRawFootageFeedbackV4 = async (req: Request, res: Response) => {
   const { feedbackId } = req.body;
   const adminId = req.session.userid;
-  
+
   try {
     if (!feedbackId) {
       return res.status(400).json({ message: 'feedbackId is required' });
@@ -2458,10 +2445,10 @@ export const forwardRawFootageFeedbackV4 = async (req: Request, res: Response) =
       include: {
         submission: {
           include: {
-            rawFootages: true
-          }
-        }
-      }
+            rawFootages: true,
+          },
+        },
+      },
     });
 
     if (!feedback) {
@@ -2481,37 +2468,36 @@ export const forwardRawFootageFeedbackV4 = async (req: Request, res: Response) =
       where: { id: feedbackId },
       data: {
         sentToCreator: true,
-        updatedAt: new Date()
-      }
+        updatedAt: new Date(),
+      },
     });
 
     // Update the associated raw footage to REVISION_REQUESTED status
     await prisma.rawFootage.updateMany({
       where: {
-        id: { in: feedback.rawFootageToUpdate }
+        id: { in: feedback.rawFootageToUpdate },
       },
       data: {
         status: 'REVISION_REQUESTED',
         adminId,
-        feedbackAt: new Date()
-      }
+        feedbackAt: new Date(),
+      },
     });
 
     // Update submission status based on individual content statuses
     await updateSubmissionStatusBasedOnContent(feedback.submissionId);
 
     console.log(`✅ Raw footage feedback ${feedbackId} forwarded to creator by admin ${adminId}`);
-    
+
     res.status(200).json({
       message: 'Feedback forwarded to creator successfully',
-      feedbackId
+      feedbackId,
     });
-
   } catch (error) {
     console.error('Error forwarding raw footage feedback:', error);
     res.status(500).json({
       message: 'Failed to forward feedback',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 };
@@ -2522,7 +2508,7 @@ export const forwardRawFootageFeedbackV4 = async (req: Request, res: Response) =
  */
 export const getV4SubmissionById = async (req: Request, res: Response) => {
   const { id } = req.params;
-  
+
   try {
     const submission = await prisma.submission.findUnique({
       where: { id },
@@ -2532,14 +2518,14 @@ export const getV4SubmissionById = async (req: Request, res: Response) => {
           select: {
             id: true,
             name: true,
-            email: true
-          }
+            email: true,
+          },
         },
         campaign: {
           select: {
             id: true,
-            name: true
-          }
+            name: true,
+          },
         },
         video: {
           select: {
@@ -2548,8 +2534,8 @@ export const getV4SubmissionById = async (req: Request, res: Response) => {
             status: true,
             feedback: true,
             reasons: true,
-            feedbackAt: true
-          }
+            feedbackAt: true,
+          },
         },
         photos: {
           select: {
@@ -2558,8 +2544,8 @@ export const getV4SubmissionById = async (req: Request, res: Response) => {
             status: true,
             feedback: true,
             reasons: true,
-            feedbackAt: true
-          }
+            feedbackAt: true,
+          },
         },
         rawFootages: {
           select: {
@@ -2568,8 +2554,8 @@ export const getV4SubmissionById = async (req: Request, res: Response) => {
             status: true,
             feedback: true,
             reasons: true,
-            feedbackAt: true
-          }
+            feedbackAt: true,
+          },
         },
         feedback: {
           include: {
@@ -2577,32 +2563,31 @@ export const getV4SubmissionById = async (req: Request, res: Response) => {
               select: {
                 id: true,
                 name: true,
-                role: true
-              }
-            }
+                role: true,
+              },
+            },
           },
           orderBy: {
-            createdAt: 'desc'
-          }
-        }
-      }
+            createdAt: 'desc',
+          },
+        },
+      },
     });
-    
+
     if (!submission) {
       return res.status(404).json({ message: 'Submission not found' });
     }
-    
+
     if (submission.submissionVersion !== 'v4') {
       return res.status(400).json({ message: 'Not a v4 submission' });
     }
-    
+
     res.status(200).json({ submission });
-    
   } catch (error) {
     console.error('Error getting v4 submission by ID:', error);
     res.status(500).json({
       message: 'Failed to get submission',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 };
@@ -2614,54 +2599,54 @@ export const getV4SubmissionById = async (req: Request, res: Response) => {
 export const getSubmissionStatusInfo = async (req: Request, res: Response) => {
   const { submissionId } = req.params;
   const { role } = req.query;
-  
+
   try {
     if (!submissionId || !role) {
-      return res.status(400).json({ 
-        message: 'submissionId and role query parameter are required' 
+      return res.status(400).json({
+        message: 'submissionId and role query parameter are required',
       });
     }
-    
+
     if (!['creator', 'admin', 'client'].includes(role as string)) {
-      return res.status(400).json({ 
-        message: 'role must be creator, admin, or client' 
+      return res.status(400).json({
+        message: 'role must be creator, admin, or client',
       });
     }
-    
+
     const submission = await prisma.submission.findUnique({
       where: { id: submissionId },
       include: {
         submissionType: true,
         campaign: {
           select: {
-            origin: true
-          }
+            origin: true,
+          },
         },
         video: {
           select: {
-            status: true
-          }
-        }
-      }
+            status: true,
+          },
+        },
+      },
     });
-    
+
     if (!submission) {
       return res.status(404).json({ message: 'Submission not found' });
     }
-    
+
     if (submission.submissionVersion !== 'v4') {
       return res.status(400).json({ message: 'Not a v4 submission' });
     }
-    
-    const { 
-      getSubmissionStatusDisplay, 
-      canCreatorUpload, 
+
+    const {
+      getSubmissionStatusDisplay,
+      canCreatorUpload,
       canAddPostingLink,
-      getAvailableActions 
+      getAvailableActions,
     } = require('../utils/v4StatusUtils');
-    
+
     const videoStatus = submission.video[0]?.status || 'PENDING';
-    
+
     const statusInfo = {
       submissionId: submission.id,
       submissionStatus: submission.status,
@@ -2670,7 +2655,7 @@ export const getSubmissionStatusInfo = async (req: Request, res: Response) => {
         submission.status,
         videoStatus,
         role as any,
-        submission.campaign.origin as any
+        submission.campaign.origin as any,
       ),
       canUpload: role === 'creator' ? canCreatorUpload(submission.status, videoStatus) : false,
       canAddPostingLink: role === 'creator' ? canAddPostingLink(submission.status, videoStatus) : false,
@@ -2678,17 +2663,16 @@ export const getSubmissionStatusInfo = async (req: Request, res: Response) => {
         submission.status,
         videoStatus,
         role as any,
-        submission.campaign.origin as any
-      )
+        submission.campaign.origin as any,
+      ),
     };
-    
+
     res.status(200).json(statusInfo);
-    
   } catch (error) {
     console.error('Error getting submission status info:', error);
     res.status(500).json({
       message: 'Failed to get status information',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 };
@@ -2699,27 +2683,27 @@ export const getSubmissionStatusInfo = async (req: Request, res: Response) => {
 export const updateSubmissionDueDate = async (req: Request, res: Response) => {
   try {
     const { submissionId, dueDate } = req.body;
-    
+
     if (!submissionId || !dueDate) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'submissionId and dueDate are required' 
+      return res.status(400).json({
+        success: false,
+        message: 'submissionId and dueDate are required',
       });
     }
 
     const { updateDueDateService } = require('../service/submissionV4Service');
     const updatedSubmission = await updateDueDateService(submissionId, dueDate);
-    
+
     res.status(200).json({
       success: true,
       data: updatedSubmission,
-      message: 'Due date updated successfully'
+      message: 'Due date updated successfully',
     });
   } catch (error) {
     console.error('Error updating due date:', error);
     res.status(500).json({
       success: false,
-      message: error instanceof Error ? error.message : 'Failed to update due date'
+      message: error instanceof Error ? error.message : 'Failed to update due date',
     });
   }
 };
@@ -2730,34 +2714,30 @@ export const updateSubmissionDueDate = async (req: Request, res: Response) => {
  */
 export const checkV4CompletionStatus = async (req: Request, res: Response) => {
   const { campaignId, userId } = req.query;
-  
+
   try {
     if (!campaignId || !userId) {
-      return res.status(400).json({ 
-        message: 'campaignId and userId are required' 
+      return res.status(400).json({
+        message: 'campaignId and userId are required',
       });
     }
-    
+
     const { checkV4SubmissionCompletion } = await import('../service/submissionV4CompletionService.js');
-    const completionStatus = await checkV4SubmissionCompletion(
-      campaignId as string,
-      userId as string
-    );
-    
+    const completionStatus = await checkV4SubmissionCompletion(campaignId as string, userId as string);
+
     console.log(`🔍 Completion status check for user ${userId} in campaign ${campaignId}:`, completionStatus);
-    
+
     res.status(200).json({
       campaignId,
       userId,
       ...completionStatus,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
-    
   } catch (error) {
     console.error('Error checking completion status:', error);
     res.status(500).json({
       message: 'Failed to check completion status',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 };
@@ -2773,28 +2753,29 @@ export const triggerV4Completion = async (req: Request, res: Response) => {
   try {
     if (!campaignId || !userId) {
       return res.status(400).json({
-        message: 'campaignId and userId are required'
+        message: 'campaignId and userId are required',
       });
     }
 
     const { handleV4CompletedCampaign } = await import('../service/submissionV4CompletionService.js');
     const result = await handleV4CompletedCampaign(campaignId, userId, adminId);
 
-    console.log(`🎯 Manual completion trigger for user ${userId} in campaign ${campaignId}: ${result ? 'SUCCESS' : 'NOT READY'}`);
+    console.log(
+      `🎯 Manual completion trigger for user ${userId} in campaign ${campaignId}: ${result ? 'SUCCESS' : 'NOT READY'}`,
+    );
 
     res.status(200).json({
       campaignId,
       userId,
       completed: result,
       message: result ? 'Campaign completed and invoice generated' : 'Campaign not ready for completion',
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
-
   } catch (error) {
     console.error('Error triggering completion:', error);
     res.status(500).json({
       message: 'Failed to trigger completion',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 };
@@ -2810,7 +2791,7 @@ export const getCaptionHistory = async (req: Request, res: Response) => {
     // Fetch all history
     const history = await prisma.captionHistory.findMany({
       where: { submissionId },
-      orderBy: { createdAt: 'desc' }
+      orderBy: { createdAt: 'desc' },
     });
 
     return res.status(200).json({ history });
@@ -2818,7 +2799,7 @@ export const getCaptionHistory = async (req: Request, res: Response) => {
     console.error('Error fetching caption history:', error);
     res.status(500).json({
       message: 'Failed to fetch caption history',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 };

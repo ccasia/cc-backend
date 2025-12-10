@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { PrismaClient, CampaignStatus } from '@prisma/client';
+import { PrismaClient, CampaignStatus, LogisticType } from '@prisma/client';
 import { uploadCompanyLogo, uploadAttachments } from '@configs/cloudStorage.config';
 import { getRemainingCredits } from '@services/companyService';
 import { clients, io } from '../server';
@@ -313,6 +313,8 @@ export const createClientCampaign = async (req: Request, res: Response) => {
       campaignDont,
       referencesLinks,
       // submissionVersion,
+      logisticsType,
+      products,
     } = campaignData;
 
     // Validate required fields
@@ -351,7 +353,7 @@ export const createClientCampaign = async (req: Request, res: Response) => {
     const campaignId = `C${Math.floor(Math.random() * 1000)}`;
 
     // Process uploaded images
-    let publicURL: string[] = [];
+    const publicURL: string[] = [];
     if (req.files && (req.files as any).campaignImages) {
       const images = Array.isArray((req.files as any).campaignImages)
         ? (req.files as any).campaignImages
@@ -388,6 +390,15 @@ export const createClientCampaign = async (req: Request, res: Response) => {
     }
 
     const newCampaign = await prisma.$transaction(async (tx) => {
+      // --- LOGISTICS: Process Products ---
+      let productsToCreate: any[] = [];
+
+      if (logisticsType === 'PRODUCT_DELIVERY' && Array.isArray(products)) {
+        productsToCreate = products
+          .filter((product: any) => product.name && product.name.trim() !== '')
+          .map((product: any) => ({ productName: product.name }));
+      }
+
       // Create campaign with PENDING status
       const campaign = await tx.campaign.create({
         data: {
@@ -399,6 +410,11 @@ export const createClientCampaign = async (req: Request, res: Response) => {
           submissionVersion: 'v4', // Set submission version to determine flow type
           brandTone: brandTone || '',
           productName: productName || '',
+          products: {
+            create: productsToCreate,
+          },
+          logisticsType: logisticsType && logisticsType !== '' ? (logisticsType as LogisticType) : null,
+
           // Skip adminManager and other fields that will be set by CSM later
           campaignBrief: {
             create: {
@@ -439,6 +455,7 @@ export const createClientCampaign = async (req: Request, res: Response) => {
         include: {
           campaignBrief: true,
           campaignRequirement: true,
+          products: true,
         },
       });
 
@@ -524,7 +541,7 @@ export const createClientCampaign = async (req: Request, res: Response) => {
       // Create a campaign log entry to track that this client created the campaign
       await tx.campaignLog.create({
         data: {
-          message: `Campaign created by client ${user.name || user.id}`,
+          message: `Campaign Created`,
           adminId: userId,
           campaignId: campaign.id,
         },

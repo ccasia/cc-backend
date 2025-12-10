@@ -48,6 +48,15 @@ const xero = new XeroClient({
   scopes: scopes?.split(' '),
 });
 
+// invoice item type definition
+interface InvoiceItem {
+  service: string;
+  description?: string;
+  currency?: string;
+  currencySymbol?: string;
+  [key: string]: any; // Allow other properties
+}
+
 // invoice type definition
 interface invoiceData {
   invoiceId: string;
@@ -57,11 +66,14 @@ interface invoiceData {
   status: InvoiceStatus;
   invoiceFrom: any;
   invoiceTo: object;
-  items: object[];
+  items: InvoiceItem[];
   totalAmount: number;
+  subTotal?: number;
   bankInfo: object;
   createdBy: string;
   campaignId: string;
+  currency?: string;
+  currencySymbol?: string;
   xeroContactId?: string;
   newContact?: boolean;
   otherReason?: string;
@@ -321,13 +333,40 @@ export const createInvoice = async (req: Request, res: Response) => {
     invoiceTo,
     items,
     totalAmount,
+    subTotal,
     campaignId,
     bankInfo,
+    currency,
+    currencySymbol,
   }: invoiceData = req.body;
-  const item: object = items[0];
+
+  // Process the first item in the items array
+  let item: InvoiceItem = items[0];
+
+  // Handle 'Others' service type with custom description
+  if (item.service === 'Others' && item.description) {
+    // Update the service field to include the custom description
+    item = {
+      ...item,
+      service: `Others: ${item.description}`,
+      // Keep the original description field as well
+      description: item.description,
+    };
+  }
+
+  // Add currency information to the item if provided
+  if (currency) {
+    item = {
+      ...item,
+      currency,
+      currencySymbol,
+    };
+  }
+
   const creatorIdInfo = invoiceFrom.id;
 
   try {
+    // Store the invoice with the currency information embedded in the task object
     const invoice = await prisma.invoice.create({
       data: {
         invoiceNumber,
@@ -336,7 +375,7 @@ export const createInvoice = async (req: Request, res: Response) => {
         status: status as InvoiceStatus,
         invoiceFrom: invoiceFrom,
         invoiceTo: invoiceTo,
-        task: item,
+        task: item, // The currency info is already included in the item object
         amount: totalAmount,
         bankAcc: bankInfo,
         campaignId: campaignId,

@@ -3460,6 +3460,31 @@ export const updateSubmissionStatus = async (req: Request, res: Response) => {
     // Small delay to ensure all database operations are fully committed
     await new Promise((resolve) => setTimeout(resolve, 100));
 
+    // Log campaign activity for agreement approval/rejection
+    if (result.submission.submissionType.type === 'AGREEMENT_FORM') {
+      const user = await prisma.user.findUnique({
+        where: { id: result.submission.userId },
+      });
+
+      if (status === 'APPROVED') {
+        await prisma.campaignLog.create({
+          data: {
+            message: `${user?.name || 'Creator'}'s agreement has been approved`,
+            adminId: req.session.userid,
+            campaignId: result.submission.campaignId,
+          },
+        });
+      } else if (status === 'CHANGES_REQUIRED') {
+        await prisma.campaignLog.create({
+          data: {
+            message: `${user?.name || 'Creator'}'s agreement has been rejected`,
+            adminId: req.session.userid,
+            campaignId: result.submission.campaignId,
+          },
+        });
+      }
+    }
+
     return res.status(200).json({
       message: sectionApproval ? 'Section approval updated successfully' : `Submission status updated to ${status}`,
       submission: result.updatedSubmission,

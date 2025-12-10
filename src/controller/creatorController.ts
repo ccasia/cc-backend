@@ -184,7 +184,7 @@ export const deleteCreator = async (req: Request, res: Response) => {
 
       prisma.logistic.deleteMany({
         where: {
-          userId: id,
+          creatorId: id,
         },
       }),
 
@@ -949,15 +949,15 @@ export const getCreatorAnalytics = async (req: Request, res: Response) => {
     if (creator.instagramUser && creator.instagramUser.accessToken) {
       try {
         const accessToken = decryptToken(creator.instagramUser.accessToken as { iv: string; content: string });
-        
+
         // Get real-time analytics from Instagram API
         const engagement = await getInstagramEngagementRateOverTime(accessToken);
         const monthly = await getInstagramMonthlyInteractions(accessToken);
-        
+
         // Calculate overall engagement rate
         const totalEngagement = (creator.instagramUser.totalLikes || 0) + (creator.instagramUser.totalComments || 0);
-        const overallEngagementRate = creator.instagramUser.followers_count 
-          ? (totalEngagement / creator.instagramUser.followers_count) * 100 
+        const overallEngagementRate = creator.instagramUser.followers_count
+          ? (totalEngagement / creator.instagramUser.followers_count) * 100
           : 0;
 
         instagramAnalytics = {
@@ -986,15 +986,15 @@ export const getCreatorAnalytics = async (req: Request, res: Response) => {
         const tiktokData = creator.tiktokData as any;
         if (tiktokData?.access_token) {
           const accessToken = decryptToken(tiktokData.access_token as { iv: string; content: string });
-          
+
           // Get real-time analytics from TikTok API
           const engagement = await getTikTokEngagementRateOverTime(accessToken);
           const monthly = await getTikTokMonthlyInteractions(accessToken);
-          
+
           // Calculate overall engagement rate
-          const totalEngagement = (creator.tiktokUser.likes_count || 0);
-          const overallEngagementRate = creator.tiktokUser.follower_count 
-            ? (totalEngagement / creator.tiktokUser.follower_count) * 100 
+          const totalEngagement = creator.tiktokUser.likes_count || 0;
+          const overallEngagementRate = creator.tiktokUser.follower_count
+            ? (totalEngagement / creator.tiktokUser.follower_count) * 100
             : 0;
 
           tiktokAnalytics = {
@@ -1011,8 +1011,8 @@ export const getCreatorAnalytics = async (req: Request, res: Response) => {
         } else {
           // Fallback to stored data only
           const totalEngagement = creator.tiktokUser.likes_count || 0;
-          const engagementRate = creator.tiktokUser.follower_count 
-            ? (totalEngagement / creator.tiktokUser.follower_count) * 100 
+          const engagementRate = creator.tiktokUser.follower_count
+            ? (totalEngagement / creator.tiktokUser.follower_count) * 100
             : 0;
 
           tiktokAnalytics = {
@@ -1031,8 +1031,8 @@ export const getCreatorAnalytics = async (req: Request, res: Response) => {
         console.error('Error fetching TikTok analytics:', error);
         // Fallback to basic stored data
         const totalEngagement = creator.tiktokUser.likes_count || 0;
-        const engagementRate = creator.tiktokUser.follower_count 
-          ? (totalEngagement / creator.tiktokUser.follower_count) * 100 
+        const engagementRate = creator.tiktokUser.follower_count
+          ? (totalEngagement / creator.tiktokUser.follower_count) * 100
           : 0;
 
         tiktokAnalytics = {
@@ -1055,9 +1055,9 @@ export const getCreatorAnalytics = async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Error in getCreatorAnalytics:', error);
-    return res.status(500).json({ 
+    return res.status(500).json({
       message: 'Failed to fetch analytics',
-      error: error.message 
+      error: error.message,
     });
   }
 };

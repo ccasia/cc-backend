@@ -7,6 +7,7 @@ import { io, clients } from '../server';
 import { saveNotification } from './notificationController';
 import { notificationDraft } from '@helper/notification';
 import { saveCaptionToHistory } from '../utils/captionHistoryUtils';
+import { updateDeliveryStatus } from '@services/logisticsService';
 
 const prisma = new PrismaClient();
 
@@ -492,6 +493,20 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
       }
     }
 
+    const logistic = await prisma.logistic.findFirst({
+      where: {
+        campaignId: submission.campaignId,
+        creatorId: submission.userId,
+      },
+    });
+
+    let currentStatus = logistic?.status;
+
+    if (logistic) {
+      const updatedLogistic = await updateDeliveryStatus(logistic.id, 'COMPLETED');
+      currentStatus = updatedLogistic.status;
+    }
+
     res.status(200).json({
       message: 'Content submitted successfully and is being processed',
       submissionId,
@@ -500,6 +515,7 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
         photos: uploadedPhotos.length,
         rawFootages: uploadedRawFootages.length,
       },
+      logisticStatus: currentStatus,
     });
   } catch (error) {
     console.error('Error submitting creator v4 content:', error);

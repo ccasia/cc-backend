@@ -1,4 +1,3 @@
-
 import { Request, Response } from 'express';
 import { AdminInvite, forgetPasswordEmail } from '@configs/nodemailer.config';
 import jwt, { JwtPayload, Secret } from 'jsonwebtoken';
@@ -97,9 +96,7 @@ export const getAdmins = async (req: Request, res: Response) => {
       // Transform data for frontend consumption
       const transformedAdmins = admins.map((admin) => {
         const isClient = admin.admin?.role?.name === 'Client';
-        const displayName = isClient && admin.client?.company?.name
-          ? admin.client.company.name
-          : admin.name;
+        const displayName = isClient && admin.client?.company?.name ? admin.client.company.name : admin.name;
 
         return {
           id: admin.id,
