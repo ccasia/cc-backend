@@ -564,6 +564,161 @@ export const createContentSubmissionsAfterAgreement = async (agreementSubmission
 };
 
 /**
+ * Update V4 VIDEO submissions when credits change for an already-sent agreement
+ * This function:
+ * 1. Deletes existing VIDEO submissions for the user/campaign
+ * 2. Creates new VIDEO submissions based on the new ugcVideos count
+ * 3. Preserves PHOTO and RAW_FOOTAGE submissions (creates if missing)
+ */
+export const updateV4Submissions = async (
+  userId: string,
+  campaignId: string,
+  newUgcVideos: number,
+): Promise<{ deleted: number; created: number }> => {
+  try {
+    console.log(`🔄 Updating V4 submissions for user ${userId} in campaign ${campaignId}`);
+    console.log(`📊 New ugcVideos count: ${newUgcVideos}`);
+
+    // Get campaign details
+    const campaign = await prisma.campaign.findUnique({
+      where: { id: campaignId },
+      select: {
+        id: true,
+        name: true,
+        photos: true,
+        rawFootage: true,
+        submissionVersion: true,
+      },
+    });
+
+    if (!campaign) {
+      throw new Error('Campaign not found');
+    }
+
+    if (campaign.submissionVersion !== 'v4') {
+      console.log(`⚠️ Campaign ${campaignId} is not a V4 campaign, skipping submission update`);
+      return { deleted: 0, created: 0 };
+    }
+
+    // Get submission type records
+    const submissionTypes = await prisma.submissionType.findMany({
+      where: {
+        type: { in: ['VIDEO', 'PHOTO', 'RAW_FOOTAGE'] },
+      },
+    });
+
+    const getSubmissionTypeId = (type: string) => {
+      const foundType = submissionTypes.find((st) => st.type === type);
+      if (!foundType) {
+        throw new Error(`Submission type '${type}' not found`);
+      }
+      return foundType.id;
+    };
+
+    const videoTypeId = getSubmissionTypeId('VIDEO');
+
+    // Delete existing VIDEO submissions for this user/campaign
+    const deletedResult = await prisma.submission.deleteMany({
+      where: {
+        userId,
+        campaignId,
+        submissionTypeId: videoTypeId,
+        submissionVersion: 'v4',
+      },
+    });
+
+    console.log(`🗑️ Deleted ${deletedResult.count} existing VIDEO submissions`);
+
+    // Prepare new submissions
+    const newSubmissions: any[] = [];
+
+    // Create VIDEO submissions based on new ugcVideos count
+    for (let i = 1; i <= newUgcVideos; i++) {
+      newSubmissions.push({
+        campaignId,
+        userId,
+        submissionTypeId: videoTypeId,
+        contentOrder: i,
+        submissionVersion: 'v4',
+        status: 'NOT_STARTED' as const,
+        content: null,
+      });
+    }
+
+    // Check for existing PHOTO submission and create if missing
+    if (campaign.photos) {
+      const photoTypeId = getSubmissionTypeId('PHOTO');
+      const existingPhoto = await prisma.submission.findFirst({
+        where: {
+          userId,
+          campaignId,
+          submissionTypeId: photoTypeId,
+          submissionVersion: 'v4',
+        },
+      });
+
+      if (!existingPhoto) {
+        newSubmissions.push({
+          campaignId,
+          userId,
+          submissionTypeId: photoTypeId,
+          contentOrder: 1,
+          submissionVersion: 'v4',
+          status: 'NOT_STARTED' as const,
+          content: null,
+        });
+        console.log(`📷 Adding missing PHOTO submission`);
+      }
+    }
+
+    // Check for existing RAW_FOOTAGE submission and create if missing
+    if (campaign.rawFootage) {
+      const rawFootageTypeId = getSubmissionTypeId('RAW_FOOTAGE');
+      const existingRawFootage = await prisma.submission.findFirst({
+        where: {
+          userId,
+          campaignId,
+          submissionTypeId: rawFootageTypeId,
+          submissionVersion: 'v4',
+        },
+      });
+
+      if (!existingRawFootage) {
+        newSubmissions.push({
+          campaignId,
+          userId,
+          submissionTypeId: rawFootageTypeId,
+          contentOrder: 1,
+          submissionVersion: 'v4',
+          status: 'NOT_STARTED' as const,
+          content: null,
+        });
+        console.log(`🎬 Adding missing RAW_FOOTAGE submission`);
+      }
+    }
+
+    // Create all new submissions
+    let createdCount = 0;
+    if (newSubmissions.length > 0) {
+      const createdResult = await prisma.submission.createMany({
+        data: newSubmissions,
+      });
+      createdCount = createdResult.count;
+      console.log(`✅ Created ${createdCount} new submissions`);
+    }
+
+    console.log(
+      `📊 Summary: Deleted ${deletedResult.count} VIDEO submissions, created ${createdCount} new submissions`,
+    );
+
+    return { deleted: deletedResult.count, created: createdCount };
+  } catch (error) {
+    console.error('Error updating V4 submissions:', error);
+    throw error;
+  }
+};
+
+/**
  * Update submission due date
  */
 export const updateDueDateService = async (submissionId: string, dueDate: string) => {
