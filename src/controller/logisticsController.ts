@@ -17,6 +17,12 @@ import {
   resolveIssueService,
   retryDeliveryService,
   creatorProductInfoService,
+  upsertReservationConfigService,
+  getReservationConfigService,
+  getAvailableSlotsService,
+  submitReservationService,
+  confirmReservationService,
+  rescheduleReservationService,
 } from '@services/logisticsService';
 
 export const getLogisticsForCampaign = async (req: Request, res: Response) => {
@@ -293,6 +299,120 @@ export const submitCreatorProductInfo = async (req: Request, res: Response) => {
     return res.status(200).json(result);
   } catch (error) {
     console.error('Error submitting logistics info:', error);
+    return res.status(500).json({ message: 'Internal Server Error' });
+  }
+};
+
+export const upsertReservationConfig = async (req: Request, res: Response) => {
+  try {
+    const { campaignId } = req.params;
+    const { mode, locations, startDate, endDate, startTime, endTime, interval } = req.body;
+
+    if (!campaignId) return res.status(400).json({ message: 'Campaign ID is required' });
+    if (!mode || !locations || !startDate || !endDate || !startTime || !endTime || !interval) {
+      return res.status(400).json({ message: 'Missing required configuration fields' });
+    }
+
+    const config = await upsertReservationConfigService(campaignId, req.body);
+    return res.status(200).json(config);
+  } catch (error) {
+    console.error('Error saving reservation config:', error);
+    return res.status(500).json({ message: 'Internal Server Error' });
+  }
+};
+
+export const getReservationConfig = async (req: Request, res: Response) => {
+  try {
+    const { campaignId } = req.params;
+    const config = await getReservationConfigService(campaignId);
+
+    if (!config) {
+      return res.status(200).json(null);
+    }
+
+    return res.status(200).json(config);
+  } catch (error) {
+    console.error('Error fetching reservation config:', error);
+    return res.status(500).json({ message: 'Internal Server Error' });
+  }
+};
+
+export const getReservationSlots = async (req: Request, res: Response) => {
+  try {
+    const { campaignId } = req.params;
+    const { month } = req.query;
+
+    if (!month) return res.status(400).json({ message: 'Month date is required' });
+
+    const slots = await getAvailableSlotsService(campaignId, new Date(month as string));
+    return res.status(200).json(slots);
+  } catch (error) {
+    console.error('Error fetching slots:', error);
+    return res.status(500).json({ message: 'Internal Server Error' });
+  }
+};
+
+export const submitReservation = async (req: Request, res: Response) => {
+  try {
+    const { campaignId } = req.params;
+    const { userid } = (req as any).session;
+    const { outlet, contactNumber, remarks, pax, selectedSlots } = req.body;
+
+    if (!selectedSlots || selectedSlots.length === 0) {
+      return res.status(400).json({ message: 'At least one time slot must be selected' });
+    }
+
+    const result = await submitReservationService(campaignId, {
+      creatorId: userid,
+      outlet,
+      contactNumber,
+      remarks,
+      pax: Number(pax),
+      selectedSlots,
+    });
+
+    return res.status(201).json(result);
+  } catch (error) {
+    console.error('Error submitting reservation:', error);
+    return res.status(500).json({ message: 'Internal Server Error' });
+  }
+};
+
+export const confirmReservation = async (req: Request, res: Response) => {
+  try {
+    const { logisticId } = req.params;
+    const { slotId, picName, picContact, budget, promoCode, clientRemarks, outlet } = req.body;
+
+    if (!slotId) {
+      return res.status(400).json({ message: 'A selected Slot ID is required to confirm' });
+    }
+
+    const result = await confirmReservationService(logisticId, {
+      slotId,
+      picName,
+      picContact,
+      budget,
+      promoCode,
+      clientRemarks,
+      outlet,
+    });
+
+    return res.status(200).json(result);
+  } catch (error) {
+    console.error('Error confirming reservation:', error);
+    return res.status(500).json({ message: 'Internal Server Error' });
+  }
+};
+
+export const rescheduleReservation = async (req: Request, res: Response) => {
+  try {
+    const { logisticId } = req.params;
+
+    const result = await rescheduleReservationService(logisticId);
+
+    return res.status(200).json({ message: 'Reservation reset successfully', result });
+  } catch (error) {
+    console.error('Error rescheduling reservation:', error);
     return res.status(500).json({ message: 'Internal Server Error' });
   }
 };
