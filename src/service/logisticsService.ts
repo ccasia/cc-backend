@@ -1,5 +1,5 @@
 import { PrismaClient, LogisticStatus } from '@prisma/client';
-
+import { addMinutes, format, isSameDay, addDays, startOfDay, isBefore, isAfter, getDay } from 'date-fns';
 const prisma = new PrismaClient();
 
 export const fetchAllLogisticsForCampaign = async (campaignId: string) => {
@@ -37,6 +37,13 @@ export const fetchAllLogisticsForCampaign = async (campaignId: string) => {
             include: {
               product: { select: { id: true, productName: true } },
             },
+          },
+        },
+      },
+      reservationDetails: {
+        include: {
+          slots: {
+            orderBy: { startTime: 'asc' },
           },
         },
       },
@@ -78,6 +85,7 @@ export const fetchAllLogisticsForCreator = async (creatorId: string) => {
         select: {
           id: true,
           name: true,
+          reservationConfig: true,
         },
       },
       deliveryDetails: {
@@ -89,7 +97,13 @@ export const fetchAllLogisticsForCreator = async (creatorId: string) => {
           },
         },
       },
-      reservationDetails: {}, //TODO
+      reservationDetails: {
+        include: {
+          slots: {
+            orderBy: { startTime: 'asc' },
+          },
+        },
+      },
     },
     orderBy: { createdAt: 'desc' },
   });
@@ -133,6 +147,13 @@ export const fetchCampaignLogisticForCreator = async (creatorId: string, campaig
             include: {
               product: { select: { id: true, productName: true } },
             },
+          },
+        },
+      },
+      reservationDetails: {
+        include: {
+          slots: {
+            orderBy: { startTime: 'asc' },
           },
         },
       },
@@ -735,7 +756,6 @@ export const creatorProductInfoService = async ({
       .join(', ');
 
     if (logistic) {
-
       return await tx.logistic.update({
         where: { id: logistic.id },
         data: {
@@ -770,5 +790,294 @@ export const creatorProductInfoService = async ({
         },
       });
     }
+  });
+};
+
+// -----------------------Reservation services ----------------------------
+
+type ReservationConfigData = {
+  mode: 'MANUAL_CONFIRMATION' | 'AUTO_SCHEDULE';
+  locations: string[];
+  startDate: string | Date;
+  endDate: string | Date;
+  startTime: string;
+  endTime: string;
+  interval: number;
+  daysActive?: number[];
+};
+
+export const upsertReservationConfigService = async (campaignId: string, data: ReservationConfigData) => {
+  const { mode, locations, startDate, endDate, startTime, endTime, interval, daysActive } = data;
+
+  return await prisma.reservationConfiguration.upsert({
+    where: {
+      campaignId: campaignId,
+    },
+    update: {
+      mode,
+      locations,
+      startDate: new Date(startDate),
+      endDate: new Date(endDate),
+      startTime,
+      endTime,
+      interval,
+      daysActive: daysActive || [0, 1, 2, 3, 4, 5, 6],
+    },
+    create: {
+      campaign: { connect: { id: campaignId } },
+      mode,
+      locations,
+      startDate: new Date(startDate),
+      endDate: new Date(endDate),
+      startTime,
+      endTime,
+      interval,
+      daysActive: daysActive || [0, 1, 2, 3, 4, 5, 6],
+    },
+  });
+};
+
+export const getReservationConfigService = async (campaignId: string) => {
+  return await prisma.reservationConfiguration.findUnique({
+    where: { campaignId },
+  });
+};
+
+export const getAvailableSlotsService = async (campaignId: string, monthDate: Date) => {
+  const config = await prisma.reservationConfiguration.findUnique({
+    where: { campaignId },
+  });
+
+  if (!config) throw new Error('Reservation configuration not found');
+
+  const startOfMonth = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
+  const endOfMonth = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0);
+
+  const existingBookings = await prisma.reservationSlot.findMany({
+    where: {
+      reservationDetails: { logistic: { campaignId } },
+      status: 'SELECTED',
+      startTime: { gte: startOfMonth, lte: endOfMonth },
+    },
+  });
+
+  const daysInMonth = [];
+  let currentDate = startOfMonth;
+
+  while (currentDate <= endOfMonth) {
+    const dayOfWeek = getDay(currentDate);
+    const dateString = format(currentDate, 'dd-MM-yyyy');
+
+    const isWithinRange =
+      (!config.startDate || isAfter(currentDate, addDays(new Date(config.startDate), -1))) &&
+      (!config.endDate || isBefore(currentDate, addDays(new Date(config.startDate), 1)));
+
+    const isActiveDay = config.daysActive ? (config.daysActive as number[]).includes(dayOfWeek) : true;
+
+    if (!isWithinRange || !isActiveDay) {
+      daysInMonth.push({ date: dateString, available: false, slots: [] });
+    } else {
+      const slots = [];
+
+      // Parse "09:00" format date Object
+      const [startHour, startMinute] = config.startTime.split(':').map(Number);
+      const [endHour, endMinute] = config.endTime.split(':').map(Number);
+
+      let slotTime = new Date(currentDate);
+      slotTime.setHours(startHour, startMinute, 0, 0);
+
+      const endTimeObject = new Date(currentDate);
+      endTimeObject.setHours(endHour, endMinute, 0, 0);
+
+      while (slotTime < endTimeObject) {
+        const slotEnd = addMinutes(slotTime, config.interval);
+
+        const isTaken = existingBookings.some(
+          (booking) => isSameDay(booking.startTime, slotTime) && booking.startTime.getTime() === slotTime.getTime(),
+        );
+
+        slots.push({
+          startTime: slotTime.toISOString(),
+          endTime: slotTime.toISOString(),
+          isTaken,
+        });
+
+        slotTime = slotEnd;
+      }
+
+      daysInMonth.push({ date: dateString, available: true, slots });
+    }
+
+    currentDate = addDays(currentDate, 1);
+  }
+
+  return daysInMonth;
+};
+
+type ReservationSelectionData = {
+  creatorId: string;
+  outlet: string;
+  contactNumber: string;
+  remarks?: string;
+  pax: number;
+  selectedSlots: { start: string; end: string }[];
+};
+
+export const submitReservationService = async (campaignId: string, data: ReservationSelectionData) => {
+  const { creatorId, outlet, contactNumber, remarks, pax, selectedSlots } = data;
+
+  const config = await prisma.reservationConfiguration.findUnique({
+    where: { campaignId },
+  });
+
+  return await prisma.$transaction(async (tx) => {
+    let logistic = await tx.logistic.findUnique({
+      where: { creatorId_campaignId: { creatorId, campaignId } },
+    });
+
+    if (!logistic) {
+      logistic = await tx.logistic.create({
+        data: {
+          campaignId,
+          creatorId,
+          createdById: creatorId,
+          type: 'RESERVATION',
+          status: config?.mode === 'AUTO_SCHEDULE' ? 'SCHEDULED' : 'PENDING_ASSIGNMENT',
+        },
+      });
+    } else {
+      await tx.logistic.update({
+        where: { id: logistic.id },
+        data: {
+          status: config?.mode === 'AUTO_SCHEDULE' ? 'SCHEDULED' : 'PENDING_ASSIGNMENT',
+        },
+      });
+    }
+
+    const reservationDetails = await tx.reservationDetails.upsert({
+      where: { logisticId: logistic.id },
+      create: {
+        logisticId: logistic.id,
+        outlet: outlet,
+        pax: pax,
+        creatorRemarks: remarks,
+      },
+      update: {
+        outlet: outlet,
+        pax: pax,
+        creatorRemarks: remarks,
+      },
+    });
+
+    await tx.reservationSlot.deleteMany({
+      where: { reservationDetailsId: reservationDetails.id },
+    });
+
+    const initialSlotStatus = config?.mode === 'AUTO_SCHEDULE' ? 'SELECTED' : 'PROPOSED';
+
+    await tx.reservationSlot.createMany({
+      data: selectedSlots.map((slot) => ({
+        reservationDetailsId: reservationDetails.id,
+        startTime: new Date(slot.start),
+        endTime: new Date(slot.end),
+        status: initialSlotStatus,
+      })),
+    });
+
+    // await tx.user.update({
+    //   where: { id: creatorId },
+    //   data: { phoneNumber: contactNumber },
+    // });
+
+    return logistic;
+  });
+};
+
+type ConfirmReservationData = {
+  slotId: string;
+  picName?: string;
+  picContact?: string;
+  budget?: string;
+  promoCode?: string;
+  clientRemarks?: string;
+  outlet?: string;
+};
+
+export const confirmReservationService = async (logisticId: string, data: ConfirmReservationData) => {
+  const { slotId, picName, picContact, budget, promoCode, clientRemarks, outlet } = data;
+
+  return await prisma.$transaction(async (tx) => {
+    const logistic = await tx.logistic.findUnique({
+      where: { id: logisticId },
+      include: { reservationDetails: { include: { slots: true } } },
+    });
+
+    if (!logistic || !logistic.reservationDetails) {
+      throw new Error('Logistic or Reservation Details not found');
+    }
+
+    const detailsId = logistic.reservationDetails.id;
+
+    const updateSlot = logistic.reservationDetails.slots.map((slot) => {
+      if (slot.id === slotId) {
+        return tx.reservationSlot.update({
+          where: { id: slot.id },
+          data: { status: 'SELECTED' },
+        });
+      } else {
+        return tx.reservationSlot.update({
+          where: { id: slot.id },
+          data: { status: 'REJECTED' },
+        });
+      }
+    });
+    await Promise.all(updateSlot);
+
+    await tx.reservationDetails.update({
+      where: { id: detailsId },
+      data: {
+        picName,
+        picContact,
+        budget,
+        promoCode,
+        clientRemarks,
+        outlet: outlet || logistic.reservationDetails.outlet,
+      },
+    });
+
+    return await tx.logistic.update({
+      where: { id: logisticId },
+      data: {
+        status: 'SCHEDULED',
+      },
+      include: {
+        reservationDetails: { include: { slots: true } },
+      },
+    });
+  });
+};
+
+export const rescheduleReservationService = async (logisticId: string) => {
+  return await prisma.$transaction(async (tx) => {
+    const logistic = await tx.logistic.findUnique({
+      where: { id: logisticId },
+      include: { reservationDetails: true },
+    });
+
+    if (!logistic || !logistic.reservationDetails) throw new Error('Reservation not found');
+
+    await tx.reservationSlot.deleteMany({
+      where: { reservationDetailsId: logistic.reservationDetails.id },
+    });
+
+    return await tx.logistic.update({
+      where: { id: logisticId },
+      data: {
+        status: 'PENDING_ASSIGNMENT',
+        shippedAt: null, // Clear these if they were set
+        deliveredAt: null,
+        completedAt: null,
+      },
+    });
   });
 };
