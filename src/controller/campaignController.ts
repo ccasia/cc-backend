@@ -22,6 +22,7 @@ import {
   TiktokUser,
   InstagramUser,
   LogisticType,
+  ReservationMode,
 } from '@prisma/client';
 
 import amqplib from 'amqplib';
@@ -147,6 +148,14 @@ interface Campaign {
   logisticsType?: string;
   products?: { name: string }[];
   logisticRemarks?: string;
+  schedulingOption?: string;
+  locations?: { name: string }[];
+  availabilityRules?: {
+    dates: string[];
+    startTime: string;
+    endTime: string;
+    interval: number;
+  }[];
 }
 
 interface RequestQuery {
@@ -237,8 +246,10 @@ export const createCampaign = async (req: Request, res: Response) => {
     country,
     logisticsType,
     products,
-    // locations,
     logisticRemarks,
+    schedulingOption,
+    locations,
+    availabilityRules,
   }: Campaign = JSON.parse(req.body.data);
   // Also read optional fields not in the Campaign interface
   const rawBody: any = (() => {
@@ -353,11 +364,27 @@ export const createCampaign = async (req: Request, res: Response) => {
         const normalizedPostingEndDate = postingEndDate ? dayjs(postingEndDate).toDate() : normalizedStartDate;
 
         let productsToCreate: any[] = [];
-
         if (logisticsType === 'PRODUCT_DELIVERY' && Array.isArray(products)) {
           productsToCreate = products
             .filter((product: any) => product.name && product.name.trim() !== '')
             .map((product: any) => ({ productName: product.name }));
+        }
+
+        let reservationConfigCreate = undefined;
+        if (logisticsType === 'RESERVATION') {
+          const mode: ReservationMode = schedulingOption === 'auto' ? 'AUTO_SCHEDULE' : 'MANUAL_CONFIRMATION';
+
+          const locationNames = Array.isArray(locations)
+            ? locations.map((location: any) => location.name).filter(Boolean)
+            : [];
+
+          reservationConfigCreate = {
+            create: {
+              mode: mode,
+              locations: locationNames as any,
+              availabilityRules: (availabilityRules || []) as any,
+            },
+          };
         }
 
         const campaign = await tx.campaign.create({
@@ -375,7 +402,7 @@ export const createCampaign = async (req: Request, res: Response) => {
             ads: ads || false,
             photos: photos || false,
             crossPosting: crossPosting || false,
-            logisticsType: (logisticsType && logisticsType !== '') ? (logisticsType as LogisticType) : null,
+            logisticsType: logisticsType && logisticsType !== '' ? (logisticsType as LogisticType) : null,
             agreementTemplate: {
               connect: {
                 id: agreementFrom.id,
@@ -384,6 +411,7 @@ export const createCampaign = async (req: Request, res: Response) => {
             products: {
               create: productsToCreate,
             },
+            reservationConfig: reservationConfigCreate,
             campaignBrief: {
               create: {
                 title: campaignTitle,
@@ -428,6 +456,7 @@ export const createCampaign = async (req: Request, res: Response) => {
           include: {
             campaignBrief: true,
             products: true,
+            reservationConfig: true,
           },
         });
 
@@ -699,7 +728,9 @@ export const createCampaign = async (req: Request, res: Response) => {
                       campaignId: campaign.id,
                     },
                   });
-                  console.log(`Added client user ${companyClient.userId} to CampaignAdmin for v4 campaign ${campaign.id}`);
+                  console.log(
+                    `Added client user ${companyClient.userId} to CampaignAdmin for v4 campaign ${campaign.id}`,
+                  );
                 }
               }
             }
@@ -731,7 +762,9 @@ export const createCampaign = async (req: Request, res: Response) => {
                       role: 'owner',
                     },
                   });
-                  console.log(`Added client user ${user.client.id} from campaignManager to CampaignClient for v4 campaign ${campaign.id}`);
+                  console.log(
+                    `Added client user ${user.client.id} from campaignManager to CampaignClient for v4 campaign ${campaign.id}`,
+                  );
                 }
               }
             }
@@ -9096,7 +9129,6 @@ export const updateAllCampaignCredits = async (req: Request, res: Response) => {
 export const getCampaignsForPublic = async (req: Request, res: Response) => {
   const { cursor, take = 10, search } = req.query;
   const campaignId = req.query?.campaignId as string;
-
 
   try {
     const campaigns = await prisma.campaign.findMany({

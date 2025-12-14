@@ -1885,13 +1885,8 @@ model ReservationConfiguration {
 
   mode       ReservationMode
   locations  Json
-  daysActive Json?
+  availabilityRules Json 
 
-  startDate DateTime
-  endDate   DateTime
-  startTime String
-  endTime   String
-  interval  Int
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
