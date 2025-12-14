@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { PrismaClient, CampaignStatus, LogisticType } from '@prisma/client';
+import { PrismaClient, CampaignStatus, LogisticType, ReservationMode } from '@prisma/client';
 import { uploadCompanyLogo, uploadAttachments } from '@configs/cloudStorage.config';
 import { getRemainingCredits } from '@services/companyService';
 import { clients, io } from '../server';
@@ -315,6 +315,10 @@ export const createClientCampaign = async (req: Request, res: Response) => {
       // submissionVersion,
       logisticsType,
       products,
+      schedulingOption,
+      locations,
+      availabilityRules,
+      logisticRemarks,
     } = campaignData;
 
     // Validate required fields
@@ -392,11 +396,33 @@ export const createClientCampaign = async (req: Request, res: Response) => {
     const newCampaign = await prisma.$transaction(async (tx) => {
       // --- LOGISTICS: Process Products ---
       let productsToCreate: any[] = [];
-
       if (logisticsType === 'PRODUCT_DELIVERY' && Array.isArray(products)) {
         productsToCreate = products
           .filter((product: any) => product.name && product.name.trim() !== '')
           .map((product: any) => ({ productName: product.name }));
+      }
+
+      // --- LOGISTICS: Process Reservations ---
+      let reservationConfigCreate = undefined;
+      if (logisticsType === 'RESERVATION') {
+        const mode: ReservationMode = schedulingOption === 'auto' ? 'AUTO_SCHEDULE' : 'MANUAL_CONFIRMATION';
+
+        // Flatten locations
+        const locationNames = Array.isArray(locations) ? locations.map((l: any) => l.name).filter(Boolean) : [];
+
+        reservationConfigCreate = {
+          create: {
+            mode: mode,
+            locations: locationNames as any,
+            availabilityRules: (availabilityRules || []) as any,
+          },
+        };
+      }
+
+      // Construct Objectives String (including remarks)
+      let objectivesString = campaignObjectives ? campaignObjectives.join(', ') : '';
+      if (logisticRemarks) {
+        objectivesString += `\n\n[Logistic Remarks]: ${logisticRemarks}`;
       }
 
       // Create campaign with PENDING status
@@ -413,6 +439,7 @@ export const createClientCampaign = async (req: Request, res: Response) => {
           products: {
             create: productsToCreate,
           },
+          reservationConfig: reservationConfigCreate,
           logisticsType: logisticsType && logisticsType !== '' ? (logisticsType as LogisticType) : null,
 
           // Skip adminManager and other fields that will be set by CSM later
@@ -456,6 +483,7 @@ export const createClientCampaign = async (req: Request, res: Response) => {
           campaignBrief: true,
           campaignRequirement: true,
           products: true,
+          reservationConfig: true,
         },
       });
 

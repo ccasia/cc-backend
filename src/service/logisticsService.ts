@@ -510,35 +510,71 @@ export const reportLogisticIssue = async (logisticId: string, reason: string, re
 
 export const updateStatusService = async (logisticId: string, status: LogisticStatus) => {
   return await prisma.$transaction(async (tx) => {
+    const currentLogistic = await tx.logistic.findUnique({
+      where: { id: logisticId },
+      include: {
+        deliveryDetails: true,
+        reservationDetails: true,
+      },
+    });
+
+    if (!currentLogistic) throw new Error('Logistic not found');
+
     const data: any = { status };
     const now = new Date();
 
-    if (status === 'SHIPPED') data.shippedAt = now;
-    if (status === 'DELIVERED') data.deliveredAt = now;
-    if (status === 'RECEIVED') data.receivededAt = now;
     if (status === 'COMPLETED') data.completedAt = now;
 
-    if (status === 'PENDING_ASSIGNMENT') {
-      const currentLogistic = await tx.logistic.findUnique({
-        where: { id: logisticId },
-        include: { deliveryDetails: true },
-      });
+    if (currentLogistic.type === 'PRODUCT_DELIVERY') {
+      if (status === 'SHIPPED') data.shippedAt = now;
+      if (status === 'DELIVERED') data.deliveredAt = now;
+      if (status === 'RECEIVED') data.receivedAt = now;
 
-      if (currentLogistic?.deliveryDetails?.id) {
-        await tx.deliveryItem.deleteMany({
-          where: {
-            deliveryDetailsId: currentLogistic.deliveryDetails.id,
+      if (status === 'PENDING_ASSIGNMENT') {
+        if (currentLogistic.deliveryDetails?.id) {
+          await tx.deliveryItem.deleteMany({
+            where: {
+              deliveryDetailsId: currentLogistic.deliveryDetails.id,
+            },
+          });
+        }
+
+        data.deliveryDetails = {
+          update: {
+            trackingLink: null,
+            expectedDeliveryDate: null,
           },
-        });
-      }
+        };
 
-      data.deliveryDetails = {
-        update: {
-          trackingLink: null,
-          expectedDeliveryDate: null,
-        },
-      };
+        data.shippedAt = null;
+        data.deliveredAt = null;
+        data.receivedAt = null;
+        data.completedAt = null;
+      }
     }
+
+    if (currentLogistic.type === 'RESERVATION') {
+
+      if (status === 'PENDING_ASSIGNMENT') {
+        if (currentLogistic.reservationDetails?.id) {
+          await tx.reservationSlot.deleteMany({
+            where: {
+              reservationDetailsId: currentLogistic.reservationDetails.id,
+            },
+          });
+        }
+
+        data.reservationDetails = {
+          update: {
+            isConfirmed: false,
+          },
+        };
+
+        // Clear timestamps
+        data.completedAt = null;
+      }
+    }
+
     return await prisma.logistic.update({
       where: { id: logisticId },
       data: data,
@@ -798,16 +834,16 @@ export const creatorProductInfoService = async ({
 type ReservationConfigData = {
   mode: 'MANUAL_CONFIRMATION' | 'AUTO_SCHEDULE';
   locations: string[];
-  startDate: string | Date;
-  endDate: string | Date;
-  startTime: string;
-  endTime: string;
-  interval: number;
-  daysActive?: number[];
+  availabilityRules: {
+    dates: string[];
+    startTime: string;
+    endTime: string;
+    interval: number;
+  }[];
 };
 
 export const upsertReservationConfigService = async (campaignId: string, data: ReservationConfigData) => {
-  const { mode, locations, startDate, endDate, startTime, endTime, interval, daysActive } = data;
+  const { mode, locations, availabilityRules } = data;
 
   return await prisma.reservationConfiguration.upsert({
     where: {
@@ -816,23 +852,13 @@ export const upsertReservationConfigService = async (campaignId: string, data: R
     update: {
       mode,
       locations,
-      startDate: new Date(startDate),
-      endDate: new Date(endDate),
-      startTime,
-      endTime,
-      interval,
-      daysActive: daysActive || [0, 1, 2, 3, 4, 5, 6],
+      availabilityRules,
     },
     create: {
       campaign: { connect: { id: campaignId } },
       mode,
       locations,
-      startDate: new Date(startDate),
-      endDate: new Date(endDate),
-      startTime,
-      endTime,
-      interval,
-      daysActive: daysActive || [0, 1, 2, 3, 4, 5, 6],
+      availabilityRules,
     },
   });
 };
@@ -850,6 +876,7 @@ export const getAvailableSlotsService = async (campaignId: string, monthDate: Da
 
   if (!config) throw new Error('Reservation configuration not found');
 
+  const rules = config.availabilityRules as any[];
   const startOfMonth = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
   const endOfMonth = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0);
 
@@ -859,47 +886,80 @@ export const getAvailableSlotsService = async (campaignId: string, monthDate: Da
       status: 'SELECTED',
       startTime: { gte: startOfMonth, lte: endOfMonth },
     },
+    include: {
+      reservationDetails: {
+        include: {
+          logistic: {
+            include: {
+              creator: {
+                select: {
+                  id: true,
+                  name: true,
+                  photoURL: true,
+                  phoneNumber: true,
+                },
+              },
+            },
+          },
+        },
+      },
+    },
   });
 
   const daysInMonth = [];
   let currentDate = startOfMonth;
 
   while (currentDate <= endOfMonth) {
-    const dayOfWeek = getDay(currentDate);
-    const dateString = format(currentDate, 'dd-MM-yyyy');
+    const dateString = format(currentDate, 'yyyy-MM-dd');
+    const displayDate = format(currentDate, 'dd-MM-yyyy');
+    const activeRule = rules.find((rule) => rule.dates.includes(dateString));
 
-    const isWithinRange =
-      (!config.startDate || isAfter(currentDate, addDays(new Date(config.startDate), -1))) &&
-      (!config.endDate || isBefore(currentDate, addDays(new Date(config.startDate), 1)));
-
-    const isActiveDay = config.daysActive ? (config.daysActive as number[]).includes(dayOfWeek) : true;
-
-    if (!isWithinRange || !isActiveDay) {
-      daysInMonth.push({ date: dateString, available: false, slots: [] });
+    if (!activeRule) {
+      daysInMonth.push({ date: displayDate, available: false, slots: [] });
     } else {
       const slots = [];
 
-      // Parse "09:00" format date Object
-      const [startHour, startMinute] = config.startTime.split(':').map(Number);
-      const [endHour, endMinute] = config.endTime.split(':').map(Number);
+      // 1. Parse "HH:mm" strings from the rule
+      const [startHour, startMinute] = activeRule.startTime.split(':').map(Number);
+      const [endHour, endMinute] = activeRule.endTime.split(':').map(Number);
 
+      // 2. Set the Start Time for this specific date
       let slotTime = new Date(currentDate);
       slotTime.setHours(startHour, startMinute, 0, 0);
 
+      // 3. Set the End Time limit for this specific date
       const endTimeObject = new Date(currentDate);
       endTimeObject.setHours(endHour, endMinute, 0, 0);
 
-      while (slotTime < endTimeObject) {
-        const slotEnd = addMinutes(slotTime, config.interval);
+      // 4. Convert interval (hours) to minutes for calculation
+      // Example: 0.5 hours -> 30 minutes
+      const intervalMinutes = activeRule.interval * 60;
 
-        const isTaken = existingBookings.some(
-          (booking) => isSameDay(booking.startTime, slotTime) && booking.startTime.getTime() === slotTime.getTime(),
+      // 5. Loop to generate slots
+      while (slotTime < endTimeObject) {
+        const slotEnd = addMinutes(slotTime, intervalMinutes);
+
+        // Safety check: Don't generate a slot that goes past the rule's end time
+        // e.g. If end time is 5:00 PM, don't create a 4:30-5:30 slot
+        if (isAfter(slotEnd, endTimeObject)) break;
+
+        // 6. Check if this specific time is already booked
+        const bookingsInSlot = existingBookings.filter(
+          (booking) => booking.startTime.getTime() === slotTime.getTime(), // Exact match for start time
         );
+
+        const attendees = bookingsInSlot.map((booking) => ({
+          id: booking.reservationDetails.logistic.creator.id,
+          name: booking.reservationDetails.logistic.creator.name,
+          photoURL: booking.reservationDetails.logistic.creator.photoURL,
+          phoneNumber: booking.reservationDetails.logistic.creator.phoneNumber,
+        }));
 
         slots.push({
           startTime: slotTime.toISOString(),
-          endTime: slotTime.toISOString(),
-          isTaken,
+          endTime: slotEnd.toISOString(),
+          isTaken: attendees.length > 0, // Keep for backward compatibility
+          attendees: attendees, // NEW FIELD: Array of people booked here
         });
 
         slotTime = slotEnd;

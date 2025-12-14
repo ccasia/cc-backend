@@ -85,7 +85,7 @@ router.put('/admin/:logisticId/details', isLoggedIn, isAdminOrClient, adminUpdat
 // ------------------reservation routes--------------------------
 
 // creator routes
-router.get('/campaign/:campaignId/slots', isLoggedIn, isCreator, getReservationSlots);
+router.get('/campaign/:campaignId/slots', isLoggedIn, isAdminOrClient, getReservationSlots);
 router.post('/campaign/:campaignId/reservation', isLoggedIn, isCreator, submitReservation);
 
 // admin & client routes
