@@ -1338,7 +1338,21 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
 
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    console.log('matchCampaignWithCreator - Starting search for creator:', user.id);
+    console.log('========================================');
+    console.log('🔍 DISCOVER PAGE - REQUEST START');
+    console.log('========================================');
+    console.log('Creator ID:', user.id);
+    console.log('Creator Name:', user.name);
+    console.log('Query Parameters:', { cursor, take, search });
+    console.log('========================================');
+
+    // First, get total count of ACTIVE campaigns
+    const totalActiveCampaigns = await prisma.campaign.count({
+      where: {
+        status: 'ACTIVE',
+      },
+    });
+    console.log(`📊 Total ACTIVE campaigns in database: ${totalActiveCampaigns}`);
 
     // Get all ACTIVE campaigns
     let campaigns = await prisma.campaign.findMany({
@@ -1408,44 +1422,32 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       },
     });
 
-    console.log(`matchCampaignWithCreator - Found ${campaigns.length} ACTIVE campaigns`);
+    console.log(`📦 Fetched ${campaigns.length} campaigns from database (take: ${take})`);
+    console.log(
+      'Campaign IDs fetched:',
+      campaigns.map((c) => c.id).join(', '),
+    );
+    console.log(
+      'Campaign Names:',
+      campaigns.map((c) => c.name).join(', '),
+    );
 
-    // Log each campaign's timelines and additional info before filtering
-    campaigns.forEach((campaign) => {
-      console.log(`Campaign ${campaign.id} (${campaign.name}) - Status: ${campaign.status}`);
-      console.log(`Timelines (${campaign.campaignTimeline?.length || 0}):`);
-      campaign.campaignTimeline?.forEach((timeline) => {
-        console.log(`  - ${timeline.name} (Status: ${timeline.status}, For: ${timeline.for})`);
+    // Log first and last campaign for cursor debugging
+    if (campaigns.length > 0) {
+      console.log('First campaign:', {
+        id: campaigns[0].id,
+        name: campaigns[0].name,
+        createdAt: campaigns[0].createdAt,
       });
-
-      // Log campaign admins and creator
-      console.log(`Campaign admins (${campaign.campaignAdmin?.length || 0}):`);
-      campaign.campaignAdmin?.forEach((admin) => {
-        console.log(`  - Admin ID: ${admin.adminId}, Role: ${admin.admin?.user?.role || 'unknown'}`);
+      console.log('Last campaign:', {
+        id: campaigns[campaigns.length - 1].id,
+        name: campaigns[campaigns.length - 1].name,
+        createdAt: campaigns[campaigns.length - 1].createdAt,
       });
-
-      // Log campaign logs to see who created it
-      console.log(`Campaign logs (${campaign.campaignLogs?.length || 0}):`);
-      campaign.campaignLogs?.forEach((log: any) => {
-        console.log(`  - Action: ${log.action}, User ID: ${log.userId}, Role: ${log.userRole}`);
-      });
-
-      // Check if this campaign would pass the filter
-      const hasOpenForPitchTimeline = campaign.campaignTimeline?.some(
-        (timeline) => timeline.name === 'Open For Pitch' && timeline.status === 'OPEN',
-      );
-      console.log(`  Will this campaign pass filter? ${hasOpenForPitchTimeline ? 'YES' : 'NO'}`);
-
-      // Check if campaign has additional requirements that might be missing
-      if (!campaign.campaignRequirement) {
-        console.log(`  WARNING: Campaign has no requirements defined`);
-      }
-      if (!campaign.campaignBrief) {
-        console.log(`  WARNING: Campaign has no brief defined`);
-      }
-    });
+    }
 
     if (campaigns?.length === 0) {
+      console.log('⚠️ No campaigns fetched from database');
       const data = {
         data: {
           campaigns: [],
@@ -1471,42 +1473,15 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
 
     const afterFilterCount = campaigns.length;
 
-    console.log(
-      `matchCampaignWithCreator - After filtering: ${afterFilterCount}/${beforeFilterCount} campaigns remain (showing ALL active campaigns to creators)`,
-    );
+    console.log(`🔍 After status filtering: ${afterFilterCount}/${beforeFilterCount} campaigns remain`);
 
     const country = await getCountry(req.ip as string);
-
-    console.log('COUNTRY', country);
-
-    // TEMPORARY: Disable country filtering to fix creator discovery issue
-    // The country filtering was preventing creators from seeing campaigns
     const beforeCountryFilterCount = campaigns.length;
 
-    // Log country information for debugging
-    console.log(`DEBUG: Creator country detected as: ${country || 'UNKNOWN'}`);
-    console.log(`DEBUG: Before country filtering - ${beforeCountryFilterCount} campaigns available`);
+    console.log(`🌍 Country detected: ${country || 'UNKNOWN'}`);
+    console.log(`📊 Before country filtering: ${beforeCountryFilterCount} campaigns`);
 
-    // Show campaigns with country requirements for debugging
-    campaigns.forEach((campaign) => {
-      if (campaign.campaignRequirement?.country) {
-        console.log(
-          `Campaign ${campaign.id} (${campaign.name}) requires country: ${campaign.campaignRequirement.country}`,
-        );
-      } else {
-        console.log(`Campaign ${campaign.id} (${campaign.name}) has no country requirement`);
-      }
-    });
-
-    // TEMPORARILY BYPASS COUNTRY FILTERING - Show all campaigns to creators
-    // This ensures creators can see all available campaigns while we fix country detection
-    console.log('TEMPORARILY BYPASSING COUNTRY FILTERING - Showing all campaigns to creators');
-
-    // TODO: Re-enable proper country filtering once country detection is working correctly
-    // TEMPORARILY DISABLE ALL COUNTRY FILTERING to fix creator discovery issue
-    // The country filtering was preventing creators from seeing all available campaigns
-
-    // COMMENTED OUT: Country filtering is disabled for now
+    // Apply country filtering only in non-development environments
     if (process.env.NODE_ENV !== 'development') {
       campaigns = campaigns.filter((campaign) => {
         if (!campaign.campaignRequirement?.country) return campaign;
@@ -1515,9 +1490,7 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
     }
 
     const afterCountryFilterCount = campaigns.length;
-    console.log(
-      `Country filtering completely bypassed: ${afterCountryFilterCount}/${beforeCountryFilterCount} campaigns remain (no filtering applied)`,
-    );
+    console.log(`🌍 After country filtering: ${afterCountryFilterCount}/${beforeCountryFilterCount} campaigns remain`);
 
     // Original filtering logic (DISABLED):
     // campaigns = campaigns.filter((campaign) => {
@@ -1610,17 +1583,7 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
 
         const overallMatchingPercentage = calculateOverallMatchingPercentage(interestPercentage, requirementPercentage);
 
-        // Debug log for problematic campaigns
-        if (index < 3) {
-          // Log first 3 campaigns for debugging
-          console.log(`Campaign ${item.id} (${item.name}) matching:`, {
-            interestPercentage: isNaN(interestPercentage) ? 'NaN' : interestPercentage,
-            requirementPercentage: isNaN(requirementPercentage) ? 'NaN' : requirementPercentage,
-            overallMatchingPercentage: isNaN(overallMatchingPercentage) ? 'NaN' : overallMatchingPercentage,
-            hasCreatorPersona: !!item.campaignRequirement?.creator_persona,
-            creatorPersonaLength: item.campaignRequirement?.creator_persona?.length || 0,
-          });
-        }
+        // Skip detailed matching logs for cleaner output
 
         return {
           ...item,
@@ -1638,24 +1601,24 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
     // Keep the original order from database (newest first) instead of overriding
     const sortedMatchedCampaigns = matchedCampaignWithPercentage;
 
-    // Debug: Check if there's any difference between campaigns and sortedMatchedCampaigns
-    console.log(`matchCampaignWithCreator - Debug counts:`, {
-      originalCampaigns: campaigns.length,
-      matchedCampaigns: matchedCampaignWithPercentage.length,
-      sortedMatchedCampaigns: sortedMatchedCampaigns.length,
-      requestedTake: Number(take),
-    });
+    console.log(`✅ Final campaigns to return: ${sortedMatchedCampaigns.length}`);
 
-    const hasNextPage = campaigns.length >= Number(take);
-    const lastCursor = hasNextPage && campaigns.length > 0 ? campaigns[campaigns.length - 1]?.id : null;
+    // Fix pagination logic: determine if there are more pages
+    const hasNextPage = campaigns.length === Number(take);
+    const lastCursor = hasNextPage ? campaigns[campaigns.length - 1]?.id : null;
 
-    console.log(`matchCampaignWithCreator - Pagination info:`, {
-      campaignsReturned: campaigns.length,
-      campaignsInResponse: sortedMatchedCampaigns.length,
-      requestedTake: Number(take),
-      hasNextPage: hasNextPage,
-      lastCursor: lastCursor,
-    });
+    console.log('========================================');
+    console.log('📤 PAGINATION INFO');
+    console.log('========================================');
+    console.log(`Campaigns returned in this request: ${sortedMatchedCampaigns.length}`);
+    console.log(`Requested take: ${Number(take)}`);
+    console.log(`Has next page: ${hasNextPage}`);
+    console.log(`Last cursor: ${lastCursor || 'null'}`);
+    console.log('Pagination logic: hasNextPage = campaigns.length === take');
+    console.log(`  campaigns.length (${campaigns.length}) === take (${Number(take)}) = ${hasNextPage}`);
+    console.log('========================================');
+    console.log('🔍 DISCOVER PAGE - REQUEST END');
+    console.log('========================================\n');
 
     const data = {
       data: {
