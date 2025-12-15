@@ -890,6 +890,17 @@ export const getInstagramMediaKit = async (req: Request, res: Response) => {
       },
     });
 
+    await prisma.$transaction(async (tx) => {
+      await tx.creator.update({
+        where: {
+          id: creator.id,
+        },
+        data: {
+          instagram: instagramUser.username,
+        },
+      });
+    });
+
     for (const media of medias.sortedVideos) {
       await prisma.instagramVideo.upsert({
         where: {
@@ -921,7 +932,7 @@ export const getInstagramMediaKit = async (req: Request, res: Response) => {
       });
     }
 
-    return res.status(200).json({ instagramUser, medias });
+    return res.status(200).json({ instagramUser, medias, creator });
 
     // return res.status(200).json({
     //   overview,
@@ -934,12 +945,259 @@ export const getInstagramMediaKit = async (req: Request, res: Response) => {
   }
 };
 
+export const getTikTokMediaKit = async (req: Request, res: Response) => {
+  const { userId } = req.params;
+
+  if (!userId) return res.status(404).json({ message: 'Parameter missing: userId' });
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        creator: {
+          include: {
+            tiktokUser: {
+              include: {
+                tiktokVideo: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    if (!user.creator) return res.status(404).json({ message: 'Creator profile not found' });
+
+    // Use the helper function to ensure we have a valid token
+    let accessToken: string;
+    try {
+      accessToken = await ensureValidTikTokToken(user.id);
+    } catch (tokenError) {
+      console.error('TikTok token error:', tokenError.message);
+      return res.status(400).json({
+        message: tokenError.message,
+        requiresReconnection: true,
+      });
+    }
+
+    // Get TikTok user profile overview
+    const overviewRes = await axios.get('https://open.tiktokapis.com/v2/user/info/', {
+      params: {
+        fields: 'open_id,union_id,display_name,username,avatar_url,following_count,follower_count,likes_count',
+      },
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    const overview = overviewRes.data.data.user;
+
+    // Get TikTok videos data
+    let videosRes;
+    try {
+      videosRes = await axios.post(
+        'https://open.tiktokapis.com/v2/video/list/',
+        { max_count: 20 },
+        {
+          params: {
+            fields:
+              'id,title,video_description,duration,cover_image_url,embed_link,embed_html,like_count,comment_count,share_count,view_count,create_time',
+          },
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+        },
+      );
+    } catch (videoError: any) {
+      console.error('TikTok video list API error:', {
+        status: videoError.response?.status,
+        statusText: videoError.response?.statusText,
+        data: videoError.response?.data,
+        message: videoError.message,
+      });
+
+      // If it's a permission error, the user might need to reconnect
+      if (videoError.response?.status === 403 || videoError.response?.status === 401) {
+        throw new Error('TikTok permissions expired. Please reconnect your TikTok account.');
+      }
+
+      // For other errors, continue with empty videos array
+      videosRes = { data: { data: { videos: [] } } };
+    }
+
+    const videos = videosRes.data.data?.videos || [];
+
+    // Map TikTok API fields to expected frontend fields
+    const mappedVideos = videos.map((video: any) => ({
+      ...video,
+      // Ensure we have the fields the frontend expects
+      like: video.like_count || 0,
+      comment: video.comment_count || 0,
+      share: video.share_count || 0,
+      view: video.view_count || 0,
+      // Keep original fields for compatibility
+      like_count: video.like_count || 0,
+      comment_count: video.comment_count || 0,
+      share_count: video.share_count || 0,
+      view_count: video.view_count || 0,
+    }));
+
+    // Debug logging for staging
+    console.log('TikTok API Response:', {
+      status: videosRes.status,
+      videosCount: videos.length,
+      hasData: !!videosRes.data.data,
+      responseStructure: {
+        hasVideos: !!videosRes.data.data?.videos,
+        videosType: typeof videosRes.data.data?.videos,
+        videosLength: videosRes.data.data?.videos?.length,
+      },
+    });
+
+    // Calculate analytics from videos
+    const totalLikes = mappedVideos.reduce((sum: number, video: any) => sum + (video.like_count || 0), 0);
+    const totalComments = mappedVideos.reduce((sum: number, video: any) => sum + (video.comment_count || 0), 0);
+    const totalShares = mappedVideos.reduce((sum: number, video: any) => sum + (video.share_count || 0), 0);
+    const totalViews = mappedVideos.reduce((sum: number, video: any) => sum + (video.view_count || 0), 0);
+
+    const averageLikes = mappedVideos.length > 0 ? totalLikes / mappedVideos.length : 0;
+    const averageComments = mappedVideos.length > 0 ? totalComments / mappedVideos.length : 0;
+    const averageShares = mappedVideos.length > 0 ? totalShares / mappedVideos.length : 0;
+    const averageViews = mappedVideos.length > 0 ? totalViews / mappedVideos.length : 0;
+
+    // Get analytics data for charts with error handling
+    let analytics: {
+      engagementRates: number[];
+      months: string[];
+      monthlyInteractions: { month: string; interactions: number }[];
+    } = {
+      engagementRates: [],
+      months: [],
+      monthlyInteractions: [],
+    };
+
+    try {
+      const engagementAnalytics = await getTikTokEngagementRateOverTime(accessToken);
+      const monthlyAnalytics = await getTikTokMonthlyInteractions(accessToken);
+
+      analytics = {
+        engagementRates: engagementAnalytics.engagementRates,
+        months: engagementAnalytics.months,
+        monthlyInteractions: monthlyAnalytics.monthlyData,
+      };
+    } catch (analyticsError) {
+      console.error('Failed to fetch TikTok analytics:', analyticsError);
+      // analytics remains as empty arrays - frontend will use fallback
+    }
+
+    // Calculate engagement rate using the calculated values
+    // TikTok Engagement Rate Formula: (Average Likes + Average Comments + Average Shares) / Followers × 100
+    const engagement_rate = overview.follower_count
+      ? ((averageLikes + averageComments + averageShares) / overview.follower_count) * 100
+      : 0;
+
+    // Update TikTok user data in database
+    await prisma.tiktokUser.upsert({
+      where: { creatorId: user.creator.id },
+      update: {
+        display_name: overview.display_name,
+        username: overview.username,
+        avatar_url: overview.avatar_url,
+        following_count: overview.following_count,
+        follower_count: overview.follower_count,
+        likes_count: overview.likes_count,
+        totalLikes: totalLikes,
+        totalComments: totalComments,
+        totalShares: totalShares,
+        averageLikes: averageLikes,
+        averageComments: averageComments,
+        averageShares: averageShares,
+        engagement_rate: engagement_rate,
+        lastUpdated: new Date(),
+      } as any,
+      create: {
+        creatorId: user.creator.id,
+        display_name: overview.display_name,
+        username: overview.username,
+        avatar_url: overview.avatar_url,
+        following_count: overview.following_count,
+        follower_count: overview.follower_count,
+        likes_count: overview.likes_count,
+        totalLikes: totalLikes,
+        totalComments: totalComments,
+        totalShares: totalShares,
+        averageLikes: averageLikes,
+        averageComments: averageComments,
+        averageShares: averageShares,
+        engagement_rate: engagement_rate,
+        lastUpdated: new Date(),
+      } as any,
+    });
+
+    await prisma.$transaction(async (tx) => {
+      await tx.creator.update({
+        where: {
+          id: user.creator!.id,
+        },
+        data: {
+          tiktok: overview.username,
+        },
+      });
+    });
+
+    // Prepare response data structure similar to Instagram
+    const responseData = {
+      overview: {
+        display_name: overview.display_name,
+        username: overview.username,
+        follower_count: overview.follower_count,
+        following_count: overview.following_count,
+        likes_count: overview.likes_count,
+      },
+      medias: {
+        sortedVideos: mappedVideos.slice(0, 5), // Top 5 videos for display
+        averageLikes: Math.round(averageLikes),
+        averageComments: Math.round(averageComments),
+        averageShares: Math.round(averageShares),
+        averageViews: Math.round(averageViews),
+        totalLikes,
+        totalComments,
+        totalShares,
+        totalViews,
+      },
+      analytics: analytics,
+      tiktokUser: {
+        display_name: overview.display_name,
+        username: overview.username,
+        follower_count: overview.follower_count,
+        engagement_rate: engagement_rate,
+        following_count: overview.following_count,
+        likes_count: overview.likes_count,
+      },
+    };
+
+    // Debug logging for response data
+    console.log('TikTok Response Data Structure:', {
+      sortedVideosCount: responseData.medias.sortedVideos.length,
+      totalVideos: mappedVideos.length,
+    });
+
+    return res.status(200).json(responseData);
+  } catch (error: any) {
+    console.error('Error in getTikTokMediaKit:', error);
+    return res.status(400).json({
+      message: 'Failed to get TikTok media kit data',
+      error: error.message,
+    });
+  }
+};
+
 async function getCampaignSubmissionUrls(campaignId: string): Promise<UrlData[]> {
   try {
     const submissions = await prisma.submission.findMany({
       where: {
         campaignId: campaignId,
-        status: 'APPROVED',
+        status: 'POSTED',
       },
       select: {
         id: true,
@@ -993,6 +1251,8 @@ async function getCampaignSubmissionUrls(campaignId: string): Promise<UrlData[]>
         }
       }
     });
+
+    console.log(`Extracted ${allUrls.length} URLs from campaign ${campaignId}`);
 
     return allUrls;
   } catch (error) {
@@ -1152,168 +1412,6 @@ async function ensureValidInstagramToken(userId: string): Promise<string> {
   return accessToken;
 }
 
-// export const getInstagramMediaInsight = async (req: Request, res: Response) => {
-//   const { userId } = req.params;
-//   const { url, campaignId } = req.query; // Added campaignId parameter
-
-//   if (!userId) return res.status(404).json({ message: 'Parameter missing: userId' });
-//   if (!url) return res.status(404).json({ message: 'Query missing: url' });
-
-//   try {
-//     const user = await prisma.user.findUnique({
-//       where: {
-//         id: userId,
-//       },
-//     });
-
-//     if (!user) return res.status(404).json({ message: 'User not found' });
-
-//     // Use the helper function to ensure we have a valid token
-//     let accessToken: string;
-//     try {
-//       accessToken = await ensureValidInstagramToken(user.id);
-//     } catch (tokenError) {
-//       return res.status(400).json({
-//         message: tokenError.message,
-//         requiresReconnection: tokenError.message.includes('refresh failed'),
-//       });
-//     }
-
-//     // Get creator info for media count
-//     const creator = await prisma.creator.findFirst({
-//       where: {
-//         userId: user.id,
-//       },
-//       select: {
-//         instagramUser: true,
-//       },
-//     });
-
-//     const { videos } = await getInstagramMedias(accessToken, creator?.instagramUser?.media_count as number);
-
-//     const shortCode = extractInstagramShortcode(url as string);
-
-//     const video = videos.find((item: any) => item?.shortcode === shortCode);
-
-//     if (!video)
-//       return res
-//         .status(404)
-//         .json({ message: `This is the url shortcode: ${shortCode} but we can't find the video shortcode.` });
-
-//     // Get current post insight
-//     const insight = await getMediaInsight(accessToken, video?.id);
-
-//     // Campaign averages calculation
-//     let campaignAverages = null;
-//     let campaignComparison = null;
-//     let campaignPostsCount = 0;
-
-//     if (campaignId) {
-//       console.log(`🎯 Calculating campaign averages for campaign: ${campaignId}`);
-
-//       try {
-//         // Get all campaign submission URLs (now includes both Instagram and TikTok)
-//         const campaignUrls = await getCampaignSubmissionUrls(campaignId as string);
-//         // Filter for Instagram URLs only
-//         const instagramUrls = campaignUrls.filter((urlData) => urlData.platform === 'Instagram');
-//         console.log(
-//           `📊 Found ${instagramUrls.length} Instagram campaign URLs out of ${campaignUrls.length} total URLs`,
-//         );
-
-//           if (instagramUrls.length > 0) {
-//             // Process each campaign URL to get insights
-//             const campaignInsightsResults = await batchRequests(
-//               instagramUrls,
-//               async (urlData, index) => {
-//                 const campaignShortCode = extractInstagramShortcode(urlData.url);
-//                 if (!campaignShortCode) return null;
-
-//                 const campaignVideo = videos.find((item: any) => item?.shortcode === campaignShortCode);
-//                 if (!campaignVideo) return null;
-
-//                 try {
-//                   const campaignInsight = await getMediaInsight(accessToken, campaignVideo.id);
-//                   return campaignInsight && campaignInsight.length > 0 ? campaignInsight : null;
-//                 } catch (error) {
-//                   console.error(`Error processing campaign URL ${urlData.url}:`, error);
-//                   return null;
-//                 }
-//               },
-//               3, // Process 2 at a time
-//               1200 // 800ms delay between batches
-//             );
-
-//             const campaignInsights = campaignInsightsResults
-//               .filter(result => result.status === 'fulfilled' && result.value !== null)
-//               .map(result => result.value);
-
-// <<<<<<< HEAD
-//             console.log(`📈 Successfully processed ${campaignInsights.length} campaign posts`);
-//             campaignPostsCount = campaignInsights.length;
-
-//             // Calculate averages (reusing existing function)
-//             if (campaignInsights.length > 0) {
-//               campaignAverages = calculateCampaignAverages(campaignInsights);
-
-//               // Cache the result
-//               setCachedCampaignAverages(campaignId as string, 'Instagram', {
-//                 averages: campaignAverages,
-//                 postsCount: campaignPostsCount
-//               });
-
-//               // Compare current post with campaign averages (reusing existing function)
-//               campaignComparison = calculateCampaignComparison(insight, campaignAverages, campaignInsights.length);
-
-//               console.log('Campaign averages calculated and cached:', campaignAverages);
-//             }
-//           }
-//         } catch (error) {
-//           console.error('Error calculating campaign averages:', error);
-//           // Continue without campaign data if there's an error
-// =======
-//               // Add delay to avoid rate limiting
-//               await new Promise((resolve) => setTimeout(resolve, 500));
-//             } catch (error) {
-//               console.error(`Error processing campaign URL ${urlData.url}:`, error);
-//               continue;
-//             }
-//           }
-
-//           console.log(`📈 Successfully processed ${campaignInsights.length} campaign posts`);
-//           campaignPostsCount = campaignInsights.length;
-
-//           // Calculate averages (reusing existing function)
-//           if (campaignInsights.length > 0) {
-//             campaignAverages = calculateCampaignAverages(campaignInsights);
-
-//             // Compare current post with campaign averages (reusing existing function)
-//             campaignComparison = calculateCampaignComparison(insight, campaignAverages);
-
-//             console.log('Campaign averages calculated:', campaignAverages);
-//           }
-// >>>>>>> feature/change-campaign-credits
-//         }
-//       }
-//     }
-
-//     // Enhanced response with campaign data only
-//     const response = {
-//       insight,
-//       video,
-//       // Campaign comparison data
-//       campaignAverages: campaignAverages,
-//       campaignComparison: campaignComparison,
-//       campaignPostsCount: campaignPostsCount,
-//       hasCampaignData: !!campaignAverages,
-//     };
-
-//     return res.status(200).json(response);
-//   } catch (error) {
-//     console.log(error);
-//     return res.status(400).json(error);
-//   }
-// };
-
 export const getInstagramMediaInsight = async (req: Request, res: Response) => {
   const { userId } = req.params;
   const { url, campaignId } = req.query; // Added campaignId parameter
@@ -1357,10 +1455,16 @@ export const getInstagramMediaInsight = async (req: Request, res: Response) => {
 
     const video = videos.find((item: any) => item?.shortcode === shortCode);
 
-    if (!video)
+    if (!video) {
+      console.error('Shortcode not found:', { shortCode, url, videoCount: videos.length });
+
       return res.status(404).json({
-        message: `This is the url shortcode: ${shortCode} but we can't find the video shortcode.`,
+        message: `This is the url shortcode: ${shortCode} but we can't find the video. This post might not belong to the connected Instagram account.`,
+        shortCode,
+        url,
+        videoCount: videos.length,
       });
+    }
 
     // Get current post insight
     const insight = await getMediaInsight(accessToken, video?.id);
@@ -1570,7 +1674,6 @@ export const getTikTokVideoInsight = async (req: Request, res: Response) => {
         },
         headers: { Authorization: `Bearer ${accessToken}` },
       });
-      console.log('Token test successful:', testResponse.data);
     } catch (testError) {
       console.error('Token test failed even after refresh:', testError.response?.status, testError.response?.data);
       return res.status(400).json({
@@ -1745,238 +1848,3 @@ export const getTikTokVideoInsight = async (req: Request, res: Response) => {
   }
 };
 
-export const getTikTokMediaKit = async (req: Request, res: Response) => {
-  const { userId } = req.params;
-
-  if (!userId) return res.status(404).json({ message: 'Parameter missing: userId' });
-
-  try {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      include: {
-        creator: {
-          include: {
-            tiktokUser: {
-              include: {
-                tiktokVideo: true,
-              },
-            },
-          },
-        },
-      },
-    });
-
-    if (!user) return res.status(404).json({ message: 'User not found' });
-    if (!user.creator) return res.status(404).json({ message: 'Creator profile not found' });
-
-    // Use the helper function to ensure we have a valid token
-    let accessToken: string;
-    try {
-      accessToken = await ensureValidTikTokToken(user.id);
-    } catch (tokenError) {
-      console.error('TikTok token error:', tokenError.message);
-      return res.status(400).json({
-        message: tokenError.message,
-        requiresReconnection: true,
-      });
-    }
-
-    // Get TikTok user profile overview
-    const overviewRes = await axios.get('https://open.tiktokapis.com/v2/user/info/', {
-      params: {
-        fields: 'open_id,union_id,display_name,username,avatar_url,following_count,follower_count,likes_count',
-      },
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-
-    const overview = overviewRes.data.data.user;
-
-    // Get TikTok videos data
-    let videosRes;
-    try {
-      videosRes = await axios.post(
-        'https://open.tiktokapis.com/v2/video/list/',
-        { max_count: 20 },
-        {
-          params: {
-            fields:
-              'id,title,video_description,duration,cover_image_url,embed_link,embed_html,like_count,comment_count,share_count,view_count,create_time',
-          },
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            'Content-Type': 'application/json',
-          },
-        },
-      );
-    } catch (videoError: any) {
-      console.error('TikTok video list API error:', {
-        status: videoError.response?.status,
-        statusText: videoError.response?.statusText,
-        data: videoError.response?.data,
-        message: videoError.message,
-      });
-
-      // If it's a permission error, the user might need to reconnect
-      if (videoError.response?.status === 403 || videoError.response?.status === 401) {
-        throw new Error('TikTok permissions expired. Please reconnect your TikTok account.');
-      }
-
-      // For other errors, continue with empty videos array
-      videosRes = { data: { data: { videos: [] } } };
-    }
-
-    const videos = videosRes.data.data?.videos || [];
-
-    // Map TikTok API fields to expected frontend fields
-    const mappedVideos = videos.map((video: any) => ({
-      ...video,
-      // Ensure we have the fields the frontend expects
-      like: video.like_count || 0,
-      comment: video.comment_count || 0,
-      share: video.share_count || 0,
-      view: video.view_count || 0,
-      // Keep original fields for compatibility
-      like_count: video.like_count || 0,
-      comment_count: video.comment_count || 0,
-      share_count: video.share_count || 0,
-      view_count: video.view_count || 0,
-    }));
-
-    // Debug logging for staging
-    console.log('TikTok API Response:', {
-      status: videosRes.status,
-      videosCount: videos.length,
-      hasData: !!videosRes.data.data,
-      responseStructure: {
-        hasVideos: !!videosRes.data.data?.videos,
-        videosType: typeof videosRes.data.data?.videos,
-        videosLength: videosRes.data.data?.videos?.length,
-      },
-    });
-
-    // Calculate analytics from videos
-    const totalLikes = mappedVideos.reduce((sum: number, video: any) => sum + (video.like_count || 0), 0);
-    const totalComments = mappedVideos.reduce((sum: number, video: any) => sum + (video.comment_count || 0), 0);
-    const totalShares = mappedVideos.reduce((sum: number, video: any) => sum + (video.share_count || 0), 0);
-    const totalViews = mappedVideos.reduce((sum: number, video: any) => sum + (video.view_count || 0), 0);
-
-    const averageLikes = mappedVideos.length > 0 ? totalLikes / mappedVideos.length : 0;
-    const averageComments = mappedVideos.length > 0 ? totalComments / mappedVideos.length : 0;
-    const averageShares = mappedVideos.length > 0 ? totalShares / mappedVideos.length : 0;
-    const averageViews = mappedVideos.length > 0 ? totalViews / mappedVideos.length : 0;
-
-    // Get analytics data for charts with error handling
-    let analytics: {
-      engagementRates: number[];
-      months: string[];
-      monthlyInteractions: { month: string; interactions: number }[];
-    } = {
-      engagementRates: [],
-      months: [],
-      monthlyInteractions: [],
-    };
-
-    try {
-      const engagementAnalytics = await getTikTokEngagementRateOverTime(accessToken);
-      const monthlyAnalytics = await getTikTokMonthlyInteractions(accessToken);
-
-      analytics = {
-        engagementRates: engagementAnalytics.engagementRates,
-        months: engagementAnalytics.months,
-        monthlyInteractions: monthlyAnalytics.monthlyData,
-      };
-    } catch (analyticsError) {
-      console.error('Failed to fetch TikTok analytics:', analyticsError);
-      // analytics remains as empty arrays - frontend will use fallback
-    }
-
-    // Calculate engagement rate using the calculated values
-    // TikTok Engagement Rate Formula: (Average Likes + Average Comments + Average Shares) / Followers × 100
-    const engagement_rate = overview.follower_count
-      ? ((averageLikes + averageComments + averageShares) / overview.follower_count) * 100
-      : 0;
-
-    // Update TikTok user data in database
-    await prisma.tiktokUser.upsert({
-      where: { creatorId: user.creator.id },
-      update: {
-        display_name: overview.display_name,
-        username: overview.username,
-        avatar_url: overview.avatar_url,
-        following_count: overview.following_count,
-        follower_count: overview.follower_count,
-        likes_count: overview.likes_count,
-        totalLikes: totalLikes,
-        totalComments: totalComments,
-        totalShares: totalShares,
-        averageLikes: averageLikes,
-        averageComments: averageComments,
-        averageShares: averageShares,
-        engagement_rate: engagement_rate,
-        lastUpdated: new Date(),
-      } as any,
-      create: {
-        creatorId: user.creator.id,
-        display_name: overview.display_name,
-        username: overview.username,
-        avatar_url: overview.avatar_url,
-        following_count: overview.following_count,
-        follower_count: overview.follower_count,
-        likes_count: overview.likes_count,
-        totalLikes: totalLikes,
-        totalComments: totalComments,
-        totalShares: totalShares,
-        averageLikes: averageLikes,
-        averageComments: averageComments,
-        averageShares: averageShares,
-        engagement_rate: engagement_rate,
-        lastUpdated: new Date(),
-      } as any,
-    });
-
-    // Prepare response data structure similar to Instagram
-    const responseData = {
-      overview: {
-        display_name: overview.display_name,
-        username: overview.username,
-        follower_count: overview.follower_count,
-        following_count: overview.following_count,
-        likes_count: overview.likes_count,
-      },
-      medias: {
-        sortedVideos: mappedVideos.slice(0, 5), // Top 5 videos for display
-        averageLikes: Math.round(averageLikes),
-        averageComments: Math.round(averageComments),
-        averageShares: Math.round(averageShares),
-        averageViews: Math.round(averageViews),
-        totalLikes,
-        totalComments,
-        totalShares,
-        totalViews,
-      },
-      analytics: analytics,
-      tiktokUser: {
-        display_name: overview.display_name,
-        username: overview.username,
-        follower_count: overview.follower_count,
-        engagement_rate: engagement_rate,
-        following_count: overview.following_count,
-        likes_count: overview.likes_count,
-      },
-    };
-
-    // Debug logging for response data
-    console.log('TikTok Response Data Structure:', {
-      sortedVideosCount: responseData.medias.sortedVideos.length,
-      totalVideos: mappedVideos.length,
-    });
-
-    return res.status(200).json(responseData);
-  } catch (error: any) {
-    console.error('Error in getTikTokMediaKit:', error);
-    return res.status(400).json({
-      message: 'Failed to get TikTok media kit data',
-      error: error.message,
-    });
-  }
-};
