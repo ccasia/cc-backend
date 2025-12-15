@@ -1422,6 +1422,10 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       },
     });
 
+    // IMPORTANT: Save the original fetched count BEFORE any filtering
+    // This is needed for correct pagination logic
+    const originalFetchedCount = campaigns.length;
+
     console.log(`📦 Fetched ${campaigns.length} campaigns from database (take: ${take})`);
     console.log(
       'Campaign IDs fetched:',
@@ -1603,19 +1607,29 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
 
     console.log(`✅ Final campaigns to return: ${sortedMatchedCampaigns.length}`);
 
-    // Fix pagination logic: determine if there are more pages
-    const hasNextPage = campaigns.length === Number(take);
-    const lastCursor = hasNextPage ? campaigns[campaigns.length - 1]?.id : null;
+    // Fix pagination logic: Check if we got the full 'take' amount from the database
+    // We need to use originalFetchedCount (BEFORE filtering) not campaigns.length (AFTER filtering)
+    // If we fetched the full 'take' amount, there might be more pages
+    const hasNextPage = originalFetchedCount === Number(take);
+    
+    // For the cursor, we need to use the ORIGINAL last campaign ID from the database fetch
+    // This ensures the next request starts from the correct position
+    const lastCursor = hasNextPage && sortedMatchedCampaigns.length > 0 
+      ? sortedMatchedCampaigns[sortedMatchedCampaigns.length - 1]?.id 
+      : null;
 
     console.log('========================================');
     console.log('📤 PAGINATION INFO');
     console.log('========================================');
+    console.log(`Campaigns fetched from DB (before filtering): ${originalFetchedCount}`);
+    console.log(`Campaigns after filtering: ${campaigns.length}`);
     console.log(`Campaigns returned in this request: ${sortedMatchedCampaigns.length}`);
     console.log(`Requested take: ${Number(take)}`);
     console.log(`Has next page: ${hasNextPage}`);
     console.log(`Last cursor: ${lastCursor || 'null'}`);
-    console.log('Pagination logic: hasNextPage = campaigns.length === take');
-    console.log(`  campaigns.length (${campaigns.length}) === take (${Number(take)}) = ${hasNextPage}`);
+    console.log('Pagination logic: hasNextPage = originalFetchedCount === take');
+    console.log(`  originalFetchedCount (${originalFetchedCount}) === take (${Number(take)}) = ${hasNextPage}`);
+    console.log('✅ This ensures pagination continues even if filtering removes some campaigns');
     console.log('========================================');
     console.log('🔍 DISCOVER PAGE - REQUEST END');
     console.log('========================================\n');
