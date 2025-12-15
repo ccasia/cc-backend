@@ -1646,9 +1646,8 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       requestedTake: Number(take),
     });
 
-    // Fix pagination logic: determine if there are more pages
-    const hasNextPage = campaigns.length === Number(take);
-    const lastCursor = hasNextPage ? campaigns[campaigns.length - 1]?.id : null;
+    const hasNextPage = campaigns.length >= Number(take);
+    const lastCursor = hasNextPage && campaigns.length > 0 ? campaigns[campaigns.length - 1]?.id : null;
 
     console.log(`matchCampaignWithCreator - Pagination info:`, {
       campaignsReturned: campaigns.length,
