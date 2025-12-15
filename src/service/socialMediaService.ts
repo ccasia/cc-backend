@@ -263,7 +263,7 @@ export const getMediaInsight = async (accessToken: string, mediaId: string) => {
 
     return newInsights;
   } catch (error) {
-    console.log(error);
+    console.log('Full error message:', error.response.data);
     throw new Error(`Failed to fetch media insight: ${error}`);
   }
 };
