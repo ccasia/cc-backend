@@ -1338,22 +1338,6 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
 
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    console.log('========================================');
-    console.log('🔍 DISCOVER PAGE - REQUEST START');
-    console.log('========================================');
-    console.log('Creator ID:', user.id);
-    console.log('Creator Name:', user.name);
-    console.log('Query Parameters:', { cursor, take, search });
-    console.log('========================================');
-
-    // First, get total count of ACTIVE campaigns
-    const totalActiveCampaigns = await prisma.campaign.count({
-      where: {
-        status: 'ACTIVE',
-      },
-    });
-    console.log(`📊 Total ACTIVE campaigns in database: ${totalActiveCampaigns}`);
-
     // Get all ACTIVE campaigns
     let campaigns = await prisma.campaign.findMany({
       take: Number(take),
@@ -1422,36 +1406,10 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       },
     });
 
-    // IMPORTANT: Save the original fetched count BEFORE any filtering
-    // This is needed for correct pagination logic
+ 
     const originalFetchedCount = campaigns.length;
 
-    console.log(`📦 Fetched ${campaigns.length} campaigns from database (take: ${take})`);
-    console.log(
-      'Campaign IDs fetched:',
-      campaigns.map((c) => c.id).join(', '),
-    );
-    console.log(
-      'Campaign Names:',
-      campaigns.map((c) => c.name).join(', '),
-    );
-
-    // Log first and last campaign for cursor debugging
-    if (campaigns.length > 0) {
-      console.log('First campaign:', {
-        id: campaigns[0].id,
-        name: campaigns[0].name,
-        createdAt: campaigns[0].createdAt,
-      });
-      console.log('Last campaign:', {
-        id: campaigns[campaigns.length - 1].id,
-        name: campaigns[campaigns.length - 1].name,
-        createdAt: campaigns[campaigns.length - 1].createdAt,
-      });
-    }
-
     if (campaigns?.length === 0) {
-      console.log('⚠️ No campaigns fetched from database');
       const data = {
         data: {
           campaigns: [],
@@ -1475,15 +1433,7 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       return campaign.status === 'ACTIVE';
     });
 
-    const afterFilterCount = campaigns.length;
-
-    console.log(`🔍 After status filtering: ${afterFilterCount}/${beforeFilterCount} campaigns remain`);
-
     const country = await getCountry(req.ip as string);
-    const beforeCountryFilterCount = campaigns.length;
-
-    console.log(`🌍 Country detected: ${country || 'UNKNOWN'}`);
-    console.log(`📊 Before country filtering: ${beforeCountryFilterCount} campaigns`);
 
     // Apply country filtering only in non-development environments
     if (process.env.NODE_ENV !== 'development') {
@@ -1492,9 +1442,6 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
         return campaign.campaignRequirement.country.toLocaleLowerCase() === country?.toLowerCase();
       });
     }
-
-    const afterCountryFilterCount = campaigns.length;
-    console.log(`🌍 After country filtering: ${afterCountryFilterCount}/${beforeCountryFilterCount} campaigns remain`);
 
     // Original filtering logic (DISABLED):
     // campaigns = campaigns.filter((campaign) => {
@@ -1605,34 +1552,15 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
     // Keep the original order from database (newest first) instead of overriding
     const sortedMatchedCampaigns = matchedCampaignWithPercentage;
 
-    console.log(`✅ Final campaigns to return: ${sortedMatchedCampaigns.length}`);
-
     // Fix pagination logic: Check if we got the full 'take' amount from the database
     // We need to use originalFetchedCount (BEFORE filtering) not campaigns.length (AFTER filtering)
     // If we fetched the full 'take' amount, there might be more pages
     const hasNextPage = originalFetchedCount === Number(take);
-    
+
     // For the cursor, we need to use the ORIGINAL last campaign ID from the database fetch
     // This ensures the next request starts from the correct position
-    const lastCursor = hasNextPage && sortedMatchedCampaigns.length > 0 
-      ? sortedMatchedCampaigns[sortedMatchedCampaigns.length - 1]?.id 
-      : null;
-
-    console.log('========================================');
-    console.log('📤 PAGINATION INFO');
-    console.log('========================================');
-    console.log(`Campaigns fetched from DB (before filtering): ${originalFetchedCount}`);
-    console.log(`Campaigns after filtering: ${campaigns.length}`);
-    console.log(`Campaigns returned in this request: ${sortedMatchedCampaigns.length}`);
-    console.log(`Requested take: ${Number(take)}`);
-    console.log(`Has next page: ${hasNextPage}`);
-    console.log(`Last cursor: ${lastCursor || 'null'}`);
-    console.log('Pagination logic: hasNextPage = originalFetchedCount === take');
-    console.log(`  originalFetchedCount (${originalFetchedCount}) === take (${Number(take)}) = ${hasNextPage}`);
-    console.log('✅ This ensures pagination continues even if filtering removes some campaigns');
-    console.log('========================================');
-    console.log('🔍 DISCOVER PAGE - REQUEST END');
-    console.log('========================================\n');
+    const lastCursor =
+      hasNextPage && sortedMatchedCampaigns.length > 0 ? sortedMatchedCampaigns[sortedMatchedCampaigns.length - 1]?.id : null;
 
     const data = {
       data: {
