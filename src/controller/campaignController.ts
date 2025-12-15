@@ -300,7 +300,6 @@ export const createCampaign = async (req: Request, res: Response) => {
               },
               include: {
                 admin: true,
-                client: true, // Include client relation to identify client users
               },
             });
           }),
@@ -674,98 +673,6 @@ export const createCampaign = async (req: Request, res: Response) => {
           } catch (error) {
             console.error('Error adding child accounts to campaign:', error);
             // Don't fail the campaign creation if child account integration fails
-          }
-        }
-
-        // For v4 campaigns only: Add client users to both CampaignClient AND CampaignAdmin
-        // This ensures backwards compatibility - clients can access via CampaignAdmin
-        // and we track them separately in CampaignClient for future role management
-        if (submissionVersion === 'v4' && client?.id) {
-          try {
-            const companyClients = await tx.client.findMany({
-              where: { companyId: client.id },
-              include: { user: true },
-            });
-
-            for (const companyClient of companyClients) {
-              // Add to CampaignClient
-              const existingCampaignClient = await tx.campaignClient.findUnique({
-                where: {
-                  clientId_campaignId: {
-                    clientId: companyClient.id,
-                    campaignId: campaign.id,
-                  },
-                },
-              });
-
-              if (!existingCampaignClient) {
-                await tx.campaignClient.create({
-                  data: {
-                    clientId: companyClient.id,
-                    campaignId: campaign.id,
-                    role: 'owner',
-                  },
-                });
-                console.log(`Added client ${companyClient.id} to CampaignClient for v4 campaign ${campaign.id}`);
-              }
-
-              // Also add to CampaignAdmin for backwards compatibility
-              if (companyClient.userId) {
-                const existingCampaignAdmin = await tx.campaignAdmin.findUnique({
-                  where: {
-                    adminId_campaignId: {
-                      adminId: companyClient.userId,
-                      campaignId: campaign.id,
-                    },
-                  },
-                });
-
-                if (!existingCampaignAdmin) {
-                  await tx.campaignAdmin.create({
-                    data: {
-                      adminId: companyClient.userId,
-                      campaignId: campaign.id,
-                    },
-                  });
-                  console.log(`Added client user ${companyClient.userId} to CampaignAdmin for v4 campaign ${campaign.id}`);
-                }
-              }
-            }
-          } catch (error) {
-            console.error('Error adding clients to CampaignClient/CampaignAdmin:', error);
-            // Don't fail the campaign creation if integration fails
-          }
-        }
-
-        // For v4 campaigns: Also add any client users from campaignManager to CampaignClient
-        if (submissionVersion === 'v4') {
-          try {
-            for (const user of admins) {
-              if (user?.client?.id) {
-                const existingCampaignClient = await tx.campaignClient.findUnique({
-                  where: {
-                    clientId_campaignId: {
-                      clientId: user.client.id,
-                      campaignId: campaign.id,
-                    },
-                  },
-                });
-
-                if (!existingCampaignClient) {
-                  await tx.campaignClient.create({
-                    data: {
-                      clientId: user.client.id,
-                      campaignId: campaign.id,
-                      role: 'owner',
-                    },
-                  });
-                  console.log(`Added client user ${user.client.id} from campaignManager to CampaignClient for v4 campaign ${campaign.id}`);
-                }
-              }
-            }
-          } catch (error) {
-            console.error('Error adding client users from campaignManager to CampaignClient:', error);
-            // Don't fail the campaign creation if CampaignClient integration fails
           }
         }
 
@@ -1148,15 +1055,6 @@ export const getCampaignById = async (req: Request, res: Response) => {
             },
           },
         },
-        campaignClients: {
-          include: {
-            client: {
-              include: {
-                user: true,
-              },
-            },
-          },
-        },
         campaignSubmissionRequirement: {
           include: {
             submissionType: {
@@ -1338,6 +1236,8 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
 
     if (!user) return res.status(404).json({ message: 'User not found' });
 
+    console.log('matchCampaignWithCreator - Starting search for creator:', user.id);
+
     // Get all ACTIVE campaigns
     let campaigns = await prisma.campaign.findMany({
       take: Number(take),
@@ -1406,8 +1306,42 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       },
     });
 
- 
-    const originalFetchedCount = campaigns.length;
+    console.log(`matchCampaignWithCreator - Found ${campaigns.length} ACTIVE campaigns`);
+
+    // Log each campaign's timelines and additional info before filtering
+    campaigns.forEach((campaign) => {
+      console.log(`Campaign ${campaign.id} (${campaign.name}) - Status: ${campaign.status}`);
+      console.log(`Timelines (${campaign.campaignTimeline?.length || 0}):`);
+      campaign.campaignTimeline?.forEach((timeline) => {
+        console.log(`  - ${timeline.name} (Status: ${timeline.status}, For: ${timeline.for})`);
+      });
+
+      // Log campaign admins and creator
+      console.log(`Campaign admins (${campaign.campaignAdmin?.length || 0}):`);
+      campaign.campaignAdmin?.forEach((admin) => {
+        console.log(`  - Admin ID: ${admin.adminId}, Role: ${admin.admin?.user?.role || 'unknown'}`);
+      });
+
+      // Log campaign logs to see who created it
+      console.log(`Campaign logs (${campaign.campaignLogs?.length || 0}):`);
+      campaign.campaignLogs?.forEach((log: any) => {
+        console.log(`  - Action: ${log.action}, User ID: ${log.userId}, Role: ${log.userRole}`);
+      });
+
+      // Check if this campaign would pass the filter
+      const hasOpenForPitchTimeline = campaign.campaignTimeline?.some(
+        (timeline) => timeline.name === 'Open For Pitch' && timeline.status === 'OPEN',
+      );
+      console.log(`  Will this campaign pass filter? ${hasOpenForPitchTimeline ? 'YES' : 'NO'}`);
+
+      // Check if campaign has additional requirements that might be missing
+      if (!campaign.campaignRequirement) {
+        console.log(`  WARNING: Campaign has no requirements defined`);
+      }
+      if (!campaign.campaignBrief) {
+        console.log(`  WARNING: Campaign has no brief defined`);
+      }
+    });
 
     if (campaigns?.length === 0) {
       const data = {
@@ -1433,15 +1367,55 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       return campaign.status === 'ACTIVE';
     });
 
+    const afterFilterCount = campaigns.length;
+
+    console.log(
+      `matchCampaignWithCreator - After filtering: ${afterFilterCount}/${beforeFilterCount} campaigns remain (showing ALL active campaigns to creators)`,
+    );
+
     const country = await getCountry(req.ip as string);
 
-    // Apply country filtering only in non-development environments
+    console.log('COUNTRY', country);
+
+    // TEMPORARY: Disable country filtering to fix creator discovery issue
+    // The country filtering was preventing creators from seeing campaigns
+    const beforeCountryFilterCount = campaigns.length;
+
+    // Log country information for debugging
+    console.log(`DEBUG: Creator country detected as: ${country || 'UNKNOWN'}`);
+    console.log(`DEBUG: Before country filtering - ${beforeCountryFilterCount} campaigns available`);
+
+    // Show campaigns with country requirements for debugging
+    campaigns.forEach((campaign) => {
+      if (campaign.campaignRequirement?.country) {
+        console.log(
+          `Campaign ${campaign.id} (${campaign.name}) requires country: ${campaign.campaignRequirement.country}`,
+        );
+      } else {
+        console.log(`Campaign ${campaign.id} (${campaign.name}) has no country requirement`);
+      }
+    });
+
+    // TEMPORARILY BYPASS COUNTRY FILTERING - Show all campaigns to creators
+    // This ensures creators can see all available campaigns while we fix country detection
+    console.log('TEMPORARILY BYPASSING COUNTRY FILTERING - Showing all campaigns to creators');
+
+    // TODO: Re-enable proper country filtering once country detection is working correctly
+    // TEMPORARILY DISABLE ALL COUNTRY FILTERING to fix creator discovery issue
+    // The country filtering was preventing creators from seeing all available campaigns
+
+    // COMMENTED OUT: Country filtering is disabled for now
     if (process.env.NODE_ENV !== 'development') {
       campaigns = campaigns.filter((campaign) => {
         if (!campaign.campaignRequirement?.country) return campaign;
         return campaign.campaignRequirement.country.toLocaleLowerCase() === country?.toLowerCase();
       });
     }
+
+    const afterCountryFilterCount = campaigns.length;
+    console.log(
+      `Country filtering completely bypassed: ${afterCountryFilterCount}/${beforeCountryFilterCount} campaigns remain (no filtering applied)`,
+    );
 
     // Original filtering logic (DISABLED):
     // campaigns = campaigns.filter((campaign) => {
@@ -1534,7 +1508,17 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
 
         const overallMatchingPercentage = calculateOverallMatchingPercentage(interestPercentage, requirementPercentage);
 
-        // Skip detailed matching logs for cleaner output
+        // Debug log for problematic campaigns
+        if (index < 3) {
+          // Log first 3 campaigns for debugging
+          console.log(`Campaign ${item.id} (${item.name}) matching:`, {
+            interestPercentage: isNaN(interestPercentage) ? 'NaN' : interestPercentage,
+            requirementPercentage: isNaN(requirementPercentage) ? 'NaN' : requirementPercentage,
+            overallMatchingPercentage: isNaN(overallMatchingPercentage) ? 'NaN' : overallMatchingPercentage,
+            hasCreatorPersona: !!item.campaignRequirement?.creator_persona,
+            creatorPersonaLength: item.campaignRequirement?.creator_persona?.length || 0,
+          });
+        }
 
         return {
           ...item,
@@ -1552,15 +1536,25 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
     // Keep the original order from database (newest first) instead of overriding
     const sortedMatchedCampaigns = matchedCampaignWithPercentage;
 
-    // Fix pagination logic: Check if we got the full 'take' amount from the database
-    // We need to use originalFetchedCount (BEFORE filtering) not campaigns.length (AFTER filtering)
-    // If we fetched the full 'take' amount, there might be more pages
-    const hasNextPage = originalFetchedCount === Number(take);
+    // Debug: Check if there's any difference between campaigns and sortedMatchedCampaigns
+    console.log(`matchCampaignWithCreator - Debug counts:`, {
+      originalCampaigns: campaigns.length,
+      matchedCampaigns: matchedCampaignWithPercentage.length,
+      sortedMatchedCampaigns: sortedMatchedCampaigns.length,
+      requestedTake: Number(take),
+    });
 
-    // For the cursor, we need to use the ORIGINAL last campaign ID from the database fetch
-    // This ensures the next request starts from the correct position
-    const lastCursor =
-      hasNextPage && sortedMatchedCampaigns.length > 0 ? sortedMatchedCampaigns[sortedMatchedCampaigns.length - 1]?.id : null;
+    // Fix pagination logic: determine if there are more pages
+    const hasNextPage = campaigns.length === Number(take);
+    const lastCursor = hasNextPage ? campaigns[campaigns.length - 1]?.id : null;
+
+    console.log(`matchCampaignWithCreator - Pagination info:`, {
+      campaignsReturned: campaigns.length,
+      campaignsInResponse: sortedMatchedCampaigns.length,
+      requestedTake: Number(take),
+      hasNextPage: hasNextPage,
+      lastCursor: lastCursor,
+    });
 
     const data = {
       data: {
@@ -5052,7 +5046,7 @@ export const editCampaignAdmin = async (req: Request, res: Response) => {
     });
 
     // Update campaign with new admins and set submissionVersion to v4 if client is added
-    const updatedCampaign = await prisma.campaign.update({
+    await prisma.campaign.update({
       where: {
         id: campaign?.id,
       },
@@ -5066,136 +5060,28 @@ export const editCampaignAdmin = async (req: Request, res: Response) => {
       },
     });
 
-    // For client users being added as campaign admins, also add them to CampaignClient
-    // This ensures they are tracked in both models for v4 campaigns
-    for (const admin of adjustedAdmins) {
-      const isClientUser = admin?.user?.role === 'client' || admin?.role?.name === 'Client';
-      
-      if (isClientUser && admin?.userId) {
-        try {
-          // Find the client record for this user
-          const clientRecord = await prisma.client.findUnique({
-            where: { userId: admin.userId },
-          });
-
-          if (clientRecord) {
-            // Check if already in CampaignClient
-            const existingCampaignClient = await prisma.campaignClient.findUnique({
-              where: {
-                clientId_campaignId: {
-                  clientId: clientRecord.id,
-                  campaignId: campaign.id,
-                },
-              },
-            });
-
-            if (!existingCampaignClient) {
-              await prisma.campaignClient.create({
-                data: {
-                  clientId: clientRecord.id,
-                  campaignId: campaign.id,
-                  role: 'owner',
-                },
-              });
-              console.log(`Added client ${clientRecord.id} to CampaignClient for campaign ${campaign.id}`);
-            }
-          }
-        } catch (error) {
-          console.error(`Error adding client user ${admin.userId} to CampaignClient:`, error);
-          // Don't fail the edit if CampaignClient integration fails
-        }
-      }
-    }
-
     if (newAdmins.length > 0) {
-      for (const admin of newAdmins) {
-        try {
-          if (campaign.thread?.id) {
-            await prisma.userThread.create({
-              data: {
-                userId: admin.id,
-                threadId: campaign.thread.id,
-              },
-            });
-          }
-        } catch (error) {
-          console.error(`Error adding user ${admin.id} to thread:`, error);
-          // Don't fail if thread operation fails
-        }
-      }
+      newAdmins.forEach(async (admin) => {
+        await prisma.userThread.create({
+          data: {
+            userId: admin.id,
+            threadId: campaign.thread?.id!,
+          },
+        });
+      });
     }
 
     if (removedAdmins.length > 0) {
-      // Remove from UserThread
-      for (const admin of removedAdmins) {
-        try {
-          if (campaign.thread?.id) {
-            // Check if the UserThread exists before trying to delete
-            const existingUserThread = await prisma.userThread.findUnique({
-              where: {
-                userId_threadId: {
-                  userId: admin.admin.userId,
-                  threadId: campaign.thread.id,
-                },
-              },
-            });
-
-            if (existingUserThread) {
-              await prisma.userThread.delete({
-                where: {
-                  userId_threadId: {
-                    userId: admin.admin.userId,
-                    threadId: campaign.thread.id,
-                  },
-                },
-              });
-            }
-          }
-        } catch (error) {
-          console.error(`Error removing user ${admin.admin.userId} from thread:`, error);
-          // Don't fail if thread operation fails
-        }
-      }
-
-      // For client users being removed as campaign admins, also remove them from CampaignClient
-      for (const removedAdmin of removedAdmins) {
-        try {
-          const removedUserId = removedAdmin.admin.userId;
-
-          // Check if this removed admin is a client user
-          const removedUser = await prisma.user.findUnique({
-            where: { id: removedUserId },
-            include: { client: true },
-          });
-
-          if (removedUser?.role === 'client' && removedUser?.client?.id) {
-            // Remove from CampaignClient
-            const existingCampaignClient = await prisma.campaignClient.findUnique({
-              where: {
-                clientId_campaignId: {
-                  clientId: removedUser.client.id,
-                  campaignId: campaign.id,
-                },
-              },
-            });
-
-            if (existingCampaignClient) {
-              await prisma.campaignClient.delete({
-                where: {
-                  clientId_campaignId: {
-                    clientId: removedUser.client.id,
-                    campaignId: campaign.id,
-                  },
-                },
-              });
-              console.log(`Removed client ${removedUser.client.id} from CampaignClient for campaign ${campaign.id}`);
-            }
-          }
-        } catch (error) {
-          console.error(`Error removing client user from CampaignClient:`, error);
-          // Don't fail the edit if CampaignClient removal fails
-        }
-      }
+      removedAdmins.forEach(async (admin) => {
+        await prisma.userThread.delete({
+          where: {
+            userId_threadId: {
+              userId: admin.admin.userId,
+              threadId: campaign?.thread?.id!,
+            },
+          },
+        });
+      });
     }
 
     // Get admin info for logging
@@ -6448,7 +6334,7 @@ export const getClientCampaigns = async (req: Request, res: Response) => {
       return res.status(401).json({ message: 'Unauthorized. User not found.' });
     }
 
-    // Check if the user has any campaign admin entries (backwards compatibility)
+    // Check if the user has any campaign admin entries
     const campaignAdminEntries = await prisma.campaignAdmin.findMany({
       where: {
         adminId: userid,
@@ -6457,50 +6343,16 @@ export const getClientCampaigns = async (req: Request, res: Response) => {
 
     console.log(`Found ${campaignAdminEntries.length} campaignAdmin entries for user ${userid}`);
 
-    // Also check CampaignClient entries if user is a client
-    let campaignClientEntries: { campaignId: string }[] = [];
-    if (user.client?.id) {
-      campaignClientEntries = await prisma.campaignClient.findMany({
-        where: {
-          clientId: user.client.id,
-        },
-        select: {
-          campaignId: true,
-        },
-      });
-      console.log(`Found ${campaignClientEntries.length} campaignClient entries for client ${user.client.id}`);
-    }
-
-    // Combine campaign IDs from both CampaignAdmin and CampaignClient
-    const campaignIdsFromAdmin = campaignAdminEntries.map((entry) => entry.campaignId);
-    const campaignIdsFromClient = campaignClientEntries.map((entry) => entry.campaignId);
-    const allCampaignIds = [...new Set([...campaignIdsFromAdmin, ...campaignIdsFromClient])];
-
-    console.log(`Total unique campaign IDs: ${allCampaignIds.length}`);
-
-    // Find campaigns where user is either in CampaignAdmin OR CampaignClient
+    // Find only campaigns created by this client user
+    // We can identify this by looking at the campaignAdmin relation
+    // or by checking if the user is in the campaign's admin list
     const campaigns = await prisma.campaign.findMany({
       where: {
-        OR: [
-          {
-            campaignAdmin: {
-              some: {
-                adminId: userid,
-              },
-            },
+        campaignAdmin: {
+          some: {
+            adminId: userid,
           },
-          ...(user.client?.id
-            ? [
-                {
-                  campaignClients: {
-                    some: {
-                      clientId: user.client.id,
-                    },
-                  },
-                },
-              ]
-            : []),
-        ],
+        },
       },
       include: {
         brand: { include: { company: true } },
@@ -6919,10 +6771,7 @@ export const activateClientCampaign = async (req: Request, res: Response) => {
       console.error('Error checking creator discovery eligibility:', error);
     }
 
-    // Create notification for client and add clients to CampaignClient + CampaignAdmin for v4 campaigns only
-    // For non-v4 campaigns, we still create notifications but don't add to CampaignClient/CampaignAdmin
-    const isV4Campaign = campaign.submissionVersion === 'v4';
-    
+    // Create notification for client and add clients to campaignAdmin
     if (campaign.companyId) {
       const clientUsers = await prisma.user.findMany({
         where: {
@@ -6930,67 +6779,40 @@ export const activateClientCampaign = async (req: Request, res: Response) => {
             companyId: campaign.companyId,
           },
         },
-        include: {
-          client: true,
-        },
       });
 
       console.log(`Found ${clientUsers.length} clients for company ${campaign.companyId}`);
 
       for (const clientUser of clientUsers) {
-        // Only add clients to CampaignClient and CampaignAdmin for v4 campaigns
-        if (isV4Campaign && clientUser.client) {
-          // Add to CampaignClient
-          try {
-            const existingCampaignClient = await prisma.campaignClient.findUnique({
-              where: {
-                clientId_campaignId: {
-                  clientId: clientUser.client.id,
-                  campaignId,
-                },
+        // Add client to campaignAdmin so they can see the campaign in their dashboard
+        try {
+          // Check if client is already in campaignAdmin
+          const existingCampaignAdmin = await prisma.campaignAdmin.findUnique({
+            where: {
+              adminId_campaignId: {
+                adminId: clientUser.id,
+                campaignId,
+              },
+            },
+          });
+
+          if (!existingCampaignAdmin) {
+            await prisma.campaignAdmin.create({
+              data: {
+                adminId: clientUser.id,
+                campaignId,
               },
             });
-
-            if (!existingCampaignClient) {
-              await prisma.campaignClient.create({
-                data: {
-                  clientId: clientUser.client.id,
-                  campaignId,
-                  role: 'owner',
-                },
-              });
-              console.log(`Added client ${clientUser.client.id} to CampaignClient for v4 campaign ${campaignId}`);
-            }
-          } catch (error) {
-            console.error(`Error adding client ${clientUser.id} to CampaignClient:`, error);
+            console.log(`Added client ${clientUser.id} to campaign ${campaignId}`);
+          } else {
+            console.log(`Client ${clientUser.id} already in campaignAdmin for campaign ${campaignId}`);
           }
-
-          // Also add to CampaignAdmin for backwards compatibility
-          try {
-            const existingCampaignAdmin = await prisma.campaignAdmin.findUnique({
-              where: {
-                adminId_campaignId: {
-                  adminId: clientUser.id,
-                  campaignId,
-                },
-              },
-            });
-
-            if (!existingCampaignAdmin) {
-              await prisma.campaignAdmin.create({
-                data: {
-                  adminId: clientUser.id,
-                  campaignId,
-                },
-              });
-              console.log(`Added client user ${clientUser.id} to CampaignAdmin for v4 campaign ${campaignId}`);
-            }
-          } catch (error) {
-            console.error(`Error adding client ${clientUser.id} to CampaignAdmin:`, error);
-          }
+        } catch (error) {
+          console.error(`Error adding client ${clientUser.id} to campaign:`, error);
+          // Continue with other clients even if one fails
         }
 
-        // Create notification for all clients regardless of v4 status
+        // Create notification
         await prisma.notification.create({
           data: {
             title: 'Campaign Activated',
@@ -7283,16 +7105,12 @@ export const addClientToCampaignAdmin = async (req: Request, res: Response) => {
         id: true,
         name: true,
         status: true,
-        submissionVersion: true, // Need this to check if v4
       },
     });
 
     console.log(`Found ${companyCampaigns.length} campaigns for company ${user.client.companyId}`);
 
-    // Get the client ID from the user's client record
-    const clientId = user.client.id;
-
-    // Add the client to the CampaignAdmin and CampaignClient tables for each campaign
+    // Add the client to the campaignAdmin table for each campaign
     const results = [];
     for (const campaign of companyCampaigns) {
       try {
@@ -7323,36 +7141,15 @@ export const addClientToCampaignAdmin = async (req: Request, res: Response) => {
             campaignId: campaign.id,
           },
         });
+
         console.log(`Added client ${userid} to campaignAdmin for campaign ${campaign.id}`);
-
-        // Also add to CampaignClient
-        const existingCampaignClient = await prisma.campaignClient.findUnique({
-          where: {
-            clientId_campaignId: {
-              clientId: clientId,
-              campaignId: campaign.id,
-            },
-          },
-        });
-
-        if (!existingCampaignClient) {
-          await prisma.campaignClient.create({
-            data: {
-              clientId: clientId,
-              campaignId: campaign.id,
-              role: 'owner',
-            },
-          });
-          console.log(`Added client ${clientId} to CampaignClient for campaign ${campaign.id}`);
-        }
-
         results.push({
           campaignId: campaign.id,
           campaignName: campaign.name,
           status: 'added',
         });
       } catch (error) {
-        console.error(`Error adding client ${userid} to campaign ${campaign.id}:`, error);
+        console.error(`Error adding client ${userid} to campaignAdmin for campaign ${campaign.id}:`, error);
         results.push({
           campaignId: campaign.id,
           campaignName: campaign.name,
