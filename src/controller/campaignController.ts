@@ -108,6 +108,8 @@ interface Campaign {
   client: Company;
   campaignStartDate: Date;
   campaignEndDate: Date;
+  postingStartDate: Date;
+  postingEndDate: Date;
   campaignTitle: string;
   campaignObjectives: string;
   campaignDo: any;
@@ -205,6 +207,8 @@ export const createCampaign = async (req: Request, res: Response) => {
     client,
     campaignStartDate,
     campaignEndDate,
+    postingStartDate,
+    postingEndDate,
     campaignObjectives,
     socialMediaPlatform,
     videoAngle,
@@ -345,6 +349,8 @@ export const createCampaign = async (req: Request, res: Response) => {
         // Normalize dates for campaign brief
         const normalizedStartDate = campaignStartDate ? dayjs(campaignStartDate).toDate() : new Date();
         const normalizedEndDate = campaignEndDate ? dayjs(campaignEndDate).toDate() : normalizedStartDate;
+        const normalizedPostingStartDate = postingStartDate ? dayjs(postingStartDate).toDate() : normalizedStartDate;
+        const normalizedPostingEndDate = postingEndDate ? dayjs(postingEndDate).toDate() : normalizedStartDate;
 
         let productsToCreate: any[] = [];
 
@@ -387,6 +393,8 @@ export const createCampaign = async (req: Request, res: Response) => {
                 referencesLinks: referencesLinks?.map((link: any) => link.value) || [],
                 startDate: normalizedStartDate,
                 endDate: normalizedEndDate,
+                postingStartDate: normalizedPostingStartDate,
+                postingEndDate: normalizedPostingEndDate,
                 industries: campaignIndustries,
                 campaigns_do: campaignDo,
                 campaigns_dont: campaignDont,
