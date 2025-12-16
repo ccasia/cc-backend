@@ -6537,9 +6537,9 @@ export const activateClientCampaign = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Invalid data format' });
     }
 
-    const { campaignType, deliverables, campaignManager, agreementTemplateId, status } = data;
+    const { campaignType, deliverables, campaignManager, agreementTemplateId, status, postingStartDate, postingEndDate } = data;
 
-    console.log('Received data:', { campaignType, deliverables, campaignManager, agreementTemplateId, status });
+    console.log('Received data:', { campaignType, deliverables, campaignManager, agreementTemplateId, status, postingStartDate, postingEndDate });
 
     // Validate required fields
     if (!campaignType) {
@@ -6640,6 +6640,18 @@ export const activateClientCampaign = async (req: Request, res: Response) => {
         throw new Error('Campaign brief not found');
       }
 
+      // Update CampaignBrief with posting dates if provided
+      if (postingStartDate || postingEndDate) {
+        await prisma.campaignBrief.update({
+          where: { campaignId },
+          data: {
+            ...(postingStartDate && { postingStartDate: new Date(postingStartDate) }),
+            ...(postingEndDate && { postingEndDate: new Date(postingEndDate) }),
+          },
+        });
+        console.log('Updated CampaignBrief with posting dates:', { postingStartDate, postingEndDate });
+      }
+
       // Calculate timeline dates based on campaign start and end dates
       const startDate = new Date(campaignBrief.startDate);
       const endDate = new Date(campaignBrief.endDate);
@@ -6727,18 +6739,22 @@ export const activateClientCampaign = async (req: Request, res: Response) => {
         {
           name: 'Posting',
           for: 'creator',
-          duration: Math.max(2, Math.floor(totalDays * 0.1)),
-          startDate: new Date(
-            startDate.getTime() +
-              (Math.max(2, Math.floor(totalDays * 0.1)) +
-                Math.max(3, Math.floor(totalDays * 0.2)) +
-                Math.max(3, Math.floor(totalDays * 0.2))) *
-                24 *
-                60 *
-                60 *
-                1000,
-          ),
-          endDate,
+          duration: postingStartDate && postingEndDate
+            ? Math.max(1, Math.floor((new Date(postingEndDate).getTime() - new Date(postingStartDate).getTime()) / (1000 * 60 * 60 * 24)))
+            : Math.max(2, Math.floor(totalDays * 0.1)),
+          startDate: postingStartDate
+            ? new Date(postingStartDate)
+            : new Date(
+                startDate.getTime() +
+                  (Math.max(2, Math.floor(totalDays * 0.1)) +
+                    Math.max(3, Math.floor(totalDays * 0.2)) +
+                    Math.max(3, Math.floor(totalDays * 0.2))) *
+                    24 *
+                    60 *
+                    60 *
+                    1000,
+              ),
+          endDate: postingEndDate ? new Date(postingEndDate) : endDate,
           order: 5,
           status: 'OPEN' as TimelineStatus,
           campaignId,
