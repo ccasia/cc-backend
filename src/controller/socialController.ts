@@ -213,13 +213,13 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
       
       const userInfoResponse = await axios.get('https://open.tiktokapis.com/v2/user/info/', {
         params: {
-          fields: 'open_id, union_id, display_name, avatar_url, following_count, follower_count, likes_count',
+          fields: 'open_id, union_id, display_name, username, avatar_url, following_count, follower_count, likes_count',
         },
         headers: { Authorization: `Bearer ${access_token}` },
       });
 
       const userData = userInfoResponse.data.data.user;
-      console.log(`Fetched user info for: ${userData.display_name}`);
+      console.log(`✅ Fetched user info for: ${userData.display_name} (@${userData.username})`);
 
       let videos = [];
       try {
@@ -248,6 +248,7 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
         },
         update: {
           display_name: userData.display_name,
+          username: userData.username,
           avatar_url: userData.avatar_url,
           following_count: userData.following_count,
           follower_count: userData.follower_count,
@@ -256,6 +257,7 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
         create: {
           creatorId: creator.id,
           display_name: userData.display_name,
+          username: userData.username,
           avatar_url: userData.avatar_url,
           following_count: userData.following_count,
           follower_count: userData.follower_count,
