@@ -109,11 +109,30 @@ export const getCreatorByID = async (req: Request, res: Response) => {
       name: creator.name,
       email: creator.email,
       tiktokConnected: creator.creator?.isTiktokConnected,
+      tiktokUserId: creator.creator?.tiktokUser?.id,
       tiktokUsername: creator.creator?.tiktokUser?.username,
       tiktokVideosCount: creator.creator?.tiktokUser?.tiktokVideo?.length || 0,
+      tiktokVideoIds: creator.creator?.tiktokUser?.tiktokVideo?.map((v: any) => v.id).slice(0, 3),
       instagramConnected: !!creator.creator?.instagramUser,
       instagramVideosCount: creator.creator?.instagramUser?.instagramVideo?.length || 0,
     });
+
+    // Check for orphaned TikTok videos
+    if (creator.creator?.isTiktokConnected && (!creator.creator?.tiktokUser?.tiktokVideo || creator.creator?.tiktokUser?.tiktokVideo?.length === 0)) {
+      console.log('⚠️  TikTok connected but no videos found! Checking for orphaned records...');
+      
+      const allTiktokUsers = await prisma.tiktokUser.findMany({
+        where: { creatorId: creator.creator.id },
+        include: { tiktokVideo: true },
+      });
+      
+      console.log('🔍 All TikTokUser records for this creator:', allTiktokUsers.map((tu: any) => ({
+        id: tu.id,
+        username: tu.username,
+        videosCount: tu.tiktokVideo?.length || 0,
+        createdAt: tu.createdAt,
+      })));
+    }
 
     return res.status(200).json(creator);
   } catch (error) {
