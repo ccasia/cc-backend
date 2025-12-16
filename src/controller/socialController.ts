@@ -197,8 +197,6 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
     const encryptedAccessToken = encryptToken(access_token);
     const encryptedRefreshToken = encryptToken(refresh_token);
 
-    console.log(`🔑 Updating TikTok connection for session user: ${req.session.userid}`);
-
     const creator = await prisma.creator.update({
       where: {
         userId: req.session.userid,
@@ -207,52 +205,39 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
         tiktokData: { ...tokenResponse.data, access_token: encryptedAccessToken, refresh_token: encryptedRefreshToken },
         isTiktokConnected: true,
       },
-      include: { tiktokUser: true, user: { select: { id: true, name: true, email: true } } },
+      include: { tiktokUser: true },
     });
 
-    console.log(`✅ TikTok reconnected for creator: ${creator.user.name} (${creator.user.email}), Creator ID: ${creator.id}, User ID: ${creator.userId}`);
-
     if (access_token) {
-      console.log('Fetching TikTok user info and videos...');
-      
       const userInfoResponse = await axios.get('https://open.tiktokapis.com/v2/user/info/', {
         params: {
-          fields: 'open_id, union_id, display_name, username, avatar_url, following_count, follower_count, likes_count',
+          fields: 'open_id, union_id, display_name, avatar_url, following_count, follower_count, likes_count',
         },
         headers: { Authorization: `Bearer ${access_token}` },
       });
 
-      const userData = userInfoResponse.data.data.user;
-      console.log(`✅ Fetched user info for: ${userData.display_name} (@${userData.username})`);
-
-      let videos = [];
-      try {
-        const videoInfoResponse = await axios.post(
-          'https://open.tiktokapis.com/v2/video/list/',
-          { max_count: 20 },
-          {
-            params: {
-              fields:
-                'cover_image_url, id, title, video_description, duration, embed_link, embed_html, like_count, comment_count, share_count, view_count',
-            },
-            headers: { Authorization: `Bearer ${access_token}`, 'Content-Type': 'application/json' },
+      const videoInfoResponse = await axios.post(
+        'https://open.tiktokapis.com/v2/video/list/',
+        { max_count: 20 },
+        {
+          params: {
+            fields:
+              'cover_image_url, id, title, video_description, duration, embed_link, embed_html, like_count, comment_count, share_count, view_count',
           },
-        );
+          headers: { Authorization: `Bearer ${access_token}`, 'Content-Type': 'application/json' },
+        },
+      );
 
-        videos = videoInfoResponse.data.data.videos || [];
-        console.log(`✅ Fetched ${videos.length} TikTok videos`);
-      } catch (videoError: any) {
-        console.error('⚠️  Failed to fetch TikTok videos:', videoError.response?.data || videoError.message);
-        // Continue without videos - user can reconnect later
-      }
+      const userData = userInfoResponse.data.data.user;
 
-      const tiktokUser = await prisma.tiktokUser.upsert({
+      const videos = videoInfoResponse.data.data.videos;
+
+      await prisma.tiktokUser.upsert({
         where: {
           creatorId: creator.id,
         },
         update: {
           display_name: userData.display_name,
-          username: userData.username,
           avatar_url: userData.avatar_url,
           following_count: userData.following_count,
           follower_count: userData.follower_count,
@@ -261,7 +246,6 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
         create: {
           creatorId: creator.id,
           display_name: userData.display_name,
-          username: userData.username,
           avatar_url: userData.avatar_url,
           following_count: userData.following_count,
           follower_count: userData.follower_count,
@@ -269,48 +253,38 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
         },
       });
 
-      console.log(`✅ TikTok user saved with ID: ${tiktokUser.id}`);
-
-      if (videos && videos.length > 0) {
-        console.log(`📹 Processing ${videos.length} TikTok videos for ${userData.display_name}`);
-        
-        for (const video of videos) {
-          await prisma.tiktokVideo.upsert({
-            where: {
-              video_id: video.id,
-            },
-            update: {
-              cover_image_url: video.cover_image_url,
-              title: video.title,
-              description: video.video_description, // Fixed: was video.description
-              duration: parseFloat(video.duration) || 0,
-              embed_link: video.embed_link,
-              embed_html: video.embed_html,
-              like_count: video.like_count,
-              comment_count: video.comment_count,
-              share_count: video.share_count, // Fixed: was video.comment_count
-              view_count: video.view_count,
-            },
-            create: {
-              cover_image_url: video.cover_image_url,
-              title: video.title,
-              description: video.video_description, // Fixed: was video.description
-              duration: parseFloat(video.duration) || 0,
-              embed_link: video.embed_link,
-              embed_html: video.embed_html,
-              like_count: video.like_count,
-              comment_count: video.comment_count,
-              share_count: video.share_count, // Fixed: was video.comment_count
-              view_count: video.view_count,
-              tiktokUserId: tiktokUser.id, // ✅ Use the upserted tiktokUser ID!
-              video_id: video.id,
-            },
-          });
-        }
-        
-        console.log(`✅ Saved ${videos.length} TikTok videos to database`);
-      } else {
-        console.log('⚠️  No TikTok videos found or failed to fetch videos');
+      for (const video of videos) {
+        await prisma.tiktokVideo.upsert({
+          where: {
+            video_id: video.id,
+          },
+          update: {
+            cover_image_url: video.cover_image_url,
+            title: video.title,
+            description: video.description,
+            duration: parseFloat(video.duration),
+            embed_link: video.embed_link,
+            embed_html: video.embed_html,
+            like_count: video.like_count,
+            comment_count: video.comment_count,
+            share_count: video.comment_count,
+            view_count: video.view_count,
+          },
+          create: {
+            cover_image_url: video.cover_image_url,
+            title: video.title,
+            description: video.description,
+            duration: parseFloat(video.duration),
+            embed_link: video.embed_link,
+            embed_html: video.embed_html,
+            like_count: video.like_count,
+            comment_count: video.comment_count,
+            share_count: video.comment_count,
+            view_count: video.view_count,
+            tiktokUserId: creator.tiktokUser?.id,
+            video_id: video.id,
+          },
+        });
       }
     }
 
