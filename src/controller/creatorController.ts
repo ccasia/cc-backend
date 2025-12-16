@@ -103,6 +103,18 @@ export const getCreatorByID = async (req: Request, res: Response) => {
 
     if (!creator) return res.status(404).json({ message: 'Creator not found' });
 
+    // Log TikTok data for debugging
+    console.log('📊 Creator Media Kit Data:', {
+      creatorId: id,
+      name: creator.name,
+      email: creator.email,
+      tiktokConnected: creator.creator?.isTiktokConnected,
+      tiktokUsername: creator.creator?.tiktokUser?.username,
+      tiktokVideosCount: creator.creator?.tiktokUser?.tiktokVideo?.length || 0,
+      instagramConnected: !!creator.creator?.instagramUser,
+      instagramVideosCount: creator.creator?.instagramUser?.instagramVideo?.length || 0,
+    });
+
     return res.status(200).json(creator);
   } catch (error) {
     return res.status(400).json({ error });
