@@ -242,7 +242,7 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
         // Continue without videos - user can reconnect later
       }
 
-      await prisma.tiktokUser.upsert({
+      const tiktokUser = await prisma.tiktokUser.upsert({
         where: {
           creatorId: creator.id,
         },
@@ -264,6 +264,8 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
           likes_count: userData.likes_count,
         },
       });
+
+      console.log(`✅ TikTok user saved with ID: ${tiktokUser.id}`);
 
       if (videos && videos.length > 0) {
         console.log(`📹 Processing ${videos.length} TikTok videos for ${userData.display_name}`);
@@ -296,7 +298,7 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
               comment_count: video.comment_count,
               share_count: video.share_count, // Fixed: was video.comment_count
               view_count: video.view_count,
-              tiktokUserId: creator.tiktokUser?.id,
+              tiktokUserId: tiktokUser.id, // ✅ Use the upserted tiktokUser ID!
               video_id: video.id,
             },
           });
