@@ -197,6 +197,8 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
     const encryptedAccessToken = encryptToken(access_token);
     const encryptedRefreshToken = encryptToken(refresh_token);
 
+    console.log(`🔑 Updating TikTok connection for session user: ${req.session.userid}`);
+
     const creator = await prisma.creator.update({
       where: {
         userId: req.session.userid,
@@ -205,8 +207,10 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
         tiktokData: { ...tokenResponse.data, access_token: encryptedAccessToken, refresh_token: encryptedRefreshToken },
         isTiktokConnected: true,
       },
-      include: { tiktokUser: true },
+      include: { tiktokUser: true, user: { select: { id: true, name: true, email: true } } },
     });
+
+    console.log(`✅ TikTok reconnected for creator: ${creator.user.name} (${creator.user.email}), Creator ID: ${creator.id}, User ID: ${creator.userId}`);
 
     if (access_token) {
       console.log('Fetching TikTok user info and videos...');
