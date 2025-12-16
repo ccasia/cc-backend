@@ -435,51 +435,9 @@ export const createCampaign = async (req: Request, res: Response) => {
           },
         });
 
-        // Create Campaign Timeline
-        const timelines: CampaignTimeline[] = await Promise.all(
-          timeline.map(async (item: any, index: number) => {
-            const submission = await tx.submissionType.findFirst({
-              where: {
-                type: item.timeline_type.name.includes('First Draft')
-                  ? 'FIRST_DRAFT'
-                  : item.timeline_type.name.includes('Agreement')
-                    ? 'AGREEMENT_FORM'
-                    : item.timeline_type.name.includes('Final Draft')
-                      ? 'FINAL_DRAFT'
-                      : item.timeline_type.name.includes('Posting')
-                        ? 'POSTING'
-                        : 'OTHER',
-              },
-            });
-
-            if (submission?.type === 'OTHER') {
-              return tx.campaignTimeline.create({
-                data: {
-                  for: item.for,
-                  duration: parseInt(item.duration),
-                  startDate: dayjs(item.startDate).toDate(),
-                  endDate: dayjs(item.endDate).toDate(),
-                  order: index + 1,
-                  name: item.timeline_type.name,
-                  campaign: { connect: { id: campaign.id } },
-                },
-              });
-            }
-
-            return tx.campaignTimeline.create({
-              data: {
-                for: item.for,
-                duration: parseInt(item.duration),
-                startDate: dayjs(item.startDate).toDate(),
-                endDate: dayjs(item.endDate).toDate(),
-                order: index + 1,
-                name: item.timeline_type.name,
-                campaign: { connect: { id: campaign.id } },
-                submissionType: { connect: { id: submission?.id } },
-              },
-            });
-          }),
-        );
+        // Create Campaign Timeline using helper
+        const { createCampaignTimelines } = require('../helper/campaignTimelineHelper');
+        await createCampaignTimelines(tx, campaign.id, timeline);
 
         // Connect to brand
         if (campaignBrand) {
@@ -601,9 +559,6 @@ export const createCampaign = async (req: Request, res: Response) => {
                 allDay: false,
               },
             });
-
-            // await applyCreditCampiagn(client.id, campaignCredits);
-            // await applyCreditCampiagn(client.id, campaignCredits);
 
             const { title, message } = notificationAdminAssign(campaign.name);
 
