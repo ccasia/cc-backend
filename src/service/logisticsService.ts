@@ -689,6 +689,16 @@ export const creatorProductInfoService = async ({
   dietaryRestrictions,
 }: LogisticsInfoInput) => {
   return await prisma.$transaction(async (tx) => {
+    const creator = await tx.creator.findUnique({
+      where: {
+        userId: userId,
+      },
+    });
+
+    if (!creator) {
+      throw new Error('Creator not found');
+    }
+
     await tx.creator.update({
       where: {
         userId: userId,
