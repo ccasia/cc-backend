@@ -756,6 +756,8 @@ model CampaignBrief {
   agreementFrom       String?
   startDate           DateTime
   endDate             DateTime
+  postingStartDate    DateTime?
+  postingEndDate      DateTime?
   interests           Json?
   industries          String?
   success             String?
