@@ -444,8 +444,17 @@ export const createCampaign = async (req: Request, res: Response) => {
         });
 
         // Create Campaign Timeline using helper
+        // For v4 campaigns, timelines are created based on campaign dates proportionally
+        // For non-v4 campaigns, timelines are created from the frontend timeline array
         const { createCampaignTimelines } = require('../helper/campaignTimelineHelper');
-        await createCampaignTimelines(tx, campaign.id, timeline);
+        await createCampaignTimelines(tx, campaign.id, timeline, {
+          submissionVersion: submissionVersion,
+          campaignStartDate: normalizedStartDate,
+          campaignEndDate: normalizedEndDate,
+          postingStartDate: normalizedPostingStartDate,
+          postingEndDate: normalizedPostingEndDate,
+          campaignType: campaignType,
+        });
 
         // Connect to brand
         if (campaignBrand) {
