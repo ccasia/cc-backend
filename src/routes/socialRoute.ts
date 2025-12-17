@@ -49,7 +49,6 @@ router.get('/v2/instagramOverview/:userId', getInstagramMediaKit);
 router.get('/v2/mediaInsight/:userId', getInstagramMediaInsight);
 
 // TikTok, V2
-router.get('/v2/tiktokMediaKit/:userId', getTikTokMediaKit);
 router.get('/v2/tiktokMediaInsight/:userId', getTikTokVideoInsight);
 router.get('/v2/tiktokMediaKit/:userId', getTikTokMediaKit);
 
