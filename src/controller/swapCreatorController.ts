@@ -103,7 +103,7 @@ export const swapGuestWithPlatformCreator = async (req: Request, res: Response) 
         `[SWAP] Starting swap: Guest ${guestUserId} -> Platform ${platformUserId} for campaign ${campaignId}`,
       );
 
-      // 1. Get guest creator's current data before swap
+      // 1. Get guest creator's current data before swap (from shortlist or pitch)
       const guestShortlist = await tx.shortListedCreator.findUnique({
         where: {
           userId_campaignId: {
@@ -113,22 +113,31 @@ export const swapGuestWithPlatformCreator = async (req: Request, res: Response) 
         },
       });
 
-      if (!guestShortlist) {
-        throw new Error('Guest creator is not shortlisted for this campaign.');
+      const guestPitch = await tx.pitch.findFirst({
+        where: {
+          userId: guestUserId,
+          campaignId,
+        },
+      });
+
+      // Guest must exist in either shortlist or pitch table
+      if (!guestShortlist && !guestPitch) {
+        throw new Error('Guest creator is not shortlisted or pitched for this campaign.');
       }
 
       console.log(`[SWAP] Found guest shortlist:`, guestShortlist);
+      console.log(`[SWAP] Found guest pitch:`, guestPitch?.id);
 
-      // Store guest data to transfer
+      // Store guest data to transfer - prioritize shortlist data, fallback to pitch data
       const transferData = {
-        ugcVideos: guestShortlist.ugcVideos,
-        amount: guestShortlist.amount,
-        currency: guestShortlist.currency,
-        adminComments: guestShortlist.adminComments,
-        isAgreementReady: guestShortlist.isAgreementReady,
-        isCampaignDone: guestShortlist.isCampaignDone,
-        isCreatorPaid: guestShortlist.isCreatorPaid,
-        shortlisted_date: guestShortlist.shortlisted_date,
+        ugcVideos: guestShortlist?.ugcVideos ?? guestPitch?.ugcCredits ?? null,
+        amount: guestShortlist?.amount ?? guestPitch?.amount ?? null,
+        currency: guestShortlist?.currency ?? null,
+        adminComments: guestShortlist?.adminComments ?? guestPitch?.adminComments ?? null,
+        isAgreementReady: guestShortlist?.isAgreementReady ?? false,
+        isCampaignDone: guestShortlist?.isCampaignDone ?? false,
+        isCreatorPaid: guestShortlist?.isCreatorPaid ?? false,
+        shortlisted_date: guestShortlist?.shortlisted_date ?? new Date(),
       };
 
       // Transfer guest creator's profileLink to platform creator
@@ -142,16 +151,20 @@ export const swapGuestWithPlatformCreator = async (req: Request, res: Response) 
         console.log(`[SWAP] Transferred guest profile link to platform creator: ${guestUser.creator.profileLink}`);
       }
 
-      // 2. Delete old shortlist entry for guest
-      await tx.shortListedCreator.delete({
-        where: {
-          userId_campaignId: {
-            userId: guestUserId,
-            campaignId,
+      // 2. Delete old shortlist entry for guest (if exists)
+      if (guestShortlist) {
+        await tx.shortListedCreator.delete({
+          where: {
+            userId_campaignId: {
+              userId: guestUserId,
+              campaignId,
+            },
           },
-        },
-      });
-      console.log(`[SWAP] Deleted guest shortlist entry`);
+        });
+        console.log(`[SWAP] Deleted guest shortlist entry`);
+      } else {
+        console.log(`[SWAP] No guest shortlist entry to delete`);
+      }
 
       // 3. Create new shortlist entry for platform creator with transferred data
       await tx.shortListedCreator.create({
@@ -163,16 +176,9 @@ export const swapGuestWithPlatformCreator = async (req: Request, res: Response) 
       });
       console.log(`[SWAP] Created platform creator shortlist entry`);
 
-      // 4. Update or create pitch for platform creator
-      const guestPitch = await tx.pitch.findFirst({
-        where: {
-          userId: guestUserId,
-          campaignId,
-        },
-      });
-
+      // 4. Update or create pitch for platform creator (guestPitch already fetched above)
       if (guestPitch) {
-        console.log(`[SWAP] Found guest pitch:`, guestPitch.id);
+        console.log(`[SWAP] Processing guest pitch:`, guestPitch.id);
 
         // Check if platform creator already has a pitch for this campaign
         const existingPlatformPitch = await tx.pitch.findFirst({
