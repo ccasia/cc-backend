@@ -288,6 +288,34 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
       }
     }
 
+    // Emit socket event for analytics refresh
+    const io = req.app.get('io');
+    if (io) {
+      // Find campaigns where this user has submissions
+      const userSubmissions = await prisma.submission.findMany({
+        where: {
+          userId: req.session.userid,
+          status: 'POSTED',
+          content: { not: null },
+        },
+        select: {
+          campaignId: true,
+        },
+        distinct: ['campaignId'],
+      });
+
+      // Emit analytics refresh event to each campaign room
+      userSubmissions.forEach(({ campaignId }) => {
+        io.to(campaignId).emit('analytics:refresh', {
+          userId: req.session.userid,
+          platform: 'TikTok',
+          reason: 'mediakit_connected',
+          timestamp: new Date().toISOString(),
+        });
+        console.log(`📡 Emitted analytics:refresh for campaign ${campaignId} (TikTok connected)`);
+      });
+    }
+
     res.redirect(process.env.REDIRECT_CLIENT as string);
   } catch (error) {
     console.error('Error during TikTok OAuth:', error.response?.data || error.message);
@@ -794,6 +822,31 @@ export const handleInstagramCallback = async (req: Request, res: Response) => {
         },
       });
     });
+
+    const io = req.app.get('io');
+    if (io) {
+      const userSubmissions = await prisma.submission.findMany({
+        where: {
+          userId: userId,
+          status: 'POSTED',
+          content: { not: null },
+        },
+        select: {
+          campaignId: true,
+        },
+        distinct: ['campaignId'],
+      });
+
+      userSubmissions.forEach(({ campaignId }) => {
+        io.to(campaignId).emit('analytics:refresh', {
+          userId,
+          platform: 'Instagram',
+          reason: 'mediakit_connected',
+          timestamp: new Date().toISOString(),
+        });
+        console.log(`📡 Emitted analytics:refresh for campaign ${campaignId} (Instagram connected)`);
+      });
+    }
 
     return res.status(200).redirect(process.env.REDIRECT_CLIENT as string);
   } catch (error) {
