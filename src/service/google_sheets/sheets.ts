@@ -102,7 +102,7 @@ export const createNewBugRowData = async ({
   data,
 }: {
   spreadSheetId: string;
-  sheetByTitle: 'Platform Creator Bugs' | 'Platform Admin Bugs';
+  sheetByTitle: 'Platform Creator Bugs' | 'Platform Admin Bugs' | 'Platform Client Bugs';
   data: {
     createdAt: string;
     email?: string;
