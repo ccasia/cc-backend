@@ -111,7 +111,7 @@ router.patch(
   confirmReservation,
 );
 router.post(
-  '/campaign/:campaignId/:logisticIscm-history-item:/Users/ccdeveloper/cc/cc-backend?%7B%22repositoryId%22%3A%22scm0%22%2C%22historyItemId%22%3A%2264fe4d2777cf0ddbae82eb577b213975ead3907d%22%2C%22historyItemParentId%22%3A%229e1b9e77dc26cbef2e7d3fd83fd03282ecaa7823%22%2C%22historyItemDisplayId%22%3A%2264fe4d2%22%7Dd/reschedule',
+  '/campaign/:campaignId/:logisticId/reschedule',
   isLoggedIn,
   isAdminOrClient, // Creator might need this too depending on your logic
   rescheduleReservation,

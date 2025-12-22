@@ -554,7 +554,6 @@ export const updateStatusService = async (logisticId: string, status: LogisticSt
     }
 
     if (currentLogistic.type === 'RESERVATION') {
-
       if (status === 'PENDING_ASSIGNMENT') {
         if (currentLogistic.reservationDetails?.id) {
           await tx.reservationSlot.deleteMany({
@@ -906,66 +905,82 @@ export const getAvailableSlotsService = async (campaignId: string, monthDate: Da
     },
   });
 
+  const bookingsMap = new Map<number, any[]>();
+
+  for (const booking of existingBookings) {
+    const timeKey = booking.startTime.getTime();
+
+    const attendee = {
+      id: booking.reservationDetails.logistic.creator.id,
+      name: booking.reservationDetails.logistic.creator.name,
+      photoURL: booking.reservationDetails.logistic.creator.photoURL,
+      phoneNumber: booking.reservationDetails.logistic.creator.phoneNumber,
+    };
+
+    if (bookingsMap.has(timeKey)) {
+      bookingsMap.get(timeKey)?.push(attendee);
+    } else {
+      bookingsMap.set(timeKey, [attendee]);
+    }
+  }
+
+  const rulesMap = new Map<string, any[]>();
+  for (const rule of rules) {
+    if (Array.isArray(rule.dates)) {
+      for (const dateStr of rule.dates) {
+        if (!rulesMap.has(dateStr)) {
+          rulesMap.set(dateStr, []);
+        }
+        rulesMap.get(dateStr)?.push(rule);
+      }
+    }
+  }
   const daysInMonth = [];
   let currentDate = startOfMonth;
 
   while (currentDate <= endOfMonth) {
     const dateString = format(currentDate, 'yyyy-MM-dd');
     const displayDate = format(currentDate, 'dd-MM-yyyy');
-    const activeRule = rules.find((rule) => rule.dates.includes(dateString));
 
-    if (!activeRule) {
+    const activeRules = rulesMap.get(dateString) || [];
+
+    if (activeRules.length === 0) {
       daysInMonth.push({ date: displayDate, available: false, slots: [] });
     } else {
-      const slots = [];
+      let daySlots: any[] = [];
 
-      // 1. Parse "HH:mm" strings from the rule
-      const [startHour, startMinute] = activeRule.startTime.split(':').map(Number);
-      const [endHour, endMinute] = activeRule.endTime.split(':').map(Number);
+      for (const rule of activeRules) {
+        const definedSlots = rule.slots || [];
 
-      // 2. Set the Start Time for this specific date
-      let slotTime = new Date(currentDate);
-      slotTime.setHours(startHour, startMinute, 0, 0);
+        for (const slotDef of definedSlots) {
+          const [startHour, startMinute] = slotDef.startTime.split(':').map(Number);
+          const [endHour, endMinute] = slotDef.endTime.split(':').map(Number);
 
-      // 3. Set the End Time limit for this specific date
-      const endTimeObject = new Date(currentDate);
-      endTimeObject.setHours(endHour, endMinute, 0, 0);
+          let slotStart = new Date(currentDate);
+          slotStart.setHours(startHour, startMinute, 0, 0);
 
-      // 4. Convert interval (hours) to minutes for calculation
-      // Example: 0.5 hours -> 30 minutes
-      const intervalMinutes = activeRule.interval * 60;
+          let slotEnd = new Date(currentDate);
+          slotEnd.setHours(endHour, endMinute, 0, 0);
 
-      // 5. Loop to generate slots
-      while (slotTime < endTimeObject) {
-        const slotEnd = addMinutes(slotTime, intervalMinutes);
+          const timeKey = slotStart.getTime();
 
-        // Safety check: Don't generate a slot that goes past the rule's end time
-        // e.g. If end time is 5:00 PM, don't create a 4:30-5:30 slot
-        if (isAfter(slotEnd, endTimeObject)) break;
+          const attendees = bookingsMap.get(timeKey) || [];
 
-        // 6. Check if this specific time is already booked
-        const bookingsInSlot = existingBookings.filter(
-          (booking) => booking.startTime.getTime() === slotTime.getTime(), // Exact match for start time
-        );
-
-        const attendees = bookingsInSlot.map((booking) => ({
-          id: booking.reservationDetails.logistic.creator.id,
-          name: booking.reservationDetails.logistic.creator.name,
-          photoURL: booking.reservationDetails.logistic.creator.photoURL,
-          phoneNumber: booking.reservationDetails.logistic.creator.phoneNumber,
-        }));
-
-        slots.push({
-          startTime: slotTime.toISOString(),
-          endTime: slotEnd.toISOString(),
-          isTaken: attendees.length > 0, // Keep for backward compatibility
-          attendees: attendees, // NEW FIELD: Array of people booked here
-        });
-
-        slotTime = slotEnd;
+          daySlots.push({
+            startTime: slotStart.toISOString(),
+            endTime: slotEnd.toISOString(),
+            isTaken: attendees.length > 0,
+            attendees: attendees,
+            label: slotDef.label || `${slotDef.startTime} - ${slotDef.endTime}`,
+          });
+        }
       }
 
-      daysInMonth.push({ date: dateString, available: true, slots });
+      daySlots.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+
+      const uniqueSlots = daySlots.filter((v, i, a) => a.findIndex((t) => t.startTime === v.startTime) === i);
+
+      daysInMonth.push({ date: dateString, available: true, slots: uniqueSlots });
     }
 
     currentDate = addDays(currentDate, 1);
