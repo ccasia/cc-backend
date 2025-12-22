@@ -4451,7 +4451,7 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
         const result = await updateV4Submissions(creator.id, campaignId, newCredits);
         console.log(`✅ V4 submissions updated: ${result.deleted} deleted, ${result.created} created`);
 
-        // Recalculate campaign credits utilized
+        // Recalculate campaign credits
         if (campaign.campaignCredits) {
           const sentAgreements = await prisma.creatorAgreement.findMany({
             where: { campaignId, isSent: true },
@@ -4469,7 +4469,7 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
             .filter((a) => a.user?.creator?.isGuest !== true)
             .map((a) => a.userId);
 
-          let totalUtilized = 0;
+          let totalAssigned = 0;
           if (sentNonGuestUserIds.length) {
             const shortlistedForCredits = await prisma.shortListedCreator.findMany({
               where: {
@@ -4479,17 +4479,19 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
               },
               select: { ugcVideos: true },
             });
-            totalUtilized = shortlistedForCredits.reduce((sum, item) => sum + Number(item.ugcVideos || 0), 0);
+            totalAssigned = shortlistedForCredits.reduce((sum, item) => sum + Number(item.ugcVideos || 0), 0);
           }
 
+          // V4 campaigns: update both utilized and pending
+          // Non-v4: only update pending (credits utilized when posting approved)
           await prisma.campaign.update({
             where: { id: campaignId },
             data: {
-              creditsUtilized: totalUtilized,
-              creditsPending: Math.max(0, Number(campaign.campaignCredits) - totalUtilized),
+              creditsUtilized: totalAssigned,
+              creditsPending: Math.max(0, Number(campaign.campaignCredits) - totalAssigned),
             },
           });
-          console.log(`📊 Campaign credits recalculated: utilized=${totalUtilized}`);
+          console.log(`📊 Campaign credits recalculated: assigned=${totalAssigned}`);
         }
       } catch (error) {
         console.error('Error updating V4 submissions after credits change:', error);
@@ -4720,7 +4722,7 @@ export const sendAgreement = async (req: Request, res: Response) => {
         .filter((agreementRecord) => agreementRecord.user?.creator?.isGuest !== true)
         .map((agreementRecord) => agreementRecord.userId);
 
-      let totalUtilized = 0;
+      let totalAssigned = 0;
       if (sentNonGuestUserIds.length) {
         const shortlistedForCredits = await prisma.shortListedCreator.findMany({
           where: {
@@ -4733,16 +4735,28 @@ export const sendAgreement = async (req: Request, res: Response) => {
           },
         });
 
-        totalUtilized = shortlistedForCredits.reduce((sum, item) => sum + Number(item.ugcVideos || 0), 0);
+        totalAssigned = shortlistedForCredits.reduce((sum, item) => sum + Number(item.ugcVideos || 0), 0);
       }
 
-      await prisma.campaign.update({
-        where: { id: campaignId },
-        data: {
-          creditsUtilized: totalUtilized,
-          creditsPending: Math.max(0, Number(campaign.campaignCredits) - totalUtilized),
-        },
-      });
+      // For v4 campaigns: mark credits as utilized immediately (submissions are created)
+      // For non-v4 campaigns: only track assigned credits, will be utilized when posting approved
+      if (isV4Campaign) {
+        await prisma.campaign.update({
+          where: { id: campaignId },
+          data: {
+            creditsUtilized: totalAssigned,
+            creditsPending: Math.max(0, Number(campaign.campaignCredits) - totalAssigned),
+          },
+        });
+      } else {
+        // Non-v4: Only update pending (assigned but not yet utilized)
+        await prisma.campaign.update({
+          where: { id: campaignId },
+          data: {
+            creditsPending: Math.max(0, Number(campaign.campaignCredits) - totalAssigned),
+          },
+        });
+      }
     }
 
     if (isV4Campaign && !isGuestCreator) {
