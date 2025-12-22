@@ -94,6 +94,14 @@ export const deductCredits = async (campaignId: string, userId: string, prismaFu
 
     if (!campaign || !user) throw new Error('Data not found');
     if (!campaign.campaignCredits) throw new Error('Campaign credits not found');
+    
+    // For v4 campaigns, credits are already deducted when agreement is sent
+    // Skip credit deduction to avoid double-counting
+    if (campaign.submissionVersion === 'v4') {
+      console.log(`⏭️  Skipping credit deduction for v4 campaign ${campaignId}`);
+      return;
+    }
+    
     if (!(campaign?.company?.subscriptions?.length || campaign?.brand?.company?.subscriptions?.length))
       throw new Error('Company not linked to a package');
 
@@ -133,7 +141,11 @@ export const deductCredits = async (campaignId: string, userId: string, prismaFu
       },
     });
 
-    if (data.creditsPending && data.creditsPending < 0) throw new Error('Exceeds campaign credits');
+    // Allow negative creditsPending for backwards compatibility with campaigns
+    // that already had credits deducted when agreements were sent
+    if (data.creditsPending && data.creditsPending < 0) {
+      console.warn(`⚠️  Campaign ${campaignId} has negative creditsPending: ${data.creditsPending} (backwards compatibility)`);
+    }
 
     await tx.subscription.update({
       where: {
