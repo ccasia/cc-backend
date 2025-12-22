@@ -147,16 +147,10 @@ export const deductCredits = async (campaignId: string, userId: string, prismaFu
       console.warn(`⚠️  Campaign ${campaignId} has negative creditsPending: ${data.creditsPending} (backwards compatibility)`);
     }
 
-    await tx.subscription.update({
-      where: {
-        id: subscription?.id,
-      },
-      data: {
-        creditsUsed: {
-          increment: ugcVideos ?? 0,
-        },
-      },
-    });
+    // NOTE: Do NOT update subscription.creditsUsed here.
+    // Subscription credits are already deducted when the campaign is created.
+    // We're only managing within-campaign allocation (creditsUtilized vs creditsPending).
+    // Updating subscription here would double-count credits.
   } catch (error) {
     throw new Error(error);
   }
