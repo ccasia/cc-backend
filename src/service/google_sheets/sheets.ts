@@ -125,6 +125,7 @@ export const createNewBugRowData = async ({
       throw new Error('Sheet not found.');
     }
 
+    await currentSheet.loadHeaderRow();
     console.log(currentSheet.headerValues);
 
     const updatedRow = await currentSheet.addRow({
