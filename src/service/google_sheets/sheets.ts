@@ -126,6 +126,7 @@ export const createNewBugRowData = async ({
     }
 
     await currentSheet.loadHeaderRow();
+
     const updatedRow = await currentSheet.addRow({
       Timestamp: dayjs(data.createdAt).tz('Asia/Kuala_Lumpur').format('LLL'),
       'Email Address': data.email || '',
@@ -134,6 +135,8 @@ export const createNewBugRowData = async ({
       'Please describe the issue you are facing in detail.': data.stepsToReproduce,
       Attachments: data.attachment || '',
     });
+
+    console.log(updatedRow);
 
     return updatedRow;
   } catch (error) {
