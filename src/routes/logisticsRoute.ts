@@ -86,17 +86,12 @@ router.put('/admin/:logisticId/details', isLoggedIn, isAdminOrClient, adminUpdat
 // ------------------reservation routes--------------------------
 
 // creator routes
-router.get('/campaign/:campaignId/slots', isLoggedIn, isAdminOrClient, getReservationSlots);
-router.post('/campaign/:campaignId/reservation', isLoggedIn, isCreator, submitReservation);
+router.get('/campaign/:campaignId/slots', isLoggedIn, isCreator, getReservationSlots);
+router.post('/campaign/:campaignId/reservation', isLoggedIn, isCreator, updateReservationDetails);
+router.patch('/creator/:logisticId/complete', isLoggedIn, isCreator, markLogisticCompleted);
 
 // admin & client routes
-router.get(
-  '/campaign/:campaignId/reservation-config',
-  isLoggedIn,
-  isAdminOrClient,
-  checkCampaignAccess,
-  getReservationConfig,
-);
+router.get('/campaign/:campaignId/reservation-config', isLoggedIn, getReservationConfig);
 router.post(
   '/campaign/:campaignId/reservation-config',
   isLoggedIn,
@@ -114,7 +109,6 @@ router.patch(
 router.post(
   '/campaign/:campaignId/:logisticId/reschedule',
   isLoggedIn,
-  isAdminOrClient, // Creator might need this too depending on your logic
   rescheduleReservation,
 );
 
