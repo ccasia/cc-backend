@@ -198,7 +198,18 @@ export const updateCreatorDeliveryDetails = async (req: Request, res: Response) 
 export const markLogisticReceived = async (req: Request, res: Response) => {
   try {
     const { logisticId } = req.params;
-    const updated = await updateDeliveryStatus(logisticId, 'RECEIVED');
+    const updated = await completeLogisticService(logisticId, 'RECEIVED');
+    return res.status(200).json(updated);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: 'Internal Server Error' });
+  }
+};
+
+export const markLogisticCompleted = async (req: Request, res: Response) => {
+  try {
+    const { logisticId } = req.params;
+    const updated = await completeLogisticService(logisticId, 'COMPLETED');
     return res.status(200).json(updated);
   } catch (error) {
     console.error(error);
