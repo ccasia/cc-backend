@@ -10,7 +10,7 @@ import {
   assignSingleCreator,
   scheduleDeliveryService,
   creatorDeliveryDetails,
-  updateDeliveryStatus,
+  completeLogisticService,
   reportLogisticIssue,
   updateStatusService,
   adminUpdateService,
@@ -352,7 +352,7 @@ export const getReservationSlots = async (req: Request, res: Response) => {
   }
 };
 
-export const submitReservation = async (req: Request, res: Response) => {
+export const updateReservationDetails = async (req: Request, res: Response) => {
   try {
     const { campaignId } = req.params;
     const { userid } = (req as any).session;

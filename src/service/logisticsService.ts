@@ -477,13 +477,13 @@ export const creatorDeliveryDetails = async (logisticId: string, data: CreatorDe
   });
 };
 
-export const updateDeliveryStatus = async (logisticId: string, status: 'RECEIVED' | 'COMPLETED') => {
+export const completeLogisticService = async (logisticId: string, status: 'RECEIVED' | 'COMPLETED') => {
   return await prisma.logistic.update({
     where: { id: logisticId },
     data: {
       status,
       receivedAt: new Date(),
-      completedAt: status === 'COMPLETED' ? new Date() : undefined,
+      completedAt: status === 'COMPLETED' || status === 'RECEIVED' ? new Date() : undefined,
     },
   });
 };
