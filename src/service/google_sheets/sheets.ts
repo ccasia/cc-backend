@@ -127,6 +127,12 @@ export const createNewBugRowData = async ({
 
     await currentSheet.loadHeaderRow();
 
+    const rows = await currentSheet.getRows();
+
+    rows[currentSheet.rowCount + 1].assign({ 'Email Address': 'Adasd' });
+
+    await rows[currentSheet.rowCount + 1].save();
+
     const updatedRow = await currentSheet.addRow({
       Timestamp: dayjs(data.createdAt).tz('Asia/Kuala_Lumpur').format('LLL'),
       'Email Address': data.email || '',
