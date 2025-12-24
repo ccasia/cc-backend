@@ -125,6 +125,7 @@ export const createNewBugRowData = async ({
       throw new Error('Sheet not found.');
     }
 
+    await currentSheet.loadHeaderRow();
     const updatedRow = await currentSheet.addRow({
       Timestamp: dayjs(data.createdAt).tz('Asia/Kuala_Lumpur').format('LLL'),
       'Email Address': data.email || '',
