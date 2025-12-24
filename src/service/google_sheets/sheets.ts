@@ -134,11 +134,6 @@ export const createNewBugRowData = async ({
       Campaign: data.campaignName || '',
       'Please describe the issue you are facing in detail.': data.stepsToReproduce,
       Attachments: data.attachment || '',
-      'Campaign Name': '',
-      'Ticket Status': '',
-      'Dev Team response': '',
-      'Product Team': '',
-      Assignee: '',
     });
 
     return updatedRow;
