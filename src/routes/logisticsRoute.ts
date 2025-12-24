@@ -26,9 +26,10 @@ import {
   upsertReservationConfig,
   getReservationConfig,
   getReservationSlots,
-  submitReservation,
+  updateReservationDetails,
   confirmReservation,
   rescheduleReservation,
+  markLogisticCompleted,
 } from '@controllers/logisticsController';
 
 const router = express.Router();
