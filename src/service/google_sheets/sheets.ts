@@ -119,19 +119,13 @@ export const createNewBugRowData = async ({
       throw new Error('Sheet not found.');
     }
 
-    const currentSheet = sheet.sheetsByTitle[sheetByTitle];
+    const currentSheet = sheet.sheetsByTitle['Test'];
 
     if (!currentSheet) {
       throw new Error('Sheet not found.');
     }
 
     await currentSheet.loadHeaderRow();
-
-    const rows = await currentSheet.getRows();
-
-    rows[currentSheet.rowCount + 1].assign({ 'Email Address': 'Adasd' });
-
-    await rows[currentSheet.rowCount + 1].save();
 
     const updatedRow = await currentSheet.addRow({
       Timestamp: dayjs(data.createdAt).tz('Asia/Kuala_Lumpur').format('LLL'),
