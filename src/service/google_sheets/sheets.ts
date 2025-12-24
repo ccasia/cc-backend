@@ -126,7 +126,6 @@ export const createNewBugRowData = async ({
     }
 
     await currentSheet.loadHeaderRow();
-    console.log(currentSheet.headerValues);
 
     const updatedRow = await currentSheet.addRow({
       Timestamp: dayjs(data.createdAt).tz('Asia/Kuala_Lumpur').format('LLL'),
@@ -135,6 +134,11 @@ export const createNewBugRowData = async ({
       Campaign: data.campaignName || '',
       'Please describe the issue you are facing in detail.': data.stepsToReproduce,
       Attachments: data.attachment || '',
+      'Campaign Name': '',
+      'Ticket Status': '',
+      'Dev Team response': '',
+      'Product Team': '',
+      Assignee: '',
     });
 
     return updatedRow;
