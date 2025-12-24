@@ -131,7 +131,7 @@ export const createNewBugRowData = async ({
       Timestamp: dayjs(data.createdAt).tz('Asia/Kuala_Lumpur').format('LLL'),
       'Email Address': data.email || '',
       Name: data.name || '',
-      Campaign: data.campaignName || '',
+      'Campaign Name': data.campaignName || '',
       'Please describe the issue you are facing in detail.': data.stepsToReproduce,
       Attachments: data.attachment || '',
     });
