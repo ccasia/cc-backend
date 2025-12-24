@@ -125,17 +125,13 @@ export const createNewBugRowData = async ({
       throw new Error('Sheet not found.');
     }
 
-    await currentSheet.loadHeaderRow();
-    const rows = await currentSheet.getRows();
-    const totalRows = currentSheet.rowCount;
-
-    console.log(rows);
+    console.log(currentSheet.headerValues);
 
     const updatedRow = await currentSheet.addRow({
       Timestamp: dayjs(data.createdAt).tz('Asia/Kuala_Lumpur').format('LLL'),
       'Email Address': data.email || '',
       Name: data.name || '',
-      'Campaign Name': data.campaignName || '',
+      Campaign: data.campaignName || '',
       'Please describe the issue you are facing in detail.': data.stepsToReproduce,
       Attachments: data.attachment || '',
     });
