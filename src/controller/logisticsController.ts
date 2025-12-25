@@ -21,8 +21,9 @@ import {
   getReservationConfigService,
   getAvailableSlotsService,
   submitReservationService,
-  confirmReservationService,
+  scheduleReservationService,
   rescheduleReservationService,
+  updateReservationDetailService,
 } from '@services/logisticsService';
 
 export const getLogisticsForCampaign = async (req: Request, res: Response) => {
@@ -363,7 +364,7 @@ export const getReservationSlots = async (req: Request, res: Response) => {
   }
 };
 
-export const updateReservationDetails = async (req: Request, res: Response) => {
+export const submitReservationDetails = async (req: Request, res: Response) => {
   try {
     const { campaignId } = req.params;
     const { userid } = (req as any).session;
@@ -389,7 +390,18 @@ export const updateReservationDetails = async (req: Request, res: Response) => {
   }
 };
 
-export const confirmReservation = async (req: Request, res: Response) => {
+export const updateReservationDetails = async (req: Request, res: Response) => {
+  try {
+    const { logisticId } = req.params;
+    const result = await updateReservationDetailService(logisticId, req.body);
+    return res.status(200).json(result);
+  } catch (error) {
+    console.error('Error updating reservation details:', error);
+    return res.status(500).json({ message: 'Internal Server Error' });
+  }
+};
+
+export const scheduleReservation = async (req: Request, res: Response) => {
   try {
     const { logisticId } = req.params;
     const { slotId, picName, picContact, budget, promoCode, clientRemarks, outlet } = req.body;
@@ -398,7 +410,7 @@ export const confirmReservation = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'A selected Slot ID is required to confirm' });
     }
 
-    const result = await confirmReservationService(logisticId, {
+    const result = await scheduleReservationService(logisticId, {
       slotId,
       picName,
       picContact,

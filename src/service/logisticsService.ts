@@ -1078,7 +1078,29 @@ type ConfirmReservationData = {
   outlet?: string;
 };
 
-export const confirmReservationService = async (logisticId: string, data: ConfirmReservationData) => {
+export const updateReservationDetailService = async (logisticId: string, data: any) => {
+  return await prisma.logistic.update({
+    where: { id: logisticId },
+    data: {
+      reservationDetails: {
+        update: {
+          outlet: data.outlet,
+          picName: data.picName,
+          picContact: data.picContact,
+          budget: data.budget,
+          promoCode: data.promoCode,
+          clientRemarks: data.clientRemarks,
+          isConfirmed: data.isConfirmed || false,
+        },
+      },
+    },
+    include: {
+      reservationDetails: true,
+    },
+  });
+};
+
+export const scheduleReservationService = async (logisticId: string, data: ConfirmReservationData) => {
   const { slotId, picName, picContact, budget, promoCode, clientRemarks, outlet } = data;
 
   return await prisma.$transaction(async (tx) => {
