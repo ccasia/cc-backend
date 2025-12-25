@@ -26,10 +26,11 @@ import {
   upsertReservationConfig,
   getReservationConfig,
   getReservationSlots,
-  updateReservationDetails,
-  confirmReservation,
+  submitReservationDetails,
+  scheduleReservation,
   rescheduleReservation,
   markLogisticCompleted,
+  updateReservationDetails,
 } from '@controllers/logisticsController';
 
 const router = express.Router();
@@ -100,11 +101,11 @@ router.post(
   upsertReservationConfig,
 );
 router.patch(
-  '/campaign/:campaignId/:logisticId/confirm-reservation',
+  '/campaign/:campaignId/:logisticId/reservation-detail',
   isLoggedIn,
   isAdminOrClient,
   checkCampaignAccess,
-  confirmReservation,
+  updateReservationDetails,
 );
 router.post(
   '/campaign/:campaignId/:logisticId/reschedule',
