@@ -882,7 +882,7 @@ export const getAvailableSlotsService = async (campaignId: string, monthDate: Da
   const existingBookings = await prisma.reservationSlot.findMany({
     where: {
       reservationDetails: { logistic: { campaignId } },
-      status: 'SELECTED',
+      status: { in: ['SELECTED', 'PROPOSED'] },
       startTime: { gte: startOfMonth, lte: endOfMonth },
     },
     include: {
@@ -896,6 +896,20 @@ export const getAvailableSlotsService = async (campaignId: string, monthDate: Da
                   name: true,
                   photoURL: true,
                   phoneNumber: true,
+                  creator: {
+                    select: {
+                      instagramUser: {
+                        select: {
+                          username: true,
+                        },
+                      },
+                      tiktokUser: {
+                        select: {
+                          username: true,
+                        },
+                      },
+                    },
+                  },
                 },
               },
             },
@@ -910,11 +924,23 @@ export const getAvailableSlotsService = async (campaignId: string, monthDate: Da
   for (const booking of existingBookings) {
     const timeKey = booking.startTime.getTime();
 
+    const creator = booking.reservationDetails.logistic.creator;
+    const handle = creator.creator?.instagramUser?.username || creator.creator?.tiktokUser?.username;
+    const creatorSlotCounts = new Map<string, number>();
+
+    existingBookings.forEach((booking) => {
+      const creatorId = booking.reservationDetails.logistic.creator.id;
+      creatorSlotCounts.set(creatorId, (creatorSlotCounts.get(creatorId) || 0) + 1);
+    });
+
     const attendee = {
-      id: booking.reservationDetails.logistic.creator.id,
-      name: booking.reservationDetails.logistic.creator.name,
-      photoURL: booking.reservationDetails.logistic.creator.photoURL,
-      phoneNumber: booking.reservationDetails.logistic.creator.phoneNumber,
+      id: creator.id,
+      name: creator.name,
+      photoURL: creator.photoURL,
+      phoneNumber: creator.phoneNumber,
+      handle: handle,
+      status: booking.status,
+      optionsCount: creatorSlotCounts.get(booking.reservationDetails.logistic.creator.id) || 1,
     };
 
     if (bookingsMap.has(timeKey)) {
