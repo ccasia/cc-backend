@@ -1717,6 +1717,7 @@ enum LogisticType {
 
 enum LogisticStatus {
   // initial status
+  NOT_STARTED
   PENDING_ASSIGNMENT
   SCHEDULED
 

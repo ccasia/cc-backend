@@ -883,7 +883,7 @@ export const getAvailableSlotsService = async (campaignId: string, monthDate: Da
     where: {
       reservationDetails: { logistic: { campaignId } },
       status: { in: ['SELECTED', 'PROPOSED'] },
-      startTime: { gte: startOfMonth, lte: endOfMonth },
+      // startTime: { gte: startOfMonth, lte: endOfMonth },
     },
     include: {
       reservationDetails: {
@@ -919,6 +919,23 @@ export const getAvailableSlotsService = async (campaignId: string, monthDate: Da
     },
   });
 
+  const globalCreatorSlotsMap = new Map<string, { start: Date; end: Date; status: string }[]>();
+
+  for (const booking of existingBookings) {
+    const creatorId = booking.reservationDetails.logistic.creator.id;
+
+    const slotInfo = {
+      start: booking.startTime,
+      end: booking.endTime,
+      status: booking.status.toString(),
+    };
+
+    if (!globalCreatorSlotsMap.has(creatorId)) {
+      globalCreatorSlotsMap.set(creatorId, []);
+    }
+    globalCreatorSlotsMap.get(creatorId)?.push(slotInfo);
+  }
+
   const bookingsMap = new Map<number, any[]>();
 
   for (const booking of existingBookings) {
@@ -926,12 +943,7 @@ export const getAvailableSlotsService = async (campaignId: string, monthDate: Da
 
     const creator = booking.reservationDetails.logistic.creator;
     const handle = creator.creator?.instagramUser?.username || creator.creator?.tiktokUser?.username;
-    const creatorSlotCounts = new Map<string, number>();
-
-    existingBookings.forEach((booking) => {
-      const creatorId = booking.reservationDetails.logistic.creator.id;
-      creatorSlotCounts.set(creatorId, (creatorSlotCounts.get(creatorId) || 0) + 1);
-    });
+    const hasGlobalConfirmation = globalCreatorSlotsMap.get(creator.id)?.some((s) => s.status === 'SELECTED');
 
     const attendee = {
       id: creator.id,
@@ -940,7 +952,17 @@ export const getAvailableSlotsService = async (campaignId: string, monthDate: Da
       phoneNumber: creator.phoneNumber,
       handle: handle,
       status: booking.status,
-      optionsCount: creatorSlotCounts.get(booking.reservationDetails.logistic.creator.id) || 1,
+      hasGlobalConfirmation,
+      otherSlots:
+        globalCreatorSlotsMap
+          .get(creator.id)
+          ?.filter((slot) => slot.start.getTime() !== booking.startTime.getTime())
+          .sort((a, b) => a.start.getTime() - b.start.getTime())
+          .map((s) => ({
+            start: s.start.toISOString(),
+            end: s.end.toISOString(),
+            status: s.status,
+          })) || [],
     };
 
     if (bookingsMap.has(timeKey)) {
@@ -989,13 +1011,12 @@ export const getAvailableSlotsService = async (campaignId: string, monthDate: Da
           slotEnd.setHours(endHour, endMinute, 0, 0);
 
           const timeKey = slotStart.getTime();
-
           const attendees = bookingsMap.get(timeKey) || [];
 
           daySlots.push({
             startTime: slotStart.toISOString(),
             endTime: slotEnd.toISOString(),
-            isTaken: attendees.length > 0,
+            isTaken: attendees.some((a) => a.status === 'SELECTED'),
             attendees: attendees,
             label: slotDef.label || `${slotDef.startTime} - ${slotDef.endTime}`,
           });
@@ -1196,7 +1217,7 @@ export const rescheduleReservationService = async (logisticId: string) => {
     return await tx.logistic.update({
       where: { id: logisticId },
       data: {
-        status: 'PENDING_ASSIGNMENT',
+        status: 'NOT_STARTED',
         shippedAt: null, // Clear these if they were set
         deliveredAt: null,
         completedAt: null,
