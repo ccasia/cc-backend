@@ -1285,6 +1285,7 @@ export const createXeroInvoiceLocal = async (
     console.log('INVOICE', invoice);
 
     const response: any = await xero.accountingApi.createInvoices(activeTenant.tenantId, { invoices: [invoice] });
+    console.log('RESPONSE', response);
     return response;
   } catch (error) {
     console.log('Testing', error);
