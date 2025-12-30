@@ -891,9 +891,25 @@ export const updateInvoice = async (req: Request, res: Response) => {
           const { title, message } = notificationInvoiceUpdate(campaign.name);
 
           // Notify CSM admins
-          await Promise.all(
+          // await Promise.all(
+          //   campaign.campaignAdmin
+          //     .filter((admin) => admin.admin.role?.name === 'CSM')
+          //     .map(async (admin) => {
+          //       const notification = await saveNotification({
+          //         userId: admin.adminId,
+          //         title,
+          //         message,
+          //         entity: 'Invoice',
+          //         threadId: updatedInvoice.id,
+          //         entityId: updatedInvoice.campaignId,
+          //       });
+
+          //       io.to(clients.get(admin.adminId)).emit('notification', notification);
+          //     }),
+          // );
+          await Promise.allSettled(
             campaign.campaignAdmin
-              .filter((admin) => admin.admin.role?.name === 'CSM')
+              .filter((admin) => admin.admin?.role?.name === 'CSM')
               .map(async (admin) => {
                 const notification = await saveNotification({
                   userId: admin.adminId,
@@ -904,7 +920,10 @@ export const updateInvoice = async (req: Request, res: Response) => {
                   entityId: updatedInvoice.campaignId,
                 });
 
-                io.to(clients.get(admin.adminId)).emit('notification', notification);
+                const socketId = clients.get(admin.adminId);
+                if (socketId) {
+                  io.to(socketId).emit('notification', notification);
+                }
               }),
           );
 
@@ -937,18 +956,16 @@ export const updateInvoice = async (req: Request, res: Response) => {
           );
 
           // Notify creator
-          // const creatorNotification = await saveNotification({
-          //   userId: updatedInvoice.creatorId,
-          //   title,
-          //   message,
-          //   entity: 'Invoice',
-          //   threadId: updatedInvoice.id,
-          //   entityId: updatedInvoice.campaignId,
-          // });
+          const creatorNotification = await saveNotification({
+            userId: updatedInvoice.creatorId,
+            title,
+            message,
+            entity: 'Invoice',
+            threadId: updatedInvoice.id,
+            entityId: updatedInvoice.campaignId,
+          });
 
-          // console.log('Notification', creatorNotification);
-
-          // io.to(clients.get(updatedInvoice.creatorId)).emit('notification', creatorNotification);
+          io.to(clients.get(updatedInvoice.creatorId)).emit('notification', creatorNotification);
         }
 
         if (updatedInvoice.status === 'rejected') {
