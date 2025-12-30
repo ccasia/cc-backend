@@ -855,8 +855,6 @@ export const updateInvoice = async (req: Request, res: Response) => {
             `Name=="${invoiceFrom.name?.trim()}"`,
           );
 
-          console.log('RESULTS CONTACT', result);
-
           if (result.body.contacts && result.body.contacts.length > 0) {
             contactID = result.body.contacts[0].contactID || null;
           } else {
@@ -874,8 +872,6 @@ export const updateInvoice = async (req: Request, res: Response) => {
               data: { xeroContactId: contactID },
             });
           }
-
-          console.log('NEW CONTACT', contactID);
 
           if (contactID) {
             await createXeroInvoiceLocal(
@@ -1237,6 +1233,8 @@ export const createXeroInvoiceLocal = async (
       activeTenant = xero.tenants.find((item) => item?.orgData.baseCurrency.toUpperCase() === currency);
     }
 
+    console.log('ACTIVE TENANTS', activeTenant);
+
     // const result = await xero.accountingApi.getContacts(
     //   activeTenant.tenantId,
     //   undefined, // IDs
@@ -1264,6 +1262,8 @@ export const createXeroInvoiceLocal = async (
     // }
 
     const accounts: any = await xero.accountingApi.getAccounts(activeTenant.tenantId, undefined, where);
+
+    console.log('ACTIVE ACCOUNT', accounts);
 
     const lineItemsArray: LineItem[] = lineItems.map((item: any) => ({
       accountID: accounts.body.accounts[0].accountID,
