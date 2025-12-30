@@ -1263,8 +1263,6 @@ export const createXeroInvoiceLocal = async (
 
     const accounts: any = await xero.accountingApi.getAccounts(activeTenant.tenantId, undefined, where);
 
-    console.log('ACTIVE ACCOUNT', accounts);
-
     const lineItemsArray: LineItem[] = lineItems.map((item: any) => ({
       accountID: accounts.body.accounts[0].accountID,
       accountCode: '50930',
@@ -1283,6 +1281,8 @@ export const createXeroInvoiceLocal = async (
       invoiceNumber: invoiceNumber || 'N/A',
       reference: campaignName || 'N/A',
     };
+
+    console.log('INVOICE', invoice);
 
     const response: any = await xero.accountingApi.createInvoices(activeTenant.tenantId, { invoices: [invoice] });
     return response;
