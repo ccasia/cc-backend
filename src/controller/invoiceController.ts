@@ -965,6 +965,8 @@ export const updateInvoice = async (req: Request, res: Response) => {
       },
     );
 
+    console.log('INVOICE CREATED', invoice);
+
     return res.status(200).json(invoice);
   } catch (error) {
     console.error('asdsads', error);
