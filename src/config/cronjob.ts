@@ -9,6 +9,7 @@ import { Title, saveNotification } from '@controllers/notificationController';
 import { notifications } from '@constants/reminders';
 import { clients, io } from '../server';
 import { reminderDueDate } from '@helper/notification';
+import { fetchInsightsForAllCampaigns } from '@services/insightFetchService';
 
 const prisma = new PrismaClient();
 
@@ -102,4 +103,29 @@ new CronJob(
   null, // onComplete
   true, // start
   'Asia/Kuala_Lumpur', // timeZone
+);
+
+// Daily insight collection cronjob - runs at 12 AM Asia/Kuala_Lumpur time
+// Collects Instagram/TikTok metrics for all active campaigns with posting URLs
+new CronJob(
+  '0 0 * * *', // 12:00 AM daily
+  async function () {
+    console.log('[Cronjob] Starting daily insight collection at', dayjs().tz('Asia/Kuala_Lumpur').format());
+    
+    try {
+      const result = await fetchInsightsForAllCampaigns();
+      
+      console.log('[Cronjob] Daily insight collection completed:', {
+        processed: result.processed,
+        success: result.success,
+        failed: result.failed,
+        timestamp: dayjs().tz('Asia/Kuala_Lumpur').format(),
+      });
+    } catch (error) {
+      console.error('[Cronjob] Daily insight collection failed:', error);
+    }
+  },
+  null, // onComplete
+  true, // start
+  'Asia/Kuala_Lumpur', 
 );
