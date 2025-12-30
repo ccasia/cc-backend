@@ -730,6 +730,269 @@ export const updateInvoiceStatus = async (req: Request, res: Response) => {
 //   }
 // };
 
+// export const updateInvoice = async (req: Request, res: Response) => {
+//   const {
+//     invoiceId,
+//     dueDate,
+//     status,
+//     invoiceFrom,
+//     invoiceTo,
+//     items,
+//     totalAmount,
+//     campaignId,
+//     bankInfo,
+//     newContact,
+//     reason,
+//   }: invoiceData = req.body;
+
+//   const userId = req.session.userid;
+
+//   try {
+//     const invoice = await prisma.$transaction(
+//       async (tx) => {
+//         const updatedInvoice = await tx.invoice.update({
+//           where: { id: invoiceId },
+//           data: {
+//             dueDate,
+//             status: status as InvoiceStatus,
+//             invoiceFrom,
+//             invoiceTo,
+//             task: items[0],
+//             amount: totalAmount,
+//             bankAcc: bankInfo,
+//             campaignId,
+//           },
+//           include: {
+//             creator: {
+//               include: {
+//                 user: { select: { id: true, name: true, paymentForm: true, creatorAgreement: true, email: true } },
+//               },
+//             },
+//             user: {
+//               include: {
+//                 creatorAgreement: {
+//                   where: { campaignId: campaignId },
+//                 },
+//               },
+//             },
+//             campaign: {
+//               include: {
+//                 campaignAdmin: {
+//                   include: {
+//                     admin: { include: { role: true } },
+//                   },
+//                 },
+//               },
+//             },
+//           },
+//         });
+
+//         const creatorUser = updatedInvoice.creator.user;
+//         const creatorPaymentForm = creatorUser?.paymentForm;
+//         const campaign = updatedInvoice.campaign;
+//         const agreement = updatedInvoice.creator.user.creatorAgreement.find((item) => item.campaignId === campaignId);
+
+//         console.log('AGREEMENT:', agreement);
+
+//         let contactID = updatedInvoice.creator.xeroContactId;
+
+//         if (updatedInvoice.status === 'approved') {
+//           const user = await tx.user.findUnique({
+//             where: {
+//               id: userId,
+//             },
+//             include: {
+//               admin: {
+//                 select: {
+//                   xeroTokenSet: true,
+//                 },
+//               },
+//             },
+//           });
+
+//           if (!user) throw new Error('User not found');
+
+//           const tokenSet: TokenSet = (user.admin?.xeroTokenSet as TokenSet) || null;
+
+//           if (!tokenSet) throw new Error('You are not connected to Xero');
+
+//           await xero.initialize();
+
+//           xero.setTokenSet(tokenSet);
+
+//           if (dayjs.unix(tokenSet.expires_at!).isBefore(dayjs())) {
+//             const validTokenSet = await xero.refreshToken();
+//             // save the new tokenset
+
+//             await prisma.admin.update({
+//               where: {
+//                 userId: user.id,
+//               },
+//               data: {
+//                 xeroTokenSet: validTokenSet as any,
+//               },
+//             });
+//           }
+
+//           await xero.updateTenants();
+
+//           console.log('TENANTS:', xero.tenants);
+
+//           const activeTenant = xero.tenants.find(
+//             (item) =>
+//               item?.orgData.baseCurrency.toUpperCase() ===
+//               ((agreement?.currency?.toUpperCase() as 'MYR' | 'SGD') ?? 'MYR'),
+//           );
+
+//           console.log('ACTIVE UPDATE:', activeTenant);
+//           console.log('CREATOR NAME:', creatorUser.name?.trim());
+
+//           const result = await xero.accountingApi.getContacts(
+//             activeTenant.tenantId,
+//             undefined, // IDs
+//             // `EmailAddress=="${creatorUser.email}"`,
+//             // `EmailAddress=="${creatorUser.email}" || Name=="${creatorUser.name}"`,
+//             `Name=="${invoiceFrom.name?.trim()}"`,
+//           );
+
+//           if (result.body.contacts && result.body.contacts.length > 0) {
+//             contactID = result.body.contacts[0].contactID || null;
+//           } else {
+//             const [contact] = await createXeroContact(
+//               bankInfo,
+//               updatedInvoice.creator,
+//               invoiceFrom,
+//               (agreement?.currency?.toUpperCase() as 'MYR' | 'SGD') ?? 'MYR',
+//             );
+
+//             contactID = contact.contactID || null;
+
+//             await tx.creator.update({
+//               where: { id: updatedInvoice.creator.id },
+//               data: { xeroContactId: contactID },
+//             });
+//           }
+
+//           if (contactID) {
+//             await createXeroInvoiceLocal(
+//               contactID,
+//               items,
+//               dueDate,
+//               campaign.name,
+//               updatedInvoice.invoiceNumber,
+//               updatedInvoice.user?.email!,
+//               invoiceFrom,
+//               updatedInvoice.creator,
+//               bankInfo,
+//               (agreement?.currency?.toUpperCase() as 'MYR' | 'SGD') ?? 'MYR',
+//             );
+//           }
+
+//           const { title, message } = notificationInvoiceUpdate(campaign.name);
+
+//           // Notify CSM admins
+//           // await Promise.all(
+//           //   campaign.campaignAdmin
+//           //     .filter((admin) => admin.admin.role?.name === 'CSM')
+//           //     .map(async (admin) => {
+//           //       const notification = await saveNotification({
+//           //         userId: admin.adminId,
+//           //         title,
+//           //         message,
+//           //         entity: 'Invoice',
+//           //         threadId: updatedInvoice.id,
+//           //         entityId: updatedInvoice.campaignId,
+//           //       });
+
+//           //       io.to(clients.get(admin.adminId)).emit('notification', notification);
+//           //     }),
+//           // );
+//           await Promise.allSettled(
+//             campaign.campaignAdmin
+//               .filter((admin) => admin.admin?.role?.name === 'CSM')
+//               .map(async (admin) => {
+//                 const notification = await saveNotification({
+//                   userId: admin.adminId,
+//                   title,
+//                   message,
+//                   entity: 'Invoice',
+//                   threadId: updatedInvoice.id,
+//                   entityId: updatedInvoice.campaignId,
+//                 });
+
+//                 const socketId = clients.get(admin.adminId);
+//                 if (socketId) {
+//                   io.to(socketId).emit('notification', notification);
+//                 }
+//               }),
+//           );
+
+//           const adminId = req.session.userid;
+
+//           if (adminId) {
+//             const adminLogMessage = `Updated Invoice for - "${creatorUser?.name}"`;
+//             logAdminChange(adminLogMessage, adminId, req);
+//           }
+
+//           // Log invoice approval in campaign logs for Invoice Actions tab
+//           if (adminId && updatedInvoice.campaignId) {
+//             const creatorName = creatorUser?.name || 'Unknown Creator';
+//             const logMessage = `Approved invoice ${updatedInvoice.invoiceNumber} for ${creatorName}`;
+//             await logChange(logMessage, updatedInvoice.campaignId, req);
+//           }
+
+//           await sendToSpreadSheet(
+//             {
+//               createdAt: dayjs().format('YYYY-MM-DD'),
+//               name: creatorUser?.name || '',
+//               icNumber: creatorPaymentForm?.icNumber || '',
+//               bankName: creatorPaymentForm?.bankAccountName || '',
+//               bankAccountNumber: creatorPaymentForm?.bankAccountNumber || '',
+//               campaignName: campaign.name,
+//               amount: updatedInvoice.amount,
+//             },
+//             '1VClmvYJV9R4HqjADhGA6KYIR9KCFoXTag5SMVSL4rFc',
+//             'Invoices',
+//           );
+
+//           // Notify creator
+//           const creatorNotification = await saveNotification({
+//             userId: updatedInvoice.creatorId,
+//             title,
+//             message,
+//             entity: 'Invoice',
+//             threadId: updatedInvoice.id,
+//             entityId: updatedInvoice.campaignId,
+//           });
+
+//           io.to(clients.get(updatedInvoice.creatorId)).emit('notification', creatorNotification);
+//         }
+
+//         if (updatedInvoice.status === 'rejected') {
+//           await rejectInvoice({
+//             userId: updatedInvoice?.creator?.user?.id,
+//             tx,
+//             reason: reason || '',
+//             campaignName: campaign.name,
+//           });
+//         }
+
+//         return updatedInvoice;
+//       },
+//       {
+//         timeout: 10000,
+//       },
+//     );
+
+//     console.log('INVOICE CREATED', invoice);
+
+//     return res.status(200).json(invoice);
+//   } catch (error) {
+//     console.error('asdsads', error);
+//     const message = error instanceof Error ? error.message : 'Unknown error occurred';
+//     return res.status(400).json({ error: message });
+//   }
+// };
 export const updateInvoice = async (req: Request, res: Response) => {
   const {
     invoiceId,
@@ -765,7 +1028,15 @@ export const updateInvoice = async (req: Request, res: Response) => {
           include: {
             creator: {
               include: {
-                user: { select: { id: true, name: true, paymentForm: true, creatorAgreement: true, email: true } },
+                user: {
+                  select: {
+                    id: true,
+                    name: true,
+                    paymentForm: true,
+                    creatorAgreement: true,
+                    email: true,
+                  },
+                },
               },
             },
             user: {
@@ -787,14 +1058,21 @@ export const updateInvoice = async (req: Request, res: Response) => {
           },
         });
 
-        const creatorUser = updatedInvoice.creator.user;
-        const creatorPaymentForm = creatorUser?.paymentForm;
+        const creatorUser = updatedInvoice.creator?.user;
+        if (!creatorUser) {
+          throw new Error('Creator user not found');
+        }
+
+        const creatorPaymentForm = creatorUser.paymentForm;
         const campaign = updatedInvoice.campaign;
-        const agreement = updatedInvoice.creator.user.creatorAgreement.find((item) => item.campaignId === campaignId);
+
+        // Fix: Add fallback for agreement lookup
+        const agreement = creatorUser.creatorAgreement?.find((item) => item.campaignId === campaignId);
+        const currency = (agreement?.currency?.toUpperCase() as 'MYR' | 'SGD') ?? 'MYR';
 
         console.log('AGREEMENT:', agreement);
 
-        let contactID = updatedInvoice.creator.xeroContactId;
+        let contactID = updatedInvoice.creator?.xeroContactId;
 
         if (updatedInvoice.status === 'approved') {
           const user = await tx.user.findUnique({
@@ -816,161 +1094,175 @@ export const updateInvoice = async (req: Request, res: Response) => {
 
           if (!tokenSet) throw new Error('You are not connected to Xero');
 
-          await xero.initialize();
+          try {
+            await xero.initialize();
+            xero.setTokenSet(tokenSet);
 
-          xero.setTokenSet(tokenSet);
+            // Refresh token if expired
+            if (dayjs.unix(tokenSet.expires_at!).isBefore(dayjs())) {
+              const validTokenSet = await xero.refreshToken();
 
-          if (dayjs.unix(tokenSet.expires_at!).isBefore(dayjs())) {
-            const validTokenSet = await xero.refreshToken();
-            // save the new tokenset
+              await tx.admin.update({
+                where: {
+                  userId: user.id,
+                },
+                data: {
+                  xeroTokenSet: validTokenSet as any,
+                },
+              });
+            }
 
-            await prisma.admin.update({
-              where: {
-                userId: user.id,
-              },
-              data: {
-                xeroTokenSet: validTokenSet as any,
-              },
-            });
-          }
+            await xero.updateTenants();
 
-          await xero.updateTenants();
+            console.log('TENANTS:', xero.tenants);
 
-          console.log('TENANTS:', xero.tenants);
+            const activeTenant = xero.tenants.find((item) => item?.orgData?.baseCurrency?.toUpperCase() === currency);
 
-          const activeTenant = xero.tenants.find(
-            (item) =>
-              item?.orgData.baseCurrency.toUpperCase() ===
-              ((agreement?.currency?.toUpperCase() as 'MYR' | 'SGD') ?? 'MYR'),
-          );
+            if (!activeTenant) {
+              throw new Error(`No Xero tenant found for currency: ${currency}`);
+            }
 
-          console.log('ACTIVE UPDATE:', activeTenant);
-          console.log('CREATOR NAME:', creatorUser.name?.trim());
+            console.log('ACTIVE UPDATE:', activeTenant);
+            console.log('CREATOR NAME:', creatorUser.name?.trim());
 
-          const result = await xero.accountingApi.getContacts(
-            activeTenant.tenantId,
-            undefined, // IDs
-            // `EmailAddress=="${creatorUser.email}"`,
-            // `EmailAddress=="${creatorUser.email}" || Name=="${creatorUser.name}"`,
-            `Name=="${invoiceFrom.name?.trim()}"`,
-          );
-
-          if (result.body.contacts && result.body.contacts.length > 0) {
-            contactID = result.body.contacts[0].contactID || null;
-          } else {
-            const [contact] = await createXeroContact(
-              bankInfo,
-              updatedInvoice.creator,
-              invoiceFrom,
-              (agreement?.currency?.toUpperCase() as 'MYR' | 'SGD') ?? 'MYR',
+            // Fix: Add error handling for getContacts
+            const result = await xero.accountingApi.getContacts(
+              activeTenant.tenantId,
+              undefined,
+              `Name=="${invoiceFrom.name?.trim()}"`,
             );
 
-            contactID = contact.contactID || null;
+            if (result.body.contacts && result.body.contacts.length > 0) {
+              contactID = result.body.contacts[0].contactID || null;
+            } else {
+              const [contact] = await createXeroContact(bankInfo, updatedInvoice.creator, invoiceFrom, currency);
 
-            await tx.creator.update({
-              where: { id: updatedInvoice.creator.id },
-              data: { xeroContactId: contactID },
-            });
-          }
+              contactID = contact.contactID || null;
 
-          if (contactID) {
-            await createXeroInvoiceLocal(
-              contactID,
-              items,
-              dueDate,
-              campaign.name,
-              updatedInvoice.invoiceNumber,
-              updatedInvoice.user?.email!,
-              invoiceFrom,
-              updatedInvoice.creator,
-              bankInfo,
-              (agreement?.currency?.toUpperCase() as 'MYR' | 'SGD') ?? 'MYR',
+              if (contactID) {
+                await tx.creator.update({
+                  where: { id: updatedInvoice.creator.id },
+                  data: { xeroContactId: contactID },
+                });
+              }
+            }
+
+            if (contactID) {
+              await createXeroInvoiceLocal(
+                contactID,
+                items,
+                dueDate,
+                campaign.name,
+                updatedInvoice.invoiceNumber,
+                updatedInvoice.user?.email!,
+                invoiceFrom,
+                updatedInvoice.creator,
+                bankInfo,
+                currency,
+              );
+            } else {
+              throw new Error('Failed to create or find Xero contact');
+            }
+          } catch (xeroError) {
+            console.error('Xero API Error:', xeroError);
+            throw new Error(
+              `Xero integration failed: ${xeroError instanceof Error ? xeroError.message : 'Unknown error'}`,
             );
           }
 
           const { title, message } = notificationInvoiceUpdate(campaign.name);
 
-          // Notify CSM admins
-          // await Promise.all(
-          //   campaign.campaignAdmin
-          //     .filter((admin) => admin.admin.role?.name === 'CSM')
-          //     .map(async (admin) => {
-          //       const notification = await saveNotification({
-          //         userId: admin.adminId,
-          //         title,
-          //         message,
-          //         entity: 'Invoice',
-          //         threadId: updatedInvoice.id,
-          //         entityId: updatedInvoice.campaignId,
-          //       });
-
-          //       io.to(clients.get(admin.adminId)).emit('notification', notification);
-          //     }),
-          // );
-          await Promise.allSettled(
+          // Fix: Better error handling for notifications
+          const notificationResults = await Promise.allSettled(
             campaign.campaignAdmin
               .filter((admin) => admin.admin?.role?.name === 'CSM')
               .map(async (admin) => {
-                const notification = await saveNotification({
-                  userId: admin.adminId,
-                  title,
-                  message,
-                  entity: 'Invoice',
-                  threadId: updatedInvoice.id,
-                  entityId: updatedInvoice.campaignId,
-                });
+                try {
+                  const notification = await saveNotification({
+                    userId: admin.adminId,
+                    title,
+                    message,
+                    entity: 'Invoice',
+                    threadId: updatedInvoice.id,
+                    entityId: updatedInvoice.campaignId,
+                  });
 
-                const socketId = clients.get(admin.adminId);
-                if (socketId) {
-                  io.to(socketId).emit('notification', notification);
+                  const socketId = clients.get(admin.adminId);
+                  if (socketId && io) {
+                    io.to(socketId).emit('notification', notification);
+                  }
+
+                  return notification;
+                } catch (notifError) {
+                  console.error(`Failed to notify admin ${admin.adminId}:`, notifError);
+                  return null;
                 }
               }),
           );
 
+          // Log any notification failures
+          const failedNotifications = notificationResults.filter((result) => result.status === 'rejected');
+          if (failedNotifications.length > 0) {
+            console.warn(`${failedNotifications.length} notifications failed to send`);
+          }
+
           const adminId = req.session.userid;
 
           if (adminId) {
-            const adminLogMessage = `Updated Invoice for - "${creatorUser?.name}"`;
-            logAdminChange(adminLogMessage, adminId, req);
+            const adminLogMessage = `Updated Invoice for - "${creatorUser.name}"`;
+            await logAdminChange(adminLogMessage, adminId, req);
           }
 
-          // Log invoice approval in campaign logs for Invoice Actions tab
+          // Log invoice approval in campaign logs
           if (adminId && updatedInvoice.campaignId) {
-            const creatorName = creatorUser?.name || 'Unknown Creator';
+            const creatorName = creatorUser.name || 'Unknown Creator';
             const logMessage = `Approved invoice ${updatedInvoice.invoiceNumber} for ${creatorName}`;
             await logChange(logMessage, updatedInvoice.campaignId, req);
           }
 
-          await sendToSpreadSheet(
-            {
-              createdAt: dayjs().format('YYYY-MM-DD'),
-              name: creatorUser?.name || '',
-              icNumber: creatorPaymentForm?.icNumber || '',
-              bankName: creatorPaymentForm?.bankAccountName || '',
-              bankAccountNumber: creatorPaymentForm?.bankAccountNumber || '',
-              campaignName: campaign.name,
-              amount: updatedInvoice.amount,
-            },
-            '1VClmvYJV9R4HqjADhGA6KYIR9KCFoXTag5SMVSL4rFc',
-            'Invoices',
-          );
+          // Fix: Add error handling for spreadsheet update
+          try {
+            await sendToSpreadSheet(
+              {
+                createdAt: dayjs().format('YYYY-MM-DD'),
+                name: creatorUser.name || '',
+                icNumber: creatorPaymentForm?.icNumber || '',
+                bankName: creatorPaymentForm?.bankAccountName || '',
+                bankAccountNumber: creatorPaymentForm?.bankAccountNumber || '',
+                campaignName: campaign.name,
+                amount: updatedInvoice.amount,
+              },
+              '1VClmvYJV9R4HqjADhGA6KYIR9KCFoXTag5SMVSL4rFc',
+              'Invoices',
+            );
+          } catch (spreadsheetError) {
+            console.error('Failed to update spreadsheet:', spreadsheetError);
+            // Don't throw - spreadsheet update shouldn't block the transaction
+          }
 
           // Notify creator
-          const creatorNotification = await saveNotification({
-            userId: updatedInvoice.creatorId,
-            title,
-            message,
-            entity: 'Invoice',
-            threadId: updatedInvoice.id,
-            entityId: updatedInvoice.campaignId,
-          });
+          try {
+            const creatorNotification = await saveNotification({
+              userId: updatedInvoice.creatorId,
+              title,
+              message,
+              entity: 'Invoice',
+              threadId: updatedInvoice.id,
+              entityId: updatedInvoice.campaignId,
+            });
 
-          io.to(clients.get(updatedInvoice.creatorId)).emit('notification', creatorNotification);
+            const creatorSocketId = clients.get(updatedInvoice.creatorId);
+            if (creatorSocketId && io) {
+              io.to(creatorSocketId).emit('notification', creatorNotification);
+            }
+          } catch (notifError) {
+            console.error('Failed to notify creator:', notifError);
+          }
         }
 
         if (updatedInvoice.status === 'rejected') {
           await rejectInvoice({
-            userId: updatedInvoice?.creator?.user?.id,
+            userId: creatorUser.id,
             tx,
             reason: reason || '',
             campaignName: campaign.name,
@@ -980,15 +1272,15 @@ export const updateInvoice = async (req: Request, res: Response) => {
         return updatedInvoice;
       },
       {
-        timeout: 10000,
+        timeout: 30000, // Increased timeout to 30 seconds
       },
     );
 
-    console.log('INVOICE CREATED', invoice);
+    console.log('INVOICE UPDATED:', invoice);
 
     return res.status(200).json(invoice);
   } catch (error) {
-    console.error('asdsads', error);
+    console.error('Invoice update error:', error);
     const message = error instanceof Error ? error.message : 'Unknown error occurred';
     return res.status(400).json({ error: message });
   }
