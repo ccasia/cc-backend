@@ -554,7 +554,9 @@ export const updateStatusService = async (logisticId: string, status: LogisticSt
     }
 
     if (currentLogistic.type === 'RESERVATION') {
-      if (status === 'PENDING_ASSIGNMENT') {
+      // currently there is no updates to NOT_STARTED yet
+      // only PENDING_ASSIGNMENT which is pending client/admin action
+      if (status === 'NOT_STARTED') {
         if (currentLogistic.reservationDetails?.id) {
           await tx.reservationSlot.deleteMany({
             where: {
