@@ -431,8 +431,17 @@ async function deleteFileIfExists(filePath: string) {
                 // await deleteFileIfExists(videoFile.outputPath);
 
                 // await fs.promises.unlink(videoFile.outputPath);
-
-                if (!requestChangeVideos.length) {
+                if (content.isV4 && content.preserveExistingMedia) {
+                  await prisma.video.create({
+                    data: {
+                      url: videoPublicURL,
+                      submissionId: submission.id,
+                      campaignId: submission.campaignId,
+                      userId: submission.userId,
+                    },
+                  });
+                  console.log('✅ V4 Additive Video entry created in the DB.');
+                } else if (!requestChangeVideos.length) {
                   await prisma.video.create({
                     data: {
                       url: videoPublicURL,
