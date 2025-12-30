@@ -937,18 +937,18 @@ export const updateInvoice = async (req: Request, res: Response) => {
           );
 
           // Notify creator
-          const creatorNotification = await saveNotification({
-            userId: updatedInvoice.creatorId,
-            title,
-            message,
-            entity: 'Invoice',
-            threadId: updatedInvoice.id,
-            entityId: updatedInvoice.campaignId,
-          });
+          // const creatorNotification = await saveNotification({
+          //   userId: updatedInvoice.creatorId,
+          //   title,
+          //   message,
+          //   entity: 'Invoice',
+          //   threadId: updatedInvoice.id,
+          //   entityId: updatedInvoice.campaignId,
+          // });
 
-          console.log('Notification', creatorNotification);
+          // console.log('Notification', creatorNotification);
 
-          io.to(clients.get(updatedInvoice.creatorId)).emit('notification', creatorNotification);
+          // io.to(clients.get(updatedInvoice.creatorId)).emit('notification', creatorNotification);
         }
 
         if (updatedInvoice.status === 'rejected') {
