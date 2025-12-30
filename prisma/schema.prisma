@@ -1041,6 +1041,7 @@ model InsightSnapshot {
   campaign              Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   snapshotDate          DateTime
   snapshotType          String   // "daily", "weekly", "monthly"
+  dayOfWeek             Int?     // 0 (Sunday) - 6 (Saturday), for weekly snapshots
   platform              String   // "Instagram" | "TikTok" | "All"
   totalPosts            Int
   totalViews            Int      @default(0)

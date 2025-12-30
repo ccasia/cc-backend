@@ -260,24 +260,35 @@ export const refreshCampaignInsightsController = async (req: Request, res: Respo
  * Transform heatmap data into week x day grid format
  */
 function transformHeatmapData(data: any[], weeks: number): any {
-  // Create a grid structure: weeks x 7 days
+  // Sort snapshots by date ascending
+  const sorted = [...data].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  // Find all unique Mondays in the data
+  const mondays: string[] = [];
+  for (const snap of sorted) {
+    const d = new Date(snap.date);
+    // Get Monday for this date
+    const day = d.getDay(); // 0=Sun, 1=Mon, ...
+    const daysFromMonday = day === 0 ? 6 : day - 1;
+    const monday = new Date(d);
+    monday.setDate(d.getDate() - daysFromMonday);
+    const mondayStr = monday.toISOString().split('T')[0];
+    if (!mondays.includes(mondayStr)) mondays.push(mondayStr);
+  }
+  // Only keep the last N weeks
+  const weekMondays = mondays.slice(-weeks);
+  // Build grid for each week
   const grid: any[][] = [];
-  const today = new Date();
-
-  for (let w = 0; w < weeks; w++) {
+  for (let w = 0; w < weekMondays.length; w++) {
     const weekData: any[] = [];
+    const mondayDate = new Date(weekMondays[w]);
     for (let d = 0; d < 7; d++) {
-      const date = new Date(today);
-      date.setDate(date.getDate() - (weeks - 1 - w) * 7 - (6 - d));
-
+      const date = new Date(mondayDate);
+      date.setDate(mondayDate.getDate() + d);
       const dateStr = date.toISOString().split('T')[0];
-      const snapshot = data.find(
-        (s) => new Date(s.date).toISOString().split('T')[0] === dateStr
-      );
-
+      const snapshot = sorted.find((s) => new Date(s.date).toISOString().split('T')[0] === dateStr);
       weekData.push({
         date: dateStr,
-        dayOfWeek: d,
+        dayOfWeek: d === 6 ? 0 : d + 1, // Mon=1, ..., Sun=0
         weekIndex: w,
         engagementRate: snapshot?.engagementRate ?? null,
         totalViews: snapshot?.totalViews ?? null,
@@ -287,7 +298,6 @@ function transformHeatmapData(data: any[], weeks: number): any {
     }
     grid.push(weekData);
   }
-
   return grid;
 }
 

@@ -169,6 +169,7 @@ export async function storeInsightSnapshot(
       create: {
         campaignId,
         snapshotDate: dayjs(snapshotDate).startOf('day').toDate(),
+        dayOfWeek: dayjs(snapshotDate).day(), // 0=Sun, 1=Mon, ...
         snapshotType: 'daily',
         platform: metrics.platform,
         totalPosts: metrics.totalPosts,
@@ -191,6 +192,7 @@ export async function storeInsightSnapshot(
         totalReach: metrics.totalReach,
         averageEngagementRate: metrics.averageEngagementRate,
         topCreatorsByViews: metrics.topCreatorsByViews as any,
+        dayOfWeek: dayjs(snapshotDate).day(), // Always update dayOfWeek
         updatedAt: new Date(),
       },
     });

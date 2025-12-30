@@ -165,7 +165,7 @@ async function fetchInstagramInsight(req: {
       throw new Error('No mediaId or shortCode provided');
     }
 
-    // 4. Fetch insight metrics (reuse exact service)
+    // 4. Fetch insight metrics
     const insight = await getMediaInsight(accessToken, mediaId);
 
     return {
@@ -213,16 +213,8 @@ async function fetchTikTokInsight(req: {
     // 2. Ensure valid TikTok access token
     const accessToken = await ensureValidTikTokToken(req.userId);
 
-    // DEBUG: Log TikTok request context
-    console.log(`      🐞 [TikTok] Fetching video insight for userId: ${req.userId}, mediaId: ${req.mediaId}`);
-    console.log(`      🐞 [TikTok] Using accessToken: ${accessToken ? '[REDACTED]' : '[MISSING]'}`);
-
     // 3. Fetch TikTok video data (includes metrics)
     const video = await getTikTokVideoById(accessToken, req.mediaId);
-
-    // DEBUG: Log full TikTok API response
-    console.log(`      🐞 [TikTok] Raw video API response for mediaId ${req.mediaId}:`);
-    console.dir(video, { depth: 6 });
 
     // Extract the first video object from the response
     const videoObj = video?.data?.videos?.[0];
