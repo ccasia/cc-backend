@@ -796,7 +796,7 @@ export const updateInvoice = async (req: Request, res: Response) => {
 
         let contactID = updatedInvoice.creator.xeroContactId;
 
-        if (status === 'approved') {
+        if (updatedInvoice.status === 'approved') {
           const user = await tx.user.findUnique({
             where: {
               id: userId,
@@ -946,10 +946,12 @@ export const updateInvoice = async (req: Request, res: Response) => {
             entityId: updatedInvoice.campaignId,
           });
 
+          console.log('Notification', creatorNotification);
+
           io.to(clients.get(updatedInvoice.creatorId)).emit('notification', creatorNotification);
         }
 
-        if (status === 'rejected') {
+        if (updatedInvoice.status === 'rejected') {
           await rejectInvoice({
             userId: updatedInvoice?.creator?.user?.id,
             tx,
