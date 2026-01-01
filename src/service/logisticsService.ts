@@ -1015,12 +1015,14 @@ export const getAvailableSlotsService = async (campaignId: string, monthDate: Da
           const timeKey = slotStart.getTime();
           const attendees = bookingsMap.get(timeKey) || [];
 
+          const isFullDay = startHour === 0 && startMinute === 0 && endHour === 23 && endMinute === 59;
+
           daySlots.push({
             startTime: slotStart.toISOString(),
             endTime: slotEnd.toISOString(),
-            isTaken: attendees.some((a) => a.status === 'SELECTED'),
+            isTaken: !isFullDay && attendees.some((a) => a.status === 'SELECTED'),
             attendees: attendees,
-            label: slotDef.label || `${slotDef.startTime} - ${slotDef.endTime}`,
+            label: slotDef.label || (isFullDay ? 'Full day' : `${slotDef.startTime} - ${slotDef.endTime}`),
           });
         }
       }
@@ -1055,6 +1057,8 @@ export const submitReservationService = async (campaignId: string, data: Reserva
   });
 
   return await prisma.$transaction(async (tx) => {
+    const isAuto = config?.mode === 'AUTO_SCHEDULE';
+
     let logistic = await tx.logistic.findUnique({
       where: { creatorId_campaignId: { creatorId, campaignId } },
     });
@@ -1066,14 +1070,14 @@ export const submitReservationService = async (campaignId: string, data: Reserva
           creatorId,
           createdById: creatorId,
           type: 'RESERVATION',
-          status: config?.mode === 'AUTO_SCHEDULE' ? 'SCHEDULED' : 'PENDING_ASSIGNMENT',
+          status: isAuto ? 'SCHEDULED' : 'PENDING_ASSIGNMENT',
         },
       });
     } else {
       await tx.logistic.update({
         where: { id: logistic.id },
         data: {
-          status: config?.mode === 'AUTO_SCHEDULE' ? 'SCHEDULED' : 'PENDING_ASSIGNMENT',
+          status: isAuto ? 'SCHEDULED' : 'PENDING_ASSIGNMENT',
         },
       });
     }
@@ -1097,21 +1101,16 @@ export const submitReservationService = async (campaignId: string, data: Reserva
       where: { reservationDetailsId: reservationDetails.id },
     });
 
-    const initialSlotStatus = config?.mode === 'AUTO_SCHEDULE' ? 'SELECTED' : 'PROPOSED';
+    const createdSlots = isAuto ? [selectedSlots[0]] : selectedSlots;
 
     await tx.reservationSlot.createMany({
-      data: selectedSlots.map((slot) => ({
+      data: createdSlots.map((slot) => ({
         reservationDetailsId: reservationDetails.id,
         startTime: new Date(slot.start),
         endTime: new Date(slot.end),
-        status: initialSlotStatus,
+        status: isAuto ? 'SELECTED' : 'PROPOSED',
       })),
     });
-
-    // await tx.user.update({
-    //   where: { id: creatorId },
-    //   data: { phoneNumber: contactNumber },
-    // });
 
     return logistic;
   });
