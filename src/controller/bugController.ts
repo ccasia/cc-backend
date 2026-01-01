@@ -41,9 +41,20 @@ export const createNewBug = async (req: Request, res: Response) => {
       data: { ...data, campaignName: campaignName } as Bugs,
     });
 
+    // Determine which sheet to use based on user role
+    let sheetByTitle: 'Platform Creator Bugs' | 'Platform Admin Bugs' | 'Platform Client Bugs';
+    
+    if (user.role === 'creator') {
+      sheetByTitle = 'Platform Creator Bugs';
+    } else if (user.role === 'client') {
+      sheetByTitle = 'Platform Client Bugs';
+    } else {
+      sheetByTitle = 'Platform Admin Bugs';
+    }
+
     await createNewBugRowData({
       spreadSheetId: '129mwFlatr5pMDTi3VxVzgx0hGhkOyUVvq4M_jAWieCc',
-      sheetByTitle: user.role === 'creator' ? 'Platform Creator Bugs' : 'Platform Admin Bugs',
+      sheetByTitle,
       data: {
         email: user?.email,
         name: user?.name || '',
