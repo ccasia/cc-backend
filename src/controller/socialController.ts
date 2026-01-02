@@ -132,9 +132,9 @@ function extractTikTokVideoId(url: string): string | null {
         return photoId;
       }
 
-      // Handle short URLs like vm.tiktok.com
-      if (urlObj.hostname.includes('vm.tiktok.com')) {
-        const shortCode = urlObj.pathname.substring(1); // Remove leading slash
+      // Handle short URLs like vm.tiktok.com and vt.tiktok.com
+      if (urlObj.hostname.includes('vm.tiktok.com') || urlObj.hostname.includes('vt.tiktok.com')) {
+        const shortCode = urlObj.pathname.substring(1).split('?')[0].split('/')[0]; // Remove leading slash and trailing params
         return shortCode;
       }
 
@@ -1458,7 +1458,7 @@ async function ensureValidInstagramToken(userId: string): Promise<string> {
       console.log('Instagram token refreshed successfully');
     } catch (refreshError) {
       console.error('Failed to refresh Instagram token:', refreshError);
-      throw new Error('Instagram token expired and refresh failed. Please reconnect your Instagram account.');
+      throw new Error('Instagram token expired and refresh failed. Creator needs to reconnect their Instagram account.');
     }
   }
 

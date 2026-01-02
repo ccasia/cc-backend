@@ -336,14 +336,68 @@ export const refreshTikTokToken = async (refreshToken: string) => {
   }
 };
 
+// Helper function to resolve TikTok short codes (e.g., ZS5NQoDLq) to full video IDs
+export const resolveTikTokShortCode = async (shortCode: string): Promise<string> => {
+  try {
+    console.log(`🔗 Resolving TikTok short code: ${shortCode}`);
+    
+    // Short codes are typically 10-15 characters of alphanumeric/underscore/hyphen
+    // If it's already a long numeric ID, return it as-is
+    if (/^\d{15,}$/.test(shortCode)) {
+      console.log(`✅ Already a full video ID: ${shortCode}`);
+      return shortCode;
+    }
+
+    // Try to resolve the short code by following the redirect
+    const shortUrl = `https://vt.tiktok.com/${shortCode}`;
+    const response = await axios.get(shortUrl, {
+      maxRedirects: 0,
+      validateStatus: (status) => status === 301 || status === 302 || status === 307 || status === 308,
+    });
+
+    const location = response.headers.location;
+    if (!location) {
+      throw new Error('Could not resolve short code redirect');
+    }
+
+    console.log(`📍 Redirect location: ${location}`);
+
+    // Extract video ID from the full URL
+    // Format: https://www.tiktok.com/@username/video/7518082807227223314
+    const videoIdMatch = location.match(/\/video\/(\d+)/);
+    if (videoIdMatch && videoIdMatch[1]) {
+      console.log(`✅ Resolved to video ID: ${videoIdMatch[1]}`);
+      return videoIdMatch[1];
+    }
+
+    // If redirect doesn't work, try using the short code directly as it might be a share ID
+    // Some TikTok endpoints accept share IDs
+    console.log(`⚠️ Could not extract video ID from redirect, returning original short code`);
+    return shortCode;
+  } catch (error) {
+    console.error(`❌ Error resolving TikTok short code: ${error.message}`);
+    // Return the short code anyway - might still work with some API endpoints
+    return shortCode;
+  }
+};
+
 export const getTikTokVideoById = async (accessToken: string, videoId: string) => {
   if (!accessToken || !videoId) throw new Error('Access token and video ID are required');
 
   try {
+    // Resolve short codes to full video IDs
+    let resolvedVideoId = videoId;
+    if (!/^\d{15,}$/.test(videoId)) {
+      console.log(`🔍 Detected possible short code, attempting to resolve: ${videoId}`);
+      resolvedVideoId = await resolveTikTokShortCode(videoId);
+    }
+
+    console.log(`📤 Querying TikTok API with video ID: ${resolvedVideoId}`);
+
     const response = await axios.post(
       'https://open.tiktokapis.com/v2/video/query/',
       {
-        filters: { video_ids: [videoId] },
+        filters: { video_ids: [resolvedVideoId] },
       },
       {
         params: {
