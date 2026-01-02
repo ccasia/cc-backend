@@ -682,6 +682,10 @@ model Campaign {
 
   // V4 submission version tracking
   submissionVersion String? @default("v3") // "v2", "v3", "v4"
+
+  // Trends analysis
+  submissionPostingUrls SubmissionPostingUrl[]
+  insightSnapshots      InsightSnapshot[]
 }
 
 model BookMarkCampaign {
@@ -1007,8 +1011,54 @@ model Submission {
   contentOrder      Int? // Order of content (Video 1, Video 2, etc.)
   submissionVersion String?          @default("v2") // "v2", "v3", "v4"
   captionHistory    CaptionHistory[]
+  submissionPostingUrls SubmissionPostingUrl[]
 
   @@unique([userId, campaignId, submissionTypeId, contentOrder])
+}
+
+model SubmissionPostingUrl {
+  id           String     @id @unique @default(cuid())
+  campaignId   String
+  campaign     Campaign   @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  submissionId String
+  submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  platform     String     // "Instagram" | "TikTok"
+  postUrl      String     // Full URL
+  postingDate  DateTime?  // When creator posted (null = not posted yet)
+  shortCode    String?    // Instagram shortcode
+  mediaId      String?    // Instagram media ID or TikTok video ID
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([submissionId, platform, postUrl])
+  @@index([submissionId])
+  @@index([campaignId, platform, createdAt])
+}
+
+model InsightSnapshot {
+  id                    String   @id @unique @default(cuid())
+  campaignId            String
+  campaign              Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  snapshotDate          DateTime
+  snapshotType          String   // "daily", "weekly", "monthly"
+  dayOfWeek             Int?     // 0 (Sunday) - 6 (Saturday), for weekly snapshots
+  platform              String   // "Instagram" | "TikTok" | "All"
+  totalPosts            Int
+  totalViews            Int      @default(0)
+  totalLikes            Int      @default(0)
+  totalComments         Int      @default(0)
+  totalShares           Int      @default(0)
+  totalSaved            Int      @default(0)
+  totalReach            Int      @default(0)
+  averageEngagementRate Float
+  topCreatorsByViews    Json?
+  dailyViewDeltas       Json?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@unique([campaignId, platform, snapshotDate])
+  @@index([campaignId, snapshotDate])
+  @@index([campaignId, snapshotType])
 }
 
 model Video {

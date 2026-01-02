@@ -10,6 +10,8 @@ import dayjs from 'dayjs';
 import { MAP_TIMELINE } from '@constants/map-timeline';
 import { logAdminChange, logChange } from '@services/campaignServices';
 import { createInvoiceService } from '../service/invoiceService';
+import { extractAndStoreSubmissionUrls } from '@services/submissionUrlService';
+import { scheduleInitialInsightFetch } from '@services/insightFetchService';
 
 import {
   notificationAgreement,
@@ -44,6 +46,48 @@ Ffmpeg.setFfmpegPath(FfmpegPath.path);
 // Ffmpeg.setFfmpegPath(FfmpegProbe.path);
 
 const prisma = new PrismaClient();
+
+/**
+ * Extract URLs and schedule initial insight fetch for a submission (non-blocking background task)
+ * Used for both V2/V3 and V4 submission flows
+ *
+ * @param submissionId - Submission ID
+ * @param content - Content that may contain URLs (e.g., posting link)
+ */
+function scheduleUrlExtractionAndFetch(submissionId: string, content: string | undefined): void {
+  if (!content) {
+    return; // No content to extract
+  }
+
+  // Run async without blocking the response
+  setImmediate(async () => {
+    try {
+      const submission = await prisma.submission.findUnique({
+        where: { id: submissionId },
+        select: { campaignId: true },
+      });
+
+      if (!submission) {
+        console.warn(`⚠️  Submission ${submissionId} not found for URL extraction`);
+        return;
+      }
+
+      // Extract and store URLs
+      console.log(`🔗 Extracting URLs for submission ${submissionId}...`);
+      await extractAndStoreSubmissionUrls(submissionId, content);
+
+      // Schedule initial insight fetch (2 hours delay)
+      console.log(`⏰ Scheduling initial insight fetch for campaign ${submission.campaignId}...`);
+      await scheduleInitialInsightFetch(submission.campaignId, submissionId);
+    } catch (error: any) {
+      console.error(
+        `❌ Error extracting URLs/scheduling fetch for submission ${submissionId}:`,
+        error.message
+      );
+      // Don't throw - this is background work
+    }
+  });
+}
 
 export const agreementSubmission = async (req: Request, res: Response) => {
   const { submissionId } = JSON.parse(req.body.data);
@@ -1641,6 +1685,9 @@ export const adminManagePosting = async (req: Request, res: Response) => {
           entityId: submission.campaignId,
         });
 
+        // Schedule URL extraction and initial insight fetch (non-blocking)
+        scheduleUrlExtractionAndFetch(submission.id, submission.content || undefined);
+
         // Log admin activity for posting approval
         if (submission.campaignId && userId) {
           const admin = await prisma.user.findUnique({ where: { id: userId } });
@@ -1773,6 +1820,10 @@ export const approvePostingLinkBySuperadminV2 = async (req: Request, res: Respon
       where: { id: submissionId },
       data: { status: 'APPROVED', completedAt: new Date(), approvedByAdminId: superadminId },
     });
+
+    // Schedule URL extraction and initial insight fetch (non-blocking)
+    scheduleUrlExtractionAndFetch(submissionId, submission.content || undefined);
+
     // Generate invoice using existing service, if applicable in V2
     try {
       const creator = await prisma.shortListedCreator.findFirst({
