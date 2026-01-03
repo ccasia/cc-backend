@@ -31,6 +31,7 @@ import {
   rescheduleReservation,
   markLogisticCompleted,
   updateReservationDetails,
+  adminSchedule,
 } from '@controllers/logisticsController';
 
 const router = express.Router();
@@ -100,6 +101,7 @@ router.post(
   checkCampaignAccess,
   upsertReservationConfig,
 );
+router.post('/campaign/:campaignId/:logisticId/reschedule', isLoggedIn, rescheduleReservation);
 router.patch(
   '/campaign/:campaignId/:logisticId/reservation-detail',
   isLoggedIn,
@@ -115,6 +117,6 @@ router.patch(
   checkCampaignAccess,
   scheduleReservation,
 );
-router.post('/campaign/:campaignId/:logisticId/reschedule', isLoggedIn, rescheduleReservation);
+router.patch('/campaign/:campaignId/:logisticId/admin-schedule', isLoggedIn, isAdminOrClient, adminSchedule);
 
 export default router;

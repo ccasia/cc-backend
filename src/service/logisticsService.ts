@@ -1043,14 +1043,14 @@ export const getAvailableSlotsService = async (campaignId: string, monthDate: Da
 type ReservationSelectionData = {
   creatorId: string;
   outlet: string;
-  contactNumber: string;
+  phoneNumber: string;
   remarks?: string;
   pax: number;
   selectedSlots: { start: string; end: string }[];
 };
 
 export const submitReservationService = async (campaignId: string, data: ReservationSelectionData) => {
-  const { creatorId, outlet, contactNumber, remarks, pax, selectedSlots } = data;
+  const { creatorId, outlet, phoneNumber, remarks, pax, selectedSlots } = data;
 
   const config = await prisma.reservationConfiguration.findUnique({
     where: { campaignId },
@@ -1094,6 +1094,13 @@ export const submitReservationService = async (campaignId: string, data: Reserva
         outlet: outlet,
         pax: pax,
         creatorRemarks: remarks,
+      },
+    });
+
+    await tx.user.update({
+      where: { id: creatorId },
+      data: {
+        phoneNumber: phoneNumber,
       },
     });
 
@@ -1223,6 +1230,80 @@ export const rescheduleReservationService = async (logisticId: string) => {
         deliveredAt: null,
         completedAt: null,
       },
+    });
+  });
+};
+
+export const adminScheduleService = async (logisticId: string, data: { startTime: Date; endTime: Date }) => {
+  return await prisma.$transaction(async (tx) => {
+    const logistic = await tx.logistic.findUnique({
+      where: { id: logisticId },
+      include: { reservationDetails: true },
+    });
+
+    if (!logistic) throw new Error('Logistic not found');
+
+    const slotStart = data.startTime.toISOString().substring(0, 16);
+    const slotEnd = data.endTime.toISOString().substring(0, 16);
+
+    const isFullDay =
+      (slotStart.includes('T00:00') && slotEnd.includes('T23:59')) ||
+      (slotStart.includes('T08:00') && slotEnd.includes('T07:59'));
+
+    if (!isFullDay) {
+      const existingSelectedSlots = await tx.reservationSlot.findMany({
+        where: {
+          reservationDetails: {
+            logistic: {
+              campaignId: logistic.campaignId,
+              id: { not: logisticId },
+            },
+          },
+          status: 'SELECTED',
+        },
+      });
+
+      for (const slot of existingSelectedSlots) {
+        const existingStart = slot.startTime.toISOString().substring(0, 16);
+        const existingEnd = slot.endTime.toISOString().substring(0, 16);
+
+        const isExistingFullDay =
+          (existingStart.includes('T00:00') && existingEnd.includes('T23:59')) ||
+          (existingStart.includes('T08:00') && existingEnd.includes('T07:59'));
+
+        if (!isExistingFullDay) {
+          if (slotStart < existingEnd && slotEnd > existingStart) {
+            throw new Error('This timeslot overlaps with an existing confirmed reservation.');
+          }
+        }
+      }
+    }
+
+    const details = await tx.reservationDetails.upsert({
+      where: { logisticId: logistic.id },
+      create: {
+        logisticId: logistic.id,
+      },
+      update: {},
+    });
+
+    await tx.reservationSlot.deleteMany({
+      where: { reservationDetailsId: details.id },
+    });
+
+    await tx.reservationSlot.create({
+      data: {
+        reservationDetailsId: details.id,
+        startTime: data.startTime,
+        endTime: data.endTime,
+        status: 'SELECTED',
+      },
+    });
+
+    return await tx.logistic.update({
+      where: { id: logistic.id },
+      data: { status: 'SCHEDULED' },
+      include: { reservationDetails: { include: { slots: true } } },
     });
   });
 };

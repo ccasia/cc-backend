@@ -24,6 +24,7 @@ import {
   scheduleReservationService,
   rescheduleReservationService,
   updateReservationDetailService,
+  adminScheduleService,
 } from '@services/logisticsService';
 
 export const getLogisticsForCampaign = async (req: Request, res: Response) => {
@@ -36,7 +37,7 @@ export const getLogisticsForCampaign = async (req: Request, res: Response) => {
     return res.status(200).json(logistics);
   } catch (error) {
     console.error('Error fetching logistics for campaign:', error);
-    return res.status(500).json({ message: 'Internal Server Error' });
+    return res.status(500).json({ message: 'Failed to retrieve logistics details.' });
   }
 };
 
@@ -48,7 +49,7 @@ export const getCreatorLogistics = async (req: Request, res: Response) => {
     return res.status(200).json(logistics);
   } catch (error) {
     console.error('Error fetching creator logistics:', error);
-    return res.status(500).json({ message: 'Internal Server Error' });
+    return res.status(500).json({ message: 'Unable to retrieve logistics for this creator.' });
   }
 };
 
@@ -70,7 +71,7 @@ export const getCreatorLogisticForCampaign = async (req: Request, res: Response)
     return res.status(200).json(logistic);
   } catch (error) {
     console.error('Error fetching creator logistic for campaign:', error);
-    return res.status(500).json({ message: 'Internal Server Error' });
+    return res.status(500).json({ message: 'Unable to fetch creator logistic for this campaign' });
   }
 };
 
@@ -86,7 +87,7 @@ export const createProduct = async (req: Request, res: Response) => {
     return res.status(201).json(newProduct);
   } catch (error) {
     console.error('Error creating product:', error);
-    return res.status(500).json({ message: 'Internal Server Error' });
+    return res.status(500).json({ message: 'Unable to create product' });
   }
 };
 
@@ -102,7 +103,7 @@ export const deleteProduct = async (req: Request, res: Response) => {
     return res.status(200).json({ message: 'Product deleted successfully' });
   } catch (error) {
     console.error('Error deleting product:', error);
-    return res.status(500).json({ message: 'Internal Server Error' });
+    return res.status(500).json({ message: 'Unable to delete product' });
   }
 };
 
@@ -113,7 +114,7 @@ export const getProductsForCampaign = async (req: Request, res: Response) => {
     return res.status(200).json(products);
   } catch (error) {
     console.error('Error fetching products for campaign:', error);
-    return res.status(500).json({ message: 'Internal Server Error' });
+    return res.status(500).json({ message: 'Unable to fetch products for this campaign' });
   }
 };
 
@@ -132,7 +133,7 @@ export const singleAssignmentLogistics = async (req: Request, res: Response) => 
     return res.status(201).json(logistic);
   } catch (error) {
     console.error('Error in singleAssignmentLogistics controller', error);
-    res.status(500).json({ message: 'Internal Server Error' });
+    res.status(500).json({ message: 'Failed to assign logistics to the creator.' });
   }
 };
 
@@ -163,7 +164,7 @@ export const bulkAssignmentLogistics = async (req: Request, res: Response) => {
     return res.status(201).json(logistics);
   } catch (error) {
     console.error('Error in bulkAssignmentLogistics controller:', error);
-    return res.status(500).json({ message: 'Internal Server Error' });
+    return res.status(500).json({ message: 'Failed to bulk assign to multiple creators' });
   }
 };
 
@@ -175,7 +176,7 @@ export const scheduleDelivery = async (req: Request, res: Response) => {
     return res.status(200).json(logistic);
   } catch (error) {
     console.error('Error in scheduleDelivery controller:', error);
-    return res.status(500).json({ message: 'Internal Server Error' });
+    return res.status(500).json({ message: 'Failed to schedule delivery.' });
   }
 };
 
@@ -192,7 +193,7 @@ export const updateCreatorDeliveryDetails = async (req: Request, res: Response) 
     return res.status(200).json(updatedDetails);
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ message: 'Internal Server Error' });
+    return res.status(500).json({ message: 'Failed to update creator delivery details.' });
   }
 };
 
@@ -203,7 +204,7 @@ export const markLogisticReceived = async (req: Request, res: Response) => {
     return res.status(200).json(updated);
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ message: 'Internal Server Error' });
+    return res.status(500).json({ message: 'Failed to receive logistics.' });
   }
 };
 
@@ -214,7 +215,7 @@ export const markLogisticCompleted = async (req: Request, res: Response) => {
     return res.status(200).json(updated);
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ message: 'Internal Server Error' });
+    return res.status(500).json({ message: 'Failed to complete logistics.' });
   }
 };
 
@@ -228,7 +229,7 @@ export const reportIssue = async (req: Request, res: Response) => {
     return res.status(200).json(updated);
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ message: 'Internal Server Error' });
+    return res.status(500).json({ message: 'Failed to report logistic issue.' });
   }
 };
 
@@ -243,7 +244,7 @@ export const updateLogisticStatus = async (req: Request, res: Response) => {
     return res.status(200).json(updatedStatus);
   } catch (error) {
     console.error('Error updating status:', error);
-    return res.status(500).json({ message: 'Internal Server Error' });
+    return res.status(500).json({ message: 'Failed to update logistic status.' });
   }
 };
 
@@ -265,7 +266,7 @@ export const adminUpdateLogisticDetails = async (req: Request, res: Response) =>
     return res.status(200).json(updatedLogistic);
   } catch (error) {
     console.error('Error admin updating logistic:', error);
-    return res.status(500).json({ message: 'Internal Server Error' });
+    return res.status(500).json({ message: 'Failed to update logistic.' });
   }
 };
 
@@ -278,7 +279,7 @@ export const resolveLogisticIssue = async (req: Request, res: Response) => {
     return res.status(200).json(result);
   } catch (error) {
     console.error('Error resolving issue:', error);
-    res.status(500).json({ message: 'Internal Server Error' });
+    res.status(500).json({ message: 'Failed to resolve issue' });
   }
 };
 
@@ -291,7 +292,7 @@ export const retryLogisticDelivery = async (req: Request, res: Response) => {
     return res.status(200).json(result);
   } catch (error) {
     console.error('Error retrying delivery:', error);
-    return res.status(500).json({ message: 'Internal Server Error' });
+    return res.status(500).json({ message: 'Failed to retry product delivery.' });
   }
 };
 
@@ -311,7 +312,7 @@ export const submitCreatorProductInfo = async (req: Request, res: Response) => {
     return res.status(200).json(result);
   } catch (error) {
     console.error('Error submitting logistics info:', error);
-    return res.status(500).json({ message: 'Internal Server Error' });
+    return res.status(500).json({ message: 'Failed to submit logistics as creator.' });
   }
 };
 
@@ -329,7 +330,7 @@ export const upsertReservationConfig = async (req: Request, res: Response) => {
     return res.status(200).json(config);
   } catch (error) {
     console.error('Error saving reservation config:', error);
-    return res.status(500).json({ message: 'Internal Server Error' });
+    return res.status(500).json({ message: 'Failed to save reservation configuration' });
   }
 };
 
@@ -345,7 +346,7 @@ export const getReservationConfig = async (req: Request, res: Response) => {
     return res.status(200).json(config);
   } catch (error) {
     console.error('Error fetching reservation config:', error);
-    return res.status(500).json({ message: 'Internal Server Error' });
+    return res.status(500).json({ message: 'Failed to retrieve reservation configuration.' });
   }
 };
 
@@ -360,7 +361,7 @@ export const getReservationSlots = async (req: Request, res: Response) => {
     return res.status(200).json(slots);
   } catch (error) {
     console.error('Error fetching slots:', error);
-    return res.status(500).json({ message: 'Internal Server Error' });
+    return res.status(500).json({ message: 'Failed to retrieve reservation slots' });
   }
 };
 
@@ -368,7 +369,7 @@ export const submitReservationDetails = async (req: Request, res: Response) => {
   try {
     const { campaignId } = req.params;
     const { userid } = (req as any).session;
-    const { outlet, contactNumber, remarks, pax, selectedSlots } = req.body;
+    const { outlet, phoneNumber, remarks, pax, selectedSlots } = req.body;
 
     if (!selectedSlots || selectedSlots.length === 0) {
       return res.status(400).json({ message: 'At least one time slot must be selected' });
@@ -377,7 +378,7 @@ export const submitReservationDetails = async (req: Request, res: Response) => {
     const result = await submitReservationService(campaignId, {
       creatorId: userid,
       outlet,
-      contactNumber,
+      phoneNumber,
       remarks,
       pax: Number(pax),
       selectedSlots,
@@ -386,7 +387,7 @@ export const submitReservationDetails = async (req: Request, res: Response) => {
     return res.status(201).json(result);
   } catch (error) {
     console.error('Error submitting reservation:', error);
-    return res.status(500).json({ message: 'Internal Server Error' });
+    return res.status(500).json({ message: 'Failed to submit reservation slots.' });
   }
 };
 
@@ -397,7 +398,7 @@ export const updateReservationDetails = async (req: Request, res: Response) => {
     return res.status(200).json(result);
   } catch (error) {
     console.error('Error updating reservation details:', error);
-    return res.status(500).json({ message: 'Internal Server Error' });
+    return res.status(500).json({ message: 'Failed to update reservation details.' });
   }
 };
 
@@ -423,7 +424,7 @@ export const scheduleReservation = async (req: Request, res: Response) => {
     return res.status(200).json(result);
   } catch (error) {
     console.error('Error confirming reservation:', error);
-    return res.status(500).json({ message: 'Internal Server Error' });
+    return res.status(500).json({ message: 'Failed to schedule a reservation.' });
   }
 };
 
@@ -436,6 +437,29 @@ export const rescheduleReservation = async (req: Request, res: Response) => {
     return res.status(200).json({ message: 'Reservation reset successfully', result });
   } catch (error) {
     console.error('Error rescheduling reservation:', error);
-    return res.status(500).json({ message: 'Internal Server Error' });
+    return res.status(500).json({ message: 'Failed to reschedule a reservation.' });
+  }
+};
+
+export const adminSchedule = async (req: Request, res: Response) => {
+  try {
+    const { logisticId } = req.params;
+    const { startTime, endTime } = req.body;
+
+    if (!startTime || !endTime) {
+      return res.status(400).json({ message: 'Start and End times are required.' });
+    }
+
+    const result = await adminScheduleService(logisticId, {
+      startTime: new Date(startTime),
+      endTime: new Date(endTime),
+    });
+
+    return res.status(200).json(result);
+  } catch (error) {
+    console.error('Error scheduling reservation:', error);
+    return res.status(500).json({
+      message: error.message || 'An unexpected error occurred',
+    });
   }
 };
