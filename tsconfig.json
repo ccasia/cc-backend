@@ -1,6 +1,5 @@
 {
   "compilerOptions": {
-    "ignoreDeprecations": "6.0",
     "lib": ["ES6", "dom"], // Specify a list of libraries the project will use
     "target": "ES6", // Set the JavaScript version for output files
     "module": "NodeNext", // Set the module system (Node.js uses CommonJS)
