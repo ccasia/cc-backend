@@ -34,7 +34,7 @@ import {
   uploadPitchVideo,
 } from '@configs/cloudStorage.config';
 import dayjs from 'dayjs';
-import { logChange, logAdminChange } from '@services/campaignServices';
+import { logChange, logAdminChange, uploadCampaignAssets, createNewSpreadSheetAsync } from '@services/campaignServices';
 import { saveNotification } from '@controllers/notificationController';
 import { clients, io } from '../server';
 import fs from 'fs';
@@ -163,41 +163,6 @@ const MAPPING: Record<string, string> = {
   POSTING: 'Posting',
 };
 
-// const generateAgreement = async (creator: any, campaign: any) => {
-//   try {
-//     const agreementsPath = await agreementInput({
-//       date: dayjs().format('ddd LL'),
-//       creatorName: creator.name as string,
-//       icNumber: creator?.paymentForm.icNumber,
-//       address: creator.creator.address,
-//       agreement_endDate: dayjs().add(1, 'M').format('ddd LL'),
-//       now_date: dayjs().format('ddd LL'),
-//       creatorAccNumber: creator?.paymentForm.bankAccountNumber,
-//       creatorBankName: creator?.paymentForm?.bankName,
-//       creatorBankAccName: creator?.paymentForm?.bankAccountName,
-//       agreementFormUrl: campaign?.campaignBrief?.agreementFrom,
-//       version: 1,
-//     });
-
-//     // const pdfPath = await pdfConverter(
-//     //   agreementsPath,
-//     //   path.resolve(__dirname, `../form/pdf/${creator.name.split(' ').join('_')}.pdf`),
-//     // );
-
-//     // const url = await uploadAgreementForm(
-//     //   pdfPath,
-//     //   `${creator.name.split(' ').join('_')}-${campaign.name}.pdf`,
-//     //   'creatorAgreements',
-//     // );
-
-//     // await fs.promises.unlink(pdfPath);
-
-//     // return url;
-//   } catch (error) {
-//     throw new Error(error);
-//   }
-// };
-
 export const createCampaign = async (req: Request, res: Response) => {
   const {
     campaignId,
@@ -237,9 +202,9 @@ export const createCampaign = async (req: Request, res: Response) => {
     country,
     logisticsType,
     products,
-    // locations,
     logisticRemarks,
   }: Campaign = JSON.parse(req.body.data);
+
   // Also read optional fields not in the Campaign interface
   const rawBody: any = (() => {
     try {
@@ -248,53 +213,16 @@ export const createCampaign = async (req: Request, res: Response) => {
       return {};
     }
   })();
+
   const requestedOrigin = rawBody?.origin as 'ADMIN' | 'CLIENT' | undefined;
   const clientManagers = Array.isArray(rawBody?.clientManagers) ? rawBody.clientManagers : [];
   const submissionVersion = rawBody?.submissionVersion as 'v4' | undefined;
 
   try {
-    const publicURL: any = [];
-    const otherAttachments: string[] = [];
-
-    // Handle Campaign Images
-    if (req.files && req.files.campaignImages) {
-      const images: any = (req.files as any).campaignImages as [];
-
-      if (images.length) {
-        for (const item of images as any) {
-          const url = await uploadImage(item.tempFilePath, item.name, 'campaign');
-          publicURL.push(url);
-        }
-      } else {
-        const url = await uploadImage(images.tempFilePath, images.name, 'campaign');
-        publicURL.push(url);
-      }
-    }
-
-    if (req.files && req.files.otherAttachments) {
-      const attachments: any = (req.files as any).otherAttachments as [];
-
-      if (attachments.length) {
-        for (const item of attachments as any) {
-          const url: string = await uploadAttachments({
-            tempFilePath: item.tempFilePath,
-            fileName: item.name,
-            folderName: 'otherAttachments',
-          });
-          otherAttachments.push(url);
-        }
-      } else {
-        const url: string = await uploadAttachments({
-          tempFilePath: attachments.tempFilePath,
-          fileName: attachments.name,
-          folderName: 'otherAttachments',
-        });
-        otherAttachments.push(url);
-      }
-    }
+    const { images, attachments } = await uploadCampaignAssets(req.files);
 
     // Handle All processes
-    await prisma.$transaction(
+    const campaign = await prisma.$transaction(
       async (tx) => {
         const admins = await Promise.all(
           campaignManager.map(async (admin) => {
@@ -324,6 +252,7 @@ export const createCampaign = async (req: Request, res: Response) => {
             return null;
           }),
         );
+
         const existingClient = await tx.company.findUnique({
           where: { id: client.id },
           include: { subscriptions: { where: { status: 'ACTIVE' } } },
@@ -342,8 +271,6 @@ export const createCampaign = async (req: Request, res: Response) => {
         if (campaignCredits > availableCredits) {
           throw new Error('Not enough credits to create the campaign');
         }
-
-        const url: string = await createNewSpreadSheet({ title: campaignTitle });
 
         // Create Campaign
         // Normalize dates for campaign brief
@@ -370,12 +297,11 @@ export const createCampaign = async (req: Request, res: Response) => {
             origin: requestedOrigin === 'CLIENT' ? 'CLIENT' : 'ADMIN',
             submissionVersion: submissionVersion || undefined, // Set v4 if client user is added as manager
             brandTone: brandTone,
-            spreadSheetURL: url,
             rawFootage: rawFootage || false,
             ads: ads || false,
             photos: photos || false,
             crossPosting: crossPosting || false,
-            logisticsType: (logisticsType && logisticsType !== '') ? (logisticsType as LogisticType) : null,
+            logisticsType: logisticsType && logisticsType !== '' ? (logisticsType as LogisticType) : null,
             agreementTemplate: {
               connect: {
                 id: agreementFrom.id,
@@ -387,9 +313,8 @@ export const createCampaign = async (req: Request, res: Response) => {
             campaignBrief: {
               create: {
                 title: campaignTitle,
-                // objectives: campaignObjectives,
-                images: publicURL.map((image: any) => image) || '',
-                otherAttachments: otherAttachments,
+                images: images,
+                otherAttachments: attachments,
                 referencesLinks: referencesLinks?.map((link: any) => link.value) || [],
                 startDate: normalizedStartDate,
                 endDate: normalizedEndDate,
@@ -447,6 +372,7 @@ export const createCampaign = async (req: Request, res: Response) => {
         // For v4 campaigns, timelines are created based on campaign dates proportionally
         // For non-v4 campaigns, timelines are created from the frontend timeline array
         const { createCampaignTimelines } = require('../helper/campaignTimelineHelper');
+
         await createCampaignTimelines(tx, campaign.id, timeline, {
           submissionVersion: submissionVersion,
           campaignStartDate: normalizedStartDate,
@@ -485,6 +411,7 @@ export const createCampaign = async (req: Request, res: Response) => {
 
         // Check if the user creating the campaign is a Client
         const userId = req.session.userid;
+
         if (userId) {
           const currentUser = await tx.user.findUnique({
             where: { id: userId },
@@ -507,7 +434,7 @@ export const createCampaign = async (req: Request, res: Response) => {
             title: campaign.name,
             description: campaign.description,
             campaignId: campaign.id,
-            photoURL: publicURL[0],
+            photoURL: images[0],
             UserThread: {
               create: admins.map((admin: any) => ({
                 userId: admin.id,
@@ -699,7 +626,9 @@ export const createCampaign = async (req: Request, res: Response) => {
                       campaignId: campaign.id,
                     },
                   });
-                  console.log(`Added client user ${companyClient.userId} to CampaignAdmin for v4 campaign ${campaign.id}`);
+                  console.log(
+                    `Added client user ${companyClient.userId} to CampaignAdmin for v4 campaign ${campaign.id}`,
+                  );
                 }
               }
             }
@@ -731,7 +660,9 @@ export const createCampaign = async (req: Request, res: Response) => {
                       role: 'owner',
                     },
                   });
-                  console.log(`Added client user ${user.client.id} from campaignManager to CampaignClient for v4 campaign ${campaign.id}`);
+                  console.log(
+                    `Added client user ${user.client.id} from campaignManager to CampaignClient for v4 campaign ${campaign.id}`,
+                  );
                 }
               }
             }
@@ -741,12 +672,16 @@ export const createCampaign = async (req: Request, res: Response) => {
           }
         }
 
-        return res.status(200).json({ campaign, message: 'Campaign created successfully.' });
+        return campaign;
       },
       {
         timeout: 500000,
       },
     );
+
+    createNewSpreadSheetAsync({ title: campaignTitle, campaignId: campaign.id });
+
+    return res.status(200).json({ campaign, message: 'Campaign created successfully.' });
   } catch (error) {
     if (!res.headersSent) {
       return res.status(400).json(error?.message);
@@ -1378,7 +1313,6 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       },
     });
 
- 
     const originalFetchedCount = campaigns.length;
 
     if (campaigns?.length === 0) {
@@ -1532,7 +1466,9 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
     // For the cursor, we need to use the ORIGINAL last campaign ID from the database fetch
     // This ensures the next request starts from the correct position
     const lastCursor =
-      hasNextPage && sortedMatchedCampaigns.length > 0 ? sortedMatchedCampaigns[sortedMatchedCampaigns.length - 1]?.id : null;
+      hasNextPage && sortedMatchedCampaigns.length > 0
+        ? sortedMatchedCampaigns[sortedMatchedCampaigns.length - 1]?.id
+        : null;
 
     const data = {
       data: {
@@ -5056,7 +4992,7 @@ export const editCampaignAdmin = async (req: Request, res: Response) => {
     // This ensures they are tracked in both models for v4 campaigns
     for (const admin of adjustedAdmins) {
       const isClientUser = admin?.user?.role === 'client' || admin?.role?.name === 'Client';
-      
+
       if (isClientUser && admin?.userId) {
         try {
           // Find the client record for this user
@@ -6560,9 +6496,25 @@ export const activateClientCampaign = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Invalid data format' });
     }
 
-    const { campaignType, deliverables, campaignManager, agreementTemplateId, status, postingStartDate, postingEndDate } = data;
+    const {
+      campaignType,
+      deliverables,
+      campaignManager,
+      agreementTemplateId,
+      status,
+      postingStartDate,
+      postingEndDate,
+    } = data;
 
-    console.log('Received data:', { campaignType, deliverables, campaignManager, agreementTemplateId, status, postingStartDate, postingEndDate });
+    console.log('Received data:', {
+      campaignType,
+      deliverables,
+      campaignManager,
+      agreementTemplateId,
+      status,
+      postingStartDate,
+      postingEndDate,
+    });
 
     // Validate required fields
     if (!campaignType) {
@@ -6762,9 +6714,15 @@ export const activateClientCampaign = async (req: Request, res: Response) => {
         {
           name: 'Posting',
           for: 'creator',
-          duration: postingStartDate && postingEndDate
-            ? Math.max(1, Math.floor((new Date(postingEndDate).getTime() - new Date(postingStartDate).getTime()) / (1000 * 60 * 60 * 24)))
-            : Math.max(2, Math.floor(totalDays * 0.1)),
+          duration:
+            postingStartDate && postingEndDate
+              ? Math.max(
+                  1,
+                  Math.floor(
+                    (new Date(postingEndDate).getTime() - new Date(postingStartDate).getTime()) / (1000 * 60 * 60 * 24),
+                  ),
+                )
+              : Math.max(2, Math.floor(totalDays * 0.1)),
           startDate: postingStartDate
             ? new Date(postingStartDate)
             : new Date(
@@ -6924,7 +6882,7 @@ export const activateClientCampaign = async (req: Request, res: Response) => {
     // Create notification for client and add clients to CampaignClient + CampaignAdmin for v4 campaigns only
     // For non-v4 campaigns, we still create notifications but don't add to CampaignClient/CampaignAdmin
     const isV4Campaign = campaign.submissionVersion === 'v4';
-    
+
     if (campaign.companyId) {
       const clientUsers = await prisma.user.findMany({
         where: {
@@ -8889,7 +8847,7 @@ export const changeCampaignCredit = async (req: Request, res: Response) => {
 /**
  * Syncs campaign credits based on shortlisted creators with sent agreements.
  * This recalculates creditsUtilized based on actual data and updates creditsPending accordingly.
- * 
+ *
  * Formula:
  * - creditsUtilized = sum of ugcVideos for shortlisted creators (non-guest) whose agreements have been sent
  * - creditsPending = campaignCredits - creditsUtilized
@@ -8926,7 +8884,7 @@ export const syncCampaignCredits = async (req: Request, res: Response) => {
     // Calculate utilized credits: sum of ugcVideos for shortlisted non-guest creators with sent agreements
     const creditsUtilized = campaign.shortlisted.reduce((total, creator) => {
       const isGuest = creator.user?.creator?.isGuest === true;
-      
+
       if (!isGuest) {
         return total + (creator.ugcVideos || 0);
       }
@@ -8952,7 +8910,9 @@ export const syncCampaignCredits = async (req: Request, res: Response) => {
       },
     });
 
-    console.log(`📊 Campaign credits synced for ${campaignId}: campaignCredits=${campaignCredits}, utilized=${creditsUtilized}, pending=${creditsPending}`);
+    console.log(
+      `📊 Campaign credits synced for ${campaignId}: campaignCredits=${campaignCredits}, utilized=${creditsUtilized}, pending=${creditsPending}`,
+    );
 
     return res.status(200).json({
       message: 'Credits synced successfully',
@@ -9016,9 +8976,10 @@ export const updateAllCampaignCredits = async (req: Request, res: Response) => {
         });
 
         // Calculate total assigned credits excluding current campaign
-        const otherCampaignsCredits = subscribedCampaigns?.campaign
-          .filter((c) => c.id !== campaignId)
-          .reduce((acc, cur) => acc + (cur.campaignCredits ?? 0), 0) || 0;
+        const otherCampaignsCredits =
+          subscribedCampaigns?.campaign
+            .filter((c) => c.id !== campaignId)
+            .reduce((acc, cur) => acc + (cur.campaignCredits ?? 0), 0) || 0;
 
         const totalAfterUpdate = otherCampaignsCredits + campaignCredits;
 
@@ -9096,7 +9057,6 @@ export const updateAllCampaignCredits = async (req: Request, res: Response) => {
 export const getCampaignsForPublic = async (req: Request, res: Response) => {
   const { cursor, take = 10, search } = req.query;
   const campaignId = req.query?.campaignId as string;
-
 
   try {
     const campaigns = await prisma.campaign.findMany({

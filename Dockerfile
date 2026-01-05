@@ -13,21 +13,19 @@ RUN apk update && \
 
 WORKDIR /app
 
-COPY package.json ./
-
-COPY yarn.lock ./
+COPY package.json yarn.lock ./
 
 FROM base AS development
 
 ENV NODE_ENV=development
 
-RUN yarn install
-
 RUN mkdir -p /app/src/pdf
 
 COPY . .
 
-RUN yarn global add prisma
+RUN yarn install
+
+# RUN yarn global add prisma
 
 RUN npx prisma generate
 
