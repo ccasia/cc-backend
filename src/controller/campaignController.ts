@@ -1010,6 +1010,12 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
           logistics: {
             include: {
               creator: true,
+              reservationDetails: {
+                select: {
+                  outlet: true,
+                  creatorRemarks: true,
+                },
+              },
             },
           },
           creatorAgreement: true,
@@ -1087,7 +1093,16 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
               campaignTaskAdmin: true,
             },
           },
-          logistics: true,
+          logistics: {
+            include: {
+              reservationDetails: {
+                select: {
+                  outlet: true,
+                  creatorRemarks: true,
+                },
+              },
+            },
+          },
           creatorAgreement: true,
         },
       });
@@ -1213,7 +1228,16 @@ export const getCampaignById = async (req: Request, res: Response) => {
             campaignTaskAdmin: true,
           },
         },
-        logistics: true,
+        logistics: {
+          include: {
+            reservationDetails: {
+              select: {
+                outlet: true,
+                creatorRemarks: true,
+              },
+            },
+          },
+        },
 
         creatorAgreement: true,
       },
@@ -1247,7 +1271,16 @@ export const getAllActiveCampaign = async (_req: Request, res: Response) => {
         pitch: true,
         shortlisted: true,
         submission: true,
-        logistics: true,
+        logistics: {
+          include: {
+            reservationDetails: {
+              select: {
+                outlet: true,
+                creatorRemarks: true,
+              },
+            },
+          },
+        },
       },
     });
 
@@ -1394,7 +1427,16 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
         pitch: true,
         bookMarkCampaign: true,
         shortlisted: true,
-        logistics: true,
+        logistics: {
+          include: {
+            reservationDetails: {
+              select: {
+                outlet: true,
+                creatorRemarks: true,
+              },
+            },
+          },
+        },
         campaignAdmin: {
           include: {
             admin: {
@@ -1411,7 +1453,6 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       },
     });
 
- 
     const originalFetchedCount = campaigns.length;
 
     if (campaigns?.length === 0) {
@@ -1882,7 +1923,16 @@ export const getCampaignsByCreatorId = async (req: Request, res: Response) => {
           },
           include: {
             creatorAgreement: true,
-            logistics: true,
+            logistics: {
+              include: {
+                reservationDetails: {
+                  select: {
+                    outlet: true,
+                    creatorRemarks: true,
+                  },
+                },
+              },
+            },
             company: true,
             brand: { include: { company: { include: { subscriptions: true } } } },
             campaignBrief: true,
@@ -1920,7 +1970,16 @@ export const getCampaignForCreatorById = async (req: Request, res: Response) => 
         id: id,
       },
       include: {
-        logistics: true,
+        logistics: {
+          include: {
+            reservationDetails: {
+              select: {
+                outlet: true,
+                creatorRemarks: true,
+              },
+            },
+          },
+        },
         campaignAdmin: {
           include: {
             admin: {
@@ -2484,6 +2543,12 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
           logistics: {
             include: {
               creator: true,
+              reservationDetails: {
+                select: {
+                  outlet: true,
+                  creatorRemarks: true,
+                },
+              },
             },
           },
           creatorAgreement: true,
@@ -2659,6 +2724,12 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
         logistics: {
           include: {
             creator: true,
+            reservationDetails: {
+              select: {
+                outlet: true,
+                creatorRemarks: true,
+              },
+            },
           },
         },
         creatorAgreement: true,
@@ -2746,7 +2817,16 @@ export const getMyCampaigns = async (req: Request, res: Response) => {
         ],
       },
       include: {
-        logistics: true,
+        logistics: {
+          include: {
+            reservationDetails: {
+              select: {
+                outlet: true,
+                creatorRemarks: true,
+              },
+            },
+          },
+        },
         brand: { include: { company: { include: { subscriptions: true } } } },
         company: true,
         invoice: true,
@@ -9173,7 +9253,16 @@ export const getCampaignsForPublic = async (req: Request, res: Response) => {
         pitch: true,
         bookMarkCampaign: true,
         shortlisted: true,
-        logistics: true,
+        logistics: {
+          include: {
+            reservationDetails: {
+              select: {
+                outlet: true,
+                creatorRemarks: true,
+              },
+            },
+          },
+        },
       },
       orderBy: {
         createdAt: 'desc',
