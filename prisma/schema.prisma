@@ -229,10 +229,10 @@ model Creator {
   id                     String      @id @unique @default(cuid())
   pronounce              String?     @db.VarChar(100)
   address                String?
-  state                  String?     
+  state                  String?
   city                   String?     @db.VarChar(100)
   postcode               String?     @db.VarChar(20)
-  country                String?     
+  country                String?
   location               String?
   birthDate              DateTime?
   instagram              String?     @db.VarChar(100)
@@ -665,6 +665,7 @@ model Campaign {
   thread                        Thread?
   publicAccess                  PublicAccess[]
   products                      Product[]
+  reservationConfig             ReservationConfiguration?
 
   rawFootage   Boolean @default(false)
   photos       Boolean @default(false)
@@ -1707,14 +1708,16 @@ model CaptionHistory {
   @@index([createdAt])
 }
 
+// logistics enums
 enum LogisticType {
   PRODUCT_DELIVERY
   RESERVATION
-  STORE_VISIT
+  // STORE_VISIT
 }
 
 enum LogisticStatus {
   // initial status
+  NOT_STARTED
   PENDING_ASSIGNMENT
   SCHEDULED
 
@@ -1734,6 +1737,19 @@ enum LogisticIssueStatus {
   OPEN
   RESOLVED
 }
+
+enum ReservationMode {
+  MANUAL_CONFIRMATION
+  AUTO_SCHEDULE
+}
+
+enum SlotStatus {
+  PROPOSED
+  SELECTED
+  REJECTED
+}
+
+// logistics models
 
 model Product {
   id          String   @id @unique @default(cuid())
@@ -1796,19 +1812,28 @@ model DeliveryDetails {
 
   items DeliveryItem[]
 
-  createdAt DateTime @default(now())
-  isConfirmed Boolean @default(false)
+  createdAt   DateTime @default(now())
+  isConfirmed Boolean  @default(false)
 }
 
 model ReservationDetails {
-  id              String   @id @unique @default(cuid())
-  restaurantName  String
-  address         String?
-  reservationTime DateTime
-  numberOfGuests  Int?
+  id String @id @unique @default(cuid())
+
+  outlet         String?
+  pax            Int?
+  creatorRemarks String?
+
+  picName       String?
+  picContact    String?
+  budget        String?
+  promoCode     String?
+  clientRemarks String?
 
   logisticId String   @unique
   logistic   Logistic @relation(fields: [logisticId], references: [id], onDelete: Cascade)
+
+  slots ReservationSlot[]
+  isConfirmed Boolean  @default(false)
 }
 
 model StoreVisitDetails {
@@ -1851,4 +1876,34 @@ model DeliveryItem {
   quantity Int @default(1)
 
   @@unique([deliveryDetailsId, productId])
+}
+
+model ReservationConfiguration {
+  id String @id @unique @default(cuid())
+
+  campaignId String   @unique
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  mode       ReservationMode
+  locations  Json
+  availabilityRules Json 
+
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ReservationSlot {
+  id String @id @unique @default(cuid())
+
+  reservationDetailsId String
+  reservationDetails   ReservationDetails @relation(fields: [reservationDetailsId], references: [id], onDelete: Cascade)
+
+  startTime DateTime
+  endTime   DateTime
+
+  status SlotStatus @default(PROPOSED)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

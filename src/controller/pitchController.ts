@@ -905,6 +905,13 @@ export const withdrawCreatorFromCampaign = async (req: Request, res: Response) =
       },
     });
 
+    await prisma.logistic.deleteMany({
+      where: {
+        creatorId: pitch.userId,
+        campaignId: pitch.campaignId,
+      },
+    });
+
     // Create notification for creator
     const notification = await saveNotification({
       userId: pitch.userId,

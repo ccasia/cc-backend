@@ -1,5 +1,5 @@
 import { PrismaClient, LogisticStatus } from '@prisma/client';
-
+import { addMinutes, format, isSameDay, addDays, startOfDay, isBefore, isAfter, getDay } from 'date-fns';
 const prisma = new PrismaClient();
 
 export const fetchAllLogisticsForCampaign = async (campaignId: string) => {
@@ -37,6 +37,13 @@ export const fetchAllLogisticsForCampaign = async (campaignId: string) => {
             include: {
               product: { select: { id: true, productName: true } },
             },
+          },
+        },
+      },
+      reservationDetails: {
+        include: {
+          slots: {
+            orderBy: { startTime: 'asc' },
           },
         },
       },
@@ -78,6 +85,7 @@ export const fetchAllLogisticsForCreator = async (creatorId: string) => {
         select: {
           id: true,
           name: true,
+          reservationConfig: true,
         },
       },
       deliveryDetails: {
@@ -89,7 +97,13 @@ export const fetchAllLogisticsForCreator = async (creatorId: string) => {
           },
         },
       },
-      reservationDetails: {}, //TODO
+      reservationDetails: {
+        include: {
+          slots: {
+            orderBy: { startTime: 'asc' },
+          },
+        },
+      },
     },
     orderBy: { createdAt: 'desc' },
   });
@@ -133,6 +147,13 @@ export const fetchCampaignLogisticForCreator = async (creatorId: string, campaig
             include: {
               product: { select: { id: true, productName: true } },
             },
+          },
+        },
+      },
+      reservationDetails: {
+        include: {
+          slots: {
+            orderBy: { startTime: 'asc' },
           },
         },
       },
@@ -456,13 +477,13 @@ export const creatorDeliveryDetails = async (logisticId: string, data: CreatorDe
   });
 };
 
-export const updateDeliveryStatus = async (logisticId: string, status: 'RECEIVED' | 'COMPLETED') => {
+export const completeLogisticService = async (logisticId: string, status: 'RECEIVED' | 'COMPLETED') => {
   return await prisma.logistic.update({
     where: { id: logisticId },
     data: {
       status,
       receivedAt: new Date(),
-      completedAt: status === 'COMPLETED' ? new Date() : undefined,
+      completedAt: status === 'COMPLETED' || status === 'RECEIVED' ? new Date() : undefined,
     },
   });
 };
@@ -489,35 +510,72 @@ export const reportLogisticIssue = async (logisticId: string, reason: string, re
 
 export const updateStatusService = async (logisticId: string, status: LogisticStatus) => {
   return await prisma.$transaction(async (tx) => {
+    const currentLogistic = await tx.logistic.findUnique({
+      where: { id: logisticId },
+      include: {
+        deliveryDetails: true,
+        reservationDetails: true,
+      },
+    });
+
+    if (!currentLogistic) throw new Error('Logistic not found');
+
     const data: any = { status };
     const now = new Date();
 
-    if (status === 'SHIPPED') data.shippedAt = now;
-    if (status === 'DELIVERED') data.deliveredAt = now;
-    if (status === 'RECEIVED') data.receivededAt = now;
     if (status === 'COMPLETED') data.completedAt = now;
 
-    if (status === 'PENDING_ASSIGNMENT') {
-      const currentLogistic = await tx.logistic.findUnique({
-        where: { id: logisticId },
-        include: { deliveryDetails: true },
-      });
+    if (currentLogistic.type === 'PRODUCT_DELIVERY') {
+      if (status === 'SHIPPED') data.shippedAt = now;
+      if (status === 'DELIVERED') data.deliveredAt = now;
+      if (status === 'RECEIVED') data.receivedAt = now;
 
-      if (currentLogistic?.deliveryDetails?.id) {
-        await tx.deliveryItem.deleteMany({
-          where: {
-            deliveryDetailsId: currentLogistic.deliveryDetails.id,
+      if (status === 'PENDING_ASSIGNMENT') {
+        if (currentLogistic.deliveryDetails?.id) {
+          await tx.deliveryItem.deleteMany({
+            where: {
+              deliveryDetailsId: currentLogistic.deliveryDetails.id,
+            },
+          });
+        }
+
+        data.deliveryDetails = {
+          update: {
+            trackingLink: null,
+            expectedDeliveryDate: null,
           },
-        });
-      }
+        };
 
-      data.deliveryDetails = {
-        update: {
-          trackingLink: null,
-          expectedDeliveryDate: null,
-        },
-      };
+        data.shippedAt = null;
+        data.deliveredAt = null;
+        data.receivedAt = null;
+        data.completedAt = null;
+      }
     }
+
+    if (currentLogistic.type === 'RESERVATION') {
+      // currently there is no updates to NOT_STARTED yet
+      // only PENDING_ASSIGNMENT which is pending client/admin action
+      if (status === 'NOT_STARTED') {
+        if (currentLogistic.reservationDetails?.id) {
+          await tx.reservationSlot.deleteMany({
+            where: {
+              reservationDetailsId: currentLogistic.reservationDetails.id,
+            },
+          });
+        }
+
+        data.reservationDetails = {
+          update: {
+            isConfirmed: false,
+          },
+        };
+
+        // Clear timestamps
+        data.completedAt = null;
+      }
+    }
+
     return await prisma.logistic.update({
       where: { id: logisticId },
       data: data,
@@ -735,7 +793,6 @@ export const creatorProductInfoService = async ({
       .join(', ');
 
     if (logistic) {
-
       return await tx.logistic.update({
         where: { id: logistic.id },
         data: {
@@ -770,5 +827,483 @@ export const creatorProductInfoService = async ({
         },
       });
     }
+  });
+};
+
+// -----------------------Reservation services ----------------------------
+
+type ReservationConfigData = {
+  mode: 'MANUAL_CONFIRMATION' | 'AUTO_SCHEDULE';
+  locations: string[];
+  availabilityRules: {
+    dates: string[];
+    startTime: string;
+    endTime: string;
+    interval: number;
+  }[];
+};
+
+export const upsertReservationConfigService = async (campaignId: string, data: ReservationConfigData) => {
+  const { mode, locations, availabilityRules } = data;
+
+  return await prisma.reservationConfiguration.upsert({
+    where: {
+      campaignId: campaignId,
+    },
+    update: {
+      mode,
+      locations,
+      availabilityRules,
+    },
+    create: {
+      campaign: { connect: { id: campaignId } },
+      mode,
+      locations,
+      availabilityRules,
+    },
+  });
+};
+
+export const getReservationConfigService = async (campaignId: string) => {
+  return await prisma.reservationConfiguration.findUnique({
+    where: { campaignId },
+  });
+};
+
+export const getAvailableSlotsService = async (campaignId: string, monthDate: Date) => {
+  const config = await prisma.reservationConfiguration.findUnique({
+    where: { campaignId },
+  });
+
+  if (!config) throw new Error('Reservation configuration not found');
+
+  const rules = config.availabilityRules as any[];
+  const startOfMonth = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
+  const endOfMonth = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0);
+
+  const existingBookings = await prisma.reservationSlot.findMany({
+    where: {
+      reservationDetails: { logistic: { campaignId } },
+      status: { in: ['SELECTED', 'PROPOSED'] },
+      // startTime: { gte: startOfMonth, lte: endOfMonth },
+    },
+    include: {
+      reservationDetails: {
+        include: {
+          logistic: {
+            include: {
+              creator: {
+                select: {
+                  id: true,
+                  name: true,
+                  photoURL: true,
+                  phoneNumber: true,
+                  creator: {
+                    select: {
+                      instagramUser: {
+                        select: {
+                          username: true,
+                        },
+                      },
+                      tiktokUser: {
+                        select: {
+                          username: true,
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  const globalCreatorSlotsMap = new Map<string, { start: Date; end: Date; status: string }[]>();
+
+  for (const booking of existingBookings) {
+    const creatorId = booking.reservationDetails.logistic.creator.id;
+
+    const slotInfo = {
+      start: booking.startTime,
+      end: booking.endTime,
+      status: booking.status.toString(),
+    };
+
+    if (!globalCreatorSlotsMap.has(creatorId)) {
+      globalCreatorSlotsMap.set(creatorId, []);
+    }
+    globalCreatorSlotsMap.get(creatorId)?.push(slotInfo);
+  }
+
+  const bookingsMap = new Map<number, any[]>();
+
+  for (const booking of existingBookings) {
+    const timeKey = booking.startTime.getTime();
+
+    const creator = booking.reservationDetails.logistic.creator;
+    const handle = creator.creator?.instagramUser?.username || creator.creator?.tiktokUser?.username;
+    const hasGlobalConfirmation = globalCreatorSlotsMap.get(creator.id)?.some((s) => s.status === 'SELECTED');
+
+    const attendee = {
+      id: creator.id,
+      name: creator.name,
+      photoURL: creator.photoURL,
+      phoneNumber: creator.phoneNumber,
+      handle: handle,
+      status: booking.status,
+      hasGlobalConfirmation,
+      otherSlots:
+        globalCreatorSlotsMap
+          .get(creator.id)
+          ?.filter((slot) => slot.start.getTime() !== booking.startTime.getTime())
+          .sort((a, b) => a.start.getTime() - b.start.getTime())
+          .map((s) => ({
+            start: s.start.toISOString(),
+            end: s.end.toISOString(),
+            status: s.status,
+          })) || [],
+    };
+
+    if (bookingsMap.has(timeKey)) {
+      bookingsMap.get(timeKey)?.push(attendee);
+    } else {
+      bookingsMap.set(timeKey, [attendee]);
+    }
+  }
+
+  const rulesMap = new Map<string, any[]>();
+  for (const rule of rules) {
+    if (Array.isArray(rule.dates)) {
+      for (const dateStr of rule.dates) {
+        if (!rulesMap.has(dateStr)) {
+          rulesMap.set(dateStr, []);
+        }
+        rulesMap.get(dateStr)?.push(rule);
+      }
+    }
+  }
+  const daysInMonth = [];
+  let currentDate = startOfMonth;
+
+  while (currentDate <= endOfMonth) {
+    const dateString = format(currentDate, 'yyyy-MM-dd');
+    const displayDate = format(currentDate, 'dd-MM-yyyy');
+
+    const activeRules = rulesMap.get(dateString) || [];
+
+    if (activeRules.length === 0) {
+      daysInMonth.push({ date: displayDate, available: false, slots: [] });
+    } else {
+      let daySlots: any[] = [];
+
+      for (const rule of activeRules) {
+        const definedSlots = rule.slots || [];
+
+        for (const slotDef of definedSlots) {
+          const [startHour, startMinute] = slotDef.startTime.split(':').map(Number);
+          const [endHour, endMinute] = slotDef.endTime.split(':').map(Number);
+
+          let slotStart = new Date(currentDate);
+          slotStart.setHours(startHour, startMinute, 0, 0);
+
+          let slotEnd = new Date(currentDate);
+          slotEnd.setHours(endHour, endMinute, 0, 0);
+
+          const timeKey = slotStart.getTime();
+          const attendees = bookingsMap.get(timeKey) || [];
+
+          const isFullDay = startHour === 0 && startMinute === 0 && endHour === 23 && endMinute === 59;
+
+          daySlots.push({
+            startTime: slotStart.toISOString(),
+            endTime: slotEnd.toISOString(),
+            isTaken: !isFullDay && attendees.some((a) => a.status === 'SELECTED'),
+            attendees: attendees,
+            label: slotDef.label || (isFullDay ? 'Full day' : `${slotDef.startTime} - ${slotDef.endTime}`),
+          });
+        }
+      }
+
+      daySlots.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+
+      const uniqueSlots = daySlots.filter((v, i, a) => a.findIndex((t) => t.startTime === v.startTime) === i);
+
+      daysInMonth.push({ date: dateString, available: true, slots: uniqueSlots });
+    }
+
+    currentDate = addDays(currentDate, 1);
+  }
+
+  return daysInMonth;
+};
+
+type ReservationSelectionData = {
+  creatorId: string;
+  outlet: string;
+  phoneNumber: string;
+  remarks?: string;
+  pax: number;
+  selectedSlots: { start: string; end: string }[];
+};
+
+export const submitReservationService = async (campaignId: string, data: ReservationSelectionData) => {
+  const { creatorId, outlet, phoneNumber, remarks, pax, selectedSlots } = data;
+
+  const config = await prisma.reservationConfiguration.findUnique({
+    where: { campaignId },
+  });
+
+  return await prisma.$transaction(async (tx) => {
+    const isAuto = config?.mode === 'AUTO_SCHEDULE';
+
+    let logistic = await tx.logistic.findUnique({
+      where: { creatorId_campaignId: { creatorId, campaignId } },
+    });
+
+    if (!logistic) {
+      logistic = await tx.logistic.create({
+        data: {
+          campaignId,
+          creatorId,
+          createdById: creatorId,
+          type: 'RESERVATION',
+          status: isAuto ? 'SCHEDULED' : 'PENDING_ASSIGNMENT',
+        },
+      });
+    } else {
+      await tx.logistic.update({
+        where: { id: logistic.id },
+        data: {
+          status: isAuto ? 'SCHEDULED' : 'PENDING_ASSIGNMENT',
+        },
+      });
+    }
+
+    const reservationDetails = await tx.reservationDetails.upsert({
+      where: { logisticId: logistic.id },
+      create: {
+        logisticId: logistic.id,
+        outlet: outlet,
+        pax: pax,
+        creatorRemarks: remarks,
+      },
+      update: {
+        outlet: outlet,
+        pax: pax,
+        creatorRemarks: remarks,
+      },
+    });
+
+    await tx.user.update({
+      where: { id: creatorId },
+      data: {
+        phoneNumber: phoneNumber,
+      },
+    });
+
+    await tx.reservationSlot.deleteMany({
+      where: { reservationDetailsId: reservationDetails.id },
+    });
+
+    const createdSlots = isAuto ? [selectedSlots[0]] : selectedSlots;
+
+    await tx.reservationSlot.createMany({
+      data: createdSlots.map((slot) => ({
+        reservationDetailsId: reservationDetails.id,
+        startTime: new Date(slot.start),
+        endTime: new Date(slot.end),
+        status: isAuto ? 'SELECTED' : 'PROPOSED',
+      })),
+    });
+
+    return logistic;
+  });
+};
+
+type ConfirmReservationData = {
+  slotId: string;
+  picName?: string;
+  picContact?: string;
+  budget?: string;
+  promoCode?: string;
+  clientRemarks?: string;
+  outlet?: string;
+};
+
+export const updateReservationDetailService = async (logisticId: string, data: any) => {
+  return await prisma.logistic.update({
+    where: { id: logisticId },
+    data: {
+      reservationDetails: {
+        update: {
+          outlet: data.outlet,
+          picName: data.picName,
+          picContact: data.picContact,
+          budget: data.budget,
+          promoCode: data.promoCode,
+          clientRemarks: data.clientRemarks,
+          isConfirmed: data.isConfirmed || false,
+        },
+      },
+    },
+    include: {
+      reservationDetails: true,
+    },
+  });
+};
+
+export const scheduleReservationService = async (logisticId: string, data: ConfirmReservationData) => {
+  const { slotId, picName, picContact, budget, promoCode, clientRemarks, outlet } = data;
+
+  return await prisma.$transaction(async (tx) => {
+    const logistic = await tx.logistic.findUnique({
+      where: { id: logisticId },
+      include: { reservationDetails: { include: { slots: true } } },
+    });
+
+    if (!logistic || !logistic.reservationDetails) {
+      throw new Error('Logistic or Reservation Details not found');
+    }
+
+    const detailsId = logistic.reservationDetails.id;
+
+    const updateSlot = logistic.reservationDetails.slots.map((slot) => {
+      if (slot.id === slotId) {
+        return tx.reservationSlot.update({
+          where: { id: slot.id },
+          data: { status: 'SELECTED' },
+        });
+      } else {
+        return tx.reservationSlot.update({
+          where: { id: slot.id },
+          data: { status: 'REJECTED' },
+        });
+      }
+    });
+    await Promise.all(updateSlot);
+
+    await tx.reservationDetails.update({
+      where: { id: detailsId },
+      data: {
+        picName,
+        picContact,
+        budget,
+        promoCode,
+        clientRemarks,
+        outlet: outlet || logistic.reservationDetails.outlet,
+      },
+    });
+
+    return await tx.logistic.update({
+      where: { id: logisticId },
+      data: {
+        status: 'SCHEDULED',
+      },
+      include: {
+        reservationDetails: { include: { slots: true } },
+      },
+    });
+  });
+};
+
+export const rescheduleReservationService = async (logisticId: string) => {
+  return await prisma.$transaction(async (tx) => {
+    const logistic = await tx.logistic.findUnique({
+      where: { id: logisticId },
+      include: { reservationDetails: true },
+    });
+
+    if (!logistic || !logistic.reservationDetails) throw new Error('Reservation not found');
+
+    await tx.reservationSlot.deleteMany({
+      where: { reservationDetailsId: logistic.reservationDetails.id },
+    });
+
+    return await tx.logistic.update({
+      where: { id: logisticId },
+      data: {
+        status: 'NOT_STARTED',
+        shippedAt: null, // Clear these if they were set
+        deliveredAt: null,
+        completedAt: null,
+      },
+    });
+  });
+};
+
+export const adminScheduleService = async (logisticId: string, data: { startTime: Date; endTime: Date }) => {
+  return await prisma.$transaction(async (tx) => {
+    const logistic = await tx.logistic.findUnique({
+      where: { id: logisticId },
+      include: { reservationDetails: true },
+    });
+
+    if (!logistic) throw new Error('Logistic not found');
+
+    const slotStart = data.startTime.toISOString().substring(0, 16);
+    const slotEnd = data.endTime.toISOString().substring(0, 16);
+
+    const isFullDay =
+      (slotStart.includes('T00:00') && slotEnd.includes('T23:59')) ||
+      (slotStart.includes('T08:00') && slotEnd.includes('T07:59'));
+
+    if (!isFullDay) {
+      const existingSelectedSlots = await tx.reservationSlot.findMany({
+        where: {
+          reservationDetails: {
+            logistic: {
+              campaignId: logistic.campaignId,
+              id: { not: logisticId },
+            },
+          },
+          status: 'SELECTED',
+        },
+      });
+
+      for (const slot of existingSelectedSlots) {
+        const existingStart = slot.startTime.toISOString().substring(0, 16);
+        const existingEnd = slot.endTime.toISOString().substring(0, 16);
+
+        const isExistingFullDay =
+          (existingStart.includes('T00:00') && existingEnd.includes('T23:59')) ||
+          (existingStart.includes('T08:00') && existingEnd.includes('T07:59'));
+
+        if (!isExistingFullDay) {
+          if (slotStart < existingEnd && slotEnd > existingStart) {
+            throw new Error('This timeslot overlaps with an existing confirmed reservation.');
+          }
+        }
+      }
+    }
+
+    const details = await tx.reservationDetails.upsert({
+      where: { logisticId: logistic.id },
+      create: {
+        logisticId: logistic.id,
+      },
+      update: {},
+    });
+
+    await tx.reservationSlot.deleteMany({
+      where: { reservationDetailsId: details.id },
+    });
+
+    await tx.reservationSlot.create({
+      data: {
+        reservationDetailsId: details.id,
+        startTime: data.startTime,
+        endTime: data.endTime,
+        status: 'SELECTED',
+      },
+    });
+
+    return await tx.logistic.update({
+      where: { id: logistic.id },
+      data: { status: 'SCHEDULED' },
+      include: { reservationDetails: { include: { slots: true } } },
+    });
   });
 };
