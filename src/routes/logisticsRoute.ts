@@ -23,6 +23,15 @@ import {
   resolveLogisticIssue,
   retryLogisticDelivery,
   submitCreatorProductInfo,
+  upsertReservationConfig,
+  getReservationConfig,
+  getReservationSlots,
+  submitReservationDetails,
+  scheduleReservation,
+  rescheduleReservation,
+  markLogisticCompleted,
+  updateReservationDetails,
+  adminSchedule,
 } from '@controllers/logisticsController';
 
 const router = express.Router();
@@ -75,5 +84,39 @@ router.patch(
 );
 router.patch('/admin/:logisticId/status', isLoggedIn, isAdminOrClient, updateLogisticStatus);
 router.put('/admin/:logisticId/details', isLoggedIn, isAdminOrClient, adminUpdateLogisticDetails);
+
+// ------------------reservation routes--------------------------
+
+// creator routes
+router.get('/campaign/:campaignId/slots', isLoggedIn, getReservationSlots);
+router.post('/campaign/:campaignId/reservation', isLoggedIn, isCreator, submitReservationDetails);
+router.patch('/creator/:logisticId/complete', isLoggedIn, isCreator, markLogisticCompleted);
+
+// admin & client routes
+router.get('/campaign/:campaignId/reservation-config', isLoggedIn, getReservationConfig);
+router.post(
+  '/campaign/:campaignId/reservation-config',
+  isLoggedIn,
+  isAdminOrClient,
+  checkCampaignAccess,
+  upsertReservationConfig,
+);
+router.post('/campaign/:campaignId/:logisticId/reschedule', isLoggedIn, rescheduleReservation);
+router.patch(
+  '/campaign/:campaignId/:logisticId/reservation-detail',
+  isLoggedIn,
+  isAdminOrClient,
+  checkCampaignAccess,
+  updateReservationDetails,
+);
+
+router.patch(
+  '/campaign/:campaignId/:logisticId/schedule-reservation',
+  isLoggedIn,
+  isAdminOrClient,
+  checkCampaignAccess,
+  scheduleReservation,
+);
+router.patch('/campaign/:campaignId/:logisticId/admin-schedule', isLoggedIn, isAdminOrClient, adminSchedule);
 
 export default router;
