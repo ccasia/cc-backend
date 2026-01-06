@@ -250,7 +250,14 @@ export const createChildAccount = async (req: Request, res: Response) => {
       //   },
       // });
 
-      const baseUrl = process.env.BASE_EMAIL_URL || 'http://localhost:3000';
+      // Helper function to get correct base URL
+      const getBaseEmailUrl = () => {
+        const baseUrl = process.env.BASE_EMAIL_URL;
+        if (!baseUrl) return 'http://localhost';
+        return baseUrl;
+      };
+      
+      const baseUrl = getBaseEmailUrl();
       const invitationLink = `${baseUrl}/auth/child-account-setup/${invitationToken}`;
 
       console.log('BASE_EMAIL_URL:', process.env.BASE_EMAIL_URL);
@@ -449,7 +456,7 @@ export const resendInvitation = async (req: Request, res: Response) => {
     });
 
     // Send new invitation email
-    const baseUrl = process.env.BASE_EMAIL_URL || 'http://localhost:3000';
+    const baseUrl = process.env.BASE_EMAIL_URL || 'http://localhost';
     const invitationLink = `${baseUrl}/auth/child-account-setup/${invitationToken}`;
 
     const emailContent = {
