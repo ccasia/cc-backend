@@ -478,13 +478,22 @@ export const creatorDeliveryDetails = async (logisticId: string, data: CreatorDe
 };
 
 export const completeLogisticService = async (logisticId: string, status: 'RECEIVED' | 'COMPLETED') => {
-  return await prisma.logistic.update({
-    where: { id: logisticId },
-    data: {
-      status,
-      receivedAt: new Date(),
-      completedAt: status === 'COMPLETED' || status === 'RECEIVED' ? new Date() : undefined,
-    },
+  return await prisma.$transaction(async (tx) => {
+    await tx.reservationDetails.update({
+      where: { logisticId: logisticId },
+      data: {
+        isConfirmed: true,
+      },
+    });
+
+    return await tx.logistic.update({
+      where: { id: logisticId },
+      data: {
+        status,
+        receivedAt: new Date(),
+        completedAt: status === 'COMPLETED' || status === 'RECEIVED' ? new Date() : undefined,
+      },
+    });
   });
 };
 
@@ -1047,6 +1056,35 @@ type ReservationSelectionData = {
   remarks?: string;
   pax: number;
   selectedSlots: { start: string; end: string }[];
+};
+
+export const createReservationService = async (campaignId: string, creatorId: string) => {
+  return await prisma.$transaction(async (tx) => {
+    const logistic = await tx.logistic.upsert({
+      where: {
+        creatorId_campaignId: { creatorId, campaignId },
+      },
+      update: {},
+      create: {
+        campaignId,
+        creatorId,
+        createdById: creatorId,
+        type: 'RESERVATION',
+        status: 'NOT_STARTED',
+      },
+    });
+
+    await tx.reservationDetails.upsert({
+      where: { logisticId: logistic.id },
+      update: {},
+      create: {
+        logisticId: logistic.id,
+        isConfirmed: false,
+      },
+    });
+
+    return logistic;
+  });
 };
 
 export const submitReservationService = async (campaignId: string, data: ReservationSelectionData) => {
