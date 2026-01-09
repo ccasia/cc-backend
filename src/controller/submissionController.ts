@@ -12,6 +12,7 @@ import { logAdminChange, logChange } from '@services/campaignServices';
 import { createInvoiceService } from '../service/invoiceService';
 import { extractAndStoreSubmissionUrls } from '@services/submissionUrlService';
 import { scheduleInitialInsightFetch } from '@services/insightFetchService';
+import { createReservationService } from '@services/logisticsService';
 
 import {
   notificationAgreement,
@@ -367,6 +368,11 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
         },
       });
       console.log('[ADMIN_MANAGE_AGREEMENT] Agreement submission updated successfully');
+
+      // Create reservation logistics
+      if (campaign.logisticsType === 'RESERVATION') {
+        await createReservationService(campaignId, userId);
+      }
 
       // Update the corresponding pitch status to AGREEMENT_SUBMITTED when agreement is approved
       console.log('[ADMIN_MANAGE_AGREEMENT] Updating pitch status to AGREEMENT_SUBMITTED');
