@@ -1081,6 +1081,9 @@ model Video {
   adminId    String? // Admin who provided feedback
   admin      User?     @relation("VideoFeedback", fields: [adminId], references: [id])
   feedbackAt DateTime? // When feedback was provided
+
+  // Previous video draft URLs
+  previousDrafts String[] // Array of previous video URLs
 }
 
 model RawFootage {
