@@ -298,9 +298,15 @@ export const createClientCampaign = async (req: Request, res: Response) => {
       campaignEndDate,
       campaignCredits,
       brandTone,
+      brandAbout,
       productName,
+      websiteLink,
       campaignIndustries,
       campaignObjectives,
+      secondaryObjectives,
+      boostContent,
+      primaryKPI,
+      performanceBaseline,
       audienceGender,
       audienceAge,
       audienceLocation,
@@ -308,13 +314,17 @@ export const createClientCampaign = async (req: Request, res: Response) => {
       audienceCreatorPersona,
       audienceUserPersona,
       country,
-      countries,
-      socialMediaPlatform,
-      videoAngle,
+      secondaryAudienceGender,
+      secondaryAudienceAge,
+      secondaryAudienceLocation,
+      secondaryAudienceLanguage,
+      secondaryAudienceCreatorPersona,
+      secondaryAudienceUserPersona,
+      secondaryCountry,
+      geographicFocus,
       campaignDo,
       campaignDont,
       referencesLinks,
-      // submissionVersion,
       logisticsType,
       products,
       schedulingOption,
@@ -427,112 +437,78 @@ export const createClientCampaign = async (req: Request, res: Response) => {
       }
 
       // Construct Objectives String (including remarks)
-      let objectivesString = campaignObjectives ? campaignObjectives.join(', ') : '';
-      if (clientRemarks) {
-        objectivesString += `\n\n[Logistic Remarks]: ${clientRemarks}`;
-      }
-
-      let targetSubscriptionId: string | undefined;
-      if (requestedCredits > 0) {
-        const activeSubscriptions = await tx.subscription.findMany({
-          where: {
-            companyId: company?.id || '',
-            status: 'ACTIVE',
-          },
-          orderBy: { expiredAt: 'asc' }, 
-          include: {
-            campaign: {
-              select: {
-                creditsUtilized: true,
-              },
-            },
-          },
-        });
-
-        // Find first subscription with available credits
-        for (const sub of activeSubscriptions) {
-          const subCreditsUtilized = sub.campaign.reduce(
-            (sum, camp) => sum + (camp.creditsUtilized || 0),
-            0
-          );
-          const remainingInSub = (sub.totalCredits || 0) - subCreditsUtilized;
-          
-          if (remainingInSub >= requestedCredits) {
-            targetSubscriptionId = sub.id;
-            break;
-          }
-        }
-
-        // If no single subscription has enough credits, use the first one
-        if (!targetSubscriptionId && activeSubscriptions.length > 0) {
-          targetSubscriptionId = activeSubscriptions[0].id;
-        }
+      let objectivesString = campaignObjectives || '';
+      if (logisticRemarks) {
+        objectivesString += `\n\n[Logistic Remarks]: ${logisticRemarks}`;
       }
 
       // Create campaign with PENDING status
-      const campaignData: any = {
-        campaignId,
-        name: campaignTitle,
-        description: campaignDescription,
-        status: 'PENDING_CSM_REVIEW', 
-        origin: 'CLIENT', 
-        submissionVersion: 'v4',
-        brandTone: brandTone || '',
-        productName: productName || '',
-        products: {
-          create: productsToCreate,
-        },
-        reservationConfig: reservationConfigCreate,
-        logisticsType: logisticsType && logisticsType !== '' ? (logisticsType as LogisticType) : null,
-
-        campaignBrief: {
-          create: {
-            title: campaignTitle,
-            objectives: campaignObjectives ? campaignObjectives.join(', ') : '',
-            images: publicURL,
-            startDate: campaignStartDate ? new Date(campaignStartDate) : new Date(),
-            endDate: campaignEndDate ? new Date(campaignEndDate) : new Date(),
-            industries: campaignIndustries ? campaignIndustries.join(', ') : '',
-            campaigns_do: campaignDo || [],
-            campaigns_dont: campaignDont || [],
-            videoAngle: videoAngle || [],
-            socialMediaPlatform: socialMediaPlatform || [],
-            otherAttachments: otherAttachments,
-            referencesLinks: referencesLinks?.map((link: any) => link?.value).filter(Boolean) || [],
-          },
-        },
-        campaignRequirement: {
-          create: {
-            gender: audienceGender || [],
-            age: audienceAge || [],
-            geoLocation: audienceLocation || [],
-            language: audienceLanguage || [],
-            creator_persona: audienceCreatorPersona || [],
-            user_persona: audienceUserPersona || '',
-            country: Array.isArray(countries) && countries.length > 0 ? countries[0] : (Array.isArray(country) && country.length > 0 ? country[0] : ''),
-            ...(countries && { countries: countries || country || [] }),
-          },
-        },
-        campaignCredits: requestedCredits,
-        creditsPending: requestedCredits,
-        creditsUtilized: 0,
-        // Connect to client's company
-        company: {
-          connect: {
-            id: company?.id || '',
-          },
-        },
-      };
-
-      if (targetSubscriptionId) {
-        // campaignData.subscriptionId = targetSubscriptionId;
-        connect: {
-          id: targetSubscriptionId;
-        }
-      }
-
       const campaign = await tx.campaign.create({
-        data: campaignData,
+        data: {
+          campaignId,
+          name: campaignTitle,
+          description: campaignDescription,
+          status: 'PENDING_CSM_REVIEW',
+          origin: 'CLIENT',
+          submissionVersion: 'v4',
+          brandTone: brandTone || '',
+          brandAbout: brandAbout || '',
+          productName: productName || '',
+          websiteLink: websiteLink || '',
+          products: {
+            create: productsToCreate,
+          },
+          reservationConfig: reservationConfigCreate,
+          logisticsType: logisticsType && logisticsType !== '' ? (logisticsType as LogisticType) : null,
+
+          campaignBrief: {
+            create: {
+              title: campaignTitle,
+              objectives: campaignObjectives || '',
+              secondaryObjectives: Array.isArray(secondaryObjectives) ? secondaryObjectives : [],
+              boostContent: boostContent || '',
+              primaryKPI: primaryKPI || '',
+              performanceBaseline: performanceBaseline || '',
+              images: publicURL,
+              startDate: campaignStartDate ? new Date(campaignStartDate) : new Date(),
+              endDate: campaignEndDate ? new Date(campaignEndDate) : new Date(),
+              industries: campaignIndustries ? campaignIndustries.join(', ') : '',
+              campaigns_do: campaignDo || [],
+              campaigns_dont: campaignDont || [],
+              otherAttachments: otherAttachments,
+              referencesLinks: referencesLinks?.map((link: any) => link?.value).filter(Boolean) || [],
+            },
+          },
+          campaignRequirement: {
+            create: {
+              // Primary Audience
+              gender: audienceGender || [],
+              age: audienceAge || [],
+              geoLocation: audienceLocation || [],
+              language: audienceLanguage || [],
+              creator_persona: audienceCreatorPersona || [],
+              user_persona: audienceUserPersona || '',
+              country: country || '',
+              // Secondary Audience
+              secondary_gender: secondaryAudienceGender || [],
+              secondary_age: secondaryAudienceAge || [],
+              secondary_geoLocation: secondaryAudienceLocation || [],
+              secondary_language: secondaryAudienceLanguage || [],
+              secondary_creator_persona: secondaryAudienceCreatorPersona || [],
+              secondary_user_persona: secondaryAudienceUserPersona || '',
+              secondary_country: secondaryCountry || '',
+              geographic_focus: geographicFocus || '',
+            },
+          },
+          campaignCredits: requestedCredits,
+          creditsPending: requestedCredits,
+          creditsUtilized: 0,
+          company: {
+            connect: {
+              id: company?.id || '',
+            },
+          },
+        },
         include: {
           campaignBrief: true,
           campaignRequirement: true,
