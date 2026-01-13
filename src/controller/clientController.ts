@@ -298,21 +298,33 @@ export const createClientCampaign = async (req: Request, res: Response) => {
       campaignEndDate,
       campaignCredits,
       brandTone,
+      brandAbout,
       productName,
+      websiteLink,
       campaignIndustries,
       campaignObjectives,
+      secondaryObjectives,
+      boostContent,
+      primaryKPI,
+      performanceBaseline,
       audienceGender,
       audienceAge,
       audienceLocation,
       audienceLanguage,
       audienceCreatorPersona,
       audienceUserPersona,
-      socialMediaPlatform,
-      videoAngle,
+      country,
+      secondaryAudienceGender,
+      secondaryAudienceAge,
+      secondaryAudienceLocation,
+      secondaryAudienceLanguage,
+      secondaryAudienceCreatorPersona,
+      secondaryAudienceUserPersona,
+      secondaryCountry,
+      geographicFocus,
       campaignDo,
       campaignDont,
       referencesLinks,
-      // submissionVersion,
       logisticsType,
       products,
       schedulingOption,
@@ -420,7 +432,7 @@ export const createClientCampaign = async (req: Request, res: Response) => {
       }
 
       // Construct Objectives String (including remarks)
-      let objectivesString = campaignObjectives ? campaignObjectives.join(', ') : '';
+      let objectivesString = campaignObjectives || '';
       if (logisticRemarks) {
         objectivesString += `\n\n[Logistic Remarks]: ${logisticRemarks}`;
       }
@@ -431,48 +443,61 @@ export const createClientCampaign = async (req: Request, res: Response) => {
           campaignId,
           name: campaignTitle,
           description: campaignDescription,
-          status: 'PENDING_CSM_REVIEW', // Set to PENDING_CSM_REVIEW so it shows up in the Pending tab for admins
-          origin: 'CLIENT', // Mark as client-created campaign for v3 flow
-          submissionVersion: 'v4', // Set submission version to determine flow type
+          status: 'PENDING_CSM_REVIEW',
+          origin: 'CLIENT',
+          submissionVersion: 'v4',
           brandTone: brandTone || '',
+          brandAbout: brandAbout || '',
           productName: productName || '',
+          websiteLink: websiteLink || '',
           products: {
             create: productsToCreate,
           },
           reservationConfig: reservationConfigCreate,
           logisticsType: logisticsType && logisticsType !== '' ? (logisticsType as LogisticType) : null,
 
-          // Skip adminManager and other fields that will be set by CSM later
           campaignBrief: {
             create: {
               title: campaignTitle,
-              objectives: campaignObjectives ? campaignObjectives.join(', ') : '',
+              objectives: campaignObjectives || '',
+              secondaryObjectives: Array.isArray(secondaryObjectives) ? secondaryObjectives : [],
+              boostContent: boostContent || '',
+              primaryKPI: primaryKPI || '',
+              performanceBaseline: performanceBaseline || '',
               images: publicURL,
               startDate: campaignStartDate ? new Date(campaignStartDate) : new Date(),
               endDate: campaignEndDate ? new Date(campaignEndDate) : new Date(),
               industries: campaignIndustries ? campaignIndustries.join(', ') : '',
               campaigns_do: campaignDo || [],
               campaigns_dont: campaignDont || [],
-              videoAngle: videoAngle || [],
-              socialMediaPlatform: socialMediaPlatform || [],
               otherAttachments: otherAttachments,
               referencesLinks: referencesLinks?.map((link: any) => link?.value).filter(Boolean) || [],
             },
           },
           campaignRequirement: {
             create: {
+              // Primary Audience
               gender: audienceGender || [],
               age: audienceAge || [],
               geoLocation: audienceLocation || [],
               language: audienceLanguage || [],
               creator_persona: audienceCreatorPersona || [],
               user_persona: audienceUserPersona || '',
+              country: country || '',
+              // Secondary Audience
+              secondary_gender: secondaryAudienceGender || [],
+              secondary_age: secondaryAudienceAge || [],
+              secondary_geoLocation: secondaryAudienceLocation || [],
+              secondary_language: secondaryAudienceLanguage || [],
+              secondary_creator_persona: secondaryAudienceCreatorPersona || [],
+              secondary_user_persona: secondaryAudienceUserPersona || '',
+              secondary_country: secondaryCountry || '',
+              geographic_focus: geographicFocus || '',
             },
           },
           campaignCredits: requestedCredits,
           creditsPending: requestedCredits,
           creditsUtilized: 0,
-          // Connect to client's company
           company: {
             connect: {
               id: company?.id || '',
