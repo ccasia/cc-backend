@@ -143,7 +143,7 @@ interface Campaign {
   crossPosting: boolean;
   ads: boolean;
   campaignCredits: number;
-  country: string;
+  country: string[];
   logisticsType?: string;
   products?: { name: string }[];
   logisticRemarks?: string;
@@ -338,7 +338,7 @@ export const createCampaign = async (req: Request, res: Response) => {
                 language: audienceLanguage,
                 creator_persona: audienceCreatorPersona,
                 user_persona: audienceUserPersona,
-                country: country,
+                country: country, // ["Malaysia", "Singapore"]
               },
             },
             campaignCredits,
@@ -821,6 +821,8 @@ export const exportCreatorsCampaignSheet = async (_req: Request, res: Response) 
 // Campaign Info for Admin
 export const getAllCampaigns = async (req: Request, res: Response) => {
   const id = req.session.userid;
+
+  console.log('TEST');
 
   try {
     let campaigns;
@@ -1345,7 +1347,9 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
     if (process.env.NODE_ENV !== 'development') {
       campaigns = campaigns.filter((campaign) => {
         if (!campaign.campaignRequirement?.country) return campaign;
-        return campaign.campaignRequirement.country.toLocaleLowerCase() === country?.toLowerCase();
+
+        return campaign.campaignRequirement.country.some((a) => a.toLowerCase() === country?.toLowerCase());
+        // return campaign.campaignRequirement.country.toLocaleLowerCase() === country?.toLowerCase();
       });
     }
 
@@ -2133,6 +2137,7 @@ export const getPitchById = async (req: Request, res: Response) => {
 export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: Response) => {
   const { userId } = req.params;
   // const { status, limit = 9, cursor } = req.query;
+
   const { cursor, limit = 10, search, status } = req.query;
   console.log('getAllCampaignsByAdminId called with:', { userId, status, search, limit, cursor });
 

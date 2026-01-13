@@ -229,10 +229,10 @@ model Creator {
   id                     String      @id @unique @default(cuid())
   pronounce              String?     @db.VarChar(100)
   address                String?
-  state                  String?     
+  state                  String?
   city                   String?     @db.VarChar(100)
   postcode               String?     @db.VarChar(20)
-  country                String?     
+  country                String?
   location               String?
   birthDate              DateTime?
   instagram              String?     @db.VarChar(100)
@@ -740,7 +740,7 @@ model CampaignRequirement {
   geoLocation     String[]
   language        String[]
   creator_persona String[]
-  country         String?
+  country         String[]
   user_persona    String
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -749,7 +749,7 @@ model CampaignRequirement {
 }
 
 model CampaignBrief {
-  id                  String   @id @unique @default(cuid())
+  id                  String    @id @unique @default(cuid())
   title               String
   objectives          String?
   images              Json?
@@ -765,12 +765,12 @@ model CampaignBrief {
   videoAngle          String[]
   campaigns_do        Json?
   campaigns_dont      Json?
-  updatedAt           DateTime @updatedAt
-  createdAt           DateTime @default(now())
-  campaignId          String   @unique
+  updatedAt           DateTime  @updatedAt
+  createdAt           DateTime  @default(now())
+  campaignId          String    @unique
   otherAttachments    String[]
   referencesLinks     String[]
-  campaign            Campaign @relation(fields: [campaignId], references: [id])
+  campaign            Campaign  @relation(fields: [campaignId], references: [id])
 }
 
 model Permission {
@@ -1746,8 +1746,8 @@ model DeliveryDetails {
 
   items DeliveryItem[]
 
-  createdAt DateTime @default(now())
-  isConfirmed Boolean @default(false)
+  createdAt   DateTime @default(now())
+  isConfirmed Boolean  @default(false)
 }
 
 model ReservationDetails {
