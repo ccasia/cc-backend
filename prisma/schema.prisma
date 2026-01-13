@@ -685,8 +685,9 @@ model Campaign {
   submissionVersion String? @default("v3") // "v2", "v3", "v4"
 
   // Trends analysis
-  submissionPostingUrls SubmissionPostingUrl[]
-  insightSnapshots      InsightSnapshot[]
+  submissionPostingUrls  SubmissionPostingUrl[]
+  insightSnapshots       InsightSnapshot[]
+  manualCreatorEntries   ManualCreatorEntry[]
 }
 
 model BookMarkCampaign {
@@ -1060,6 +1061,29 @@ model InsightSnapshot {
   @@unique([campaignId, platform, snapshotDate])
   @@index([campaignId, snapshotDate])
   @@index([campaignId, snapshotType])
+}
+
+model ManualCreatorEntry {
+  id              String   @id @unique @default(cuid())
+  campaignId      String
+  campaign        Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  creatorName     String
+  creatorUsername String
+  platform        String   // "Instagram" | "TikTok"
+  postUrl         String?
+
+  views           Int      @default(0)
+  likes           Int      @default(0)
+  shares          Int      @default(0)
+  saved           Int?     // Only for Instagram
+  engagementRate  Float    @default(0)
+
+  createdBy       String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([campaignId])
 }
 
 model Video {
