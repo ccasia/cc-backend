@@ -633,7 +633,9 @@ model Campaign {
 
   companyId           String?
   brandTone           String?
+  brandAbout          String?
   productName         String?
+  websiteLink         String?
   eventId             String?
   agreementTemplateId String?
   spreadSheetURL      String?
@@ -741,6 +743,7 @@ model CampaignClient {
 
 model CampaignRequirement {
   id              String   @id @unique @default(cuid())
+  // Primary Audience
   gender          String[]
   age             String[]
   geoLocation     String[]
@@ -748,6 +751,15 @@ model CampaignRequirement {
   creator_persona String[]
   country         String?
   user_persona    String
+  // Secondary Audience
+  secondary_gender          String[]
+  secondary_age             String[]
+  secondary_geoLocation     String[]
+  secondary_language        String[]
+  secondary_creator_persona String[]
+  secondary_country         String?
+  secondary_user_persona    String?
+  geographic_focus          String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   campaignId      String   @unique
@@ -755,28 +767,32 @@ model CampaignRequirement {
 }
 
 model CampaignBrief {
-  id                  String   @id @unique @default(cuid())
-  title               String
-  objectives          String?
-  images              Json?
-  agreementFrom       String?
-  startDate           DateTime
-  endDate             DateTime
-  postingStartDate    DateTime?
-  postingEndDate      DateTime?
-  interests           Json?
-  industries          String?
-  success             String?
-  socialMediaPlatform String[]
-  videoAngle          String[]
-  campaigns_do        Json?
-  campaigns_dont      Json?
-  updatedAt           DateTime @updatedAt
-  createdAt           DateTime @default(now())
-  campaignId          String   @unique
-  otherAttachments    String[]
-  referencesLinks     String[]
-  campaign            Campaign @relation(fields: [campaignId], references: [id])
+  id                   String    @id @unique @default(cuid())
+  title                String
+  objectives           String?
+  secondaryObjectives  String[]
+  boostContent         String?
+  primaryKPI           String?
+  performanceBaseline  String?
+  images               Json?
+  agreementFrom        String?
+  startDate            DateTime
+  endDate              DateTime
+  postingStartDate     DateTime?
+  postingEndDate       DateTime?
+  interests            Json?
+  industries           String?
+  success              String?
+  socialMediaPlatform  String[]
+  videoAngle           String[]
+  campaigns_do         Json?
+  campaigns_dont       Json?
+  updatedAt            DateTime  @updatedAt
+  createdAt            DateTime  @default(now())
+  campaignId           String    @unique
+  otherAttachments     String[]
+  referencesLinks      String[]
+  campaign             Campaign  @relation(fields: [campaignId], references: [id])
 }
 
 model Permission {
