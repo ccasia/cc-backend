@@ -147,7 +147,7 @@ interface Campaign {
   country: string;
   logisticsType?: string;
   products?: { name: string }[];
-  logisticRemarks?: string;
+  clientRemarks?: string;
   schedulingOption?: string;
   locations?: { name: string }[];
   availabilityRules?: {
@@ -246,7 +246,7 @@ export const createCampaign = async (req: Request, res: Response) => {
     country,
     logisticsType,
     products,
-    logisticRemarks,
+    clientRemarks,
     schedulingOption,
     locations,
     availabilityRules,
@@ -383,7 +383,7 @@ export const createCampaign = async (req: Request, res: Response) => {
               mode: mode,
               locations: locationNames as any,
               availabilityRules: (availabilityRules || []) as any,
-              clientRemarks: logisticRemarks || null,
+              clientRemarks: clientRemarks || null,
             },
           };
         }
@@ -429,8 +429,8 @@ export const createCampaign = async (req: Request, res: Response) => {
                 campaigns_dont: campaignDont,
                 videoAngle: videoAngle,
                 socialMediaPlatform: socialMediaPlatform,
-                objectives: logisticRemarks
-                  ? `${campaignObjectives}\n\n[Logistic Remarks]: ${logisticRemarks}`
+                objectives: clientRemarks
+                  ? `${campaignObjectives}\n\n[Logistic Remarks]: ${clientRemarks}`
                   : campaignObjectives,
               },
             },
