@@ -375,7 +375,7 @@ export const createCampaign = async (req: Request, res: Response) => {
           const mode: ReservationMode = schedulingOption === 'auto' ? 'AUTO_SCHEDULE' : 'MANUAL_CONFIRMATION';
 
           const locationNames = Array.isArray(locations)
-            ? locations.map((location: any) => location.name).filter(Boolean)
+            ? locations.filter((loc: any) => loc.name && loc.name.trim() !== '')
             : [];
 
           reservationConfigCreate = {
@@ -383,6 +383,7 @@ export const createCampaign = async (req: Request, res: Response) => {
               mode: mode,
               locations: locationNames as any,
               availabilityRules: (availabilityRules || []) as any,
+              clientRemarks: logisticRemarks || null,
             },
           };
         }

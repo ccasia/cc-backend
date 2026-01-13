@@ -843,17 +843,24 @@ export const creatorProductInfoService = async ({
 
 type ReservationConfigData = {
   mode: 'MANUAL_CONFIRMATION' | 'AUTO_SCHEDULE';
-  locations: string[];
+  locations: {
+    name: string;
+    pic: string;
+    contactNumber: string;
+  }[];
   availabilityRules: {
     dates: string[];
     startTime: string;
     endTime: string;
     interval: number;
+    slots: { startTime: string; endTime: string; label: string }[];
+    allDay: boolean;
   }[];
+  clientRemarks?: string;
 };
 
 export const upsertReservationConfigService = async (campaignId: string, data: ReservationConfigData) => {
-  const { mode, locations, availabilityRules } = data;
+  const { mode, locations, availabilityRules, clientRemarks } = data;
 
   return await prisma.reservationConfiguration.upsert({
     where: {
@@ -861,14 +868,16 @@ export const upsertReservationConfigService = async (campaignId: string, data: R
     },
     update: {
       mode,
-      locations,
+      locations: locations as any,
       availabilityRules,
+      clientRemarks,
     },
     create: {
       campaign: { connect: { id: campaignId } },
       mode,
-      locations,
+      locations: locations as any,
       availabilityRules,
+      clientRemarks,
     },
   });
 };
