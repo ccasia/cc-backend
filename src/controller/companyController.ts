@@ -588,8 +588,18 @@ export const activateClient = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Company not found' });
     }
 
-    if (!company.pic[0].email) {
-      return res.status(400).json({ message: 'PIC email not found' });
+    // Validate PIC exists
+    if (!company.pic || company.pic.length === 0) {
+      return res.status(400).json({ 
+        message: 'PIC information is required. Please add a Person In Charge with an email before activating the client account.' 
+      });
+    }
+
+    // Validate PIC has email
+    if (!company.pic[0]?.email) {
+      return res.status(400).json({ 
+        message: 'PIC email is required. Please update the Person In Charge with a valid email before activating the client account.' 
+      });
     }
 
     // Check if client user already exists
