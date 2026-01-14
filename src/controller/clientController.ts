@@ -330,8 +330,16 @@ export const createClientCampaign = async (req: Request, res: Response) => {
       schedulingOption,
       locations,
       availabilityRules,
-      clientRemarks,
-      allowMultipleBookings,
+      logisticRemarks,
+      // Additional Details 1 fields
+      socialMediaPlatform,
+      contentFormat,
+      postingStartDate,
+      postingEndDate,
+      mainMessage,
+      keyPoints,
+      toneAndStyle,
+      referenceContent,
     } = campaignData;
 
     // Validate required fields
@@ -406,6 +414,39 @@ export const createClientCampaign = async (req: Request, res: Response) => {
       }
     }
 
+    // Process brand guidelines PDF upload
+    let brandGuidelinesUrl: string | null = null;
+    if (req.files && (req.files as any).brandGuidelines) {
+      const brandGuidelinesFile = (req.files as any).brandGuidelines;
+      brandGuidelinesUrl = await uploadAttachments({
+        tempFilePath: brandGuidelinesFile.tempFilePath,
+        fileName: brandGuidelinesFile.name,
+        folderName: 'brandGuidelines',
+      });
+    }
+
+    // Process product image 1 upload
+    let productImage1Url: string | null = null;
+    if (req.files && (req.files as any).productImage1) {
+      const productImage1Files = Array.isArray((req.files as any).productImage1)
+        ? (req.files as any).productImage1
+        : [(req.files as any).productImage1];
+      if (productImage1Files.length > 0) {
+        productImage1Url = await uploadCompanyLogo(productImage1Files[0].tempFilePath, productImage1Files[0].name);
+      }
+    }
+
+    // Process product image 2 upload
+    let productImage2Url: string | null = null;
+    if (req.files && (req.files as any).productImage2) {
+      const productImage2Files = Array.isArray((req.files as any).productImage2)
+        ? (req.files as any).productImage2
+        : [(req.files as any).productImage2];
+      if (productImage2Files.length > 0) {
+        productImage2Url = await uploadCompanyLogo(productImage2Files[0].tempFilePath, productImage2Files[0].name);
+      }
+    }
+
     const newCampaign = await prisma.$transaction(async (tx) => {
       // --- LOGISTICS: Process Products ---
       let productsToCreate: any[] = [];
@@ -472,7 +513,10 @@ export const createClientCampaign = async (req: Request, res: Response) => {
               images: publicURL,
               startDate: campaignStartDate ? new Date(campaignStartDate) : new Date(),
               endDate: campaignEndDate ? new Date(campaignEndDate) : new Date(),
+              postingStartDate: postingStartDate ? new Date(postingStartDate) : null,
+              postingEndDate: postingEndDate ? new Date(postingEndDate) : null,
               industries: campaignIndustries ? campaignIndustries.join(', ') : '',
+              socialMediaPlatform: Array.isArray(socialMediaPlatform) ? socialMediaPlatform : [],
               campaigns_do: campaignDo || [],
               campaigns_dont: campaignDont || [],
               otherAttachments: otherAttachments,
@@ -517,33 +561,73 @@ export const createClientCampaign = async (req: Request, res: Response) => {
         },
       });
 
-      // if (requestedCredits > 0) {
-      //   // Deduct credits from subscription
-      //   const activeSubscriptions = await tx.subscription.findMany({
-      //     where: {
-      //       companyId: company?.id || '',
-      //       status: 'ACTIVE',
-      //     },
-      //     orderBy: { expiredAt: 'asc' },
-      //   });
-      //
-      //   let creditsToDeduct = requestedCredits;
-      //
-      //   for (const sub of activeSubscriptions) {
-      //     if (creditsToDeduct <= 0) break;
-      //
-      //     const remainingInSub = (sub.totalCredits || 0) - sub.creditsUsed;
-      //     const deductionAmount = Math.min(creditsToDeduct, remainingInSub);
-      //
-      //     if (deductionAmount > 0) {
-      //       await tx.subscription.update({
-      //         where: { id: sub.id },
-      //         data: { creditsUsed: { increment: deductionAmount } },
-      //       });
-      //       creditsToDeduct -= deductionAmount;
-      //     }
-      //   }
-      // }
+      // Create CampaignAdditionalDetails if any additional detail fields are provided
+      const hasAdditionalDetails =
+        (contentFormat && contentFormat.length > 0) ||
+        mainMessage ||
+        keyPoints ||
+        toneAndStyle ||
+        brandGuidelinesUrl ||
+        referenceContent ||
+        productImage1Url ||
+        productImage2Url;
+
+      if (hasAdditionalDetails) {
+        await tx.campaignAdditionalDetails.create({
+          data: {
+            campaignId: campaign.id,
+            contentFormat: Array.isArray(contentFormat) ? contentFormat : [],
+            mainMessage: mainMessage || null,
+            keyPoints: keyPoints || null,
+            toneAndStyle: toneAndStyle || null,
+            brandGuidelinesUrl: brandGuidelinesUrl,
+            referenceContent: referenceContent || null,
+            productImage1Url: productImage1Url,
+            productImage2Url: productImage2Url,
+          },
+        });
+      }
+
+      // FIFO credit deduction logic
+      if (requestedCredits > 0) {
+        // Deduct credits from subscription
+        const activeSubscriptions = await tx.subscription.findMany({
+          where: {
+            companyId: company?.id || '',
+            status: 'ACTIVE',
+          },
+          orderBy: { expiredAt: 'asc' },
+        });
+
+        // if (activeSubscription && requestedCredits > 0) {
+        //   await prisma.subscription.update({
+        //     where: {
+        //       id: activeSubscription.id,
+        //     },
+        //     data: {
+        //       creditsUsed: {
+        //         increment: requestedCredits,
+        //       },
+        //     },
+        //   });
+        // }
+        let creditsToDeduct = requestedCredits;
+
+        for (const sub of activeSubscriptions) {
+          if (creditsToDeduct <= 0) break;
+
+          const remainingInSub = (sub.totalCredits || 0) - sub.creditsUsed;
+          const deductionAmount = Math.min(creditsToDeduct, remainingInSub);
+
+          if (deductionAmount > 0) {
+            await tx.subscription.update({
+              where: { id: sub.id },
+              data: { creditsUsed: { increment: deductionAmount } },
+            });
+            creditsToDeduct -= deductionAmount;
+          }
+        }
+      }
 
       // Add the client to campaignAdmin so they can see it in their dashboard
       await tx.campaignAdmin.create({
