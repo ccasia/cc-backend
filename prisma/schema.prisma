@@ -740,7 +740,8 @@ model CampaignRequirement {
   geoLocation     String[]
   language        String[]
   creator_persona String[]
-  country         String[]
+  country         String?
+  countries       String[]
   user_persona    String
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt

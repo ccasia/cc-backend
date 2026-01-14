@@ -338,7 +338,7 @@ export const createCampaign = async (req: Request, res: Response) => {
                 language: audienceLanguage,
                 creator_persona: audienceCreatorPersona,
                 user_persona: audienceUserPersona,
-                country: country, // ["Malaysia", "Singapore"]
+                countries: country, // ["Malaysia", "Singapore"]
               },
             },
             campaignCredits,
@@ -1348,19 +1348,10 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       campaigns = campaigns.filter((campaign) => {
         if (!campaign.campaignRequirement?.country) return campaign;
 
-        return campaign.campaignRequirement.country.some((a) => a.toLowerCase() === country?.toLowerCase());
+        return campaign.campaignRequirement.countries.some((a) => a.toLowerCase() === country?.toLowerCase());
         // return campaign.campaignRequirement.country.toLocaleLowerCase() === country?.toLowerCase();
       });
     }
-
-    // Original filtering logic (DISABLED):
-    // campaigns = campaigns.filter((campaign) => {
-    //   if (!campaign.campaignRequirement?.country) return true;
-    //   if (!country) return true;
-    //   return campaign.campaignRequirement.country.toLowerCase().trim() === country.toLowerCase().trim();
-    // });
-
-    // campaigns = campaigns.filter((campaign) => campaign.campaignBrief.)
 
     const calculateInterestMatchingPercentage = (creatorInterests: Interest[], creatorPerona: []) => {
       const totalInterests = creatorPerona?.length || 0;
