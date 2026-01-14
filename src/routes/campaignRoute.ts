@@ -72,6 +72,12 @@ import {
   cleanupOrphanedGuestUsers,
   getGuestCreatorsForCampaign,
 } from '@controllers/swapCreatorController';
+import {
+  getEngagementHeatmapController,
+  getTopCreatorsTrendController,
+  getTrendsSummaryController,
+  refreshCampaignInsightsController,
+} from '@controllers/trendController';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 import { canActivateCampaign } from '@middlewares/adminOrClient';
 
@@ -230,5 +236,11 @@ router.delete('/unsaveCampaign/:id', isLoggedIn, unSaveCampaign);
 // Client campaign activation by CSM
 router.post('/activateClientCampaign/:campaignId', canActivateCampaign, activateClientCampaign);
 router.post('/initialActivateCampaign/:campaignId', canActivateCampaign, initialActivateCampaign);
+
+// Campaign Trends Analytics endpoints
+router.get('/:campaignId/trends/engagement-heatmap', isLoggedIn, getEngagementHeatmapController);
+router.get('/:campaignId/trends/top-creators', getTopCreatorsTrendController);
+router.get('/:campaignId/trends/summary', isLoggedIn, getTrendsSummaryController);
+router.post('/:campaignId/trends/refresh', isLoggedIn, isSuperAdmin, refreshCampaignInsightsController);
 
 export default router;

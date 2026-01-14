@@ -132,9 +132,9 @@ function extractTikTokVideoId(url: string): string | null {
         return photoId;
       }
 
-      // Handle short URLs like vm.tiktok.com
-      if (urlObj.hostname.includes('vm.tiktok.com')) {
-        const shortCode = urlObj.pathname.substring(1); // Remove leading slash
+      // Handle short URLs like vm.tiktok.com and vt.tiktok.com
+      if (urlObj.hostname.includes('vm.tiktok.com') || urlObj.hostname.includes('vt.tiktok.com')) {
+        const shortCode = urlObj.pathname.substring(1).split('?')[0].split('/')[0]; // Remove leading slash and trailing params
         return shortCode;
       }
 
@@ -286,6 +286,34 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
           },
         });
       }
+    }
+
+    // Emit socket event for analytics refresh
+    const io = req.app.get('io');
+    if (io) {
+      // Find campaigns where this user has submissions
+      const userSubmissions = await prisma.submission.findMany({
+        where: {
+          userId: req.session.userid,
+          status: 'POSTED',
+          content: { not: null },
+        },
+        select: {
+          campaignId: true,
+        },
+        distinct: ['campaignId'],
+      });
+
+      // Emit analytics refresh event to each campaign room
+      userSubmissions.forEach(({ campaignId }) => {
+        io.to(campaignId).emit('analytics:refresh', {
+          userId: req.session.userid,
+          platform: 'TikTok',
+          reason: 'mediakit_connected',
+          timestamp: new Date().toISOString(),
+        });
+        console.log(`📡 Emitted analytics:refresh for campaign ${campaignId} (TikTok connected)`);
+      });
     }
 
     res.redirect(process.env.REDIRECT_CLIENT as string);
@@ -794,6 +822,31 @@ export const handleInstagramCallback = async (req: Request, res: Response) => {
         },
       });
     });
+
+    const io = req.app.get('io');
+    if (io) {
+      const userSubmissions = await prisma.submission.findMany({
+        where: {
+          userId: userId,
+          status: 'POSTED',
+          content: { not: null },
+        },
+        select: {
+          campaignId: true,
+        },
+        distinct: ['campaignId'],
+      });
+
+      userSubmissions.forEach(({ campaignId }) => {
+        io.to(campaignId).emit('analytics:refresh', {
+          userId,
+          platform: 'Instagram',
+          reason: 'mediakit_connected',
+          timestamp: new Date().toISOString(),
+        });
+        console.log(`📡 Emitted analytics:refresh for campaign ${campaignId} (Instagram connected)`);
+      });
+    }
 
     return res.status(200).redirect(process.env.REDIRECT_CLIENT as string);
   } catch (error) {
@@ -1405,7 +1458,7 @@ async function ensureValidInstagramToken(userId: string): Promise<string> {
       console.log('Instagram token refreshed successfully');
     } catch (refreshError) {
       console.error('Failed to refresh Instagram token:', refreshError);
-      throw new Error('Instagram token expired and refresh failed. Please reconnect your Instagram account.');
+      throw new Error('Instagram token expired and refresh failed. Creator needs to reconnect their Instagram account.');
     }
   }
 
@@ -1847,3 +1900,4 @@ export const getTikTokVideoInsight = async (req: Request, res: Response) => {
     });
   }
 };
+

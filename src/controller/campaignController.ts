@@ -22,6 +22,7 @@ import {
   TiktokUser,
   InstagramUser,
   LogisticType,
+  ReservationMode,
 } from '@prisma/client';
 
 import amqplib from 'amqplib';
@@ -143,10 +144,19 @@ interface Campaign {
   crossPosting: boolean;
   ads: boolean;
   campaignCredits: number;
-  country: string;
+  country: string[];
+  countries?: string[];
   logisticsType?: string;
   products?: { name: string }[];
   logisticRemarks?: string;
+  schedulingOption?: string;
+  locations?: { name: string }[];
+  availabilityRules?: {
+    dates: string[];
+    startTime: string;
+    endTime: string;
+    interval: number;
+  }[];
 }
 
 interface RequestQuery {
@@ -200,9 +210,13 @@ export const createCampaign = async (req: Request, res: Response) => {
     ads,
     campaignCredits,
     country,
+    countries,
     logisticsType,
     products,
     logisticRemarks,
+    schedulingOption,
+    locations,
+    availabilityRules,
   }: Campaign = JSON.parse(req.body.data);
 
   // Also read optional fields not in the Campaign interface
@@ -280,11 +294,27 @@ export const createCampaign = async (req: Request, res: Response) => {
         const normalizedPostingEndDate = postingEndDate ? dayjs(postingEndDate).toDate() : normalizedStartDate;
 
         let productsToCreate: any[] = [];
-
         if (logisticsType === 'PRODUCT_DELIVERY' && Array.isArray(products)) {
           productsToCreate = products
             .filter((product: any) => product.name && product.name.trim() !== '')
             .map((product: any) => ({ productName: product.name }));
+        }
+
+        let reservationConfigCreate = undefined;
+        if (logisticsType === 'RESERVATION') {
+          const mode: ReservationMode = schedulingOption === 'auto' ? 'AUTO_SCHEDULE' : 'MANUAL_CONFIRMATION';
+
+          const locationNames = Array.isArray(locations)
+            ? locations.map((location: any) => location.name).filter(Boolean)
+            : [];
+
+          reservationConfigCreate = {
+            create: {
+              mode: mode,
+              locations: locationNames as any,
+              availabilityRules: (availabilityRules || []) as any,
+            },
+          };
         }
 
         const campaign = await tx.campaign.create({
@@ -310,6 +340,7 @@ export const createCampaign = async (req: Request, res: Response) => {
             products: {
               create: productsToCreate,
             },
+            reservationConfig: reservationConfigCreate,
             campaignBrief: {
               create: {
                 title: campaignTitle,
@@ -338,7 +369,8 @@ export const createCampaign = async (req: Request, res: Response) => {
                 language: audienceLanguage,
                 creator_persona: audienceCreatorPersona,
                 user_persona: audienceUserPersona,
-                country: country,
+                country: Array.isArray(countries) && countries.length > 0 ? countries[0] : (Array.isArray(country) && country.length > 0 ? country[0] : ''), // Legacy single country (first item from countries or country)
+                countries: countries || country || [], // New multiple countries field
               },
             },
             campaignCredits,
@@ -353,6 +385,7 @@ export const createCampaign = async (req: Request, res: Response) => {
           include: {
             campaignBrief: true,
             products: true,
+            reservationConfig: true,
           },
         });
 
@@ -822,6 +855,8 @@ export const exportCreatorsCampaignSheet = async (_req: Request, res: Response) 
 export const getAllCampaigns = async (req: Request, res: Response) => {
   const id = req.session.userid;
 
+  console.log('TEST');
+
   try {
     let campaigns;
 
@@ -912,6 +947,12 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
           logistics: {
             include: {
               creator: true,
+              reservationDetails: {
+                select: {
+                  outlet: true,
+                  creatorRemarks: true,
+                },
+              },
             },
           },
           creatorAgreement: true,
@@ -989,7 +1030,16 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
               campaignTaskAdmin: true,
             },
           },
-          logistics: true,
+          logistics: {
+            include: {
+              reservationDetails: {
+                select: {
+                  outlet: true,
+                  creatorRemarks: true,
+                },
+              },
+            },
+          },
           creatorAgreement: true,
         },
       });
@@ -1115,7 +1165,16 @@ export const getCampaignById = async (req: Request, res: Response) => {
             campaignTaskAdmin: true,
           },
         },
-        logistics: true,
+        logistics: {
+          include: {
+            reservationDetails: {
+              select: {
+                outlet: true,
+                creatorRemarks: true,
+              },
+            },
+          },
+        },
 
         creatorAgreement: true,
       },
@@ -1149,7 +1208,16 @@ export const getAllActiveCampaign = async (_req: Request, res: Response) => {
         pitch: true,
         shortlisted: true,
         submission: true,
-        logistics: true,
+        logistics: {
+          include: {
+            reservationDetails: {
+              select: {
+                outlet: true,
+                creatorRemarks: true,
+              },
+            },
+          },
+        },
       },
     });
 
@@ -1296,7 +1364,16 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
         pitch: true,
         bookMarkCampaign: true,
         shortlisted: true,
-        logistics: true,
+        logistics: {
+          include: {
+            reservationDetails: {
+              select: {
+                outlet: true,
+                creatorRemarks: true,
+              },
+            },
+          },
+        },
         campaignAdmin: {
           include: {
             admin: {
@@ -1329,34 +1406,22 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       return res.status(200).json(data);
     }
 
-    // Show all active campaigns to creators (both admin and client created) - like superadmin
     const beforeFilterCount = campaigns.length;
 
-    // For now, show ALL active campaigns to creators to match superadmin behavior
-    // This ensures creators can see all campaigns like superadmin does
     campaigns = campaigns.filter((campaign) => {
-      // Show all ACTIVE campaigns regardless of timeline status
       return campaign.status === 'ACTIVE';
     });
 
     const country = await getCountry(req.ip as string);
 
-    // Apply country filtering only in non-development environments
     if (process.env.NODE_ENV !== 'development') {
       campaigns = campaigns.filter((campaign) => {
         if (!campaign.campaignRequirement?.country) return campaign;
-        return campaign.campaignRequirement.country.toLocaleLowerCase() === country?.toLowerCase();
+
+        return campaign.campaignRequirement.countries.some((a) => a.toLowerCase() === country?.toLowerCase());
+        // return campaign.campaignRequirement.country.toLocaleLowerCase() === country?.toLowerCase();
       });
     }
-
-    // Original filtering logic (DISABLED):
-    // campaigns = campaigns.filter((campaign) => {
-    //   if (!campaign.campaignRequirement?.country) return true;
-    //   if (!country) return true;
-    //   return campaign.campaignRequirement.country.toLowerCase().trim() === country.toLowerCase().trim();
-    // });
-
-    // campaigns = campaigns.filter((campaign) => campaign.campaignBrief.)
 
     const calculateInterestMatchingPercentage = (creatorInterests: Interest[], creatorPerona: []) => {
       const totalInterests = creatorPerona?.length || 0;
@@ -1785,7 +1850,16 @@ export const getCampaignsByCreatorId = async (req: Request, res: Response) => {
           },
           include: {
             creatorAgreement: true,
-            logistics: true,
+            logistics: {
+              include: {
+                reservationDetails: {
+                  select: {
+                    outlet: true,
+                    creatorRemarks: true,
+                  },
+                },
+              },
+            },
             company: true,
             brand: { include: { company: { include: { subscriptions: true } } } },
             campaignBrief: true,
@@ -1823,7 +1897,16 @@ export const getCampaignForCreatorById = async (req: Request, res: Response) => 
         id: id,
       },
       include: {
-        logistics: true,
+        logistics: {
+          include: {
+            reservationDetails: {
+              select: {
+                outlet: true,
+                creatorRemarks: true,
+              },
+            },
+          },
+        },
         campaignAdmin: {
           include: {
             admin: {
@@ -2133,6 +2216,7 @@ export const getPitchById = async (req: Request, res: Response) => {
 export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: Response) => {
   const { userId } = req.params;
   // const { status, limit = 9, cursor } = req.query;
+
   const { cursor, limit = 10, search, status } = req.query;
   console.log('getAllCampaignsByAdminId called with:', { userId, status, search, limit, cursor });
 
@@ -2387,6 +2471,12 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
           logistics: {
             include: {
               creator: true,
+              reservationDetails: {
+                select: {
+                  outlet: true,
+                  creatorRemarks: true,
+                },
+              },
             },
           },
           creatorAgreement: true,
@@ -2562,6 +2652,12 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
         logistics: {
           include: {
             creator: true,
+            reservationDetails: {
+              select: {
+                outlet: true,
+                creatorRemarks: true,
+              },
+            },
           },
         },
         creatorAgreement: true,
@@ -2649,7 +2745,16 @@ export const getMyCampaigns = async (req: Request, res: Response) => {
         ],
       },
       include: {
-        logistics: true,
+        logistics: {
+          include: {
+            reservationDetails: {
+              select: {
+                outlet: true,
+                creatorRemarks: true,
+              },
+            },
+          },
+        },
         brand: { include: { company: { include: { subscriptions: true } } } },
         company: true,
         invoice: true,
@@ -3126,6 +3231,7 @@ export const editCampaignRequirements = async (req: Request, res: Response) => {
     audienceCreatorPersona,
     audienceUserPersona,
     country,
+    countries,
   } = req.body;
 
   try {
@@ -3141,6 +3247,7 @@ export const editCampaignRequirements = async (req: Request, res: Response) => {
         creator_persona: audienceCreatorPersona,
         user_persona: audienceUserPersona,
         country: country,
+        ...(countries && { countries: countries }),
       },
       include: {
         campaign: { select: { name: true } },
@@ -9101,7 +9208,16 @@ export const getCampaignsForPublic = async (req: Request, res: Response) => {
         pitch: true,
         bookMarkCampaign: true,
         shortlisted: true,
-        logistics: true,
+        logistics: {
+          include: {
+            reservationDetails: {
+              select: {
+                outlet: true,
+                creatorRemarks: true,
+              },
+            },
+          },
+        },
       },
       orderBy: {
         createdAt: 'desc',

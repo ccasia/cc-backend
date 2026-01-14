@@ -431,8 +431,42 @@ async function deleteFileIfExists(filePath: string) {
                 // await deleteFileIfExists(videoFile.outputPath);
 
                 // await fs.promises.unlink(videoFile.outputPath);
+                if (content.isV4 && content.preserveExistingMedia) {
+                  // V4: Check if there's an existing video for this submission to update
+                  const existingVideo = submission.video && submission.video[index];
+                  
+                  if (existingVideo) {
+                    // Update existing video, preserving old URL in previousDrafts
+                    const existingPreviousDrafts = (existingVideo as any).previousDrafts || [];
+                    const oldUrl = existingVideo.url;
 
-                if (!requestChangeVideos.length) {
+                    await prisma.video.update({
+                      where: { id: existingVideo.id },
+                      data: {
+                        url: videoPublicURL,
+                        status: 'PENDING',
+                        // Append old URL to previousDrafts array
+                        previousDrafts: oldUrl ? [...existingPreviousDrafts, oldUrl] : existingPreviousDrafts,
+                        // Clear feedback for new draft
+                        feedback: null,
+                        reasons: [],
+                        feedbackAt: null,
+                      },
+                    });
+                    console.log(`✅ V4 Video ${existingVideo.id} updated, old URL preserved in previousDrafts.`);
+                  } else {
+                    // No existing video, create new one
+                    await prisma.video.create({
+                      data: {
+                        url: videoPublicURL,
+                        submissionId: submission.id,
+                        campaignId: submission.campaignId,
+                        userId: submission.userId,
+                      },
+                    });
+                    console.log('✅ V4 Video entry created (no existing video found).');
+                  }
+                } else if (!requestChangeVideos.length) {
                   await prisma.video.create({
                     data: {
                       url: videoPublicURL,
@@ -451,8 +485,12 @@ async function deleteFileIfExists(filePath: string) {
 
               if (requestChangeVideos.length) {
                 await Promise.all(
-                  requestChangeVideos.map((video, index) =>
-                    prisma.video.update({
+                  requestChangeVideos.map(async (video, index) => {
+                    // Preserve the old URL in previousDrafts before updating with new URL
+                    const existingPreviousDrafts = (video as any).previousDrafts || [];
+                    const oldUrl = video.url;
+
+                    return prisma.video.update({
                       where: { id: video.id },
                       data: {
                         url: url[index],
@@ -460,9 +498,15 @@ async function deleteFileIfExists(filePath: string) {
                         campaignId: content.campaignId,
                         userId: submission.userId,
                         status: 'PENDING',
+                        // Append old URL to previousDrafts array
+                        previousDrafts: oldUrl ? [...existingPreviousDrafts, oldUrl] : existingPreviousDrafts,
+                        // Clear feedback for new draft
+                        feedback: null,
+                        reasons: [],
+                        feedbackAt: null,
                       },
-                    }),
-                  ),
+                    });
+                  }),
                 );
               }
 

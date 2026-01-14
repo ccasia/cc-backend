@@ -17,6 +17,8 @@ import { clients, io } from '../server';
 import { saveNotification } from './notificationController';
 import { notificationDraft } from '@helper/notification';
 import { saveCaptionToHistory } from '../utils/captionHistoryUtils';
+import { extractAndStoreSubmissionUrls } from '@services/submissionUrlService';
+import { scheduleInitialInsightFetch } from '@services/insightFetchService';
 
 /**
  * Determine effective campaign origin for V4 status flow
@@ -26,6 +28,47 @@ const getEffectiveCampaignOrigin = (campaign: any): 'CLIENT' | 'ADMIN' => {
   const hasClientManagers = campaign.campaignAdmin?.some((ca: any) => ca.admin.user.role === 'client');
   return hasClientManagers ? 'CLIENT' : campaign.origin;
 };
+
+/**
+ * Extract URLs and schedule initial insight fetch for a submission (non-blocking background task)
+ *
+ * @param submissionId - Submission ID
+ * @param content - Content that may contain URLs (e.g., posting link, caption)
+ */
+function scheduleUrlExtractionAndFetch(submissionId: string, content: string | undefined): void {
+  if (!content) {
+    return; // No content to extract
+  }
+
+  // Run async without blocking the response
+  setImmediate(async () => {
+    try {
+      const submission = await prisma.submission.findUnique({
+        where: { id: submissionId },
+        select: { campaignId: true },
+      });
+
+      if (!submission) {
+        console.warn(`⚠️  Submission ${submissionId} not found for URL extraction`);
+        return;
+      }
+
+      // Extract and store URLs
+      console.log(`🔗 Extracting URLs for submission ${submissionId}...`);
+      await extractAndStoreSubmissionUrls(submissionId, content);
+
+      // Schedule initial insight fetch (2 hours delay)
+      console.log(`⏰ Scheduling initial insight fetch for campaign ${submission.campaignId}...`);
+      await scheduleInitialInsightFetch(submission.campaignId, submissionId);
+    } catch (error: any) {
+      console.error(
+        `❌ Error extracting URLs/scheduling fetch for submission ${submissionId}:`,
+        error.message
+      );
+      // Don't throw - this is background work
+    }
+  });
+}
 
 /**
  * Update submission status based on individual content statuses
@@ -229,6 +272,7 @@ export const createV4Submissions = async (req: Request, res: Response) => {
 
     // Emit socket event for real-time updates
     const io = req.app.get('io');
+
     if (io) {
       io.to(campaignId).emit('v4:submissions:created', {
         campaignId,
@@ -334,6 +378,9 @@ export const submitV4ContentController = async (req: Request, res: Response) => 
     }
 
     console.log(`📤 Content submitted for v4 submission ${submissionId}`);
+
+    // Schedule URL extraction and initial insight fetch (non-blocking)
+    scheduleUrlExtractionAndFetch(submissionId, caption);
 
     res.status(200).json({
       message: 'Content submitted successfully',
@@ -1095,6 +1142,9 @@ export const updatePostingLinkController = async (req: Request, res: Response) =
     const result = await updatePostingLink(submissionId, postingLink, currentUserId);
 
     console.log(`🔗 Posting link updated for v4 submission ${submissionId}`);
+
+    // Schedule URL extraction and initial insight fetch (non-blocking)
+    scheduleUrlExtractionAndFetch(submissionId, postingLink);
 
     res.status(200).json({
       message: 'Posting link updated successfully',

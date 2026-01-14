@@ -7,7 +7,7 @@ import { io, clients } from '../server';
 import { saveNotification } from './notificationController';
 import { notificationDraft } from '@helper/notification';
 import { saveCaptionToHistory } from '../utils/captionHistoryUtils';
-import { updateDeliveryStatus } from '@services/logisticsService';
+import { completeLogisticService } from '@services/logisticsService';
 
 const prisma = new PrismaClient();
 
@@ -503,7 +503,7 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
     let currentStatus = logistic?.status;
 
     if (logistic) {
-      const updatedLogistic = await updateDeliveryStatus(logistic.id, 'COMPLETED');
+      const updatedLogistic = await completeLogisticService(logistic.id, 'COMPLETED');
       currentStatus = updatedLogistic.status;
     }
 
