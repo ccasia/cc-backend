@@ -1494,15 +1494,6 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       });
     }
 
-    // Original filtering logic (DISABLED):
-    // campaigns = campaigns.filter((campaign) => {
-    //   if (!campaign.campaignRequirement?.country) return true;
-    //   if (!country) return true;
-    //   return campaign.campaignRequirement.country.toLowerCase().trim() === country.toLowerCase().trim();
-    // });
-
-    // campaigns = campaigns.filter((campaign) => campaign.campaignBrief.)
-
     const calculateInterestMatchingPercentage = (creatorInterests: Interest[], creatorPerona: []) => {
       const totalInterests = creatorPerona?.length || 0;
 
