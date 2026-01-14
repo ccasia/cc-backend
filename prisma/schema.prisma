@@ -746,6 +746,7 @@ model CampaignRequirement {
   language        String[]
   creator_persona String[]
   country         String?
+  countries       String[]
   user_persona    String
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -754,7 +755,7 @@ model CampaignRequirement {
 }
 
 model CampaignBrief {
-  id                  String   @id @unique @default(cuid())
+  id                  String    @id @unique @default(cuid())
   title               String
   objectives          String?
   images              Json?
@@ -770,12 +771,12 @@ model CampaignBrief {
   videoAngle          String[]
   campaigns_do        Json?
   campaigns_dont      Json?
-  updatedAt           DateTime @updatedAt
-  createdAt           DateTime @default(now())
-  campaignId          String   @unique
+  updatedAt           DateTime  @updatedAt
+  createdAt           DateTime  @default(now())
+  campaignId          String    @unique
   otherAttachments    String[]
   referencesLinks     String[]
-  campaign            Campaign @relation(fields: [campaignId], references: [id])
+  campaign            Campaign  @relation(fields: [campaignId], references: [id])
 }
 
 model Permission {
