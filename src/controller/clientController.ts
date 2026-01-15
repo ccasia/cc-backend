@@ -331,6 +331,7 @@ export const createClientCampaign = async (req: Request, res: Response) => {
       locations,
       availabilityRules,
       clientRemarks,
+      allowMultipleBookings,
       // Additional Details 1 fields
       socialMediaPlatform,
       contentFormat,
@@ -489,6 +490,7 @@ export const createClientCampaign = async (req: Request, res: Response) => {
             locations: locationNames as any,
             availabilityRules: availabilityRules as any,
             clientRemarks: clientRemarks || null,
+            allowMultipleBookings: allowMultipleBookings || false,
           },
         };
       }

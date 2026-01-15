@@ -156,6 +156,7 @@ interface Campaign {
     endTime: string;
     interval: number;
   }[];
+  allowMultipleBookings?: boolean;
 }
 
 interface RequestQuery {
@@ -250,6 +251,7 @@ export const createCampaign = async (req: Request, res: Response) => {
     schedulingOption,
     locations,
     availabilityRules,
+    allowMultipleBookings,
   }: Campaign = JSON.parse(req.body.data);
   // Also read optional fields not in the Campaign interface
   const rawBody: any = (() => {
@@ -384,6 +386,7 @@ export const createCampaign = async (req: Request, res: Response) => {
               locations: locationNames as any,
               availabilityRules: (availabilityRules || []) as any,
               clientRemarks: clientRemarks || null,
+              allowMultipleBookings: allowMultipleBookings || false,
             },
           };
         }
@@ -1608,7 +1611,9 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
     // For the cursor, we need to use the ORIGINAL last campaign ID from the database fetch
     // This ensures the next request starts from the correct position
     const lastCursor =
-      hasNextPage && sortedMatchedCampaigns.length > 0 ? sortedMatchedCampaigns[sortedMatchedCampaigns.length - 1]?.id : null;
+      hasNextPage && sortedMatchedCampaigns.length > 0
+        ? sortedMatchedCampaigns[sortedMatchedCampaigns.length - 1]?.id
+        : null;
 
     const data = {
       data: {

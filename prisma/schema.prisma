@@ -1954,10 +1954,11 @@ model ReservationConfiguration {
   campaignId String   @unique
   campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
-  mode       ReservationMode
-  locations  Json
-  availabilityRules Json 
-  clientRemarks String?
+  mode                  ReservationMode
+  locations             Json
+  availabilityRules     Json
+  clientRemarks         String?
+  allowMultipleBookings Boolean         @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
