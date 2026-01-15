@@ -808,19 +808,29 @@ model CampaignBrief {
 }
 
 model CampaignAdditionalDetails {
-  id                     String    @id @unique @default(cuid())
-  contentFormat          String[]
-  mainMessage            String?
-  keyPoints              String?
-  toneAndStyle           String?
-  brandGuidelinesUrl     String?
-  referenceContent       String?
-  productImage1Url       String?
-  productImage2Url       String?
-  createdAt              DateTime  @default(now())
-  updatedAt              DateTime  @updatedAt
-  campaignId             String    @unique
-  campaign               Campaign  @relation(fields: [campaignId], references: [id])
+  id                        String    @id @unique @default(cuid())
+  contentFormat             String[]
+  mainMessage               String?
+  keyPoints                 String?
+  toneAndStyle              String?
+  brandGuidelinesUrl        String?
+  referenceContent          String?
+  productImage1Url          String?
+  productImage2Url          String?
+  // Additional Details 2 fields
+  hashtagsToUse             String?
+  mentionsTagsRequired      String?
+  creatorCompensation       String?
+  ctaDesiredAction          String?
+  ctaLinkUrl                String?
+  ctaPromoCode              String?
+  ctaLinkInBioRequirements  String?
+  specialNotesInstructions  String?
+  needAds                   String?
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
+  campaignId                String    @unique
+  campaign                  Campaign  @relation(fields: [campaignId], references: [id])
 }
 
 model Permission {
