@@ -89,6 +89,7 @@ export const getAllCompanies = async (_req: Request, res: Response) => {
 
 export const getCompanyById = async (req: Request, res: Response) => {
   const { id } = req.params;
+
   try {
     const company = await prisma.company.findUnique({
       where: {
@@ -114,6 +115,7 @@ export const getCompanyById = async (req: Request, res: Response) => {
           include: {
             package: true,
             customPackage: true,
+            campaign: true,
           },
         },
         campaign: {
@@ -135,15 +137,38 @@ export const getCompanyById = async (req: Request, res: Response) => {
     const activeSubscriptions = company.subscriptions.filter((sub) => sub.status === 'ACTIVE');
     const packagesWithRemainingCredits = activeSubscriptions.filter((sub) => (sub.totalCredits || 0) > sub.creditsUsed);
     packagesWithRemainingCredits.sort((a, b) => new Date(a.expiredAt).getTime() - new Date(b.expiredAt).getTime());
-    const validityTrackingPackage = packagesWithRemainingCredits[0] || null;
 
+    const validityTrackingPackage = packagesWithRemainingCredits[0] || null;
     const totalCredits = activeSubscriptions.reduce((sum, sub) => sum + (sub.totalCredits || 0), 0);
     const usedCredits = activeSubscriptions.reduce((sum, sub) => sum + (sub.creditsUsed || 0), 0);
 
+    const sanitizedSubs = [];
+
+    for (const subs of activeSubscriptions) {
+      const campaigns = subs.campaign;
+
+      const totalCreditsUtilized = campaigns.reduce((acc, cur) => acc + (cur.creditsUtilized ?? 0), 0);
+
+      const data = {
+        ...subs,
+        creditsUtilized: totalCreditsUtilized,
+      };
+
+      sanitizedSubs.push(data);
+    }
+
+    const creditsUtilized = activeSubscriptions.reduce((acc, subs) => {
+      const campaigns = subs.campaign;
+
+      const totalCreditsUtilized = campaigns.reduce((acc, cur) => acc + (cur.creditsUtilized ?? 0), 0);
+
+      return acc + totalCreditsUtilized;
+    }, 0);
+
     const creditSummary = {
       totalCredits,
-      usedCredits,
-      remainingCredits: totalCredits - usedCredits,
+      usedCredits: creditsUtilized,
+      remainingCredits: totalCredits - creditsUtilized,
       validityPackageExpiry: validityTrackingPackage ? validityTrackingPackage.expiredAt : null,
       activePackagesCount: activeSubscriptions.length,
       nextExpiryDate:
@@ -590,15 +615,17 @@ export const activateClient = async (req: Request, res: Response) => {
 
     // Validate PIC exists
     if (!company.pic || company.pic.length === 0) {
-      return res.status(400).json({ 
-        message: 'PIC information is required. Please add a Person In Charge with an email before activating the client account.' 
+      return res.status(400).json({
+        message:
+          'PIC information is required. Please add a Person In Charge with an email before activating the client account.',
       });
     }
 
     // Validate PIC has email
     if (!company.pic[0]?.email) {
-      return res.status(400).json({ 
-        message: 'PIC email is required. Please update the Person In Charge with a valid email before activating the client account.' 
+      return res.status(400).json({
+        message:
+          'PIC email is required. Please update the Person In Charge with a valid email before activating the client account.',
       });
     }
 
