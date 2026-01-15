@@ -340,6 +340,16 @@ export const createClientCampaign = async (req: Request, res: Response) => {
       keyPoints,
       toneAndStyle,
       referenceContent,
+      // Additional Details 2 fields
+      hashtagsToUse,
+      mentionsTagsRequired,
+      creatorCompensation,
+      ctaDesiredAction,
+      ctaLinkUrl,
+      ctaPromoCode,
+      ctaLinkInBioRequirements,
+      specialNotesInstructions,
+      needAds,
     } = campaignData;
 
     // Validate required fields
@@ -566,7 +576,16 @@ export const createClientCampaign = async (req: Request, res: Response) => {
         brandGuidelinesUrl ||
         referenceContent ||
         productImage1Url ||
-        productImage2Url;
+        productImage2Url ||
+        hashtagsToUse ||
+        mentionsTagsRequired ||
+        creatorCompensation ||
+        ctaDesiredAction ||
+        ctaLinkUrl ||
+        ctaPromoCode ||
+        ctaLinkInBioRequirements ||
+        specialNotesInstructions ||
+        needAds;
 
       if (hasAdditionalDetails) {
         await tx.campaignAdditionalDetails.create({
@@ -580,6 +599,16 @@ export const createClientCampaign = async (req: Request, res: Response) => {
             referenceContent: referenceContent || null,
             productImage1Url: productImage1Url,
             productImage2Url: productImage2Url,
+            // Additional Details 2 fields
+            hashtagsToUse: hashtagsToUse || null,
+            mentionsTagsRequired: mentionsTagsRequired || null,
+            creatorCompensation: creatorCompensation || null,
+            ctaDesiredAction: ctaDesiredAction || null,
+            ctaLinkUrl: ctaLinkUrl || null,
+            ctaPromoCode: ctaPromoCode || null,
+            ctaLinkInBioRequirements: ctaLinkInBioRequirements || null,
+            specialNotesInstructions: specialNotesInstructions || null,
+            needAds: needAds || null,
           },
         });
       }
