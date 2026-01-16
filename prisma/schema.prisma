@@ -772,6 +772,7 @@ model CampaignRequirement {
   secondary_country         String?
   secondary_user_persona    String?
   geographic_focus          String?
+  geographicFocusOthers     String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   campaignId      String   @unique
