@@ -479,19 +479,35 @@ export const creatorDeliveryDetails = async (logisticId: string, data: CreatorDe
 
 export const completeLogisticService = async (logisticId: string, status: 'RECEIVED' | 'COMPLETED') => {
   return await prisma.$transaction(async (tx) => {
-    await tx.reservationDetails.update({
-      where: { logisticId: logisticId },
-      data: {
-        isConfirmed: true,
-      },
+    const logistic = await tx.logistic.findUnique({
+      where: { id: logisticId },
+      select: { type: true },
     });
+
+    if (!logistic) throw new Error('Logistic not found');
+
+    if (logistic.type === 'RESERVATION') {
+      await tx.reservationDetails.update({
+        where: { logisticId: logisticId },
+        data: {
+          isConfirmed: true,
+        },
+      });
+    } else if (logistic.type === 'PRODUCT_DELIVERY') {
+      await tx.deliveryDetails.update({
+        where: { logisticId },
+        data: { isConfirmed: true },
+      });
+    }
+
+    const now = new Date();
 
     return await tx.logistic.update({
       where: { id: logisticId },
       data: {
         status,
-        receivedAt: new Date(),
-        completedAt: status === 'COMPLETED' || status === 'RECEIVED' ? new Date() : undefined,
+        receivedAt: status === 'RECEIVED' ? now : undefined,
+        completedAt: status === 'COMPLETED' || status === 'RECEIVED' ? now : undefined,
       },
     });
   });
