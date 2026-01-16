@@ -94,6 +94,8 @@ declare module 'express-session' {
     xeroTokenSet: any;
     xeroTenants: any;
     xeroActiveTenants: any;
+    isImpersonating?: boolean;
+    impersonatingBy?: string;
   }
 }
 
