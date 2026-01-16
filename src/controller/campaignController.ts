@@ -147,7 +147,7 @@ interface Campaign {
   country: string;
   logisticsType?: string;
   products?: { name: string }[];
-  logisticRemarks?: string;
+  clientRemarks?: string;
   schedulingOption?: string;
   locations?: { name: string }[];
   availabilityRules?: {
@@ -156,6 +156,7 @@ interface Campaign {
     endTime: string;
     interval: number;
   }[];
+  allowMultipleBookings?: boolean;
 }
 
 interface RequestQuery {
@@ -246,10 +247,11 @@ export const createCampaign = async (req: Request, res: Response) => {
     country,
     logisticsType,
     products,
-    logisticRemarks,
+    clientRemarks,
     schedulingOption,
     locations,
     availabilityRules,
+    allowMultipleBookings,
   }: Campaign = JSON.parse(req.body.data);
   // Also read optional fields not in the Campaign interface
   const rawBody: any = (() => {
@@ -375,7 +377,7 @@ export const createCampaign = async (req: Request, res: Response) => {
           const mode: ReservationMode = schedulingOption === 'auto' ? 'AUTO_SCHEDULE' : 'MANUAL_CONFIRMATION';
 
           const locationNames = Array.isArray(locations)
-            ? locations.map((location: any) => location.name).filter(Boolean)
+            ? locations.filter((loc: any) => loc.name && loc.name.trim() !== '')
             : [];
 
           reservationConfigCreate = {
@@ -383,6 +385,8 @@ export const createCampaign = async (req: Request, res: Response) => {
               mode: mode,
               locations: locationNames as any,
               availabilityRules: (availabilityRules || []) as any,
+              clientRemarks: clientRemarks || null,
+              allowMultipleBookings: allowMultipleBookings || false,
             },
           };
         }
@@ -428,8 +432,8 @@ export const createCampaign = async (req: Request, res: Response) => {
                 campaigns_dont: campaignDont,
                 videoAngle: videoAngle,
                 socialMediaPlatform: socialMediaPlatform,
-                objectives: logisticRemarks
-                  ? `${campaignObjectives}\n\n[Logistic Remarks]: ${logisticRemarks}`
+                objectives: clientRemarks
+                  ? `${campaignObjectives}\n\n[Logistic Remarks]: ${clientRemarks}`
                   : campaignObjectives,
               },
             },
@@ -1607,7 +1611,9 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
     // For the cursor, we need to use the ORIGINAL last campaign ID from the database fetch
     // This ensures the next request starts from the correct position
     const lastCursor =
-      hasNextPage && sortedMatchedCampaigns.length > 0 ? sortedMatchedCampaigns[sortedMatchedCampaigns.length - 1]?.id : null;
+      hasNextPage && sortedMatchedCampaigns.length > 0
+        ? sortedMatchedCampaigns[sortedMatchedCampaigns.length - 1]?.id
+        : null;
 
     const data = {
       data: {
