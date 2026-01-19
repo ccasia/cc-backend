@@ -4,48 +4,6 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 /**
- * Create a new PIC for a company
- */
-export const createPIC = async (req: Request, res: Response) => {
-  try {
-    const { name, email, designation, companyId } = req.body;
-
-    if (!name || !designation || !companyId) {
-      return res.status(400).json({ message: 'Name, designation, and company ID are required' });
-    }
-
-    // Check if company exists
-    const company = await prisma.company.findUnique({
-      where: { id: companyId },
-    });
-
-    if (!company) {
-      return res.status(404).json({ message: 'Company not found' });
-    }
-
-    // Create the PIC
-    const newPIC = await prisma.pic.create({
-      data: {
-        name,
-        email: email || null,
-        designation,
-        companyId,
-      },
-    });
-
-    return res.status(201).json({
-      message: 'PIC created successfully',
-      pic: newPIC,
-    });
-  } catch (error: any) {
-    console.error('Error creating PIC:', error);
-    return res.status(500).json({
-      message: error.message || 'Internal server error while creating PIC',
-    });
-  }
-};
-
-/**
  * Get user by email
  * Used by frontend to fetch user status for PIC
  */
