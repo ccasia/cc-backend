@@ -427,62 +427,104 @@ export const createClientCampaign = async (req: Request, res: Response) => {
         objectivesString += `\n\n[Logistic Remarks]: ${logisticRemarks}`;
       }
 
-      // Create campaign with PENDING status
-      const campaign = await tx.campaign.create({
-        data: {
-          campaignId,
-          name: campaignTitle,
-          description: campaignDescription,
-          status: 'PENDING_CSM_REVIEW', // Set to PENDING_CSM_REVIEW so it shows up in the Pending tab for admins
-          origin: 'CLIENT', // Mark as client-created campaign for v3 flow
-          submissionVersion: 'v4', // Set submission version to determine flow type
-          brandTone: brandTone || '',
-          productName: productName || '',
-          products: {
-            create: productsToCreate,
+      let targetSubscriptionId: string | undefined;
+      if (requestedCredits > 0) {
+        const activeSubscriptions = await tx.subscription.findMany({
+          where: {
+            companyId: company?.id || '',
+            status: 'ACTIVE',
           },
-          reservationConfig: reservationConfigCreate,
-          logisticsType: logisticsType && logisticsType !== '' ? (logisticsType as LogisticType) : null,
+          orderBy: { expiredAt: 'asc' }, 
+          include: {
+            campaign: {
+              select: {
+                creditsUtilized: true,
+              },
+            },
+          },
+        });
 
-          // Skip adminManager and other fields that will be set by CSM later
-          campaignBrief: {
-            create: {
-              title: campaignTitle,
-              objectives: campaignObjectives ? campaignObjectives.join(', ') : '',
-              images: publicURL,
-              startDate: campaignStartDate ? new Date(campaignStartDate) : new Date(),
-              endDate: campaignEndDate ? new Date(campaignEndDate) : new Date(),
-              industries: campaignIndustries ? campaignIndustries.join(', ') : '',
-              campaigns_do: campaignDo || [],
-              campaigns_dont: campaignDont || [],
-              videoAngle: videoAngle || [],
-              socialMediaPlatform: socialMediaPlatform || [],
-              otherAttachments: otherAttachments,
-              referencesLinks: referencesLinks?.map((link: any) => link?.value).filter(Boolean) || [],
-            },
-          },
-          campaignRequirement: {
-            create: {
-              gender: audienceGender || [],
-              age: audienceAge || [],
-              geoLocation: audienceLocation || [],
-              language: audienceLanguage || [],
-              creator_persona: audienceCreatorPersona || [],
-              user_persona: audienceUserPersona || '',
-              country: Array.isArray(countries) && countries.length > 0 ? countries[0] : (Array.isArray(country) && country.length > 0 ? country[0] : ''),
-              ...(countries && { countries: countries || country || [] }),
-            },
-          },
-          campaignCredits: requestedCredits,
-          creditsPending: requestedCredits,
-          creditsUtilized: 0,
-          // Connect to client's company
-          company: {
-            connect: {
-              id: company?.id || '',
-            },
+        // Find first subscription with available credits
+        for (const sub of activeSubscriptions) {
+          const subCreditsUtilized = sub.campaign.reduce(
+            (sum, camp) => sum + (camp.creditsUtilized || 0),
+            0
+          );
+          const remainingInSub = (sub.totalCredits || 0) - subCreditsUtilized;
+          
+          if (remainingInSub >= requestedCredits) {
+            targetSubscriptionId = sub.id;
+            break;
+          }
+        }
+
+        // If no single subscription has enough credits, use the first one
+        if (!targetSubscriptionId && activeSubscriptions.length > 0) {
+          targetSubscriptionId = activeSubscriptions[0].id;
+        }
+      }
+
+      // Create campaign with PENDING status
+      const campaignData: any = {
+        campaignId,
+        name: campaignTitle,
+        description: campaignDescription,
+        status: 'PENDING_CSM_REVIEW', 
+        origin: 'CLIENT', 
+        submissionVersion: 'v4',
+        brandTone: brandTone || '',
+        productName: productName || '',
+        products: {
+          create: productsToCreate,
+        },
+        reservationConfig: reservationConfigCreate,
+        logisticsType: logisticsType && logisticsType !== '' ? (logisticsType as LogisticType) : null,
+
+        campaignBrief: {
+          create: {
+            title: campaignTitle,
+            objectives: campaignObjectives ? campaignObjectives.join(', ') : '',
+            images: publicURL,
+            startDate: campaignStartDate ? new Date(campaignStartDate) : new Date(),
+            endDate: campaignEndDate ? new Date(campaignEndDate) : new Date(),
+            industries: campaignIndustries ? campaignIndustries.join(', ') : '',
+            campaigns_do: campaignDo || [],
+            campaigns_dont: campaignDont || [],
+            videoAngle: videoAngle || [],
+            socialMediaPlatform: socialMediaPlatform || [],
+            otherAttachments: otherAttachments,
+            referencesLinks: referencesLinks?.map((link: any) => link?.value).filter(Boolean) || [],
           },
         },
+        campaignRequirement: {
+          create: {
+            gender: audienceGender || [],
+            age: audienceAge || [],
+            geoLocation: audienceLocation || [],
+            language: audienceLanguage || [],
+            creator_persona: audienceCreatorPersona || [],
+            user_persona: audienceUserPersona || '',
+            country: Array.isArray(countries) && countries.length > 0 ? countries[0] : (Array.isArray(country) && country.length > 0 ? country[0] : ''),
+            ...(countries && { countries: countries || country || [] }),
+          },
+        },
+        campaignCredits: requestedCredits,
+        creditsPending: requestedCredits,
+        creditsUtilized: 0,
+        // Connect to client's company
+        company: {
+          connect: {
+            id: company?.id || '',
+          },
+        },
+      };
+
+      if (targetSubscriptionId) {
+        campaignData.subscriptionId = targetSubscriptionId;
+      }
+
+      const campaign = await tx.campaign.create({
+        data: campaignData,
         include: {
           campaignBrief: true,
           campaignRequirement: true,
@@ -491,46 +533,33 @@ export const createClientCampaign = async (req: Request, res: Response) => {
         },
       });
 
-      // FIFO credit deduction logic
-      if (requestedCredits > 0) {
-        // Deduct credits from subscription
-        const activeSubscriptions = await tx.subscription.findMany({
-          where: {
-            companyId: company?.id || '',
-            status: 'ACTIVE',
-          },
-          orderBy: { expiredAt: 'asc' },
-        });
-
-        // if (activeSubscription && requestedCredits > 0) {
-        //   await prisma.subscription.update({
-        //     where: {
-        //       id: activeSubscription.id,
-        //     },
-        //     data: {
-        //       creditsUsed: {
-        //         increment: requestedCredits,
-        //       },
-        //     },
-        //   });
-        // }
-        let creditsToDeduct = requestedCredits;
-
-        for (const sub of activeSubscriptions) {
-          if (creditsToDeduct <= 0) break;
-
-          const remainingInSub = (sub.totalCredits || 0) - sub.creditsUsed;
-          const deductionAmount = Math.min(creditsToDeduct, remainingInSub);
-
-          if (deductionAmount > 0) {
-            await tx.subscription.update({
-              where: { id: sub.id },
-              data: { creditsUsed: { increment: deductionAmount } },
-            });
-            creditsToDeduct -= deductionAmount;
-          }
-        }
-      }
+      // if (requestedCredits > 0) {
+      //   // Deduct credits from subscription
+      //   const activeSubscriptions = await tx.subscription.findMany({
+      //     where: {
+      //       companyId: company?.id || '',
+      //       status: 'ACTIVE',
+      //     },
+      //     orderBy: { expiredAt: 'asc' },
+      //   });
+      //
+      //   let creditsToDeduct = requestedCredits;
+      //
+      //   for (const sub of activeSubscriptions) {
+      //     if (creditsToDeduct <= 0) break;
+      //
+      //     const remainingInSub = (sub.totalCredits || 0) - sub.creditsUsed;
+      //     const deductionAmount = Math.min(creditsToDeduct, remainingInSub);
+      //
+      //     if (deductionAmount > 0) {
+      //       await tx.subscription.update({
+      //         where: { id: sub.id },
+      //         data: { creditsUsed: { increment: deductionAmount } },
+      //       });
+      //       creditsToDeduct -= deductionAmount;
+      //     }
+      //   }
+      // }
 
       // Add the client to campaignAdmin so they can see it in their dashboard
       await tx.campaignAdmin.create({
