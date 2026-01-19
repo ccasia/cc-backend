@@ -8989,10 +8989,17 @@ export const syncCampaignCredits = async (req: Request, res: Response) => {
     }
 
     // Calculate utilized credits: sum of ugcVideos for shortlisted non-guest creators with sent agreements
+    const sentAgreementUserIds = new Set(
+      campaign.creatorAgreement
+        .filter((a) => a.isSent && a.userId)
+        .map((a) => a.userId as string)
+    );
+    
     const creditsUtilized = campaign.shortlisted.reduce((total, creator) => {
       const isGuest = creator.user?.creator?.isGuest === true;
+      const hasAgreementSent = creator.userId && sentAgreementUserIds.has(creator.userId);
 
-      if (!isGuest) {
+      if (!isGuest && hasAgreementSent) {
         return total + (creator.ugcVideos || 0);
       }
       return total;
