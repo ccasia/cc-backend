@@ -754,6 +754,7 @@ model CampaignRequirement {
   language        String[]
   creator_persona String[]
   country         String?
+  countries       String[]
   user_persona    String
   // Secondary Audience
   secondary_gender          String[]
