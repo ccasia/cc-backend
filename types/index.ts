@@ -8,6 +8,7 @@ declare module 'express-session' {
     tokenSet: any;
     allTenants: any[];
     activeTenant: any;
+    isImpersonating?: boolean;
   }
 }
 
