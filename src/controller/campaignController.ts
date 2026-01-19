@@ -1137,7 +1137,9 @@ export const getCampaignById = async (req: Request, res: Response) => {
           },
         },
         brand: {
-          include: { company: { include: { subscriptions: { include: { package: true, customPackage: true } }, pic: true } } },
+          include: {
+            company: { include: { subscriptions: { include: { package: true, customPackage: true } }, pic: true } },
+          },
         },
         company: {
           include: {
@@ -5167,7 +5169,7 @@ export const editCampaignAdmin = async (req: Request, res: Response) => {
     // This ensures they are tracked in both models for v4 campaigns
     for (const admin of adjustedAdmins) {
       const isClientUser = admin?.user?.role === 'client' || admin?.role?.name === 'Client';
-      
+
       if (isClientUser && admin?.userId) {
         try {
           // Find the client record for this user
@@ -6671,9 +6673,25 @@ export const activateClientCampaign = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Invalid data format' });
     }
 
-    const { campaignType, deliverables, campaignManager, agreementTemplateId, status, postingStartDate, postingEndDate } = data;
+    const {
+      campaignType,
+      deliverables,
+      campaignManager,
+      agreementTemplateId,
+      status,
+      postingStartDate,
+      postingEndDate,
+    } = data;
 
-    console.log('Received data:', { campaignType, deliverables, campaignManager, agreementTemplateId, status, postingStartDate, postingEndDate });
+    console.log('Received data:', {
+      campaignType,
+      deliverables,
+      campaignManager,
+      agreementTemplateId,
+      status,
+      postingStartDate,
+      postingEndDate,
+    });
 
     // Validate required fields
     if (!campaignType) {
@@ -6873,9 +6891,15 @@ export const activateClientCampaign = async (req: Request, res: Response) => {
         {
           name: 'Posting',
           for: 'creator',
-          duration: postingStartDate && postingEndDate
-            ? Math.max(1, Math.floor((new Date(postingEndDate).getTime() - new Date(postingStartDate).getTime()) / (1000 * 60 * 60 * 24)))
-            : Math.max(2, Math.floor(totalDays * 0.1)),
+          duration:
+            postingStartDate && postingEndDate
+              ? Math.max(
+                  1,
+                  Math.floor(
+                    (new Date(postingEndDate).getTime() - new Date(postingStartDate).getTime()) / (1000 * 60 * 60 * 24),
+                  ),
+                )
+              : Math.max(2, Math.floor(totalDays * 0.1)),
           startDate: postingStartDate
             ? new Date(postingStartDate)
             : new Date(
@@ -7035,7 +7059,7 @@ export const activateClientCampaign = async (req: Request, res: Response) => {
     // Create notification for client and add clients to CampaignClient + CampaignAdmin for v4 campaigns only
     // For non-v4 campaigns, we still create notifications but don't add to CampaignClient/CampaignAdmin
     const isV4Campaign = campaign.submissionVersion === 'v4';
-    
+
     if (campaign.companyId) {
       const clientUsers = await prisma.user.findMany({
         where: {
@@ -9000,7 +9024,7 @@ export const changeCampaignCredit = async (req: Request, res: Response) => {
 /**
  * Syncs campaign credits based on shortlisted creators with sent agreements.
  * This recalculates creditsUtilized based on actual data and updates creditsPending accordingly.
- * 
+ *
  * Formula:
  * - creditsUtilized = sum of ugcVideos for shortlisted creators (non-guest) whose agreements have been sent
  * - creditsPending = campaignCredits - creditsUtilized
@@ -9037,7 +9061,7 @@ export const syncCampaignCredits = async (req: Request, res: Response) => {
     // Calculate utilized credits: sum of ugcVideos for shortlisted non-guest creators with sent agreements
     const creditsUtilized = campaign.shortlisted.reduce((total, creator) => {
       const isGuest = creator.user?.creator?.isGuest === true;
-      
+
       if (!isGuest) {
         return total + (creator.ugcVideos || 0);
       }
@@ -9063,7 +9087,9 @@ export const syncCampaignCredits = async (req: Request, res: Response) => {
       },
     });
 
-    console.log(`📊 Campaign credits synced for ${campaignId}: campaignCredits=${campaignCredits}, utilized=${creditsUtilized}, pending=${creditsPending}`);
+    console.log(
+      `📊 Campaign credits synced for ${campaignId}: campaignCredits=${campaignCredits}, utilized=${creditsUtilized}, pending=${creditsPending}`,
+    );
 
     return res.status(200).json({
       message: 'Credits synced successfully',
@@ -9127,9 +9153,10 @@ export const updateAllCampaignCredits = async (req: Request, res: Response) => {
         });
 
         // Calculate total assigned credits excluding current campaign
-        const otherCampaignsCredits = subscribedCampaigns?.campaign
-          .filter((c) => c.id !== campaignId)
-          .reduce((acc, cur) => acc + (cur.campaignCredits ?? 0), 0) || 0;
+        const otherCampaignsCredits =
+          subscribedCampaigns?.campaign
+            .filter((c) => c.id !== campaignId)
+            .reduce((acc, cur) => acc + (cur.campaignCredits ?? 0), 0) || 0;
 
         const totalAfterUpdate = otherCampaignsCredits + campaignCredits;
 
