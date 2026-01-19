@@ -298,9 +298,15 @@ export const createClientCampaign = async (req: Request, res: Response) => {
       campaignEndDate,
       campaignCredits,
       brandTone,
+      brandAbout,
       productName,
+      websiteLink,
       campaignIndustries,
       campaignObjectives,
+      secondaryObjectives,
+      boostContent,
+      primaryKPI,
+      performanceBaseline,
       audienceGender,
       audienceAge,
       audienceLocation,
@@ -308,19 +314,44 @@ export const createClientCampaign = async (req: Request, res: Response) => {
       audienceCreatorPersona,
       audienceUserPersona,
       country,
-      countries,
-      socialMediaPlatform,
-      videoAngle,
+      secondaryAudienceGender,
+      secondaryAudienceAge,
+      secondaryAudienceLocation,
+      secondaryAudienceLanguage,
+      secondaryAudienceCreatorPersona,
+      secondaryAudienceUserPersona,
+      secondaryCountry,
+      geographicFocus,
+      geographicFocusOthers,
       campaignDo,
       campaignDont,
       referencesLinks,
-      // submissionVersion,
       logisticsType,
       products,
       schedulingOption,
       locations,
       availabilityRules,
-      logisticRemarks,
+      clientRemarks,
+      allowMultipleBookings,
+      // Additional Details 1 fields
+      socialMediaPlatform,
+      contentFormat,
+      postingStartDate,
+      postingEndDate,
+      mainMessage,
+      keyPoints,
+      toneAndStyle,
+      referenceContent,
+      // Additional Details 2 fields
+      hashtagsToUse,
+      mentionsTagsRequired,
+      creatorCompensation,
+      ctaDesiredAction,
+      ctaLinkUrl,
+      ctaPromoCode,
+      ctaLinkInBioRequirements,
+      specialNotesInstructions,
+      needAds,
     } = campaignData;
 
     // Validate required fields
@@ -395,6 +426,46 @@ export const createClientCampaign = async (req: Request, res: Response) => {
       }
     }
 
+    // Process brand guidelines PDF/image upload (support multiple)
+    let brandGuidelinesUrls: string[] = [];
+    if (req.files && (req.files as any).brandGuidelines) {
+      const brandGuidelinesFiles = Array.isArray((req.files as any).brandGuidelines)
+        ? (req.files as any).brandGuidelines
+        : [(req.files as any).brandGuidelines];
+      for (const file of brandGuidelinesFiles) {
+        if (file && file.tempFilePath && file.name) {
+          const url = await uploadAttachments({
+            tempFilePath: file.tempFilePath,
+            fileName: file.name,
+            folderName: 'brandGuidelines',
+          });
+          brandGuidelinesUrls.push(url);
+        }
+      }
+    }
+
+    // Process product image 1 upload
+    let productImage1Url: string | null = null;
+    if (req.files && (req.files as any).productImage1) {
+      const productImage1Files = Array.isArray((req.files as any).productImage1)
+        ? (req.files as any).productImage1
+        : [(req.files as any).productImage1];
+      if (productImage1Files.length > 0) {
+        productImage1Url = await uploadCompanyLogo(productImage1Files[0].tempFilePath, productImage1Files[0].name);
+      }
+    }
+
+    // Process product image 2 upload
+    let productImage2Url: string | null = null;
+    if (req.files && (req.files as any).productImage2) {
+      const productImage2Files = Array.isArray((req.files as any).productImage2)
+        ? (req.files as any).productImage2
+        : [(req.files as any).productImage2];
+      if (productImage2Files.length > 0) {
+        productImage2Url = await uploadCompanyLogo(productImage2Files[0].tempFilePath, productImage2Files[0].name);
+      }
+    }
+
     const newCampaign = await prisma.$transaction(async (tx) => {
       // --- LOGISTICS: Process Products ---
       let productsToCreate: any[] = [];
@@ -410,21 +481,25 @@ export const createClientCampaign = async (req: Request, res: Response) => {
         const mode: ReservationMode = schedulingOption === 'auto' ? 'AUTO_SCHEDULE' : 'MANUAL_CONFIRMATION';
 
         // Flatten locations
-        const locationNames = Array.isArray(locations) ? locations.map((l: any) => l.name).filter(Boolean) : [];
+        const locationNames = Array.isArray(locations)
+          ? locations.filter((loc: any) => loc.name && loc.name.trim() !== '')
+          : [];
 
         reservationConfigCreate = {
           create: {
-            mode: mode,
+            mode,
             locations: locationNames as any,
-            availabilityRules: (availabilityRules || []) as any,
+            availabilityRules: availabilityRules as any,
+            clientRemarks: clientRemarks || null,
+            allowMultipleBookings: allowMultipleBookings || false,
           },
         };
       }
 
       // Construct Objectives String (including remarks)
-      let objectivesString = campaignObjectives ? campaignObjectives.join(', ') : '';
-      if (logisticRemarks) {
-        objectivesString += `\n\n[Logistic Remarks]: ${logisticRemarks}`;
+      let objectivesString = campaignObjectives || '';
+      if (clientRemarks) {
+        objectivesString += `\n\n[Logistic Remarks]: ${clientRemarks}`;
       }
 
       // Create campaign with PENDING status
@@ -433,50 +508,65 @@ export const createClientCampaign = async (req: Request, res: Response) => {
           campaignId,
           name: campaignTitle,
           description: campaignDescription,
-          status: 'PENDING_CSM_REVIEW', // Set to PENDING_CSM_REVIEW so it shows up in the Pending tab for admins
-          origin: 'CLIENT', // Mark as client-created campaign for v3 flow
-          submissionVersion: 'v4', // Set submission version to determine flow type
+          status: 'PENDING_CSM_REVIEW',
+          origin: 'CLIENT',
+          submissionVersion: 'v4',
           brandTone: brandTone || '',
+          brandAbout: brandAbout || '',
           productName: productName || '',
+          websiteLink: websiteLink || '',
           products: {
             create: productsToCreate,
           },
           reservationConfig: reservationConfigCreate,
           logisticsType: logisticsType && logisticsType !== '' ? (logisticsType as LogisticType) : null,
 
-          // Skip adminManager and other fields that will be set by CSM later
           campaignBrief: {
             create: {
               title: campaignTitle,
-              objectives: campaignObjectives ? campaignObjectives.join(', ') : '',
+              objectives: campaignObjectives || '',
+              secondaryObjectives: Array.isArray(secondaryObjectives) ? secondaryObjectives : [],
+              boostContent: boostContent || '',
+              primaryKPI: primaryKPI || '',
+              performanceBaseline: performanceBaseline || '',
               images: publicURL,
               startDate: campaignStartDate ? new Date(campaignStartDate) : new Date(),
               endDate: campaignEndDate ? new Date(campaignEndDate) : new Date(),
+              postingStartDate: postingStartDate ? new Date(postingStartDate) : null,
+              postingEndDate: postingEndDate ? new Date(postingEndDate) : null,
               industries: campaignIndustries ? campaignIndustries.join(', ') : '',
+              socialMediaPlatform: Array.isArray(socialMediaPlatform) ? socialMediaPlatform : [],
               campaigns_do: campaignDo || [],
               campaigns_dont: campaignDont || [],
-              videoAngle: videoAngle || [],
-              socialMediaPlatform: socialMediaPlatform || [],
               otherAttachments: otherAttachments,
               referencesLinks: referencesLinks?.map((link: any) => link?.value).filter(Boolean) || [],
             },
           },
           campaignRequirement: {
             create: {
+              // Primary Audience
               gender: audienceGender || [],
               age: audienceAge || [],
               geoLocation: audienceLocation || [],
               language: audienceLanguage || [],
               creator_persona: audienceCreatorPersona || [],
               user_persona: audienceUserPersona || '',
-              country: Array.isArray(countries) && countries.length > 0 ? countries[0] : (Array.isArray(country) && country.length > 0 ? country[0] : ''),
-              ...(countries && { countries: countries || country || [] }),
+              country: country || '',
+              // Secondary Audience
+              secondary_gender: secondaryAudienceGender || [],
+              secondary_age: secondaryAudienceAge || [],
+              secondary_geoLocation: secondaryAudienceLocation || [],
+              secondary_language: secondaryAudienceLanguage || [],
+              secondary_creator_persona: secondaryAudienceCreatorPersona || [],
+              secondary_user_persona: secondaryAudienceUserPersona || '',
+              secondary_country: secondaryCountry || '',
+              geographic_focus: geographicFocus || '',
+              geographicFocusOthers: geographicFocusOthers || '',
             },
           },
           campaignCredits: requestedCredits,
           creditsPending: requestedCredits,
           creditsUtilized: 0,
-          // Connect to client's company
           company: {
             connect: {
               id: company?.id || '',
@@ -490,6 +580,52 @@ export const createClientCampaign = async (req: Request, res: Response) => {
           reservationConfig: true,
         },
       });
+
+      // Create CampaignAdditionalDetails if any additional detail fields are provided
+      const hasAdditionalDetails =
+        (contentFormat && contentFormat.length > 0) ||
+        mainMessage ||
+        keyPoints ||
+        toneAndStyle ||
+        brandGuidelinesUrls ||
+        referenceContent ||
+        productImage1Url ||
+        productImage2Url ||
+        hashtagsToUse ||
+        mentionsTagsRequired ||
+        creatorCompensation ||
+        ctaDesiredAction ||
+        ctaLinkUrl ||
+        ctaPromoCode ||
+        ctaLinkInBioRequirements ||
+        specialNotesInstructions ||
+        needAds;
+
+      if (hasAdditionalDetails) {
+        await tx.campaignAdditionalDetails.create({
+          data: {
+            campaignId: campaign.id,
+            contentFormat: Array.isArray(contentFormat) ? contentFormat : [],
+            mainMessage: mainMessage || null,
+            keyPoints: keyPoints || null,
+            toneAndStyle: toneAndStyle || null,
+            brandGuidelinesUrl: brandGuidelinesUrls.length === 0 ? null : (brandGuidelinesUrls.length === 1 ? brandGuidelinesUrls[0] : brandGuidelinesUrls.join(',')),
+            referenceContent: referenceContent || null,
+            productImage1Url: productImage1Url,
+            productImage2Url: productImage2Url,
+            // Additional Details 2 fields
+            hashtagsToUse: hashtagsToUse || null,
+            mentionsTagsRequired: mentionsTagsRequired || null,
+            creatorCompensation: creatorCompensation || null,
+            ctaDesiredAction: ctaDesiredAction || null,
+            ctaLinkUrl: ctaLinkUrl || null,
+            ctaPromoCode: ctaPromoCode || null,
+            ctaLinkInBioRequirements: ctaLinkInBioRequirements || null,
+            specialNotesInstructions: specialNotesInstructions || null,
+            needAds: needAds || null,
+          },
+        });
+      }
 
       // FIFO credit deduction logic
       if (requestedCredits > 0) {

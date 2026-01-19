@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import * as crypto from 'crypto';
+import * as bcrypt from 'bcrypt';
 import { sendEmail } from '@configs/nodemailer.config';
 
 const prisma = new PrismaClient();
@@ -868,7 +869,8 @@ export const activateChildAccount = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Account is already activated' });
     }
 
-    const hashedPassword = password;
+    // Hash the password before storing it
+    const hashedPassword = await bcrypt.hash(password, 10);
 
     // Update child account and create User record
     console.log('Updating child account with ID:', childAccount.id);
