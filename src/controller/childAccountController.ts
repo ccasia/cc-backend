@@ -160,15 +160,6 @@ export const createChildAccount = async (req: Request, res: Response) => {
 
     console.log('Parent client found:', parentClient.id);
 
-    // Check if the parent client's user account is active (not pending)
-    // Child accounts can only be invited after the main PIC has activated their account
-    if (!parentClient.user || parentClient.user.status !== 'active') {
-      console.log('Parent client user status:', parentClient.user?.status);
-      return res.status(403).json({
-        message: 'Cannot invite child accounts until the main account has been activated. The primary account holder must complete their activation first.',
-      });
-    }
-
     // Check if email already exists
     const existingChildAccount = await prisma.childAccount.findFirst({
       where: {
@@ -260,14 +251,7 @@ export const createChildAccount = async (req: Request, res: Response) => {
       //   },
       // });
 
-      // Helper function to get correct base URL
-      const getBaseEmailUrl = () => {
-        const baseUrl = process.env.BASE_EMAIL_URL;
-        if (!baseUrl) return 'http://localhost';
-        return baseUrl;
-      };
-      
-      const baseUrl = getBaseEmailUrl();
+      const baseUrl = process.env.BASE_EMAIL_URL || 'http://localhost:3000';
       const invitationLink = `${baseUrl}/auth/child-account-setup/${invitationToken}`;
 
       console.log('BASE_EMAIL_URL:', process.env.BASE_EMAIL_URL);
@@ -466,7 +450,7 @@ export const resendInvitation = async (req: Request, res: Response) => {
     });
 
     // Send new invitation email
-    const baseUrl = process.env.BASE_EMAIL_URL || 'http://localhost';
+    const baseUrl = process.env.BASE_EMAIL_URL || 'http://localhost:3000';
     const invitationLink = `${baseUrl}/auth/child-account-setup/${invitationToken}`;
 
     const emailContent = {
