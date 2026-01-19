@@ -208,7 +208,11 @@ export const getInvoicesByCampaignId = async (req: Request, res: Response) => {
         campaignId: id,
       },
       include: {
-        creator: true,
+        creator: {
+          include: {
+            user: true,
+          },
+        },
         campaign: {
           include: {
             subscription: true,
