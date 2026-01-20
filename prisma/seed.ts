@@ -141,6 +141,16 @@ const csLeadRole = {
   ],
 };
 
+// Credit Tier configuration
+const creditTiers = [
+  { name: 'Nano A', minFollowers: 1000, maxFollowers: 5000, creditsPerVideo: 1 },
+  { name: 'Nano B', minFollowers: 5001, maxFollowers: 15000, creditsPerVideo: 2 },
+  { name: 'Micro A', minFollowers: 15001, maxFollowers: 30000, creditsPerVideo: 3 },
+  { name: 'Micro B', minFollowers: 30001, maxFollowers: 50000, creditsPerVideo: 4 },
+  { name: 'Micro C', minFollowers: 50001, maxFollowers: 100000, creditsPerVideo: 5 },
+  { name: 'Macro', minFollowers: 100001, maxFollowers: null, creditsPerVideo: 8 }, // 100K+ followers - Unlimited
+];
+
 async function main() {
   // Create permissions first
   for (const scope of scopes) {
@@ -259,6 +269,30 @@ async function main() {
 
     console.log(`  > Prices synced for ${pkg.type} (MYR: ${pkg.valueMYR}, SGD: ${pkg.valueSGD})`);
   }
+
+  // Create/update Credit Tiers
+  console.log('\nSeeding Credit Tiers...');
+  for (const tier of creditTiers) {
+    await prisma.creditTier.upsert({
+      where: { name: tier.name },
+      update: {
+        minFollowers: tier.minFollowers,
+        maxFollowers: tier.maxFollowers,
+        creditsPerVideo: tier.creditsPerVideo,
+      },
+      create: {
+        name: tier.name,
+        minFollowers: tier.minFollowers,
+        maxFollowers: tier.maxFollowers,
+        creditsPerVideo: tier.creditsPerVideo,
+      },
+    });
+    const rangeDisplay = tier.maxFollowers
+      ? `${tier.minFollowers.toLocaleString()}-${tier.maxFollowers.toLocaleString()}`
+      : `${tier.minFollowers.toLocaleString()}+`;
+    console.log(`  ✅ ${tier.name}: ${rangeDisplay} followers = ${tier.creditsPerVideo} credit(s)/video`);
+  }
+  console.log('Credit Tiers seeded successfully');
 }
 
 main()

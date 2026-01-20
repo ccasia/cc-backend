@@ -125,7 +125,19 @@ export const deductCredits = async (campaignId: string, userId: string, prismaFu
       },
     });
 
-    const ugcVideos = campaign.shortlisted.find((x) => x.userId === userId)?.ugcVideos;
+    // Get shortlisted creator data for credit calculation
+    const shortlistedCreator = campaign.shortlisted.find((x) => x.userId === userId);
+    const ugcVideos = shortlistedCreator?.ugcVideos ?? 0;
+
+    // Calculate credits to deduct based on campaign type
+    let creditsToDeduct: number;
+    if (campaign.isCreditTier && shortlistedCreator?.creditPerVideo) {
+      // Credit tier campaign: multiply videos by creditPerVideo from tier snapshot
+      creditsToDeduct = ugcVideos * shortlistedCreator.creditPerVideo;
+    } else {
+      // Non-tier campaign: 1 credit per video (legacy behavior)
+      creditsToDeduct = ugcVideos;
+    }
 
     const data = await tx.campaign.update({
       where: {
@@ -133,12 +145,10 @@ export const deductCredits = async (campaignId: string, userId: string, prismaFu
       },
       data: {
         creditsUtilized: {
-          // increment: filterSubmission.video.length,
-          increment: ugcVideos ?? 0,
+          increment: creditsToDeduct,
         },
         creditsPending: {
-          // decrement: filterSubmission.video.length,
-          decrement: ugcVideos ?? 0,
+          decrement: creditsToDeduct,
         },
       },
     });
