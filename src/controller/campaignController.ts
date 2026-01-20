@@ -35,7 +35,7 @@ import {
   uploadPitchVideo,
 } from '@configs/cloudStorage.config';
 import dayjs from 'dayjs';
-import { logChange, logAdminChange } from '@services/campaignServices';
+import { logChange, logAdminChange, uploadCampaignAssets, createNewSpreadSheetAsync } from '@services/campaignServices';
 import { saveNotification } from '@controllers/notificationController';
 import { clients, io } from '../server';
 import fs from 'fs';
@@ -144,7 +144,8 @@ interface Campaign {
   crossPosting: boolean;
   ads: boolean;
   campaignCredits: number;
-  country: string;
+  country: string[];
+  countries?: string[];
   logisticsType?: string;
   products?: { name: string }[];
   clientRemarks?: string;
@@ -172,41 +173,6 @@ const MAPPING: Record<string, string> = {
   FINAL_DRAFT: 'Final Draft',
   POSTING: 'Posting',
 };
-
-// const generateAgreement = async (creator: any, campaign: any) => {
-//   try {
-//     const agreementsPath = await agreementInput({
-//       date: dayjs().format('ddd LL'),
-//       creatorName: creator.name as string,
-//       icNumber: creator?.paymentForm.icNumber,
-//       address: creator.creator.address,
-//       agreement_endDate: dayjs().add(1, 'M').format('ddd LL'),
-//       now_date: dayjs().format('ddd LL'),
-//       creatorAccNumber: creator?.paymentForm.bankAccountNumber,
-//       creatorBankName: creator?.paymentForm?.bankName,
-//       creatorBankAccName: creator?.paymentForm?.bankAccountName,
-//       agreementFormUrl: campaign?.campaignBrief?.agreementFrom,
-//       version: 1,
-//     });
-
-//     // const pdfPath = await pdfConverter(
-//     //   agreementsPath,
-//     //   path.resolve(__dirname, `../form/pdf/${creator.name.split(' ').join('_')}.pdf`),
-//     // );
-
-//     // const url = await uploadAgreementForm(
-//     //   pdfPath,
-//     //   `${creator.name.split(' ').join('_')}-${campaign.name}.pdf`,
-//     //   'creatorAgreements',
-//     // );
-
-//     // await fs.promises.unlink(pdfPath);
-
-//     // return url;
-//   } catch (error) {
-//     throw new Error(error);
-//   }
-// };
 
 export const createCampaign = async (req: Request, res: Response) => {
   const {
@@ -245,6 +211,7 @@ export const createCampaign = async (req: Request, res: Response) => {
     ads,
     campaignCredits,
     country,
+    countries,
     logisticsType,
     products,
     clientRemarks,
@@ -253,6 +220,7 @@ export const createCampaign = async (req: Request, res: Response) => {
     availabilityRules,
     allowMultipleBookings,
   }: Campaign = JSON.parse(req.body.data);
+
   // Also read optional fields not in the Campaign interface
   const rawBody: any = (() => {
     try {
@@ -261,53 +229,16 @@ export const createCampaign = async (req: Request, res: Response) => {
       return {};
     }
   })();
+
   const requestedOrigin = rawBody?.origin as 'ADMIN' | 'CLIENT' | undefined;
   const clientManagers = Array.isArray(rawBody?.clientManagers) ? rawBody.clientManagers : [];
   const submissionVersion = rawBody?.submissionVersion as 'v4' | undefined;
 
   try {
-    const publicURL: any = [];
-    const otherAttachments: string[] = [];
-
-    // Handle Campaign Images
-    if (req.files && req.files.campaignImages) {
-      const images: any = (req.files as any).campaignImages as [];
-
-      if (images.length) {
-        for (const item of images as any) {
-          const url = await uploadImage(item.tempFilePath, item.name, 'campaign');
-          publicURL.push(url);
-        }
-      } else {
-        const url = await uploadImage(images.tempFilePath, images.name, 'campaign');
-        publicURL.push(url);
-      }
-    }
-
-    if (req.files && req.files.otherAttachments) {
-      const attachments: any = (req.files as any).otherAttachments as [];
-
-      if (attachments.length) {
-        for (const item of attachments as any) {
-          const url: string = await uploadAttachments({
-            tempFilePath: item.tempFilePath,
-            fileName: item.name,
-            folderName: 'otherAttachments',
-          });
-          otherAttachments.push(url);
-        }
-      } else {
-        const url: string = await uploadAttachments({
-          tempFilePath: attachments.tempFilePath,
-          fileName: attachments.name,
-          folderName: 'otherAttachments',
-        });
-        otherAttachments.push(url);
-      }
-    }
+    const { images, attachments } = await uploadCampaignAssets(req.files);
 
     // Handle All processes
-    await prisma.$transaction(
+    const campaign = await prisma.$transaction(
       async (tx) => {
         const admins = await Promise.all(
           campaignManager.map(async (admin) => {
@@ -337,6 +268,7 @@ export const createCampaign = async (req: Request, res: Response) => {
             return null;
           }),
         );
+
         const existingClient = await tx.company.findUnique({
           where: { id: client.id },
           include: { subscriptions: { where: { status: 'ACTIVE' } } },
@@ -355,8 +287,6 @@ export const createCampaign = async (req: Request, res: Response) => {
         if (campaignCredits > availableCredits) {
           throw new Error('Not enough credits to create the campaign');
         }
-
-        const url: string = await createNewSpreadSheet({ title: campaignTitle });
 
         // Create Campaign
         // Normalize dates for campaign brief
@@ -401,7 +331,6 @@ export const createCampaign = async (req: Request, res: Response) => {
             origin: requestedOrigin === 'CLIENT' ? 'CLIENT' : 'ADMIN',
             submissionVersion: submissionVersion || undefined, // Set v4 if client user is added as manager
             brandTone: brandTone,
-            spreadSheetURL: url,
             rawFootage: rawFootage || false,
             ads: ads || false,
             photos: photos || false,
@@ -419,9 +348,8 @@ export const createCampaign = async (req: Request, res: Response) => {
             campaignBrief: {
               create: {
                 title: campaignTitle,
-                // objectives: campaignObjectives,
-                images: publicURL.map((image: any) => image) || '',
-                otherAttachments: otherAttachments,
+                images: images,
+                otherAttachments: attachments,
                 referencesLinks: referencesLinks?.map((link: any) => link.value) || [],
                 startDate: normalizedStartDate,
                 endDate: normalizedEndDate,
@@ -445,7 +373,8 @@ export const createCampaign = async (req: Request, res: Response) => {
                 language: audienceLanguage,
                 creator_persona: audienceCreatorPersona,
                 user_persona: audienceUserPersona,
-                country: country,
+                country: Array.isArray(countries) && countries.length > 0 ? countries[0] : (Array.isArray(country) && country.length > 0 ? country[0] : ''), // Legacy single country (first item from countries or country)
+                countries: countries || country || [], // New multiple countries field
               },
             },
             campaignCredits,
@@ -480,6 +409,7 @@ export const createCampaign = async (req: Request, res: Response) => {
         // For v4 campaigns, timelines are created based on campaign dates proportionally
         // For non-v4 campaigns, timelines are created from the frontend timeline array
         const { createCampaignTimelines } = require('../helper/campaignTimelineHelper');
+
         await createCampaignTimelines(tx, campaign.id, timeline, {
           submissionVersion: submissionVersion,
           campaignStartDate: normalizedStartDate,
@@ -518,6 +448,7 @@ export const createCampaign = async (req: Request, res: Response) => {
 
         // Check if the user creating the campaign is a Client
         const userId = req.session.userid;
+
         if (userId) {
           const currentUser = await tx.user.findUnique({
             where: { id: userId },
@@ -540,7 +471,7 @@ export const createCampaign = async (req: Request, res: Response) => {
             title: campaign.name,
             description: campaign.description,
             campaignId: campaign.id,
-            photoURL: publicURL[0],
+            photoURL: images[0],
             UserThread: {
               create: admins.map((admin: any) => ({
                 userId: admin.id,
@@ -778,12 +709,16 @@ export const createCampaign = async (req: Request, res: Response) => {
           }
         }
 
-        return res.status(200).json({ campaign, message: 'Campaign created successfully.' });
+        return campaign;
       },
       {
         timeout: 500000,
       },
     );
+
+    createNewSpreadSheetAsync({ title: campaignTitle, campaignId: campaign.id });
+
+    return res.status(200).json({ campaign, message: 'Campaign created successfully.' });
   } catch (error) {
     if (!res.headersSent) {
       return res.status(400).json(error?.message);
@@ -923,6 +858,8 @@ export const exportCreatorsCampaignSheet = async (_req: Request, res: Response) 
 // Campaign Info for Admin
 export const getAllCampaigns = async (req: Request, res: Response) => {
   const id = req.session.userid;
+
+  console.log('TEST');
 
   try {
     let campaigns;
@@ -1476,23 +1413,20 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       return res.status(200).json(data);
     }
 
-    // Show all active campaigns to creators (both admin and client created) - like superadmin
     const beforeFilterCount = campaigns.length;
 
-    // For now, show ALL active campaigns to creators to match superadmin behavior
-    // This ensures creators can see all campaigns like superadmin does
     campaigns = campaigns.filter((campaign) => {
-      // Show all ACTIVE campaigns regardless of timeline status
       return campaign.status === 'ACTIVE';
     });
 
     const country = await getCountry(req.ip as string);
 
-    // Apply country filtering only in non-development environments
     if (process.env.NODE_ENV !== 'development') {
       campaigns = campaigns.filter((campaign) => {
         if (!campaign.campaignRequirement?.country) return campaign;
-        return campaign.campaignRequirement.country.toLocaleLowerCase() === country?.toLowerCase();
+
+        return campaign.campaignRequirement.countries.some((a) => a.toLowerCase() === country?.toLowerCase());
+        // return campaign.campaignRequirement.country.toLocaleLowerCase() === country?.toLowerCase();
       });
     }
 
@@ -2289,6 +2223,7 @@ export const getPitchById = async (req: Request, res: Response) => {
 export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: Response) => {
   const { userId } = req.params;
   // const { status, limit = 9, cursor } = req.query;
+
   const { cursor, limit = 10, search, status } = req.query;
   console.log('getAllCampaignsByAdminId called with:', { userId, status, search, limit, cursor });
 
@@ -3303,6 +3238,7 @@ export const editCampaignRequirements = async (req: Request, res: Response) => {
     audienceCreatorPersona,
     audienceUserPersona,
     country,
+    countries,
   } = req.body;
 
   try {
@@ -3318,6 +3254,7 @@ export const editCampaignRequirements = async (req: Request, res: Response) => {
         creator_persona: audienceCreatorPersona,
         user_persona: audienceUserPersona,
         country: country,
+        ...(countries && { countries: countries }),
       },
       include: {
         campaign: { select: { name: true } },

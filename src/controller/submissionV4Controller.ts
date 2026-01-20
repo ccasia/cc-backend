@@ -272,6 +272,7 @@ export const createV4Submissions = async (req: Request, res: Response) => {
 
     // Emit socket event for real-time updates
     const io = req.app.get('io');
+
     if (io) {
       io.to(campaignId).emit('v4:submissions:created', {
         campaignId,
