@@ -13,6 +13,7 @@ import {
   editCampaignBrandOrCompany,
   editCampaignDosAndDonts,
   editCampaignRequirements,
+  editCampaignLogistics,
   editCampaignTimeline,
   changePitchStatus,
   getCampaignsByCreatorId,
@@ -224,6 +225,7 @@ router.patch('/editCampaignObjectives', isSuperAdmin, editCampaignObjectives);
 router.patch('/editCampaignBrandOrCompany', isSuperAdmin, editCampaignBrandOrCompany);
 router.patch('/editCampaignDosAndDonts', isSuperAdmin, editCampaignDosAndDonts);
 router.patch('/editCampaignRequirements', isSuperAdmin, editCampaignRequirements);
+router.patch('/editCampaignLogistics', isSuperAdmin, editCampaignLogistics);
 router.patch('/editCampaignTimeline/:id', isSuperAdmin, editCampaignTimeline);
 router.patch('/editCampaignImages/:id', isSuperAdmin, editCampaignImages);
 router.patch('/editCampaignAdmins/:id', isSuperAdmin, editCampaignAdmin);
