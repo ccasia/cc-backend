@@ -9,6 +9,7 @@ import {
   closeCampaign,
   getPitchById,
   editCampaignInfo,
+  editCampaignObjectives,
   editCampaignBrandOrCompany,
   editCampaignDosAndDonts,
   editCampaignRequirements,
@@ -216,6 +217,7 @@ router.patch('/pitch', isLoggedIn, creatorMakePitch);
 router.patch('/changeCampaignStage/:campaignId', changeCampaignStage);
 router.patch('/closeCampaign/:id', isSuperAdmin, closeCampaign);
 router.patch('/editCampaignInfo', isSuperAdmin, editCampaignInfo);
+router.patch('/editCampaignObjectives', isSuperAdmin, editCampaignObjectives);
 router.patch('/editCampaignBrandOrCompany', isSuperAdmin, editCampaignBrandOrCompany);
 router.patch('/editCampaignDosAndDonts', isSuperAdmin, editCampaignDosAndDonts);
 router.patch('/editCampaignRequirements', isSuperAdmin, editCampaignRequirements);

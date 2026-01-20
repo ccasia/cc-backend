@@ -3279,6 +3279,70 @@ export const editCampaignInfo = async (req: Request, res: Response) => {
   }
 };
 
+export const editCampaignObjectives = async (req: Request, res: Response) => {
+  const {
+    id,
+    objectives,
+    secondaryObjectives,
+    boostContent,
+    primaryKPI,
+    performanceBaseline,
+  } = req.body;
+  const adminId = req.session.userid;
+
+  try {
+    console.log('editCampaignObjectives received:', {
+      id,
+      objectives,
+      secondaryObjectives,
+      boostContent,
+      primaryKPI,
+      performanceBaseline,
+    });
+
+    // Get campaign name for logging
+    const campaign = await prisma.campaign.findUnique({
+      where: { id },
+      select: { name: true },
+    });
+
+    const updatedCampaignBrief = await prisma.campaignBrief.update({
+      where: {
+        campaignId: id,
+      },
+      data: {
+        ...(objectives !== undefined && { objectives }),
+        ...(secondaryObjectives !== undefined && { secondaryObjectives }),
+        ...(boostContent !== undefined && { boostContent }),
+        ...(primaryKPI !== undefined && { primaryKPI }),
+        ...(performanceBaseline !== undefined && { performanceBaseline }),
+      },
+    });
+
+    // Log the change
+    if (adminId) {
+      const campaignActivityMessage = `Campaign Details edited - [Campaign Objectives]`;
+      await prisma.campaignLog.create({
+        data: {
+          message: campaignActivityMessage,
+          adminId: adminId,
+          campaignId: id,
+        },
+      });
+
+      const adminLogMessage = `Updated campaign objectives for campaign - ${campaign?.name}`;
+      logAdminChange(adminLogMessage, adminId, req);
+    }
+
+    return res
+      .status(200)
+      .json({ message: 'Campaign objectives updated successfully', brief: updatedCampaignBrief });
+  } catch (error) {
+    console.error('editCampaignObjectives error:', error);
+    return res.status(400).json({ message: error?.message || 'Failed to update campaign objectives', error });
+  }
+};
+
 export const editCampaignBrandOrCompany = async (req: Request, res: Response) => {
   const {
     id,
