@@ -31,6 +31,7 @@ import {
   deleteContent,
   uploadAgreementForm,
   uploadAttachments,
+  uploadCompanyLogo,
   uploadImage,
   uploadPitchVideo,
 } from '@configs/cloudStorage.config';
@@ -3181,9 +3182,49 @@ export const closeCampaign = async (req: Request, res: Response) => {
 // };
 
 export const editCampaignInfo = async (req: Request, res: Response) => {
-  const { id, name, description, campaignInterests, campaignIndustries, isKWSPCampaign, spreadSheetURL } = req.body;
+  const {
+    id,
+    name,
+    description,
+    campaignIndustries,
+    isKWSPCampaign,
+    spreadSheetURL,
+    // New fields from frontend
+    brandAbout,
+    productName,
+    websiteLink,
+    campaignStartDate,
+    campaignEndDate,
+  } = req.body;
   const adminId = req.session.userid;
+
+  const publicURL: string[] = [];
+  if (req.files && (req.files as any).campaignImages) {
+    const images = Array.isArray((req.files as any).campaignImages)
+      ? (req.files as any).campaignImages
+      : [(req.files as any).campaignImages];
+
+    for (const image of images) {
+      // Use your existing image upload function
+      const url = await uploadCompanyLogo(image.tempFilePath, image.name);
+      publicURL.push(url);
+    }
+  }
+
   try {
+    console.log('editCampaignInfo received:', {
+      id,
+      name,
+      description,
+      brandAbout,
+      productName,
+      websiteLink,
+      campaignIndustries,
+      campaignStartDate,
+      campaignEndDate,
+      campaignImage: publicURL,
+    });
+
     const updatedCampaign = await prisma.campaign.update({
       where: {
         id: id,
@@ -3192,7 +3233,11 @@ export const editCampaignInfo = async (req: Request, res: Response) => {
         name: name,
         description: description,
         isKWSPCampaign,
-        spreadSheetURL, // <-- allow updating spreadsheet link!
+        spreadSheetURL,
+        // Update Campaign model fields
+        ...(brandAbout !== undefined && { brandAbout }),
+        ...(productName !== undefined && { productName }),
+        ...(websiteLink !== undefined && { websiteLink }),
       },
     });
 
@@ -3201,8 +3246,12 @@ export const editCampaignInfo = async (req: Request, res: Response) => {
         campaignId: id,
       },
       data: {
-        // interests: campaignInterests,
-        industries: campaignIndustries,
+        ...(campaignIndustries && { industries: campaignIndustries }),
+        // Update CampaignBrief model fields
+        ...(campaignStartDate && { startDate: new Date(campaignStartDate) }),
+        ...(campaignEndDate && { endDate: new Date(campaignEndDate) }),
+        // Only update images if new ones were uploaded
+        ...(publicURL.length > 0 && { images: publicURL }),
       },
     });
 
@@ -3220,11 +3269,13 @@ export const editCampaignInfo = async (req: Request, res: Response) => {
       const adminLogMessage = `Updated campaign info for campaign - ${name}`;
       logAdminChange(adminLogMessage, adminId, req);
     }
+
     return res
       .status(200)
-      .json({ message: 'Campaign information updated successfully', ...updatedCampaign, ...updatedCampaignBrief });
+      .json({ message: 'Campaign information updated successfully', campaign: updatedCampaign, brief: updatedCampaignBrief });
   } catch (error) {
-    return res.status(400).json(error);
+    console.error('editCampaignInfo error:', error);
+    return res.status(400).json({ message: error?.message || 'Failed to update campaign', error });
   }
 };
 
@@ -3320,6 +3371,7 @@ export const editCampaignDosAndDonts = async (req: Request, res: Response) => {
 export const editCampaignRequirements = async (req: Request, res: Response) => {
   const {
     campaignId,
+    // Primary Audience
     audienceGender,
     audienceAge,
     audienceLocation,
@@ -3328,6 +3380,17 @@ export const editCampaignRequirements = async (req: Request, res: Response) => {
     audienceUserPersona,
     country,
     countries,
+    // Secondary Audience
+    secondaryAudienceGender,
+    secondaryAudienceAge,
+    secondaryAudienceLocation,
+    secondaryAudienceLanguage,
+    secondaryAudienceCreatorPersona,
+    secondaryAudienceUserPersona,
+    secondaryCountry,
+    // Geographic Focus
+    geographicFocus,
+    geographicFocusOthers,
   } = req.body;
 
   try {
@@ -3336,6 +3399,7 @@ export const editCampaignRequirements = async (req: Request, res: Response) => {
         campaignId: campaignId,
       },
       data: {
+        // Primary Audience
         gender: audienceGender,
         age: audienceAge,
         geoLocation: audienceLocation,
@@ -3344,6 +3408,17 @@ export const editCampaignRequirements = async (req: Request, res: Response) => {
         user_persona: audienceUserPersona,
         country: country,
         ...(countries && { countries: countries }),
+        // Secondary Audience
+        ...(secondaryAudienceGender !== undefined && { secondary_gender: secondaryAudienceGender }),
+        ...(secondaryAudienceAge !== undefined && { secondary_age: secondaryAudienceAge }),
+        ...(secondaryAudienceLocation !== undefined && { secondary_geoLocation: secondaryAudienceLocation }),
+        ...(secondaryAudienceLanguage !== undefined && { secondary_language: secondaryAudienceLanguage }),
+        ...(secondaryAudienceCreatorPersona !== undefined && { secondary_creator_persona: secondaryAudienceCreatorPersona }),
+        ...(secondaryAudienceUserPersona !== undefined && { secondary_user_persona: secondaryAudienceUserPersona }),
+        ...(secondaryCountry !== undefined && { secondary_country: secondaryCountry }),
+        // Geographic Focus
+        ...(geographicFocus !== undefined && { geographic_focus: geographicFocus }),
+        ...(geographicFocusOthers !== undefined && { geographicFocusOthers: geographicFocusOthers }),
       },
       include: {
         campaign: { select: { name: true } },
