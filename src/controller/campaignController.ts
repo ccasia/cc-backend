@@ -3515,6 +3515,111 @@ export const editCampaignRequirements = async (req: Request, res: Response) => {
   }
 };
 
+export const editCampaignLogistics = async (req: Request, res: Response) => {
+  const {
+    campaignId,
+    logisticsType,
+    // Product Delivery
+    products,
+    // Reservation
+    schedulingOption,
+    allowMultipleBookings,
+    locations,
+    availabilityRules,
+    clientRemarks,
+  } = req.body;
+
+  const adminId = req.session.userid;
+
+  try {
+    // Update campaign logistics type
+    const updatedCampaign = await prisma.campaign.update({
+      where: { id: campaignId },
+      data: {
+        logisticsType: logisticsType && logisticsType !== '' ? (logisticsType as LogisticType) : null,
+      },
+      select: { name: true },
+    });
+
+    // Handle Product Delivery - update products
+    if (logisticsType === 'PRODUCT_DELIVERY' && products) {
+      // Delete existing products
+      await prisma.product.deleteMany({
+        where: { campaignId },
+      });
+
+      // Create new products
+      const validProducts = products.filter((p: { name: string }) => p.name && p.name.trim() !== '');
+      if (validProducts.length > 0) {
+        await prisma.product.createMany({
+          data: validProducts.map((p: { name: string }) => ({
+            campaignId,
+            productName: p.name,
+          })),
+        });
+      }
+    }
+
+    // Handle Reservation - update or create reservation config
+    if (logisticsType === 'RESERVATION') {
+      const reservationMode = schedulingOption === 'auto' ? 'AUTO_SCHEDULE' : 'MANUAL_CONFIRMATION';
+
+      await prisma.reservationConfiguration.upsert({
+        where: { campaignId },
+        update: {
+          mode: reservationMode,
+          allowMultipleBookings: allowMultipleBookings || false,
+          locations: locations || [],
+          availabilityRules: availabilityRules || [],
+          clientRemarks: clientRemarks || null,
+        },
+        create: {
+          campaignId,
+          mode: reservationMode,
+          allowMultipleBookings: allowMultipleBookings || false,
+          locations: locations || [],
+          availabilityRules: availabilityRules || [],
+          clientRemarks: clientRemarks || null,
+        },
+      });
+    }
+
+    // Clear reservation config if switching away from reservation
+    if (logisticsType !== 'RESERVATION') {
+      await prisma.reservationConfiguration.deleteMany({
+        where: { campaignId },
+      });
+    }
+
+    // Clear products if switching away from product delivery
+    if (logisticsType !== 'PRODUCT_DELIVERY') {
+      await prisma.product.deleteMany({
+        where: { campaignId },
+      });
+    }
+
+    // Log the change
+    if (adminId) {
+      const campaignActivityMessage = `Campaign Details edited - [Campaign Logistics]`;
+      await prisma.campaignLog.create({
+        data: {
+          message: campaignActivityMessage,
+          adminId: adminId,
+          campaignId: campaignId,
+        },
+      });
+
+      const adminLogMessage = `Updated campaign logistics for campaign - ${updatedCampaign.name}`;
+      logAdminChange(adminLogMessage, adminId, req);
+    }
+
+    return res.status(200).json({ message: 'Campaign logistics updated successfully' });
+  } catch (error) {
+    console.error('editCampaignLogistics error:', error);
+    return res.status(400).json({ message: error?.message || 'Failed to update campaign logistics', error });
+  }
+};
+
 export const editCampaignTimeline = async (req: Request, res: Response) => {
   const { id } = req.params;
 
