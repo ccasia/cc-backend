@@ -1304,6 +1304,11 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
   const { cursor, take = 10, search } = req.query;
   const campaignId = req.query?.campaignId as string;
 
+  console.log('DISCOVER PAGE DEBUG');
+  console.log('User ID:', userid);
+  console.log('Query params:', { cursor, take, search, campaignId });
+  console.log('Request IP:', req.ip);
+
   try {
     const user = await prisma.user.findUnique({
       where: {
@@ -1318,9 +1323,16 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       },
     });
 
-    if (!user) return res.status(404).json({ message: 'User not found' });
+    if (!user) {
+      console.log('❌ User not found');
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    console.log('✅ User found:', user.name, '| Role:', user.role);
+    console.log('Creator interests count:', user.creator?.interests?.length || 0);
 
     // Get all ACTIVE campaigns
+    console.log('📡 Fetching campaigns from database...');
     let campaigns = await prisma.campaign.findMany({
       take: Number(take),
       // ...(cursor && {
@@ -1398,8 +1410,10 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
     });
 
     const originalFetchedCount = campaigns.length;
+    console.log('Initial campaigns fetched from DB:', originalFetchedCount);
 
     if (campaigns?.length === 0) {
+      console.log('No campaigns found in database');
       const data = {
         data: {
           campaigns: [],
@@ -1413,21 +1427,38 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       return res.status(200).json(data);
     }
 
+    console.log('Campaign IDs fetched:', campaigns.map(c => c.id).join(', '));
+    console.log('Campaign names:', campaigns.map(c => c.name).join(', '));
+
     const beforeFilterCount = campaigns.length;
 
     campaigns = campaigns.filter((campaign) => {
       return campaign.status === 'ACTIVE';
     });
 
+    console.log('✅ After ACTIVE status filter:', campaigns.length, '(removed:', beforeFilterCount - campaigns.length, ')');
+
     const country = await getCountry(req.ip as string);
+    console.log('🌍 Detected country:', country);
+    console.log('🔧 Environment:', process.env.NODE_ENV);
+
+    const beforeCountryFilter = campaigns.length;
 
     if (process.env.NODE_ENV !== 'development') {
       campaigns = campaigns.filter((campaign) => {
-        if (!campaign.campaignRequirement?.country) return campaign;
+        if (!campaign.campaignRequirement?.country) {
+          console.log(`Campaign "${campaign.name}" has NO country requirement - INCLUDED`);
+          return campaign;
+        }
 
-        return campaign.campaignRequirement.countries.some((a) => a.toLowerCase() === country?.toLowerCase());
+        const hasMatchingCountry = campaign.campaignRequirement.countries.some((a) => a.toLowerCase() === country?.toLowerCase());
+        console.log(`Campaign "${campaign.name}" | Required countries: [${campaign.campaignRequirement.countries.join(', ')}] | Match: ${hasMatchingCountry ? '✅' : '❌'}`);
+        return hasMatchingCountry;
         // return campaign.campaignRequirement.country.toLocaleLowerCase() === country?.toLowerCase();
       });
+      console.log('✅ After country filter:', campaigns.length, '(removed:', beforeCountryFilter - campaigns.length, ')');
+    } else {
+      console.log('⚠️ Development mode - SKIPPING country filter');
     }
 
     const calculateInterestMatchingPercentage = (creatorInterests: Interest[], creatorPerona: []) => {
@@ -1498,6 +1529,7 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       return interestMatch * interestWeight + requirementMatch * requirementWeight;
     };
 
+    console.log('🎯 Calculating matching percentages...');
     const matchedCampaignWithPercentage = campaigns.map((item, index) => {
       try {
         const interestPercentage = calculateInterestMatchingPercentage(
@@ -1530,6 +1562,9 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
     // Keep the original order from database (newest first) instead of overriding
     const sortedMatchedCampaigns = matchedCampaignWithPercentage;
 
+    console.log('📦 Final campaigns to return:', sortedMatchedCampaigns.length);
+    console.log('Campaign names being returned:', sortedMatchedCampaigns.map(c => c.name).join(', '));
+
     // Fix pagination logic: Check if we got the full 'take' amount from the database
     // We need to use originalFetchedCount (BEFORE filtering) not campaigns.length (AFTER filtering)
     // If we fetched the full 'take' amount, there might be more pages
@@ -1542,6 +1577,8 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
         ? sortedMatchedCampaigns[sortedMatchedCampaigns.length - 1]?.id
         : null;
 
+    console.log('📄 Pagination:', { hasNextPage, lastCursor });
+
     const data = {
       data: {
         campaigns: sortedMatchedCampaigns,
@@ -1552,8 +1589,11 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       },
     };
 
+    console.log('=== END DISCOVER PAGE DEBUG ===\n');
+
     return res.status(200).json(data);
   } catch (error) {
+    console.error('❌ ERROR in matchCampaignWithCreator:', error);
     return res.status(400).json(error);
   }
 };
