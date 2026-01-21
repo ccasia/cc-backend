@@ -138,7 +138,10 @@ export const getAllChildAccounts = async (req: Request, res: Response) => {
 export const createChildAccount = async (req: Request, res: Response) => {
   try {
     const { clientId } = req.params;
-    const { email, firstName, lastName } = req.body;
+    const { email: rawEmail, firstName, lastName } = req.body;
+
+    // Normalize email to lowercase for consistent storage and lookup
+    const email = rawEmail.toLowerCase().trim();
 
     console.log('Creating child account for client ID:', clientId);
     console.log('Request body:', { email, firstName, lastName });
@@ -899,10 +902,10 @@ export const activateChildAccount = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Parent client not found' });
     }
 
-    // Create user first
+    // Create user first (normalize email to lowercase for consistent lookup)
     const user = await prisma.user.create({
       data: {
-        email: childAccount.email,
+        email: childAccount.email.toLowerCase().trim(),
         password: hashedPassword,
         name: `${childAccount.firstName || ''} ${childAccount.lastName || ''}`.trim(),
         role: 'client' as any,
