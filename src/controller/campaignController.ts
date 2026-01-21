@@ -321,6 +321,15 @@ export const createCampaign = async (req: Request, res: Response) => {
           };
         }
 
+        let finalizedCountries: string[] = [];
+        if (Array.isArray(countries) && countries.length > 0) {
+          finalizedCountries = countries;
+        } else if (Array.isArray(country) && country.length > 0) {
+          finalizedCountries = country;
+        } else if (typeof country === 'string' && country) {
+          finalizedCountries = [country];
+        }
+
         const campaign = await tx.campaign.create({
           data: {
             campaignId: campaignId,
@@ -373,8 +382,8 @@ export const createCampaign = async (req: Request, res: Response) => {
                 language: audienceLanguage,
                 creator_persona: audienceCreatorPersona,
                 user_persona: audienceUserPersona,
-                country: Array.isArray(countries) && countries.length > 0 ? countries[0] : (Array.isArray(country) && country.length > 0 ? country[0] : ''), // Legacy single country (first item from countries or country)
-                countries: countries || country || [], // New multiple countries field
+                country: finalizedCountries[0] || '',
+                countries: finalizedCountries, 
               },
             },
             campaignCredits,
