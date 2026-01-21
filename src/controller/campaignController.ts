@@ -3573,6 +3573,236 @@ export const editCampaignLogistics = async (req: Request, res: Response) => {
   }
 };
 
+export const editCampaignFinalise = async (req: Request, res: Response) => {
+  const {
+    campaignId,
+    campaignManagers,
+    campaignType,
+    deliverables,
+  } = req.body;
+
+  const adminId = req.session.userid;
+
+  try {
+    // Get campaign for logging with current campaignType and submission version
+    const campaign = await prisma.campaign.findUnique({
+      where: { id: campaignId },
+      include: {
+        campaignAdmin: {
+          include: {
+            admin: {
+              include: {
+                role: true,
+                user: true,
+              },
+            },
+          },
+        },
+        campaignBrief: true,
+        campaignTimeline: true,
+        company: {
+          include: {
+            clients: {
+              include: { user: true },
+            },
+          },
+        },
+        brand: {
+          include: {
+            company: {
+              include: {
+                clients: {
+                  include: { user: true },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!campaign) {
+      return res.status(404).json({ message: 'Campaign not found' });
+    }
+
+    const previousCampaignType = campaign.campaignType;
+
+    // Process deliverables - convert array to boolean flags (same as createCampaign/activateClientCampaign)
+    const rawFootage = deliverables?.includes('RAW_FOOTAGES') || false;
+    const photos = deliverables?.includes('PHOTOS') || false;
+    const ads = deliverables?.includes('ADS') || false;
+    const crossPosting = deliverables?.includes('CROSS_POSTING') || false;
+
+    // Update campaign basic fields including deliverable boolean flags
+    await prisma.campaign.update({
+      where: { id: campaignId },
+      data: {
+        campaignType: campaignType || 'normal',
+        rawFootage,
+        photos,
+        ads,
+        crossPosting,
+      },
+    });
+
+    // Handle timeline changes when campaignType changes
+    const newCampaignType = campaignType || 'normal';
+    if (previousCampaignType !== newCampaignType) {
+      if (newCampaignType === 'ugc') {
+        // Changed to UGC - remove Posting timeline if it exists
+        await prisma.campaignTimeline.deleteMany({
+          where: {
+            campaignId,
+            name: 'Posting',
+          },
+        });
+        console.log('Removed Posting timeline for UGC campaign');
+      } else if (previousCampaignType === 'ugc' && newCampaignType === 'normal') {
+        // Changed from UGC to Normal - add Posting timeline if it doesn't exist
+        const existingPostingTimeline = await prisma.campaignTimeline.findFirst({
+          where: {
+            campaignId,
+            name: 'Posting',
+          },
+        });
+
+        if (!existingPostingTimeline) {
+          // Get the posting submission type
+          const postingType = await prisma.submissionType.findFirst({
+            where: { type: 'POSTING' },
+          });
+
+          if (postingType && campaign.campaignBrief) {
+            // Get the final draft timeline to determine posting start date
+            const finalDraftTimeline = await prisma.campaignTimeline.findFirst({
+              where: {
+                campaignId,
+                name: 'Final Draft',
+              },
+            });
+
+            // Use posting dates from brief if available, otherwise use final draft end date or campaign end date
+            const postingStartDate = campaign.campaignBrief.postingStartDate
+              || finalDraftTimeline?.endDate
+              || campaign.campaignBrief.endDate;
+            const postingEndDate = campaign.campaignBrief.postingEndDate
+              || campaign.campaignBrief.endDate;
+
+            // Calculate duration
+            const postingDuration = Math.max(
+              1,
+              Math.floor((new Date(postingEndDate).getTime() - new Date(postingStartDate).getTime()) / (1000 * 60 * 60 * 24)),
+            );
+
+            // Get the highest order from existing timelines
+            const maxOrderTimeline = await prisma.campaignTimeline.findFirst({
+              where: { campaignId },
+              orderBy: { order: 'desc' },
+            });
+            const postingOrder = (maxOrderTimeline?.order || 4) + 1;
+
+            await prisma.campaignTimeline.create({
+              data: {
+                name: 'Posting',
+                for: 'creator',
+                duration: postingDuration,
+                startDate: new Date(postingStartDate),
+                endDate: new Date(postingEndDate),
+                order: postingOrder,
+                status: 'OPEN',
+                campaignId,
+                submissionTypeId: postingType.id,
+              },
+            });
+            console.log('Added Posting timeline for normal campaign');
+          }
+        }
+      }
+    }
+
+    // Update campaign admins (managers)
+    if (campaignManagers && Array.isArray(campaignManagers)) {
+      // Get admin records for the campaign managers
+      const adminRecords = await Promise.all(
+        campaignManagers.map(async (manager: { id: string }) => {
+          const adminRecord = await prisma.admin.findFirst({
+            where: { userId: manager.id },
+          });
+          return adminRecord;
+        }),
+      );
+
+      const validAdminIds = adminRecords
+        .filter((admin) => admin !== null)
+        .map((admin) => admin!.userId);
+
+      // Delete existing CSM campaign admins only (preserve non-CSM admins and client admins if v4)
+      const existingAdmins = await prisma.campaignAdmin.findMany({
+        where: { campaignId },
+        include: {
+          admin: {
+            include: { role: true },
+          },
+        },
+      });
+
+      const csmAdminIds = existingAdmins
+        .filter((ca) => ca.admin?.role?.name === 'CSM')
+        .map((ca) => ca.adminId);
+
+      if (csmAdminIds.length > 0) {
+        await prisma.campaignAdmin.deleteMany({
+          where: {
+            campaignId,
+            adminId: { in: csmAdminIds },
+          },
+        });
+      }
+
+      // Create new campaign admin entries for the managers
+      for (const managerId of validAdminIds) {
+        const exists = await prisma.campaignAdmin.findUnique({
+          where: {
+            adminId_campaignId: {
+              adminId: managerId,
+              campaignId,
+            },
+          },
+        });
+
+        if (!exists) {
+          await prisma.campaignAdmin.create({
+            data: {
+              adminId: managerId,
+              campaignId,
+            },
+          });
+        }
+      }
+    }
+
+    // Log the change
+    if (adminId) {
+      const campaignActivityMessage = `Campaign Details edited - [Campaign Finalise Settings]`;
+      await prisma.campaignLog.create({
+        data: {
+          message: campaignActivityMessage,
+          adminId: adminId,
+          campaignId: campaignId,
+        },
+      });
+
+      const adminLogMessage = `Updated campaign finalise settings for campaign - ${campaign.name}`;
+      logAdminChange(adminLogMessage, adminId, req);
+    }
+
+    return res.status(200).json({ message: 'Campaign finalise settings updated successfully' });
+  } catch (error) {
+    console.error('editCampaignFinalise error:', error);
+    return res.status(400).json({ message: error?.message || 'Failed to update campaign finalise settings', error });
+  }
+};
+
 export const editCampaignTimeline = async (req: Request, res: Response) => {
   const { id } = req.params;
 
