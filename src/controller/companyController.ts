@@ -632,7 +632,7 @@ export const activateClient = async (req: Request, res: Response) => {
       const inviteToken = jwt.sign(
         { id: user.id, companyId },
         process.env.SESSION_SECRET as Secret,
-        { expiresIn: '24h' }, // 24 hour expiry for client setup
+        { expiresIn: '7d' }, // 7 day expiry for client setup
       );
 
       // Create admin record for client with Client role
@@ -723,11 +723,11 @@ export const resendClientActivation = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Client account is already active' });
     }
 
-    // Generate new JWT token (24h expiry)
+    // Generate new JWT token (7 day expiry)
     const newInviteToken = jwt.sign(
       { id: client.userId, companyId },
       process.env.SESSION_SECRET as Secret,
-      { expiresIn: '24h' }
+      { expiresIn: '7d' }
     );
 
     // Update Client and Admin records in transaction
