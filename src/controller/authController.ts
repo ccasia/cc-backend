@@ -1667,8 +1667,8 @@ export const inviteClient = async (req: Request, res: Response) => {
         });
       }
 
-      // Generate invite token
-      const inviteToken = jwt.sign({ id: user.id, companyId }, process.env.SESSION_SECRET as Secret);
+      // Generate invite token (7 day expiry)
+      const inviteToken = jwt.sign({ id: user.id, companyId }, process.env.SESSION_SECRET as Secret, { expiresIn: '7d' });
 
       // Create admin record for client with Client role
       const admin = await tx.admin.create({
