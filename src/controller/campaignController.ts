@@ -3850,6 +3850,262 @@ export const editCampaignFinalise = async (req: Request, res: Response) => {
   }
 };
 
+export const editCampaignAdditionalDetails = async (req: Request, res: Response) => {
+  const adminId = req.session.userid;
+
+  try {
+    // Handle both JSON body and FormData
+    let campaignId: string;
+    let socialMediaPlatform: string[] | undefined;
+    let contentFormat: string[] | undefined;
+    let postingStartDate: string | undefined;
+    let postingEndDate: string | undefined;
+    let mainMessage: string | undefined;
+    let keyPoints: string | undefined;
+    let toneAndStyle: string | undefined;
+    let referenceContent: string | undefined;
+    let hashtagsToUse: string | undefined;
+    let mentionsTagsRequired: string | undefined;
+    let creatorCompensation: string | undefined;
+    let ctaDesiredAction: string | undefined;
+    let ctaLinkUrl: string | undefined;
+    let ctaPromoCode: string | undefined;
+    let ctaLinkInBioRequirements: string | undefined;
+    let specialNotesInstructions: string | undefined;
+    let needAds: string | undefined;
+    let existingBrandGuidelinesUrls: string | undefined;
+    let existingProductImage1Url: string | undefined;
+    let existingProductImage2Url: string | undefined;
+    let clearBrandGuidelines: boolean = false;
+    let clearProductImage1: boolean = false;
+    let clearProductImage2: boolean = false;
+
+    // Check if this is FormData (multipart) or JSON
+    if (req.body.campaignId && typeof req.body.campaignId === 'string') {
+      // FormData parsing
+      campaignId = req.body.campaignId;
+      socialMediaPlatform = req.body.socialMediaPlatform ? JSON.parse(req.body.socialMediaPlatform) : undefined;
+      contentFormat = req.body.contentFormat ? JSON.parse(req.body.contentFormat) : undefined;
+      postingStartDate = req.body.postingStartDate || undefined;
+      postingEndDate = req.body.postingEndDate || undefined;
+      mainMessage = req.body.mainMessage || undefined;
+      keyPoints = req.body.keyPoints || undefined;
+      toneAndStyle = req.body.toneAndStyle || undefined;
+      referenceContent = req.body.referenceContent || undefined;
+      hashtagsToUse = req.body.hashtagsToUse || undefined;
+      mentionsTagsRequired = req.body.mentionsTagsRequired || undefined;
+      creatorCompensation = req.body.creatorCompensation || undefined;
+      ctaDesiredAction = req.body.ctaDesiredAction || undefined;
+      ctaLinkUrl = req.body.ctaLinkUrl || undefined;
+      ctaPromoCode = req.body.ctaPromoCode || undefined;
+      ctaLinkInBioRequirements = req.body.ctaLinkInBioRequirements || undefined;
+      specialNotesInstructions = req.body.specialNotesInstructions || undefined;
+      needAds = req.body.needAds || undefined;
+      existingBrandGuidelinesUrls = req.body.existingBrandGuidelinesUrls || undefined;
+      existingProductImage1Url = req.body.existingProductImage1Url || undefined;
+      existingProductImage2Url = req.body.existingProductImage2Url || undefined;
+      // Parse clear flags
+      clearBrandGuidelines = req.body.clearBrandGuidelines === 'true';
+      clearProductImage1 = req.body.clearProductImage1 === 'true';
+      clearProductImage2 = req.body.clearProductImage2 === 'true';
+    } else {
+      // JSON body parsing (for Additional Details 2 which doesn't have file uploads)
+      ({
+        campaignId,
+        socialMediaPlatform,
+        contentFormat,
+        postingStartDate,
+        postingEndDate,
+        mainMessage,
+        keyPoints,
+        toneAndStyle,
+        referenceContent,
+        hashtagsToUse,
+        mentionsTagsRequired,
+        creatorCompensation,
+        ctaDesiredAction,
+        ctaLinkUrl,
+        ctaPromoCode,
+        ctaLinkInBioRequirements,
+        specialNotesInstructions,
+        needAds,
+      } = req.body);
+    }
+
+    if (!campaignId) {
+      return res.status(400).json({ message: 'Campaign ID is required' });
+    }
+
+    // Get the campaign
+    const campaign = await prisma.campaign.findUnique({
+      where: { id: campaignId },
+      include: {
+        campaignBrief: true,
+        campaignAdditionalDetails: true,
+      },
+    });
+
+    if (!campaign) {
+      return res.status(404).json({ message: 'Campaign not found' });
+    }
+
+    // Handle file uploads for Additional Details 1
+    let brandGuidelinesUrl: string | undefined;
+    let productImage1Url: string | undefined;
+    let productImage2Url: string | undefined;
+
+    // Process brand guidelines upload
+    if (clearBrandGuidelines) {
+      // Explicitly cleared - set to null
+      brandGuidelinesUrl = '';
+    } else if (req.files && (req.files as any).brandGuidelines) {
+      const brandGuidelinesFiles = Array.isArray((req.files as any).brandGuidelines)
+        ? (req.files as any).brandGuidelines
+        : [(req.files as any).brandGuidelines];
+
+      const uploadedUrls: string[] = [];
+      for (const file of brandGuidelinesFiles) {
+        if (file && file.tempFilePath && file.name) {
+          const url = await uploadAttachments({
+            tempFilePath: file.tempFilePath,
+            fileName: file.name,
+            folderName: 'brandGuidelines',
+          });
+          uploadedUrls.push(url);
+        }
+      }
+
+      // Combine with existing URLs if any
+      if (existingBrandGuidelinesUrls) {
+        const existingUrls = existingBrandGuidelinesUrls.split(',').filter(Boolean);
+        brandGuidelinesUrl = [...existingUrls, ...uploadedUrls].join(',');
+      } else {
+        brandGuidelinesUrl = uploadedUrls.join(',');
+      }
+    } else if (existingBrandGuidelinesUrls !== undefined) {
+      // Use existing URLs (could be empty string if cleared)
+      brandGuidelinesUrl = existingBrandGuidelinesUrls || '';
+    }
+
+    // Process product image 1 upload
+    if (clearProductImage1) {
+      // Explicitly cleared - set to null
+      productImage1Url = '';
+    } else if (req.files && (req.files as any).productImage1) {
+      const productImage1Files = Array.isArray((req.files as any).productImage1)
+        ? (req.files as any).productImage1
+        : [(req.files as any).productImage1];
+      if (productImage1Files.length > 0 && productImage1Files[0].tempFilePath) {
+        productImage1Url = await uploadCompanyLogo(productImage1Files[0].tempFilePath, productImage1Files[0].name);
+      }
+    } else if (existingProductImage1Url !== undefined) {
+      // Use existing URL (could be empty string if cleared)
+      productImage1Url = existingProductImage1Url || '';
+    }
+
+    // Process product image 2 upload
+    if (clearProductImage2) {
+      // Explicitly cleared - set to null
+      productImage2Url = '';
+    } else if (req.files && (req.files as any).productImage2) {
+      const productImage2Files = Array.isArray((req.files as any).productImage2)
+        ? (req.files as any).productImage2
+        : [(req.files as any).productImage2];
+      if (productImage2Files.length > 0 && productImage2Files[0].tempFilePath) {
+        productImage2Url = await uploadCompanyLogo(productImage2Files[0].tempFilePath, productImage2Files[0].name);
+      }
+    } else if (existingProductImage2Url !== undefined) {
+      // Use existing URL (could be empty string if cleared)
+      productImage2Url = existingProductImage2Url || '';
+    }
+
+    // Build the update data for CampaignAdditionalDetails
+    const additionalDetailsData: any = {};
+
+    // Additional Details 1 fields
+    if (contentFormat !== undefined) additionalDetailsData.contentFormat = contentFormat;
+    if (mainMessage !== undefined) additionalDetailsData.mainMessage = mainMessage || null;
+    if (keyPoints !== undefined) additionalDetailsData.keyPoints = keyPoints || null;
+    if (toneAndStyle !== undefined) additionalDetailsData.toneAndStyle = toneAndStyle || null;
+    if (brandGuidelinesUrl !== undefined) additionalDetailsData.brandGuidelinesUrl = brandGuidelinesUrl || null;
+    if (referenceContent !== undefined) additionalDetailsData.referenceContent = referenceContent || null;
+    if (productImage1Url !== undefined) additionalDetailsData.productImage1Url = productImage1Url || null;
+    if (productImage2Url !== undefined) additionalDetailsData.productImage2Url = productImage2Url || null;
+
+    // Additional Details 2 fields
+    if (hashtagsToUse !== undefined) additionalDetailsData.hashtagsToUse = hashtagsToUse || null;
+    if (mentionsTagsRequired !== undefined) additionalDetailsData.mentionsTagsRequired = mentionsTagsRequired || null;
+    if (creatorCompensation !== undefined) additionalDetailsData.creatorCompensation = creatorCompensation || null;
+    if (ctaDesiredAction !== undefined) additionalDetailsData.ctaDesiredAction = ctaDesiredAction || null;
+    if (ctaLinkUrl !== undefined) additionalDetailsData.ctaLinkUrl = ctaLinkUrl || null;
+    if (ctaPromoCode !== undefined) additionalDetailsData.ctaPromoCode = ctaPromoCode || null;
+    if (ctaLinkInBioRequirements !== undefined) additionalDetailsData.ctaLinkInBioRequirements = ctaLinkInBioRequirements || null;
+    if (specialNotesInstructions !== undefined) additionalDetailsData.specialNotesInstructions = specialNotesInstructions || null;
+    if (needAds !== undefined) additionalDetailsData.needAds = needAds || null;
+
+    // Upsert CampaignAdditionalDetails
+    await prisma.campaignAdditionalDetails.upsert({
+      where: { campaignId },
+      update: additionalDetailsData,
+      create: {
+        campaignId,
+        contentFormat: contentFormat || [],
+        mainMessage: mainMessage || null,
+        keyPoints: keyPoints || null,
+        toneAndStyle: toneAndStyle || null,
+        brandGuidelinesUrl: brandGuidelinesUrl || null,
+        referenceContent: referenceContent || null,
+        productImage1Url: productImage1Url || null,
+        productImage2Url: productImage2Url || null,
+        hashtagsToUse: hashtagsToUse || null,
+        mentionsTagsRequired: mentionsTagsRequired || null,
+        creatorCompensation: creatorCompensation || null,
+        ctaDesiredAction: ctaDesiredAction || null,
+        ctaLinkUrl: ctaLinkUrl || null,
+        ctaPromoCode: ctaPromoCode || null,
+        ctaLinkInBioRequirements: ctaLinkInBioRequirements || null,
+        specialNotesInstructions: specialNotesInstructions || null,
+        needAds: needAds || null,
+      },
+    });
+
+    // Update CampaignBrief for socialMediaPlatform and posting dates
+    if (socialMediaPlatform !== undefined || postingStartDate !== undefined || postingEndDate !== undefined) {
+      const briefUpdateData: any = {};
+      if (socialMediaPlatform !== undefined) briefUpdateData.socialMediaPlatform = socialMediaPlatform;
+      if (postingStartDate !== undefined) briefUpdateData.postingStartDate = postingStartDate ? new Date(postingStartDate) : null;
+      if (postingEndDate !== undefined) briefUpdateData.postingEndDate = postingEndDate ? new Date(postingEndDate) : null;
+
+      if (campaign.campaignBrief) {
+        await prisma.campaignBrief.update({
+          where: { id: campaign.campaignBrief.id },
+          data: briefUpdateData,
+        });
+      }
+    }
+
+    // Log the change
+    if (adminId) {
+      const campaignActivityMessage = `Campaign Details edited - [Additional Details]`;
+      await prisma.campaignLog.create({
+        data: {
+          message: campaignActivityMessage,
+          adminId: adminId,
+          campaignId: campaignId,
+        },
+      });
+
+      const adminLogMessage = `Updated campaign additional details for campaign - ${campaign.name}`;
+      logAdminChange(adminLogMessage, adminId, req);
+    }
+
+    return res.status(200).json({ message: 'Campaign additional details updated successfully' });
+  } catch (error) {
+    console.error('editCampaignAdditionalDetails error:', error);
+    return res.status(400).json({ message: error?.message || 'Failed to update campaign additional details', error });
+  }
+};
+
 export const editCampaignTimeline = async (req: Request, res: Response) => {
   const { id } = req.params;
 

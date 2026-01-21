@@ -15,6 +15,7 @@ import {
   editCampaignRequirements,
   editCampaignLogistics,
   editCampaignFinalise,
+  editCampaignAdditionalDetails,
   editCampaignTimeline,
   changePitchStatus,
   getCampaignsByCreatorId,
@@ -225,6 +226,7 @@ router.patch('/editCampaignDosAndDonts', isSuperAdmin, editCampaignDosAndDonts);
 router.patch('/editCampaignRequirements', isSuperAdmin, editCampaignRequirements);
 router.patch('/editCampaignLogistics', isSuperAdmin, editCampaignLogistics);
 router.patch('/editCampaignFinalise', isSuperAdmin, editCampaignFinalise);
+router.patch('/editCampaignAdditionalDetails', isSuperAdmin, editCampaignAdditionalDetails);
 router.patch('/editCampaignTimeline/:id', isSuperAdmin, editCampaignTimeline);
 router.patch('/editCampaignImages/:id', isSuperAdmin, editCampaignImages);
 router.patch('/editCampaignAdmins/:id', isSuperAdmin, editCampaignAdmin);
