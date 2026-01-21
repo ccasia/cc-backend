@@ -268,9 +268,10 @@ export const forgetPassword = async (req: Request, res: Response) => {
   const { email } = req.body;
 
   try {
+    // Normalize email to lowercase for consistent lookup
     const user = await prisma.user.findFirst({
       where: {
-        email: email,
+        email: email.toLowerCase().trim(),
       },
     });
 
@@ -371,6 +372,12 @@ export const changePassword = async (req: Request, res: Response) => {
       data: {
         password: hashedPassword,
       },
+    });
+
+    // Also update ChildAccount password if this user is a child account (for data consistency)
+    await prisma.childAccount.updateMany({
+      where: { email: user.email.toLowerCase() },
+      data: { password: hashedPassword },
     });
 
     return res.status(200).json({ message: 'Successfully changed password.' });

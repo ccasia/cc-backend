@@ -21,6 +21,7 @@ import {
   getUniqueClientId,
   clientOverview,
   activateClient,
+  resendClientActivation,
 } from '@controllers/companyController';
 const router = Router();
 
@@ -44,6 +45,7 @@ router.patch('/editBrand', isSuperAdmin, editBrand);
 router.patch('/linkPackage/:companyId', isSuperAdmin, handleLinkNewPackage);
 
 router.post('/activateClient/:companyId', isSuperAdmin, activateClient);
+router.post('/:companyId/resend-activation', isSuperAdmin, resendClientActivation);
 
 router.delete('/deleteCompany/:id', isSuperAdmin, deleteCompany);
 
