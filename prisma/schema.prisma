@@ -1830,6 +1830,7 @@ model Product {
   id          String   @id @unique @default(cuid())
   productName String
   description String?
+  isArchived Boolean @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
