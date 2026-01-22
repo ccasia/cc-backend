@@ -194,8 +194,9 @@ export const deleteProductService = async (productId: string) => {
     throw new Error('Product not found');
   }
 
-  return await prisma.product.delete({
+  return await prisma.product.update({
     where: { id: productId },
+    data: { isArchived: true },
   });
 };
 
@@ -203,6 +204,7 @@ export const fetchProductsForCampaign = async (campaignId: string) => {
   const products = await prisma.product.findMany({
     where: {
       campaignId: campaignId,
+      isArchived: false,
     },
     orderBy: {
       createdAt: 'desc',
