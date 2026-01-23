@@ -739,7 +739,6 @@ export const createCampaign = async (req: Request, res: Response) => {
 
 /**
  * Create Campaign V2 - Enhanced version with additional details support
- * Always sets submissionVersion to 'v4' and includes CampaignAdditionalDetails
  */
 export const createCampaignV2 = async (req: Request, res: Response) => {
   const rawData = JSON.parse(req.body.data);
@@ -748,9 +747,6 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
     campaignId,
     campaignStage,
     campaignName,
-    campaignBrand,
-    campaignCredits,
-    client,
     campaignDescription,
     brandAbout,
     campaignStartDate,
@@ -792,6 +788,9 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
     allowMultipleBookings,
     clientRemarks,
     // Campaign management
+    client,
+    campaignBrand,
+    campaignCredits,
     campaignManager,
     campaignType,
     rawFootage,
