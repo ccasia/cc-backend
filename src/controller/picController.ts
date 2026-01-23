@@ -27,7 +27,7 @@ export const createPIC = async (req: Request, res: Response) => {
     const newPIC = await prisma.pic.create({
       data: {
         name,
-        email: email || null,
+        email: email?.toLowerCase() || null,
         designation,
         companyId,
       },
@@ -57,8 +57,11 @@ export const getUserByEmail = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Email is required' });
     }
 
+    // Normalize email to lowercase for case-insensitive matching
+    const normalizedEmail = email.toLowerCase();
+
     const user = await prisma.user.findUnique({
-      where: { email },
+      where: { email: normalizedEmail },
       select: {
         id: true,
         email: true,
@@ -104,11 +107,14 @@ export const updatePIC = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'PIC not found' });
     }
 
+    // Normalize email to lowercase for consistent matching with User records
+    const normalizedEmail = email?.toLowerCase();
+
     // Check if email is changing and if it's already in use by another PIC
-    if (email && email !== currentPIC.email) {
+    if (normalizedEmail && normalizedEmail !== currentPIC.email?.toLowerCase()) {
       const existingPIC = await prisma.pic.findFirst({
         where: {
-          email,
+          email: normalizedEmail,
           id: { not: id },
         },
       });
@@ -123,15 +129,16 @@ export const updatePIC = async (req: Request, res: Response) => {
       where: { id },
       data: {
         name: name || currentPIC.name,
-        email: email || currentPIC.email,
+        email: normalizedEmail || currentPIC.email,
         designation: designation || currentPIC.designation,
       },
     });
 
     // If the PIC has an associated user (client), update the user record as well
     if (currentPIC.email) {
+      // User emails are stored lowercase, so normalize for lookup
       const associatedUser = await prisma.user.findUnique({
-        where: { email: currentPIC.email },
+        where: { email: currentPIC.email.toLowerCase() },
       });
 
       if (associatedUser) {
@@ -139,7 +146,7 @@ export const updatePIC = async (req: Request, res: Response) => {
           where: { id: associatedUser.id },
           data: {
             name: name || associatedUser.name,
-            email: email || associatedUser.email,
+            email: normalizedEmail || associatedUser.email,
           },
         });
       }
