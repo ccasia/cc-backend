@@ -95,7 +95,7 @@ declare module 'express-session' {
     xeroTenants: any;
     xeroActiveTenants: any;
     isImpersonating?: boolean;
-    impersonatingBy?: string;
+    impersonatingBy?: { userId: string; name: string } | null;
   }
 }
 

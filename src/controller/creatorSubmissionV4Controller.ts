@@ -69,6 +69,8 @@ export const getMyV4Submissions = async (req: Request, res: Response) => {
       rawFootage: submissionsWithFilteredFeedback.filter((s) => s.submissionType.type === 'RAW_FOOTAGE'),
     };
 
+    console.log(groupedSubmissions);
+
     // Calculate overall progress
     const totalSubmissions = submissionsWithFilteredFeedback.length;
     const completedSubmissions = submissionsWithFilteredFeedback.filter(

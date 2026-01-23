@@ -1202,9 +1202,11 @@ export const getprofile = async (req: Request, res: Response) => {
       where: { email: user.email },
     });
 
+    const { password, ...sanitizeUser } = user;
+
     return res.status(200).json({
       user: {
-        ...user,
+        ...sanitizeUser,
         xeroinformation,
         isChildAccount: !!isChildAccount,
         isImpersonating,

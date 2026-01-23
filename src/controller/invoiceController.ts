@@ -862,19 +862,30 @@ export const updateInvoice = async (req: Request, res: Response) => {
           if (result.body.contacts && result.body.contacts.length > 0) {
             contactID = result.body.contacts[0].contactID || null;
           } else {
-            const [contact] = await createXeroContact(
-              bankInfo,
-              updatedInvoice.creator,
-              invoiceFrom,
-              (agreement?.currency?.toUpperCase() as 'MYR' | 'SGD') ?? 'MYR',
+            const result = await xero.accountingApi.getContacts(
+              activeTenant.tenantId,
+              undefined, // IDs
+              `EmailAddress=="${creatorUser.email.trim()}"`,
+              // `EmailAddress=="${creatorUser.email}" || Name=="${creatorUser.name}"`,
             );
 
-            contactID = contact.contactID || null;
+            if (result.body.contacts && result.body.contacts.length > 0) {
+              contactID = result.body.contacts[0].contactID || null;
+            } else {
+              const [contact] = await createXeroContact(
+                bankInfo,
+                updatedInvoice.creator,
+                invoiceFrom,
+                (agreement?.currency?.toUpperCase() as 'MYR' | 'SGD') ?? 'MYR',
+              );
 
-            await tx.creator.update({
-              where: { id: updatedInvoice.creator.id },
-              data: { xeroContactId: contactID },
-            });
+              contactID = contact.contactID || null;
+
+              await tx.creator.update({
+                where: { id: updatedInvoice.creator.id },
+                data: { xeroContactId: contactID },
+              });
+            }
           }
 
           if (contactID) {
