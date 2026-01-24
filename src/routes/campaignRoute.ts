@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import {
   createCampaign,
+  createCampaignV2,
   getAllCampaigns,
   getCampaignById,
   getAllActiveCampaign,
@@ -195,6 +196,7 @@ router.get('/public', getCampaignsForPublic);
 
 router.post('/updateOrCreateDefaultTimeline', updateOrCreateDefaultTimeline);
 router.post('/createCampaign', isSuperAdmin, createCampaign);
+router.post('/createCampaignV2', isSuperAdmin, createCampaignV2);
 router.post('/createNewTimeline', isSuperAdmin, createNewTimeline);
 router.post('/createSingleTimelineType', isSuperAdmin, createSingleTimelineType);
 router.post('/uploadVideo', uploadVideoTest);
