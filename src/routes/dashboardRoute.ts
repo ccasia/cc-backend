@@ -8,4 +8,3 @@ const router = Router();
 router.get('/stats', isLoggedIn, getDashboardStats);
 
 export default router;
-
