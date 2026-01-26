@@ -6,6 +6,7 @@ import {
   createInvoice,
   getInvoicesByCreatorId,
   getInvoicesByCampaignId,
+  getInvoiceStats,
   getInvoiceById,
   getInvoiceByCreatorIdAndCampaignId,
   updateInvoiceStatus,
@@ -45,6 +46,7 @@ router.get('/:id', isLoggedIn, getInvoiceById);
 router.get('/', isSuperAdmin, getAllInvoices);
 
 router.get('/getInvoicesByCampaignId/:id', getInvoicesByCampaignId);
+router.get('/stats/:campaignId', getInvoiceStats);
 
 router.get('/creator/:creatorId/campaign/:campaignId', getInvoiceByCreatorIdAndCampaignId);
 

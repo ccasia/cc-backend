@@ -32,6 +32,27 @@ type SocialMediaData = Record<
   }
 >;
 
+/**
+ * GET /api/creator/count
+ * Returns the total count of active creators
+ * Optimized endpoint that only returns a count instead of fetching all creator data
+ */
+export const getCreatorCount = async (_req: Request, res: Response) => {
+  try {
+    const count = await prisma.user.count({
+      where: {
+        role: 'creator',
+        status: 'active',
+      },
+    });
+
+    return res.status(200).json({ count });
+  } catch (error) {
+    console.error('Error fetching creator count:', error);
+    return res.status(400).json({ message: error });
+  }
+};
+
 export const getCreators = async (_req: Request, res: Response) => {
   try {
     const creators = await prisma.user.findMany({
