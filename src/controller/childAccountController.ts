@@ -139,7 +139,10 @@ export const getAllChildAccounts = async (req: Request, res: Response) => {
 export const createChildAccount = async (req: Request, res: Response) => {
   try {
     const { clientId } = req.params;
-    const { email, firstName, lastName } = req.body;
+    const { email: rawEmail, firstName, lastName } = req.body;
+
+    // Normalize email to lowercase for consistent storage and lookup
+    const email = rawEmail.toLowerCase().trim();
 
     console.log('Creating child account for client ID:', clientId);
     console.log('Request body:', { email, firstName, lastName });
@@ -159,6 +162,15 @@ export const createChildAccount = async (req: Request, res: Response) => {
     }
 
     console.log('Parent client found:', parentClient.id);
+
+    // Check if the parent client's user account is active (not pending)
+    // Child accounts can only be invited after the main PIC has activated their account
+    if (!parentClient.user || parentClient.user.status !== 'active') {
+      console.log('Parent client user status:', parentClient.user?.status);
+      return res.status(403).json({
+        message: 'Cannot invite child accounts until the main account has been activated. The primary account holder must complete their activation first.',
+      });
+    }
 
     // Check if email already exists
     const existingChildAccount = await prisma.childAccount.findFirst({
@@ -885,10 +897,10 @@ export const activateChildAccount = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Parent client not found' });
     }
 
-    // Create user first
+    // Create user first (normalize email to lowercase for consistent lookup)
     const user = await prisma.user.create({
       data: {
-        email: childAccount.email,
+        email: childAccount.email.toLowerCase().trim(),
         password: hashedPassword,
         name: `${childAccount.firstName || ''} ${childAccount.lastName || ''}`.trim(),
         role: 'client' as any,

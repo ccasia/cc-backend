@@ -6,6 +6,7 @@ import {
   createInvoice,
   getInvoicesByCreatorId,
   getInvoicesByCampaignId,
+  getInvoiceStats,
   getInvoiceById,
   getInvoiceByCreatorIdAndCampaignId,
   updateInvoiceStatus,
@@ -18,6 +19,7 @@ import {
   deleteInvoice,
   generateMissingInvoices,
 } from '@controllers/invoiceController';
+import { getAllInvoiceStats } from '@controllers/invoiceController';
 import { checkAndRefreshAccessToken } from '@controllers/invoiceController';
 import { creatorInvoice } from '@controllers/invoiceController';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
@@ -40,11 +42,15 @@ router.get('/checkRefreshToken', isSuperAdmin, checkRefreshToken);
 
 router.get('/creator', getInvoicesByCreatorId);
 
-router.get('/:id', isLoggedIn, getInvoiceById);
+router.get('/getInvoicesByCampaignId/:id', getInvoicesByCampaignId);
+// IMPORTANT: Specific routes must come before parameterized routes
+router.get('/stats', isLoggedIn, getAllInvoiceStats); // Stats for all invoices
+router.get('/stats/:campaignId', isLoggedIn, getInvoiceStats); // Stats for specific campaign
 
 router.get('/', isSuperAdmin, getAllInvoices);
 
 router.get('/getInvoicesByCampaignId/:id', getInvoicesByCampaignId);
+router.get('/stats/:campaignId', getInvoiceStats);
 
 router.get('/creator/:creatorId/campaign/:campaignId', getInvoiceByCreatorIdAndCampaignId);
 
