@@ -126,44 +126,273 @@ export const xeroCallBack = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * OPTIMIZED: Get all invoices with pagination and filtering
+ * GET /api/invoice/?page=1&limit=50&status=paid&currency=MYR&search=...
+ */
 export const getAllInvoices = async (req: Request, res: Response) => {
+  const {
+    page = '1',
+    limit = '50',
+    status,
+    currency,
+    search,
+    campaignName,
+    startDate,
+    endDate,
+  } = req.query;
+
   try {
-    const invoices = await prisma.invoice.findMany({
-      include: {
+    const pageNum = parseInt(page as string, 10);
+    const limitNum = parseInt(limit as string, 10);
+    const skip = (pageNum - 1) * limitNum;
+
+    // Build where clause
+    const where: any = {};
+
+    if (status && status !== 'all') {
+      where.status = status as InvoiceStatus;
+    }
+
+    // Date range filter
+    if (startDate && endDate) {
+      where.createdAt = {
+        gte: new Date(startDate as string),
+        lte: new Date(endDate as string),
+      };
+    }
+
+    // Search filter (invoice number)
+    if (search) {
+      where.invoiceNumber = { contains: search as string, mode: 'insensitive' };
+    }
+
+    // Campaign name filter (will filter in memory after fetching)
+    let campaignFilter: string | undefined;
+    if (campaignName) {
+      campaignFilter = campaignName as string;
+    }
+
+    // Check if we need to filter by JSON fields (currency, campaignName, search on creator/campaign)
+    const hasJsonFilters = !!(currency || campaignFilter || search);
+
+    // If we have JSON filters, we need to fetch all matching invoices first, then filter and paginate
+    // Otherwise, we can use database-level pagination for better performance
+    let invoices;
+    let total;
+
+    if (hasJsonFilters) {
+      // Fetch ALL invoices matching basic filters (status, date range) for JSON filtering
+      invoices = await prisma.invoice.findMany({
+        where,
+        select: {
+        id: true,
+        invoiceNumber: true,
+        amount: true,
+        status: true,
+        createdAt: true,
+        dueDate: true,
+        invoiceFrom: true,
+        task: true,
+        creatorId: true,
+        campaignId: true,
+        // Only include minimal creator data
         creator: {
-          include: {
-            user: true,
+          select: {
+            userId: true,
+            user: {
+              select: {
+                id: true,
+                name: true,
+                photoURL: true,
+                email: true,
+              },
+            },
           },
         },
-        user: {
-          include: {
-            creator: true,
-            creatorAgreement: true,
-          },
-        },
+        // Only include minimal campaign data
         campaign: {
-          include: {
-            creatorAgreement: true,
+          select: {
+            id: true,
+            name: true,
+            creatorAgreement: {
+              select: {
+                userId: true,
+                currency: true,
+              },
+            },
           },
         },
       },
-    });
+        orderBy: {
+          createdAt: 'desc',
+        },
+      });
 
-    // Map through invoices to include the specific creator agreement with currency
-    const invoicesWithCurrency = invoices.map((invoice) => {
-      const creatorAgreement = invoice.campaign?.creatorAgreement?.find(
-        (agreement) => agreement.campaignId === invoice.campaignId && agreement.userId === invoice.creatorId,
-      );
+      // Map invoices with currency and apply JSON filters
+      let invoicesWithCurrency = invoices.map((invoice) => {
+        const creatorAgreement = invoice.campaign?.creatorAgreement?.find(
+          (agreement) => agreement.userId === invoice.creatorId
+        );
 
-      return {
-        ...invoice,
-        currency: creatorAgreement?.currency || null,
-      };
-    });
+        // Extract currency from various possible locations
+        const invoiceCurrency =
+          (invoice.task as any)?.currency ||
+          (invoice.task as any)?.items?.[0]?.currency ||
+          creatorAgreement?.currency ||
+          null;
 
-    return res.status(200).json(invoicesWithCurrency);
+        // Extract creator name from invoiceFrom JSON
+        const invoiceFromName = (invoice.invoiceFrom as any)?.name || invoice.creator?.user?.name;
+
+        return {
+          ...invoice,
+          currency: invoiceCurrency,
+          invoiceFrom: {
+            ...(invoice.invoiceFrom as any),
+            id: invoice.creator?.user?.id,
+            name: invoiceFromName,
+          },
+          campaign: {
+            ...invoice.campaign,
+            name: invoice.campaign?.name,
+          },
+        };
+      });
+
+      // Apply currency filter (JSON field)
+      if (currency) {
+        invoicesWithCurrency = invoicesWithCurrency.filter(
+          (inv) => inv.currency === currency
+        );
+      }
+
+      // Apply campaign name filter (JSON field)
+      if (campaignFilter) {
+        const filterLower = campaignFilter.toLowerCase();
+        invoicesWithCurrency = invoicesWithCurrency.filter(
+          (inv) => inv.campaign?.name?.toLowerCase().includes(filterLower)
+        );
+      }
+
+      // Apply search filter on creator name (JSON field)
+      if (search) {
+        const searchLower = (search as string).toLowerCase();
+        invoicesWithCurrency = invoicesWithCurrency.filter(
+          (inv) =>
+            inv.invoiceNumber.toLowerCase().includes(searchLower) ||
+            (inv.invoiceFrom as any)?.name?.toLowerCase().includes(searchLower) ||
+            inv.campaign?.name?.toLowerCase().includes(searchLower)
+        );
+      }
+
+      // Calculate total after JSON filtering
+      total = invoicesWithCurrency.length;
+
+      // Apply pagination after filtering
+      const paginatedInvoices = invoicesWithCurrency.slice(skip, skip + limitNum);
+
+      return res.status(200).json({
+        data: paginatedInvoices,
+        pagination: {
+          page: pageNum,
+          limit: limitNum,
+          total,
+          totalPages: Math.ceil(total / limitNum),
+        },
+      });
+    } else {
+      // No JSON filters - use efficient database-level pagination
+      total = await prisma.invoice.count({ where });
+
+      invoices = await prisma.invoice.findMany({
+        where,
+        skip,
+        take: limitNum,
+        select: {
+          id: true,
+          invoiceNumber: true,
+          amount: true,
+          status: true,
+          createdAt: true,
+          dueDate: true,
+          invoiceFrom: true,
+          task: true,
+          creatorId: true,
+          campaignId: true,
+          creator: {
+            select: {
+              userId: true,
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  photoURL: true,
+                  email: true,
+                },
+              },
+            },
+          },
+          campaign: {
+            select: {
+              id: true,
+              name: true,
+              creatorAgreement: {
+                select: {
+                  userId: true,
+                  currency: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      });
+
+      // Map invoices with currency (no filtering needed)
+      const invoicesWithCurrency = invoices.map((invoice) => {
+        const creatorAgreement = invoice.campaign?.creatorAgreement?.find(
+          (agreement) => agreement.userId === invoice.creatorId
+        );
+
+        const invoiceCurrency =
+          (invoice.task as any)?.currency ||
+          (invoice.task as any)?.items?.[0]?.currency ||
+          creatorAgreement?.currency ||
+          null;
+
+        const invoiceFromName = (invoice.invoiceFrom as any)?.name || invoice.creator?.user?.name;
+
+        return {
+          ...invoice,
+          currency: invoiceCurrency,
+          invoiceFrom: {
+            ...(invoice.invoiceFrom as any),
+            id: invoice.creator?.user?.id,
+            name: invoiceFromName,
+          },
+          campaign: {
+            ...invoice.campaign,
+            name: invoice.campaign?.name,
+          },
+        };
+      });
+
+      return res.status(200).json({
+        data: invoicesWithCurrency,
+        pagination: {
+          page: pageNum,
+          limit: limitNum,
+          total,
+          totalPages: Math.ceil(total / limitNum),
+        },
+      });
+    }
   } catch (error) {
-    return res.status(400).json(error);
+    console.error('Error fetching all invoices:', error);
+    return res.status(500).json({ error: 'Failed to fetch invoices' });
   }
 };
 
@@ -358,6 +587,80 @@ export const getInvoicesByCampaignId = async (req: Request, res: Response) => {
  * GET /api/invoice/stats/:campaignId
  * Returns aggregated stats instead of fetching all invoices
  */
+/**
+ * OPTIMIZED: Get invoice statistics for all invoices (for finance dashboard)
+ * GET /api/invoice/stats
+ */
+export const getAllInvoiceStats = async (req: Request, res: Response) => {
+  try {
+    const [
+      total,
+      paid,
+      approved,
+      pending,
+      overdue,
+      draft,
+      rejected,
+      totalAmount,
+      paidAmount,
+      approvedAmount,
+      pendingAmount,
+      overdueAmount,
+      draftAmount,
+      rejectedAmount,
+    ] = await Promise.all([
+      // Counts by status
+      prisma.invoice.count(),
+      prisma.invoice.count({ where: { status: 'paid' } }),
+      prisma.invoice.count({ where: { status: 'approved' } }),
+      prisma.invoice.count({ where: { status: 'pending' } }),
+      prisma.invoice.count({ where: { status: 'overdue' } }),
+      prisma.invoice.count({ where: { status: 'draft' } }),
+      prisma.invoice.count({ where: { status: 'rejected' } }),
+
+      // Total amounts by status
+      prisma.invoice.aggregate({ _sum: { amount: true } }),
+      prisma.invoice.aggregate({ where: { status: 'paid' }, _sum: { amount: true } }),
+      prisma.invoice.aggregate({ where: { status: 'approved' }, _sum: { amount: true } }),
+      prisma.invoice.aggregate({ where: { status: 'pending' }, _sum: { amount: true } }),
+      prisma.invoice.aggregate({ where: { status: 'overdue' }, _sum: { amount: true } }),
+      prisma.invoice.aggregate({ where: { status: 'draft' }, _sum: { amount: true } }),
+      prisma.invoice.aggregate({ where: { status: 'rejected' }, _sum: { amount: true } }),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        counts: {
+          total,
+          paid,
+          approved,
+          pending,
+          overdue,
+          draft,
+          rejected,
+        },
+        amounts: {
+          total: totalAmount._sum.amount || 0,
+          paid: paidAmount._sum.amount || 0,
+          approved: approvedAmount._sum.amount || 0,
+          pending: pendingAmount._sum.amount || 0,
+          overdue: overdueAmount._sum.amount || 0,
+          draft: draftAmount._sum.amount || 0,
+          rejected: rejectedAmount._sum.amount || 0,
+        },
+      },
+    });
+  } catch (error: any) {
+    console.error('Error fetching all invoice stats:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch invoice statistics', error: error.message });
+  }
+};
+
+/**
+ * OPTIMIZED: Get invoice statistics for a specific campaign
+ * GET /api/invoice/stats/:campaignId
+ */
 export const getInvoiceStats = async (req: Request, res: Response) => {
   const { campaignId } = req.params;
 
@@ -369,11 +672,14 @@ export const getInvoiceStats = async (req: Request, res: Response) => {
       pending,
       overdue,
       draft,
+      rejected,
       totalAmount,
       paidAmount,
       approvedAmount,
       pendingAmount,
       overdueAmount,
+      draftAmount,
+      rejectedAmount,
     ] = await Promise.all([
       // Counts by status
       prisma.invoice.count({ where: { campaignId } }),
@@ -382,6 +688,7 @@ export const getInvoiceStats = async (req: Request, res: Response) => {
       prisma.invoice.count({ where: { campaignId, status: 'pending' } }),
       prisma.invoice.count({ where: { campaignId, status: 'overdue' } }),
       prisma.invoice.count({ where: { campaignId, status: 'draft' } }),
+      prisma.invoice.count({ where: { campaignId, status: 'rejected' } }),
 
       // Total amounts by status
       prisma.invoice.aggregate({
@@ -402,6 +709,14 @@ export const getInvoiceStats = async (req: Request, res: Response) => {
       }),
       prisma.invoice.aggregate({
         where: { campaignId, status: 'overdue' },
+        _sum: { amount: true },
+      }),
+      prisma.invoice.aggregate({
+        where: { campaignId, status: 'draft' },
+        _sum: { amount: true },
+      }),
+      prisma.invoice.aggregate({
+        where: { campaignId, status: 'rejected' },
         _sum: { amount: true },
       }),
     ]);
