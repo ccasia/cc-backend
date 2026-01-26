@@ -186,44 +186,44 @@ export const getAllInvoices = async (req: Request, res: Response) => {
       invoices = await prisma.invoice.findMany({
         where,
         select: {
-        id: true,
-        invoiceNumber: true,
-        amount: true,
-        status: true,
-        createdAt: true,
-        dueDate: true,
-        invoiceFrom: true,
-        task: true,
-        creatorId: true,
-        campaignId: true,
-        // Only include minimal creator data
-        creator: {
-          select: {
-            userId: true,
-            user: {
-              select: {
-                id: true,
-                name: true,
-                photoURL: true,
-                email: true,
+          id: true,
+          invoiceNumber: true,
+          amount: true,
+          status: true,
+          createdAt: true,
+          dueDate: true,
+          invoiceFrom: true,
+          task: true,
+          creatorId: true,
+          campaignId: true,
+          // Only include minimal creator data
+          creator: {
+            select: {
+              userId: true,
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  photoURL: true,
+                  email: true,
+                },
+              },
+            },
+          },
+          // Only include minimal campaign data
+          campaign: {
+            select: {
+              id: true,
+              name: true,
+              creatorAgreement: {
+                select: {
+                  userId: true,
+                  currency: true,
+                },
               },
             },
           },
         },
-        // Only include minimal campaign data
-        campaign: {
-          select: {
-            id: true,
-            name: true,
-            creatorAgreement: {
-              select: {
-                userId: true,
-                currency: true,
-              },
-            },
-          },
-        },
-      },
         orderBy: {
           createdAt: 'desc',
         },
@@ -241,7 +241,6 @@ export const getAllInvoices = async (req: Request, res: Response) => {
           (invoice.task as any)?.items?.[0]?.currency ||
           creatorAgreement?.currency ||
           null;
-
         // Extract creator name from invoiceFrom JSON
         const invoiceFromName = (invoice.invoiceFrom as any)?.name || invoice.creator?.user?.name;
 
@@ -582,11 +581,6 @@ export const getInvoicesByCampaignId = async (req: Request, res: Response) => {
   }
 };
 
-/**
- * OPTIMIZED: Get invoice statistics for a campaign
- * GET /api/invoice/stats/:campaignId
- * Returns aggregated stats instead of fetching all invoices
- */
 /**
  * OPTIMIZED: Get invoice statistics for all invoices (for finance dashboard)
  * GET /api/invoice/stats

@@ -42,10 +42,12 @@ router.get('/checkRefreshToken', isSuperAdmin, checkRefreshToken);
 
 router.get('/creator', getInvoicesByCreatorId);
 
+router.get('/getInvoicesByCampaignId/:id', getInvoicesByCampaignId);
 // IMPORTANT: Specific routes must come before parameterized routes
 router.get('/stats', isLoggedIn, getAllInvoiceStats); // Stats for all invoices
 router.get('/stats/:campaignId', isLoggedIn, getInvoiceStats); // Stats for specific campaign
-router.get('/getInvoicesByCampaignId/:id', getInvoicesByCampaignId);
+
+router.get('/', isSuperAdmin, getAllInvoices);
 
 router.get('/:id', isLoggedIn, getInvoiceById);
 
