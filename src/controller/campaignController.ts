@@ -8246,11 +8246,13 @@ export const activateClientCampaign = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Agreement template is required' });
     }
 
-    // Check if campaign exists and is in PENDING_ADMIN_ACTIVATION status
+    // Check if campaign exists and is in PENDING_ADMIN_ACTIVATION or SCHEDULED status
     const campaign = await prisma.campaign.findFirst({
       where: {
         id: campaignId,
-        status: 'PENDING_ADMIN_ACTIVATION',
+        status: {
+          in: ['PENDING_ADMIN_ACTIVATION', 'SCHEDULED'],
+        },
       },
       include: {
         company: true,
@@ -8260,7 +8262,7 @@ export const activateClientCampaign = async (req: Request, res: Response) => {
     if (!campaign) {
       return res
         .status(404)
-        .json({ message: 'Campaign has already been activated or is not in pending admin activation status' });
+        .json({ message: 'Campaign has already been activated or is not in pending admin activation/scheduled status' });
     }
 
     // Log user info for debugging
