@@ -278,30 +278,45 @@ export const createPackage = async (req: Request, res: Response) => {
 };
 
 export const updatePackage = async (req: Request, res: Response) => {
-  const { name, price, currency, credits, validityPeriod } = req.body;
+  const { name, credits, validityPeriod, priceMYR, priceSGD } = req.body;
   const { id } = req.params;
 
   try {
-    const currentPackage = await prisma.package.findUnique({
-      where: { id: id },
-    });
+    const currentPackage = await prisma.package.findUnique({ where: { id } });
 
     if (!currentPackage) return res.status(404).json({ message: 'Package not found' });
 
+    const upserts = [];
+
+    if (priceMYR !== undefined && priceMYR !== null && priceMYR !== '') {
+      const amount = typeof priceMYR === 'number' ? priceMYR : parseFloat(priceMYR);
+      upserts.push({
+        where: { packageId_currency: { packageId: id, currency: 'MYR' } },
+        update: { amount },
+        create: { currency: 'MYR', amount },
+      });
+    }
+
+    if (priceSGD !== undefined && priceSGD !== null && priceSGD !== '') {
+      const amount = typeof priceSGD === 'number' ? priceSGD : parseFloat(priceSGD);
+      upserts.push({
+        where: { packageId_currency: { packageId: id, currency: 'SGD' } },
+        update: { amount },
+        create: { currency: 'SGD', amount },
+      });
+    }
+
     await prisma.package.update({
-      where: {
-        id: currentPackage.id,
-      },
+      where: { id },
       data: {
-        name: name,
-        prices: {
-          create: {
-            currency: currency,
-            amount: price,
+        ...(name !== undefined && { name }),
+        ...(credits !== undefined && { credits: Number(credits) }),
+        ...(validityPeriod !== undefined && { validityPeriod: Number(validityPeriod) }),
+        ...(upserts.length > 0 && {
+          prices: {
+            upsert: upserts,
           },
-        },
-        credits: credits,
-        validityPeriod: validityPeriod,
+        }),
       },
     });
 
