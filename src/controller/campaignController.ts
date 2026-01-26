@@ -825,6 +825,7 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
   } = rawData;
 
   const clientManagers = Array.isArray(rawData?.clientManagers) ? rawData.clientManagers : [];
+  const isCreditTier = rawData?.isCreditTier === true;
 
   try {
     const { images } = await uploadCampaignAssets(req.files);
@@ -942,6 +943,7 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
             ads: ads || false,
             photos: photos || false,
             crossPosting: crossPosting || false,
+            isCreditTier: isCreditTier,
             logisticsType: logisticsType && logisticsType !== '' ? (logisticsType as LogisticType) : null,
             agreementTemplate: {
               connect: { id: agreementFrom.id },
