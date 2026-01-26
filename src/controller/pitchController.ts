@@ -148,6 +148,22 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
         },
       });
 
+      // For credit tier campaigns, calculate creditPerVideo from creator's tier
+      let creditPerVideo: number | null = null;
+      let creditTierId: string | null = null;
+      if (pitch.campaign.isCreditTier) {
+        try {
+          const { calculateCreatorTier } = require('@services/creditTierService');
+          const { tier } = await calculateCreatorTier(pitch.userId);
+          if (tier) {
+            creditPerVideo = tier.creditsPerVideo;
+            creditTierId = tier.id;
+          }
+        } catch (error) {
+          console.log(`Could not calculate tier for creator ${pitch.userId}:`, error);
+        }
+      }
+
       if (existingShortlist) {
         await prisma.shortListedCreator.update({
           where: {
@@ -158,6 +174,10 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
           },
           data: {
             isAgreementReady: false,
+            ...(pitch.campaign.isCreditTier && creditPerVideo !== null && {
+              creditPerVideo,
+              creditTierId,
+            }),
           },
         });
       } else {
@@ -167,6 +187,10 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
             campaignId: pitch.campaignId,
             isAgreementReady: false,
             currency: 'MYR',
+            ...(pitch.campaign.isCreditTier && creditPerVideo !== null && {
+              creditPerVideo,
+              creditTierId,
+            }),
           },
         });
       }
@@ -511,6 +535,22 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
       },
     });
 
+    // For credit tier campaigns, calculate creditPerVideo from creator's tier
+    let creditPerVideo: number | null = null;
+    let creditTierId: string | null = null;
+    if (pitch.campaign.isCreditTier) {
+      try {
+        const { calculateCreatorTier } = require('@services/creditTierService');
+        const { tier } = await calculateCreatorTier(pitch.userId);
+        if (tier) {
+          creditPerVideo = tier.creditsPerVideo;
+          creditTierId = tier.id;
+        }
+      } catch (error) {
+        console.log(`Could not calculate tier for creator ${pitch.userId}:`, error);
+      }
+    }
+
     const existingShortlist = await prisma.shortListedCreator.findUnique({
       where: {
         userId_campaignId: {
@@ -530,6 +570,10 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
         },
         data: {
           isAgreementReady: false,
+          ...(pitch.campaign.isCreditTier && creditPerVideo !== null && {
+            creditPerVideo,
+            creditTierId,
+          }),
         },
       });
     } else {
@@ -539,6 +583,10 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
           campaignId: pitch.campaignId,
           isAgreementReady: false,
           currency: 'MYR',
+          ...(pitch.campaign.isCreditTier && creditPerVideo !== null && {
+            creditPerVideo,
+            creditTierId,
+          }),
         },
       });
     }
@@ -1289,6 +1337,13 @@ export const getPitchesV3 = async (req: Request, res: Response) => {
                 instagramUser: true,
                 tiktokUser: true,
                 mediaKit: true,
+                creditTier: {
+                  select: {
+                    id: true,
+                    name: true,
+                    creditsPerVideo: true,
+                  },
+                },
               },
             },
           },
@@ -1329,6 +1384,11 @@ export const getPitchesV3 = async (req: Request, res: Response) => {
     const transformedPitches = pitches
       .filter((pitch) => {
         const normalizedStatus = normalizePitchStatusForV4(pitch);
+
+        // Exclude drafts from admin/client views - drafts are only visible to the creator who owns them
+        if (normalizedStatus === 'DRAFT' || normalizedStatus === 'draft') {
+          return false;
+        }
 
         if (user.role === 'client') {
           return (
