@@ -126,44 +126,273 @@ export const xeroCallBack = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * OPTIMIZED: Get all invoices with pagination and filtering
+ * GET /api/invoice/?page=1&limit=50&status=paid&currency=MYR&search=...
+ */
 export const getAllInvoices = async (req: Request, res: Response) => {
+  const {
+    page = '1',
+    limit = '50',
+    status,
+    currency,
+    search,
+    campaignName,
+    startDate,
+    endDate,
+  } = req.query;
+
   try {
-    const invoices = await prisma.invoice.findMany({
-      include: {
-        creator: {
-          include: {
-            user: true,
-          },
-        },
-        user: {
-          include: {
-            creator: true,
-            creatorAgreement: true,
-          },
-        },
-        campaign: {
-          include: {
-            creatorAgreement: true,
-          },
-        },
-      },
-    });
+    const pageNum = parseInt(page as string, 10);
+    const limitNum = parseInt(limit as string, 10);
+    const skip = (pageNum - 1) * limitNum;
 
-    // Map through invoices to include the specific creator agreement with currency
-    const invoicesWithCurrency = invoices.map((invoice) => {
-      const creatorAgreement = invoice.campaign?.creatorAgreement?.find(
-        (agreement) => agreement.campaignId === invoice.campaignId && agreement.userId === invoice.creatorId,
-      );
+    // Build where clause
+    const where: any = {};
 
-      return {
-        ...invoice,
-        currency: creatorAgreement?.currency || null,
+    if (status && status !== 'all') {
+      where.status = status as InvoiceStatus;
+    }
+
+    // Date range filter
+    if (startDate && endDate) {
+      where.createdAt = {
+        gte: new Date(startDate as string),
+        lte: new Date(endDate as string),
       };
-    });
+    }
 
-    return res.status(200).json(invoicesWithCurrency);
+    // Search filter (invoice number)
+    if (search) {
+      where.invoiceNumber = { contains: search as string, mode: 'insensitive' };
+    }
+
+    // Campaign name filter (will filter in memory after fetching)
+    let campaignFilter: string | undefined;
+    if (campaignName) {
+      campaignFilter = campaignName as string;
+    }
+
+    // Check if we need to filter by JSON fields (currency, campaignName, search on creator/campaign)
+    const hasJsonFilters = !!(currency || campaignFilter || search);
+
+    // If we have JSON filters, we need to fetch all matching invoices first, then filter and paginate
+    // Otherwise, we can use database-level pagination for better performance
+    let invoices;
+    let total;
+
+    if (hasJsonFilters) {
+      // Fetch ALL invoices matching basic filters (status, date range) for JSON filtering
+      invoices = await prisma.invoice.findMany({
+        where,
+        select: {
+          id: true,
+          invoiceNumber: true,
+          amount: true,
+          status: true,
+          createdAt: true,
+          dueDate: true,
+          invoiceFrom: true,
+          task: true,
+          creatorId: true,
+          campaignId: true,
+          // Only include minimal creator data
+          creator: {
+            select: {
+              userId: true,
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  photoURL: true,
+                  email: true,
+                },
+              },
+            },
+          },
+          // Only include minimal campaign data
+          campaign: {
+            select: {
+              id: true,
+              name: true,
+              creatorAgreement: {
+                select: {
+                  userId: true,
+                  currency: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      });
+
+      // Map invoices with currency and apply JSON filters
+      let invoicesWithCurrency = invoices.map((invoice) => {
+        const creatorAgreement = invoice.campaign?.creatorAgreement?.find(
+          (agreement) => agreement.userId === invoice.creatorId
+        );
+
+        // Extract currency from various possible locations
+        const invoiceCurrency =
+          (invoice.task as any)?.currency ||
+          (invoice.task as any)?.items?.[0]?.currency ||
+          creatorAgreement?.currency ||
+          null;
+
+        // Extract creator name from invoiceFrom JSON
+        const invoiceFromName = (invoice.invoiceFrom as any)?.name || invoice.creator?.user?.name;
+
+        return {
+          ...invoice,
+          currency: invoiceCurrency,
+          invoiceFrom: {
+            ...(invoice.invoiceFrom as any),
+            id: invoice.creator?.user?.id,
+            name: invoiceFromName,
+          },
+          campaign: {
+            ...invoice.campaign,
+            name: invoice.campaign?.name,
+          },
+        };
+      });
+
+      // Apply currency filter (JSON field)
+      if (currency) {
+        invoicesWithCurrency = invoicesWithCurrency.filter(
+          (inv) => inv.currency === currency
+        );
+      }
+
+      // Apply campaign name filter (JSON field)
+      if (campaignFilter) {
+        const filterLower = campaignFilter.toLowerCase();
+        invoicesWithCurrency = invoicesWithCurrency.filter(
+          (inv) => inv.campaign?.name?.toLowerCase().includes(filterLower)
+        );
+      }
+
+      // Apply search filter on creator name (JSON field)
+      if (search) {
+        const searchLower = (search as string).toLowerCase();
+        invoicesWithCurrency = invoicesWithCurrency.filter(
+          (inv) =>
+            inv.invoiceNumber.toLowerCase().includes(searchLower) ||
+            (inv.invoiceFrom as any)?.name?.toLowerCase().includes(searchLower) ||
+            inv.campaign?.name?.toLowerCase().includes(searchLower)
+        );
+      }
+
+      // Calculate total after JSON filtering
+      total = invoicesWithCurrency.length;
+
+      // Apply pagination after filtering
+      const paginatedInvoices = invoicesWithCurrency.slice(skip, skip + limitNum);
+
+      return res.status(200).json({
+        data: paginatedInvoices,
+        pagination: {
+          page: pageNum,
+          limit: limitNum,
+          total,
+          totalPages: Math.ceil(total / limitNum),
+        },
+      });
+    } else {
+      // No JSON filters - use efficient database-level pagination
+      total = await prisma.invoice.count({ where });
+
+      invoices = await prisma.invoice.findMany({
+        where,
+        skip,
+        take: limitNum,
+        select: {
+          id: true,
+          invoiceNumber: true,
+          amount: true,
+          status: true,
+          createdAt: true,
+          dueDate: true,
+          invoiceFrom: true,
+          task: true,
+          creatorId: true,
+          campaignId: true,
+          creator: {
+            select: {
+              userId: true,
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  photoURL: true,
+                  email: true,
+                },
+              },
+            },
+          },
+          campaign: {
+            select: {
+              id: true,
+              name: true,
+              creatorAgreement: {
+                select: {
+                  userId: true,
+                  currency: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      });
+
+      // Map invoices with currency (no filtering needed)
+      const invoicesWithCurrency = invoices.map((invoice) => {
+        const creatorAgreement = invoice.campaign?.creatorAgreement?.find(
+          (agreement) => agreement.userId === invoice.creatorId
+        );
+
+        const invoiceCurrency =
+          (invoice.task as any)?.currency ||
+          (invoice.task as any)?.items?.[0]?.currency ||
+          creatorAgreement?.currency ||
+          null;
+
+        const invoiceFromName = (invoice.invoiceFrom as any)?.name || invoice.creator?.user?.name;
+
+        return {
+          ...invoice,
+          currency: invoiceCurrency,
+          invoiceFrom: {
+            ...(invoice.invoiceFrom as any),
+            id: invoice.creator?.user?.id,
+            name: invoiceFromName,
+          },
+          campaign: {
+            ...invoice.campaign,
+            name: invoice.campaign?.name,
+          },
+        };
+      });
+
+      return res.status(200).json({
+        data: invoicesWithCurrency,
+        pagination: {
+          page: pageNum,
+          limit: limitNum,
+          total,
+          totalPages: Math.ceil(total / limitNum),
+        },
+      });
+    }
   } catch (error) {
-    return res.status(400).json(error);
+    console.error('Error fetching all invoices:', error);
+    return res.status(500).json({ error: 'Failed to fetch invoices' });
   }
 };
 

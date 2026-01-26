@@ -1491,6 +1491,7 @@ export const getAllCampaigns = async (req: Request, res: Response) => {
             include: {
               admin: {
                 include: {
+                  role: true,
                   user: {
                     include: {
                       agreementTemplate: true,
@@ -2849,8 +2850,8 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
   const { userId } = req.params;
   // const { status, limit = 9, cursor } = req.query;
 
-  const { cursor, limit = 10, search, status } = req.query;
-  console.log('getAllCampaignsByAdminId called with:', { userId, status, search, limit, cursor });
+  const { cursor, limit = 10, search, status, excludeOwn, filterAdminId } = req.query;
+  console.log('getAllCampaignsByAdminId called with:', { userId, status, search, limit, cursor, excludeOwn, filterAdminId });
 
   try {
     const user = await prisma.user.findUnique({
@@ -2869,6 +2870,17 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
     });
 
     if (!user) return res.status(404).json({ message: 'User not found.' });
+
+    // Build filter by specific admin condition if provided
+    const filterAdminCondition = filterAdminId
+      ? {
+          campaignAdmin: {
+            some: {
+              adminId: filterAdminId as string,
+            },
+          },
+        }
+      : {};
 
     if (user.admin?.mode === 'god' || user.admin?.role?.name === 'CSL' || user.admin?.mode === 'advanced') {
       // Handle comma-separated status values
@@ -2987,6 +2999,7 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
         where: {
           AND: [
             statusCondition,
+            filterAdminCondition,
             {
               ...(search && {
                 OR: [
@@ -3060,6 +3073,7 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
             include: {
               admin: {
                 include: {
+                  role: true,
                   user: {
                     include: {
                       agreementTemplate: true,
@@ -3174,14 +3188,27 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
       }),
       where: {
         AND: [
-          {
-            campaignAdmin: {
-              some: {
-                adminId: user.id,
+          // When excludeOwn=true, show campaigns NOT managed by this user (for "All" tab)
+          // Otherwise, show only campaigns managed by this user
+          excludeOwn === 'true'
+            ? {
+                campaignAdmin: {
+                  none: {
+                    adminId: user.id,
+                  },
+                },
+              }
+            : {
+                campaignAdmin: {
+                  some: {
+                    adminId: user.id,
+                  },
+                },
               },
-            },
-          },
-          statusCondition,
+          // Force ACTIVE status when excludeOwn=true, otherwise use the provided status filter
+          excludeOwn === 'true' ? { status: 'ACTIVE' as CampaignStatus } : statusCondition,
+          // Filter by specific admin if provided
+          filterAdminCondition,
           {
             ...(search && {
               name: {
