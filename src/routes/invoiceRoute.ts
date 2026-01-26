@@ -7,7 +7,6 @@ import {
   getInvoicesByCreatorId,
   getInvoicesByCampaignId,
   getInvoiceStats,
-  getAllInvoiceStats,
   getInvoiceById,
   getInvoiceByCreatorIdAndCampaignId,
   updateInvoiceStatus,
@@ -20,6 +19,7 @@ import {
   deleteInvoice,
   generateMissingInvoices,
 } from '@controllers/invoiceController';
+import { getAllInvoiceStats } from '@controllers/invoiceController';
 import { checkAndRefreshAccessToken } from '@controllers/invoiceController';
 import { creatorInvoice } from '@controllers/invoiceController';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
