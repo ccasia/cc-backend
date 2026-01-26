@@ -369,7 +369,12 @@ export const createCampaign = async (req: Request, res: Response) => {
                 language: audienceLanguage,
                 creator_persona: audienceCreatorPersona,
                 user_persona: audienceUserPersona,
-                country: Array.isArray(countries) && countries.length > 0 ? countries[0] : (Array.isArray(country) && country.length > 0 ? country[0] : ''), // Legacy single country (first item from countries or country)
+                country:
+                  Array.isArray(countries) && countries.length > 0
+                    ? countries[0]
+                    : Array.isArray(country) && country.length > 0
+                      ? country[0]
+                      : '', // Legacy single country (first item from countries or country)
                 countries: countries || country || [], // New multiple countries field
               },
             },
@@ -2215,7 +2220,6 @@ export const getPitchById = async (req: Request, res: Response) => {
 
 export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: Response) => {
   const { userId } = req.params;
-  // const { status, limit = 9, cursor } = req.query;
 
   const { cursor, limit = 10, search, status } = req.query;
   console.log('getAllCampaignsByAdminId called with:', { userId, status, search, limit, cursor });
@@ -2563,30 +2567,6 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
       orderBy: {
         createdAt: 'desc',
       },
-      // where: {
-      //   ...(status
-      //     ? {
-      //         AND: [
-      //           {
-      //             campaignAdmin: {
-      //               some: {
-      //                 adminId: user.id,
-      //               },
-      //             },
-      //           },
-      //           {
-      //             status: status as any,
-      //           },
-      //         ],
-      //       }
-      //     : {
-      //         campaignAdmin: {
-      //           some: {
-      //             adminId: user.id,
-      //           },
-      //         },
-      //       }),
-      // },
       include: {
         agreementTemplate: true,
         submission: {
@@ -8990,11 +8970,9 @@ export const syncCampaignCredits = async (req: Request, res: Response) => {
 
     // Calculate utilized credits: sum of ugcVideos for shortlisted non-guest creators with sent agreements
     const sentAgreementUserIds = new Set(
-      campaign.creatorAgreement
-        .filter((a) => a.isSent && a.userId)
-        .map((a) => a.userId as string)
+      campaign.creatorAgreement.filter((a) => a.isSent && a.userId).map((a) => a.userId as string),
     );
-    
+
     const creditsUtilized = campaign.shortlisted.reduce((total, creator) => {
       const isGuest = creator.user?.creator?.isGuest === true;
       const hasAgreementSent = creator.userId && sentAgreementUserIds.has(creator.userId);
@@ -9268,5 +9246,49 @@ export const getCampaignsForPublic = async (req: Request, res: Response) => {
     return res.status(200).json(data);
   } catch (error) {
     return res.status(400).json(error);
+  }
+};
+
+// Function to fetch all status for all campaign. Return value number
+export const getCampaignStatus = async (req: Request, res: Response) => {
+  try {
+    const activeCampaigns = prisma.campaign.count({
+      where: {
+        status: 'ACTIVE',
+      },
+    });
+
+    const pendingCampaigns = prisma.campaign.count({
+      where: {
+        status: {
+          in: ['PENDING_CSM_REVIEW', 'PENDING_ADMIN_ACTIVATION', 'SCHEDULED'],
+        },
+      },
+    });
+
+    const completedCampaigns = prisma.campaign.count({
+      where: {
+        status: 'COMPLETED',
+      },
+    });
+
+    const pausedCampaigns = prisma.campaign.count({
+      where: {
+        status: 'PAUSED',
+      },
+    });
+
+    const data = await Promise.all([activeCampaigns, pendingCampaigns, completedCampaigns, pausedCampaigns]);
+
+    const campaignStatus = {
+      activeCampaigns: data[0],
+      pendingCampaigns: data[1],
+      completedCampaigns: data[2],
+      pausedCampaigns: data[3],
+    };
+
+    return res.status(200).json(campaignStatus);
+  } catch (error) {
+    return res.status(500).json(error);
   }
 };
