@@ -2340,6 +2340,19 @@ export const updateOutreachStatus = async (req: Request, res: Response) => {
 
     console.log(`Outreach status updated: Pitch ${pitchId} -> ${outreachStatus} by admin ${adminId}`);
 
+    // Emit socket event for real-time updates
+    const io = req.app.get('io');
+    if (io) {
+      io.to(pitch.campaign.id).emit('v3:pitch:outreach-updated', {
+        pitchId: updatedPitch.id,
+        campaignId: pitch.campaign.id,
+        outreachStatus: updatedPitch.outreachStatus,
+        outreachUpdatedAt: updatedPitch.outreachUpdatedAt,
+        outreachUpdatedBy: updatedPitch.outreachUpdatedBy,
+        updatedAt: new Date().toISOString(),
+      });
+    }
+
     return res.status(200).json({
       message: 'Outreach status updated successfully',
       data: {
