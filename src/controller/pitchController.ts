@@ -2169,13 +2169,47 @@ export const updateGuestCreatorInfo = async (req: Request, res: Response) => {
       },
     });
 
-    // Update creator profileLink (single source of truth for profile links)
+    // Update creator profileLink and manualFollowerCount + credit tier
     if (pitch.user?.creator) {
+      const creatorUpdateData: any = {
+        profileLink: profileLink.trim(),
+      };
+
+      // If followerCount is provided, update manualFollowerCount and recalculate credit tier
+      if (followerCount !== undefined) {
+        const parsedFollowerCount = parseInt(followerCount, 10);
+        if (!isNaN(parsedFollowerCount) && parsedFollowerCount > 0) {
+          creatorUpdateData.manualFollowerCount = parsedFollowerCount;
+
+          // Find tier by follower count (same logic as shortlistGuestCreators)
+          const tier = await prisma.creditTier.findFirst({
+            where: {
+              isActive: true,
+              minFollowers: { lte: parsedFollowerCount },
+              OR: [
+                { maxFollowers: { gte: parsedFollowerCount } },
+                { maxFollowers: null },
+              ],
+            },
+            orderBy: [{ minFollowers: 'desc' }],
+          });
+
+          if (tier) {
+            creatorUpdateData.creditTierId = tier.id;
+            creatorUpdateData.tierUpdatedAt = new Date();
+            console.log(`Updated guest creator ${pitch.userId} tier to ${tier.name} based on ${parsedFollowerCount} followers`);
+          }
+        } else if (followerCount?.trim?.() === '' || followerCount === null) {
+          // Clear follower count if empty
+          creatorUpdateData.manualFollowerCount = null;
+          creatorUpdateData.creditTierId = null;
+          creatorUpdateData.tierUpdatedAt = new Date();
+        }
+      }
+
       await prisma.creator.update({
         where: { userId: pitch.userId },
-        data: {
-          profileLink: profileLink.trim(),
-        },
+        data: creatorUpdateData,
       });
     }
 
@@ -2203,7 +2237,7 @@ export const updateGuestCreatorInfo = async (req: Request, res: Response) => {
 
     console.log(`Guest creator info updated for pitch ${pitchId}`);
     return res.status(200).json({
-      message: 'Guest creator information updated successfully',
+      message: 'Guest creator information updated successfully!',
       data: {
         name: name.trim(),
         followerCount: followerCount?.trim?.() || null,
