@@ -687,6 +687,8 @@ model Campaign {
   // Trends analysis
   submissionPostingUrls SubmissionPostingUrl[]
   insightSnapshots      InsightSnapshot[]
+
+  isForSurfShark Boolean?
 }
 
 model BookMarkCampaign {
@@ -1010,9 +1012,9 @@ model Submission {
   rawFootagesDriveLink String?
 
   // V4 specific fields
-  contentOrder      Int? // Order of content (Video 1, Video 2, etc.)
-  submissionVersion String?          @default("v2") // "v2", "v3", "v4"
-  captionHistory    CaptionHistory[]
+  contentOrder          Int? // Order of content (Video 1, Video 2, etc.)
+  submissionVersion     String?                @default("v2") // "v2", "v3", "v4"
+  captionHistory        CaptionHistory[]
   submissionPostingUrls SubmissionPostingUrl[]
 
   @@unique([userId, campaignId, submissionTypeId, contentOrder])
@@ -1024,11 +1026,11 @@ model SubmissionPostingUrl {
   campaign     Campaign   @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   submissionId String
   submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
-  platform     String     // "Instagram" | "TikTok"
-  postUrl      String     // Full URL
-  postingDate  DateTime?  // When creator posted (null = not posted yet)
-  shortCode    String?    // Instagram shortcode
-  mediaId      String?    // Instagram media ID or TikTok video ID
+  platform     String // "Instagram" | "TikTok"
+  postUrl      String // Full URL
+  postingDate  DateTime? // When creator posted (null = not posted yet)
+  shortCode    String? // Instagram shortcode
+  mediaId      String? // Instagram media ID or TikTok video ID
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
@@ -1042,9 +1044,9 @@ model InsightSnapshot {
   campaignId            String
   campaign              Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   snapshotDate          DateTime
-  snapshotType          String   // "daily", "weekly", "monthly"
-  dayOfWeek             Int?     // 0 (Sunday) - 6 (Saturday), for weekly snapshots
-  platform              String   // "Instagram" | "TikTok" | "All"
+  snapshotType          String // "daily", "weekly", "monthly"
+  dayOfWeek             Int? // 0 (Sunday) - 6 (Saturday), for weekly snapshots
+  platform              String // "Instagram" | "TikTok" | "All"
   totalPosts            Int
   totalViews            Int      @default(0)
   totalLikes            Int      @default(0)
@@ -1836,8 +1838,8 @@ model ReservationDetails {
   logisticId String   @unique
   logistic   Logistic @relation(fields: [logisticId], references: [id], onDelete: Cascade)
 
-  slots ReservationSlot[]
-  isConfirmed Boolean  @default(false)
+  slots       ReservationSlot[]
+  isConfirmed Boolean           @default(false)
 }
 
 model StoreVisitDetails {
@@ -1888,10 +1890,9 @@ model ReservationConfiguration {
   campaignId String   @unique
   campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
-  mode       ReservationMode
-  locations  Json
-  availabilityRules Json 
-
+  mode              ReservationMode
+  locations         Json
+  availabilityRules Json
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
