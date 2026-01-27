@@ -7,6 +7,7 @@ import {
   getInvoicesByCreatorId,
   getInvoicesByCampaignId,
   getInvoiceStats,
+  getAllInvoiceStats,
   getInvoiceById,
   getInvoiceByCreatorIdAndCampaignId,
   updateInvoiceStatus,
@@ -19,7 +20,6 @@ import {
   deleteInvoice,
   generateMissingInvoices,
 } from '@controllers/invoiceController';
-import { getAllInvoiceStats } from '@controllers/invoiceController';
 import { checkAndRefreshAccessToken } from '@controllers/invoiceController';
 import { creatorInvoice } from '@controllers/invoiceController';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
@@ -49,8 +49,9 @@ router.get('/stats/:campaignId', isLoggedIn, getInvoiceStats); // Stats for spec
 
 router.get('/', isSuperAdmin, getAllInvoices);
 
-router.get('/getInvoicesByCampaignId/:id', getInvoicesByCampaignId);
-router.get('/stats/:campaignId', getInvoiceStats);
+router.get('/:id', isLoggedIn, getInvoiceById);
+
+router.get('/', isSuperAdmin, getAllInvoices);
 
 router.get('/creator/:creatorId/campaign/:campaignId', getInvoiceByCreatorIdAndCampaignId);
 
