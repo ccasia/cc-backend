@@ -241,7 +241,6 @@ export const getAllInvoices = async (req: Request, res: Response) => {
           (invoice.task as any)?.items?.[0]?.currency ||
           creatorAgreement?.currency ||
           null;
-
         // Extract creator name from invoiceFrom JSON
         const invoiceFromName = (invoice.invoiceFrom as any)?.name || invoice.creator?.user?.name;
 
@@ -583,9 +582,8 @@ export const getInvoicesByCampaignId = async (req: Request, res: Response) => {
 };
 
 /**
- * OPTIMIZED: Get invoice statistics for ALL invoices
+ * OPTIMIZED: Get invoice statistics for all invoices (for finance dashboard)
  * GET /api/invoice/stats
- * Returns aggregated stats instead of fetching all invoices
  */
 export const getAllInvoiceStats = async (req: Request, res: Response) => {
   try {
@@ -602,6 +600,8 @@ export const getAllInvoiceStats = async (req: Request, res: Response) => {
       approvedAmount,
       pendingAmount,
       overdueAmount,
+      draftAmount,
+      rejectedAmount,
     ] = await Promise.all([
       // Counts by status
       prisma.invoice.count(),
@@ -613,28 +613,16 @@ export const getAllInvoiceStats = async (req: Request, res: Response) => {
       prisma.invoice.count({ where: { status: 'rejected' } }),
 
       // Total amounts by status
-      prisma.invoice.aggregate({
-        _sum: { amount: true },
-      }),
-      prisma.invoice.aggregate({
-        where: { status: 'paid' },
-        _sum: { amount: true },
-      }),
-      prisma.invoice.aggregate({
-        where: { status: 'approved' },
-        _sum: { amount: true },
-      }),
-      prisma.invoice.aggregate({
-        where: { status: 'pending' },
-        _sum: { amount: true },
-      }),
-      prisma.invoice.aggregate({
-        where: { status: 'overdue' },
-        _sum: { amount: true },
-      }),
+      prisma.invoice.aggregate({ _sum: { amount: true } }),
+      prisma.invoice.aggregate({ where: { status: 'paid' }, _sum: { amount: true } }),
+      prisma.invoice.aggregate({ where: { status: 'approved' }, _sum: { amount: true } }),
+      prisma.invoice.aggregate({ where: { status: 'pending' }, _sum: { amount: true } }),
+      prisma.invoice.aggregate({ where: { status: 'overdue' }, _sum: { amount: true } }),
+      prisma.invoice.aggregate({ where: { status: 'draft' }, _sum: { amount: true } }),
+      prisma.invoice.aggregate({ where: { status: 'rejected' }, _sum: { amount: true } }),
     ]);
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       data: {
         counts: {
@@ -652,19 +640,20 @@ export const getAllInvoiceStats = async (req: Request, res: Response) => {
           approved: approvedAmount._sum.amount || 0,
           pending: pendingAmount._sum.amount || 0,
           overdue: overdueAmount._sum.amount || 0,
+          draft: draftAmount._sum.amount || 0,
+          rejected: rejectedAmount._sum.amount || 0,
         },
       },
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching all invoice stats:', error);
-    res.status(500).json({ error: 'Something went wrong' });
+    return res.status(500).json({ success: false, message: 'Failed to fetch invoice statistics', error: error.message });
   }
 };
 
 /**
- * OPTIMIZED: Get invoice statistics for a campaign
+ * OPTIMIZED: Get invoice statistics for a specific campaign
  * GET /api/invoice/stats/:campaignId
- * Returns aggregated stats instead of fetching all invoices
  */
 export const getInvoiceStats = async (req: Request, res: Response) => {
   const { campaignId } = req.params;
@@ -677,11 +666,14 @@ export const getInvoiceStats = async (req: Request, res: Response) => {
       pending,
       overdue,
       draft,
+      rejected,
       totalAmount,
       paidAmount,
       approvedAmount,
       pendingAmount,
       overdueAmount,
+      draftAmount,
+      rejectedAmount,
     ] = await Promise.all([
       // Counts by status
       prisma.invoice.count({ where: { campaignId } }),
@@ -690,6 +682,7 @@ export const getInvoiceStats = async (req: Request, res: Response) => {
       prisma.invoice.count({ where: { campaignId, status: 'pending' } }),
       prisma.invoice.count({ where: { campaignId, status: 'overdue' } }),
       prisma.invoice.count({ where: { campaignId, status: 'draft' } }),
+      prisma.invoice.count({ where: { campaignId, status: 'rejected' } }),
 
       // Total amounts by status
       prisma.invoice.aggregate({
@@ -710,6 +703,14 @@ export const getInvoiceStats = async (req: Request, res: Response) => {
       }),
       prisma.invoice.aggregate({
         where: { campaignId, status: 'overdue' },
+        _sum: { amount: true },
+      }),
+      prisma.invoice.aggregate({
+        where: { campaignId, status: 'draft' },
+        _sum: { amount: true },
+      }),
+      prisma.invoice.aggregate({
+        where: { campaignId, status: 'rejected' },
         _sum: { amount: true },
       }),
     ]);
