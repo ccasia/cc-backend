@@ -9361,10 +9361,21 @@ export const checkCampaignCreatorVisibility = async (req: Request, res: Response
 
 // Add this function after the shortlistCreatorV2 function
 export const shortlistCreatorV3 = async (req: Request, res: Response) => {
-  const { creators, campaignId, adminComments, ugcCredits } = req.body;
+  // Support both per-creator adminComments (new) and legacy single adminComments (backward compat)
+  const { creators, campaignId, adminComments: legacyAdminComments, ugcCredits } = req.body;
   const userId = req.session.userid;
 
   try {
+    // Validate follower counts - max 10 billion (prevents 64-bit integer overflow)
+    const MAX_FOLLOWER_COUNT = 10_000_000_000;
+    for (const creator of creators) {
+      if (creator.followerCount && creator.followerCount > MAX_FOLLOWER_COUNT) {
+        return res.status(400).json({
+          message: `Follower count for creator exceeds maximum allowed value (${MAX_FOLLOWER_COUNT.toLocaleString()}). Please enter a valid follower count.`,
+        });
+      }
+    }
+
     // Allow superadmin to bypass campaign admin check
     const currentUser = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
     const isSuperadmin = currentUser?.role === 'superadmin';
@@ -9454,9 +9465,18 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
           if (creatorRecord && !hasMediaKit) {
             console.log(`Updating manualFollowerCount for creator ${user.id} to ${creator.followerCount}`);
 
-            // Update the creator's credit tier based on the new follower count
-            const { getTierByFollowerCount } = require('@services/creditTierService');
-            const tier = await getTierByFollowerCount(creator.followerCount);
+            // Find tier by follower count using transaction client to avoid timeout
+            const tier = await tx.creditTier.findFirst({
+              where: {
+                isActive: true,
+                minFollowers: { lte: creator.followerCount },
+                OR: [
+                  { maxFollowers: { gte: creator.followerCount } },
+                  { maxFollowers: null },
+                ],
+              },
+              orderBy: [{ minFollowers: 'desc' }],
+            });
 
             await tx.creator.update({
               where: { userId: user.id },
@@ -9495,8 +9515,12 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
         // - non-v4 campaigns: APPROVED directly
         const pitchStatus = isV4Campaign ? 'SENT_TO_CLIENT' : 'APPROVED';
 
+        // Extract per-creator comments with fallback to legacy format
+        const creatorAdminComments = creator.adminComments?.trim() || (typeof legacyAdminComments === 'string' ? legacyAdminComments.trim() : '');
+        const hasComments = creatorAdminComments && creatorAdminComments.length > 0;
+
         // Create a pitch record for this creator
-        console.log(`Creating pitch for creator ${user.id} with status ${pitchStatus}`);
+        console.log(`Creating pitch for creator ${user.id} with status ${pitchStatus}${hasComments ? ' and admin comments' : ''}`);
         await tx.pitch.create({
           data: {
             userId: user.id,
@@ -9507,8 +9531,8 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
             amount: null,
             agreementTemplateId: null,
             approvedByAdminId: userId,
-            ...(typeof adminComments === 'string' && adminComments.trim().length > 0
-              ? { adminComments: adminComments.trim(), adminCommentedBy: userId }
+            ...(hasComments
+              ? { adminComments: creatorAdminComments, adminCommentedBy: userId }
               : {}),
           },
         });
@@ -10286,6 +10310,19 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
     return res.status(400).json({ message: 'You can add a maximum of 3 guest creators at a time' });
   }
 
+  // Validate follower counts - max 10 billion (prevents 64-bit integer overflow)
+  const MAX_FOLLOWER_COUNT = 10_000_000_000;
+  for (const guest of guestCreators) {
+    if (guest.followerCount) {
+      const parsedCount = parseInt(guest.followerCount, 10);
+      if (!isNaN(parsedCount) && parsedCount > MAX_FOLLOWER_COUNT) {
+        return res.status(400).json({
+          message: `Follower count exceeds maximum allowed value (${MAX_FOLLOWER_COUNT.toLocaleString()}). Please enter a valid follower count.`,
+        });
+      }
+    }
+  }
+
   try {
     const campaign = await prisma.campaign.findUnique({
       where: { id: campaignId },
@@ -10308,8 +10345,18 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
         if (guest.followerCount) {
           const parsedFollowerCount = parseInt(guest.followerCount, 10);
           if (!isNaN(parsedFollowerCount) && parsedFollowerCount > 0) {
-            const { getTierByFollowerCount } = require('@services/creditTierService');
-            const tier = await getTierByFollowerCount(parsedFollowerCount);
+            // Find tier by follower count using transaction client to avoid timeout
+            const tier = await tx.creditTier.findFirst({
+              where: {
+                isActive: true,
+                minFollowers: { lte: parsedFollowerCount },
+                OR: [
+                  { maxFollowers: { gte: parsedFollowerCount } },
+                  { maxFollowers: null },
+                ],
+              },
+              orderBy: [{ minFollowers: 'desc' }],
+            });
 
             await tx.creator.update({
               where: { userId },
