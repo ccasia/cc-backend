@@ -942,6 +942,12 @@ model Pitch {
   adminComments       String?
   adminCommentedBy    String?
   adminCommenter      Admin?         @relation("AdminCommenter", fields: [adminCommentedBy], references: [userId])
+
+  // Outreach status tracking
+  outreachStatus      OutreachStatus?
+  outreachUpdatedAt   DateTime?
+  outreachUpdatedBy   String?
+
   campaign            Campaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   user                User           @relation(fields: [userId], references: [id])
   admin               Admin?         @relation(fields: [approvedByAdminId], references: [userId], name: "ApprovedByAdmin")
@@ -1675,6 +1681,17 @@ enum PitchStatus {
   AGREEMENT_PENDING
   AGREEMENT_SUBMITTED
   WITHDRAWN
+}
+
+// Outreach status for internal admin tracking of creator outreach
+enum OutreachStatus {
+  OUTREACHED
+  DISCUSSING
+  CONFIRMED
+  REJECTED
+  INTERESTED
+  FOLLOWED_UP
+  UNRESPONSIVE
 }
 
 enum DraftStatus {

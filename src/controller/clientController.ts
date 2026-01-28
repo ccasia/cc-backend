@@ -478,6 +478,21 @@ export const createClientCampaign = async (req: Request, res: Response) => {
         objectivesString += `\n\n[Logistic Remarks]: ${clientRemarks}`;
       }
 
+      // Finalize countries - combine country and secondaryCountry
+      let finalizedCountries: string[] = [];
+      if (typeof country === 'string' && country) {
+        finalizedCountries.push(country);
+      } else if (Array.isArray(country) && country.length > 0) {
+        finalizedCountries.push(...country);
+      }
+      if (typeof secondaryCountry === 'string' && secondaryCountry) {
+        finalizedCountries.push(secondaryCountry);
+      } else if (Array.isArray(secondaryCountry) && secondaryCountry.length > 0) {
+        finalizedCountries.push(...secondaryCountry);
+      }
+      // Remove duplicates
+      finalizedCountries = [...new Set(finalizedCountries)];
+
       // Create campaign with PENDING status
       const campaign = await tx.campaign.create({
         data: {
@@ -518,7 +533,8 @@ export const createClientCampaign = async (req: Request, res: Response) => {
               // Primary Audience
               gender: audienceGender || [],
               age: audienceAge || [],
-              country: country || '',
+              country: finalizedCountries[0] || '',
+              countries: finalizedCountries,
               language: audienceLanguage || [],
               creator_persona: audienceCreatorPersona || [],
               user_persona: audienceUserPersona || '',

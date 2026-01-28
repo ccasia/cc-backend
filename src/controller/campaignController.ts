@@ -767,7 +767,6 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
     countries,
     audienceGender,
     audienceAge,
-    audienceLocation,
     audienceLanguage,
     audienceCreatorPersona,
     audienceUserPersona,
@@ -776,7 +775,6 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
     // Target audience secondary
     secondaryAudienceGender,
     secondaryAudienceAge,
-    secondaryAudienceLocation,
     secondaryAudienceLanguage,
     secondaryAudienceCreatorPersona,
     secondaryAudienceUserPersona,
@@ -974,7 +972,6 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
               // Primary Audience
               gender: audienceGender || [],
               age: audienceAge || [],
-              geoLocation: audienceLocation || [],
               language: audienceLanguage || [],
               creator_persona: audienceCreatorPersona || [],
               user_persona: audienceUserPersona || '',
@@ -983,7 +980,6 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
               // Secondary Audience
               secondary_gender: secondaryAudienceGender || [],
               secondary_age: secondaryAudienceAge || [],
-              secondary_geoLocation: secondaryAudienceLocation || [],
               secondary_language: secondaryAudienceLanguage || [],
               secondary_creator_persona: secondaryAudienceCreatorPersona || [],
               secondary_user_persona: secondaryAudienceUserPersona || '',
@@ -2285,6 +2281,7 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
             campaignId: campaignId,
             status: 'PENDING_REVIEW',
             followerCount: followerCount,
+            outreachStatus: 'INTERESTED',
           },
           include: {
             campaign: true,
@@ -2300,6 +2297,7 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
             campaignId: campaignId,
             status: 'PENDING_REVIEW',
             followerCount: followerCount,
+            outreachStatus: 'INTERESTED',
           },
           include: {
             campaign: true,
@@ -4067,7 +4065,6 @@ export const editCampaignRequirements = async (req: Request, res: Response) => {
     // Primary Audience
     audienceGender,
     audienceAge,
-    audienceLocation,
     audienceLanguage,
     audienceCreatorPersona,
     audienceUserPersona,
@@ -4076,7 +4073,6 @@ export const editCampaignRequirements = async (req: Request, res: Response) => {
     // Secondary Audience
     secondaryAudienceGender,
     secondaryAudienceAge,
-    secondaryAudienceLocation,
     secondaryAudienceLanguage,
     secondaryAudienceCreatorPersona,
     secondaryAudienceUserPersona,
@@ -4087,6 +4083,23 @@ export const editCampaignRequirements = async (req: Request, res: Response) => {
   } = req.body;
 
   try {
+    // Finalize countries - combine country and secondaryCountry
+    let finalizedCountries: string[] = [];
+    if (countries && Array.isArray(countries) && countries.length > 0) {
+      finalizedCountries = [...countries];
+    } else if (typeof country === 'string' && country) {
+      finalizedCountries.push(country);
+    } else if (Array.isArray(country) && country.length > 0) {
+      finalizedCountries.push(...country);
+    }
+    if (typeof secondaryCountry === 'string' && secondaryCountry) {
+      finalizedCountries.push(secondaryCountry);
+    } else if (Array.isArray(secondaryCountry) && secondaryCountry.length > 0) {
+      finalizedCountries.push(...secondaryCountry);
+    }
+    // Remove duplicates
+    finalizedCountries = [...new Set(finalizedCountries)];
+
     const updatedCampaignRequirement = await prisma.campaignRequirement.update({
       where: {
         campaignId: campaignId,
@@ -4095,16 +4108,14 @@ export const editCampaignRequirements = async (req: Request, res: Response) => {
         // Primary Audience
         gender: audienceGender,
         age: audienceAge,
-        geoLocation: audienceLocation,
         language: audienceLanguage,
         creator_persona: audienceCreatorPersona,
         user_persona: audienceUserPersona,
-        country: country,
-        ...(countries && { countries: countries }),
+        country: finalizedCountries[0] || country || '',
+        countries: finalizedCountries,
         // Secondary Audience
         ...(secondaryAudienceGender !== undefined && { secondary_gender: secondaryAudienceGender }),
         ...(secondaryAudienceAge !== undefined && { secondary_age: secondaryAudienceAge }),
-        ...(secondaryAudienceLocation !== undefined && { secondary_geoLocation: secondaryAudienceLocation }),
         ...(secondaryAudienceLanguage !== undefined && { secondary_language: secondaryAudienceLanguage }),
         ...(secondaryAudienceCreatorPersona !== undefined && { secondary_creator_persona: secondaryAudienceCreatorPersona }),
         ...(secondaryAudienceUserPersona !== undefined && { secondary_user_persona: secondaryAudienceUserPersona }),
@@ -6551,6 +6562,7 @@ export const draftPitch = async (req: Request, res: Response) => {
           status: 'draft',
           type: 'text',
           followerCount: followerCount || null,
+          outreachStatus: 'INTERESTED',
         },
       });
     } else {
