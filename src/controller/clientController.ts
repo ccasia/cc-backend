@@ -320,7 +320,8 @@ export const createClientCampaign = async (req: Request, res: Response) => {
       schedulingOption,
       locations,
       availabilityRules,
-      logisticRemarks,
+      clientRemarks,
+      allowMultipleBookings,
     } = campaignData;
 
     // Validate required fields
@@ -410,21 +411,25 @@ export const createClientCampaign = async (req: Request, res: Response) => {
         const mode: ReservationMode = schedulingOption === 'auto' ? 'AUTO_SCHEDULE' : 'MANUAL_CONFIRMATION';
 
         // Flatten locations
-        const locationNames = Array.isArray(locations) ? locations.map((l: any) => l.name).filter(Boolean) : [];
+        const locationNames = Array.isArray(locations)
+          ? locations.filter((loc: any) => loc.name && loc.name.trim() !== '')
+          : [];
 
         reservationConfigCreate = {
           create: {
-            mode: mode,
+            mode,
             locations: locationNames as any,
-            availabilityRules: (availabilityRules || []) as any,
+            availabilityRules: availabilityRules as any,
+            clientRemarks: clientRemarks || null,
+            allowMultipleBookings: allowMultipleBookings || false,
           },
         };
       }
 
       // Construct Objectives String (including remarks)
       let objectivesString = campaignObjectives ? campaignObjectives.join(', ') : '';
-      if (logisticRemarks) {
-        objectivesString += `\n\n[Logistic Remarks]: ${logisticRemarks}`;
+      if (clientRemarks) {
+        objectivesString += `\n\n[Logistic Remarks]: ${clientRemarks}`;
       }
 
       let targetSubscriptionId: string | undefined;
@@ -520,7 +525,10 @@ export const createClientCampaign = async (req: Request, res: Response) => {
       };
 
       if (targetSubscriptionId) {
-        campaignData.subscriptionId = targetSubscriptionId;
+        // campaignData.subscriptionId = targetSubscriptionId;
+        connect: {
+          id: targetSubscriptionId;
+        }
       }
 
       const campaign = await tx.campaign.create({

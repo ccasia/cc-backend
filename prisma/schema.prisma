@@ -1761,6 +1761,7 @@ model Product {
   id          String   @id @unique @default(cuid())
   productName String
   description String?
+  isArchived Boolean @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -1838,8 +1839,8 @@ model ReservationDetails {
   logisticId String   @unique
   logistic   Logistic @relation(fields: [logisticId], references: [id], onDelete: Cascade)
 
-  slots       ReservationSlot[]
-  isConfirmed Boolean           @default(false)
+  slots ReservationSlot[]
+  isConfirmed Boolean  @default(false)
 }
 
 model StoreVisitDetails {
@@ -1890,9 +1891,11 @@ model ReservationConfiguration {
   campaignId String   @unique
   campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
-  mode              ReservationMode
-  locations         Json
-  availabilityRules Json
+  mode                  ReservationMode
+  locations             Json
+  availabilityRules     Json
+  clientRemarks         String?
+  allowMultipleBookings Boolean         @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
