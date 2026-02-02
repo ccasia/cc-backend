@@ -148,7 +148,7 @@ interface Campaign {
   countries?: string[];
   logisticsType?: string;
   products?: { name: string }[];
-  logisticRemarks?: string;
+  clientRemarks?: string;
   schedulingOption?: string;
   locations?: { name: string }[];
   availabilityRules?: {
@@ -157,6 +157,7 @@ interface Campaign {
     endTime: string;
     interval: number;
   }[];
+  allowMultipleBookings?: boolean;
 }
 
 interface RequestQuery {
@@ -213,10 +214,11 @@ export const createCampaign = async (req: Request, res: Response) => {
     countries,
     logisticsType,
     products,
-    logisticRemarks,
+    clientRemarks,
     schedulingOption,
     locations,
     availabilityRules,
+    allowMultipleBookings,
   }: Campaign = JSON.parse(req.body.data);
 
   // Also read optional fields not in the Campaign interface
@@ -305,7 +307,7 @@ export const createCampaign = async (req: Request, res: Response) => {
           const mode: ReservationMode = schedulingOption === 'auto' ? 'AUTO_SCHEDULE' : 'MANUAL_CONFIRMATION';
 
           const locationNames = Array.isArray(locations)
-            ? locations.map((location: any) => location.name).filter(Boolean)
+            ? locations.filter((loc: any) => loc.name && loc.name.trim() !== '')
             : [];
 
           reservationConfigCreate = {
@@ -313,8 +315,19 @@ export const createCampaign = async (req: Request, res: Response) => {
               mode: mode,
               locations: locationNames as any,
               availabilityRules: (availabilityRules || []) as any,
+              clientRemarks: clientRemarks || null,
+              allowMultipleBookings: allowMultipleBookings || false,
             },
           };
+        }
+
+        let finalizedCountries: string[] = [];
+        if (Array.isArray(countries) && countries.length > 0) {
+          finalizedCountries = countries;
+        } else if (Array.isArray(country) && country.length > 0) {
+          finalizedCountries = country;
+        } else if (typeof country === 'string' && country) {
+          finalizedCountries = [country];
         }
 
         const campaign = await tx.campaign.create({
@@ -356,8 +369,8 @@ export const createCampaign = async (req: Request, res: Response) => {
                 campaigns_dont: campaignDont,
                 videoAngle: videoAngle,
                 socialMediaPlatform: socialMediaPlatform,
-                objectives: logisticRemarks
-                  ? `${campaignObjectives}\n\n[Logistic Remarks]: ${logisticRemarks}`
+                objectives: clientRemarks
+                  ? `${campaignObjectives}\n\n[Logistic Remarks]: ${clientRemarks}`
                   : campaignObjectives,
               },
             },
@@ -1175,6 +1188,8 @@ export const getCampaignById = async (req: Request, res: Response) => {
             },
           },
         },
+        products: true,
+        reservationConfig: true,
 
         creatorAgreement: true,
       },
