@@ -9320,7 +9320,7 @@ export const syncCampaignCredits = async (req: Request, res: Response) => {
     // For credit tier campaigns, multiply ugcVideos by creditPerVideo
     const creditsUtilized = campaign.shortlisted.reduce((total, creator) => {
       const isGuest = creator.user?.creator?.isGuest === true;
-      const hasAgreementSent = creator.userId && sentAgreementUserIds.has(creator.userId);
+      // const hasAgreementSent = creator.userId && sentAgreementUserIds.has(creator.userId);
 
       if (!isGuest) {
         const videos = creator.ugcVideos || 0;

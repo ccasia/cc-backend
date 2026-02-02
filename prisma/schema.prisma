@@ -1930,18 +1930,6 @@ model ReservationSlot {
   updatedAt DateTime @updatedAt
 }
 
-model CampaignPCR {
-  id String @id @unique @default(cuid())
-
-  campaignId String   @unique
-  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-
-  content Json // Stores all editable PCR content as JSON
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
 // Credit Tiering System
 model CreditTier {
   id              String   @id @unique @default(cuid())
