@@ -382,7 +382,12 @@ export const createCampaign = async (req: Request, res: Response) => {
                 language: audienceLanguage,
                 creator_persona: audienceCreatorPersona,
                 user_persona: audienceUserPersona,
-                country: Array.isArray(countries) && countries.length > 0 ? countries[0] : (Array.isArray(country) && country.length > 0 ? country[0] : ''), // Legacy single country (first item from countries or country)
+                country:
+                  Array.isArray(countries) && countries.length > 0
+                    ? countries[0]
+                    : Array.isArray(country) && country.length > 0
+                      ? country[0]
+                      : '', // Legacy single country (first item from countries or country)
                 countries: countries || country || [], // New multiple countries field
               },
             },
@@ -1331,12 +1336,7 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
     // Get all ACTIVE campaigns
     let campaigns = await prisma.campaign.findMany({
       take: Number(take),
-      // ...(cursor && {
-      //   skip: 1,
-      //   cursor: {
-      //     id: cursor as string,
-      //   },
-      // }),
+
       ...(campaignId
         ? {
             cursor: { id: campaignId }, // start after this ID
@@ -1360,14 +1360,6 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
               },
             }),
           },
-          // {
-          //   campaignRequirement: {
-          //     country: {
-          //       equals: country,
-          //       mode: 'insensitive',
-          //     },
-          //   },
-          // },
         ],
       },
       include: {
@@ -9005,11 +8997,9 @@ export const syncCampaignCredits = async (req: Request, res: Response) => {
 
     // Calculate utilized credits: sum of ugcVideos for shortlisted non-guest creators with sent agreements
     const sentAgreementUserIds = new Set(
-      campaign.creatorAgreement
-        .filter((a) => a.isSent && a.userId)
-        .map((a) => a.userId as string)
+      campaign.creatorAgreement.filter((a) => a.isSent && a.userId).map((a) => a.userId as string),
     );
-    
+
     const creditsUtilized = campaign.shortlisted.reduce((total, creator) => {
       const isGuest = creator.user?.creator?.isGuest === true;
       const hasAgreementSent = creator.userId && sentAgreementUserIds.has(creator.userId);
