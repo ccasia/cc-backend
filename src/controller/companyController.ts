@@ -57,6 +57,12 @@ export const getAllCompanies = async (_req: Request, res: Response) => {
           include: {
             package: true,
             customPackage: true,
+            campaign: {
+              select: {
+                id: true,
+                creditsUtilized: true,
+              },
+            },
           },
         },
         campaign: true,
@@ -66,7 +72,14 @@ export const getAllCompanies = async (_req: Request, res: Response) => {
     const companiesWithSummary = companies.map((company) => {
       const activeSubscriptions = company.subscriptions.filter((sub) => sub.status === 'ACTIVE');
       const totalCredits = activeSubscriptions.reduce((sum, sub) => sum + (sub.totalCredits || 0), 0);
-      const usedCredits = activeSubscriptions.reduce((sum, sub) => sum + sub.creditsUsed, 0);
+      
+      const usedCredits = activeSubscriptions.reduce((sum, sub) => {
+        const subCreditsUtilized = sub.campaign.reduce(
+          (campaignSum, campaign) => campaignSum + (campaign.creditsUtilized || 0),
+          0
+        );
+        return sum + subCreditsUtilized;
+      }, 0);
 
       const creditSummary = {
         totalCredits,
@@ -89,6 +102,7 @@ export const getAllCompanies = async (_req: Request, res: Response) => {
 
 export const getCompanyById = async (req: Request, res: Response) => {
   const { id } = req.params;
+
   try {
     const company = await prisma.company.findUnique({
       where: {
@@ -103,6 +117,7 @@ export const getCompanyById = async (req: Request, res: Response) => {
                   select: {
                     industries: true,
                     startDate: true,
+                    images: true,
                   },
                 },
               },
@@ -114,6 +129,7 @@ export const getCompanyById = async (req: Request, res: Response) => {
           include: {
             package: true,
             customPackage: true,
+            campaign: true,
           },
         },
         campaign: {
@@ -122,6 +138,7 @@ export const getCompanyById = async (req: Request, res: Response) => {
               select: {
                 industries: true,
                 startDate: true,
+                images: true,
               },
             },
           },
@@ -135,15 +152,39 @@ export const getCompanyById = async (req: Request, res: Response) => {
     const activeSubscriptions = company.subscriptions.filter((sub) => sub.status === 'ACTIVE');
     const packagesWithRemainingCredits = activeSubscriptions.filter((sub) => (sub.totalCredits || 0) > sub.creditsUsed);
     packagesWithRemainingCredits.sort((a, b) => new Date(a.expiredAt).getTime() - new Date(b.expiredAt).getTime());
-    const validityTrackingPackage = packagesWithRemainingCredits[0] || null;
 
+    const validityTrackingPackage = packagesWithRemainingCredits[0] || null;
     const totalCredits = activeSubscriptions.reduce((sum, sub) => sum + (sub.totalCredits || 0), 0);
     const usedCredits = activeSubscriptions.reduce((sum, sub) => sum + (sub.creditsUsed || 0), 0);
 
+    const sanitizedSubs = [];
+
+    for (const subs of activeSubscriptions) {
+      const campaigns = subs.campaign;
+
+      const totalCreditsUtilized = campaigns.reduce((acc, cur) => acc + (cur.creditsUtilized ?? 0), 0);
+
+      const data = {
+        ...subs,
+        creditsUtilized: totalCreditsUtilized,
+        creditsUsed: totalCreditsUtilized,
+      };
+
+      sanitizedSubs.push(data);
+    }
+
+    const creditsUtilized = activeSubscriptions.reduce((acc, subs) => {
+      const campaigns = subs.campaign;
+
+      const totalCreditsUtilized = campaigns.reduce((acc, cur) => acc + (cur.creditsUtilized ?? 0), 0);
+
+      return acc + totalCreditsUtilized;
+    }, 0);
+
     const creditSummary = {
       totalCredits,
-      usedCredits,
-      remainingCredits: totalCredits - usedCredits,
+      usedCredits: creditsUtilized,
+      remainingCredits: totalCredits - creditsUtilized,
       validityPackageExpiry: validityTrackingPackage ? validityTrackingPackage.expiredAt : null,
       activePackagesCount: activeSubscriptions.length,
       nextExpiryDate:
@@ -153,7 +194,11 @@ export const getCompanyById = async (req: Request, res: Response) => {
           : null,
     };
 
-    return res.status(200).json({ ...company, creditSummary });
+    return res.status(200).json({ 
+      ...company, 
+      subscriptions: sanitizedSubs,
+      creditSummary 
+    });
   } catch (err) {
     // console.log(err);
     return res.status(400).json({ message: err });
@@ -588,8 +633,20 @@ export const activateClient = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Company not found' });
     }
 
-    if (!company.pic[0].email) {
-      return res.status(400).json({ message: 'PIC email not found' });
+    // Validate PIC exists
+    if (!company.pic || company.pic.length === 0) {
+      return res.status(400).json({
+        message:
+          'PIC information is required. Please add a Person In Charge with an email before activating the client account.',
+      });
+    }
+
+    // Validate PIC has email
+    if (!company.pic[0]?.email) {
+      return res.status(400).json({
+        message:
+          'PIC email is required. Please update the Person In Charge with a valid email before activating the client account.',
+      });
     }
 
     // Check if client user already exists
@@ -630,7 +687,7 @@ export const activateClient = async (req: Request, res: Response) => {
       const inviteToken = jwt.sign(
         { id: user.id, companyId },
         process.env.SESSION_SECRET as Secret,
-        { expiresIn: '24h' }, // 24 hour expiry for client setup
+        { expiresIn: '7d' }, // 7 day expiry for client setup
       );
 
       // Create admin record for client with Client role
@@ -669,5 +726,97 @@ export const activateClient = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Client activation error:', error);
     return res.status(400).json({ message: 'Error activating client' });
+  }
+};
+
+export const resendClientActivation = async (req: Request, res: Response) => {
+  const { companyId } = req.params;
+  const { picId } = req.body;
+  const adminId = req.session.userid;
+
+  try {
+    if (!companyId) {
+      return res.status(400).json({ message: 'Company ID is required' });
+    }
+
+    // Fetch company with PIC and Client relations
+    const company = await prisma.company.findUnique({
+      where: { id: companyId },
+      include: {
+        pic: true,
+        clients: {
+          include: { user: true },
+        },
+      },
+    });
+
+    if (!company) {
+      return res.status(404).json({ message: 'Company not found' });
+    }
+
+    // Find the specific PIC by ID or use first PIC as fallback
+    const pic = picId
+      ? company.pic.find((p) => p.id === picId)
+      : company.pic[0];
+
+    if (!pic || !pic.email) {
+      return res.status(400).json({ message: 'PIC email is required' });
+    }
+
+    // Find the client account by matching PIC email (normalize both sides)
+    const client = company.clients.find(
+      (c) => c.user.email.toLowerCase() === pic.email?.toLowerCase()
+    );
+    if (!client) {
+      return res.status(404).json({
+        message: 'Client account not found. Please activate client first.',
+      });
+    }
+
+    // Validate client is pending
+    if (client.user.status !== 'pending') {
+      return res.status(400).json({ message: 'Client account is already active' });
+    }
+
+    // Generate new JWT token (7 day expiry)
+    const newInviteToken = jwt.sign(
+      { id: client.userId, companyId },
+      process.env.SESSION_SECRET as Secret,
+      { expiresIn: '7d' }
+    );
+
+    // Update Client and Admin records in transaction
+    await prisma.$transaction(async (tx) => {
+      await tx.client.update({
+        where: { id: client.id },
+        data: { inviteToken: newInviteToken },
+      });
+
+      // Update admin record if exists
+      const admin = await tx.admin.findUnique({
+        where: { userId: client.userId },
+      });
+      if (admin) {
+        await tx.admin.update({
+          where: { id: admin.id },
+          data: { inviteToken: newInviteToken },
+        });
+      }
+    });
+
+    // Send email using existing helper
+    ClientInvitation(client.user.email, newInviteToken, company.name);
+
+    // Log admin action
+    const adminLogMessage = `Resent activation email for client ${company.name}`;
+    logAdminChange(adminLogMessage, adminId, req);
+
+    return res.status(200).json({
+      message: 'Activation email resent successfully',
+      email: client.user.email,
+    });
+  } catch (error) {
+    console.error('Resend client activation error:', error);
+    return res.status(500).json({ message: 'Error resending activation email' });
   }
 };

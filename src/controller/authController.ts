@@ -1141,6 +1141,8 @@ export const updateClient = async (req: Request, res: Response) => {
 // Function to get user's information
 export const getprofile = async (req: Request, res: Response) => {
   const userId = req.session.userid as string;
+  const isImpersonating = req.session.isImpersonating;
+  const impersonatingBy = req.session.impersonatingBy;
   let xeroinformation;
 
   if (!userId) {
@@ -1200,61 +1202,20 @@ export const getprofile = async (req: Request, res: Response) => {
       where: { email: user.email },
     });
 
+    const { password, ...sanitizeUser } = user;
+
     return res.status(200).json({
       user: {
-        ...user,
+        ...sanitizeUser,
         xeroinformation,
         isChildAccount: !!isChildAccount,
+        isImpersonating,
+        impersonatingBy,
       },
     });
   } catch (error) {
     return res.status(404).json(error);
   }
-
-  // if (!refreshToken) {
-  //   return req.session.destroy((err) => {
-  //     if (err) {
-  //       return res.status(400).json({ message: 'Error logging out' });
-  //     }
-  //     res.clearCookie('userid');
-  //     res.clearCookie('accessToken');
-  //     return res.status(401).json({ sessionExpired: true });
-  //   });
-  // }
-  // jwt.verify(refreshToken, process.env.REFRESHKEY as string, async (err: any, decode: any) => {
-  //   if (err) return res.status(403).json({ message: 'Forbidden' });
-  //   try {
-  // const user = await getUser(decode.id);
-  //     if (!user) return res.status(401).json({ message: 'Unauthorized' });
-  //     const accessToken = jwt.sign({ id: user.id }, process.env.ACCESSKEY as Secret, {
-  //       expiresIn: '4h',
-  //     });
-  //     if (user?.role === 'creator' && user?.status === 'pending') {
-  //       return res.status(202).json({ message: 'Account pending.', user, accessToken });
-  //     }
-  //     switch (user?.status) {
-  //       case 'banned':
-  //         return res.status(400).json({ message: 'Account banned.' });
-  //       case 'pending':
-  //         return res.status(400).json({ message: 'Account pending.' });
-  //       case 'blacklisted':
-  //         return res.status(400).json({ message: 'Account blacklisted.' });
-  //       case 'suspended':
-  //         return res.status(400).json({ message: 'Account suspended.' });
-  //       case 'spam':
-  //         return res.status(400).json({ message: 'Account spam.' });
-  //       case 'rejected':
-  //         return res.status(400).json({ message: 'Account rejected.' });
-  //     }
-  //     res.cookie('accessToken', accessToken, {
-  //       maxAge: 60 * 60 * 4 * 1000, // 1 Day
-  //       httpOnly: true,
-  //     });
-  //     return res.status(200).json({ user, accessToken });
-  //   } catch (error) {
-  //     return res.status(500).json({ message: 'Internal Server Error' });
-  //   }
-  // });
 };
 
 // Login for both creator and admin
@@ -1708,8 +1669,8 @@ export const inviteClient = async (req: Request, res: Response) => {
         });
       }
 
-      // Generate invite token
-      const inviteToken = jwt.sign({ id: user.id, companyId }, process.env.SESSION_SECRET as Secret);
+      // Generate invite token (7 day expiry)
+      const inviteToken = jwt.sign({ id: user.id, companyId }, process.env.SESSION_SECRET as Secret, { expiresIn: '7d' });
 
       // Create admin record for client with Client role
       const admin = await tx.admin.create({

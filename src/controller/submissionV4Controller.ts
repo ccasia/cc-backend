@@ -61,10 +61,7 @@ function scheduleUrlExtractionAndFetch(submissionId: string, content: string | u
       console.log(`⏰ Scheduling initial insight fetch for campaign ${submission.campaignId}...`);
       await scheduleInitialInsightFetch(submission.campaignId, submissionId);
     } catch (error: any) {
-      console.error(
-        `❌ Error extracting URLs/scheduling fetch for submission ${submissionId}:`,
-        error.message
-      );
+      console.error(`❌ Error extracting URLs/scheduling fetch for submission ${submissionId}:`, error.message);
       // Don't throw - this is background work
     }
   });
@@ -272,6 +269,7 @@ export const createV4Submissions = async (req: Request, res: Response) => {
 
     // Emit socket event for real-time updates
     const io = req.app.get('io');
+
     if (io) {
       io.to(campaignId).emit('v4:submissions:created', {
         campaignId,
@@ -343,6 +341,8 @@ export const getV4SubmissionsController = async (req: Request, res: Response) =>
 export const submitV4ContentController = async (req: Request, res: Response) => {
   const { submissionId, videoUrls, photoUrls, rawFootageUrls, caption } = req.body as V4ContentSubmission;
 
+  console.log('ASDSD');
+
   try {
     if (!submissionId) {
       return res.status(400).json({ message: 'submissionId is required' });
@@ -357,6 +357,7 @@ export const submitV4ContentController = async (req: Request, res: Response) => 
 
     // Emit socket event for real-time updates
     const io = req.app.get('io');
+
     if (io) {
       // Get campaign ID for socket room
       const submission = await prisma.submission.findUnique({
