@@ -472,13 +472,17 @@ export const createClientCampaign = async (req: Request, res: Response) => {
         const mode: ReservationMode = schedulingOption === 'auto' ? 'AUTO_SCHEDULE' : 'MANUAL_CONFIRMATION';
 
         // Flatten locations
-        const locationNames = Array.isArray(locations) ? locations.map((l: any) => l.name).filter(Boolean) : [];
+        const locationNames = Array.isArray(locations)
+          ? locations.filter((loc: any) => loc.name && loc.name.trim() !== '')
+          : [];
 
         reservationConfigCreate = {
           create: {
-            mode: mode,
+            mode,
             locations: locationNames as any,
-            availabilityRules: (availabilityRules || []) as any,
+            availabilityRules: availabilityRules as any,
+            clientRemarks: clientRemarks || null,
+            allowMultipleBookings: allowMultipleBookings || false,
           },
         };
       }

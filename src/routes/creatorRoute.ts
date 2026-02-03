@@ -2,6 +2,7 @@ import { Router } from 'express';
 // import { validateToken } from '@utils/jwtHelper';
 import {
   getCreators,
+  getCreatorCount,
   deleteCreator,
   getCreatorByID,
   updateCreator,
@@ -27,6 +28,8 @@ import { isLoggedIn } from '@middlewares/onlyLogin';
 
 const router = Router();
 
+// Optimized endpoint - returns only count instead of all creators
+router.get('/count', getCreatorCount);
 router.get('/getAllCreators', getCreators);
 router.get('/getMediaKit', isSuperAdmin, getMediaKit);
 router.get('/getCreatorByID/:id', isSuperAdmin, getCreatorByID);

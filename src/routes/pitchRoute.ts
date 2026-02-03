@@ -13,6 +13,7 @@ import {
   getPitchByIdV3,
   updateGuestCreatorInfo,
   withdrawCreatorFromCampaign,
+  updateOutreachStatus,
 } from '@controllers/pitchController';
 
 const router = express.Router();
@@ -29,5 +30,6 @@ router.patch('/v3/:pitchId/agreement', isLoggedIn, isAdminOrClient, setPitchAgre
 router.patch('/v3/:pitchId/submit-agreement', isLoggedIn, submitAgreement);
 router.patch('/v3/:pitchId/updateGuest', isLoggedIn, isAdminOrClient, updateGuestCreatorInfo);
 router.patch('/v3/:pitchId/withdraw', isLoggedIn, isAdminOrClient, withdrawCreatorFromCampaign);
+router.patch('/v3/:pitchId/outreach-status', isLoggedIn, isAdminOrClient, updateOutreachStatus);
 
 export default router;

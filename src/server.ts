@@ -77,6 +77,7 @@ const corsOptions = {
 app.use(cors());
 
 app.use(morgan('combined'));
+
 app.disable('x-powered-by');
 
 app.set('trust proxy', true);
@@ -94,6 +95,8 @@ declare module 'express-session' {
     xeroTokenSet: any;
     xeroTenants: any;
     xeroActiveTenants: any;
+    isImpersonating?: boolean;
+    impersonatingBy?: { userId: string; name: string } | null;
   }
 }
 

@@ -268,9 +268,10 @@ export const forgetPassword = async (req: Request, res: Response) => {
   const { email } = req.body;
 
   try {
+    // Normalize email to lowercase for consistent lookup
     const user = await prisma.user.findFirst({
       where: {
-        email: email,
+        email: email.toLowerCase().trim(),
       },
     });
 
@@ -373,32 +374,65 @@ export const changePassword = async (req: Request, res: Response) => {
       },
     });
 
+    // Also update ChildAccount password if this user is a child account (for data consistency)
+    await prisma.childAccount.updateMany({
+      where: { email: user.email.toLowerCase() },
+      data: { password: hashedPassword },
+    });
+
     return res.status(200).json({ message: 'Successfully changed password.' });
   } catch (error) {
     return res.status(400).json(error);
   }
 };
 
+/**
+ * OPTIMIZED: Get user overview with limited data and aggregation
+ * GET /api/user/overview/:userId
+ */
 export const getOverview = async (req: Request, res: Response) => {
   const { userId } = req.params;
+  const { limit = '50' } = req.query; // Optional limit for campaigns
 
   try {
+    // OPTIMIZED: Only fetch user with limited submissions (in progress only)
     const user = await prisma.user.findUnique({
       where: {
         id: userId,
       },
-      include: {
+      select: {
+        id: true,
+        name: true,
+        email: true,
         submission: {
           where: {
             status: 'IN_PROGRESS',
           },
-          include: {
-            task: true,
-            campaign: {
-              include: {
-                campaignBrief: true,
+          take: 20, // Limit to 20 in-progress submissions
+          select: {
+            id: true,
+            status: true,
+            createdAt: true,
+            task: {
+              select: {
+                id: true,
+                name: true,
               },
             },
+            campaign: {
+              select: {
+                id: true,
+                name: true,
+                campaignBrief: {
+                  select: {
+                    images: true,
+                  },
+                },
+              },
+            },
+          },
+          orderBy: {
+            createdAt: 'desc',
           },
         },
       },
@@ -408,6 +442,9 @@ export const getOverview = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'User not found.' });
     }
 
+    const limitNum = parseInt(limit as string, 10);
+
+    // OPTIMIZED: Limit campaigns and use select instead of include
     const campaigns = await prisma.campaign.findMany({
       where: {
         shortlisted: {
@@ -417,13 +454,23 @@ export const getOverview = async (req: Request, res: Response) => {
           },
         },
       },
-      include: {
-        campaignBrief: true,
+      take: limitNum, // Limit campaigns
+      select: {
+        id: true,
+        name: true,
+        campaignType: true,
+        campaignBrief: {
+          select: {
+            images: true,
+          },
+        },
         submission: {
           where: {
             userId: user.id,
           },
-          include: {
+          select: {
+            id: true,
+            status: true,
             submissionType: {
               select: {
                 type: true,
@@ -431,8 +478,21 @@ export const getOverview = async (req: Request, res: Response) => {
             },
           },
         },
-        brand: true,
-        company: true,
+        brand: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        company: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
       },
     });
 
@@ -481,7 +541,7 @@ export const getOverview = async (req: Request, res: Response) => {
 
     const data = {
       adjustedCampaigns,
-      tasks: user.submission,
+      tasks: (user as any).submission || [],
     };
 
     return res.status(200).json(data);

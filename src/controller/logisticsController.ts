@@ -319,10 +319,10 @@ export const submitCreatorProductInfo = async (req: Request, res: Response) => {
 export const upsertReservationConfig = async (req: Request, res: Response) => {
   try {
     const { campaignId } = req.params;
-    const { mode, locations, startDate, endDate, startTime, endTime, interval } = req.body;
+    const { mode, locations, availabilityRules, allowMultipleBookings } = req.body;
 
     if (!campaignId) return res.status(400).json({ message: 'Campaign ID is required' });
-    if (!mode || !locations || !startDate || !endDate || !startTime || !endTime || !interval) {
+    if (!mode || !locations || !availabilityRules || !allowMultipleBookings) {
       return res.status(400).json({ message: 'Missing required configuration fields' });
     }
 

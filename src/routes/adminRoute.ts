@@ -1,5 +1,11 @@
 import { Router } from 'express';
-import { deleteAdminById, disconnectXero, getAllAdmins } from '@controllers/adminController';
+import {
+  deleteAdminById,
+  disconnectXero,
+  endImpersonatingSession,
+  getAllAdmins,
+  impersonateCreator,
+} from '@controllers/adminController';
 import { needPermissions } from '@middlewares/needPermissions';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 import { isLoggedIn } from '@middlewares/onlyLogin';
@@ -11,8 +17,10 @@ router.get('/getAllAdmins', isLoggedIn, getAllAdmins);
 
 router.patch('/xero/disconnect', isLoggedIn, disconnectXeroIntegration);
 
-router.delete('/:id', needPermissions(['delete:admin']), isSuperAdmin, deleteAdminById);
+router.post('/impersonate-creator', isLoggedIn, impersonateCreator);
 
-// router.post('/creator', isSuperAdmin, createCreatorAccount);
+router.post('/impersonate-creator/end', isLoggedIn, endImpersonatingSession);
+
+router.delete('/:id', needPermissions(['delete:admin']), isSuperAdmin, deleteAdminById);
 
 export default router;
