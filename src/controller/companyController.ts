@@ -128,6 +128,7 @@ export const getCompanyById = async (req: Request, res: Response) => {
           include: {
             package: true,
             customPackage: true,
+            campaign: true,
           },
         },
         campaign: {
@@ -170,14 +171,6 @@ export const getCompanyById = async (req: Request, res: Response) => {
 
       sanitizedSubs.push(data);
     }
-
-    const creditsUtilized = activeSubscriptions.reduce((acc, subs) => {
-      const campaigns = subs.campaign;
-
-      const totalCreditsUtilized = campaigns.reduce((acc, cur) => acc + (cur.creditsUtilized ?? 0), 0);
-
-      return acc + totalCreditsUtilized;
-    }, 0);
 
     const creditSummary = {
       totalCredits,
