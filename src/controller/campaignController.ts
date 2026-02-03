@@ -1787,9 +1787,6 @@ export const getCampaignById = async (req: Request, res: Response) => {
         },
         products: true,
         reservationConfig: true,
-        products: true,
-        reservationConfig: true,
-
         creatorAgreement: true,
       },
     });
