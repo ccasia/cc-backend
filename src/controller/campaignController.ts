@@ -1653,6 +1653,7 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
             campaignId: campaignId,
             status: 'PENDING_REVIEW',
             followerCount: followerCount,
+            outreachStatus: 'INTERESTED',
           },
           include: {
             campaign: true,
@@ -1668,6 +1669,7 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
             campaignId: campaignId,
             status: 'PENDING_REVIEW',
             followerCount: followerCount,
+            outreachStatus: 'INTERESTED',
           },
           include: {
             campaign: true,
@@ -5190,6 +5192,7 @@ export const draftPitch = async (req: Request, res: Response) => {
           status: 'draft',
           type: 'text',
           followerCount: followerCount || null,
+          outreachStatus: 'INTERESTED',
         },
       });
     } else {

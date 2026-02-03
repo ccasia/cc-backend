@@ -2217,3 +2217,119 @@ export const updateGuestCreatorInfo = async (req: Request, res: Response) => {
     return res.status(500).json({ message: 'Failed to update guest creator information' });
   }
 };
+
+// Valid outreach status values
+const VALID_OUTREACH_STATUSES = [
+  'OUTREACHED',
+  'DISCUSSING',
+  'CONFIRMED',
+  'REJECTED',
+  'INTERESTED',
+  'FOLLOWED_UP',
+  'UNRESPONSIVE',
+] as const;
+
+type OutreachStatusType = typeof VALID_OUTREACH_STATUSES[number];
+
+// Update outreach status for a pitch (admin internal tracking)
+// PATCH /api/pitch/v3/:pitchId/outreach-status
+export const updateOutreachStatus = async (req: Request, res: Response) => {
+  const { pitchId } = req.params;
+  const { outreachStatus } = req.body;
+  const adminId = req.session.userid;
+
+  try {
+    // Validate required fields
+    if (!pitchId) {
+      return res.status(400).json({ message: 'pitchId is required' });
+    }
+
+    if (!outreachStatus) {
+      return res.status(400).json({ message: 'outreachStatus is required' });
+    }
+
+    // Validate outreach status is a valid enum value
+    if (!VALID_OUTREACH_STATUSES.includes(outreachStatus as OutreachStatusType)) {
+      return res.status(400).json({
+        message: `Invalid outreach status. Valid values: ${VALID_OUTREACH_STATUSES.join(', ')}`,
+      });
+    }
+
+    // Verify the user is an admin (not a client)
+    const adminUser = await prisma.user.findUnique({
+      where: { id: adminId },
+      select: { role: true, name: true },
+    });
+
+    if (!adminUser || (adminUser.role !== 'admin' && adminUser.role !== 'superadmin')) {
+      return res.status(403).json({ message: 'Only admins can update outreach status' });
+    }
+
+    // Find the pitch
+    const pitch = await prisma.pitch.findUnique({
+      where: { id: pitchId },
+      include: {
+        user: { select: { name: true } },
+        campaign: { select: { id: true, name: true } },
+      },
+    });
+
+    if (!pitch) {
+      return res.status(404).json({ message: 'Pitch not found' });
+    }
+
+    // Update pitch outreach status with audit trail
+    const updatedPitch = await prisma.$transaction(async (tx) => {
+      const updated = await tx.pitch.update({
+        where: { id: pitchId },
+        data: {
+          outreachStatus: outreachStatus as OutreachStatusType,
+          outreachUpdatedAt: new Date(),
+          outreachUpdatedBy: adminId,
+        },
+        include: {
+          user: { select: { id: true, name: true } },
+        },
+      });
+
+      // Log to campaign activity
+      await tx.campaignLog.create({
+        data: {
+          campaignId: pitch.campaign.id,
+          message: `Outreach status for ${pitch.user.name} updated to ${outreachStatus} by ${adminUser.name}`,
+          adminId,
+        },
+      });
+
+      return updated;
+    });
+
+    console.log(`Outreach status updated: Pitch ${pitchId} -> ${outreachStatus} by admin ${adminId}`);
+
+    // Emit socket event for real-time updates
+    const io = req.app.get('io');
+    if (io) {
+      io.to(pitch.campaign.id).emit('v3:pitch:outreach-updated', {
+        pitchId: updatedPitch.id,
+        campaignId: pitch.campaign.id,
+        outreachStatus: updatedPitch.outreachStatus,
+        outreachUpdatedAt: updatedPitch.outreachUpdatedAt,
+        outreachUpdatedBy: updatedPitch.outreachUpdatedBy,
+        updatedAt: new Date().toISOString(),
+      });
+    }
+
+    return res.status(200).json({
+      message: 'Outreach status updated successfully',
+      data: {
+        pitchId: updatedPitch.id,
+        outreachStatus: updatedPitch.outreachStatus,
+        outreachUpdatedAt: updatedPitch.outreachUpdatedAt,
+        outreachUpdatedBy: updatedPitch.outreachUpdatedBy,
+      },
+    });
+  } catch (error) {
+    console.error('Error updating outreach status:', error);
+    return res.status(500).json({ message: 'Failed to update outreach status' });
+  }
+};
