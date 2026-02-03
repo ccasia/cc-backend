@@ -266,6 +266,12 @@ model Creator {
   tiktokUser          TiktokUser?
   instagramUser       InstagramUser?
   dietaryRestrictions String?
+
+  // Credit Tier fields
+  manualFollowerCount Int?         @default(0) // Manually entered follower count (when no media kit)
+  creditTierId        String?
+  creditTier          CreditTier?  @relation("UserCurrentTier", fields: [creditTierId], references: [id])
+  tierUpdatedAt       DateTime?    // Last time tier was calculated
 }
 
 // model TiktokUser {
@@ -678,6 +684,9 @@ model Campaign {
 
   isKWSPCampaign Boolean? @default(false)
 
+  // Credit Tiering: When true, creator costs based on follower tier instead of flat 1 credit/video
+  isCreditTier Boolean @default(false)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -912,6 +921,11 @@ model ShortListedCreator {
   amount           Int?
   campaign         Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   user             User?    @relation(fields: [userId], references: [id])
+
+  // Credit Tier snapshot at assignment time (for tier campaigns)
+  creditPerVideo Int?        // Credits per video at time of assignment
+  creditTierId   String?     // Tier ID at time of assignment (snapshot)
+  creditTier     CreditTier? @relation(fields: [creditTierId], references: [id])
 
   @@unique([userId, campaignId])
   @@index([userId])
@@ -1914,4 +1928,21 @@ model ReservationSlot {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// Credit Tiering System
+model CreditTier {
+  id              String   @id @unique @default(cuid())
+  name            String   @unique // "Nano A", "Nano B", "Micro A", etc.
+  minFollowers    Int      // Minimum follower count (inclusive)
+  maxFollowers    Int?     // Maximum follower count (inclusive, null = unlimited)
+  creditsPerVideo Int      // Credits cost per video for this tier
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  creators            Creator[]            @relation("UserCurrentTier")
+  shortlistedCreators ShortListedCreator[]
+
+  @@index([minFollowers])
 }
