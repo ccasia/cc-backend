@@ -266,6 +266,12 @@ model Creator {
   tiktokUser          TiktokUser?
   instagramUser       InstagramUser?
   dietaryRestrictions String?
+
+  // Credit Tier fields
+  manualFollowerCount Int?         @default(0) // Manually entered follower count (when no media kit)
+  creditTierId        String?
+  creditTier          CreditTier?  @relation("UserCurrentTier", fields: [creditTierId], references: [id])
+  tierUpdatedAt       DateTime?    // Last time tier was calculated
 }
 
 // model TiktokUser {
@@ -681,6 +687,9 @@ model Campaign {
 
   isKWSPCampaign Boolean? @default(false)
 
+  // Credit Tiering: When true, creator costs based on follower tier instead of flat 1 credit/video
+  isCreditTier Boolean @default(false)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -691,9 +700,6 @@ model Campaign {
   submissionPostingUrls  SubmissionPostingUrl[]
   insightSnapshots       InsightSnapshot[]
   manualCreatorEntries   ManualCreatorEntry[]
-  
-  // PCR (Post Campaign Report)
-  pcr CampaignPCR?
 }
 
 model BookMarkCampaign {
@@ -933,6 +939,12 @@ model Pitch {
   adminComments       String?
   adminCommentedBy    String?
   adminCommenter      Admin?         @relation("AdminCommenter", fields: [adminCommentedBy], references: [userId])
+
+  // Outreach status tracking
+  outreachStatus      OutreachStatus?
+  outreachUpdatedAt   DateTime?
+  outreachUpdatedBy   String?
+
   campaign            Campaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   user                User           @relation(fields: [userId], references: [id])
   admin               Admin?         @relation(fields: [approvedByAdminId], references: [userId], name: "ApprovedByAdmin")
@@ -958,6 +970,11 @@ model ShortListedCreator {
   amount           Int?
   campaign         Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   user             User?    @relation(fields: [userId], references: [id])
+
+  // Credit Tier snapshot at assignment time (for tier campaigns)
+  creditPerVideo Int?        // Credits per video at time of assignment
+  creditTierId   String?     // Tier ID at time of assignment (snapshot)
+  creditTier     CreditTier? @relation(fields: [creditTierId], references: [id])
 
   @@unique([userId, campaignId])
   @@index([userId])
@@ -1058,9 +1075,9 @@ model Submission {
   rawFootagesDriveLink String?
 
   // V4 specific fields
-  contentOrder      Int? // Order of content (Video 1, Video 2, etc.)
-  submissionVersion String?          @default("v2") // "v2", "v3", "v4"
-  captionHistory    CaptionHistory[]
+  contentOrder          Int? // Order of content (Video 1, Video 2, etc.)
+  submissionVersion     String?                @default("v2") // "v2", "v3", "v4"
+  captionHistory        CaptionHistory[]
   submissionPostingUrls SubmissionPostingUrl[]
 
   @@unique([userId, campaignId, submissionTypeId, contentOrder])
@@ -1072,11 +1089,11 @@ model SubmissionPostingUrl {
   campaign     Campaign   @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   submissionId String
   submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
-  platform     String     // "Instagram" | "TikTok"
-  postUrl      String     // Full URL
-  postingDate  DateTime?  // When creator posted (null = not posted yet)
-  shortCode    String?    // Instagram shortcode
-  mediaId      String?    // Instagram media ID or TikTok video ID
+  platform     String // "Instagram" | "TikTok"
+  postUrl      String // Full URL
+  postingDate  DateTime? // When creator posted (null = not posted yet)
+  shortCode    String? // Instagram shortcode
+  mediaId      String? // Instagram media ID or TikTok video ID
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
@@ -1090,9 +1107,9 @@ model InsightSnapshot {
   campaignId            String
   campaign              Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   snapshotDate          DateTime
-  snapshotType          String   // "daily", "weekly", "monthly"
-  dayOfWeek             Int?     // 0 (Sunday) - 6 (Saturday), for weekly snapshots
-  platform              String   // "Instagram" | "TikTok" | "All"
+  snapshotType          String // "daily", "weekly", "monthly"
+  dayOfWeek             Int? // 0 (Sunday) - 6 (Saturday), for weekly snapshots
+  platform              String // "Instagram" | "TikTok" | "All"
   totalPosts            Int
   totalViews            Int      @default(0)
   totalLikes            Int      @default(0)
@@ -1663,6 +1680,17 @@ enum PitchStatus {
   WITHDRAWN
 }
 
+// Outreach status for internal admin tracking of creator outreach
+enum OutreachStatus {
+  OUTREACHED
+  DISCUSSING
+  CONFIRMED
+  REJECTED
+  INTERESTED
+  FOLLOWED_UP
+  UNRESPONSIVE
+}
+
 enum DraftStatus {
   Pending
   Submitted
@@ -1830,6 +1858,7 @@ model Product {
   id          String   @id @unique @default(cuid())
   productName String
   description String?
+  isArchived Boolean @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -1984,14 +2013,19 @@ model ReservationSlot {
   updatedAt DateTime @updatedAt
 }
 
-model CampaignPCR {
-  id String @id @unique @default(cuid())
+// Credit Tiering System
+model CreditTier {
+  id              String   @id @unique @default(cuid())
+  name            String   @unique // "Nano A", "Nano B", "Micro A", etc.
+  minFollowers    Int      // Minimum follower count (inclusive)
+  maxFollowers    Int?     // Maximum follower count (inclusive, null = unlimited)
+  creditsPerVideo Int      // Credits cost per video for this tier
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  campaignId String   @unique
-  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  creators            Creator[]            @relation("UserCurrentTier")
+  shortlistedCreators ShortListedCreator[]
 
-  content Json // Stores all editable PCR content as JSON
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  @@index([minFollowers])
 }

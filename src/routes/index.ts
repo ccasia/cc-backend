@@ -28,6 +28,8 @@ import pdfRoute from './pdfRoute';
 import childAccountRoute from './childAccountRoute';
 import picRoute from './picRoute';
 import logisticsRoute from './logisticsRoute';
+import creditTierRoute from './creditTierRoute';
+import dashboardRoute from './dashboardRoute';
 
 export const router = express.Router();
 
@@ -60,3 +62,5 @@ router.use('/agreement', pdfRoute);
 router.use('/child-account', childAccountRoute);
 router.use('/pic', picRoute);
 router.use('/logistics', logisticsRoute);
+router.use('/credit-tier', creditTierRoute);
+router.use('/dashboard', dashboardRoute);

@@ -166,8 +166,7 @@ export const tiktokAuthentication = (_req: Request, res: Response) => {
   url += '&response_type=code';
   url += '&redirect_uri=' + process.env.TIKTOK_REDIRECT_URI;
   url += '&state=' + csrfState;
-  // url += '&code_challenge=' + CODE_VERIFIER;
-  url += '&code_challenge_method=S256';
+  url += '&disable_auto_auth=1';
 
   res.send(url);
 };
@@ -252,6 +251,15 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
           likes_count: userData.likes_count,
         },
       });
+
+      // Update creator's credit tier after TikTok follower data changes
+      try {
+        const { updateCreatorTier } = require('@services/creditTierService');
+        await updateCreatorTier(req.session.userid as string);
+      } catch (tierError) {
+        console.error('Failed to update credit tier after TikTok connect:', tierError);
+        // Non-blocking - don't fail the callback if tier update fails
+      }
 
       for (const video of videos) {
         await prisma.tiktokVideo.upsert({
@@ -396,11 +404,17 @@ export const handleDisconnectTiktok = async (req: Request, res: Response) => {
 
     if (!accessToken) return res.status(404).json({ message: 'Access token not found.' });
 
-    await axios.post('https://open.tiktokapis.com/v2/oauth/revoke/', {
-      client_key: process.env.TIKTOK_CLIENT_KEY,
-      client_secret: process.env.TIKTOK_CLIENT_SECRET,
-      token: accessToken,
-    });
+    await axios.post(
+      'https://open.tiktokapis.com/v2/oauth/revoke/',
+      new URLSearchParams({
+        client_key: process.env.TIKTOK_CLIENT_KEY!,
+        client_secret: process.env.TIKTOK_CLIENT_SECRET!,
+        token: accessToken,
+      }),
+      {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      },
+    );
 
     const updatedCreator = await prisma.creator.update({
       where: {
@@ -655,6 +669,15 @@ export const instagramCallback = async (req: Request, res: Response) => {
         creatorId: creator.id,
       },
     });
+
+    // Update creator's credit tier after Instagram follower data changes
+    try {
+      const { updateCreatorTier } = require('@services/creditTierService');
+      await updateCreatorTier(userId);
+    } catch (tierError) {
+      console.error('Failed to update credit tier after Instagram connect:', tierError);
+      // Non-blocking - don't fail the callback if tier update fails
+    }
 
     const medias = await getAllMediaObject(access_token, overview.user_id);
 
@@ -943,6 +966,15 @@ export const getInstagramMediaKit = async (req: Request, res: Response) => {
       },
     });
 
+    // Update creator's credit tier after Instagram follower data changes
+    try {
+      const { updateCreatorTier } = require('@services/creditTierService');
+      await updateCreatorTier(userId);
+    } catch (tierError) {
+      console.error('Failed to update credit tier after Instagram media kit refresh:', tierError);
+      // Non-blocking - don't fail the request if tier update fails
+    }
+
     await prisma.$transaction(async (tx) => {
       await tx.creator.update({
         where: {
@@ -1186,6 +1218,15 @@ export const getTikTokMediaKit = async (req: Request, res: Response) => {
         lastUpdated: new Date(),
       } as any,
     });
+
+    // Update creator's credit tier after TikTok follower data changes
+    try {
+      const { updateCreatorTier } = require('@services/creditTierService');
+      await updateCreatorTier(userId);
+    } catch (tierError) {
+      console.error('Failed to update credit tier after TikTok media kit refresh:', tierError);
+      // Non-blocking - don't fail the request if tier update fails
+    }
 
     await prisma.$transaction(async (tx) => {
       await tx.creator.update({
