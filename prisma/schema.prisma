@@ -700,9 +700,6 @@ model Campaign {
   submissionPostingUrls  SubmissionPostingUrl[]
   insightSnapshots       InsightSnapshot[]
   manualCreatorEntries   ManualCreatorEntry[]
-  
-  // PCR (Post Campaign Report)
-  pcr CampaignPCR?
 }
 
 model BookMarkCampaign {
@@ -1991,11 +1988,6 @@ model ReservationConfiguration {
   campaignId String   @unique
   campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
-  mode                  ReservationMode
-  locations             Json
-  availabilityRules     Json
-  clientRemarks         String?
-  allowMultipleBookings Boolean         @default(false)
   mode                  ReservationMode
   locations             Json
   availabilityRules     Json
