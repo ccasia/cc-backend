@@ -2285,7 +2285,6 @@ export const getPitchById = async (req: Request, res: Response) => {
 
 export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: Response) => {
   const { userId } = req.params;
-  // const { status, limit = 9, cursor } = req.query;
 
   const { cursor, limit = 10, search, status, excludeOwn, filterAdminId } = req.query;
   console.log('getAllCampaignsByAdminId called with:', { userId, status, search, limit, cursor, excludeOwn, filterAdminId });
@@ -2659,30 +2658,6 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
       orderBy: {
         createdAt: 'desc',
       },
-      // where: {
-      //   ...(status
-      //     ? {
-      //         AND: [
-      //           {
-      //             campaignAdmin: {
-      //               some: {
-      //                 adminId: user.id,
-      //               },
-      //             },
-      //           },
-      //           {
-      //             status: status as any,
-      //           },
-      //         ],
-      //       }
-      //     : {
-      //         campaignAdmin: {
-      //           some: {
-      //             adminId: user.id,
-      //           },
-      //         },
-      //       }),
-      // },
       include: {
         agreementTemplate: true,
         submission: {
@@ -9600,5 +9575,49 @@ export const getCampaignsForPublic = async (req: Request, res: Response) => {
     return res.status(200).json(data);
   } catch (error) {
     return res.status(400).json(error);
+  }
+};
+
+// Function to fetch all status for all campaign. Return value number
+export const getCampaignStatus = async (req: Request, res: Response) => {
+  try {
+    const activeCampaigns = prisma.campaign.count({
+      where: {
+        status: 'ACTIVE',
+      },
+    });
+
+    const pendingCampaigns = prisma.campaign.count({
+      where: {
+        status: {
+          in: ['PENDING_CSM_REVIEW', 'PENDING_ADMIN_ACTIVATION', 'SCHEDULED'],
+        },
+      },
+    });
+
+    const completedCampaigns = prisma.campaign.count({
+      where: {
+        status: 'COMPLETED',
+      },
+    });
+
+    const pausedCampaigns = prisma.campaign.count({
+      where: {
+        status: 'PAUSED',
+      },
+    });
+
+    const data = await Promise.all([activeCampaigns, pendingCampaigns, completedCampaigns, pausedCampaigns]);
+
+    const campaignStatus = {
+      activeCampaigns: data[0],
+      pendingCampaigns: data[1],
+      completedCampaigns: data[2],
+      pausedCampaigns: data[3],
+    };
+
+    return res.status(200).json(campaignStatus);
+  } catch (error) {
+    return res.status(500).json(error);
   }
 };

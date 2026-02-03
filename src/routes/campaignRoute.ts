@@ -66,6 +66,7 @@ import {
   exportCreatorsCampaignSheet,
   syncCampaignCredits,
   updateAllCampaignCredits,
+  getCampaignStatus,
 } from '@controllers/campaignController';
 import {
   swapGuestWithPlatformCreator,
@@ -131,11 +132,14 @@ router.get('/creatorAgreements/:campaignId', creatorAgreements);
 // For Analytics
 router.get('/pitches', getAllPitches);
 router.get('/getCreatorAgreements', isSuperAdmin, getAllCreatorAgreements);
+
 // For creator MyCampaigns
 router.get('/getMyCampaigns/:userId', isLoggedIn, getMyCampaigns);
 
 // Get Campaigns by Admin ID
 router.get('/getAllCampaignsByAdminId/:userId', getAllCampaignsByAdminId);
+
+router.get('/campaignStatus', isLoggedIn, getCampaignStatus);
 
 // Get Campaigns for Client users
 router.get('/getClientCampaigns', isLoggedIn, getClientCampaigns);
