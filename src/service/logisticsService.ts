@@ -564,14 +564,14 @@ export const updateStatusService = async (logisticId: string, status: LogisticSt
               deliveryDetailsId: currentLogistic.deliveryDetails.id,
             },
           });
-        }
 
-        data.deliveryDetails = {
-          update: {
-            trackingLink: null,
-            expectedDeliveryDate: null,
-          },
-        };
+          data.deliveryDetails = {
+            update: {
+              trackingLink: null,
+              expectedDeliveryDate: null,
+            },
+          };
+        }
 
         data.shippedAt = null;
         data.deliveredAt = null;
@@ -590,13 +590,13 @@ export const updateStatusService = async (logisticId: string, status: LogisticSt
               reservationDetailsId: currentLogistic.reservationDetails.id,
             },
           });
-        }
 
-        data.reservationDetails = {
-          update: {
-            isConfirmed: false,
-          },
-        };
+          data.reservationDetails = {
+            update: {
+              isConfirmed: false,
+            },
+          };
+        }
 
         // Clear timestamps
         data.completedAt = null;
