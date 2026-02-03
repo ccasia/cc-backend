@@ -166,8 +166,7 @@ export const tiktokAuthentication = (_req: Request, res: Response) => {
   url += '&response_type=code';
   url += '&redirect_uri=' + process.env.TIKTOK_REDIRECT_URI;
   url += '&state=' + csrfState;
-  // url += '&code_challenge=' + CODE_VERIFIER;
-  url += '&code_challenge_method=S256';
+  url += '&disable_auto_auth=1';
 
   res.send(url);
 };
@@ -405,11 +404,17 @@ export const handleDisconnectTiktok = async (req: Request, res: Response) => {
 
     if (!accessToken) return res.status(404).json({ message: 'Access token not found.' });
 
-    await axios.post('https://open.tiktokapis.com/v2/oauth/revoke/', {
-      client_key: process.env.TIKTOK_CLIENT_KEY,
-      client_secret: process.env.TIKTOK_CLIENT_SECRET,
-      token: accessToken,
-    });
+    await axios.post(
+      'https://open.tiktokapis.com/v2/oauth/revoke/',
+      new URLSearchParams({
+        client_key: process.env.TIKTOK_CLIENT_KEY!,
+        client_secret: process.env.TIKTOK_CLIENT_SECRET!,
+        token: accessToken,
+      }),
+      {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      },
+    );
 
     const updatedCreator = await prisma.creator.update({
       where: {
