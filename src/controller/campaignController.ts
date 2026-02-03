@@ -31,6 +31,7 @@ import {
   deleteContent,
   uploadAgreementForm,
   uploadAttachments,
+  uploadCompanyLogo,
   uploadImage,
   uploadPitchVideo,
 } from '@configs/cloudStorage.config';
@@ -331,6 +332,15 @@ export const createCampaign = async (req: Request, res: Response) => {
           finalizedCountries = [country];
         }
 
+        let finalizedCountries: string[] = [];
+        if (Array.isArray(countries) && countries.length > 0) {
+          finalizedCountries = countries;
+        } else if (Array.isArray(country) && country.length > 0) {
+          finalizedCountries = country;
+        } else if (typeof country === 'string' && country) {
+          finalizedCountries = [country];
+        }
+
         const campaign = await tx.campaign.create({
           data: {
             campaignId: campaignId,
@@ -384,8 +394,8 @@ export const createCampaign = async (req: Request, res: Response) => {
                 language: audienceLanguage,
                 creator_persona: audienceCreatorPersona,
                 user_persona: audienceUserPersona,
-                country: Array.isArray(countries) && countries.length > 0 ? countries[0] : (Array.isArray(country) && country.length > 0 ? country[0] : (typeof countries === 'string' ? countries : (typeof country === 'string' ? country : ''))), // Legacy single country
-                countries: Array.isArray(countries) ? countries : (Array.isArray(country) ? country : (typeof countries === 'string' ? [countries] : (typeof country === 'string' ? [country] : []))), // Ensure array for multiple countries field
+                country: finalizedCountries[0] || '',
+                countries: finalizedCountries, 
               },
             },
             campaignCredits,
@@ -1086,7 +1096,9 @@ export const getCampaignById = async (req: Request, res: Response) => {
           },
         },
         brand: {
-          include: { company: { include: { subscriptions: { include: { package: true, customPackage: true } }, pic: true } } },
+          include: {
+            company: { include: { subscriptions: { include: { package: true, customPackage: true } }, pic: true } },
+          },
         },
         company: {
           include: {
@@ -1201,6 +1213,8 @@ export const getCampaignById = async (req: Request, res: Response) => {
             },
           },
         },
+        products: true,
+        reservationConfig: true,
         products: true,
         reservationConfig: true,
 
@@ -1325,6 +1339,11 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
   const { cursor, take = 10, search } = req.query;
   const campaignId = req.query?.campaignId as string;
 
+  console.log('DISCOVER PAGE DEBUG');
+  console.log('User ID:', userid);
+  console.log('Query params:', { cursor, take, search, campaignId });
+  console.log('Request IP:', req.ip);
+
   try {
     const user = await prisma.user.findUnique({
       where: {
@@ -1339,9 +1358,16 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       },
     });
 
-    if (!user) return res.status(404).json({ message: 'User not found' });
+    if (!user) {
+      console.log('❌ User not found');
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    console.log('✅ User found:', user.name, '| Role:', user.role);
+    console.log('Creator interests count:', user.creator?.interests?.length || 0);
 
     // Get all ACTIVE campaigns
+    console.log('📡 Fetching campaigns from database...');
     let campaigns = await prisma.campaign.findMany({
       take: Number(take),
 
@@ -1406,8 +1432,10 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
     });
 
     const originalFetchedCount = campaigns.length;
+    console.log('Initial campaigns fetched from DB:', originalFetchedCount);
 
     if (campaigns?.length === 0) {
+      console.log('No campaigns found in database');
       const data = {
         data: {
           campaigns: [],
@@ -1421,21 +1449,38 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       return res.status(200).json(data);
     }
 
+    console.log('Campaign IDs fetched:', campaigns.map(c => c.id).join(', '));
+    console.log('Campaign names:', campaigns.map(c => c.name).join(', '));
+
     const beforeFilterCount = campaigns.length;
 
     campaigns = campaigns.filter((campaign) => {
       return campaign.status === 'ACTIVE';
     });
 
+    console.log('✅ After ACTIVE status filter:', campaigns.length, '(removed:', beforeFilterCount - campaigns.length, ')');
+
     const country = await getCountry(req.ip as string);
+    console.log('🌍 Detected country:', country);
+    console.log('🔧 Environment:', process.env.NODE_ENV);
+
+    const beforeCountryFilter = campaigns.length;
 
     if (process.env.NODE_ENV !== 'development') {
       campaigns = campaigns.filter((campaign) => {
-        if (!campaign.campaignRequirement?.country) return campaign;
+        if (!campaign.campaignRequirement?.country) {
+          console.log(`Campaign "${campaign.name}" has NO country requirement - INCLUDED`);
+          return campaign;
+        }
 
-        return campaign.campaignRequirement.countries.some((a) => a.toLowerCase() === country?.toLowerCase());
+        const hasMatchingCountry = campaign.campaignRequirement.countries.some((a) => a.toLowerCase() === country?.toLowerCase());
+        console.log(`Campaign "${campaign.name}" | Required countries: [${campaign.campaignRequirement.countries.join(', ')}] | Match: ${hasMatchingCountry ? '✅' : '❌'}`);
+        return hasMatchingCountry;
         // return campaign.campaignRequirement.country.toLocaleLowerCase() === country?.toLowerCase();
       });
+      console.log('✅ After country filter:', campaigns.length, '(removed:', beforeCountryFilter - campaigns.length, ')');
+    } else {
+      console.log('⚠️ Development mode - SKIPPING country filter');
     }
 
     const calculateInterestMatchingPercentage = (creatorInterests: Interest[], creatorPerona: []) => {
@@ -1506,6 +1551,7 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       return interestMatch * interestWeight + requirementMatch * requirementWeight;
     };
 
+    console.log('🎯 Calculating matching percentages...');
     const matchedCampaignWithPercentage = campaigns.map((item, index) => {
       try {
         const interestPercentage = calculateInterestMatchingPercentage(
@@ -1538,6 +1584,9 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
     // Keep the original order from database (newest first) instead of overriding
     const sortedMatchedCampaigns = matchedCampaignWithPercentage;
 
+    console.log('📦 Final campaigns to return:', sortedMatchedCampaigns.length);
+    console.log('Campaign names being returned:', sortedMatchedCampaigns.map(c => c.name).join(', '));
+
     // Fix pagination logic: Check if we got the full 'take' amount from the database
     // We need to use originalFetchedCount (BEFORE filtering) not campaigns.length (AFTER filtering)
     // If we fetched the full 'take' amount, there might be more pages
@@ -1550,6 +1599,8 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
         ? sortedMatchedCampaigns[sortedMatchedCampaigns.length - 1]?.id
         : null;
 
+    console.log('📄 Pagination:', { hasNextPage, lastCursor });
+
     const data = {
       data: {
         campaigns: sortedMatchedCampaigns,
@@ -1560,8 +1611,11 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       },
     };
 
+    console.log('=== END DISCOVER PAGE DEBUG ===\n');
+
     return res.status(200).json(data);
   } catch (error) {
+    console.error('❌ ERROR in matchCampaignWithCreator:', error);
     return res.status(400).json(error);
   }
 };
@@ -3157,9 +3211,49 @@ export const closeCampaign = async (req: Request, res: Response) => {
 // };
 
 export const editCampaignInfo = async (req: Request, res: Response) => {
-  const { id, name, description, campaignInterests, campaignIndustries, isKWSPCampaign, spreadSheetURL } = req.body;
+  const {
+    id,
+    name,
+    description,
+    campaignIndustries,
+    isKWSPCampaign,
+    spreadSheetURL,
+    // New fields from frontend
+    brandAbout,
+    productName,
+    websiteLink,
+    campaignStartDate,
+    campaignEndDate,
+  } = req.body;
   const adminId = req.session.userid;
+
+  const publicURL: string[] = [];
+  if (req.files && (req.files as any).campaignImages) {
+    const images = Array.isArray((req.files as any).campaignImages)
+      ? (req.files as any).campaignImages
+      : [(req.files as any).campaignImages];
+
+    for (const image of images) {
+      // Use your existing image upload function
+      const url = await uploadCompanyLogo(image.tempFilePath, image.name);
+      publicURL.push(url);
+    }
+  }
+
   try {
+    console.log('editCampaignInfo received:', {
+      id,
+      name,
+      description,
+      brandAbout,
+      productName,
+      websiteLink,
+      campaignIndustries,
+      campaignStartDate,
+      campaignEndDate,
+      campaignImage: publicURL,
+    });
+
     const updatedCampaign = await prisma.campaign.update({
       where: {
         id: id,
@@ -3168,7 +3262,11 @@ export const editCampaignInfo = async (req: Request, res: Response) => {
         name: name,
         description: description,
         isKWSPCampaign,
-        spreadSheetURL, // <-- allow updating spreadsheet link!
+        spreadSheetURL,
+        // Update Campaign model fields
+        ...(brandAbout !== undefined && { brandAbout }),
+        ...(productName !== undefined && { productName }),
+        ...(websiteLink !== undefined && { websiteLink }),
       },
     });
 
@@ -3177,8 +3275,12 @@ export const editCampaignInfo = async (req: Request, res: Response) => {
         campaignId: id,
       },
       data: {
-        // interests: campaignInterests,
-        industries: campaignIndustries,
+        ...(campaignIndustries && { industries: campaignIndustries }),
+        // Update CampaignBrief model fields
+        ...(campaignStartDate && { startDate: new Date(campaignStartDate) }),
+        ...(campaignEndDate && { endDate: new Date(campaignEndDate) }),
+        // Only update images if new ones were uploaded
+        ...(publicURL.length > 0 && { images: publicURL }),
       },
     });
 
@@ -3196,11 +3298,77 @@ export const editCampaignInfo = async (req: Request, res: Response) => {
       const adminLogMessage = `Updated campaign info for campaign - ${name}`;
       logAdminChange(adminLogMessage, adminId, req);
     }
+
     return res
       .status(200)
-      .json({ message: 'Campaign information updated successfully', ...updatedCampaign, ...updatedCampaignBrief });
+      .json({ message: 'Campaign information updated successfully', campaign: updatedCampaign, brief: updatedCampaignBrief });
   } catch (error) {
-    return res.status(400).json(error);
+    console.error('editCampaignInfo error:', error);
+    return res.status(400).json({ message: error?.message || 'Failed to update campaign', error });
+  }
+};
+
+export const editCampaignObjectives = async (req: Request, res: Response) => {
+  const {
+    id,
+    objectives,
+    secondaryObjectives,
+    boostContent,
+    primaryKPI,
+    performanceBaseline,
+  } = req.body;
+  const adminId = req.session.userid;
+
+  try {
+    console.log('editCampaignObjectives received:', {
+      id,
+      objectives,
+      secondaryObjectives,
+      boostContent,
+      primaryKPI,
+      performanceBaseline,
+    });
+
+    // Get campaign name for logging
+    const campaign = await prisma.campaign.findUnique({
+      where: { id },
+      select: { name: true },
+    });
+
+    const updatedCampaignBrief = await prisma.campaignBrief.update({
+      where: {
+        campaignId: id,
+      },
+      data: {
+        ...(objectives !== undefined && { objectives }),
+        ...(secondaryObjectives !== undefined && { secondaryObjectives }),
+        ...(boostContent !== undefined && { boostContent }),
+        ...(primaryKPI !== undefined && { primaryKPI }),
+        ...(performanceBaseline !== undefined && { performanceBaseline }),
+      },
+    });
+
+    // Log the change
+    if (adminId) {
+      const campaignActivityMessage = `Campaign Details edited - [Campaign Objectives]`;
+      await prisma.campaignLog.create({
+        data: {
+          message: campaignActivityMessage,
+          adminId: adminId,
+          campaignId: id,
+        },
+      });
+
+      const adminLogMessage = `Updated campaign objectives for campaign - ${campaign?.name}`;
+      logAdminChange(adminLogMessage, adminId, req);
+    }
+
+    return res
+      .status(200)
+      .json({ message: 'Campaign objectives updated successfully', brief: updatedCampaignBrief });
+  } catch (error) {
+    console.error('editCampaignObjectives error:', error);
+    return res.status(400).json({ message: error?.message || 'Failed to update campaign objectives', error });
   }
 };
 
@@ -3296,6 +3464,7 @@ export const editCampaignDosAndDonts = async (req: Request, res: Response) => {
 export const editCampaignRequirements = async (req: Request, res: Response) => {
   const {
     campaignId,
+    // Primary Audience
     audienceGender,
     audienceAge,
     audienceLocation,
@@ -3304,6 +3473,17 @@ export const editCampaignRequirements = async (req: Request, res: Response) => {
     audienceUserPersona,
     country,
     countries,
+    // Secondary Audience
+    secondaryAudienceGender,
+    secondaryAudienceAge,
+    secondaryAudienceLocation,
+    secondaryAudienceLanguage,
+    secondaryAudienceCreatorPersona,
+    secondaryAudienceUserPersona,
+    secondaryCountry,
+    // Geographic Focus
+    geographicFocus,
+    geographicFocusOthers,
   } = req.body;
 
   try {
@@ -3312,6 +3492,7 @@ export const editCampaignRequirements = async (req: Request, res: Response) => {
         campaignId: campaignId,
       },
       data: {
+        // Primary Audience
         gender: audienceGender,
         age: audienceAge,
         geoLocation: audienceLocation,
@@ -3320,6 +3501,17 @@ export const editCampaignRequirements = async (req: Request, res: Response) => {
         user_persona: audienceUserPersona,
         country: country,
         ...(countries && { countries: countries }),
+        // Secondary Audience
+        ...(secondaryAudienceGender !== undefined && { secondary_gender: secondaryAudienceGender }),
+        ...(secondaryAudienceAge !== undefined && { secondary_age: secondaryAudienceAge }),
+        ...(secondaryAudienceLocation !== undefined && { secondary_geoLocation: secondaryAudienceLocation }),
+        ...(secondaryAudienceLanguage !== undefined && { secondary_language: secondaryAudienceLanguage }),
+        ...(secondaryAudienceCreatorPersona !== undefined && { secondary_creator_persona: secondaryAudienceCreatorPersona }),
+        ...(secondaryAudienceUserPersona !== undefined && { secondary_user_persona: secondaryAudienceUserPersona }),
+        ...(secondaryCountry !== undefined && { secondary_country: secondaryCountry }),
+        // Geographic Focus
+        ...(geographicFocus !== undefined && { geographic_focus: geographicFocus }),
+        ...(geographicFocusOthers !== undefined && { geographicFocusOthers: geographicFocusOthers }),
       },
       include: {
         campaign: { select: { name: true } },
@@ -3349,6 +3541,597 @@ export const editCampaignRequirements = async (req: Request, res: Response) => {
       .json({ message: 'Campaign requirements updated successfully', newRequirement: updatedCampaignRequirement });
   } catch (error) {
     return res.status(400).json(error);
+  }
+};
+
+export const editCampaignLogistics = async (req: Request, res: Response) => {
+  const {
+    campaignId,
+    logisticsType,
+    // Product Delivery
+    products,
+    // Reservation
+    schedulingOption,
+    allowMultipleBookings,
+    locations,
+    availabilityRules,
+    clientRemarks,
+  } = req.body;
+
+  const adminId = req.session.userid;
+
+  try {
+    // Update campaign logistics type
+    const updatedCampaign = await prisma.campaign.update({
+      where: { id: campaignId },
+      data: {
+        logisticsType: logisticsType && logisticsType !== '' ? (logisticsType as LogisticType) : null,
+      },
+      select: { name: true },
+    });
+
+    // Handle Product Delivery - update products
+    if (logisticsType === 'PRODUCT_DELIVERY' && products) {
+      // Delete existing products
+      await prisma.product.deleteMany({
+        where: { campaignId },
+      });
+
+      // Create new products
+      const validProducts = products.filter((p: { name: string }) => p.name && p.name.trim() !== '');
+      if (validProducts.length > 0) {
+        await prisma.product.createMany({
+          data: validProducts.map((p: { name: string }) => ({
+            campaignId,
+            productName: p.name,
+          })),
+        });
+      }
+    }
+
+    // Handle Reservation - update or create reservation config
+    if (logisticsType === 'RESERVATION') {
+      const reservationMode = schedulingOption === 'auto' ? 'AUTO_SCHEDULE' : 'MANUAL_CONFIRMATION';
+
+      await prisma.reservationConfiguration.upsert({
+        where: { campaignId },
+        update: {
+          mode: reservationMode,
+          allowMultipleBookings: allowMultipleBookings || false,
+          locations: locations || [],
+          availabilityRules: availabilityRules || [],
+          clientRemarks: clientRemarks || null,
+        },
+        create: {
+          campaignId,
+          mode: reservationMode,
+          allowMultipleBookings: allowMultipleBookings || false,
+          locations: locations || [],
+          availabilityRules: availabilityRules || [],
+          clientRemarks: clientRemarks || null,
+        },
+      });
+    }
+
+    // Clear reservation config if switching away from reservation
+    if (logisticsType !== 'RESERVATION') {
+      await prisma.reservationConfiguration.deleteMany({
+        where: { campaignId },
+      });
+    }
+
+    // Clear products if switching away from product delivery
+    if (logisticsType !== 'PRODUCT_DELIVERY') {
+      await prisma.product.deleteMany({
+        where: { campaignId },
+      });
+    }
+
+    // Log the change
+    if (adminId) {
+      const campaignActivityMessage = `Campaign Details edited - [Campaign Logistics]`;
+      await prisma.campaignLog.create({
+        data: {
+          message: campaignActivityMessage,
+          adminId: adminId,
+          campaignId: campaignId,
+        },
+      });
+
+      const adminLogMessage = `Updated campaign logistics for campaign - ${updatedCampaign.name}`;
+      logAdminChange(adminLogMessage, adminId, req);
+    }
+
+    return res.status(200).json({ message: 'Campaign logistics updated successfully' });
+  } catch (error) {
+    console.error('editCampaignLogistics error:', error);
+    return res.status(400).json({ message: error?.message || 'Failed to update campaign logistics', error });
+  }
+};
+
+export const editCampaignFinalise = async (req: Request, res: Response) => {
+  const {
+    campaignId,
+    campaignManagers,
+    campaignType,
+    deliverables,
+  } = req.body;
+
+  const adminId = req.session.userid;
+
+  try {
+    // Get campaign for logging with current campaignType and submission version
+    const campaign = await prisma.campaign.findUnique({
+      where: { id: campaignId },
+      include: {
+        campaignAdmin: {
+          include: {
+            admin: {
+              include: {
+                role: true,
+                user: true,
+              },
+            },
+          },
+        },
+        campaignBrief: true,
+        campaignTimeline: true,
+        company: {
+          include: {
+            clients: {
+              include: { user: true },
+            },
+          },
+        },
+        brand: {
+          include: {
+            company: {
+              include: {
+                clients: {
+                  include: { user: true },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!campaign) {
+      return res.status(404).json({ message: 'Campaign not found' });
+    }
+
+    const previousCampaignType = campaign.campaignType;
+
+    // Process deliverables - convert array to boolean flags (same as createCampaign/activateClientCampaign)
+    const rawFootage = deliverables?.includes('RAW_FOOTAGES') || false;
+    const photos = deliverables?.includes('PHOTOS') || false;
+    const ads = deliverables?.includes('ADS') || false;
+    const crossPosting = deliverables?.includes('CROSS_POSTING') || false;
+
+    // Update campaign basic fields including deliverable boolean flags
+    await prisma.campaign.update({
+      where: { id: campaignId },
+      data: {
+        campaignType: campaignType || 'normal',
+        rawFootage,
+        photos,
+        ads,
+        crossPosting,
+      },
+    });
+
+    // Handle timeline changes when campaignType changes
+    const newCampaignType = campaignType || 'normal';
+    if (previousCampaignType !== newCampaignType) {
+      if (newCampaignType === 'ugc') {
+        // Changed to UGC - remove Posting timeline if it exists
+        await prisma.campaignTimeline.deleteMany({
+          where: {
+            campaignId,
+            name: 'Posting',
+          },
+        });
+        console.log('Removed Posting timeline for UGC campaign');
+      } else if (previousCampaignType === 'ugc' && newCampaignType === 'normal') {
+        // Changed from UGC to Normal - add Posting timeline if it doesn't exist
+        const existingPostingTimeline = await prisma.campaignTimeline.findFirst({
+          where: {
+            campaignId,
+            name: 'Posting',
+          },
+        });
+
+        if (!existingPostingTimeline) {
+          // Get the posting submission type
+          const postingType = await prisma.submissionType.findFirst({
+            where: { type: 'POSTING' },
+          });
+
+          if (postingType && campaign.campaignBrief) {
+            // Get the final draft timeline to determine posting start date
+            const finalDraftTimeline = await prisma.campaignTimeline.findFirst({
+              where: {
+                campaignId,
+                name: 'Final Draft',
+              },
+            });
+
+            // Use posting dates from brief if available, otherwise use final draft end date or campaign end date
+            const postingStartDate = campaign.campaignBrief.postingStartDate
+              || finalDraftTimeline?.endDate
+              || campaign.campaignBrief.endDate;
+            const postingEndDate = campaign.campaignBrief.postingEndDate
+              || campaign.campaignBrief.endDate;
+
+            // Calculate duration
+            const postingDuration = Math.max(
+              1,
+              Math.floor((new Date(postingEndDate).getTime() - new Date(postingStartDate).getTime()) / (1000 * 60 * 60 * 24)),
+            );
+
+            // Get the highest order from existing timelines
+            const maxOrderTimeline = await prisma.campaignTimeline.findFirst({
+              where: { campaignId },
+              orderBy: { order: 'desc' },
+            });
+            const postingOrder = (maxOrderTimeline?.order || 4) + 1;
+
+            await prisma.campaignTimeline.create({
+              data: {
+                name: 'Posting',
+                for: 'creator',
+                duration: postingDuration,
+                startDate: new Date(postingStartDate),
+                endDate: new Date(postingEndDate),
+                order: postingOrder,
+                status: 'OPEN',
+                campaignId,
+                submissionTypeId: postingType.id,
+              },
+            });
+            console.log('Added Posting timeline for normal campaign');
+          }
+        }
+      }
+    }
+
+    // Update campaign admins (managers)
+    if (campaignManagers && Array.isArray(campaignManagers)) {
+      // Get admin records for the campaign managers
+      const adminRecords = await Promise.all(
+        campaignManagers.map(async (manager: { id: string }) => {
+          const adminRecord = await prisma.admin.findFirst({
+            where: { userId: manager.id },
+          });
+          return adminRecord;
+        }),
+      );
+
+      const validAdminIds = adminRecords
+        .filter((admin) => admin !== null)
+        .map((admin) => admin!.userId);
+
+      // Delete existing CSM campaign admins only (preserve non-CSM admins and client admins if v4)
+      const existingAdmins = await prisma.campaignAdmin.findMany({
+        where: { campaignId },
+        include: {
+          admin: {
+            include: { role: true },
+          },
+        },
+      });
+
+      const csmAdminIds = existingAdmins
+        .filter((ca) => ca.admin?.role?.name === 'CSM')
+        .map((ca) => ca.adminId);
+
+      if (csmAdminIds.length > 0) {
+        await prisma.campaignAdmin.deleteMany({
+          where: {
+            campaignId,
+            adminId: { in: csmAdminIds },
+          },
+        });
+      }
+
+      // Create new campaign admin entries for the managers
+      for (const managerId of validAdminIds) {
+        const exists = await prisma.campaignAdmin.findUnique({
+          where: {
+            adminId_campaignId: {
+              adminId: managerId,
+              campaignId,
+            },
+          },
+        });
+
+        if (!exists) {
+          await prisma.campaignAdmin.create({
+            data: {
+              adminId: managerId,
+              campaignId,
+            },
+          });
+        }
+      }
+    }
+
+    // Log the change
+    if (adminId) {
+      const campaignActivityMessage = `Campaign Details edited - [Campaign Finalise Settings]`;
+      await prisma.campaignLog.create({
+        data: {
+          message: campaignActivityMessage,
+          adminId: adminId,
+          campaignId: campaignId,
+        },
+      });
+
+      const adminLogMessage = `Updated campaign finalise settings for campaign - ${campaign.name}`;
+      logAdminChange(adminLogMessage, adminId, req);
+    }
+
+    return res.status(200).json({ message: 'Campaign finalise settings updated successfully' });
+  } catch (error) {
+    console.error('editCampaignFinalise error:', error);
+    return res.status(400).json({ message: error?.message || 'Failed to update campaign finalise settings', error });
+  }
+};
+
+export const editCampaignAdditionalDetails = async (req: Request, res: Response) => {
+  const adminId = req.session.userid;
+
+  try {
+    // Handle both JSON body and FormData
+    let campaignId: string;
+    let socialMediaPlatform: string[] | undefined;
+    let contentFormat: string[] | undefined;
+    let postingStartDate: string | undefined;
+    let postingEndDate: string | undefined;
+    let mainMessage: string | undefined;
+    let keyPoints: string | undefined;
+    let toneAndStyle: string | undefined;
+    let referenceContent: string | undefined;
+    let hashtagsToUse: string | undefined;
+    let mentionsTagsRequired: string | undefined;
+    let creatorCompensation: string | undefined;
+    let ctaDesiredAction: string | undefined;
+    let ctaLinkUrl: string | undefined;
+    let ctaPromoCode: string | undefined;
+    let ctaLinkInBioRequirements: string | undefined;
+    let specialNotesInstructions: string | undefined;
+    let needAds: string | undefined;
+    let existingBrandGuidelinesUrls: string | undefined;
+    let existingProductImage1Url: string | undefined;
+    let existingProductImage2Url: string | undefined;
+    let clearBrandGuidelines: boolean = false;
+    let clearProductImage1: boolean = false;
+    let clearProductImage2: boolean = false;
+
+    // Check if this is FormData (multipart) or JSON
+    if (req.body.campaignId && typeof req.body.campaignId === 'string') {
+      // FormData parsing
+      campaignId = req.body.campaignId;
+      socialMediaPlatform = req.body.socialMediaPlatform ? JSON.parse(req.body.socialMediaPlatform) : undefined;
+      contentFormat = req.body.contentFormat ? JSON.parse(req.body.contentFormat) : undefined;
+      postingStartDate = req.body.postingStartDate || undefined;
+      postingEndDate = req.body.postingEndDate || undefined;
+      mainMessage = req.body.mainMessage || undefined;
+      keyPoints = req.body.keyPoints || undefined;
+      toneAndStyle = req.body.toneAndStyle || undefined;
+      referenceContent = req.body.referenceContent || undefined;
+      hashtagsToUse = req.body.hashtagsToUse || undefined;
+      mentionsTagsRequired = req.body.mentionsTagsRequired || undefined;
+      creatorCompensation = req.body.creatorCompensation || undefined;
+      ctaDesiredAction = req.body.ctaDesiredAction || undefined;
+      ctaLinkUrl = req.body.ctaLinkUrl || undefined;
+      ctaPromoCode = req.body.ctaPromoCode || undefined;
+      ctaLinkInBioRequirements = req.body.ctaLinkInBioRequirements || undefined;
+      specialNotesInstructions = req.body.specialNotesInstructions || undefined;
+      needAds = req.body.needAds || undefined;
+      existingBrandGuidelinesUrls = req.body.existingBrandGuidelinesUrls || undefined;
+      existingProductImage1Url = req.body.existingProductImage1Url || undefined;
+      existingProductImage2Url = req.body.existingProductImage2Url || undefined;
+      // Parse clear flags
+      clearBrandGuidelines = req.body.clearBrandGuidelines === 'true';
+      clearProductImage1 = req.body.clearProductImage1 === 'true';
+      clearProductImage2 = req.body.clearProductImage2 === 'true';
+    } else {
+      // JSON body parsing (for Additional Details 2 which doesn't have file uploads)
+      ({
+        campaignId,
+        socialMediaPlatform,
+        contentFormat,
+        postingStartDate,
+        postingEndDate,
+        mainMessage,
+        keyPoints,
+        toneAndStyle,
+        referenceContent,
+        hashtagsToUse,
+        mentionsTagsRequired,
+        creatorCompensation,
+        ctaDesiredAction,
+        ctaLinkUrl,
+        ctaPromoCode,
+        ctaLinkInBioRequirements,
+        specialNotesInstructions,
+        needAds,
+      } = req.body);
+    }
+
+    if (!campaignId) {
+      return res.status(400).json({ message: 'Campaign ID is required' });
+    }
+
+    // Get the campaign
+    const campaign = await prisma.campaign.findUnique({
+      where: { id: campaignId },
+      include: {
+        campaignBrief: true,
+        campaignAdditionalDetails: true,
+      },
+    });
+
+    if (!campaign) {
+      return res.status(404).json({ message: 'Campaign not found' });
+    }
+
+    // Handle file uploads for Additional Details 1
+    let brandGuidelinesUrl: string | undefined;
+    let productImage1Url: string | undefined;
+    let productImage2Url: string | undefined;
+
+    // Process brand guidelines upload
+    if (clearBrandGuidelines) {
+      // Explicitly cleared - set to null
+      brandGuidelinesUrl = '';
+    } else if (req.files && (req.files as any).brandGuidelines) {
+      const brandGuidelinesFiles = Array.isArray((req.files as any).brandGuidelines)
+        ? (req.files as any).brandGuidelines
+        : [(req.files as any).brandGuidelines];
+
+      const uploadedUrls: string[] = [];
+      for (const file of brandGuidelinesFiles) {
+        if (file && file.tempFilePath && file.name) {
+          const url = await uploadAttachments({
+            tempFilePath: file.tempFilePath,
+            fileName: file.name,
+            folderName: 'brandGuidelines',
+          });
+          uploadedUrls.push(url);
+        }
+      }
+
+      // Combine with existing URLs if any
+      if (existingBrandGuidelinesUrls) {
+        const existingUrls = existingBrandGuidelinesUrls.split(',').filter(Boolean);
+        brandGuidelinesUrl = [...existingUrls, ...uploadedUrls].join(',');
+      } else {
+        brandGuidelinesUrl = uploadedUrls.join(',');
+      }
+    } else if (existingBrandGuidelinesUrls !== undefined) {
+      // Use existing URLs (could be empty string if cleared)
+      brandGuidelinesUrl = existingBrandGuidelinesUrls || '';
+    }
+
+    // Process product image 1 upload
+    if (clearProductImage1) {
+      // Explicitly cleared - set to null
+      productImage1Url = '';
+    } else if (req.files && (req.files as any).productImage1) {
+      const productImage1Files = Array.isArray((req.files as any).productImage1)
+        ? (req.files as any).productImage1
+        : [(req.files as any).productImage1];
+      if (productImage1Files.length > 0 && productImage1Files[0].tempFilePath) {
+        productImage1Url = await uploadCompanyLogo(productImage1Files[0].tempFilePath, productImage1Files[0].name);
+      }
+    } else if (existingProductImage1Url !== undefined) {
+      // Use existing URL (could be empty string if cleared)
+      productImage1Url = existingProductImage1Url || '';
+    }
+
+    // Process product image 2 upload
+    if (clearProductImage2) {
+      // Explicitly cleared - set to null
+      productImage2Url = '';
+    } else if (req.files && (req.files as any).productImage2) {
+      const productImage2Files = Array.isArray((req.files as any).productImage2)
+        ? (req.files as any).productImage2
+        : [(req.files as any).productImage2];
+      if (productImage2Files.length > 0 && productImage2Files[0].tempFilePath) {
+        productImage2Url = await uploadCompanyLogo(productImage2Files[0].tempFilePath, productImage2Files[0].name);
+      }
+    } else if (existingProductImage2Url !== undefined) {
+      // Use existing URL (could be empty string if cleared)
+      productImage2Url = existingProductImage2Url || '';
+    }
+
+    // Build the update data for CampaignAdditionalDetails
+    const additionalDetailsData: any = {};
+
+    // Additional Details 1 fields
+    if (contentFormat !== undefined) additionalDetailsData.contentFormat = contentFormat;
+    if (mainMessage !== undefined) additionalDetailsData.mainMessage = mainMessage || null;
+    if (keyPoints !== undefined) additionalDetailsData.keyPoints = keyPoints || null;
+    if (toneAndStyle !== undefined) additionalDetailsData.toneAndStyle = toneAndStyle || null;
+    if (brandGuidelinesUrl !== undefined) additionalDetailsData.brandGuidelinesUrl = brandGuidelinesUrl || null;
+    if (referenceContent !== undefined) additionalDetailsData.referenceContent = referenceContent || null;
+    if (productImage1Url !== undefined) additionalDetailsData.productImage1Url = productImage1Url || null;
+    if (productImage2Url !== undefined) additionalDetailsData.productImage2Url = productImage2Url || null;
+
+    // Additional Details 2 fields
+    if (hashtagsToUse !== undefined) additionalDetailsData.hashtagsToUse = hashtagsToUse || null;
+    if (mentionsTagsRequired !== undefined) additionalDetailsData.mentionsTagsRequired = mentionsTagsRequired || null;
+    if (creatorCompensation !== undefined) additionalDetailsData.creatorCompensation = creatorCompensation || null;
+    if (ctaDesiredAction !== undefined) additionalDetailsData.ctaDesiredAction = ctaDesiredAction || null;
+    if (ctaLinkUrl !== undefined) additionalDetailsData.ctaLinkUrl = ctaLinkUrl || null;
+    if (ctaPromoCode !== undefined) additionalDetailsData.ctaPromoCode = ctaPromoCode || null;
+    if (ctaLinkInBioRequirements !== undefined) additionalDetailsData.ctaLinkInBioRequirements = ctaLinkInBioRequirements || null;
+    if (specialNotesInstructions !== undefined) additionalDetailsData.specialNotesInstructions = specialNotesInstructions || null;
+    if (needAds !== undefined) additionalDetailsData.needAds = needAds || null;
+
+    // Upsert CampaignAdditionalDetails
+    await prisma.campaignAdditionalDetails.upsert({
+      where: { campaignId },
+      update: additionalDetailsData,
+      create: {
+        campaignId,
+        contentFormat: contentFormat || [],
+        mainMessage: mainMessage || null,
+        keyPoints: keyPoints || null,
+        toneAndStyle: toneAndStyle || null,
+        brandGuidelinesUrl: brandGuidelinesUrl || null,
+        referenceContent: referenceContent || null,
+        productImage1Url: productImage1Url || null,
+        productImage2Url: productImage2Url || null,
+        hashtagsToUse: hashtagsToUse || null,
+        mentionsTagsRequired: mentionsTagsRequired || null,
+        creatorCompensation: creatorCompensation || null,
+        ctaDesiredAction: ctaDesiredAction || null,
+        ctaLinkUrl: ctaLinkUrl || null,
+        ctaPromoCode: ctaPromoCode || null,
+        ctaLinkInBioRequirements: ctaLinkInBioRequirements || null,
+        specialNotesInstructions: specialNotesInstructions || null,
+        needAds: needAds || null,
+      },
+    });
+
+    // Update CampaignBrief for socialMediaPlatform and posting dates
+    if (socialMediaPlatform !== undefined || postingStartDate !== undefined || postingEndDate !== undefined) {
+      const briefUpdateData: any = {};
+      if (socialMediaPlatform !== undefined) briefUpdateData.socialMediaPlatform = socialMediaPlatform;
+      if (postingStartDate !== undefined) briefUpdateData.postingStartDate = postingStartDate ? new Date(postingStartDate) : null;
+      if (postingEndDate !== undefined) briefUpdateData.postingEndDate = postingEndDate ? new Date(postingEndDate) : null;
+
+      if (campaign.campaignBrief) {
+        await prisma.campaignBrief.update({
+          where: { id: campaign.campaignBrief.id },
+          data: briefUpdateData,
+        });
+      }
+    }
+
+    // Log the change
+    if (adminId) {
+      const campaignActivityMessage = `Campaign Details edited - [Additional Details]`;
+      await prisma.campaignLog.create({
+        data: {
+          message: campaignActivityMessage,
+          adminId: adminId,
+          campaignId: campaignId,
+        },
+      });
+
+      const adminLogMessage = `Updated campaign additional details for campaign - ${campaign.name}`;
+      logAdminChange(adminLogMessage, adminId, req);
+    }
+
+    return res.status(200).json({ message: 'Campaign additional details updated successfully' });
+  } catch (error) {
+    console.error('editCampaignAdditionalDetails error:', error);
+    return res.status(400).json({ message: error?.message || 'Failed to update campaign additional details', error });
   }
 };
 

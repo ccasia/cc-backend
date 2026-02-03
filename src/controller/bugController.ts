@@ -41,7 +41,7 @@ export const createNewBug = async (req: Request, res: Response) => {
       data: { ...data, campaignName: campaignName } as Bugs,
     });
 
-    createNewBugRowData({
+    await createNewBugRowData({
       spreadSheetId: '129mwFlatr5pMDTi3VxVzgx0hGhkOyUVvq4M_jAWieCc',
       sheetByTitle: user.role === 'creator' ? 'Platform Creator Bugs' : 'Platform Admin Bugs',
       data: {
@@ -52,8 +52,6 @@ export const createNewBug = async (req: Request, res: Response) => {
         stepsToReproduce: item.stepsToReproduce,
         attachment: item.attachment || '',
       },
-    }).catch((error) => {
-      console.error('Failed to add bug to Google Sheets (non-blocking):', error);
     });
 
     return res.status(200).json({ message: 'Bug is successfully reported.' });

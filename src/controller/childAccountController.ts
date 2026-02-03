@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import * as crypto from 'crypto';
+import * as bcrypt from 'bcrypt';
 import { sendEmail } from '@configs/nodemailer.config';
 
 const prisma = new PrismaClient();
@@ -262,14 +263,7 @@ export const createChildAccount = async (req: Request, res: Response) => {
       //   },
       // });
 
-      // Helper function to get correct base URL
-      const getBaseEmailUrl = () => {
-        const baseUrl = process.env.BASE_EMAIL_URL;
-        if (!baseUrl) return 'http://localhost';
-        return baseUrl;
-      };
-      
-      const baseUrl = getBaseEmailUrl();
+      const baseUrl = process.env.BASE_EMAIL_URL || 'http://localhost:3000';
       const invitationLink = `${baseUrl}/auth/child-account-setup/${invitationToken}`;
 
       console.log('BASE_EMAIL_URL:', process.env.BASE_EMAIL_URL);
@@ -468,7 +462,7 @@ export const resendInvitation = async (req: Request, res: Response) => {
     });
 
     // Send new invitation email
-    const baseUrl = process.env.BASE_EMAIL_URL || 'http://localhost';
+    const baseUrl = process.env.BASE_EMAIL_URL || 'http://localhost:3000';
     const invitationLink = `${baseUrl}/auth/child-account-setup/${invitationToken}`;
 
     const emailContent = {
@@ -887,7 +881,8 @@ export const activateChildAccount = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Account is already activated' });
     }
 
-    const hashedPassword = password;
+    // Hash the password before storing it
+    const hashedPassword = await bcrypt.hash(password, 10);
 
     // Update child account and create User record
     console.log('Updating child account with ID:', childAccount.id);
