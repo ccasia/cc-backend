@@ -198,45 +198,236 @@ export const getInvoicesByCreatorId = async (req: Request, res: Response) => {
   }
 };
 
-// get invoices by campaign id
+/**
+ * OPTIMIZED: Get invoices by campaign id with pagination and filtering
+ * GET /api/invoice/getInvoicesByCampaignId/:id?page=1&limit=50&status=paid&currency=MYR&search=...
+ */
 export const getInvoicesByCampaignId = async (req: Request, res: Response) => {
   const { id } = req.params;
+  const {
+    page = '1',
+    limit = '50',
+    status,
+    currency,
+    search,
+    startDate,
+    endDate,
+  } = req.query;
 
   try {
-    const invoices = await prisma.invoice.findMany({
-      where: {
-        campaignId: id,
-      },
-      include: {
+    const pageNum = parseInt(page as string, 10);
+    const limitNum = parseInt(limit as string, 10);
+    const skip = (pageNum - 1) * limitNum;
+
+    // Build where clause
+    const where: any = {
+      campaignId: id,
+    };
+
+    if (status && status !== 'all') {
+      where.status = status as InvoiceStatus;
+    }
+
+    // Date range filter
+    if (startDate && endDate) {
+      where.createdAt = {
+        gte: new Date(startDate as string),
+        lte: new Date(endDate as string),
+      };
+    }
+
+    // Search filter (invoice number only - JSON fields filtered in memory)
+    if (search) {
+      where.invoiceNumber = { contains: search as string, mode: 'insensitive' };
+    }
+
+    // Get all invoices matching basic filters (for JSON field filtering)
+    const allInvoices = await prisma.invoice.findMany({
+      where,
+      select: {
+        id: true,
+        invoiceNumber: true,
+        amount: true,
+        status: true,
+        createdAt: true,
+        dueDate: true,
+        invoiceFrom: true,
+        task: true,
+        creatorId: true,
+        campaignId: true,
+        // Only include minimal creator data
         creator: {
-          include: {
-            user: true,
+          select: {
+            userId: true,
+            user: {
+              select: {
+                id: true,
+                name: true,
+                photoURL: true,
+                email: true,
+              },
+            },
           },
         },
-        campaign: {
-          include: {
-            subscription: true,
-            creatorAgreement: true,
-          },
-        },
-        user: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
       },
     });
 
-    // Map through invoices to include the specific creator agreement with currency
-    const invoicesWithCurrency = invoices.map((invoice) => {
-      const creatorAgreement = invoice.campaign?.creatorAgreement?.find(
-        (agreement) => agreement.campaignId === invoice.campaignId && agreement.userId === invoice.creatorId,
+    // Get currency from creator agreement if needed
+    const campaign = await prisma.campaign.findUnique({
+      where: { id },
+      select: {
+        creatorAgreement: {
+          select: {
+            userId: true,
+            currency: true,
+          },
+        },
+      },
+    });
+
+    // Map invoices with currency and apply JSON-based filters
+    let invoicesWithCurrency = allInvoices.map((invoice) => {
+      const creatorAgreement = campaign?.creatorAgreement?.find(
+        (agreement) => agreement.userId === invoice.creatorId
       );
+
+      // Extract currency from various possible locations
+      const invoiceCurrency =
+        (invoice.task as any)?.currency ||
+        (invoice.task as any)?.items?.[0]?.currency ||
+        creatorAgreement?.currency ||
+        null;
+
+      // Extract creator name from invoiceFrom JSON
+      const invoiceFromName = (invoice.invoiceFrom as any)?.name || invoice.creator?.user?.name;
 
       return {
         ...invoice,
-        currency: creatorAgreement?.currency || null,
+        currency: invoiceCurrency,
+        invoiceFrom: {
+          ...(invoice.invoiceFrom as any),
+          id: invoice.creator?.user?.id,
+          name: invoiceFromName,
+        },
       };
     });
 
-    res.status(200).json(invoicesWithCurrency);
+    // Apply currency filter (JSON field)
+    if (currency) {
+      invoicesWithCurrency = invoicesWithCurrency.filter(
+        (inv) => inv.currency === currency
+      );
+    }
+
+    // Apply search filter on creator name (JSON field)
+    if (search) {
+      const searchLower = (search as string).toLowerCase();
+      invoicesWithCurrency = invoicesWithCurrency.filter(
+        (inv) =>
+          inv.invoiceNumber.toLowerCase().includes(searchLower) ||
+          (inv.invoiceFrom as any)?.name?.toLowerCase().includes(searchLower)
+      );
+    }
+
+    // Get total count after JSON filtering
+    const total = invoicesWithCurrency.length;
+
+    // Apply pagination
+    const invoices = invoicesWithCurrency.slice(skip, skip + limitNum);
+
+    res.status(200).json({
+      data: invoicesWithCurrency,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages: Math.ceil(total / limitNum),
+      },
+    });
   } catch (error) {
+    console.error('Error fetching invoices:', error);
+    res.status(500).json({ error: 'Something went wrong' });
+  }
+};
+
+/**
+ * OPTIMIZED: Get invoice statistics for a campaign
+ * GET /api/invoice/stats/:campaignId
+ * Returns aggregated stats instead of fetching all invoices
+ */
+export const getInvoiceStats = async (req: Request, res: Response) => {
+  const { campaignId } = req.params;
+
+  try {
+    const [
+      total,
+      paid,
+      approved,
+      pending,
+      overdue,
+      draft,
+      totalAmount,
+      paidAmount,
+      approvedAmount,
+      pendingAmount,
+      overdueAmount,
+    ] = await Promise.all([
+      // Counts by status
+      prisma.invoice.count({ where: { campaignId } }),
+      prisma.invoice.count({ where: { campaignId, status: 'paid' } }),
+      prisma.invoice.count({ where: { campaignId, status: 'approved' } }),
+      prisma.invoice.count({ where: { campaignId, status: 'pending' } }),
+      prisma.invoice.count({ where: { campaignId, status: 'overdue' } }),
+      prisma.invoice.count({ where: { campaignId, status: 'draft' } }),
+
+      // Total amounts by status
+      prisma.invoice.aggregate({
+        where: { campaignId },
+        _sum: { amount: true },
+      }),
+      prisma.invoice.aggregate({
+        where: { campaignId, status: 'paid' },
+        _sum: { amount: true },
+      }),
+      prisma.invoice.aggregate({
+        where: { campaignId, status: 'approved' },
+        _sum: { amount: true },
+      }),
+      prisma.invoice.aggregate({
+        where: { campaignId, status: 'pending' },
+        _sum: { amount: true },
+      }),
+      prisma.invoice.aggregate({
+        where: { campaignId, status: 'overdue' },
+        _sum: { amount: true },
+      }),
+    ]);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        counts: {
+          total,
+          paid,
+          approved,
+          pending,
+          overdue,
+          draft,
+        },
+        amounts: {
+          total: totalAmount._sum.amount || 0,
+          paid: paidAmount._sum.amount || 0,
+          approved: approvedAmount._sum.amount || 0,
+          pending: pendingAmount._sum.amount || 0,
+          overdue: overdueAmount._sum.amount || 0,
+        },
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching invoice stats:', error);
     res.status(500).json({ error: 'Something went wrong' });
   }
 };
