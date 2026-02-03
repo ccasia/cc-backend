@@ -322,6 +322,7 @@ export const createClientCampaign = async (req: Request, res: Response) => {
       secondaryAudienceUserPersona,
       secondaryCountry,
       geographicFocus,
+      geographicFocusOthers,
       campaignDo,
       campaignDont,
       referencesLinks,
@@ -330,7 +331,8 @@ export const createClientCampaign = async (req: Request, res: Response) => {
       schedulingOption,
       locations,
       availabilityRules,
-      logisticRemarks,
+      clientRemarks,
+      allowMultipleBookings,
       // Additional Details 1 fields
       socialMediaPlatform,
       contentFormat,
@@ -496,8 +498,8 @@ export const createClientCampaign = async (req: Request, res: Response) => {
 
       // Construct Objectives String (including remarks)
       let objectivesString = campaignObjectives || '';
-      if (logisticRemarks) {
-        objectivesString += `\n\n[Logistic Remarks]: ${logisticRemarks}`;
+      if (clientRemarks) {
+        objectivesString += `\n\n[Logistic Remarks]: ${clientRemarks}`;
       }
 
       // Create campaign with PENDING status
@@ -559,6 +561,7 @@ export const createClientCampaign = async (req: Request, res: Response) => {
               secondary_user_persona: secondaryAudienceUserPersona || '',
               secondary_country: secondaryCountry || '',
               geographic_focus: geographicFocus || '',
+              geographicFocusOthers: geographicFocusOthers || '',
             },
           },
           campaignCredits: requestedCredits,

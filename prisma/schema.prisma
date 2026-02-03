@@ -700,6 +700,9 @@ model Campaign {
   submissionPostingUrls  SubmissionPostingUrl[]
   insightSnapshots       InsightSnapshot[]
   manualCreatorEntries   ManualCreatorEntry[]
+  
+  // PCR (Post Campaign Report)
+  pcr CampaignPCR?
 }
 
 model BookMarkCampaign {
@@ -771,6 +774,7 @@ model CampaignRequirement {
   secondary_country         String?
   secondary_user_persona    String?
   geographic_focus          String?
+  geographicFocusOthers     String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   campaignId      String   @unique
@@ -1987,6 +1991,11 @@ model ReservationConfiguration {
   campaignId String   @unique
   campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
+  mode                  ReservationMode
+  locations             Json
+  availabilityRules     Json
+  clientRemarks         String?
+  allowMultipleBookings Boolean         @default(false)
   mode                  ReservationMode
   locations             Json
   availabilityRules     Json
