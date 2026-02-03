@@ -186,44 +186,44 @@ export const getAllInvoices = async (req: Request, res: Response) => {
       invoices = await prisma.invoice.findMany({
         where,
         select: {
-          id: true,
-          invoiceNumber: true,
-          amount: true,
-          status: true,
-          createdAt: true,
-          dueDate: true,
-          invoiceFrom: true,
-          task: true,
-          creatorId: true,
-          campaignId: true,
-          // Only include minimal creator data
-          creator: {
-            select: {
-              userId: true,
-              user: {
-                select: {
-                  id: true,
-                  name: true,
-                  photoURL: true,
-                  email: true,
-                },
-              },
-            },
-          },
-          // Only include minimal campaign data
-          campaign: {
-            select: {
-              id: true,
-              name: true,
-              creatorAgreement: {
-                select: {
-                  userId: true,
-                  currency: true,
-                },
+        id: true,
+        invoiceNumber: true,
+        amount: true,
+        status: true,
+        createdAt: true,
+        dueDate: true,
+        invoiceFrom: true,
+        task: true,
+        creatorId: true,
+        campaignId: true,
+        // Only include minimal creator data
+        creator: {
+          select: {
+            userId: true,
+            user: {
+              select: {
+                id: true,
+                name: true,
+                photoURL: true,
+                email: true,
               },
             },
           },
         },
+        // Only include minimal campaign data
+        campaign: {
+          select: {
+            id: true,
+            name: true,
+            creatorAgreement: {
+              select: {
+                userId: true,
+                currency: true,
+              },
+            },
+          },
+        },
+      },
         orderBy: {
           createdAt: 'desc',
         },
@@ -241,6 +241,7 @@ export const getAllInvoices = async (req: Request, res: Response) => {
           (invoice.task as any)?.items?.[0]?.currency ||
           creatorAgreement?.currency ||
           null;
+
         // Extract creator name from invoiceFrom JSON
         const invoiceFromName = (invoice.invoiceFrom as any)?.name || invoice.creator?.user?.name;
 
@@ -1362,19 +1363,30 @@ export const updateInvoice = async (req: Request, res: Response) => {
           if (result.body.contacts && result.body.contacts.length > 0) {
             contactID = result.body.contacts[0].contactID || null;
           } else {
-            const [contact] = await createXeroContact(
-              bankInfo,
-              updatedInvoice.creator,
-              invoiceFrom,
-              (agreement?.currency?.toUpperCase() as 'MYR' | 'SGD') ?? 'MYR',
+            const result = await xero.accountingApi.getContacts(
+              activeTenant.tenantId,
+              undefined, // IDs
+              `EmailAddress=="${creatorUser.email.trim()}"`,
+              // `EmailAddress=="${creatorUser.email}" || Name=="${creatorUser.name}"`,
             );
 
-            contactID = contact.contactID || null;
+            if (result.body.contacts && result.body.contacts.length > 0) {
+              contactID = result.body.contacts[0].contactID || null;
+            } else {
+              const [contact] = await createXeroContact(
+                bankInfo,
+                updatedInvoice.creator,
+                invoiceFrom,
+                (agreement?.currency?.toUpperCase() as 'MYR' | 'SGD') ?? 'MYR',
+              );
 
-            await tx.creator.update({
-              where: { id: updatedInvoice.creator.id },
-              data: { xeroContactId: contactID },
-            });
+              contactID = contact.contactID || null;
+
+              await tx.creator.update({
+                where: { id: updatedInvoice.creator.id },
+                data: { xeroContactId: contactID },
+              });
+            }
           }
 
           if (contactID) {

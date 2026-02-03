@@ -1777,6 +1777,8 @@ export const getCampaignById = async (req: Request, res: Response) => {
         },
         products: true,
         reservationConfig: true,
+        products: true,
+        reservationConfig: true,
 
         creatorAgreement: true,
       },
@@ -1930,12 +1932,7 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
     console.log('📡 Fetching campaigns from database...');
     let campaigns = await prisma.campaign.findMany({
       take: Number(take),
-      // ...(cursor && {
-      //   skip: 1,
-      //   cursor: {
-      //     id: cursor as string,
-      //   },
-      // }),
+
       ...(campaignId
         ? {
             cursor: { id: campaignId }, // start after this ID
@@ -1959,14 +1956,6 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
               },
             }),
           },
-          // {
-          //   campaignRequirement: {
-          //     country: {
-          //       equals: country,
-          //       mode: 'insensitive',
-          //     },
-          //   },
-          // },
         ],
       },
       include: {
@@ -2913,7 +2902,6 @@ export const getPitchById = async (req: Request, res: Response) => {
 
 export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: Response) => {
   const { userId } = req.params;
-  // const { status, limit = 9, cursor } = req.query;
 
   const { cursor, limit = 10, search, status, excludeOwn, filterAdminId } = req.query;
   console.log('getAllCampaignsByAdminId called with:', { userId, status, search, limit, cursor, excludeOwn, filterAdminId });
@@ -3287,30 +3275,6 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
       orderBy: {
         createdAt: 'desc',
       },
-      // where: {
-      //   ...(status
-      //     ? {
-      //         AND: [
-      //           {
-      //             campaignAdmin: {
-      //               some: {
-      //                 adminId: user.id,
-      //               },
-      //             },
-      //           },
-      //           {
-      //             status: status as any,
-      //           },
-      //         ],
-      //       }
-      //     : {
-      //         campaignAdmin: {
-      //           some: {
-      //             adminId: user.id,
-      //           },
-      //         },
-      //       }),
-      // },
       include: {
         agreementTemplate: true,
         submission: {
@@ -9477,18 +9441,9 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
           if (creatorRecord && !hasMediaKit) {
             console.log(`Updating manualFollowerCount for creator ${user.id} to ${creator.followerCount}`);
 
-            // Find tier by follower count using transaction client to avoid timeout
-            const tier = await tx.creditTier.findFirst({
-              where: {
-                isActive: true,
-                minFollowers: { lte: creator.followerCount },
-                OR: [
-                  { maxFollowers: { gte: creator.followerCount } },
-                  { maxFollowers: null },
-                ],
-              },
-              orderBy: [{ minFollowers: 'desc' }],
-            });
+            // Update the creator's credit tier based on the new follower count
+            const { getTierByFollowerCount } = require('@services/creditTierService');
+            const tier = await getTierByFollowerCount(creator.followerCount);
 
             await tx.creator.update({
               where: { userId: user.id },
@@ -10357,18 +10312,8 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
         if (guest.followerCount) {
           const parsedFollowerCount = parseInt(guest.followerCount, 10);
           if (!isNaN(parsedFollowerCount) && parsedFollowerCount > 0) {
-            // Find tier by follower count using transaction client to avoid timeout
-            const tier = await tx.creditTier.findFirst({
-              where: {
-                isActive: true,
-                minFollowers: { lte: parsedFollowerCount },
-                OR: [
-                  { maxFollowers: { gte: parsedFollowerCount } },
-                  { maxFollowers: null },
-                ],
-              },
-              orderBy: [{ minFollowers: 'desc' }],
-            });
+            const { getTierByFollowerCount } = require('@services/creditTierService');
+            const tier = await getTierByFollowerCount(parsedFollowerCount);
 
             await tx.creator.update({
               where: { userId },
@@ -10742,6 +10687,7 @@ export const syncCampaignCredits = async (req: Request, res: Response) => {
     // For credit tier campaigns, multiply ugcVideos by creditPerVideo
     const creditsUtilized = campaign.shortlisted.reduce((total, creator) => {
       const isGuest = creator.user?.creator?.isGuest === true;
+      // const hasAgreementSent = creator.userId && sentAgreementUserIds.has(creator.userId);
 
       if (!isGuest) {
         const videos = creator.ugcVideos || 0;
@@ -11018,5 +10964,49 @@ export const getCampaignsForPublic = async (req: Request, res: Response) => {
     return res.status(200).json(data);
   } catch (error) {
     return res.status(400).json(error);
+  }
+};
+
+// Function to fetch all status for all campaign. Return value number
+export const getCampaignStatus = async (req: Request, res: Response) => {
+  try {
+    const activeCampaigns = prisma.campaign.count({
+      where: {
+        status: 'ACTIVE',
+      },
+    });
+
+    const pendingCampaigns = prisma.campaign.count({
+      where: {
+        status: {
+          in: ['PENDING_CSM_REVIEW', 'PENDING_ADMIN_ACTIVATION', 'SCHEDULED'],
+        },
+      },
+    });
+
+    const completedCampaigns = prisma.campaign.count({
+      where: {
+        status: 'COMPLETED',
+      },
+    });
+
+    const pausedCampaigns = prisma.campaign.count({
+      where: {
+        status: 'PAUSED',
+      },
+    });
+
+    const data = await Promise.all([activeCampaigns, pendingCampaigns, completedCampaigns, pausedCampaigns]);
+
+    const campaignStatus = {
+      activeCampaigns: data[0],
+      pendingCampaigns: data[1],
+      completedCampaigns: data[2],
+      pausedCampaigns: data[3],
+    };
+
+    return res.status(200).json(campaignStatus);
+  } catch (error) {
+    return res.status(500).json(error);
   }
 };

@@ -57,6 +57,12 @@ export const getAllCompanies = async (_req: Request, res: Response) => {
           include: {
             package: true,
             customPackage: true,
+            campaign: {
+              select: {
+                id: true,
+                creditsUtilized: true,
+              },
+            },
           },
         },
         campaign: true,
@@ -66,7 +72,14 @@ export const getAllCompanies = async (_req: Request, res: Response) => {
     const companiesWithSummary = companies.map((company) => {
       const activeSubscriptions = company.subscriptions.filter((sub) => sub.status === 'ACTIVE');
       const totalCredits = activeSubscriptions.reduce((sum, sub) => sum + (sub.totalCredits || 0), 0);
-      const usedCredits = activeSubscriptions.reduce((sum, sub) => sum + sub.creditsUsed, 0);
+      
+      const usedCredits = activeSubscriptions.reduce((sum, sub) => {
+        const subCreditsUtilized = sub.campaign.reduce(
+          (campaignSum, campaign) => campaignSum + (campaign.creditsUtilized || 0),
+          0
+        );
+        return sum + subCreditsUtilized;
+      }, 0);
 
       const creditSummary = {
         totalCredits,
@@ -142,6 +155,30 @@ export const getCompanyById = async (req: Request, res: Response) => {
     const totalCredits = activeSubscriptions.reduce((sum, sub) => sum + (sub.totalCredits || 0), 0);
     const usedCredits = activeSubscriptions.reduce((sum, sub) => sum + (sub.creditsUsed || 0), 0);
 
+    const sanitizedSubs = [];
+
+    for (const subs of activeSubscriptions) {
+      const campaigns = subs.campaign;
+
+      const totalCreditsUtilized = campaigns.reduce((acc, cur) => acc + (cur.creditsUtilized ?? 0), 0);
+
+      const data = {
+        ...subs,
+        creditsUtilized: totalCreditsUtilized,
+        creditsUsed: totalCreditsUtilized,
+      };
+
+      sanitizedSubs.push(data);
+    }
+
+    const creditsUtilized = activeSubscriptions.reduce((acc, subs) => {
+      const campaigns = subs.campaign;
+
+      const totalCreditsUtilized = campaigns.reduce((acc, cur) => acc + (cur.creditsUtilized ?? 0), 0);
+
+      return acc + totalCreditsUtilized;
+    }, 0);
+
     const creditSummary = {
       totalCredits,
       usedCredits,
@@ -155,7 +192,11 @@ export const getCompanyById = async (req: Request, res: Response) => {
           : null,
     };
 
-    return res.status(200).json({ ...company, creditSummary });
+    return res.status(200).json({ 
+      ...company, 
+      subscriptions: sanitizedSubs,
+      creditSummary 
+    });
   } catch (err) {
     // console.log(err);
     return res.status(400).json({ message: err });
