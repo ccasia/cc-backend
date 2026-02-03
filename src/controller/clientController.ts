@@ -478,7 +478,7 @@ export const createClientCampaign = async (req: Request, res: Response) => {
         objectivesString += `\n\n[Logistic Remarks]: ${clientRemarks}`;
       }
 
-      // Finalize countries - combine country and secondaryCountry
+      // Finalize countries - combine country, secondaryCountry, and geographicFocusOthers
       let finalizedCountries: string[] = [];
       if (typeof country === 'string' && country) {
         finalizedCountries.push(country);
@@ -489,6 +489,11 @@ export const createClientCampaign = async (req: Request, res: Response) => {
         finalizedCountries.push(secondaryCountry);
       } else if (Array.isArray(secondaryCountry) && secondaryCountry.length > 0) {
         finalizedCountries.push(...secondaryCountry);
+      }
+      if (typeof geographicFocusOthers === 'string' && geographicFocusOthers) {
+        finalizedCountries.push(geographicFocusOthers);
+      } else if (Array.isArray(geographicFocusOthers) && geographicFocusOthers.length > 0) {
+        finalizedCountries.push(...geographicFocusOthers);
       }
       // Remove duplicates
       finalizedCountries = [...new Set(finalizedCountries)];
