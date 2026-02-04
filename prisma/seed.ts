@@ -42,13 +42,12 @@ const scopes = [
 
 const pakcagesArray: any[] = [
   {
-    type: 'Trial',
-    valueMYR: 7000,
-    valueSGD: 7200,
-    totalCredits: 10,
+    type: 'Trail',
+    valueMYR: 2800,
+    valueSGD: 3100,
+    totalCredits: 5,
     validityPeriod: 1,
   },
-  //basic deprecated
   {
     type: 'Basic',
     valueMYR: 8000,
@@ -58,24 +57,17 @@ const pakcagesArray: any[] = [
   },
   {
     type: 'Essential',
-    valueMYR: 20100,
-    valueSGD: 21500,
+    valueMYR: 15000,
+    valueSGD: 17500,
     totalCredits: 30,
     validityPeriod: 3,
   },
   {
     type: 'Pro',
-    valueMYR: 32000,
-    valueSGD: 34500,
+    valueMYR: 23000,
+    valueSGD: 29000,
     totalCredits: 50,
     validityPeriod: 5,
-  },
-  {
-    type: 'Ultra',
-    valueMYR: 61000,
-    valueSGD: 65000,
-    totalCredits: 100,
-    validityPeriod: 10,
   },
   {
     type: 'Custom',
@@ -207,25 +199,11 @@ async function main() {
 
   // Create package types
   for (const pkg of pakcagesArray) {
-    let currentPackageId = '';
-    let existingPackage = await prisma.package.findFirst({
+    const existingPackage = await prisma.package.findFirst({
       where: { name: pkg.type },
     });
 
-    if (existingPackage) {
-      const updatedPackage = await prisma.package.update({
-        where: { id: existingPackage.id },
-        data: {
-          name: pkg.type,
-          credits: pkg.totalCredits,
-          validityPeriod: pkg.validityPeriod,
-        },
-      });
-
-      currentPackageId = updatedPackage.id;
-
-      console.log(`Package ${pkg.type} updated to ${pkg.totalCredits} credits`);
-    } else {
+    if (!existingPackage) {
       const createdPackage = await prisma.package.create({
         data: {
           name: pkg.type,
@@ -233,41 +211,27 @@ async function main() {
           validityPeriod: pkg.validityPeriod,
         },
       });
-      currentPackageId = createdPackage.id;
-      console.log(`Updated Package Info: ${pkg.type}`);
+
+      // Create prices for MYR and SGD
+      await prisma.price.createMany({
+        data: [
+          {
+            packageId: createdPackage.id,
+            currency: 'MYR',
+            amount: pkg.valueMYR,
+          },
+          {
+            packageId: createdPackage.id,
+            currency: 'SGD',
+            amount: pkg.valueSGD,
+          },
+        ],
+      });
+
+      console.log(`Package ${pkg.type} created successfully with prices`);
+    } else {
+      console.log(`Package ${pkg.type} already exists`);
     }
-
-    await prisma.price.upsert({
-      where: {
-        packageId_currency: {
-          packageId: currentPackageId,
-          currency: 'MYR',
-        },
-      },
-      update: { amount: pkg.valueMYR },
-      create: {
-        packageId: currentPackageId,
-        currency: 'MYR',
-        amount: pkg.valueMYR,
-      },
-    });
-
-    await prisma.price.upsert({
-      where: {
-        packageId_currency: {
-          packageId: currentPackageId,
-          currency: 'SGD',
-        },
-      },
-      update: { amount: pkg.valueSGD },
-      create: {
-        packageId: currentPackageId,
-        currency: 'SGD',
-        amount: pkg.valueSGD,
-      },
-    });
-
-    console.log(`  > Prices synced for ${pkg.type} (MYR: ${pkg.valueMYR}, SGD: ${pkg.valueSGD})`);
   }
 
   // Create/update Credit Tiers
