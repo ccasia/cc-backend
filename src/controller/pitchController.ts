@@ -323,6 +323,17 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
         `Pitch ${pitchId} approved by admin, status updated to SENT_TO_CLIENT (v4 flow)`,
       );
       console.log(adminComments ? `Comments: ${adminComments}` : 'No comments provided');
+
+      // Emit to campaign room for real-time updates
+      io.to(pitch.campaignId).emit('v3:pitch:status-updated', {
+        pitchId,
+        campaignId: pitch.campaignId,
+        newStatus: 'SENT_TO_CLIENT',
+        action: 'approve',
+        updatedBy: adminId,
+        updatedAt: new Date().toISOString(),
+      });
+
       return res.status(200).json({
         message: 'Pitch approved and sent to client for review',
         pitch: updatedPitch,
@@ -356,6 +367,17 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
         `Pitch ${pitchId} approved by admin, status updated to APPROVED (non-v4 direct approval)`,
       );
       console.log(adminComments ? `Comments: ${adminComments}` : 'No comments provided');
+
+      // Emit to campaign room for real-time updates
+      io.to(pitch.campaignId).emit('v3:pitch:status-updated', {
+        pitchId,
+        campaignId: pitch.campaignId,
+        newStatus: 'APPROVED',
+        action: 'approve',
+        updatedBy: adminId,
+        updatedAt: new Date().toISOString(),
+      });
+
       return res.status(200).json({
         message: 'Pitch approved successfully',
         pitch: updatedPitch,
@@ -455,6 +477,17 @@ export const rejectPitchByAdmin = async (req: Request, res: Response) => {
     });
 
     console.log(`Pitch ${pitchId} rejected by admin, creator removed from campaign`);
+
+    // Emit to campaign room for real-time updates
+    io.to(pitch.campaignId).emit('v3:pitch:status-updated', {
+      pitchId,
+      campaignId: pitch.campaignId,
+      newStatus: 'REJECTED',
+      action: 'reject',
+      updatedBy: adminId,
+      updatedAt: new Date().toISOString(),
+    });
+
     return res.status(200).json({
       message: 'Pitch rejected and creator removed from campaign',
       pitch: updatedPitch,
@@ -760,6 +793,17 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
     });
 
     console.log(`Pitch ${pitchId} approved by client, status updated to APPROVED`);
+
+    // Emit to campaign room for real-time updates
+    io.to(pitch.campaignId).emit('v3:pitch:status-updated', {
+      pitchId,
+      campaignId: pitch.campaignId,
+      newStatus: 'CLIENT_APPROVED',
+      action: 'approve',
+      updatedBy: clientId,
+      updatedAt: new Date().toISOString(),
+    });
+
     return res.status(200).json({ message: 'Pitch approved by client' });
   } catch (error) {
     console.error('Error approving pitch by client:', error);
@@ -887,6 +931,17 @@ export const rejectPitchByClient = async (req: Request, res: Response) => {
     });
 
     console.log(`Pitch ${pitchId} rejected by client, creator removed from campaign`);
+
+    // Emit to campaign room for real-time updates
+    io.to(pitch.campaignId).emit('v3:pitch:status-updated', {
+      pitchId,
+      campaignId: pitch.campaignId,
+      newStatus: 'REJECTED',
+      action: 'reject',
+      updatedBy: clientId,
+      updatedAt: new Date().toISOString(),
+    });
+
     return res.status(200).json({ message: 'Pitch rejected and creator removed from campaign' });
   } catch (error) {
     console.error('Error rejecting pitch by client:', error);
@@ -986,6 +1041,17 @@ export const withdrawCreatorFromCampaign = async (req: Request, res: Response) =
     });
 
     console.log(`Creator ${pitch.userId} withdrawn from campaign ${pitch.campaignId}`);
+
+    // Emit to campaign room for real-time updates
+    io.to(pitch.campaignId).emit('v3:pitch:status-updated', {
+      pitchId,
+      campaignId: pitch.campaignId,
+      newStatus: 'WITHDRAWN',
+      action: 'withdraw',
+      updatedBy: adminId,
+      updatedAt: new Date().toISOString(),
+    });
+
     return res.status(200).json({
       message: 'Creator successfully withdrawn from campaign',
       pitch: updatedPitch,
@@ -1099,6 +1165,17 @@ export const maybePitchByClient = async (req: Request, res: Response) => {
     });
 
     console.log(`Pitch ${pitchId} set to maybe by client`);
+
+    // Emit to campaign room for real-time updates
+    io.to(pitch.campaignId).emit('v3:pitch:status-updated', {
+      pitchId,
+      campaignId: pitch.campaignId,
+      newStatus: 'MAYBE',
+      action: 'maybe',
+      updatedBy: clientId,
+      updatedAt: new Date().toISOString(),
+    });
+
     return res.status(200).json({ message: 'Pitch status updated to maybe' });
   } catch (error) {
     console.error('Error setting pitch to maybe by client:', error);
