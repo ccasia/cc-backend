@@ -1947,14 +1947,19 @@ model ReservationSlot {
   updatedAt DateTime @updatedAt
 }
 
-model CampaignPCR {
-  id String @id @unique @default(cuid())
+// Credit Tiering System
+model CreditTier {
+  id              String   @id @unique @default(cuid())
+  name            String   @unique // "Nano A", "Nano B", "Micro A", etc.
+  minFollowers    Int      // Minimum follower count (inclusive)
+  maxFollowers    Int?     // Maximum follower count (inclusive, null = unlimited)
+  creditsPerVideo Int      // Credits cost per video for this tier
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  campaignId String   @unique
-  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  creators            Creator[]            @relation("UserCurrentTier")
+  shortlistedCreators ShortListedCreator[]
 
-  content Json // Stores all editable PCR content as JSON
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  @@index([minFollowers])
 }
