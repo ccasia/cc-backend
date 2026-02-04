@@ -1818,7 +1818,17 @@ export const getAllActiveCampaign = async (_req: Request, res: Response) => {
         brand: { include: { company: { include: { subscriptions: true } } } },
         company: true,
         pitch: true,
-        shortlisted: true,
+        shortlisted: {
+          select: {
+            id: true,
+            campaignId: true,
+            userId: true,
+            shortlisted_date: true,
+            isAgreementReady: true,
+            isCampaignDone: true,
+            ugcVideos: true,
+          },
+        },
         submission: true,
         logistics: {
           include: {
@@ -1987,7 +1997,17 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
         company: true,
         pitch: true,
         bookMarkCampaign: true,
-        shortlisted: true,
+        shortlisted: {
+          select: {
+            id: true,
+            campaignId: true,
+            userId: true,
+            shortlisted_date: true,
+            isAgreementReady: true,
+            isCampaignDone: true,
+            ugcVideos: true,
+          },
+        },
         logistics: {
           include: {
             reservationDetails: {
@@ -2582,7 +2602,18 @@ export const getCampaignsByCreatorId = async (req: Request, res: Response) => {
                 },
               },
             },
-            shortlisted: true,
+            shortlisted: {
+              select: {
+                id: true,
+                campaignId: true,
+                userId: true,
+                shortlisted_date: true,
+                isAgreementReady: true,
+                isCampaignDone: true,
+                ugcVideos: true,
+                // Exclude sensitive fields: amount, currency, isCreatorPaid, creditPerVideo, creditTierId, adminComments
+              },
+            },
           },
         });
 
@@ -2642,7 +2673,17 @@ export const getCampaignForCreatorById = async (req: Request, res: Response) => 
         brand: { include: { company: { include: { subscriptions: true } } } },
         company: true,
         pitch: true,
-        shortlisted: true,
+        shortlisted: {
+          select: {
+            id: true,
+            campaignId: true,
+            userId: true,
+            shortlisted_date: true,
+            isAgreementReady: true,
+            isCampaignDone: true,
+            ugcVideos: true,
+          },
+        },
         invoice: true,
         submission: {
           where: {
@@ -3495,6 +3536,15 @@ export const getMyCampaigns = async (req: Request, res: Response) => {
         shortlisted: {
           where: {
             userId: user.id,
+          },
+          select: {
+            id: true,
+            campaignId: true,
+            userId: true,
+            shortlisted_date: true,
+            isAgreementReady: true,
+            isCampaignDone: true,
+            ugcVideos: true,
           },
         },
         pitch: {
@@ -11136,7 +11186,17 @@ export const getCampaignsForPublic = async (req: Request, res: Response) => {
         company: true,
         pitch: true,
         bookMarkCampaign: true,
-        shortlisted: true,
+        shortlisted: {
+          select: {
+            id: true,
+            campaignId: true,
+            userId: true,
+            shortlisted_date: true,
+            isAgreementReady: true,
+            isCampaignDone: true,
+            ugcVideos: true,
+          },
+        },
         logistics: {
           include: {
             reservationDetails: {
