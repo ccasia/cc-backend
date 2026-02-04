@@ -384,8 +384,25 @@ export const createCampaign = async (req: Request, res: Response) => {
                 language: audienceLanguage,
                 creator_persona: audienceCreatorPersona,
                 user_persona: audienceUserPersona,
-                country: Array.isArray(countries) && countries.length > 0 ? countries[0] : (Array.isArray(country) && country.length > 0 ? country[0] : (typeof countries === 'string' ? countries : (typeof country === 'string' ? country : ''))), // Legacy single country
-                countries: Array.isArray(countries) ? countries : (Array.isArray(country) ? country : (typeof countries === 'string' ? [countries] : (typeof country === 'string' ? [country] : []))), // Ensure array for multiple countries field
+                country:
+                  Array.isArray(countries) && countries.length > 0
+                    ? countries[0]
+                    : Array.isArray(country) && country.length > 0
+                      ? country[0]
+                      : typeof countries === 'string'
+                        ? countries
+                        : typeof country === 'string'
+                          ? country
+                          : '', // Legacy single country
+                countries: Array.isArray(countries)
+                  ? countries
+                  : Array.isArray(country)
+                    ? country
+                    : typeof countries === 'string'
+                      ? [countries]
+                      : typeof country === 'string'
+                        ? [country]
+                        : [], // Ensure array for multiple countries field
               },
             },
             campaignCredits,
@@ -2287,7 +2304,15 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
   const { userId } = req.params;
 
   const { cursor, limit = 10, search, status, excludeOwn, filterAdminId } = req.query;
-  console.log('getAllCampaignsByAdminId called with:', { userId, status, search, limit, cursor, excludeOwn, filterAdminId });
+  console.log('getAllCampaignsByAdminId called with:', {
+    userId,
+    status,
+    search,
+    limit,
+    cursor,
+    excludeOwn,
+    filterAdminId,
+  });
 
   try {
     const user = await prisma.user.findUnique({
@@ -4439,12 +4464,14 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
         currency: currency,
         ...(newVideoCount !== null && { ugcVideos: newVideoCount }),
         // Update tier info for credit tier campaigns
-        ...(isCreditTierCampaign && creditPerVideo !== null && {
-          creditPerVideo: creditPerVideo,
-        }),
-        ...(isCreditTierCampaign && tierSnapshot && {
-          creditTierId: tierSnapshot.id,
-        }),
+        ...(isCreditTierCampaign &&
+          creditPerVideo !== null && {
+            creditPerVideo: creditPerVideo,
+          }),
+        ...(isCreditTierCampaign &&
+          tierSnapshot && {
+            creditTierId: tierSnapshot.id,
+          }),
       },
     });
 
@@ -4906,10 +4933,11 @@ export const sendAgreement = async (req: Request, res: Response) => {
         // Store video count (not total credits) - credits calculated from ugcVideos * creditPerVideo
         ...(videoCount > 0 && { ugcVideos: videoCount }),
         // Store tier snapshot for credit tier campaigns
-        ...(isCreditTierCampaign && tierSnapshot && {
-          creditPerVideo: creditPerVideo,
-          creditTierId: tierSnapshot.id,
-        }),
+        ...(isCreditTierCampaign &&
+          tierSnapshot && {
+            creditPerVideo: creditPerVideo,
+            creditTierId: tierSnapshot.id,
+          }),
       },
     });
     shortlistedCreator.isAgreementReady = true;
@@ -8168,10 +8196,11 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
               },
               data: {
                 isAgreementReady: false,
-                ...(campaign.isCreditTier && creditPerVideo !== null && {
-                  creditPerVideo,
-                  creditTierId,
-                }),
+                ...(campaign.isCreditTier &&
+                  creditPerVideo !== null && {
+                    creditPerVideo,
+                    creditTierId,
+                  }),
               },
             });
           } else {
@@ -8181,10 +8210,11 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
                 campaignId: campaign.id,
                 isAgreementReady: false,
                 currency: 'MYR',
-                ...(campaign.isCreditTier && creditPerVideo !== null && {
-                  creditPerVideo,
-                  creditTierId,
-                }),
+                ...(campaign.isCreditTier &&
+                  creditPerVideo !== null && {
+                    creditPerVideo,
+                    creditTierId,
+                  }),
               },
             });
           }
@@ -8937,7 +8967,9 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
               },
             });
 
-            console.log(`Updated guest creator ${userId} manualFollowerCount to ${parsedFollowerCount}, tier: ${tier?.name || 'none'}`);
+            console.log(
+              `Updated guest creator ${userId} manualFollowerCount to ${parsedFollowerCount}, tier: ${tier?.name || 'none'}`,
+            );
           }
         }
 
@@ -9305,7 +9337,7 @@ export const syncCampaignCredits = async (req: Request, res: Response) => {
         // For credit tier campaigns, multiply by creditPerVideo
         if (campaign.isCreditTier) {
           const perVideo = creator.creditPerVideo || 1;
-          return total + (videos * perVideo);
+          return total + videos * perVideo;
         }
         return total + videos;
       }
