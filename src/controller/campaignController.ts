@@ -385,8 +385,8 @@ export const createCampaign = async (req: Request, res: Response) => {
                 language: audienceLanguage,
                 creator_persona: audienceCreatorPersona,
                 user_persona: audienceUserPersona,
-                country: Array.isArray(countries) && countries.length > 0 ? countries[0] : (Array.isArray(country) && country.length > 0 ? country[0] : (typeof countries === 'string' ? countries : (typeof country === 'string' ? country : ''))), // Legacy single country
-                countries: Array.isArray(countries) ? countries : (Array.isArray(country) ? country : (typeof countries === 'string' ? [countries] : (typeof country === 'string' ? [country] : []))), // Ensure array for multiple countries field
+                country: finalizedCountries[0] || '',
+                countries: finalizedCountries, 
               },
             },
             campaignCredits,
@@ -767,6 +767,7 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
     countries,
     audienceGender,
     audienceAge,
+    audienceLocation,
     audienceLanguage,
     audienceCreatorPersona,
     audienceUserPersona,
@@ -775,6 +776,7 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
     // Target audience secondary
     secondaryAudienceGender,
     secondaryAudienceAge,
+    secondaryAudienceLocation,
     secondaryAudienceLanguage,
     secondaryAudienceCreatorPersona,
     secondaryAudienceUserPersona,
@@ -823,7 +825,6 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
   } = rawData;
 
   const clientManagers = Array.isArray(rawData?.clientManagers) ? rawData.clientManagers : [];
-  const isCreditTier = rawData?.isCreditTier === true;
 
   try {
     const { images } = await uploadCampaignAssets(req.files);
@@ -941,7 +942,6 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
             ads: ads || false,
             photos: photos || false,
             crossPosting: crossPosting || false,
-            isCreditTier: isCreditTier,
             logisticsType: logisticsType && logisticsType !== '' ? (logisticsType as LogisticType) : null,
             agreementTemplate: {
               connect: { id: agreementFrom.id },
@@ -972,6 +972,7 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
               // Primary Audience
               gender: audienceGender || [],
               age: audienceAge || [],
+              geoLocation: audienceLocation || [],
               language: audienceLanguage || [],
               creator_persona: audienceCreatorPersona || [],
               user_persona: audienceUserPersona || '',
@@ -980,6 +981,7 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
               // Secondary Audience
               secondary_gender: secondaryAudienceGender || [],
               secondary_age: secondaryAudienceAge || [],
+              secondary_geoLocation: secondaryAudienceLocation || [],
               secondary_language: secondaryAudienceLanguage || [],
               secondary_creator_persona: secondaryAudienceCreatorPersona || [],
               secondary_user_persona: secondaryAudienceUserPersona || '',
@@ -4026,6 +4028,7 @@ export const editCampaignRequirements = async (req: Request, res: Response) => {
     // Primary Audience
     audienceGender,
     audienceAge,
+    audienceLocation,
     audienceLanguage,
     audienceCreatorPersona,
     audienceUserPersona,
@@ -4034,6 +4037,7 @@ export const editCampaignRequirements = async (req: Request, res: Response) => {
     // Secondary Audience
     secondaryAudienceGender,
     secondaryAudienceAge,
+    secondaryAudienceLocation,
     secondaryAudienceLanguage,
     secondaryAudienceCreatorPersona,
     secondaryAudienceUserPersona,
@@ -4044,23 +4048,6 @@ export const editCampaignRequirements = async (req: Request, res: Response) => {
   } = req.body;
 
   try {
-    // Finalize countries - combine country and secondaryCountry
-    let finalizedCountries: string[] = [];
-    if (countries && Array.isArray(countries) && countries.length > 0) {
-      finalizedCountries = [...countries];
-    } else if (typeof country === 'string' && country) {
-      finalizedCountries.push(country);
-    } else if (Array.isArray(country) && country.length > 0) {
-      finalizedCountries.push(...country);
-    }
-    if (typeof secondaryCountry === 'string' && secondaryCountry) {
-      finalizedCountries.push(secondaryCountry);
-    } else if (Array.isArray(secondaryCountry) && secondaryCountry.length > 0) {
-      finalizedCountries.push(...secondaryCountry);
-    }
-    // Remove duplicates
-    finalizedCountries = [...new Set(finalizedCountries)];
-
     const updatedCampaignRequirement = await prisma.campaignRequirement.update({
       where: {
         campaignId: campaignId,
@@ -4069,14 +4056,16 @@ export const editCampaignRequirements = async (req: Request, res: Response) => {
         // Primary Audience
         gender: audienceGender,
         age: audienceAge,
+        geoLocation: audienceLocation,
         language: audienceLanguage,
         creator_persona: audienceCreatorPersona,
         user_persona: audienceUserPersona,
-        country: finalizedCountries[0] || country || '',
-        countries: finalizedCountries,
+        country: country,
+        ...(countries && { countries: countries }),
         // Secondary Audience
         ...(secondaryAudienceGender !== undefined && { secondary_gender: secondaryAudienceGender }),
         ...(secondaryAudienceAge !== undefined && { secondary_age: secondaryAudienceAge }),
+        ...(secondaryAudienceLocation !== undefined && { secondary_geoLocation: secondaryAudienceLocation }),
         ...(secondaryAudienceLanguage !== undefined && { secondary_language: secondaryAudienceLanguage }),
         ...(secondaryAudienceCreatorPersona !== undefined && { secondary_creator_persona: secondaryAudienceCreatorPersona }),
         ...(secondaryAudienceUserPersona !== undefined && { secondary_user_persona: secondaryAudienceUserPersona }),
@@ -8219,13 +8208,11 @@ export const activateClientCampaign = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Agreement template is required' });
     }
 
-    // Check if campaign exists and is in PENDING_ADMIN_ACTIVATION or SCHEDULED status
+    // Check if campaign exists and is in PENDING_ADMIN_ACTIVATION status
     const campaign = await prisma.campaign.findFirst({
       where: {
         id: campaignId,
-        status: {
-          in: ['PENDING_ADMIN_ACTIVATION', 'SCHEDULED'],
-        },
+        status: 'PENDING_ADMIN_ACTIVATION',
       },
       include: {
         company: true,
@@ -8235,7 +8222,7 @@ export const activateClientCampaign = async (req: Request, res: Response) => {
     if (!campaign) {
       return res
         .status(404)
-        .json({ message: 'Campaign has already been activated or is not in pending admin activation/scheduled status' });
+        .json({ message: 'Campaign has already been activated or is not in pending admin activation status' });
     }
 
     // Log user info for debugging
@@ -9334,21 +9321,10 @@ export const checkCampaignCreatorVisibility = async (req: Request, res: Response
 
 // Add this function after the shortlistCreatorV2 function
 export const shortlistCreatorV3 = async (req: Request, res: Response) => {
-  // Support both per-creator adminComments (new) and legacy single adminComments (backward compat)
-  const { creators, campaignId, adminComments: legacyAdminComments, ugcCredits } = req.body;
+  const { creators, campaignId, adminComments, ugcCredits } = req.body;
   const userId = req.session.userid;
 
   try {
-    // Validate follower counts - max 10 billion (prevents 64-bit integer overflow)
-    const MAX_FOLLOWER_COUNT = 10_000_000_000;
-    for (const creator of creators) {
-      if (creator.followerCount && creator.followerCount > MAX_FOLLOWER_COUNT) {
-        return res.status(400).json({
-          message: `Follower count for creator exceeds maximum allowed value (${MAX_FOLLOWER_COUNT.toLocaleString()}). Please enter a valid follower count.`,
-        });
-      }
-    }
-
     // Allow superadmin to bypass campaign admin check
     const currentUser = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
     const isSuperadmin = currentUser?.role === 'superadmin';
@@ -9479,12 +9455,8 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
         // - non-v4 campaigns: APPROVED directly
         const pitchStatus = isV4Campaign ? 'SENT_TO_CLIENT' : 'APPROVED';
 
-        // Extract per-creator comments with fallback to legacy format
-        const creatorAdminComments = creator.adminComments?.trim() || (typeof legacyAdminComments === 'string' ? legacyAdminComments.trim() : '');
-        const hasComments = creatorAdminComments && creatorAdminComments.length > 0;
-
         // Create a pitch record for this creator
-        console.log(`Creating pitch for creator ${user.id} with status ${pitchStatus}${hasComments ? ' and admin comments' : ''}`);
+        console.log(`Creating pitch for creator ${user.id} with status ${pitchStatus}`);
         await tx.pitch.create({
           data: {
             userId: user.id,
@@ -9495,8 +9467,8 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
             amount: null,
             agreementTemplateId: null,
             approvedByAdminId: userId,
-            ...(hasComments
-              ? { adminComments: creatorAdminComments, adminCommentedBy: userId }
+            ...(typeof adminComments === 'string' && adminComments.trim().length > 0
+              ? { adminComments: adminComments.trim(), adminCommentedBy: userId }
               : {}),
           },
         });
@@ -10272,19 +10244,6 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
 
   if (guestCreators.length > 3) {
     return res.status(400).json({ message: 'You can add a maximum of 3 guest creators at a time' });
-  }
-
-  // Validate follower counts - max 10 billion (prevents 64-bit integer overflow)
-  const MAX_FOLLOWER_COUNT = 10_000_000_000;
-  for (const guest of guestCreators) {
-    if (guest.followerCount) {
-      const parsedCount = parseInt(guest.followerCount, 10);
-      if (!isNaN(parsedCount) && parsedCount > MAX_FOLLOWER_COUNT) {
-        return res.status(400).json({
-          message: `Follower count exceeds maximum allowed value (${MAX_FOLLOWER_COUNT.toLocaleString()}). Please enter a valid follower count.`,
-        });
-      }
-    }
   }
 
   try {

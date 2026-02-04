@@ -292,39 +292,40 @@ export const createClientCampaign = async (req: Request, res: Response) => {
     }
 
     const {
-      // Campaign general info
       campaignTitle,
       campaignDescription,
       campaignStartDate,
       campaignEndDate,
       campaignCredits,
+      brandTone,
       brandAbout,
       productName,
       websiteLink,
       campaignIndustries,
-      // Campaign objectives
       campaignObjectives,
       secondaryObjectives,
       boostContent,
       primaryKPI,
       performanceBaseline,
-      // Target Audience
       audienceGender,
       audienceAge,
-      country,
+      audienceLocation,
       audienceLanguage,
       audienceCreatorPersona,
       audienceUserPersona,
-      // Secondary audience
+      country,
       secondaryAudienceGender,
       secondaryAudienceAge,
-      secondaryCountry,
+      secondaryAudienceLocation,
       secondaryAudienceLanguage,
       secondaryAudienceCreatorPersona,
       secondaryAudienceUserPersona,
+      secondaryCountry,
       geographicFocus,
       geographicFocusOthers,
-      // Logistics
+      campaignDo,
+      campaignDont,
+      referencesLinks,
       logisticsType,
       products,
       schedulingOption,
@@ -399,6 +400,29 @@ export const createClientCampaign = async (req: Request, res: Response) => {
         // Use your existing image upload function
         const url = await uploadCompanyLogo(image.tempFilePath, image.name);
         publicURL.push(url);
+      }
+    }
+
+    const otherAttachments: string[] = [];
+    if (req.files && req.files.otherAttachments) {
+      const attachments: any = (req.files as any).otherAttachments as [];
+
+      if (attachments.length) {
+        for (const item of attachments as any) {
+          const url: string = await uploadAttachments({
+            tempFilePath: item.tempFilePath,
+            fileName: item.name,
+            folderName: 'otherAttachments',
+          });
+          otherAttachments.push(url);
+        }
+      } else {
+        const url: string = await uploadAttachments({
+          tempFilePath: attachments.tempFilePath,
+          fileName: attachments.name,
+          folderName: 'otherAttachments',
+        });
+        otherAttachments.push(url);
       }
     }
 
@@ -478,21 +502,6 @@ export const createClientCampaign = async (req: Request, res: Response) => {
         objectivesString += `\n\n[Logistic Remarks]: ${clientRemarks}`;
       }
 
-      // Finalize countries - combine country and secondaryCountry
-      let finalizedCountries: string[] = [];
-      if (typeof country === 'string' && country) {
-        finalizedCountries.push(country);
-      } else if (Array.isArray(country) && country.length > 0) {
-        finalizedCountries.push(...country);
-      }
-      if (typeof secondaryCountry === 'string' && secondaryCountry) {
-        finalizedCountries.push(secondaryCountry);
-      } else if (Array.isArray(secondaryCountry) && secondaryCountry.length > 0) {
-        finalizedCountries.push(...secondaryCountry);
-      }
-      // Remove duplicates
-      finalizedCountries = [...new Set(finalizedCountries)];
-
       // Create campaign with PENDING status
       const campaign = await tx.campaign.create({
         data: {
@@ -502,6 +511,7 @@ export const createClientCampaign = async (req: Request, res: Response) => {
           status: 'PENDING_CSM_REVIEW',
           origin: 'CLIENT',
           submissionVersion: 'v4',
+          brandTone: brandTone || '',
           brandAbout: brandAbout || '',
           productName: productName || '',
           websiteLink: websiteLink || '',
@@ -526,6 +536,10 @@ export const createClientCampaign = async (req: Request, res: Response) => {
               postingEndDate: postingEndDate ? new Date(postingEndDate) : null,
               industries: campaignIndustries ? campaignIndustries.join(', ') : '',
               socialMediaPlatform: Array.isArray(socialMediaPlatform) ? socialMediaPlatform : [],
+              campaigns_do: campaignDo || [],
+              campaigns_dont: campaignDont || [],
+              otherAttachments: otherAttachments,
+              referencesLinks: referencesLinks?.map((link: any) => link?.value).filter(Boolean) || [],
             },
           },
           campaignRequirement: {
@@ -533,18 +547,19 @@ export const createClientCampaign = async (req: Request, res: Response) => {
               // Primary Audience
               gender: audienceGender || [],
               age: audienceAge || [],
-              country: finalizedCountries[0] || '',
-              countries: finalizedCountries,
+              geoLocation: audienceLocation || [],
               language: audienceLanguage || [],
               creator_persona: audienceCreatorPersona || [],
               user_persona: audienceUserPersona || '',
+              country: country || '',
               // Secondary Audience
               secondary_gender: secondaryAudienceGender || [],
               secondary_age: secondaryAudienceAge || [],
-              secondary_country: secondaryCountry || '',
+              secondary_geoLocation: secondaryAudienceLocation || [],
               secondary_language: secondaryAudienceLanguage || [],
               secondary_creator_persona: secondaryAudienceCreatorPersona || [],
               secondary_user_persona: secondaryAudienceUserPersona || '',
+              secondary_country: secondaryCountry || '',
               geographic_focus: geographicFocus || '',
               geographicFocusOthers: geographicFocusOthers || '',
             },
