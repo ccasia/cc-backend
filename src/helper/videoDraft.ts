@@ -188,35 +188,43 @@ const checkCurrentSubmission = async (submissionId: string) => {
     allDeliverablesSent = hasVideos && hasRawFootage && hasPhotos;
   }
 
-  // Update submission status based on deliverable checks
-  // For UGC campaigns (no posting required), set to PENDING_REVIEW when all deliverables are sent
-  // For normal campaigns, also consider campaignCredits condition
-  if (allDeliverablesSent) {
-    await prisma.submission.update({
-      where: { id: submission.id },
-      data: {
-        status: 'PENDING_REVIEW',
-        submissionDate: dayjs().format(),
-      },
-    });
+  // Re-fetch current status (may have changed during processing)
+  const currentSubmission = await prisma.submission.findUnique({
+    where: { id: submission.id },
+    select: { status: true },
+  });
+
+  // V4: Controller sets IN_PROGRESS for async uploads,
+  // worker transitions to PENDING_REVIEW after processing
+  if (submission.submissionVersion === 'v4') {
+    if (currentSubmission?.status === 'IN_PROGRESS') {
+      await prisma.submission.update({
+        where: { id: submission.id },
+        data: { status: 'PENDING_REVIEW', submissionDate: dayjs().format() },
+      });
+      console.log(`[videoDraft] V4: IN_PROGRESS -> PENDING_REVIEW for submission ${submission.id}`);
+    } else {
+      // If status is already PENDING_REVIEW, APPROVED, SENT_TO_CLIENT, etc. — don't override
+      console.log(`[videoDraft] V4: Preserving status ${currentSubmission?.status} for submission ${submission.id}`);
+    }
+  } else if (currentSubmission?.status === 'PENDING_REVIEW') {
+    // Non-V4 already PENDING_REVIEW, skip
   } else {
-    // Check if this is a v4 submission already in PENDING_REVIEW
-    if (submission.submissionVersion === 'v4' && submission.status === 'PENDING_REVIEW') {
-      // V4 FIX: Don't change status if v4 submission is already PENDING_REVIEW
-      console.log(`🔍 V4 FIX: Preserving PENDING_REVIEW status for v4 submission ${submission.id}`);
+    // Non-V4: original logic based on allDeliverablesSent
+    if (allDeliverablesSent) {
+      await prisma.submission.update({
+        where: { id: submission.id },
+        data: { status: 'PENDING_REVIEW', submissionDate: dayjs().format() },
+      });
     } else if (submission.submissionType.type === 'FIRST_DRAFT') {
       await prisma.submission.update({
         where: { id: submission.id },
-        data: {
-          status: 'IN_PROGRESS',
-        },
+        data: { status: 'IN_PROGRESS' },
       });
     } else {
       await prisma.submission.update({
         where: { id: submission.id },
-        data: {
-          status: 'CHANGES_REQUIRED',
-        },
+        data: { status: 'CHANGES_REQUIRED' },
       });
     }
   }
@@ -655,6 +663,19 @@ async function deleteFileIfExists(filePath: string) {
             }
 
             await checkCurrentSubmission(submission.id);
+
+            // Emit V4 socket event so admin UI refreshes with new content and status
+            if (content.isV4 && submission.campaignId) {
+              io?.to(submission.campaignId).emit('v4:content:processed', {
+                submissionId: submission.id,
+                campaignId: submission.campaignId,
+                hasVideo: filePaths?.video?.length > 0,
+                hasPhotos: filePaths?.photos?.length > 0,
+                hasRawFootage: filePaths?.rawFootages?.length > 0,
+                processedAt: new Date().toISOString(),
+                creatorId: content.userid,
+              });
+            }
 
             const endUsage = process.cpuUsage(startUsage);
 
