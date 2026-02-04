@@ -503,6 +503,26 @@ export const createClientCampaign = async (req: Request, res: Response) => {
         objectivesString += `\n\n[Logistic Remarks]: ${logisticRemarks}`;
       }
 
+      // Finalize countries - combine country, secondaryCountry, and geographicFocusOthers
+      let finalizedCountries: string[] = [];
+      if (typeof country === 'string' && country) {
+        finalizedCountries.push(country);
+      } else if (Array.isArray(country) && country.length > 0) {
+        finalizedCountries.push(...country);
+      }
+      if (typeof secondaryCountry === 'string' && secondaryCountry) {
+        finalizedCountries.push(secondaryCountry);
+      } else if (Array.isArray(secondaryCountry) && secondaryCountry.length > 0) {
+        finalizedCountries.push(...secondaryCountry);
+      }
+      if (typeof geographicFocusOthers === 'string' && geographicFocusOthers) {
+        finalizedCountries.push(geographicFocusOthers);
+      } else if (Array.isArray(geographicFocusOthers) && geographicFocusOthers.length > 0) {
+        finalizedCountries.push(...geographicFocusOthers);
+      }
+      // Remove duplicates
+      finalizedCountries = [...new Set(finalizedCountries)];
+
       // Create campaign with PENDING status
       const campaign = await tx.campaign.create({
         data: {
@@ -548,11 +568,11 @@ export const createClientCampaign = async (req: Request, res: Response) => {
               // Primary Audience
               gender: audienceGender || [],
               age: audienceAge || [],
-              geoLocation: audienceLocation || [],
+              country: finalizedCountries[0] || country || '',
+              countries: finalizedCountries,
               language: audienceLanguage || [],
               creator_persona: audienceCreatorPersona || [],
               user_persona: audienceUserPersona || '',
-              country: country || '',
               // Secondary Audience
               secondary_gender: secondaryAudienceGender || [],
               secondary_age: secondaryAudienceAge || [],
