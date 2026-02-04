@@ -331,6 +331,8 @@ export const createClientCampaign = async (req: Request, res: Response) => {
       locations,
       availabilityRules,
       logisticRemarks,
+      clientRemarks,
+      allowMultipleBookings,
       // Additional Details 1 fields
       socialMediaPlatform,
       contentFormat,
