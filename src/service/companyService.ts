@@ -221,36 +221,27 @@ export const handleCreateBrand = async ({
 };
 
 export const generateCustomId = async (type: any) => {
-  const prefix = type === 'agency' ? 'A' : 'DC';
+  const firstLetter = type === 'agency' ? 'A' : 'DC';
 
-  // Find all companies with the matching prefix
-  const existingCompanies = await prisma.company.findMany({
+  const lastUser = await prisma.company.findFirst({
     where: {
       clientId: {
-        startsWith: prefix,
+        startsWith: firstLetter,
       },
     },
-    select: {
-      clientId: true,
-    },
+    orderBy: { clientId: 'desc' }, // Get the latest ID
   });
 
-  let maxNumber = 0;
+  let nextId; // Default if no user exists
 
-  // Find the highest number among existing IDs
-  for (const company of existingCompanies) {
-    if (company.clientId) {
-      const numericPart = company.clientId.slice(prefix.length);
-      const num = parseInt(numericPart, 10);
-      if (!isNaN(num) && num > maxNumber) {
-        maxNumber = num;
-      }
-    }
+  if (lastUser?.clientId) {
+    const prefixLength = firstLetter.length;
+    const lastNumber = parseInt(lastUser?.clientId.slice(prefixLength), 10); // Extract number part
+    const nextNumber = lastNumber + 1;
+    nextId = `${firstLetter}${nextNumber.toString().padStart(4, '0')}`; // Format to A0001, A00002, etc.
+  } else {
+    nextId = `${firstLetter}${'1'.toString().padStart(4, '0')}`;
   }
-
-  // Generate the next ID
-  const nextNumber = maxNumber + 1;
-  const nextId = `${prefix}${nextNumber.toString().padStart(4, '0')}`;
 
   return nextId;
 };
