@@ -224,7 +224,7 @@ async function connectTikTokUser(userId: string) {
 
 async function main() {
   // Your test user IDs
-  const userIds = ['cmk3guf48001cpd3wewcvd0z3'];
+  const userIds = ['cmgac552c000kuu4l728worq4'];
 
   console.log('🎯 TikTok User Connection Script');
   console.log('================================\n');

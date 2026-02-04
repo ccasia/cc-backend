@@ -79,13 +79,7 @@ import {
   getTrendsSummaryController,
   refreshCampaignInsightsController,
 } from '@controllers/trendController';
-import {
-  createEntry as createManualCreator,
-  getEntries as getManualCreators,
-  deleteEntry as deleteManualCreator,
-  updateEntry as updateManualCreator,
-} from '@controllers/manualCreatorController';
-import { isSuperAdmin, isAdmin } from '@middlewares/onlySuperadmin';
+import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 import { canActivateCampaign } from '@middlewares/adminOrClient';
 
 import {
@@ -252,11 +246,5 @@ router.get('/:campaignId/trends/engagement-heatmap', isLoggedIn, getEngagementHe
 router.get('/:campaignId/trends/top-creators', getTopCreatorsTrendController);
 router.get('/:campaignId/trends/summary', isLoggedIn, getTrendsSummaryController);
 router.post('/:campaignId/trends/refresh', isLoggedIn, isSuperAdmin, refreshCampaignInsightsController);
-
-// Manual Creator Entry endpoints (for campaign analytics)
-router.post('/:campaignId/manual-creator', isLoggedIn, isAdmin, createManualCreator);
-router.get('/:campaignId/manual-creators', isLoggedIn, getManualCreators);
-router.put('/:campaignId/manual-creator/:entryId', isLoggedIn, isAdmin, updateManualCreator);
-router.delete('/:campaignId/manual-creator/:entryId', isLoggedIn, isAdmin, deleteManualCreator);
 
 export default router;
