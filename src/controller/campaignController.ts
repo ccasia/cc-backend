@@ -1264,8 +1264,9 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
           }
         }
 
-        // Add client users to CampaignClient and CampaignAdmin
-        if (client?.id) {
+        // For v4 campaigns only: Add client users to CampaignClient and CampaignAdmin
+        // This ensures clients can only manage campaigns when explicitly enabled
+        if (submissionVersion === 'v4' && client?.id) {
           try {
             const companyClients = await tx.client.findMany({
               where: { companyId: client.id },
@@ -1300,23 +1301,25 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
           }
         }
 
-        // Add client users from campaignManager to CampaignClient
-        try {
-          for (const user of admins.filter(Boolean)) {
-            if ((user as any)?.client?.id) {
-              const existingCampaignClient = await tx.campaignClient.findUnique({
-                where: { clientId_campaignId: { clientId: (user as any).client.id, campaignId: campaign.id } },
-              });
-
-              if (!existingCampaignClient) {
-                await tx.campaignClient.create({
-                  data: { clientId: (user as any).client.id, campaignId: campaign.id, role: 'owner' },
+        // For v4 campaigns: Add client users from campaignManager to CampaignClient
+        if (submissionVersion === 'v4') {
+          try {
+            for (const user of admins.filter(Boolean)) {
+              if ((user as any)?.client?.id) {
+                const existingCampaignClient = await tx.campaignClient.findUnique({
+                  where: { clientId_campaignId: { clientId: (user as any).client.id, campaignId: campaign.id } },
                 });
+
+                if (!existingCampaignClient) {
+                  await tx.campaignClient.create({
+                    data: { clientId: (user as any).client.id, campaignId: campaign.id, role: 'owner' },
+                  });
+                }
               }
             }
+          } catch (error) {
+            console.error('Error adding client users from campaignManager to CampaignClient:', error);
           }
-        } catch (error) {
-          console.error('Error adding client users from campaignManager to CampaignClient:', error);
         }
 
         return campaign;
@@ -1799,7 +1802,7 @@ export const getCampaignById = async (req: Request, res: Response) => {
         },
         products: true,
         reservationConfig: true,
-
+        campaignAdditionalDetails: true,
         creatorAgreement: true,
       },
     });
