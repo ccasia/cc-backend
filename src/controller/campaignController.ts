@@ -4275,12 +4275,13 @@ export const editCampaignFinalise = async (req: Request, res: Response) => {
 
     const previousCampaignType = campaign.campaignType;
 
+    // Process deliverables - convert array to boolean flags (same as createCampaign/activateClientCampaign)
     const rawFootage = deliverables?.includes('RAW_FOOTAGES') || false;
     const photos = deliverables?.includes('PHOTOS') || false;
     const ads = deliverables?.includes('ADS') || false;
     const crossPosting = deliverables?.includes('CROSS_POSTING') || false;
 
-    // Update campaign basic fields including deliverables
+    // Update campaign basic fields including deliverable boolean flags
     await prisma.campaign.update({
       where: { id: campaignId },
       data: {
@@ -4369,139 +4370,41 @@ export const editCampaignFinalise = async (req: Request, res: Response) => {
 
     // Update campaign admins (managers)
     if (campaignManagers && Array.isArray(campaignManagers)) {
-      // Get admin records for the campaign managers with user role info
+      // Get admin records for the campaign managers
       const adminRecords = await Promise.all(
         campaignManagers.map(async (manager: { id: string }) => {
           const adminRecord = await prisma.admin.findFirst({
             where: { userId: manager.id },
-            include: {
-              user: {
-                select: {
-                  id: true,
-                  role: true,
-                },
-              },
-              role: {
-                select: {
-                  name: true,
-                },
-              },
-            },
           });
           return adminRecord;
         }),
       );
 
-      const validAdminRecords = adminRecords.filter((admin) => admin !== null);
-      const validAdminIds = validAdminRecords.map((admin) => admin!.userId);
+      const validAdminIds = adminRecords
+        .filter((admin) => admin !== null)
+        .map((admin) => admin!.userId);
 
-      // Check if any manager being added is a client user
-      const hasClientAdmin = validAdminRecords.some((admin: any) => {
-        return admin?.user?.role === 'client' || admin?.role?.name === 'Client';
-      });
-
-      // Get existing CSM and Client campaign admins
+      // Delete existing CSM campaign admins only (preserve non-CSM admins and client admins if v4)
       const existingAdmins = await prisma.campaignAdmin.findMany({
         where: { campaignId },
         include: {
           admin: {
-            include: { 
-              role: true,
-              user: true,
-            },
+            include: { role: true },
           },
         },
       });
 
-      // Get CSM and Client admins that should be managed by this form
-      const managedAdmins = existingAdmins.filter(
-        (ca) => ca.admin?.role?.name === 'CSM' || ca.admin?.role?.name === 'Client' || ca.admin?.user?.role === 'client'
-      );
+      const csmAdminIds = existingAdmins
+        .filter((ca) => ca.admin?.role?.name === 'CSM')
+        .map((ca) => ca.adminId);
 
-      // Find admins that need to be removed (in existing but not in new list)
-      const adminsToRemove = managedAdmins.filter(
-        (ca) => !validAdminIds.includes(ca.adminId)
-      );
-
-      // Delete removed admins from campaignAdmin
-      if (adminsToRemove.length > 0) {
-        const adminIdsToRemove = adminsToRemove.map((ca) => ca.adminId);
+      if (csmAdminIds.length > 0) {
         await prisma.campaignAdmin.deleteMany({
           where: {
             campaignId,
-            adminId: { in: adminIdsToRemove },
+            adminId: { in: csmAdminIds },
           },
         });
-
-        // For client users being removed, also remove them from CampaignClient
-        for (const removedAdmin of adminsToRemove) {
-          const isClientUser = removedAdmin.admin?.user?.role === 'client' || removedAdmin.admin?.role?.name === 'Client';
-
-          if (isClientUser && removedAdmin.adminId) {
-            try {
-              // Find the client record for this user
-              const clientRecord = await prisma.client.findUnique({
-                where: { userId: removedAdmin.adminId },
-              });
-
-              if (clientRecord) {
-                // Check if exists in CampaignClient before deleting
-                const existingCampaignClient = await prisma.campaignClient.findUnique({
-                  where: {
-                    clientId_campaignId: {
-                      clientId: clientRecord.id,
-                      campaignId: campaignId,
-                    },
-                  },
-                });
-
-                if (existingCampaignClient) {
-                  await prisma.campaignClient.delete({
-                    where: {
-                      clientId_campaignId: {
-                        clientId: clientRecord.id,
-                        campaignId: campaignId,
-                      },
-                    },
-                  });
-                  console.log(`Removed client ${clientRecord.id} from CampaignClient for campaign ${campaignId}`);
-                }
-              }
-            } catch (error) {
-              console.error(`Error removing client user ${removedAdmin.adminId} from CampaignClient:`, error);
-              // Don't fail the edit if CampaignClient removal fails
-            }
-          }
-        }
-      }
-
-      // Check if any client users remain in the campaign managers after updates
-      // If no client users remain, revert submissionVersion to v2
-      if (!hasClientAdmin) {
-        // Check remaining campaign admins for any client users
-        const remainingAdmins = await prisma.campaignAdmin.findMany({
-          where: { campaignId },
-          include: {
-            admin: {
-              include: {
-                role: true,
-                user: true,
-              },
-            },
-          },
-        });
-
-        const hasRemainingClientAdmin = remainingAdmins.some(
-          (ca) => ca.admin?.user?.role === 'client' || ca.admin?.role?.name === 'Client'
-        );
-
-        if (!hasRemainingClientAdmin && campaign.submissionVersion === 'v4') {
-          await prisma.campaign.update({
-            where: { id: campaignId },
-            data: { submissionVersion: 'v2' },
-          });
-          console.log(`Reverted campaign ${campaignId} to v2 (no client admins remaining)`);
-        }
       }
 
       // Create new campaign admin entries for the managers
@@ -4524,55 +4427,6 @@ export const editCampaignFinalise = async (req: Request, res: Response) => {
           });
         }
       }
-
-      // If a client user is added, update submissionVersion to v4 and add to CampaignClient
-      if (hasClientAdmin) {
-        await prisma.campaign.update({
-          where: { id: campaignId },
-          data: { submissionVersion: 'v4' },
-        });
-
-        // For client users being added as campaign admins, also add them to CampaignClient
-        // This ensures they are tracked in both models for v4 campaigns
-        for (const admin of validAdminRecords) {
-          const isClientUser = admin?.user?.role === 'client' || admin?.role?.name === 'Client';
-
-          if (isClientUser && admin?.userId) {
-            try {
-              // Find the client record for this user
-              const clientRecord = await prisma.client.findUnique({
-                where: { userId: admin.userId },
-              });
-
-              if (clientRecord) {
-                // Check if already in CampaignClient
-                const existingCampaignClient = await prisma.campaignClient.findUnique({
-                  where: {
-                    clientId_campaignId: {
-                      clientId: clientRecord.id,
-                      campaignId: campaignId,
-                    },
-                  },
-                });
-
-                if (!existingCampaignClient) {
-                  await prisma.campaignClient.create({
-                    data: {
-                      clientId: clientRecord.id,
-                      campaignId: campaignId,
-                      role: 'owner',
-                    },
-                  });
-                  console.log(`Added client ${clientRecord.id} to CampaignClient for campaign ${campaignId}`);
-                }
-              }
-            } catch (error) {
-              console.error(`Error adding client user ${admin.userId} to CampaignClient:`, error);
-              // Don't fail the edit if CampaignClient integration fails
-            }
-          }
-        }
-      }
     }
 
     // Log the change
@@ -4586,20 +4440,7 @@ export const editCampaignFinalise = async (req: Request, res: Response) => {
         },
       });
 
-      // Check if campaign version changed
-      const updatedCampaign = await prisma.campaign.findUnique({
-        where: { id: campaignId },
-        select: { submissionVersion: true },
-      });
-      const wasConvertedToV4 = updatedCampaign?.submissionVersion === 'v4' && campaign.submissionVersion !== 'v4';
-      const wasRevertedToV2 = updatedCampaign?.submissionVersion === 'v2' && campaign.submissionVersion === 'v4';
-
-      let adminLogMessage = `Updated campaign finalise settings for campaign - ${campaign.name}`;
-      if (wasConvertedToV4) {
-        adminLogMessage = `Updated campaign finalise settings for campaign - ${campaign.name} and converted to V4 (client added)`;
-      } else if (wasRevertedToV2) {
-        adminLogMessage = `Updated campaign finalise settings for campaign - ${campaign.name} and reverted to V2 (all clients removed)`;
-      }
+      const adminLogMessage = `Updated campaign finalise settings for campaign - ${campaign.name}`;
       logAdminChange(adminLogMessage, adminId, req);
     }
 
