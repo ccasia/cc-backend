@@ -914,25 +914,15 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
           };
         }
 
-        // Finalize countries - combine country, secondaryCountry, and geographicFocusOthers
+        // Finalize countries
         let finalizedCountries: string[] = [];
-        if (typeof country === 'string' && country) {
-          finalizedCountries.push(country);
+        if (Array.isArray(countries) && countries.length > 0) {
+          finalizedCountries = countries;
         } else if (Array.isArray(country) && country.length > 0) {
-          finalizedCountries.push(...country);
+          finalizedCountries = country;
+        } else if (typeof country === 'string' && country) {
+          finalizedCountries = [country];
         }
-        if (typeof secondaryCountry === 'string' && secondaryCountry) {
-          finalizedCountries.push(secondaryCountry);
-        } else if (Array.isArray(secondaryCountry) && secondaryCountry.length > 0) {
-          finalizedCountries.push(...secondaryCountry);
-        }
-        if (typeof geographicFocusOthers === 'string' && geographicFocusOthers) {
-          finalizedCountries.push(geographicFocusOthers);
-        } else if (Array.isArray(geographicFocusOthers) && geographicFocusOthers.length > 0) {
-          finalizedCountries.push(...geographicFocusOthers);
-        }
-        // Remove duplicates
-        finalizedCountries = [...new Set(finalizedCountries)];
 
         // Create the campaign with submissionVersion from form data (v2 default, v4 for client-managed)
         const campaign = await tx.campaign.create({
@@ -4054,9 +4044,11 @@ export const editCampaignRequirements = async (req: Request, res: Response) => {
   } = req.body;
 
   try {
-    // Finalize countries - combine country, secondaryCountry, and geographicFocusOthers
+    // Finalize countries - combine country and secondaryCountry
     let finalizedCountries: string[] = [];
-    if (typeof country === 'string' && country) {
+    if (countries && Array.isArray(countries) && countries.length > 0) {
+      finalizedCountries = [...countries];
+    } else if (typeof country === 'string' && country) {
       finalizedCountries.push(country);
     } else if (Array.isArray(country) && country.length > 0) {
       finalizedCountries.push(...country);
@@ -4065,11 +4057,6 @@ export const editCampaignRequirements = async (req: Request, res: Response) => {
       finalizedCountries.push(secondaryCountry);
     } else if (Array.isArray(secondaryCountry) && secondaryCountry.length > 0) {
       finalizedCountries.push(...secondaryCountry);
-    }
-    if (typeof geographicFocusOthers === 'string' && geographicFocusOthers) {
-      finalizedCountries.push(geographicFocusOthers);
-    } else if (Array.isArray(geographicFocusOthers) && geographicFocusOthers.length > 0) {
-      finalizedCountries.push(...geographicFocusOthers);
     }
     // Remove duplicates
     finalizedCountries = [...new Set(finalizedCountries)];
