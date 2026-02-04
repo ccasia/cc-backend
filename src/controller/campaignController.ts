@@ -1086,7 +1086,7 @@ export const getCampaignById = async (req: Request, res: Response) => {
           },
         },
         brand: {
-          include: { company: { include: { subscriptions: { include: { package: true, customPackage: true } }, pic: true } } },
+          include: { company: { include: { subscriptions: { include: { package: true, customPackage: true } } } } },
         },
         company: {
           include: {
@@ -1102,7 +1102,6 @@ export const getCampaignById = async (req: Request, res: Response) => {
         campaignTimeline: true,
         campaignBrief: true,
         campaignRequirement: true,
-        campaignAdditionalDetails: true,
         campaignLogs: {
           include: {
             admin: true,

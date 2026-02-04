@@ -424,22 +424,15 @@ export const createClientCampaign = async (req: Request, res: Response) => {
       }
     }
 
-    // Process brand guidelines PDF/image upload (support multiple)
-    let brandGuidelinesUrls: string[] = [];
+    // Process brand guidelines PDF upload
+    let brandGuidelinesUrl: string | null = null;
     if (req.files && (req.files as any).brandGuidelines) {
-      const brandGuidelinesFiles = Array.isArray((req.files as any).brandGuidelines)
-        ? (req.files as any).brandGuidelines
-        : [(req.files as any).brandGuidelines];
-      for (const file of brandGuidelinesFiles) {
-        if (file && file.tempFilePath && file.name) {
-          const url = await uploadAttachments({
-            tempFilePath: file.tempFilePath,
-            fileName: file.name,
-            folderName: 'brandGuidelines',
-          });
-          brandGuidelinesUrls.push(url);
-        }
-      }
+      const brandGuidelinesFile = (req.files as any).brandGuidelines;
+      brandGuidelinesUrl = await uploadAttachments({
+        tempFilePath: brandGuidelinesFile.tempFilePath,
+        fileName: brandGuidelinesFile.name,
+        folderName: 'brandGuidelines',
+      });
     }
 
     // Process product image 1 upload
@@ -584,7 +577,7 @@ export const createClientCampaign = async (req: Request, res: Response) => {
         mainMessage ||
         keyPoints ||
         toneAndStyle ||
-        brandGuidelinesUrls ||
+        brandGuidelinesUrl ||
         referenceContent ||
         productImage1Url ||
         productImage2Url ||
@@ -606,7 +599,7 @@ export const createClientCampaign = async (req: Request, res: Response) => {
             mainMessage: mainMessage || null,
             keyPoints: keyPoints || null,
             toneAndStyle: toneAndStyle || null,
-            brandGuidelinesUrl: brandGuidelinesUrls.length === 0 ? null : (brandGuidelinesUrls.length === 1 ? brandGuidelinesUrls[0] : brandGuidelinesUrls.join(',')),
+            brandGuidelinesUrl: brandGuidelinesUrl,
             referenceContent: referenceContent || null,
             productImage1Url: productImage1Url,
             productImage2Url: productImage2Url,
