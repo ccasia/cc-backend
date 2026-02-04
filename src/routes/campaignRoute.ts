@@ -9,13 +9,9 @@ import {
   closeCampaign,
   getPitchById,
   editCampaignInfo,
-  editCampaignObjectives,
   editCampaignBrandOrCompany,
   editCampaignDosAndDonts,
   editCampaignRequirements,
-  editCampaignLogistics,
-  editCampaignFinalise,
-  editCampaignAdditionalDetails,
   editCampaignTimeline,
   changePitchStatus,
   getCampaignsByCreatorId,
@@ -70,26 +66,20 @@ import {
   exportCreatorsCampaignSheet,
   syncCampaignCredits,
   updateAllCampaignCredits,
+  getCampaignStatus,
 } from '@controllers/campaignController';
 import {
   swapGuestWithPlatformCreator,
   cleanupOrphanedGuestUsers,
   getGuestCreatorsForCampaign,
 } from '@controllers/swapCreatorController';
-import { getPCRData, savePCRData } from '@controllers/pcrController';
 import {
   getEngagementHeatmapController,
   getTopCreatorsTrendController,
   getTrendsSummaryController,
   refreshCampaignInsightsController,
 } from '@controllers/trendController';
-import {
-  createEntry as createManualCreator,
-  getEntries as getManualCreators,
-  deleteEntry as deleteManualCreator,
-  updateEntry as updateManualCreator,
-} from '@controllers/manualCreatorController';
-import { isSuperAdmin, isAdmin } from '@middlewares/onlySuperadmin';
+import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 import { canActivateCampaign } from '@middlewares/adminOrClient';
 
 import {
@@ -142,11 +132,14 @@ router.get('/creatorAgreements/:campaignId', creatorAgreements);
 // For Analytics
 router.get('/pitches', getAllPitches);
 router.get('/getCreatorAgreements', isSuperAdmin, getAllCreatorAgreements);
+
 // For creator MyCampaigns
 router.get('/getMyCampaigns/:userId', isLoggedIn, getMyCampaigns);
 
 // Get Campaigns by Admin ID
 router.get('/getAllCampaignsByAdminId/:userId', getAllCampaignsByAdminId);
+
+router.get('/campaignStatus', isLoggedIn, getCampaignStatus);
 
 // Get Campaigns for Client users
 router.get('/getClientCampaigns', isLoggedIn, getClientCampaigns);
@@ -223,13 +216,9 @@ router.patch('/pitch', isLoggedIn, creatorMakePitch);
 router.patch('/changeCampaignStage/:campaignId', changeCampaignStage);
 router.patch('/closeCampaign/:id', isSuperAdmin, closeCampaign);
 router.patch('/editCampaignInfo', isSuperAdmin, editCampaignInfo);
-router.patch('/editCampaignObjectives', isSuperAdmin, editCampaignObjectives);
 router.patch('/editCampaignBrandOrCompany', isSuperAdmin, editCampaignBrandOrCompany);
 router.patch('/editCampaignDosAndDonts', isSuperAdmin, editCampaignDosAndDonts);
 router.patch('/editCampaignRequirements', isSuperAdmin, editCampaignRequirements);
-router.patch('/editCampaignLogistics', isSuperAdmin, editCampaignLogistics);
-router.patch('/editCampaignFinalise', isSuperAdmin, editCampaignFinalise);
-router.patch('/editCampaignAdditionalDetails', isSuperAdmin, editCampaignAdditionalDetails);
 router.patch('/editCampaignTimeline/:id', isSuperAdmin, editCampaignTimeline);
 router.patch('/editCampaignImages/:id', isSuperAdmin, editCampaignImages);
 router.patch('/editCampaignAdmins/:id', isSuperAdmin, editCampaignAdmin);
@@ -257,15 +246,5 @@ router.get('/:campaignId/trends/engagement-heatmap', isLoggedIn, getEngagementHe
 router.get('/:campaignId/trends/top-creators', getTopCreatorsTrendController);
 router.get('/:campaignId/trends/summary', isLoggedIn, getTrendsSummaryController);
 router.post('/:campaignId/trends/refresh', isLoggedIn, isSuperAdmin, refreshCampaignInsightsController);
-
-// PCR (Post Campaign Report) endpoints
-router.get('/:campaignId/pcr', isLoggedIn, getPCRData);
-router.post('/:campaignId/pcr', isLoggedIn, savePCRData);
-
-// Manual Creator Entry endpoints (for campaign analytics)
-router.post('/:campaignId/manual-creator', isLoggedIn, isAdmin, createManualCreator);
-router.get('/:campaignId/manual-creators', isLoggedIn, getManualCreators);
-router.put('/:campaignId/manual-creator/:entryId', isLoggedIn, isAdmin, updateManualCreator);
-router.delete('/:campaignId/manual-creator/:entryId', isLoggedIn, isAdmin, deleteManualCreator);
 
 export default router;

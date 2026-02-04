@@ -3,7 +3,6 @@ import { batchFetchInsights } from '@services/socialMediaBatchService';
 import { calculateDailyMetrics, storeInsightSnapshot } from '@services/trendAnalysisService';
 import { getCampaignSubmissionUrls, extractAndStoreSubmissionUrls } from '@services/submissionUrlService';
 import { normalizeInsightResults, UrlData } from '@utils/insightNormalizationHelper';
-import { getManualCreatorEntries } from '@services/manualCreatorService';
 
 const prisma = new PrismaClient();
 
@@ -162,24 +161,13 @@ async function fetchAndStorePlatformInsights(
 
     const normalizedInsights = normalizeInsightResults(results, urlData, platform);
 
-    // Fetch manual creator entries for this platform
-    const allManualEntries = await getManualCreatorEntries(campaignId);
-    const manualEntriesForPlatform = allManualEntries.filter(
-      (entry) => entry.platform === platform
-    );
-
-    if (normalizedInsights.length === 0 && manualEntriesForPlatform.length === 0) {
-      console.log(`⚠️  No insights or manual entries for ${platform}, skipping snapshot...`);
+    if (normalizedInsights.length === 0) {
+      console.log(`   ⚠️  No normalized insights for ${platform}, skipping snapshot...`);
       return;
     }
 
-    // Calculate metrics including manual entries
-    const metrics = await calculateDailyMetrics(
-      campaignId,
-      platform,
-      normalizedInsights,
-      manualEntriesForPlatform
-    );
+    // Calculate metrics
+    const metrics = await calculateDailyMetrics(campaignId, platform, normalizedInsights);
 
     // Store snapshot
     await storeInsightSnapshot(campaignId, metrics, new Date());
