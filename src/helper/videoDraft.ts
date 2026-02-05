@@ -230,7 +230,10 @@ const checkCurrentSubmission = async (submissionId: string) => {
   }
 
   if (io) {
-    io.to(clients.get(submission.userId)).emit('updateSubmission');
+    const creatorSocketId = clients.get(submission.userId);
+    if (creatorSocketId) {
+      io.to(creatorSocketId).emit('updateSubmission');
+    }
   }
 };
 

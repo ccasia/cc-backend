@@ -798,7 +798,7 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
     io.to(pitch.campaignId).emit('v3:pitch:status-updated', {
       pitchId,
       campaignId: pitch.campaignId,
-      newStatus: 'CLIENT_APPROVED',
+      newStatus: 'APPROVED',
       action: 'approve',
       updatedBy: clientId,
       updatedAt: new Date().toISOString(),
