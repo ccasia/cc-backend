@@ -253,8 +253,12 @@ export const agreementSubmission = async (req: Request, res: Response) => {
             message: adminMessage,
           });
 
-          io.to(clients.get(campaignAdmin.adminId)).emit('notification', adminNotification);
-          io.to(clients.get(campaignAdmin.adminId)).emit('newSubmission');
+          const adminSocketId = clients.get(campaignAdmin.admin.userId);
+          if (adminSocketId) {
+            io.to(adminSocketId).emit('notification', adminNotification);
+            io.to(adminSocketId).emit('newSubmission');
+            io.to(adminSocketId).emit('agreementReady');
+          }
         }
       }
     }
@@ -266,7 +270,11 @@ export const agreementSubmission = async (req: Request, res: Response) => {
     });
 
     for (const admin of allSuperadmins) {
-      io.to(clients.get(admin.id)).emit('newSubmission');
+      const superadminSocketId = clients.get(admin.id);
+      if (superadminSocketId) {
+        io.to(superadminSocketId).emit('newSubmission');
+        io.to(superadminSocketId).emit('agreementReady');
+      }
     }
 
     return res.status(200).json({ message: 'Successfully submitted' });

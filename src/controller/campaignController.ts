@@ -2431,6 +2431,15 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
       });
     }
 
+    // Emit to campaign room for real-time updates
+    io.to(campaignId).emit('v3:pitch:status-updated', {
+      campaignId,
+      newStatus: 'PENDING_REVIEW',
+      action: 'submit',
+      updatedBy: id,
+      updatedAt: new Date().toISOString(),
+    });
+
     return res.status(202).json({ message: 'Pitch submitted successfully!' });
   } catch (error) {
     return res.status(400).json({ message: 'Error! Please try again.' });
@@ -7635,6 +7644,15 @@ export const removeCreatorFromCampaign = async (req: Request, res: Response) => 
       },
     });
 
+    // Emit to campaign room for real-time updates
+    io.to(campaignId).emit('v3:pitch:status-updated', {
+      campaignId,
+      newStatus: 'REMOVED',
+      action: 'remove',
+      updatedBy: adminId,
+      updatedAt: new Date().toISOString(),
+    });
+
     return res.status(200).json({ message: 'Creator has been successfully withdrawn from the campaign.' });
   } catch (error) {
     console.log('Error removing creator from campaign:', error);
@@ -10013,6 +10031,15 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
           });
         }
       }
+    });
+
+    // Emit to campaign room for real-time updates
+    io.to(campaignId).emit('v3:pitch:status-updated', {
+      campaignId,
+      newStatus: 'APPROVED',
+      action: 'shortlist',
+      updatedBy: userId,
+      updatedAt: new Date().toISOString(),
     });
 
     return res.status(200).json({ message: 'Successfully shortlisted creators for V3 flow' });
