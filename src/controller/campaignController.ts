@@ -6047,10 +6047,8 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
         creditPerVideo = creditCost.creditPerVideo;
         tierSnapshot = creditCost.tier;
       } catch (error: any) {
-        return res.status(400).json({
-          message: error.message || 'Creator does not have valid follower data for credit tier pricing.',
-          code: 'INVALID_TIER_DATA',
-        });
+        console.warn(`Credit tier calculation failed for creator ${creator.id}, proceeding without tier data:`, error.message);
+        // Allow admin to proceed — tier info will be null
       }
     }
 
@@ -6405,10 +6403,10 @@ export const sendAgreement = async (req: Request, res: Response) => {
           creditPerVideo = creditCost.creditPerVideo;
           tierSnapshot = creditCost.tier;
         } catch (error: any) {
-          return res.status(400).json({
-            message: error.message || 'Creator does not have valid follower data for credit tier pricing.',
-            code: 'INVALID_TIER_DATA',
-          });
+          console.warn(`Credit tier calculation failed for creator ${isUserExist.id}, falling back to 1:1 credits:`, error.message);
+          // Fall back to 1:1 credit-to-video ratio when tier data is unavailable
+          creditsToAssign = videoCount;
+          creditPerVideo = 1;
         }
       } else {
         // Non-tier Campaign: Use video count as credits (legacy 1:1 behavior)
