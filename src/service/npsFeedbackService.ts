@@ -2,12 +2,10 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-/**
- * Check if the NPS modal should be shown to a client after a video action.
- * Triggers when the client has taken approve/request_changes actions on VIDEO submissions
- * for 3 or more unique creators globally, and hasn't already submitted NPS for the current
- * active subscription cycle.
- */
+// Check if the NPS modal should be shown to a client after a video action.
+//Triggers when the client has taken approve/request_changes actions on VIDEO submissions
+//for 3 or more unique creators globally, and hasn't already submitted NPS for the current
+//active subscription cycle.
 export const checkShouldShowNPS = async (clientId: string): Promise<boolean> => {
   try {
     // 1. Count unique creators this client has given video feedback on
@@ -129,6 +127,13 @@ export const getNpsFeedbackList = async (params: {
             name: true,
             email: true,
             photoURL: true,
+            client: {
+              select: {
+                company: {
+                  select: { name: true },
+                },
+              },
+            },
           },
         },
       },
