@@ -19,6 +19,7 @@ import { notificationDraft } from '@helper/notification';
 import { saveCaptionToHistory } from '../utils/captionHistoryUtils';
 import { extractAndStoreSubmissionUrls } from '@services/submissionUrlService';
 import { scheduleInitialInsightFetch } from '@services/insightFetchService';
+import { checkShouldShowNPS } from '@services/npsFeedbackService';
 
 /**
  * Determine effective campaign origin for V4 status flow
@@ -954,10 +955,21 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
       }
     }
 
+    // Check if NPS feedback should be shown (only for VIDEO submissions)
+    let showNPS = false;
+    if (submission.submissionType.type === 'VIDEO') {
+      try {
+        showNPS = await checkShouldShowNPS(clientId);
+      } catch (error) {
+        console.error('Error checking NPS trigger:', error);
+      }
+    }
+
     res.status(200).json({
       message: `Submission ${action}d by client successfully`,
       submissionId,
       newStatus: newSubmissionStatus,
+      ...(showNPS && { showNPS: true }),
     });
   } catch (error) {
     console.error('Error processing client v4 submission:', error);
