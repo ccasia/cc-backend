@@ -2679,6 +2679,7 @@ export const getCampaignForCreatorById = async (req: Request, res: Response) => 
         },
         campaignBrief: true,
         campaignRequirement: true,
+        campaignAdditionalDetails: true,
         brand: { include: { company: { include: { subscriptions: true } } } },
         company: true,
         pitch: true,
