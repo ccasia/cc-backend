@@ -36,8 +36,10 @@ export const getAllFeedback = async (req: Request, res: Response) => {
     const search = (req.query.search as string) || '';
     const sortBy = (req.query.sortBy as string) || 'createdAt';
     const sortOrder = (req.query.sortOrder as string) === 'asc' ? 'asc' : 'desc';
+    const startDate = req.query.startDate as string | undefined;
+    const endDate = req.query.endDate as string | undefined;
 
-    const result = await getNpsFeedbackList({ page, limit, search, sortBy, sortOrder });
+    const result = await getNpsFeedbackList({ page, limit, search, sortBy, sortOrder, startDate, endDate });
 
     return res.status(200).json(result);
   } catch (error) {
@@ -51,7 +53,9 @@ export const getAllFeedback = async (req: Request, res: Response) => {
  */
 export const getFeedbackStats = async (req: Request, res: Response) => {
   try {
-    const stats = await getNpsFeedbackStats();
+    const startDate = req.query.startDate as string | undefined;
+    const endDate = req.query.endDate as string | undefined;
+    const stats = await getNpsFeedbackStats({ startDate, endDate });
     return res.status(200).json(stats);
   } catch (error) {
     console.error('Error fetching NPS feedback stats:', error);

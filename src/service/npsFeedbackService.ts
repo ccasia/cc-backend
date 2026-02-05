@@ -99,8 +99,10 @@ export const getNpsFeedbackList = async (params: {
   search?: string;
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';
+  startDate?: string;
+  endDate?: string;
 }) => {
-  const { page = 1, limit = 10, search, sortBy = 'createdAt', sortOrder = 'desc' } = params;
+  const { page = 1, limit = 10, search, sortBy = 'createdAt', sortOrder = 'desc', startDate, endDate } = params;
   const skip = (page - 1) * limit;
 
   const where: any = {};
@@ -112,6 +114,12 @@ export const getNpsFeedbackList = async (params: {
         { email: { contains: search, mode: 'insensitive' } },
       ],
     };
+  }
+
+  if (startDate || endDate) {
+    where.createdAt = {};
+    if (startDate) where.createdAt.gte = new Date(startDate);
+    if (endDate) where.createdAt.lte = new Date(endDate);
   }
 
   const [data, total] = await Promise.all([
@@ -147,17 +155,25 @@ export const getNpsFeedbackList = async (params: {
 /**
  * Get NPS feedback summary statistics
  */
-export const getNpsFeedbackStats = async () => {
+export const getNpsFeedbackStats = async (params?: { startDate?: string; endDate?: string }) => {
+  const dateFilter: any = {};
+  if (params?.startDate || params?.endDate) {
+    dateFilter.createdAt = {};
+    if (params.startDate) dateFilter.createdAt.gte = new Date(params.startDate);
+    if (params.endDate) dateFilter.createdAt.lte = new Date(params.endDate);
+  }
+
   const [totalResponses, ratingAgg, distribution] = await Promise.all([
-    prisma.npsFeedback.count(),
+    prisma.npsFeedback.count({ where: dateFilter }),
     prisma.npsFeedback.aggregate({
+      where: dateFilter,
       _avg: { rating: true },
     }),
     // Get distribution per rating (1-5)
     Promise.all(
       [1, 2, 3, 4, 5].map(async (rating) => ({
         rating,
-        count: await prisma.npsFeedback.count({ where: { rating } }),
+        count: await prisma.npsFeedback.count({ where: { ...dateFilter, rating } }),
       })),
     ),
   ]);
