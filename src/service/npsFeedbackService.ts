@@ -2,6 +2,27 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
+// Check if the NPS modal should be shown to a creator.
+// Triggers when the creator has at least one completed campaign and hasn't already submitted NPS.
+export const checkShouldShowCreatorNPS = async (creatorId: string): Promise<boolean> => {
+  try {
+    // 1. Has at least one completed campaign
+    const completedCount = await prisma.shortListedCreator.count({
+      where: { userId: creatorId, isCampaignDone: true },
+    });
+    if (completedCount === 0) return false;
+
+    // 2. Has not already submitted creator NPS
+    const existingNps = await prisma.npsFeedback.findFirst({
+      where: { userId: creatorId, userType: 'CREATOR' },
+    });
+    return !existingNps;
+  } catch (error) {
+    console.error('Error checking creator NPS trigger:', error);
+    return false;
+  }
+};
+
 // Check if the NPS modal should be shown to a client after a video action.
 //Triggers when the client has taken approve/request_changes actions on VIDEO submissions
 //for 3 or more unique creators globally, and hasn't already submitted NPS for the current
@@ -71,9 +92,7 @@ export const checkShouldShowNPS = async (clientId: string): Promise<boolean> => 
   }
 };
 
-/**
- * Submit NPS feedback
- */
+// Submit NPS feedback
 export const submitNpsFeedback = async (
   userId: string,
   userType: 'CLIENT' | 'CREATOR',
@@ -90,9 +109,31 @@ export const submitNpsFeedback = async (
   });
 };
 
-/**
- * Get paginated NPS feedback list for admin view
- */
+// Submit NPS feedback with role detection and duplicate check.
+// Returns null if feedback was already submitted (for creators).
+export const submitNpsFeedbackSafe = async (
+  userId: string,
+  rating: number,
+  feedback?: string,
+) => {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true },
+  });
+
+  const userType: 'CLIENT' | 'CREATOR' = user?.role === 'creator' ? 'CREATOR' : 'CLIENT';
+
+  if (userType === 'CREATOR') {
+    const existing = await prisma.npsFeedback.findFirst({
+      where: { userId, userType: 'CREATOR' },
+    });
+    if (existing) return null;
+  }
+
+  return submitNpsFeedback(userId, userType, rating, feedback);
+};
+
+// Get paginated NPS feedback list for admin view
 export const getNpsFeedbackList = async (params: {
   page?: number;
   limit?: number;
@@ -101,11 +142,17 @@ export const getNpsFeedbackList = async (params: {
   sortOrder?: 'asc' | 'desc';
   startDate?: string;
   endDate?: string;
+  userType?: string;
+  rating?: number;
 }) => {
-  const { page = 1, limit = 10, search, sortBy = 'createdAt', sortOrder = 'desc', startDate, endDate } = params;
+  const { page = 1, limit = 10, search, sortBy = 'createdAt', sortOrder = 'desc', startDate, endDate, userType, rating } = params;
   const skip = (page - 1) * limit;
 
   const where: any = {};
+
+  if (userType) {
+    where.userType = userType;
+  }
 
   if (search) {
     where.user = {
@@ -114,6 +161,10 @@ export const getNpsFeedbackList = async (params: {
         { email: { contains: search, mode: 'insensitive' } },
       ],
     };
+  }
+
+  if (rating && rating >= 1 && rating <= 5) {
+    where.rating = rating;
   }
 
   if (startDate || endDate) {
@@ -135,12 +186,77 @@ export const getNpsFeedbackList = async (params: {
             name: true,
             email: true,
             photoURL: true,
-            client: {
+            country: true,
+            creator: {
               select: {
-                company: {
-                  select: { name: true },
+                instagram: true,
+                tiktok: true,
+                tiktokUser: {
+                  select: {
+                    follower_count: true,
+                    engagement_rate: true,
+                  },
+                },
+                instagramUser: {
+                  select: {
+                    followers_count: true,
+                    engagement_rate: true,
+                  },
                 },
               },
+            },
+            client: {
+              select: {
+                companyId: true,
+                company: {
+                  select: {
+                    name: true,
+                    logo: true,
+                    campaign: {
+                      select: {
+                        id: true,
+                        name: true,
+                        status: true,
+                        brand: {
+                          select: { name: true },
+                        },
+                        campaignBrief: {
+                          select: { images: true },
+                        },
+                      },
+                      orderBy: { createdAt: 'desc' as const },
+                      take: 3,
+                    },
+                    _count: {
+                      select: { campaign: true },
+                    },
+                  },
+                },
+              },
+            },
+            shortlisted: {
+              select: {
+                id: true,
+                isCampaignDone: true,
+                campaign: {
+                  select: {
+                    id: true,
+                    name: true,
+                    status: true,
+                    brand: {
+                      select: { name: true },
+                    },
+                    campaignBrief: {
+                      select: { images: true },
+                    },
+                  },
+                },
+              },
+              orderBy: { shortlisted_date: 'desc' as const },
+              take: 3,
+            },
+            _count: {
+              select: { shortlisted: true },
             },
           },
         },
@@ -152,18 +268,19 @@ export const getNpsFeedbackList = async (params: {
   return { data, total, page, limit };
 };
 
-/**
- * Get NPS feedback summary statistics
- */
-export const getNpsFeedbackStats = async (params?: { startDate?: string; endDate?: string }) => {
+// Get NPS feedback summary statistics
+export const getNpsFeedbackStats = async (params?: { startDate?: string; endDate?: string; userType?: string }) => {
   const dateFilter: any = {};
   if (params?.startDate || params?.endDate) {
     dateFilter.createdAt = {};
     if (params.startDate) dateFilter.createdAt.gte = new Date(params.startDate);
     if (params.endDate) dateFilter.createdAt.lte = new Date(params.endDate);
   }
+  if (params?.userType) {
+    dateFilter.userType = params.userType;
+  }
 
-  const [totalResponses, ratingAgg, distribution] = await Promise.all([
+  const [totalResponses, ratingAgg, distribution, creatorCount, clientCount] = await Promise.all([
     prisma.npsFeedback.count({ where: dateFilter }),
     prisma.npsFeedback.aggregate({
       where: dateFilter,
@@ -176,11 +293,20 @@ export const getNpsFeedbackStats = async (params?: { startDate?: string; endDate
         count: await prisma.npsFeedback.count({ where: { ...dateFilter, rating } }),
       })),
     ),
+    // Only compute breakdown when not already filtered by userType
+    !params?.userType
+      ? prisma.npsFeedback.count({ where: { ...dateFilter, userType: 'CREATOR' } })
+      : null,
+    !params?.userType
+      ? prisma.npsFeedback.count({ where: { ...dateFilter, userType: 'CLIENT' } })
+      : null,
   ]);
 
   return {
     totalResponses,
     averageRating: ratingAgg._avg.rating ? Number(ratingAgg._avg.rating.toFixed(1)) : 0,
     distribution,
+    ...(creatorCount !== null && { creatorResponses: creatorCount }),
+    ...(clientCount !== null && { clientResponses: clientCount }),
   };
 };
