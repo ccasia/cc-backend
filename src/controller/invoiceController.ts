@@ -82,6 +82,7 @@ interface invoiceData {
 
 export const getXero = async (req: Request, res: Response) => {
   try {
+    console.log(process.env.XERO_CLIENT_ID);
     const consentUrl = await xero.buildConsentUrl();
 
     return res.status(200).json({ url: consentUrl });
@@ -131,16 +132,7 @@ export const xeroCallBack = async (req: Request, res: Response) => {
  * GET /api/invoice/?page=1&limit=50&status=paid&currency=MYR&search=...
  */
 export const getAllInvoices = async (req: Request, res: Response) => {
-  const {
-    page = '1',
-    limit = '50',
-    status,
-    currency,
-    search,
-    campaignName,
-    startDate,
-    endDate,
-  } = req.query;
+  const { page = '1', limit = '50', status, currency, search, campaignName, startDate, endDate } = req.query;
 
   try {
     const pageNum = parseInt(page as string, 10);
@@ -243,7 +235,7 @@ export const getAllInvoices = async (req: Request, res: Response) => {
       // Map invoices with currency and apply JSON filters
       let invoicesWithCurrency = invoices.map((invoice) => {
         const creatorAgreement = invoice.campaign?.creatorAgreement?.find(
-          (agreement) => agreement.userId === invoice.creatorId
+          (agreement) => agreement.userId === invoice.creatorId,
         );
 
         // Extract currency from various possible locations
@@ -276,16 +268,14 @@ export const getAllInvoices = async (req: Request, res: Response) => {
 
       // Apply currency filter (JSON field)
       if (currency) {
-        invoicesWithCurrency = invoicesWithCurrency.filter(
-          (inv) => inv.currency === currency
-        );
+        invoicesWithCurrency = invoicesWithCurrency.filter((inv) => inv.currency === currency);
       }
 
       // Apply campaign name filter (JSON field)
       if (campaignFilter) {
         const filterLower = campaignFilter.toLowerCase();
-        invoicesWithCurrency = invoicesWithCurrency.filter(
-          (inv) => inv.campaign?.name?.toLowerCase().includes(filterLower)
+        invoicesWithCurrency = invoicesWithCurrency.filter((inv) =>
+          inv.campaign?.name?.toLowerCase().includes(filterLower),
         );
       }
 
@@ -382,7 +372,7 @@ export const getAllInvoices = async (req: Request, res: Response) => {
       // Map invoices with currency (no filtering needed)
       const invoicesWithCurrency = invoices.map((invoice) => {
         const creatorAgreement = invoice.campaign?.creatorAgreement?.find(
-          (agreement) => agreement.userId === invoice.creatorId
+          (agreement) => agreement.userId === invoice.creatorId,
         );
 
         const invoiceCurrency =
@@ -461,15 +451,7 @@ export const getInvoicesByCreatorId = async (req: Request, res: Response) => {
  */
 export const getInvoicesByCampaignId = async (req: Request, res: Response) => {
   const { id } = req.params;
-  const {
-    page = '1',
-    limit = '50',
-    status,
-    currency,
-    search,
-    startDate,
-    endDate,
-  } = req.query;
+  const { page = '1', limit = '50', status, currency, search, startDate, endDate } = req.query;
 
   try {
     const pageNum = parseInt(page as string, 10);
@@ -549,9 +531,7 @@ export const getInvoicesByCampaignId = async (req: Request, res: Response) => {
 
     // Map invoices with currency and apply JSON-based filters
     let invoicesWithCurrency = allInvoices.map((invoice) => {
-      const creatorAgreement = campaign?.creatorAgreement?.find(
-        (agreement) => agreement.userId === invoice.creatorId
-      );
+      const creatorAgreement = campaign?.creatorAgreement?.find((agreement) => agreement.userId === invoice.creatorId);
 
       // Extract currency from various possible locations
       const invoiceCurrency =
@@ -576,9 +556,7 @@ export const getInvoicesByCampaignId = async (req: Request, res: Response) => {
 
     // Apply currency filter (JSON field)
     if (currency) {
-      invoicesWithCurrency = invoicesWithCurrency.filter(
-        (inv) => inv.currency === currency
-      );
+      invoicesWithCurrency = invoicesWithCurrency.filter((inv) => inv.currency === currency);
     }
 
     // Apply search filter on creator name (JSON field)
@@ -587,7 +565,7 @@ export const getInvoicesByCampaignId = async (req: Request, res: Response) => {
       invoicesWithCurrency = invoicesWithCurrency.filter(
         (inv) =>
           inv.invoiceNumber.toLowerCase().includes(searchLower) ||
-          (inv.invoiceFrom as any)?.name?.toLowerCase().includes(searchLower)
+          (inv.invoiceFrom as any)?.name?.toLowerCase().includes(searchLower),
       );
     }
 
@@ -678,7 +656,9 @@ export const getAllInvoiceStats = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Error fetching all invoice stats:', error);
-    return res.status(500).json({ success: false, message: 'Failed to fetch invoice statistics', error: error.message });
+    return res
+      .status(500)
+      .json({ success: false, message: 'Failed to fetch invoice statistics', error: error.message });
   }
 };
 
@@ -1317,6 +1297,8 @@ export const updateInvoice = async (req: Request, res: Response) => {
                     admin: { include: { role: true } },
                   },
                 },
+                brand: true,
+                company: true,
               },
             },
           },
@@ -1423,6 +1405,7 @@ export const updateInvoice = async (req: Request, res: Response) => {
               invoiceFrom,
               updatedInvoice.creator,
               bankInfo,
+              campaign.brand?.name || campaign.company?.name,
               (agreement?.currency?.toUpperCase() as 'MYR' | 'SGD') ?? 'MYR',
             );
           }
@@ -1757,6 +1740,7 @@ export const createXeroInvoiceLocal = async (
   invoiceFrom: any,
   creator: any,
   bankInfo: any,
+  clientName: string | undefined,
   currency?: 'SGD' | 'MYR',
 ) => {
   let activeTenant;
@@ -1772,51 +1756,27 @@ export const createXeroInvoiceLocal = async (
       activeTenant = xero.tenants.find((item) => item?.orgData.baseCurrency.toUpperCase() === currency);
     }
 
-    // const result = await xero.accountingApi.getContacts(
-    //   activeTenant.tenantId,
-    //   undefined, // IDs
-    //   `EmailAddress=="${creatorEmail}"`,
-    // );
-
-    // if (result.body.contacts && result.body.contacts.length > 0) {
-    //   contact = { contactID: result.body.contacts[0].contactID };
-    // } else {
-    //   const contactInfo: Contact = {
-    //     name: invoiceFrom.name,
-    //     emailAddress: invoiceFrom.email,
-    //     phones: [{ phoneType: Phone.PhoneTypeEnum.MOBILE, phoneNumber: invoiceFrom.phoneNumber }],
-    //     addresses: [
-    //       {
-    //         addressLine1: creator.address,
-    //       },
-    //     ],
-    //     bankAccountDetails: bankInfo.accountNumber,
-    //   };
-
-    //   const response = await xero.accountingApi.createContacts(activeTenant.tenantId, { contacts: [contactInfo] });
-
-    //   contact = { contactID: (response.body as any).contacts[0].contactID };
-    // }
-
     const accounts: any = await xero.accountingApi.getAccounts(activeTenant.tenantId, undefined, where);
 
     const lineItemsArray: LineItem[] = lineItems.map((item: any) => ({
       accountID: accounts.body.accounts[0].accountID,
       accountCode: accounts.body.accounts[0].code || '50930',
-      description: item.description,
+      // description: item.description,
+      description: `${clientName} ${campaignName}`,
       quantity: item.quantity,
       unitAmount: item.total,
       taxType: 'NONE',
     }));
 
     const invoice: Invoice = {
-      type: 'ACCPAY' as any,
+      type: Invoice.TypeEnum.ACCPAY,
       contact: { contactID: contactId as any },
       dueDate: dueDate,
       lineItems: lineItemsArray,
       status: 'AUTHORISED' as any,
-      invoiceNumber: invoiceNumber || 'N/A',
-      reference: campaignName || 'N/A',
+      invoiceNumber: `${clientName} ${campaignName}` || 'N/A',
+      // reference: campaignName || 'N/A',
+      reference: `${clientName} ${campaignName}`,
     };
 
     const response: any = await xero.accountingApi.createInvoices(activeTenant.tenantId, { invoices: [invoice] });
@@ -2222,7 +2182,7 @@ export const bulkUpdateInvoices = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'User not connected to Xero' });
     }
 
-    let tokenSet: TokenSet = user.admin.xeroTokenSet as TokenSet;
+    const tokenSet: TokenSet = user.admin.xeroTokenSet as TokenSet;
     await xero.initialize();
     xero.setTokenSet(tokenSet);
 
@@ -2404,7 +2364,7 @@ export const bulkUpdateInvoices = async (req: Request, res: Response) => {
         results.errors.push(`Batch Call Failed: ${batchError.message}`);
       }
     }
-    
+
     return res.status(200).json({
       message: `Processed ${invoiceIds.length} invoices. Success: ${results.success}, Failed: ${results.failed}`,
       details: results,
