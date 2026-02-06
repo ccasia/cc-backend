@@ -4225,6 +4225,7 @@ export const editCampaignFinalise = async (req: Request, res: Response) => {
     campaignManagers,
     campaignType,
     deliverables,
+    isV4Submission,
   } = req.body;
 
   const adminId = req.session.userid;
@@ -4570,6 +4571,26 @@ export const editCampaignFinalise = async (req: Request, res: Response) => {
             }
           }
         }
+      }
+    }
+
+    // Handle explicit isV4Submission toggle from the form
+    // This takes precedence over automatic client-based detection
+    if (typeof isV4Submission === 'boolean') {
+      if (isV4Submission && campaign.submissionVersion !== 'v4') {
+        // Enable v4
+        await prisma.campaign.update({
+          where: { id: campaignId },
+          data: { submissionVersion: 'v4' },
+        });
+        console.log(`Campaign ${campaignId} enabled as v4 via toggle`);
+      } else if (!isV4Submission && campaign.submissionVersion === 'v4') {
+        // Disable v4 (revert to v2)
+        await prisma.campaign.update({
+          where: { id: campaignId },
+          data: { submissionVersion: 'v2' },
+        });
+        console.log(`Campaign ${campaignId} reverted to v2 via toggle`);
       }
     }
 
