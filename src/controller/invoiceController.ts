@@ -251,7 +251,11 @@ export const getAllInvoices = async (req: Request, res: Response) => {
           creatorAgreement?.currency ||
           null;
         // Extract creator name from invoiceFrom JSON
-        const invoiceFromName = (invoice.invoiceFrom as any)?.name || invoice.creator?.user?.name;
+        const invoiceFromName =
+          invoice.creator?.user?.paymentForm?.bankAccountName ||
+          (invoice.bankAcc as any)?.payTo ||
+          invoice.creator?.user?.name ||
+          (invoice.invoiceFrom as any)?.name;
 
         return {
           ...invoice,
@@ -286,12 +290,15 @@ export const getAllInvoices = async (req: Request, res: Response) => {
       // Apply search filter on creator name (JSON field)
       if (search) {
         const searchLower = (search as string).toLowerCase();
-        invoicesWithCurrency = invoicesWithCurrency.filter(
-          (inv) =>
+        invoicesWithCurrency = invoicesWithCurrency.filter((inv) => {
+          return (
             inv.invoiceNumber.toLowerCase().includes(searchLower) ||
-            (inv.invoiceFrom as any)?.name?.toLowerCase().includes(searchLower) ||
-            inv.campaign?.name?.toLowerCase().includes(searchLower)
-        );
+            inv.campaign?.name?.toLowerCase().includes(searchLower) ||
+            inv.creator?.user?.paymentForm?.bankAccountName?.toLowerCase().includes(searchLower) ||
+            (inv.bankAcc as any)?.payTo?.toLowerCase().includes(searchLower) ||
+            inv.creator?.user?.name?.toLowerCase().includes(searchLower)
+          );
+        });
       }
 
       // Calculate total after JSON filtering
