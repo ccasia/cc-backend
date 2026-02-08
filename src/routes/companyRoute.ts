@@ -22,6 +22,7 @@ import {
   clientOverview,
   activateClient,
   resendClientActivation,
+  getClientsByCompanyId,
 } from '@controllers/companyController';
 const router = Router();
 
@@ -32,6 +33,7 @@ router.get('/getBrands', isSuperAdmin, getAllBrands);
 router.get('/getOptions', isSuperAdmin, getOptions);
 router.get('/getBrand/:id', isSuperAdmin, getBrand);
 router.get('/getBrands/:id', isSuperAdmin, getBrandsByClientId);
+router.get('/getClientUsers/:companyId', isAdminOrClient, getClientsByCompanyId);
 router.get('/getUniqueCompanyId', isSuperAdmin, getUniqueClientId);
 
 router.post('/createCompany', isSuperAdmin, createCompany);

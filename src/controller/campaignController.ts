@@ -2679,6 +2679,7 @@ export const getCampaignForCreatorById = async (req: Request, res: Response) => 
         },
         campaignBrief: true,
         campaignRequirement: true,
+        campaignAdditionalDetails: true,
         brand: { include: { company: { include: { subscriptions: true } } } },
         company: true,
         pitch: true,
@@ -4338,6 +4339,7 @@ export const editCampaignFinalise = async (req: Request, res: Response) => {
     campaignManagers,
     campaignType,
     deliverables,
+    isV4Submission,
   } = req.body;
 
   const adminId = req.session.userid;
@@ -4683,6 +4685,26 @@ export const editCampaignFinalise = async (req: Request, res: Response) => {
             }
           }
         }
+      }
+    }
+
+    // Handle explicit isV4Submission toggle from the form
+    // This takes precedence over automatic client-based detection
+    if (typeof isV4Submission === 'boolean') {
+      if (isV4Submission && campaign.submissionVersion !== 'v4') {
+        // Enable v4
+        await prisma.campaign.update({
+          where: { id: campaignId },
+          data: { submissionVersion: 'v4' },
+        });
+        console.log(`Campaign ${campaignId} enabled as v4 via toggle`);
+      } else if (!isV4Submission && campaign.submissionVersion === 'v4') {
+        // Disable v4 (revert to v2)
+        await prisma.campaign.update({
+          where: { id: campaignId },
+          data: { submissionVersion: 'v2' },
+        });
+        console.log(`Campaign ${campaignId} reverted to v2 via toggle`);
       }
     }
 
@@ -6047,10 +6069,8 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
         creditPerVideo = creditCost.creditPerVideo;
         tierSnapshot = creditCost.tier;
       } catch (error: any) {
-        return res.status(400).json({
-          message: error.message || 'Creator does not have valid follower data for credit tier pricing.',
-          code: 'INVALID_TIER_DATA',
-        });
+        console.warn(`Credit tier calculation failed for creator ${creator.id}, proceeding without tier data:`, error.message);
+        // Allow admin to proceed — tier info will be null
       }
     }
 
@@ -6405,10 +6425,10 @@ export const sendAgreement = async (req: Request, res: Response) => {
           creditPerVideo = creditCost.creditPerVideo;
           tierSnapshot = creditCost.tier;
         } catch (error: any) {
-          return res.status(400).json({
-            message: error.message || 'Creator does not have valid follower data for credit tier pricing.',
-            code: 'INVALID_TIER_DATA',
-          });
+          console.warn(`Credit tier calculation failed for creator ${isUserExist.id}, falling back to 1:1 credits:`, error.message);
+          // Fall back to 1:1 credit-to-video ratio when tier data is unavailable
+          creditsToAssign = videoCount;
+          creditPerVideo = 1;
         }
       } else {
         // Non-tier Campaign: Use video count as credits (legacy 1:1 behavior)
