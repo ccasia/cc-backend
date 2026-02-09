@@ -162,10 +162,9 @@ export const getAllInvoices = async (req: Request, res: Response) => {
       };
     }
 
-    // Search filter (invoice number)
-    if (search) {
-      where.invoiceNumber = { contains: search as string, mode: 'insensitive' };
-    }
+    // Search filter: only apply DB-level invoiceNumber filter when no JSON filters are needed
+    // (creator name and campaign name are filtered in-memory later)
+    // This is handled in the hasJsonFilters branch below
 
     // Campaign name filter (will filter in memory after fetching)
     let campaignFilter: string | undefined;
@@ -215,6 +214,16 @@ export const getAllInvoices = async (req: Request, res: Response) => {
             select: {
               id: true,
               name: true,
+              campaignBrief: {
+                select: {
+                  images: true,
+                },
+              },
+              brand: {
+                select: {
+                  logo: true,
+                },
+              },
               creatorAgreement: {
                 select: {
                   userId: true,
@@ -336,6 +345,16 @@ export const getAllInvoices = async (req: Request, res: Response) => {
             select: {
               id: true,
               name: true,
+              campaignBrief: {
+                select: {
+                  images: true,
+                },
+              },
+              brand: {
+                select: {
+                  logo: true,
+                },
+              },
               creatorAgreement: {
                 select: {
                   userId: true,
