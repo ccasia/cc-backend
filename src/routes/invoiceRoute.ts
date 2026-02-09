@@ -19,6 +19,7 @@ import {
   checkRefreshToken,
   deleteInvoice,
   generateMissingInvoices,
+  bulkUpdateInvoices,
 } from '@controllers/invoiceController';
 import { checkAndRefreshAccessToken } from '@controllers/invoiceController';
 import { creatorInvoice } from '@controllers/invoiceController';
@@ -58,6 +59,8 @@ router.get('/creator/:creatorId/campaign/:campaignId', getInvoiceByCreatorIdAndC
 router.get('/creatorInvoice/:invoiceId', isLoggedIn, creatorInvoice);
 
 router.post('/create', createInvoice);
+
+router.post('/bulk-update', bulkUpdateInvoices);
 
 router.patch('/updateStatus', updateInvoiceStatus);
 

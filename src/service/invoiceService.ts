@@ -106,7 +106,7 @@ export const createInvoiceService = async (
   const bankInfo = {
     bankName: data.user.paymentForm.bankName,
     accountName: data.user.paymentForm.bankAccountName,
-    payTo: data.user.name,
+    payTo: data.user.paymentForm.bankAccountName,
     accountNumber: data.user.paymentForm.bankAccountNumber,
     accountEmail: data.user.email,
   };
