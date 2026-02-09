@@ -41,7 +41,7 @@ const client_secret: string = process.env.XERO_CLIENT_SECRET as string;
 const redirectUrl: string = process.env.XERO_REDIRECT_URL as string;
 const scopes: string = process.env.XERO_SCOPES as string;
 
-const xero = new XeroClient({
+export const xero = new XeroClient({
   clientId: client_id,
   clientSecret: client_secret,
   redirectUris: [redirectUrl],
@@ -1258,9 +1258,20 @@ export const updateInvoice = async (req: Request, res: Response) => {
     bankInfo,
     newContact,
     reason,
-  }: invoiceData = req.body;
+  }: invoiceData = JSON.parse(req.body.data);
 
   const userId = req.session.userid;
+  const invoiceAttachment = (req.files as { file: any }).file;
+
+  if (process.env.NODE_ENV !== 'production') {
+    console.log('Received file:', {
+      name: invoiceAttachment.name,
+      size: invoiceAttachment.size,
+      mimetype: invoiceAttachment.mimetype,
+      bufferLength: invoiceAttachment.data.length,
+      data: invoiceAttachment.data,
+    });
+  }
 
   try {
     const invoice = await prisma.$transaction(async (tx) => {
@@ -1493,6 +1504,7 @@ export const updateInvoice = async (req: Request, res: Response) => {
     }
 
     return res.status(200).json(invoice);
+    // return res.sendStatus(200);
   } catch (error) {
     console.error('asdsads', error);
     const message = error instanceof Error ? error.message : 'Unknown error occurred';
