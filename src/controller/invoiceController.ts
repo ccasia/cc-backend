@@ -162,10 +162,9 @@ export const getAllInvoices = async (req: Request, res: Response) => {
       };
     }
 
-    // Search filter (invoice number)
-    if (search) {
-      where.invoiceNumber = { contains: search as string, mode: 'insensitive' };
-    }
+    // Search filter: only apply DB-level invoiceNumber filter when no JSON filters are needed
+    // (creator name and campaign name are filtered in-memory later)
+    // This is handled in the hasJsonFilters branch below
 
     // Campaign name filter (will filter in memory after fetching)
     let campaignFilter: string | undefined;
@@ -186,44 +185,54 @@ export const getAllInvoices = async (req: Request, res: Response) => {
       invoices = await prisma.invoice.findMany({
         where,
         select: {
-        id: true,
-        invoiceNumber: true,
-        amount: true,
-        status: true,
-        createdAt: true,
-        dueDate: true,
-        invoiceFrom: true,
-        task: true,
-        creatorId: true,
-        campaignId: true,
-        // Only include minimal creator data
-        creator: {
-          select: {
-            userId: true,
-            user: {
-              select: {
-                id: true,
-                name: true,
-                photoURL: true,
-                email: true,
+          id: true,
+          invoiceNumber: true,
+          amount: true,
+          status: true,
+          createdAt: true,
+          dueDate: true,
+          invoiceFrom: true,
+          task: true,
+          creatorId: true,
+          campaignId: true,
+          // Only include minimal creator data
+          creator: {
+            select: {
+              userId: true,
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  photoURL: true,
+                  email: true,
+                },
+              },
+            },
+          },
+          // Only include minimal campaign data
+          campaign: {
+            select: {
+              id: true,
+              name: true,
+              campaignBrief: {
+                select: {
+                  images: true,
+                },
+              },
+              brand: {
+                select: {
+                  logo: true,
+                },
+              },
+              creatorAgreement: {
+                select: {
+                  userId: true,
+                  currency: true,
+                },
               },
             },
           },
         },
-        // Only include minimal campaign data
-        campaign: {
-          select: {
-            id: true,
-            name: true,
-            creatorAgreement: {
-              select: {
-                userId: true,
-                currency: true,
-              },
-            },
-          },
-        },
-      },
         orderBy: {
           createdAt: 'desc',
         },
@@ -337,6 +346,16 @@ export const getAllInvoices = async (req: Request, res: Response) => {
             select: {
               id: true,
               name: true,
+              campaignBrief: {
+                select: {
+                  images: true,
+                },
+              },
+              brand: {
+                select: {
+                  logo: true,
+                },
+              },
               creatorAgreement: {
                 select: {
                   userId: true,
