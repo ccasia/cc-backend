@@ -76,6 +76,8 @@ model User {
   rawFootageFeedback RawFootage[] @relation("RawFootageFeedback")
   photoFeedback      Photo[]      @relation("PhotoFeedback")
 
+  npsFeedback NpsFeedback[]
+
   // logistics
   assignedLogistics Logistic[]      @relation("AssignedLogistics")
   createdLogistics  Logistic[]      @relation("CreatedLogistics")
@@ -2043,4 +2045,25 @@ model CreditTier {
   shortlistedCreators ShortListedCreator[]
 
   @@index([minFollowers])
+}
+
+// NPS Feedback
+enum NpsUserType {
+  CLIENT
+  CREATOR
+}
+
+model NpsFeedback {
+  id        String      @id @unique @default(cuid())
+  userId    String
+  userType  NpsUserType @default(CLIENT)
+  rating    Int         // 1-5 star rating
+  feedback  String?     // Optional text feedback
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userType])
 }

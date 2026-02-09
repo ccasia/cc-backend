@@ -29,6 +29,7 @@ import childAccountRoute from './childAccountRoute';
 import picRoute from './picRoute';
 import logisticsRoute from './logisticsRoute';
 import creditTierRoute from './creditTierRoute';
+import npsFeedbackRoute from './npsFeedbackRoute';
 import dashboardRoute from './dashboardRoute';
 
 export const router = express.Router();
@@ -63,4 +64,5 @@ router.use('/child-account', childAccountRoute);
 router.use('/pic', picRoute);
 router.use('/logistics', logisticsRoute);
 router.use('/credit-tier', creditTierRoute);
+router.use('/nps-feedback', npsFeedbackRoute);
 router.use('/dashboard', dashboardRoute);
