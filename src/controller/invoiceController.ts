@@ -1263,229 +1263,234 @@ export const updateInvoice = async (req: Request, res: Response) => {
   const userId = req.session.userid;
 
   try {
-    const invoice = await prisma.$transaction(
-      async (tx) => {
-        const updatedInvoice = await tx.invoice.update({
-          where: { id: invoiceId },
-          data: {
-            dueDate,
-            status: status as InvoiceStatus,
-            invoiceFrom,
-            invoiceTo,
-            task: items[0],
-            amount: parseFloat(totalAmount as any),
-            bankAcc: bankInfo,
-            campaignId,
+    const invoice = await prisma.$transaction(async (tx) => {
+      const updatedInvoice = await tx.invoice.update({
+        where: { id: invoiceId },
+        data: {
+          dueDate,
+          status: status as InvoiceStatus,
+          invoiceFrom,
+          invoiceTo,
+          task: items[0],
+          amount: totalAmount,
+          bankAcc: bankInfo,
+          campaignId,
+        },
+        include: {
+          creator: {
+            include: {
+              user: { select: { id: true, name: true, paymentForm: true, creatorAgreement: true, email: true } },
+            },
           },
-          include: {
-            creator: {
-              include: {
-                user: { select: { id: true, name: true, paymentForm: true, creatorAgreement: true, email: true } },
+          user: {
+            include: {
+              creatorAgreement: {
+                where: { campaignId: campaignId },
               },
             },
-            user: {
-              include: {
-                creatorAgreement: {
-                  where: { campaignId: campaignId },
+          },
+          campaign: {
+            include: {
+              campaignAdmin: {
+                include: {
+                  admin: { include: { role: true } },
                 },
               },
+              brand: true,
+              company: true,
             },
-            campaign: {
-              include: {
-                campaignAdmin: {
-                  include: {
-                    admin: { include: { role: true } },
-                  },
-                },
-                brand: true,
-                company: true,
-              },
+          },
+        },
+      });
+
+      if (status === 'rejected') {
+        await rejectInvoice({
+          userId: updatedInvoice?.creator?.user?.id,
+          tx,
+          reason: reason || '',
+          campaignName: campaign.name,
+        });
+      }
+      return updatedInvoice;
+    });
+
+    const creatorUser = invoice.creator.user;
+    const creatorPaymentForm = creatorUser?.paymentForm;
+    const campaign = invoice.campaign;
+    const agreement = invoice.creator.user.creatorAgreement.find((item) => item.campaignId === campaignId);
+
+    let contactID = invoice.creator.xeroContactId;
+
+    if (status === 'approved') {
+      const user = await prisma.user.findUnique({
+        where: {
+          id: userId,
+        },
+        include: {
+          admin: {
+            select: {
+              xeroTokenSet: true,
             },
+          },
+        },
+      });
+
+      if (!user) throw new Error('User not found');
+
+      const tokenSet: TokenSet = (user.admin?.xeroTokenSet as TokenSet) || null;
+
+      if (!tokenSet) throw new Error('You are not connected to Xero');
+
+      await xero.initialize();
+      xero.setTokenSet(tokenSet);
+
+      if (dayjs.unix(tokenSet.expires_at!).isBefore(dayjs())) {
+        const validTokenSet = await xero.refreshToken();
+        // save the new tokenset
+        await prisma.admin.update({
+          where: {
+            userId: user.id,
+          },
+          data: {
+            xeroTokenSet: validTokenSet as any,
+          },
+        });
+      }
+
+      await xero.updateTenants();
+
+      const activeTenant = xero.tenants.find(
+        (item) =>
+          item?.orgData.baseCurrency.toUpperCase() === ((agreement?.currency?.toUpperCase() as 'MYR' | 'SGD') ?? 'MYR'),
+      );
+      console.log('ACTIVE UPDATE:', activeTenant);
+      console.log('CREATOR NAME:', creatorUser.name?.trim());
+      const result = await xero.accountingApi.getContacts(
+        activeTenant.tenantId,
+        undefined, // IDs
+        // `EmailAddress=="${creatorUser.email}"`,
+        // `EmailAddress=="${creatorUser.email}" || Name=="${creatorUser.name}"`,
+        `Name=="${invoiceFrom.name?.trim()}"`,
+      );
+      if (result.body.contacts && result.body.contacts.length > 0) {
+        contactID = result.body.contacts[0].contactID || null;
+      } else {
+        const result = await xero.accountingApi.getContacts(
+          activeTenant.tenantId,
+          undefined, // IDs
+          `EmailAddress=="${creatorUser.email.trim()}"`,
+          // `EmailAddress=="${creatorUser.email}" || Name=="${creatorUser.name}"`,
+        );
+        if (result.body.contacts && result.body.contacts.length > 0) {
+          contactID = result.body.contacts[0].contactID || null;
+        } else {
+          const [contact] = await createXeroContact(
+            bankInfo,
+            invoice.creator,
+            invoiceFrom,
+            (agreement?.currency?.toUpperCase() as 'MYR' | 'SGD') ?? 'MYR',
+          );
+          contactID = contact.contactID || null;
+          await prisma.creator.update({
+            where: { id: invoice.creator.id },
+            data: { xeroContactId: contactID },
+          });
+        }
+      }
+      if (contactID) {
+        const createdInvoice = await createXeroInvoiceLocal(
+          contactID,
+          items,
+          dueDate,
+          campaign.name,
+          invoice.invoiceNumber,
+          invoice.user?.email!,
+          invoiceFrom,
+          invoice.creator,
+          bankInfo,
+          campaign.brand?.name || campaign.company?.name,
+          (agreement?.currency?.toUpperCase() as 'MYR' | 'SGD') ?? 'MYR',
+        );
+
+        await prisma.invoice.update({
+          where: {
+            id: invoice.id,
+          },
+          data: {
+            xeroInvoiceId: createdInvoice.body.invoices[0].invoiceID,
           },
         });
 
-        const creatorUser = updatedInvoice.creator.user;
-        const creatorPaymentForm = creatorUser?.paymentForm;
-        const campaign = updatedInvoice.campaign;
-        const agreement = updatedInvoice.creator.user.creatorAgreement.find((item) => item.campaignId === campaignId);
-
-        console.log('AGREEMENT:', agreement);
-
-        let contactID = updatedInvoice.creator.xeroContactId;
-
-        if (status === 'approved') {
-          const user = await tx.user.findUnique({
-            where: {
-              id: userId,
-            },
-            include: {
-              admin: {
-                select: {
-                  xeroTokenSet: true,
-                },
-              },
-            },
-          });
-
-          if (!user) throw new Error('User not found');
-
-          const tokenSet: TokenSet = (user.admin?.xeroTokenSet as TokenSet) || null;
-
-          if (!tokenSet) throw new Error('You are not connected to Xero');
-
-          await xero.initialize();
-
-          xero.setTokenSet(tokenSet);
-
-          if (dayjs.unix(tokenSet.expires_at!).isBefore(dayjs())) {
-            const validTokenSet = await xero.refreshToken();
-            // save the new tokenset
-
-            await prisma.admin.update({
-              where: {
-                userId: user.id,
-              },
-              data: {
-                xeroTokenSet: validTokenSet as any,
-              },
-            });
-          }
-
-          await xero.updateTenants();
-
-          console.log('TENANTS:', xero.tenants);
-
-          let activeTenant = xero.tenants.find(
-            (item) =>
-              item?.orgData.baseCurrency.toUpperCase() ===
-              ((agreement?.currency?.toUpperCase() as 'MYR' | 'SGD') ?? 'MYR'),
-          );
-
-          if (!activeTenant && xero.tenants.length > 0) {
-            activeTenant = xero.tenants[0];
-          }
-
-          console.log('ACTIVE UPDATE:', activeTenant);
-          console.log('CREATOR NAME:', creatorUser.name?.trim());
-
-          const result = await xero.accountingApi.getContacts(
+        if (invoiceAttachment && createdInvoice.body.invoices[0].invoiceID) {
+          const buffer = fs.readFileSync(invoiceAttachment.tempFilePath);
+          await xero.accountingApi.createInvoiceAttachmentByFileName(
             activeTenant.tenantId,
-            undefined, // IDs
-            // `EmailAddress=="${creatorUser.email}"`,
-            // `EmailAddress=="${creatorUser.email}" || Name=="${creatorUser.name}"`,
-            `Name=="${invoiceFrom.name?.trim()}"`,
-          );
-
-          if (result.body.contacts && result.body.contacts.length > 0) {
-            contactID = result.body.contacts[0].contactID || null;
-          } else {
-            const [contact] = await createXeroContact(
-              bankInfo,
-              updatedInvoice.creator,
-              invoiceFrom,
-              (agreement?.currency?.toUpperCase() as 'MYR' | 'SGD') ?? 'MYR',
-            );
-
-            contactID = contact.contactID || null;
-
-            await tx.creator.update({
-              where: { id: updatedInvoice.creator.id },
-              data: { xeroContactId: contactID },
-            });
-          }
-
-          if (contactID) {
-            await createXeroInvoiceLocal(
-              contactID,
-              items,
-              dueDate,
-              campaign.name,
-              updatedInvoice.invoiceNumber,
-              updatedInvoice.user?.email!,
-              invoiceFrom,
-              updatedInvoice.creator,
-              bankInfo,
-              campaign.brand?.name || campaign.company?.name,
-              (agreement?.currency?.toUpperCase() as 'MYR' | 'SGD') ?? 'MYR',
-            );
-          }
-
-          const { title, message } = notificationInvoiceUpdate(campaign.name);
-
-          // Notify CSM admins
-          await Promise.all(
-            campaign.campaignAdmin
-              .filter((admin) => admin.admin.role?.name === 'CSM')
-              .map(async (admin) => {
-                const notification = await saveNotification({
-                  userId: admin.adminId,
-                  title,
-                  message,
-                  entity: 'Invoice',
-                  threadId: updatedInvoice.id,
-                  entityId: updatedInvoice.campaignId,
-                });
-
-                io.to(clients.get(admin.adminId)).emit('notification', notification);
-              }),
-          );
-
-          const adminId = req.session.userid;
-
-          if (adminId) {
-            const adminLogMessage = `Updated Invoice for - "${creatorUser?.name}"`;
-            logAdminChange(adminLogMessage, adminId, req);
-          }
-
-          // Log invoice approval in campaign logs for Invoice Actions tab
-          if (adminId && updatedInvoice.campaignId) {
-            const creatorName = creatorUser?.name || 'Unknown Creator';
-            const logMessage = `Approved invoice ${updatedInvoice.invoiceNumber} for ${creatorName}`;
-            await logChange(logMessage, updatedInvoice.campaignId, req);
-          }
-
-          await sendToSpreadSheet(
+            createdInvoice.body.invoices[0].invoiceID,
+            invoiceAttachment.name,
+            buffer,
+            false,
+            undefined,
             {
-              createdAt: dayjs().format('YYYY-MM-DD'),
-              name: creatorUser?.paymentForm?.bankAccountName || creatorUser?.name || '',
-              icNumber: creatorPaymentForm?.icNumber || '',
-              bankName: creatorPaymentForm?.bankAccountName || '',
-              bankAccountNumber: creatorPaymentForm?.bankAccountNumber || '',
-              campaignName: campaign.name,
-              amount: updatedInvoice.amount,
+              headers: {
+                'Content-Type': invoiceAttachment.mimetype,
+              },
             },
-            '1VClmvYJV9R4HqjADhGA6KYIR9KCFoXTag5SMVSL4rFc',
-            'Invoices',
           );
-
-          // Notify creator
-          const creatorNotification = await saveNotification({
-            userId: updatedInvoice.creatorId,
-            title,
-            message,
-            entity: 'Invoice',
-            threadId: updatedInvoice.id,
-            entityId: updatedInvoice.campaignId,
-          });
-
-          io.to(clients.get(updatedInvoice.creatorId)).emit('notification', creatorNotification);
         }
+      }
 
-        if (status === 'rejected') {
-          await rejectInvoice({
-            userId: updatedInvoice?.creator?.user?.id,
-            tx,
-            reason: reason || '',
-            campaignName: campaign.name,
-          });
-        }
-
-        return updatedInvoice;
-      },
-      {
-        timeout: 10000,
-      },
-    );
+      const { title, message } = notificationInvoiceUpdate(campaign.name);
+      // Notify CSM admins
+      await Promise.all(
+        campaign.campaignAdmin
+          .filter((admin) => admin.admin.role?.name === 'CSM')
+          .map(async (admin) => {
+            const notification = await saveNotification({
+              userId: admin.adminId,
+              title,
+              message,
+              entity: 'Invoice',
+              threadId: invoice.id,
+              entityId: invoice.campaignId,
+            });
+            io.to(clients.get(admin.adminId)).emit('notification', notification);
+          }),
+      );
+      const adminId = req.session.userid;
+      if (adminId) {
+        const adminLogMessage = `Updated Invoice for - "${creatorUser?.name}"`;
+        logAdminChange(adminLogMessage, adminId, req);
+      }
+      // Log invoice approval in campaign logs for Invoice Actions tab
+      if (adminId && invoice.campaignId) {
+        const creatorName = creatorUser?.name || 'Unknown Creator';
+        const logMessage = `Approved invoice ${invoice.invoiceNumber} for ${creatorName}`;
+        await logChange(logMessage, invoice.campaignId, req);
+      }
+      await sendToSpreadSheet(
+        {
+          createdAt: dayjs().format('YYYY-MM-DD'),
+          name: creatorUser?.name || '',
+          icNumber: creatorPaymentForm?.icNumber || '',
+          bankName: creatorPaymentForm?.bankAccountName || '',
+          bankAccountNumber: creatorPaymentForm?.bankAccountNumber || '',
+          campaignName: campaign.name,
+          amount: invoice.amount,
+        },
+        '1VClmvYJV9R4HqjADhGA6KYIR9KCFoXTag5SMVSL4rFc',
+        'Invoices',
+      );
+      // Notify creator
+      const creatorNotification = await saveNotification({
+        userId: invoice.creatorId,
+        title,
+        message,
+        entity: 'Invoice',
+        threadId: invoice.id,
+        entityId: invoice.campaignId,
+      });
+      io.to(clients.get(invoice.creatorId)).emit('notification', creatorNotification);
+    }
 
     return res.status(200).json(invoice);
   } catch (error) {

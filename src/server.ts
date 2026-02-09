@@ -36,6 +36,12 @@ import passport from 'passport';
 
 import amqplib from 'amqplib';
 
+
+import crypto from 'crypto';
+import { xero } from '@controllers/invoiceController';
+import { TokenSet } from 'xero-node';
+import { prisma } from './prisma/prisma';
+
 Ffmpeg.setFfmpegPath(FfmpegPath.path);
 
 dotenv.config();
@@ -57,8 +63,96 @@ export const io = new Server(server, {
 // expose io to request handlers
 app.set('io', io);
 
+// app.post('/webhooks/xero', bodyParser.raw({ type: 'application/json' }), async (req, res) => {
+//   try {
+//     const xeroSignature = req.headers['x-xero-signature'];
+
+//     if (!xeroSignature) {
+//       return res.status(401).send('Missing signature');
+//     }
+
+//     // Generate expected signature
+//     const expectedSignature = crypto
+//       .createHmac('sha256', 'UtH0zJbM1oFEw3K662zollAzzkJuKORDAKJvJ/LtiXIN9VqXghooPmhOInHhewxX2Axb9BYa4lXeHCV+ImyfnA==')
+//       .update(req.body)
+//       .digest('base64');
+
+//     if (xeroSignature !== expectedSignature) {
+//       return res.status(401).send('Invalid signature');
+//     }
+
+//     // Parse payload AFTER verification
+//     const payload = JSON.parse(req.body.toString('utf8'));
+
+//     console.log('✅ Xero Webhook Verified');
+//     // console.log(payload)
+
+//     // const user = await prisma.user.findUnique({
+//     //   where: {
+//     //     id: req.session.userid,
+//     //   },
+//     //   include: {
+//     //     admin: {
+//     //       select: {
+//     //         xeroTokenSet: true,
+//     //       },
+//     //     },
+//     //   },
+//     // });
+
+//     // if (!user) return res.sendStatus(400);
+
+//     // console.log(user);
+
+//     // const data = payload.events[0] as { tenantId: string; resourceId: string };
+
+//     // const tokenSet: TokenSet = (user.admin?.xeroTokenSet as TokenSet) || null;
+
+//     // if (!tokenSet) throw new Error('You are not connected to Xero');
+
+//     // await xero.initialize();
+
+//     // xero.setTokenSet(tokenSet);
+
+//     // const test = await xero.accountingApi.getInvoice(data.tenantId, data.resourceId);
+
+//     // console.log('ASDSAD', test);
+
+//     /**
+//      * payload structure:
+//      * {
+//      *   events: [
+//      *     {
+//      *       eventCategory: "INVOICE",
+//      *       eventType: "CREATE",
+//      *       resourceId: "uuid",
+//      *       tenantId: "uuid",
+//      *       eventDateUtc: "2024-01-01T00:00:00Z"
+//      *     }
+//      *   ],
+//      *   firstEventSequence: 123,
+//      *   lastEventSequence: 123
+//      * }
+//      */
+
+//     // TODO: enqueue job / fetch updated data from Xero API
+
+//     res.status(200).send('OK');
+//   } catch (error) {
+//     console.log('ERROR WEBHOOK XERO', error);
+//   }
+// });
+
 app.use(express.static('public'));
-app.use(express.json({ limit: '10mb' }));
+// app.use(express.json({ limit: '10mb' }));
+
+app.use((req, res, next) => {
+  if (req.path.startsWith('/webhooks')) {
+    express.raw({ type: 'application/json' })(req, res, next);
+  } else {
+    express.json()(req, res, next);
+  }
+});
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 app.use(
@@ -124,6 +218,87 @@ app.use(passport.initialize());
 app.use(passport.session());
 
 app.use(router);
+
+app.post('/webhooks/xero', express.raw({ type: 'application/json' }), async (req, res) => {
+  try {
+    const xeroSignature = req.headers['x-xero-signature'];
+    console.log(req.session);
+
+    if (!xeroSignature) {
+      return res.status(401).send('Missing signature');
+    }
+
+    // Generate expected signature
+    const expectedSignature = crypto
+      .createHmac('sha256', 'UtH0zJbM1oFEw3K662zollAzzkJuKORDAKJvJ/LtiXIN9VqXghooPmhOInHhewxX2Axb9BYa4lXeHCV+ImyfnA==')
+      .update(req.body)
+      .digest('base64');
+
+    if (xeroSignature !== expectedSignature) {
+      return res.status(401).send('Invalid signature');
+    }
+
+    // Parse payload AFTER verification
+    const payload = JSON.parse(req.body.toString('utf8'));
+
+    console.log('✅ Xero Webhook Verified');
+
+    const user = await prisma.user.findFirst({
+      where: {
+        email: {
+          equals: process.env.NODE_ENV === 'development' ? 'super@cultcreativeasia.com' : 'vidya@cultcreative.asia', //Need to change to V's email
+        },
+      },
+      include: {
+        admin: {
+          select: {
+            xeroTokenSet: true,
+          },
+        },
+      },
+    });
+
+    if (!user) return res.sendStatus(400);
+
+    const data = payload.events[0] as { tenantId: string; resourceId: string };
+
+    const tokenSet: TokenSet = (user.admin?.xeroTokenSet as TokenSet) || null;
+
+    if (!tokenSet) throw new Error('You are not connected to Xero');
+
+    await xero.initialize();
+
+    xero.setTokenSet(tokenSet);
+
+    const where = 'Status=="PAID"';
+
+    const invoiceData = await xero.accountingApi.getInvoices(data.tenantId, undefined, where);
+
+    // Check based on invoiceID
+    const xeroInvoices = invoiceData.body.invoices;
+
+    const xeroInvoicesIds = xeroInvoices?.map((xeroInvoice) => xeroInvoice.invoiceID);
+
+    if (xeroInvoicesIds?.length) {
+      const invoices = await prisma.invoice.updateMany({
+        where: {
+          xeroInvoiceId: {
+            in: xeroInvoicesIds as any,
+          },
+        },
+        data: {
+          status: 'paid',
+        },
+      });
+
+      console.log('INVOICES', invoices);
+    }
+
+    res.status(200).send('OK');
+  } catch (error) {
+    console.log('ERROR WEBHOOK XERO', error);
+  }
+});
 
 app.get('/', (req: Request, res: Response) => {
   res.send(`Your IP is ${req.ip}. ${process.env.NODE_ENV} is running...`);
