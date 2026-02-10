@@ -1367,7 +1367,6 @@ export const updateInvoice = async (req: Request, res: Response) => {
     }
 
     return res.status(200).json(invoice);
-    // return res.sendStatus(200);
   } catch (error) {
     console.error('asdsads', error);
     const message = error instanceof Error ? error.message : 'Unknown error occurred';
