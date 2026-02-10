@@ -67,7 +67,7 @@ interface invoiceData {
   invoiceFrom: any;
   invoiceTo: object;
   items: InvoiceItem[];
-  totalAmount: number;
+  totalAmount: string;
   subTotal?: number;
   bankInfo: object;
   createdBy: string;
@@ -902,7 +902,7 @@ export const createInvoice = async (req: Request, res: Response) => {
         invoiceFrom: invoiceFrom,
         invoiceTo: invoiceTo,
         task: item, // The currency info is already included in the item object
-        amount: totalAmount,
+        amount: parseFloat(totalAmount),
         bankAcc: bankInfo,
         campaignId: campaignId,
         creatorId: creatorIdInfo,
@@ -1294,7 +1294,7 @@ export const updateInvoice = async (req: Request, res: Response) => {
           invoiceFrom,
           invoiceTo,
           task: items[0],
-          amount: totalAmount,
+          amount: parseFloat(totalAmount),
           bankAcc: bankInfo,
           campaignId,
         },
