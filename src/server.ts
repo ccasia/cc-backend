@@ -17,6 +17,8 @@ import { isLoggedIn } from '@middlewares/onlyLogin';
 import { Server } from 'socket.io';
 import '@services/uploadVideo';
 
+import { createAdapter } from '@socket.io/redis-adapter';
+
 import '@helper/processPitchVideo';
 import './helper/videoDraft';
 import './helper/videoDraftWorker';
@@ -36,11 +38,13 @@ import passport from 'passport';
 
 import amqplib from 'amqplib';
 
-
 import crypto from 'crypto';
-import { xero } from '@controllers/invoiceController';
+
 import { TokenSet } from 'xero-node';
 import { prisma } from './prisma/prisma';
+import { xero } from '@configs/xero';
+import connection, { subClient } from '@configs/redis';
+import { users } from '@utils/activeUsers';
 
 Ffmpeg.setFfmpegPath(FfmpegPath.path);
 
@@ -62,86 +66,6 @@ export const io = new Server(server, {
 
 // expose io to request handlers
 app.set('io', io);
-
-// app.post('/webhooks/xero', bodyParser.raw({ type: 'application/json' }), async (req, res) => {
-//   try {
-//     const xeroSignature = req.headers['x-xero-signature'];
-
-//     if (!xeroSignature) {
-//       return res.status(401).send('Missing signature');
-//     }
-
-//     // Generate expected signature
-//     const expectedSignature = crypto
-//       .createHmac('sha256', 'UtH0zJbM1oFEw3K662zollAzzkJuKORDAKJvJ/LtiXIN9VqXghooPmhOInHhewxX2Axb9BYa4lXeHCV+ImyfnA==')
-//       .update(req.body)
-//       .digest('base64');
-
-//     if (xeroSignature !== expectedSignature) {
-//       return res.status(401).send('Invalid signature');
-//     }
-
-//     // Parse payload AFTER verification
-//     const payload = JSON.parse(req.body.toString('utf8'));
-
-//     console.log('✅ Xero Webhook Verified');
-//     // console.log(payload)
-
-//     // const user = await prisma.user.findUnique({
-//     //   where: {
-//     //     id: req.session.userid,
-//     //   },
-//     //   include: {
-//     //     admin: {
-//     //       select: {
-//     //         xeroTokenSet: true,
-//     //       },
-//     //     },
-//     //   },
-//     // });
-
-//     // if (!user) return res.sendStatus(400);
-
-//     // console.log(user);
-
-//     // const data = payload.events[0] as { tenantId: string; resourceId: string };
-
-//     // const tokenSet: TokenSet = (user.admin?.xeroTokenSet as TokenSet) || null;
-
-//     // if (!tokenSet) throw new Error('You are not connected to Xero');
-
-//     // await xero.initialize();
-
-//     // xero.setTokenSet(tokenSet);
-
-//     // const test = await xero.accountingApi.getInvoice(data.tenantId, data.resourceId);
-
-//     // console.log('ASDSAD', test);
-
-//     /**
-//      * payload structure:
-//      * {
-//      *   events: [
-//      *     {
-//      *       eventCategory: "INVOICE",
-//      *       eventType: "CREATE",
-//      *       resourceId: "uuid",
-//      *       tenantId: "uuid",
-//      *       eventDateUtc: "2024-01-01T00:00:00Z"
-//      *     }
-//      *   ],
-//      *   firstEventSequence: 123,
-//      *   lastEventSequence: 123
-//      * }
-//      */
-
-//     // TODO: enqueue job / fetch updated data from Xero API
-
-//     res.status(200).send('OK');
-//   } catch (error) {
-//     console.log('ERROR WEBHOOK XERO', error);
-//   }
-// });
 
 app.use(express.static('public'));
 // app.use(express.json({ limit: '10mb' }));
@@ -327,6 +251,7 @@ io.on('connection', (socket) => {
   io.emit('onlineUsers', { onlineUsers: clients.size });
   socket.on('register', (userId) => {
     clients.set(userId, socket.id);
+    users.set(userId, socket.id);
   });
 
   socket.on('online-user', () => {
@@ -427,6 +352,7 @@ io.on('connection', (socket) => {
     clients.forEach((value, key) => {
       if (value === socket.id) {
         clients.delete(key);
+        users.delete(key);
       }
     });
     io.emit('onlineUsers', { onlineUsers: clients.size });
@@ -551,13 +477,7 @@ app.post('/sendMessage', async (req: Request, res: Response) => {
   }
 });
 
-server.listen(process.env.PORT, () => {
+server.listen(process.env.PORT, async () => {
   console.log(`Listening to port ${process.env.PORT}...`);
   console.log(`${process.env.NODE_ENV} stage is running...`);
-
-  // draftConsumer();
-
-  // for (let i = 0; i < 2; i++) {
-  //   draftConsumer();
-  // }
 });
