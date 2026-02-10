@@ -27,6 +27,7 @@ const worker = new Worker(
   'invoice-queue',
   async (job) => {
     try {
+      throw new Error('ASD');
       console.log('📨 Sending invoice to Xero', job.data);
       const invoice = job.data.invoice;
 
