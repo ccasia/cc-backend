@@ -820,3 +820,44 @@ export const resendClientActivation = async (req: Request, res: Response) => {
     return res.status(500).json({ message: 'Error resending activation email' });
   }
 };
+
+// Get clients by company ID with user details
+export const getClientsByCompanyId = async (req: Request, res: Response) => {
+  const { companyId } = req.params;
+
+  try {
+    const clients = await prisma.client.findMany({
+      where: {
+        companyId: companyId,
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            photoURL: true,
+            role: true,
+            status: true,
+          },
+        },
+      },
+    });
+
+    // Map to a cleaner structure for frontend
+    const mappedClients = clients.map((client) => ({
+      id: client.user?.id,
+      clientId: client.id,
+      name: client.user?.name,
+      email: client.user?.email,
+      photoURL: client.user?.photoURL,
+      role: client.user?.role,
+      status: client.user?.status,
+    }));
+
+    return res.status(200).json(mappedClients);
+  } catch (error) {
+    console.error('Error fetching clients by company:', error);
+    return res.status(500).json({ message: 'Error fetching clients' });
+  }
+};
