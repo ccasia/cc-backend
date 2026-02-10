@@ -6,8 +6,9 @@ import { createNewSpreadSheet } from './google_sheets/sheets';
 const prisma = new PrismaClient();
 
 // `req` is for the admin ID
-export const logChange = async (message: string, campaignId: string, req: Request) => {
-  const adminId = req.session.userid;
+export const logChange = async (message: string, campaignId: string, req: Request | undefined, id?: string) => {
+  const adminId = req?.session.userid || id;
+
   if (adminId === undefined) {
     throw new Error('Admin ID is undefined');
   }
@@ -25,7 +26,7 @@ export const logChange = async (message: string, campaignId: string, req: Reques
   }
 };
 
-export const logAdminChange = async (message: string, adminId: string, req: Request) => {
+export const logAdminChange = async (message: string, adminId: string, req?: Request) => {
   if (adminId === undefined) {
     throw new Error('Admin ID is undefined');
   }

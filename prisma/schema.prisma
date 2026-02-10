@@ -270,10 +270,10 @@ model Creator {
   dietaryRestrictions String?
 
   // Credit Tier fields
-  manualFollowerCount Int?         @default(0) // Manually entered follower count (when no media kit)
+  manualFollowerCount Int?        @default(0) // Manually entered follower count (when no media kit)
   creditTierId        String?
-  creditTier          CreditTier?  @relation("UserCurrentTier", fields: [creditTierId], references: [id])
-  tierUpdatedAt       DateTime?    // Last time tier was calculated
+  creditTier          CreditTier? @relation("UserCurrentTier", fields: [creditTierId], references: [id])
+  tierUpdatedAt       DateTime? // Last time tier was calculated
 }
 
 // model TiktokUser {
@@ -757,16 +757,16 @@ model CampaignClient {
 }
 
 model CampaignRequirement {
-  id              String   @id @unique @default(cuid())
+  id                        String   @id @unique @default(cuid())
   // Primary Audience
-  gender          String[]
-  age             String[]
-  geoLocation     String[]
-  language        String[]
-  creator_persona String[]
-  country         String?
-  countries       String[]
-  user_persona    String
+  gender                    String[]
+  age                       String[]
+  geoLocation               String[]
+  language                  String[]
+  creator_persona           String[]
+  country                   String?
+  countries                 String[]
+  user_persona              String
   // Secondary Audience
   secondary_gender          String[]
   secondary_age             String[]
@@ -777,65 +777,65 @@ model CampaignRequirement {
   secondary_user_persona    String?
   geographic_focus          String?
   geographicFocusOthers     String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  campaignId      String   @unique
-  campaign        Campaign @relation(fields: [campaignId], references: [id])
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+  campaignId                String   @unique
+  campaign                  Campaign @relation(fields: [campaignId], references: [id])
 }
 
 model CampaignBrief {
-  id                   String    @id @unique @default(cuid())
-  title                String
-  objectives           String?
-  secondaryObjectives  String[]
-  boostContent         String?
-  primaryKPI           String?
-  performanceBaseline  String?
-  images               Json?
-  agreementFrom        String?
-  startDate            DateTime
-  endDate              DateTime
-  postingStartDate     DateTime?
-  postingEndDate       DateTime?
-  interests            Json?
-  industries           String?
-  success              String?
-  socialMediaPlatform  String[]
-  videoAngle           String[]
-  campaigns_do         Json?
-  campaigns_dont       Json?
-  updatedAt            DateTime  @updatedAt
-  createdAt            DateTime  @default(now())
-  campaignId           String    @unique
-  otherAttachments     String[]
-  referencesLinks      String[]
-  campaign             Campaign  @relation(fields: [campaignId], references: [id])
+  id                  String    @id @unique @default(cuid())
+  title               String
+  objectives          String?
+  secondaryObjectives String[]
+  boostContent        String?
+  primaryKPI          String?
+  performanceBaseline String?
+  images              Json?
+  agreementFrom       String?
+  startDate           DateTime
+  endDate             DateTime
+  postingStartDate    DateTime?
+  postingEndDate      DateTime?
+  interests           Json?
+  industries          String?
+  success             String?
+  socialMediaPlatform String[]
+  videoAngle          String[]
+  campaigns_do        Json?
+  campaigns_dont      Json?
+  updatedAt           DateTime  @updatedAt
+  createdAt           DateTime  @default(now())
+  campaignId          String    @unique
+  otherAttachments    String[]
+  referencesLinks     String[]
+  campaign            Campaign  @relation(fields: [campaignId], references: [id])
 }
 
 model CampaignAdditionalDetails {
-  id                        String    @id @unique @default(cuid())
-  contentFormat             String[]
-  mainMessage               String?
-  keyPoints                 String?
-  toneAndStyle              String?
-  brandGuidelinesUrl        String?
-  referenceContent          String?
-  productImage1Url          String?
-  productImage2Url          String?
+  id                       String   @id @unique @default(cuid())
+  contentFormat            String[]
+  mainMessage              String?
+  keyPoints                String?
+  toneAndStyle             String?
+  brandGuidelinesUrl       String?
+  referenceContent         String?
+  productImage1Url         String?
+  productImage2Url         String?
   // Additional Details 2 fields
-  hashtagsToUse             String?
-  mentionsTagsRequired      String?
-  creatorCompensation       String?
-  ctaDesiredAction          String?
-  ctaLinkUrl                String?
-  ctaPromoCode              String?
-  ctaLinkInBioRequirements  String?
-  specialNotesInstructions  String?
-  needAds                   String?
-  createdAt                 DateTime  @default(now())
-  updatedAt                 DateTime  @updatedAt
-  campaignId                String    @unique
-  campaign                  Campaign  @relation(fields: [campaignId], references: [id])
+  hashtagsToUse            String?
+  mentionsTagsRequired     String?
+  creatorCompensation      String?
+  ctaDesiredAction         String?
+  ctaLinkUrl               String?
+  ctaPromoCode             String?
+  ctaLinkInBioRequirements String?
+  specialNotesInstructions String?
+  needAds                  String?
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+  campaignId               String   @unique
+  campaign                 Campaign @relation(fields: [campaignId], references: [id])
 }
 
 model Permission {
@@ -946,17 +946,17 @@ model Pitch {
   adminCommenter      Admin?         @relation("AdminCommenter", fields: [adminCommentedBy], references: [userId])
 
   // Outreach status tracking
-  outreachStatus      OutreachStatus?
-  outreachUpdatedAt   DateTime?
-  outreachUpdatedBy   String?
+  outreachStatus    OutreachStatus?
+  outreachUpdatedAt DateTime?
+  outreachUpdatedBy String?
 
-  campaign            Campaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  user                User           @relation(fields: [userId], references: [id])
-  admin               Admin?         @relation(fields: [approvedByAdminId], references: [userId], name: "ApprovedByAdmin")
-  client              User?          @relation("ApprovedByClient", fields: [approvedByClientId], references: [id])
-  rejectedByAdmin     Admin?         @relation("RejectedByAdmin", fields: [rejectedByAdminId], references: [userId])
-  rejectedByClient    User?          @relation("RejectedByClient", fields: [rejectedByClientId], references: [id])
-  maybeByClient       User?          @relation("MaybeByClient", fields: [maybeByClientId], references: [id])
+  campaign         Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  user             User     @relation(fields: [userId], references: [id])
+  admin            Admin?   @relation(fields: [approvedByAdminId], references: [userId], name: "ApprovedByAdmin")
+  client           User?    @relation("ApprovedByClient", fields: [approvedByClientId], references: [id])
+  rejectedByAdmin  Admin?   @relation("RejectedByAdmin", fields: [rejectedByAdminId], references: [userId])
+  rejectedByClient User?    @relation("RejectedByClient", fields: [rejectedByClientId], references: [id])
+  maybeByClient    User?    @relation("MaybeByClient", fields: [maybeByClientId], references: [id])
 
   @@unique([userId, campaignId])
 }
@@ -977,8 +977,8 @@ model ShortListedCreator {
   user             User?    @relation(fields: [userId], references: [id])
 
   // Credit Tier snapshot at assignment time (for tier campaigns)
-  creditPerVideo Int?        // Credits per video at time of assignment
-  creditTierId   String?     // Tier ID at time of assignment (snapshot)
+  creditPerVideo Int? // Credits per video at time of assignment
+  creditTierId   String? // Tier ID at time of assignment (snapshot)
   creditTier     CreditTier? @relation(fields: [creditTierId], references: [id])
 
   @@unique([userId, campaignId])
@@ -1323,15 +1323,20 @@ model Invoice {
   invoiceFrom   Json?
   invoiceTo     Json?
   deliverables  Json?
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
-  dueDate       DateTime
-  creatorId     String
-  campaignId    String
-  adminId       String?
-  user          User?         @relation("CreatedBy", fields: [adminId], references: [id])
-  campaign      Campaign      @relation(fields: [campaignId], references: [id])
-  creator       Creator       @relation(fields: [creatorId], references: [userId])
+
+  dueDate    DateTime
+  creatorId  String
+  campaignId String
+  adminId    String?
+
+  xeroInvoiceId String?
+
+  user     User?    @relation("CreatedBy", fields: [adminId], references: [id])
+  campaign Campaign @relation(fields: [campaignId], references: [id])
+  creator  Creator  @relation(fields: [creatorId], references: [userId])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 // model Logistic {
@@ -1863,7 +1868,7 @@ model Product {
   id          String   @id @unique @default(cuid())
   productName String
   description String?
-  isArchived Boolean @default(false)
+  isArchived  Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -1941,8 +1946,8 @@ model ReservationDetails {
   logisticId String   @unique
   logistic   Logistic @relation(fields: [logisticId], references: [id], onDelete: Cascade)
 
-  slots ReservationSlot[]
-  isConfirmed Boolean  @default(false)
+  slots       ReservationSlot[]
+  isConfirmed Boolean           @default(false)
 }
 
 model StoreVisitDetails {
@@ -2034,9 +2039,9 @@ model CampaignPCR {
 model CreditTier {
   id              String   @id @unique @default(cuid())
   name            String   @unique // "Nano A", "Nano B", "Micro A", etc.
-  minFollowers    Int      // Minimum follower count (inclusive)
-  maxFollowers    Int?     // Maximum follower count (inclusive, null = unlimited)
-  creditsPerVideo Int      // Credits cost per video for this tier
+  minFollowers    Int // Minimum follower count (inclusive)
+  maxFollowers    Int? // Maximum follower count (inclusive, null = unlimited)
+  creditsPerVideo Int // Credits cost per video for this tier
   isActive        Boolean  @default(true)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt

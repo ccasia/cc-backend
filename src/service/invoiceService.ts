@@ -10,6 +10,8 @@ import { rejectInvoiceEmail } from '@configs/nodemailer.config';
 import { logChange } from '@services/campaignServices';
 import { missingInvoices } from '@constants/missing-invoices';
 import { getCreatorInvoiceLists } from './submissionService';
+import { Contact, Invoice as XeroInvoice, LineItem, Phone, XeroClient } from 'xero-node';
+import { xero } from '@configs/xero';
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -478,3 +480,100 @@ export const updateInvoices = async ({ bankAcc, userId }: { bankAcc: any; userId
 //     throw new Error(error);
 //   }
 // }
+
+export const createXeroContact = async (
+  bankInfo: any,
+  creator: any,
+  invoiceFrom: any,
+  currency?: 'SGD' | 'MYR',
+): Promise<Contact[]> => {
+  if (Object.keys(bankInfo).length == 0) {
+    throw new Error('bank information not found');
+  }
+
+  let activeTenant;
+
+  const contact: Contact = {
+    name: invoiceFrom.name,
+    emailAddress: invoiceFrom.email,
+    phones: [{ phoneType: Phone.PhoneTypeEnum.MOBILE, phoneNumber: invoiceFrom.phoneNumber }],
+    addresses: [
+      {
+        addressLine1: creator.address,
+      },
+    ],
+    bankAccountDetails: bankInfo.accountNumber,
+  };
+
+  try {
+    await xero.updateTenants();
+
+    console.log('TENANTS', xero.tenants);
+    console.log('CURRENCY', currency);
+
+    activeTenant = xero.tenants.find((item) => item?.orgData.baseCurrency.toUpperCase() === currency);
+
+    console.log('SELECTED TENANT', activeTenant);
+
+    const response = await xero.accountingApi.createContacts(activeTenant.tenantId, { contacts: [contact] });
+
+    return response.body.contacts || [];
+  } catch (error) {
+    console.log('SADSAD', error);
+    throw new Error(error);
+    // throw new Error(error);
+  }
+};
+
+export const createXeroInvoiceLocal = async (
+  contactId: string,
+  lineItems: any,
+  dueDate: any,
+  campaignName: string,
+  invoiceNumber: string,
+  creatorEmail: string,
+  invoiceFrom: any,
+  creator: any,
+  bankInfo: any,
+  clientName: string | undefined,
+  currency?: 'SGD' | 'MYR',
+) => {
+  let activeTenant;
+
+  try {
+    const where = 'Status=="ACTIVE"';
+
+    if (currency) {
+      activeTenant = xero.tenants.find((item) => item?.orgData.baseCurrency.toUpperCase() === currency);
+    }
+
+    const accounts: any = await xero.accountingApi.getAccounts(activeTenant.tenantId, undefined, where);
+
+    const lineItemsArray: LineItem[] = lineItems.map((item: any) => ({
+      accountID: accounts.body.accounts[0].accountID,
+      accountCode: '50930',
+      // description: item.description,
+      description: `${clientName} ${campaignName}`,
+      quantity: item.quantity,
+      unitAmount: item.total,
+      taxType: 'NONE',
+    }));
+
+    const invoice: XeroInvoice = {
+      type: XeroInvoice.TypeEnum.ACCPAY,
+      contact: { contactID: contactId as any },
+      dueDate: dueDate,
+      lineItems: lineItemsArray,
+      status: 'AUTHORISED' as any,
+      invoiceNumber: `${clientName} ${campaignName}` || 'N/A',
+      // reference: campaignName || 'N/A',
+      reference: `${clientName} ${campaignName}`,
+    };
+
+    const response: any = await xero.accountingApi.createInvoices(activeTenant.tenantId, { invoices: [invoice] });
+    return response;
+  } catch (error) {
+    console.log('Testing', error);
+    throw new Error(error);
+  }
+};
