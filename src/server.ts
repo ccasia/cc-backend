@@ -151,11 +151,12 @@ app.post('/webhooks/xero', express.raw({ type: 'application/json' }), async (req
       return res.status(401).send('Missing signature');
     }
 
+    const WEBHOOK_KEY =
+      process.env.WEBHOOK_KEY ||
+      '3NMIuRECkuxM7y/a7erChZHYRxwQvwef7IJz87dWJ5C4yleDVid9x7Uv9vxdKRdJC4afKW4MZyawp5TMo/+DrA==';
+
     // Generate expected signature
-    const expectedSignature = crypto
-      .createHmac('sha256', '3NMIuRECkuxM7y/a7erChZHYRxwQvwef7IJz87dWJ5C4yleDVid9x7Uv9vxdKRdJC4afKW4MZyawp5TMo/+DrA==')
-      .update(req.body)
-      .digest('base64');
+    const expectedSignature = crypto.createHmac('sha256', WEBHOOK_KEY).update(req.body).digest('base64');
 
     if (xeroSignature !== expectedSignature) {
       return res.status(401).send('Invalid signature');
