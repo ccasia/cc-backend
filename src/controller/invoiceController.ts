@@ -197,8 +197,9 @@ export const getAllInvoices = async (req: Request, res: Response) => {
           task: true,
           creatorId: true,
           campaignId: true,
-          bankAcc: true,
           // Only include minimal creator data
+          bankAcc: true,
+          invoiceTo: true,
           creator: {
             select: {
               userId: true,
@@ -208,7 +209,15 @@ export const getAllInvoices = async (req: Request, res: Response) => {
                   name: true,
                   photoURL: true,
                   email: true,
-                  paymentForm: { select: { bankAccountName: true } },
+                  phoneNumber: true,
+                  paymentForm: {
+                    select: {
+                      bankName: true,
+                      bankAccountName: true,
+                      bankAccountNumber: true,
+                      icNumber: true,
+                    },
+                  },
                 },
               },
             },
@@ -225,7 +234,13 @@ export const getAllInvoices = async (req: Request, res: Response) => {
               },
               brand: {
                 select: {
+                  name: true,
                   logo: true,
+                },
+              },
+              company: {
+                select: {
+                  name: true,
                 },
               },
               creatorAgreement: {
@@ -338,6 +353,8 @@ export const getAllInvoices = async (req: Request, res: Response) => {
           task: true,
           creatorId: true,
           campaignId: true,
+          bankAcc: true,
+          invoiceTo: true,
           creator: {
             select: {
               userId: true,
@@ -347,7 +364,15 @@ export const getAllInvoices = async (req: Request, res: Response) => {
                   name: true,
                   photoURL: true,
                   email: true,
-                  paymentForm: { select: { bankAccountName: true } },
+                  phoneNumber: true,
+                  paymentForm: {
+                    select: {
+                      bankName: true,
+                      bankAccountName: true,
+                      bankAccountNumber: true,
+                      icNumber: true,
+                    },
+                  },
                 },
               },
             },
@@ -363,7 +388,13 @@ export const getAllInvoices = async (req: Request, res: Response) => {
               },
               brand: {
                 select: {
+                  name: true,
                   logo: true,
+                },
+              },
+              company: {
+                select: {
+                  name: true,
                 },
               },
               creatorAgreement: {
