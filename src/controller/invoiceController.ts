@@ -2072,9 +2072,17 @@ export async function generateMissingInvoices(req: Request, res: Response) {
 }
 
 export const bulkUpdateInvoices = async (req: Request, res: Response) => {
-  const invoiceIds = JSON.parse(req.body.invoiceIds);
+  let { invoiceIds } = req.body;
   const adminId = req.session.userid;
   const attachments: Record<string, any> = {};
+
+  if (typeof invoiceIds === 'string') {
+    try {
+      invoiceIds = JSON.parse(invoiceIds);
+    } catch (e) {
+      invoiceIds = [];
+    }
+  }
 
   if (!invoiceIds || !Array.isArray(invoiceIds) || invoiceIds.length === 0) {
     return res.status(400).json({ message: 'No invoices selected' });
@@ -2087,15 +2095,15 @@ export const bulkUpdateInvoices = async (req: Request, res: Response) => {
     for (const key of Object.keys(req.files)) {
       if (key.startsWith('file_')) {
         const file = req.files[key] as any;
-        const id = key.replace('file_', ''); 
+        const id = key.replace('file_', '');
 
         const permanentPath = path.join(uploadDir, `${Date.now()}_${file.name}`);
-        await file.mv(permanentPath); 
+        await file.mv(permanentPath);
 
         attachments[id] = {
           name: file.name,
           mimetype: file.mimetype,
-          tempFilePath: permanentPath, 
+          tempFilePath: permanentPath,
         };
       }
     }
