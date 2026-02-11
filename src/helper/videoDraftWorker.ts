@@ -257,15 +257,24 @@ const checkCurrentSubmission = async (submissionId: string) => {
 
   console.log(`🔍 FIXED: Worker - Current submission ${submissionId} status: ${currentSubmission?.status}`);
 
-  // V4 FIX: For v4 submissions, preserve PENDING_REVIEW status
-  if (submission.submissionVersion === 'v4' && currentSubmission?.status === 'PENDING_REVIEW') {
-    console.log(`🔍 V4 FIX: Worker - Preserving PENDING_REVIEW status for v4 submission ${submissionId}`);
-  } else if (currentSubmission?.status === 'PENDING_REVIEW' && submission.submissionVersion !== 'v4') {
+  // V4: Controller sets IN_PROGRESS for async uploads, worker transitions to PENDING_REVIEW after processing
+  if (submission.submissionVersion === 'v4') {
+    if (currentSubmission?.status === 'IN_PROGRESS') {
+      console.log(`🔍 V4: Worker - Transitioning submission ${submissionId} from IN_PROGRESS to PENDING_REVIEW`);
+      await prisma.submission.update({
+        where: { id: submission.id },
+        data: {
+          status: 'PENDING_REVIEW',
+          submissionDate: dayjs().format(),
+        },
+      });
+    } else {
+      console.log(`🔍 V4: Worker - Preserving status ${currentSubmission?.status} for submission ${submissionId}`);
+    }
+  } else if (currentSubmission?.status === 'PENDING_REVIEW') {
     console.log(`🔍 FIXED: Worker - Submission ${submissionId} already PENDING_REVIEW, skipping status update`);
   } else {
-    // Update submission status based on deliverable checks
-    // For UGC campaigns (no posting required), set to PENDING_REVIEW when all deliverables are sent
-    // For normal campaigns, also consider campaignCredits condition
+    // Non-V4: Update submission status based on deliverable checks
     if (allDeliverablesSent) {
       console.log(`Worker - Updating submission ${submissionId} to PENDING_REVIEW`);
       await prisma.submission.update({

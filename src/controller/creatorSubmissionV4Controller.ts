@@ -400,12 +400,19 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
       hasMeaningfulChanges,
     });
 
-    // Update submission status to PENDING_REVIEW if there are meaningful changes
+    // Determine if async processing (worker) is needed
+    const hasAsyncProcessing = uploadedVideos.length > 0 || uploadedPhotos.length > 0 || uploadedRawFootages.length > 0;
+
+    // Update submission status based on whether async processing is pending
     if (hasMeaningfulChanges) {
+      // If async files are queued, set IN_PROGRESS — worker will set PENDING_REVIEW after processing
+      // If only sync changes (caption edit, photo/raw footage removal), set PENDING_REVIEW immediately
+      const newStatus = hasAsyncProcessing ? 'IN_PROGRESS' : 'PENDING_REVIEW';
+
       await prisma.submission.update({
         where: { id: submissionId },
         data: {
-          status: 'PENDING_REVIEW',
+          status: newStatus,
           updatedAt: new Date(),
         },
       });
@@ -423,12 +430,12 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
           hasRawFootageRemoval,
           submittedAt: new Date().toISOString(),
           creatorId,
-          newStatus: 'PENDING_REVIEW',
+          newStatus,
         });
       }
 
       console.log(
-        `📤 Creator ${creatorId} submitted V4 content changes for submission ${submissionId}, status updated to PENDING_REVIEW`,
+        `📤 Creator ${creatorId} submitted V4 content changes for submission ${submissionId}, status updated to ${newStatus}`,
       );
     }
 
