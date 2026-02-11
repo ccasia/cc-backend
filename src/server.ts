@@ -477,7 +477,11 @@ app.post('/sendMessage', async (req: Request, res: Response) => {
   }
 });
 
-server.listen(process.env.PORT, async () => {
-  console.log(`Listening to port ${process.env.PORT}...`);
-  console.log(`${process.env.NODE_ENV} stage is running...`);
-});
+if (require.main === module) {
+  server.listen(process.env.PORT, async () => {
+    console.log(`Listening to port ${process.env.PORT}...`);
+    console.log(`${process.env.NODE_ENV} stage is running...`);
+  });
+}
+
+export { app, server };

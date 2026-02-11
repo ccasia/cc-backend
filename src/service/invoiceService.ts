@@ -552,7 +552,6 @@ export const createXeroInvoiceLocal = async (
     const lineItemsArray: LineItem[] = lineItems.map((item: any) => ({
       accountID: accounts.body.accounts[0].accountID,
       accountCode: '50930',
-      // description: item.description,
       description: `${clientName} ${campaignName}`,
       quantity: item.quantity,
       unitAmount: item.total,
@@ -566,7 +565,6 @@ export const createXeroInvoiceLocal = async (
       lineItems: lineItemsArray,
       status: 'AUTHORISED' as any,
       invoiceNumber: `${clientName} ${campaignName}` || 'N/A',
-      // reference: campaignName || 'N/A',
       reference: `${clientName} ${campaignName}`,
     };
 
