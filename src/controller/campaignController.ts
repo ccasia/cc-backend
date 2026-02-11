@@ -4305,6 +4305,7 @@ export const editCampaignRequirements = async (req: Request, res: Response) => {
     // Get admin info for logging
     if (adminId) {
       const reqFields: FieldMapping[] = [
+        // Primary Audience
         { field: 'audienceGender', label: 'Gender', source: 'gender' },
         { field: 'audienceAge', label: 'Age', source: 'age' },
         { field: 'audienceLanguage', label: 'Language', source: 'language' },
@@ -4312,11 +4313,25 @@ export const editCampaignRequirements = async (req: Request, res: Response) => {
         { field: 'audienceUserPersona', label: 'User Persona', source: 'user_persona' },
         { field: 'countries', label: 'Countries', source: 'countries' },
         { field: 'geographicFocus', label: 'Geographic Focus', source: 'geographic_focus' },
+        // Secondary Audience
+        { field: 'secondaryAudienceGender', label: 'Secondary Gender', source: 'secondary_gender' },
+        { field: 'secondaryAudienceAge', label: 'Secondary Age', source: 'secondary_age' },
+        { field: 'secondaryAudienceLanguage', label: 'Secondary Language', source: 'secondary_language' },
+        { field: 'secondaryAudienceCreatorPersona', label: 'Secondary Creator Persona', source: 'secondary_creator_persona' },
+        { field: 'secondaryAudienceUserPersona', label: 'Secondary User Persona', source: 'secondary_user_persona' },
+        { field: 'secondaryCountry', label: 'Secondary Country', source: 'secondary_country' },
+        { field: 'geographicFocusOthers', label: 'Geographic Focus Others', source: 'geographicFocusOthers' },
       ];
 
       const changes = computeChanges(
         oldReq || {},
-        { audienceGender, audienceAge, audienceLanguage, audienceCreatorPersona, audienceUserPersona, countries: finalizedCountries, geographicFocus },
+        {
+          audienceGender, audienceAge, audienceLanguage, audienceCreatorPersona, audienceUserPersona,
+          countries: finalizedCountries, geographicFocus,
+          secondaryAudienceGender, secondaryAudienceAge, secondaryAudienceLanguage,
+          secondaryAudienceCreatorPersona, secondaryAudienceUserPersona, secondaryCountry,
+          geographicFocusOthers,
+        },
         reqFields
       );
 
