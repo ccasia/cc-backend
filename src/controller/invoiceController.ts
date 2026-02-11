@@ -20,6 +20,8 @@ import { TokenSet } from 'openid-client';
 import { error } from 'console';
 
 import fs from 'fs-extra';
+import path from 'path';
+
 import {
   createInvoiceService,
   generateUniqueInvoiceNumber,
@@ -30,7 +32,7 @@ import dayjs from 'dayjs';
 import { getCreatorInvoiceLists } from '@services/submissionService';
 import { missingInvoices } from '@constants/missing-invoices';
 import { creatorAgreements } from './campaignController';
-import { invoiceQueue } from '@utils/queue';
+import { bulkInvoiceQueue, invoiceQueue } from '@utils/queue';
 import { xero } from '@configs/xero';
 // import { decreamentCreditCampiagn } from '@services/packageService';
 
@@ -2065,223 +2067,56 @@ export async function generateMissingInvoices(req: Request, res: Response) {
 }
 
 export const bulkUpdateInvoices = async (req: Request, res: Response) => {
-  const { invoiceIds } = req.body;
-  const userId = (req.session as any).userid;
+  const invoiceIds = JSON.parse(req.body.invoiceIds);
+  const adminId = req.session.userid;
+  const attachments: Record<string, any> = {};
 
   if (!invoiceIds || !Array.isArray(invoiceIds) || invoiceIds.length === 0) {
     return res.status(400).json({ message: 'No invoices selected' });
   }
 
-  const results = {
-    success: 0,
-    failed: 0,
-    errors: [] as string[],
-  };
+  if (req.files) {
+    const uploadDir = path.join(process.cwd(), 'uploads/bulk');
+    await fs.ensureDir(uploadDir);
+
+    for (const key of Object.keys(req.files)) {
+      if (key.startsWith('file_')) {
+        const file = req.files[key] as any;
+        const id = key.replace('file_', ''); 
+
+        const permanentPath = path.join(uploadDir, `${Date.now()}_${file.name}`);
+        await file.mv(permanentPath); 
+
+        attachments[id] = {
+          name: file.name,
+          mimetype: file.mimetype,
+          tempFilePath: permanentPath, 
+        };
+      }
+    }
+  }
 
   try {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      include: {
-        admin: {
-          select: { xeroTokenSet: true },
-        },
+    // Add to queue
+    await bulkInvoiceQueue.add(
+      'bulk-approve',
+      {
+        invoiceIds,
+        adminId,
+        attachments,
       },
-    });
-
-    if (!user || !user.admin?.xeroTokenSet) {
-      return res.status(400).json({ error: 'User not connected to Xero' });
-    }
-
-    const tokenSet: TokenSet = user.admin.xeroTokenSet as TokenSet;
-    await xero.initialize();
-    xero.setTokenSet(tokenSet);
-
-    if (tokenSet.expires_at && dayjs.unix(tokenSet.expires_at).isBefore(dayjs())) {
-      const validTokenSet = await xero.refreshToken();
-      await prisma.admin.update({ where: { userId: userId }, data: { xeroTokenSet: validTokenSet as any } });
-      xero.setTokenSet(validTokenSet);
-    }
-
-    await xero.updateTenants();
-
-    const batches: Record<string, { tenantId: string; invoices: any[]; prismaIds: string[] }> = {};
-
-    for (const invoiceId of invoiceIds) {
-      try {
-        const invoice = await prisma.invoice.findUnique({
-          where: { id: invoiceId },
-          include: {
-            creator: {
-              include: {
-                user: {
-                  select: {
-                    id: true,
-                    name: true,
-                    email: true,
-                    paymentForm: true,
-                    creatorAgreement: true,
-                  },
-                },
-              },
-            },
-            campaign: {
-              include: {
-                campaignAdmin: {
-                  include: {
-                    admin: { include: { role: true } },
-                  },
-                },
-              },
-            },
-            user: true,
-          },
-        });
-
-        if (!invoice || invoice.status === 'approved' || invoice.status === 'paid') continue;
-
-        const creatorUser = invoice.creator.user;
-        const recipientName =
-          (invoice.bankAcc as any)?.payTo || creatorUser.paymentForm?.bankAccountName || creatorUser.name;
-
-        const currency = (invoice.task as any)?.currency || 'MYR';
-
-        let activeTenant = xero.tenants.find((t) => t?.orgData.baseCurrency.toUpperCase() === currency.toUpperCase());
-
-        if (!activeTenant && xero.tenants.length > 0) activeTenant = xero.tenants[0];
-
-        if (!activeTenant) throw new Error('No Xero organization found');
-
-        const tenantId = activeTenant.tenantId;
-
-        let contactID = null;
-
-        const search = await xero.accountingApi.getContacts(tenantId, undefined, `Name=="${recipientName.trim()}"`);
-
-        if (search.body.contacts && search.body.contacts.length > 0) {
-          // Found a match by name! Use this ID and update our DB
-          contactID = search.body.contacts[0].contactID;
-
-          // Update DB if the ID we had was wrong or missing
-          if (invoice.creator.xeroContactId !== contactID) {
-            await prisma.creator.update({
-              where: { id: invoice.creator.id },
-              data: { xeroContactId: contactID },
-            });
-          }
-        } else {
-          // 2. No contact found by name, create a new one
-          const [contact] = await createXeroContact(
-            invoice.bankAcc,
-            invoice.creator,
-            { name: recipientName, email: creatorUser.email },
-            currency as any,
-          );
-          contactID = contact.contactID || null;
-
-          if (contactID) {
-            await prisma.creator.update({
-              where: { id: invoice.creator.id },
-              data: { xeroContactId: contactID },
-            });
-          }
-        }
-
-        if (!batches[tenantId]) batches[tenantId] = { tenantId, invoices: [], prismaIds: [] };
-
-        batches[tenantId].invoices.push({
-          type: 'ACCPAY' as any,
-          contact: {
-            contactID: contactID as any,
-            name: recipientName,
-          },
-          dueDate: invoice.dueDate,
-          lineItems: [
-            {
-              accountCode: '50930',
-              description: (invoice.task as any)?.description || 'Content Creation Services',
-              quantity: 1,
-              unitAmount: invoice.amount,
-              taxType: 'NONE',
-            },
-          ],
-          status: 'AUTHORISED' as any,
-          invoiceNumber: invoice.invoiceNumber,
-          reference: invoice.campaign.name,
-        });
-        batches[tenantId].prismaIds.push(invoice.id);
-      } catch (innerError) {
-        results.failed++;
-        results.errors.push(`Prep Error [ID: ${invoiceId}]: ${innerError.message}`);
-      }
-    }
-
-    for (const tenantKey in batches) {
-      const batch = batches[tenantKey];
-      try {
-        const response = await xero.accountingApi.createInvoices(batch.tenantId, { invoices: batch.invoices }, false);
-
-        const xeroResults = response.body.invoices || [];
-
-        for (let i = 0; i < xeroResults.length; i++) {
-          const xeroInv = xeroResults[i];
-          const prismaId = batch.prismaIds[i];
-
-          if (xeroInv.hasErrors) {
-            results.failed++;
-            results.errors.push(
-              `Xero Error [INV: ${xeroInv.invoiceNumber}]: ${xeroInv.validationErrors?.[0]?.message}`,
-            );
-            continue;
-          }
-
-          const updatedInvoice = await prisma.invoice.update({
-            where: { id: prismaId },
-            data: { status: 'approved' },
-            include: {
-              campaign: { include: { campaignAdmin: { include: { admin: { include: { role: true } } } } } },
-              creator: { include: { user: { include: { paymentForm: true } } } },
-            },
-          });
-
-          results.success++;
-          logChange(`Bulk approved invoice ${updatedInvoice.invoiceNumber}`, updatedInvoice.campaignId, req);
-
-          sendToSpreadSheet(
-            {
-              createdAt: dayjs().format('YYYY-MM-DD'),
-              name: updatedInvoice.creator.user.paymentForm?.bankAccountName || updatedInvoice.creator.user.name || '',
-              icNumber: updatedInvoice.creator.user.paymentForm?.icNumber || '',
-              bankName: (updatedInvoice.bankAcc as any)?.bankName || '',
-              bankAccountNumber: (updatedInvoice.bankAcc as any)?.accountNumber || '',
-              campaignName: updatedInvoice.campaign.name,
-              amount: updatedInvoice.amount,
-            },
-            '1VClmvYJV9R4HqjADhGA6KYIR9KCFoXTag5SMVSL4rFc',
-            'Invoices',
-          );
-
-          const { title, message } = notificationInvoiceUpdate(updatedInvoice.campaign.name);
-          saveNotification({
-            userId: updatedInvoice.creatorId,
-            title,
-            message,
-            entity: 'Invoice',
-            entityId: updatedInvoice.campaignId,
-          });
-        }
-      } catch (batchError) {
-        results.failed += batch.prismaIds.length;
-        results.errors.push(`Batch Call Failed: ${batchError.message}`);
-      }
-    }
+      {
+        jobId: `bulk-inv-${dayjs().valueOf()}`,
+        removeOnComplete: true,
+      },
+    );
 
     return res.status(200).json({
-      message: `Processed ${invoiceIds.length} invoices. Success: ${results.success}, Failed: ${results.failed}`,
-      details: results,
+      message: `Successfully queued ${invoiceIds.length} invoices for approval.`,
     });
   } catch (error) {
-    console.error('Critical Batch Failure:', error);
-    return res.status(500).json({ error: error.message });
+    console.error('Bulk Queue Error:', error);
+    return res.status(500).json({ error: 'Failed to queue bulk process' });
   }
 };
 
