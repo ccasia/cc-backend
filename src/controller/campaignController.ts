@@ -66,6 +66,7 @@ import getCountry from '@utils/getCountry';
 // import { applyCreditCampiagn } from '@services/packageService';
 import { sendShortlistEmailToClients, ShortlistedCreatorInput } from '@services/notificationService';
 import { calculateAverageMetrics } from '@utils/averagingMetrics';
+import { computeChanges, FieldMapping } from '@utils/campaignLogDiff';
 
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
 Ffmpeg.setFfprobePath(ffprobePath.path);
@@ -3804,17 +3805,10 @@ export const editCampaignInfo = async (req: Request, res: Response) => {
   }
 
   try {
-    console.log('editCampaignInfo received:', {
-      id,
-      name,
-      description,
-      brandAbout,
-      productName,
-      websiteLink,
-      campaignIndustries,
-      campaignStartDate,
-      campaignEndDate,
-      campaignImage: publicURL,
+    // Fetch old data for diff tracking
+    const oldCampaign = await prisma.campaign.findUnique({
+      where: { id },
+      include: { campaignBrief: true },
     });
 
     const updatedCampaign = await prisma.campaign.update({
@@ -3849,12 +3843,43 @@ export const editCampaignInfo = async (req: Request, res: Response) => {
 
     // Get admin info for logging
     if (adminId) {
+      const infoFields: FieldMapping[] = [
+        { field: 'name', label: 'Campaign Name', source: 'name' },
+        { field: 'description', label: 'Description', source: 'description' },
+        { field: 'brandAbout', label: 'Brand About', source: 'brandAbout' },
+        { field: 'productName', label: 'Product Name', source: 'productName' },
+        { field: 'websiteLink', label: 'Website Link', source: 'websiteLink' },
+        { field: 'campaignStartDate', label: 'Start Date', source: 'campaignBrief.startDate' },
+        { field: 'campaignEndDate', label: 'End Date', source: 'campaignBrief.endDate' },
+        { field: 'campaignIndustries', label: 'Industries', source: 'campaignBrief.industries' },
+      ];
+
+      const changes = computeChanges(
+        oldCampaign || {},
+        { name, description, brandAbout, productName, websiteLink, campaignStartDate, campaignEndDate, campaignIndustries },
+        infoFields
+      );
+
+      if (publicURL.length > 0) {
+        changes.push({
+          field: 'images',
+          label: 'Campaign Images',
+          old: oldCampaign?.campaignBrief?.images || [],
+          new: publicURL,
+        });
+      }
+
+      const metadata = changes.length > 0
+        ? { section: 'Campaign General Information', changes }
+        : undefined;
+
       const campaignActivityMessage = `Campaign Details edited - [Campaign General Information]`;
       await prisma.campaignLog.create({
         data: {
           message: campaignActivityMessage,
           adminId: adminId,
           campaignId: id,
+          ...(metadata && { metadata }),
         },
       });
 
@@ -3892,10 +3917,13 @@ export const editCampaignObjectives = async (req: Request, res: Response) => {
       performanceBaseline,
     });
 
-    // Get campaign name for logging
+    // Get campaign and brief for logging + diff
     const campaign = await prisma.campaign.findUnique({
       where: { id },
       select: { name: true },
+    });
+    const oldBrief = await prisma.campaignBrief.findUnique({
+      where: { campaignId: id },
     });
 
     const updatedCampaignBrief = await prisma.campaignBrief.update({
@@ -3913,12 +3941,31 @@ export const editCampaignObjectives = async (req: Request, res: Response) => {
 
     // Log the change
     if (adminId) {
+      const objectiveFields: FieldMapping[] = [
+        { field: 'objectives', label: 'Objectives', source: 'objectives' },
+        { field: 'secondaryObjectives', label: 'Secondary Objectives', source: 'secondaryObjectives' },
+        { field: 'boostContent', label: 'Boost Content', source: 'boostContent' },
+        { field: 'primaryKPI', label: 'Primary KPI', source: 'primaryKPI' },
+        { field: 'performanceBaseline', label: 'Performance Baseline', source: 'performanceBaseline' },
+      ];
+
+      const changes = computeChanges(
+        oldBrief || {},
+        { objectives, secondaryObjectives, boostContent, primaryKPI, performanceBaseline },
+        objectiveFields
+      );
+
+      const metadata = changes.length > 0
+        ? { section: 'Campaign Objectives', changes }
+        : undefined;
+
       const campaignActivityMessage = `Campaign Details edited - [Campaign Objectives]`;
       await prisma.campaignLog.create({
         data: {
           message: campaignActivityMessage,
           adminId: adminId,
           campaignId: id,
+          ...(metadata && { metadata }),
         },
       });
 
@@ -3943,6 +3990,12 @@ export const editCampaignBrandOrCompany = async (req: Request, res: Response) =>
   } = req.body;
 
   try {
+    // Fetch old campaign for diff
+    const oldCampaign = await prisma.campaign.findUnique({
+      where: { id },
+      include: { brand: { select: { name: true } }, company: { select: { name: true } } },
+    });
+
     // If `null`, then `campaignBrand.id` is a company ID
     const brand = await prisma.brand.findUnique({
       where: {
@@ -3968,6 +4021,23 @@ export const editCampaignBrandOrCompany = async (req: Request, res: Response) =>
 
     // Get admin info for logging
     if (adminId) {
+      const oldName = oldCampaign?.brand?.name || oldCampaign?.company?.name || null;
+      let newName: string | null = null;
+      if (brand) {
+        newName = brand.name;
+      } else {
+        const company = await prisma.company.findUnique({ where: { id: campaignBrand.id }, select: { name: true } });
+        newName = company?.name || campaignBrand.id;
+      }
+
+      const changes = oldName !== newName
+        ? [{ field: 'brandOrCompany', label: brand ? 'Brand' : 'Company', old: oldName, new: newName }]
+        : [];
+
+      const metadata = changes.length > 0
+        ? { section: 'Company', changes }
+        : undefined;
+
       // Log campaign activity for editing company
       const campaignActivityMessage = `Campaign Details edited - [Company]`;
       await prisma.campaignLog.create({
@@ -3975,6 +4045,7 @@ export const editCampaignBrandOrCompany = async (req: Request, res: Response) =>
           message: campaignActivityMessage,
           adminId: adminId,
           campaignId: updatedCampaign.id,
+          ...(metadata && { metadata }),
         },
       });
 
@@ -3991,6 +4062,12 @@ export const editCampaignDosAndDonts = async (req: Request, res: Response) => {
   const { campaignId, campaignDo, campaignDont } = req.body;
 
   try {
+    // Fetch old data for diff
+    const oldBrief = await prisma.campaignBrief.findUnique({
+      where: { campaignId },
+      select: { campaigns_do: true, campaigns_dont: true },
+    });
+
     const updatedCampaignBrief = await prisma.campaignBrief.update({
       where: {
         campaignId: campaignId,
@@ -4005,6 +4082,21 @@ export const editCampaignDosAndDonts = async (req: Request, res: Response) => {
 
     // Get admin info for logging
     if (adminId) {
+      const dosAndDontsFields: FieldMapping[] = [
+        { field: 'campaignDo', label: "Do's", source: 'campaigns_do' },
+        { field: 'campaignDont', label: "Don'ts", source: 'campaigns_dont' },
+      ];
+
+      const changes = computeChanges(
+        oldBrief || {},
+        { campaignDo, campaignDont },
+        dosAndDontsFields
+      );
+
+      const metadata = changes.length > 0
+        ? { section: "Do's and Don'ts", changes }
+        : undefined;
+
       // Log campaign activity for editing do's and don'ts
       const campaignActivityMessage = `Campaign Details edited - [Do's and Don'ts]`;
       await prisma.campaignLog.create({
@@ -4012,6 +4104,7 @@ export const editCampaignDosAndDonts = async (req: Request, res: Response) => {
           message: campaignActivityMessage,
           adminId: adminId,
           campaignId: campaignId,
+          ...(metadata && { metadata }),
         },
       });
 
@@ -4068,6 +4161,11 @@ export const editCampaignRequirements = async (req: Request, res: Response) => {
     // Remove duplicates
     finalizedCountries = [...new Set(finalizedCountries)];
 
+    // Fetch old requirements for diff
+    const oldReq = await prisma.campaignRequirement.findUnique({
+      where: { campaignId },
+    });
+
     const updatedCampaignRequirement = await prisma.campaignRequirement.update({
       where: {
         campaignId: campaignId,
@@ -4101,6 +4199,26 @@ export const editCampaignRequirements = async (req: Request, res: Response) => {
 
     // Get admin info for logging
     if (adminId) {
+      const reqFields: FieldMapping[] = [
+        { field: 'audienceGender', label: 'Gender', source: 'gender' },
+        { field: 'audienceAge', label: 'Age', source: 'age' },
+        { field: 'audienceLanguage', label: 'Language', source: 'language' },
+        { field: 'audienceCreatorPersona', label: 'Creator Persona', source: 'creator_persona' },
+        { field: 'audienceUserPersona', label: 'User Persona', source: 'user_persona' },
+        { field: 'countries', label: 'Countries', source: 'countries' },
+        { field: 'geographicFocus', label: 'Geographic Focus', source: 'geographic_focus' },
+      ];
+
+      const changes = computeChanges(
+        oldReq || {},
+        { audienceGender, audienceAge, audienceLanguage, audienceCreatorPersona, audienceUserPersona, countries: finalizedCountries, geographicFocus },
+        reqFields
+      );
+
+      const metadata = changes.length > 0
+        ? { section: 'Campaign Requirements', changes }
+        : undefined;
+
       // Log campaign activity for editing campaign requirements
       const campaignActivityMessage = `Campaign Details edited - [Campaign Requirements]`;
       await prisma.campaignLog.create({
@@ -4108,6 +4226,7 @@ export const editCampaignRequirements = async (req: Request, res: Response) => {
           message: campaignActivityMessage,
           adminId: adminId,
           campaignId: campaignId,
+          ...(metadata && { metadata }),
         },
       });
 
@@ -4140,6 +4259,12 @@ export const editCampaignLogistics = async (req: Request, res: Response) => {
   const adminId = req.session.userid;
 
   try {
+    // Fetch old data for diff
+    const oldCampaign = await prisma.campaign.findUnique({
+      where: { id: campaignId },
+      select: { logisticsType: true, name: true },
+    });
+
     // Update campaign logistics type
     const updatedCampaign = await prisma.campaign.update({
       where: { id: campaignId },
@@ -4208,12 +4333,23 @@ export const editCampaignLogistics = async (req: Request, res: Response) => {
 
     // Log the change
     if (adminId) {
+      const changes: { field: string; label: string; old: any; new: any }[] = [];
+      const newLogisticsType = logisticsType && logisticsType !== '' ? logisticsType : null;
+      if (oldCampaign?.logisticsType !== newLogisticsType) {
+        changes.push({ field: 'logisticsType', label: 'Logistics Type', old: oldCampaign?.logisticsType || null, new: newLogisticsType });
+      }
+
+      const metadata = changes.length > 0
+        ? { section: 'Campaign Logistics', changes }
+        : undefined;
+
       const campaignActivityMessage = `Campaign Details edited - [Campaign Logistics]`;
       await prisma.campaignLog.create({
         data: {
           message: campaignActivityMessage,
           adminId: adminId,
           campaignId: campaignId,
+          ...(metadata && { metadata }),
         },
       });
 
@@ -4605,12 +4741,25 @@ export const editCampaignFinalise = async (req: Request, res: Response) => {
 
     // Log the change
     if (adminId) {
+      const changes: { field: string; label: string; old: any; new: any }[] = [];
+
+      if (campaign.rawFootage !== rawFootage) changes.push({ field: 'rawFootage', label: 'Raw Footage', old: campaign.rawFootage, new: rawFootage });
+      if (campaign.photos !== photos) changes.push({ field: 'photos', label: 'Photos', old: campaign.photos, new: photos });
+      if (campaign.ads !== ads) changes.push({ field: 'ads', label: 'Ads', old: campaign.ads, new: ads });
+      if (campaign.crossPosting !== crossPosting) changes.push({ field: 'crossPosting', label: 'Cross Posting', old: campaign.crossPosting, new: crossPosting });
+      if (previousCampaignType !== newCampaignType) changes.push({ field: 'campaignType', label: 'Campaign Type', old: previousCampaignType, new: newCampaignType });
+
+      const metadata = changes.length > 0
+        ? { section: 'Campaign Finalise Settings', changes }
+        : undefined;
+
       const campaignActivityMessage = `Campaign Details edited - [Campaign Finalise Settings]`;
       await prisma.campaignLog.create({
         data: {
           message: campaignActivityMessage,
           adminId: adminId,
           campaignId: campaignId,
+          ...(metadata && { metadata }),
         },
       });
 
@@ -4874,12 +5023,38 @@ export const editCampaignAdditionalDetails = async (req: Request, res: Response)
 
     // Log the change
     if (adminId) {
+      const addtlFields: FieldMapping[] = [
+        { field: 'contentFormat', label: 'Content Format', source: 'campaignAdditionalDetails.contentFormat' },
+        { field: 'mainMessage', label: 'Main Message', source: 'campaignAdditionalDetails.mainMessage' },
+        { field: 'keyPoints', label: 'Key Points', source: 'campaignAdditionalDetails.keyPoints' },
+        { field: 'toneAndStyle', label: 'Tone and Style', source: 'campaignAdditionalDetails.toneAndStyle' },
+        { field: 'hashtagsToUse', label: 'Hashtags', source: 'campaignAdditionalDetails.hashtagsToUse' },
+        { field: 'mentionsTagsRequired', label: 'Mentions/Tags', source: 'campaignAdditionalDetails.mentionsTagsRequired' },
+        { field: 'ctaDesiredAction', label: 'CTA Desired Action', source: 'campaignAdditionalDetails.ctaDesiredAction' },
+        { field: 'ctaLinkUrl', label: 'CTA Link URL', source: 'campaignAdditionalDetails.ctaLinkUrl' },
+        { field: 'ctaPromoCode', label: 'CTA Promo Code', source: 'campaignAdditionalDetails.ctaPromoCode' },
+        { field: 'ctaLinkInBioRequirements', label: 'CTA Link in Bio', source: 'campaignAdditionalDetails.ctaLinkInBioRequirements' },
+        { field: 'specialNotesInstructions', label: 'Special Notes', source: 'campaignAdditionalDetails.specialNotesInstructions' },
+        { field: 'socialMediaPlatform', label: 'Social Media Platform', source: 'campaignBrief.socialMediaPlatform' },
+      ];
+
+      const changes = computeChanges(
+        campaign || {},
+        { contentFormat, mainMessage, keyPoints, toneAndStyle, hashtagsToUse, mentionsTagsRequired, ctaDesiredAction, ctaLinkUrl, ctaPromoCode, ctaLinkInBioRequirements, specialNotesInstructions, socialMediaPlatform },
+        addtlFields
+      );
+
+      const metadata = changes.length > 0
+        ? { section: 'Additional Details', changes }
+        : undefined;
+
       const campaignActivityMessage = `Campaign Details edited - [Additional Details]`;
       await prisma.campaignLog.create({
         data: {
           message: campaignActivityMessage,
           adminId: adminId,
           campaignId: campaignId,
+          ...(metadata && { metadata }),
         },
       });
 
@@ -5025,6 +5200,38 @@ export const editCampaignTimeline = async (req: Request, res: Response) => {
 
     // Get admin info for logging
     if (adminId) {
+      const changes: { field: string; label: string; old: any; new: any }[] = [];
+
+      // Track campaign start/end date changes
+      const oldStart = campaign.campaignBrief?.startDate;
+      const oldEnd = campaign.campaignBrief?.endDate;
+      if (oldStart && campaignStartDate && dayjs(oldStart).format('YYYY-MM-DD') !== dayjs(campaignStartDate).format('YYYY-MM-DD')) {
+        changes.push({ field: 'campaignStartDate', label: 'Campaign Start Date', old: dayjs(oldStart).format('YYYY-MM-DD'), new: dayjs(campaignStartDate).format('YYYY-MM-DD') });
+      }
+      if (oldEnd && campaignEndDate && dayjs(oldEnd).format('YYYY-MM-DD') !== dayjs(campaignEndDate).format('YYYY-MM-DD')) {
+        changes.push({ field: 'campaignEndDate', label: 'Campaign End Date', old: dayjs(oldEnd).format('YYYY-MM-DD'), new: dayjs(campaignEndDate).format('YYYY-MM-DD') });
+      }
+
+      // Track phase-level changes
+      for (const item of timeline) {
+        const oldPhase = campaign.campaignTimeline?.find((t: any) => t.id === item.id || t.name === item.timeline_type?.name);
+        if (oldPhase) {
+          if (oldPhase.duration !== parseInt(item.duration)) {
+            changes.push({ field: `phase_${oldPhase.name}_duration`, label: `${oldPhase.name} Duration (days)`, old: oldPhase.duration, new: parseInt(item.duration) });
+          }
+          if (item.startDate && dayjs(oldPhase.startDate).format('YYYY-MM-DD') !== dayjs(item.startDate).format('YYYY-MM-DD')) {
+            changes.push({ field: `phase_${oldPhase.name}_startDate`, label: `${oldPhase.name} Start Date`, old: dayjs(oldPhase.startDate).format('YYYY-MM-DD'), new: dayjs(item.startDate).format('YYYY-MM-DD') });
+          }
+          if (item.endDate && dayjs(oldPhase.endDate).format('YYYY-MM-DD') !== dayjs(item.endDate).format('YYYY-MM-DD')) {
+            changes.push({ field: `phase_${oldPhase.name}_endDate`, label: `${oldPhase.name} End Date`, old: dayjs(oldPhase.endDate).format('YYYY-MM-DD'), new: dayjs(item.endDate).format('YYYY-MM-DD') });
+          }
+        }
+      }
+
+      const metadata = changes.length > 0
+        ? { section: 'Timeline', changes }
+        : undefined;
+
       // Log campaign activity for editing timeline
       const campaignActivityMessage = `Campaign Details edited - [Timeline]`;
       await prisma.campaignLog.create({
@@ -5032,6 +5239,7 @@ export const editCampaignTimeline = async (req: Request, res: Response) => {
           message: campaignActivityMessage,
           adminId: adminId,
           campaignId: id,
+          ...(metadata && { metadata }),
         },
       });
 
@@ -6997,6 +7205,30 @@ export const editCampaignAdmin = async (req: Request, res: Response) => {
 
     // Get admin info for logging
     if (adminId) {
+      const oldAdminNames = existingAdmins.map((ca: any) => ca.admin?.userId).filter(Boolean);
+      const newAdminNames = admins.map((a: any) => a.id);
+
+      const changes: { field: string; label: string; old: any; new: any }[] = [];
+      if (newAdmins.length > 0 || removedAdmins.length > 0) {
+        // Resolve names for display
+        const allAdminUsers = await prisma.user.findMany({
+          where: { id: { in: [...oldAdminNames, ...newAdminNames] } },
+          select: { id: true, name: true },
+        });
+        const nameMap = new Map(allAdminUsers.map((u: any) => [u.id, u.name || u.id]));
+
+        changes.push({
+          field: 'campaignManagers',
+          label: 'Campaign Managers',
+          old: oldAdminNames.map((id: string) => nameMap.get(id) || id),
+          new: newAdminNames.map((id: string) => nameMap.get(id) || id),
+        });
+      }
+
+      const metadata = changes.length > 0
+        ? { section: 'Campaign Manager', changes }
+        : undefined;
+
       // Log campaign activity for editing campaign manager
       const campaignActivityMessage = `Campaign Details edited - [Campaign Manager]`;
       await prisma.campaignLog.create({
@@ -7004,6 +7236,7 @@ export const editCampaignAdmin = async (req: Request, res: Response) => {
           message: campaignActivityMessage,
           adminId: adminId,
           campaignId: campaign.id,
+          ...(metadata && { metadata }),
         },
       });
 
@@ -7148,6 +7381,27 @@ export const editCampaignAttachments = async (req: Request, res: Response) => {
 
     // Get admin info for logging
     if (adminId) {
+      // Get old attachments for diff
+      const oldBrief = await prisma.campaignBrief.findUnique({
+        where: { campaignId: campaign.id },
+        select: { otherAttachments: true },
+      });
+
+      const oldAttachments = (oldBrief?.otherAttachments as string[]) || [];
+      const changes: { field: string; label: string; old: any; new: any }[] = [];
+      if (JSON.stringify(oldAttachments.sort()) !== JSON.stringify(otherAttachments.sort())) {
+        changes.push({
+          field: 'otherAttachments',
+          label: 'Attachments',
+          old: `${oldAttachments.length} file(s)`,
+          new: `${otherAttachments.length} file(s)`,
+        });
+      }
+
+      const metadata = changes.length > 0
+        ? { section: 'Other Attachment', changes }
+        : undefined;
+
       // Log campaign activity for editing other attachment
       const campaignActivityMessage = `Campaign Details edited - [Other Attachment]`;
       await prisma.campaignLog.create({
@@ -7155,6 +7409,7 @@ export const editCampaignAttachments = async (req: Request, res: Response) => {
           message: campaignActivityMessage,
           adminId: adminId,
           campaignId: campaign.id,
+          ...(metadata && { metadata }),
         },
       });
 
@@ -7214,17 +7469,40 @@ export const editCampaignReference = async (req: Request, res: Response) => {
 
     if (!campaign) return res.status(404).json({ message: 'Campaign not found.' });
 
+    // Fetch old data for diff
+    const oldBrief = await prisma.campaignBrief.findUnique({
+      where: { campaignId: campaign.id },
+      select: { referencesLinks: true },
+    });
+
+    const newLinks = referencesLinks?.map((link: any) => link.value) || [];
+
     await prisma.campaignBrief.update({
       where: {
         campaignId: campaign.id,
       },
       data: {
-        referencesLinks: referencesLinks?.map((link: any) => link.value) || [],
+        referencesLinks: newLinks,
       },
     });
 
     // Get admin info for logging
     if (adminId) {
+      const oldLinks = (oldBrief?.referencesLinks as string[]) || [];
+      const changes: { field: string; label: string; old: any; new: any }[] = [];
+      if (JSON.stringify(oldLinks.sort()) !== JSON.stringify([...newLinks].sort())) {
+        changes.push({
+          field: 'referencesLinks',
+          label: 'Reference Links',
+          old: oldLinks,
+          new: newLinks,
+        });
+      }
+
+      const metadata = changes.length > 0
+        ? { section: 'Reference', changes }
+        : undefined;
+
       // Log campaign activity for editing reference
       const campaignActivityMessage = `Campaign Details edited - [Reference]`;
       await prisma.campaignLog.create({
@@ -7232,6 +7510,7 @@ export const editCampaignReference = async (req: Request, res: Response) => {
           message: campaignActivityMessage,
           adminId: adminId,
           campaignId: campaign.id,
+          ...(metadata && { metadata }),
         },
       });
 
@@ -7259,6 +7538,9 @@ export const linkNewAgreement = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Campaign not found.' });
     }
 
+    // Fetch old agreement template for diff
+    const oldTemplateId = campaign.agreementTemplateId;
+
     await prisma.campaign.update({
       where: {
         id: campaign.id,
@@ -7272,6 +7554,20 @@ export const linkNewAgreement = async (req: Request, res: Response) => {
 
     // Get admin info for logging
     if (adminId) {
+      const changes: { field: string; label: string; old: any; new: any }[] = [];
+      if (oldTemplateId !== template?.id) {
+        changes.push({
+          field: 'agreementTemplate',
+          label: 'Agreement Template',
+          old: oldTemplateId || null,
+          new: template?.id || null,
+        });
+      }
+
+      const metadata = changes.length > 0
+        ? { section: 'Agreement', changes }
+        : undefined;
+
       // Log campaign activity for editing agreement
       const campaignActivityMessage = `Campaign Details edited - [Agreement]`;
       await prisma.campaignLog.create({
@@ -7279,6 +7575,7 @@ export const linkNewAgreement = async (req: Request, res: Response) => {
           message: campaignActivityMessage,
           adminId: adminId,
           campaignId: campaign.id,
+          ...(metadata && { metadata }),
         },
       });
 
