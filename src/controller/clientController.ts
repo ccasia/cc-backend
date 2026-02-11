@@ -297,6 +297,8 @@ export const createClientCampaign = async (req: Request, res: Response) => {
       campaignDescription,
       campaignStartDate,
       campaignEndDate,
+      postingStartDate,
+      postingEndDate,
       campaignCredits,
       brandAbout,
       productName,
@@ -335,8 +337,6 @@ export const createClientCampaign = async (req: Request, res: Response) => {
       // Additional Details 1 fields
       socialMediaPlatform,
       contentFormat,
-      postingStartDate,
-      postingEndDate,
       mainMessage,
       keyPoints,
       toneAndStyle,

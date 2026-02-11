@@ -759,6 +759,8 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
     brandAbout,
     campaignStartDate,
     campaignEndDate,
+    postingStartDate,
+    postingEndDate,
     productName,
     campaignIndustries,
     websiteLink,
@@ -808,8 +810,6 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
     // Additional Details 1 fields
     socialMediaPlatform,
     contentFormat,
-    postingStartDate,
-    postingEndDate,
     mainMessage,
     keyPoints,
     toneAndStyle,
@@ -3873,6 +3873,8 @@ export const editCampaignInfo = async (req: Request, res: Response) => {
     websiteLink,
     campaignStartDate,
     campaignEndDate,
+    postingStartDate,
+    postingEndDate,
   } = req.body;
   const adminId = req.session.userid;
 
@@ -3921,6 +3923,9 @@ export const editCampaignInfo = async (req: Request, res: Response) => {
         // Update CampaignBrief model fields
         ...(campaignStartDate && { startDate: new Date(campaignStartDate) }),
         ...(campaignEndDate && { endDate: new Date(campaignEndDate) }),
+        // Update posting dates
+        ...(postingStartDate !== undefined && { postingStartDate: postingStartDate ? new Date(postingStartDate) : null }),
+        ...(postingEndDate !== undefined && { postingEndDate: postingEndDate ? new Date(postingEndDate) : null }),
         // Only update images if new ones were uploaded
         ...(publicURL.length > 0 && { images: publicURL }),
       },
@@ -3936,12 +3941,14 @@ export const editCampaignInfo = async (req: Request, res: Response) => {
         { field: 'websiteLink', label: 'Website Link', source: 'websiteLink' },
         { field: 'campaignStartDate', label: 'Start Date', source: 'campaignBrief.startDate' },
         { field: 'campaignEndDate', label: 'End Date', source: 'campaignBrief.endDate' },
+        { field: 'postingStartDate', label: 'Posting Start Date', source: 'campaignBrief.postingStartDate' },
+        { field: 'postingEndDate', label: 'Posting End Date', source: 'campaignBrief.postingEndDate' },
         { field: 'campaignIndustries', label: 'Industries', source: 'campaignBrief.industries' },
       ];
 
       const changes = computeChanges(
         oldCampaign || {},
-        { name, description, brandAbout, productName, websiteLink, campaignStartDate, campaignEndDate, campaignIndustries },
+        { name, description, brandAbout, productName, websiteLink, campaignStartDate, campaignEndDate, postingStartDate, postingEndDate, campaignIndustries },
         infoFields
       );
 
@@ -4895,8 +4902,6 @@ export const editCampaignAdditionalDetails = async (req: Request, res: Response)
     let campaignId: string;
     let socialMediaPlatform: string[] | undefined;
     let contentFormat: string[] | undefined;
-    let postingStartDate: string | undefined;
-    let postingEndDate: string | undefined;
     let mainMessage: string | undefined;
     let keyPoints: string | undefined;
     let toneAndStyle: string | undefined;
@@ -4923,8 +4928,6 @@ export const editCampaignAdditionalDetails = async (req: Request, res: Response)
       campaignId = req.body.campaignId;
       socialMediaPlatform = req.body.socialMediaPlatform ? JSON.parse(req.body.socialMediaPlatform) : undefined;
       contentFormat = req.body.contentFormat ? JSON.parse(req.body.contentFormat) : undefined;
-      postingStartDate = req.body.postingStartDate || undefined;
-      postingEndDate = req.body.postingEndDate || undefined;
       mainMessage = req.body.mainMessage || undefined;
       keyPoints = req.body.keyPoints || undefined;
       toneAndStyle = req.body.toneAndStyle || undefined;
@@ -4951,8 +4954,6 @@ export const editCampaignAdditionalDetails = async (req: Request, res: Response)
         campaignId,
         socialMediaPlatform,
         contentFormat,
-        postingStartDate,
-        postingEndDate,
         mainMessage,
         keyPoints,
         toneAndStyle,
@@ -5106,17 +5107,12 @@ export const editCampaignAdditionalDetails = async (req: Request, res: Response)
       },
     });
 
-    // Update CampaignBrief for socialMediaPlatform and posting dates
-    if (socialMediaPlatform !== undefined || postingStartDate !== undefined || postingEndDate !== undefined) {
-      const briefUpdateData: any = {};
-      if (socialMediaPlatform !== undefined) briefUpdateData.socialMediaPlatform = socialMediaPlatform;
-      if (postingStartDate !== undefined) briefUpdateData.postingStartDate = postingStartDate ? new Date(postingStartDate) : null;
-      if (postingEndDate !== undefined) briefUpdateData.postingEndDate = postingEndDate ? new Date(postingEndDate) : null;
-
+    // Update CampaignBrief for socialMediaPlatform
+    if (socialMediaPlatform !== undefined) {
       if (campaign.campaignBrief) {
         await prisma.campaignBrief.update({
           where: { id: campaign.campaignBrief.id },
-          data: briefUpdateData,
+          data: { socialMediaPlatform },
         });
       }
     }
