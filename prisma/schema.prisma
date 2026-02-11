@@ -900,6 +900,7 @@ model CampaignLog {
   id         String   @id @unique @default(cuid())
   createdAt  DateTime @default(now())
   message    String
+  metadata   Json?
   campaignId String
   adminId    String
   admin      User     @relation(fields: [adminId], references: [id])
