@@ -3,6 +3,7 @@ export interface FieldChange {
   label: string;
   old: any;
   new: any;
+  [key: string]: any;
 }
 
 export interface FieldMapping {
