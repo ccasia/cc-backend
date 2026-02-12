@@ -515,11 +515,6 @@ export const createClientCampaign = async (req: Request, res: Response) => {
       } else if (Array.isArray(secondaryCountry) && secondaryCountry.length > 0) {
         finalizedCountries.push(...secondaryCountry);
       }
-      if (typeof geographicFocusOthers === 'string' && geographicFocusOthers) {
-        finalizedCountries.push(geographicFocusOthers);
-      } else if (Array.isArray(geographicFocusOthers) && geographicFocusOthers.length > 0) {
-        finalizedCountries.push(...geographicFocusOthers);
-      }
       // Remove duplicates
       finalizedCountries = [...new Set(finalizedCountries)];
 
