@@ -17,6 +17,8 @@ import { isLoggedIn } from '@middlewares/onlyLogin';
 import { Server } from 'socket.io';
 import '@services/uploadVideo';
 
+import { createAdapter } from '@socket.io/redis-adapter';
+
 import '@helper/processPitchVideo';
 import './helper/videoDraft';
 import './helper/videoDraftWorker';
@@ -35,6 +37,14 @@ import dayjs from 'dayjs';
 import passport from 'passport';
 
 import amqplib from 'amqplib';
+
+import crypto from 'crypto';
+
+import { TokenSet } from 'xero-node';
+import { prisma } from './prisma/prisma';
+import { xero } from '@configs/xero';
+import connection, { subClient } from '@configs/redis';
+import { users } from '@utils/activeUsers';
 
 Ffmpeg.setFfmpegPath(FfmpegPath.path);
 
@@ -58,7 +68,15 @@ export const io = new Server(server, {
 app.set('io', io);
 
 app.use(express.static('public'));
-app.use(express.json({ limit: '10mb' }));
+// app.use(express.json({ limit: '10mb' }));
+
+app.use((req, res, next) => {
+  if (req.path.startsWith('/webhooks')) {
+    express.raw({ type: 'application/json' })(req, res, next);
+  } else {
+    express.json()(req, res, next);
+  }
+});
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 app.use(
@@ -126,6 +144,87 @@ app.use(passport.session());
 
 app.use(router);
 
+app.post('/webhooks/xero', express.raw({ type: 'application/json' }), async (req, res) => {
+  try {
+    const xeroSignature = req.headers['x-xero-signature'];
+    console.log(req.session);
+
+    if (!xeroSignature) {
+      return res.status(401).send('Missing signature');
+    }
+
+    // Generate expected signature
+    const expectedSignature = crypto
+      .createHmac('sha256', 'UtH0zJbM1oFEw3K662zollAzzkJuKORDAKJvJ/LtiXIN9VqXghooPmhOInHhewxX2Axb9BYa4lXeHCV+ImyfnA==')
+      .update(req.body)
+      .digest('base64');
+
+    if (xeroSignature !== expectedSignature) {
+      return res.status(401).send('Invalid signature');
+    }
+
+    // Parse payload AFTER verification
+    const payload = JSON.parse(req.body.toString('utf8'));
+
+    console.log('✅ Xero Webhook Verified');
+
+    const user = await prisma.user.findFirst({
+      where: {
+        email: {
+          equals: process.env.NODE_ENV === 'development' ? 'super@cultcreativeasia.com' : 'vidya@cultcreative.asia', //Need to change to V's email
+        },
+      },
+      include: {
+        admin: {
+          select: {
+            xeroTokenSet: true,
+          },
+        },
+      },
+    });
+
+    if (!user) return res.sendStatus(400);
+
+    const data = payload.events[0] as { tenantId: string; resourceId: string };
+
+    const tokenSet: TokenSet = (user.admin?.xeroTokenSet as TokenSet) || null;
+
+    if (!tokenSet) throw new Error('You are not connected to Xero');
+
+    await xero.initialize();
+
+    xero.setTokenSet(tokenSet);
+
+    const where = 'Status=="PAID"';
+
+    const invoiceData = await xero.accountingApi.getInvoices(data.tenantId, undefined, where);
+
+    // Check based on invoiceID
+    const xeroInvoices = invoiceData.body.invoices;
+
+    const xeroInvoicesIds = xeroInvoices?.map((xeroInvoice) => xeroInvoice.invoiceID);
+
+    if (xeroInvoicesIds?.length) {
+      const invoices = await prisma.invoice.updateMany({
+        where: {
+          xeroInvoiceId: {
+            in: xeroInvoicesIds as any,
+          },
+        },
+        data: {
+          status: 'paid',
+        },
+      });
+
+      console.log('INVOICES', invoices);
+    }
+
+    res.status(200).send('OK');
+  } catch (error) {
+    console.log('ERROR WEBHOOK XERO', error);
+  }
+});
+
 app.get('/', (req: Request, res: Response) => {
   res.send(`Your IP is ${req.ip}. ${process.env.NODE_ENV} is running...`);
 });
@@ -152,6 +251,7 @@ io.on('connection', (socket) => {
   io.emit('onlineUsers', { onlineUsers: clients.size });
   socket.on('register', (userId) => {
     clients.set(userId, socket.id);
+    users.set(userId, socket.id);
   });
 
   socket.on('online-user', () => {
@@ -252,6 +352,7 @@ io.on('connection', (socket) => {
     clients.forEach((value, key) => {
       if (value === socket.id) {
         clients.delete(key);
+        users.delete(key);
       }
     });
     io.emit('onlineUsers', { onlineUsers: clients.size });
@@ -376,13 +477,7 @@ app.post('/sendMessage', async (req: Request, res: Response) => {
   }
 });
 
-server.listen(process.env.PORT, () => {
+server.listen(process.env.PORT, async () => {
   console.log(`Listening to port ${process.env.PORT}...`);
   console.log(`${process.env.NODE_ENV} stage is running...`);
-
-  // draftConsumer();
-
-  // for (let i = 0; i < 2; i++) {
-  //   draftConsumer();
-  // }
 });

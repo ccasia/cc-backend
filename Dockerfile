@@ -1,6 +1,6 @@
 
 # STAGE 1 - BUILDING THE CODE
-FROM node:20-alpine3.17 AS base
+FROM node:22-alpine3.22 AS base
 
 RUN apk add --no-cache \
     libreoffice \
