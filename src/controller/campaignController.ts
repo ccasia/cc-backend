@@ -3464,7 +3464,7 @@ export const getMyCampaigns = async (req: Request, res: Response) => {
           },
         },
         campaignRequirement: true,
-
+        campaignAdditionalDetails: true,
         creatorAgreement: {
           where: {
             userId: user.id,
