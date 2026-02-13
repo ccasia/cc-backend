@@ -136,6 +136,7 @@ const worker = new Worker(
           },
           data: {
             xeroInvoiceId: createdInvoice.body.invoices[0].invoiceID,
+            status: 'approved',
           },
         });
 
@@ -288,7 +289,7 @@ export const bulkInvoiceWorker = new Worker(
       },
     });
 
-    const batches: Record<string, { tenantId: string; xeroInvoices: any[]; prismaIds: string[] }> = {};
+    const batches: Record<string, { tenantId: string; xeroInvoices: any[]; invoiceIds: string[] }> = {};
 
     for (const invoice of invoices) {
       try {
@@ -326,7 +327,7 @@ export const bulkInvoiceWorker = new Worker(
           });
         }
 
-        if (!batches[tenantId]) batches[tenantId] = { tenantId, xeroInvoices: [], prismaIds: [] };
+        if (!batches[tenantId]) batches[tenantId] = { tenantId, xeroInvoices: [], invoiceIds: [] };
 
         batches[tenantId].xeroInvoices.push({
           type: 'ACCPAY' as any,
@@ -345,7 +346,7 @@ export const bulkInvoiceWorker = new Worker(
           invoiceNumber: `${clientName} ${campaignName}` || 'N/A',
           reference: `${clientName} ${campaignName}`,
         });
-        batches[tenantId].prismaIds.push(invoice.id);
+        batches[tenantId].invoiceIds.push(invoice.id);
       } catch (err) {
         console.error(`Error prepping invoice ${invoice.id}:`, err.message);
       }
@@ -361,15 +362,21 @@ export const bulkInvoiceWorker = new Worker(
 
         for (let i = 0; i < xeroResults.length; i++) {
           const xeroInv = xeroResults[i];
-          const prismaId = batch.prismaIds[i];
+          const invoiceId = batch.invoiceIds[i];
 
           if (xeroInv.hasErrors) {
             console.error(`Xero Error [INV: ${xeroInv.invoiceNumber}]:`, xeroInv.validationErrors);
+
+            await prisma.invoice.update({
+              where: { id: invoiceId },
+              data: { status: 'failed' },
+            });
+
             continue;
           }
 
           const updatedInvoice = await prisma.invoice.update({
-            where: { id: prismaId },
+            where: { id: invoiceId },
             data: { status: 'approved', xeroInvoiceId: xeroInv.invoiceID },
             include: {
               campaign: { include: { campaignAdmin: true } },
@@ -377,7 +384,7 @@ export const bulkInvoiceWorker = new Worker(
             },
           });
 
-          const attachment = job.data.attachments?.[prismaId];
+          const attachment = job.data.attachments?.[invoiceId];
           if (attachment && xeroInv.invoiceID) {
             try {
               const buffer = fs.readFileSync(attachment.tempFilePath);
@@ -429,10 +436,10 @@ export const bulkInvoiceWorker = new Worker(
           if (updatedInvoice.campaign?.campaignAdmin) {
             await Promise.all(
               updatedInvoice.campaign.campaignAdmin
-                .filter((a: any) => a.admin?.role?.name === 'CSM') // FIXED: Added ?. after admin
+                .filter((a: any) => a.admin?.role?.name === 'CSM')
                 .map(async (admin: any) => {
                   try {
-                    const n = await saveNotification({
+                    const notification = await saveNotification({
                       userId: admin.adminId,
                       title,
                       message,
@@ -440,8 +447,8 @@ export const bulkInvoiceWorker = new Worker(
                       threadId: updatedInvoice.id,
                       entityId: updatedInvoice.campaignId,
                     });
-                    const sid = users.get(admin.adminId);
-                    if (sid) io.to(sid).emit('notification', n);
+                    const userId = users.get(admin.adminId);
+                    if (userId) io.to(userId).emit('notification', notification);
                   } catch (e) {
                     console.error('CSM Notif failed', admin.adminId);
                   }
@@ -450,13 +457,14 @@ export const bulkInvoiceWorker = new Worker(
           }
 
           // const { title, message } = notificationInvoiceUpdate(updatedInvoice.campaign.name);
-          const notification = await saveNotification({
+          const creatorNotification = await saveNotification({
             userId: updatedInvoice.creatorId,
             title,
             message,
             entity: 'Invoice',
             entityId: updatedInvoice.campaignId,
           });
+          io.to(updatedInvoice.creatorId).emit('notification', creatorNotification);
         }
       } catch (batchError) {
         console.error(`Critical Batch Error for tenant ${tenantId}:`, batchError.message);
@@ -494,7 +502,7 @@ worker.on('failed', async (job, err) => {
         id: job?.data.invoice.id,
       },
       data: {
-        status: 'draft',
+        status: 'failed',
       },
     });
   }

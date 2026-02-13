@@ -648,6 +648,8 @@ export const getAllInvoiceStats = async (req: Request, res: Response) => {
       overdue,
       draft,
       rejected,
+      failed,
+      processing,
       totalAmount,
       paidAmount,
       approvedAmount,
@@ -655,6 +657,7 @@ export const getAllInvoiceStats = async (req: Request, res: Response) => {
       overdueAmount,
       draftAmount,
       rejectedAmount,
+      failedAmount,
     ] = await Promise.all([
       // Counts by status
       prisma.invoice.count(),
@@ -664,6 +667,8 @@ export const getAllInvoiceStats = async (req: Request, res: Response) => {
       prisma.invoice.count({ where: { status: 'overdue' } }),
       prisma.invoice.count({ where: { status: 'draft' } }),
       prisma.invoice.count({ where: { status: 'rejected' } }),
+      prisma.invoice.count({ where: { status: 'failed' } }),
+      prisma.invoice.count({ where: { status: 'processing' } }),
 
       // Total amounts by status
       prisma.invoice.aggregate({ _sum: { amount: true } }),
@@ -673,6 +678,7 @@ export const getAllInvoiceStats = async (req: Request, res: Response) => {
       prisma.invoice.aggregate({ where: { status: 'overdue' }, _sum: { amount: true } }),
       prisma.invoice.aggregate({ where: { status: 'draft' }, _sum: { amount: true } }),
       prisma.invoice.aggregate({ where: { status: 'rejected' }, _sum: { amount: true } }),
+      prisma.invoice.aggregate({ where: { status: 'failed' }, _sum: { amount: true } }),
     ]);
 
     return res.status(200).json({
@@ -686,6 +692,8 @@ export const getAllInvoiceStats = async (req: Request, res: Response) => {
           overdue,
           draft,
           rejected,
+          failed,
+          processing,
         },
         amounts: {
           total: totalAmount._sum.amount || 0,
@@ -695,6 +703,8 @@ export const getAllInvoiceStats = async (req: Request, res: Response) => {
           overdue: overdueAmount._sum.amount || 0,
           draft: draftAmount._sum.amount || 0,
           rejected: rejectedAmount._sum.amount || 0,
+          failed: failedAmount._sum.amount || 0,
+          // processing: rejectedAmount._sum.amount || 0,
         },
       },
     });
@@ -1374,6 +1384,11 @@ export const updateInvoice = async (req: Request, res: Response) => {
     const agreement = invoice.creator.user.creatorAgreement.find((item) => item.campaignId === campaignId);
 
     if (status === 'approved') {
+      await prisma.invoice.update({
+        where: { id: invoiceId },
+        data: { status: 'processing' },
+      });
+
       await invoiceQueue.add(
         'invoice-queue',
         {
@@ -1401,7 +1416,7 @@ export const updateInvoice = async (req: Request, res: Response) => {
 
     return res.status(200).json(invoice);
   } catch (error) {
-    console.error('asdsads', error);
+    console.error('Failed to update invoice', error);
     const message = error instanceof Error ? error.message : 'Unknown error occurred';
     return res.status(400).json({ error: message });
   }
@@ -2082,6 +2097,17 @@ export const bulkUpdateInvoices = async (req: Request, res: Response) => {
   if (!invoiceIds || !Array.isArray(invoiceIds) || invoiceIds.length === 0) {
     return res.status(400).json({ message: 'No invoices selected' });
   }
+
+  await prisma.invoice.updateMany({
+    where: {
+      id: {
+        in: invoiceIds,
+      },
+    },
+    data: {
+      status: 'processing',
+    },
+  });
 
   if (req.files) {
     const uploadDir = path.join(process.cwd(), 'uploads/bulk');
