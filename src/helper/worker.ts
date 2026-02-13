@@ -127,14 +127,15 @@ const worker = new Worker(
         (agreement?.currency?.toUpperCase() as 'MYR' | 'SGD') ?? 'MYR',
       );
 
-      await prisma.invoice.update({
-        where: {
-          id: invoice.id,
-        },
-        data: {
-          xeroInvoiceId: createdInvoice.body.invoices[0].invoiceID,
-        },
-      });
+        await prisma.invoice.update({
+          where: {
+            id: invoice.id,
+          },
+          data: {
+            xeroInvoiceId: createdInvoice.body.invoices[0].invoiceID,
+            status: 'approved',
+          },
+        });
 
       if (job.data.invoiceAttachment && createdInvoice.body.invoices[0].invoiceID) {
         const buffer = fs.readFileSync(job.data.invoiceAttachment.tempFilePath);
@@ -282,7 +283,7 @@ export const bulkInvoiceWorker = new Worker(
       },
     });
 
-    const batches: Record<string, { tenantId: string; xeroInvoices: any[]; prismaIds: string[] }> = {};
+    const batches: Record<string, { tenantId: string; xeroInvoices: any[]; invoiceIds: string[] }> = {};
 
     for (const invoice of invoices) {
       try {
@@ -320,7 +321,7 @@ export const bulkInvoiceWorker = new Worker(
           });
         }
 
-        if (!batches[tenantId]) batches[tenantId] = { tenantId, xeroInvoices: [], prismaIds: [] };
+        if (!batches[tenantId]) batches[tenantId] = { tenantId, xeroInvoices: [], invoiceIds: [] };
 
         batches[tenantId].xeroInvoices.push({
           type: 'ACCPAY' as any,
@@ -339,7 +340,7 @@ export const bulkInvoiceWorker = new Worker(
           invoiceNumber: `${clientName} ${campaignName}` || 'N/A',
           reference: `${clientName} ${campaignName}`,
         });
-        batches[tenantId].prismaIds.push(invoice.id);
+        batches[tenantId].invoiceIds.push(invoice.id);
       } catch (err) {
         console.error(`Error prepping invoice ${invoice.id}:`, err.message);
       }
@@ -355,13 +356,13 @@ export const bulkInvoiceWorker = new Worker(
 
         for (let i = 0; i < xeroResults.length; i++) {
           const xeroInv = xeroResults[i];
-          const prismaId = batch.prismaIds[i];
+          const invoiceId = batch.invoiceIds[i];
 
           if (xeroInv.hasErrors) {
             console.error(`Xero Error [INV: ${xeroInv.invoiceNumber}]:`, xeroInv.validationErrors);
 
             await prisma.invoice.update({
-              where: { id: prismaId },
+              where: { id: invoiceId },
               data: { status: 'failed' },
             });
 
@@ -369,7 +370,7 @@ export const bulkInvoiceWorker = new Worker(
           }
 
           const updatedInvoice = await prisma.invoice.update({
-            where: { id: prismaId },
+            where: { id: invoiceId },
             data: { status: 'approved', xeroInvoiceId: xeroInv.invoiceID },
             include: {
               campaign: { include: { campaignAdmin: true } },
@@ -377,7 +378,7 @@ export const bulkInvoiceWorker = new Worker(
             },
           });
 
-          const attachment = job.data.attachments?.[prismaId];
+          const attachment = job.data.attachments?.[invoiceId];
           if (attachment && xeroInv.invoiceID) {
             try {
               const buffer = fs.readFileSync(attachment.tempFilePath);
