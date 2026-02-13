@@ -1384,6 +1384,11 @@ export const updateInvoice = async (req: Request, res: Response) => {
     const agreement = invoice.creator.user.creatorAgreement.find((item) => item.campaignId === campaignId);
 
     if (status === 'approved') {
+      await prisma.invoice.update({
+        where: { id: invoiceId },
+        data: { status: 'processing' },
+      });
+
       await invoiceQueue.add(
         'invoice-queue',
         {
@@ -1411,7 +1416,7 @@ export const updateInvoice = async (req: Request, res: Response) => {
 
     return res.status(200).json(invoice);
   } catch (error) {
-    console.error('asdsads', error);
+    console.error('Failed to update invoice', error);
     const message = error instanceof Error ? error.message : 'Unknown error occurred';
     return res.status(400).json({ error: message });
   }
