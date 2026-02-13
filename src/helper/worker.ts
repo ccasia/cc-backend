@@ -359,6 +359,12 @@ export const bulkInvoiceWorker = new Worker(
 
           if (xeroInv.hasErrors) {
             console.error(`Xero Error [INV: ${xeroInv.invoiceNumber}]:`, xeroInv.validationErrors);
+
+            await prisma.invoice.update({
+              where: { id: prismaId },
+              data: { status: 'failed' },
+            });
+
             continue;
           }
 
@@ -423,10 +429,10 @@ export const bulkInvoiceWorker = new Worker(
           if (updatedInvoice.campaign?.campaignAdmin) {
             await Promise.all(
               updatedInvoice.campaign.campaignAdmin
-                .filter((a: any) => a.admin?.role?.name === 'CSM') // FIXED: Added ?. after admin
+                .filter((a: any) => a.admin?.role?.name === 'CSM')
                 .map(async (admin: any) => {
                   try {
-                    const n = await saveNotification({
+                    const notification = await saveNotification({
                       userId: admin.adminId,
                       title,
                       message,
@@ -434,8 +440,8 @@ export const bulkInvoiceWorker = new Worker(
                       threadId: updatedInvoice.id,
                       entityId: updatedInvoice.campaignId,
                     });
-                    const sid = users.get(admin.adminId);
-                    if (sid) io.to(sid).emit('notification', n);
+                    const userId = users.get(admin.adminId);
+                    if (userId) io.to(userId).emit('notification', notification);
                   } catch (e) {
                     console.error('CSM Notif failed', admin.adminId);
                   }
@@ -444,13 +450,14 @@ export const bulkInvoiceWorker = new Worker(
           }
 
           // const { title, message } = notificationInvoiceUpdate(updatedInvoice.campaign.name);
-          const notification = await saveNotification({
+          const creatorNotification = await saveNotification({
             userId: updatedInvoice.creatorId,
             title,
             message,
             entity: 'Invoice',
             entityId: updatedInvoice.campaignId,
           });
+          io.to(updatedInvoice.creatorId).emit('notification', creatorNotification);
         }
       } catch (batchError) {
         console.error(`Critical Batch Error for tenant ${tenantId}:`, batchError.message);
@@ -481,7 +488,18 @@ worker.on('completed', (job) => {
   console.log(`✅ Job ${job.id} done`);
 });
 
-worker.on('failed', (job, err) => {
+worker.on('failed', async (job, err) => {
+  if (job?.data.invoice) {
+    await prisma.invoice.update({
+      where: {
+        id: job?.data.invoice.id,
+      },
+      data: {
+        status: 'failed',
+      },
+    });
+  }
+  await job?.remove();
   console.error(`❌ Job ${job?.id} failed`, err);
 });
 
