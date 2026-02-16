@@ -569,8 +569,13 @@ export const getUserByEmail = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Email is required' });
     }
 
-    const user = await prisma.user.findUnique({
-      where: { email },
+    const user = await prisma.user.findFirst({
+      where: {
+        email: {
+          mode: 'insensitive',
+          equals: email,
+        },
+      },
       select: {
         id: true,
         email: true,
