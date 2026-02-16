@@ -409,9 +409,6 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
         };
 
           channel.sendToQueue('draft', Buffer.from(JSON.stringify(payload)), { persistent: true });
-
-          console.log('⚠️ SIMULATING RACE CONDITION: Pausing API for 10 seconds...');
-          await new Promise((resolve) => setTimeout(resolve, 10000));
         } finally {
           if (channel) await channel.close();
           if (amqp) await amqp.close();
