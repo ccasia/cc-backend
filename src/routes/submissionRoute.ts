@@ -57,7 +57,7 @@ router.patch('/manageRawFootages', isSuperAdmin, adminManageRawFootages);
 router.patch('/manageFinalDraft', isSuperAdmin, adminManageFinalDraft);
 
 // Direct status update endpoint
-router.patch('/status', isSuperAdmin, updateSubmissionStatus);
+router.patch('/status', updateSubmissionStatus);
 
 // V2 - Individual media management routes
 router.patch('/v2/managePhotos', isSuperAdmin, adminManagePhotosV2);

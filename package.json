@@ -22,7 +22,10 @@
     "update-kanban": "ts-node prisma/updateBoardAdmin.ts",
     "try": "ts-node src/config/nodemailer.config.ts",
     "db-push": "npx prisma db push && docker exec -it cc-backend npx prisma db push",
-    "push-campaigns": "ts-node campaignLogs.ts"
+    "push-campaigns": "ts-node campaignLogs.ts",
+    "run-video-worker": "npx tsx --watch src/helper/video-worker.ts",
+    "start-compress-worker": "npx tsx --watch src/helper/compress-worker.ts",
+    "start-upload-worker": "npx tsx --watch src/helper/upload-worker.ts"
   },
   "dependencies": {
     "@dotenvx/dotenvx": "^1.9.0",
@@ -68,6 +71,7 @@
     "node-ipinfo": "^4.1.0",
     "nodemailer": "^6.9.13",
     "openid-client": "^5.7.0",
+    "ora": "^9.3.0",
     "passport": "^0.7.0",
     "passport-facebook": "^3.0.0",
     "passport-google-oauth20": "^2.0.0",

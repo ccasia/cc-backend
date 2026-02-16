@@ -42,6 +42,7 @@ import {
   handleKanbanSubmission,
   handleSubmissionNotification,
 } from '@services/submissionService';
+import { compressQueue, videoQueue } from '@utils/queue';
 
 Ffmpeg.setFfmpegPath(FfmpegPath.path);
 // Ffmpeg.setFfmpegPath(FfmpegProbe.path);
@@ -81,10 +82,7 @@ function scheduleUrlExtractionAndFetch(submissionId: string, content: string | u
       console.log(`⏰ Scheduling initial insight fetch for campaign ${submission.campaignId}...`);
       await scheduleInitialInsightFetch(submission.campaignId, submissionId);
     } catch (error: any) {
-      console.error(
-        `❌ Error extracting URLs/scheduling fetch for submission ${submissionId}:`,
-        error.message
-      );
+      console.error(`❌ Error extracting URLs/scheduling fetch for submission ${submissionId}:`, error.message);
       // Don't throw - this is background work
     }
   });
@@ -829,6 +827,7 @@ export const getSubmissionByCampaignCreatorId = async (req: Request, res: Respon
   }
 };
 
+// A V2 Draft Submission
 export const draftSubmission = async (req: Request, res: Response) => {
   const { submissionId, caption, photosDriveLink, rawFootagesDriveLink } = JSON.parse(req.body.data);
   const files = req.files as any;
@@ -953,23 +952,55 @@ export const draftSubmission = async (req: Request, res: Response) => {
       }
     }
 
-    // amqp = await amqplib.connect(process.env.RABBIT_MQ as string);
-
-    const isSent = channel.sendToQueue(
-      'draft',
-      Buffer.from(
-        JSON.stringify({
+    for (const video of filePaths.get('video')) {
+      compressQueue.add(
+        'compress',
+        {
           userid,
           submissionId,
           campaignId: submission?.campaignId,
           folder: submission?.submissionType.type,
           caption,
           admins: submission.campaign.campaignAdmin,
-          filePaths: Object.fromEntries(filePaths),
-        }),
-      ),
-      { persistent: true },
-    );
+          video,
+        },
+        {
+          attempts: 2,
+        },
+      );
+    }
+
+    // videoQueue.add(
+    //   'video-queue',
+    //   {
+    //     userid,
+    //     submissionId,
+    //     campaignId: submission?.campaignId,
+    //     folder: submission?.submissionType.type,
+    //     caption,
+    //     admins: submission.campaign.campaignAdmin,
+    //     filePaths: Object.fromEntries(filePaths),
+    //   },
+    //   {
+    //     attempts: 2,
+    //   },
+    // );
+
+    // const isSent = channel.sendToQueue(
+    //   'draft',
+    //   Buffer.from(
+    //     JSON.stringify({
+    //       userid,
+    //       submissionId,
+    //       campaignId: submission?.campaignId,
+    //       folder: submission?.submissionType.type,
+    //       caption,
+    //       admins: submission.campaign.campaignAdmin,
+    //       filePaths: Object.fromEntries(filePaths),
+    //     }),
+    //   ),
+    //   { persistent: true },
+    // );
 
     // Log creator activity
     if (submission.campaignId) {
@@ -980,11 +1011,9 @@ export const draftSubmission = async (req: Request, res: Response) => {
 
     activeProcesses.set(submissionId, { status: 'queue' });
 
-    // await channel.close();
-    // await amqp.close();
-
     return res.status(200).json({ message: 'Video start processing' });
   } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   } finally {
     if (channel) await channel.close();

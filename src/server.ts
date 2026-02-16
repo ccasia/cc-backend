@@ -17,8 +17,6 @@ import { isLoggedIn } from '@middlewares/onlyLogin';
 import { Server } from 'socket.io';
 import '@services/uploadVideo';
 
-import { createAdapter } from '@socket.io/redis-adapter';
-
 import '@helper/processPitchVideo';
 import './helper/videoDraft';
 import './helper/videoDraftWorker';
@@ -45,6 +43,10 @@ import { prisma } from './prisma/prisma';
 import { xero } from '@configs/xero';
 import connection, { subClient } from '@configs/redis';
 import { users } from '@utils/activeUsers';
+import { app, clients, io, server } from '@configs/socket';
+import { QueueEvents } from 'bullmq';
+
+export { io };
 
 Ffmpeg.setFfmpegPath(FfmpegPath.path);
 
@@ -53,16 +55,16 @@ dotenv.config();
 const uploadPath = path.join(__dirname, 'uploads');
 const uploadPathChunks = path.join(__dirname, 'chunks');
 
-const app: Application = express();
-const server = http.createServer(app);
+// const app: Application = express();
+// const server = http.createServer(app);
 
-export const io = new Server(server, {
-  connectionStateRecovery: {},
-  cors: {
-    origin: '*',
-    methods: ['GET', 'POST'],
-  },
-});
+// export const io = new Server(server, {
+//   connectionStateRecovery: {},
+//   cors: {
+//     origin: '*',
+//     methods: ['GET', 'POST'],
+//   },
+// });
 
 // expose io to request handlers
 app.set('io', io);
@@ -243,15 +245,14 @@ app.get('/users', isLoggedIn, async (_req, res) => {
   }
 });
 
-export const clients = new Map();
 export const activeProcesses = new Map();
 export const queue = new Map();
+export { clients };
 
 io.on('connection', (socket) => {
   io.emit('onlineUsers', { onlineUsers: clients.size });
   socket.on('register', (userId) => {
     clients.set(userId, socket.id);
-    users.set(userId, socket.id);
   });
 
   socket.on('online-user', () => {
@@ -262,6 +263,7 @@ io.on('connection', (socket) => {
   socket.on('join-campaign', (campaignId: string) => {
     if (campaignId) socket.join(campaignId);
   });
+
   socket.on('leave-campaign', (campaignId: string) => {
     if (campaignId) socket.leave(campaignId);
   });
@@ -475,6 +477,37 @@ app.post('/sendMessage', async (req: Request, res: Response) => {
     if (con) await con.close();
     if (amqp) await amqp.close();
   }
+});
+
+const compressionEvent = new QueueEvents('compress', { connection });
+const uploadEvent = new QueueEvents('upload', { connection });
+
+compressionEvent.on('progress', (job) => {
+  const { userId, progress, submissionId, fileName, inputPath } = job.data as any;
+
+  io.to(clients.get(userId)).emit('progress', {
+    progress: progress,
+    submissionId: submissionId,
+    name: 'Compression Start',
+    fileName: fileName,
+    fileSize: fse.statSync(inputPath).size,
+    fileType: path.extname(fileName),
+  });
+});
+
+uploadEvent.on('progress', (job) => {
+  const { userId, progress, submissionId, fileName, outputPath } = job.data as any;
+
+  console.log(job.data);
+
+  io.to(clients.get(userId)).emit('progress', {
+    progress: progress,
+    submissionId: submissionId,
+    name: 'Uploading Start',
+    fileName: fileName,
+    fileSize: fse.statSync(outputPath).size,
+    fileType: path.extname(fileName),
+  });
 });
 
 server.listen(process.env.PORT, async () => {

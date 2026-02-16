@@ -993,25 +993,25 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
               },
             },
             campaignRequirement: {
-            create: {
-              // Primary Audience
-              gender: audienceGender || [],
-              age: audienceAge || [],
-              language: audienceLanguage || [],
-              creator_persona: audienceCreatorPersona || [],
-              user_persona: audienceUserPersona || '',
-              country: finalizedCountries[0] || '',
-              countries: finalizedCountries, 
-              // Secondary Audience
-              secondary_gender: secondaryAudienceGender || [],
-              secondary_age: secondaryAudienceAge || [],
-              secondary_language: secondaryAudienceLanguage || [],
-              secondary_creator_persona: secondaryAudienceCreatorPersona || [],
-              secondary_user_persona: secondaryAudienceUserPersona || '',
-              secondary_country: secondaryCountry || '',
-              geographic_focus: geographicFocus || '',
-              geographicFocusOthers: geographicFocusOthers || '',
-            },
+              create: {
+                // Primary Audience
+                gender: audienceGender || [],
+                age: audienceAge || [],
+                language: audienceLanguage || [],
+                creator_persona: audienceCreatorPersona || [],
+                user_persona: audienceUserPersona || '',
+                country: finalizedCountries[0] || '',
+                countries: finalizedCountries,
+                // Secondary Audience
+                secondary_gender: secondaryAudienceGender || [],
+                secondary_age: secondaryAudienceAge || [],
+                secondary_language: secondaryAudienceLanguage || [],
+                secondary_creator_persona: secondaryAudienceCreatorPersona || [],
+                secondary_user_persona: secondaryAudienceUserPersona || '',
+                secondary_country: secondaryCountry || '',
+                geographic_focus: geographicFocus || '',
+                geographicFocusOthers: geographicFocusOthers || '',
+              },
             },
             campaignCredits,
             creditsPending: campaignCredits,
@@ -1096,7 +1096,12 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
               mainMessage: mainMessage || null,
               keyPoints: keyPoints || null,
               toneAndStyle: toneAndStyle || null,
-              brandGuidelinesUrl: brandGuidelinesUrls.length === 0 ? null : (brandGuidelinesUrls.length === 1 ? brandGuidelinesUrls[0] : brandGuidelinesUrls.join(',')),
+              brandGuidelinesUrl:
+                brandGuidelinesUrls.length === 0
+                  ? null
+                  : brandGuidelinesUrls.length === 1
+                    ? brandGuidelinesUrls[0]
+                    : brandGuidelinesUrls.join(','),
               referenceContent: referenceContent || null,
               productImage1Url: productImage1Url,
               productImage2Url: productImage2Url,
@@ -3845,7 +3850,9 @@ export const editCampaignInfo = async (req: Request, res: Response) => {
         ...(campaignStartDate && { startDate: new Date(campaignStartDate) }),
         ...(campaignEndDate && { endDate: new Date(campaignEndDate) }),
         // Update posting dates
-        ...(postingStartDate !== undefined && { postingStartDate: postingStartDate ? new Date(postingStartDate) : null }),
+        ...(postingStartDate !== undefined && {
+          postingStartDate: postingStartDate ? new Date(postingStartDate) : null,
+        }),
         ...(postingEndDate !== undefined && { postingEndDate: postingEndDate ? new Date(postingEndDate) : null }),
         // Only update images if new ones were uploaded
         ...(publicURL.length > 0 && { images: publicURL }),
@@ -3869,7 +3876,11 @@ export const editCampaignInfo = async (req: Request, res: Response) => {
 
     return res
       .status(200)
-      .json({ message: 'Campaign information updated successfully', campaign: updatedCampaign, brief: updatedCampaignBrief });
+      .json({
+        message: 'Campaign information updated successfully',
+        campaign: updatedCampaign,
+        brief: updatedCampaignBrief,
+      });
   } catch (error) {
     console.error('editCampaignInfo error:', error);
     return res.status(400).json({ message: error?.message || 'Failed to update campaign', error });
@@ -3877,14 +3888,7 @@ export const editCampaignInfo = async (req: Request, res: Response) => {
 };
 
 export const editCampaignObjectives = async (req: Request, res: Response) => {
-  const {
-    id,
-    objectives,
-    secondaryObjectives,
-    boostContent,
-    primaryKPI,
-    performanceBaseline,
-  } = req.body;
+  const { id, objectives, secondaryObjectives, boostContent, primaryKPI, performanceBaseline } = req.body;
   const adminId = req.session.userid;
 
   try {
@@ -3931,9 +3935,7 @@ export const editCampaignObjectives = async (req: Request, res: Response) => {
       logAdminChange(adminLogMessage, adminId, req);
     }
 
-    return res
-      .status(200)
-      .json({ message: 'Campaign objectives updated successfully', brief: updatedCampaignBrief });
+    return res.status(200).json({ message: 'Campaign objectives updated successfully', brief: updatedCampaignBrief });
   } catch (error) {
     console.error('editCampaignObjectives error:', error);
     return res.status(400).json({ message: error?.message || 'Failed to update campaign objectives', error });
@@ -4090,7 +4092,9 @@ export const editCampaignRequirements = async (req: Request, res: Response) => {
         ...(secondaryAudienceGender !== undefined && { secondary_gender: secondaryAudienceGender }),
         ...(secondaryAudienceAge !== undefined && { secondary_age: secondaryAudienceAge }),
         ...(secondaryAudienceLanguage !== undefined && { secondary_language: secondaryAudienceLanguage }),
-        ...(secondaryAudienceCreatorPersona !== undefined && { secondary_creator_persona: secondaryAudienceCreatorPersona }),
+        ...(secondaryAudienceCreatorPersona !== undefined && {
+          secondary_creator_persona: secondaryAudienceCreatorPersona,
+        }),
         ...(secondaryAudienceUserPersona !== undefined && { secondary_user_persona: secondaryAudienceUserPersona }),
         ...(secondaryCountry !== undefined && { secondary_country: secondaryCountry }),
         // Geographic Focus
@@ -4234,13 +4238,7 @@ export const editCampaignLogistics = async (req: Request, res: Response) => {
 };
 
 export const editCampaignFinalise = async (req: Request, res: Response) => {
-  const {
-    campaignId,
-    campaignManagers,
-    campaignType,
-    deliverables,
-    isV4Submission,
-  } = req.body;
+  const { campaignId, campaignManagers, campaignType, deliverables, isV4Submission } = req.body;
 
   const adminId = req.session.userid;
 
@@ -4342,16 +4340,16 @@ export const editCampaignFinalise = async (req: Request, res: Response) => {
             });
 
             // Use posting dates from brief if available, otherwise use final draft end date or campaign end date
-            const postingStartDate = campaign.campaignBrief.postingStartDate
-              || finalDraftTimeline?.endDate
-              || campaign.campaignBrief.endDate;
-            const postingEndDate = campaign.campaignBrief.postingEndDate
-              || campaign.campaignBrief.endDate;
+            const postingStartDate =
+              campaign.campaignBrief.postingStartDate || finalDraftTimeline?.endDate || campaign.campaignBrief.endDate;
+            const postingEndDate = campaign.campaignBrief.postingEndDate || campaign.campaignBrief.endDate;
 
             // Calculate duration
             const postingDuration = Math.max(
               1,
-              Math.floor((new Date(postingEndDate).getTime() - new Date(postingStartDate).getTime()) / (1000 * 60 * 60 * 24)),
+              Math.floor(
+                (new Date(postingEndDate).getTime() - new Date(postingStartDate).getTime()) / (1000 * 60 * 60 * 24),
+              ),
             );
 
             // Get the highest order from existing timelines
@@ -4418,7 +4416,7 @@ export const editCampaignFinalise = async (req: Request, res: Response) => {
         where: { campaignId },
         include: {
           admin: {
-            include: { 
+            include: {
               role: true,
               user: true,
             },
@@ -4428,13 +4426,12 @@ export const editCampaignFinalise = async (req: Request, res: Response) => {
 
       // Get CSM and Client admins that should be managed by this form
       const managedAdmins = existingAdmins.filter(
-        (ca) => ca.admin?.role?.name === 'CSM' || ca.admin?.role?.name === 'Client' || ca.admin?.user?.role === 'client'
+        (ca) =>
+          ca.admin?.role?.name === 'CSM' || ca.admin?.role?.name === 'Client' || ca.admin?.user?.role === 'client',
       );
 
       // Find admins that need to be removed (in existing but not in new list)
-      const adminsToRemove = managedAdmins.filter(
-        (ca) => !validAdminIds.includes(ca.adminId)
-      );
+      const adminsToRemove = managedAdmins.filter((ca) => !validAdminIds.includes(ca.adminId));
 
       // Delete removed admins from campaignAdmin
       if (adminsToRemove.length > 0) {
@@ -4448,7 +4445,8 @@ export const editCampaignFinalise = async (req: Request, res: Response) => {
 
         // For client users being removed, also remove them from CampaignClient
         for (const removedAdmin of adminsToRemove) {
-          const isClientUser = removedAdmin.admin?.user?.role === 'client' || removedAdmin.admin?.role?.name === 'Client';
+          const isClientUser =
+            removedAdmin.admin?.user?.role === 'client' || removedAdmin.admin?.role?.name === 'Client';
 
           if (isClientUser && removedAdmin.adminId) {
             try {
@@ -4505,7 +4503,7 @@ export const editCampaignFinalise = async (req: Request, res: Response) => {
         });
 
         const hasRemainingClientAdmin = remainingAdmins.some(
-          (ca) => ca.admin?.user?.role === 'client' || ca.admin?.role?.name === 'Client'
+          (ca) => ca.admin?.user?.role === 'client' || ca.admin?.role?.name === 'Client',
         );
 
         if (!hasRemainingClientAdmin && campaign.submissionVersion === 'v4') {
@@ -4826,8 +4824,10 @@ export const editCampaignAdditionalDetails = async (req: Request, res: Response)
     if (ctaDesiredAction !== undefined) additionalDetailsData.ctaDesiredAction = ctaDesiredAction || null;
     if (ctaLinkUrl !== undefined) additionalDetailsData.ctaLinkUrl = ctaLinkUrl || null;
     if (ctaPromoCode !== undefined) additionalDetailsData.ctaPromoCode = ctaPromoCode || null;
-    if (ctaLinkInBioRequirements !== undefined) additionalDetailsData.ctaLinkInBioRequirements = ctaLinkInBioRequirements || null;
-    if (specialNotesInstructions !== undefined) additionalDetailsData.specialNotesInstructions = specialNotesInstructions || null;
+    if (ctaLinkInBioRequirements !== undefined)
+      additionalDetailsData.ctaLinkInBioRequirements = ctaLinkInBioRequirements || null;
+    if (specialNotesInstructions !== undefined)
+      additionalDetailsData.specialNotesInstructions = specialNotesInstructions || null;
     if (needAds !== undefined) additionalDetailsData.needAds = needAds || null;
 
     // Upsert CampaignAdditionalDetails
@@ -5958,7 +5958,10 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
         creditPerVideo = creditCost.creditPerVideo;
         tierSnapshot = creditCost.tier;
       } catch (error: any) {
-        console.warn(`Credit tier calculation failed for creator ${creator.id}, proceeding without tier data:`, error.message);
+        console.warn(
+          `Credit tier calculation failed for creator ${creator.id}, proceeding without tier data:`,
+          error.message,
+        );
         // Allow admin to proceed — tier info will be null
       }
     }
@@ -6316,7 +6319,10 @@ export const sendAgreement = async (req: Request, res: Response) => {
           creditPerVideo = creditCost.creditPerVideo;
           tierSnapshot = creditCost.tier;
         } catch (error: any) {
-          console.warn(`Credit tier calculation failed for creator ${isUserExist.id}, falling back to 1:1 credits:`, error.message);
+          console.warn(
+            `Credit tier calculation failed for creator ${isUserExist.id}, falling back to 1:1 credits:`,
+            error.message,
+          );
           // Fall back to 1:1 credit-to-video ratio when tier data is unavailable
           creditsToAssign = videoCount;
           creditPerVideo = 1;
@@ -9682,6 +9688,7 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
           // For credit tier campaigns, calculate creditPerVideo from creator's tier
           let creditPerVideo: number | null = null;
           let creditTierId: string | null = null;
+
           if (campaign.isCreditTier) {
             try {
               const { calculateCreatorTier } = require('@services/creditTierService');
