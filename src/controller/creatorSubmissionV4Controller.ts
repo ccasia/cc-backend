@@ -338,46 +338,6 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
       }
     }
 
-    // Always trigger worker if there are changes (new files OR photos to remove)
-    const hasNewFiles = uploadedVideos.length > 0 || uploadedPhotos.length > 0 || uploadedRawFootages.length > 0;
-    const hasPhotosToRemove = photosToRemove.length > 0;
-
-    if (hasNewFiles || hasPhotosToRemove) {
-      try {
-        amqp = await amqplib.connect(process.env.RABBIT_MQ!);
-        channel = await amqp.createChannel();
-        await channel.assertQueue('draft', { durable: true });
-
-        const payload = {
-          userid: creatorId,
-          submissionId,
-          campaignId: submission.campaignId,
-          folder: submission.submissionType.type,
-          caption,
-          admins: submission.campaign.campaignAdmin,
-          filePaths: Object.fromEntries(filePaths),
-          // V4 specific flags
-          isV4: true,
-          submissionType: submission.submissionType.type,
-          // Add existing media info for worker to preserve
-          existingMedia: {
-            videos: submission.video?.map((v) => ({ id: v.id, status: v.status })) || [],
-            photos: submission.photos?.map((p) => ({ id: p.id, status: p.status })) || [],
-            rawFootages: submission.rawFootages?.map((r) => ({ id: r.id, status: r.status })) || [],
-          },
-          // V4 Additive System: Always preserve existing media, never replace
-          preserveExistingMedia: true,
-          // Include photos to remove for worker processing
-          photosToRemove: photosToRemove,
-        };
-
-        channel.sendToQueue('draft', Buffer.from(JSON.stringify(payload)), { persistent: true });
-      } finally {
-        if (channel) await channel.close();
-        if (amqp) await amqp.close();
-      }
-    }
-
     // Calculate if raw footages were removed
     const hasRawFootageRemoval =
       isResubmission && isSelectiveUpdate && keepExistingRawFootages.length < (submission.rawFootages?.length || 0);
@@ -414,6 +374,49 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
           updatedAt: new Date(),
         },
       });
+
+    // Always trigger worker if there are changes (new files OR photos to remove)
+    const hasNewFiles = uploadedVideos.length > 0 || uploadedPhotos.length > 0 || uploadedRawFootages.length > 0;
+    const hasPhotosToRemove = photosToRemove.length > 0;
+
+    if (hasNewFiles || hasPhotosToRemove) {
+      try {
+        amqp = await amqplib.connect(process.env.RABBIT_MQ!);
+        channel = await amqp.createChannel();
+        await channel.assertQueue('draft', { durable: true });
+
+        const payload = {
+          userid: creatorId,
+          submissionId,
+          campaignId: submission.campaignId,
+          folder: submission.submissionType.type,
+          caption,
+          admins: submission.campaign.campaignAdmin,
+          filePaths: Object.fromEntries(filePaths),
+          // V4 specific flags
+          isV4: true,
+          submissionType: submission.submissionType.type,
+          // Add existing media info for worker to preserve
+          existingMedia: {
+            videos: submission.video?.map((v) => ({ id: v.id, status: v.status })) || [],
+            photos: submission.photos?.map((p) => ({ id: p.id, status: p.status })) || [],
+            rawFootages: submission.rawFootages?.map((r) => ({ id: r.id, status: r.status })) || [],
+          },
+          // V4 Additive System: Always preserve existing media, never replace
+          preserveExistingMedia: true,
+          // Include photos to remove for worker processing
+          photosToRemove: photosToRemove,
+        };
+
+          channel.sendToQueue('draft', Buffer.from(JSON.stringify(payload)), { persistent: true });
+
+          console.log('⚠️ SIMULATING RACE CONDITION: Pausing API for 10 seconds...');
+          await new Promise((resolve) => setTimeout(resolve, 10000));
+        } finally {
+          if (channel) await channel.close();
+          if (amqp) await amqp.close();
+        }
+      }
 
       // Emit socket event for real-time updates
       const io = req.app.get('io');
