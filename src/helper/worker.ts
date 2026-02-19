@@ -16,9 +16,8 @@ import fs from 'fs-extra';
 import { PrismaClient } from '@prisma/client';
 
 import { xero } from '@configs/xero';
-// import { Server } from 'socket.io';
 import { users } from '@utils/activeUsers';
-import { io } from '../server';
+// import { io } from '../server';
 
 const prisma = new PrismaClient();
 
@@ -81,8 +80,7 @@ const worker = new Worker(
         (item) =>
           item?.orgData.baseCurrency.toUpperCase() === ((agreement?.currency?.toUpperCase() as 'MYR' | 'SGD') ?? 'MYR'),
       );
-      console.log('ACTIVE UPDATE:', activeTenant);
-      console.log('CREATOR NAME:', creatorUser.name?.trim());
+
       const result = await xero.accountingApi.getContacts(
         activeTenant.tenantId,
         undefined, // IDs
@@ -90,6 +88,7 @@ const worker = new Worker(
         // `EmailAddress=="${creatorUser.email}" || Name=="${creatorUser.name}"`,
         `Name=="${invoice.invoiceFrom.name?.trim()}"`,
       );
+
       if (result.body.contacts && result.body.contacts.length > 0) {
         contactID = result.body.contacts[0].contactID || null;
       } else {
@@ -115,6 +114,7 @@ const worker = new Worker(
           });
         }
       }
+
       if (contactID) {
         const createdInvoice = await createXeroInvoiceLocal(
           contactID,
@@ -172,7 +172,7 @@ const worker = new Worker(
               threadId: invoice.id,
               entityId: invoice.campaignId,
             });
-            io.to(users.get(admin.adminId)).emit('notification', notification);
+            // io.to(users.get(admin.adminId)).emit('notification', notification);
             return notification;
           }),
       );
@@ -214,7 +214,7 @@ const worker = new Worker(
         entityId: invoice.campaignId,
       });
 
-      io.to(users.get(invoice.creatorId)).emit('notification', creatorNotification);
+      // io.to(users.get(invoice.creatorId)).emit('notification', creatorNotification);
     } catch (error) {
       throw new Error(error);
     }
@@ -238,7 +238,7 @@ export const bulkInvoiceWorker = new Worker(
 
     if (!user || !user.admin?.xeroTokenSet) throw new Error('Admin not connected to Xero');
 
-    let tokenSet: TokenSet = user.admin.xeroTokenSet as any;
+    const tokenSet: TokenSet = user.admin.xeroTokenSet as any;
     await xero.initialize();
     xero.setTokenSet(tokenSet);
 
@@ -307,7 +307,9 @@ export const bulkInvoiceWorker = new Worker(
         let contactID = invoice.creator.xeroContactId;
 
         const clientName = invoice.campaign.brand?.name || invoice.campaign.company?.name || '';
+
         const campaignName = invoice.campaign.name;
+
         const recipientName =
           (invoice.bankAcc as any)?.payTo ||
           invoice.creator.user.paymentForm?.bankAccountName ||
@@ -315,16 +317,42 @@ export const bulkInvoiceWorker = new Worker(
 
         const result = await xero.accountingApi.getContacts(tenantId, undefined, `Name=="${recipientName.trim()}"`);
 
-        if (result.body.contacts && result.body.contacts?.length > 0) {
+        // if (result.body.contacts && result.body.contacts?.length > 0) {
+        //   contactID = result.body.contacts[0].contactID || null;
+        // } else {
+        //   const [contact] = await createXeroContact(invoice.bankAcc, invoice.creator, invoice.invoiceFrom, currency);
+        //   contactID = contact.contactID || null;
+
+        //   await prisma.creator.update({
+        //     where: { id: invoice.creator.id },
+        //     data: { xeroContactId: contactID },
+        //   });
+        // }
+
+        if (result.body.contacts && result.body.contacts.length > 0) {
           contactID = result.body.contacts[0].contactID || null;
         } else {
-          const [contact] = await createXeroContact(invoice.bankAcc, invoice.creator, invoice.invoiceFrom, currency);
-          contactID = contact.contactID || null;
-
-          await prisma.creator.update({
-            where: { id: invoice.creator.id },
-            data: { xeroContactId: contactID },
-          });
+          const result = await xero.accountingApi.getContacts(
+            activeTenant.tenantId,
+            undefined, // IDs
+            `EmailAddress=="${invoice.creator?.user?.email.trim()}"`,
+          );
+          if (result.body.contacts && result.body.contacts.length > 0) {
+            contactID = result.body.contacts[0].contactID || null;
+          } else {
+            console.log('FOUNDDD 3');
+            const [contact] = await createXeroContact(
+              invoice.bankAcc,
+              invoice.creator,
+              invoice.invoiceFrom,
+              (agreement?.currency?.toUpperCase() as 'MYR' | 'SGD') ?? 'MYR',
+            );
+            contactID = contact.contactID || null;
+            await prisma.creator.update({
+              where: { id: invoice.creator.id },
+              data: { xeroContactId: contactID },
+            });
+          }
         }
 
         if (!batches[tenantId]) batches[tenantId] = { tenantId, xeroInvoices: [], invoiceIds: [] };
@@ -417,19 +445,19 @@ export const bulkInvoiceWorker = new Worker(
             adminId,
           );
 
-          await sendToSpreadSheet(
-            {
-              createdAt: dayjs().format('YYYY-MM-DD'),
-              name: updatedInvoice.creator.user.paymentForm?.bankAccountName || updatedInvoice.creator.user.name || '',
-              icNumber: updatedInvoice.creator.user.paymentForm?.icNumber || '',
-              bankName: (updatedInvoice.bankAcc as any)?.bankName || '',
-              bankAccountNumber: (updatedInvoice.bankAcc as any)?.accountNumber || '',
-              campaignName: updatedInvoice.campaign.name,
-              amount: updatedInvoice.amount,
-            },
-            '1VClmvYJV9R4HqjADhGA6KYIR9KCFoXTag5SMVSL4rFc',
-            'Invoices',
-          );
+          // await sendToSpreadSheet(
+          //   {
+          //     createdAt: dayjs().format('YYYY-MM-DD'),
+          //     name: updatedInvoice.creator.user.paymentForm?.bankAccountName || updatedInvoice.creator.user.name || '',
+          //     icNumber: updatedInvoice.creator.user.paymentForm?.icNumber || '',
+          //     bankName: (updatedInvoice.bankAcc as any)?.bankName || '',
+          //     bankAccountNumber: (updatedInvoice.bankAcc as any)?.accountNumber || '',
+          //     campaignName: updatedInvoice.campaign.name,
+          //     amount: updatedInvoice.amount,
+          //   },
+          //   '1VClmvYJV9R4HqjADhGA6KYIR9KCFoXTag5SMVSL4rFc',
+          //   'Invoices',
+          // );
 
           const { title, message } = notificationInvoiceUpdate(updatedInvoice.campaign.name);
 
@@ -448,7 +476,7 @@ export const bulkInvoiceWorker = new Worker(
                       entityId: updatedInvoice.campaignId,
                     });
                     const userId = users.get(admin.adminId);
-                    if (userId) io.to(userId).emit('notification', notification);
+                    // if (userId) io.to(userId).emit('notification', notification);
                   } catch (e) {
                     console.error('CSM Notif failed', admin.adminId);
                   }
@@ -464,7 +492,7 @@ export const bulkInvoiceWorker = new Worker(
             entity: 'Invoice',
             entityId: updatedInvoice.campaignId,
           });
-          io.to(updatedInvoice.creatorId).emit('notification', creatorNotification);
+          // io.to(updatedInvoice.creatorId).emit('notification', creatorNotification);
         }
       } catch (batchError) {
         console.error(`Critical Batch Error for tenant ${tenantId}:`, batchError.message);
