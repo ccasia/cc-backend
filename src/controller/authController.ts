@@ -24,6 +24,9 @@ import bcrypt from 'bcryptjs';
 import { generateRandomString } from '@utils/randomString';
 import dayjs from 'dayjs';
 import { TokenSet, XeroClient } from 'xero-node';
+import { generateSecret, generateURI } from 'otplib';
+
+import QRCode from 'qrcode';
 
 const prisma = new PrismaClient();
 
@@ -1477,51 +1480,6 @@ export const resendVerificationLinkCreator = async (req: Request, res: Response)
 
   if (!token) return res.status(404).json({ message: 'Token is missing' });
 
-  // try {
-  // const decode = jwt.decode(token);
-
-  // if (!decode) return res.status(400).json({ message: 'Token is invalid' });
-
-  //   const user = await prisma.user.findUnique({
-  //     where: {
-  //       id: (decode as any).id,
-  //     },
-  //   });
-
-  //   if (!user) return res.status(404).json({ message: 'User is not registered.' });
-
-  // const newToken = jwt.sign({ id: user.id }, process.env.ACCESSKEY as Secret, { expiresIn: '15m' });
-
-  // let code;
-
-  // // eslint-disable-next-line no-constant-condition
-  // while (true) {
-  //   const shortCode = generateRandomString();
-
-  //   const isShortCodeExist = await prisma.emailVerification.findFirst({
-  //     where: { shortCode },
-  //   });
-
-  //   if (!isShortCodeExist) {
-  //     code = await prisma.emailVerification.create({
-  //       data: {
-  //         shortCode: shortCode,
-  //         userId: user.id,
-  //         expiredAt: dayjs().add(15, 'minute').toDate(),
-  //         token: token,
-  //       },
-  //     });
-  //     break;
-  //   }
-  // }
-
-  // creatorVerificationEmail(user.email, code.shortCode);
-
-  // return res.status(200).json({ message: 'New verification link has been sent.' });
-  // } catch (error) {
-  //   return res.status(400).json(error);
-  // }
-
   try {
     const { jwtToken, user, id } = await getJWTToken(token as string);
 
@@ -1670,7 +1628,9 @@ export const inviteClient = async (req: Request, res: Response) => {
       }
 
       // Generate invite token (7 day expiry)
-      const inviteToken = jwt.sign({ id: user.id, companyId }, process.env.SESSION_SECRET as Secret, { expiresIn: '7d' });
+      const inviteToken = jwt.sign({ id: user.id, companyId }, process.env.SESSION_SECRET as Secret, {
+        expiresIn: '7d',
+      });
 
       // Create admin record for client with Client role
       const admin = await tx.admin.create({
@@ -1847,6 +1807,7 @@ export const setupClientPassword = async (req: Request, res: Response) => {
     return res.status(400).json({ message: 'Error setting up password' });
   }
 };
+
 export const deleteAccount = async (req: Request, res: Response) => {
   const userId = req.session.userid as string;
 
@@ -1910,5 +1871,33 @@ export const deleteAccount = async (req: Request, res: Response) => {
   } catch (error) {
     console.error(error);
     return res.status(400).json({ message: 'Failed to delete account' });
+  }
+};
+
+export const setupTwoFactor = async (req: Request, res: Response) => {
+  try {
+    const userId = req.session.userid;
+
+    const user = await prisma.user.findUnique({
+      where: {
+        id: userId,
+      },
+    });
+
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    const secret = generateSecret();
+
+    const uri = generateURI({
+      issuer: 'Cult Creative Application',
+      label: user.email.trim().toLowerCase(),
+      secret,
+    });
+
+    const qrDataUrl = await QRCode.toDataURL(uri);
+
+    console.log(qrDataUrl);
+  } catch (error) {
+    return res.status(500).json(error);
   }
 };

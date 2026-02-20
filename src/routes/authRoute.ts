@@ -27,6 +27,7 @@ import {
   setupClientPassword,
   verifyClient,
   deleteAccount,
+  setupTwoFactor,
 } from '@controllers/authController';
 
 import { validateToken } from '@utils/jwtHelper';
@@ -69,6 +70,7 @@ router.post('/registerFinanceUser', registerFinanceUser);
 router.post('/resendVerificationLinkCreator', resendVerificationLinkCreator);
 router.post('/resendVerificationLinkClient', resendVerificationLinkClient);
 router.post('/verifyClient', verifyClient);
+router.post('/setupTwoFactor', isLoggedIn, setupTwoFactor);
 
 // Client authentication routes
 router.post('/invite-client', inviteClient);
