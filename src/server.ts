@@ -153,7 +153,7 @@ app.post('/webhooks/xero', express.raw({ type: 'application/json' }), async (req
 
     const WEBHOOK_KEY =
       process.env.WEBHOOK_KEY ||
-      '3NMIuRECkuxM7y/a7erChZHYRxwQvwef7IJz87dWJ5C4yleDVid9x7Uv9vxdKRdJC4afKW4MZyawp5TMo/+DrA==';
+      'UtH0zJbM1oFEw3K662zollAzzkJuKORDAKJvJ/LtiXIN9VqXghooPmhOInHhewxX2Axb9BYa4lXeHCV+ImyfnA=='; // Afiq's xero default api key
 
     // Generate expected signature
     const expectedSignature = crypto.createHmac('sha256', WEBHOOK_KEY).update(req.body).digest('base64');
@@ -165,58 +165,58 @@ app.post('/webhooks/xero', express.raw({ type: 'application/json' }), async (req
     // Parse payload AFTER verification
     const payload = JSON.parse(req.body.toString('utf8'));
 
-    console.log('✅ Xero Webhook Verified');
-
-    const user = await prisma.user.findFirst({
-      where: {
-        email: {
-          // in: ['vidya@cultcreative.asia', 'super@cultcreativeasia.com'], // Need to change to V's email
-          equals: 'super@cultcreativeasia.com',
-        },
-      },
-      include: {
-        admin: {
-          select: {
-            xeroTokenSet: true,
-          },
-        },
-      },
-    });
-
-    if (!user) return res.sendStatus(400);
-
-    const data = payload.events[0] as { tenantId: string; resourceId: string };
-
-    const tokenSet: TokenSet = (user.admin?.xeroTokenSet as TokenSet) || null;
-
-    if (!tokenSet) throw new Error('You are not connected to Xero');
-
-    await xero.initialize();
-
-    xero.setTokenSet(tokenSet);
-
-    const where = 'Status=="PAID"';
-
-    const invoiceData = await xero.accountingApi.getInvoices(data.tenantId, undefined, where);
-
-    // Check based on invoiceID
-    const xeroInvoices = invoiceData.body.invoices;
-
-    const xeroInvoicesIds = xeroInvoices?.map((xeroInvoice) => xeroInvoice.invoiceID);
-
-    if (xeroInvoicesIds?.length) {
-      const invoices = await prisma.invoice.updateMany({
+    if (payload.events.length) {
+      const user = await prisma.user.findFirst({
         where: {
-          xeroInvoiceId: {
-            in: xeroInvoicesIds as any,
+          email: {
+            // in: ['vidya@cultcreative.asia', 'super@cultcreativeasia.com'], // Need to change to V's email
+            equals: 'super@cultcreativeasia.com',
           },
         },
-        data: {
-          status: 'paid',
+        include: {
+          admin: {
+            select: {
+              xeroTokenSet: true,
+            },
+          },
         },
       });
 
-      console.log('INVOICES', invoices);
+      if (!user) return res.sendStatus(400);
+
+      const data = payload.events[0] as { tenantId: string; resourceId: string };
+
+      const tokenSet: TokenSet = (user.admin?.xeroTokenSet as TokenSet) || null;
+
+      if (!tokenSet) throw new Error('You are not connected to Xero');
+
+      await xero.initialize();
+
+      xero.setTokenSet(tokenSet);
+
+      const where = 'Status=="PAID"';
+
+      const invoiceData = await xero.accountingApi.getInvoices(data.tenantId, undefined, where);
+
+      // Check based on invoiceID
+      const xeroInvoices = invoiceData.body.invoices;
+
+      const xeroInvoicesIds = xeroInvoices?.map((xeroInvoice) => xeroInvoice.invoiceID);
+
+      if (xeroInvoicesIds?.length) {
+        const invoices = await prisma.invoice.updateMany({
+          where: {
+            xeroInvoiceId: {
+              in: xeroInvoicesIds as any,
+            },
+          },
+          data: {
+            status: 'paid',
+          },
+        });
+
+        console.log('INVOICES', invoices);
+      }
     }
 
     res.status(200).send('OK');
