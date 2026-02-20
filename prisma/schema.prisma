@@ -85,6 +85,11 @@ model User {
   createdLogistics  Logistic[]      @relation("CreatedLogistics")
   reportedIssues    LogisticIssue[]
 
+  twoFactorSecret String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   userFlow      UserFlow[]
   activatedAt   DateTime?
   passwordSetAt DateTime?
