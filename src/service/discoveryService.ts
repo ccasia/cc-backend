@@ -6,6 +6,8 @@ import {
   getInstagramUserInsight,
   getTikTokMediaObject,
 } from '@services/socialMediaService';
+import { mapPronounsToGender } from '../utils/mapPronounsToGender';
+import { calculateAge } from '../utils/calculateAge';
 import axios from 'axios';
 
 const prisma = new PrismaClient();
@@ -41,6 +43,7 @@ const normalizePlatform = (platform?: string): PlatformFilter => {
 
   return 'all';
 };
+
 
 const buildConnectedWhere = (search: string, platform: PlatformFilter) => {
   const searchOr = search
@@ -94,12 +97,17 @@ const buildConnectedWhere = (search: string, platform: PlatformFilter) => {
 const buildConnectedSelect = (includeAccessToken = false) => ({
   id: true,
   name: true,
+  city: true,
+  country: true,
   creator: {
     select: {
       id: true,
+      pronounce: true,
+      birthDate: true,
       instagram: true,
       tiktok: true,
       industries: true,
+      creditTier: true,
       isFacebookConnected: true,
       isTiktokConnected: true,
       ...(includeAccessToken
@@ -472,11 +480,22 @@ export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
       ? hydratedTikTokTopVideos.get(creatorId) || row.creator?.tiktokUser?.tiktokVideo || []
       : row.creator?.tiktokUser?.tiktokVideo || [];
 
+    // Add age property based on row.creator.birthDate
+    const age = calculateAge(row.creator?.birthDate);
+    
+    const city = row.city?.trim();
+    const country = row.country?.trim();
+    const location = [city, country].filter(Boolean).join(', ') || null;
+
     return {
       type: 'connected',
       userId: row.id,
       creatorId: row.creator?.id,
       name: row.name,
+      gender: mapPronounsToGender(row.creator?.pronounce),
+      age: age,
+      location: location,
+      creditTier: row.creator?.creditTier.name || null,
       handles: {
         instagram: row.creator?.instagram || null,
         tiktok: row.creator?.tiktok || null,
