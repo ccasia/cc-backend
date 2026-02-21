@@ -9501,10 +9501,10 @@ export const activateClientCampaign = async (req: Request, res: Response) => {
           },
           {
             role: 'client',
-            client: {
-              companyId: campaign.companyId,
-            },
-          },
+              client: {
+                companyId: campaign.companyId,
+            }
+          }
         ],
       },
       select: {
