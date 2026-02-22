@@ -29,6 +29,10 @@ COPY . .
 
 RUN yarn global add prisma
 
+RUN yarn global add pm2
+
+RUN yarn global add tsx
+
 RUN npx prisma generate
 
 EXPOSE 3001

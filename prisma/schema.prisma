@@ -1591,6 +1591,8 @@ enum InvoiceStatus {
   pending_payment
   approved
   rejected
+  processing
+  failed
 }
 
 enum CampaignStatus {
@@ -1701,6 +1703,7 @@ enum SubmissionStatus {
   OVERDUE
   CHANGES_REQUIRED
   POSTED
+
   // V3 flow statuses for client-created campaigns
   SENT_TO_CLIENT
   CLIENT_APPROVED

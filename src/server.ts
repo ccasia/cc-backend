@@ -483,7 +483,7 @@ const compressionEvent = new QueueEvents('compress', { connection });
 const uploadEvent = new QueueEvents('upload', { connection });
 
 compressionEvent.on('progress', (job) => {
-  const { userId, progress, submissionId, fileName, inputPath } = job.data as any;
+  const { userId, progress, submissionId, fileName, inputPath, originalFileName } = job.data as any;
 
   io.to(clients.get(userId)).emit('progress', {
     progress: progress,
@@ -492,13 +492,12 @@ compressionEvent.on('progress', (job) => {
     fileName: fileName,
     fileSize: fse.statSync(inputPath).size,
     fileType: path.extname(fileName),
+    originalFileName: originalFileName,
   });
 });
 
 uploadEvent.on('progress', (job) => {
-  const { userId, progress, submissionId, fileName, outputPath } = job.data as any;
-
-  console.log(job.data);
+  const { userId, progress, submissionId, fileName, outputPath, originalFileName } = job.data as any;
 
   io.to(clients.get(userId)).emit('progress', {
     progress: progress,
@@ -507,7 +506,16 @@ uploadEvent.on('progress', (job) => {
     fileName: fileName,
     fileSize: fse.statSync(outputPath).size,
     fileType: path.extname(fileName),
+    originalFileName: originalFileName,
   });
+});
+
+uploadEvent.on('completed', (job) => {
+  const { userId } = job.returnvalue as any;
+
+  console.log(job.returnvalue);
+
+  io.to(clients.get(userId)).emit('progress', null);
 });
 
 server.listen(process.env.PORT, async () => {

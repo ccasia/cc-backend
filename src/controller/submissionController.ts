@@ -921,6 +921,7 @@ export const draftSubmission = async (req: Request, res: Response) => {
           inputPath: draftVideoPath,
           outputPath: `/tmp/${submissionId}_${draftVideo.name.replace('.mp4', '')}_compressed.mp4`,
           fileName: `${submissionId}_${draftVideo.name}`,
+          originalFileName: draftVideo.name,
         });
       }
     }

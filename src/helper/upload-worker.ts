@@ -140,6 +140,8 @@ const checkCurrentSubmission = async (submissionId: string) => {
   }
 };
 
+console.log('UPLOAD WORKER IS RUNNING....');
+
 const uploadWorker = new Worker(
   'upload',
   async (job) => {
@@ -160,76 +162,79 @@ const uploadWorker = new Worker(
           userId: data.userid,
           outputPath: video.outputPath,
           submissionId: data.submissionId,
+          originalFileName: video.originalFileName,
         });
       },
       size,
     );
 
-    const submission = await prisma.submission.findUnique({
-      where: {
-        id: data.submissionId,
-      },
-      select: {
-        id: true,
-        submissionType: true,
-        video: true,
-      },
-    });
+    return { userId: data.userid };
 
-    const creator = await prisma.shortListedCreator.findFirst({
-      where: {
-        userId: data.userid,
-        campaignId: data.campaignId,
-      },
-      select: {
-        ugcVideos: true,
-      },
-    });
+    // const submission = await prisma.submission.findUnique({
+    //   where: {
+    //     id: data.submissionId,
+    //   },
+    //   select: {
+    //     id: true,
+    //     submissionType: true,
+    //     video: true,
+    //   },
+    // });
 
-    const videos_count = submission?.video.length;
-    const total_videos_count = creator?.ugcVideos;
+    // const creator = await prisma.shortListedCreator.findFirst({
+    //   where: {
+    //     userId: data.userid,
+    //     campaignId: data.campaignId,
+    //   },
+    //   select: {
+    //     ugcVideos: true,
+    //   },
+    // });
 
-    if (submission?.submissionType.type === 'FINAL_DRAFT') {
-      const revisionRequestedVideo = await prisma.video.findFirst({
-        where: {
-          userId: data.userid,
-          campaignId: data.campaignId,
-          status: 'REVISION_REQUESTED',
-        },
-      });
+    // const videos_count = submission?.video.length;
+    // const total_videos_count = creator?.ugcVideos;
 
-      await prisma.video.update({
-        where: {
-          id: revisionRequestedVideo?.id,
-        },
-        data: {
-          submissionId: submission.id,
-          url: videoPublicURL,
-          status: 'PENDING',
-        },
-      });
-    } else {
-      await prisma.video.create({
-        data: {
-          submissionId: data.submissionId,
-          url: videoPublicURL,
-          status: 'PENDING',
-          userId: data.userid,
-          campaignId: data.campaignId,
-        },
-      });
-    }
+    // if (submission?.submissionType.type === 'FINAL_DRAFT') {
+    //   const revisionRequestedVideo = await prisma.video.findFirst({
+    //     where: {
+    //       userId: data.userid,
+    //       campaignId: data.campaignId,
+    //       status: 'REVISION_REQUESTED',
+    //     },
+    //   });
 
-    if (videos_count === total_videos_count) {
-      await prisma.submission.update({
-        where: {
-          id: submission?.id,
-        },
-        data: {
-          status: 'PENDING_REVIEW',
-        },
-      });
-    }
+    //   await prisma.video.update({
+    //     where: {
+    //       id: revisionRequestedVideo?.id,
+    //     },
+    //     data: {
+    //       submissionId: submission.id,
+    //       url: videoPublicURL,
+    //       status: 'PENDING',
+    //     },
+    //   });
+    // } else {
+    //   await prisma.video.create({
+    //     data: {
+    //       submissionId: data.submissionId,
+    //       url: videoPublicURL,
+    //       status: 'PENDING',
+    //       userId: data.userid,
+    //       campaignId: data.campaignId,
+    //     },
+    //   });
+    // }
+
+    // if (videos_count === total_videos_count) {
+    //   await prisma.submission.update({
+    //     where: {
+    //       id: submission?.id,
+    //     },
+    //     data: {
+    //       status: 'PENDING_REVIEW',
+    //     },
+    //   });
+    // }
 
     // await checkCurrentSubmission(data.submissionId);
   },

@@ -29,7 +29,7 @@ export interface Admin {
 }
 
 export interface FilePaths {
-  video: { inputPath: string; outputPath: string; fileName: string }[];
+  video: { inputPath: string; outputPath: string; fileName: string; originalFileName: string }[];
 }
 
 const processVideo = async (
@@ -59,6 +59,8 @@ const processVideo = async (
   });
 };
 
+console.log('COMPRESSION WORKER IS RUNING...');
+
 const compressWorker = new Worker(
   'compress',
   async (job) => {
@@ -75,6 +77,7 @@ const compressWorker = new Worker(
         job.updateProgress({
           type,
           fileName: video.fileName,
+          originalFileName: video.originalFileName,
           progress,
           userId: data.userid,
           submissionId: data.submissionId,
