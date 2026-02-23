@@ -5,6 +5,7 @@ import {
   getActivationRateData,
   getTimeToActivationData,
   getTimeToActivationCreators as getTimeToActivationCreatorsData,
+  getMediaKitActivationData,
 } from '@services/analyticsV2Service';
 
 const prisma = new PrismaClient();
@@ -114,5 +115,27 @@ export const getTimeToActivationCreators = async (req: Request, res: Response) =
   } catch (error: any) {
     console.error('Error fetching time to activation creators:', error);
     return res.status(500).json({ success: false, message: 'Failed to fetch data' });
+  }
+};
+
+export const getMediaKitActivation = async (req: Request, res: Response) => {
+  try {
+    const { startDate: startParam, endDate: endParam } = req.query;
+    let startDate: Date | undefined;
+    let endDate: Date | undefined;
+
+    if (startParam && endParam) {
+      startDate = new Date(startParam as string);
+      endDate = new Date(endParam as string);
+      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+        return res.status(400).json({ success: false, message: 'Invalid date format.' });
+      }
+    }
+
+    const data = await getMediaKitActivationData(startDate, endDate);
+    return res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    console.error('Error fetching media kit activation data:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch media kit activation data' });
   }
 };
