@@ -765,6 +765,74 @@ export const getTimeToActivationCreators = async (startDate: Date, endDate: Date
   return { creators: rows, avgDays, count: rows.length };
 };
 
+// Media Kit Activation — per-platform connection snapshot
+
+export const getMediaKitActivationData = async (startDate?: Date, endDate?: Date) => {
+  const baseWhere = {
+    user: { role: 'creator' as const, status: { in: ['active' as const, 'pending' as const] } },
+  };
+
+  if (!startDate || !endDate) {
+    // All-time snapshot using boolean flags
+    const [tiktokConnected, instagramConnected, total, uniqueConnected] = await Promise.all([
+      prisma.creator.count({ where: { ...baseWhere, isTiktokConnected: true } }),
+      prisma.creator.count({ where: { ...baseWhere, isFacebookConnected: true } }),
+      prisma.creator.count({ where: baseWhere }),
+      prisma.creator.count({
+        where: {
+          ...baseWhere,
+          OR: [{ isTiktokConnected: true }, { isFacebookConnected: true }],
+        },
+      }),
+    ]);
+
+    return {
+      uniqueConnected,
+      platforms: [
+        { platform: 'TikTok', connected: tiktokConnected, total, rate: total > 0 ? Math.round((tiktokConnected / total) * 1000) / 10 : 0 },
+        { platform: 'Instagram', connected: instagramConnected, total, rate: total > 0 ? Math.round((instagramConnected / total) * 1000) / 10 : 0 },
+      ],
+    };
+  }
+
+  // Date-filtered: count OAuth records created within range
+  const [tiktokConnected, instagramConnected, total, uniqueConnectedResult] = await Promise.all([
+    prisma.tiktokUser.count({
+      where: {
+        createdAt: { gte: startDate, lte: endDate },
+        creator: { user: { role: 'creator', status: { in: ['active', 'pending'] } } },
+      },
+    }),
+    prisma.instagramUser.count({
+      where: {
+        createdAt: { gte: startDate, lte: endDate },
+        creator: { user: { role: 'creator', status: { in: ['active', 'pending'] } } },
+      },
+    }),
+    prisma.creator.count({ where: baseWhere }), // Total is always ALL active creators
+    prisma.$queryRaw<[{ count: number }]>`
+      SELECT COUNT(DISTINCT c.id)::int AS count
+      FROM "Creator" c
+      INNER JOIN "User" u ON u.id = c."userId"
+      WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
+        AND (
+          EXISTS (SELECT 1 FROM "TiktokUser" t WHERE t."creatorId" = c.id AND t."createdAt" >= ${startDate} AND t."createdAt" <= ${endDate})
+          OR EXISTS (SELECT 1 FROM "InstagramUser" i WHERE i."creatorId" = c.id AND i."createdAt" >= ${startDate} AND i."createdAt" <= ${endDate})
+        )
+    `,
+  ]);
+
+  const uniqueConnected = uniqueConnectedResult?.[0]?.count ?? 0;
+
+  return {
+    uniqueConnected,
+    platforms: [
+      { platform: 'TikTok', connected: tiktokConnected, total, rate: total > 0 ? Math.round((tiktokConnected / total) * 1000) / 10 : 0 },
+      { platform: 'Instagram', connected: instagramConnected, total, rate: total > 0 ? Math.round((instagramConnected / total) * 1000) / 10 : 0 },
+    ],
+  };
+};
+
 // Shared demographics processing
 function processDemographics(genderData: { pronounce: string | null }[], ageData: { birthDate: Date | null }[]) {
   const genderCounts = { Female: 0, Male: 0, Other: 0 };
