@@ -1,152 +1,48 @@
 {
-      "invoiceNumber": "INV-1202",
-      "createDate": "2024-10-23T12:26:08.475Z",
-      "dueDate": "2024-11-03T17:53:55.000Z",
-      "status": "approved",
-      "invoiceFrom": {
-        "id": "cm19fguk9001vdtzjinngt16o",
-        "name": "Creator Three",
-        "email": "bc767329f7@mailmaxy.one",
-        "company": "part_time",
-        "primary": false,
-        "addressType": "Home",
-        "phoneNumber": "9289323"
-      },
-      "invoiceTo": {
-        "id": "1",
-        "name": "Cult Creative",
-        "email": "support@cultcreative.asia",
-        "company": "Cult Creative",
-        "primary": true,
-        "addressType": "Hq",
-        "fullAddress": "4-402, Level 4, The Starling Mall, Lot 4-401 &, 6, Jalan SS 21/37, Damansara Utama, 47400 Petaling Jaya, Selangor",
-        "phoneNumber": "+60 11-5415 5751"
-      },
-      "items": [
-        {
-          "price": 200,
-          "title": "Posting on social media",
-          "total": 200,
-          "service": "Posting on social media",
-          "quantity": 1,
-          "description": "posting on social media"
-        }
-      ],
-      "bankInfo": {
-        "payTo": "Creator Three",
-        "bankName": "CIMB Bank Berhad",
-        "accountEmail": "bc767329f7@mailmaxy.one",
-        "accountNumber": "736878282323"
-      },
-      "totalAmount": 200,
-      "invoiceId": "cm2ggjw4g001o4y5wtpbjp38i",
-      "contactId": {
-        "contact": {
-          "contactID": "d0dd30c8-0856-469a-b527-bb276065cccb",
-          "name": "Iman Marissa"
-        },
-        "type": "ACCREC",
-        "description": "new account"
-      }
+  "campaignId": "cmh1oj1d502jbo601g401ysl8",
+  "campaignName": "Sunway Oasis & Terrace Celebration",
+  "geminiModel": "gemini-1.5-pro",
+  "period": {
+    "startDate": "2025-10-21T16:00:00.000Z",
+    "endDate": "2025-11-07T00:00:00.000Z"
+  },
+  "sections": [
+    {
+      "section": "campaign_summary",
+      "summary": "The Sunway Oasis & Terrace Celebration campaign successfully published **27 posts** and fully utilized all **25 allocated credits**, achieving a **100%** utilization rate. However, the campaign recorded **0 views** and **0 engagements**, meaning an engagement rate could not be calculated against the **3%** industry benchmark, and ROAS data is unavailable. Future campaigns must ensure comprehensive data capture for performance evaluation.",
+      "data": {}
+    },
+    {
+      "section": "engagement_interactions",
+      "summary": "The campaign generated a total of **27 posts** across platforms, with TikTok leading at **15 posts** and Instagram contributing **12 posts**. While overall engagement metrics are being finalized, the top-performing creators demonstrated significant audience interaction. Vincy Tan achieved an exceptional engagement rate of **3",
+      "data": {}
+    },
+    {
+      "section": "views_analysis",
+      "summary": "The campaign generated a total of **0 views**. The peak week was N/A with **0 views**, and the lowest weekly view count was also **0 views**, resulting in an overall view range of **0K – 0K**. The growth trend remained stable throughout the campaign, indicating no fluctuation in view performance. This complete absence of views suggests a critical issue with content visibility or distribution that requires immediate investigation.",
+      "data": {}
+    },
+    {
+      "section": "audience_sentiment",
+      "summary": "Audience sentiment is predominantly negative, with **54%** of feedback classified as negative, **44%** as neutral, and only **2%** as positive. This indicates a significant disconnect between the content and audience expectations, reflecting poor overall reception. No common negative themes were identified from the feedback, suggesting the issues may be varied or not easily categorized. The overwhelming negative sentiment, coupled with a minimal positive response, clearly demonstrates a lack of strong content-audience alignment, necessitating a deeper investigation into audience dissatisfaction.",
+      "data": {}
+    },
+    {
+      "section": "top_creator_personas",
+      "summary": "Top performers are identified by their exceptional engagement rates, indicating highly connected audiences. Vincy Tan stands out with an extraordinary **360%** engagement rate from her **58** followers, demonstrating a deeply loyal micro-audience for her Beauty & Skincare, Motherhood & Family, and Lifestyle",
+      "data": {}
+    },
+    {
+      "section": "campaign_recommendations",
+      "summary": "For the next campaign, prioritize creator selection by focusing on those who demonstrated exceptional engagement, particularly on TikTok. Creators like Puteri Awani, with an impressive **91%** engagement rate from **9592** followers, and Mitunasree Loganathan, achieving a **3",
+      "data": {}
+    },
+    {
+      "section": "campaign_recommendations",
+      "summary": "For the next campaign, prioritize creator selection based on engagement rates relative to follower count. Creators like Vincy Tan, who achieved a remarkable **360% engagement rate** with just **58 followers**, and Puteri Awani, with a **91% engagement rate** from",
+      "data": {}
     }
-
-    new created contact Contact {
-        contactID: 'b620aacb-51b7-441f-84a8-9e87ce2357a2',
-        mergedToContactID: undefined,
-        contactNumber: undefined,
-        accountNumber: undefined,
-        contactStatus: 'ACTIVE',
-        name: 'Creator Three',
-        firstName: undefined,
-        lastName: undefined,
-        companyNumber: undefined,
-        emailAddress: 'bc767329f7@mailmaxy.one',
-        contactPersons: [],
-        bankAccountDetails: '736878282323',
-        taxNumber: undefined,
-        accountsReceivableTaxType: undefined,
-        accountsPayableTaxType: undefined,
-        addresses: [
-          Address {
-            addressType: 'STREET',
-            addressLine1: undefined,
-            addressLine2: undefined,
-            addressLine3: undefined,
-            addressLine4: undefined,
-            city: '',
-            region: '',
-            postalCode: '',
-            country: '',
-            attentionTo: undefined
-          },
-          Address {
-            addressType: 'POBOX',
-            addressLine1: undefined,
-            addressLine2: undefined,
-            addressLine3: undefined,
-            addressLine4: undefined,
-            city: '',
-            region: '',
-            postalCode: '',
-            country: '',
-            attentionTo: undefined
-          }
-        ],
-        phones: [
-          Phone {
-            phoneType: 'DEFAULT',
-            phoneNumber: '',
-            phoneAreaCode: '',
-            phoneCountryCode: ''
-          },
-          Phone {
-            phoneType: 'DDI',
-            phoneNumber: '',
-            phoneAreaCode: '',
-            phoneCountryCode: ''
-          },
-          Phone {
-            phoneType: 'FAX',
-            phoneNumber: '',
-            phoneAreaCode: '',
-            phoneCountryCode: ''
-          },
-          Phone {
-            phoneType: 'MOBILE',
-            phoneNumber: '9289323',
-            phoneAreaCode: '',
-            phoneCountryCode: ''
-          }
-        ],
-        isSupplier: false,
-        isCustomer: false,
-        salesDefaultLineAmountType: undefined,
-        purchasesDefaultLineAmountType: undefined,
-        defaultCurrency: undefined,
-        xeroNetworkKey: undefined,
-        salesDefaultAccountCode: undefined,
-        purchasesDefaultAccountCode: undefined,
-        salesTrackingCategories: [],
-        purchasesTrackingCategories: [],
-        trackingCategoryName: undefined,
-        trackingCategoryOption: undefined,
-        paymentTerms: undefined,
-        updatedDateUTC: 2024-10-27T22:26:30.660Z,
-        contactGroups: [],
-        website: undefined,
-        brandingTheme: undefined,
-        batchPayments: BatchPaymentDetails {
-          bankAccountNumber: '736878282323',
-          bankAccountName: undefined,
-          details: undefined,
-          code: undefined,
-          reference: undefined
-        },
-        discount: undefined,
-        balances: undefined,
-        attachments: undefined,
-        hasAttachments: undefined,
-        validationErrors: undefined,
-        hasValidationErrors: false,
-        statusAttributeString: undefined
-      }
+  ],
+  "durationMs": 21370,
+  "createdAt": "2026-02-23T00:38:55.552Z"
+}

@@ -30,6 +30,7 @@ import picRoute from './picRoute';
 import logisticsRoute from './logisticsRoute';
 import creditTierRoute from './creditTierRoute';
 import dashboardRoute from './dashboardRoute';
+import { reportsRouter } from './reports';
 
 export const router = express.Router();
 
@@ -64,3 +65,4 @@ router.use('/pic', picRoute);
 router.use('/logistics', logisticsRoute);
 router.use('/credit-tier', creditTierRoute);
 router.use('/dashboard', dashboardRoute);
+router.use('/reports', reportsRouter);
