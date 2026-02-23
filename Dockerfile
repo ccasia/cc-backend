@@ -63,6 +63,8 @@ RUN apk add --no-cache \
     fontconfig \
     && rm -rf /var/cache/apk/*
 
+RUN yarn global add pm2
+
 # Define build argument
 ARG DATABASE_URL
 
