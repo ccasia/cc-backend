@@ -16,7 +16,7 @@ interface CreatorGrowthMonth {
 }
 
 interface CreatorGrowthDay {
-  date: string;    // "Feb 17" — display label
+  date: string; // "Feb 17" — display label
   isoDate: string; // "2026-02-17" — reliable parsing
   total: number;
   newSignups: number;
@@ -59,8 +59,7 @@ const formatMonthLabel = (year: number, month: number): string => {
 };
 
 // Format a date into a short display label (e.g. "Feb 17")
-const formatDayLabel = (d: Date): string =>
-  d.toLocaleString('en-US', { month: 'short', day: 'numeric' });
+const formatDayLabel = (d: Date): string => d.toLocaleString('en-US', { month: 'short', day: 'numeric' });
 
 // Format a date into ISO string "YYYY-MM-DD"
 const toIsoDate = (d: Date): string => {
@@ -86,7 +85,7 @@ const fillMonthGaps = (
   rows: MonthlySignupRow[],
   startDate: Date,
   endDate: Date,
-  baseline: number
+  baseline: number,
 ): CreatorGrowthMonth[] => {
   // Build lookup map from query results
   const signupMap = new Map<string, number>();
@@ -111,9 +110,8 @@ const fillMonthGaps = (
     cumulativeTotal += newSignups;
 
     // Month-over-month signup comparison
-    const growthRate = prevNewSignups > 0
-      ? Math.round(((newSignups - prevNewSignups) / prevNewSignups) * 100 * 10) / 10
-      : 0;
+    const growthRate =
+      prevNewSignups > 0 ? Math.round(((newSignups - prevNewSignups) / prevNewSignups) * 100 * 10) / 10 : 0;
 
     result.push({
       month: formatMonthLabel(year, month),
@@ -132,12 +130,7 @@ const fillMonthGaps = (
 };
 
 // Fill gaps in daily data and compute cumulative totals + growth rates
-const fillDayGaps = (
-  rows: DailySignupRow[],
-  startDate: Date,
-  endDate: Date,
-  baseline: number
-): CreatorGrowthDay[] => {
+const fillDayGaps = (rows: DailySignupRow[], startDate: Date, endDate: Date, baseline: number): CreatorGrowthDay[] => {
   // Build lookup map keyed by ISO date string
   const signupMap = new Map<string, number>();
   for (const row of rows) {
@@ -157,9 +150,8 @@ const fillDayGaps = (
     const newSignups = signupMap.get(key) || 0;
     cumulativeTotal += newSignups;
 
-    const growthRate = prevNewSignups > 0
-      ? Math.round(((newSignups - prevNewSignups) / prevNewSignups) * 100 * 10) / 10
-      : 0;
+    const growthRate =
+      prevNewSignups > 0 ? Math.round(((newSignups - prevNewSignups) / prevNewSignups) * 100 * 10) / 10 : 0;
 
     result.push({
       date: formatDayLabel(current),
@@ -179,7 +171,7 @@ const fillDayGaps = (
 export const getCreatorGrowthData = async (
   startDate: Date,
   endDate: Date,
-  granularity: 'daily' | 'monthly' = 'monthly'
+  granularity: 'daily' | 'monthly' = 'monthly',
 ): Promise<CreatorGrowthResponse> => {
   // Demographics queries are the same regardless of granularity
   const demographicsPromise = Promise.all([
@@ -250,9 +242,10 @@ export const getCreatorGrowthData = async (
       }),
     ]);
 
-    const percentChange = previousPeriodSignups > 0
-      ? Math.round(((currentPeriodSignups - previousPeriodSignups) / previousPeriodSignups) * 100 * 10) / 10
-      : 0;
+    const percentChange =
+      previousPeriodSignups > 0
+        ? Math.round(((currentPeriodSignups - previousPeriodSignups) / previousPeriodSignups) * 100 * 10) / 10
+        : 0;
 
     const demographics = processDemographics(genderData, ageData);
 
@@ -293,11 +286,487 @@ export const getCreatorGrowthData = async (
   };
 };
 
+// Activation Rate
+
+interface ActivationRateMonth {
+  month: string;
+  rate: number;
+  activated: number;
+  total: number;
+}
+
+interface ActivationRateDay {
+  date: string;
+  isoDate: string;
+  rate: number;
+  activated: number;
+  total: number;
+}
+
+interface ActivationRatePeriodComparison {
+  currentRate: number;
+  previousRate: number;
+  percentChange: number;
+}
+
+interface ActivationRateResponse {
+  granularity: 'daily' | 'monthly';
+  activationRate: ActivationRateMonth[] | ActivationRateDay[];
+  periodComparison?: ActivationRatePeriodComparison;
+}
+
+const fillActivationMonthGaps = (
+  activationRows: MonthlySignupRow[],
+  signupRows: MonthlySignupRow[],
+  startDate: Date,
+  endDate: Date,
+  activatedBaseline: number,
+  totalBaseline: number,
+): ActivationRateMonth[] => {
+  const activationMap = new Map<string, number>();
+  for (const row of activationRows) activationMap.set(`${row.year}-${row.month}`, row.count);
+
+  const signupMap = new Map<string, number>();
+  for (const row of signupRows) signupMap.set(`${row.year}-${row.month}`, row.count);
+
+  const result: ActivationRateMonth[] = [];
+  let cumulativeActivated = activatedBaseline;
+  let cumulativeTotal = totalBaseline;
+
+  const current = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+  const end = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+
+  while (current <= end) {
+    const year = current.getFullYear();
+    const month = current.getMonth() + 1;
+    const key = `${year}-${month}`;
+
+    cumulativeActivated += activationMap.get(key) || 0;
+    cumulativeTotal += signupMap.get(key) || 0;
+
+    const rate = cumulativeTotal > 0 ? Math.round((cumulativeActivated / cumulativeTotal) * 1000) / 10 : 0;
+
+    result.push({
+      month: formatMonthLabel(year, month),
+      rate,
+      activated: cumulativeActivated,
+      total: cumulativeTotal,
+    });
+
+    current.setMonth(current.getMonth() + 1);
+  }
+
+  return result;
+};
+
+const fillActivationDayGaps = (
+  activationRows: DailySignupRow[],
+  signupRows: DailySignupRow[],
+  startDate: Date,
+  endDate: Date,
+  activatedBaseline: number,
+  totalBaseline: number,
+): ActivationRateDay[] => {
+  const activationMap = new Map<string, number>();
+  for (const row of activationRows) activationMap.set(row.date, row.count);
+
+  const signupMap = new Map<string, number>();
+  for (const row of signupRows) signupMap.set(row.date, row.count);
+
+  const result: ActivationRateDay[] = [];
+  let cumulativeActivated = activatedBaseline;
+  let cumulativeTotal = totalBaseline;
+
+  const current = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+  const end = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
+
+  while (current <= end) {
+    const key = toIsoDate(current);
+    cumulativeActivated += activationMap.get(key) || 0;
+    cumulativeTotal += signupMap.get(key) || 0;
+
+    const rate = cumulativeTotal > 0 ? Math.round((cumulativeActivated / cumulativeTotal) * 1000) / 10 : 0;
+
+    result.push({
+      date: formatDayLabel(current),
+      isoDate: key,
+      rate,
+      activated: cumulativeActivated,
+      total: cumulativeTotal,
+    });
+
+    current.setDate(current.getDate() + 1);
+  }
+
+  return result;
+};
+
+export const getActivationRateData = async (
+  startDate: Date,
+  endDate: Date,
+  granularity: 'daily' | 'monthly' = 'monthly',
+): Promise<ActivationRateResponse> => {
+  // Baselines: counts before the date range
+  const activatedBaselinePromise = prisma.creator.count({
+    where: {
+      formCompletedAt: { not: null, lt: startDate },
+      user: { role: 'creator', status: { in: ['active', 'pending'] } },
+    },
+  });
+
+  const totalBaselinePromise = prisma.user.count({
+    where: {
+      role: 'creator',
+      status: { in: ['active', 'pending'] },
+      createdAt: { lt: startDate },
+    },
+  });
+
+  if (granularity === 'daily') {
+    const [dailyActivations, dailySignups, activatedBaseline, totalBaseline] = await Promise.all([
+      prisma.$queryRaw<DailySignupRow[]>`
+        SELECT
+          TO_CHAR(DATE_TRUNC('day', c."formCompletedAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'), 'YYYY-MM-DD') AS date,
+          COUNT(*)::int AS count
+        FROM "Creator" c
+        INNER JOIN "User" u ON u.id = c."userId"
+        WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
+          AND c."formCompletedAt" IS NOT NULL
+          AND c."formCompletedAt" >= (${startDate} AT TIME ZONE 'UTC')
+          AND c."formCompletedAt" <= (${endDate} AT TIME ZONE 'UTC')
+        GROUP BY DATE_TRUNC('day', c."formCompletedAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')
+        ORDER BY 1
+      `,
+      prisma.$queryRaw<DailySignupRow[]>`
+        SELECT
+          TO_CHAR(DATE_TRUNC('day', u."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'), 'YYYY-MM-DD') AS date,
+          COUNT(*)::int AS count
+        FROM "User" u
+        INNER JOIN "Creator" c ON c."userId" = u.id
+        WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
+          AND u."createdAt" >= (${startDate} AT TIME ZONE 'UTC')
+          AND u."createdAt" <= (${endDate} AT TIME ZONE 'UTC')
+        GROUP BY DATE_TRUNC('day', u."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')
+        ORDER BY 1
+      `,
+      activatedBaselinePromise,
+      totalBaselinePromise,
+    ]);
+
+    const activationRate = fillActivationDayGaps(
+      dailyActivations,
+      dailySignups,
+      startDate,
+      endDate,
+      activatedBaseline,
+      totalBaseline,
+    );
+
+    // Period comparison: rate at end of current vs previous period
+    const prevEnd = new Date(startDate.getTime() - 1);
+
+    const [prevActivated, prevTotal] = await Promise.all([
+      prisma.creator.count({
+        where: {
+          formCompletedAt: { not: null, lte: prevEnd },
+          user: { role: 'creator', status: { in: ['active', 'pending'] } },
+        },
+      }),
+      prisma.user.count({
+        where: {
+          role: 'creator',
+          status: { in: ['active', 'pending'] },
+          createdAt: { lte: prevEnd },
+        },
+      }),
+    ]);
+
+    const currentRate = activationRate.length > 0 ? activationRate[activationRate.length - 1].rate : 0;
+    const previousRate = prevTotal > 0 ? Math.round((prevActivated / prevTotal) * 1000) / 10 : 0;
+    const percentChange = Math.round((currentRate - previousRate) * 10) / 10;
+
+    return {
+      granularity: 'daily',
+      activationRate,
+      periodComparison: { currentRate, previousRate, percentChange },
+    };
+  }
+
+  // --- Monthly granularity (default) ---
+  const [monthlyActivations, monthlySignups, activatedBaseline, totalBaseline] = await Promise.all([
+    prisma.$queryRaw<MonthlySignupRow[]>`
+      SELECT
+        EXTRACT(YEAR FROM DATE_TRUNC('month', c."formCompletedAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'))::int AS year,
+        EXTRACT(MONTH FROM DATE_TRUNC('month', c."formCompletedAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'))::int AS month,
+        COUNT(*)::int AS count
+      FROM "Creator" c
+      INNER JOIN "User" u ON u.id = c."userId"
+      WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
+        AND c."formCompletedAt" IS NOT NULL
+        AND c."formCompletedAt" >= (${startDate} AT TIME ZONE 'UTC')
+        AND c."formCompletedAt" <= (${endDate} AT TIME ZONE 'UTC')
+      GROUP BY DATE_TRUNC('month', c."formCompletedAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')
+      ORDER BY 1, 2
+    `,
+    prisma.$queryRaw<MonthlySignupRow[]>`
+      SELECT
+        EXTRACT(YEAR FROM DATE_TRUNC('month', u."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'))::int AS year,
+        EXTRACT(MONTH FROM DATE_TRUNC('month', u."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'))::int AS month,
+        COUNT(*)::int AS count
+      FROM "User" u
+      INNER JOIN "Creator" c ON c."userId" = u.id
+      WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
+        AND u."createdAt" >= (${startDate} AT TIME ZONE 'UTC')
+        AND u."createdAt" <= (${endDate} AT TIME ZONE 'UTC')
+      GROUP BY DATE_TRUNC('month', u."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')
+      ORDER BY 1, 2
+    `,
+    activatedBaselinePromise,
+    totalBaselinePromise,
+  ]);
+
+  const activationRate = fillActivationMonthGaps(
+    monthlyActivations,
+    monthlySignups,
+    startDate,
+    endDate,
+    activatedBaseline,
+    totalBaseline,
+  );
+
+  return {
+    granularity: 'monthly',
+    activationRate,
+  };
+};
+
+// Time to Activation
+
+interface TimeToActivationMonth {
+  month: string;
+  avgDays: number | null;
+}
+
+interface TimeToActivationDay {
+  date: string;
+  isoDate: string;
+  avgDays: number | null;
+}
+
+interface MonthlyAvgDaysRow {
+  year: number;
+  month: number;
+  avgdays: number;
+}
+
+interface DailyAvgDaysRow {
+  date: string;
+  avgdays: number;
+}
+
+interface TimeToActivationPeriodComparison {
+  currentAvg: number | null;
+  previousAvg: number | null;
+  change: number | null;
+}
+
+interface TimeToActivationResponse {
+  granularity: 'daily' | 'monthly';
+  timeToActivation: TimeToActivationMonth[] | TimeToActivationDay[];
+  periodComparison?: TimeToActivationPeriodComparison;
+}
+
+const fillTimeToActivationMonthGaps = (
+  rows: MonthlyAvgDaysRow[],
+  startDate: Date,
+  endDate: Date,
+): TimeToActivationMonth[] => {
+  const avgMap = new Map<string, number>();
+  for (const row of rows) {
+    avgMap.set(`${row.year}-${row.month}`, row.avgdays);
+  }
+
+  const result: TimeToActivationMonth[] = [];
+  const current = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+  const end = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+
+  while (current <= end) {
+    const year = current.getFullYear();
+    const month = current.getMonth() + 1;
+    const key = `${year}-${month}`;
+
+    const avgDays = avgMap.has(key) ? avgMap.get(key)! : null;
+
+    result.push({
+      month: formatMonthLabel(year, month),
+      avgDays,
+    });
+
+    current.setMonth(current.getMonth() + 1);
+  }
+
+  return result;
+};
+
+const fillTimeToActivationDayGaps = (
+  rows: DailyAvgDaysRow[],
+  startDate: Date,
+  endDate: Date,
+): TimeToActivationDay[] => {
+  const avgMap = new Map<string, number>();
+  for (const row of rows) {
+    avgMap.set(row.date, row.avgdays);
+  }
+
+  const result: TimeToActivationDay[] = [];
+  const current = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+  const end = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
+
+  while (current <= end) {
+    const key = toIsoDate(current);
+    const avgDays = avgMap.has(key) ? avgMap.get(key)! : null;
+
+    result.push({
+      date: formatDayLabel(current),
+      isoDate: key,
+      avgDays,
+    });
+
+    current.setDate(current.getDate() + 1);
+  }
+
+  return result;
+};
+
+export const getTimeToActivationData = async (
+  startDate: Date,
+  endDate: Date,
+  granularity: 'daily' | 'monthly' = 'monthly',
+): Promise<TimeToActivationResponse> => {
+  if (granularity === 'daily') {
+    const dailyAvgs = await prisma.$queryRaw<DailyAvgDaysRow[]>`
+      SELECT
+        TO_CHAR(DATE_TRUNC('day', c."formCompletedAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'), 'YYYY-MM-DD') AS date,
+        ROUND(AVG(EXTRACT(EPOCH FROM (c."formCompletedAt" - u."createdAt")) / 86400)::numeric, 1) AS "avgdays"
+      FROM "Creator" c
+      INNER JOIN "User" u ON u.id = c."userId"
+      WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
+        AND c."formCompletedAt" IS NOT NULL
+        AND c."formCompletedAt" >= (${startDate} AT TIME ZONE 'UTC')
+        AND c."formCompletedAt" <= (${endDate} AT TIME ZONE 'UTC')
+      GROUP BY DATE_TRUNC('day', c."formCompletedAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')
+      ORDER BY 1
+    `;
+
+    const timeToActivation = fillTimeToActivationDayGaps(dailyAvgs, startDate, endDate);
+
+    // Period comparison: overall average of current vs previous period of same length
+    const periodMs = endDate.getTime() - startDate.getTime();
+    const prevEnd = new Date(startDate.getTime() - 1);
+    const prevStart = new Date(prevEnd.getTime() - periodMs);
+
+    const [currentAvgResult, previousAvgResult] = await Promise.all([
+      prisma.$queryRaw<{ avgdays: number | null }[]>`
+        SELECT ROUND(AVG(EXTRACT(EPOCH FROM (c."formCompletedAt" - u."createdAt")) / 86400)::numeric, 1) AS "avgdays"
+        FROM "Creator" c
+        INNER JOIN "User" u ON u.id = c."userId"
+        WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
+          AND c."formCompletedAt" IS NOT NULL
+          AND c."formCompletedAt" >= (${startDate} AT TIME ZONE 'UTC')
+          AND c."formCompletedAt" <= (${endDate} AT TIME ZONE 'UTC')
+      `,
+      prisma.$queryRaw<{ avgdays: number | null }[]>`
+        SELECT ROUND(AVG(EXTRACT(EPOCH FROM (c."formCompletedAt" - u."createdAt")) / 86400)::numeric, 1) AS "avgdays"
+        FROM "Creator" c
+        INNER JOIN "User" u ON u.id = c."userId"
+        WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
+          AND c."formCompletedAt" IS NOT NULL
+          AND c."formCompletedAt" >= (${prevStart} AT TIME ZONE 'UTC')
+          AND c."formCompletedAt" <= (${prevEnd} AT TIME ZONE 'UTC')
+      `,
+    ]);
+
+    const currentAvg = currentAvgResult[0]?.avgdays != null ? Number(currentAvgResult[0].avgdays) : null;
+    const previousAvg = previousAvgResult[0]?.avgdays != null ? Number(previousAvgResult[0].avgdays) : null;
+    const change =
+      currentAvg != null && previousAvg != null ? Math.round((currentAvg - previousAvg) * 10) / 10 : null;
+
+    return {
+      granularity: 'daily',
+      timeToActivation,
+      periodComparison: { currentAvg, previousAvg, change },
+    };
+  }
+
+  // --- Monthly granularity (default) ---
+  const monthlyAvgs = await prisma.$queryRaw<MonthlyAvgDaysRow[]>`
+    SELECT
+      EXTRACT(YEAR FROM DATE_TRUNC('month', c."formCompletedAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'))::int AS year,
+      EXTRACT(MONTH FROM DATE_TRUNC('month', c."formCompletedAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'))::int AS month,
+      ROUND(AVG(EXTRACT(EPOCH FROM (c."formCompletedAt" - u."createdAt")) / 86400)::numeric, 1) AS "avgdays"
+    FROM "Creator" c
+    INNER JOIN "User" u ON u.id = c."userId"
+    WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
+      AND c."formCompletedAt" IS NOT NULL
+      AND c."formCompletedAt" >= (${startDate} AT TIME ZONE 'UTC')
+      AND c."formCompletedAt" <= (${endDate} AT TIME ZONE 'UTC')
+    GROUP BY DATE_TRUNC('month', c."formCompletedAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')
+    ORDER BY 1, 2
+  `;
+
+  const timeToActivation = fillTimeToActivationMonthGaps(monthlyAvgs, startDate, endDate);
+
+  return {
+    granularity: 'monthly',
+    timeToActivation,
+  };
+};
+
+// Time to Activation — Individual Creators for a period
+
+interface TimeToActivationCreatorRow {
+  userId: string;
+  name: string;
+  photoUrl: string | null;
+  createdAt: Date;
+  formCompletedAt: Date;
+  daysToActivation: number;
+}
+
+export const getTimeToActivationCreators = async (startDate: Date, endDate: Date) => {
+  // Use raw SQL with the same Asia/Kuala_Lumpur timezone conversion as the aggregated
+  // query so that clicking a day/month in the chart returns the matching creators.
+  const creators = await prisma.$queryRaw<TimeToActivationCreatorRow[]>`
+    SELECT
+      u.id AS "userId",
+      u.name,
+      u."photoURL" AS "photoUrl",
+      u."createdAt",
+      c."formCompletedAt",
+      ROUND(EXTRACT(EPOCH FROM (c."formCompletedAt" - u."createdAt")) / 86400::numeric, 1) AS "daysToActivation"
+    FROM "Creator" c
+    INNER JOIN "User" u ON u.id = c."userId"
+    WHERE u.role = 'creator'
+      AND u.status IN ('active', 'pending')
+      AND c."formCompletedAt" IS NOT NULL
+      AND (c."formCompletedAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')::date >= ${startDate}::date
+      AND (c."formCompletedAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')::date <= ${endDate}::date
+    ORDER BY c."formCompletedAt" DESC
+  `;
+
+  const rows = creators.map((c) => ({
+    ...c,
+    daysToActivation: Number(c.daysToActivation),
+  }));
+
+  const avgDays =
+    rows.length > 0 ? Math.round((rows.reduce((sum, r) => sum + r.daysToActivation, 0) / rows.length) * 10) / 10 : null;
+
+  return { creators: rows, avgDays, count: rows.length };
+};
+
 // Shared demographics processing
-function processDemographics(
-  genderData: { pronounce: string | null }[],
-  ageData: { birthDate: Date | null }[]
-) {
+function processDemographics(genderData: { pronounce: string | null }[], ageData: { birthDate: Date | null }[]) {
   const genderCounts = { Female: 0, Male: 0, Other: 0 };
   for (const { pronounce } of genderData) {
     const p = (pronounce || '').toLowerCase();
