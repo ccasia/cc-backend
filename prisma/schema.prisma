@@ -1142,6 +1142,40 @@ model InsightSnapshot {
   @@index([campaignId, snapshotType])
 }
 
+model PostEngagementSnapshot {
+  id                String   @id @unique @default(cuid())
+  campaignId        String
+  submissionId      String
+  postUrl           String
+  platform          String   // "Instagram" | "TikTok"
+  userId            String   // Creator user ID
+  
+  // Snapshot timing
+  snapshotDay       Int      // Day number from campaign start (7, 15, 30)
+  postDate          DateTime // When the post was originally published
+  capturedAt        DateTime // When this snapshot was captured
+  
+  // Engagement metrics at snapshot time
+  views             Int      @default(0)
+  likes             Int      @default(0)
+  comments          Int      @default(0)
+  shares            Int      @default(0)
+  saved             Int      @default(0)
+  reach             Int      @default(0)
+  engagementRate    Float    // ER at this snapshot
+  
+  // Raw insight data for reference
+  rawMetrics        Json?
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  @@unique([campaignId, postUrl, snapshotDay])
+  @@index([campaignId, snapshotDay])
+  @@index([submissionId])
+  @@index([userId])
+}
+
 model ManualCreatorEntry {
   id              String   @id @unique @default(cuid())
   campaignId      String
