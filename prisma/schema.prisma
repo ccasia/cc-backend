@@ -2175,6 +2175,18 @@ model CreditTier {
   @@index([minFollowers])
 }
 
+model AiCampaignReport {
+  id String @id @unique @default(cuid())
+
+  model        String
+  temperature  Float
+  systemPrompt String
+  maxTokens    Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 // NPS Feedback
 enum NpsUserType {
   CLIENT
