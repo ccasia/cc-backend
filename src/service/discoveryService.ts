@@ -23,6 +23,13 @@ export interface DiscoveryQueryInput {
   page?: number;
   limit?: number;
   hydrateMissing?: boolean;
+  gender?: string;
+  ageRange?: string;
+  country?: string;
+  city?: string;
+  creditTier?: string;
+  interests?: string[];
+  keyword?: string;
 }
 
 const normalizePagination = (page = 1, limit = 20) => {
@@ -44,8 +51,50 @@ const normalizePlatform = (platform?: string): PlatformFilter => {
   return 'all';
 };
 
+// Map frontend gender labels back to pronouns stored in DB
+const genderToPronounce = (gender?: string): string | null => {
+  if (!gender) return null;
+  const map: Record<string, string> = {
+    Male: 'He/Him',
+    Female: 'She/Her',
+    'Non-Binary': 'They/Them',
+  };
+  return map[gender] || null;
+};
 
-const buildConnectedWhere = (search: string, platform: PlatformFilter) => {
+// Parse age range string like "18-24" into birthDate boundaries
+const ageRangeToBirthDateRange = (ageRange?: string): { gte: Date; lte: Date } | null => {
+  if (!ageRange) return null;
+  const parts = ageRange.split('-');
+  if (parts.length !== 2) return null;
+
+  const minAge = parseInt(parts[0], 10);
+  const maxAge = parseInt(parts[1], 10);
+  if (Number.isNaN(minAge) || Number.isNaN(maxAge)) return null;
+
+  const today = new Date();
+  // Born at most maxAge+1 years ago (exclusive) → lte
+  // Born at least minAge years ago → gte
+  const latestBirth = new Date(today.getFullYear() - minAge, today.getMonth(), today.getDate());
+  const earliestBirth = new Date(today.getFullYear() - maxAge - 1, today.getMonth(), today.getDate() + 1);
+
+  return { gte: earliestBirth, lte: latestBirth };
+};
+
+
+const buildConnectedWhere = (
+  search: string,
+  platform: PlatformFilter,
+  filters: {
+    gender?: string;
+    ageRange?: string;
+    country?: string;
+    city?: string;
+    creditTier?: string;
+    interests?: string[];
+    keyword?: string;
+  } = {},
+) => {
   const searchOr = search
     ? [
         { name: { contains: search, mode: 'insensitive' as const } },
@@ -84,6 +133,92 @@ const buildConnectedWhere = (search: string, platform: PlatformFilter) => {
         ? tiktokConnected
         : { OR: [instagramConnected, tiktokConnected] };
 
+  // ─── Additional filter conditions ─────────────────────────────────────────
+
+  // Gender → map to pronounce field on Creator
+  const pronounce = genderToPronounce(filters.gender);
+  const genderCondition = pronounce
+    ? { creator: { is: { pronounce: { equals: pronounce, mode: 'insensitive' as const } } } }
+    : undefined;
+
+  // Age range → birthDate between computed dates
+  const birthDateRange = ageRangeToBirthDateRange(filters.ageRange);
+  const ageCondition = birthDateRange
+    ? { creator: { is: { birthDate: { gte: birthDateRange.gte, lte: birthDateRange.lte } } } }
+    : undefined;
+
+  // Country → on User model directly
+  const countryCondition = filters.country
+    ? { country: { equals: filters.country, mode: 'insensitive' as const } }
+    : undefined;
+
+  // City → on User model directly
+  const cityCondition = filters.city
+    ? { city: { equals: filters.city, mode: 'insensitive' as const } }
+    : undefined;
+
+  // Credit tier → filter by CreditTier.name via relation
+  const creditTierCondition = filters.creditTier
+    ? { creator: { is: { creditTier: { name: { equals: filters.creditTier, mode: 'insensitive' as const } } } } }
+    : undefined;
+
+  // Interests → match against Interest model (related to Creator via userId)
+  const interestsCondition =
+    filters.interests && filters.interests.length > 0
+      ? {
+          creator: {
+            is: {
+              interests: {
+                some: {
+                  name: { in: filters.interests, mode: 'insensitive' as const },
+                },
+              },
+            },
+          },
+        }
+      : undefined;
+
+  // Keyword → search through instagram video captions and tiktok video titles
+  const keywordCondition = filters.keyword
+    ? {
+        OR: [
+          {
+            creator: {
+              is: {
+                instagramUser: {
+                  instagramVideo: {
+                    some: { caption: { contains: filters.keyword, mode: 'insensitive' as const } },
+                  },
+                },
+              },
+            },
+          },
+          {
+            creator: {
+              is: {
+                tiktokUser: {
+                  tiktokVideo: {
+                    some: { title: { contains: filters.keyword, mode: 'insensitive' as const } },
+                  },
+                },
+              },
+            },
+          },
+        ],
+      }
+    : undefined;
+
+  // Collect all AND conditions (only non-undefined ones)
+  const andConditions = [
+    genderCondition,
+    ageCondition,
+    countryCondition,
+    cityCondition,
+    creditTierCondition,
+    interestsCondition,
+    keywordCondition,
+  ].filter(Boolean);
+
   return {
     role: 'creator',
     creator: {
@@ -91,6 +226,7 @@ const buildConnectedWhere = (search: string, platform: PlatformFilter) => {
     },
     ...(searchOr ? { OR: searchOr } : {}),
     ...platformCondition,
+    ...(andConditions.length > 0 ? { AND: andConditions } : {}),
   } as any;
 };
 
@@ -107,6 +243,14 @@ const buildConnectedSelect = (includeAccessToken = false) => ({
       instagram: true,
       tiktok: true,
       industries: true,
+      interests: {
+        select: {
+          id: true,
+          name: true,
+          rank: true,
+        },
+        orderBy: { rank: 'asc' as const },
+      },
       creditTier: true,
       isFacebookConnected: true,
       isTiktokConnected: true,
@@ -433,9 +577,20 @@ export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
 
   const pagination = normalizePagination(input.page, input.limit);
 
-  const connectedWhere = buildConnectedWhere(search, platform);
+  const connectedWhere = buildConnectedWhere(search, platform, {
+    gender: input.gender,
+    ageRange: input.ageRange,
+    country: input.country,
+    city: input.city,
+    creditTier: input.creditTier,
+    interests: input.interests,
+    keyword: input.keyword,
+  });
 
-  const [connectedTotal, connectedRows] = await Promise.all([
+  // Base WHERE (platform only, no additional filters) for extracting available locations
+  const baseWhere = buildConnectedWhere('', platform);
+
+  const [connectedTotal, connectedRows, locationRows] = await Promise.all([
     prismaAny.user.count({ where: connectedWhere }),
     prismaAny.user.findMany({
       where: connectedWhere,
@@ -445,6 +600,12 @@ export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
         updatedAt: 'desc',
       },
       select: buildConnectedSelect(input.hydrateMissing === true),
+    }),
+    // Lightweight query: only fetch country/city from all connected creators (no filters)
+    prismaAny.user.findMany({
+      where: baseWhere,
+      select: { country: true, city: true },
+      distinct: ['country', 'city'],
     }),
   ]);
 
@@ -500,7 +661,7 @@ export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
         instagram: row.creator?.instagram || null,
         tiktok: row.creator?.tiktok || null,
       },
-      interests: row.creator?.industries || null,
+      interests: row.creator?.interests?.map((i: any) => i.name).filter(Boolean) || [],
       about: row.creator?.mediaKit?.about || null,
       instagram: {
         connected: Boolean(row.creator?.isFacebookConnected && row.creator?.instagramUser),
@@ -529,6 +690,25 @@ export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
     };
   });
 
+  // Build available locations map: { country: [city1, city2, ...] }
+  const availableLocations: Record<string, string[]> = {};
+  for (const row of locationRows) {
+    const c = row.country?.trim();
+    if (!c) continue;
+    if (!availableLocations[c]) {
+      availableLocations[c] = [];
+    }
+    const ct = row.city?.trim();
+    if (ct && !availableLocations[c].includes(ct)) {
+      availableLocations[c].push(ct);
+    }
+  }
+  // Sort countries and cities alphabetically
+  const sortedLocations: Record<string, string[]> = {};
+  for (const country of Object.keys(availableLocations).sort()) {
+    sortedLocations[country] = availableLocations[country].sort();
+  }
+
   return {
     filters: {
       search,
@@ -540,5 +720,6 @@ export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
       limit: pagination.limit,
       total: connectedTotal,
     },
+    availableLocations: sortedLocations,
   };
 };
