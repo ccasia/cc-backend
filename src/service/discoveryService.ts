@@ -417,7 +417,7 @@ const hydrateMissingInstagramData = async (rows: any[]): Promise<TopVideosByCrea
     return topVideosByCreator;
   }
 
-  const limitedCandidates = candidates.slice(0, 5);
+  const limitedCandidates = candidates.slice(0, 20);
 
   await Promise.allSettled(
     limitedCandidates.map(async (row) => {
@@ -508,19 +508,14 @@ const hydrateMissingTikTokData = async (rows: any[]): Promise<TopVideosByCreator
       return false;
     }
 
-    return (
-      !tiktokUser?.follower_count ||
-      tiktokUser?.totalShares == null ||
-      !Array.isArray(tiktokUser?.tiktokVideo) ||
-      tiktokUser.tiktokVideo.length === 0
-    );
+    return true;
   });
 
   if (candidates.length === 0) {
     return topVideosByCreator;
   }
 
-  const limitedCandidates = candidates.slice(0, 5);
+  const limitedCandidates = candidates.slice(0, 20);
 
   await Promise.allSettled(
     limitedCandidates.map(async (row) => {
@@ -559,7 +554,7 @@ const hydrateMissingTikTokData = async (rows: any[]): Promise<TopVideosByCreator
 
         const engagementRate = totalViews ? ((totalLikes + totalComments + totalShares) / totalViews) * 100 : 0;
 
-        await prismaAny.tiktokUser.upsert({
+        const upsertedTiktokUser = await prismaAny.tiktokUser.upsert({
           where: { creatorId },
           update: {
             display_name: overview.display_name,
@@ -598,6 +593,8 @@ const hydrateMissingTikTokData = async (rows: any[]): Promise<TopVideosByCreator
           },
         });
 
+        const tiktokUserId = upsertedTiktokUser.id;
+
         const topVideos = (topFiveVideos || []).map((video: any) => ({
           video_id: video.id,
           cover_image_url: video.cover_image_url,
@@ -608,6 +605,38 @@ const hydrateMissingTikTokData = async (rows: any[]): Promise<TopVideosByCreator
           share_count: video.share_count || 0,
           createdAt: video.create_time ? new Date(video.create_time * 1000) : null,
         }));
+
+        // Persist fresh cover_image_url values back to the DB so subsequent requests
+        // don't read stale (expired) TikTok CDN URLs.
+        await Promise.allSettled(
+          topVideos.map(async (video: any) => {
+            if (!video.video_id) return;
+            await prismaAny.tiktokVideo.upsert({
+              where: { video_id: video.video_id },
+              update: {
+                cover_image_url: video.cover_image_url,
+                title: video.title,
+                embed_link: video.embed_link,
+                like_count: video.like_count,
+                comment_count: video.comment_count,
+                share_count: video.share_count,
+                createdAt: video.createdAt || undefined,
+                tiktokUserId,
+              },
+              create: {
+                video_id: video.video_id,
+                cover_image_url: video.cover_image_url,
+                title: video.title,
+                embed_link: video.embed_link,
+                like_count: video.like_count,
+                comment_count: video.comment_count,
+                share_count: video.share_count,
+                createdAt: video.createdAt || undefined,
+                tiktokUserId,
+              },
+            });
+          }),
+        );
 
         topVideosByCreator.set(creatorId, topVideos);
 
@@ -648,8 +677,24 @@ export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
   // Base WHERE (platform only, no additional filters) for extracting available locations
   const baseWhere = buildConnectedWhere('', platform);
 
-  const [connectedTotal, connectedRows, locationRows] = await Promise.all([
+  const [connectedTotal, dualConnectedTotal, connectedRows, locationRows] = await Promise.all([
     prismaAny.user.count({ where: connectedWhere }),
+    platform === 'all'
+      ? prismaAny.user.count({
+          where: {
+            ...connectedWhere,
+            creator: {
+              is: {
+                ...(connectedWhere.creator?.is || {}),
+                isFacebookConnected: true,
+                isTiktokConnected: true,
+                instagramUser: { isNot: null },
+                tiktokUser: { isNot: null },
+              },
+            },
+          },
+        })
+      : Promise.resolve(0),
     prismaAny.user.findMany({
       where: connectedWhere,
       skip: pagination.skip,
@@ -688,16 +733,27 @@ export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
     });
   }
 
-  const connectedCreators = finalRows.map((row: any) => {
+  const connectedCreators = finalRows.flatMap((row: any) => {
     const creatorId = row.creator?.id;
+
+    const rawTiktokHandle = row.creator?.tiktok || row.creator?.tiktokUser?.username || null;
+    const normalizedTiktokHandle = rawTiktokHandle ? String(rawTiktokHandle).replace(/^@/, '') : null;
 
     const instagramTopVideos = creatorId
       ? hydratedInstagramTopVideos.get(creatorId) || row.creator?.instagramUser?.instagramVideo || []
       : row.creator?.instagramUser?.instagramVideo || [];
 
-    const tiktokTopVideos = creatorId
+    const tiktokTopVideosRaw = creatorId
       ? hydratedTikTokTopVideos.get(creatorId) || row.creator?.tiktokUser?.tiktokVideo || []
       : row.creator?.tiktokUser?.tiktokVideo || [];
+
+    const tiktokTopVideos = (tiktokTopVideosRaw || []).map((video: any) => ({
+      ...video,
+      video_url:
+        normalizedTiktokHandle && video?.video_id
+          ? `https://www.tiktok.com/@${normalizedTiktokHandle}/video/${video.video_id}`
+          : null,
+    }));
 
     // Add age property based on row.creator.birthDate
     const age = calculateAge(row.creator?.birthDate);
@@ -706,7 +762,7 @@ export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
     const country = row.country?.trim();
     const location = [city, country].filter(Boolean).join(', ') || null;
 
-    return {
+    const baseCreator = {
       type: 'connected',
       userId: row.id,
       creatorId: row.creator?.id,
@@ -737,6 +793,7 @@ export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
         topVideos: instagramTopVideos,
       },
       tiktok: {
+        biography: row.creator?.tiktokUser?.biography || null,
         connected: Boolean(row.creator?.isTiktokConnected && row.creator?.tiktokUser),
         followers: row.creator?.tiktokUser?.follower_count || 0,
         engagementRate: row.creator?.tiktokUser?.engagement_rate || 0,
@@ -746,6 +803,48 @@ export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
         topVideos: tiktokTopVideos,
       },
     };
+
+    const rowsByPlatform: any[] = [];
+
+    if (platform === 'instagram') {
+      if (baseCreator.instagram.connected) {
+        rowsByPlatform.push({
+          ...baseCreator,
+          rowId: `${row.id}-instagram`,
+          platform: 'instagram',
+        });
+      }
+      return rowsByPlatform;
+    }
+
+    if (platform === 'tiktok') {
+      if (baseCreator.tiktok.connected) {
+        rowsByPlatform.push({
+          ...baseCreator,
+          rowId: `${row.id}-tiktok`,
+          platform: 'tiktok',
+        });
+      }
+      return rowsByPlatform;
+    }
+
+    if (baseCreator.instagram.connected) {
+      rowsByPlatform.push({
+        ...baseCreator,
+        rowId: `${row.id}-instagram`,
+        platform: 'instagram',
+      });
+    }
+
+    if (baseCreator.tiktok.connected) {
+      rowsByPlatform.push({
+        ...baseCreator,
+        rowId: `${row.id}-tiktok`,
+        platform: 'tiktok',
+      });
+    }
+
+    return rowsByPlatform;
   });
 
   // Build available locations map: { country: [city1, city2, ...] }
@@ -776,7 +875,7 @@ export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
     pagination: {
       page: pagination.page,
       limit: pagination.limit,
-      total: connectedTotal,
+      total: platform === 'all' ? connectedTotal + dualConnectedTotal : connectedTotal,
     },
     availableLocations: sortedLocations,
   };
