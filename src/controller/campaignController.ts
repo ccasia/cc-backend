@@ -349,11 +349,11 @@ export const createCampaign = async (req: Request, res: Response) => {
             photos: photos || false,
             crossPosting: crossPosting || false,
             logisticsType: logisticsType && logisticsType !== '' ? (logisticsType as LogisticType) : null,
-            agreementTemplate: {
+            agreementTemplate: agreementFrom?.id ? {
               connect: {
                 id: agreementFrom.id,
               },
-            },
+            } : undefined,
             products: {
               create: productsToCreate,
             },
@@ -954,9 +954,9 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
             crossPosting: crossPosting || false,
             isCreditTier: isCreditTier,
             logisticsType: logisticsType && logisticsType !== '' ? (logisticsType as LogisticType) : null,
-            agreementTemplate: {
+            agreementTemplate: agreementFrom?.id ? {
               connect: { id: agreementFrom.id },
-            },
+            } : undefined,
             products: {
               create: productsToCreate,
             },
