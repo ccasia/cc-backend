@@ -30,6 +30,7 @@ export interface DiscoveryQueryInput {
   creditTier?: string;
   interests?: string[];
   keyword?: string;
+  hashtag?: string;
 }
 
 const normalizePagination = (page = 1, limit = 20) => {
@@ -81,6 +82,20 @@ const ageRangeToBirthDateRange = (ageRange?: string): { gte: Date; lte: Date } |
   return { gte: earliestBirth, lte: latestBirth };
 };
 
+const extractHashtags = (raw?: string): string[] => {
+  if (!raw) return [];
+
+  const tokens = raw
+    .split(/[\s,]+/)
+    .map((token) => token.trim())
+    .filter(Boolean)
+    .map((token) => token.replace(/^#+/, '').toLowerCase())
+    .filter(Boolean)
+    .map((token) => `#${token}`);
+
+  return Array.from(new Set(tokens));
+};
+
 
 const buildConnectedWhere = (
   search: string,
@@ -93,6 +108,7 @@ const buildConnectedWhere = (
     creditTier?: string;
     interests?: string[];
     keyword?: string;
+    hashtag?: string;
   } = {},
 ) => {
   const searchOr = search
@@ -208,6 +224,46 @@ const buildConnectedWhere = (
       }
     : undefined;
 
+  // Hashtag → parse one or many hashtags and match in instagram captions / tiktok titles
+  const hashtagTerms = extractHashtags(filters.hashtag);
+  const hashtagCondition =
+    hashtagTerms.length > 0
+      ? {
+          OR: [
+            {
+              creator: {
+                is: {
+                  instagramUser: {
+                    instagramVideo: {
+                      some: {
+                        OR: hashtagTerms.map((tag) => ({
+                          caption: { contains: tag, mode: 'insensitive' as const },
+                        })),
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            {
+              creator: {
+                is: {
+                  tiktokUser: {
+                    tiktokVideo: {
+                      some: {
+                        OR: hashtagTerms.map((tag) => ({
+                          title: { contains: tag, mode: 'insensitive' as const },
+                        })),
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          ],
+        }
+      : undefined;
+
   // Collect all AND conditions (only non-undefined ones)
   const andConditions = [
     genderCondition,
@@ -217,6 +273,7 @@ const buildConnectedWhere = (
     creditTierCondition,
     interestsCondition,
     keywordCondition,
+    hashtagCondition,
   ].filter(Boolean);
 
   return {
@@ -585,6 +642,7 @@ export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
     creditTier: input.creditTier,
     interests: input.interests,
     keyword: input.keyword,
+    hashtag: input.hashtag,
   });
 
   // Base WHERE (platform only, no additional filters) for extracting available locations

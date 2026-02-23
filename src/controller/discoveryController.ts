@@ -27,6 +27,7 @@ export const getDiscoveryCreatorsList = async (req: Request, res: Response) => {
       creditTier: (req.query.creditTier as string) || undefined,
       interests,
       keyword: (req.query.keyword as string) || undefined,
+      hashtag: (req.query.hashtag as string) || undefined,
     });
 
     return res.status(200).json(data);
