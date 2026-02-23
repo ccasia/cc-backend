@@ -1,71 +1,118 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
-import { getCreatorGrowthData } from '@services/analyticsV2Service';
+import {
+  getCreatorGrowthData,
+  getActivationRateData,
+  getTimeToActivationData,
+  getTimeToActivationCreators as getTimeToActivationCreatorsData,
+} from '@services/analyticsV2Service';
 
 const prisma = new PrismaClient();
 
-export const getCreatorGrowth = async (req: Request, res: Response) => {
-  try {
-    const { startDate: startParam, endDate: endParam, granularity: granParam } = req.query;
-    const granularity = granParam === 'daily' ? 'daily' : 'monthly';
+// Shared date-range parsing for analytics endpoints
+const parseDateRange = async (
+  req: Request,
+): Promise<
+  { startDate: Date; endDate: Date; granularity: 'daily' | 'monthly' } | { error: { status: number; body: object } }
+> => {
+  const { startDate: startParam, endDate: endParam, granularity: granParam } = req.query;
+  const granularity = granParam === 'daily' ? ('daily' as const) : ('monthly' as const);
 
-    let startDate: Date;
-    let endDate: Date;
+  if (startParam || endParam) {
+    const startDate = new Date(startParam as string);
+    const endDate = new Date(endParam as string);
 
-    if (startParam || endParam) {
-      startDate = new Date(startParam as string);
-      endDate = new Date(endParam as string);
-
-      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-        return res.status(400).json({
-          success: false,
-          message: 'Invalid date format. Use YYYY-MM-DD.',
-        });
-      }
-
-      if (startDate >= endDate) {
-        return res.status(400).json({
-          success: false,
-          message: 'startDate must be before endDate.',
-        });
-      }
-    } else {
-      if (granularity === 'daily') {
-        return res.status(400).json({
-          success: false,
-          message: 'startDate and endDate are required for daily granularity.',
-        });
-      }
-
-      // Default: from earliest creator signup to end of current month
-      const now = new Date();
-      endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999); // End of current month
-
-      const earliest = await prisma.user.findFirst({
-        where: { role: 'creator', status: { in: ['active', 'pending'] }, creator: { isNot: null } },
-        orderBy: { createdAt: 'asc' },
-        select: { createdAt: true },
-      });
-
-      if (earliest) {
-        startDate = new Date(earliest.createdAt.getFullYear(), earliest.createdAt.getMonth(), 1);
-      } else {
-        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-      }
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      return {
+        error: { status: 400, body: { success: false, message: 'Invalid date format. Use YYYY-MM-DD.' } },
+      };
     }
 
-    const data = await getCreatorGrowthData(startDate, endDate, granularity);
+    if (startDate >= endDate) {
+      return {
+        error: { status: 400, body: { success: false, message: 'startDate must be before endDate.' } },
+      };
+    }
 
-    return res.status(200).json({
-      success: true,
-      data,
-    });
+    return { startDate, endDate, granularity };
+  }
+
+  if (granularity === 'daily') {
+    return {
+      error: {
+        status: 400,
+        body: { success: false, message: 'startDate and endDate are required for daily granularity.' },
+      },
+    };
+  }
+
+  // Default: from earliest creator signup to end of current month
+  const now = new Date();
+  const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+
+  const earliest = await prisma.user.findFirst({
+    where: { role: 'creator', status: { in: ['active', 'pending'] }, creator: { isNot: null } },
+    orderBy: { createdAt: 'asc' },
+    select: { createdAt: true },
+  });
+
+  const startDate = earliest
+    ? new Date(earliest.createdAt.getFullYear(), earliest.createdAt.getMonth(), 1)
+    : new Date(now.getFullYear(), now.getMonth(), 1);
+
+  return { startDate, endDate, granularity };
+};
+
+export const getCreatorGrowth = async (req: Request, res: Response) => {
+  try {
+    const parsed = await parseDateRange(req);
+    if ('error' in parsed) return res.status(parsed.error.status).json(parsed.error.body);
+
+    const data = await getCreatorGrowthData(parsed.startDate, parsed.endDate, parsed.granularity);
+    return res.status(200).json({ success: true, data });
   } catch (error: any) {
     console.error('Error fetching creator growth data:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to fetch creator growth data',
-      error: error.message,
-    });
+    return res.status(500).json({ success: false, message: 'Failed to fetch creator growth data' });
+  }
+};
+
+export const getActivationRate = async (req: Request, res: Response) => {
+  try {
+    const parsed = await parseDateRange(req);
+    if ('error' in parsed) return res.status(parsed.error.status).json(parsed.error.body);
+
+    const data = await getActivationRateData(parsed.startDate, parsed.endDate, parsed.granularity);
+    return res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    console.error('Error fetching activation rate data:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch activation rate data' });
+  }
+};
+
+export const getTimeToActivation = async (req: Request, res: Response) => {
+  try {
+    const parsed = await parseDateRange(req);
+    if ('error' in parsed) return res.status(parsed.error.status).json(parsed.error.body);
+
+    const data = await getTimeToActivationData(parsed.startDate, parsed.endDate, parsed.granularity);
+    return res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    console.error('Error fetching time to activation data:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch time to activation data' });
+  }
+};
+
+export const getTimeToActivationCreators = async (req: Request, res: Response) => {
+  try {
+    const startDate = new Date(req.query.startDate as string);
+    const endDate = new Date(req.query.endDate as string);
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      return res.status(400).json({ success: false, message: 'Invalid date format.' });
+    }
+    const data = await getTimeToActivationCreatorsData(startDate, endDate);
+    return res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    console.error('Error fetching time to activation creators:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch data' });
   }
 };
