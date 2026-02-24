@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import {
   getCreatorGrowthData,
+  getCreatorGrowthCreators as getCreatorGrowthCreatorsData,
   getActivationRateData,
   getPitchRateData,
   getTimeToActivationData,
@@ -10,6 +11,12 @@ import {
   getMediaKitActivationData,
   getCreatorSatisfactionData,
   getCreatorEarningsData,
+  getAvgAgreementResponseData,
+  getAvgAgreementResponseDetails as getAvgAgreementResponseDetailsData,
+  getAvgFirstCampaignData,
+  getAvgFirstCampaignDetails as getAvgFirstCampaignDetailsData,
+  getAvgSubmissionResponseData,
+  getAvgSubmissionResponseDetails as getAvgSubmissionResponseDetailsData,
 } from '@services/analyticsV2Service';
 
 const prisma = new PrismaClient();
@@ -78,6 +85,21 @@ export const getCreatorGrowth = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Error fetching creator growth data:', error);
     return res.status(500).json({ success: false, message: 'Failed to fetch creator growth data' });
+  }
+};
+
+export const getCreatorGrowthCreators = async (req: Request, res: Response) => {
+  try {
+    const startDate = new Date(req.query.startDate as string);
+    const endDate = new Date(req.query.endDate as string);
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      return res.status(400).json({ success: false, message: 'Invalid date format.' });
+    }
+    const data = await getCreatorGrowthCreatorsData(startDate, endDate);
+    return res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    console.error('Error fetching creator growth creators:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch data' });
   }
 };
 
@@ -204,5 +226,89 @@ export const getCreatorEarnings = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Error fetching creator earnings data:', error);
     return res.status(500).json({ success: false, message: 'Failed to fetch creator earnings data' });
+  }
+};
+
+export const getAvgAgreementResponse = async (req: Request, res: Response) => {
+  try {
+    const parsed = await parseDateRange(req);
+    if ('error' in parsed) return res.status(parsed.error.status).json(parsed.error.body);
+
+    const data = await getAvgAgreementResponseData(parsed.startDate, parsed.endDate, parsed.granularity);
+    return res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    console.error('Error fetching avg agreement response data:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch avg agreement response data' });
+  }
+};
+
+export const getAvgAgreementResponseDetails = async (req: Request, res: Response) => {
+  try {
+    const startDate = new Date(req.query.startDate as string);
+    const endDate = new Date(req.query.endDate as string);
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      return res.status(400).json({ success: false, message: 'Invalid date format.' });
+    }
+    const data = await getAvgAgreementResponseDetailsData(startDate, endDate);
+    return res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    console.error('Error fetching avg agreement response details:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch data' });
+  }
+};
+
+export const getAvgFirstCampaign = async (req: Request, res: Response) => {
+  try {
+    const parsed = await parseDateRange(req);
+    if ('error' in parsed) return res.status(parsed.error.status).json(parsed.error.body);
+
+    const data = await getAvgFirstCampaignData(parsed.startDate, parsed.endDate, parsed.granularity);
+    return res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    console.error('Error fetching avg first campaign data:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch avg first campaign data' });
+  }
+};
+
+export const getAvgFirstCampaignDetails = async (req: Request, res: Response) => {
+  try {
+    const startDate = new Date(req.query.startDate as string);
+    const endDate = new Date(req.query.endDate as string);
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      return res.status(400).json({ success: false, message: 'Invalid date format.' });
+    }
+    const data = await getAvgFirstCampaignDetailsData(startDate, endDate);
+    return res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    console.error('Error fetching avg first campaign details:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch data' });
+  }
+};
+
+export const getAvgSubmissionResponse = async (req: Request, res: Response) => {
+  try {
+    const parsed = await parseDateRange(req);
+    if ('error' in parsed) return res.status(parsed.error.status).json(parsed.error.body);
+
+    const data = await getAvgSubmissionResponseData(parsed.startDate, parsed.endDate, parsed.granularity);
+    return res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    console.error('Error fetching avg submission response data:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch avg submission response data' });
+  }
+};
+
+export const getAvgSubmissionResponseDetails = async (req: Request, res: Response) => {
+  try {
+    const startDate = new Date(req.query.startDate as string);
+    const endDate = new Date(req.query.endDate as string);
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      return res.status(400).json({ success: false, message: 'Invalid date format.' });
+    }
+    const data = await getAvgSubmissionResponseDetailsData(startDate, endDate);
+    return res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    console.error('Error fetching avg submission response details:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch data' });
   }
 };

@@ -16,7 +16,7 @@ interface CreatorGrowthMonth {
 }
 
 interface CreatorGrowthDay {
-  date: string; // "Feb 17" — display label
+  date: string; // "Feb 17" - display label
   isoDate: string; // "2026-02-17" — reliable parsing
   total: number;
   newSignups: number;
@@ -308,6 +308,43 @@ interface ActivationRatePeriodComparison {
   previousRate: number;
   percentChange: number;
 }
+
+// Creator Growth Creators (drilldown)
+
+interface CreatorGrowthCreatorRow {
+  userId: string;
+  name: string;
+  photoUrl: string | null;
+  createdAt: Date;
+  pronounce: string | null;
+}
+
+export const getCreatorGrowthCreators = async (startDate: Date, endDate: Date) => {
+  const creators = await prisma.$queryRaw<CreatorGrowthCreatorRow[]>`
+    SELECT
+      u.id AS "userId",
+      u.name,
+      u."photoURL" AS "photoUrl",
+      u."createdAt",
+      c.pronounce
+    FROM "User" u
+    INNER JOIN "Creator" c ON c."userId" = u.id
+    WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
+      AND (u."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')::date >= ${startDate}::date
+      AND (u."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')::date <= ${endDate}::date
+    ORDER BY u."createdAt" DESC
+  `;
+
+  const genderBreakdown = { male: 0, female: 0, nonBinary: 0 };
+  for (const c of creators) {
+    const p = (c.pronounce || '').toLowerCase();
+    if (p === 'he/him') genderBreakdown.male++;
+    else if (p === 'she/her') genderBreakdown.female++;
+    else genderBreakdown.nonBinary++;
+  }
+
+  return { creators, count: creators.length, genderBreakdown };
+};
 
 interface ActivationRateResponse {
   granularity: 'daily' | 'monthly';
@@ -1380,3 +1417,804 @@ function processDemographics(genderData: { pronounce: string | null }[], ageData
 
   return { gender, ageGroups };
 }
+
+// Avg Agreement Response Time
+
+interface AvgAgreementResponseMonth {
+  month: string;
+  avgHours: number | null;
+}
+
+interface AvgAgreementResponseDay {
+  date: string;
+  isoDate: string;
+  avgHours: number | null;
+}
+
+interface MonthlyAvgHoursRow {
+  year: number;
+  month: number;
+  avghours: number;
+}
+
+interface DailyAvgHoursRow {
+  date: string;
+  avghours: number;
+}
+
+interface AvgAgreementResponseResponse {
+  granularity: 'daily' | 'monthly';
+  avgAgreementResponse: AvgAgreementResponseMonth[] | AvgAgreementResponseDay[];
+  periodComparison?: {
+    currentAvg: number | null;
+    previousAvg: number | null;
+    change: number | null;
+  };
+}
+
+const fillAgreementResponseMonthGaps = (
+  rows: MonthlyAvgHoursRow[],
+  startDate: Date,
+  endDate: Date,
+): AvgAgreementResponseMonth[] => {
+  const avgMap = new Map<string, number>();
+  for (const row of rows) {
+    avgMap.set(`${row.year}-${row.month}`, row.avghours);
+  }
+
+  const result: AvgAgreementResponseMonth[] = [];
+  const current = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+  const end = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+
+  while (current <= end) {
+    const year = current.getFullYear();
+    const month = current.getMonth() + 1;
+    const key = `${year}-${month}`;
+
+    const avgHours = avgMap.has(key) ? avgMap.get(key)! : null;
+
+    result.push({
+      month: formatMonthLabel(year, month),
+      avgHours,
+    });
+
+    current.setMonth(current.getMonth() + 1);
+  }
+
+  return result;
+};
+
+const fillAgreementResponseDayGaps = (
+  rows: DailyAvgHoursRow[],
+  startDate: Date,
+  endDate: Date,
+): AvgAgreementResponseDay[] => {
+  const avgMap = new Map<string, number>();
+  for (const row of rows) {
+    avgMap.set(row.date, row.avghours);
+  }
+
+  const result: AvgAgreementResponseDay[] = [];
+  const current = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+  const end = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
+
+  while (current <= end) {
+    const key = toIsoDate(current);
+    const avgHours = avgMap.has(key) ? avgMap.get(key)! : null;
+
+    result.push({
+      date: formatDayLabel(current),
+      isoDate: key,
+      avgHours,
+    });
+
+    current.setDate(current.getDate() + 1);
+  }
+
+  return result;
+};
+
+export const getAvgAgreementResponseData = async (
+  startDate: Date,
+  endDate: Date,
+  granularity: 'daily' | 'monthly' = 'monthly',
+): Promise<AvgAgreementResponseResponse> => {
+  if (granularity === 'daily') {
+    const dailyAvgs = await prisma.$queryRaw<DailyAvgHoursRow[]>`
+      SELECT
+        TO_CHAR(DATE_TRUNC('day', s."submissionDate" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'), 'YYYY-MM-DD') AS date,
+        ROUND(AVG(EXTRACT(EPOCH FROM (s."submissionDate" - ca."completedAt")) / 3600)::numeric, 2) AS "avghours"
+      FROM "CreatorAgreement" ca
+      INNER JOIN "Submission" s ON s."userId" = ca."userId" AND s."campaignId" = ca."campaignId"
+      INNER JOIN "SubmissionType" st ON st.id = s."submissionTypeId"
+      WHERE ca."isSent" = true
+        AND ca."completedAt" IS NOT NULL
+        AND st.type = 'AGREEMENT_FORM'
+        AND s."submissionDate" IS NOT NULL
+        AND EXTRACT(EPOCH FROM (s."submissionDate" - ca."completedAt")) > 0
+        AND s."submissionDate" >= (${startDate} AT TIME ZONE 'UTC')
+        AND s."submissionDate" <= (${endDate} AT TIME ZONE 'UTC')
+      GROUP BY DATE_TRUNC('day', s."submissionDate" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')
+      ORDER BY 1
+    `;
+
+    const avgAgreementResponse = fillAgreementResponseDayGaps(dailyAvgs, startDate, endDate);
+
+    // Period comparison: overall average of current vs previous period of same length
+    const periodMs = endDate.getTime() - startDate.getTime();
+    const prevEnd = new Date(startDate.getTime() - 1);
+    const prevStart = new Date(prevEnd.getTime() - periodMs);
+
+    const [currentAvgResult, previousAvgResult] = await Promise.all([
+      prisma.$queryRaw<{ avghours: number | null }[]>`
+        SELECT ROUND(AVG(EXTRACT(EPOCH FROM (s."submissionDate" - ca."completedAt")) / 3600)::numeric, 2) AS "avghours"
+        FROM "CreatorAgreement" ca
+        INNER JOIN "Submission" s ON s."userId" = ca."userId" AND s."campaignId" = ca."campaignId"
+        INNER JOIN "SubmissionType" st ON st.id = s."submissionTypeId"
+        WHERE ca."isSent" = true
+          AND ca."completedAt" IS NOT NULL
+          AND st.type = 'AGREEMENT_FORM'
+          AND s."submissionDate" IS NOT NULL
+          AND EXTRACT(EPOCH FROM (s."submissionDate" - ca."completedAt")) > 0
+          AND s."submissionDate" >= (${startDate} AT TIME ZONE 'UTC')
+          AND s."submissionDate" <= (${endDate} AT TIME ZONE 'UTC')
+      `,
+      prisma.$queryRaw<{ avghours: number | null }[]>`
+        SELECT ROUND(AVG(EXTRACT(EPOCH FROM (s."submissionDate" - ca."completedAt")) / 3600)::numeric, 2) AS "avghours"
+        FROM "CreatorAgreement" ca
+        INNER JOIN "Submission" s ON s."userId" = ca."userId" AND s."campaignId" = ca."campaignId"
+        INNER JOIN "SubmissionType" st ON st.id = s."submissionTypeId"
+        WHERE ca."isSent" = true
+          AND ca."completedAt" IS NOT NULL
+          AND st.type = 'AGREEMENT_FORM'
+          AND s."submissionDate" IS NOT NULL
+          AND EXTRACT(EPOCH FROM (s."submissionDate" - ca."completedAt")) > 0
+          AND s."submissionDate" >= (${prevStart} AT TIME ZONE 'UTC')
+          AND s."submissionDate" <= (${prevEnd} AT TIME ZONE 'UTC')
+      `,
+    ]);
+
+    const currentAvg = currentAvgResult[0]?.avghours != null ? Number(currentAvgResult[0].avghours) : null;
+    const previousAvg = previousAvgResult[0]?.avghours != null ? Number(previousAvgResult[0].avghours) : null;
+    const change =
+      currentAvg != null && previousAvg != null ? Math.round((currentAvg - previousAvg) * 10) / 10 : null;
+
+    return {
+      granularity: 'daily',
+      avgAgreementResponse,
+      periodComparison: { currentAvg, previousAvg, change },
+    };
+  }
+
+  // --- Monthly granularity (default) ---
+  const monthlyAvgs = await prisma.$queryRaw<MonthlyAvgHoursRow[]>`
+    SELECT
+      EXTRACT(YEAR FROM DATE_TRUNC('month', s."submissionDate" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'))::int AS year,
+      EXTRACT(MONTH FROM DATE_TRUNC('month', s."submissionDate" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'))::int AS month,
+      ROUND(AVG(EXTRACT(EPOCH FROM (s."submissionDate" - ca."completedAt")) / 3600)::numeric, 2) AS "avghours"
+    FROM "CreatorAgreement" ca
+    INNER JOIN "Submission" s ON s."userId" = ca."userId" AND s."campaignId" = ca."campaignId"
+    INNER JOIN "SubmissionType" st ON st.id = s."submissionTypeId"
+    WHERE ca."isSent" = true
+      AND ca."completedAt" IS NOT NULL
+      AND st.type = 'AGREEMENT_FORM'
+      AND s."submissionDate" IS NOT NULL
+      AND EXTRACT(EPOCH FROM (s."submissionDate" - ca."completedAt")) > 0
+      AND s."submissionDate" >= (${startDate} AT TIME ZONE 'UTC')
+      AND s."submissionDate" <= (${endDate} AT TIME ZONE 'UTC')
+    GROUP BY DATE_TRUNC('month', s."submissionDate" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')
+    ORDER BY 1, 2
+  `;
+
+  const avgAgreementResponse = fillAgreementResponseMonthGaps(monthlyAvgs, startDate, endDate);
+
+  return {
+    granularity: 'monthly',
+    avgAgreementResponse,
+  };
+};
+
+// Avg Agreement Response Time — Drill-down details for a period
+
+interface AgreementResponseDetailRow {
+  name: string;
+  avatar: string | null;
+  campaign: string;
+  responseHours: number;
+}
+
+export const getAvgAgreementResponseDetails = async (startDate: Date, endDate: Date) => {
+  const rows = await prisma.$queryRaw<AgreementResponseDetailRow[]>`
+    SELECT
+      u.name,
+      u."photoURL" AS avatar,
+      cam.name AS campaign,
+      ROUND(EXTRACT(EPOCH FROM (s."submissionDate" - ca."completedAt")) / 3600::numeric, 2) AS "responseHours"
+    FROM "CreatorAgreement" ca
+    INNER JOIN "Submission" s ON s."userId" = ca."userId" AND s."campaignId" = ca."campaignId"
+    INNER JOIN "SubmissionType" st ON st.id = s."submissionTypeId"
+    INNER JOIN "User" u ON u.id = ca."userId"
+    INNER JOIN "Campaign" cam ON cam.id = ca."campaignId"
+    WHERE ca."isSent" = true
+      AND ca."completedAt" IS NOT NULL
+      AND st.type = 'AGREEMENT_FORM'
+      AND s."submissionDate" IS NOT NULL
+      AND EXTRACT(EPOCH FROM (s."submissionDate" - ca."completedAt")) > 0
+      AND (s."submissionDate" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')::date >= ${startDate}::date
+      AND (s."submissionDate" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')::date <= ${endDate}::date
+    ORDER BY "responseHours" ASC
+  `;
+
+  const mapped = rows.map((r) => ({
+    ...r,
+    responseHours: Number(r.responseHours),
+  }));
+
+  // Compute average in SQL to match chart endpoint (avoids JS vs PostgreSQL rounding mismatch)
+  const avgResult = await prisma.$queryRaw<{ avghours: number | null }[]>`
+    SELECT ROUND(AVG(EXTRACT(EPOCH FROM (s."submissionDate" - ca."completedAt")) / 3600)::numeric, 2) AS "avghours"
+    FROM "CreatorAgreement" ca
+    INNER JOIN "Submission" s ON s."userId" = ca."userId" AND s."campaignId" = ca."campaignId"
+    INNER JOIN "SubmissionType" st ON st.id = s."submissionTypeId"
+    WHERE ca."isSent" = true
+      AND ca."completedAt" IS NOT NULL
+      AND st.type = 'AGREEMENT_FORM'
+      AND s."submissionDate" IS NOT NULL
+      AND EXTRACT(EPOCH FROM (s."submissionDate" - ca."completedAt")) > 0
+      AND (s."submissionDate" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')::date >= ${startDate}::date
+      AND (s."submissionDate" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')::date <= ${endDate}::date
+  `;
+
+  const avg = avgResult[0]?.avghours != null ? Number(avgResult[0].avghours) : null;
+
+  const fastest = mapped.length > 0
+    ? { name: mapped[0].name, avatar: mapped[0].avatar, time: mapped[0].responseHours, campaign: mapped[0].campaign }
+    : null;
+
+  const slowest = mapped.length > 1
+    ? { name: mapped[mapped.length - 1].name, avatar: mapped[mapped.length - 1].avatar, time: mapped[mapped.length - 1].responseHours, campaign: mapped[mapped.length - 1].campaign }
+    : mapped.length === 1
+      ? fastest
+      : null;
+
+  return { avg, count: mapped.length, fastest, slowest };
+}
+
+// Avg Time to 1st Accepted Campaign
+
+interface AvgFirstCampaignMonth {
+  month: string;
+  avgHours: number | null;
+}
+
+interface AvgFirstCampaignDay {
+  date: string;
+  isoDate: string;
+  avgHours: number | null;
+}
+
+interface AvgFirstCampaignResponse {
+  granularity: 'daily' | 'monthly';
+  avgFirstCampaign: AvgFirstCampaignMonth[] | AvgFirstCampaignDay[];
+  periodComparison?: { currentAvg: number | null; previousAvg: number | null; change: number | null };
+}
+
+const fillFirstCampaignMonthGaps = (
+  rows: MonthlyAvgHoursRow[],
+  startDate: Date,
+  endDate: Date,
+): AvgFirstCampaignMonth[] => {
+  const avgMap = new Map<string, number>();
+  for (const row of rows) {
+    avgMap.set(`${row.year}-${row.month}`, row.avghours);
+  }
+
+  const result: AvgFirstCampaignMonth[] = [];
+  const current = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+  const end = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+
+  while (current <= end) {
+    const year = current.getFullYear();
+    const month = current.getMonth() + 1;
+    const key = `${year}-${month}`;
+
+    const avgHours = avgMap.has(key) ? avgMap.get(key)! : null;
+
+    result.push({
+      month: formatMonthLabel(year, month),
+      avgHours,
+    });
+
+    current.setMonth(current.getMonth() + 1);
+  }
+
+  return result;
+};
+
+const fillFirstCampaignDayGaps = (
+  rows: DailyAvgHoursRow[],
+  startDate: Date,
+  endDate: Date,
+): AvgFirstCampaignDay[] => {
+  const avgMap = new Map<string, number>();
+  for (const row of rows) {
+    avgMap.set(row.date, row.avghours);
+  }
+
+  const result: AvgFirstCampaignDay[] = [];
+  const current = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+  const end = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
+
+  while (current <= end) {
+    const key = toIsoDate(current);
+    const avgHours = avgMap.has(key) ? avgMap.get(key)! : null;
+
+    result.push({
+      date: formatDayLabel(current),
+      isoDate: key,
+      avgHours,
+    });
+
+    current.setDate(current.getDate() + 1);
+  }
+
+  return result;
+};
+
+export const getAvgFirstCampaignData = async (
+  startDate: Date,
+  endDate: Date,
+  granularity: 'daily' | 'monthly' = 'monthly',
+): Promise<AvgFirstCampaignResponse> => {
+  if (granularity === 'daily') {
+    const dailyAvgs = await prisma.$queryRaw<DailyAvgHoursRow[]>`
+      SELECT
+        TO_CHAR(DATE_TRUNC('day', fc.accepted_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'), 'YYYY-MM-DD') AS date,
+        ROUND(AVG(EXTRACT(EPOCH FROM (fc.accepted_at - fc.pitched_at)) / 3600)::numeric, 2) AS "avghours"
+      FROM (
+        SELECT
+          slc."userId",
+          slc."campaignId",
+          slc."shortlisted_date" AS accepted_at,
+          p."createdAt" AS pitched_at
+        FROM "ShortListedCreator" slc
+        INNER JOIN "Pitch" p ON p."userId" = slc."userId" AND p."campaignId" = slc."campaignId" AND p.type != 'shortlisted'
+        WHERE slc."shortlisted_date" IS NOT NULL
+          AND slc.id = (
+            SELECT s2.id FROM "ShortListedCreator" s2
+            WHERE s2."userId" = slc."userId"
+            ORDER BY s2."shortlisted_date" ASC
+            LIMIT 1
+          )
+      ) fc
+      WHERE fc.accepted_at >= (${startDate} AT TIME ZONE 'UTC')
+        AND fc.accepted_at <= (${endDate} AT TIME ZONE 'UTC')
+        AND EXTRACT(EPOCH FROM (fc.accepted_at - fc.pitched_at)) > 0
+      GROUP BY DATE_TRUNC('day', fc.accepted_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')
+      ORDER BY 1
+    `;
+
+    const avgFirstCampaign = fillFirstCampaignDayGaps(dailyAvgs, startDate, endDate);
+
+    // Period comparison
+    const periodMs = endDate.getTime() - startDate.getTime();
+    const prevEnd = new Date(startDate.getTime() - 1);
+    const prevStart = new Date(prevEnd.getTime() - periodMs);
+
+    const [currentAvgResult, previousAvgResult] = await Promise.all([
+      prisma.$queryRaw<{ avghours: number | null }[]>`
+        SELECT ROUND(AVG(EXTRACT(EPOCH FROM (fc.accepted_at - fc.pitched_at)) / 3600)::numeric, 2) AS "avghours"
+        FROM (
+          SELECT
+            slc."userId",
+            slc."shortlisted_date" AS accepted_at,
+            p."createdAt" AS pitched_at
+          FROM "ShortListedCreator" slc
+          INNER JOIN "Pitch" p ON p."userId" = slc."userId" AND p."campaignId" = slc."campaignId" AND p.type != 'shortlisted'
+          WHERE slc."shortlisted_date" IS NOT NULL
+            AND slc.id = (
+              SELECT s2.id FROM "ShortListedCreator" s2
+              WHERE s2."userId" = slc."userId"
+              ORDER BY s2."shortlisted_date" ASC
+              LIMIT 1
+            )
+        ) fc
+        WHERE fc.accepted_at >= (${startDate} AT TIME ZONE 'UTC')
+          AND fc.accepted_at <= (${endDate} AT TIME ZONE 'UTC')
+          AND EXTRACT(EPOCH FROM (fc.accepted_at - fc.pitched_at)) > 0
+      `,
+      prisma.$queryRaw<{ avghours: number | null }[]>`
+        SELECT ROUND(AVG(EXTRACT(EPOCH FROM (fc.accepted_at - fc.pitched_at)) / 3600)::numeric, 2) AS "avghours"
+        FROM (
+          SELECT
+            slc."userId",
+            slc."shortlisted_date" AS accepted_at,
+            p."createdAt" AS pitched_at
+          FROM "ShortListedCreator" slc
+          INNER JOIN "Pitch" p ON p."userId" = slc."userId" AND p."campaignId" = slc."campaignId" AND p.type != 'shortlisted'
+          WHERE slc."shortlisted_date" IS NOT NULL
+            AND slc.id = (
+              SELECT s2.id FROM "ShortListedCreator" s2
+              WHERE s2."userId" = slc."userId"
+              ORDER BY s2."shortlisted_date" ASC
+              LIMIT 1
+            )
+        ) fc
+        WHERE fc.accepted_at >= (${prevStart} AT TIME ZONE 'UTC')
+          AND fc.accepted_at <= (${prevEnd} AT TIME ZONE 'UTC')
+          AND EXTRACT(EPOCH FROM (fc.accepted_at - fc.pitched_at)) > 0
+      `,
+    ]);
+
+    const currentAvg = currentAvgResult[0]?.avghours != null ? Number(currentAvgResult[0].avghours) : null;
+    const previousAvg = previousAvgResult[0]?.avghours != null ? Number(previousAvgResult[0].avghours) : null;
+    const change =
+      currentAvg != null && previousAvg != null ? Math.round((currentAvg - previousAvg) * 10) / 10 : null;
+
+    return {
+      granularity: 'daily',
+      avgFirstCampaign,
+      periodComparison: { currentAvg, previousAvg, change },
+    };
+  }
+
+  // --- Monthly granularity (default) ---
+  const monthlyAvgs = await prisma.$queryRaw<MonthlyAvgHoursRow[]>`
+    SELECT
+      EXTRACT(YEAR FROM DATE_TRUNC('month', fc.accepted_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'))::int AS year,
+      EXTRACT(MONTH FROM DATE_TRUNC('month', fc.accepted_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'))::int AS month,
+      ROUND(AVG(EXTRACT(EPOCH FROM (fc.accepted_at - fc.pitched_at)) / 3600)::numeric, 2) AS "avghours"
+    FROM (
+      SELECT
+        slc."userId",
+        slc."shortlisted_date" AS accepted_at,
+        p."createdAt" AS pitched_at
+      FROM "ShortListedCreator" slc
+      INNER JOIN "Pitch" p ON p."userId" = slc."userId" AND p."campaignId" = slc."campaignId" AND p.type != 'shortlisted'
+      WHERE slc."shortlisted_date" IS NOT NULL
+        AND slc.id = (
+          SELECT s2.id FROM "ShortListedCreator" s2
+          WHERE s2."userId" = slc."userId"
+          ORDER BY s2."shortlisted_date" ASC
+          LIMIT 1
+        )
+    ) fc
+    WHERE fc.accepted_at >= (${startDate} AT TIME ZONE 'UTC')
+      AND fc.accepted_at <= (${endDate} AT TIME ZONE 'UTC')
+      AND EXTRACT(EPOCH FROM (fc.accepted_at - fc.pitched_at)) > 0
+    GROUP BY DATE_TRUNC('month', fc.accepted_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')
+    ORDER BY 1, 2
+  `;
+
+  const avgFirstCampaign = fillFirstCampaignMonthGaps(monthlyAvgs, startDate, endDate);
+
+  return {
+    granularity: 'monthly',
+    avgFirstCampaign,
+  };
+};
+
+// Avg Time to 1st Accepted Campaign — Drill-down details for a period
+
+interface FirstCampaignDetailRow {
+  name: string;
+  avatar: string | null;
+  campaign: string;
+  responseHours: number;
+}
+
+export const getAvgFirstCampaignDetails = async (startDate: Date, endDate: Date) => {
+  const rows = await prisma.$queryRaw<FirstCampaignDetailRow[]>`
+    SELECT
+      u.name,
+      u."photoURL" AS avatar,
+      cam.name AS campaign,
+      ROUND(EXTRACT(EPOCH FROM (fc.accepted_at - fc.pitched_at)) / 3600::numeric, 2) AS "responseHours"
+    FROM (
+      SELECT
+        slc."userId",
+        slc."campaignId",
+        slc."shortlisted_date" AS accepted_at,
+        p."createdAt" AS pitched_at
+      FROM "ShortListedCreator" slc
+      INNER JOIN "Pitch" p ON p."userId" = slc."userId" AND p."campaignId" = slc."campaignId" AND p.type != 'shortlisted'
+      WHERE slc."shortlisted_date" IS NOT NULL
+        AND slc.id = (
+          SELECT s2.id FROM "ShortListedCreator" s2
+          WHERE s2."userId" = slc."userId"
+          ORDER BY s2."shortlisted_date" ASC
+          LIMIT 1
+        )
+    ) fc
+    INNER JOIN "User" u ON u.id = fc."userId"
+    INNER JOIN "Campaign" cam ON cam.id = fc."campaignId"
+    WHERE (fc.accepted_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')::date >= ${startDate}::date
+      AND (fc.accepted_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')::date <= ${endDate}::date
+      AND EXTRACT(EPOCH FROM (fc.accepted_at - fc.pitched_at)) > 0
+    ORDER BY "responseHours" ASC
+  `;
+
+  const mapped = rows.map((r) => ({
+    ...r,
+    responseHours: Number(r.responseHours),
+  }));
+
+  // Compute average in SQL to match chart endpoint (avoids JS vs PostgreSQL rounding mismatch)
+  const avgResult = await prisma.$queryRaw<{ avghours: number | null }[]>`
+    SELECT ROUND(AVG(EXTRACT(EPOCH FROM (fc.accepted_at - fc.pitched_at)) / 3600)::numeric, 2) AS "avghours"
+    FROM (
+      SELECT
+        slc."userId",
+        slc."campaignId",
+        slc."shortlisted_date" AS accepted_at,
+        p."createdAt" AS pitched_at
+      FROM "ShortListedCreator" slc
+      INNER JOIN "Pitch" p ON p."userId" = slc."userId" AND p."campaignId" = slc."campaignId" AND p.type != 'shortlisted'
+      WHERE slc."shortlisted_date" IS NOT NULL
+        AND slc.id = (
+          SELECT s2.id FROM "ShortListedCreator" s2
+          WHERE s2."userId" = slc."userId"
+          ORDER BY s2."shortlisted_date" ASC
+          LIMIT 1
+        )
+    ) fc
+    WHERE (fc.accepted_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')::date >= ${startDate}::date
+      AND (fc.accepted_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')::date <= ${endDate}::date
+      AND EXTRACT(EPOCH FROM (fc.accepted_at - fc.pitched_at)) > 0
+  `;
+
+  const avg = avgResult[0]?.avghours != null ? Number(avgResult[0].avghours) : null;
+
+  const fastest = mapped.length > 0
+    ? { name: mapped[0].name, avatar: mapped[0].avatar, time: mapped[0].responseHours, campaign: mapped[0].campaign }
+    : null;
+
+  const slowest = mapped.length > 1
+    ? { name: mapped[mapped.length - 1].name, avatar: mapped[mapped.length - 1].avatar, time: mapped[mapped.length - 1].responseHours, campaign: mapped[mapped.length - 1].campaign }
+    : mapped.length === 1
+      ? fastest
+      : null;
+
+  return { avg, count: mapped.length, fastest, slowest };
+}
+
+// Avg Submission Response Time
+// Measures time from agreement completion to first video draft submission.
+
+interface AvgSubmissionResponseMonth {
+  month: string;
+  avgHours: number | null;
+}
+
+interface AvgSubmissionResponseDay {
+  date: string;
+  isoDate: string;
+  avgHours: number | null;
+}
+
+interface AvgSubmissionResponseResponse {
+  granularity: 'daily' | 'monthly';
+  avgSubmissionResponse: AvgSubmissionResponseMonth[] | AvgSubmissionResponseDay[];
+  periodComparison?: { currentAvg: number | null; previousAvg: number | null; change: number | null };
+}
+
+const fillSubmissionResponseMonthGaps = (
+  rows: MonthlyAvgHoursRow[],
+  startDate: Date,
+  endDate: Date,
+): AvgSubmissionResponseMonth[] => {
+  const avgMap = new Map<string, number>();
+  for (const row of rows) {
+    avgMap.set(`${row.year}-${row.month}`, row.avghours);
+  }
+
+  const result: AvgSubmissionResponseMonth[] = [];
+  const current = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+  const end = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+
+  while (current <= end) {
+    const year = current.getFullYear();
+    const month = current.getMonth() + 1;
+    const key = `${year}-${month}`;
+
+    const avgHours = avgMap.has(key) ? avgMap.get(key)! : null;
+
+    result.push({
+      month: formatMonthLabel(year, month),
+      avgHours,
+    });
+
+    current.setMonth(current.getMonth() + 1);
+  }
+
+  return result;
+};
+
+const fillSubmissionResponseDayGaps = (
+  rows: DailyAvgHoursRow[],
+  startDate: Date,
+  endDate: Date,
+): AvgSubmissionResponseDay[] => {
+  const avgMap = new Map<string, number>();
+  for (const row of rows) {
+    avgMap.set(row.date, row.avghours);
+  }
+
+  const result: AvgSubmissionResponseDay[] = [];
+  const current = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+  const end = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
+
+  while (current <= end) {
+    const key = toIsoDate(current);
+    const avgHours = avgMap.has(key) ? avgMap.get(key)! : null;
+
+    result.push({
+      date: formatDayLabel(current),
+      isoDate: key,
+      avgHours,
+    });
+
+    current.setDate(current.getDate() + 1);
+  }
+
+  return result;
+};
+
+// Reusable SQL fragment: UNION ALL combining v2/v3 FIRST_DRAFT + v4 VIDEO (contentOrder=1)
+const SUBMISSION_RESPONSE_CTE = Prisma.sql`
+  SELECT
+    ca."userId",
+    ca."campaignId",
+    ca."completedAt" AS agreement_at,
+    s."submissionDate" AS submitted_at
+  FROM "CreatorAgreement" ca
+  INNER JOIN "Submission" s ON s."userId" = ca."userId" AND s."campaignId" = ca."campaignId"
+  INNER JOIN "SubmissionType" st ON st.id = s."submissionTypeId"
+  WHERE ca."isSent" = true
+    AND ca."completedAt" IS NOT NULL
+    AND st.type = 'FIRST_DRAFT'
+    AND s."submissionDate" IS NOT NULL
+    AND EXTRACT(EPOCH FROM (s."submissionDate" - ca."completedAt")) > 0
+
+  UNION ALL
+
+  SELECT
+    ca."userId",
+    ca."campaignId",
+    ca."completedAt" AS agreement_at,
+    s."submissionDate" AS submitted_at
+  FROM "CreatorAgreement" ca
+  INNER JOIN "Submission" s ON s."userId" = ca."userId" AND s."campaignId" = ca."campaignId"
+  INNER JOIN "SubmissionType" st ON st.id = s."submissionTypeId"
+  WHERE ca."isSent" = true
+    AND ca."completedAt" IS NOT NULL
+    AND st.type = 'VIDEO'
+    AND s."submissionVersion" = 'v4'
+    AND s."contentOrder" = 1
+    AND s."submissionDate" IS NOT NULL
+    AND EXTRACT(EPOCH FROM (s."submissionDate" - ca."completedAt")) > 0
+`;
+
+export const getAvgSubmissionResponseData = async (
+  startDate: Date,
+  endDate: Date,
+  granularity: 'daily' | 'monthly' = 'monthly',
+): Promise<AvgSubmissionResponseResponse> => {
+  if (granularity === 'daily') {
+    const dailyAvgs = await prisma.$queryRaw<DailyAvgHoursRow[]>`
+      SELECT
+        TO_CHAR(DATE_TRUNC('day', sr.submitted_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'), 'YYYY-MM-DD') AS date,
+        ROUND(AVG(EXTRACT(EPOCH FROM (sr.submitted_at - sr.agreement_at)) / 3600)::numeric, 2) AS "avghours"
+      FROM (${SUBMISSION_RESPONSE_CTE}) sr
+      WHERE sr.submitted_at >= (${startDate} AT TIME ZONE 'UTC')
+        AND sr.submitted_at <= (${endDate} AT TIME ZONE 'UTC')
+      GROUP BY DATE_TRUNC('day', sr.submitted_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')
+      ORDER BY 1
+    `;
+
+    const avgSubmissionResponse = fillSubmissionResponseDayGaps(dailyAvgs, startDate, endDate);
+
+    // Period comparison
+    const periodMs = endDate.getTime() - startDate.getTime();
+    const prevEnd = new Date(startDate.getTime() - 1);
+    const prevStart = new Date(prevEnd.getTime() - periodMs);
+
+    const [currentAvgResult, previousAvgResult] = await Promise.all([
+      prisma.$queryRaw<{ avghours: number | null }[]>`
+        SELECT ROUND(AVG(EXTRACT(EPOCH FROM (sr.submitted_at - sr.agreement_at)) / 3600)::numeric, 2) AS "avghours"
+        FROM (${SUBMISSION_RESPONSE_CTE}) sr
+        WHERE sr.submitted_at >= (${startDate} AT TIME ZONE 'UTC')
+          AND sr.submitted_at <= (${endDate} AT TIME ZONE 'UTC')
+      `,
+      prisma.$queryRaw<{ avghours: number | null }[]>`
+        SELECT ROUND(AVG(EXTRACT(EPOCH FROM (sr.submitted_at - sr.agreement_at)) / 3600)::numeric, 2) AS "avghours"
+        FROM (${SUBMISSION_RESPONSE_CTE}) sr
+        WHERE sr.submitted_at >= (${prevStart} AT TIME ZONE 'UTC')
+          AND sr.submitted_at <= (${prevEnd} AT TIME ZONE 'UTC')
+      `,
+    ]);
+
+    const currentAvg = currentAvgResult[0]?.avghours != null ? Number(currentAvgResult[0].avghours) : null;
+    const previousAvg = previousAvgResult[0]?.avghours != null ? Number(previousAvgResult[0].avghours) : null;
+    const change =
+      currentAvg != null && previousAvg != null ? Math.round((currentAvg - previousAvg) * 10) / 10 : null;
+
+    return {
+      granularity: 'daily',
+      avgSubmissionResponse,
+      periodComparison: { currentAvg, previousAvg, change },
+    };
+  }
+
+  // --- Monthly granularity (default) ---
+  const monthlyAvgs = await prisma.$queryRaw<MonthlyAvgHoursRow[]>`
+    SELECT
+      EXTRACT(YEAR FROM DATE_TRUNC('month', sr.submitted_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'))::int AS year,
+      EXTRACT(MONTH FROM DATE_TRUNC('month', sr.submitted_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'))::int AS month,
+      ROUND(AVG(EXTRACT(EPOCH FROM (sr.submitted_at - sr.agreement_at)) / 3600)::numeric, 2) AS "avghours"
+    FROM (${SUBMISSION_RESPONSE_CTE}) sr
+    WHERE sr.submitted_at >= (${startDate} AT TIME ZONE 'UTC')
+      AND sr.submitted_at <= (${endDate} AT TIME ZONE 'UTC')
+    GROUP BY DATE_TRUNC('month', sr.submitted_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')
+    ORDER BY 1, 2
+  `;
+
+  const avgSubmissionResponse = fillSubmissionResponseMonthGaps(monthlyAvgs, startDate, endDate);
+
+  return {
+    granularity: 'monthly',
+    avgSubmissionResponse,
+  };
+};
+
+// Avg Submission Response Time — Drill-down details for a period
+
+interface SubmissionResponseDetailRow {
+  name: string;
+  avatar: string | null;
+  campaign: string;
+  responseHours: number;
+}
+
+export const getAvgSubmissionResponseDetails = async (startDate: Date, endDate: Date) => {
+  const rows = await prisma.$queryRaw<SubmissionResponseDetailRow[]>`
+    SELECT
+      u.name,
+      u."photoURL" AS avatar,
+      cam.name AS campaign,
+      ROUND(EXTRACT(EPOCH FROM (sr.submitted_at - sr.agreement_at)) / 3600::numeric, 2) AS "responseHours"
+    FROM (${SUBMISSION_RESPONSE_CTE}) sr
+    INNER JOIN "User" u ON u.id = sr."userId"
+    INNER JOIN "Campaign" cam ON cam.id = sr."campaignId"
+    WHERE (sr.submitted_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')::date >= ${startDate}::date
+      AND (sr.submitted_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')::date <= ${endDate}::date
+    ORDER BY "responseHours" ASC
+  `;
+
+  const mapped = rows.map((r) => ({
+    ...r,
+    responseHours: Number(r.responseHours),
+  }));
+
+  // Compute average in SQL to match chart endpoint (avoids JS vs PostgreSQL rounding mismatch)
+  const avgResult = await prisma.$queryRaw<{ avghours: number | null }[]>`
+    SELECT ROUND(AVG(EXTRACT(EPOCH FROM (sr.submitted_at - sr.agreement_at)) / 3600)::numeric, 2) AS "avghours"
+    FROM (${SUBMISSION_RESPONSE_CTE}) sr
+    WHERE (sr.submitted_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')::date >= ${startDate}::date
+      AND (sr.submitted_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')::date <= ${endDate}::date
+  `;
+
+  const avg = avgResult[0]?.avghours != null ? Number(avgResult[0].avghours) : null;
+
+  const fastest = mapped.length > 0
+    ? { name: mapped[0].name, avatar: mapped[0].avatar, time: mapped[0].responseHours, campaign: mapped[0].campaign }
+    : null;
+
+  const slowest = mapped.length > 1
+    ? { name: mapped[mapped.length - 1].name, avatar: mapped[mapped.length - 1].avatar, time: mapped[mapped.length - 1].responseHours, campaign: mapped[mapped.length - 1].campaign }
+    : mapped.length === 1
+      ? fastest
+      : null;
+
+  return { avg, count: mapped.length, fastest, slowest };
+};
