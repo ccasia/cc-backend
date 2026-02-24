@@ -8,6 +8,7 @@ import {
   getPitchRateCreators,
   getMediaKitActivation,
   getCreatorSatisfaction,
+  getCreatorEarnings,
 } from '@controllers/analyticsV2Controller';
 import { isLoggedIn } from '@middlewares/onlyLogin';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
@@ -22,5 +23,6 @@ router.get('/time-to-activation/creators', isLoggedIn, isSuperAdmin, getTimeToAc
 router.get('/pitch-rate/creators', isLoggedIn, isSuperAdmin, getPitchRateCreators);
 router.get('/media-kit-activation', isLoggedIn, isSuperAdmin, getMediaKitActivation);
 router.get('/creator-satisfaction', isLoggedIn, isSuperAdmin, getCreatorSatisfaction);
+router.get('/creator-earnings', isLoggedIn, isSuperAdmin, getCreatorEarnings);
 
 export default router;
