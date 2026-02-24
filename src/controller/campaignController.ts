@@ -349,11 +349,11 @@ export const createCampaign = async (req: Request, res: Response) => {
             photos: photos || false,
             crossPosting: crossPosting || false,
             logisticsType: logisticsType && logisticsType !== '' ? (logisticsType as LogisticType) : null,
-            agreementTemplate: {
+            agreementTemplate: agreementFrom?.id ? {
               connect: {
                 id: agreementFrom.id,
               },
-            },
+            } : undefined,
             products: {
               create: productsToCreate,
             },
@@ -954,9 +954,9 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
             crossPosting: crossPosting || false,
             isCreditTier: isCreditTier,
             logisticsType: logisticsType && logisticsType !== '' ? (logisticsType as LogisticType) : null,
-            agreementTemplate: {
+            agreementTemplate: agreementFrom?.id ? {
               connect: { id: agreementFrom.id },
-            },
+            } : undefined,
             products: {
               create: productsToCreate,
             },
@@ -2230,6 +2230,35 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
   let pitch;
 
   try {
+    // Check if user is marked as Media Kit Mandatory
+    const userMKMCheck = await prisma.user.findUnique({
+      where: { id: id as string },
+      select: {
+        mediaKitMandatory: true,
+        creator: {
+          select: {
+            isTiktokConnected: true,
+            isFacebookConnected: true,
+          },
+        },
+      },
+    });
+
+    if (!userMKMCheck) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Enforce Media Kit requirement for MKM users
+    if ((userMKMCheck as any).mediaKitMandatory) {
+      const hasMediaKit = (userMKMCheck as any).creator?.isTiktokConnected || (userMKMCheck as any).creator?.isFacebookConnected;
+      if (!hasMediaKit) {
+        return res.status(403).json({
+          message: 'You must connect your Media Kit (TikTok or Instagram) before pitching to campaigns.',
+          code: 'MEDIA_KIT_REQUIRED',
+        });
+      }
+    }
+
     // Get campaign to check origin and credit tier setting
     const campaignWithOrigin = await prisma.campaign.findUnique({
       where: { id: campaignId },
@@ -6428,6 +6457,42 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
       const newCurrencySymbol = getCurrencySymbol(newCurrency);
       const adminActivityMessage = `${adminName} changed the amount from ${oldCurrencySymbol}${oldAmount} to ${newCurrencySymbol}${newAmount} on the Agreement for ${creatorName}`;
       await logChange(adminActivityMessage, campaignId, req);
+
+      // Update invoice amount if invoice exists for this creator and campaign
+      try {
+        const existingInvoice = await prisma.invoice.findFirst({
+          where: {
+            creatorId: creator.id,
+            campaignId: campaignId,
+          },
+        });
+
+        if (existingInvoice) {
+          // Check if invoice status allows amount changes
+          if (existingInvoice.status !== 'draft') {
+            // Return error response - invoice cannot be modified
+            return res.status(400).json({
+              message: `Cannot change amount. Invoice ${existingInvoice.invoiceNumber} has been ${existingInvoice.status}.`,
+              invoiceStatus: existingInvoice.status,
+              invoiceNumber: existingInvoice.invoiceNumber,
+            });
+          }
+          await prisma.invoice.update({
+            where: {
+              id: existingInvoice.id,
+            },
+            data: {
+              amount: parseFloat(paymentAmount),
+            },
+          });
+          console.log(`Updated invoice ${existingInvoice.invoiceNumber} amount from ${oldAmount} to ${newAmount}`);
+          
+          const invoiceUpdateMessage = `${adminName} updated invoice ${existingInvoice.invoiceNumber} amount from ${oldCurrencySymbol}${oldAmount} to ${newCurrencySymbol}${newAmount} for ${creatorName}`;
+          await logChange(invoiceUpdateMessage, campaignId, req);
+        }
+      } catch (invoiceError) {
+        console.error('Error updating invoice amount:', invoiceError);
+      }
     }
 
     // Log admin activity for video count change
