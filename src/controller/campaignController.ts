@@ -2230,6 +2230,35 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
   let pitch;
 
   try {
+    // Check if user is marked as Media Kit Mandatory
+    const userMKMCheck = await prisma.user.findUnique({
+      where: { id: id as string },
+      select: {
+        mediaKitMandatory: true,
+        creator: {
+          select: {
+            isTiktokConnected: true,
+            isFacebookConnected: true,
+          },
+        },
+      },
+    });
+
+    if (!userMKMCheck) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Enforce Media Kit requirement for MKM users
+    if ((userMKMCheck as any).mediaKitMandatory) {
+      const hasMediaKit = (userMKMCheck as any).creator?.isTiktokConnected || (userMKMCheck as any).creator?.isFacebookConnected;
+      if (!hasMediaKit) {
+        return res.status(403).json({
+          message: 'You must connect your Media Kit (TikTok or Instagram) before pitching to campaigns.',
+          code: 'MEDIA_KIT_REQUIRED',
+        });
+      }
+    }
+
     // Get campaign to check origin and credit tier setting
     const campaignWithOrigin = await prisma.campaign.findUnique({
       where: { id: campaignId },
