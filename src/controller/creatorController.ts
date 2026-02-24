@@ -565,12 +565,17 @@ export const updatePaymentForm = async (req: Request, res: Response) => {
       },
     });
 
+    // Set isFormCompleted + timestamp (only set timestamp the first time)
+    const existing = await prisma.creator.findUnique({
+      where: { userId: paymentForm.userId },
+      select: { formCompletedAt: true },
+    });
+
     await prisma.creator.update({
-      where: {
-        userId: paymentForm.userId,
-      },
+      where: { userId: paymentForm.userId },
       data: {
         isFormCompleted: true,
+        formCompletedAt: existing?.formCompletedAt ?? new Date(),
       },
     });
 
@@ -610,6 +615,7 @@ export const updateCreatorForm = async (req: Request, res: Response) => {
           update: {
             // address: address,
             isFormCompleted: true,
+            formCompletedAt: user.creator?.formCompletedAt ?? new Date(),
           },
         },
         paymentForm: {

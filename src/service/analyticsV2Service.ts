@@ -1,0 +1,2220 @@
+import { Prisma, PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
+
+interface DemographicItem {
+  label: string;
+  value: number;
+  color: string;
+}
+
+interface CreatorGrowthMonth {
+  month: string;
+  total: number;
+  newSignups: number;
+  growthRate: number;
+}
+
+interface CreatorGrowthDay {
+  date: string; // "Feb 17" - display label
+  isoDate: string; // "2026-02-17" — reliable parsing
+  total: number;
+  newSignups: number;
+  growthRate: number;
+}
+
+interface PeriodComparison {
+  currentPeriodSignups: number;
+  previousPeriodSignups: number;
+  percentChange: number;
+}
+
+interface CreatorGrowthResponse {
+  granularity: 'daily' | 'monthly';
+  creatorGrowth: CreatorGrowthMonth[] | CreatorGrowthDay[];
+  demographics: {
+    gender: DemographicItem[];
+    ageGroups: DemographicItem[];
+  };
+  periodComparison?: PeriodComparison;
+}
+
+interface MonthlySignupRow {
+  year: number;
+  month: number;
+  count: number;
+}
+
+interface DailySignupRow {
+  date: string; // 'YYYY-MM-DD'
+  count: number;
+}
+
+// Format month number + year into short label (e.g. "Feb 24")
+const formatMonthLabel = (year: number, month: number): string => {
+  const date = new Date(year, month - 1);
+  const monthStr = date.toLocaleString('en-US', { month: 'short' });
+  const yearStr = String(year).slice(-2);
+  return `${monthStr} ${yearStr}`;
+};
+
+// Format a date into a short display label (e.g. "Feb 17")
+const formatDayLabel = (d: Date): string => d.toLocaleString('en-US', { month: 'short', day: 'numeric' });
+
+// Format a date into ISO string "YYYY-MM-DD"
+const toIsoDate = (d: Date): string => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+
+// Calculate age from birthDate
+const calculateAge = (birthDate: Date): number => {
+  const today = new Date();
+  let age = today.getFullYear() - birthDate.getFullYear();
+  const monthDiff = today.getMonth() - birthDate.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+    age--;
+  }
+  return age;
+};
+
+// Fill gaps in monthly data and compute cumulative totals + growth rates
+const fillMonthGaps = (
+  rows: MonthlySignupRow[],
+  startDate: Date,
+  endDate: Date,
+  baseline: number,
+): CreatorGrowthMonth[] => {
+  // Build lookup map from query results
+  const signupMap = new Map<string, number>();
+  for (const row of rows) {
+    signupMap.set(`${row.year}-${row.month}`, row.count);
+  }
+
+  const result: CreatorGrowthMonth[] = [];
+  let cumulativeTotal = baseline;
+  let prevNewSignups = 0;
+
+  // Iterate each calendar month in the range
+  const current = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+  const end = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+
+  while (current <= end) {
+    const year = current.getFullYear();
+    const month = current.getMonth() + 1;
+    const key = `${year}-${month}`;
+
+    const newSignups = signupMap.get(key) || 0;
+    cumulativeTotal += newSignups;
+
+    // Month-over-month signup comparison
+    const growthRate =
+      prevNewSignups > 0 ? Math.round(((newSignups - prevNewSignups) / prevNewSignups) * 100 * 10) / 10 : 0;
+
+    result.push({
+      month: formatMonthLabel(year, month),
+      total: cumulativeTotal,
+      newSignups,
+      growthRate,
+    });
+
+    prevNewSignups = newSignups;
+
+    // Advance to next month
+    current.setMonth(current.getMonth() + 1);
+  }
+
+  return result;
+};
+
+// Fill gaps in daily data and compute cumulative totals + growth rates
+const fillDayGaps = (rows: DailySignupRow[], startDate: Date, endDate: Date, baseline: number): CreatorGrowthDay[] => {
+  // Build lookup map keyed by ISO date string
+  const signupMap = new Map<string, number>();
+  for (const row of rows) {
+    signupMap.set(row.date, row.count);
+  }
+
+  const result: CreatorGrowthDay[] = [];
+  let cumulativeTotal = baseline;
+  let prevNewSignups = 0;
+
+  // Iterate day-by-day from startDate to endDate
+  const current = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+  const end = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
+
+  while (current <= end) {
+    const key = toIsoDate(current);
+    const newSignups = signupMap.get(key) || 0;
+    cumulativeTotal += newSignups;
+
+    const growthRate =
+      prevNewSignups > 0 ? Math.round(((newSignups - prevNewSignups) / prevNewSignups) * 100 * 10) / 10 : 0;
+
+    result.push({
+      date: formatDayLabel(current),
+      isoDate: key,
+      total: cumulativeTotal,
+      newSignups,
+      growthRate,
+    });
+
+    prevNewSignups = newSignups;
+    current.setDate(current.getDate() + 1);
+  }
+
+  return result;
+};
+
+export const getCreatorGrowthData = async (
+  startDate: Date,
+  endDate: Date,
+  granularity: 'daily' | 'monthly' = 'monthly',
+): Promise<CreatorGrowthResponse> => {
+  // Demographics queries are the same regardless of granularity
+  const demographicsPromise = Promise.all([
+    prisma.creator.findMany({
+      where: {
+        user: { role: 'creator', status: { in: ['active', 'pending'] } },
+      },
+      select: { pronounce: true },
+    }),
+    prisma.creator.findMany({
+      where: {
+        user: { role: 'creator', status: { in: ['active', 'pending'] } },
+        birthDate: { not: null },
+      },
+      select: { birthDate: true },
+    }),
+  ]);
+
+  // Baseline count (creators before the date range)
+  const baselinePromise = prisma.user.count({
+    where: {
+      role: 'creator',
+      status: { in: ['active', 'pending'] },
+      createdAt: { lt: startDate },
+    },
+  });
+
+  if (granularity === 'daily') {
+    // --- Daily granularity ---
+    const [dailySignups, baseline, [genderData, ageData]] = await Promise.all([
+      prisma.$queryRaw<DailySignupRow[]>`
+        SELECT
+          TO_CHAR(DATE_TRUNC('day', u."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'), 'YYYY-MM-DD') AS date,
+          COUNT(*)::int AS count
+        FROM "User" u
+        INNER JOIN "Creator" c ON c."userId" = u.id
+        WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
+          AND u."createdAt" >= (${startDate} AT TIME ZONE 'UTC')
+          AND u."createdAt" <= (${endDate} AT TIME ZONE 'UTC')
+        GROUP BY DATE_TRUNC('day', u."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')
+        ORDER BY 1
+      `,
+      baselinePromise,
+      demographicsPromise,
+    ]);
+
+    const creatorGrowth = fillDayGaps(dailySignups, startDate, endDate, baseline);
+
+    // Period comparison: compare current period signups vs previous period of same length
+    const periodMs = endDate.getTime() - startDate.getTime();
+    const prevEnd = new Date(startDate.getTime() - 1);
+    const prevStart = new Date(prevEnd.getTime() - periodMs);
+
+    const [currentPeriodSignups, previousPeriodSignups] = await Promise.all([
+      prisma.user.count({
+        where: {
+          role: 'creator',
+          status: { in: ['active', 'pending'] },
+          createdAt: { gte: startDate, lte: endDate },
+        },
+      }),
+      prisma.user.count({
+        where: {
+          role: 'creator',
+          status: { in: ['active', 'pending'] },
+          createdAt: { gte: prevStart, lte: prevEnd },
+        },
+      }),
+    ]);
+
+    const percentChange =
+      previousPeriodSignups > 0
+        ? Math.round(((currentPeriodSignups - previousPeriodSignups) / previousPeriodSignups) * 100 * 10) / 10
+        : 0;
+
+    const demographics = processDemographics(genderData, ageData);
+
+    return {
+      granularity: 'daily',
+      creatorGrowth,
+      demographics,
+      periodComparison: { currentPeriodSignups, previousPeriodSignups, percentChange },
+    };
+  }
+
+  // --- Monthly granularity (default) ---
+  const [monthlySignups, baseline, [genderData, ageData]] = await Promise.all([
+    prisma.$queryRaw<MonthlySignupRow[]>`
+      SELECT
+        EXTRACT(YEAR FROM DATE_TRUNC('month', u."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'))::int AS year,
+        EXTRACT(MONTH FROM DATE_TRUNC('month', u."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'))::int AS month,
+        COUNT(*)::int AS count
+      FROM "User" u
+      INNER JOIN "Creator" c ON c."userId" = u.id
+      WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
+        AND u."createdAt" >= (${startDate} AT TIME ZONE 'UTC')
+        AND u."createdAt" <= (${endDate} AT TIME ZONE 'UTC')
+      GROUP BY DATE_TRUNC('month', u."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')
+      ORDER BY 1, 2
+    `,
+    baselinePromise,
+    demographicsPromise,
+  ]);
+
+  const creatorGrowth = fillMonthGaps(monthlySignups, startDate, endDate, baseline);
+  const demographics = processDemographics(genderData, ageData);
+
+  return {
+    granularity: 'monthly',
+    creatorGrowth,
+    demographics,
+  };
+};
+
+// Activation Rate
+
+interface ActivationRateMonth {
+  month: string;
+  rate: number;
+  activated: number;
+  total: number;
+}
+
+interface ActivationRateDay {
+  date: string;
+  isoDate: string;
+  rate: number;
+  activated: number;
+  total: number;
+}
+
+interface ActivationRatePeriodComparison {
+  currentRate: number;
+  previousRate: number;
+  percentChange: number;
+}
+
+// Creator Growth Creators (drilldown)
+
+interface CreatorGrowthCreatorRow {
+  userId: string;
+  name: string;
+  photoUrl: string | null;
+  createdAt: Date;
+  pronounce: string | null;
+}
+
+export const getCreatorGrowthCreators = async (startDate: Date, endDate: Date) => {
+  const creators = await prisma.$queryRaw<CreatorGrowthCreatorRow[]>`
+    SELECT
+      u.id AS "userId",
+      u.name,
+      u."photoURL" AS "photoUrl",
+      u."createdAt",
+      c.pronounce
+    FROM "User" u
+    INNER JOIN "Creator" c ON c."userId" = u.id
+    WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
+      AND (u."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')::date >= ${startDate}::date
+      AND (u."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')::date <= ${endDate}::date
+    ORDER BY u."createdAt" DESC
+  `;
+
+  const genderBreakdown = { male: 0, female: 0, nonBinary: 0 };
+  for (const c of creators) {
+    const p = (c.pronounce || '').toLowerCase();
+    if (p === 'he/him') genderBreakdown.male++;
+    else if (p === 'she/her') genderBreakdown.female++;
+    else genderBreakdown.nonBinary++;
+  }
+
+  return { creators, count: creators.length, genderBreakdown };
+};
+
+interface ActivationRateResponse {
+  granularity: 'daily' | 'monthly';
+  activationRate: ActivationRateMonth[] | ActivationRateDay[];
+  periodComparison?: ActivationRatePeriodComparison;
+}
+
+const fillActivationMonthGaps = (
+  activationRows: MonthlySignupRow[],
+  signupRows: MonthlySignupRow[],
+  startDate: Date,
+  endDate: Date,
+  activatedBaseline: number,
+  totalBaseline: number,
+): ActivationRateMonth[] => {
+  const activationMap = new Map<string, number>();
+  for (const row of activationRows) activationMap.set(`${row.year}-${row.month}`, row.count);
+
+  const signupMap = new Map<string, number>();
+  for (const row of signupRows) signupMap.set(`${row.year}-${row.month}`, row.count);
+
+  const result: ActivationRateMonth[] = [];
+  let cumulativeActivated = activatedBaseline;
+  let cumulativeTotal = totalBaseline;
+
+  const current = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+  const end = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+
+  while (current <= end) {
+    const year = current.getFullYear();
+    const month = current.getMonth() + 1;
+    const key = `${year}-${month}`;
+
+    cumulativeActivated += activationMap.get(key) || 0;
+    cumulativeTotal += signupMap.get(key) || 0;
+
+    const rate = cumulativeTotal > 0 ? Math.round((cumulativeActivated / cumulativeTotal) * 1000) / 10 : 0;
+
+    result.push({
+      month: formatMonthLabel(year, month),
+      rate,
+      activated: cumulativeActivated,
+      total: cumulativeTotal,
+    });
+
+    current.setMonth(current.getMonth() + 1);
+  }
+
+  return result;
+};
+
+const fillActivationDayGaps = (
+  activationRows: DailySignupRow[],
+  signupRows: DailySignupRow[],
+  startDate: Date,
+  endDate: Date,
+  activatedBaseline: number,
+  totalBaseline: number,
+): ActivationRateDay[] => {
+  const activationMap = new Map<string, number>();
+  for (const row of activationRows) activationMap.set(row.date, row.count);
+
+  const signupMap = new Map<string, number>();
+  for (const row of signupRows) signupMap.set(row.date, row.count);
+
+  const result: ActivationRateDay[] = [];
+  let cumulativeActivated = activatedBaseline;
+  let cumulativeTotal = totalBaseline;
+
+  const current = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+  const end = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
+
+  while (current <= end) {
+    const key = toIsoDate(current);
+    cumulativeActivated += activationMap.get(key) || 0;
+    cumulativeTotal += signupMap.get(key) || 0;
+
+    const rate = cumulativeTotal > 0 ? Math.round((cumulativeActivated / cumulativeTotal) * 1000) / 10 : 0;
+
+    result.push({
+      date: formatDayLabel(current),
+      isoDate: key,
+      rate,
+      activated: cumulativeActivated,
+      total: cumulativeTotal,
+    });
+
+    current.setDate(current.getDate() + 1);
+  }
+
+  return result;
+};
+
+export const getActivationRateData = async (
+  startDate: Date,
+  endDate: Date,
+  granularity: 'daily' | 'monthly' = 'monthly',
+): Promise<ActivationRateResponse> => {
+  // Baselines: counts before the date range
+  const activatedBaselinePromise = prisma.creator.count({
+    where: {
+      formCompletedAt: { not: null, lt: startDate },
+      user: { role: 'creator', status: { in: ['active', 'pending'] } },
+    },
+  });
+
+  const totalBaselinePromise = prisma.user.count({
+    where: {
+      role: 'creator',
+      status: { in: ['active', 'pending'] },
+      createdAt: { lt: startDate },
+    },
+  });
+
+  if (granularity === 'daily') {
+    const [dailyActivations, dailySignups, activatedBaseline, totalBaseline] = await Promise.all([
+      prisma.$queryRaw<DailySignupRow[]>`
+        SELECT
+          TO_CHAR(DATE_TRUNC('day', c."formCompletedAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'), 'YYYY-MM-DD') AS date,
+          COUNT(*)::int AS count
+        FROM "Creator" c
+        INNER JOIN "User" u ON u.id = c."userId"
+        WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
+          AND c."formCompletedAt" IS NOT NULL
+          AND c."formCompletedAt" >= (${startDate} AT TIME ZONE 'UTC')
+          AND c."formCompletedAt" <= (${endDate} AT TIME ZONE 'UTC')
+        GROUP BY DATE_TRUNC('day', c."formCompletedAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')
+        ORDER BY 1
+      `,
+      prisma.$queryRaw<DailySignupRow[]>`
+        SELECT
+          TO_CHAR(DATE_TRUNC('day', u."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'), 'YYYY-MM-DD') AS date,
+          COUNT(*)::int AS count
+        FROM "User" u
+        INNER JOIN "Creator" c ON c."userId" = u.id
+        WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
+          AND u."createdAt" >= (${startDate} AT TIME ZONE 'UTC')
+          AND u."createdAt" <= (${endDate} AT TIME ZONE 'UTC')
+        GROUP BY DATE_TRUNC('day', u."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')
+        ORDER BY 1
+      `,
+      activatedBaselinePromise,
+      totalBaselinePromise,
+    ]);
+
+    const activationRate = fillActivationDayGaps(
+      dailyActivations,
+      dailySignups,
+      startDate,
+      endDate,
+      activatedBaseline,
+      totalBaseline,
+    );
+
+    // Period comparison: rate at end of current vs previous period
+    const prevEnd = new Date(startDate.getTime() - 1);
+
+    const [prevActivated, prevTotal] = await Promise.all([
+      prisma.creator.count({
+        where: {
+          formCompletedAt: { not: null, lte: prevEnd },
+          user: { role: 'creator', status: { in: ['active', 'pending'] } },
+        },
+      }),
+      prisma.user.count({
+        where: {
+          role: 'creator',
+          status: { in: ['active', 'pending'] },
+          createdAt: { lte: prevEnd },
+        },
+      }),
+    ]);
+
+    const currentRate = activationRate.length > 0 ? activationRate[activationRate.length - 1].rate : 0;
+    const previousRate = prevTotal > 0 ? Math.round((prevActivated / prevTotal) * 1000) / 10 : 0;
+    const percentChange = Math.round((currentRate - previousRate) * 10) / 10;
+
+    return {
+      granularity: 'daily',
+      activationRate,
+      periodComparison: { currentRate, previousRate, percentChange },
+    };
+  }
+
+  // --- Monthly granularity (default) ---
+  const [monthlyActivations, monthlySignups, activatedBaseline, totalBaseline] = await Promise.all([
+    prisma.$queryRaw<MonthlySignupRow[]>`
+      SELECT
+        EXTRACT(YEAR FROM DATE_TRUNC('month', c."formCompletedAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'))::int AS year,
+        EXTRACT(MONTH FROM DATE_TRUNC('month', c."formCompletedAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'))::int AS month,
+        COUNT(*)::int AS count
+      FROM "Creator" c
+      INNER JOIN "User" u ON u.id = c."userId"
+      WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
+        AND c."formCompletedAt" IS NOT NULL
+        AND c."formCompletedAt" >= (${startDate} AT TIME ZONE 'UTC')
+        AND c."formCompletedAt" <= (${endDate} AT TIME ZONE 'UTC')
+      GROUP BY DATE_TRUNC('month', c."formCompletedAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')
+      ORDER BY 1, 2
+    `,
+    prisma.$queryRaw<MonthlySignupRow[]>`
+      SELECT
+        EXTRACT(YEAR FROM DATE_TRUNC('month', u."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'))::int AS year,
+        EXTRACT(MONTH FROM DATE_TRUNC('month', u."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'))::int AS month,
+        COUNT(*)::int AS count
+      FROM "User" u
+      INNER JOIN "Creator" c ON c."userId" = u.id
+      WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
+        AND u."createdAt" >= (${startDate} AT TIME ZONE 'UTC')
+        AND u."createdAt" <= (${endDate} AT TIME ZONE 'UTC')
+      GROUP BY DATE_TRUNC('month', u."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')
+      ORDER BY 1, 2
+    `,
+    activatedBaselinePromise,
+    totalBaselinePromise,
+  ]);
+
+  const activationRate = fillActivationMonthGaps(
+    monthlyActivations,
+    monthlySignups,
+    startDate,
+    endDate,
+    activatedBaseline,
+    totalBaseline,
+  );
+
+  return {
+    granularity: 'monthly',
+    activationRate,
+  };
+};
+
+// Time to Activation
+
+interface TimeToActivationMonth {
+  month: string;
+  avgDays: number | null;
+}
+
+interface TimeToActivationDay {
+  date: string;
+  isoDate: string;
+  avgDays: number | null;
+}
+
+interface MonthlyAvgDaysRow {
+  year: number;
+  month: number;
+  avgdays: number;
+}
+
+interface DailyAvgDaysRow {
+  date: string;
+  avgdays: number;
+}
+
+interface TimeToActivationPeriodComparison {
+  currentAvg: number | null;
+  previousAvg: number | null;
+  change: number | null;
+}
+
+interface TimeToActivationResponse {
+  granularity: 'daily' | 'monthly';
+  timeToActivation: TimeToActivationMonth[] | TimeToActivationDay[];
+  periodComparison?: TimeToActivationPeriodComparison;
+}
+
+const fillTimeToActivationMonthGaps = (
+  rows: MonthlyAvgDaysRow[],
+  startDate: Date,
+  endDate: Date,
+): TimeToActivationMonth[] => {
+  const avgMap = new Map<string, number>();
+  for (const row of rows) {
+    avgMap.set(`${row.year}-${row.month}`, row.avgdays);
+  }
+
+  const result: TimeToActivationMonth[] = [];
+  const current = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+  const end = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+
+  while (current <= end) {
+    const year = current.getFullYear();
+    const month = current.getMonth() + 1;
+    const key = `${year}-${month}`;
+
+    const avgDays = avgMap.has(key) ? avgMap.get(key)! : null;
+
+    result.push({
+      month: formatMonthLabel(year, month),
+      avgDays,
+    });
+
+    current.setMonth(current.getMonth() + 1);
+  }
+
+  return result;
+};
+
+const fillTimeToActivationDayGaps = (
+  rows: DailyAvgDaysRow[],
+  startDate: Date,
+  endDate: Date,
+): TimeToActivationDay[] => {
+  const avgMap = new Map<string, number>();
+  for (const row of rows) {
+    avgMap.set(row.date, row.avgdays);
+  }
+
+  const result: TimeToActivationDay[] = [];
+  const current = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+  const end = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
+
+  while (current <= end) {
+    const key = toIsoDate(current);
+    const avgDays = avgMap.has(key) ? avgMap.get(key)! : null;
+
+    result.push({
+      date: formatDayLabel(current),
+      isoDate: key,
+      avgDays,
+    });
+
+    current.setDate(current.getDate() + 1);
+  }
+
+  return result;
+};
+
+export const getTimeToActivationData = async (
+  startDate: Date,
+  endDate: Date,
+  granularity: 'daily' | 'monthly' = 'monthly',
+): Promise<TimeToActivationResponse> => {
+  if (granularity === 'daily') {
+    const dailyAvgs = await prisma.$queryRaw<DailyAvgDaysRow[]>`
+      SELECT
+        TO_CHAR(DATE_TRUNC('day', c."formCompletedAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'), 'YYYY-MM-DD') AS date,
+        ROUND(AVG(EXTRACT(EPOCH FROM (c."formCompletedAt" - u."createdAt")) / 86400)::numeric, 1) AS "avgdays"
+      FROM "Creator" c
+      INNER JOIN "User" u ON u.id = c."userId"
+      WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
+        AND c."formCompletedAt" IS NOT NULL
+        AND c."formCompletedAt" >= (${startDate} AT TIME ZONE 'UTC')
+        AND c."formCompletedAt" <= (${endDate} AT TIME ZONE 'UTC')
+      GROUP BY DATE_TRUNC('day', c."formCompletedAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')
+      ORDER BY 1
+    `;
+
+    const timeToActivation = fillTimeToActivationDayGaps(dailyAvgs, startDate, endDate);
+
+    // Period comparison: overall average of current vs previous period of same length
+    const periodMs = endDate.getTime() - startDate.getTime();
+    const prevEnd = new Date(startDate.getTime() - 1);
+    const prevStart = new Date(prevEnd.getTime() - periodMs);
+
+    const [currentAvgResult, previousAvgResult] = await Promise.all([
+      prisma.$queryRaw<{ avgdays: number | null }[]>`
+        SELECT ROUND(AVG(EXTRACT(EPOCH FROM (c."formCompletedAt" - u."createdAt")) / 86400)::numeric, 1) AS "avgdays"
+        FROM "Creator" c
+        INNER JOIN "User" u ON u.id = c."userId"
+        WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
+          AND c."formCompletedAt" IS NOT NULL
+          AND c."formCompletedAt" >= (${startDate} AT TIME ZONE 'UTC')
+          AND c."formCompletedAt" <= (${endDate} AT TIME ZONE 'UTC')
+      `,
+      prisma.$queryRaw<{ avgdays: number | null }[]>`
+        SELECT ROUND(AVG(EXTRACT(EPOCH FROM (c."formCompletedAt" - u."createdAt")) / 86400)::numeric, 1) AS "avgdays"
+        FROM "Creator" c
+        INNER JOIN "User" u ON u.id = c."userId"
+        WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
+          AND c."formCompletedAt" IS NOT NULL
+          AND c."formCompletedAt" >= (${prevStart} AT TIME ZONE 'UTC')
+          AND c."formCompletedAt" <= (${prevEnd} AT TIME ZONE 'UTC')
+      `,
+    ]);
+
+    const currentAvg = currentAvgResult[0]?.avgdays != null ? Number(currentAvgResult[0].avgdays) : null;
+    const previousAvg = previousAvgResult[0]?.avgdays != null ? Number(previousAvgResult[0].avgdays) : null;
+    const change =
+      currentAvg != null && previousAvg != null ? Math.round((currentAvg - previousAvg) * 10) / 10 : null;
+
+    return {
+      granularity: 'daily',
+      timeToActivation,
+      periodComparison: { currentAvg, previousAvg, change },
+    };
+  }
+
+  // --- Monthly granularity (default) ---
+  const monthlyAvgs = await prisma.$queryRaw<MonthlyAvgDaysRow[]>`
+    SELECT
+      EXTRACT(YEAR FROM DATE_TRUNC('month', c."formCompletedAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'))::int AS year,
+      EXTRACT(MONTH FROM DATE_TRUNC('month', c."formCompletedAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'))::int AS month,
+      ROUND(AVG(EXTRACT(EPOCH FROM (c."formCompletedAt" - u."createdAt")) / 86400)::numeric, 1) AS "avgdays"
+    FROM "Creator" c
+    INNER JOIN "User" u ON u.id = c."userId"
+    WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
+      AND c."formCompletedAt" IS NOT NULL
+      AND c."formCompletedAt" >= (${startDate} AT TIME ZONE 'UTC')
+      AND c."formCompletedAt" <= (${endDate} AT TIME ZONE 'UTC')
+    GROUP BY DATE_TRUNC('month', c."formCompletedAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')
+    ORDER BY 1, 2
+  `;
+
+  const timeToActivation = fillTimeToActivationMonthGaps(monthlyAvgs, startDate, endDate);
+
+  return {
+    granularity: 'monthly',
+    timeToActivation,
+  };
+};
+
+// Time to Activation — Individual Creators for a period
+
+interface TimeToActivationCreatorRow {
+  userId: string;
+  name: string;
+  photoUrl: string | null;
+  createdAt: Date;
+  formCompletedAt: Date;
+  daysToActivation: number;
+}
+
+export const getTimeToActivationCreators = async (startDate: Date, endDate: Date) => {
+  // Use raw SQL with the same Asia/Kuala_Lumpur timezone conversion as the aggregated
+  // query so that clicking a day/month in the chart returns the matching creators.
+  const creators = await prisma.$queryRaw<TimeToActivationCreatorRow[]>`
+    SELECT
+      u.id AS "userId",
+      u.name,
+      u."photoURL" AS "photoUrl",
+      u."createdAt",
+      c."formCompletedAt",
+      ROUND(EXTRACT(EPOCH FROM (c."formCompletedAt" - u."createdAt")) / 86400::numeric, 1) AS "daysToActivation"
+    FROM "Creator" c
+    INNER JOIN "User" u ON u.id = c."userId"
+    WHERE u.role = 'creator'
+      AND u.status IN ('active', 'pending')
+      AND c."formCompletedAt" IS NOT NULL
+      AND (c."formCompletedAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')::date >= ${startDate}::date
+      AND (c."formCompletedAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')::date <= ${endDate}::date
+    ORDER BY c."formCompletedAt" DESC
+  `;
+
+  const rows = creators.map((c) => ({
+    ...c,
+    daysToActivation: Number(c.daysToActivation),
+  }));
+
+  const avgDays =
+    rows.length > 0 ? Math.round((rows.reduce((sum, r) => sum + r.daysToActivation, 0) / rows.length) * 10) / 10 : null;
+
+  return { creators: rows, avgDays, count: rows.length };
+};
+
+// Pitch Rate — Creator drill-down (who first pitched in a date range)
+
+interface PitchRateCreatorRow {
+  userId: string;
+  name: string;
+  photoUrl: string | null;
+  createdAt: Date;
+  firstPitchAt: Date;
+  daysToPitch: number;
+}
+
+export const getPitchRateCreators = async (startDate: Date, endDate: Date) => {
+  const creators = await prisma.$queryRaw<PitchRateCreatorRow[]>`
+    SELECT
+      u.id AS "userId",
+      u.name,
+      u."photoURL" AS "photoUrl",
+      u."createdAt",
+      sub.first_pitch AS "firstPitchAt",
+      ROUND(EXTRACT(EPOCH FROM (sub.first_pitch - u."createdAt")) / 86400::numeric, 1) AS "daysToPitch"
+    FROM (
+      SELECT p."userId", MIN(p."createdAt") AS first_pitch
+      FROM "Pitch" p
+      INNER JOIN "User" u ON u.id = p."userId"
+      INNER JOIN "Creator" c ON c."userId" = u.id
+      WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
+        AND p.status != 'draft'
+      GROUP BY p."userId"
+    ) sub
+    INNER JOIN "User" u ON u.id = sub."userId"
+    WHERE (sub.first_pitch AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')::date >= ${startDate}::date
+      AND (sub.first_pitch AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')::date <= ${endDate}::date
+    ORDER BY sub.first_pitch DESC
+  `;
+
+  const rows = creators.map((c) => ({
+    ...c,
+    daysToPitch: Number(c.daysToPitch),
+  }));
+
+  const avgDays =
+    rows.length > 0 ? Math.round((rows.reduce((sum, r) => sum + r.daysToPitch, 0) / rows.length) * 10) / 10 : null;
+
+  return { creators: rows, avgDays, count: rows.length };
+};
+
+// Pitch Rate
+
+interface PitchRateResponse {
+  granularity: 'daily' | 'monthly';
+  pitchRate: ActivationRateMonth[] | ActivationRateDay[];
+  periodComparison?: ActivationRatePeriodComparison;
+}
+
+export const getPitchRateData = async (
+  startDate: Date,
+  endDate: Date,
+  granularity: 'daily' | 'monthly' = 'monthly',
+): Promise<PitchRateResponse> => {
+  // Baselines: counts before the date range
+  // Pitched baseline: unique creators whose first non-draft pitch is before startDate
+  const pitchedBaselineResult = await prisma.$queryRaw<[{ count: number }]>`
+    SELECT COUNT(*)::int AS count
+    FROM (
+      SELECT p."userId", MIN(p."createdAt") AS first_pitch
+      FROM "Pitch" p
+      INNER JOIN "User" u ON u.id = p."userId"
+      INNER JOIN "Creator" c ON c."userId" = u.id
+      WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
+        AND p.status != 'draft'
+      GROUP BY p."userId"
+      HAVING MIN(p."createdAt") < ${startDate}
+    ) sub
+  `;
+  const pitchedBaseline = pitchedBaselineResult[0]?.count ?? 0;
+
+  // Total creator baseline (same as activation rate)
+  const totalBaseline = await prisma.user.count({
+    where: {
+      role: 'creator',
+      status: { in: ['active', 'pending'] },
+      createdAt: { lt: startDate },
+    },
+  });
+
+  if (granularity === 'daily') {
+    // Daily pitch deltas: new first-time pitchers per day
+    const [dailyPitches, dailySignups] = await Promise.all([
+      prisma.$queryRaw<DailySignupRow[]>`
+        SELECT
+          TO_CHAR(DATE_TRUNC('day', first_pitch AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'), 'YYYY-MM-DD') AS date,
+          COUNT(*)::int AS count
+        FROM (
+          SELECT p."userId", MIN(p."createdAt") AS first_pitch
+          FROM "Pitch" p
+          INNER JOIN "User" u ON u.id = p."userId"
+          INNER JOIN "Creator" c ON c."userId" = u.id
+          WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
+            AND p.status != 'draft'
+          GROUP BY p."userId"
+        ) sub
+        WHERE first_pitch >= ${startDate} AND first_pitch <= ${endDate}
+        GROUP BY DATE_TRUNC('day', first_pitch AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')
+        ORDER BY 1
+      `,
+      prisma.$queryRaw<DailySignupRow[]>`
+        SELECT
+          TO_CHAR(DATE_TRUNC('day', u."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'), 'YYYY-MM-DD') AS date,
+          COUNT(*)::int AS count
+        FROM "User" u
+        INNER JOIN "Creator" c ON c."userId" = u.id
+        WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
+          AND u."createdAt" >= (${startDate} AT TIME ZONE 'UTC')
+          AND u."createdAt" <= (${endDate} AT TIME ZONE 'UTC')
+        GROUP BY DATE_TRUNC('day', u."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')
+        ORDER BY 1
+      `,
+    ]);
+
+    const pitchRate = fillActivationDayGaps(
+      dailyPitches,
+      dailySignups,
+      startDate,
+      endDate,
+      pitchedBaseline,
+      totalBaseline,
+    );
+
+    // Period comparison: rate at end of current vs previous period
+    const prevEnd = new Date(startDate.getTime() - 1);
+
+    const [prevPitchedResult, prevTotal] = await Promise.all([
+      prisma.$queryRaw<[{ count: number }]>`
+        SELECT COUNT(*)::int AS count
+        FROM (
+          SELECT p."userId", MIN(p."createdAt") AS first_pitch
+          FROM "Pitch" p
+          INNER JOIN "User" u ON u.id = p."userId"
+          INNER JOIN "Creator" c ON c."userId" = u.id
+          WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
+            AND p.status != 'draft'
+          GROUP BY p."userId"
+          HAVING MIN(p."createdAt") <= ${prevEnd}
+        ) sub
+      `,
+      prisma.user.count({
+        where: {
+          role: 'creator',
+          status: { in: ['active', 'pending'] },
+          createdAt: { lte: prevEnd },
+        },
+      }),
+    ]);
+
+    const prevPitched = prevPitchedResult[0]?.count ?? 0;
+    const currentRate = pitchRate.length > 0 ? pitchRate[pitchRate.length - 1].rate : 0;
+    const previousRate = prevTotal > 0 ? Math.round((prevPitched / prevTotal) * 1000) / 10 : 0;
+    const percentChange = Math.round((currentRate - previousRate) * 10) / 10;
+
+    return {
+      granularity: 'daily',
+      pitchRate,
+      periodComparison: { currentRate, previousRate, percentChange },
+    };
+  }
+
+  // --- Monthly granularity (default) ---
+  const [monthlyPitches, monthlySignups] = await Promise.all([
+    prisma.$queryRaw<MonthlySignupRow[]>`
+      SELECT
+        EXTRACT(YEAR FROM DATE_TRUNC('month', first_pitch AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'))::int AS year,
+        EXTRACT(MONTH FROM DATE_TRUNC('month', first_pitch AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'))::int AS month,
+        COUNT(*)::int AS count
+      FROM (
+        SELECT p."userId", MIN(p."createdAt") AS first_pitch
+        FROM "Pitch" p
+        INNER JOIN "User" u ON u.id = p."userId"
+        INNER JOIN "Creator" c ON c."userId" = u.id
+        WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
+          AND p.status != 'draft'
+        GROUP BY p."userId"
+      ) sub
+      WHERE first_pitch >= ${startDate} AND first_pitch <= ${endDate}
+      GROUP BY DATE_TRUNC('month', first_pitch AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')
+      ORDER BY 1, 2
+    `,
+    prisma.$queryRaw<MonthlySignupRow[]>`
+      SELECT
+        EXTRACT(YEAR FROM DATE_TRUNC('month', u."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'))::int AS year,
+        EXTRACT(MONTH FROM DATE_TRUNC('month', u."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'))::int AS month,
+        COUNT(*)::int AS count
+      FROM "User" u
+      INNER JOIN "Creator" c ON c."userId" = u.id
+      WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
+        AND u."createdAt" >= (${startDate} AT TIME ZONE 'UTC')
+        AND u."createdAt" <= (${endDate} AT TIME ZONE 'UTC')
+      GROUP BY DATE_TRUNC('month', u."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')
+      ORDER BY 1, 2
+    `,
+  ]);
+
+  const pitchRate = fillActivationMonthGaps(
+    monthlyPitches,
+    monthlySignups,
+    startDate,
+    endDate,
+    pitchedBaseline,
+    totalBaseline,
+  );
+
+  return {
+    granularity: 'monthly',
+    pitchRate,
+  };
+};
+
+// Media Kit Activation — per-platform connection snapshot
+
+export const getMediaKitActivationData = async (startDate?: Date, endDate?: Date) => {
+  const baseWhere = {
+    user: { role: 'creator' as const, status: { in: ['active' as const, 'pending' as const] } },
+  };
+
+  if (!startDate || !endDate) {
+    // All-time snapshot using boolean flags
+    const [tiktokConnected, instagramConnected, total, uniqueConnected] = await Promise.all([
+      prisma.creator.count({ where: { ...baseWhere, isTiktokConnected: true } }),
+      prisma.creator.count({ where: { ...baseWhere, isFacebookConnected: true } }),
+      prisma.creator.count({ where: baseWhere }),
+      prisma.creator.count({
+        where: {
+          ...baseWhere,
+          OR: [{ isTiktokConnected: true }, { isFacebookConnected: true }],
+        },
+      }),
+    ]);
+
+    return {
+      uniqueConnected,
+      platforms: [
+        { platform: 'TikTok', connected: tiktokConnected, total, rate: total > 0 ? Math.round((tiktokConnected / total) * 1000) / 10 : 0 },
+        { platform: 'Instagram', connected: instagramConnected, total, rate: total > 0 ? Math.round((instagramConnected / total) * 1000) / 10 : 0 },
+      ],
+    };
+  }
+
+  // Date-filtered: count OAuth records created within range
+  const [tiktokConnected, instagramConnected, total, uniqueConnectedResult] = await Promise.all([
+    prisma.tiktokUser.count({
+      where: {
+        createdAt: { gte: startDate, lte: endDate },
+        creator: { user: { role: 'creator', status: { in: ['active', 'pending'] } } },
+      },
+    }),
+    prisma.instagramUser.count({
+      where: {
+        createdAt: { gte: startDate, lte: endDate },
+        creator: { user: { role: 'creator', status: { in: ['active', 'pending'] } } },
+      },
+    }),
+    prisma.creator.count({ where: baseWhere }), // Total is always ALL active creators
+    prisma.$queryRaw<[{ count: number }]>`
+      SELECT COUNT(DISTINCT c.id)::int AS count
+      FROM "Creator" c
+      INNER JOIN "User" u ON u.id = c."userId"
+      WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
+        AND (
+          EXISTS (SELECT 1 FROM "TiktokUser" t WHERE t."creatorId" = c.id AND t."createdAt" >= ${startDate} AND t."createdAt" <= ${endDate})
+          OR EXISTS (SELECT 1 FROM "InstagramUser" i WHERE i."creatorId" = c.id AND i."createdAt" >= ${startDate} AND i."createdAt" <= ${endDate})
+        )
+    `,
+  ]);
+
+  const uniqueConnected = uniqueConnectedResult?.[0]?.count ?? 0;
+
+  return {
+    uniqueConnected,
+    platforms: [
+      { platform: 'TikTok', connected: tiktokConnected, total, rate: total > 0 ? Math.round((tiktokConnected / total) * 1000) / 10 : 0 },
+      { platform: 'Instagram', connected: instagramConnected, total, rate: total > 0 ? Math.round((instagramConnected / total) * 1000) / 10 : 0 },
+    ],
+  };
+};
+
+// Creator Satisfaction (NPS)
+
+interface CreatorSatisfactionMonth {
+  month: string;
+  avgRating: number | null;
+  count: number;
+}
+
+interface CreatorSatisfactionResponse {
+  trend: CreatorSatisfactionMonth[];
+  overall: {
+    averageRating: number;
+    totalResponses: number;
+    distribution: { rating: number; count: number }[];
+  };
+}
+
+interface MonthlyAvgRatingRow {
+  year: number;
+  month: number;
+  avgRating: number;
+  count: number;
+}
+
+const fillSatisfactionMonthGaps = (
+  rows: MonthlyAvgRatingRow[],
+  startDate: Date,
+  endDate: Date,
+): CreatorSatisfactionMonth[] => {
+  const ratingMap = new Map<string, { avgRating: number; count: number }>();
+  for (const row of rows) {
+    ratingMap.set(`${row.year}-${row.month}`, { avgRating: Number(row.avgRating), count: row.count });
+  }
+
+  const result: CreatorSatisfactionMonth[] = [];
+  const current = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+  const end = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+
+  while (current <= end) {
+    const year = current.getFullYear();
+    const month = current.getMonth() + 1;
+    const key = `${year}-${month}`;
+    const entry = ratingMap.get(key);
+
+    result.push({
+      month: formatMonthLabel(year, month),
+      avgRating: entry ? entry.avgRating : null,
+      count: entry ? entry.count : 0,
+    });
+
+    current.setMonth(current.getMonth() + 1);
+  }
+
+  return result;
+};
+
+export const getCreatorSatisfactionData = async (
+  startDate: Date,
+  endDate: Date,
+): Promise<CreatorSatisfactionResponse> => {
+  const [monthlyRatings, overallStats, distributionRows] = await Promise.all([
+    prisma.$queryRaw<MonthlyAvgRatingRow[]>`
+      SELECT
+        EXTRACT(YEAR FROM DATE_TRUNC('month', n."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'))::int AS year,
+        EXTRACT(MONTH FROM DATE_TRUNC('month', n."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'))::int AS month,
+        ROUND(AVG(n.rating)::numeric, 1) AS "avgRating",
+        COUNT(*)::int AS count
+      FROM "NpsFeedback" n
+      INNER JOIN "User" u ON u.id = n."userId"
+      WHERE n."userType" = 'CREATOR'
+        AND u.role = 'creator' AND u.status IN ('active', 'pending')
+        AND n."createdAt" >= ${startDate}
+        AND n."createdAt" <= ${endDate}
+      GROUP BY DATE_TRUNC('month', n."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')
+      ORDER BY 1, 2
+    `,
+    prisma.$queryRaw<[{ total: number; avg: number | null }]>`
+      SELECT COUNT(*)::int AS total, ROUND(AVG(rating)::numeric, 1) AS avg
+      FROM "NpsFeedback"
+      WHERE "userType" = 'CREATOR'
+        AND "createdAt" >= ${startDate} AND "createdAt" <= ${endDate}
+    `,
+    prisma.$queryRaw<{ rating: number; count: number }[]>`
+      SELECT rating, COUNT(*)::int AS count
+      FROM "NpsFeedback"
+      WHERE "userType" = 'CREATOR'
+        AND "createdAt" >= ${startDate} AND "createdAt" <= ${endDate}
+      GROUP BY rating ORDER BY rating
+    `,
+  ]);
+
+  const trend = fillSatisfactionMonthGaps(monthlyRatings, startDate, endDate);
+
+  // Fill missing ratings (1-5) with count 0
+  const distMap = new Map<number, number>();
+  for (const row of distributionRows) distMap.set(row.rating, row.count);
+  const distribution = [1, 2, 3, 4, 5].map((rating) => ({
+    rating,
+    count: distMap.get(rating) || 0,
+  }));
+
+  const overall = {
+    averageRating: overallStats[0]?.avg != null ? Number(overallStats[0].avg) : 0,
+    totalResponses: overallStats[0]?.total ?? 0,
+    distribution,
+  };
+
+  return { trend, overall };
+};
+
+// Creator Earnings (Top 10 by paid invoices)
+
+interface CreatorEarningRow {
+  userId: string;
+  name: string;
+  photoUrl: string | null;
+  totalEarnings: number;
+  campaignCount: number;
+  creditTier: string | null;
+}
+
+interface CampaignEarningRow {
+  userId: string;
+  campaignId: string;
+  campaignName: string;
+  earnings: number;
+  campaignImages: unknown;
+  brandName: string | null;
+  invoiceIds: string[];
+  latestPaidAt: Date | null;
+  invoiceCount: number;
+}
+
+export const getCreatorEarningsData = async (startDate?: Date, endDate?: Date) => {
+  const hasDateFilter = !!startDate && !!endDate;
+
+  // Step 1: Get top 10 creators by total paid earnings
+  const topCreators = hasDateFilter
+    ? await prisma.$queryRaw<CreatorEarningRow[]>`
+        SELECT
+          i."creatorId" AS "userId",
+          u.name,
+          u."photoURL" AS "photoUrl",
+          SUM(i.amount)::float AS "totalEarnings",
+          COUNT(DISTINCT i."campaignId")::int AS "campaignCount",
+          ct.name AS "creditTier"
+        FROM "Invoice" i
+        INNER JOIN "User" u ON u.id = i."creatorId"
+        LEFT JOIN "Creator" cr ON cr."userId" = i."creatorId"
+        LEFT JOIN "CreditTier" ct ON ct.id = cr."creditTierId"
+        WHERE i.status = 'paid'
+          AND i."createdAt" >= ${startDate}
+          AND i."createdAt" <= ${endDate}
+        GROUP BY i."creatorId", u.name, u."photoURL", ct.name
+        ORDER BY "totalEarnings" DESC
+        LIMIT 10
+      `
+    : await prisma.$queryRaw<CreatorEarningRow[]>`
+        SELECT
+          i."creatorId" AS "userId",
+          u.name,
+          u."photoURL" AS "photoUrl",
+          SUM(i.amount)::float AS "totalEarnings",
+          COUNT(DISTINCT i."campaignId")::int AS "campaignCount",
+          ct.name AS "creditTier"
+        FROM "Invoice" i
+        INNER JOIN "User" u ON u.id = i."creatorId"
+        LEFT JOIN "Creator" cr ON cr."userId" = i."creatorId"
+        LEFT JOIN "CreditTier" ct ON ct.id = cr."creditTierId"
+        WHERE i.status = 'paid'
+        GROUP BY i."creatorId", u.name, u."photoURL", ct.name
+        ORDER BY "totalEarnings" DESC
+        LIMIT 10
+      `;
+
+  if (topCreators.length === 0) {
+    return { creators: [], totalPaidAmount: 0 };
+  }
+
+  const creatorIds = topCreators.map((c) => c.userId);
+
+  // Step 2: Get per-campaign breakdown for those creators
+  const campaignBreakdown = hasDateFilter
+    ? await prisma.$queryRaw<CampaignEarningRow[]>`
+        SELECT
+          i."creatorId" AS "userId",
+          i."campaignId",
+          c.name AS "campaignName",
+          SUM(i.amount)::float AS "earnings",
+          cb.images AS "campaignImages",
+          b.name AS "brandName",
+          array_agg(i.id) AS "invoiceIds",
+          MAX(i."createdAt") AS "latestPaidAt",
+          COUNT(i.id)::int AS "invoiceCount"
+        FROM "Invoice" i
+        INNER JOIN "Campaign" c ON c.id = i."campaignId"
+        LEFT JOIN "CampaignBrief" cb ON cb."campaignId" = c.id
+        LEFT JOIN "Brand" b ON b.id = c."brandId"
+        WHERE i.status = 'paid'
+          AND i."createdAt" >= ${startDate}
+          AND i."createdAt" <= ${endDate}
+          AND i."creatorId" IN (${Prisma.join(creatorIds)})
+        GROUP BY i."creatorId", i."campaignId", c.name, cb.images, b.name
+        ORDER BY "earnings" DESC
+      `
+    : await prisma.$queryRaw<CampaignEarningRow[]>`
+        SELECT
+          i."creatorId" AS "userId",
+          i."campaignId",
+          c.name AS "campaignName",
+          SUM(i.amount)::float AS "earnings",
+          cb.images AS "campaignImages",
+          b.name AS "brandName",
+          array_agg(i.id) AS "invoiceIds",
+          MAX(i."createdAt") AS "latestPaidAt",
+          COUNT(i.id)::int AS "invoiceCount"
+        FROM "Invoice" i
+        INNER JOIN "Campaign" c ON c.id = i."campaignId"
+        LEFT JOIN "CampaignBrief" cb ON cb."campaignId" = c.id
+        LEFT JOIN "Brand" b ON b.id = c."brandId"
+        WHERE i.status = 'paid'
+          AND i."creatorId" IN (${Prisma.join(creatorIds)})
+        GROUP BY i."creatorId", i."campaignId", c.name, cb.images, b.name
+        ORDER BY "earnings" DESC
+      `;
+
+  // Group campaigns by creator
+  const campaignMap = new Map<
+    string,
+    {
+      campaignId: string;
+      campaignName: string;
+      earnings: number;
+      campaignImage: string | null;
+      brandName: string | null;
+      invoiceIds: string[];
+      latestPaidAt: Date | null;
+      invoiceCount: number;
+    }[]
+  >();
+  for (const row of campaignBreakdown) {
+    if (!campaignMap.has(row.userId)) campaignMap.set(row.userId, []);
+
+    // Extract first image from campaign brief images (Json field — typically an array of URLs)
+    let campaignImage: string | null = null;
+    if (row.campaignImages) {
+      const imgs = Array.isArray(row.campaignImages) ? row.campaignImages : [];
+      if (imgs.length > 0) campaignImage = typeof imgs[0] === 'string' ? imgs[0] : null;
+    }
+
+    campaignMap.get(row.userId)!.push({
+      campaignId: row.campaignId,
+      campaignName: row.campaignName,
+      earnings: Number(row.earnings),
+      campaignImage,
+      brandName: row.brandName || null,
+      invoiceIds: row.invoiceIds || [],
+      latestPaidAt: row.latestPaidAt || null,
+      invoiceCount: row.invoiceCount || 0,
+    });
+  }
+
+  const creators = topCreators.map((c) => ({
+    userId: c.userId,
+    name: c.name,
+    photoUrl: c.photoUrl,
+    totalEarnings: Number(c.totalEarnings),
+    campaignCount: c.campaignCount,
+    creditTier: c.creditTier || null,
+    campaigns: campaignMap.get(c.userId) || [],
+  }));
+
+  const totalPaidAmount = creators.reduce((sum, c) => sum + c.totalEarnings, 0);
+
+  return { creators, totalPaidAmount };
+};
+
+// Shared demographics processing
+function processDemographics(genderData: { pronounce: string | null }[], ageData: { birthDate: Date | null }[]) {
+  const genderCounts = { Female: 0, Male: 0, Other: 0 };
+  for (const { pronounce } of genderData) {
+    const p = (pronounce || '').toLowerCase();
+    if (p === 'she/her') {
+      genderCounts.Female++;
+    } else if (p === 'he/him') {
+      genderCounts.Male++;
+    } else {
+      genderCounts.Other++;
+    }
+  }
+
+  const gender: DemographicItem[] = [
+    { label: 'Female', value: genderCounts.Female, color: '#E45DBF' },
+    { label: 'Male', value: genderCounts.Male, color: '#1340FF' },
+    { label: 'Other', value: genderCounts.Other, color: '#919EAB' },
+  ];
+
+  const ageBuckets: Record<string, number> = {
+    '<18': 0,
+    '18-25': 0,
+    '26-35': 0,
+    '36-45': 0,
+    '45+': 0,
+  };
+
+  for (const { birthDate } of ageData) {
+    if (!birthDate) continue;
+    const age = calculateAge(birthDate);
+    if (age < 18) ageBuckets['<18']++;
+    else if (age <= 25) ageBuckets['18-25']++;
+    else if (age <= 35) ageBuckets['26-35']++;
+    else if (age <= 45) ageBuckets['36-45']++;
+    else ageBuckets['45+']++;
+  }
+
+  const ageColors: Record<string, string> = {
+    '<18': '#FFAB00',
+    '18-25': '#919EAB',
+    '26-35': '#00A76F',
+    '36-45': '#00B8D9',
+    '45+': '#FF5630',
+  };
+
+  const ageGroups: DemographicItem[] = Object.entries(ageBuckets).map(([label, value]) => ({
+    label,
+    value,
+    color: ageColors[label],
+  }));
+
+  return { gender, ageGroups };
+}
+
+// Avg Agreement Response Time
+
+interface AvgAgreementResponseMonth {
+  month: string;
+  avgHours: number | null;
+}
+
+interface AvgAgreementResponseDay {
+  date: string;
+  isoDate: string;
+  avgHours: number | null;
+}
+
+interface MonthlyAvgHoursRow {
+  year: number;
+  month: number;
+  avghours: number;
+}
+
+interface DailyAvgHoursRow {
+  date: string;
+  avghours: number;
+}
+
+interface AvgAgreementResponseResponse {
+  granularity: 'daily' | 'monthly';
+  avgAgreementResponse: AvgAgreementResponseMonth[] | AvgAgreementResponseDay[];
+  periodComparison?: {
+    currentAvg: number | null;
+    previousAvg: number | null;
+    change: number | null;
+  };
+}
+
+const fillAgreementResponseMonthGaps = (
+  rows: MonthlyAvgHoursRow[],
+  startDate: Date,
+  endDate: Date,
+): AvgAgreementResponseMonth[] => {
+  const avgMap = new Map<string, number>();
+  for (const row of rows) {
+    avgMap.set(`${row.year}-${row.month}`, row.avghours);
+  }
+
+  const result: AvgAgreementResponseMonth[] = [];
+  const current = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+  const end = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+
+  while (current <= end) {
+    const year = current.getFullYear();
+    const month = current.getMonth() + 1;
+    const key = `${year}-${month}`;
+
+    const avgHours = avgMap.has(key) ? avgMap.get(key)! : null;
+
+    result.push({
+      month: formatMonthLabel(year, month),
+      avgHours,
+    });
+
+    current.setMonth(current.getMonth() + 1);
+  }
+
+  return result;
+};
+
+const fillAgreementResponseDayGaps = (
+  rows: DailyAvgHoursRow[],
+  startDate: Date,
+  endDate: Date,
+): AvgAgreementResponseDay[] => {
+  const avgMap = new Map<string, number>();
+  for (const row of rows) {
+    avgMap.set(row.date, row.avghours);
+  }
+
+  const result: AvgAgreementResponseDay[] = [];
+  const current = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+  const end = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
+
+  while (current <= end) {
+    const key = toIsoDate(current);
+    const avgHours = avgMap.has(key) ? avgMap.get(key)! : null;
+
+    result.push({
+      date: formatDayLabel(current),
+      isoDate: key,
+      avgHours,
+    });
+
+    current.setDate(current.getDate() + 1);
+  }
+
+  return result;
+};
+
+export const getAvgAgreementResponseData = async (
+  startDate: Date,
+  endDate: Date,
+  granularity: 'daily' | 'monthly' = 'monthly',
+): Promise<AvgAgreementResponseResponse> => {
+  if (granularity === 'daily') {
+    const dailyAvgs = await prisma.$queryRaw<DailyAvgHoursRow[]>`
+      SELECT
+        TO_CHAR(DATE_TRUNC('day', s."submissionDate" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'), 'YYYY-MM-DD') AS date,
+        ROUND(AVG(EXTRACT(EPOCH FROM (s."submissionDate" - ca."completedAt")) / 3600)::numeric, 2) AS "avghours"
+      FROM "CreatorAgreement" ca
+      INNER JOIN "Submission" s ON s."userId" = ca."userId" AND s."campaignId" = ca."campaignId"
+      INNER JOIN "SubmissionType" st ON st.id = s."submissionTypeId"
+      WHERE ca."isSent" = true
+        AND ca."completedAt" IS NOT NULL
+        AND st.type = 'AGREEMENT_FORM'
+        AND s."submissionDate" IS NOT NULL
+        AND EXTRACT(EPOCH FROM (s."submissionDate" - ca."completedAt")) > 0
+        AND s."submissionDate" >= (${startDate} AT TIME ZONE 'UTC')
+        AND s."submissionDate" <= (${endDate} AT TIME ZONE 'UTC')
+      GROUP BY DATE_TRUNC('day', s."submissionDate" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')
+      ORDER BY 1
+    `;
+
+    const avgAgreementResponse = fillAgreementResponseDayGaps(dailyAvgs, startDate, endDate);
+
+    // Period comparison: overall average of current vs previous period of same length
+    const periodMs = endDate.getTime() - startDate.getTime();
+    const prevEnd = new Date(startDate.getTime() - 1);
+    const prevStart = new Date(prevEnd.getTime() - periodMs);
+
+    const [currentAvgResult, previousAvgResult] = await Promise.all([
+      prisma.$queryRaw<{ avghours: number | null }[]>`
+        SELECT ROUND(AVG(EXTRACT(EPOCH FROM (s."submissionDate" - ca."completedAt")) / 3600)::numeric, 2) AS "avghours"
+        FROM "CreatorAgreement" ca
+        INNER JOIN "Submission" s ON s."userId" = ca."userId" AND s."campaignId" = ca."campaignId"
+        INNER JOIN "SubmissionType" st ON st.id = s."submissionTypeId"
+        WHERE ca."isSent" = true
+          AND ca."completedAt" IS NOT NULL
+          AND st.type = 'AGREEMENT_FORM'
+          AND s."submissionDate" IS NOT NULL
+          AND EXTRACT(EPOCH FROM (s."submissionDate" - ca."completedAt")) > 0
+          AND s."submissionDate" >= (${startDate} AT TIME ZONE 'UTC')
+          AND s."submissionDate" <= (${endDate} AT TIME ZONE 'UTC')
+      `,
+      prisma.$queryRaw<{ avghours: number | null }[]>`
+        SELECT ROUND(AVG(EXTRACT(EPOCH FROM (s."submissionDate" - ca."completedAt")) / 3600)::numeric, 2) AS "avghours"
+        FROM "CreatorAgreement" ca
+        INNER JOIN "Submission" s ON s."userId" = ca."userId" AND s."campaignId" = ca."campaignId"
+        INNER JOIN "SubmissionType" st ON st.id = s."submissionTypeId"
+        WHERE ca."isSent" = true
+          AND ca."completedAt" IS NOT NULL
+          AND st.type = 'AGREEMENT_FORM'
+          AND s."submissionDate" IS NOT NULL
+          AND EXTRACT(EPOCH FROM (s."submissionDate" - ca."completedAt")) > 0
+          AND s."submissionDate" >= (${prevStart} AT TIME ZONE 'UTC')
+          AND s."submissionDate" <= (${prevEnd} AT TIME ZONE 'UTC')
+      `,
+    ]);
+
+    const currentAvg = currentAvgResult[0]?.avghours != null ? Number(currentAvgResult[0].avghours) : null;
+    const previousAvg = previousAvgResult[0]?.avghours != null ? Number(previousAvgResult[0].avghours) : null;
+    const change =
+      currentAvg != null && previousAvg != null ? Math.round((currentAvg - previousAvg) * 10) / 10 : null;
+
+    return {
+      granularity: 'daily',
+      avgAgreementResponse,
+      periodComparison: { currentAvg, previousAvg, change },
+    };
+  }
+
+  // --- Monthly granularity (default) ---
+  const monthlyAvgs = await prisma.$queryRaw<MonthlyAvgHoursRow[]>`
+    SELECT
+      EXTRACT(YEAR FROM DATE_TRUNC('month', s."submissionDate" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'))::int AS year,
+      EXTRACT(MONTH FROM DATE_TRUNC('month', s."submissionDate" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'))::int AS month,
+      ROUND(AVG(EXTRACT(EPOCH FROM (s."submissionDate" - ca."completedAt")) / 3600)::numeric, 2) AS "avghours"
+    FROM "CreatorAgreement" ca
+    INNER JOIN "Submission" s ON s."userId" = ca."userId" AND s."campaignId" = ca."campaignId"
+    INNER JOIN "SubmissionType" st ON st.id = s."submissionTypeId"
+    WHERE ca."isSent" = true
+      AND ca."completedAt" IS NOT NULL
+      AND st.type = 'AGREEMENT_FORM'
+      AND s."submissionDate" IS NOT NULL
+      AND EXTRACT(EPOCH FROM (s."submissionDate" - ca."completedAt")) > 0
+      AND s."submissionDate" >= (${startDate} AT TIME ZONE 'UTC')
+      AND s."submissionDate" <= (${endDate} AT TIME ZONE 'UTC')
+    GROUP BY DATE_TRUNC('month', s."submissionDate" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')
+    ORDER BY 1, 2
+  `;
+
+  const avgAgreementResponse = fillAgreementResponseMonthGaps(monthlyAvgs, startDate, endDate);
+
+  return {
+    granularity: 'monthly',
+    avgAgreementResponse,
+  };
+};
+
+// Avg Agreement Response Time — Drill-down details for a period
+
+interface AgreementResponseDetailRow {
+  name: string;
+  avatar: string | null;
+  campaign: string;
+  responseHours: number;
+}
+
+export const getAvgAgreementResponseDetails = async (startDate: Date, endDate: Date) => {
+  const rows = await prisma.$queryRaw<AgreementResponseDetailRow[]>`
+    SELECT
+      u.name,
+      u."photoURL" AS avatar,
+      cam.name AS campaign,
+      ROUND(EXTRACT(EPOCH FROM (s."submissionDate" - ca."completedAt")) / 3600::numeric, 2) AS "responseHours"
+    FROM "CreatorAgreement" ca
+    INNER JOIN "Submission" s ON s."userId" = ca."userId" AND s."campaignId" = ca."campaignId"
+    INNER JOIN "SubmissionType" st ON st.id = s."submissionTypeId"
+    INNER JOIN "User" u ON u.id = ca."userId"
+    INNER JOIN "Campaign" cam ON cam.id = ca."campaignId"
+    WHERE ca."isSent" = true
+      AND ca."completedAt" IS NOT NULL
+      AND st.type = 'AGREEMENT_FORM'
+      AND s."submissionDate" IS NOT NULL
+      AND EXTRACT(EPOCH FROM (s."submissionDate" - ca."completedAt")) > 0
+      AND (s."submissionDate" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')::date >= ${startDate}::date
+      AND (s."submissionDate" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')::date <= ${endDate}::date
+    ORDER BY "responseHours" ASC
+  `;
+
+  const mapped = rows.map((r) => ({
+    ...r,
+    responseHours: Number(r.responseHours),
+  }));
+
+  // Compute average in SQL to match chart endpoint (avoids JS vs PostgreSQL rounding mismatch)
+  const avgResult = await prisma.$queryRaw<{ avghours: number | null }[]>`
+    SELECT ROUND(AVG(EXTRACT(EPOCH FROM (s."submissionDate" - ca."completedAt")) / 3600)::numeric, 2) AS "avghours"
+    FROM "CreatorAgreement" ca
+    INNER JOIN "Submission" s ON s."userId" = ca."userId" AND s."campaignId" = ca."campaignId"
+    INNER JOIN "SubmissionType" st ON st.id = s."submissionTypeId"
+    WHERE ca."isSent" = true
+      AND ca."completedAt" IS NOT NULL
+      AND st.type = 'AGREEMENT_FORM'
+      AND s."submissionDate" IS NOT NULL
+      AND EXTRACT(EPOCH FROM (s."submissionDate" - ca."completedAt")) > 0
+      AND (s."submissionDate" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')::date >= ${startDate}::date
+      AND (s."submissionDate" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')::date <= ${endDate}::date
+  `;
+
+  const avg = avgResult[0]?.avghours != null ? Number(avgResult[0].avghours) : null;
+
+  const fastest = mapped.length > 0
+    ? { name: mapped[0].name, avatar: mapped[0].avatar, time: mapped[0].responseHours, campaign: mapped[0].campaign }
+    : null;
+
+  const slowest = mapped.length > 1
+    ? { name: mapped[mapped.length - 1].name, avatar: mapped[mapped.length - 1].avatar, time: mapped[mapped.length - 1].responseHours, campaign: mapped[mapped.length - 1].campaign }
+    : mapped.length === 1
+      ? fastest
+      : null;
+
+  return { avg, count: mapped.length, fastest, slowest };
+}
+
+// Avg Time to 1st Accepted Campaign
+
+interface AvgFirstCampaignMonth {
+  month: string;
+  avgHours: number | null;
+}
+
+interface AvgFirstCampaignDay {
+  date: string;
+  isoDate: string;
+  avgHours: number | null;
+}
+
+interface AvgFirstCampaignResponse {
+  granularity: 'daily' | 'monthly';
+  avgFirstCampaign: AvgFirstCampaignMonth[] | AvgFirstCampaignDay[];
+  periodComparison?: { currentAvg: number | null; previousAvg: number | null; change: number | null };
+}
+
+const fillFirstCampaignMonthGaps = (
+  rows: MonthlyAvgHoursRow[],
+  startDate: Date,
+  endDate: Date,
+): AvgFirstCampaignMonth[] => {
+  const avgMap = new Map<string, number>();
+  for (const row of rows) {
+    avgMap.set(`${row.year}-${row.month}`, row.avghours);
+  }
+
+  const result: AvgFirstCampaignMonth[] = [];
+  const current = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+  const end = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+
+  while (current <= end) {
+    const year = current.getFullYear();
+    const month = current.getMonth() + 1;
+    const key = `${year}-${month}`;
+
+    const avgHours = avgMap.has(key) ? avgMap.get(key)! : null;
+
+    result.push({
+      month: formatMonthLabel(year, month),
+      avgHours,
+    });
+
+    current.setMonth(current.getMonth() + 1);
+  }
+
+  return result;
+};
+
+const fillFirstCampaignDayGaps = (
+  rows: DailyAvgHoursRow[],
+  startDate: Date,
+  endDate: Date,
+): AvgFirstCampaignDay[] => {
+  const avgMap = new Map<string, number>();
+  for (const row of rows) {
+    avgMap.set(row.date, row.avghours);
+  }
+
+  const result: AvgFirstCampaignDay[] = [];
+  const current = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+  const end = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
+
+  while (current <= end) {
+    const key = toIsoDate(current);
+    const avgHours = avgMap.has(key) ? avgMap.get(key)! : null;
+
+    result.push({
+      date: formatDayLabel(current),
+      isoDate: key,
+      avgHours,
+    });
+
+    current.setDate(current.getDate() + 1);
+  }
+
+  return result;
+};
+
+export const getAvgFirstCampaignData = async (
+  startDate: Date,
+  endDate: Date,
+  granularity: 'daily' | 'monthly' = 'monthly',
+): Promise<AvgFirstCampaignResponse> => {
+  if (granularity === 'daily') {
+    const dailyAvgs = await prisma.$queryRaw<DailyAvgHoursRow[]>`
+      SELECT
+        TO_CHAR(DATE_TRUNC('day', fc.accepted_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'), 'YYYY-MM-DD') AS date,
+        ROUND(AVG(EXTRACT(EPOCH FROM (fc.accepted_at - fc.pitched_at)) / 3600)::numeric, 2) AS "avghours"
+      FROM (
+        SELECT
+          slc."userId",
+          slc."campaignId",
+          slc."shortlisted_date" AS accepted_at,
+          p."createdAt" AS pitched_at
+        FROM "ShortListedCreator" slc
+        INNER JOIN "Pitch" p ON p."userId" = slc."userId" AND p."campaignId" = slc."campaignId" AND p.type != 'shortlisted'
+        WHERE slc."shortlisted_date" IS NOT NULL
+          AND slc.id = (
+            SELECT s2.id FROM "ShortListedCreator" s2
+            WHERE s2."userId" = slc."userId"
+            ORDER BY s2."shortlisted_date" ASC
+            LIMIT 1
+          )
+      ) fc
+      WHERE fc.accepted_at >= (${startDate} AT TIME ZONE 'UTC')
+        AND fc.accepted_at <= (${endDate} AT TIME ZONE 'UTC')
+        AND EXTRACT(EPOCH FROM (fc.accepted_at - fc.pitched_at)) > 0
+      GROUP BY DATE_TRUNC('day', fc.accepted_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')
+      ORDER BY 1
+    `;
+
+    const avgFirstCampaign = fillFirstCampaignDayGaps(dailyAvgs, startDate, endDate);
+
+    // Period comparison
+    const periodMs = endDate.getTime() - startDate.getTime();
+    const prevEnd = new Date(startDate.getTime() - 1);
+    const prevStart = new Date(prevEnd.getTime() - periodMs);
+
+    const [currentAvgResult, previousAvgResult] = await Promise.all([
+      prisma.$queryRaw<{ avghours: number | null }[]>`
+        SELECT ROUND(AVG(EXTRACT(EPOCH FROM (fc.accepted_at - fc.pitched_at)) / 3600)::numeric, 2) AS "avghours"
+        FROM (
+          SELECT
+            slc."userId",
+            slc."shortlisted_date" AS accepted_at,
+            p."createdAt" AS pitched_at
+          FROM "ShortListedCreator" slc
+          INNER JOIN "Pitch" p ON p."userId" = slc."userId" AND p."campaignId" = slc."campaignId" AND p.type != 'shortlisted'
+          WHERE slc."shortlisted_date" IS NOT NULL
+            AND slc.id = (
+              SELECT s2.id FROM "ShortListedCreator" s2
+              WHERE s2."userId" = slc."userId"
+              ORDER BY s2."shortlisted_date" ASC
+              LIMIT 1
+            )
+        ) fc
+        WHERE fc.accepted_at >= (${startDate} AT TIME ZONE 'UTC')
+          AND fc.accepted_at <= (${endDate} AT TIME ZONE 'UTC')
+          AND EXTRACT(EPOCH FROM (fc.accepted_at - fc.pitched_at)) > 0
+      `,
+      prisma.$queryRaw<{ avghours: number | null }[]>`
+        SELECT ROUND(AVG(EXTRACT(EPOCH FROM (fc.accepted_at - fc.pitched_at)) / 3600)::numeric, 2) AS "avghours"
+        FROM (
+          SELECT
+            slc."userId",
+            slc."shortlisted_date" AS accepted_at,
+            p."createdAt" AS pitched_at
+          FROM "ShortListedCreator" slc
+          INNER JOIN "Pitch" p ON p."userId" = slc."userId" AND p."campaignId" = slc."campaignId" AND p.type != 'shortlisted'
+          WHERE slc."shortlisted_date" IS NOT NULL
+            AND slc.id = (
+              SELECT s2.id FROM "ShortListedCreator" s2
+              WHERE s2."userId" = slc."userId"
+              ORDER BY s2."shortlisted_date" ASC
+              LIMIT 1
+            )
+        ) fc
+        WHERE fc.accepted_at >= (${prevStart} AT TIME ZONE 'UTC')
+          AND fc.accepted_at <= (${prevEnd} AT TIME ZONE 'UTC')
+          AND EXTRACT(EPOCH FROM (fc.accepted_at - fc.pitched_at)) > 0
+      `,
+    ]);
+
+    const currentAvg = currentAvgResult[0]?.avghours != null ? Number(currentAvgResult[0].avghours) : null;
+    const previousAvg = previousAvgResult[0]?.avghours != null ? Number(previousAvgResult[0].avghours) : null;
+    const change =
+      currentAvg != null && previousAvg != null ? Math.round((currentAvg - previousAvg) * 10) / 10 : null;
+
+    return {
+      granularity: 'daily',
+      avgFirstCampaign,
+      periodComparison: { currentAvg, previousAvg, change },
+    };
+  }
+
+  // --- Monthly granularity (default) ---
+  const monthlyAvgs = await prisma.$queryRaw<MonthlyAvgHoursRow[]>`
+    SELECT
+      EXTRACT(YEAR FROM DATE_TRUNC('month', fc.accepted_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'))::int AS year,
+      EXTRACT(MONTH FROM DATE_TRUNC('month', fc.accepted_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'))::int AS month,
+      ROUND(AVG(EXTRACT(EPOCH FROM (fc.accepted_at - fc.pitched_at)) / 3600)::numeric, 2) AS "avghours"
+    FROM (
+      SELECT
+        slc."userId",
+        slc."shortlisted_date" AS accepted_at,
+        p."createdAt" AS pitched_at
+      FROM "ShortListedCreator" slc
+      INNER JOIN "Pitch" p ON p."userId" = slc."userId" AND p."campaignId" = slc."campaignId" AND p.type != 'shortlisted'
+      WHERE slc."shortlisted_date" IS NOT NULL
+        AND slc.id = (
+          SELECT s2.id FROM "ShortListedCreator" s2
+          WHERE s2."userId" = slc."userId"
+          ORDER BY s2."shortlisted_date" ASC
+          LIMIT 1
+        )
+    ) fc
+    WHERE fc.accepted_at >= (${startDate} AT TIME ZONE 'UTC')
+      AND fc.accepted_at <= (${endDate} AT TIME ZONE 'UTC')
+      AND EXTRACT(EPOCH FROM (fc.accepted_at - fc.pitched_at)) > 0
+    GROUP BY DATE_TRUNC('month', fc.accepted_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')
+    ORDER BY 1, 2
+  `;
+
+  const avgFirstCampaign = fillFirstCampaignMonthGaps(monthlyAvgs, startDate, endDate);
+
+  return {
+    granularity: 'monthly',
+    avgFirstCampaign,
+  };
+};
+
+// Avg Time to 1st Accepted Campaign — Drill-down details for a period
+
+interface FirstCampaignDetailRow {
+  name: string;
+  avatar: string | null;
+  campaign: string;
+  responseHours: number;
+}
+
+export const getAvgFirstCampaignDetails = async (startDate: Date, endDate: Date) => {
+  const rows = await prisma.$queryRaw<FirstCampaignDetailRow[]>`
+    SELECT
+      u.name,
+      u."photoURL" AS avatar,
+      cam.name AS campaign,
+      ROUND(EXTRACT(EPOCH FROM (fc.accepted_at - fc.pitched_at)) / 3600::numeric, 2) AS "responseHours"
+    FROM (
+      SELECT
+        slc."userId",
+        slc."campaignId",
+        slc."shortlisted_date" AS accepted_at,
+        p."createdAt" AS pitched_at
+      FROM "ShortListedCreator" slc
+      INNER JOIN "Pitch" p ON p."userId" = slc."userId" AND p."campaignId" = slc."campaignId" AND p.type != 'shortlisted'
+      WHERE slc."shortlisted_date" IS NOT NULL
+        AND slc.id = (
+          SELECT s2.id FROM "ShortListedCreator" s2
+          WHERE s2."userId" = slc."userId"
+          ORDER BY s2."shortlisted_date" ASC
+          LIMIT 1
+        )
+    ) fc
+    INNER JOIN "User" u ON u.id = fc."userId"
+    INNER JOIN "Campaign" cam ON cam.id = fc."campaignId"
+    WHERE (fc.accepted_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')::date >= ${startDate}::date
+      AND (fc.accepted_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')::date <= ${endDate}::date
+      AND EXTRACT(EPOCH FROM (fc.accepted_at - fc.pitched_at)) > 0
+    ORDER BY "responseHours" ASC
+  `;
+
+  const mapped = rows.map((r) => ({
+    ...r,
+    responseHours: Number(r.responseHours),
+  }));
+
+  // Compute average in SQL to match chart endpoint (avoids JS vs PostgreSQL rounding mismatch)
+  const avgResult = await prisma.$queryRaw<{ avghours: number | null }[]>`
+    SELECT ROUND(AVG(EXTRACT(EPOCH FROM (fc.accepted_at - fc.pitched_at)) / 3600)::numeric, 2) AS "avghours"
+    FROM (
+      SELECT
+        slc."userId",
+        slc."campaignId",
+        slc."shortlisted_date" AS accepted_at,
+        p."createdAt" AS pitched_at
+      FROM "ShortListedCreator" slc
+      INNER JOIN "Pitch" p ON p."userId" = slc."userId" AND p."campaignId" = slc."campaignId" AND p.type != 'shortlisted'
+      WHERE slc."shortlisted_date" IS NOT NULL
+        AND slc.id = (
+          SELECT s2.id FROM "ShortListedCreator" s2
+          WHERE s2."userId" = slc."userId"
+          ORDER BY s2."shortlisted_date" ASC
+          LIMIT 1
+        )
+    ) fc
+    WHERE (fc.accepted_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')::date >= ${startDate}::date
+      AND (fc.accepted_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')::date <= ${endDate}::date
+      AND EXTRACT(EPOCH FROM (fc.accepted_at - fc.pitched_at)) > 0
+  `;
+
+  const avg = avgResult[0]?.avghours != null ? Number(avgResult[0].avghours) : null;
+
+  const fastest = mapped.length > 0
+    ? { name: mapped[0].name, avatar: mapped[0].avatar, time: mapped[0].responseHours, campaign: mapped[0].campaign }
+    : null;
+
+  const slowest = mapped.length > 1
+    ? { name: mapped[mapped.length - 1].name, avatar: mapped[mapped.length - 1].avatar, time: mapped[mapped.length - 1].responseHours, campaign: mapped[mapped.length - 1].campaign }
+    : mapped.length === 1
+      ? fastest
+      : null;
+
+  return { avg, count: mapped.length, fastest, slowest };
+}
+
+// Avg Submission Response Time
+// Measures time from agreement completion to first video draft submission.
+
+interface AvgSubmissionResponseMonth {
+  month: string;
+  avgHours: number | null;
+}
+
+interface AvgSubmissionResponseDay {
+  date: string;
+  isoDate: string;
+  avgHours: number | null;
+}
+
+interface AvgSubmissionResponseResponse {
+  granularity: 'daily' | 'monthly';
+  avgSubmissionResponse: AvgSubmissionResponseMonth[] | AvgSubmissionResponseDay[];
+  periodComparison?: { currentAvg: number | null; previousAvg: number | null; change: number | null };
+}
+
+const fillSubmissionResponseMonthGaps = (
+  rows: MonthlyAvgHoursRow[],
+  startDate: Date,
+  endDate: Date,
+): AvgSubmissionResponseMonth[] => {
+  const avgMap = new Map<string, number>();
+  for (const row of rows) {
+    avgMap.set(`${row.year}-${row.month}`, row.avghours);
+  }
+
+  const result: AvgSubmissionResponseMonth[] = [];
+  const current = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+  const end = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+
+  while (current <= end) {
+    const year = current.getFullYear();
+    const month = current.getMonth() + 1;
+    const key = `${year}-${month}`;
+
+    const avgHours = avgMap.has(key) ? avgMap.get(key)! : null;
+
+    result.push({
+      month: formatMonthLabel(year, month),
+      avgHours,
+    });
+
+    current.setMonth(current.getMonth() + 1);
+  }
+
+  return result;
+};
+
+const fillSubmissionResponseDayGaps = (
+  rows: DailyAvgHoursRow[],
+  startDate: Date,
+  endDate: Date,
+): AvgSubmissionResponseDay[] => {
+  const avgMap = new Map<string, number>();
+  for (const row of rows) {
+    avgMap.set(row.date, row.avghours);
+  }
+
+  const result: AvgSubmissionResponseDay[] = [];
+  const current = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+  const end = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
+
+  while (current <= end) {
+    const key = toIsoDate(current);
+    const avgHours = avgMap.has(key) ? avgMap.get(key)! : null;
+
+    result.push({
+      date: formatDayLabel(current),
+      isoDate: key,
+      avgHours,
+    });
+
+    current.setDate(current.getDate() + 1);
+  }
+
+  return result;
+};
+
+// Reusable SQL fragment: UNION ALL combining v2/v3 FIRST_DRAFT + v4 VIDEO (contentOrder=1)
+const SUBMISSION_RESPONSE_CTE = Prisma.sql`
+  SELECT
+    ca."userId",
+    ca."campaignId",
+    ca."completedAt" AS agreement_at,
+    s."submissionDate" AS submitted_at
+  FROM "CreatorAgreement" ca
+  INNER JOIN "Submission" s ON s."userId" = ca."userId" AND s."campaignId" = ca."campaignId"
+  INNER JOIN "SubmissionType" st ON st.id = s."submissionTypeId"
+  WHERE ca."isSent" = true
+    AND ca."completedAt" IS NOT NULL
+    AND st.type = 'FIRST_DRAFT'
+    AND s."submissionDate" IS NOT NULL
+    AND EXTRACT(EPOCH FROM (s."submissionDate" - ca."completedAt")) > 0
+
+  UNION ALL
+
+  SELECT
+    ca."userId",
+    ca."campaignId",
+    ca."completedAt" AS agreement_at,
+    s."submissionDate" AS submitted_at
+  FROM "CreatorAgreement" ca
+  INNER JOIN "Submission" s ON s."userId" = ca."userId" AND s."campaignId" = ca."campaignId"
+  INNER JOIN "SubmissionType" st ON st.id = s."submissionTypeId"
+  WHERE ca."isSent" = true
+    AND ca."completedAt" IS NOT NULL
+    AND st.type = 'VIDEO'
+    AND s."submissionVersion" = 'v4'
+    AND s."contentOrder" = 1
+    AND s."submissionDate" IS NOT NULL
+    AND EXTRACT(EPOCH FROM (s."submissionDate" - ca."completedAt")) > 0
+`;
+
+export const getAvgSubmissionResponseData = async (
+  startDate: Date,
+  endDate: Date,
+  granularity: 'daily' | 'monthly' = 'monthly',
+): Promise<AvgSubmissionResponseResponse> => {
+  if (granularity === 'daily') {
+    const dailyAvgs = await prisma.$queryRaw<DailyAvgHoursRow[]>`
+      SELECT
+        TO_CHAR(DATE_TRUNC('day', sr.submitted_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'), 'YYYY-MM-DD') AS date,
+        ROUND(AVG(EXTRACT(EPOCH FROM (sr.submitted_at - sr.agreement_at)) / 3600)::numeric, 2) AS "avghours"
+      FROM (${SUBMISSION_RESPONSE_CTE}) sr
+      WHERE sr.submitted_at >= (${startDate} AT TIME ZONE 'UTC')
+        AND sr.submitted_at <= (${endDate} AT TIME ZONE 'UTC')
+      GROUP BY DATE_TRUNC('day', sr.submitted_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')
+      ORDER BY 1
+    `;
+
+    const avgSubmissionResponse = fillSubmissionResponseDayGaps(dailyAvgs, startDate, endDate);
+
+    // Period comparison
+    const periodMs = endDate.getTime() - startDate.getTime();
+    const prevEnd = new Date(startDate.getTime() - 1);
+    const prevStart = new Date(prevEnd.getTime() - periodMs);
+
+    const [currentAvgResult, previousAvgResult] = await Promise.all([
+      prisma.$queryRaw<{ avghours: number | null }[]>`
+        SELECT ROUND(AVG(EXTRACT(EPOCH FROM (sr.submitted_at - sr.agreement_at)) / 3600)::numeric, 2) AS "avghours"
+        FROM (${SUBMISSION_RESPONSE_CTE}) sr
+        WHERE sr.submitted_at >= (${startDate} AT TIME ZONE 'UTC')
+          AND sr.submitted_at <= (${endDate} AT TIME ZONE 'UTC')
+      `,
+      prisma.$queryRaw<{ avghours: number | null }[]>`
+        SELECT ROUND(AVG(EXTRACT(EPOCH FROM (sr.submitted_at - sr.agreement_at)) / 3600)::numeric, 2) AS "avghours"
+        FROM (${SUBMISSION_RESPONSE_CTE}) sr
+        WHERE sr.submitted_at >= (${prevStart} AT TIME ZONE 'UTC')
+          AND sr.submitted_at <= (${prevEnd} AT TIME ZONE 'UTC')
+      `,
+    ]);
+
+    const currentAvg = currentAvgResult[0]?.avghours != null ? Number(currentAvgResult[0].avghours) : null;
+    const previousAvg = previousAvgResult[0]?.avghours != null ? Number(previousAvgResult[0].avghours) : null;
+    const change =
+      currentAvg != null && previousAvg != null ? Math.round((currentAvg - previousAvg) * 10) / 10 : null;
+
+    return {
+      granularity: 'daily',
+      avgSubmissionResponse,
+      periodComparison: { currentAvg, previousAvg, change },
+    };
+  }
+
+  // --- Monthly granularity (default) ---
+  const monthlyAvgs = await prisma.$queryRaw<MonthlyAvgHoursRow[]>`
+    SELECT
+      EXTRACT(YEAR FROM DATE_TRUNC('month', sr.submitted_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'))::int AS year,
+      EXTRACT(MONTH FROM DATE_TRUNC('month', sr.submitted_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'))::int AS month,
+      ROUND(AVG(EXTRACT(EPOCH FROM (sr.submitted_at - sr.agreement_at)) / 3600)::numeric, 2) AS "avghours"
+    FROM (${SUBMISSION_RESPONSE_CTE}) sr
+    WHERE sr.submitted_at >= (${startDate} AT TIME ZONE 'UTC')
+      AND sr.submitted_at <= (${endDate} AT TIME ZONE 'UTC')
+    GROUP BY DATE_TRUNC('month', sr.submitted_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')
+    ORDER BY 1, 2
+  `;
+
+  const avgSubmissionResponse = fillSubmissionResponseMonthGaps(monthlyAvgs, startDate, endDate);
+
+  return {
+    granularity: 'monthly',
+    avgSubmissionResponse,
+  };
+};
+
+// Avg Submission Response Time — Drill-down details for a period
+
+interface SubmissionResponseDetailRow {
+  name: string;
+  avatar: string | null;
+  campaign: string;
+  responseHours: number;
+}
+
+export const getAvgSubmissionResponseDetails = async (startDate: Date, endDate: Date) => {
+  const rows = await prisma.$queryRaw<SubmissionResponseDetailRow[]>`
+    SELECT
+      u.name,
+      u."photoURL" AS avatar,
+      cam.name AS campaign,
+      ROUND(EXTRACT(EPOCH FROM (sr.submitted_at - sr.agreement_at)) / 3600::numeric, 2) AS "responseHours"
+    FROM (${SUBMISSION_RESPONSE_CTE}) sr
+    INNER JOIN "User" u ON u.id = sr."userId"
+    INNER JOIN "Campaign" cam ON cam.id = sr."campaignId"
+    WHERE (sr.submitted_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')::date >= ${startDate}::date
+      AND (sr.submitted_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')::date <= ${endDate}::date
+    ORDER BY "responseHours" ASC
+  `;
+
+  const mapped = rows.map((r) => ({
+    ...r,
+    responseHours: Number(r.responseHours),
+  }));
+
+  // Compute average in SQL to match chart endpoint (avoids JS vs PostgreSQL rounding mismatch)
+  const avgResult = await prisma.$queryRaw<{ avghours: number | null }[]>`
+    SELECT ROUND(AVG(EXTRACT(EPOCH FROM (sr.submitted_at - sr.agreement_at)) / 3600)::numeric, 2) AS "avghours"
+    FROM (${SUBMISSION_RESPONSE_CTE}) sr
+    WHERE (sr.submitted_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')::date >= ${startDate}::date
+      AND (sr.submitted_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')::date <= ${endDate}::date
+  `;
+
+  const avg = avgResult[0]?.avghours != null ? Number(avgResult[0].avghours) : null;
+
+  const fastest = mapped.length > 0
+    ? { name: mapped[0].name, avatar: mapped[0].avatar, time: mapped[0].responseHours, campaign: mapped[0].campaign }
+    : null;
+
+  const slowest = mapped.length > 1
+    ? { name: mapped[mapped.length - 1].name, avatar: mapped[mapped.length - 1].avatar, time: mapped[mapped.length - 1].responseHours, campaign: mapped[mapped.length - 1].campaign }
+    : mapped.length === 1
+      ? fastest
+      : null;
+
+  return { avg, count: mapped.length, fastest, slowest };
+};

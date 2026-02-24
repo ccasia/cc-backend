@@ -247,6 +247,7 @@ model Creator {
   userId                 String      @unique
   socialMediaData        Json?
   isFormCompleted        Boolean?
+  formCompletedAt        DateTime?
   socialMediaUpdateCount Json?
   allowToChange          Boolean     @default(false)
   industries             Json?
@@ -277,6 +278,8 @@ model Creator {
   creditTierId        String?
   creditTier          CreditTier? @relation("UserCurrentTier", fields: [creditTierId], references: [id])
   tierUpdatedAt       DateTime? // Last time tier was calculated
+
+  @@index([formCompletedAt])
 }
 
 // model TiktokUser {
