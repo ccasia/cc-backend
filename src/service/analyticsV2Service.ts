@@ -1049,6 +1049,116 @@ export const getMediaKitActivationData = async (startDate?: Date, endDate?: Date
   };
 };
 
+// Creator Satisfaction (NPS)
+
+interface CreatorSatisfactionMonth {
+  month: string;
+  avgRating: number | null;
+  count: number;
+}
+
+interface CreatorSatisfactionResponse {
+  trend: CreatorSatisfactionMonth[];
+  overall: {
+    averageRating: number;
+    totalResponses: number;
+    distribution: { rating: number; count: number }[];
+  };
+}
+
+interface MonthlyAvgRatingRow {
+  year: number;
+  month: number;
+  avgRating: number;
+  count: number;
+}
+
+const fillSatisfactionMonthGaps = (
+  rows: MonthlyAvgRatingRow[],
+  startDate: Date,
+  endDate: Date,
+): CreatorSatisfactionMonth[] => {
+  const ratingMap = new Map<string, { avgRating: number; count: number }>();
+  for (const row of rows) {
+    ratingMap.set(`${row.year}-${row.month}`, { avgRating: Number(row.avgRating), count: row.count });
+  }
+
+  const result: CreatorSatisfactionMonth[] = [];
+  const current = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+  const end = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+
+  while (current <= end) {
+    const year = current.getFullYear();
+    const month = current.getMonth() + 1;
+    const key = `${year}-${month}`;
+    const entry = ratingMap.get(key);
+
+    result.push({
+      month: formatMonthLabel(year, month),
+      avgRating: entry ? entry.avgRating : null,
+      count: entry ? entry.count : 0,
+    });
+
+    current.setMonth(current.getMonth() + 1);
+  }
+
+  return result;
+};
+
+export const getCreatorSatisfactionData = async (
+  startDate: Date,
+  endDate: Date,
+): Promise<CreatorSatisfactionResponse> => {
+  const [monthlyRatings, overallStats, distributionRows] = await Promise.all([
+    prisma.$queryRaw<MonthlyAvgRatingRow[]>`
+      SELECT
+        EXTRACT(YEAR FROM DATE_TRUNC('month', n."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'))::int AS year,
+        EXTRACT(MONTH FROM DATE_TRUNC('month', n."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'))::int AS month,
+        ROUND(AVG(n.rating)::numeric, 1) AS "avgRating",
+        COUNT(*)::int AS count
+      FROM "NpsFeedback" n
+      INNER JOIN "User" u ON u.id = n."userId"
+      WHERE n."userType" = 'CREATOR'
+        AND u.role = 'creator' AND u.status IN ('active', 'pending')
+        AND n."createdAt" >= ${startDate}
+        AND n."createdAt" <= ${endDate}
+      GROUP BY DATE_TRUNC('month', n."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')
+      ORDER BY 1, 2
+    `,
+    prisma.$queryRaw<[{ total: number; avg: number | null }]>`
+      SELECT COUNT(*)::int AS total, ROUND(AVG(rating)::numeric, 1) AS avg
+      FROM "NpsFeedback"
+      WHERE "userType" = 'CREATOR'
+        AND "createdAt" >= ${startDate} AND "createdAt" <= ${endDate}
+    `,
+    prisma.$queryRaw<{ rating: number; count: number }[]>`
+      SELECT rating, COUNT(*)::int AS count
+      FROM "NpsFeedback"
+      WHERE "userType" = 'CREATOR'
+        AND "createdAt" >= ${startDate} AND "createdAt" <= ${endDate}
+      GROUP BY rating ORDER BY rating
+    `,
+  ]);
+
+  const trend = fillSatisfactionMonthGaps(monthlyRatings, startDate, endDate);
+
+  // Fill missing ratings (1-5) with count 0
+  const distMap = new Map<number, number>();
+  for (const row of distributionRows) distMap.set(row.rating, row.count);
+  const distribution = [1, 2, 3, 4, 5].map((rating) => ({
+    rating,
+    count: distMap.get(rating) || 0,
+  }));
+
+  const overall = {
+    averageRating: overallStats[0]?.avg != null ? Number(overallStats[0].avg) : 0,
+    totalResponses: overallStats[0]?.total ?? 0,
+    distribution,
+  };
+
+  return { trend, overall };
+};
+
 // Shared demographics processing
 function processDemographics(genderData: { pronounce: string | null }[], ageData: { birthDate: Date | null }[]) {
   const genderCounts = { Female: 0, Male: 0, Other: 0 };
