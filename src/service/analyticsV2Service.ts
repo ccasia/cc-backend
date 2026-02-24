@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
@@ -1157,6 +1157,173 @@ export const getCreatorSatisfactionData = async (
   };
 
   return { trend, overall };
+};
+
+// Creator Earnings (Top 10 by paid invoices)
+
+interface CreatorEarningRow {
+  userId: string;
+  name: string;
+  photoUrl: string | null;
+  totalEarnings: number;
+  campaignCount: number;
+  creditTier: string | null;
+}
+
+interface CampaignEarningRow {
+  userId: string;
+  campaignId: string;
+  campaignName: string;
+  earnings: number;
+  campaignImages: unknown;
+  brandName: string | null;
+  invoiceIds: string[];
+  latestPaidAt: Date | null;
+  invoiceCount: number;
+}
+
+export const getCreatorEarningsData = async (startDate?: Date, endDate?: Date) => {
+  const hasDateFilter = !!startDate && !!endDate;
+
+  // Step 1: Get top 10 creators by total paid earnings
+  const topCreators = hasDateFilter
+    ? await prisma.$queryRaw<CreatorEarningRow[]>`
+        SELECT
+          i."creatorId" AS "userId",
+          u.name,
+          u."photoURL" AS "photoUrl",
+          SUM(i.amount)::float AS "totalEarnings",
+          COUNT(DISTINCT i."campaignId")::int AS "campaignCount",
+          ct.name AS "creditTier"
+        FROM "Invoice" i
+        INNER JOIN "User" u ON u.id = i."creatorId"
+        LEFT JOIN "Creator" cr ON cr."userId" = i."creatorId"
+        LEFT JOIN "CreditTier" ct ON ct.id = cr."creditTierId"
+        WHERE i.status = 'paid'
+          AND i."createdAt" >= ${startDate}
+          AND i."createdAt" <= ${endDate}
+        GROUP BY i."creatorId", u.name, u."photoURL", ct.name
+        ORDER BY "totalEarnings" DESC
+        LIMIT 10
+      `
+    : await prisma.$queryRaw<CreatorEarningRow[]>`
+        SELECT
+          i."creatorId" AS "userId",
+          u.name,
+          u."photoURL" AS "photoUrl",
+          SUM(i.amount)::float AS "totalEarnings",
+          COUNT(DISTINCT i."campaignId")::int AS "campaignCount",
+          ct.name AS "creditTier"
+        FROM "Invoice" i
+        INNER JOIN "User" u ON u.id = i."creatorId"
+        LEFT JOIN "Creator" cr ON cr."userId" = i."creatorId"
+        LEFT JOIN "CreditTier" ct ON ct.id = cr."creditTierId"
+        WHERE i.status = 'paid'
+        GROUP BY i."creatorId", u.name, u."photoURL", ct.name
+        ORDER BY "totalEarnings" DESC
+        LIMIT 10
+      `;
+
+  if (topCreators.length === 0) {
+    return { creators: [], totalPaidAmount: 0 };
+  }
+
+  const creatorIds = topCreators.map((c) => c.userId);
+
+  // Step 2: Get per-campaign breakdown for those creators
+  const campaignBreakdown = hasDateFilter
+    ? await prisma.$queryRaw<CampaignEarningRow[]>`
+        SELECT
+          i."creatorId" AS "userId",
+          i."campaignId",
+          c.name AS "campaignName",
+          SUM(i.amount)::float AS "earnings",
+          cb.images AS "campaignImages",
+          b.name AS "brandName",
+          array_agg(i.id) AS "invoiceIds",
+          MAX(i."createdAt") AS "latestPaidAt",
+          COUNT(i.id)::int AS "invoiceCount"
+        FROM "Invoice" i
+        INNER JOIN "Campaign" c ON c.id = i."campaignId"
+        LEFT JOIN "CampaignBrief" cb ON cb."campaignId" = c.id
+        LEFT JOIN "Brand" b ON b.id = c."brandId"
+        WHERE i.status = 'paid'
+          AND i."createdAt" >= ${startDate}
+          AND i."createdAt" <= ${endDate}
+          AND i."creatorId" IN (${Prisma.join(creatorIds)})
+        GROUP BY i."creatorId", i."campaignId", c.name, cb.images, b.name
+        ORDER BY "earnings" DESC
+      `
+    : await prisma.$queryRaw<CampaignEarningRow[]>`
+        SELECT
+          i."creatorId" AS "userId",
+          i."campaignId",
+          c.name AS "campaignName",
+          SUM(i.amount)::float AS "earnings",
+          cb.images AS "campaignImages",
+          b.name AS "brandName",
+          array_agg(i.id) AS "invoiceIds",
+          MAX(i."createdAt") AS "latestPaidAt",
+          COUNT(i.id)::int AS "invoiceCount"
+        FROM "Invoice" i
+        INNER JOIN "Campaign" c ON c.id = i."campaignId"
+        LEFT JOIN "CampaignBrief" cb ON cb."campaignId" = c.id
+        LEFT JOIN "Brand" b ON b.id = c."brandId"
+        WHERE i.status = 'paid'
+          AND i."creatorId" IN (${Prisma.join(creatorIds)})
+        GROUP BY i."creatorId", i."campaignId", c.name, cb.images, b.name
+        ORDER BY "earnings" DESC
+      `;
+
+  // Group campaigns by creator
+  const campaignMap = new Map<
+    string,
+    {
+      campaignId: string;
+      campaignName: string;
+      earnings: number;
+      campaignImage: string | null;
+      brandName: string | null;
+      invoiceIds: string[];
+      latestPaidAt: Date | null;
+      invoiceCount: number;
+    }[]
+  >();
+  for (const row of campaignBreakdown) {
+    if (!campaignMap.has(row.userId)) campaignMap.set(row.userId, []);
+
+    // Extract first image from campaign brief images (Json field — typically an array of URLs)
+    let campaignImage: string | null = null;
+    if (row.campaignImages) {
+      const imgs = Array.isArray(row.campaignImages) ? row.campaignImages : [];
+      if (imgs.length > 0) campaignImage = typeof imgs[0] === 'string' ? imgs[0] : null;
+    }
+
+    campaignMap.get(row.userId)!.push({
+      campaignId: row.campaignId,
+      campaignName: row.campaignName,
+      earnings: Number(row.earnings),
+      campaignImage,
+      brandName: row.brandName || null,
+      invoiceIds: row.invoiceIds || [],
+      latestPaidAt: row.latestPaidAt || null,
+      invoiceCount: row.invoiceCount || 0,
+    });
+  }
+
+  const creators = topCreators.map((c) => ({
+    userId: c.userId,
+    name: c.name,
+    photoUrl: c.photoUrl,
+    totalEarnings: Number(c.totalEarnings),
+    campaignCount: c.campaignCount,
+    creditTier: c.creditTier || null,
+    campaigns: campaignMap.get(c.userId) || [],
+  }));
+
+  const totalPaidAmount = creators.reduce((sum, c) => sum + c.totalEarnings, 0);
+
+  return { creators, totalPaidAmount };
 };
 
 // Shared demographics processing
