@@ -765,6 +765,222 @@ export const getTimeToActivationCreators = async (startDate: Date, endDate: Date
   return { creators: rows, avgDays, count: rows.length };
 };
 
+// Pitch Rate — Creator drill-down (who first pitched in a date range)
+
+interface PitchRateCreatorRow {
+  userId: string;
+  name: string;
+  photoUrl: string | null;
+  createdAt: Date;
+  firstPitchAt: Date;
+  daysToPitch: number;
+}
+
+export const getPitchRateCreators = async (startDate: Date, endDate: Date) => {
+  const creators = await prisma.$queryRaw<PitchRateCreatorRow[]>`
+    SELECT
+      u.id AS "userId",
+      u.name,
+      u."photoURL" AS "photoUrl",
+      u."createdAt",
+      sub.first_pitch AS "firstPitchAt",
+      ROUND(EXTRACT(EPOCH FROM (sub.first_pitch - u."createdAt")) / 86400::numeric, 1) AS "daysToPitch"
+    FROM (
+      SELECT p."userId", MIN(p."createdAt") AS first_pitch
+      FROM "Pitch" p
+      INNER JOIN "User" u ON u.id = p."userId"
+      INNER JOIN "Creator" c ON c."userId" = u.id
+      WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
+        AND p.status != 'draft'
+      GROUP BY p."userId"
+    ) sub
+    INNER JOIN "User" u ON u.id = sub."userId"
+    WHERE (sub.first_pitch AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')::date >= ${startDate}::date
+      AND (sub.first_pitch AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')::date <= ${endDate}::date
+    ORDER BY sub.first_pitch DESC
+  `;
+
+  const rows = creators.map((c) => ({
+    ...c,
+    daysToPitch: Number(c.daysToPitch),
+  }));
+
+  const avgDays =
+    rows.length > 0 ? Math.round((rows.reduce((sum, r) => sum + r.daysToPitch, 0) / rows.length) * 10) / 10 : null;
+
+  return { creators: rows, avgDays, count: rows.length };
+};
+
+// Pitch Rate
+
+interface PitchRateResponse {
+  granularity: 'daily' | 'monthly';
+  pitchRate: ActivationRateMonth[] | ActivationRateDay[];
+  periodComparison?: ActivationRatePeriodComparison;
+}
+
+export const getPitchRateData = async (
+  startDate: Date,
+  endDate: Date,
+  granularity: 'daily' | 'monthly' = 'monthly',
+): Promise<PitchRateResponse> => {
+  // Baselines: counts before the date range
+  // Pitched baseline: unique creators whose first non-draft pitch is before startDate
+  const pitchedBaselineResult = await prisma.$queryRaw<[{ count: number }]>`
+    SELECT COUNT(*)::int AS count
+    FROM (
+      SELECT p."userId", MIN(p."createdAt") AS first_pitch
+      FROM "Pitch" p
+      INNER JOIN "User" u ON u.id = p."userId"
+      INNER JOIN "Creator" c ON c."userId" = u.id
+      WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
+        AND p.status != 'draft'
+      GROUP BY p."userId"
+      HAVING MIN(p."createdAt") < ${startDate}
+    ) sub
+  `;
+  const pitchedBaseline = pitchedBaselineResult[0]?.count ?? 0;
+
+  // Total creator baseline (same as activation rate)
+  const totalBaseline = await prisma.user.count({
+    where: {
+      role: 'creator',
+      status: { in: ['active', 'pending'] },
+      createdAt: { lt: startDate },
+    },
+  });
+
+  if (granularity === 'daily') {
+    // Daily pitch deltas: new first-time pitchers per day
+    const [dailyPitches, dailySignups] = await Promise.all([
+      prisma.$queryRaw<DailySignupRow[]>`
+        SELECT
+          TO_CHAR(DATE_TRUNC('day', first_pitch AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'), 'YYYY-MM-DD') AS date,
+          COUNT(*)::int AS count
+        FROM (
+          SELECT p."userId", MIN(p."createdAt") AS first_pitch
+          FROM "Pitch" p
+          INNER JOIN "User" u ON u.id = p."userId"
+          INNER JOIN "Creator" c ON c."userId" = u.id
+          WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
+            AND p.status != 'draft'
+          GROUP BY p."userId"
+        ) sub
+        WHERE first_pitch >= ${startDate} AND first_pitch <= ${endDate}
+        GROUP BY DATE_TRUNC('day', first_pitch AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')
+        ORDER BY 1
+      `,
+      prisma.$queryRaw<DailySignupRow[]>`
+        SELECT
+          TO_CHAR(DATE_TRUNC('day', u."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'), 'YYYY-MM-DD') AS date,
+          COUNT(*)::int AS count
+        FROM "User" u
+        INNER JOIN "Creator" c ON c."userId" = u.id
+        WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
+          AND u."createdAt" >= (${startDate} AT TIME ZONE 'UTC')
+          AND u."createdAt" <= (${endDate} AT TIME ZONE 'UTC')
+        GROUP BY DATE_TRUNC('day', u."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')
+        ORDER BY 1
+      `,
+    ]);
+
+    const pitchRate = fillActivationDayGaps(
+      dailyPitches,
+      dailySignups,
+      startDate,
+      endDate,
+      pitchedBaseline,
+      totalBaseline,
+    );
+
+    // Period comparison: rate at end of current vs previous period
+    const prevEnd = new Date(startDate.getTime() - 1);
+
+    const [prevPitchedResult, prevTotal] = await Promise.all([
+      prisma.$queryRaw<[{ count: number }]>`
+        SELECT COUNT(*)::int AS count
+        FROM (
+          SELECT p."userId", MIN(p."createdAt") AS first_pitch
+          FROM "Pitch" p
+          INNER JOIN "User" u ON u.id = p."userId"
+          INNER JOIN "Creator" c ON c."userId" = u.id
+          WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
+            AND p.status != 'draft'
+          GROUP BY p."userId"
+          HAVING MIN(p."createdAt") <= ${prevEnd}
+        ) sub
+      `,
+      prisma.user.count({
+        where: {
+          role: 'creator',
+          status: { in: ['active', 'pending'] },
+          createdAt: { lte: prevEnd },
+        },
+      }),
+    ]);
+
+    const prevPitched = prevPitchedResult[0]?.count ?? 0;
+    const currentRate = pitchRate.length > 0 ? pitchRate[pitchRate.length - 1].rate : 0;
+    const previousRate = prevTotal > 0 ? Math.round((prevPitched / prevTotal) * 1000) / 10 : 0;
+    const percentChange = Math.round((currentRate - previousRate) * 10) / 10;
+
+    return {
+      granularity: 'daily',
+      pitchRate,
+      periodComparison: { currentRate, previousRate, percentChange },
+    };
+  }
+
+  // --- Monthly granularity (default) ---
+  const [monthlyPitches, monthlySignups] = await Promise.all([
+    prisma.$queryRaw<MonthlySignupRow[]>`
+      SELECT
+        EXTRACT(YEAR FROM DATE_TRUNC('month', first_pitch AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'))::int AS year,
+        EXTRACT(MONTH FROM DATE_TRUNC('month', first_pitch AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'))::int AS month,
+        COUNT(*)::int AS count
+      FROM (
+        SELECT p."userId", MIN(p."createdAt") AS first_pitch
+        FROM "Pitch" p
+        INNER JOIN "User" u ON u.id = p."userId"
+        INNER JOIN "Creator" c ON c."userId" = u.id
+        WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
+          AND p.status != 'draft'
+        GROUP BY p."userId"
+      ) sub
+      WHERE first_pitch >= ${startDate} AND first_pitch <= ${endDate}
+      GROUP BY DATE_TRUNC('month', first_pitch AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')
+      ORDER BY 1, 2
+    `,
+    prisma.$queryRaw<MonthlySignupRow[]>`
+      SELECT
+        EXTRACT(YEAR FROM DATE_TRUNC('month', u."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'))::int AS year,
+        EXTRACT(MONTH FROM DATE_TRUNC('month', u."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'))::int AS month,
+        COUNT(*)::int AS count
+      FROM "User" u
+      INNER JOIN "Creator" c ON c."userId" = u.id
+      WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
+        AND u."createdAt" >= (${startDate} AT TIME ZONE 'UTC')
+        AND u."createdAt" <= (${endDate} AT TIME ZONE 'UTC')
+      GROUP BY DATE_TRUNC('month', u."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')
+      ORDER BY 1, 2
+    `,
+  ]);
+
+  const pitchRate = fillActivationMonthGaps(
+    monthlyPitches,
+    monthlySignups,
+    startDate,
+    endDate,
+    pitchedBaseline,
+    totalBaseline,
+  );
+
+  return {
+    granularity: 'monthly',
+    pitchRate,
+  };
+};
+
 // Media Kit Activation — per-platform connection snapshot
 
 export const getMediaKitActivationData = async (startDate?: Date, endDate?: Date) => {
