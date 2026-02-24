@@ -249,9 +249,14 @@ export const getInstagramMediaObject = async (
     const totalLikes = videos.reduce((acc: any, cur: any) => acc + cur.like_count, 0);
     const averageLikes = totalLikes / videos.length;
 
-    // sort but highest like_count
-    // let sortedVideos: any[] = videos?.sort((a: any, b: any) => a.like_count > b.like_count);
-    const sortedVideos = videos.slice(0, 5);
+    // Always return latest posts first based on Instagram timestamp.
+    const sortedVideos = [...videos]
+      .sort((a: any, b: any) => {
+        const aTime = a?.timestamp ? new Date(a.timestamp).getTime() : 0;
+        const bTime = b?.timestamp ? new Date(b.timestamp).getTime() : 0;
+        return bTime - aTime;
+      })
+      .slice(0, 5);
 
     return { sortedVideos, averageLikes, averageComments, totalComments, totalLikes };
   } catch (error) {
@@ -420,7 +425,13 @@ export const getTikTokMediaObject = async (accessToken: string, limit = 20) => {
       view_count: video.view_count || 0,
     }));
 
-    const sortedVideos = mappedVideos.slice(0, 5);
+    const sortedVideos = [...mappedVideos]
+      .sort((a: any, b: any) => {
+        const aTime = a?.create_time ? Number(a.create_time) : 0;
+        const bTime = b?.create_time ? Number(b.create_time) : 0;
+        return bTime - aTime;
+      })
+      .slice(0, 5);
 
     const totalLikes = mappedVideos.reduce((sum: number, video: any) => sum + (video.like_count || 0), 0);
     const totalComments = mappedVideos.reduce((sum: number, video: any) => sum + (video.comment_count || 0), 0);

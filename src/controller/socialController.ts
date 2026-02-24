@@ -157,45 +157,6 @@ function extractTikTokVideoId(url: string): string | null {
 }
 
 
-async function shouldScopeInstagramVideoIds(creatorId: string, instagramAccountId?: string | null): Promise<boolean> {
-  if (!instagramAccountId) return false;
-
-  const linkedAccountsCount = await prisma.instagramUser.count({
-    where: {
-      user_id: instagramAccountId,
-      NOT: {
-        creatorId,
-      },
-    },
-  });
-
-  return linkedAccountsCount > 0;
-}
-
-async function shouldScopeTikTokVideoIds(creatorId: string, tiktokUsername?: string | null): Promise<boolean> {
-  if (!tiktokUsername) return false;
-
-  const linkedAccountsCount = await prisma.tiktokUser.count({
-    where: {
-      username: tiktokUsername,
-      NOT: {
-        creatorId,
-      },
-    },
-  });
-
-  return linkedAccountsCount > 0;
-}
-
-function buildScopedOrLegacyVideoId(videoId: string, platformUserId: string, useScopedId: boolean): string {
-  // Scoped IDs prevent cross-creator collisions only when multiple creators share the same social account.
-  if (!useScopedId) {
-    return videoId;
-  }
-
-  return `${videoId}_${platformUserId}`;
-}
-
 // Connect account
 export const tiktokAuthentication = (_req: Request, res: Response) => {
   const csrfState = Math.random().toString(36).substring(2);
@@ -299,8 +260,6 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
         },
       });
 
-      const useScopedTikTokVideoIds = await shouldScopeTikTokVideoIds(creator.id, userData.username);
-
       // Update creator's credit tier after TikTok follower data changes
       try {
         const { updateCreatorTier } = require('@services/creditTierService');
@@ -311,7 +270,7 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
       }
 
       for (const video of videos) {
-        const videoId = buildScopedOrLegacyVideoId(video.id, tiktokUser.id, useScopedTikTokVideoIds);
+        const videoId = video.id;
 
         await prisma.tiktokVideo.upsert({
           where: {
@@ -776,8 +735,6 @@ export const instagramCallback = async (req: Request, res: Response) => {
       },
     } as any);
 
-    const useScopedInstagramVideoIds = await shouldScopeInstagramVideoIds(creator.id, overview.user_id);
-
     // Update creator's credit tier after Instagram follower data changes
     try {
       const { updateCreatorTier } = require('@services/creditTierService');
@@ -788,7 +745,7 @@ export const instagramCallback = async (req: Request, res: Response) => {
     }
 
     for (const media of medias.sortedVideos) {
-      const videoId = buildScopedOrLegacyVideoId(media.id, instagramUser.id, useScopedInstagramVideoIds);
+      const videoId = media.id;
 
       await (prisma.instagramVideo as any).upsert({
         where: {
@@ -1119,8 +1076,6 @@ export const getInstagramMediaKit = async (req: Request, res: Response) => {
       },
     } as any);
 
-    const useScopedInstagramVideoIds = await shouldScopeInstagramVideoIds(creator.id, overview.user_id);
-
     // Update creator's credit tier after Instagram follower data changes
     try {
       const { updateCreatorTier } = require('@services/creditTierService');
@@ -1142,10 +1097,8 @@ export const getInstagramMediaKit = async (req: Request, res: Response) => {
     });
 
     const topInstagramVideoIds = medias.sortedVideos
-      .map((media: any) =>
-        media?.id ? buildScopedOrLegacyVideoId(media.id, instagramUser.id, useScopedInstagramVideoIds) : null,
-      )
-      .filter(Boolean);
+      .map((media: any) => media?.id || null)
+      .filter((id): id is string => id !== null);
 
     if (topInstagramVideoIds.length > 0) {
       await prisma.instagramVideo.deleteMany({
@@ -1170,7 +1123,7 @@ export const getInstagramMediaKit = async (req: Request, res: Response) => {
     }
 
     for (const media of medias.sortedVideos) {
-      const videoId = buildScopedOrLegacyVideoId(media.id, instagramUser.id, useScopedInstagramVideoIds);
+      const videoId = media.id;
 
       await (prisma.instagramVideo as any).upsert({
         where: {
@@ -1385,10 +1338,8 @@ export const getTikTokMediaKit = async (req: Request, res: Response) => {
       } as any,
     });
 
-    const useScopedTikTokVideoIds = await shouldScopeTikTokVideoIds(user.creator.id, overview.username);
-
     for (const video of topFiveVideos) {
-      const videoId = buildScopedOrLegacyVideoId(video.id, tiktokUser.id, useScopedTikTokVideoIds);
+      const videoId = video.id;
 
       await prisma.tiktokVideo.upsert({
         where: {
