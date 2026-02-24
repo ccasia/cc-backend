@@ -1,11 +1,12 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
-import { getCreatorGrowthData } from '@services/analyticsV2Service';
 import {
   getCreatorGrowthData,
   getActivationRateData,
+  getPitchRateData,
   getTimeToActivationData,
   getTimeToActivationCreators as getTimeToActivationCreatorsData,
+  getPitchRateCreators as getPitchRateCreatorsData,
   getMediaKitActivationData,
 } from '@services/analyticsV2Service';
 
@@ -70,11 +71,76 @@ const parseDateRange = async (
     });
   } catch (error: any) {
     console.error('Error fetching creator growth data:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to fetch creator growth data',
-      error: error.message,
-    });
+    return res.status(500).json({ success: false, message: 'Failed to fetch creator growth data' });
+  }
+};
+
+export const getActivationRate = async (req: Request, res: Response) => {
+  try {
+    const parsed = await parseDateRange(req);
+    if ('error' in parsed) return res.status(parsed.error.status).json(parsed.error.body);
+
+    const data = await getActivationRateData(parsed.startDate, parsed.endDate, parsed.granularity);
+    return res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    console.error('Error fetching activation rate data:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch activation rate data' });
+  }
+};
+
+export const getPitchRate = async (req: Request, res: Response) => {
+  try {
+    const parsed = await parseDateRange(req);
+    if ('error' in parsed) return res.status(parsed.error.status).json(parsed.error.body);
+
+    const data = await getPitchRateData(parsed.startDate, parsed.endDate, parsed.granularity);
+    return res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    console.error('Error fetching pitch rate data:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch pitch rate data' });
+  }
+};
+
+export const getTimeToActivation = async (req: Request, res: Response) => {
+  try {
+    const parsed = await parseDateRange(req);
+    if ('error' in parsed) return res.status(parsed.error.status).json(parsed.error.body);
+
+    const data = await getTimeToActivationData(parsed.startDate, parsed.endDate, parsed.granularity);
+    return res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    console.error('Error fetching time to activation data:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch time to activation data' });
+  }
+};
+
+export const getTimeToActivationCreators = async (req: Request, res: Response) => {
+  try {
+    const startDate = new Date(req.query.startDate as string);
+    const endDate = new Date(req.query.endDate as string);
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      return res.status(400).json({ success: false, message: 'Invalid date format.' });
+    }
+    const data = await getTimeToActivationCreatorsData(startDate, endDate);
+    return res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    console.error('Error fetching time to activation creators:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch data' });
+  }
+};
+
+export const getPitchRateCreators = async (req: Request, res: Response) => {
+  try {
+    const startDate = new Date(req.query.startDate as string);
+    const endDate = new Date(req.query.endDate as string);
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      return res.status(400).json({ success: false, message: 'Invalid date format.' });
+    }
+    const data = await getPitchRateCreatorsData(startDate, endDate);
+    return res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    console.error('Error fetching pitch rate creators:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch data' });
   }
 };
 
