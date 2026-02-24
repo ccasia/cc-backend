@@ -8,6 +8,7 @@ import {
   getTimeToActivationCreators as getTimeToActivationCreatorsData,
   getPitchRateCreators as getPitchRateCreatorsData,
   getMediaKitActivationData,
+  getCreatorSatisfactionData,
 } from '@services/analyticsV2Service';
 
 const prisma = new PrismaClient();
@@ -167,5 +168,18 @@ export const getMediaKitActivation = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Error fetching media kit activation data:', error);
     return res.status(500).json({ success: false, message: 'Failed to fetch media kit activation data' });
+  }
+};
+
+export const getCreatorSatisfaction = async (req: Request, res: Response) => {
+  try {
+    const parsed = await parseDateRange(req);
+    if ('error' in parsed) return res.status(parsed.error.status).json(parsed.error.body);
+
+    const data = await getCreatorSatisfactionData(parsed.startDate, parsed.endDate);
+    return res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    console.error('Error fetching creator satisfaction data:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch creator satisfaction data' });
   }
 };
