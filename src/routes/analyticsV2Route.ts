@@ -36,6 +36,7 @@ const router = Router();
 
 router.get('/creator-growth', isLoggedIn, isSuperAdmin, getCreatorGrowth);
 router.get('/creator-growth/creators', isLoggedIn, isSuperAdmin, getCreatorGrowthCreators);
+router.get('/creator-growth/creators', isLoggedIn, isSuperAdmin, getCreatorGrowthCreators);
 router.get('/activation-rate', isLoggedIn, isSuperAdmin, getActivationRate);
 router.get('/pitch-rate', isLoggedIn, isSuperAdmin, getPitchRate);
 router.get('/pitch-rate', isLoggedIn, isSuperAdmin, getPitchRate);
