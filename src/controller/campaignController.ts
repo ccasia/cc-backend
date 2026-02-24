@@ -349,11 +349,11 @@ export const createCampaign = async (req: Request, res: Response) => {
             photos: photos || false,
             crossPosting: crossPosting || false,
             logisticsType: logisticsType && logisticsType !== '' ? (logisticsType as LogisticType) : null,
-            agreementTemplate: {
+            agreementTemplate: agreementFrom?.id ? {
               connect: {
                 id: agreementFrom.id,
               },
-            },
+            } : undefined,
             products: {
               create: productsToCreate,
             },
@@ -954,9 +954,9 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
             crossPosting: crossPosting || false,
             isCreditTier: isCreditTier,
             logisticsType: logisticsType && logisticsType !== '' ? (logisticsType as LogisticType) : null,
-            agreementTemplate: {
+            agreementTemplate: agreementFrom?.id ? {
               connect: { id: agreementFrom.id },
-            },
+            } : undefined,
             products: {
               create: productsToCreate,
             },
@@ -6428,6 +6428,42 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
       const newCurrencySymbol = getCurrencySymbol(newCurrency);
       const adminActivityMessage = `${adminName} changed the amount from ${oldCurrencySymbol}${oldAmount} to ${newCurrencySymbol}${newAmount} on the Agreement for ${creatorName}`;
       await logChange(adminActivityMessage, campaignId, req);
+
+      // Update invoice amount if invoice exists for this creator and campaign
+      try {
+        const existingInvoice = await prisma.invoice.findFirst({
+          where: {
+            creatorId: creator.id,
+            campaignId: campaignId,
+          },
+        });
+
+        if (existingInvoice) {
+          // Check if invoice status allows amount changes
+          if (existingInvoice.status !== 'draft') {
+            // Return error response - invoice cannot be modified
+            return res.status(400).json({
+              message: `Cannot change amount. Invoice ${existingInvoice.invoiceNumber} has been ${existingInvoice.status}.`,
+              invoiceStatus: existingInvoice.status,
+              invoiceNumber: existingInvoice.invoiceNumber,
+            });
+          }
+          await prisma.invoice.update({
+            where: {
+              id: existingInvoice.id,
+            },
+            data: {
+              amount: parseFloat(paymentAmount),
+            },
+          });
+          console.log(`Updated invoice ${existingInvoice.invoiceNumber} amount from ${oldAmount} to ${newAmount}`);
+          
+          const invoiceUpdateMessage = `${adminName} updated invoice ${existingInvoice.invoiceNumber} amount from ${oldCurrencySymbol}${oldAmount} to ${newCurrencySymbol}${newAmount} for ${creatorName}`;
+          await logChange(invoiceUpdateMessage, campaignId, req);
+        }
+      } catch (invoiceError) {
+        console.error('Error updating invoice amount:', invoiceError);
+      }
     }
 
     // Log admin activity for video count change
