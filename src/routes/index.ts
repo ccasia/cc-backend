@@ -31,6 +31,7 @@ import logisticsRoute from './logisticsRoute';
 import creditTierRoute from './creditTierRoute';
 import npsFeedbackRoute from './npsFeedbackRoute';
 import dashboardRoute from './dashboardRoute';
+import discoveryRoute from './discoveryRoute';
 
 export const router = express.Router();
 
@@ -66,3 +67,4 @@ router.use('/logistics', logisticsRoute);
 router.use('/credit-tier', creditTierRoute);
 router.use('/nps-feedback', npsFeedbackRoute);
 router.use('/dashboard', dashboardRoute);
+router.use('/discovery', discoveryRoute);

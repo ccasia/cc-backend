@@ -5,8 +5,9 @@ import { PrismaClient } from '@prisma/client';
 import dayjs from 'dayjs';
 import {
   calculateAverageLikes,
-  getAllMediaObject,
+  getInstagramMediaObject,
   getInstagramAccessToken,
+  getInstagramUserInsight,
   getInstagramBusinesssAccountId,
   getInstagramMediaData,
   getInstagramMedias,
@@ -21,6 +22,7 @@ import {
   getInstagramMonthlyInteractions,
   getTikTokEngagementRateOverTime,
   getTikTokMonthlyInteractions,
+  getTikTokMediaObject,
 } from '@services/socialMediaService';
 import { batchRequests } from '@helper/batchRequests';
 
@@ -154,6 +156,7 @@ function extractTikTokVideoId(url: string): string | null {
   }
 }
 
+
 // Connect account
 export const tiktokAuthentication = (_req: Request, res: Response) => {
   const csrfState = Math.random().toString(36).substring(2);
@@ -210,7 +213,8 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
     if (access_token) {
       const userInfoResponse = await axios.get('https://open.tiktokapis.com/v2/user/info/', {
         params: {
-          fields: 'open_id, union_id, display_name, avatar_url, following_count, follower_count, likes_count',
+          fields:
+            'open_id, union_id, display_name, username, avatar_url, bio_description, following_count, follower_count, likes_count',
         },
         headers: { Authorization: `Bearer ${access_token}` },
       });
@@ -231,12 +235,14 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
 
       const videos = videoInfoResponse.data.data.videos;
 
-      await prisma.tiktokUser.upsert({
+      const tiktokUser = await prisma.tiktokUser.upsert({
         where: {
           creatorId: creator.id,
         },
         update: {
           display_name: userData.display_name,
+          username: userData.username,
+          biography: userData.bio_description,
           avatar_url: userData.avatar_url,
           following_count: userData.following_count,
           follower_count: userData.follower_count,
@@ -245,6 +251,8 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
         create: {
           creatorId: creator.id,
           display_name: userData.display_name,
+          username: userData.username,
+          biography: userData.bio_description,
           avatar_url: userData.avatar_url,
           following_count: userData.following_count,
           follower_count: userData.follower_count,
@@ -262,9 +270,11 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
       }
 
       for (const video of videos) {
+        const videoId = video.id;
+
         await prisma.tiktokVideo.upsert({
           where: {
-            video_id: video.id,
+            video_id: videoId,
           },
           update: {
             cover_image_url: video.cover_image_url,
@@ -275,8 +285,10 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
             embed_html: video.embed_html,
             like_count: video.like_count,
             comment_count: video.comment_count,
-            share_count: video.comment_count,
+            share_count: video.share_count,
             view_count: video.view_count,
+            tiktokUserId: tiktokUser.id,
+            video_id: videoId,
           },
           create: {
             cover_image_url: video.cover_image_url,
@@ -287,10 +299,10 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
             embed_html: video.embed_html,
             like_count: video.like_count,
             comment_count: video.comment_count,
-            share_count: video.comment_count,
+            share_count: video.share_count,
             view_count: video.view_count,
-            tiktokUserId: creator.tiktokUser?.id,
-            video_id: video.id,
+            tiktokUserId: tiktokUser.id,
+            video_id: videoId,
           },
         });
       }
@@ -649,26 +661,79 @@ export const instagramCallback = async (req: Request, res: Response) => {
 
     const overview = await getInstagramOverviewService(access_token);
 
+    const medias = await getInstagramMediaObject(access_token, overview.user_id);
+    const insightData = await getInstagramUserInsight(access_token, overview.user_id);
+
+    const averageLikes = medias.averageLikes || 0;
+    const averageComments = medias.averageComments || 0;
+    const averageShares = overview.media_count ? insightData.totals.shares / overview.media_count : 0;
+    const averageSaves = overview.media_count ? insightData.totals.saves / overview.media_count : 0;
+
+    const instagramViews = insightData.totals.reach || 0;
+    const instagramInteractions =
+      (insightData.totals.likes || 0) +
+      (insightData.totals.comments || 0) +
+      (insightData.totals.shares || 0) +
+      (insightData.totals.saves || 0);
+
+    const engagementRate = instagramViews
+      ? (instagramInteractions / instagramViews) * 100
+      : 0;
+
     const instagramUser = await prisma.instagramUser.upsert({
       where: {
         creatorId: creator.id,
       },
       update: {
         user_id: overview.user_id,
+        profile_picture_url: overview.profile_picture_url,
+        biography: overview.biography,
         followers_count: overview.followers_count,
         follows_count: overview.follows_count,
         media_count: overview.media_count,
         username: overview.username,
+        totalLikes: medias.totalLikes,
+        totalComments: medias.totalComments,
+        totalShares: insightData.totals.shares,
+        totalSaves: insightData.totals.saves,
+        averageLikes,
+        averageComments,
+        averageShares,
+        averageSaves,
+        insightData: {
+          since: insightData.since,
+          until: insightData.until,
+          totals: insightData.totals,
+          raw: insightData.raw,
+        },
+        engagement_rate: engagementRate,
       },
       create: {
         user_id: overview.user_id,
+        profile_picture_url: overview.profile_picture_url,
+        biography: overview.biography,
         followers_count: overview.followers_count,
         follows_count: overview.follows_count,
         media_count: overview.media_count,
         username: overview.username,
+        totalLikes: medias.totalLikes,
+        totalComments: medias.totalComments,
+        totalShares: insightData.totals.shares,
+        totalSaves: insightData.totals.saves,
+        averageLikes,
+        averageComments,
+        averageShares,
+        averageSaves,
+        insightData: {
+          since: insightData.since,
+          until: insightData.until,
+          totals: insightData.totals,
+          raw: insightData.raw,
+        },
+        engagement_rate: engagementRate,
         creatorId: creator.id,
       },
-    });
+    } as any);
 
     // Update creator's credit tier after Instagram follower data changes
     try {
@@ -679,14 +744,15 @@ export const instagramCallback = async (req: Request, res: Response) => {
       // Non-blocking - don't fail the callback if tier update fails
     }
 
-    const medias = await getAllMediaObject(access_token, overview.user_id);
-
     for (const media of medias.sortedVideos) {
-      await prisma.instagramVideo.upsert({
+      const videoId = media.id;
+
+      await (prisma.instagramVideo as any).upsert({
         where: {
-          video_id: media.id,
+          video_id: videoId,
         },
         update: {
+          video_id: videoId,
           comments_count: media.comments_count,
           like_count: media.like_count,
           media_type: media.media_type,
@@ -696,6 +762,7 @@ export const instagramCallback = async (req: Request, res: Response) => {
           permalink: media.permalink,
         },
         create: {
+          video_id: videoId,
           comments_count: media.comments_count,
           like_count: media.like_count,
           media_type: media.media_type,
@@ -738,7 +805,7 @@ export const getInstagramOverview = async (req: Request, res: Response) => {
 
     // const overview = await getInstagramOverviewService(access_token);
 
-    // const medias = await getAllMediaObject(access_token, overview.user_id);
+    // const medias = await getInstagramMediaObject(access_token, overview.user_id);
 
     const average_like = calculateAverageLikes((user.instagramUser as any).instagramVideo);
 
@@ -909,10 +976,26 @@ export const getInstagramMediaKit = async (req: Request, res: Response) => {
     }
 
     const accessToken = decryptToken(encryptedAccessToken as any);
-    // const accessToken = 'IGAAIGNU09lZBhBZAE9OSDE4VWVja1BhZA2pMOWkzVG9nTkJVWnZA0QkhKMlFXdTBVbW1fS0tUQWl5RE1BQTY4N0ktODhUQjRIU1RWQ1hBcHdmbWdUSTlBOVE2QVBELXN1azQzNFhSZA2dBWi1PVjhWaUxmaWZAMekl4U2FMMWJLWDk5awZDZD';
 
     const overview = await getInstagramOverviewService(accessToken);
-    const medias = await getAllMediaObject(accessToken, overview.user_id, overview.media_count);
+    const medias = await getInstagramMediaObject(accessToken, overview.user_id);
+    const insightData = await getInstagramUserInsight(accessToken, overview.user_id);
+
+    const averageLikes = medias.averageLikes || 0;
+    const averageComments = medias.averageComments || 0;
+    const averageShares = overview.media_count ? insightData.totals.shares / overview.media_count : 0;
+    const averageSaves = overview.media_count ? insightData.totals.saves / overview.media_count : 0;
+
+    const instagramViews = insightData.totals.reach || 0;
+    const instagramInteractions =
+      (insightData.totals.likes || 0) +
+      (insightData.totals.comments || 0) +
+      (insightData.totals.shares || 0) +
+      (insightData.totals.saves || 0);
+
+    const engagementRate = instagramViews
+      ? (instagramInteractions / instagramViews) * 100
+      : 0;
 
     // Get analytics data for charts with error handling
     let analytics: {
@@ -944,27 +1027,54 @@ export const getInstagramMediaKit = async (req: Request, res: Response) => {
         creatorId: creator.id,
       },
       update: {
+        profile_picture_url: overview.profile_picture_url,
+        biography: overview.biography,
         followers_count: overview.followers_count,
         follows_count: overview.follows_count,
         media_count: overview.media_count,
         totalLikes: medias.totalLikes,
         totalComments: medias.totalComments,
-        averageLikes: medias.averageLikes,
-        averageComments: medias.averageComments,
+        totalShares: insightData.totals.shares,
+        totalSaves: insightData.totals.saves,
+        averageLikes,
+        averageComments,
+        averageShares,
+        averageSaves,
+        insightData: {
+          since: insightData.since,
+          until: insightData.until,
+          totals: insightData.totals,
+          raw: insightData.raw,
+        },
+        engagement_rate: engagementRate,
         username: overview.username,
       },
       create: {
         creatorId: creator.id,
+        user_id: overview.user_id,
+        profile_picture_url: overview.profile_picture_url,
+        biography: overview.biography,
         followers_count: overview.followers_count,
         follows_count: overview.follows_count,
         media_count: overview.media_count,
         username: overview.username,
         totalLikes: medias.totalLikes,
         totalComments: medias.totalComments,
-        averageLikes: medias.averageLikes,
-        averageComments: medias.averageComments,
+        totalShares: insightData.totals.shares,
+        totalSaves: insightData.totals.saves,
+        averageLikes,
+        averageComments,
+        averageShares,
+        averageSaves,
+        insightData: {
+          since: insightData.since,
+          until: insightData.until,
+          totals: insightData.totals,
+          raw: insightData.raw,
+        },
+        engagement_rate: engagementRate,
       },
-    });
+    } as any);
 
     // Update creator's credit tier after Instagram follower data changes
     try {
@@ -986,12 +1096,41 @@ export const getInstagramMediaKit = async (req: Request, res: Response) => {
       });
     });
 
-    for (const media of medias.sortedVideos) {
-      await prisma.instagramVideo.upsert({
+    const topInstagramVideoIds = medias.sortedVideos
+      .map((media: any) => media?.id || null)
+      .filter((id): id is string => id !== null);
+
+    if (topInstagramVideoIds.length > 0) {
+      await prisma.instagramVideo.deleteMany({
         where: {
-          video_id: media.id,
+          instagramUserId: instagramUser.id,
+          OR: [
+            { video_id: null },
+            {
+              video_id: {
+                notIn: topInstagramVideoIds,
+              },
+            },
+          ],
+        },
+      });
+    } else {
+      await prisma.instagramVideo.deleteMany({
+        where: {
+          instagramUserId: instagramUser.id,
+        },
+      });
+    }
+
+    for (const media of medias.sortedVideos) {
+      const videoId = media.id;
+
+      await (prisma.instagramVideo as any).upsert({
+        where: {
+          video_id: videoId,
         },
         update: {
+          video_id: videoId,
           comments_count: media.comments_count,
           like_count: media.like_count,
           media_type: media.media_type,
@@ -1003,6 +1142,7 @@ export const getInstagramMediaKit = async (req: Request, res: Response) => {
           shortCode: media.shortcode,
         },
         create: {
+          video_id: videoId,
           comments_count: media.comments_count,
           like_count: media.like_count,
           media_type: media.media_type,
@@ -1069,7 +1209,7 @@ export const getTikTokMediaKit = async (req: Request, res: Response) => {
     // Get TikTok user profile overview
     const overviewRes = await axios.get('https://open.tiktokapis.com/v2/user/info/', {
       params: {
-        fields: 'open_id,union_id,display_name,username,avatar_url,following_count,follower_count,likes_count',
+        fields: 'open_id,union_id,display_name,bio_description,username,avatar_url,following_count,follower_count,likes_count',
       },
       headers: { Authorization: `Bearer ${accessToken}` },
     });
@@ -1077,22 +1217,9 @@ export const getTikTokMediaKit = async (req: Request, res: Response) => {
     const overview = overviewRes.data.data.user;
 
     // Get TikTok videos data
-    let videosRes;
+    let mediaObject;
     try {
-      videosRes = await axios.post(
-        'https://open.tiktokapis.com/v2/video/list/',
-        { max_count: 20 },
-        {
-          params: {
-            fields:
-              'id,title,video_description,duration,cover_image_url,embed_link,embed_html,like_count,comment_count,share_count,view_count,create_time',
-          },
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            'Content-Type': 'application/json',
-          },
-        },
-      );
+      mediaObject = await getTikTokMediaObject(accessToken, 20);
     } catch (videoError: any) {
       console.error('TikTok video list API error:', {
         status: videoError.response?.status,
@@ -1107,48 +1234,39 @@ export const getTikTokMediaKit = async (req: Request, res: Response) => {
       }
 
       // For other errors, continue with empty videos array
-      videosRes = { data: { data: { videos: [] } } };
+      mediaObject = {
+        videos: [],
+        sortedVideos: [],
+        totalLikes: 0,
+        totalComments: 0,
+        totalShares: 0,
+        totalViews: 0,
+        averageLikes: 0,
+        averageComments: 0,
+        averageShares: 0,
+        averageViews: 0,
+      };
     }
 
-    const videos = videosRes.data.data?.videos || [];
-
-    // Map TikTok API fields to expected frontend fields
-    const mappedVideos = videos.map((video: any) => ({
-      ...video,
-      // Ensure we have the fields the frontend expects
-      like: video.like_count || 0,
-      comment: video.comment_count || 0,
-      share: video.share_count || 0,
-      view: video.view_count || 0,
-      // Keep original fields for compatibility
-      like_count: video.like_count || 0,
-      comment_count: video.comment_count || 0,
-      share_count: video.share_count || 0,
-      view_count: video.view_count || 0,
-    }));
+    const mappedVideos = mediaObject.videos;
+    const topFiveVideos = mediaObject.sortedVideos;
 
     // Debug logging for staging
     console.log('TikTok API Response:', {
-      status: videosRes.status,
-      videosCount: videos.length,
-      hasData: !!videosRes.data.data,
-      responseStructure: {
-        hasVideos: !!videosRes.data.data?.videos,
-        videosType: typeof videosRes.data.data?.videos,
-        videosLength: videosRes.data.data?.videos?.length,
-      },
+      videosCount: mappedVideos.length,
+      hasData: mappedVideos.length > 0,
+      topFiveCount: topFiveVideos.length,
     });
 
-    // Calculate analytics from videos
-    const totalLikes = mappedVideos.reduce((sum: number, video: any) => sum + (video.like_count || 0), 0);
-    const totalComments = mappedVideos.reduce((sum: number, video: any) => sum + (video.comment_count || 0), 0);
-    const totalShares = mappedVideos.reduce((sum: number, video: any) => sum + (video.share_count || 0), 0);
-    const totalViews = mappedVideos.reduce((sum: number, video: any) => sum + (video.view_count || 0), 0);
+    const totalLikes = mediaObject.totalLikes;
+    const totalComments = mediaObject.totalComments;
+    const totalShares = mediaObject.totalShares;
+    const totalViews = mediaObject.totalViews;
 
-    const averageLikes = mappedVideos.length > 0 ? totalLikes / mappedVideos.length : 0;
-    const averageComments = mappedVideos.length > 0 ? totalComments / mappedVideos.length : 0;
-    const averageShares = mappedVideos.length > 0 ? totalShares / mappedVideos.length : 0;
-    const averageViews = mappedVideos.length > 0 ? totalViews / mappedVideos.length : 0;
+    const averageLikes = mediaObject.averageLikes;
+    const averageComments = mediaObject.averageComments;
+    const averageShares = mediaObject.averageShares;
+    const averageViews = mediaObject.averageViews;
 
     // Get analytics data for charts with error handling
     let analytics: {
@@ -1175,19 +1293,19 @@ export const getTikTokMediaKit = async (req: Request, res: Response) => {
       // analytics remains as empty arrays - frontend will use fallback
     }
 
-    // Calculate engagement rate using the calculated values
-    // TikTok Engagement Rate Formula: (Average Likes + Average Comments + Average Shares) / Followers × 100
-    const engagement_rate = overview.follower_count
-      ? ((averageLikes + averageComments + averageShares) / overview.follower_count) * 100
+    // TikTok Engagement Rate Formula: (likes + comments + shares) / views
+    const engagement_rate = totalViews
+      ? ((totalLikes + totalComments + totalShares) / totalViews) * 100
       : 0;
 
     // Update TikTok user data in database
-    await prisma.tiktokUser.upsert({
+    const tiktokUser = await prisma.tiktokUser.upsert({
       where: { creatorId: user.creator.id },
       update: {
         display_name: overview.display_name,
         username: overview.username,
         avatar_url: overview.avatar_url,
+        biography: overview.bio_description,
         following_count: overview.following_count,
         follower_count: overview.follower_count,
         likes_count: overview.likes_count,
@@ -1205,6 +1323,7 @@ export const getTikTokMediaKit = async (req: Request, res: Response) => {
         display_name: overview.display_name,
         username: overview.username,
         avatar_url: overview.avatar_url,
+        biography: overview.bio_description,
         following_count: overview.following_count,
         follower_count: overview.follower_count,
         likes_count: overview.likes_count,
@@ -1217,6 +1336,54 @@ export const getTikTokMediaKit = async (req: Request, res: Response) => {
         engagement_rate: engagement_rate,
         lastUpdated: new Date(),
       } as any,
+    });
+
+    for (const video of topFiveVideos) {
+      const videoId = video.id;
+
+      await prisma.tiktokVideo.upsert({
+        where: {
+          video_id: videoId,
+        },
+        update: {
+          cover_image_url: video.cover_image_url,
+          title: video.title,
+          description: video.video_description,
+          duration: parseFloat(video.duration || 0),
+          embed_link: video.embed_link,
+          embed_html: video.embed_html,
+          like_count: video.like_count || 0,
+          comment_count: video.comment_count || 0,
+          share_count: video.share_count || 0,
+          view_count: video.view_count || 0,
+          tiktokUserId: tiktokUser.id,
+          video_id: videoId,
+        },
+        create: {
+          video_id: videoId,
+          cover_image_url: video.cover_image_url,
+          title: video.title,
+          description: video.video_description,
+          duration: parseFloat(video.duration || 0),
+          embed_link: video.embed_link,
+          embed_html: video.embed_html,
+          like_count: video.like_count || 0,
+          comment_count: video.comment_count || 0,
+          share_count: video.share_count || 0,
+          view_count: video.view_count || 0,
+          tiktokUserId: tiktokUser.id,
+        },
+      });
+    }
+
+    const persistedTikTokVideos = await prisma.tiktokVideo.findMany({
+      where: {
+        tiktokUserId: tiktokUser.id,
+      },
+      orderBy: {
+        updatedAt: 'desc',
+      },
+      take: 5,
     });
 
     // Update creator's credit tier after TikTok follower data changes
@@ -1249,7 +1416,7 @@ export const getTikTokMediaKit = async (req: Request, res: Response) => {
         likes_count: overview.likes_count,
       },
       medias: {
-        sortedVideos: mappedVideos.slice(0, 5), // Top 5 videos for display
+        sortedVideos: topFiveVideos, // Top 5 videos for display
         averageLikes: Math.round(averageLikes),
         averageComments: Math.round(averageComments),
         averageShares: Math.round(averageShares),
@@ -1263,10 +1430,13 @@ export const getTikTokMediaKit = async (req: Request, res: Response) => {
       tiktokUser: {
         display_name: overview.display_name,
         username: overview.username,
+        biography: overview.bio_description,
         follower_count: overview.follower_count,
         engagement_rate: engagement_rate,
         following_count: overview.following_count,
         likes_count: overview.likes_count,
+        shares_count: totalShares,
+        tiktokVideo: persistedTikTokVideos,
       },
     };
 
