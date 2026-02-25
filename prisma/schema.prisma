@@ -2111,8 +2111,13 @@ model NpsFeedback {
   userId    String
   userType  NpsUserType @default(CLIENT)
   rating    Int         // 1-5 star rating
-  feedback  String?     // Optional text feedback
-  createdAt DateTime    @default(now())
+  feedback   String?     // Optional text feedback
+  deviceType   String?   // "mobile", "tablet", "desktop"
+  deviceModel  String?   // "iPhone", "Galaxy S21"
+  deviceVendor String?   // "Apple", "Samsung"
+  os           String?   // "macOS 15.1", "iOS 18.0", "Windows 11"
+  browser      String?   // "Chrome 131.0", "Safari 18.1"
+  createdAt  DateTime    @default(now())
   updatedAt DateTime    @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
