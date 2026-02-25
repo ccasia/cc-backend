@@ -154,10 +154,7 @@ app.post('/webhooks/xero', express.raw({ type: 'application/json' }), async (req
     }
 
     // Generate expected signature
-    const expectedSignature = crypto
-      .createHmac('sha256', 'UtH0zJbM1oFEw3K662zollAzzkJuKORDAKJvJ/LtiXIN9VqXghooPmhOInHhewxX2Axb9BYa4lXeHCV+ImyfnA==')
-      .update(req.body)
-      .digest('base64');
+    const expectedSignature = crypto.createHmac('sha256', process.env.WEBHOOK_KEY!).update(req.body).digest('base64');
 
     if (xeroSignature !== expectedSignature) {
       return res.status(401).send('Invalid signature');
