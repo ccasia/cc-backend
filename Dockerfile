@@ -84,6 +84,8 @@ COPY --from=builder /app/.env ./.env
 # Generate Prisma client in production environment
 RUN npx prisma generate
 
+RUN yarn global add pm2
+
 # RUN npx prisma migrate dev --name init
 
 # Run database migrations
