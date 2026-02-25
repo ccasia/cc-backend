@@ -168,7 +168,7 @@ app.post('/webhooks/xero', express.raw({ type: 'application/json' }), async (req
     const user = await prisma.user.findFirst({
       where: {
         email: {
-          equals: process.env.NODE_ENV === 'development' ? 'super@cultcreativeasia.com' : 'vidya@cultcreative.asia', //Need to change to V's email
+          equals: process.env.NODE_ENV === 'development' ? 'super@cultcreativeasia.com' : 'super@cultcreativeasia.com', //Need to change to V's email
         },
       },
       include: {
