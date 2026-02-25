@@ -16,13 +16,13 @@ import fs from 'fs-extra';
 import { PrismaClient } from '@prisma/client';
 
 import { xero } from '@configs/xero';
-// import { Server } from 'socket.io';
+import { Server } from 'socket.io';
 import { users } from '@utils/activeUsers';
-import { io } from '../server';
+// import { io } from '../server';
 
 const prisma = new PrismaClient();
 
-// const io = new Server();
+const io = new Server();
 
 const worker = new Worker(
   'invoice-queue',
@@ -127,15 +127,15 @@ const worker = new Worker(
         (agreement?.currency?.toUpperCase() as 'MYR' | 'SGD') ?? 'MYR',
       );
 
-        await prisma.invoice.update({
-          where: {
-            id: invoice.id,
-          },
-          data: {
-            xeroInvoiceId: createdInvoice.body.invoices[0].invoiceID,
-            status: 'approved',
-          },
-        });
+      await prisma.invoice.update({
+        where: {
+          id: invoice.id,
+        },
+        data: {
+          xeroInvoiceId: createdInvoice.body.invoices[0].invoiceID,
+          status: 'approved',
+        },
+      });
 
       if (job.data.invoiceAttachment && createdInvoice.body.invoices[0].invoiceID) {
         const buffer = fs.readFileSync(job.data.invoiceAttachment.tempFilePath);
@@ -232,7 +232,7 @@ export const bulkInvoiceWorker = new Worker(
 
     if (!user || !user.admin?.xeroTokenSet) throw new Error('Admin not connected to Xero');
 
-    let tokenSet: TokenSet = user.admin.xeroTokenSet as any;
+    const tokenSet: TokenSet = user.admin.xeroTokenSet as any;
     await xero.initialize();
     xero.setTokenSet(tokenSet);
 
