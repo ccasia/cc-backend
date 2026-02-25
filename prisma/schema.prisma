@@ -310,6 +310,7 @@ model TiktokUser {
   display_name String?
   username     String?
   avatar_url   String?
+  biography    String? 
 
   following_count Int?
   follower_count  Int?
@@ -360,14 +361,21 @@ model InstagramUser {
   accessToken     Json?
   expiresIn       Int?
   user_id         String?   @unique
+  profile_picture_url String?
+  biography       String?
   followers_count Int?
   follows_count   Int?
   media_count     Int?
   username        String?
   totalLikes      Int?
   totalComments   Int?
+  totalShares     Int?
+  totalSaves      Int?
   averageLikes    Float?
   averageComments Float?
+  averageShares   Float?
+  averageSaves    Float?
+  insightData     Json?
   engagement_rate Float?
   lastUpdated     DateTime?
 

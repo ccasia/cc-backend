@@ -6,7 +6,7 @@ import dayjs from 'dayjs';
 const prisma = new PrismaClient();
 
 // Configuration - Replace ACCESS_TOKEN with your Instagram access token
-const USER_ID = 'cmf813vtd0000pd3psk46u4lt';
+const USER_ID = 'cmk3guf48001cpd3wewcvd0z3';
 const ACCESS_TOKEN =
   'IGAANcWAm6FBFBZAGJFWG9XeUZAjTmhsaHNNd29ST1R4Y2VRcDJJNVVFSFVsM3MyMjlRTDJjZAUxyV3J2eTZAGS3FBTVZAOWTllY3hQbF9CdUtpbFc2U0RLLU9WX0hYWHMybC1kanlZAQWx0UXFodC1YZAldNYkZAGZAVFxSGpnRTdWMG5TcwZDZD'; // Replace this with your access token
 
