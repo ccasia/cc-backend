@@ -1,24 +1,35 @@
 import { Request, Response } from 'express';
 import { getDiscoveryCreators } from '@services/discoveryService';
 
+const parseInterestsQuery = (value?: string | string[]) => {
+  if (!value) return undefined;
+
+  const raw = Array.isArray(value) ? value.join(',') : value;
+
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return raw
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+};
+
+const parsePositiveInt = (value: unknown, fallback: number) => {
+  const parsed = parseInt(String(value), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
 export const getDiscoveryCreatorsList = async (req: Request, res: Response) => {
   try {
-    // Parse interests from comma-separated string or JSON array
-    let interests: string[] | undefined;
-    if (req.query.interests) {
-      const raw = req.query.interests as string;
-      try {
-        interests = JSON.parse(raw);
-      } catch {
-        interests = raw.split(',').map((s) => s.trim()).filter(Boolean);
-      }
-    }
+    const interests = parseInterestsQuery(req.query.interests as string | string[] | undefined);
 
     const data = await getDiscoveryCreators({
       search: req.query.search as string,
       platform: req.query.platform as 'all' | 'instagram' | 'tiktok',
-      page: parseInt(req.query.page as string, 10) || 1,
-      limit: parseInt(req.query.limit as string, 10) || 20,
+      page: parsePositiveInt(req.query.page, 1),
+      limit: parsePositiveInt(req.query.limit, 20),
       hydrateMissing: req.query.hydrateMissing === 'true',
       gender: (req.query.gender as string) || undefined,
       ageRange: (req.query.ageRange as string) || undefined,

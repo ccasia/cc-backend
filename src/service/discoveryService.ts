@@ -7,16 +7,30 @@ import {
   getInstagramUserInsight,
   getTikTokMediaObject,
 } from '@services/socialMediaService';
-import { mapPronounsToGender } from '../utils/mapPronounsToGender';
-import { calculateAge } from '../utils/calculateAge';
+import {
+  getLatestInstagramCaptionsForMatch,
+  getLatestTikTokTitlesForMatch,
+  mapInstagramApiTopVideos,
+  mapTikTokApiTopVideos,
+} from '@helper/discovery/mediaHelpers';
+import {
+  ageRangeToBirthDateRange,
+  extractHashtags,
+  genderToPronounce,
+  matchesContentTerms,
+  normalizeKeywordTerm,
+  normalizePagination,
+  normalizePlatform,
+  PlatformFilter,
+} from '@helper/discovery/queryHelpers';
+import { mapPronounsToGender } from '@utils/mapPronounsToGender';
+import { calculateAge } from '@utils/calculateAge';
 import axios from 'axios';
 
 const prisma = new PrismaClient();
 const prismaAny = prisma as any;
 
 type TopVideosByCreator = Map<string, any[]>;
-
-type PlatformFilter = 'all' | 'instagram' | 'tiktok';
 
 const DISCOVERY_API_CACHE_TTL_MS = Number(process.env.DISCOVERY_API_CACHE_TTL_MS || 5 * 60 * 1000);
 const DISCOVERY_API_CACHE_MAX_ENTRIES = Number(process.env.DISCOVERY_API_CACHE_MAX_ENTRIES || 2000);
@@ -105,233 +119,6 @@ export interface DiscoveryQueryInput {
   keyword?: string;
   hashtag?: string;
 }
-
-const normalizePagination = (page = 1, limit = 20) => {
-  const safePage = Number.isNaN(page) || page < 1 ? 1 : page;
-  const safeLimit = Number.isNaN(limit) || limit < 1 ? 20 : Math.min(limit, 100);
-
-  return {
-    page: safePage,
-    limit: safeLimit,
-    skip: (safePage - 1) * safeLimit,
-  };
-};
-
-const normalizePlatform = (platform?: string): PlatformFilter => {
-  if (platform === 'instagram' || platform === 'tiktok') {
-    return platform;
-  }
-
-  return 'all';
-};
-
-// Map frontend gender labels back to pronouns stored in DB
-const genderToPronounce = (gender?: string): string | null => {
-  if (!gender) return null;
-  const map: Record<string, string> = {
-    Male: 'He/Him',
-    Female: 'She/Her',
-    'Non-Binary': 'They/Them',
-  };
-  return map[gender] || null;
-};
-
-// Parse age range string like "18-24" into birthDate boundaries
-const ageRangeToBirthDateRange = (ageRange?: string): { gte: Date; lte: Date } | null => {
-  if (!ageRange) return null;
-  const parts = ageRange.split('-');
-  if (parts.length !== 2) return null;
-
-  const minAge = parseInt(parts[0], 10);
-  const maxAge = parseInt(parts[1], 10);
-  if (Number.isNaN(minAge) || Number.isNaN(maxAge)) return null;
-
-  const today = new Date();
-  // Born at most maxAge+1 years ago (exclusive) → lte
-  // Born at least minAge years ago → gte
-  const latestBirth = new Date(today.getFullYear() - minAge, today.getMonth(), today.getDate());
-  const earliestBirth = new Date(today.getFullYear() - maxAge - 1, today.getMonth(), today.getDate() + 1);
-
-  return { gte: earliestBirth, lte: latestBirth };
-};
-
-const extractHashtags = (raw?: string): string[] => {
-  if (!raw) return [];
-
-  const tokens = raw
-    .split(/[\s,]+/)
-    .map((token) => token.trim())
-    .filter(Boolean)
-    .map((token) => token.replace(/^#+/, '').toLowerCase())
-    .filter(Boolean)
-    .map((token) => `#${token}`);
-
-  return Array.from(new Set(tokens));
-};
-
-const normalizeKeywordTerm = (value?: string | null) =>
-  (value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/^['"`]+|['"`]+$/g, '')
-    .replace(/\s+/g, ' ');
-
-const normalizeContentText = (value?: string | null) =>
-  (value || '')
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
-    .trim();
-
-const normalizeKeywordComparableText = (value?: string | null) =>
-  (value || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-const parseKeywordWords = (keywordTerm?: string) => {
-  if (!keywordTerm) return [] as string[];
-
-  const commaSeparated = keywordTerm
-    .split(',')
-    .map((term) => normalizeKeywordComparableText(term))
-    .filter(Boolean);
-
-  if (commaSeparated.length > 1) {
-    return commaSeparated;
-  }
-
-  return normalizeKeywordComparableText(keywordTerm)
-    .split(' ')
-    .map((term) => term.trim())
-    .filter(Boolean);
-};
-
-const hasKeywordPhraseMatch = (text: string, keywordTerm?: string) => {
-  if (!keywordTerm) return true;
-  const normalizedText = normalizeKeywordComparableText(text);
-  const normalizedKeyword = normalizeKeywordComparableText(keywordTerm);
-
-  if (!normalizedKeyword) return true;
-  if (!normalizedText) return false;
-
-  // Require phrase boundaries so partial token matches don't pass
-  // Example: "a short message fro" should NOT match "a short message from"
-  const pattern = `(^|\\s)${escapeRegex(normalizedKeyword)}(\\s|$)`;
-  const phraseRegex = new RegExp(pattern);
-  return phraseRegex.test(normalizedText);
-};
-
-const hasKeywordWordsMatch = (text: string, keywordTerm?: string) => {
-  if (!keywordTerm) return true;
-
-  const normalizedText = normalizeKeywordComparableText(text);
-  if (!normalizedText) return false;
-
-  const words = parseKeywordWords(keywordTerm);
-  if (words.length === 0) return true;
-
-  return words.every((word) => {
-    const pattern = `(^|\\s)${escapeRegex(word)}(\\s|$)`;
-    return new RegExp(pattern).test(normalizedText);
-  });
-};
-
-const hasKeywordMatch = (text: string, keywordTerm?: string) => {
-  if (!keywordTerm) return true;
-  return hasKeywordPhraseMatch(text, keywordTerm) || hasKeywordWordsMatch(text, keywordTerm);
-};
-
-const matchesContentTerms = (texts: string[], options: { keywordTerm?: string; hashtagTerms: string[] }) => {
-  const normalizedTexts = (texts || []).map((text) => normalizeContentText(text));
-
-  const keywordTerms = parseKeywordWords(options.keywordTerm);
-
-  const keywordMatches =
-    !options.keywordTerm ||
-    // Phrase match can be satisfied by any single caption/title.
-    normalizedTexts.some((text) => hasKeywordPhraseMatch(text, options.keywordTerm)) ||
-    // For multi-keyword inputs, allow terms to be distributed across multiple captions/titles.
-    keywordTerms.every((term) =>
-      normalizedTexts.some((text) => {
-        const normalizedText = normalizeKeywordComparableText(text);
-        const pattern = `(^|\\s)${escapeRegex(term)}(\\s|$)`;
-        return new RegExp(pattern).test(normalizedText);
-      }),
-    );
-
-  const hashtagMatches =
-    options.hashtagTerms.length === 0 ||
-    // Require each hashtag term to appear somewhere across all captions/titles.
-    options.hashtagTerms.every((tag) => normalizedTexts.some((text) => text.includes(tag)));
-
-  return keywordMatches && hashtagMatches;
-};
-
-const mapInstagramApiTopVideos = (videos: any[]) =>
-  (videos || [])
-    .slice()
-    .sort((a: any, b: any) => {
-      const aTime = a?.timestamp ? new Date(a.timestamp).getTime() : 0;
-      const bTime = b?.timestamp ? new Date(b.timestamp).getTime() : 0;
-      return bTime - aTime;
-    })
-    .slice(0, 5)
-    .map((media: any) => ({
-      id: media.id,
-      media_url: media.media_url,
-      media_type: media.media_type,
-      thumbnail_url: media.thumbnail_url,
-      caption: media.caption,
-      permalink: media.permalink,
-      like_count: media.like_count,
-      comments_count: media.comments_count,
-      datePosted: media.timestamp ? new Date(media.timestamp) : null,
-    }));
-
-const mapTikTokApiTopVideos = (videos: any[]) =>
-  (videos || [])
-    .slice()
-    .sort((a: any, b: any) => {
-      const aTime = a?.create_time ? Number(a.create_time) : 0;
-      const bTime = b?.create_time ? Number(b.create_time) : 0;
-      return bTime - aTime;
-    })
-    .slice(0, 5)
-    .map((video: any) => ({
-      video_id: video.id,
-      cover_image_url: video.cover_image_url,
-      title: video.title,
-      embed_link: video.embed_link,
-      like_count: video.like_count || 0,
-      comment_count: video.comment_count || 0,
-      share_count: video.share_count || 0,
-      createdAt: video.create_time ? new Date(Number(video.create_time) * 1000) : null,
-    }));
-
-const getLatestInstagramCaptionsForMatch = (videos: any[], limit = 5) =>
-  (videos || [])
-    .slice()
-    .sort((a: any, b: any) => {
-      const aTime = a?.timestamp ? new Date(a.timestamp).getTime() : 0;
-      const bTime = b?.timestamp ? new Date(b.timestamp).getTime() : 0;
-      return bTime - aTime;
-    })
-    .slice(0, limit)
-    .map((video: any) => video?.caption || '');
-
-const getLatestTikTokTitlesForMatch = (videos: any[], limit = 5) =>
-  (videos || [])
-    .slice()
-    .sort((a: any, b: any) => {
-      const aTime = a?.create_time ? Number(a.create_time) : 0;
-      const bTime = b?.create_time ? Number(b.create_time) : 0;
-      return bTime - aTime;
-    })
-    .slice(0, limit)
-    .map((video: any) => video?.title || '');
 
 const isRateLimitError = (error: any) => {
   const status = error?.response?.status;
@@ -1155,7 +942,6 @@ const hydrateMissingTikTokData = async (rows: any[]): Promise<TopVideosByCreator
           },
         });
       } catch (error) {
-        // Swallow hydrate errors to keep discovery response fast and resilient.
       }
     }),
   );
