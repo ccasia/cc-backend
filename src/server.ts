@@ -147,7 +147,7 @@ app.use(router);
 app.post('/webhooks/xero', express.raw({ type: 'application/json' }), async (req, res) => {
   try {
     const xeroSignature = req.headers['x-xero-signature'];
-    console.log(req.session);
+    console.log(req.headers);
 
     if (!xeroSignature) {
       return res.status(401).send('Missing signature');
