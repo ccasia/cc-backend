@@ -12,7 +12,7 @@ const VALID_USER_TYPES = ['CLIENT', 'CREATOR'];
 // POST /api/nps-feedback — Submit NPS feedback (client or creator)
 export const submitFeedback = async (req: Request, res: Response) => {
   const userId = req.session.userid;
-  const { rating, feedback } = req.body;
+  const { rating, feedback, deviceType, deviceModel, deviceVendor, os, browser } = req.body;
 
   try {
     if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
@@ -22,7 +22,7 @@ export const submitFeedback = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Feedback must be 2000 characters or less' });
     }
 
-    const result = await submitNpsFeedbackSafe(userId, rating, feedback);
+    const result = await submitNpsFeedbackSafe(userId, rating, feedback, { deviceType, deviceModel, deviceVendor, os, browser });
     if (!result) {
       return res.status(409).json({ message: 'Feedback already submitted' });
     }

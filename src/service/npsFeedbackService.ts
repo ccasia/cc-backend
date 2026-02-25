@@ -98,6 +98,7 @@ export const submitNpsFeedback = async (
   userType: 'CLIENT' | 'CREATOR',
   rating: number,
   feedback?: string,
+  deviceInfo?: { deviceType?: string; deviceModel?: string; deviceVendor?: string; os?: string; browser?: string },
 ) => {
   return prisma.npsFeedback.create({
     data: {
@@ -105,6 +106,11 @@ export const submitNpsFeedback = async (
       userType,
       rating,
       feedback: feedback || null,
+      deviceType: deviceInfo?.deviceType || null,
+      deviceModel: deviceInfo?.deviceModel || null,
+      deviceVendor: deviceInfo?.deviceVendor || null,
+      os: deviceInfo?.os || null,
+      browser: deviceInfo?.browser || null,
     },
   });
 };
@@ -115,6 +121,7 @@ export const submitNpsFeedbackSafe = async (
   userId: string,
   rating: number,
   feedback?: string,
+  deviceInfo?: { deviceType?: string; deviceModel?: string; deviceVendor?: string; os?: string; browser?: string },
 ) => {
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -130,7 +137,7 @@ export const submitNpsFeedbackSafe = async (
     if (existing) return null;
   }
 
-  return submitNpsFeedback(userId, userType, rating, feedback);
+  return submitNpsFeedback(userId, userType, rating, feedback, deviceInfo);
 };
 
 // Get paginated NPS feedback list for admin view
