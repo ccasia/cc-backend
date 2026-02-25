@@ -1,6 +1,11 @@
 import IORedis from 'ioredis';
 
-const connection = new IORedis({ port: 6379, host: 'redis', maxRetriesPerRequest: null });
+const connection = new IORedis({
+  port: 6379,
+  host: 'redis',
+  maxRetriesPerRequest: null,
+  password: process.env.REDIS_PASSWORD,
+});
 
 export const subClient = connection.duplicate();
 
