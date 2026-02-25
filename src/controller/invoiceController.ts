@@ -20,6 +20,8 @@ import { TokenSet } from 'openid-client';
 import { error } from 'console';
 
 import fs from 'fs-extra';
+import path from 'path';
+
 import {
   createInvoiceService,
   generateUniqueInvoiceNumber,
@@ -30,7 +32,7 @@ import dayjs from 'dayjs';
 import { getCreatorInvoiceLists } from '@services/submissionService';
 import { missingInvoices } from '@constants/missing-invoices';
 import { creatorAgreements } from './campaignController';
-import { invoiceQueue } from '@utils/queue';
+import { bulkInvoiceQueue, invoiceQueue } from '@utils/queue';
 import { xero } from '@configs/xero';
 // import { decreamentCreditCampiagn } from '@services/packageService';
 
@@ -276,7 +278,11 @@ export const getAllInvoices = async (req: Request, res: Response) => {
           null;
 
         // Extract creator name from invoiceFrom JSON
-        const invoiceFromName = (invoice.invoiceFrom as any)?.name || invoice.creator?.user?.name;
+        const invoiceFromName =
+          invoice.creator?.user?.paymentForm?.bankAccountName ||
+          (invoice.bankAcc as any)?.payTo ||
+          invoice.creator?.user?.name ||
+          (invoice.invoiceFrom as any)?.name;
 
         return {
           ...invoice,
@@ -309,12 +315,15 @@ export const getAllInvoices = async (req: Request, res: Response) => {
       // Apply search filter on creator name (JSON field)
       if (search) {
         const searchLower = (search as string).toLowerCase();
-        invoicesWithCurrency = invoicesWithCurrency.filter(
-          (inv) =>
+        invoicesWithCurrency = invoicesWithCurrency.filter((inv) => {
+          return (
             inv.invoiceNumber.toLowerCase().includes(searchLower) ||
-            (inv.invoiceFrom as any)?.name?.toLowerCase().includes(searchLower) ||
-            inv.campaign?.name?.toLowerCase().includes(searchLower),
-        );
+            inv.campaign?.name?.toLowerCase().includes(searchLower) ||
+            inv.creator?.user?.paymentForm?.bankAccountName?.toLowerCase().includes(searchLower) ||
+            (inv.bankAcc as any)?.payTo?.toLowerCase().includes(searchLower) ||
+            inv.creator?.user?.name?.toLowerCase().includes(searchLower)
+          );
+        });
       }
 
       // Calculate total after JSON filtering
@@ -534,6 +543,7 @@ export const getInvoicesByCampaignId = async (req: Request, res: Response) => {
         task: true,
         creatorId: true,
         campaignId: true,
+        bankAcc: true,
         // Only include minimal creator data
         creator: {
           select: {
@@ -544,6 +554,7 @@ export const getInvoicesByCampaignId = async (req: Request, res: Response) => {
                 name: true,
                 photoURL: true,
                 email: true,
+                paymentForm: { select: { bankAccountName: true } },
               },
             },
           },
@@ -642,6 +653,8 @@ export const getAllInvoiceStats = async (req: Request, res: Response) => {
       overdue,
       draft,
       rejected,
+      failed,
+      processing,
       totalAmount,
       paidAmount,
       approvedAmount,
@@ -649,6 +662,7 @@ export const getAllInvoiceStats = async (req: Request, res: Response) => {
       overdueAmount,
       draftAmount,
       rejectedAmount,
+      failedAmount,
     ] = await Promise.all([
       // Counts by status
       prisma.invoice.count(),
@@ -658,6 +672,8 @@ export const getAllInvoiceStats = async (req: Request, res: Response) => {
       prisma.invoice.count({ where: { status: 'overdue' } }),
       prisma.invoice.count({ where: { status: 'draft' } }),
       prisma.invoice.count({ where: { status: 'rejected' } }),
+      prisma.invoice.count({ where: { status: 'failed' } }),
+      prisma.invoice.count({ where: { status: 'processing' } }),
 
       // Total amounts by status
       prisma.invoice.aggregate({ _sum: { amount: true } }),
@@ -667,6 +683,7 @@ export const getAllInvoiceStats = async (req: Request, res: Response) => {
       prisma.invoice.aggregate({ where: { status: 'overdue' }, _sum: { amount: true } }),
       prisma.invoice.aggregate({ where: { status: 'draft' }, _sum: { amount: true } }),
       prisma.invoice.aggregate({ where: { status: 'rejected' }, _sum: { amount: true } }),
+      prisma.invoice.aggregate({ where: { status: 'failed' }, _sum: { amount: true } }),
     ]);
 
     return res.status(200).json({
@@ -680,6 +697,8 @@ export const getAllInvoiceStats = async (req: Request, res: Response) => {
           overdue,
           draft,
           rejected,
+          failed,
+          processing,
         },
         amounts: {
           total: totalAmount._sum.amount || 0,
@@ -689,6 +708,8 @@ export const getAllInvoiceStats = async (req: Request, res: Response) => {
           overdue: overdueAmount._sum.amount || 0,
           draft: draftAmount._sum.amount || 0,
           rejected: rejectedAmount._sum.amount || 0,
+          failed: failedAmount._sum.amount || 0,
+          // processing: rejectedAmount._sum.amount || 0,
         },
       },
     });
@@ -1321,7 +1342,7 @@ export const updateInvoice = async (req: Request, res: Response) => {
           invoiceFrom,
           invoiceTo,
           task: items[0],
-          amount: totalAmount,
+          amount: parseFloat(totalAmount as any),
           bankAcc: bankInfo,
           campaignId,
         },
@@ -1368,6 +1389,11 @@ export const updateInvoice = async (req: Request, res: Response) => {
     const agreement = invoice.creator.user.creatorAgreement.find((item) => item.campaignId === campaignId);
 
     if (status === 'approved') {
+      await prisma.invoice.update({
+        where: { id: invoiceId },
+        data: { status: 'processing' },
+      });
+
       await invoiceQueue.add(
         'invoice-queue',
         {
@@ -1395,7 +1421,7 @@ export const updateInvoice = async (req: Request, res: Response) => {
 
     return res.status(200).json(invoice);
   } catch (error) {
-    console.error('asdsads', error);
+    console.error('Failed to update invoice', error);
     const message = error instanceof Error ? error.message : 'Unknown error occurred';
     return res.status(400).json({ error: message });
   }
@@ -1652,7 +1678,11 @@ export const createXeroInvoiceLocal = async (
   let activeTenant;
 
   try {
-    const where = 'Status=="ACTIVE"';
+    // await xero.updateTenants();
+
+    // let contact: Contact = { contactID: contactId };
+
+    const where = 'Status=="ACTIVE" AND (Type=="EXPENSE" OR Type=="DIRECTCOSTS")';
 
     if (currency) {
       activeTenant = xero.tenants.find((item) => item?.orgData.baseCurrency.toUpperCase() === currency);
@@ -1662,7 +1692,7 @@ export const createXeroInvoiceLocal = async (
 
     const lineItemsArray: LineItem[] = lineItems.map((item: any) => ({
       accountID: accounts.body.accounts[0].accountID,
-      accountCode: '50930',
+      accountCode: accounts.body.accounts[0].code || '50930',
       // description: item.description,
       description: `${clientName} ${campaignName}`,
       quantity: item.quantity,
@@ -2055,6 +2085,79 @@ export async function generateMissingInvoices(req: Request, res: Response) {
     res.sendStatus(400);
   }
 }
+
+export const bulkUpdateInvoices = async (req: Request, res: Response) => {
+  let { invoiceIds } = req.body;
+  const adminId = req.session.userid;
+  const attachments: Record<string, any> = {};
+
+  if (typeof invoiceIds === 'string') {
+    try {
+      invoiceIds = JSON.parse(invoiceIds);
+    } catch (e) {
+      invoiceIds = [];
+    }
+  }
+
+  if (!invoiceIds || !Array.isArray(invoiceIds) || invoiceIds.length === 0) {
+    return res.status(400).json({ message: 'No invoices selected' });
+  }
+
+  await prisma.invoice.updateMany({
+    where: {
+      id: {
+        in: invoiceIds,
+      },
+    },
+    data: {
+      status: 'processing',
+    },
+  });
+
+  if (req.files) {
+    const uploadDir = path.join(process.cwd(), 'uploads/bulk');
+    await fs.ensureDir(uploadDir);
+
+    for (const key of Object.keys(req.files)) {
+      if (key.startsWith('file_')) {
+        const file = req.files[key] as any;
+        const id = key.replace('file_', '');
+
+        const permanentPath = path.join(uploadDir, `${Date.now()}_${file.name}`);
+        await file.mv(permanentPath);
+
+        attachments[id] = {
+          name: file.name,
+          mimetype: file.mimetype,
+          tempFilePath: permanentPath,
+        };
+      }
+    }
+  }
+
+  try {
+    // Add to queue
+    await bulkInvoiceQueue.add(
+      'bulk-approve',
+      {
+        invoiceIds,
+        adminId,
+        attachments,
+      },
+      {
+        jobId: `bulk-inv-${dayjs().valueOf()}`,
+        removeOnComplete: true,
+      },
+    );
+
+    return res.status(200).json({
+      message: `Successfully queued ${invoiceIds.length} invoices for approval.`,
+    });
+  } catch (error) {
+    console.error('Bulk Queue Error:', error);
+    return res.status(500).json({ error: 'Failed to queue bulk process' });
+  }
+};
 
 export const getAllSelectedInvoices = async (req: Request, res: Response) => {
   const { invoiceIds } = req.query;
