@@ -1142,6 +1142,8 @@ model Video {
   createdAt    DateTime       @default(now())
   updatedAt    DateTime?      @updatedAt
 
+  uploadStatus UploadStatus?
+
   // Individual feedback fields
   feedback   String? // Individual feedback message
   reasons    String[] // Reasons for changes (if any)
@@ -1151,6 +1153,14 @@ model Video {
 
   // Previous video draft URLs
   previousDrafts String[] // Array of previous video URLs
+}
+
+enum UploadStatus {
+  PENDING
+  COMPRESSING
+  UPLOADING
+  COMPLETED
+  FAILED
 }
 
 model RawFootage {

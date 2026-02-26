@@ -6,6 +6,8 @@ import ffmpegPath from '@ffmpeg-installer/ffmpeg';
 import ffprobePath from '@ffprobe-installer/ffprobe';
 
 import fs from 'fs-extra';
+import { prisma } from 'src/prisma/prisma';
+import { Video } from '@prisma/client';
 
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
 Ffmpeg.setFfprobePath(ffprobePath.path);
@@ -18,6 +20,7 @@ export interface Root {
   caption: string;
   admins: Admin[];
   video: FilePaths['video'][0];
+  videoData: Video;
 }
 
 export interface Admin {
@@ -45,7 +48,7 @@ const processVideo = async (
       .outputOptions(['-c:v libx264', '-crf 28', '-preset ultrafast'])
       .save(outputPath)
       .on('progress', (progress) => {
-        const percentage = Math.round(progress.percent as number);
+        const percentage = Math.min(100, Math.max(0, Math.round(progress.percent ?? 0)));
         progressCallback('processing', percentage);
       })
       .on('end', async () => {
@@ -66,6 +69,15 @@ const compressWorker = new Worker(
   async (job) => {
     const data = job.data as Root;
     const video = data.video;
+    const videoData = data.videoData;
+    console.log('RECEIVING ', data);
+
+    await prisma.video.update({
+      where: { id: videoData.id },
+      data: {
+        uploadStatus: 'COMPRESSING',
+      },
+    });
 
     await processVideo(
       video.inputPath,
@@ -86,7 +98,19 @@ const compressWorker = new Worker(
       },
     );
 
-    await uploadQueue.add('upload', { video, data: job.data }, { removeOnComplete: true });
+    await uploadQueue.add(
+      'upload',
+      { video, data: job.data },
+      {
+        attempts: 2,
+        removeOnComplete: true,
+        removeOnFail: false,
+        backoff: {
+          type: 'exponential',
+          delay: 2000,
+        },
+      },
+    );
 
     await fs.unlink(video.inputPath);
   },
@@ -97,11 +121,12 @@ compressWorker.on('completed', (job) => {
   console.log('Job completed');
 });
 
-compressWorker.on('failed', () => {
-  console.log('Compress failed');
+compressWorker.on('failed', (_, err) => {
+  console.log('Compress failed', err);
 });
 
 process.on('SIGTERM', async () => {
   await compressWorker.close();
+  await prisma.$disconnect();
   process.exit(0);
 });

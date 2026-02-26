@@ -4,6 +4,7 @@ import { uploadPitchVideo } from '@configs/cloudStorage.config';
 import fs from 'fs-extra';
 import { prisma } from 'src/prisma/prisma';
 import dayjs from 'dayjs';
+import { updateSubmissionStatus } from './updateSubmissionStatus';
 
 const checkCurrentSubmission = async (submissionId: string) => {
   const submission = await prisma.submission.findUnique({
@@ -147,6 +148,14 @@ const uploadWorker = new Worker(
   async (job) => {
     const data = job.data.data;
     const video = data.video;
+    const videoData = data.videoData;
+
+    await prisma.video.update({
+      where: { id: videoData.id },
+      data: {
+        uploadStatus: 'UPLOADING',
+      },
+    });
 
     const { size } = await fs.promises.stat(video.outputPath);
 
@@ -167,6 +176,19 @@ const uploadWorker = new Worker(
       },
       size,
     );
+
+    await prisma.video.update({
+      where: {
+        id: videoData.id,
+      },
+      data: {
+        url: videoPublicURL,
+        status: 'PENDING',
+        uploadStatus: 'COMPLETED',
+      },
+    });
+
+    await updateSubmissionStatus(videoData.submissionId!);
 
     return { userId: data.userid };
 

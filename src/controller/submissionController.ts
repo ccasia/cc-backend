@@ -833,6 +833,8 @@ export const draftSubmission = async (req: Request, res: Response) => {
   const files = req.files as any;
   const userid = req.session.userid;
 
+  if (!files || files.length === 0) return res.status(400).json({ message: 'No files uploaded' });
+
   // Handle multiple draft videos
   const draftVideos = Array.isArray(files?.draftVideo) ? files.draftVideo : files?.draftVideo ? [files.draftVideo] : [];
 
@@ -842,15 +844,15 @@ export const draftSubmission = async (req: Request, res: Response) => {
   // Handle multiple photos
   const photos = Array.isArray(files?.photos) ? files.photos : files?.photos ? [files.photos] : [];
 
-  let amqp: amqplib.Connection | null = null;
-  let channel: amqplib.Channel | null = null;
+  // let amqp: amqplib.Connection | null = null;
+  // let channel: amqplib.Channel | null = null;
 
   try {
-    amqp = await amqplib.connect(process.env.RABBIT_MQ!);
+    // amqp = await amqplib.connect(process.env.RABBIT_MQ!);
 
-    channel = await amqp.createChannel();
+    // channel = await amqp.createChannel();
 
-    await channel.assertQueue('draft', { durable: true });
+    // await channel.assertQueue('draft', { durable: true });
 
     const submission = await prisma.submission.findUnique({
       where: {
@@ -954,7 +956,16 @@ export const draftSubmission = async (req: Request, res: Response) => {
     }
 
     for (const video of filePaths.get('video')) {
-      compressQueue.add(
+      const videoData = await prisma.video.create({
+        data: {
+          submissionId: submission.id,
+          uploadStatus: 'PENDING',
+          userId: submission.userId,
+          campaignId: submission.campaignId,
+        },
+      });
+
+      await compressQueue.add(
         'compress',
         {
           userid,
@@ -964,28 +975,19 @@ export const draftSubmission = async (req: Request, res: Response) => {
           caption,
           admins: submission.campaign.campaignAdmin,
           video,
+          videoData,
         },
         {
           attempts: 2,
+          removeOnComplete: true,
+          removeOnFail: false,
+          backoff: {
+            type: 'exponential',
+            delay: 2000,
+          },
         },
       );
     }
-
-    // videoQueue.add(
-    //   'video-queue',
-    //   {
-    //     userid,
-    //     submissionId,
-    //     campaignId: submission?.campaignId,
-    //     folder: submission?.submissionType.type,
-    //     caption,
-    //     admins: submission.campaign.campaignAdmin,
-    //     filePaths: Object.fromEntries(filePaths),
-    //   },
-    //   {
-    //     attempts: 2,
-    //   },
-    // );
 
     // const isSent = channel.sendToQueue(
     //   'draft',
@@ -1016,10 +1018,11 @@ export const draftSubmission = async (req: Request, res: Response) => {
   } catch (error) {
     console.log(error);
     return res.status(400).json(error);
-  } finally {
-    if (channel) await channel.close();
-    if (amqp) await amqp.close();
   }
+  //  finally {
+  //   if (channel) await channel.close();
+  //   if (amqp) await amqp.close();
+  // }
 };
 
 export const adminManageDraft = async (req: Request, res: Response) => {
