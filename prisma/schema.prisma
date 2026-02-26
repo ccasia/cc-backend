@@ -1591,6 +1591,8 @@ enum InvoiceStatus {
   pending_payment
   approved
   rejected
+  processing
+  failed
 }
 
 enum CampaignStatus {

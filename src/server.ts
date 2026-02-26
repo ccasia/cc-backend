@@ -147,17 +147,13 @@ app.use(router);
 app.post('/webhooks/xero', express.raw({ type: 'application/json' }), async (req, res) => {
   try {
     const xeroSignature = req.headers['x-xero-signature'];
-    console.log(req.session);
 
     if (!xeroSignature) {
       return res.status(401).send('Missing signature');
     }
 
     // Generate expected signature
-    const expectedSignature = crypto
-      .createHmac('sha256', 'UtH0zJbM1oFEw3K662zollAzzkJuKORDAKJvJ/LtiXIN9VqXghooPmhOInHhewxX2Axb9BYa4lXeHCV+ImyfnA==')
-      .update(req.body)
-      .digest('base64');
+    const expectedSignature = crypto.createHmac('sha256', process.env.WEBHOOK_KEY!).update(req.body).digest('base64');
 
     if (xeroSignature !== expectedSignature) {
       return res.status(401).send('Invalid signature');
@@ -165,8 +161,13 @@ app.post('/webhooks/xero', express.raw({ type: 'application/json' }), async (req
 
     // Parse payload AFTER verification
     const payload = JSON.parse(req.body.toString('utf8'));
+    console.log('PAYLOAD', payload);
 
     console.log('✅ Xero Webhook Verified');
+
+    if (!payload.events.length) {
+      return res.status(200).send('OK');
+    }
 
     const user = await prisma.user.findFirst({
       where: {
