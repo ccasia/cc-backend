@@ -905,6 +905,7 @@ export const activateChildAccount = async (req: Request, res: Response) => {
         name: `${childAccount.firstName || ''} ${childAccount.lastName || ''}`.trim(),
         role: 'client' as any,
         status: 'active' as any,
+        activatedAt: new Date()
       },
     });
 
