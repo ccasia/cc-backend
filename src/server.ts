@@ -147,7 +147,6 @@ app.use(router);
 app.post('/webhooks/xero', express.raw({ type: 'application/json' }), async (req, res) => {
   try {
     const xeroSignature = req.headers['x-xero-signature'];
-    console.log(req.headers);
 
     if (!xeroSignature) {
       return res.status(401).send('Missing signature');
@@ -162,26 +161,28 @@ app.post('/webhooks/xero', express.raw({ type: 'application/json' }), async (req
 
     // Parse payload AFTER verification
     const payload = JSON.parse(req.body.toString('utf8'));
+    console.log('PAYLOAD', payload);
 
     console.log('✅ Xero Webhook Verified');
 
-    if (payload.events.length) {
-      console.log('PAYLOAD XERO', payload);
-      const user = await prisma.user.findFirst({
-        where: {
-          email: {
-            equals:
-              process.env.NODE_ENV === 'development' ? 'super@cultcreativeasia.com' : 'super@cultcreativeasia.com', //Need to change to V's email
+    if (!payload.events.length) {
+      return res.status(200).send('OK');
+    }
+
+    const user = await prisma.user.findFirst({
+      where: {
+        email: {
+          equals: process.env.NODE_ENV === 'development' ? 'super@cultcreativeasia.com' : 'vidya@cultcreative.asia', //Need to change to V's email
+        },
+      },
+      include: {
+        admin: {
+          select: {
+            xeroTokenSet: true,
           },
         },
-        include: {
-          admin: {
-            select: {
-              xeroTokenSet: true,
-            },
-          },
-        },
-      });
+      },
+    });
 
       if (!user) return res.sendStatus(400);
 
