@@ -1098,7 +1098,7 @@ export const getInstagramMediaKit = async (req: Request, res: Response) => {
 
     const topInstagramVideoIds = medias.sortedVideos
       .map((media: any) => media?.id || null)
-      .filter((id): id is string => id !== null);
+      .filter((id: any): id is string => id !== null);
 
     if (topInstagramVideoIds.length > 0) {
       await prisma.instagramVideo.deleteMany({
