@@ -184,41 +184,40 @@ app.post('/webhooks/xero', express.raw({ type: 'application/json' }), async (req
       },
     });
 
-      if (!user) return res.sendStatus(400);
+    if (!user) return res.sendStatus(400);
 
-      const data = payload.events[0] as { tenantId: string; resourceId: string };
+    const data = payload.events[0] as { tenantId: string; resourceId: string };
 
-      const tokenSet: TokenSet = (user.admin?.xeroTokenSet as TokenSet) || null;
+    const tokenSet: TokenSet = (user.admin?.xeroTokenSet as TokenSet) || null;
 
-      if (!tokenSet) throw new Error('You are not connected to Xero');
+    if (!tokenSet) throw new Error('You are not connected to Xero');
 
-      await xero.initialize();
+    await xero.initialize();
 
-      xero.setTokenSet(tokenSet);
+    xero.setTokenSet(tokenSet);
 
-      const where = 'Status=="PAID"';
+    const where = 'Status=="PAID"';
 
-      const invoiceData = await xero.accountingApi.getInvoices(data.tenantId, undefined, where);
+    const invoiceData = await xero.accountingApi.getInvoices(data.tenantId, undefined, where);
 
-      // Check based on invoiceID
-      const xeroInvoices = invoiceData.body.invoices;
+    // Check based on invoiceID
+    const xeroInvoices = invoiceData.body.invoices;
 
-      const xeroInvoicesIds = xeroInvoices?.map((xeroInvoice) => xeroInvoice.invoiceID);
+    const xeroInvoicesIds = xeroInvoices?.map((xeroInvoice) => xeroInvoice.invoiceID);
 
-      if (xeroInvoicesIds?.length) {
-        const invoices = await prisma.invoice.updateMany({
-          where: {
-            xeroInvoiceId: {
-              in: xeroInvoicesIds as any,
-            },
+    if (xeroInvoicesIds?.length) {
+      const invoices = await prisma.invoice.updateMany({
+        where: {
+          xeroInvoiceId: {
+            in: xeroInvoicesIds as any,
           },
-          data: {
-            status: 'paid',
-          },
-        });
+        },
+        data: {
+          status: 'paid',
+        },
+      });
 
-        console.log('INVOICES', invoices);
-      }
+      console.log('INVOICES', invoices);
     }
 
     res.status(200).send('OK');
