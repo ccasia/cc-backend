@@ -174,6 +174,21 @@ app.post('/webhooks/xero', express.raw({ type: 'application/json' }), async (req
     await xero.initialize();
     xero.setTokenSet(tokenSet);
 
+    if (dayjs.unix(tokenSet.expires_at!).isBefore(dayjs())) {
+      const validTokenSet = await xero.refreshToken();
+      // save the new tokenset
+      await prisma.admin.update({
+        where: {
+          userId: user.id,
+        },
+        data: {
+          xeroTokenSet: validTokenSet as any,
+        },
+      });
+    }
+
+    await xero.updateTenants();
+
     // Handle all events
     for (const event of payload.events) {
       const { tenantId } = event;
