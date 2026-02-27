@@ -161,7 +161,7 @@ app.post('/webhooks/xero', express.raw({ type: 'application/json' }), async (req
 
     const user = await prisma.user.findFirst({
       where: {
-        email: process.env.NODE_ENV === 'development' ? 'super@cultcreativeasia.com' : 'vidya@cultcreative.asia',
+        email: process.env.NODE_ENV === 'development' ? 'super@cultcreativeasia.com' : 'super@cultcreativeasia.com',
       },
       include: { admin: { select: { xeroTokenSet: true } } },
     });
