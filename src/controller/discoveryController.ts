@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { getDiscoveryCreators } from '@services/discoveryService';
+import { getDiscoveryCreators, inviteDiscoveryCreators } from '@services/discoveryService';
 
 const parseStringArrayQuery = (value?: string | string[]) => {
   if (!value) return undefined;
@@ -62,5 +62,39 @@ export const getDiscoveryCreatorsList = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Error fetching discovery creators:', error);
     return res.status(500).json({ message: 'Failed to fetch discovery creators' });
+  }
+};
+
+export const inviteDiscoveryCreatorsController = async (req: Request, res: Response) => {
+  const userId = req.session.userid;
+  const { campaignId, creatorIds, creators } = req.body || {};
+
+  try {
+    const normalizedCreatorIds = Array.from(
+      new Set(
+        [
+          ...(Array.isArray(creatorIds) ? creatorIds : []),
+          ...(Array.isArray(creators) ? creators.map((creator) => creator?.id) : []),
+        ]
+          .map((id) => String(id || '').trim())
+          .filter(Boolean),
+      ),
+    );
+
+    const data = await inviteDiscoveryCreators({
+      campaignId: String(campaignId || '').trim(),
+      creatorIds: normalizedCreatorIds,
+      invitedByUserId: userId,
+    });
+
+    return res.status(200).json({
+      message: 'Creators invited successfully',
+      ...data,
+    });
+  } catch (error: any) {
+    console.error('Error inviting discovery creators:', error);
+    return res.status(400).json({
+      message: error?.message || 'Failed to invite discovery creators',
+    });
   }
 };
