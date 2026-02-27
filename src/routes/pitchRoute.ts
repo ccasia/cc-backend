@@ -14,6 +14,7 @@ import {
   updateGuestCreatorInfo,
   withdrawCreatorFromCampaign,
   updateOutreachStatus,
+  acceptInviteByCreator,
 } from '@controllers/pitchController';
 
 const router = express.Router();
@@ -31,5 +32,6 @@ router.patch('/v3/:pitchId/submit-agreement', isLoggedIn, submitAgreement);
 router.patch('/v3/:pitchId/updateGuest', isLoggedIn, isAdminOrClient, updateGuestCreatorInfo);
 router.patch('/v3/:pitchId/withdraw', isLoggedIn, isAdminOrClient, withdrawCreatorFromCampaign);
 router.patch('/v3/:pitchId/outreach-status', isLoggedIn, isAdminOrClient, updateOutreachStatus);
+router.patch('/v3/:pitchId/accept-invite', isLoggedIn, acceptInviteByCreator);
 
 export default router;
