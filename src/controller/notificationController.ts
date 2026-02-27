@@ -158,6 +158,11 @@ export const saveNotification = async ({
             userId: true,
           },
         },
+        campaign: {
+          select: {
+            name: true,
+          },
+        },
       },
     });
   }
