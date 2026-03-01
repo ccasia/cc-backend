@@ -8947,7 +8947,7 @@ export const activateClientCampaign = async (req: Request, res: Response) => {
         OR: [
           {
             role: {
-              in: ['client', 'admin'],
+              in: ['admin'],
             },
           },
           {
@@ -8957,6 +8957,12 @@ export const activateClientCampaign = async (req: Request, res: Response) => {
               },
             },
           },
+          {
+            role: 'client',
+              client: {
+                companyId: campaign.companyId,
+            }
+          }
         ],
       },
       select: {
