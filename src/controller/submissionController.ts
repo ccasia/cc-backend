@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { Entity, FeedbackStatus, Photo, PrismaClient, SubmissionStatus } from '@prisma/client';
+import { Entity, FeedbackStatus, Photo, PrismaClient, SubmissionStatus, Video } from '@prisma/client';
 import { uploadAgreementForm, uploadPitchVideo } from '@configs/cloudStorage.config';
 import { saveNotification } from './notificationController';
 import { activeProcesses, clients, io } from '../server';
@@ -829,37 +829,25 @@ export const getSubmissionByCampaignCreatorId = async (req: Request, res: Respon
 
 // A V2 Draft Submission
 export const draftSubmission = async (req: Request, res: Response) => {
-  const { submissionId, caption, photosDriveLink, rawFootagesDriveLink } = JSON.parse(req.body.data);
+  const { submissionId, caption, photosDriveLink, rawFootagesDriveLink, rejectedVideoIds } = JSON.parse(req.body.data);
+
   const files = req.files as any;
   const userid = req.session.userid;
 
   if (!files || files.length === 0) return res.status(400).json({ message: 'No files uploaded' });
 
-  // Handle multiple draft videos
   const draftVideos = Array.isArray(files?.draftVideo) ? files.draftVideo : files?.draftVideo ? [files.draftVideo] : [];
-
-  // Handle multiple raw footages
   const rawFootages = Array.isArray(files?.rawFootage) ? files.rawFootage : files?.rawFootage ? [files.rawFootage] : [];
-
-  // Handle multiple photos
   const photos = Array.isArray(files?.photos) ? files.photos : files?.photos ? [files.photos] : [];
 
-  // let amqp: amqplib.Connection | null = null;
-  // let channel: amqplib.Channel | null = null;
-
   try {
-    // amqp = await amqplib.connect(process.env.RABBIT_MQ!);
-
-    // channel = await amqp.createChannel();
-
-    // await channel.assertQueue('draft', { durable: true });
-
     const submission = await prisma.submission.findUnique({
       where: {
         id: submissionId,
       },
       include: {
         submissionType: true,
+        dependentOn: true,
         user: {
           include: {
             Board: true,
@@ -877,6 +865,8 @@ export const draftSubmission = async (req: Request, res: Response) => {
     if (!submission) {
       return res.status(404).json({ message: 'Submission not found' });
     }
+
+    const isFinalDraftSubmission = submission.submissionType.type === 'FINAL_DRAFT';
 
     await prisma.submission.update({
       where: { id: submissionId },
@@ -908,7 +898,7 @@ export const draftSubmission = async (req: Request, res: Response) => {
       }
     }
 
-    const filePaths = new Map();
+    const filePaths = new Map<'video' | 'rawFootages' | 'photos', any>();
 
     if (draftVideos.length) {
       filePaths.set('video', []);
@@ -955,55 +945,54 @@ export const draftSubmission = async (req: Request, res: Response) => {
       }
     }
 
-    for (const video of filePaths.get('video')) {
-      const videoData = await prisma.video.create({
-        data: {
-          submissionId: submission.id,
-          uploadStatus: 'PENDING',
-          userId: submission.userId,
-          campaignId: submission.campaignId,
-        },
-      });
+    const videoFiles = filePaths.get('video') ?? [];
 
-      await compressQueue.add(
-        'compress',
-        {
-          userid,
-          submissionId,
-          campaignId: submission?.campaignId,
-          folder: submission?.submissionType.type,
-          caption,
-          admins: submission.campaign.campaignAdmin,
-          video,
-          videoData,
-        },
-        {
-          attempts: 2,
-          removeOnComplete: true,
-          removeOnFail: false,
-          backoff: {
-            type: 'exponential',
-            delay: 2000,
+    for (const video of videoFiles) {
+      let videoData: Video;
+
+      if (isFinalDraftSubmission && rejectedVideoIds.length) {
+        videoData = await prisma.video.update({
+          where: {
+            id: '',
           },
-        },
-      );
-    }
+          data: {
+            uploadStatus: 'PENDING',
+          },
+        });
+      } else {
+        videoData = await prisma.video.create({
+          data: {
+            submissionId: submission.id,
+            uploadStatus: 'PENDING',
+            userId: submission.userId,
+            campaignId: submission.campaignId,
+          },
+        });
+      }
 
-    // const isSent = channel.sendToQueue(
-    //   'draft',
-    //   Buffer.from(
-    //     JSON.stringify({
-    //       userid,
-    //       submissionId,
-    //       campaignId: submission?.campaignId,
-    //       folder: submission?.submissionType.type,
-    //       caption,
-    //       admins: submission.campaign.campaignAdmin,
-    //       filePaths: Object.fromEntries(filePaths),
-    //     }),
-    //   ),
-    //   { persistent: true },
-    // );
+      // await compressQueue.add(
+      //   'compress',
+      //   {
+      //     userid,
+      //     submissionId,
+      //     campaignId: submission?.campaignId,
+      //     folder: submission?.submissionType.type,
+      //     caption,
+      //     admins: submission.campaign.campaignAdmin,
+      //     video,
+      //     videoData,
+      //   },
+      //   {
+      //     attempts: 2,
+      //     removeOnComplete: true,
+      //     removeOnFail: false,
+      //     backoff: {
+      //       type: 'exponential',
+      //       delay: 2000,
+      //     },
+      //   },
+      // );
+    }
 
     // Log creator activity
     if (submission.campaignId) {
@@ -1019,10 +1008,6 @@ export const draftSubmission = async (req: Request, res: Response) => {
     console.log(error);
     return res.status(400).json(error);
   }
-  //  finally {
-  //   if (channel) await channel.close();
-  //   if (amqp) await amqp.close();
-  // }
 };
 
 export const adminManageDraft = async (req: Request, res: Response) => {
