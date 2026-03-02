@@ -18,6 +18,7 @@ import {
   getAvgSubmissionResponseDetails,
   getClientRejectionRate,
   getCreditsPerCS,
+  getRejectionReasons,
 } from '@controllers/analyticsV2Controller';
 import { isLoggedIn } from '@middlewares/onlyLogin';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
@@ -42,5 +43,6 @@ router.get('/avg-submission-response', isLoggedIn, isSuperAdmin, getAvgSubmissio
 router.get('/avg-submission-response/details', isLoggedIn, isSuperAdmin, getAvgSubmissionResponseDetails);
 router.get('/client-rejection-rate', isLoggedIn, isSuperAdmin, getClientRejectionRate);
 router.get('/credits-per-cs', isLoggedIn, isSuperAdmin, getCreditsPerCS);
+router.get('/rejection-reasons', isLoggedIn, isSuperAdmin, getRejectionReasons);
 
 export default router;

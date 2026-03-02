@@ -2435,3 +2435,48 @@ export const getCreditsPerCSData = async (startDate?: Date, endDate?: Date) => {
 
   return { csAdmins: Array.from(adminMap.values()) };
 };
+
+// Rejection Reasons
+
+interface RejectionReasonRow {
+  reason: string;
+  count: number;
+}
+
+export const getRejectionReasonsData = async (startDate?: Date, endDate?: Date) => {
+  const hasDateFilter = !!startDate && !!endDate;
+
+  const rows = hasDateFilter
+    ? await prisma.$queryRaw<RejectionReasonRow[]>`
+        SELECT
+          r AS "reason",
+          COUNT(*)::int AS "count"
+        FROM "Feedback" f
+        CROSS JOIN LATERAL unnest(f.reasons) AS r
+        INNER JOIN "Submission" s ON s.id = f."submissionId"
+        INNER JOIN "Campaign" c ON c.id = s."campaignId"
+        WHERE c."submissionVersion" = 'v4'
+          AND f.type = 'REQUEST'
+          AND f."sentToCreator" = true
+          AND f."createdAt" >= ${startDate}
+          AND f."createdAt" <= ${endDate}
+        GROUP BY r
+        ORDER BY "count" DESC
+      `
+    : await prisma.$queryRaw<RejectionReasonRow[]>`
+        SELECT
+          r AS "reason",
+          COUNT(*)::int AS "count"
+        FROM "Feedback" f
+        CROSS JOIN LATERAL unnest(f.reasons) AS r
+        INNER JOIN "Submission" s ON s.id = f."submissionId"
+        INNER JOIN "Campaign" c ON c.id = s."campaignId"
+        WHERE c."submissionVersion" = 'v4'
+          AND f.type = 'REQUEST'
+          AND f."sentToCreator" = true
+        GROUP BY r
+        ORDER BY "count" DESC
+      `;
+
+  return { reasons: rows };
+};
