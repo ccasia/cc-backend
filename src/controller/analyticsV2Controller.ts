@@ -17,6 +17,8 @@ import {
   getAvgFirstCampaignDetails as getAvgFirstCampaignDetailsData,
   getAvgSubmissionResponseData,
   getAvgSubmissionResponseDetails as getAvgSubmissionResponseDetailsData,
+  getClientRejectionRateData,
+  getCreditsPerCSData,
 } from '@services/analyticsV2Service';
 
 const prisma = new PrismaClient();
@@ -310,5 +312,49 @@ export const getAvgSubmissionResponseDetails = async (req: Request, res: Respons
   } catch (error: any) {
     console.error('Error fetching avg submission response details:', error);
     return res.status(500).json({ success: false, message: 'Failed to fetch data' });
+  }
+};
+
+export const getClientRejectionRate = async (req: Request, res: Response) => {
+  try {
+    const { startDate: startParam, endDate: endParam } = req.query;
+    let startDate: Date | undefined;
+    let endDate: Date | undefined;
+
+    if (startParam && endParam) {
+      startDate = new Date(startParam as string);
+      endDate = new Date(endParam as string);
+      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+        return res.status(400).json({ success: false, message: 'Invalid date format.' });
+      }
+    }
+
+    const data = await getClientRejectionRateData(startDate, endDate);
+    return res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    console.error('Error fetching client rejection rate data:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch client rejection rate data' });
+  }
+};
+
+export const getCreditsPerCS = async (req: Request, res: Response) => {
+  try {
+    const { startDate: startParam, endDate: endParam } = req.query;
+    let startDate: Date | undefined;
+    let endDate: Date | undefined;
+
+    if (startParam && endParam) {
+      startDate = new Date(startParam as string);
+      endDate = new Date(endParam as string);
+      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+        return res.status(400).json({ success: false, message: 'Invalid date format.' });
+      }
+    }
+
+    const data = await getCreditsPerCSData(startDate, endDate);
+    return res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    console.error('Error fetching credits per CS data:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch credits per CS data' });
   }
 };
