@@ -2591,3 +2591,100 @@ export const getRequireChangesRateData = async (
 
   return { v2: v2Result, v4: v4Result };
 };
+
+// Top Shortlisted Creators
+
+interface TopShortlistedCreatorRow {
+  userId: string;
+  name: string;
+  avatar: string | null;
+  count: number;
+  approved: number;
+  rejected: number;
+}
+
+export const getTopShortlistedCreatorsData = async (startDate?: Date, endDate?: Date) => {
+  const hasDateFilter = !!startDate && !!endDate;
+
+  const rows = hasDateFilter
+    ? await prisma.$queryRaw<TopShortlistedCreatorRow[]>`
+        WITH shortlist_events AS (
+          SELECT
+            slc."userId",
+            slc."campaignId",
+            slc."shortlisted_date" AS event_date,
+            true AS is_approved
+          FROM "ShortListedCreator" slc
+          WHERE slc."userId" IS NOT NULL
+
+          UNION ALL
+
+          SELECT
+            p."userId",
+            p."campaignId",
+            p."createdAt" AS event_date,
+            false AS is_approved
+          FROM "Pitch" p
+          WHERE p."approvedByAdminId" IS NOT NULL
+            AND p.status::"text" = 'rejected'
+            AND NOT EXISTS (
+              SELECT 1 FROM "ShortListedCreator" slc
+              WHERE slc."userId" = p."userId" AND slc."campaignId" = p."campaignId"
+            )
+        )
+        SELECT
+          se."userId",
+          COALESCE(u.name, u.email) AS name,
+          u."photoURL" AS avatar,
+          COUNT(*)::int AS count,
+          COUNT(CASE WHEN se.is_approved THEN 1 END)::int AS approved,
+          COUNT(CASE WHEN NOT se.is_approved THEN 1 END)::int AS rejected
+        FROM shortlist_events se
+        INNER JOIN "User" u ON u.id = se."userId"
+        WHERE se.event_date >= ${startDate}
+          AND se.event_date <= ${endDate}
+        GROUP BY se."userId", COALESCE(u.name, u.email), u."photoURL"
+        ORDER BY count DESC
+        LIMIT 10
+      `
+    : await prisma.$queryRaw<TopShortlistedCreatorRow[]>`
+        WITH shortlist_events AS (
+          SELECT
+            slc."userId",
+            slc."campaignId",
+            slc."shortlisted_date" AS event_date,
+            true AS is_approved
+          FROM "ShortListedCreator" slc
+          WHERE slc."userId" IS NOT NULL
+
+          UNION ALL
+
+          SELECT
+            p."userId",
+            p."campaignId",
+            p."createdAt" AS event_date,
+            false AS is_approved
+          FROM "Pitch" p
+          WHERE p."approvedByAdminId" IS NOT NULL
+            AND p.status::"text" = 'rejected'
+            AND NOT EXISTS (
+              SELECT 1 FROM "ShortListedCreator" slc
+              WHERE slc."userId" = p."userId" AND slc."campaignId" = p."campaignId"
+            )
+        )
+        SELECT
+          se."userId",
+          COALESCE(u.name, u.email) AS name,
+          u."photoURL" AS avatar,
+          COUNT(*)::int AS count,
+          COUNT(CASE WHEN se.is_approved THEN 1 END)::int AS approved,
+          COUNT(CASE WHEN NOT se.is_approved THEN 1 END)::int AS rejected
+        FROM shortlist_events se
+        INNER JOIN "User" u ON u.id = se."userId"
+        GROUP BY se."userId", COALESCE(u.name, u.email), u."photoURL"
+        ORDER BY count DESC
+        LIMIT 10
+      `;
+
+  return { creators: rows };
+};
