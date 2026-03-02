@@ -2218,3 +2218,220 @@ export const getAvgSubmissionResponseDetails = async (startDate: Date, endDate: 
 
   return { avg, count: mapped.length, fastest, slowest };
 };
+
+// Client Rejection Rate
+
+interface RejectionRateRow {
+  campaignId: string;
+  campaignName: string;
+  packageName: string;
+  rejected: number;
+  total: number;
+  campaignImages: unknown;
+}
+
+export const getClientRejectionRateData = async (startDate?: Date, endDate?: Date) => {
+  const hasDateFilter = !!startDate && !!endDate;
+
+  const rows = hasDateFilter
+    ? await prisma.$queryRaw<RejectionRateRow[]>`
+        SELECT
+          c.id AS "campaignId",
+          c.name AS "campaignName",
+          COALESCE(pkg.name, cpkg."customName", 'Custom') AS "packageName",
+          COUNT(CASE WHEN p."rejectedByClientId" IS NOT NULL THEN 1 END)::int AS "rejected",
+          COUNT(p.id)::int AS "total",
+          cb.images AS "campaignImages"
+        FROM "Pitch" p
+        INNER JOIN "Campaign" c ON c.id = p."campaignId"
+        LEFT JOIN "CampaignBrief" cb ON cb."campaignId" = c.id
+        LEFT JOIN "Subscription" sub ON sub.id = c."subscriptionId"
+        LEFT JOIN "Package" pkg ON pkg.id = sub."packageId"
+        LEFT JOIN "CustomPackage" cpkg ON cpkg.id = sub."customPackageId"
+        WHERE c."submissionVersion" = 'v4'
+          AND (
+            p."rejectedByClientId" IS NOT NULL
+            OR p."approvedByClientId" IS NOT NULL
+            OR p."maybeByClientId" IS NOT NULL
+            OR p.status = 'SENT_TO_CLIENT'
+          )
+          AND p."createdAt" >= ${startDate}
+          AND p."createdAt" <= ${endDate}
+        GROUP BY c.id, c.name, COALESCE(pkg.name, cpkg."customName", 'Custom'), cb.images
+        HAVING COUNT(p.id) > 0
+        ORDER BY (COUNT(CASE WHEN p."rejectedByClientId" IS NOT NULL THEN 1 END)::float / NULLIF(COUNT(p.id), 0)::float) DESC
+      `
+    : await prisma.$queryRaw<RejectionRateRow[]>`
+        SELECT
+          c.id AS "campaignId",
+          c.name AS "campaignName",
+          COALESCE(pkg.name, cpkg."customName", 'Custom') AS "packageName",
+          COUNT(CASE WHEN p."rejectedByClientId" IS NOT NULL THEN 1 END)::int AS "rejected",
+          COUNT(p.id)::int AS "total",
+          cb.images AS "campaignImages"
+        FROM "Pitch" p
+        INNER JOIN "Campaign" c ON c.id = p."campaignId"
+        LEFT JOIN "CampaignBrief" cb ON cb."campaignId" = c.id
+        LEFT JOIN "Subscription" sub ON sub.id = c."subscriptionId"
+        LEFT JOIN "Package" pkg ON pkg.id = sub."packageId"
+        LEFT JOIN "CustomPackage" cpkg ON cpkg.id = sub."customPackageId"
+        WHERE c."submissionVersion" = 'v4'
+          AND (
+            p."rejectedByClientId" IS NOT NULL
+            OR p."approvedByClientId" IS NOT NULL
+            OR p."maybeByClientId" IS NOT NULL
+            OR p.status = 'SENT_TO_CLIENT'
+          )
+        GROUP BY c.id, c.name, COALESCE(pkg.name, cpkg."customName", 'Custom'), cb.images
+        HAVING COUNT(p.id) > 0
+        ORDER BY (COUNT(CASE WHEN p."rejectedByClientId" IS NOT NULL THEN 1 END)::float / NULLIF(COUNT(p.id), 0)::float) DESC
+      `;
+
+  const breakdown = rows.map((row) => {
+    const imgs = Array.isArray(row.campaignImages) ? row.campaignImages : [];
+    const campaignImage = imgs.length > 0 && typeof imgs[0] === 'string' ? imgs[0] : null;
+
+    return {
+      campaignId: row.campaignId,
+      campaign: row.campaignName,
+      campaignImage,
+      package: row.packageName,
+      rate: row.total > 0 ? Math.round((row.rejected / row.total) * 1000) / 10 : 0,
+      rejected: row.rejected,
+      total: row.total,
+    };
+  });
+
+  const totalRejected = rows.reduce((sum, r) => sum + r.rejected, 0);
+  const totalSent = rows.reduce((sum, r) => sum + r.total, 0);
+  const avgRate = totalSent > 0 ? Math.round((totalRejected / totalSent) * 1000) / 10 : 0;
+
+  return { avgRate, breakdown };
+};
+
+// Credits per CS
+
+interface CreditsPerCSRow {
+  adminUserId: string;
+  csName: string;
+  campaignId: string;
+  campaignName: string;
+  credits: number;
+  submissionVersion: string | null;
+  packageName: string;
+  campaignImages: unknown;
+}
+
+export const getCreditsPerCSData = async (startDate?: Date, endDate?: Date) => {
+  const hasDateFilter = !!startDate && !!endDate;
+
+  const rows = hasDateFilter
+    ? await prisma.$queryRaw<CreditsPerCSRow[]>`
+        SELECT
+          a."userId"                                      AS "adminUserId",
+          u.name                                          AS "csName",
+          c.id                                            AS "campaignId",
+          c.name                                          AS "campaignName",
+          COALESCE(c."campaignCredits", 0)::int           AS "credits",
+          c."submissionVersion"                           AS "submissionVersion",
+          COALESCE(pkg.name, cpkg."customName", 'Custom') AS "packageName",
+          cb.images                                       AS "campaignImages"
+        FROM "CampaignAdmin" ca
+        INNER JOIN "Admin"         a   ON a."userId"       = ca."adminId"
+        INNER JOIN "Role"          r   ON r.id             = a."roleId"
+        INNER JOIN "User"          u   ON u.id             = a."userId"
+        INNER JOIN "Campaign"      c   ON c.id             = ca."campaignId"
+        LEFT  JOIN "CampaignBrief" cb  ON cb."campaignId"  = c.id
+        LEFT  JOIN "Subscription"  sub ON sub.id           = c."subscriptionId"
+        LEFT  JOIN "Package"       pkg ON pkg.id           = sub."packageId"
+        LEFT  JOIN "CustomPackage" cpkg ON cpkg.id         = sub."customPackageId"
+        WHERE r.name IN ('CSM', 'CSL')
+          AND c."createdAt" >= ${startDate}
+          AND c."createdAt" <= ${endDate}
+        ORDER BY u.name, c.name
+      `
+    : await prisma.$queryRaw<CreditsPerCSRow[]>`
+        SELECT
+          a."userId"                                      AS "adminUserId",
+          u.name                                          AS "csName",
+          c.id                                            AS "campaignId",
+          c.name                                          AS "campaignName",
+          COALESCE(c."campaignCredits", 0)::int           AS "credits",
+          c."submissionVersion"                           AS "submissionVersion",
+          COALESCE(pkg.name, cpkg."customName", 'Custom') AS "packageName",
+          cb.images                                       AS "campaignImages"
+        FROM "CampaignAdmin" ca
+        INNER JOIN "Admin"         a   ON a."userId"       = ca."adminId"
+        INNER JOIN "Role"          r   ON r.id             = a."roleId"
+        INNER JOIN "User"          u   ON u.id             = a."userId"
+        INNER JOIN "Campaign"      c   ON c.id             = ca."campaignId"
+        LEFT  JOIN "CampaignBrief" cb  ON cb."campaignId"  = c.id
+        LEFT  JOIN "Subscription"  sub ON sub.id           = c."subscriptionId"
+        LEFT  JOIN "Package"       pkg ON pkg.id           = sub."packageId"
+        LEFT  JOIN "CustomPackage" cpkg ON cpkg.id         = sub."customPackageId"
+        WHERE r.name IN ('CSM', 'CSL')
+        ORDER BY u.name, c.name
+      `;
+
+  const adminMap = new Map<
+    string,
+    {
+      csName: string;
+      basic: number;
+      essential: number;
+      pro: number;
+      custom: number;
+      v2Credits: number;
+      v4Credits: number;
+      campaigns: {
+        campaignId: string;
+        name: string;
+        credits: number;
+        version: string;
+        package: string;
+        campaignImage: string | null;
+      }[];
+    }
+  >();
+
+  for (const row of rows) {
+    if (!adminMap.has(row.adminUserId)) {
+      adminMap.set(row.adminUserId, {
+        csName: row.csName,
+        basic: 0,
+        essential: 0,
+        pro: 0,
+        custom: 0,
+        v2Credits: 0,
+        v4Credits: 0,
+        campaigns: [],
+      });
+    }
+
+    const admin = adminMap.get(row.adminUserId)!;
+    const credits = Number(row.credits) || 0;
+    const pkgLower = row.packageName.toLowerCase();
+
+    if (pkgLower === 'basic') admin.basic += credits;
+    else if (pkgLower === 'essential') admin.essential += credits;
+    else if (pkgLower === 'pro') admin.pro += credits;
+    else admin.custom += credits;
+
+    if (row.submissionVersion === 'v4') admin.v4Credits += credits;
+    else admin.v2Credits += credits;
+
+    const imgs = Array.isArray(row.campaignImages) ? row.campaignImages : [];
+    const campaignImage = imgs.length > 0 && typeof imgs[0] === 'string' ? imgs[0] : null;
+
+    admin.campaigns.push({
+      campaignId: row.campaignId,
+      name: row.campaignName,
+      credits,
+      version: row.submissionVersion === 'v4' ? 'V4' : 'V2',
+      package: pkgLower === 'basic' ? 'Basic' : pkgLower === 'essential' ? 'Essential' : pkgLower === 'pro' ? 'Pro' : 'Custom',
+      campaignImage,
+    });
+  }
+
+  return { csAdmins: Array.from(adminMap.values()) };
+};
