@@ -3,7 +3,7 @@ import { Router } from 'express';
 import { isLoggedIn } from '@middlewares/onlyLogin';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 import {
-  getClientActivationMetrics,
+  getBrandsMetrics,
   getClientApprovalMetrics,
   getClientCampaignMetrics,
   getClientJourneyMetrics,
@@ -16,7 +16,7 @@ const router = Router();
 
 router.post('/tracker', trackUserFlow);
 
-router.get('/client/activation', isLoggedIn, getClientActivationMetrics);
+router.get('/client/brands', isLoggedIn, getBrandsMetrics);
 router.get('/client/approve', isLoggedIn, getClientApprovalMetrics);
 router.get('/client/journey', isLoggedIn, getClientJourneyMetrics);
 router.get('/client/support', isLoggedIn, getClientSupportMetrics);
