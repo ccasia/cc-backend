@@ -16,6 +16,8 @@ import {
   getAvgFirstCampaignDetails,
   getAvgSubmissionResponse,
   getAvgSubmissionResponseDetails,
+  getClientRejectionRate,
+  getCreditsPerCS,
 } from '@controllers/analyticsV2Controller';
 import { isLoggedIn } from '@middlewares/onlyLogin';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
@@ -38,5 +40,7 @@ router.get('/avg-first-campaign', isLoggedIn, isSuperAdmin, getAvgFirstCampaign)
 router.get('/avg-first-campaign/details', isLoggedIn, isSuperAdmin, getAvgFirstCampaignDetails);
 router.get('/avg-submission-response', isLoggedIn, isSuperAdmin, getAvgSubmissionResponse);
 router.get('/avg-submission-response/details', isLoggedIn, isSuperAdmin, getAvgSubmissionResponseDetails);
+router.get('/client-rejection-rate', isLoggedIn, isSuperAdmin, getClientRejectionRate);
+router.get('/credits-per-cs', isLoggedIn, isSuperAdmin, getCreditsPerCS);
 
 export default router;
