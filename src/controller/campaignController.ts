@@ -349,11 +349,13 @@ export const createCampaign = async (req: Request, res: Response) => {
             photos: photos || false,
             crossPosting: crossPosting || false,
             logisticsType: logisticsType && logisticsType !== '' ? (logisticsType as LogisticType) : null,
-            agreementTemplate: agreementFrom?.id ? {
-              connect: {
-                id: agreementFrom.id,
-              },
-            } : undefined,
+            agreementTemplate: agreementFrom?.id
+              ? {
+                  connect: {
+                    id: agreementFrom.id,
+                  },
+                }
+              : undefined,
             products: {
               create: productsToCreate,
             },
@@ -391,8 +393,20 @@ export const createCampaign = async (req: Request, res: Response) => {
                     ? countries[0]
                     : Array.isArray(country) && country.length > 0
                       ? country[0]
-                      : '', // Legacy single country (first item from countries or country)
-                countries: countries || country || [], // New multiple countries field
+                      : typeof countries === 'string'
+                        ? countries
+                        : typeof country === 'string'
+                          ? country
+                          : '', // Legacy single country
+                countries: Array.isArray(countries)
+                  ? countries
+                  : Array.isArray(country)
+                    ? country
+                    : typeof countries === 'string'
+                      ? [countries]
+                      : typeof country === 'string'
+                        ? [country]
+                        : [], // Ensure array for multiple countries field
               },
             },
             campaignCredits,
@@ -829,7 +843,6 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
   } = rawData;
 
   const clientManagers = Array.isArray(rawData?.clientManagers) ? rawData.clientManagers : [];
-  const isCreditTier = rawData?.isCreditTier === true;
 
   try {
     const { images } = await uploadCampaignAssets(req.files);
@@ -952,11 +965,12 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
             ads: ads || false,
             photos: photos || false,
             crossPosting: crossPosting || false,
-            isCreditTier: isCreditTier,
             logisticsType: logisticsType && logisticsType !== '' ? (logisticsType as LogisticType) : null,
-            agreementTemplate: agreementFrom?.id ? {
-              connect: { id: agreementFrom.id },
-            } : undefined,
+            agreementTemplate: agreementFrom?.id
+              ? {
+                  connect: { id: agreementFrom.id },
+                }
+              : undefined,
             products: {
               create: productsToCreate,
             },
@@ -979,25 +993,25 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
               },
             },
             campaignRequirement: {
-            create: {
-              // Primary Audience
-              gender: audienceGender || [],
-              age: audienceAge || [],
-              language: audienceLanguage || [],
-              creator_persona: audienceCreatorPersona || [],
-              user_persona: audienceUserPersona || '',
-              country: finalizedCountries[0] || '',
-              countries: finalizedCountries, 
-              // Secondary Audience
-              secondary_gender: secondaryAudienceGender || [],
-              secondary_age: secondaryAudienceAge || [],
-              secondary_language: secondaryAudienceLanguage || [],
-              secondary_creator_persona: secondaryAudienceCreatorPersona || [],
-              secondary_user_persona: secondaryAudienceUserPersona || '',
-              secondary_country: secondaryCountry || '',
-              geographic_focus: geographicFocus || '',
-              geographicFocusOthers: geographicFocusOthers || '',
-            },
+              create: {
+                // Primary Audience
+                gender: audienceGender || [],
+                age: audienceAge || [],
+                language: audienceLanguage || [],
+                creator_persona: audienceCreatorPersona || [],
+                user_persona: audienceUserPersona || '',
+                country: finalizedCountries[0] || '',
+                countries: finalizedCountries,
+                // Secondary Audience
+                secondary_gender: secondaryAudienceGender || [],
+                secondary_age: secondaryAudienceAge || [],
+                secondary_language: secondaryAudienceLanguage || [],
+                secondary_creator_persona: secondaryAudienceCreatorPersona || [],
+                secondary_user_persona: secondaryAudienceUserPersona || '',
+                secondary_country: secondaryCountry || '',
+                geographic_focus: geographicFocus || '',
+                geographicFocusOthers: geographicFocusOthers || '',
+              },
             },
             campaignCredits,
             creditsPending: campaignCredits,
@@ -1015,7 +1029,7 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
         });
 
         // Process brand guidelines PDF/image upload (support multiple)
-        let brandGuidelinesUrls: string[] = [];
+        const brandGuidelinesUrls: string[] = [];
         if (req.files && (req.files as any).brandGuidelines) {
           const brandGuidelinesFiles = Array.isArray((req.files as any).brandGuidelines)
             ? (req.files as any).brandGuidelines
@@ -1082,7 +1096,12 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
               mainMessage: mainMessage || null,
               keyPoints: keyPoints || null,
               toneAndStyle: toneAndStyle || null,
-              brandGuidelinesUrl: brandGuidelinesUrls.length === 0 ? null : (brandGuidelinesUrls.length === 1 ? brandGuidelinesUrls[0] : brandGuidelinesUrls.join(',')),
+              brandGuidelinesUrl:
+                brandGuidelinesUrls.length === 0
+                  ? null
+                  : brandGuidelinesUrls.length === 1
+                    ? brandGuidelinesUrls[0]
+                    : brandGuidelinesUrls.join(','),
               referenceContent: referenceContent || null,
               productImage1Url: productImage1Url,
               productImage2Url: productImage2Url,
@@ -1250,8 +1269,9 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
           }
         }
 
-        // Add client users to CampaignClient and CampaignAdmin
-        if (client?.id) {
+        // For v4 campaigns only: Add client users to CampaignClient and CampaignAdmin
+        // This ensures clients can only manage campaigns when explicitly enabled
+        if (submissionVersion === 'v4' && client?.id) {
           try {
             const companyClients = await tx.client.findMany({
               where: { companyId: client.id },
@@ -1286,23 +1306,25 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
           }
         }
 
-        // Add client users from campaignManager to CampaignClient
-        try {
-          for (const user of admins.filter(Boolean)) {
-            if ((user as any)?.client?.id) {
-              const existingCampaignClient = await tx.campaignClient.findUnique({
-                where: { clientId_campaignId: { clientId: (user as any).client.id, campaignId: campaign.id } },
-              });
-
-              if (!existingCampaignClient) {
-                await tx.campaignClient.create({
-                  data: { clientId: (user as any).client.id, campaignId: campaign.id, role: 'owner' },
+        // For v4 campaigns: Add client users from campaignManager to CampaignClient
+        if (submissionVersion === 'v4') {
+          try {
+            for (const user of admins.filter(Boolean)) {
+              if ((user as any)?.client?.id) {
+                const existingCampaignClient = await tx.campaignClient.findUnique({
+                  where: { clientId_campaignId: { clientId: (user as any).client.id, campaignId: campaign.id } },
                 });
+
+                if (!existingCampaignClient) {
+                  await tx.campaignClient.create({
+                    data: { clientId: (user as any).client.id, campaignId: campaign.id, role: 'owner' },
+                  });
+                }
               }
             }
+          } catch (error) {
+            console.error('Error adding client users from campaignManager to CampaignClient:', error);
           }
-        } catch (error) {
-          console.error('Error adding client users from campaignManager to CampaignClient:', error);
         }
 
         return campaign;
@@ -1951,12 +1973,7 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
     console.log('📡 Fetching campaigns from database...');
     let campaigns = await prisma.campaign.findMany({
       take: Number(take),
-      // ...(cursor && {
-      //   skip: 1,
-      //   cursor: {
-      //     id: cursor as string,
-      //   },
-      // }),
+
       ...(campaignId
         ? {
             cursor: { id: campaignId }, // start after this ID
@@ -1980,14 +1997,6 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
               },
             }),
           },
-          // {
-          //   campaignRequirement: {
-          //     country: {
-          //       equals: country,
-          //       mode: 'insensitive',
-          //     },
-          //   },
-          // },
         ],
       },
       include: {
@@ -2053,8 +2062,8 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       return res.status(200).json(data);
     }
 
-    console.log('Campaign IDs fetched:', campaigns.map(c => c.id).join(', '));
-    console.log('Campaign names:', campaigns.map(c => c.name).join(', '));
+    console.log('Campaign IDs fetched:', campaigns.map((c) => c.id).join(', '));
+    console.log('Campaign names:', campaigns.map((c) => c.name).join(', '));
 
     const beforeFilterCount = campaigns.length;
 
@@ -2062,7 +2071,13 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       return campaign.status === 'ACTIVE';
     });
 
-    console.log('✅ After ACTIVE status filter:', campaigns.length, '(removed:', beforeFilterCount - campaigns.length, ')');
+    console.log(
+      '✅ After ACTIVE status filter:',
+      campaigns.length,
+      '(removed:',
+      beforeFilterCount - campaigns.length,
+      ')',
+    );
 
     const country = await getCountry(req.ip as string);
     console.log('🌍 Detected country:', country);
@@ -2077,12 +2092,22 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
           return campaign;
         }
 
-        const hasMatchingCountry = campaign.campaignRequirement.countries.some((a) => a.toLowerCase() === country?.toLowerCase());
-        console.log(`Campaign "${campaign.name}" | Required countries: [${campaign.campaignRequirement.countries.join(', ')}] | Match: ${hasMatchingCountry ? '✅' : '❌'}`);
+        const hasMatchingCountry = campaign.campaignRequirement.countries.some(
+          (a) => a.toLowerCase() === country?.toLowerCase(),
+        );
+        console.log(
+          `Campaign "${campaign.name}" | Required countries: [${campaign.campaignRequirement.countries.join(', ')}] | Match: ${hasMatchingCountry ? '✅' : '❌'}`,
+        );
         return hasMatchingCountry;
         // return campaign.campaignRequirement.country.toLocaleLowerCase() === country?.toLowerCase();
       });
-      console.log('✅ After country filter:', campaigns.length, '(removed:', beforeCountryFilter - campaigns.length, ')');
+      console.log(
+        '✅ After country filter:',
+        campaigns.length,
+        '(removed:',
+        beforeCountryFilter - campaigns.length,
+        ')',
+      );
     } else {
       console.log('⚠️ Development mode - SKIPPING country filter');
     }
@@ -2189,7 +2214,7 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
     const sortedMatchedCampaigns = matchedCampaignWithPercentage;
 
     console.log('📦 Final campaigns to return:', sortedMatchedCampaigns.length);
-    console.log('Campaign names being returned:', sortedMatchedCampaigns.map(c => c.name).join(', '));
+    console.log('Campaign names being returned:', sortedMatchedCampaigns.map((c) => c.name).join(', '));
 
     // Fix pagination logic: Check if we got the full 'take' amount from the database
     // We need to use originalFetchedCount (BEFORE filtering) not campaigns.length (AFTER filtering)
@@ -2250,7 +2275,8 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
 
     // Enforce Media Kit requirement for MKM users
     if ((userMKMCheck as any).mediaKitMandatory) {
-      const hasMediaKit = (userMKMCheck as any).creator?.isTiktokConnected || (userMKMCheck as any).creator?.isFacebookConnected;
+      const hasMediaKit =
+        (userMKMCheck as any).creator?.isTiktokConnected || (userMKMCheck as any).creator?.isFacebookConnected;
       if (!hasMediaKit) {
         return res.status(403).json({
           message: 'You must connect your Media Kit (TikTok or Instagram) before pitching to campaigns.',
@@ -3006,7 +3032,15 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
   const { userId } = req.params;
 
   const { cursor, limit = 10, search, status, excludeOwn, filterAdminId } = req.query;
-  console.log('getAllCampaignsByAdminId called with:', { userId, status, search, limit, cursor, excludeOwn, filterAdminId });
+  console.log('getAllCampaignsByAdminId called with:', {
+    userId,
+    status,
+    search,
+    limit,
+    cursor,
+    excludeOwn,
+    filterAdminId,
+  });
 
   try {
     const user = await prisma.user.findUnique({
@@ -3948,7 +3982,9 @@ export const editCampaignInfo = async (req: Request, res: Response) => {
         ...(campaignStartDate && { startDate: new Date(campaignStartDate) }),
         ...(campaignEndDate && { endDate: new Date(campaignEndDate) }),
         // Update posting dates
-        ...(postingStartDate !== undefined && { postingStartDate: postingStartDate ? new Date(postingStartDate) : null }),
+        ...(postingStartDate !== undefined && {
+          postingStartDate: postingStartDate ? new Date(postingStartDate) : null,
+        }),
         ...(postingEndDate !== undefined && { postingEndDate: postingEndDate ? new Date(postingEndDate) : null }),
         // Only update images if new ones were uploaded
         ...(publicURL.length > 0 && { images: publicURL }),
@@ -3972,8 +4008,19 @@ export const editCampaignInfo = async (req: Request, res: Response) => {
 
       const changes = computeChanges(
         oldCampaign || {},
-        { name, description, brandAbout, productName, websiteLink, campaignStartDate, campaignEndDate, postingStartDate, postingEndDate, campaignIndustries },
-        infoFields
+        {
+          name,
+          description,
+          brandAbout,
+          productName,
+          websiteLink,
+          campaignStartDate,
+          campaignEndDate,
+          postingStartDate,
+          postingEndDate,
+          campaignIndustries,
+        },
+        infoFields,
       );
 
       if (publicURL.length > 0) {
@@ -3985,9 +4032,7 @@ export const editCampaignInfo = async (req: Request, res: Response) => {
         });
       }
 
-      const metadata = changes.length > 0
-        ? { section: 'Campaign General Information', changes }
-        : undefined;
+      const metadata = changes.length > 0 ? { section: 'Campaign General Information', changes } : undefined;
 
       const campaignActivityMessage = `Campaign Details edited - [Campaign General Information]`;
       await prisma.campaignLog.create({
@@ -4003,9 +4048,11 @@ export const editCampaignInfo = async (req: Request, res: Response) => {
       logAdminChange(adminLogMessage, adminId, req);
     }
 
-    return res
-      .status(200)
-      .json({ message: 'Campaign information updated successfully', campaign: updatedCampaign, brief: updatedCampaignBrief });
+    return res.status(200).json({
+      message: 'Campaign information updated successfully',
+      campaign: updatedCampaign,
+      brief: updatedCampaignBrief,
+    });
   } catch (error) {
     console.error('editCampaignInfo error:', error);
     return res.status(400).json({ message: error?.message || 'Failed to update campaign', error });
@@ -4013,14 +4060,7 @@ export const editCampaignInfo = async (req: Request, res: Response) => {
 };
 
 export const editCampaignObjectives = async (req: Request, res: Response) => {
-  const {
-    id,
-    objectives,
-    secondaryObjectives,
-    boostContent,
-    primaryKPI,
-    performanceBaseline,
-  } = req.body;
+  const { id, objectives, secondaryObjectives, boostContent, primaryKPI, performanceBaseline } = req.body;
   const adminId = req.session.userid;
 
   try {
@@ -4068,12 +4108,10 @@ export const editCampaignObjectives = async (req: Request, res: Response) => {
       const changes = computeChanges(
         oldBrief || {},
         { objectives, secondaryObjectives, boostContent, primaryKPI, performanceBaseline },
-        objectiveFields
+        objectiveFields,
       );
 
-      const metadata = changes.length > 0
-        ? { section: 'Campaign Objectives', changes }
-        : undefined;
+      const metadata = changes.length > 0 ? { section: 'Campaign Objectives', changes } : undefined;
 
       const campaignActivityMessage = `Campaign Details edited - [Campaign Objectives]`;
       await prisma.campaignLog.create({
@@ -4089,9 +4127,7 @@ export const editCampaignObjectives = async (req: Request, res: Response) => {
       logAdminChange(adminLogMessage, adminId, req);
     }
 
-    return res
-      .status(200)
-      .json({ message: 'Campaign objectives updated successfully', brief: updatedCampaignBrief });
+    return res.status(200).json({ message: 'Campaign objectives updated successfully', brief: updatedCampaignBrief });
   } catch (error) {
     console.error('editCampaignObjectives error:', error);
     return res.status(400).json({ message: error?.message || 'Failed to update campaign objectives', error });
@@ -4146,13 +4182,12 @@ export const editCampaignBrandOrCompany = async (req: Request, res: Response) =>
         newName = company?.name || campaignBrand.id;
       }
 
-      const changes = oldName !== newName
-        ? [{ field: 'brandOrCompany', label: brand ? 'Brand' : 'Company', old: oldName, new: newName }]
-        : [];
+      const changes =
+        oldName !== newName
+          ? [{ field: 'brandOrCompany', label: brand ? 'Brand' : 'Company', old: oldName, new: newName }]
+          : [];
 
-      const metadata = changes.length > 0
-        ? { section: 'Company', changes }
-        : undefined;
+      const metadata = changes.length > 0 ? { section: 'Company', changes } : undefined;
 
       // Log campaign activity for editing company
       const campaignActivityMessage = `Campaign Details edited - [Company]`;
@@ -4203,15 +4238,9 @@ export const editCampaignDosAndDonts = async (req: Request, res: Response) => {
         { field: 'campaignDont', label: "Don'ts", source: 'campaigns_dont' },
       ];
 
-      const changes = computeChanges(
-        oldBrief || {},
-        { campaignDo, campaignDont },
-        dosAndDontsFields
-      );
+      const changes = computeChanges(oldBrief || {}, { campaignDo, campaignDont }, dosAndDontsFields);
 
-      const metadata = changes.length > 0
-        ? { section: "Do's and Don'ts", changes }
-        : undefined;
+      const metadata = changes.length > 0 ? { section: "Do's and Don'ts", changes } : undefined;
 
       // Log campaign activity for editing do's and don'ts
       const campaignActivityMessage = `Campaign Details edited - [Do's and Don'ts]`;
@@ -4294,7 +4323,9 @@ export const editCampaignRequirements = async (req: Request, res: Response) => {
         ...(secondaryAudienceGender !== undefined && { secondary_gender: secondaryAudienceGender }),
         ...(secondaryAudienceAge !== undefined && { secondary_age: secondaryAudienceAge }),
         ...(secondaryAudienceLanguage !== undefined && { secondary_language: secondaryAudienceLanguage }),
-        ...(secondaryAudienceCreatorPersona !== undefined && { secondary_creator_persona: secondaryAudienceCreatorPersona }),
+        ...(secondaryAudienceCreatorPersona !== undefined && {
+          secondary_creator_persona: secondaryAudienceCreatorPersona,
+        }),
         ...(secondaryAudienceUserPersona !== undefined && { secondary_user_persona: secondaryAudienceUserPersona }),
         ...(secondaryCountry !== undefined && { secondary_country: secondaryCountry }),
         // Geographic Focus
@@ -4323,7 +4354,11 @@ export const editCampaignRequirements = async (req: Request, res: Response) => {
         { field: 'secondaryAudienceGender', label: 'Secondary Gender', source: 'secondary_gender' },
         { field: 'secondaryAudienceAge', label: 'Secondary Age', source: 'secondary_age' },
         { field: 'secondaryAudienceLanguage', label: 'Secondary Language', source: 'secondary_language' },
-        { field: 'secondaryAudienceCreatorPersona', label: 'Secondary Creator Persona', source: 'secondary_creator_persona' },
+        {
+          field: 'secondaryAudienceCreatorPersona',
+          label: 'Secondary Creator Persona',
+          source: 'secondary_creator_persona',
+        },
         { field: 'secondaryAudienceUserPersona', label: 'Secondary User Persona', source: 'secondary_user_persona' },
         { field: 'secondaryCountry', label: 'Secondary Country', source: 'secondary_country' },
         { field: 'geographicFocusOthers', label: 'Geographic Focus Others', source: 'geographicFocusOthers' },
@@ -4332,18 +4367,25 @@ export const editCampaignRequirements = async (req: Request, res: Response) => {
       const changes = computeChanges(
         oldReq || {},
         {
-          audienceGender, audienceAge, audienceLanguage, audienceCreatorPersona, audienceUserPersona,
-          countries: finalizedCountries, geographicFocus,
-          secondaryAudienceGender, secondaryAudienceAge, secondaryAudienceLanguage,
-          secondaryAudienceCreatorPersona, secondaryAudienceUserPersona, secondaryCountry,
+          audienceGender,
+          audienceAge,
+          audienceLanguage,
+          audienceCreatorPersona,
+          audienceUserPersona,
+          countries: finalizedCountries,
+          geographicFocus,
+          secondaryAudienceGender,
+          secondaryAudienceAge,
+          secondaryAudienceLanguage,
+          secondaryAudienceCreatorPersona,
+          secondaryAudienceUserPersona,
+          secondaryCountry,
           geographicFocusOthers,
         },
-        reqFields
+        reqFields,
       );
 
-      const metadata = changes.length > 0
-        ? { section: 'Campaign Requirements', changes }
-        : undefined;
+      const metadata = changes.length > 0 ? { section: 'Campaign Requirements', changes } : undefined;
 
       // Log campaign activity for editing campaign requirements
       const campaignActivityMessage = `Campaign Details edited - [Campaign Requirements]`;
@@ -4462,12 +4504,15 @@ export const editCampaignLogistics = async (req: Request, res: Response) => {
       const changes: { field: string; label: string; old: any; new: any }[] = [];
       const newLogisticsType = logisticsType && logisticsType !== '' ? logisticsType : null;
       if (oldCampaign?.logisticsType !== newLogisticsType) {
-        changes.push({ field: 'logisticsType', label: 'Logistics Type', old: oldCampaign?.logisticsType || null, new: newLogisticsType });
+        changes.push({
+          field: 'logisticsType',
+          label: 'Logistics Type',
+          old: oldCampaign?.logisticsType || null,
+          new: newLogisticsType,
+        });
       }
 
-      const metadata = changes.length > 0
-        ? { section: 'Campaign Logistics', changes }
-        : undefined;
+      const metadata = changes.length > 0 ? { section: 'Campaign Logistics', changes } : undefined;
 
       const campaignActivityMessage = `Campaign Details edited - [Campaign Logistics]`;
       await prisma.campaignLog.create({
@@ -4491,13 +4536,7 @@ export const editCampaignLogistics = async (req: Request, res: Response) => {
 };
 
 export const editCampaignFinalise = async (req: Request, res: Response) => {
-  const {
-    campaignId,
-    campaignManagers,
-    campaignType,
-    deliverables,
-    isV4Submission,
-  } = req.body;
+  const { campaignId, campaignManagers, campaignType, deliverables, isV4Submission } = req.body;
 
   const adminId = req.session.userid;
 
@@ -4599,16 +4638,16 @@ export const editCampaignFinalise = async (req: Request, res: Response) => {
             });
 
             // Use posting dates from brief if available, otherwise use final draft end date or campaign end date
-            const postingStartDate = campaign.campaignBrief.postingStartDate
-              || finalDraftTimeline?.endDate
-              || campaign.campaignBrief.endDate;
-            const postingEndDate = campaign.campaignBrief.postingEndDate
-              || campaign.campaignBrief.endDate;
+            const postingStartDate =
+              campaign.campaignBrief.postingStartDate || finalDraftTimeline?.endDate || campaign.campaignBrief.endDate;
+            const postingEndDate = campaign.campaignBrief.postingEndDate || campaign.campaignBrief.endDate;
 
             // Calculate duration
             const postingDuration = Math.max(
               1,
-              Math.floor((new Date(postingEndDate).getTime() - new Date(postingStartDate).getTime()) / (1000 * 60 * 60 * 24)),
+              Math.floor(
+                (new Date(postingEndDate).getTime() - new Date(postingStartDate).getTime()) / (1000 * 60 * 60 * 24),
+              ),
             );
 
             // Get the highest order from existing timelines
@@ -4675,7 +4714,7 @@ export const editCampaignFinalise = async (req: Request, res: Response) => {
         where: { campaignId },
         include: {
           admin: {
-            include: { 
+            include: {
               role: true,
               user: true,
             },
@@ -4685,13 +4724,12 @@ export const editCampaignFinalise = async (req: Request, res: Response) => {
 
       // Get CSM and Client admins that should be managed by this form
       const managedAdmins = existingAdmins.filter(
-        (ca) => ca.admin?.role?.name === 'CSM' || ca.admin?.role?.name === 'Client' || ca.admin?.user?.role === 'client'
+        (ca) =>
+          ca.admin?.role?.name === 'CSM' || ca.admin?.role?.name === 'Client' || ca.admin?.user?.role === 'client',
       );
 
       // Find admins that need to be removed (in existing but not in new list)
-      const adminsToRemove = managedAdmins.filter(
-        (ca) => !validAdminIds.includes(ca.adminId)
-      );
+      const adminsToRemove = managedAdmins.filter((ca) => !validAdminIds.includes(ca.adminId));
 
       // Delete removed admins from campaignAdmin
       if (adminsToRemove.length > 0) {
@@ -4705,7 +4743,8 @@ export const editCampaignFinalise = async (req: Request, res: Response) => {
 
         // For client users being removed, also remove them from CampaignClient
         for (const removedAdmin of adminsToRemove) {
-          const isClientUser = removedAdmin.admin?.user?.role === 'client' || removedAdmin.admin?.role?.name === 'Client';
+          const isClientUser =
+            removedAdmin.admin?.user?.role === 'client' || removedAdmin.admin?.role?.name === 'Client';
 
           if (isClientUser && removedAdmin.adminId) {
             try {
@@ -4762,7 +4801,7 @@ export const editCampaignFinalise = async (req: Request, res: Response) => {
         });
 
         const hasRemainingClientAdmin = remainingAdmins.some(
-          (ca) => ca.admin?.user?.role === 'client' || ca.admin?.role?.name === 'Client'
+          (ca) => ca.admin?.user?.role === 'client' || ca.admin?.role?.name === 'Client',
         );
 
         if (!hasRemainingClientAdmin && campaign.submissionVersion === 'v4') {
@@ -4869,15 +4908,22 @@ export const editCampaignFinalise = async (req: Request, res: Response) => {
     if (adminId) {
       const changes: { field: string; label: string; old: any; new: any }[] = [];
 
-      if (campaign.rawFootage !== rawFootage) changes.push({ field: 'rawFootage', label: 'Raw Footage', old: campaign.rawFootage, new: rawFootage });
-      if (campaign.photos !== photos) changes.push({ field: 'photos', label: 'Photos', old: campaign.photos, new: photos });
+      if (campaign.rawFootage !== rawFootage)
+        changes.push({ field: 'rawFootage', label: 'Raw Footage', old: campaign.rawFootage, new: rawFootage });
+      if (campaign.photos !== photos)
+        changes.push({ field: 'photos', label: 'Photos', old: campaign.photos, new: photos });
       if (campaign.ads !== ads) changes.push({ field: 'ads', label: 'Ads', old: campaign.ads, new: ads });
-      if (campaign.crossPosting !== crossPosting) changes.push({ field: 'crossPosting', label: 'Cross Posting', old: campaign.crossPosting, new: crossPosting });
-      if (previousCampaignType !== newCampaignType) changes.push({ field: 'campaignType', label: 'Campaign Type', old: previousCampaignType, new: newCampaignType });
+      if (campaign.crossPosting !== crossPosting)
+        changes.push({ field: 'crossPosting', label: 'Cross Posting', old: campaign.crossPosting, new: crossPosting });
+      if (previousCampaignType !== newCampaignType)
+        changes.push({
+          field: 'campaignType',
+          label: 'Campaign Type',
+          old: previousCampaignType,
+          new: newCampaignType,
+        });
 
-      const metadata = changes.length > 0
-        ? { section: 'Campaign Finalise Settings', changes }
-        : undefined;
+      const metadata = changes.length > 0 ? { section: 'Campaign Finalise Settings', changes } : undefined;
 
       const campaignActivityMessage = `Campaign Details edited - [Campaign Finalise Settings]`;
       await prisma.campaignLog.create({
@@ -4937,9 +4983,9 @@ export const editCampaignAdditionalDetails = async (req: Request, res: Response)
     let existingBrandGuidelinesUrls: string | undefined;
     let existingProductImage1Url: string | undefined;
     let existingProductImage2Url: string | undefined;
-    let clearBrandGuidelines: boolean = false;
-    let clearProductImage1: boolean = false;
-    let clearProductImage2: boolean = false;
+    let clearBrandGuidelines = false;
+    let clearProductImage1 = false;
+    let clearProductImage2 = false;
 
     // Check if this is FormData (multipart) or JSON
     if (req.body.campaignId && typeof req.body.campaignId === 'string') {
@@ -5096,8 +5142,10 @@ export const editCampaignAdditionalDetails = async (req: Request, res: Response)
     if (ctaDesiredAction !== undefined) additionalDetailsData.ctaDesiredAction = ctaDesiredAction || null;
     if (ctaLinkUrl !== undefined) additionalDetailsData.ctaLinkUrl = ctaLinkUrl || null;
     if (ctaPromoCode !== undefined) additionalDetailsData.ctaPromoCode = ctaPromoCode || null;
-    if (ctaLinkInBioRequirements !== undefined) additionalDetailsData.ctaLinkInBioRequirements = ctaLinkInBioRequirements || null;
-    if (specialNotesInstructions !== undefined) additionalDetailsData.specialNotesInstructions = specialNotesInstructions || null;
+    if (ctaLinkInBioRequirements !== undefined)
+      additionalDetailsData.ctaLinkInBioRequirements = ctaLinkInBioRequirements || null;
+    if (specialNotesInstructions !== undefined)
+      additionalDetailsData.specialNotesInstructions = specialNotesInstructions || null;
     if (needAds !== undefined) additionalDetailsData.needAds = needAds || null;
 
     // Upsert CampaignAdditionalDetails
@@ -5144,24 +5192,51 @@ export const editCampaignAdditionalDetails = async (req: Request, res: Response)
         { field: 'keyPoints', label: 'Key Points', source: 'campaignAdditionalDetails.keyPoints' },
         { field: 'toneAndStyle', label: 'Tone and Style', source: 'campaignAdditionalDetails.toneAndStyle' },
         { field: 'hashtagsToUse', label: 'Hashtags', source: 'campaignAdditionalDetails.hashtagsToUse' },
-        { field: 'mentionsTagsRequired', label: 'Mentions/Tags', source: 'campaignAdditionalDetails.mentionsTagsRequired' },
-        { field: 'ctaDesiredAction', label: 'CTA Desired Action', source: 'campaignAdditionalDetails.ctaDesiredAction' },
+        {
+          field: 'mentionsTagsRequired',
+          label: 'Mentions/Tags',
+          source: 'campaignAdditionalDetails.mentionsTagsRequired',
+        },
+        {
+          field: 'ctaDesiredAction',
+          label: 'CTA Desired Action',
+          source: 'campaignAdditionalDetails.ctaDesiredAction',
+        },
         { field: 'ctaLinkUrl', label: 'CTA Link URL', source: 'campaignAdditionalDetails.ctaLinkUrl' },
         { field: 'ctaPromoCode', label: 'CTA Promo Code', source: 'campaignAdditionalDetails.ctaPromoCode' },
-        { field: 'ctaLinkInBioRequirements', label: 'CTA Link in Bio', source: 'campaignAdditionalDetails.ctaLinkInBioRequirements' },
-        { field: 'specialNotesInstructions', label: 'Special Notes', source: 'campaignAdditionalDetails.specialNotesInstructions' },
+        {
+          field: 'ctaLinkInBioRequirements',
+          label: 'CTA Link in Bio',
+          source: 'campaignAdditionalDetails.ctaLinkInBioRequirements',
+        },
+        {
+          field: 'specialNotesInstructions',
+          label: 'Special Notes',
+          source: 'campaignAdditionalDetails.specialNotesInstructions',
+        },
         { field: 'socialMediaPlatform', label: 'Social Media Platform', source: 'campaignBrief.socialMediaPlatform' },
       ];
 
       const changes = computeChanges(
         campaign || {},
-        { contentFormat, mainMessage, keyPoints, toneAndStyle, hashtagsToUse, mentionsTagsRequired, ctaDesiredAction, ctaLinkUrl, ctaPromoCode, ctaLinkInBioRequirements, specialNotesInstructions, socialMediaPlatform },
-        addtlFields
+        {
+          contentFormat,
+          mainMessage,
+          keyPoints,
+          toneAndStyle,
+          hashtagsToUse,
+          mentionsTagsRequired,
+          ctaDesiredAction,
+          ctaLinkUrl,
+          ctaPromoCode,
+          ctaLinkInBioRequirements,
+          specialNotesInstructions,
+          socialMediaPlatform,
+        },
+        addtlFields,
       );
 
-      const metadata = changes.length > 0
-        ? { section: 'Additional Details', changes }
-        : undefined;
+      const metadata = changes.length > 0 ? { section: 'Additional Details', changes } : undefined;
 
       const campaignActivityMessage = `Campaign Details edited - [Additional Details]`;
       await prisma.campaignLog.create({
@@ -5320,32 +5395,71 @@ export const editCampaignTimeline = async (req: Request, res: Response) => {
       // Track campaign start/end date changes
       const oldStart = campaign.campaignBrief?.startDate;
       const oldEnd = campaign.campaignBrief?.endDate;
-      if (oldStart && campaignStartDate && dayjs(oldStart).format('YYYY-MM-DD') !== dayjs(campaignStartDate).format('YYYY-MM-DD')) {
-        changes.push({ field: 'campaignStartDate', label: 'Campaign Start Date', old: dayjs(oldStart).format('YYYY-MM-DD'), new: dayjs(campaignStartDate).format('YYYY-MM-DD') });
+      if (
+        oldStart &&
+        campaignStartDate &&
+        dayjs(oldStart).format('YYYY-MM-DD') !== dayjs(campaignStartDate).format('YYYY-MM-DD')
+      ) {
+        changes.push({
+          field: 'campaignStartDate',
+          label: 'Campaign Start Date',
+          old: dayjs(oldStart).format('YYYY-MM-DD'),
+          new: dayjs(campaignStartDate).format('YYYY-MM-DD'),
+        });
       }
-      if (oldEnd && campaignEndDate && dayjs(oldEnd).format('YYYY-MM-DD') !== dayjs(campaignEndDate).format('YYYY-MM-DD')) {
-        changes.push({ field: 'campaignEndDate', label: 'Campaign End Date', old: dayjs(oldEnd).format('YYYY-MM-DD'), new: dayjs(campaignEndDate).format('YYYY-MM-DD') });
+      if (
+        oldEnd &&
+        campaignEndDate &&
+        dayjs(oldEnd).format('YYYY-MM-DD') !== dayjs(campaignEndDate).format('YYYY-MM-DD')
+      ) {
+        changes.push({
+          field: 'campaignEndDate',
+          label: 'Campaign End Date',
+          old: dayjs(oldEnd).format('YYYY-MM-DD'),
+          new: dayjs(campaignEndDate).format('YYYY-MM-DD'),
+        });
       }
 
       // Track phase-level changes
       for (const item of timeline) {
-        const oldPhase = campaign.campaignTimeline?.find((t: any) => t.id === item.id || t.name === item.timeline_type?.name);
+        const oldPhase = campaign.campaignTimeline?.find(
+          (t: any) => t.id === item.id || t.name === item.timeline_type?.name,
+        );
         if (oldPhase) {
           if (oldPhase.duration !== parseInt(item.duration)) {
-            changes.push({ field: `phase_${oldPhase.name}_duration`, label: `${oldPhase.name} Duration (days)`, old: oldPhase.duration, new: parseInt(item.duration) });
+            changes.push({
+              field: `phase_${oldPhase.name}_duration`,
+              label: `${oldPhase.name} Duration (days)`,
+              old: oldPhase.duration,
+              new: parseInt(item.duration),
+            });
           }
-          if (item.startDate && dayjs(oldPhase.startDate).format('YYYY-MM-DD') !== dayjs(item.startDate).format('YYYY-MM-DD')) {
-            changes.push({ field: `phase_${oldPhase.name}_startDate`, label: `${oldPhase.name} Start Date`, old: dayjs(oldPhase.startDate).format('YYYY-MM-DD'), new: dayjs(item.startDate).format('YYYY-MM-DD') });
+          if (
+            item.startDate &&
+            dayjs(oldPhase.startDate).format('YYYY-MM-DD') !== dayjs(item.startDate).format('YYYY-MM-DD')
+          ) {
+            changes.push({
+              field: `phase_${oldPhase.name}_startDate`,
+              label: `${oldPhase.name} Start Date`,
+              old: dayjs(oldPhase.startDate).format('YYYY-MM-DD'),
+              new: dayjs(item.startDate).format('YYYY-MM-DD'),
+            });
           }
-          if (item.endDate && dayjs(oldPhase.endDate).format('YYYY-MM-DD') !== dayjs(item.endDate).format('YYYY-MM-DD')) {
-            changes.push({ field: `phase_${oldPhase.name}_endDate`, label: `${oldPhase.name} End Date`, old: dayjs(oldPhase.endDate).format('YYYY-MM-DD'), new: dayjs(item.endDate).format('YYYY-MM-DD') });
+          if (
+            item.endDate &&
+            dayjs(oldPhase.endDate).format('YYYY-MM-DD') !== dayjs(item.endDate).format('YYYY-MM-DD')
+          ) {
+            changes.push({
+              field: `phase_${oldPhase.name}_endDate`,
+              label: `${oldPhase.name} End Date`,
+              old: dayjs(oldPhase.endDate).format('YYYY-MM-DD'),
+              new: dayjs(item.endDate).format('YYYY-MM-DD'),
+            });
           }
         }
       }
 
-      const metadata = changes.length > 0
-        ? { section: 'Timeline', changes }
-        : undefined;
+      const metadata = changes.length > 0 ? { section: 'Timeline', changes } : undefined;
 
       // Log campaign activity for editing timeline
       const campaignActivityMessage = `Campaign Details edited - [Timeline]`;
@@ -6287,7 +6401,10 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
         creditPerVideo = creditCost.creditPerVideo;
         tierSnapshot = creditCost.tier;
       } catch (error: any) {
-        console.warn(`Credit tier calculation failed for creator ${creator.id}, proceeding without tier data:`, error.message);
+        console.warn(
+          `Credit tier calculation failed for creator ${creator.id}, proceeding without tier data:`,
+          error.message,
+        );
         // Allow admin to proceed — tier info will be null
       }
     }
@@ -6303,12 +6420,14 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
         currency: currency,
         ...(newVideoCount !== null && { ugcVideos: newVideoCount }),
         // Update tier info for credit tier campaigns
-        ...(isCreditTierCampaign && creditPerVideo !== null && {
-          creditPerVideo: creditPerVideo,
-        }),
-        ...(isCreditTierCampaign && tierSnapshot && {
-          creditTierId: tierSnapshot.id,
-        }),
+        ...(isCreditTierCampaign &&
+          creditPerVideo !== null && {
+            creditPerVideo: creditPerVideo,
+          }),
+        ...(isCreditTierCampaign &&
+          tierSnapshot && {
+            creditTierId: tierSnapshot.id,
+          }),
       },
     });
 
@@ -6486,7 +6605,7 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
             },
           });
           console.log(`Updated invoice ${existingInvoice.invoiceNumber} amount from ${oldAmount} to ${newAmount}`);
-          
+
           const invoiceUpdateMessage = `${adminName} updated invoice ${existingInvoice.invoiceNumber} amount from ${oldCurrencySymbol}${oldAmount} to ${newCurrencySymbol}${newAmount} for ${creatorName}`;
           await logChange(invoiceUpdateMessage, campaignId, req);
         }
@@ -6657,9 +6776,9 @@ export const sendAgreement = async (req: Request, res: Response) => {
     const isCreditTierCampaign = campaign.isCreditTier === true;
 
     let creditsToAssign: number | null = null;
-    let creditPerVideo: number = 1; // Default for non-tier campaigns
+    let creditPerVideo = 1; // Default for non-tier campaigns
     let tierSnapshot: any = null;
-    let videoCount: number = 0;
+    let videoCount = 0;
 
     if (!isGuestCreator) {
       videoCount = Math.floor(Number(credits ?? shortlistedCreator.ugcVideos ?? 0));
@@ -6679,7 +6798,10 @@ export const sendAgreement = async (req: Request, res: Response) => {
           creditPerVideo = creditCost.creditPerVideo;
           tierSnapshot = creditCost.tier;
         } catch (error: any) {
-          console.warn(`Credit tier calculation failed for creator ${isUserExist.id}, falling back to 1:1 credits:`, error.message);
+          console.warn(
+            `Credit tier calculation failed for creator ${isUserExist.id}, falling back to 1:1 credits:`,
+            error.message,
+          );
           // Fall back to 1:1 credit-to-video ratio when tier data is unavailable
           creditsToAssign = videoCount;
           creditPerVideo = 1;
@@ -6806,10 +6928,11 @@ export const sendAgreement = async (req: Request, res: Response) => {
         // Store video count (not total credits) - credits calculated from ugcVideos * creditPerVideo
         ...(videoCount > 0 && { ugcVideos: videoCount }),
         // Store tier snapshot for credit tier campaigns
-        ...(isCreditTierCampaign && tierSnapshot && {
-          creditPerVideo: creditPerVideo,
-          creditTierId: tierSnapshot.id,
-        }),
+        ...(isCreditTierCampaign &&
+          tierSnapshot && {
+            creditPerVideo: creditPerVideo,
+            creditTierId: tierSnapshot.id,
+          }),
       },
     });
     shortlistedCreator.isAgreementReady = true;
@@ -7373,9 +7496,7 @@ export const editCampaignAdmin = async (req: Request, res: Response) => {
         });
       }
 
-      const metadata = changes.length > 0
-        ? { section: 'Campaign Manager', changes }
-        : undefined;
+      const metadata = changes.length > 0 ? { section: 'Campaign Manager', changes } : undefined;
 
       // Log campaign activity for editing campaign manager
       const campaignActivityMessage = `Campaign Details edited - [Campaign Manager]`;
@@ -7546,9 +7667,7 @@ export const editCampaignAttachments = async (req: Request, res: Response) => {
         });
       }
 
-      const metadata = changes.length > 0
-        ? { section: 'Other Attachment', changes }
-        : undefined;
+      const metadata = changes.length > 0 ? { section: 'Other Attachment', changes } : undefined;
 
       // Log campaign activity for editing other attachment
       const campaignActivityMessage = `Campaign Details edited - [Other Attachment]`;
@@ -7647,9 +7766,7 @@ export const editCampaignReference = async (req: Request, res: Response) => {
         });
       }
 
-      const metadata = changes.length > 0
-        ? { section: 'Reference', changes }
-        : undefined;
+      const metadata = changes.length > 0 ? { section: 'Reference', changes } : undefined;
 
       // Log campaign activity for editing reference
       const campaignActivityMessage = `Campaign Details edited - [Reference]`;
@@ -7712,9 +7829,7 @@ export const linkNewAgreement = async (req: Request, res: Response) => {
         });
       }
 
-      const metadata = changes.length > 0
-        ? { section: 'Agreement', changes }
-        : undefined;
+      const metadata = changes.length > 0 ? { section: 'Agreement', changes } : undefined;
 
       // Log campaign activity for editing agreement
       const campaignActivityMessage = `Campaign Details edited - [Agreement]`;
@@ -8875,9 +8990,9 @@ export const activateClientCampaign = async (req: Request, res: Response) => {
     });
 
     if (!campaign) {
-      return res
-        .status(404)
-        .json({ message: 'Campaign has already been activated or is not in pending admin activation/scheduled status' });
+      return res.status(404).json({
+        message: 'Campaign has already been activated or is not in pending admin activation/scheduled status',
+      });
     }
 
     // Log user info for debugging
@@ -9386,10 +9501,10 @@ export const activateClientCampaign = async (req: Request, res: Response) => {
           },
           {
             role: 'client',
-              client: {
-                companyId: campaign.companyId,
-            }
-          }
+            client: {
+              companyId: campaign.companyId,
+            },
+          },
         ],
       },
       select: {
@@ -10091,10 +10206,7 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
               where: {
                 isActive: true,
                 minFollowers: { lte: creator.followerCount },
-                OR: [
-                  { maxFollowers: { gte: creator.followerCount } },
-                  { maxFollowers: null },
-                ],
+                OR: [{ maxFollowers: { gte: creator.followerCount } }, { maxFollowers: null }],
               },
               orderBy: [{ minFollowers: 'desc' }],
             });
@@ -10137,11 +10249,14 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
         const pitchStatus = isV4Campaign ? 'SENT_TO_CLIENT' : 'APPROVED';
 
         // Extract per-creator comments with fallback to legacy format
-        const creatorAdminComments = creator.adminComments?.trim() || (typeof legacyAdminComments === 'string' ? legacyAdminComments.trim() : '');
+        const creatorAdminComments =
+          creator.adminComments?.trim() || (typeof legacyAdminComments === 'string' ? legacyAdminComments.trim() : '');
         const hasComments = creatorAdminComments && creatorAdminComments.length > 0;
 
         // Create a pitch record for this creator
-        console.log(`Creating pitch for creator ${user.id} with status ${pitchStatus}${hasComments ? ' and admin comments' : ''}`);
+        console.log(
+          `Creating pitch for creator ${user.id} with status ${pitchStatus}${hasComments ? ' and admin comments' : ''}`,
+        );
         await tx.pitch.create({
           data: {
             userId: user.id,
@@ -10152,9 +10267,7 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
             amount: null,
             agreementTemplateId: null,
             approvedByAdminId: userId,
-            ...(hasComments
-              ? { adminComments: creatorAdminComments, adminCommentedBy: userId }
-              : {}),
+            ...(hasComments ? { adminComments: creatorAdminComments, adminCommentedBy: userId } : {}),
           },
         });
 
@@ -10198,10 +10311,11 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
               },
               data: {
                 isAgreementReady: false,
-                ...(campaign.isCreditTier && creditPerVideo !== null && {
-                  creditPerVideo,
-                  creditTierId,
-                }),
+                ...(campaign.isCreditTier &&
+                  creditPerVideo !== null && {
+                    creditPerVideo,
+                    creditTierId,
+                  }),
               },
             });
           } else {
@@ -10211,10 +10325,11 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
                 campaignId: campaign.id,
                 isAgreementReady: false,
                 currency: 'MYR',
-                ...(campaign.isCreditTier && creditPerVideo !== null && {
-                  creditPerVideo,
-                  creditTierId,
-                }),
+                ...(campaign.isCreditTier &&
+                  creditPerVideo !== null && {
+                    creditPerVideo,
+                    creditTierId,
+                  }),
               },
             });
           }
@@ -10980,10 +11095,7 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
               where: {
                 isActive: true,
                 minFollowers: { lte: parsedFollowerCount },
-                OR: [
-                  { maxFollowers: { gte: parsedFollowerCount } },
-                  { maxFollowers: null },
-                ],
+                OR: [{ maxFollowers: { gte: parsedFollowerCount } }, { maxFollowers: null }],
               },
               orderBy: [{ minFollowers: 'desc' }],
             });
@@ -10999,7 +11111,9 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
               },
             });
 
-            console.log(`Updated guest creator ${userId} manualFollowerCount to ${parsedFollowerCount}, tier: ${tier?.name || 'none'}`);
+            console.log(
+              `Updated guest creator ${userId} manualFollowerCount to ${parsedFollowerCount}, tier: ${tier?.name || 'none'}`,
+            );
           }
         }
 
@@ -11360,13 +11474,14 @@ export const syncCampaignCredits = async (req: Request, res: Response) => {
     // For credit tier campaigns, multiply ugcVideos by creditPerVideo
     const creditsUtilized = campaign.shortlisted.reduce((total, creator) => {
       const isGuest = creator.user?.creator?.isGuest === true;
+      // const hasAgreementSent = creator.userId && sentAgreementUserIds.has(creator.userId);
 
       if (!isGuest) {
         const videos = creator.ugcVideos || 0;
         // For credit tier campaigns, multiply by creditPerVideo
         if (campaign.isCreditTier) {
           const perVideo = creator.creditPerVideo || 1;
-          return total + (videos * perVideo);
+          return total + videos * perVideo;
         }
         return total + videos;
       }
