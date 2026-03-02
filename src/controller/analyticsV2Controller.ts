@@ -21,6 +21,7 @@ import {
   getCreditsPerCSData,
   getRejectionReasonsData,
   getRequireChangesRateData,
+  getTopShortlistedCreatorsData,
 } from '@services/analyticsV2Service';
 
 const prisma = new PrismaClient();
@@ -44,7 +45,12 @@ const parseDateRange = async (
       };
     }
 
-    if (startDate >= endDate) {
+    // Include the full end day when a date-only string is sent (no time component)
+    if (!(endParam as string).includes('T')) {
+      endDate.setUTCHours(23, 59, 59, 999);
+    }
+
+    if (startDate > endDate) {
       return {
         error: { status: 400, body: { success: false, message: 'startDate must be before endDate.' } },
       };
@@ -77,6 +83,28 @@ const parseDateRange = async (
     : new Date(now.getFullYear(), now.getMonth(), 1);
 
   return { startDate, endDate, granularity };
+};
+
+// Shared optional date-range parsing for admin-tab analytics endpoints
+const parseOptionalDateRange = (
+  req: Request,
+): { startDate?: Date; endDate?: Date } | { error: { status: number; body: object } } => {
+  const { startDate: startParam, endDate: endParam } = req.query;
+  if (!startParam || !endParam) return {};
+
+  const startDate = new Date(startParam as string);
+  const endDate = new Date(endParam as string);
+
+  if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+    return { error: { status: 400, body: { success: false, message: 'Invalid date format.' } } };
+  }
+
+  // Include the full end day when a date-only string is sent (no time component)
+  if (!(endParam as string).includes('T')) {
+    endDate.setUTCHours(23, 59, 59, 999);
+  }
+
+  return { startDate, endDate };
 };
 
 export const getCreatorGrowth = async (req: Request, res: Response) => {
@@ -178,17 +206,9 @@ export const getPitchRateCreators = async (req: Request, res: Response) => {
 
 export const getMediaKitActivation = async (req: Request, res: Response) => {
   try {
-    const { startDate: startParam, endDate: endParam } = req.query;
-    let startDate: Date | undefined;
-    let endDate: Date | undefined;
-
-    if (startParam && endParam) {
-      startDate = new Date(startParam as string);
-      endDate = new Date(endParam as string);
-      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-        return res.status(400).json({ success: false, message: 'Invalid date format.' });
-      }
-    }
+    const parsed = parseOptionalDateRange(req);
+    if ('error' in parsed) return res.status(parsed.error.status).json(parsed.error.body);
+    const { startDate, endDate } = parsed;
 
     const data = await getMediaKitActivationData(startDate, endDate);
     return res.status(200).json({ success: true, data });
@@ -213,17 +233,9 @@ export const getCreatorSatisfaction = async (req: Request, res: Response) => {
 
 export const getCreatorEarnings = async (req: Request, res: Response) => {
   try {
-    const { startDate: startParam, endDate: endParam } = req.query;
-    let startDate: Date | undefined;
-    let endDate: Date | undefined;
-
-    if (startParam && endParam) {
-      startDate = new Date(startParam as string);
-      endDate = new Date(endParam as string);
-      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-        return res.status(400).json({ success: false, message: 'Invalid date format.' });
-      }
-    }
+    const parsed = parseOptionalDateRange(req);
+    if ('error' in parsed) return res.status(parsed.error.status).json(parsed.error.body);
+    const { startDate, endDate } = parsed;
 
     const data = await getCreatorEarningsData(startDate, endDate);
     return res.status(200).json({ success: true, data });
@@ -319,17 +331,9 @@ export const getAvgSubmissionResponseDetails = async (req: Request, res: Respons
 
 export const getClientRejectionRate = async (req: Request, res: Response) => {
   try {
-    const { startDate: startParam, endDate: endParam } = req.query;
-    let startDate: Date | undefined;
-    let endDate: Date | undefined;
-
-    if (startParam && endParam) {
-      startDate = new Date(startParam as string);
-      endDate = new Date(endParam as string);
-      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-        return res.status(400).json({ success: false, message: 'Invalid date format.' });
-      }
-    }
+    const parsed = parseOptionalDateRange(req);
+    if ('error' in parsed) return res.status(parsed.error.status).json(parsed.error.body);
+    const { startDate, endDate } = parsed;
 
     const data = await getClientRejectionRateData(startDate, endDate);
     return res.status(200).json({ success: true, data });
@@ -341,17 +345,9 @@ export const getClientRejectionRate = async (req: Request, res: Response) => {
 
 export const getCreditsPerCS = async (req: Request, res: Response) => {
   try {
-    const { startDate: startParam, endDate: endParam } = req.query;
-    let startDate: Date | undefined;
-    let endDate: Date | undefined;
-
-    if (startParam && endParam) {
-      startDate = new Date(startParam as string);
-      endDate = new Date(endParam as string);
-      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-        return res.status(400).json({ success: false, message: 'Invalid date format.' });
-      }
-    }
+    const parsed = parseOptionalDateRange(req);
+    if ('error' in parsed) return res.status(parsed.error.status).json(parsed.error.body);
+    const { startDate, endDate } = parsed;
 
     const data = await getCreditsPerCSData(startDate, endDate);
     return res.status(200).json({ success: true, data });
@@ -363,17 +359,9 @@ export const getCreditsPerCS = async (req: Request, res: Response) => {
 
 export const getRejectionReasons = async (req: Request, res: Response) => {
   try {
-    const { startDate: startParam, endDate: endParam } = req.query;
-    let startDate: Date | undefined;
-    let endDate: Date | undefined;
-
-    if (startParam && endParam) {
-      startDate = new Date(startParam as string);
-      endDate = new Date(endParam as string);
-      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-        return res.status(400).json({ success: false, message: 'Invalid date format.' });
-      }
-    }
+    const parsed = parseOptionalDateRange(req);
+    if ('error' in parsed) return res.status(parsed.error.status).json(parsed.error.body);
+    const { startDate, endDate } = parsed;
 
     const data = await getRejectionReasonsData(startDate, endDate);
     return res.status(200).json({ success: true, data });
@@ -393,5 +381,19 @@ export const getRequireChangesRate = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Error fetching require changes rate data:', error);
     return res.status(500).json({ success: false, message: 'Failed to fetch require changes rate data' });
+  }
+};
+
+export const getTopShortlistedCreators = async (req: Request, res: Response) => {
+  try {
+    const parsed = parseOptionalDateRange(req);
+    if ('error' in parsed) return res.status(parsed.error.status).json(parsed.error.body);
+    const { startDate, endDate } = parsed;
+
+    const data = await getTopShortlistedCreatorsData(startDate, endDate);
+    return res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    console.error('Error fetching top shortlisted creators data:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch top shortlisted creators data' });
   }
 };
