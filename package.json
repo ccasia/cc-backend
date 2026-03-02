@@ -22,7 +22,8 @@
     "update-kanban": "ts-node prisma/updateBoardAdmin.ts",
     "try": "ts-node src/config/nodemailer.config.ts",
     "db-push": "npx prisma db push && docker exec -it cc-backend npx prisma db push",
-    "push-campaigns": "ts-node campaignLogs.ts"
+    "push-campaigns": "ts-node campaignLogs.ts",
+    "run-worker": "npx tsx src/helper/worker"
   },
   "dependencies": {
     "@dotenvx/dotenvx": "^1.9.0",

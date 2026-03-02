@@ -21,6 +21,8 @@ import {
   exportCreatorsToSheet,
   createKanban,
   createCampaignCreator,
+  markMediaKitMandatory,
+  unmarkMediaKitMandatory,
 } from '@controllers/creatorController';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 // import { needPermissions } from '@middlewares/needPermissions';
@@ -45,6 +47,8 @@ router.get('/exportCreators', isSuperAdmin, exportCreatorsToSheet);
 
 router.post('/createKanban', createKanban);
 router.post('/createCreator', createCampaignCreator);
+router.post('/markMediaKitMandatory', isSuperAdmin, markMediaKitMandatory);
+router.post('/unmarkMediaKitMandatory', isSuperAdmin, unmarkMediaKitMandatory);
 
 router.patch('/updateSocialMediaUsername', isLoggedIn, updateSocialMedia);
 router.patch('/update-creator', isLoggedIn, updateCreator);

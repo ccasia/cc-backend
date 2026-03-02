@@ -300,6 +300,7 @@ export const createClientCampaign = async (req: Request, res: Response) => {
       postingStartDate,
       postingEndDate,
       campaignCredits,
+      brandTone,
       brandAbout,
       productName,
       websiteLink,
@@ -310,28 +311,30 @@ export const createClientCampaign = async (req: Request, res: Response) => {
       boostContent,
       primaryKPI,
       performanceBaseline,
-      // Target Audience
       audienceGender,
       audienceAge,
       country,
       audienceLanguage,
       audienceCreatorPersona,
       audienceUserPersona,
-      // Secondary audience
       secondaryAudienceGender,
       secondaryAudienceAge,
-      secondaryCountry,
+      secondaryAudienceLocation,
       secondaryAudienceLanguage,
       secondaryAudienceCreatorPersona,
       secondaryAudienceUserPersona,
+      secondaryCountry,
       geographicFocus,
       geographicFocusOthers,
-      // Logistics
+      campaignDo,
+      campaignDont,
+      referencesLinks,
       logisticsType,
       products,
       schedulingOption,
       locations,
       availabilityRules,
+      logisticRemarks,
       clientRemarks,
       allowMultipleBookings,
       // Additional Details 1 fields
@@ -403,7 +406,7 @@ export const createClientCampaign = async (req: Request, res: Response) => {
     }
 
     // Process brand guidelines PDF/image upload (support multiple)
-    let brandGuidelinesUrls: string[] = [];
+    const brandGuidelinesUrls: string[] = [];
     if (req.files && (req.files as any).brandGuidelines) {
       const brandGuidelinesFiles = Array.isArray((req.files as any).brandGuidelines)
         ? (req.files as any).brandGuidelines
@@ -474,8 +477,8 @@ export const createClientCampaign = async (req: Request, res: Response) => {
 
       // Construct Objectives String (including remarks)
       let objectivesString = campaignObjectives || '';
-      if (clientRemarks) {
-        objectivesString += `\n\n[Logistic Remarks]: ${clientRemarks}`;
+      if (logisticRemarks) {
+        objectivesString += `\n\n[Logistic Remarks]: ${logisticRemarks}`;
       }
 
       // Finalize countries - combine country, secondaryCountry, and geographicFocusOthers
@@ -502,6 +505,7 @@ export const createClientCampaign = async (req: Request, res: Response) => {
           status: 'PENDING_CSM_REVIEW',
           origin: 'CLIENT',
           submissionVersion: 'v4',
+          brandTone: brandTone || '',
           brandAbout: brandAbout || '',
           productName: productName || '',
           websiteLink: websiteLink || '',
@@ -526,6 +530,10 @@ export const createClientCampaign = async (req: Request, res: Response) => {
               postingEndDate: postingEndDate ? new Date(postingEndDate) : null,
               industries: campaignIndustries ? campaignIndustries.join(', ') : '',
               socialMediaPlatform: Array.isArray(socialMediaPlatform) ? socialMediaPlatform : [],
+              campaigns_do: campaignDo || [],
+              campaigns_dont: campaignDont || [],
+              // otherAttachments: otherAttachments,
+              referencesLinks: referencesLinks?.map((link: any) => link?.value).filter(Boolean) || [],
             },
           },
           campaignRequirement: {
@@ -533,7 +541,7 @@ export const createClientCampaign = async (req: Request, res: Response) => {
               // Primary Audience
               gender: audienceGender || [],
               age: audienceAge || [],
-              country: finalizedCountries[0] || '',
+              country: finalizedCountries[0] || country || '',
               countries: finalizedCountries,
               language: audienceLanguage || [],
               creator_persona: audienceCreatorPersona || [],
@@ -541,10 +549,11 @@ export const createClientCampaign = async (req: Request, res: Response) => {
               // Secondary Audience
               secondary_gender: secondaryAudienceGender || [],
               secondary_age: secondaryAudienceAge || [],
-              secondary_country: secondaryCountry || '',
+              secondary_geoLocation: secondaryAudienceLocation || [],
               secondary_language: secondaryAudienceLanguage || [],
               secondary_creator_persona: secondaryAudienceCreatorPersona || [],
               secondary_user_persona: secondaryAudienceUserPersona || '',
+              secondary_country: secondaryCountry || '',
               geographic_focus: geographicFocus || '',
               geographicFocusOthers: geographicFocusOthers || '',
             },
@@ -594,7 +603,12 @@ export const createClientCampaign = async (req: Request, res: Response) => {
             mainMessage: mainMessage || null,
             keyPoints: keyPoints || null,
             toneAndStyle: toneAndStyle || null,
-            brandGuidelinesUrl: brandGuidelinesUrls.length === 0 ? null : (brandGuidelinesUrls.length === 1 ? brandGuidelinesUrls[0] : brandGuidelinesUrls.join(',')),
+            brandGuidelinesUrl:
+              brandGuidelinesUrls.length === 0
+                ? null
+                : brandGuidelinesUrls.length === 1
+                  ? brandGuidelinesUrls[0]
+                  : brandGuidelinesUrls.join(','),
             referenceContent: referenceContent || null,
             productImage1Url: productImage1Url,
             productImage2Url: productImage2Url,

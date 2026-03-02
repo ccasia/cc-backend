@@ -81,7 +81,7 @@ export const impersonateCreator = async (req: Request<{}, {}, { userId: string }
 
     const session = req.session;
     session.isImpersonating = true;
-    session.impersonatingBy = admin.name!;
+    session.impersonatingBy = { userId: admin.id, name: admin.name! };
     session.userid = creator.id;
 
     res.cookie('userid', creator.id, {
@@ -92,5 +92,79 @@ export const impersonateCreator = async (req: Request<{}, {}, { userId: string }
     return res.sendStatus(200);
   } catch (error) {
     return res.status(500).json(error);
+  }
+};
+
+export const endImpersonatingSession = async (req: Request, res: Response) => {
+  try {
+    if (!req.session?.isImpersonating || !req.session.impersonatingBy?.userId) {
+      return res.status(200).json({
+        message: 'Not in impersonating session',
+        success: true,
+      });
+    }
+
+    const adminId = req.session.impersonatingBy.userId;
+
+    const admin = await prisma.admin.findFirst({
+      where: { userId: adminId },
+      include: { user: true },
+    });
+
+    if (!admin || !admin.user) {
+      return res.status(404).json({
+        message: 'Admin not found',
+        success: false,
+      });
+    }
+
+    /**
+     * IMPORTANT:
+     * Regenerate session to prevent session fixation
+     */
+    req.session.regenerate((err) => {
+      if (err) {
+        return res.status(500).json({
+          message: 'Failed to regenerate session',
+          success: false,
+        });
+      }
+
+      // Restore admin session
+      req.session.isImpersonating = false;
+      req.session.impersonatingBy = null;
+
+      req.session.userid = admin.userId;
+      req.session.role = admin.user.role ?? 'ADMIN';
+      req.session.name = admin.user.name ?? '';
+      req.session.photoURL = admin.user.photoURL ?? '';
+
+      req.session.save((saveErr) => {
+        if (saveErr) {
+          return res.status(500).json({
+            message: 'Session save failed',
+            success: false,
+          });
+        }
+
+        res.cookie('userid', admin.userId, {
+          maxAge: 24 * 60 * 60 * 1000, // 1 day
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'lax',
+        });
+
+        return res.status(200).json({
+          message: 'Impersonation ended successfully',
+          success: true,
+        });
+      });
+    });
+  } catch (error) {
+    console.error('[endImpersonatingSession]', error);
+    return res.status(500).json({
+      message: 'Internal server error',
+      success: false,
+    });
   }
 };

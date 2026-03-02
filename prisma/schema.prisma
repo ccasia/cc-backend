@@ -71,6 +71,9 @@ model User {
 
   referralCode String? @db.VarChar(50)
 
+  // Media Kit Mandatory flag for selected creators
+  mediaKitMandatory Boolean @default(false)
+
   // Individual feedback relations
   videoFeedback      Video[]      @relation("VideoFeedback")
   rawFootageFeedback RawFootage[] @relation("RawFootageFeedback")
@@ -310,6 +313,7 @@ model TiktokUser {
   display_name String?
   username     String?
   avatar_url   String?
+  biography    String?
 
   following_count Int?
   follower_count  Int?
@@ -357,19 +361,26 @@ model InstagramUser {
   creatorId String  @unique
   creator   Creator @relation(references: [id], fields: [creatorId])
 
-  accessToken     Json?
-  expiresIn       Int?
-  user_id         String?   @unique
-  followers_count Int?
-  follows_count   Int?
-  media_count     Int?
-  username        String?
-  totalLikes      Int?
-  totalComments   Int?
-  averageLikes    Float?
-  averageComments Float?
-  engagement_rate Float?
-  lastUpdated     DateTime?
+  accessToken         Json?
+  expiresIn           Int?
+  user_id             String?   @unique
+  profile_picture_url String?
+  biography           String?
+  followers_count     Int?
+  follows_count       Int?
+  media_count         Int?
+  username            String?
+  totalLikes          Int?
+  totalComments       Int?
+  totalShares         Int?
+  totalSaves          Int?
+  averageLikes        Float?
+  averageComments     Float?
+  averageShares       Float?
+  averageSaves        Float?
+  insightData         Json?
+  engagement_rate     Float?
+  lastUpdated         DateTime?
 
   instagramVideo InstagramVideo[]
 
@@ -702,12 +713,14 @@ model Campaign {
   submissionVersion String? @default("v3") // "v2", "v3", "v4"
 
   // Trends analysis
-  submissionPostingUrls  SubmissionPostingUrl[]
-  insightSnapshots       InsightSnapshot[]
-  manualCreatorEntries   ManualCreatorEntry[]
-  
+  submissionPostingUrls SubmissionPostingUrl[]
+  insightSnapshots      InsightSnapshot[]
+  manualCreatorEntries  ManualCreatorEntry[]
+
   // PCR (Post Campaign Report)
   pcr CampaignPCR?
+
+  isForSurfShark Boolean?
 }
 
 model BookMarkCampaign {
@@ -1084,9 +1097,9 @@ model Submission {
   rawFootagesDriveLink String?
 
   // V4 specific fields
-  contentOrder      Int? // Order of content (Video 1, Video 2, etc.)
-  submissionVersion String?          @default("v2") // "v2", "v3", "v4"
-  captionHistory    CaptionHistory[]
+  contentOrder          Int? // Order of content (Video 1, Video 2, etc.)
+  submissionVersion     String?                @default("v2") // "v2", "v3", "v4"
+  captionHistory        CaptionHistory[]
   submissionPostingUrls SubmissionPostingUrl[]
 
   @@unique([userId, campaignId, submissionTypeId, contentOrder])
@@ -1098,11 +1111,11 @@ model SubmissionPostingUrl {
   campaign     Campaign   @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   submissionId String
   submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
-  platform     String     // "Instagram" | "TikTok"
-  postUrl      String     // Full URL
-  postingDate  DateTime?  // When creator posted (null = not posted yet)
-  shortCode    String?    // Instagram shortcode
-  mediaId      String?    // Instagram media ID or TikTok video ID
+  platform     String // "Instagram" | "TikTok"
+  postUrl      String // Full URL
+  postingDate  DateTime? // When creator posted (null = not posted yet)
+  shortCode    String? // Instagram shortcode
+  mediaId      String? // Instagram media ID or TikTok video ID
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
@@ -1116,9 +1129,9 @@ model InsightSnapshot {
   campaignId            String
   campaign              Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   snapshotDate          DateTime
-  snapshotType          String   // "daily", "weekly", "monthly"
-  dayOfWeek             Int?     // 0 (Sunday) - 6 (Saturday), for weekly snapshots
-  platform              String   // "Instagram" | "TikTok" | "All"
+  snapshotType          String // "daily", "weekly", "monthly"
+  dayOfWeek             Int? // 0 (Sunday) - 6 (Saturday), for weekly snapshots
+  platform              String // "Instagram" | "TikTok" | "All"
   totalPosts            Int
   totalViews            Int      @default(0)
   totalLikes            Int      @default(0)
@@ -1137,25 +1150,59 @@ model InsightSnapshot {
   @@index([campaignId, snapshotType])
 }
 
+model PostEngagementSnapshot {
+  id           String @id @unique @default(cuid())
+  campaignId   String
+  submissionId String
+  postUrl      String
+  platform     String // "Instagram" | "TikTok"
+  userId       String // Creator user ID
+
+  // Snapshot timing
+  snapshotDay Int // Day number from campaign start (7, 15, 30)
+  postDate    DateTime // When the post was originally published
+  capturedAt  DateTime // When this snapshot was captured
+
+  // Engagement metrics at snapshot time
+  views          Int   @default(0)
+  likes          Int   @default(0)
+  comments       Int   @default(0)
+  shares         Int   @default(0)
+  saved          Int   @default(0)
+  reach          Int   @default(0)
+  engagementRate Float // ER at this snapshot
+
+  // Raw insight data for reference
+  rawMetrics Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([campaignId, postUrl, snapshotDay])
+  @@index([campaignId, snapshotDay])
+  @@index([submissionId])
+  @@index([userId])
+}
+
 model ManualCreatorEntry {
-  id              String   @id @unique @default(cuid())
-  campaignId      String
-  campaign        Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  id         String   @id @unique @default(cuid())
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
   creatorName     String
   creatorUsername String
-  platform        String   // "Instagram" | "TikTok"
+  platform        String // "Instagram" | "TikTok"
   postUrl         String?
 
-  views           Int      @default(0)
-  likes           Int      @default(0)
-  shares          Int      @default(0)
-  saved           Int?     // Only for Instagram
-  engagementRate  Float    @default(0)
+  views          Int   @default(0)
+  likes          Int   @default(0)
+  shares         Int   @default(0)
+  saved          Int? // Only for Instagram
+  engagementRate Float @default(0)
 
-  createdBy       String
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([campaignId])
 }
@@ -2065,13 +2112,18 @@ enum NpsUserType {
 }
 
 model NpsFeedback {
-  id        String      @id @unique @default(cuid())
-  userId    String
-  userType  NpsUserType @default(CLIENT)
-  rating    Int         // 1-5 star rating
-  feedback  String?     // Optional text feedback
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
+  id           String      @id @unique @default(cuid())
+  userId       String
+  userType     NpsUserType @default(CLIENT)
+  rating       Int // 1-5 star rating
+  feedback     String? // Optional text feedback
+  deviceType   String? // "mobile", "tablet", "desktop"
+  deviceModel  String? // "iPhone", "Galaxy S21"
+  deviceVendor String? // "Apple", "Samsung"
+  os           String? // "macOS 15.1", "iOS 18.0", "Windows 11"
+  browser      String? // "Chrome 131.0", "Safari 18.1"
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

@@ -91,6 +91,10 @@ import {
   deleteEntry as deleteManualCreator,
   updateEntry as updateManualCreator,
 } from '@controllers/manualCreatorController';
+import {
+  getCampaignPostSnapshots,
+  triggerManualSnapshot,
+} from '@controllers/postEngagementSnapshotController';
 import { isSuperAdmin, isAdmin } from '@middlewares/onlySuperadmin';
 import { canActivateCampaign } from '@middlewares/adminOrClient';
 
@@ -273,5 +277,9 @@ router.post('/:campaignId/manual-creator', isLoggedIn, isAdmin, createManualCrea
 router.get('/:campaignId/manual-creators', isLoggedIn, getManualCreators);
 router.put('/:campaignId/manual-creator/:entryId', isLoggedIn, isAdmin, updateManualCreator);
 router.delete('/:campaignId/manual-creator/:entryId', isLoggedIn, isAdmin, deleteManualCreator);
+
+// Post Engagement Snapshot endpoints (Day 7, 15, 30 ER tracking)
+router.get('/:campaignId/post-engagement-snapshots', isLoggedIn, getCampaignPostSnapshots);
+router.post('/:campaignId/post-engagement-snapshots/capture', isLoggedIn, isAdmin, triggerManualSnapshot);
 
 export default router;

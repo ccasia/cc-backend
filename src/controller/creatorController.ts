@@ -69,6 +69,7 @@ export const getCreators = async (_req: Request, res: Response) => {
         status: true,
         email: true,
         role: true,
+        mediaKitMandatory: true,
         creator: {
           include: {
             instagramUser: {
@@ -256,6 +257,78 @@ export const updateCreator = async (req: Request, res: Response) => {
     return res.status(200).json({ message: 'Successfully updated' });
   } catch (error) {
     return res.status(400).json(error);
+  }
+};
+
+/**
+ * POST /api/creator/markMediaKitMandatory
+ * Mark selected users as Media Kit Mandatory
+ * Only accessible by Super Admin
+ */
+export const markMediaKitMandatory = async (req: Request, res: Response) => {
+  const { userIds } = req.body;
+
+  if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
+    return res.status(400).json({ message: 'userIds array is required' });
+  }
+
+  try {
+    // Update all selected users to have mediaKitMandatory = true
+    const result = await prisma.user.updateMany({
+      where: {
+        id: {
+          in: userIds,
+        },
+        role: 'creator', // Only update creators
+      },
+      data: {
+        mediaKitMandatory: true,
+      },
+    });
+
+    return res.status(200).json({
+      message: `Successfully marked ${result.count} creator(s) as Media Kit Mandatory`,
+      count: result.count,
+    });
+  } catch (error) {
+    console.error('Error marking creators as Media Kit Mandatory:', error);
+    return res.status(400).json({ message: 'Failed to update creators', error });
+  }
+};
+
+/**
+ * POST /api/creator/unmarkMediaKitMandatory
+ * Remove Media Kit Mandatory flag from selected users
+ * Only accessible by Super Admin
+ */
+export const unmarkMediaKitMandatory = async (req: Request, res: Response) => {
+  const { userIds } = req.body;
+
+  if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
+    return res.status(400).json({ message: 'userIds array is required' });
+  }
+
+  try {
+    // Update all selected users to have mediaKitMandatory = false
+    const result = await prisma.user.updateMany({
+      where: {
+        id: {
+          in: userIds,
+        },
+        role: 'creator', // Only update creators
+      },
+      data: {
+        mediaKitMandatory: false,
+      },
+    });
+
+    return res.status(200).json({
+      message: `Successfully unmarked ${result.count} creator(s) from Media Kit Mandatory`,
+      count: result.count,
+    });
+  } catch (error) {
+    console.error('Error unmarking creators from Media Kit Mandatory:', error);
+    return res.status(400).json({ message: 'Failed to update creators', error });
   }
 };
 
