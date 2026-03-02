@@ -156,7 +156,6 @@ function extractTikTokVideoId(url: string): string | null {
   }
 }
 
-
 // Connect account
 export const tiktokAuthentication = (_req: Request, res: Response) => {
   const csrfState = Math.random().toString(36).substring(2);
@@ -676,9 +675,7 @@ export const instagramCallback = async (req: Request, res: Response) => {
       (insightData.totals.shares || 0) +
       (insightData.totals.saves || 0);
 
-    const engagementRate = instagramViews
-      ? (instagramInteractions / instagramViews) * 100
-      : 0;
+    const engagementRate = instagramViews ? (instagramInteractions / instagramViews) * 100 : 0;
 
     const instagramUser = await prisma.instagramUser.upsert({
       where: {
@@ -733,7 +730,7 @@ export const instagramCallback = async (req: Request, res: Response) => {
         engagement_rate: engagementRate,
         creatorId: creator.id,
       },
-    } as any);
+    });
 
     // Update creator's credit tier after Instagram follower data changes
     try {
@@ -743,6 +740,8 @@ export const instagramCallback = async (req: Request, res: Response) => {
       console.error('Failed to update credit tier after Instagram connect:', tierError);
       // Non-blocking - don't fail the callback if tier update fails
     }
+
+    // const medias = await getAllMediaObject(access_token, overview.user_id);
 
     for (const media of medias.sortedVideos) {
       const videoId = media.id;
@@ -993,9 +992,7 @@ export const getInstagramMediaKit = async (req: Request, res: Response) => {
       (insightData.totals.shares || 0) +
       (insightData.totals.saves || 0);
 
-    const engagementRate = instagramViews
-      ? (instagramInteractions / instagramViews) * 100
-      : 0;
+    const engagementRate = instagramViews ? (instagramInteractions / instagramViews) * 100 : 0;
 
     // Get analytics data for charts with error handling
     let analytics: {
@@ -1074,7 +1071,7 @@ export const getInstagramMediaKit = async (req: Request, res: Response) => {
         },
         engagement_rate: engagementRate,
       },
-    } as any);
+    });
 
     // Update creator's credit tier after Instagram follower data changes
     try {
@@ -1209,7 +1206,8 @@ export const getTikTokMediaKit = async (req: Request, res: Response) => {
     // Get TikTok user profile overview
     const overviewRes = await axios.get('https://open.tiktokapis.com/v2/user/info/', {
       params: {
-        fields: 'open_id,union_id,display_name,bio_description,username,avatar_url,following_count,follower_count,likes_count',
+        fields:
+          'open_id,union_id,display_name,bio_description,username,avatar_url,following_count,follower_count,likes_count',
       },
       headers: { Authorization: `Bearer ${accessToken}` },
     });
@@ -1294,9 +1292,7 @@ export const getTikTokMediaKit = async (req: Request, res: Response) => {
     }
 
     // TikTok Engagement Rate Formula: (likes + comments + shares) / views
-    const engagement_rate = totalViews
-      ? ((totalLikes + totalComments + totalShares) / totalViews) * 100
-      : 0;
+    const engagement_rate = totalViews ? ((totalLikes + totalComments + totalShares) / totalViews) * 100 : 0;
 
     // Update TikTok user data in database
     const tiktokUser = await prisma.tiktokUser.upsert({
@@ -1669,7 +1665,9 @@ async function ensureValidInstagramToken(userId: string): Promise<string> {
       console.log('Instagram token refreshed successfully');
     } catch (refreshError) {
       console.error('Failed to refresh Instagram token:', refreshError);
-      throw new Error('Instagram token expired and refresh failed. Creator needs to reconnect their Instagram account.');
+      throw new Error(
+        'Instagram token expired and refresh failed. Creator needs to reconnect their Instagram account.',
+      );
     }
   }
 
@@ -2111,4 +2109,3 @@ export const getTikTokVideoInsight = async (req: Request, res: Response) => {
     });
   }
 };
-
