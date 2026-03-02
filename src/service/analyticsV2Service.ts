@@ -2306,7 +2306,83 @@ export const getClientRejectionRateData = async (startDate?: Date, endDate?: Dat
   const totalSent = rows.reduce((sum, r) => sum + r.total, 0);
   const avgRate = totalSent > 0 ? Math.round((totalRejected / totalSent) * 1000) / 10 : 0;
 
-  return { avgRate, breakdown };
+  // Monthly trend — aggregate rejection rate by month
+  interface RejectionTrendRow { year: number; month: number; rejected: number; total: number; }
+
+  const trendRows = hasDateFilter
+    ? await prisma.$queryRaw<RejectionTrendRow[]>`
+        SELECT
+          EXTRACT(YEAR FROM p."createdAt")::int AS year,
+          EXTRACT(MONTH FROM p."createdAt")::int AS month,
+          COUNT(CASE WHEN p."rejectedByClientId" IS NOT NULL THEN 1 END)::int AS rejected,
+          COUNT(p.id)::int AS total
+        FROM "Pitch" p
+        INNER JOIN "Campaign" c ON c.id = p."campaignId"
+        WHERE c."submissionVersion" = 'v4'
+          AND (
+            p."rejectedByClientId" IS NOT NULL
+            OR p."approvedByClientId" IS NOT NULL
+            OR p."maybeByClientId" IS NOT NULL
+            OR p.status = 'SENT_TO_CLIENT'
+          )
+          AND p."createdAt" >= ${startDate}
+          AND p."createdAt" <= ${endDate}
+        GROUP BY 1, 2
+        ORDER BY 1, 2
+      `
+    : await prisma.$queryRaw<RejectionTrendRow[]>`
+        SELECT
+          EXTRACT(YEAR FROM p."createdAt")::int AS year,
+          EXTRACT(MONTH FROM p."createdAt")::int AS month,
+          COUNT(CASE WHEN p."rejectedByClientId" IS NOT NULL THEN 1 END)::int AS rejected,
+          COUNT(p.id)::int AS total
+        FROM "Pitch" p
+        INNER JOIN "Campaign" c ON c.id = p."campaignId"
+        WHERE c."submissionVersion" = 'v4'
+          AND (
+            p."rejectedByClientId" IS NOT NULL
+            OR p."approvedByClientId" IS NOT NULL
+            OR p."maybeByClientId" IS NOT NULL
+            OR p.status = 'SENT_TO_CLIENT'
+          )
+        GROUP BY 1, 2
+        ORDER BY 1, 2
+      `;
+
+  // Build lookup map from query results
+  const trendMap = new Map<string, { rejected: number; total: number }>();
+  for (const row of trendRows) {
+    trendMap.set(`${row.year}-${row.month}`, { rejected: row.rejected, total: row.total });
+  }
+
+  // Gap-fill months
+  const trendStart = hasDateFilter
+    ? new Date(startDate!.getFullYear(), startDate!.getMonth(), 1)
+    : trendRows.length > 0
+      ? new Date(trendRows[0].year, trendRows[0].month - 1, 1)
+      : new Date();
+  const trendEnd = hasDateFilter
+    ? new Date(endDate!.getFullYear(), endDate!.getMonth(), 1)
+    : trendRows.length > 0
+      ? new Date(trendRows[trendRows.length - 1].year, trendRows[trendRows.length - 1].month - 1, 1)
+      : new Date();
+
+  const trend: { month: string; rate: number; rejected: number; total: number }[] = [];
+  const current = new Date(trendStart);
+  while (current <= trendEnd) {
+    const year = current.getFullYear();
+    const month = current.getMonth() + 1;
+    const key = `${year}-${month}`;
+    const entry = trendMap.get(key);
+    const rejected = entry?.rejected || 0;
+    const total = entry?.total || 0;
+    const rate = total > 0 ? Math.round((rejected / total) * 1000) / 10 : 0;
+
+    trend.push({ month: formatMonthLabel(year, month), rate, rejected, total });
+    current.setMonth(current.getMonth() + 1);
+  }
+
+  return { avgRate, breakdown, trend };
 };
 
 // Credits per CS
