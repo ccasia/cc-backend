@@ -20,6 +20,7 @@ import {
   getCreditsPerCS,
   getRejectionReasons,
   getRequireChangesRate,
+  getTopShortlistedCreators,
 } from '@controllers/analyticsV2Controller';
 import { isLoggedIn } from '@middlewares/onlyLogin';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
@@ -46,5 +47,6 @@ router.get('/client-rejection-rate', isLoggedIn, isSuperAdmin, getClientRejectio
 router.get('/credits-per-cs', isLoggedIn, isSuperAdmin, getCreditsPerCS);
 router.get('/rejection-reasons', isLoggedIn, isSuperAdmin, getRejectionReasons);
 router.get('/require-changes-rate', isLoggedIn, isSuperAdmin, getRequireChangesRate);
+router.get('/top-shortlisted-creators', isLoggedIn, isSuperAdmin, getTopShortlistedCreators);
 
 export default router;
