@@ -19,6 +19,7 @@ import {
   getAvgSubmissionResponseDetails as getAvgSubmissionResponseDetailsData,
   getClientRejectionRateData,
   getCreditsPerCSData,
+  getRejectionReasonsData,
 } from '@services/analyticsV2Service';
 
 const prisma = new PrismaClient();
@@ -356,5 +357,27 @@ export const getCreditsPerCS = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Error fetching credits per CS data:', error);
     return res.status(500).json({ success: false, message: 'Failed to fetch credits per CS data' });
+  }
+};
+
+export const getRejectionReasons = async (req: Request, res: Response) => {
+  try {
+    const { startDate: startParam, endDate: endParam } = req.query;
+    let startDate: Date | undefined;
+    let endDate: Date | undefined;
+
+    if (startParam && endParam) {
+      startDate = new Date(startParam as string);
+      endDate = new Date(endParam as string);
+      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+        return res.status(400).json({ success: false, message: 'Invalid date format.' });
+      }
+    }
+
+    const data = await getRejectionReasonsData(startDate, endDate);
+    return res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    console.error('Error fetching rejection reasons data:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch rejection reasons data' });
   }
 };
