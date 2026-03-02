@@ -2480,3 +2480,114 @@ export const getRejectionReasonsData = async (startDate?: Date, endDate?: Date) 
 
   return { reasons: rows };
 };
+
+// Require Changes Rate — V2 vs V4
+
+interface ChangeRequestRow {
+  year: number;
+  month: number;
+  version: string;
+  changes: number;
+}
+
+interface DeliverableRow {
+  year: number;
+  month: number;
+  version: string;
+  deliverables: number;
+}
+
+interface RequireChangesMonth {
+  month: string;
+  rate: number;
+  changes: number;
+  deliverables: number;
+}
+
+export const getRequireChangesRateData = async (
+  startDate: Date,
+  endDate: Date,
+): Promise<{ v2: RequireChangesMonth[]; v4: RequireChangesMonth[] }> => {
+  // Query 1: Change request counts by month and version
+  const changeRows = await prisma.$queryRaw<ChangeRequestRow[]>`
+    SELECT
+      EXTRACT(YEAR FROM f."createdAt")::int AS year,
+      EXTRACT(MONTH FROM f."createdAt")::int AS month,
+      CASE WHEN c."submissionVersion" = 'v4' THEN 'v4' ELSE 'v2' END AS version,
+      COUNT(*)::int AS changes
+    FROM "Feedback" f
+    INNER JOIN "Submission" s ON s.id = f."submissionId"
+    INNER JOIN "Campaign" c ON c.id = s."campaignId"
+    WHERE (
+      (c."submissionVersion" = 'v4' AND f.type = 'REQUEST' AND f."sentToCreator" = true)
+      OR (COALESCE(c."submissionVersion", 'v2') != 'v4' AND f.type = 'REASON')
+    )
+    AND f."createdAt" >= ${startDate}
+    AND f."createdAt" <= ${endDate}
+    GROUP BY 1, 2, 3
+    ORDER BY 1, 2, 3
+  `;
+
+  // Query 2: Deliverables (ugcVideos) scoped to campaigns with feedback activity that month
+  const deliverableRows = await prisma.$queryRaw<DeliverableRow[]>`
+    SELECT
+      sub.year,
+      sub.month,
+      sub.version,
+      SUM(COALESCE(slc."ugcVideos", 0))::int AS deliverables
+    FROM (
+      SELECT DISTINCT
+        EXTRACT(YEAR FROM f."createdAt")::int AS year,
+        EXTRACT(MONTH FROM f."createdAt")::int AS month,
+        CASE WHEN c."submissionVersion" = 'v4' THEN 'v4' ELSE 'v2' END AS version,
+        s."campaignId"
+      FROM "Feedback" f
+      INNER JOIN "Submission" s ON s.id = f."submissionId"
+      INNER JOIN "Campaign" c ON c.id = s."campaignId"
+      WHERE f."createdAt" >= ${startDate}
+        AND f."createdAt" <= ${endDate}
+    ) sub
+    LEFT JOIN "ShortListedCreator" slc ON slc."campaignId" = sub."campaignId"
+    GROUP BY sub.year, sub.month, sub.version
+    ORDER BY sub.year, sub.month, sub.version
+  `;
+
+  // Build lookup maps
+  const changeMap = new Map<string, number>();
+  for (const row of changeRows) {
+    changeMap.set(`${row.year}-${row.month}-${row.version}`, row.changes);
+  }
+
+  const deliverableMap = new Map<string, number>();
+  for (const row of deliverableRows) {
+    deliverableMap.set(`${row.year}-${row.month}-${row.version}`, row.deliverables);
+  }
+
+  // Gap-fill months and compute rates
+  const v2Result: RequireChangesMonth[] = [];
+  const v4Result: RequireChangesMonth[] = [];
+
+  const current = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+  const end = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+
+  while (current <= end) {
+    const year = current.getFullYear();
+    const month = current.getMonth() + 1;
+    const label = formatMonthLabel(year, month);
+
+    for (const version of ['v2', 'v4'] as const) {
+      const key = `${year}-${month}-${version}`;
+      const changes = changeMap.get(key) || 0;
+      const deliverables = deliverableMap.get(key) || 0;
+      const rate = deliverables > 0 ? Math.round((changes / (deliverables * 2)) * 1000) / 10 : 0;
+
+      const entry: RequireChangesMonth = { month: label, rate, changes, deliverables };
+      if (version === 'v2') v2Result.push(entry);
+      else v4Result.push(entry);
+    }
+
+    current.setMonth(current.getMonth() + 1);
+  }
+
+  return { v2: v2Result, v4: v4Result };
+};

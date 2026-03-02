@@ -20,6 +20,7 @@ import {
   getClientRejectionRateData,
   getCreditsPerCSData,
   getRejectionReasonsData,
+  getRequireChangesRateData,
 } from '@services/analyticsV2Service';
 
 const prisma = new PrismaClient();
@@ -375,5 +376,18 @@ export const getRejectionReasons = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Error fetching rejection reasons data:', error);
     return res.status(500).json({ success: false, message: 'Failed to fetch rejection reasons data' });
+  }
+};
+
+export const getRequireChangesRate = async (req: Request, res: Response) => {
+  try {
+    const parsed = await parseDateRange(req);
+    if ('error' in parsed) return res.status(parsed.error.status).json(parsed.error.body);
+
+    const data = await getRequireChangesRateData(parsed.startDate, parsed.endDate);
+    return res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    console.error('Error fetching require changes rate data:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch require changes rate data' });
   }
 };
