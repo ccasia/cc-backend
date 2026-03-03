@@ -2390,9 +2390,12 @@ export const getClientRejectionRateData = async (startDate?: Date, endDate?: Dat
 interface CreditsPerCSRow {
   adminUserId: string;
   csName: string;
+  csPhoto: string | null;
   campaignId: string;
   campaignName: string;
   credits: number;
+  creditsUtilized: number;
+  creditsPending: number;
   submissionVersion: string | null;
   packageName: string;
   campaignImages: unknown;
@@ -2406,9 +2409,12 @@ export const getCreditsPerCSData = async (startDate?: Date, endDate?: Date) => {
         SELECT
           a."userId"                                      AS "adminUserId",
           u.name                                          AS "csName",
+          u."photoURL"                                    AS "csPhoto",
           c.id                                            AS "campaignId",
           c.name                                          AS "campaignName",
           COALESCE(c."campaignCredits", 0)::int           AS "credits",
+          COALESCE(c."creditsUtilized", 0)::int           AS "creditsUtilized",
+          COALESCE(c."creditsPending", 0)::int            AS "creditsPending",
           c."submissionVersion"                           AS "submissionVersion",
           COALESCE(pkg.name, cpkg."customName", 'Custom') AS "packageName",
           cb.images                                       AS "campaignImages"
@@ -2430,9 +2436,12 @@ export const getCreditsPerCSData = async (startDate?: Date, endDate?: Date) => {
         SELECT
           a."userId"                                      AS "adminUserId",
           u.name                                          AS "csName",
+          u."photoURL"                                    AS "csPhoto",
           c.id                                            AS "campaignId",
           c.name                                          AS "campaignName",
           COALESCE(c."campaignCredits", 0)::int           AS "credits",
+          COALESCE(c."creditsUtilized", 0)::int           AS "creditsUtilized",
+          COALESCE(c."creditsPending", 0)::int            AS "creditsPending",
           c."submissionVersion"                           AS "submissionVersion",
           COALESCE(pkg.name, cpkg."customName", 'Custom') AS "packageName",
           cb.images                                       AS "campaignImages"
@@ -2453,16 +2462,20 @@ export const getCreditsPerCSData = async (startDate?: Date, endDate?: Date) => {
     string,
     {
       csName: string;
+      csPhoto: string | null;
       basic: number;
       essential: number;
       pro: number;
       custom: number;
       v2Credits: number;
       v4Credits: number;
+      totalCreditsUtilized: number;
       campaigns: {
         campaignId: string;
         name: string;
         credits: number;
+        creditsUtilized: number;
+        creditsPending: number;
         version: string;
         package: string;
         campaignImage: string | null;
@@ -2474,18 +2487,22 @@ export const getCreditsPerCSData = async (startDate?: Date, endDate?: Date) => {
     if (!adminMap.has(row.adminUserId)) {
       adminMap.set(row.adminUserId, {
         csName: row.csName,
+        csPhoto: row.csPhoto || null,
         basic: 0,
         essential: 0,
         pro: 0,
         custom: 0,
         v2Credits: 0,
         v4Credits: 0,
+        totalCreditsUtilized: 0,
         campaigns: [],
       });
     }
 
     const admin = adminMap.get(row.adminUserId)!;
     const credits = Number(row.credits) || 0;
+    const creditsUtilized = Number(row.creditsUtilized) || 0;
+    const creditsPending = Number(row.creditsPending) || 0;
     const pkgLower = row.packageName.toLowerCase();
 
     if (pkgLower === 'basic') admin.basic += credits;
@@ -2496,6 +2513,8 @@ export const getCreditsPerCSData = async (startDate?: Date, endDate?: Date) => {
     if (row.submissionVersion === 'v4') admin.v4Credits += credits;
     else admin.v2Credits += credits;
 
+    admin.totalCreditsUtilized += creditsUtilized;
+
     const imgs = Array.isArray(row.campaignImages) ? row.campaignImages : [];
     const campaignImage = imgs.length > 0 && typeof imgs[0] === 'string' ? imgs[0] : null;
 
@@ -2503,6 +2522,8 @@ export const getCreditsPerCSData = async (startDate?: Date, endDate?: Date) => {
       campaignId: row.campaignId,
       name: row.campaignName,
       credits,
+      creditsUtilized,
+      creditsPending,
       version: row.submissionVersion === 'v4' ? 'V4' : 'V2',
       package: pkgLower === 'basic' ? 'Basic' : pkgLower === 'essential' ? 'Essential' : pkgLower === 'pro' ? 'Pro' : 'Custom',
       campaignImage,
