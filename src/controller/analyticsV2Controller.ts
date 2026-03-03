@@ -107,12 +107,21 @@ const parseOptionalDateRange = (
   return { startDate, endDate };
 };
 
+// Parse optional multi-value creditTiers query param into string array
+const parseCreditTiers = (req: Request): string[] => {
+  const raw = req.query.creditTiers;
+  if (!raw) return [];
+  const tiers = Array.isArray(raw) ? raw : [raw];
+  return tiers.map((t) => String(t).trim()).filter(Boolean);
+};
+
 export const getCreatorGrowth = async (req: Request, res: Response) => {
   try {
     const parsed = await parseDateRange(req);
     if ('error' in parsed) return res.status(parsed.error.status).json(parsed.error.body);
 
-    const data = await getCreatorGrowthData(parsed.startDate, parsed.endDate, parsed.granularity);
+    const creditTierNames = parseCreditTiers(req);
+    const data = await getCreatorGrowthData(parsed.startDate, parsed.endDate, parsed.granularity, creditTierNames);
     return res.status(200).json({ success: true, data });
   } catch (error: any) {
     console.error('Error fetching creator growth data:', error);
@@ -127,7 +136,8 @@ export const getCreatorGrowthCreators = async (req: Request, res: Response) => {
     if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
       return res.status(400).json({ success: false, message: 'Invalid date format.' });
     }
-    const data = await getCreatorGrowthCreatorsData(startDate, endDate);
+    const creditTierNames = parseCreditTiers(req);
+    const data = await getCreatorGrowthCreatorsData(startDate, endDate, creditTierNames);
     return res.status(200).json({ success: true, data });
   } catch (error: any) {
     console.error('Error fetching creator growth creators:', error);
@@ -140,7 +150,8 @@ export const getActivationRate = async (req: Request, res: Response) => {
     const parsed = await parseDateRange(req);
     if ('error' in parsed) return res.status(parsed.error.status).json(parsed.error.body);
 
-    const data = await getActivationRateData(parsed.startDate, parsed.endDate, parsed.granularity);
+    const creditTierNames = parseCreditTiers(req);
+    const data = await getActivationRateData(parsed.startDate, parsed.endDate, parsed.granularity, creditTierNames);
     return res.status(200).json({ success: true, data });
   } catch (error: any) {
     console.error('Error fetching activation rate data:', error);
@@ -153,7 +164,8 @@ export const getPitchRate = async (req: Request, res: Response) => {
     const parsed = await parseDateRange(req);
     if ('error' in parsed) return res.status(parsed.error.status).json(parsed.error.body);
 
-    const data = await getPitchRateData(parsed.startDate, parsed.endDate, parsed.granularity);
+    const creditTierNames = parseCreditTiers(req);
+    const data = await getPitchRateData(parsed.startDate, parsed.endDate, parsed.granularity, creditTierNames);
     return res.status(200).json({ success: true, data });
   } catch (error: any) {
     console.error('Error fetching pitch rate data:', error);
@@ -166,7 +178,8 @@ export const getTimeToActivation = async (req: Request, res: Response) => {
     const parsed = await parseDateRange(req);
     if ('error' in parsed) return res.status(parsed.error.status).json(parsed.error.body);
 
-    const data = await getTimeToActivationData(parsed.startDate, parsed.endDate, parsed.granularity);
+    const creditTierNames = parseCreditTiers(req);
+    const data = await getTimeToActivationData(parsed.startDate, parsed.endDate, parsed.granularity, creditTierNames);
     return res.status(200).json({ success: true, data });
   } catch (error: any) {
     console.error('Error fetching time to activation data:', error);
@@ -181,7 +194,8 @@ export const getTimeToActivationCreators = async (req: Request, res: Response) =
     if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
       return res.status(400).json({ success: false, message: 'Invalid date format.' });
     }
-    const data = await getTimeToActivationCreatorsData(startDate, endDate);
+    const creditTierNames = parseCreditTiers(req);
+    const data = await getTimeToActivationCreatorsData(startDate, endDate, creditTierNames);
     return res.status(200).json({ success: true, data });
   } catch (error: any) {
     console.error('Error fetching time to activation creators:', error);
@@ -196,7 +210,8 @@ export const getPitchRateCreators = async (req: Request, res: Response) => {
     if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
       return res.status(400).json({ success: false, message: 'Invalid date format.' });
     }
-    const data = await getPitchRateCreatorsData(startDate, endDate);
+    const creditTierNames = parseCreditTiers(req);
+    const data = await getPitchRateCreatorsData(startDate, endDate, creditTierNames);
     return res.status(200).json({ success: true, data });
   } catch (error: any) {
     console.error('Error fetching pitch rate creators:', error);
@@ -210,7 +225,8 @@ export const getMediaKitActivation = async (req: Request, res: Response) => {
     if ('error' in parsed) return res.status(parsed.error.status).json(parsed.error.body);
     const { startDate, endDate } = parsed;
 
-    const data = await getMediaKitActivationData(startDate, endDate);
+    const creditTierNames = parseCreditTiers(req);
+    const data = await getMediaKitActivationData(startDate, endDate, creditTierNames);
     return res.status(200).json({ success: true, data });
   } catch (error: any) {
     console.error('Error fetching media kit activation data:', error);
@@ -223,7 +239,8 @@ export const getCreatorSatisfaction = async (req: Request, res: Response) => {
     const parsed = await parseDateRange(req);
     if ('error' in parsed) return res.status(parsed.error.status).json(parsed.error.body);
 
-    const data = await getCreatorSatisfactionData(parsed.startDate, parsed.endDate);
+    const creditTierNames = parseCreditTiers(req);
+    const data = await getCreatorSatisfactionData(parsed.startDate, parsed.endDate, creditTierNames);
     return res.status(200).json({ success: true, data });
   } catch (error: any) {
     console.error('Error fetching creator satisfaction data:', error);
@@ -237,7 +254,8 @@ export const getCreatorEarnings = async (req: Request, res: Response) => {
     if ('error' in parsed) return res.status(parsed.error.status).json(parsed.error.body);
     const { startDate, endDate } = parsed;
 
-    const data = await getCreatorEarningsData(startDate, endDate);
+    const creditTierNames = parseCreditTiers(req);
+    const data = await getCreatorEarningsData(startDate, endDate, creditTierNames);
     return res.status(200).json({ success: true, data });
   } catch (error: any) {
     console.error('Error fetching creator earnings data:', error);
@@ -250,7 +268,8 @@ export const getAvgAgreementResponse = async (req: Request, res: Response) => {
     const parsed = await parseDateRange(req);
     if ('error' in parsed) return res.status(parsed.error.status).json(parsed.error.body);
 
-    const data = await getAvgAgreementResponseData(parsed.startDate, parsed.endDate, parsed.granularity);
+    const creditTierNames = parseCreditTiers(req);
+    const data = await getAvgAgreementResponseData(parsed.startDate, parsed.endDate, parsed.granularity, creditTierNames);
     return res.status(200).json({ success: true, data });
   } catch (error: any) {
     console.error('Error fetching avg agreement response data:', error);
@@ -265,7 +284,8 @@ export const getAvgAgreementResponseDetails = async (req: Request, res: Response
     if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
       return res.status(400).json({ success: false, message: 'Invalid date format.' });
     }
-    const data = await getAvgAgreementResponseDetailsData(startDate, endDate);
+    const creditTierNames = parseCreditTiers(req);
+    const data = await getAvgAgreementResponseDetailsData(startDate, endDate, creditTierNames);
     return res.status(200).json({ success: true, data });
   } catch (error: any) {
     console.error('Error fetching avg agreement response details:', error);
@@ -278,7 +298,8 @@ export const getAvgFirstCampaign = async (req: Request, res: Response) => {
     const parsed = await parseDateRange(req);
     if ('error' in parsed) return res.status(parsed.error.status).json(parsed.error.body);
 
-    const data = await getAvgFirstCampaignData(parsed.startDate, parsed.endDate, parsed.granularity);
+    const creditTierNames = parseCreditTiers(req);
+    const data = await getAvgFirstCampaignData(parsed.startDate, parsed.endDate, parsed.granularity, creditTierNames);
     return res.status(200).json({ success: true, data });
   } catch (error: any) {
     console.error('Error fetching avg first campaign data:', error);
@@ -293,7 +314,8 @@ export const getAvgFirstCampaignDetails = async (req: Request, res: Response) =>
     if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
       return res.status(400).json({ success: false, message: 'Invalid date format.' });
     }
-    const data = await getAvgFirstCampaignDetailsData(startDate, endDate);
+    const creditTierNames = parseCreditTiers(req);
+    const data = await getAvgFirstCampaignDetailsData(startDate, endDate, creditTierNames);
     return res.status(200).json({ success: true, data });
   } catch (error: any) {
     console.error('Error fetching avg first campaign details:', error);
@@ -306,7 +328,8 @@ export const getAvgSubmissionResponse = async (req: Request, res: Response) => {
     const parsed = await parseDateRange(req);
     if ('error' in parsed) return res.status(parsed.error.status).json(parsed.error.body);
 
-    const data = await getAvgSubmissionResponseData(parsed.startDate, parsed.endDate, parsed.granularity);
+    const creditTierNames = parseCreditTiers(req);
+    const data = await getAvgSubmissionResponseData(parsed.startDate, parsed.endDate, parsed.granularity, creditTierNames);
     return res.status(200).json({ success: true, data });
   } catch (error: any) {
     console.error('Error fetching avg submission response data:', error);
@@ -321,7 +344,8 @@ export const getAvgSubmissionResponseDetails = async (req: Request, res: Respons
     if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
       return res.status(400).json({ success: false, message: 'Invalid date format.' });
     }
-    const data = await getAvgSubmissionResponseDetailsData(startDate, endDate);
+    const creditTierNames = parseCreditTiers(req);
+    const data = await getAvgSubmissionResponseDetailsData(startDate, endDate, creditTierNames);
     return res.status(200).json({ success: true, data });
   } catch (error: any) {
     console.error('Error fetching avg submission response details:', error);
@@ -390,7 +414,8 @@ export const getTopShortlistedCreators = async (req: Request, res: Response) => 
     if ('error' in parsed) return res.status(parsed.error.status).json(parsed.error.body);
     const { startDate, endDate } = parsed;
 
-    const data = await getTopShortlistedCreatorsData(startDate, endDate);
+    const creditTierNames = parseCreditTiers(req);
+    const data = await getTopShortlistedCreatorsData(startDate, endDate, creditTierNames);
     return res.status(200).json({ success: true, data });
   } catch (error: any) {
     console.error('Error fetching top shortlisted creators data:', error);

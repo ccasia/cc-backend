@@ -80,6 +80,22 @@ const calculateAge = (birthDate: Date): number => {
   return age;
 };
 
+// ---------------------------------------------------------------------------
+// Credit-tier filtering helpers
+// ---------------------------------------------------------------------------
+
+// For raw SQL queries — returns an INNER JOIN fragment placed after a Creator alias
+const buildCreditTierJoin = (creatorAlias: string, tierNames: string[]): Prisma.Sql => {
+  if (tierNames.length === 0) return Prisma.empty;
+  return Prisma.sql`INNER JOIN "CreditTier" ct_filter ON ct_filter.id = ${Prisma.raw(creatorAlias)}."creditTierId" AND ct_filter.name IN (${Prisma.join(tierNames)})`;
+};
+
+// For Prisma ORM queries — returns where sub-object to spread into Creator where clause
+const buildCreditTierOrmFilter = (tierNames: string[]): object | undefined => {
+  if (tierNames.length === 0) return undefined;
+  return { creditTier: { name: { in: tierNames } }, creditTierId: { not: null } };
+};
+
 // Fill gaps in monthly data and compute cumulative totals + growth rates
 const fillMonthGaps = (
   rows: MonthlySignupRow[],
@@ -172,12 +188,14 @@ export const getCreatorGrowthData = async (
   startDate: Date,
   endDate: Date,
   granularity: 'daily' | 'monthly' = 'monthly',
+  creditTierNames: string[] = [],
 ): Promise<CreatorGrowthResponse> => {
   // Demographics queries are the same regardless of granularity
   const demographicsPromise = Promise.all([
     prisma.creator.findMany({
       where: {
         user: { role: 'creator', status: { in: ['active', 'pending'] } },
+        ...(buildCreditTierOrmFilter(creditTierNames) || {}),
       },
       select: { pronounce: true },
     }),
@@ -185,6 +203,7 @@ export const getCreatorGrowthData = async (
       where: {
         user: { role: 'creator', status: { in: ['active', 'pending'] } },
         birthDate: { not: null },
+        ...(buildCreditTierOrmFilter(creditTierNames) || {}),
       },
       select: { birthDate: true },
     }),
@@ -196,6 +215,7 @@ export const getCreatorGrowthData = async (
       role: 'creator',
       status: { in: ['active', 'pending'] },
       createdAt: { lt: startDate },
+      ...(creditTierNames.length > 0 ? { creator: buildCreditTierOrmFilter(creditTierNames) } : {}),
     },
   });
 
@@ -208,6 +228,7 @@ export const getCreatorGrowthData = async (
           COUNT(*)::int AS count
         FROM "User" u
         INNER JOIN "Creator" c ON c."userId" = u.id
+        ${buildCreditTierJoin('c', creditTierNames)}
         WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
           AND u."createdAt" >= (${startDate} AT TIME ZONE 'UTC')
           AND u."createdAt" <= (${endDate} AT TIME ZONE 'UTC')
@@ -231,6 +252,7 @@ export const getCreatorGrowthData = async (
           role: 'creator',
           status: { in: ['active', 'pending'] },
           createdAt: { gte: startDate, lte: endDate },
+          ...(creditTierNames.length > 0 ? { creator: buildCreditTierOrmFilter(creditTierNames) } : {}),
         },
       }),
       prisma.user.count({
@@ -238,6 +260,7 @@ export const getCreatorGrowthData = async (
           role: 'creator',
           status: { in: ['active', 'pending'] },
           createdAt: { gte: prevStart, lte: prevEnd },
+          ...(creditTierNames.length > 0 ? { creator: buildCreditTierOrmFilter(creditTierNames) } : {}),
         },
       }),
     ]);
@@ -266,6 +289,7 @@ export const getCreatorGrowthData = async (
         COUNT(*)::int AS count
       FROM "User" u
       INNER JOIN "Creator" c ON c."userId" = u.id
+      ${buildCreditTierJoin('c', creditTierNames)}
       WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
         AND u."createdAt" >= (${startDate} AT TIME ZONE 'UTC')
         AND u."createdAt" <= (${endDate} AT TIME ZONE 'UTC')
@@ -319,7 +343,7 @@ interface CreatorGrowthCreatorRow {
   pronounce: string | null;
 }
 
-export const getCreatorGrowthCreators = async (startDate: Date, endDate: Date) => {
+export const getCreatorGrowthCreators = async (startDate: Date, endDate: Date, creditTierNames: string[] = []) => {
   const creators = await prisma.$queryRaw<CreatorGrowthCreatorRow[]>`
     SELECT
       u.id AS "userId",
@@ -329,6 +353,7 @@ export const getCreatorGrowthCreators = async (startDate: Date, endDate: Date) =
       c.pronounce
     FROM "User" u
     INNER JOIN "Creator" c ON c."userId" = u.id
+    ${buildCreditTierJoin('c', creditTierNames)}
     WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
       AND (u."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')::date >= ${startDate}::date
       AND (u."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')::date <= ${endDate}::date
@@ -442,12 +467,14 @@ export const getActivationRateData = async (
   startDate: Date,
   endDate: Date,
   granularity: 'daily' | 'monthly' = 'monthly',
+  creditTierNames: string[] = [],
 ): Promise<ActivationRateResponse> => {
   // Baselines: counts before the date range
   const activatedBaselinePromise = prisma.creator.count({
     where: {
       formCompletedAt: { not: null, lt: startDate },
       user: { role: 'creator', status: { in: ['active', 'pending'] } },
+      ...(buildCreditTierOrmFilter(creditTierNames) || {}),
     },
   });
 
@@ -456,6 +483,7 @@ export const getActivationRateData = async (
       role: 'creator',
       status: { in: ['active', 'pending'] },
       createdAt: { lt: startDate },
+      ...(creditTierNames.length > 0 ? { creator: buildCreditTierOrmFilter(creditTierNames) } : {}),
     },
   });
 
@@ -467,6 +495,7 @@ export const getActivationRateData = async (
           COUNT(*)::int AS count
         FROM "Creator" c
         INNER JOIN "User" u ON u.id = c."userId"
+        ${buildCreditTierJoin('c', creditTierNames)}
         WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
           AND c."formCompletedAt" IS NOT NULL
           AND c."formCompletedAt" >= (${startDate} AT TIME ZONE 'UTC')
@@ -480,6 +509,7 @@ export const getActivationRateData = async (
           COUNT(*)::int AS count
         FROM "User" u
         INNER JOIN "Creator" c ON c."userId" = u.id
+        ${buildCreditTierJoin('c', creditTierNames)}
         WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
           AND u."createdAt" >= (${startDate} AT TIME ZONE 'UTC')
           AND u."createdAt" <= (${endDate} AT TIME ZONE 'UTC')
@@ -507,6 +537,7 @@ export const getActivationRateData = async (
         where: {
           formCompletedAt: { not: null, lte: prevEnd },
           user: { role: 'creator', status: { in: ['active', 'pending'] } },
+          ...(buildCreditTierOrmFilter(creditTierNames) || {}),
         },
       }),
       prisma.user.count({
@@ -514,6 +545,7 @@ export const getActivationRateData = async (
           role: 'creator',
           status: { in: ['active', 'pending'] },
           createdAt: { lte: prevEnd },
+          ...(creditTierNames.length > 0 ? { creator: buildCreditTierOrmFilter(creditTierNames) } : {}),
         },
       }),
     ]);
@@ -538,6 +570,7 @@ export const getActivationRateData = async (
         COUNT(*)::int AS count
       FROM "Creator" c
       INNER JOIN "User" u ON u.id = c."userId"
+      ${buildCreditTierJoin('c', creditTierNames)}
       WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
         AND c."formCompletedAt" IS NOT NULL
         AND c."formCompletedAt" >= (${startDate} AT TIME ZONE 'UTC')
@@ -552,6 +585,7 @@ export const getActivationRateData = async (
         COUNT(*)::int AS count
       FROM "User" u
       INNER JOIN "Creator" c ON c."userId" = u.id
+      ${buildCreditTierJoin('c', creditTierNames)}
       WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
         AND u."createdAt" >= (${startDate} AT TIME ZONE 'UTC')
         AND u."createdAt" <= (${endDate} AT TIME ZONE 'UTC')
@@ -679,6 +713,7 @@ export const getTimeToActivationData = async (
   startDate: Date,
   endDate: Date,
   granularity: 'daily' | 'monthly' = 'monthly',
+  creditTierNames: string[] = [],
 ): Promise<TimeToActivationResponse> => {
   if (granularity === 'daily') {
     const dailyAvgs = await prisma.$queryRaw<DailyAvgDaysRow[]>`
@@ -687,6 +722,7 @@ export const getTimeToActivationData = async (
         ROUND(AVG(EXTRACT(EPOCH FROM (c."formCompletedAt" - u."createdAt")) / 86400)::numeric, 1) AS "avgdays"
       FROM "Creator" c
       INNER JOIN "User" u ON u.id = c."userId"
+      ${buildCreditTierJoin('c', creditTierNames)}
       WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
         AND c."formCompletedAt" IS NOT NULL
         AND c."formCompletedAt" >= (${startDate} AT TIME ZONE 'UTC')
@@ -707,6 +743,7 @@ export const getTimeToActivationData = async (
         SELECT ROUND(AVG(EXTRACT(EPOCH FROM (c."formCompletedAt" - u."createdAt")) / 86400)::numeric, 1) AS "avgdays"
         FROM "Creator" c
         INNER JOIN "User" u ON u.id = c."userId"
+        ${buildCreditTierJoin('c', creditTierNames)}
         WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
           AND c."formCompletedAt" IS NOT NULL
           AND c."formCompletedAt" >= (${startDate} AT TIME ZONE 'UTC')
@@ -716,6 +753,7 @@ export const getTimeToActivationData = async (
         SELECT ROUND(AVG(EXTRACT(EPOCH FROM (c."formCompletedAt" - u."createdAt")) / 86400)::numeric, 1) AS "avgdays"
         FROM "Creator" c
         INNER JOIN "User" u ON u.id = c."userId"
+        ${buildCreditTierJoin('c', creditTierNames)}
         WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
           AND c."formCompletedAt" IS NOT NULL
           AND c."formCompletedAt" >= (${prevStart} AT TIME ZONE 'UTC')
@@ -743,6 +781,7 @@ export const getTimeToActivationData = async (
       ROUND(AVG(EXTRACT(EPOCH FROM (c."formCompletedAt" - u."createdAt")) / 86400)::numeric, 1) AS "avgdays"
     FROM "Creator" c
     INNER JOIN "User" u ON u.id = c."userId"
+    ${buildCreditTierJoin('c', creditTierNames)}
     WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
       AND c."formCompletedAt" IS NOT NULL
       AND c."formCompletedAt" >= (${startDate} AT TIME ZONE 'UTC')
@@ -770,7 +809,7 @@ interface TimeToActivationCreatorRow {
   daysToActivation: number;
 }
 
-export const getTimeToActivationCreators = async (startDate: Date, endDate: Date) => {
+export const getTimeToActivationCreators = async (startDate: Date, endDate: Date, creditTierNames: string[] = []) => {
   // Use raw SQL with the same Asia/Kuala_Lumpur timezone conversion as the aggregated
   // query so that clicking a day/month in the chart returns the matching creators.
   const creators = await prisma.$queryRaw<TimeToActivationCreatorRow[]>`
@@ -783,6 +822,7 @@ export const getTimeToActivationCreators = async (startDate: Date, endDate: Date
       ROUND(EXTRACT(EPOCH FROM (c."formCompletedAt" - u."createdAt")) / 86400::numeric, 1) AS "daysToActivation"
     FROM "Creator" c
     INNER JOIN "User" u ON u.id = c."userId"
+    ${buildCreditTierJoin('c', creditTierNames)}
     WHERE u.role = 'creator'
       AND u.status IN ('active', 'pending')
       AND c."formCompletedAt" IS NOT NULL
@@ -813,7 +853,7 @@ interface PitchRateCreatorRow {
   daysToPitch: number;
 }
 
-export const getPitchRateCreators = async (startDate: Date, endDate: Date) => {
+export const getPitchRateCreators = async (startDate: Date, endDate: Date, creditTierNames: string[] = []) => {
   const creators = await prisma.$queryRaw<PitchRateCreatorRow[]>`
     SELECT
       u.id AS "userId",
@@ -827,6 +867,7 @@ export const getPitchRateCreators = async (startDate: Date, endDate: Date) => {
       FROM "Pitch" p
       INNER JOIN "User" u ON u.id = p."userId"
       INNER JOIN "Creator" c ON c."userId" = u.id
+      ${buildCreditTierJoin('c', creditTierNames)}
       WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
         AND p.status != 'draft'
       GROUP BY p."userId"
@@ -860,6 +901,7 @@ export const getPitchRateData = async (
   startDate: Date,
   endDate: Date,
   granularity: 'daily' | 'monthly' = 'monthly',
+  creditTierNames: string[] = [],
 ): Promise<PitchRateResponse> => {
   // Baselines: counts before the date range
   // Pitched baseline: unique creators whose first non-draft pitch is before startDate
@@ -870,6 +912,7 @@ export const getPitchRateData = async (
       FROM "Pitch" p
       INNER JOIN "User" u ON u.id = p."userId"
       INNER JOIN "Creator" c ON c."userId" = u.id
+      ${buildCreditTierJoin('c', creditTierNames)}
       WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
         AND p.status != 'draft'
       GROUP BY p."userId"
@@ -884,6 +927,7 @@ export const getPitchRateData = async (
       role: 'creator',
       status: { in: ['active', 'pending'] },
       createdAt: { lt: startDate },
+      ...(creditTierNames.length > 0 ? { creator: buildCreditTierOrmFilter(creditTierNames) } : {}),
     },
   });
 
@@ -899,6 +943,7 @@ export const getPitchRateData = async (
           FROM "Pitch" p
           INNER JOIN "User" u ON u.id = p."userId"
           INNER JOIN "Creator" c ON c."userId" = u.id
+          ${buildCreditTierJoin('c', creditTierNames)}
           WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
             AND p.status != 'draft'
           GROUP BY p."userId"
@@ -913,6 +958,7 @@ export const getPitchRateData = async (
           COUNT(*)::int AS count
         FROM "User" u
         INNER JOIN "Creator" c ON c."userId" = u.id
+        ${buildCreditTierJoin('c', creditTierNames)}
         WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
           AND u."createdAt" >= (${startDate} AT TIME ZONE 'UTC')
           AND u."createdAt" <= (${endDate} AT TIME ZONE 'UTC')
@@ -941,6 +987,7 @@ export const getPitchRateData = async (
           FROM "Pitch" p
           INNER JOIN "User" u ON u.id = p."userId"
           INNER JOIN "Creator" c ON c."userId" = u.id
+          ${buildCreditTierJoin('c', creditTierNames)}
           WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
             AND p.status != 'draft'
           GROUP BY p."userId"
@@ -952,6 +999,7 @@ export const getPitchRateData = async (
           role: 'creator',
           status: { in: ['active', 'pending'] },
           createdAt: { lte: prevEnd },
+          ...(creditTierNames.length > 0 ? { creator: buildCreditTierOrmFilter(creditTierNames) } : {}),
         },
       }),
     ]);
@@ -980,6 +1028,7 @@ export const getPitchRateData = async (
         FROM "Pitch" p
         INNER JOIN "User" u ON u.id = p."userId"
         INNER JOIN "Creator" c ON c."userId" = u.id
+        ${buildCreditTierJoin('c', creditTierNames)}
         WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
           AND p.status != 'draft'
         GROUP BY p."userId"
@@ -995,6 +1044,7 @@ export const getPitchRateData = async (
         COUNT(*)::int AS count
       FROM "User" u
       INNER JOIN "Creator" c ON c."userId" = u.id
+      ${buildCreditTierJoin('c', creditTierNames)}
       WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
         AND u."createdAt" >= (${startDate} AT TIME ZONE 'UTC')
         AND u."createdAt" <= (${endDate} AT TIME ZONE 'UTC')
@@ -1020,9 +1070,10 @@ export const getPitchRateData = async (
 
 // Media Kit Activation — per-platform connection snapshot
 
-export const getMediaKitActivationData = async (startDate?: Date, endDate?: Date) => {
+export const getMediaKitActivationData = async (startDate?: Date, endDate?: Date, creditTierNames: string[] = []) => {
   const baseWhere = {
     user: { role: 'creator' as const, status: { in: ['active' as const, 'pending' as const] } },
+    ...(buildCreditTierOrmFilter(creditTierNames) || {}),
   };
 
   if (!startDate || !endDate) {
@@ -1053,13 +1104,13 @@ export const getMediaKitActivationData = async (startDate?: Date, endDate?: Date
     prisma.tiktokUser.count({
       where: {
         createdAt: { gte: startDate, lte: endDate },
-        creator: { user: { role: 'creator', status: { in: ['active', 'pending'] } } },
+        creator: { user: { role: 'creator', status: { in: ['active', 'pending'] } }, ...(buildCreditTierOrmFilter(creditTierNames) || {}) },
       },
     }),
     prisma.instagramUser.count({
       where: {
         createdAt: { gte: startDate, lte: endDate },
-        creator: { user: { role: 'creator', status: { in: ['active', 'pending'] } } },
+        creator: { user: { role: 'creator', status: { in: ['active', 'pending'] } }, ...(buildCreditTierOrmFilter(creditTierNames) || {}) },
       },
     }),
     prisma.creator.count({ where: baseWhere }), // Total is always ALL active creators
@@ -1067,6 +1118,7 @@ export const getMediaKitActivationData = async (startDate?: Date, endDate?: Date
       SELECT COUNT(DISTINCT c.id)::int AS count
       FROM "Creator" c
       INNER JOIN "User" u ON u.id = c."userId"
+      ${buildCreditTierJoin('c', creditTierNames)}
       WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
         AND (
           EXISTS (SELECT 1 FROM "TiktokUser" t WHERE t."creatorId" = c.id AND t."createdAt" >= ${startDate} AND t."createdAt" <= ${endDate})
@@ -1145,6 +1197,7 @@ const fillSatisfactionMonthGaps = (
 export const getCreatorSatisfactionData = async (
   startDate: Date,
   endDate: Date,
+  creditTierNames: string[] = [],
 ): Promise<CreatorSatisfactionResponse> => {
   const [monthlyRatings, overallStats, distributionRows] = await Promise.all([
     prisma.$queryRaw<MonthlyAvgRatingRow[]>`
@@ -1155,6 +1208,8 @@ export const getCreatorSatisfactionData = async (
         COUNT(*)::int AS count
       FROM "NpsFeedback" n
       INNER JOIN "User" u ON u.id = n."userId"
+      INNER JOIN "Creator" c ON c."userId" = u.id
+      ${buildCreditTierJoin('c', creditTierNames)}
       WHERE n."userType" = 'CREATOR'
         AND u.role = 'creator' AND u.status IN ('active', 'pending')
         AND n."createdAt" >= ${startDate}
@@ -1163,17 +1218,23 @@ export const getCreatorSatisfactionData = async (
       ORDER BY 1, 2
     `,
     prisma.$queryRaw<[{ total: number; avg: number | null }]>`
-      SELECT COUNT(*)::int AS total, ROUND(AVG(rating)::numeric, 1) AS avg
-      FROM "NpsFeedback"
-      WHERE "userType" = 'CREATOR'
-        AND "createdAt" >= ${startDate} AND "createdAt" <= ${endDate}
+      SELECT COUNT(*)::int AS total, ROUND(AVG(nf.rating)::numeric, 1) AS avg
+      FROM "NpsFeedback" nf
+      INNER JOIN "User" u ON u.id = nf."userId"
+      INNER JOIN "Creator" c ON c."userId" = u.id
+      ${buildCreditTierJoin('c', creditTierNames)}
+      WHERE nf."userType" = 'CREATOR'
+        AND nf."createdAt" >= ${startDate} AND nf."createdAt" <= ${endDate}
     `,
     prisma.$queryRaw<{ rating: number; count: number }[]>`
-      SELECT rating, COUNT(*)::int AS count
-      FROM "NpsFeedback"
-      WHERE "userType" = 'CREATOR'
-        AND "createdAt" >= ${startDate} AND "createdAt" <= ${endDate}
-      GROUP BY rating ORDER BY rating
+      SELECT nf.rating, COUNT(*)::int AS count
+      FROM "NpsFeedback" nf
+      INNER JOIN "User" u ON u.id = nf."userId"
+      INNER JOIN "Creator" c ON c."userId" = u.id
+      ${buildCreditTierJoin('c', creditTierNames)}
+      WHERE nf."userType" = 'CREATOR'
+        AND nf."createdAt" >= ${startDate} AND nf."createdAt" <= ${endDate}
+      GROUP BY nf.rating ORDER BY nf.rating
     `,
   ]);
 
@@ -1219,7 +1280,7 @@ interface CampaignEarningRow {
   invoiceCount: number;
 }
 
-export const getCreatorEarningsData = async (startDate?: Date, endDate?: Date) => {
+export const getCreatorEarningsData = async (startDate?: Date, endDate?: Date, creditTierNames: string[] = []) => {
   const hasDateFilter = !!startDate && !!endDate;
 
   // Step 1: Get top 10 creators by total paid earnings
@@ -1239,6 +1300,7 @@ export const getCreatorEarningsData = async (startDate?: Date, endDate?: Date) =
         WHERE i.status = 'paid'
           AND i."createdAt" >= ${startDate}
           AND i."createdAt" <= ${endDate}
+          ${creditTierNames.length > 0 ? Prisma.sql`AND ct.name IN (${Prisma.join(creditTierNames)}) AND cr."creditTierId" IS NOT NULL` : Prisma.empty}
         GROUP BY i."creatorId", u.name, u."photoURL", ct.name
         ORDER BY "totalEarnings" DESC
         LIMIT 10
@@ -1256,6 +1318,7 @@ export const getCreatorEarningsData = async (startDate?: Date, endDate?: Date) =
         LEFT JOIN "Creator" cr ON cr."userId" = i."creatorId"
         LEFT JOIN "CreditTier" ct ON ct.id = cr."creditTierId"
         WHERE i.status = 'paid'
+          ${creditTierNames.length > 0 ? Prisma.sql`AND ct.name IN (${Prisma.join(creditTierNames)}) AND cr."creditTierId" IS NOT NULL` : Prisma.empty}
         GROUP BY i."creatorId", u.name, u."photoURL", ct.name
         ORDER BY "totalEarnings" DESC
         LIMIT 10
@@ -1518,6 +1581,7 @@ export const getAvgAgreementResponseData = async (
   startDate: Date,
   endDate: Date,
   granularity: 'daily' | 'monthly' = 'monthly',
+  creditTierNames: string[] = [],
 ): Promise<AvgAgreementResponseResponse> => {
   if (granularity === 'daily') {
     const dailyAvgs = await prisma.$queryRaw<DailyAvgHoursRow[]>`
@@ -1527,6 +1591,8 @@ export const getAvgAgreementResponseData = async (
       FROM "CreatorAgreement" ca
       INNER JOIN "Submission" s ON s."userId" = ca."userId" AND s."campaignId" = ca."campaignId"
       INNER JOIN "SubmissionType" st ON st.id = s."submissionTypeId"
+      INNER JOIN "Creator" c_tier ON c_tier."userId" = ca."userId"
+      ${buildCreditTierJoin('c_tier', creditTierNames)}
       WHERE ca."isSent" = true
         AND ca."completedAt" IS NOT NULL
         AND st.type = 'AGREEMENT_FORM'
@@ -1551,6 +1617,8 @@ export const getAvgAgreementResponseData = async (
         FROM "CreatorAgreement" ca
         INNER JOIN "Submission" s ON s."userId" = ca."userId" AND s."campaignId" = ca."campaignId"
         INNER JOIN "SubmissionType" st ON st.id = s."submissionTypeId"
+        INNER JOIN "Creator" c_tier ON c_tier."userId" = ca."userId"
+        ${buildCreditTierJoin('c_tier', creditTierNames)}
         WHERE ca."isSent" = true
           AND ca."completedAt" IS NOT NULL
           AND st.type = 'AGREEMENT_FORM'
@@ -1564,6 +1632,8 @@ export const getAvgAgreementResponseData = async (
         FROM "CreatorAgreement" ca
         INNER JOIN "Submission" s ON s."userId" = ca."userId" AND s."campaignId" = ca."campaignId"
         INNER JOIN "SubmissionType" st ON st.id = s."submissionTypeId"
+        INNER JOIN "Creator" c_tier ON c_tier."userId" = ca."userId"
+        ${buildCreditTierJoin('c_tier', creditTierNames)}
         WHERE ca."isSent" = true
           AND ca."completedAt" IS NOT NULL
           AND st.type = 'AGREEMENT_FORM'
@@ -1595,6 +1665,8 @@ export const getAvgAgreementResponseData = async (
     FROM "CreatorAgreement" ca
     INNER JOIN "Submission" s ON s."userId" = ca."userId" AND s."campaignId" = ca."campaignId"
     INNER JOIN "SubmissionType" st ON st.id = s."submissionTypeId"
+    INNER JOIN "Creator" c_tier ON c_tier."userId" = ca."userId"
+    ${buildCreditTierJoin('c_tier', creditTierNames)}
     WHERE ca."isSent" = true
       AND ca."completedAt" IS NOT NULL
       AND st.type = 'AGREEMENT_FORM'
@@ -1623,7 +1695,7 @@ interface AgreementResponseDetailRow {
   responseHours: number;
 }
 
-export const getAvgAgreementResponseDetails = async (startDate: Date, endDate: Date) => {
+export const getAvgAgreementResponseDetails = async (startDate: Date, endDate: Date, creditTierNames: string[] = []) => {
   const rows = await prisma.$queryRaw<AgreementResponseDetailRow[]>`
     SELECT
       u.name,
@@ -1635,6 +1707,8 @@ export const getAvgAgreementResponseDetails = async (startDate: Date, endDate: D
     INNER JOIN "SubmissionType" st ON st.id = s."submissionTypeId"
     INNER JOIN "User" u ON u.id = ca."userId"
     INNER JOIN "Campaign" cam ON cam.id = ca."campaignId"
+    INNER JOIN "Creator" c_tier ON c_tier."userId" = ca."userId"
+    ${buildCreditTierJoin('c_tier', creditTierNames)}
     WHERE ca."isSent" = true
       AND ca."completedAt" IS NOT NULL
       AND st.type = 'AGREEMENT_FORM'
@@ -1656,6 +1730,8 @@ export const getAvgAgreementResponseDetails = async (startDate: Date, endDate: D
     FROM "CreatorAgreement" ca
     INNER JOIN "Submission" s ON s."userId" = ca."userId" AND s."campaignId" = ca."campaignId"
     INNER JOIN "SubmissionType" st ON st.id = s."submissionTypeId"
+    INNER JOIN "Creator" c_tier ON c_tier."userId" = ca."userId"
+    ${buildCreditTierJoin('c_tier', creditTierNames)}
     WHERE ca."isSent" = true
       AND ca."completedAt" IS NOT NULL
       AND st.type = 'AGREEMENT_FORM'
@@ -1765,6 +1841,7 @@ export const getAvgFirstCampaignData = async (
   startDate: Date,
   endDate: Date,
   granularity: 'daily' | 'monthly' = 'monthly',
+  creditTierNames: string[] = [],
 ): Promise<AvgFirstCampaignResponse> => {
   if (granularity === 'daily') {
     const dailyAvgs = await prisma.$queryRaw<DailyAvgHoursRow[]>`
@@ -1779,6 +1856,8 @@ export const getAvgFirstCampaignData = async (
           p."createdAt" AS pitched_at
         FROM "ShortListedCreator" slc
         INNER JOIN "Pitch" p ON p."userId" = slc."userId" AND p."campaignId" = slc."campaignId" AND p.type != 'shortlisted'
+        INNER JOIN "Creator" c_tier ON c_tier."userId" = slc."userId"
+        ${buildCreditTierJoin('c_tier', creditTierNames)}
         WHERE slc."shortlisted_date" IS NOT NULL
           AND slc.id = (
             SELECT s2.id FROM "ShortListedCreator" s2
@@ -1811,6 +1890,8 @@ export const getAvgFirstCampaignData = async (
             p."createdAt" AS pitched_at
           FROM "ShortListedCreator" slc
           INNER JOIN "Pitch" p ON p."userId" = slc."userId" AND p."campaignId" = slc."campaignId" AND p.type != 'shortlisted'
+          INNER JOIN "Creator" c_tier ON c_tier."userId" = slc."userId"
+          ${buildCreditTierJoin('c_tier', creditTierNames)}
           WHERE slc."shortlisted_date" IS NOT NULL
             AND slc.id = (
               SELECT s2.id FROM "ShortListedCreator" s2
@@ -1832,6 +1913,8 @@ export const getAvgFirstCampaignData = async (
             p."createdAt" AS pitched_at
           FROM "ShortListedCreator" slc
           INNER JOIN "Pitch" p ON p."userId" = slc."userId" AND p."campaignId" = slc."campaignId" AND p.type != 'shortlisted'
+          INNER JOIN "Creator" c_tier ON c_tier."userId" = slc."userId"
+          ${buildCreditTierJoin('c_tier', creditTierNames)}
           WHERE slc."shortlisted_date" IS NOT NULL
             AND slc.id = (
               SELECT s2.id FROM "ShortListedCreator" s2
@@ -1871,6 +1954,8 @@ export const getAvgFirstCampaignData = async (
         p."createdAt" AS pitched_at
       FROM "ShortListedCreator" slc
       INNER JOIN "Pitch" p ON p."userId" = slc."userId" AND p."campaignId" = slc."campaignId" AND p.type != 'shortlisted'
+      INNER JOIN "Creator" c_tier ON c_tier."userId" = slc."userId"
+      ${buildCreditTierJoin('c_tier', creditTierNames)}
       WHERE slc."shortlisted_date" IS NOT NULL
         AND slc.id = (
           SELECT s2.id FROM "ShortListedCreator" s2
@@ -1903,7 +1988,7 @@ interface FirstCampaignDetailRow {
   responseHours: number;
 }
 
-export const getAvgFirstCampaignDetails = async (startDate: Date, endDate: Date) => {
+export const getAvgFirstCampaignDetails = async (startDate: Date, endDate: Date, creditTierNames: string[] = []) => {
   const rows = await prisma.$queryRaw<FirstCampaignDetailRow[]>`
     SELECT
       u.name,
@@ -1918,6 +2003,8 @@ export const getAvgFirstCampaignDetails = async (startDate: Date, endDate: Date)
         p."createdAt" AS pitched_at
       FROM "ShortListedCreator" slc
       INNER JOIN "Pitch" p ON p."userId" = slc."userId" AND p."campaignId" = slc."campaignId" AND p.type != 'shortlisted'
+      INNER JOIN "Creator" c_tier ON c_tier."userId" = slc."userId"
+      ${buildCreditTierJoin('c_tier', creditTierNames)}
       WHERE slc."shortlisted_date" IS NOT NULL
         AND slc.id = (
           SELECT s2.id FROM "ShortListedCreator" s2
@@ -1950,6 +2037,8 @@ export const getAvgFirstCampaignDetails = async (startDate: Date, endDate: Date)
         p."createdAt" AS pitched_at
       FROM "ShortListedCreator" slc
       INNER JOIN "Pitch" p ON p."userId" = slc."userId" AND p."campaignId" = slc."campaignId" AND p.type != 'shortlisted'
+      INNER JOIN "Creator" c_tier ON c_tier."userId" = slc."userId"
+      ${buildCreditTierJoin('c_tier', creditTierNames)}
       WHERE slc."shortlisted_date" IS NOT NULL
         AND slc.id = (
           SELECT s2.id FROM "ShortListedCreator" s2
@@ -2061,7 +2150,7 @@ const fillSubmissionResponseDayGaps = (
 };
 
 // Reusable SQL fragment: UNION ALL combining v2/v3 FIRST_DRAFT + v4 VIDEO (contentOrder=1)
-const SUBMISSION_RESPONSE_CTE = Prisma.sql`
+const buildSubmissionResponseCte = (creditTierNames: string[]): Prisma.Sql => Prisma.sql`
   SELECT
     ca."userId",
     ca."campaignId",
@@ -2070,6 +2159,8 @@ const SUBMISSION_RESPONSE_CTE = Prisma.sql`
   FROM "CreatorAgreement" ca
   INNER JOIN "Submission" s ON s."userId" = ca."userId" AND s."campaignId" = ca."campaignId"
   INNER JOIN "SubmissionType" st ON st.id = s."submissionTypeId"
+  INNER JOIN "Creator" c_tier ON c_tier."userId" = ca."userId"
+  ${buildCreditTierJoin('c_tier', creditTierNames)}
   WHERE ca."isSent" = true
     AND ca."completedAt" IS NOT NULL
     AND st.type = 'FIRST_DRAFT'
@@ -2086,6 +2177,8 @@ const SUBMISSION_RESPONSE_CTE = Prisma.sql`
   FROM "CreatorAgreement" ca
   INNER JOIN "Submission" s ON s."userId" = ca."userId" AND s."campaignId" = ca."campaignId"
   INNER JOIN "SubmissionType" st ON st.id = s."submissionTypeId"
+  INNER JOIN "Creator" c_tier ON c_tier."userId" = ca."userId"
+  ${buildCreditTierJoin('c_tier', creditTierNames)}
   WHERE ca."isSent" = true
     AND ca."completedAt" IS NOT NULL
     AND st.type = 'VIDEO'
@@ -2099,13 +2192,14 @@ export const getAvgSubmissionResponseData = async (
   startDate: Date,
   endDate: Date,
   granularity: 'daily' | 'monthly' = 'monthly',
+  creditTierNames: string[] = [],
 ): Promise<AvgSubmissionResponseResponse> => {
   if (granularity === 'daily') {
     const dailyAvgs = await prisma.$queryRaw<DailyAvgHoursRow[]>`
       SELECT
         TO_CHAR(DATE_TRUNC('day', sr.submitted_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'), 'YYYY-MM-DD') AS date,
         ROUND(AVG(EXTRACT(EPOCH FROM (sr.submitted_at - sr.agreement_at)) / 3600)::numeric, 2) AS "avghours"
-      FROM (${SUBMISSION_RESPONSE_CTE}) sr
+      FROM (${buildSubmissionResponseCte(creditTierNames)}) sr
       WHERE sr.submitted_at >= (${startDate} AT TIME ZONE 'UTC')
         AND sr.submitted_at <= (${endDate} AT TIME ZONE 'UTC')
       GROUP BY DATE_TRUNC('day', sr.submitted_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')
@@ -2122,13 +2216,13 @@ export const getAvgSubmissionResponseData = async (
     const [currentAvgResult, previousAvgResult] = await Promise.all([
       prisma.$queryRaw<{ avghours: number | null }[]>`
         SELECT ROUND(AVG(EXTRACT(EPOCH FROM (sr.submitted_at - sr.agreement_at)) / 3600)::numeric, 2) AS "avghours"
-        FROM (${SUBMISSION_RESPONSE_CTE}) sr
+        FROM (${buildSubmissionResponseCte(creditTierNames)}) sr
         WHERE sr.submitted_at >= (${startDate} AT TIME ZONE 'UTC')
           AND sr.submitted_at <= (${endDate} AT TIME ZONE 'UTC')
       `,
       prisma.$queryRaw<{ avghours: number | null }[]>`
         SELECT ROUND(AVG(EXTRACT(EPOCH FROM (sr.submitted_at - sr.agreement_at)) / 3600)::numeric, 2) AS "avghours"
-        FROM (${SUBMISSION_RESPONSE_CTE}) sr
+        FROM (${buildSubmissionResponseCte(creditTierNames)}) sr
         WHERE sr.submitted_at >= (${prevStart} AT TIME ZONE 'UTC')
           AND sr.submitted_at <= (${prevEnd} AT TIME ZONE 'UTC')
       `,
@@ -2152,7 +2246,7 @@ export const getAvgSubmissionResponseData = async (
       EXTRACT(YEAR FROM DATE_TRUNC('month', sr.submitted_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'))::int AS year,
       EXTRACT(MONTH FROM DATE_TRUNC('month', sr.submitted_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'))::int AS month,
       ROUND(AVG(EXTRACT(EPOCH FROM (sr.submitted_at - sr.agreement_at)) / 3600)::numeric, 2) AS "avghours"
-    FROM (${SUBMISSION_RESPONSE_CTE}) sr
+    FROM (${buildSubmissionResponseCte(creditTierNames)}) sr
     WHERE sr.submitted_at >= (${startDate} AT TIME ZONE 'UTC')
       AND sr.submitted_at <= (${endDate} AT TIME ZONE 'UTC')
     GROUP BY DATE_TRUNC('month', sr.submitted_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')
@@ -2176,14 +2270,14 @@ interface SubmissionResponseDetailRow {
   responseHours: number;
 }
 
-export const getAvgSubmissionResponseDetails = async (startDate: Date, endDate: Date) => {
+export const getAvgSubmissionResponseDetails = async (startDate: Date, endDate: Date, creditTierNames: string[] = []) => {
   const rows = await prisma.$queryRaw<SubmissionResponseDetailRow[]>`
     SELECT
       u.name,
       u."photoURL" AS avatar,
       cam.name AS campaign,
       ROUND(EXTRACT(EPOCH FROM (sr.submitted_at - sr.agreement_at)) / 3600::numeric, 2) AS "responseHours"
-    FROM (${SUBMISSION_RESPONSE_CTE}) sr
+    FROM (${buildSubmissionResponseCte(creditTierNames)}) sr
     INNER JOIN "User" u ON u.id = sr."userId"
     INNER JOIN "Campaign" cam ON cam.id = sr."campaignId"
     WHERE (sr.submitted_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')::date >= ${startDate}::date
@@ -2199,7 +2293,7 @@ export const getAvgSubmissionResponseDetails = async (startDate: Date, endDate: 
   // Compute average in SQL to match chart endpoint (avoids JS vs PostgreSQL rounding mismatch)
   const avgResult = await prisma.$queryRaw<{ avghours: number | null }[]>`
     SELECT ROUND(AVG(EXTRACT(EPOCH FROM (sr.submitted_at - sr.agreement_at)) / 3600)::numeric, 2) AS "avghours"
-    FROM (${SUBMISSION_RESPONSE_CTE}) sr
+    FROM (${buildSubmissionResponseCte(creditTierNames)}) sr
     WHERE (sr.submitted_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')::date >= ${startDate}::date
       AND (sr.submitted_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')::date <= ${endDate}::date
   `;
@@ -2700,7 +2794,7 @@ interface TopShortlistedCreatorRow {
   rejected: number;
 }
 
-export const getTopShortlistedCreatorsData = async (startDate?: Date, endDate?: Date) => {
+export const getTopShortlistedCreatorsData = async (startDate?: Date, endDate?: Date, creditTierNames: string[] = []) => {
   const hasDateFilter = !!startDate && !!endDate;
 
   const rows = hasDateFilter
@@ -2712,6 +2806,8 @@ export const getTopShortlistedCreatorsData = async (startDate?: Date, endDate?: 
             slc."shortlisted_date" AS event_date,
             true AS is_approved
           FROM "ShortListedCreator" slc
+          INNER JOIN "Creator" c_tier ON c_tier."userId" = slc."userId"
+          ${buildCreditTierJoin('c_tier', creditTierNames)}
           WHERE slc."userId" IS NOT NULL
 
           UNION ALL
@@ -2722,6 +2818,8 @@ export const getTopShortlistedCreatorsData = async (startDate?: Date, endDate?: 
             p."createdAt" AS event_date,
             false AS is_approved
           FROM "Pitch" p
+          INNER JOIN "Creator" c_tier2 ON c_tier2."userId" = p."userId"
+          ${buildCreditTierJoin('c_tier2', creditTierNames)}
           WHERE p."approvedByAdminId" IS NOT NULL
             AND p.status::"text" = 'rejected'
             AND NOT EXISTS (
@@ -2752,6 +2850,8 @@ export const getTopShortlistedCreatorsData = async (startDate?: Date, endDate?: 
             slc."shortlisted_date" AS event_date,
             true AS is_approved
           FROM "ShortListedCreator" slc
+          INNER JOIN "Creator" c_tier ON c_tier."userId" = slc."userId"
+          ${buildCreditTierJoin('c_tier', creditTierNames)}
           WHERE slc."userId" IS NOT NULL
 
           UNION ALL
@@ -2762,6 +2862,8 @@ export const getTopShortlistedCreatorsData = async (startDate?: Date, endDate?: 
             p."createdAt" AS event_date,
             false AS is_approved
           FROM "Pitch" p
+          INNER JOIN "Creator" c_tier2 ON c_tier2."userId" = p."userId"
+          ${buildCreditTierJoin('c_tier2', creditTierNames)}
           WHERE p."approvedByAdminId" IS NOT NULL
             AND p.status::"text" = 'rejected'
             AND NOT EXISTS (
