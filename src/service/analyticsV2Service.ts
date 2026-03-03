@@ -2352,7 +2352,6 @@ export const getClientRejectionRateData = async (startDate?: Date, endDate?: Dat
           AND p."createdAt" >= ${startDate}
           AND p."createdAt" <= ${endDate}
         GROUP BY c.id, c.name, COALESCE(pkg.name, cpkg."customName", 'Custom'), cb.images
-        HAVING COUNT(CASE WHEN p."rejectedByClientId" IS NOT NULL THEN 1 END) > 0
         ORDER BY (COUNT(CASE WHEN p."rejectedByClientId" IS NOT NULL THEN 1 END)::float / NULLIF(COUNT(p.id), 0)::float) DESC
       `
     : await prisma.$queryRaw<RejectionRateRow[]>`
@@ -2377,7 +2376,6 @@ export const getClientRejectionRateData = async (startDate?: Date, endDate?: Dat
             OR p.status = 'SENT_TO_CLIENT'
           )
         GROUP BY c.id, c.name, COALESCE(pkg.name, cpkg."customName", 'Custom'), cb.images
-        HAVING COUNT(CASE WHEN p."rejectedByClientId" IS NOT NULL THEN 1 END) > 0
         ORDER BY (COUNT(CASE WHEN p."rejectedByClientId" IS NOT NULL THEN 1 END)::float / NULLIF(COUNT(p.id), 0)::float) DESC
       `;
 
