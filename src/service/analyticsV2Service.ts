@@ -2352,7 +2352,7 @@ export const getClientRejectionRateData = async (startDate?: Date, endDate?: Dat
           AND p."createdAt" >= ${startDate}
           AND p."createdAt" <= ${endDate}
         GROUP BY c.id, c.name, COALESCE(pkg.name, cpkg."customName", 'Custom'), cb.images
-        HAVING COUNT(p.id) > 0
+        HAVING COUNT(CASE WHEN p."rejectedByClientId" IS NOT NULL THEN 1 END) > 0
         ORDER BY (COUNT(CASE WHEN p."rejectedByClientId" IS NOT NULL THEN 1 END)::float / NULLIF(COUNT(p.id), 0)::float) DESC
       `
     : await prisma.$queryRaw<RejectionRateRow[]>`
@@ -2377,7 +2377,7 @@ export const getClientRejectionRateData = async (startDate?: Date, endDate?: Dat
             OR p.status = 'SENT_TO_CLIENT'
           )
         GROUP BY c.id, c.name, COALESCE(pkg.name, cpkg."customName", 'Custom'), cb.images
-        HAVING COUNT(p.id) > 0
+        HAVING COUNT(CASE WHEN p."rejectedByClientId" IS NOT NULL THEN 1 END) > 0
         ORDER BY (COUNT(CASE WHEN p."rejectedByClientId" IS NOT NULL THEN 1 END)::float / NULLIF(COUNT(p.id), 0)::float) DESC
       `;
 
@@ -2820,8 +2820,8 @@ export const getTopShortlistedCreatorsData = async (startDate?: Date, endDate?: 
           FROM "Pitch" p
           INNER JOIN "Creator" c_tier2 ON c_tier2."userId" = p."userId"
           ${buildCreditTierJoin('c_tier2', creditTierNames)}
-          WHERE p."approvedByAdminId" IS NOT NULL
-            AND p.status::"text" = 'rejected'
+          WHERE (p."rejectedByAdminId" IS NOT NULL OR p."rejectedByClientId" IS NOT NULL OR p."approvedByAdminId" IS NOT NULL)
+            AND p.status::"text" IN ('rejected', 'REJECTED')
             AND NOT EXISTS (
               SELECT 1 FROM "ShortListedCreator" slc
               WHERE slc."userId" = p."userId" AND slc."campaignId" = p."campaignId"
@@ -2864,8 +2864,8 @@ export const getTopShortlistedCreatorsData = async (startDate?: Date, endDate?: 
           FROM "Pitch" p
           INNER JOIN "Creator" c_tier2 ON c_tier2."userId" = p."userId"
           ${buildCreditTierJoin('c_tier2', creditTierNames)}
-          WHERE p."approvedByAdminId" IS NOT NULL
-            AND p.status::"text" = 'rejected'
+          WHERE (p."rejectedByAdminId" IS NOT NULL OR p."rejectedByClientId" IS NOT NULL OR p."approvedByAdminId" IS NOT NULL)
+            AND p.status::"text" IN ('rejected', 'REJECTED')
             AND NOT EXISTS (
               SELECT 1 FROM "ShortListedCreator" slc
               WHERE slc."userId" = p."userId" AND slc."campaignId" = p."campaignId"
