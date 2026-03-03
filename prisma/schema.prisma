@@ -46,8 +46,9 @@ model User {
   paymentForm        PaymentForm?
   pitch              Pitch[]
   approvedPitches    Pitch[]             @relation("ApprovedByClient")
-  rejectedPitches    Pitch[]             @relation("RejectedByClient")
-  maybePitches       Pitch[]             @relation("MaybeByClient")
+  rejectedPitches         Pitch[] @relation("RejectedByClient")
+  maybePitches            Pitch[] @relation("MaybeByClient")
+  acceptedInviteByCreator Pitch[] @relation("AcceptedInviteByCreator")
 
   resetPasswordToken ResetPasswordToken?
   seenMessages       SeenMessage[]
@@ -965,6 +966,7 @@ model Pitch {
   rejectionReason     String?
   customRejectionText String?
   maybeByClientId     String?
+  acceptedInviteByCreatorId String?
   amount              Int?
   ugcCredits          Int?
   agreementTemplateId String?
@@ -973,6 +975,7 @@ model Pitch {
   engagementRate      String?
   adminComments       String?
   adminCommentedBy    String?
+  isInvited           Boolean        @default(false)
   adminCommenter      Admin?         @relation("AdminCommenter", fields: [adminCommentedBy], references: [userId])
 
   // Outreach status tracking
@@ -984,9 +987,10 @@ model Pitch {
   user             User     @relation(fields: [userId], references: [id])
   admin            Admin?   @relation(fields: [approvedByAdminId], references: [userId], name: "ApprovedByAdmin")
   client           User?    @relation("ApprovedByClient", fields: [approvedByClientId], references: [id])
-  rejectedByAdmin  Admin?   @relation("RejectedByAdmin", fields: [rejectedByAdminId], references: [userId])
-  rejectedByClient User?    @relation("RejectedByClient", fields: [rejectedByClientId], references: [id])
-  maybeByClient    User?    @relation("MaybeByClient", fields: [maybeByClientId], references: [id])
+  rejectedByAdmin         Admin? @relation("RejectedByAdmin", fields: [rejectedByAdminId], references: [userId])
+  rejectedByClient        User?  @relation("RejectedByClient", fields: [rejectedByClientId], references: [id])
+  maybeByClient           User?  @relation("MaybeByClient", fields: [maybeByClientId], references: [id])
+  acceptedInviteByCreator User?  @relation("AcceptedInviteByCreator", fields: [acceptedInviteByCreatorId], references: [id])
 
   @@unique([userId, campaignId])
 }
@@ -1759,6 +1763,7 @@ enum PitchStatus {
   AGREEMENT_PENDING
   AGREEMENT_SUBMITTED
   WITHDRAWN
+  INVITED
 }
 
 // Outreach status for internal admin tracking of creator outreach
