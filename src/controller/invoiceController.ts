@@ -170,6 +170,11 @@ export const getAllInvoices = async (req: Request, res: Response) => {
     // (creator name and campaign name are filtered in-memory later)
     // This is handled in the hasJsonFilters branch below
 
+    if (invoiceIds) {
+      const ids = invoiceIds.toString().split(',');
+      where.id = { in: ids };
+    }
+
     // Campaign name filter (will filter in memory after fetching)
     let campaignFilter: string | undefined;
     if (campaignName) {
@@ -272,6 +277,7 @@ export const getAllInvoices = async (req: Request, res: Response) => {
           (invoice.task as any)?.items?.[0]?.currency ||
           creatorAgreement?.currency ||
           null;
+
         // Extract creator name from invoiceFrom JSON
         const invoiceFromName =
           invoice.creator?.user?.paymentForm?.bankAccountName ||
@@ -1337,7 +1343,7 @@ export const updateInvoice = async (req: Request, res: Response) => {
           invoiceFrom,
           invoiceTo,
           task: items[0],
-          amount: parseFloat(totalAmount),
+          amount: parseFloat(totalAmount as any),
           bankAcc: bankInfo,
           campaignId,
         },

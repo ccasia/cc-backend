@@ -392,8 +392,12 @@ export const getRemainingCredits = async (clientId: string): Promise<number | nu
           select: {
             totalCredits: true,
             creditsUsed: true,
-            // customPackage: true,
-            // package: true,
+            campaign: {
+              select: {
+                id: true,
+                creditsUtilized: true,
+              },
+            },
           },
         },
       },
@@ -406,17 +410,16 @@ export const getRemainingCredits = async (clientId: string): Promise<number | nu
     }
 
     const totalCredits = client.subscriptions.reduce((sum, sub) => sum + (sub.totalCredits || 0), 0);
-    const usedCredits = client.subscriptions.reduce((sum, sub) => sum + sub.creditsUsed, 0);
+    
+    const usedCredits = client.subscriptions.reduce((sum, sub) => {
+      const subCreditsUtilized = sub.campaign.reduce(
+        (campaignSum, campaign) => campaignSum + (campaign.creditsUtilized || 0),
+        0
+      );
+      return sum + subCreditsUtilized;
+    }, 0);
+    
     const remainingCredits = totalCredits - usedCredits;
-
-    // const activeSubscription = client.subscriptions[0];
-
-    // if (!activeSubscription || typeof activeSubscription.totalCredits !== 'number') {
-    //   throw new Error('No active subscription or invalid total credits');
-    // }
-
-    // Calculate remaining credits based on subscription's creditsUsed field
-    // const remainingCredits = activeSubscription.totalCredits - activeSubscription.creditsUsed;
 
     return Math.max(0, remainingCredits); // Ensure we don't return negative credits
   } catch (error) {
