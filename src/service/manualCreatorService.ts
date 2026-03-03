@@ -10,28 +10,30 @@ interface CreateManualCreatorInput {
   postUrl?: string;
   views: number;
   likes: number;
+  comments: number;
   shares: number;
   saved?: number;
   createdBy: string;
 }
 
 //Calculate engagement rate based on platform
-// Instagram: (likes + shares + saved) / views * 100
-// TikTok: (likes + shares) / views * 100
+// Instagram: (likes + comments + shares + saved) / views * 100
+// TikTok: (likes + comments + shares) / views * 100
 export const calculateEngagementRate = (
   platform: string,
   views: number,
   likes: number,
+  comments: number,
   shares: number,
   saved?: number,
 ): number => {
   if (views === 0) return 0;
 
   if (platform === 'Instagram') {
-    return ((likes + shares + (saved || 0)) / views) * 100;
+    return ((likes + comments + shares + (saved || 0)) / views) * 100;
   }
   // TikTok
-  return ((likes + shares) / views) * 100;
+  return ((likes + comments + shares) / views) * 100;
 };
 
 //Detect platform from URL
@@ -87,9 +89,9 @@ export const validateUrl = (url: string, expectedPlatform?: string): { isValid: 
 
 //Create a manual creator entry
 export const createManualCreatorEntry = async (input: CreateManualCreatorInput) => {
-  const { campaignId, creatorName, creatorUsername, platform, postUrl, views, likes, shares, saved, createdBy } = input;
+  const { campaignId, creatorName, creatorUsername, platform, postUrl, views, likes, comments, shares, saved, createdBy } = input;
 
-  const engagementRate = calculateEngagementRate(platform, views, likes, shares, saved);
+  const engagementRate = calculateEngagementRate(platform, views, likes, comments, shares, saved);
 
   const entry = await prisma.manualCreatorEntry.create({
     data: {
@@ -100,6 +102,7 @@ export const createManualCreatorEntry = async (input: CreateManualCreatorInput) 
       postUrl: postUrl || null,
       views,
       likes,
+      comments,
       shares,
       saved: platform === 'Instagram' ? saved : null,
       engagementRate,
@@ -148,14 +151,21 @@ export const updateManualCreatorEntry = async (
 
   // Recalculate engagement rate if metrics changed
   let engagementRate: number | undefined;
-  if (data.views !== undefined || data.likes !== undefined || data.shares !== undefined || data.saved !== undefined) {
+  if (
+    data.views !== undefined ||
+    data.likes !== undefined ||
+    data.comments !== undefined ||
+    data.shares !== undefined ||
+    data.saved !== undefined
+  ) {
     const platform = data.platform || existing.platform;
     const views = data.views ?? existing.views;
     const likes = data.likes ?? existing.likes;
+    const comments = data.comments ?? existing.comments;
     const shares = data.shares ?? existing.shares;
     const saved = data.saved ?? existing.saved ?? undefined;
 
-    engagementRate = calculateEngagementRate(platform, views, likes, shares, saved);
+    engagementRate = calculateEngagementRate(platform, views, likes, comments, shares, saved);
   }
 
   const entry = await prisma.manualCreatorEntry.update({

@@ -1193,6 +1193,7 @@ model ManualCreatorEntry {
 
   views          Int   @default(0)
   likes          Int   @default(0)
+  comments       Int   @default(0)
   shares         Int   @default(0)
   saved          Int? // Only for Instagram
   engagementRate Float @default(0)
