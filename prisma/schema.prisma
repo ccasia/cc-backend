@@ -85,6 +85,10 @@ model User {
   assignedLogistics Logistic[]      @relation("AssignedLogistics")
   createdLogistics  Logistic[]      @relation("CreatedLogistics")
   reportedIssues    LogisticIssue[]
+
+  userFlow      UserFlow[]
+  activatedAt   DateTime?
+  passwordSetAt DateTime?
 }
 
 model EmailVerification {
@@ -247,6 +251,7 @@ model Creator {
   userId                 String      @unique
   socialMediaData        Json?
   isFormCompleted        Boolean?
+  formCompletedAt        DateTime?
   socialMediaUpdateCount Json?
   allowToChange          Boolean     @default(false)
   industries             Json?
@@ -277,6 +282,8 @@ model Creator {
   creditTierId        String?
   creditTier          CreditTier? @relation("UserCurrentTier", fields: [creditTierId], references: [id])
   tierUpdatedAt       DateTime? // Last time tier was calculated
+
+  @@index([formCompletedAt])
 }
 
 // model TiktokUser {
@@ -541,11 +548,12 @@ model Company {
   createdAt           DateTime     @default(now())
   updatedAt           DateTime     @updatedAt
 
-  brand         Brand[]
-  campaign      Campaign[]
-  pic           Pic[]
-  subscriptions Subscription[]
-  clients       Client[]
+  brand               Brand[]
+  campaign            Campaign[]
+  pic                 Pic[]
+  subscriptions       Subscription[]
+  clients             Client[]
+  SubscriptionHistory SubscriptionHistory[]
 
   @@index([clientId])
 }
@@ -1078,6 +1086,7 @@ model Submission {
   isReview             Boolean                @default(false)
   startDate            DateTime?
   endDate              DateTime?
+  approvedAt           DateTime?
   submittedByAdminId   String? // Track if admin submitted for creator
   feedback             Feedback[]
   Notification         Notification[]
@@ -1519,23 +1528,24 @@ model Bugs {
 }
 
 model Subscription {
-  id              String             @id @unique @default(cuid())
-  subscriptionId  String?            @unique
+  id              String                @id @unique @default(cuid())
+  subscriptionId  String?               @unique
   companyId       String?
   packageId       String?
   customPackageId String?
   currency        String?
-  company         Company?           @relation(references: [id], fields: [companyId])
+  company         Company?              @relation(references: [id], fields: [companyId])
   creditsUsed     Int
   totalCredits    Int?
   packagePrice    Float?
-  status          SubscriptionStatus @default(ACTIVE)
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
-  package         Package?           @relation(fields: [packageId], references: [id])
-  customPackage   CustomPackage?     @relation(fields: [customPackageId], references: [id])
+  status          SubscriptionStatus    @default(ACTIVE)
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+  package         Package?              @relation(fields: [packageId], references: [id])
+  customPackage   CustomPackage?        @relation(fields: [customPackageId], references: [id])
   expiredAt       DateTime
   campaign        Campaign[]
+  history         SubscriptionHistory[]
 }
 
 model CustomPackage {
@@ -2129,4 +2139,67 @@ model NpsFeedback {
 
   @@index([userId])
   @@index([userType])
+}
+
+enum FlowType {
+  CAMPAIGN_CREATION
+  CREATOR_ONBOARDING
+}
+
+enum StepStatus {
+  STARTED
+  COMPLETED
+  ABANDONED
+  FAILED
+}
+
+enum SubscriptionChangeType {
+  NEW_PACKAGE
+  RENEWAL
+  UPGRADE
+  DOWNGRADE
+}
+
+model UserFlow {
+  id     String @id @unique @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  sessionId String?
+
+  // Context
+  flow FlowType // e.g., CAMPAIGN_CREATION
+  step String // e.g., "BRIEF_DETAILS", "AUDIENCE"
+
+  // Metrics
+  status           StepStatus @default(STARTED)
+  timeSpentSeconds Int?       @default(0) // Cumulative time (Frontend stopwatch)
+  meta             Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Allows updating the specific step time instead of creating duplicates
+  @@unique([userId, flow, step, sessionId])
+  @@index([flow, step])
+}
+
+model SubscriptionHistory {
+  id String @id @unique @default(cuid())
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id])
+
+  subscriptionId String?
+  subscription   Subscription? @relation(fields: [subscriptionId], references: [id])
+
+  changeType        SubscriptionChangeType
+  previousPackageId String?
+  newPackageId      String
+  amountPaid        Float
+  currency          String                 @default("MYR")
+
+  createdAt DateTime @default(now())
+
+  actionByUserId String?
 }
