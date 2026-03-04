@@ -1,23 +1,23 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, SubmissionEnum } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
 interface SubmissionTypeData {
-  type: string;
+  type: SubmissionEnum;
   description: string;
 }
 
 const v4SubmissionTypes: SubmissionTypeData[] = [
   {
-    type: 'VIDEO',
+    type: 'VIDEO' as SubmissionEnum,
     description: 'Individual video submission for V4 campaigns',
   },
   {
-    type: 'PHOTO',
+    type: 'PHOTO' as SubmissionEnum,
     description: 'Photo submission for V4 campaigns',
   },
   {
-    type: 'RAW_FOOTAGE',
+    type: 'RAW_FOOTAGE' as SubmissionEnum,
     description: 'Raw footage submission for V4 campaigns',
   },
 ];
@@ -30,13 +30,13 @@ async function seedV4SubmissionTypes() {
     const existingTypes = await prisma.submissionType.findMany({
       where: {
         type: {
-          in: v4SubmissionTypes.map((t) => t.type),
+          in: v4SubmissionTypes.map((t) => t.type) as SubmissionEnum[],
         },
       },
     });
 
     const existingTypeValues = existingTypes.map((t) => t.type);
-    const typesToCreate = v4SubmissionTypes.filter((type) => !existingTypeValues.includes(type.type));
+    const typesToCreate = v4SubmissionTypes.filter((type) => !existingTypeValues.includes(type.type as any));
 
     if (typesToCreate.length > 0) {
       const result = await prisma.submissionType.createMany({
