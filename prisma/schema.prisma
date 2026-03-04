@@ -717,6 +717,7 @@ model Campaign {
   // PCR (Post Campaign Report)
   pcr        CampaignPCR?
   isPCRReady Boolean @default(false)
+  isForSurfShark Boolean?
 
   publishedAt DateTime?
   completedAt DateTime?
