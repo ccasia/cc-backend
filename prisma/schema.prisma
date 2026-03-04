@@ -725,6 +725,9 @@ model Campaign {
   // PCR (Post Campaign Report)
   pcr        CampaignPCR?
   isPCRReady Boolean @default(false)
+
+  publishedAt DateTime?
+  completedAt DateTime?
 }
 
 model BookMarkCampaign {
