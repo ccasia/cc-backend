@@ -723,12 +723,8 @@ model Campaign {
   manualCreatorEntries  ManualCreatorEntry[]
 
   // PCR (Post Campaign Report)
-  pcr CampaignPCR?
-
-  isForSurfShark Boolean?
-
-  publishedAt DateTime?
-  completedAt DateTime?
+  pcr        CampaignPCR?
+  isPCRReady Boolean @default(false)
 }
 
 model BookMarkCampaign {
