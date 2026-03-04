@@ -340,6 +340,7 @@ export const createCampaign = async (req: Request, res: Response) => {
             campaignType: campaignType,
             description: campaignDescription,
             status: campaignStage as CampaignStatus,
+            publishedAt: campaignStage === 'ACTIVE' || campaignStage === 'SCHEDULED' ? new Date() : null,
             origin: requestedOrigin === 'CLIENT' ? 'CLIENT' : 'ADMIN',
             submissionVersion: submissionVersion || undefined, // Set v4 if client user is added as manager
             isCreditTier: isCreditTier,
@@ -956,6 +957,7 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
             campaignType: campaignType,
             description: campaignDescription,
             status: campaignStage as CampaignStatus,
+            publishedAt: campaignStage === 'ACTIVE' || campaignStage === 'SCHEDULED' ? new Date() : null,
             brandAbout: brandAbout || '',
             productName: productName || '',
             websiteLink: websiteLink || '',
@@ -3768,6 +3770,7 @@ export const changeCampaignStage = async (req: Request, res: Response) => {
         },
         data: {
           status: 'SCHEDULED',
+          publishedAt: new Date(),
         },
         include: {
           campaignAdmin: true,
@@ -3873,6 +3876,7 @@ export const closeCampaign = async (req: Request, res: Response) => {
       },
       data: {
         status: 'COMPLETED',
+        completedAt: new Date(),
       },
       include: {
         campaignAdmin: true,
@@ -9017,6 +9021,7 @@ export const activateClientCampaign = async (req: Request, res: Response) => {
       },
       data: {
         status: 'ACTIVE',
+        publishedAt: new Date(),
         campaignType,
         rawFootage,
         photos,
@@ -9551,6 +9556,32 @@ export const activateClientCampaign = async (req: Request, res: Response) => {
     console.error('Error activating client campaign:', error);
     return res.status(500).json({
       message: error.message || 'Internal server error while activating client campaign',
+    });
+  }
+};
+
+// Mark PCR report as ready for client viewing
+export const markPCRAsReady = async (req: Request, res: Response) => {
+  const { id: campaignId } = req.params;
+  const { isPCRReady } = req.body;
+
+  try {
+    const updatedCampaign = await prisma.campaign.update({
+      where: { id: campaignId },
+      data: { isPCRReady: isPCRReady },
+    });
+
+    console.log(`Updated campaign ${campaignId} isPCRReady to ${isPCRReady}`);
+    return res.status(200).json({
+      success: true,
+      message: 'PCR ready status updated successfully',
+      campaign: updatedCampaign,
+    });
+  } catch (error) {
+    console.error('Error updating PCR ready status:', error);
+    return res.status(500).json({ 
+      success: false,
+      message: 'Failed to update PCR ready status' 
     });
   }
 };

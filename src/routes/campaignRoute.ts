@@ -79,6 +79,7 @@ import {
   getGuestCreatorsForCampaign,
 } from '@controllers/swapCreatorController';
 import { getPCRData, savePCRData } from '@controllers/pcrController';
+import { markPCRAsReady } from '@controllers/campaignController';
 import {
   getEngagementHeatmapController,
   getTopCreatorsTrendController,
@@ -271,6 +272,7 @@ router.post('/:campaignId/trends/refresh', isLoggedIn, isSuperAdmin, refreshCamp
 // PCR (Post Campaign Report) endpoints
 router.get('/:campaignId/pcr', isLoggedIn, getPCRData);
 router.post('/:campaignId/pcr', isLoggedIn, savePCRData);
+router.patch('/:id/pcr-ready', isLoggedIn, isAdmin, markPCRAsReady);
 
 // Manual Creator Entry endpoints (for campaign analytics)
 router.post('/:campaignId/manual-creator', isLoggedIn, isAdmin, createManualCreator);
