@@ -725,6 +725,7 @@ export const verifyCreator = async (req: Request, res: Response) => {
       },
       data: {
         status: 'active',
+        activatedAt: new Date(),
       },
     });
 
@@ -815,6 +816,7 @@ export const verifyClient = async (req: Request, res: Response) => {
       data: {
         status: 'active',
         isActive: true,
+        activatedAt: new Date(),
       },
     });
 
@@ -1670,7 +1672,9 @@ export const inviteClient = async (req: Request, res: Response) => {
       }
 
       // Generate invite token (7 day expiry)
-      const inviteToken = jwt.sign({ id: user.id, companyId }, process.env.SESSION_SECRET as Secret, { expiresIn: '7d' });
+      const inviteToken = jwt.sign({ id: user.id, companyId }, process.env.SESSION_SECRET as Secret, {
+        expiresIn: '7d',
+      });
 
       // Create admin record for client with Client role
       const admin = await tx.admin.create({
@@ -1790,7 +1794,7 @@ export const setupClientPassword = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Invalid or expired invitation' });
     }
 
-    // Hash password and update user
+    // Hash password and update usera
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const result = await prisma.$transaction(async (tx) => {
@@ -1801,6 +1805,7 @@ export const setupClientPassword = async (req: Request, res: Response) => {
           password: hashedPassword,
           status: 'active',
           isActive: true,
+          activatedAt: new Date(),
         },
       });
 
