@@ -484,10 +484,20 @@ export const getBrandsByClientId = async (req: Request, res: Response) => {
   }
 };
 
+const PACKAGE_HIERARCHY: Record<string, number> = {
+  Trial: 0,
+  Basic: 1,
+  Essential: 2,
+  Pro: 3,
+  Ultra: 4,
+  Custom: 99,
+};
+
 export const handleLinkNewPackage = async (req: Request, res: Response) => {
   const { companyId } = req.params;
   const data = req.body;
   const { invoiceDate, validityPeriod, currency, packageId, packageType, totalUGCCredits, packageValue } = data;
+  const adminId = req.session.userid;
 
   if (!companyId) return res.status(404).json({ message: 'Company ID not found.' });
 
@@ -532,6 +542,8 @@ export const handleLinkNewPackage = async (req: Request, res: Response) => {
 
       let customPackage: CustomPackage | null = null;
       let fixedPackage: Package | null = null;
+      let newPrice = parseFloat(packageValue);
+      let newPackageName = '';
 
       // Parallelize independent operations
       if (packageType === 'Custom') {
@@ -543,16 +555,48 @@ export const handleLinkNewPackage = async (req: Request, res: Response) => {
             customValidityPeriod: parseInt(validityPeriod),
           },
         });
+        newPackageName = 'Custom';
       }
 
       if (packageId) {
         fixedPackage = await tx.package.findUnique({
           where: { id: packageId },
         });
+        newPackageName = fixedPackage?.name || 'Unknown';
       }
 
       if (packageType !== 'Custom' && !fixedPackage) {
         throw new Error('Fixed package not found');
+      }
+
+      const sortedSubscriptions = [...company.subscriptions].sort(
+        (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
+      );
+      const previousSubscription = sortedSubscriptions[0];
+
+      let changeType: 'NEW_PACKAGE' | 'RENEWAL' | 'UPGRADE' | 'DOWNGRADE' = 'NEW_PACKAGE';
+      let previousPackageId = null;
+
+      if (previousSubscription) {
+        previousPackageId = previousSubscription.packageId || previousSubscription.customPackageId;
+
+        let oldPackageName = '';
+        if (previousSubscription.package) {
+          oldPackageName = previousSubscription.package.name || '';
+        } else if (previousSubscription.customPackage) {
+          oldPackageName = 'Custom';
+        }
+
+        const oldRank = PACKAGE_HIERARCHY[oldPackageName] ?? -1;
+        const newRank = PACKAGE_HIERARCHY[newPackageName] ?? -1;
+
+        if (newRank > oldRank) {
+          changeType = 'UPGRADE';
+        } else if (newRank < oldRank) {
+          changeType = 'DOWNGRADE';
+        } else {
+          changeType = 'RENEWAL';
+        }
       }
 
       const subscriptionsExpiring = company.subscriptions.filter(
@@ -570,7 +614,7 @@ export const handleLinkNewPackage = async (req: Request, res: Response) => {
         });
       }
 
-      await tx.subscription.create({
+      const newSubscription = await tx.subscription.create({
         data: {
           companyId: company.id,
           ...(packageType === 'Custom'
@@ -585,6 +629,19 @@ export const handleLinkNewPackage = async (req: Request, res: Response) => {
                 packagePrice: parseFloat(packageValue),
               }),
           ...subscriptionData,
+        },
+      });
+
+      await tx.subscriptionHistory.create({
+        data: {
+          companyId: company.id,
+          subscriptionId: newSubscription.id,
+          changeType: changeType,
+          previousPackageId: previousPackageId,
+          newPackageId: packageType === 'Custom' ? customPackage!.id : fixedPackage!.id,
+          amountPaid: newPrice,
+          currency: currency || 'MYR',
+          actionByUserId: adminId,
         },
       });
     });
