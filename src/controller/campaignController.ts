@@ -9560,6 +9560,32 @@ export const activateClientCampaign = async (req: Request, res: Response) => {
   }
 };
 
+// Mark PCR report as ready for client viewing
+export const markPCRAsReady = async (req: Request, res: Response) => {
+  const { id: campaignId } = req.params;
+  const { isPCRReady } = req.body;
+
+  try {
+    const updatedCampaign = await prisma.campaign.update({
+      where: { id: campaignId },
+      data: { isPCRReady: isPCRReady },
+    });
+
+    console.log(`Updated campaign ${campaignId} isPCRReady to ${isPCRReady}`);
+    return res.status(200).json({
+      success: true,
+      message: 'PCR ready status updated successfully',
+      campaign: updatedCampaign,
+    });
+  } catch (error) {
+    console.error('Error updating PCR ready status:', error);
+    return res.status(500).json({ 
+      success: false,
+      message: 'Failed to update PCR ready status' 
+    });
+  }
+};
+
 // Debug endpoint to update campaign origin for testing
 export const updateCampaignOrigin = async (req: Request, res: Response) => {
   const { campaignId, origin } = req.body;
