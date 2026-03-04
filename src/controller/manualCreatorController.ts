@@ -18,7 +18,7 @@ const prisma = new PrismaClient();
 export const createEntry = async (req: Request, res: Response) => {
   try {
     const { campaignId } = req.params;
-    const { creatorName, creatorUsername, postUrl, views, likes, shares, saved, platform: providedPlatform } = req.body;
+    const { creatorName, creatorUsername, postUrl, views, likes, comments, shares, saved, platform: providedPlatform } = req.body;
     const adminId = req.session.userid;
 
     // Validate required fields
@@ -29,10 +29,10 @@ export const createEntry = async (req: Request, res: Response) => {
       });
     }
 
-    if (views === undefined || likes === undefined || shares === undefined) {
+    if (views === undefined || likes === undefined || comments === undefined || shares === undefined) {
       return res.status(400).json({
         success: false,
-        message: 'Views, likes, and shares are required',
+        message: 'Views, likes, comments, and shares are required',
       });
     }
 
@@ -75,6 +75,7 @@ export const createEntry = async (req: Request, res: Response) => {
       postUrl,
       views: Number(views),
       likes: Number(likes),
+      comments: Number(comments),
       shares: Number(shares),
       saved: saved !== undefined ? Number(saved) : undefined,
       createdBy: adminId,
@@ -178,7 +179,7 @@ export const deleteEntry = async (req: Request, res: Response) => {
 export const updateEntry = async (req: Request, res: Response) => {
   try {
     const { campaignId, entryId } = req.params;
-    const { creatorName, creatorUsername, postUrl, views, likes, shares, saved, platform } = req.body;
+    const { creatorName, creatorUsername, postUrl, views, likes, comments, shares, saved, platform } = req.body;
 
     // Check if entry exists
     const existing = await prisma.manualCreatorEntry.findFirst({
@@ -212,6 +213,7 @@ export const updateEntry = async (req: Request, res: Response) => {
       postUrl,
       views: views !== undefined ? Number(views) : undefined,
       likes: likes !== undefined ? Number(likes) : undefined,
+      comments: comments !== undefined ? Number(comments) : undefined,
       shares: shares !== undefined ? Number(shares) : undefined,
       saved: saved !== undefined ? Number(saved) : undefined,
       platform,
