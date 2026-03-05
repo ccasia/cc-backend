@@ -413,14 +413,19 @@ const countRowsForPlatformMatch = (
   return total;
 };
 
-const countContentMatchedRowsAcrossAllCandidates = async (
+const collectContentMatchedRowsAcrossAllCandidates = async (
   where: any,
   platform: PlatformFilter,
   options: { keywordTerm?: string; hashtagTerms: string[] },
+  config: { orderBy?: any } = {},
 ) => {
   const batchSize = 25;
   let skip = 0;
+  const matchedRows: any[] = [];
   let matchedRowsCount = 0;
+  const matchesByCreator = new Map<string, { instagram: boolean; tiktok: boolean }>();
+  const instagramTopVideosByCreator: TopVideosByCreator = new Map();
+  const tiktokTopVideosByCreator: TopVideosByCreator = new Map();
   const rateLimitState = { instagram: false, tiktok: false };
 
   while (true) {
@@ -428,9 +433,7 @@ const countContentMatchedRowsAcrossAllCandidates = async (
       where,
       skip,
       take: batchSize,
-      orderBy: {
-        updatedAt: 'desc',
-      },
+      orderBy: config.orderBy || { updatedAt: 'desc' },
       select: buildConnectedSelect(true),
     });
 
@@ -438,15 +441,32 @@ const countContentMatchedRowsAcrossAllCandidates = async (
       break;
     }
 
-    const { matchesByCreator } = await resolvePlatformContentMatchesFromApi(batchRows, options, {
+    const batchMatchResult = await resolvePlatformContentMatchesFromApi(batchRows, options, {
       rateLimitState,
     });
+
+    for (const [creatorId, match] of batchMatchResult.matchesByCreator.entries()) {
+      matchesByCreator.set(creatorId, match);
+    }
+
+    for (const [creatorId, videos] of batchMatchResult.instagramTopVideosByCreator.entries()) {
+      instagramTopVideosByCreator.set(creatorId, videos);
+    }
+
+    for (const [creatorId, videos] of batchMatchResult.tiktokTopVideosByCreator.entries()) {
+      tiktokTopVideosByCreator.set(creatorId, videos);
+    }
 
     for (const row of batchRows) {
       const creatorId = row?.creator?.id;
       if (!creatorId) continue;
       const match = matchesByCreator.get(creatorId);
-      matchedRowsCount += countRowsForPlatformMatch(row, platform, match);
+      const rowMatchCount = countRowsForPlatformMatch(row, platform, match);
+      matchedRowsCount += rowMatchCount;
+
+      if (rowMatchCount > 0) {
+        matchedRows.push(row);
+      }
     }
 
     skip += batchRows.length;
@@ -455,7 +475,13 @@ const countContentMatchedRowsAcrossAllCandidates = async (
     }
   }
 
-  return matchedRowsCount;
+  return {
+    matchedRows,
+    matchedRowsCount,
+    matchesByCreator,
+    instagramTopVideosByCreator,
+    tiktokTopVideosByCreator,
+  };
 };
 
 const buildConnectedWhere = (
@@ -1159,8 +1185,10 @@ export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
   const baseWhere = buildConnectedWhere('', platform);
 
   const [connectedTotal, dualConnectedTotal, connectedRows, locationRows] = await Promise.all([
-    prismaAny.user.count({ where: connectedWhere }),
-    platform === 'all'
+    hasContentSearch ? Promise.resolve(0) : prismaAny.user.count({ where: connectedWhere }),
+    hasContentSearch
+      ? Promise.resolve(0)
+      : platform === 'all'
       ? prismaAny.user.count({
           where: {
             ...connectedWhere,
@@ -1176,13 +1204,15 @@ export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
           },
         })
       : Promise.resolve(0),
-    prismaAny.user.findMany({
-      where: connectedWhere,
-      skip: platform === 'all' ? 0 : pagination.skip,
-      take: platform === 'all' ? allPlatformWindowSize : pagination.limit,
-      orderBy: connectedOrderBy,
-      select: buildConnectedSelect(includeAccessTokenSelect),
-    }),
+    hasContentSearch
+      ? Promise.resolve([])
+      : prismaAny.user.findMany({
+          where: connectedWhere,
+          skip: platform === 'all' ? 0 : pagination.skip,
+          take: platform === 'all' ? allPlatformWindowSize : pagination.limit,
+          orderBy: connectedOrderBy,
+          select: buildConnectedSelect(includeAccessTokenSelect),
+        }),
     // Lightweight query: only fetch country/city from all connected creators (no filters)
     prismaAny.user.findMany({
       where: baseWhere,
@@ -1232,21 +1262,23 @@ export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
   }
 
   if (hasContentSearch) {
-    const apiMatchResult = await resolvePlatformContentMatchesFromApi(connectedRows, {
-      keywordTerm: keywordTerm || undefined,
-      hashtagTerms,
-    }, {
-      rateLimitState: contentSearchRateLimitState,
-    });
+    const contentMatchResult = await collectContentMatchedRowsAcrossAllCandidates(
+      connectedWhere,
+      platform,
+      {
+        keywordTerm: keywordTerm || undefined,
+        hashtagTerms,
+      },
+      {
+        orderBy: connectedOrderBy,
+      },
+    );
 
-    contentMatchesByCreator = apiMatchResult.matchesByCreator;
-    apiInstagramTopVideos = apiMatchResult.instagramTopVideosByCreator;
-    apiTikTokTopVideos = apiMatchResult.tiktokTopVideosByCreator;
-
-    contentMatchedTotal = await countContentMatchedRowsAcrossAllCandidates(connectedWhere, platform, {
-      keywordTerm: keywordTerm || undefined,
-      hashtagTerms,
-    });
+    finalRows = contentMatchResult.matchedRows;
+    contentMatchesByCreator = contentMatchResult.matchesByCreator;
+    apiInstagramTopVideos = contentMatchResult.instagramTopVideosByCreator;
+    apiTikTokTopVideos = contentMatchResult.tiktokTopVideosByCreator;
+    contentMatchedTotal = contentMatchResult.matchedRowsCount;
   }
 
   const connectedCreators = finalRows.flatMap((row: any) => {
@@ -1281,9 +1313,7 @@ export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
           : null,
     }));
 
-    // Add age property based on row.creator.birthDate
     const age = calculateAge(row.creator?.birthDate);
-
     const city = row.city?.trim();
     const country = row.country?.trim();
     const location = [city, country].filter(Boolean).join(', ') || null;
@@ -1294,8 +1324,8 @@ export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
       creatorId: row.creator?.id,
       name: row.name,
       gender: mapPronounsToGender(row.creator?.pronounce),
-      age: age,
-      location: location,
+      age,
+      location,
       creditTier: row.creator?.creditTier?.name || null,
       handles: {
         instagram: row.creator?.instagram || null,
