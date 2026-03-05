@@ -475,22 +475,31 @@ export const trackUserFlow = async (req: Request, res: Response) => {
 };
 
 const getFilters = (req: Request) => {
-  const { startDate, endDate, packageType } = req.query;
+  const { startDate, endDate } = req.query;
+  const rawPackageTypes = req.query.packageTypes;
 
   let dateFilter: any = {};
   if (startDate && endDate) {
     dateFilter = { gte: new Date(startDate as string), lte: new Date(endDate as string) };
   }
 
+  const packageTypes: string[] = rawPackageTypes
+    ? (Array.isArray(rawPackageTypes) ? rawPackageTypes : [rawPackageTypes])
+        .map((type) => String(type).trim())
+        .filter(Boolean)
+    : [];
+
   let packageWhere: any = {};
-  if (packageType && packageType !== 'ALL') {
+  if (packageTypes.length > 0) {
     // The filter logic looks for an ACTIVE subscription matching the name
     packageWhere = {
       subscriptions: {
         some: {
           OR: [
-            { package: { name: { equals: packageType as string, mode: 'insensitive' } } },
-            { customPackage: { customName: { contains: packageType as string, mode: 'insensitive' } } },
+            { package: { name: { in: packageTypes, mode: 'insensitive' } } },
+            ...packageTypes.map((pkg) => ({
+              customPackage: { customName: { contains: pkg, mode: 'insensitive' as const } },
+            })),
           ],
         },
       },
@@ -501,56 +510,128 @@ const getFilters = (req: Request) => {
   return { dateFilter, dateCondition, packageWhere };
 };
 
+const getPreviousPeriodFilter = (dateFilter: any) => {
+  if (!dateFilter?.gte || !dateFilter?.lte) return undefined;
+
+  const start = dayjs(dateFilter.gte);
+  const end = dayjs(dateFilter.lte);
+  const durationMs = end.diff(start);
+
+  return {
+    gte: start.subtract(durationMs, 'millisecond').toDate(),
+    lte: start.subtract(1, 'millisecond').toDate(),
+  };
+};
+
+const calcTrend = (current: number, previous: number): number | null => {
+  if (previous === 0 && current === 0) return 0;
+  if (previous === 0) return current > 0 ? 100 : 0;
+  return Math.round(((current - previous) / previous) * 100);
+};
+
 export const getBrandsMetrics = async (req: Request, res: Response) => {
   try {
-    const { dateCondition, packageWhere } = getFilters(req);
+    const { dateFilter, dateCondition, packageWhere } = getFilters(req);
 
     const userPackageFilter = Object.keys(packageWhere).length ? { client: { company: packageWhere } } : {};
     const companyPackageFilter = Object.keys(packageWhere).length ? packageWhere : {};
 
-    const [totalCompanies, v4Companies, v2Companies, inactiveCompanies, totalInvited, totalActivated, activatedUsers] =
-      await Promise.all([
-        prisma.company.count({ where: { ...dateCondition, ...companyPackageFilter } }),
+    const prevDateFilter = getPreviousPeriodFilter(dateFilter);
+    const prevDateCondition = prevDateFilter ? { createdAt: prevDateFilter } : {};
 
-        prisma.company.count({
-          where: {
-            clients: { some: {} },
-            ...dateCondition,
-            AND: [
-              { subscriptions: { some: { status: 'ACTIVE' } } },
-              Object.keys(companyPackageFilter).length ? companyPackageFilter : {},
-            ],
+    const [
+      totalCompanies,
+      v4Companies,
+      v2Companies,
+      inactiveCompanies,
+      totalInvited,
+      totalActivated,
+      activatedUsers,
+      inactiveCompanyList,
+    ] = await Promise.all([
+      prisma.company.count({ where: { ...dateCondition, ...companyPackageFilter } }),
+
+      prisma.company.count({
+        where: {
+          clients: { some: {} },
+          ...dateCondition,
+          AND: [
+            { subscriptions: { some: { status: 'ACTIVE' } } },
+            Object.keys(companyPackageFilter).length ? companyPackageFilter : {},
+          ],
+        },
+      }),
+
+      prisma.company.count({
+        where: {
+          clients: { none: {} },
+          ...dateCondition,
+          AND: [
+            { subscriptions: { some: { status: 'ACTIVE' } } },
+            Object.keys(companyPackageFilter).length ? companyPackageFilter : {},
+          ],
+        },
+      }),
+
+      prisma.company.count({
+        where: {
+          ...dateCondition,
+          AND: [
+            { subscriptions: { none: { status: 'ACTIVE' } } },
+            Object.keys(companyPackageFilter).length ? companyPackageFilter : {},
+          ],
+        },
+      }),
+
+      prisma.user.count({ where: { role: 'client', ...dateCondition, ...userPackageFilter } }),
+      prisma.user.count({ where: { role: 'client', status: 'active', ...dateCondition, ...userPackageFilter } }),
+      prisma.user.findMany({
+        where: { role: 'client', status: 'active', ...dateCondition, ...userPackageFilter },
+        select: { createdAt: true, activatedAt: true },
+      }),
+      prisma.company.findMany({
+        where: {
+          ...dateCondition,
+          AND: [
+            { subscriptions: { none: { status: 'ACTIVE' } } },
+            Object.keys(companyPackageFilter).length ? companyPackageFilter : {},
+          ],
+        },
+        select: {
+          id: true,
+          name: true,
+          logo: true,
+          createdAt: true,
+          subscriptions: {
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+            select: {
+              status: true,
+              expiredAt: true,
+              package: { select: { name: true } },
+              customPackage: { select: { customName: true } },
+            },
           },
-        }),
-
-        prisma.company.count({
-          where: {
-            clients: { none: {} },
-            ...dateCondition,
-            AND: [
-              { subscriptions: { some: { status: 'ACTIVE' } } },
-              Object.keys(companyPackageFilter).length ? companyPackageFilter : {},
-            ],
+          _count: {
+            select: {
+              campaign: true,
+              clients: true,
+            },
           },
-        }),
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+    ]);
 
-        prisma.company.count({
-          where: {
-            ...dateCondition,
-            AND: [
-              { subscriptions: { none: { status: 'ACTIVE' } } },
-              Object.keys(companyPackageFilter).length ? companyPackageFilter : {},
-            ],
-          },
-        }),
-
-        prisma.user.count({ where: { role: 'client', ...dateCondition, ...userPackageFilter } }),
-        prisma.user.count({ where: { role: 'client', status: 'active', ...dateCondition, ...userPackageFilter } }),
-        prisma.user.findMany({
-          where: { role: 'client', status: 'active', ...dateCondition, ...userPackageFilter },
-          select: { createdAt: true, activatedAt: true },
-        }),
-      ]);
+    const [prevTotalCompanies, prevTotalInvited, prevTotalActivated] = prevDateFilter
+      ? await Promise.all([
+          prisma.company.count({ where: { ...prevDateCondition, ...companyPackageFilter } }),
+          prisma.user.count({ where: { role: 'client', ...prevDateCondition, ...userPackageFilter } }),
+          prisma.user.count({
+            where: { role: 'client', status: 'active', ...prevDateCondition, ...userPackageFilter },
+          }),
+        ])
+      : [0, 0, 0];
 
     let totalHours = 0;
     let actionUnder24h = 0;
@@ -570,9 +651,26 @@ export const getBrandsMetrics = async (req: Request, res: Response) => {
 
     const activationRate = totalInvited > 0 ? Math.round((totalActivated / totalInvited) * 100) : 0;
 
+    const prevActivationRate = prevTotalInvited > 0 ? Math.round((prevTotalActivated / prevTotalInvited) * 100) : 0;
+
     const rateUnder24h = activatedUsers.length ? Math.round((actionUnder24h / activatedUsers.length) * 100) : 0;
 
     const rateUnder7d = activatedUsers.length ? Math.round((actionUnder7d / activatedUsers.length) * 100) : 0;
+
+    const inactiveCompaniesDetail = inactiveCompanyList.map((company) => {
+      const lastSub = company.subscriptions[0];
+      return {
+        id: company.id,
+        name: company.name,
+        logo: company.logo,
+        createdAt: company.createdAt,
+        lastPackage: lastSub?.package?.name || lastSub?.customPackage?.customName || 'No subscription',
+        lastSubStatus: lastSub?.status || 'NONE',
+        expiredAt: lastSub?.expiredAt || null,
+        totalCampaigns: company._count.campaign,
+        totalClients: company._count.clients,
+      };
+    });
 
     res.status(200).json({
       totalCompanies,
@@ -584,6 +682,9 @@ export const getBrandsMetrics = async (req: Request, res: Response) => {
       avgTimeHours,
       rateUnder24h,
       rateUnder7d,
+      totalCompaniesTrend: prevDateFilter ? calcTrend(totalCompanies, prevTotalCompanies) : null,
+      activationRateTrend: prevDateFilter ? calcTrend(activationRate, prevActivationRate) : null,
+      inactiveCompaniesDetail,
     });
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch activation metrics' });
@@ -735,10 +836,13 @@ export const getClientJourneyMetrics = async (req: Request, res: Response) => {
 
 export const getClientSupportMetrics = async (req: Request, res: Response) => {
   try {
-    const { dateCondition, packageWhere } = getFilters(req);
+    const { dateFilter, dateCondition, packageWhere } = getFilters(req);
 
     const userPackageFilter = Object.keys(packageWhere).length ? { client: { company: packageWhere } } : {};
     const companyPackageFilter = Object.keys(packageWhere).length ? packageWhere : {};
+
+    const prevDateFilter = getPreviousPeriodFilter(dateFilter);
+    const prevDateCondition = prevDateFilter ? { createdAt: prevDateFilter } : {};
 
     const [bugCount, subscriptions, nps, subHistoryWithDates] = await Promise.all([
       prisma.bugs.count({ where: { user: { role: 'client', ...userPackageFilter }, ...dateCondition } }),
@@ -777,6 +881,28 @@ export const getClientSupportMetrics = async (req: Request, res: Response) => {
       }),
     ]);
 
+    const [prevSubscriptions, prevNps] = prevDateFilter
+      ? await Promise.all([
+          prisma.subscriptionHistory.groupBy({
+            by: ['changeType'],
+            where: {
+              company: companyPackageFilter,
+              ...prevDateCondition,
+            },
+            _count: { id: true },
+          }),
+          prisma.npsFeedback.aggregate({
+            where: {
+              userType: 'CLIENT',
+              user: userPackageFilter,
+              ...prevDateCondition,
+            },
+            _avg: { rating: true },
+            _count: { id: true },
+          }),
+        ])
+      : [[], { _avg: { rating: null }, _count: { id: 0 } }];
+
     let upgrades = 0,
       renewals = 0,
       downgrades = 0;
@@ -787,19 +913,28 @@ export const getClientSupportMetrics = async (req: Request, res: Response) => {
       if (subscription.changeType === 'DOWNGRADE') downgrades = subscription._count.id;
     });
 
+    let prevUpgrades = 0,
+      prevRenewals = 0,
+      prevDowngrades = 0;
+
+    (Array.isArray(prevSubscriptions) ? prevSubscriptions : []).forEach((subscription: any) => {
+      if (subscription.changeType === 'UPGRADE') prevUpgrades = subscription._count.id;
+      if (subscription.changeType === 'RENEWAL') prevRenewals = subscription._count.id;
+      if (subscription.changeType === 'DOWNGRADE') prevDowngrades = subscription._count.id;
+    });
+
     let totalGapDays = 0;
     let gapCount = 0;
 
     const monthlyRenewals: any[] = [];
     const monthMap: Record<string, any> = {};
 
-    // Loop backwards from 5 to 0 to get chronological order (e.g., Oct, Nov, Dec, Jan, Feb, Mar)
     for (let i = 11; i >= 0; i--) {
       const monthName = dayjs().subtract(i, 'month').format('MMM YYYY');
       const newMonthData = { name: monthName, Upgrades: 0, Renewals: 0, Downgrades: 0 };
 
       monthlyRenewals.push(newMonthData);
-      monthMap[monthName] = newMonthData; // Keep a reference map for O(1) lookups
+      monthMap[monthName] = newMonthData;
     }
 
     subHistoryWithDates.forEach((history) => {
@@ -830,6 +965,12 @@ export const getClientSupportMetrics = async (req: Request, res: Response) => {
     const totalNpsReports = nps._count.id || 0;
     const avgDaysToNextPackage = gapCount ? Math.round(totalGapDays / gapCount) : 0;
 
+    const prevTotalRetention = prevUpgrades + prevRenewals + prevDowngrades;
+    const prevRetentionRate = prevTotalRetention
+      ? Math.round(((prevUpgrades + prevRenewals + prevDowngrades) / prevTotalRetention) * 100)
+      : 0;
+    const prevNpsScore = prevNps._avg?.rating ? Number(prevNps._avg.rating.toFixed(1)) : 0;
+
     res.json({
       totalTickets: bugCount,
       upgrades,
@@ -841,6 +982,8 @@ export const getClientSupportMetrics = async (req: Request, res: Response) => {
       upgradeRate,
       avgDaysToNextPackage,
       monthlyRenewals,
+      retentionRateTrend: prevDateFilter ? calcTrend(retentionRate, prevRetentionRate) : null,
+      npsScoreTrend: prevDateFilter ? calcTrend(npsScore, prevNpsScore) : null,
     });
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch support metrics' });
