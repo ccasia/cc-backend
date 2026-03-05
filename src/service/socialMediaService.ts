@@ -164,6 +164,26 @@ export const getInstagramOverviewService = async (accessToken: string) => {
   }
 };
 
+export const getTikTokOverviewService = async (accessToken: string) => {
+  if (!accessToken) throw new Error('Access token is required');
+
+  try {
+    const res = await axios.get('https://open.tiktokapis.com/v2/user/info/', {
+      params: {
+        fields:
+          'open_id,union_id,display_name,bio_description,username,avatar_url,following_count,follower_count,likes_count',
+      },
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    return res.data;
+  } catch (error) {
+    throw new Error(error);
+  }
+};
+
 export const getInstagramUserInsight = async (accessToken: string, instagramUserId: string) => {
   if (!accessToken || !instagramUserId) {
     throw new Error('Missing required parameters: accessToken, instagramUserId');
