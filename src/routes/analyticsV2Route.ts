@@ -6,6 +6,10 @@ import {
   getPitchRate,
   getTimeToActivation,
   getTimeToActivationCreators,
+  getTimeToIgActivation,
+  getTimeToIgActivationCreators,
+  getTimeToTiktokActivation,
+  getTimeToTiktokActivationCreators,
   getPitchRateCreators,
   getMediaKitActivation,
   getCreatorSatisfaction,
@@ -40,6 +44,10 @@ router.get('/activation-rate', isLoggedIn, isSuperAdmin, getActivationRate);
 router.get('/pitch-rate', isLoggedIn, isSuperAdmin, getPitchRate);
 router.get('/time-to-activation', isLoggedIn, isSuperAdmin, getTimeToActivation);
 router.get('/time-to-activation/creators', isLoggedIn, isSuperAdmin, getTimeToActivationCreators);
+router.get('/time-to-ig-activation', isLoggedIn, isSuperAdmin, getTimeToIgActivation);
+router.get('/time-to-ig-activation/creators', isLoggedIn, isSuperAdmin, getTimeToIgActivationCreators);
+router.get('/time-to-tiktok-activation', isLoggedIn, isSuperAdmin, getTimeToTiktokActivation);
+router.get('/time-to-tiktok-activation/creators', isLoggedIn, isSuperAdmin, getTimeToTiktokActivationCreators);
 router.get('/pitch-rate/creators', isLoggedIn, isSuperAdmin, getPitchRateCreators);
 router.get('/media-kit-activation', isLoggedIn, isSuperAdmin, getMediaKitActivation);
 router.get('/creator-satisfaction', isLoggedIn, isSuperAdmin, getCreatorSatisfaction);
