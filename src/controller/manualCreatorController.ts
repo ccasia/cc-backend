@@ -18,7 +18,7 @@ const prisma = new PrismaClient();
 export const createEntry = async (req: Request, res: Response) => {
   try {
     const { campaignId } = req.params;
-    const { creatorName, creatorUsername, postUrl, views, likes, comments, shares, saved, platform: providedPlatform } = req.body;
+    const { creatorName, creatorUsername, postUrl, views, likes, comments, shares, saved, platform: providedPlatform, photoURL } = req.body;
     const adminId = req.session.userid;
 
     // Validate required fields
@@ -79,6 +79,7 @@ export const createEntry = async (req: Request, res: Response) => {
       shares: Number(shares),
       saved: saved !== undefined ? Number(saved) : undefined,
       createdBy: adminId,
+      photoURL,
     });
 
     return res.status(201).json({
