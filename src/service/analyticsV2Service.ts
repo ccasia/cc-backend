@@ -842,6 +842,270 @@ export const getTimeToActivationCreators = async (startDate: Date, endDate: Date
   return { creators: rows, avgDays, count: rows.length };
 };
 
+// Time to Instagram Activation — Avg days from account creation to linking Instagram
+
+export const getTimeToIgActivationData = async (
+  startDate: Date,
+  endDate: Date,
+  granularity: 'daily' | 'monthly' = 'monthly',
+  creditTierNames: string[] = [],
+): Promise<TimeToActivationResponse> => {
+  if (granularity === 'daily') {
+    const dailyAvgs = await prisma.$queryRaw<DailyAvgDaysRow[]>`
+      SELECT
+        TO_CHAR(DATE_TRUNC('day', ig."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'), 'YYYY-MM-DD') AS date,
+        ROUND(AVG(EXTRACT(EPOCH FROM (ig."createdAt" - u."createdAt")) / 86400)::numeric, 1) AS "avgdays"
+      FROM "InstagramUser" ig
+      INNER JOIN "Creator" c ON c.id = ig."creatorId"
+      INNER JOIN "User" u ON u.id = c."userId"
+      ${buildCreditTierJoin('c', creditTierNames)}
+      WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
+        AND ig."createdAt" >= (${startDate} AT TIME ZONE 'UTC')
+        AND ig."createdAt" <= (${endDate} AT TIME ZONE 'UTC')
+      GROUP BY DATE_TRUNC('day', ig."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')
+      ORDER BY 1
+    `;
+
+    const timeToActivation = fillTimeToActivationDayGaps(dailyAvgs, startDate, endDate);
+
+    const periodMs = endDate.getTime() - startDate.getTime();
+    const prevEnd = new Date(startDate.getTime() - 1);
+    const prevStart = new Date(prevEnd.getTime() - periodMs);
+
+    const [currentAvgResult, previousAvgResult] = await Promise.all([
+      prisma.$queryRaw<{ avgdays: number | null }[]>`
+        SELECT ROUND(AVG(EXTRACT(EPOCH FROM (ig."createdAt" - u."createdAt")) / 86400)::numeric, 1) AS "avgdays"
+        FROM "InstagramUser" ig
+        INNER JOIN "Creator" c ON c.id = ig."creatorId"
+        INNER JOIN "User" u ON u.id = c."userId"
+        ${buildCreditTierJoin('c', creditTierNames)}
+        WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
+          AND ig."createdAt" >= (${startDate} AT TIME ZONE 'UTC')
+          AND ig."createdAt" <= (${endDate} AT TIME ZONE 'UTC')
+      `,
+      prisma.$queryRaw<{ avgdays: number | null }[]>`
+        SELECT ROUND(AVG(EXTRACT(EPOCH FROM (ig."createdAt" - u."createdAt")) / 86400)::numeric, 1) AS "avgdays"
+        FROM "InstagramUser" ig
+        INNER JOIN "Creator" c ON c.id = ig."creatorId"
+        INNER JOIN "User" u ON u.id = c."userId"
+        ${buildCreditTierJoin('c', creditTierNames)}
+        WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
+          AND ig."createdAt" >= (${prevStart} AT TIME ZONE 'UTC')
+          AND ig."createdAt" <= (${prevEnd} AT TIME ZONE 'UTC')
+      `,
+    ]);
+
+    const currentAvg = currentAvgResult[0]?.avgdays != null ? Number(currentAvgResult[0].avgdays) : null;
+    const previousAvg = previousAvgResult[0]?.avgdays != null ? Number(previousAvgResult[0].avgdays) : null;
+    const change =
+      currentAvg != null && previousAvg != null ? Math.round((currentAvg - previousAvg) * 10) / 10 : null;
+
+    return {
+      granularity: 'daily',
+      timeToActivation,
+      periodComparison: { currentAvg, previousAvg, change },
+    };
+  }
+
+  // --- Monthly granularity (default) ---
+  const monthlyAvgs = await prisma.$queryRaw<MonthlyAvgDaysRow[]>`
+    SELECT
+      EXTRACT(YEAR FROM DATE_TRUNC('month', ig."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'))::int AS year,
+      EXTRACT(MONTH FROM DATE_TRUNC('month', ig."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'))::int AS month,
+      ROUND(AVG(EXTRACT(EPOCH FROM (ig."createdAt" - u."createdAt")) / 86400)::numeric, 1) AS "avgdays"
+    FROM "InstagramUser" ig
+    INNER JOIN "Creator" c ON c.id = ig."creatorId"
+    INNER JOIN "User" u ON u.id = c."userId"
+    ${buildCreditTierJoin('c', creditTierNames)}
+    WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
+      AND ig."createdAt" >= (${startDate} AT TIME ZONE 'UTC')
+      AND ig."createdAt" <= (${endDate} AT TIME ZONE 'UTC')
+    GROUP BY DATE_TRUNC('month', ig."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')
+    ORDER BY 1, 2
+  `;
+
+  const timeToActivation = fillTimeToActivationMonthGaps(monthlyAvgs, startDate, endDate);
+
+  return {
+    granularity: 'monthly',
+    timeToActivation,
+  };
+};
+
+// Time to Instagram Activation — Individual Creators for a period
+
+interface TimeToIgActivationCreatorRow {
+  userId: string;
+  name: string;
+  photoUrl: string | null;
+  createdAt: Date;
+  igConnectedAt: Date;
+  daysToActivation: number;
+}
+
+export const getTimeToIgActivationCreators = async (startDate: Date, endDate: Date, creditTierNames: string[] = []) => {
+  const creators = await prisma.$queryRaw<TimeToIgActivationCreatorRow[]>`
+    SELECT
+      u.id AS "userId",
+      u.name,
+      u."photoURL" AS "photoUrl",
+      u."createdAt",
+      ig."createdAt" AS "igConnectedAt",
+      ROUND(EXTRACT(EPOCH FROM (ig."createdAt" - u."createdAt")) / 86400::numeric, 1) AS "daysToActivation"
+    FROM "InstagramUser" ig
+    INNER JOIN "Creator" c ON c.id = ig."creatorId"
+    INNER JOIN "User" u ON u.id = c."userId"
+    ${buildCreditTierJoin('c', creditTierNames)}
+    WHERE u.role = 'creator'
+      AND u.status IN ('active', 'pending')
+      AND (ig."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')::date >= ${startDate}::date
+      AND (ig."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')::date <= ${endDate}::date
+    ORDER BY ig."createdAt" DESC
+  `;
+
+  const rows = creators.map((c) => ({
+    ...c,
+    daysToActivation: Number(c.daysToActivation),
+  }));
+
+  const avgDays =
+    rows.length > 0 ? Math.round((rows.reduce((sum, r) => sum + r.daysToActivation, 0) / rows.length) * 10) / 10 : null;
+
+  return { creators: rows, avgDays, count: rows.length };
+};
+
+// Time to TikTok Activation — Avg days from account creation to linking TikTok
+
+export const getTimeToTiktokActivationData = async (
+  startDate: Date,
+  endDate: Date,
+  granularity: 'daily' | 'monthly' = 'monthly',
+  creditTierNames: string[] = [],
+): Promise<TimeToActivationResponse> => {
+  if (granularity === 'daily') {
+    const dailyAvgs = await prisma.$queryRaw<DailyAvgDaysRow[]>`
+      SELECT
+        TO_CHAR(DATE_TRUNC('day', tt."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'), 'YYYY-MM-DD') AS date,
+        ROUND(AVG(EXTRACT(EPOCH FROM (tt."createdAt" - u."createdAt")) / 86400)::numeric, 1) AS "avgdays"
+      FROM "TiktokUser" tt
+      INNER JOIN "Creator" c ON c.id = tt."creatorId"
+      INNER JOIN "User" u ON u.id = c."userId"
+      ${buildCreditTierJoin('c', creditTierNames)}
+      WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
+        AND tt."createdAt" >= (${startDate} AT TIME ZONE 'UTC')
+        AND tt."createdAt" <= (${endDate} AT TIME ZONE 'UTC')
+      GROUP BY DATE_TRUNC('day', tt."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')
+      ORDER BY 1
+    `;
+
+    const timeToActivation = fillTimeToActivationDayGaps(dailyAvgs, startDate, endDate);
+
+    const periodMs = endDate.getTime() - startDate.getTime();
+    const prevEnd = new Date(startDate.getTime() - 1);
+    const prevStart = new Date(prevEnd.getTime() - periodMs);
+
+    const [currentAvgResult, previousAvgResult] = await Promise.all([
+      prisma.$queryRaw<{ avgdays: number | null }[]>`
+        SELECT ROUND(AVG(EXTRACT(EPOCH FROM (tt."createdAt" - u."createdAt")) / 86400)::numeric, 1) AS "avgdays"
+        FROM "TiktokUser" tt
+        INNER JOIN "Creator" c ON c.id = tt."creatorId"
+        INNER JOIN "User" u ON u.id = c."userId"
+        ${buildCreditTierJoin('c', creditTierNames)}
+        WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
+          AND tt."createdAt" >= (${startDate} AT TIME ZONE 'UTC')
+          AND tt."createdAt" <= (${endDate} AT TIME ZONE 'UTC')
+      `,
+      prisma.$queryRaw<{ avgdays: number | null }[]>`
+        SELECT ROUND(AVG(EXTRACT(EPOCH FROM (tt."createdAt" - u."createdAt")) / 86400)::numeric, 1) AS "avgdays"
+        FROM "TiktokUser" tt
+        INNER JOIN "Creator" c ON c.id = tt."creatorId"
+        INNER JOIN "User" u ON u.id = c."userId"
+        ${buildCreditTierJoin('c', creditTierNames)}
+        WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
+          AND tt."createdAt" >= (${prevStart} AT TIME ZONE 'UTC')
+          AND tt."createdAt" <= (${prevEnd} AT TIME ZONE 'UTC')
+      `,
+    ]);
+
+    const currentAvg = currentAvgResult[0]?.avgdays != null ? Number(currentAvgResult[0].avgdays) : null;
+    const previousAvg = previousAvgResult[0]?.avgdays != null ? Number(previousAvgResult[0].avgdays) : null;
+    const change =
+      currentAvg != null && previousAvg != null ? Math.round((currentAvg - previousAvg) * 10) / 10 : null;
+
+    return {
+      granularity: 'daily',
+      timeToActivation,
+      periodComparison: { currentAvg, previousAvg, change },
+    };
+  }
+
+  // --- Monthly granularity (default) ---
+  const monthlyAvgs = await prisma.$queryRaw<MonthlyAvgDaysRow[]>`
+    SELECT
+      EXTRACT(YEAR FROM DATE_TRUNC('month', tt."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'))::int AS year,
+      EXTRACT(MONTH FROM DATE_TRUNC('month', tt."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'))::int AS month,
+      ROUND(AVG(EXTRACT(EPOCH FROM (tt."createdAt" - u."createdAt")) / 86400)::numeric, 1) AS "avgdays"
+    FROM "TiktokUser" tt
+    INNER JOIN "Creator" c ON c.id = tt."creatorId"
+    INNER JOIN "User" u ON u.id = c."userId"
+    ${buildCreditTierJoin('c', creditTierNames)}
+    WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
+      AND tt."createdAt" >= (${startDate} AT TIME ZONE 'UTC')
+      AND tt."createdAt" <= (${endDate} AT TIME ZONE 'UTC')
+    GROUP BY DATE_TRUNC('month', tt."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')
+    ORDER BY 1, 2
+  `;
+
+  const timeToActivation = fillTimeToActivationMonthGaps(monthlyAvgs, startDate, endDate);
+
+  return {
+    granularity: 'monthly',
+    timeToActivation,
+  };
+};
+
+// Time to TikTok Activation — Individual Creators for a period
+
+interface TimeToTiktokActivationCreatorRow {
+  userId: string;
+  name: string;
+  photoUrl: string | null;
+  createdAt: Date;
+  tiktokConnectedAt: Date;
+  daysToActivation: number;
+}
+
+export const getTimeToTiktokActivationCreators = async (startDate: Date, endDate: Date, creditTierNames: string[] = []) => {
+  const creators = await prisma.$queryRaw<TimeToTiktokActivationCreatorRow[]>`
+    SELECT
+      u.id AS "userId",
+      u.name,
+      u."photoURL" AS "photoUrl",
+      u."createdAt",
+      tt."createdAt" AS "tiktokConnectedAt",
+      ROUND(EXTRACT(EPOCH FROM (tt."createdAt" - u."createdAt")) / 86400::numeric, 1) AS "daysToActivation"
+    FROM "TiktokUser" tt
+    INNER JOIN "Creator" c ON c.id = tt."creatorId"
+    INNER JOIN "User" u ON u.id = c."userId"
+    ${buildCreditTierJoin('c', creditTierNames)}
+    WHERE u.role = 'creator'
+      AND u.status IN ('active', 'pending')
+      AND (tt."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')::date >= ${startDate}::date
+      AND (tt."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')::date <= ${endDate}::date
+    ORDER BY tt."createdAt" DESC
+  `;
+
+  const rows = creators.map((c) => ({
+    ...c,
+    daysToActivation: Number(c.daysToActivation),
+  }));
+
+  const avgDays =
+    rows.length > 0 ? Math.round((rows.reduce((sum, r) => sum + r.daysToActivation, 0) / rows.length) * 10) / 10 : null;
+
+  return { creators: rows, avgDays, count: rows.length };
+};
+
 // Pitch Rate — Creator drill-down (who first pitched in a date range)
 
 interface PitchRateCreatorRow {
