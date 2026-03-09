@@ -1200,6 +1200,7 @@ model ManualCreatorEntry {
 
   creatorName     String
   creatorUsername String
+  photoUrl        String?
   platform        String // "Instagram" | "TikTok"
   postUrl         String?
 
