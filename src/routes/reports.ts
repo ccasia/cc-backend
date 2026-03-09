@@ -30,19 +30,17 @@ reportsRouter.post('/generate/:campaignId', async (req: Request, res: Response):
     return;
   }
 
-  //   logger.info(`Generating: ${validation.name}`, { campaignId, sections: sections ?? 'all' });
-
   try {
     const report = await reportService.generateCampaignReport({
       campaignId,
       sections,
       externalMetrics: req.body?.externalMetrics,
     });
-    console.log(report);
+
     res.json({ success: true, report });
   } catch (err) {
+    console.log(err);
     const msg = err instanceof Error ? err.message : String(err);
-    // logger.error('Failed', { campaignId, msg });
     res.status(500).json({ success: false, error: msg });
   }
 });

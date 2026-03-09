@@ -86,6 +86,8 @@ export interface GenerateReportRequest {
   campaignId: string;
   sections?: ReportSection[]; // omit = all sections
   externalMetrics?: ExternalMetrics; // API data passed from your frontend/backend
+  onChunk?: (section: ReportSection, chunk: string) => void;
+  onDone?: () => void;
 }
 
 // ── Result ────────────────────────────────────────────────────────────────────

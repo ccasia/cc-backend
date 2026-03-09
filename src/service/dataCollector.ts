@@ -42,8 +42,10 @@ async function collectCampaignSummary(campaignId: string, ext?: ExternalMetrics[
 
   // DB fallback: aggregate InsightSnapshots
   const snapshots = await prisma.insightSnapshot.findMany({
-    where: { campaignId, snapshotType: 'weekly' },
+    where: { campaignId },
   });
+
+  // console.log(snapshots);
 
   const dbViews = snapshots.reduce((s, r) => s + r.totalViews, 0);
   const dbLikes = snapshots.reduce((s, r) => s + r.totalLikes, 0);
@@ -58,6 +60,7 @@ async function collectCampaignSummary(campaignId: string, ext?: ExternalMetrics[
 
   // Merge: external overrides DB when present
   const totalViews = ext?.totalViews ?? dbViews;
+
   const totalEngagements = ext?.totalEngagements ?? dbEngagements;
   const engagementRate = ext?.engagementRate ?? dbEngRate;
   const reach = ext?.reach ?? null;
@@ -110,7 +113,7 @@ async function collectCampaignSummary(campaignId: string, ext?: ExternalMetrics[
 async function collectEngagementData(campaignId: string, ext?: ExternalMetrics['engagement']) {
   const [snapshots, brief, shortlisted, postUrls] = await Promise.all([
     prisma.insightSnapshot.findMany({
-      where: { campaignId, snapshotType: 'weekly' },
+      where: { campaignId },
       orderBy: { snapshotDate: 'asc' },
     }),
     prisma.campaignBrief.findUnique({
@@ -241,7 +244,7 @@ async function collectEngagementData(campaignId: string, ext?: ExternalMetrics['
 
 async function collectViewsData(campaignId: string, ext?: ExternalMetrics['views']) {
   const snapshots = await prisma.insightSnapshot.findMany({
-    where: { campaignId, snapshotType: 'weekly' },
+    where: { campaignId },
     orderBy: { snapshotDate: 'asc' },
   });
 

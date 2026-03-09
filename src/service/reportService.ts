@@ -6,6 +6,7 @@ import { RunnableSequence } from '@langchain/core/runnables';
 import { createGemini, GEMINI_MODEL } from '../lib/gemini';
 
 import { collectSectionData } from './dataCollector';
+
 import {
   ReportSection,
   ALL_SECTIONS,
@@ -14,6 +15,7 @@ import {
   GenerateReportRequest,
   ExternalMetrics,
 } from 'src/types/index';
+
 import { prisma } from 'src/prisma/prisma';
 
 // ── Shared format rule ─────────────────────────────────────────────────────────
@@ -73,12 +75,17 @@ const HUMAN_TEMPLATES: Record<ReportSection, string> = {
 
 // ── Chain runner ──────────────────────────────────────────────────────────────
 
-async function runSectionChain(section: ReportSection, data: Record<string, unknown>): Promise<string> {
+async function runSectionChain(section: ReportSection, data: Record<string, unknown>): Promise<string | any> {
+  const result = await prisma.aiModel.findFirst({ select: { systemPrompt: true } });
+
+  const dbSections = result?.systemPrompt as unknown as Record<ReportSection, string>;
+
   const prompt = ChatPromptTemplate.fromMessages([
-    ['system', SECTION_PROMPTS[section]],
+    ['system', dbSections[section] || SECTION_PROMPTS[section]],
     ['human', HUMAN_TEMPLATES[section]],
   ]);
-  const chain = RunnableSequence.from([prompt, createGemini(), new StringOutputParser()]);
+  const chain = RunnableSequence.from([prompt, await createGemini(), new StringOutputParser()]);
+
   return chain.invoke({ data: JSON.stringify(data, null, 2) });
 }
 
@@ -123,25 +130,25 @@ export class ReportService {
     }
 
     // 3. Generate Gemini summaries in parallel
-    const sectionResults: SectionResult[] = await Promise.all(
+    const sectionResults: SectionResult[] | any = await Promise.all(
       collectedEntries.map(async ({ section, data }) => {
         const summaryData = section === 'campaign_recommendations' ? allSectionData : data;
         const summary = await runSectionChain(section, summaryData);
-        // logger.debug(`✓ ${section}`);
-        return { section, summary, data };
+
+        return { section, summary: summary, data };
       }),
     );
 
     const durationMs = Date.now() - t0;
 
-    await prisma.aiCampaignReport.create({
-      data: {
-        model: GEMINI_MODEL,
-        temperature: 0.2,
-        systemPrompt: `Sections: ${sections.join(', ')}`,
-        maxTokens: 2000,
-      },
-    });
+    // await prisma.aiCampaignReport.create({
+    //   data: {
+    //     model: GEMINI_MODEL,
+    //     temperature: 0.2,
+    //     systemPrompt: `Sections: ${sections.join(', ')}`,
+    //     maxTokens: 2000,
+    //   },
+    // });
 
     // logger.info('Report complete', { campaignId, durationMs });
 

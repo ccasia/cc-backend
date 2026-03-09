@@ -31,6 +31,7 @@ import logisticsRoute from './logisticsRoute';
 import creditTierRoute from './creditTierRoute';
 import dashboardRoute from './dashboardRoute';
 import { reportsRouter } from './reports';
+import aiRouter from './aiRoute';
 
 export const router = express.Router();
 
@@ -66,3 +67,4 @@ router.use('/logistics', logisticsRoute);
 router.use('/credit-tier', creditTierRoute);
 router.use('/dashboard', dashboardRoute);
 router.use('/reports', reportsRouter);
+router.use('/ai', aiRouter);
