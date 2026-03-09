@@ -151,31 +151,30 @@ export const getAllInvoices = async (req: Request, res: Response) => {
     const limitNum = parseInt(limit as string, 10);
     const skip = (pageNum - 1) * limitNum;
 
-    // Build where clause
-    const where: Prisma.InvoiceWhereInput = {};
-
-    if (status && status !== 'all') {
-      where.status = status as InvoiceStatus;
-    }
+    // Build base where clause (without status — used for computing statusCounts)
+    const baseWhere: Prisma.InvoiceWhereInput = {};
 
     // Date filter (single date or range) — endDate is exclusive (start of next day)
+    const hasDateFilter = !!startDate;
     if (startDate) {
       const start = new Date(startDate as string);
       if (endDate) {
-        where.dueDate = { gte: start, lt: new Date(endDate as string) };
+        baseWhere.dueDate = { gte: start, lt: new Date(endDate as string) };
       } else {
         // Single date fallback: cover 24 hours from start
-        where.dueDate = { gte: start, lt: new Date(start.getTime() + 86400000) };
+        baseWhere.dueDate = { gte: start, lt: new Date(start.getTime() + 86400000) };
       }
     }
 
-    // Search filter: only apply DB-level invoiceNumber filter when no JSON filters are needed
-    // (creator name and campaign name are filtered in-memory later)
-    // This is handled in the hasJsonFilters branch below
-
     if (invoiceIds) {
       const ids = invoiceIds.toString().split(',');
-      where.id = { in: ids };
+      baseWhere.id = { in: ids };
+    }
+
+    // Full where includes status filter on top of baseWhere
+    const fullWhere: Prisma.InvoiceWhereInput = { ...baseWhere };
+    if (status && status !== 'all') {
+      fullWhere.status = status as InvoiceStatus;
     }
 
     // Campaign name filter (will filter in memory after fetching)
@@ -193,9 +192,9 @@ export const getAllInvoices = async (req: Request, res: Response) => {
     let total;
 
     if (hasJsonFilters) {
-      // Fetch ALL invoices matching basic filters (status, date range) for JSON filtering
+      // Fetch ALL invoices matching base filters (date range, NO status) for JSON filtering + statusCounts
       invoices = await prisma.invoice.findMany({
-        where,
+        where: baseWhere,
         select: {
           id: true,
           invoiceNumber: true,
@@ -330,7 +329,23 @@ export const getAllInvoices = async (req: Request, res: Response) => {
         });
       }
 
-      // Calculate total after JSON filtering
+      // Compute statusCounts from the fully filtered (but not status-filtered) dataset
+      const statusCounts: Record<string, number> = {
+        total: invoicesWithCurrency.length,
+        paid: 0, approved: 0, pending: 0, overdue: 0, draft: 0, rejected: 0, failed: 0,
+      };
+      for (const inv of invoicesWithCurrency) {
+        if (inv.status in statusCounts) {
+          statusCounts[inv.status]++;
+        }
+      }
+
+      // Apply status filter (if user selected a tab)
+      if (status && status !== 'all') {
+        invoicesWithCurrency = invoicesWithCurrency.filter((inv) => inv.status === status);
+      }
+
+      // Calculate total after status filtering
       total = invoicesWithCurrency.length;
 
       // Apply pagination after filtering
@@ -344,13 +359,29 @@ export const getAllInvoices = async (req: Request, res: Response) => {
           total,
           totalPages: Math.ceil(total / limitNum),
         },
+        statusCounts,
       });
     } else {
       // No JSON filters - use efficient database-level pagination
-      total = await prisma.invoice.count({ where });
+      let statusCounts: Record<string, number> | undefined;
+
+      // If date filter is active, compute per-status counts from the DB
+      if (hasDateFilter) {
+        const statusKeys: InvoiceStatus[] = ['paid', 'approved', 'pending', 'overdue', 'draft', 'rejected', 'failed'];
+        const [totalCount, ...perStatusCounts] = await Promise.all([
+          prisma.invoice.count({ where: baseWhere }),
+          ...statusKeys.map((s) => prisma.invoice.count({ where: { ...baseWhere, status: s } })),
+        ]);
+        statusCounts = { total: totalCount };
+        statusKeys.forEach((key, i) => {
+          statusCounts![key] = perStatusCounts[i];
+        });
+      }
+
+      total = await prisma.invoice.count({ where: fullWhere });
 
       invoices = await prisma.invoice.findMany({
-        where,
+        where: fullWhere,
         skip,
         take: limitNum,
         select: {
@@ -459,6 +490,7 @@ export const getAllInvoices = async (req: Request, res: Response) => {
           total,
           totalPages: Math.ceil(total / limitNum),
         },
+        ...(statusCounts && { statusCounts }),
       });
     }
   } catch (error) {
