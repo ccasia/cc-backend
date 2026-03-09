@@ -9,6 +9,10 @@ import {
   getPitchRateData,
   getTimeToActivationData,
   getTimeToActivationCreators as getTimeToActivationCreatorsData,
+  getTimeToIgActivationData,
+  getTimeToIgActivationCreators as getTimeToIgActivationCreatorsData,
+  getTimeToTiktokActivationData,
+  getTimeToTiktokActivationCreators as getTimeToTiktokActivationCreatorsData,
   getPitchRateCreators as getPitchRateCreatorsData,
   getMediaKitActivationData,
   getCreatorSatisfactionData,
@@ -201,6 +205,66 @@ export const getTimeToActivationCreators = async (req: Request, res: Response) =
     return res.status(200).json({ success: true, data });
   } catch (error: any) {
     console.error('Error fetching time to activation creators:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch data' });
+  }
+};
+
+export const getTimeToIgActivation = async (req: Request, res: Response) => {
+  try {
+    const parsed = await parseDateRange(req);
+    if ('error' in parsed) return res.status(parsed.error.status).json(parsed.error.body);
+
+    const creditTierNames = parseCreditTiers(req);
+    const data = await getTimeToIgActivationData(parsed.startDate, parsed.endDate, parsed.granularity, creditTierNames);
+    return res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    console.error('Error fetching time to IG activation data:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch time to IG activation data' });
+  }
+};
+
+export const getTimeToIgActivationCreators = async (req: Request, res: Response) => {
+  try {
+    const startDate = new Date(req.query.startDate as string);
+    const endDate = new Date(req.query.endDate as string);
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      return res.status(400).json({ success: false, message: 'Invalid date format.' });
+    }
+    const creditTierNames = parseCreditTiers(req);
+    const data = await getTimeToIgActivationCreatorsData(startDate, endDate, creditTierNames);
+    return res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    console.error('Error fetching time to IG activation creators:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch data' });
+  }
+};
+
+export const getTimeToTiktokActivation = async (req: Request, res: Response) => {
+  try {
+    const parsed = await parseDateRange(req);
+    if ('error' in parsed) return res.status(parsed.error.status).json(parsed.error.body);
+
+    const creditTierNames = parseCreditTiers(req);
+    const data = await getTimeToTiktokActivationData(parsed.startDate, parsed.endDate, parsed.granularity, creditTierNames);
+    return res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    console.error('Error fetching time to TikTok activation data:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch time to TikTok activation data' });
+  }
+};
+
+export const getTimeToTiktokActivationCreators = async (req: Request, res: Response) => {
+  try {
+    const startDate = new Date(req.query.startDate as string);
+    const endDate = new Date(req.query.endDate as string);
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      return res.status(400).json({ success: false, message: 'Invalid date format.' });
+    }
+    const creditTierNames = parseCreditTiers(req);
+    const data = await getTimeToTiktokActivationCreatorsData(startDate, endDate, creditTierNames);
+    return res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    console.error('Error fetching time to TikTok activation creators:', error);
     return res.status(500).json({ success: false, message: 'Failed to fetch data' });
   }
 };

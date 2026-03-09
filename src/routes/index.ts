@@ -33,6 +33,8 @@ import npsFeedbackRoute from './npsFeedbackRoute';
 import dashboardRoute from './dashboardRoute';
 import analyticsV2Route from './analyticsV2Route';
 import discoveryRoute from './discoveryRoute';
+import { reportsRouter } from './reports';
+import aiRouter from './aiRoute';
 
 export const router = express.Router();
 
@@ -70,3 +72,5 @@ router.use('/nps-feedback', npsFeedbackRoute);
 router.use('/dashboard', dashboardRoute);
 router.use('/analytics/v2', analyticsV2Route);
 router.use('/discovery', discoveryRoute);
+router.use('/reports', reportsRouter);
+router.use('/ai', aiRouter);
