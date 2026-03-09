@@ -17,8 +17,6 @@ import { isLoggedIn } from '@middlewares/onlyLogin';
 import { Server } from 'socket.io';
 import '@services/uploadVideo';
 
-import { createAdapter } from '@socket.io/redis-adapter';
-
 import '@helper/processPitchVideo';
 import './helper/videoDraft';
 import './helper/videoDraftWorker';
@@ -144,7 +142,7 @@ app.use(passport.session());
 
 app.use(router);
 
-app.post('/webhooks/xero', express.raw({ type: 'application/json' }), async (req, res) => {
+app.post('/webhooks/xero', express.raw({ type: 'application/json', limit: '100mb' }), async (req, res) => {
   try {
     const xeroSignature = req.headers['x-xero-signature'];
     if (!xeroSignature) return res.status(401).send('Missing signature');
