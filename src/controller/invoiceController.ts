@@ -160,7 +160,7 @@ export const getAllInvoices = async (req: Request, res: Response) => {
 
     // Date range filter
     if (startDate && endDate) {
-      where.createdAt = {
+      where.dueDate = {
         gte: new Date(startDate as string),
         lte: new Date(endDate as string),
       };
@@ -519,7 +519,7 @@ export const getInvoicesByCampaignId = async (req: Request, res: Response) => {
 
     // Date range filter
     if (startDate && endDate) {
-      where.createdAt = {
+      where.dueDate = {
         gte: new Date(startDate as string),
         lte: new Date(endDate as string),
       };
