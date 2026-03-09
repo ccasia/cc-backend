@@ -66,11 +66,7 @@ export const normalizeKeywordTerm = (value?: string | null) =>
     .replace(/^['"`]+|['"`]+$/g, '')
     .replace(/\s+/g, ' ');
 
-const normalizeContentText = (value?: string | null) =>
-  (value || '')
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
-    .trim();
+const normalizeContentText = (value?: string | null) => (value || '').toLowerCase().replace(/\s+/g, ' ').trim();
 
 const normalizeKeywordComparableText = (value?: string | null) =>
   (value || '')

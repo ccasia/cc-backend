@@ -22,7 +22,13 @@ export const submitFeedback = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Feedback must be 2000 characters or less' });
     }
 
-    const result = await submitNpsFeedbackSafe(userId, rating, feedback, { deviceType, deviceModel, deviceVendor, os, browser });
+    const result = await submitNpsFeedbackSafe(userId, rating, feedback, {
+      deviceType,
+      deviceModel,
+      deviceVendor,
+      os,
+      browser,
+    });
     if (!result) {
       return res.status(409).json({ message: 'Feedback already submitted' });
     }
@@ -60,7 +66,17 @@ export const getAllFeedback = async (req: Request, res: Response) => {
       : undefined;
     const rating = req.query.rating ? parseInt(req.query.rating as string) : undefined;
 
-    const result = await getNpsFeedbackList({ page, limit, search, sortBy, sortOrder, startDate, endDate, userType, rating });
+    const result = await getNpsFeedbackList({
+      page,
+      limit,
+      search,
+      sortBy,
+      sortOrder,
+      startDate,
+      endDate,
+      userType,
+      rating,
+    });
 
     return res.status(200).json(result);
   } catch (error) {

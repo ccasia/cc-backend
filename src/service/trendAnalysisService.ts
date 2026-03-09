@@ -56,7 +56,7 @@ export function transformManualEntryToNormalizedInsight(entry: any): NormalizedI
     likes: entry.likes,
     comments: 0, // Manual entries don't track comments
     shares: entry.shares,
-    saved: entry.platform === 'Instagram' ? (entry.saved || 0) : undefined,
+    saved: entry.platform === 'Instagram' ? entry.saved || 0 : undefined,
     reach: undefined, // Manual entries don't track reach
   };
 }
@@ -72,7 +72,7 @@ export async function calculateDailyMetrics(
   campaignId: string,
   platform: 'Instagram' | 'TikTok' | 'All',
   insights: NormalizedInsight[],
-  manualEntries: any[] = []
+  manualEntries: any[] = [],
 ): Promise<DailyMetrics> {
   // Transform manual entries to NormalizedInsight format and filter by platform
   const transformedManualEntries: NormalizedInsight[] = manualEntries
@@ -85,7 +85,9 @@ export async function calculateDailyMetrics(
   // Combine API insights with manual entries
   const allInsights = [...insights, ...transformedManualEntries];
 
-  console.log(`📊 Calculating metrics for ${platform} (${insights.length} API insights + ${transformedManualEntries.length} manual entries = ${allInsights.length} total)...`);
+  console.log(
+    `📊 Calculating metrics for ${platform} (${insights.length} API insights + ${transformedManualEntries.length} manual entries = ${allInsights.length} total)...`,
+  );
 
   if (allInsights.length === 0) {
     console.warn(`⚠️  No insights to calculate for ${platform}`);
@@ -113,7 +115,7 @@ export async function calculateDailyMetrics(
       saved: acc.saved + (insight.saved || 0),
       reach: acc.reach + (insight.reach || 0),
     }),
-    { views: 0, likes: 0, comments: 0, shares: 0, saved: 0, reach: 0 }
+    { views: 0, likes: 0, comments: 0, shares: 0, saved: 0, reach: 0 },
   );
 
   // Calculate engagement rate based on platform
@@ -123,8 +125,7 @@ export async function calculateDailyMetrics(
     // If no reach data (e.g., manual entries), use views as fallback
     const denominator = totals.reach > 0 ? totals.reach : totals.views;
     if (denominator > 0) {
-      averageEngagementRate =
-        ((totals.likes + totals.comments + totals.shares + totals.saved) / denominator) * 100;
+      averageEngagementRate = ((totals.likes + totals.comments + totals.shares + totals.saved) / denominator) * 100;
     }
   } else if (platform === 'TikTok') {
     // TikTok: (likes + comments + shares) / views * 100
@@ -135,8 +136,7 @@ export async function calculateDailyMetrics(
     // All platforms: Use combined metric
     const denominator = totals.reach > 0 ? totals.reach : totals.views;
     if (denominator > 0) {
-      averageEngagementRate =
-        ((totals.likes + totals.comments + totals.shares + totals.saved) / denominator) * 100;
+      averageEngagementRate = ((totals.likes + totals.comments + totals.shares + totals.saved) / denominator) * 100;
     }
   }
 
@@ -145,9 +145,7 @@ export async function calculateDailyMetrics(
     let engagementRate = 0;
     if (platform === 'Instagram' && insight.reach && insight.reach > 0) {
       engagementRate =
-        ((insight.likes + insight.comments + insight.shares + (insight.saved || 0)) /
-          insight.reach) *
-        100;
+        ((insight.likes + insight.comments + insight.shares + (insight.saved || 0)) / insight.reach) * 100;
     } else if (insight.views > 0) {
       engagementRate = ((insight.likes + insight.comments + insight.shares) / insight.views) * 100;
     }
@@ -168,7 +166,9 @@ export async function calculateDailyMetrics(
   // Sort by views and take top 5
   const topCreators = creatorsWithEngagement.sort((a, b) => b.views - a.views).slice(0, 5);
 
-  console.log(`✅ Metrics calculated: ${allInsights.length} posts, avg engagement ${averageEngagementRate.toFixed(2)}%`);
+  console.log(
+    `✅ Metrics calculated: ${allInsights.length} posts, avg engagement ${averageEngagementRate.toFixed(2)}%`,
+  );
   console.log(`🏆 Top creator: ${topCreators[0]?.userName} with ${topCreators[0]?.views} views`);
 
   return {
@@ -191,7 +191,7 @@ export async function calculateDailyMetrics(
 export async function storeInsightSnapshot(
   campaignId: string,
   metrics: DailyMetrics,
-  snapshotDate: Date
+  snapshotDate: Date,
 ): Promise<void> {
   console.log(`💾 Storing snapshot for campaign ${campaignId}, platform ${metrics.platform}...`);
 
@@ -246,11 +246,7 @@ export async function storeInsightSnapshot(
  * Get engagement heatmap data for last N weeks
  * Includes both snapshot data and manual creator entries
  */
-export async function getEngagementHeatmap(
-  campaignId: string,
-  platform: string,
-  weeks: number = 8
-) {
+export async function getEngagementHeatmap(campaignId: string, platform: string, weeks = 8) {
   console.log(`📈 Fetching heatmap data for ${weeks} weeks...`);
 
   const startDate = dayjs().subtract(weeks, 'week').startOf('day').toDate();
@@ -297,10 +293,7 @@ export async function getEngagementHeatmap(
   });
 
   // Combine snapshot and manual entry data by date
-  const combinedDates = new Set([
-    ...Array.from(snapshotByDate.keys()),
-    ...Array.from(manualEntriesByDate.keys()),
-  ]);
+  const combinedDates = new Set([...Array.from(snapshotByDate.keys()), ...Array.from(manualEntriesByDate.keys())]);
 
   const heatmapData = Array.from(combinedDates).map((dateKey) => {
     const snapshot = snapshotByDate.get(dateKey);
@@ -316,7 +309,7 @@ export async function getEngagementHeatmap(
           shares: acc.shares + entry.shares,
           saved: acc.saved + (entry.saved || 0),
         }),
-        { views: 0, likes: 0, shares: 0, saved: 0 }
+        { views: 0, likes: 0, shares: 0, saved: 0 },
       );
 
       // Combine with snapshot totals
@@ -371,7 +364,7 @@ export async function getEngagementHeatmap(
           shares: acc.shares + entry.shares,
           saved: acc.saved + (entry.saved || 0),
         }),
-        { views: 0, likes: 0, shares: 0, saved: 0 }
+        { views: 0, likes: 0, shares: 0, saved: 0 },
       );
 
       // Calculate engagement rate for manual entries only
@@ -416,11 +409,7 @@ export async function getEngagementHeatmap(
 /**
  * Get top creators trend data for last N days
  */
-export async function getTopCreatorsTrend(
-  campaignId: string,
-  platform: string,
-  days: number = 7
-) {
+export async function getTopCreatorsTrend(campaignId: string, platform: string, days = 7) {
   console.log(`📈 Fetching top creators trend for ${days} days (platform: ${platform})...`);
 
   const startDate = dayjs().subtract(days, 'day').startOf('day').toDate();

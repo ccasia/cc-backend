@@ -47,7 +47,7 @@ function formatForDisplay(val: any): any {
 export function computeChanges(
   oldData: Record<string, any>,
   newData: Record<string, any>,
-  fields: FieldMapping[]
+  fields: FieldMapping[],
 ): FieldChange[] {
   const changes: FieldChange[] = [];
 

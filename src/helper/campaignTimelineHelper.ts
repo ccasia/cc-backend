@@ -165,12 +165,7 @@ async function createV4CampaignTimelines(tx: any, campaignId: string, options: T
  * @param timeline - Timeline array from frontend
  * @param options - Timeline options including posting dates
  */
-async function createDefaultCampaignTimelines(
-  tx: any,
-  campaignId: string,
-  timeline: any[],
-  options: TimelineOptions,
-) {
+async function createDefaultCampaignTimelines(tx: any, campaignId: string, timeline: any[], options: TimelineOptions) {
   if (!Array.isArray(timeline)) throw new Error('Timeline must be an array');
 
   const { postingStartDate, postingEndDate } = options;
@@ -216,12 +211,7 @@ async function createDefaultCampaignTimelines(
  * @param timeline - Timeline array from frontend (used for non-v4 campaigns)
  * @param options - Optional timeline options (submissionVersion, campaign dates, etc.)
  */
-export async function createCampaignTimelines(
-  tx: any,
-  campaignId: string,
-  timeline: any[],
-  options?: TimelineOptions,
-) {
+export async function createCampaignTimelines(tx: any, campaignId: string, timeline: any[], options?: TimelineOptions) {
   const isV4Campaign = options?.submissionVersion === 'v4';
 
   if (isV4Campaign) {

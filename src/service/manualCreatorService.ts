@@ -90,7 +90,20 @@ export const validateUrl = (url: string, expectedPlatform?: string): { isValid: 
 
 //Create a manual creator entry
 export const createManualCreatorEntry = async (input: CreateManualCreatorInput) => {
-  const { campaignId, creatorName, creatorUsername, platform, postUrl, views, likes, comments, shares, saved, createdBy, photoURL } = input;
+  const {
+    campaignId,
+    creatorName,
+    creatorUsername,
+    platform,
+    postUrl,
+    views,
+    likes,
+    comments,
+    shares,
+    saved,
+    createdBy,
+    photoURL,
+  } = input;
 
   const engagementRate = calculateEngagementRate(platform, views, likes, comments, shares, saved);
 

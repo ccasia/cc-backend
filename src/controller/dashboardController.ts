@@ -197,10 +197,7 @@ export const getDashboardStats = async (req: Request, res: Response) => {
           role: 'creator',
           status: 'active',
           creator: {
-            OR: [
-              { isFacebookConnected: true },
-              { isTiktokConnected: true },
-            ],
+            OR: [{ isFacebookConnected: true }, { isTiktokConnected: true }],
           },
         },
       }),
@@ -253,4 +250,3 @@ export const getDashboardStats = async (req: Request, res: Response) => {
     });
   }
 };
-

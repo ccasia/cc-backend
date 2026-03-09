@@ -9579,9 +9579,9 @@ export const markPCRAsReady = async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Error updating PCR ready status:', error);
-    return res.status(500).json({ 
+    return res.status(500).json({
       success: false,
-      message: 'Failed to update PCR ready status' 
+      message: 'Failed to update PCR ready status',
     });
   }
 };

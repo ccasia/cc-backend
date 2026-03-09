@@ -1,6 +1,6 @@
 import { reportService } from '@services/reportService';
 import { Router, Request, Response } from 'express';
-import { ReportSection, ALL_SECTIONS } from 'src/types/index';
+import { ReportSection, ALL_SECTIONS } from '../types/index';
 
 const VALID_SECTIONS = new Set<ReportSection>(ALL_SECTIONS);
 

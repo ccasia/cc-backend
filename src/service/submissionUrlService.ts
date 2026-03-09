@@ -10,7 +10,7 @@ const prisma = new PrismaClient();
  */
 export async function extractAndStoreSubmissionUrls(
   submissionId: string,
-  content: string
+  content: string,
 ): Promise<{ success: number; failed: number; invalid: number }> {
   console.log(`📝 Extracting URLs from submission ${submissionId}...`);
 
@@ -67,7 +67,7 @@ export async function extractAndStoreSubmissionUrls(
         } catch (error: any) {
           console.warn(
             `⚠️  Failed to resolve TikTok short code ${extracted.shortCode}, will use short code as fallback:`,
-            error.message
+            error.message,
           );
           // Keep using short code if resolution fails - the API will handle it
           finalMediaId = extracted.shortCode;
@@ -99,18 +99,14 @@ export async function extractAndStoreSubmissionUrls(
         },
       });
 
-      console.log(
-        `💾 Stored ${extracted.platform} URL for submission ${submissionId} (mediaId: ${finalMediaId})`
-      );
+      console.log(`💾 Stored ${extracted.platform} URL for submission ${submissionId} (mediaId: ${finalMediaId})`);
     } catch (error: any) {
       console.error(`❌ Failed to store URL ${extracted.postUrl}:`, error.message);
       failedCount++;
     }
   }
 
-  console.log(
-    `✨ Summary: ${validUrls.length} stored, ${invalidUrls.length} invalid, ${failedCount} failed`
-  );
+  console.log(`✨ Summary: ${validUrls.length} stored, ${invalidUrls.length} invalid, ${failedCount} failed`);
 
   return {
     success: validUrls.length - failedCount,
@@ -133,10 +129,7 @@ export async function getSubmissionUrls(submissionId: string) {
  * Get all posting URLs for a campaign (optionally filtered by platform)
  * Only returns URLs that have been posted (postingDate is not null)
  */
-export async function getCampaignSubmissionUrls(
-  campaignId: string,
-  platform?: 'Instagram' | 'TikTok'
-) {
+export async function getCampaignSubmissionUrls(campaignId: string, platform?: 'Instagram' | 'TikTok') {
   return prisma.submissionPostingUrl.findMany({
     where: {
       campaignId,

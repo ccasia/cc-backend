@@ -55,10 +55,7 @@ export const buildDiscoveryUserOrderBy = (
     }
   }
 
-  return [
-    { name: sortDirection },
-    { updatedAt: 'desc' as const },
-  ];
+  return [{ name: sortDirection }, { updatedAt: 'desc' as const }];
 };
 
 const getCreatorFollowersForSort = (creator: any) => {
@@ -75,11 +72,7 @@ const getCreatorFollowersForSort = (creator: any) => {
   return Math.max(instagramFollowers, tiktokFollowers);
 };
 
-export const sortDiscoveryRows = (
-  rows: any[],
-  sortBy: DiscoverySortBy,
-  sortDirection: DiscoverySortDirection,
-) => {
+export const sortDiscoveryRows = (rows: any[], sortBy: DiscoverySortBy, sortDirection: DiscoverySortDirection) => {
   const rowsCopy = [...(rows || [])];
 
   rowsCopy.sort((left, right) => {

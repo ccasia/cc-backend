@@ -63,7 +63,7 @@ export interface UrlData {
 export function normalizeInsightResults(
   results: BatchInsightResult[],
   urls: UrlData[],
-  platform: 'Instagram' | 'TikTok'
+  platform: 'Instagram' | 'TikTok',
 ): NormalizedInsight[] {
   // Filter out errors
   const validResults = results.filter((r) => !r.error && r.insight);

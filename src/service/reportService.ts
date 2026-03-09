@@ -14,7 +14,7 @@ import {
   CampaignReportResult,
   GenerateReportRequest,
   ExternalMetrics,
-} from 'src/types/index';
+} from '../types/index';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
