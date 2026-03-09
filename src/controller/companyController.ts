@@ -542,7 +542,7 @@ export const handleLinkNewPackage = async (req: Request, res: Response) => {
 
       let customPackage: CustomPackage | null = null;
       let fixedPackage: Package | null = null;
-      let newPrice = parseFloat(packageValue);
+      const newPrice = parseFloat(packageValue);
       let newPackageName = '';
 
       // Parallelize independent operations

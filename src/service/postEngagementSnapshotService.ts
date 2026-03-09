@@ -140,16 +140,12 @@ export async function capturePostEngagementSnapshots(): Promise<{
           }
 
           // Fetch current insights for this post
-          const snapshot = await capturePostSnapshot(
-            campaign.id,
-            postingUrl,
-            snapshotDayToCapture
-          );
+          const snapshot = await capturePostSnapshot(campaign.id, postingUrl, snapshotDayToCapture);
 
           if (snapshot) {
             await storePostSnapshot(snapshot);
             console.log(
-              `         ✅ Captured Day ${snapshotDayToCapture} snapshot: ER ${snapshot.metrics.engagementRate.toFixed(2)}%`
+              `         ✅ Captured Day ${snapshotDayToCapture} snapshot: ER ${snapshot.metrics.engagementRate.toFixed(2)}%`,
             );
             stats.captured++;
           } else {
@@ -188,7 +184,7 @@ export async function capturePostEngagementSnapshots(): Promise<{
 async function capturePostSnapshot(
   campaignId: string,
   postingUrl: any,
-  snapshotDay: number
+  snapshotDay: number,
 ): Promise<PostSnapshot | null> {
   try {
     const platform = postingUrl.platform as 'Instagram' | 'TikTok';
@@ -240,7 +236,7 @@ async function capturePostSnapshot(
  */
 function extractMetrics(
   insight: any,
-  platform: 'Instagram' | 'TikTok'
+  platform: 'Instagram' | 'TikTok',
 ): {
   views: number;
   likes: number;
@@ -279,7 +275,7 @@ function extractMetrics(
     likes = insight.video?.like_count || 0;
     comments = insight.video?.comment_count || 0;
     shares = insight.video?.share_count || 0;
-    saved = 0; 
+    saved = 0;
     reach = views;
   }
 
@@ -328,10 +324,8 @@ async function storePostSnapshot(snapshot: PostSnapshot): Promise<void> {
  * Get post engagement snapshots for a campaign
  * Returns snapshots organized by submission and snapshot day
  */
-export async function getPostEngagementSnapshots(
-  campaignId: string
-): Promise<
-  Array<{
+export async function getPostEngagementSnapshots(campaignId: string): Promise<
+  {
     submissionId: string;
     userId: string;
     postUrl: string;
@@ -342,7 +336,7 @@ export async function getPostEngagementSnapshots(
       day15?: { er: number; views: number; likes: number; comments: number; shares: number };
       day30?: { er: number; views: number; likes: number; comments: number; shares: number };
     };
-  }>
+  }[]
 > {
   const snapshots = await prisma.postEngagementSnapshot.findMany({
     where: { campaignId },
@@ -398,7 +392,7 @@ export async function getPostEngagementSnapshots(
 export async function captureManualSnapshot(
   campaignId: string,
   postUrl: string,
-  snapshotDay: 7 | 15 | 30
+  snapshotDay: 7 | 15 | 30,
 ): Promise<void> {
   console.log(`\n📸 Manual snapshot capture for post: ${postUrl} (Day ${snapshotDay})`);
 

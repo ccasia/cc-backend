@@ -654,7 +654,7 @@ export const updateV4Submissions = async (
     const newSubmissions: any[] = [];
 
     const submissionsToCreate = Math.max(0, newUgcVideos - preservedCount);
-    
+
     for (let i = 1; i <= submissionsToCreate; i++) {
       newSubmissions.push({
         campaignId,

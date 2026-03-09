@@ -410,15 +410,15 @@ export const getRemainingCredits = async (clientId: string): Promise<number | nu
     }
 
     const totalCredits = client.subscriptions.reduce((sum, sub) => sum + (sub.totalCredits || 0), 0);
-    
+
     const usedCredits = client.subscriptions.reduce((sum, sub) => {
       const subCreditsUtilized = sub.campaign.reduce(
         (campaignSum, campaign) => campaignSum + (campaign.creditsUtilized || 0),
-        0
+        0,
       );
       return sum + subCreditsUtilized;
     }, 0);
-    
+
     const remainingCredits = totalCredits - usedCredits;
 
     return Math.max(0, remainingCredits); // Ensure we don't return negative credits

@@ -1,8 +1,5 @@
 import { Request, Response } from 'express';
-import {
-  getPostEngagementSnapshots,
-  captureManualSnapshot,
-} from '@services/postEngagementSnapshotService';
+import { getPostEngagementSnapshots, captureManualSnapshot } from '@services/postEngagementSnapshotService';
 
 /**
  * Get post engagement snapshots for a campaign
