@@ -1,5 +1,6 @@
+import { PrismaClient } from '@prisma/client';
 import { Request, Response } from 'express';
-import { prisma } from 'src/prisma/prisma';
+// import { prisma } from 'src/prisma/prisma';
 import { ReportSection } from 'src/types/index';
 
 interface AISettingsRequest extends Request {
@@ -10,6 +11,8 @@ interface AISettingsRequest extends Request {
     sectionPrompts: Record<ReportSection, string>;
   };
 }
+
+const prisma = new PrismaClient();
 
 export const aiSettings = async (req: Request, res: Response) => {
   try {
