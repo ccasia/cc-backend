@@ -9,8 +9,11 @@
 // DB data is always the fallback so reports never fail on missing API data.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { prisma } from 'src/prisma/prisma';
+// import { prisma } from 'src/prisma/prisma';
 import { ReportSection, ExternalMetrics } from '../types/index';
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
