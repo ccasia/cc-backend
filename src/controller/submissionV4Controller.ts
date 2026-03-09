@@ -200,13 +200,9 @@ const updateSubmissionStatusBasedOnContent = async (submissionId: string) => {
 
   // Update submission status if it changed
   if (newSubmissionStatus !== submission.status) {
-    const isFinalApproval = newSubmissionStatus === 'APPROVED' || newSubmissionStatus === 'CLIENT_APPROVED';
     await prisma.submission.update({
       where: { id: submissionId },
-      data: {
-        status: newSubmissionStatus as any,
-        approvedAt: isFinalApproval ? new Date() : undefined,
-      },
+      data: { status: newSubmissionStatus as any },
     });
 
     console.log(`📝 Updated submission ${submissionId} status from ${submission.status} to ${newSubmissionStatus}`);
@@ -488,10 +484,6 @@ export const approveV4Submission = async (req: Request, res: Response) => {
     // Update caption if provided (only for admin actions)
     if (caption !== undefined) {
       updateData.caption = caption || null;
-    }
-
-    if (newStatus === 'APPROVED' || newStatus === 'CLIENT_APPROVED') {
-      updateData.approvedAt = new Date();
     }
 
     updates.push(
@@ -827,7 +819,6 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
         where: { id: submissionId },
         data: {
           status: newSubmissionStatus as SubmissionStatus,
-          approvedAt: newSubmissionStatus === 'CLIENT_APPROVED' ? new Date() : undefined,
         },
       }),
     );
