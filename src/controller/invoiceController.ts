@@ -158,12 +158,15 @@ export const getAllInvoices = async (req: Request, res: Response) => {
       where.status = status as InvoiceStatus;
     }
 
-    // Date range filter
-    if (startDate && endDate) {
-      where.dueDate = {
-        gte: new Date(startDate as string),
-        lte: new Date(endDate as string),
-      };
+    // Date filter (single date or range) — endDate is exclusive (start of next day)
+    if (startDate) {
+      const start = new Date(startDate as string);
+      if (endDate) {
+        where.dueDate = { gte: start, lt: new Date(endDate as string) };
+      } else {
+        // Single date fallback: cover 24 hours from start
+        where.dueDate = { gte: start, lt: new Date(start.getTime() + 86400000) };
+      }
     }
 
     // Search filter: only apply DB-level invoiceNumber filter when no JSON filters are needed
@@ -517,12 +520,15 @@ export const getInvoicesByCampaignId = async (req: Request, res: Response) => {
       where.status = status as InvoiceStatus;
     }
 
-    // Date range filter
-    if (startDate && endDate) {
-      where.dueDate = {
-        gte: new Date(startDate as string),
-        lte: new Date(endDate as string),
-      };
+    // Date filter (single date or range) — endDate is exclusive (start of next day)
+    if (startDate) {
+      const start = new Date(startDate as string);
+      if (endDate) {
+        where.dueDate = { gte: start, lt: new Date(endDate as string) };
+      } else {
+        // Single date fallback: cover 24 hours from start
+        where.dueDate = { gte: start, lt: new Date(start.getTime() + 86400000) };
+      }
     }
 
     // Search filter (invoice number only - JSON fields filtered in memory)
