@@ -340,6 +340,7 @@ export const createCampaign = async (req: Request, res: Response) => {
             campaignType: campaignType,
             description: campaignDescription,
             status: campaignStage as CampaignStatus,
+            publishedAt: campaignStage === 'ACTIVE' || campaignStage === 'SCHEDULED' ? new Date() : null,
             origin: requestedOrigin === 'CLIENT' ? 'CLIENT' : 'ADMIN',
             submissionVersion: submissionVersion || undefined, // Set v4 if client user is added as manager
             isCreditTier: isCreditTier,
@@ -956,6 +957,7 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
             campaignType: campaignType,
             description: campaignDescription,
             status: campaignStage as CampaignStatus,
+            publishedAt: campaignStage === 'ACTIVE' || campaignStage === 'SCHEDULED' ? new Date() : null,
             brandAbout: brandAbout || '',
             productName: productName || '',
             websiteLink: websiteLink || '',
@@ -3768,6 +3770,7 @@ export const changeCampaignStage = async (req: Request, res: Response) => {
         },
         data: {
           status: 'SCHEDULED',
+          publishedAt: new Date(),
         },
         include: {
           campaignAdmin: true,
@@ -3873,6 +3876,7 @@ export const closeCampaign = async (req: Request, res: Response) => {
       },
       data: {
         status: 'COMPLETED',
+        completedAt: new Date(),
       },
       include: {
         campaignAdmin: true,
@@ -9017,6 +9021,7 @@ export const activateClientCampaign = async (req: Request, res: Response) => {
       },
       data: {
         status: 'ACTIVE',
+        publishedAt: new Date(),
         campaignType,
         rawFootage,
         photos,

@@ -21,6 +21,13 @@ import {
   getRejectionReasons,
   getRequireChangesRate,
   getTopShortlistedCreators,
+  getBrandsMetrics,
+  trackUserFlow,
+  getClientApprovalMetrics,
+  getClientCampaignMetrics,
+  getClientJourneyMetrics,
+  getClientShortlistMetrics,
+  getClientSupportMetrics,
 } from '@controllers/analyticsV2Controller';
 import { isLoggedIn } from '@middlewares/onlyLogin';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
@@ -48,5 +55,14 @@ router.get('/credits-per-cs', isLoggedIn, isSuperAdmin, getCreditsPerCS);
 router.get('/rejection-reasons', isLoggedIn, isSuperAdmin, getRejectionReasons);
 router.get('/require-changes-rate', isLoggedIn, isSuperAdmin, getRequireChangesRate);
 router.get('/top-shortlisted-creators', isLoggedIn, isSuperAdmin, getTopShortlistedCreators);
+
+router.post('/tracker', isLoggedIn, trackUserFlow);
+
+router.get('/client/brands', isLoggedIn, isSuperAdmin, getBrandsMetrics);
+router.get('/client/approve', isLoggedIn, isSuperAdmin, getClientApprovalMetrics);
+router.get('/client/journey', isLoggedIn, isSuperAdmin, getClientJourneyMetrics);
+router.get('/client/support', isLoggedIn, isSuperAdmin, getClientSupportMetrics);
+router.get('/client/campaigns', isLoggedIn, isSuperAdmin, getClientCampaignMetrics);
+router.get('/client/shortlist', isLoggedIn, isSuperAdmin, getClientShortlistMetrics);
 
 export default router;
