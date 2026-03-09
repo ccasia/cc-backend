@@ -32,6 +32,7 @@ import creditTierRoute from './creditTierRoute';
 import npsFeedbackRoute from './npsFeedbackRoute';
 import dashboardRoute from './dashboardRoute';
 import { reportsRouter } from './reports';
+import aiRouter from './aiRoute';
 import analyticsV2Route from './analyticsV2Route';
 import discoveryRoute from './discoveryRoute';
 
@@ -70,5 +71,6 @@ router.use('/credit-tier', creditTierRoute);
 router.use('/nps-feedback', npsFeedbackRoute);
 router.use('/dashboard', dashboardRoute);
 router.use('/reports', reportsRouter);
+router.use('/ai', aiRouter);
 router.use('/analytics/v2', analyticsV2Route);
 router.use('/discovery', discoveryRoute);
