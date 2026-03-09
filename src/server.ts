@@ -17,8 +17,6 @@ import { isLoggedIn } from '@middlewares/onlyLogin';
 import { Server } from 'socket.io';
 import '@services/uploadVideo';
 
-import { createAdapter } from '@socket.io/redis-adapter';
-
 import '@helper/processPitchVideo';
 import './helper/videoDraft';
 import './helper/videoDraftWorker';
