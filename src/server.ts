@@ -41,6 +41,7 @@ import crypto from 'crypto';
 import { TokenSet } from 'xero-node';
 import { prisma } from './prisma/prisma';
 import { xero } from '@configs/xero';
+import { logChange } from '@services/campaignServices';
 import connection, { subClient } from '@configs/redis';
 import { users } from '@utils/activeUsers';
 
@@ -197,11 +198,28 @@ app.post('/webhooks/xero', express.raw({ type: 'application/json', limit: '100mb
       const xeroInvoicesIds = xeroInvoices.map((inv) => inv.invoiceID);
 
       if (xeroInvoicesIds.length) {
+        // Query invoices not yet paid before updating, so we only log newly-paid ones
+        const notYetPaid = await prisma.invoice.findMany({
+          where: { xeroInvoiceId: { in: xeroInvoicesIds as string[] }, status: { not: 'paid' } },
+          select: { invoiceNumber: true, campaignId: true, user: { select: { name: true } } },
+        });
+
         const invoices = await prisma.invoice.updateMany({
           where: { xeroInvoiceId: { in: xeroInvoicesIds as string[] } },
           data: { status: 'paid' },
         });
         console.log('Updated invoices:', invoices);
+
+        // Log only invoices that actually transitioned to paid
+        for (const inv of notYetPaid) {
+          logChange(
+            `Invoice ${inv.invoiceNumber} for ${inv.user?.name || 'Unknown Creator'} was marked as paid`,
+            inv.campaignId,
+            undefined,
+            undefined,
+            { systemLabel: 'Xero' },
+          );
+        }
       }
     }
 
