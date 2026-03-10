@@ -15,16 +15,12 @@ export const logChange = async (
 ) => {
   const adminId = req?.session.userid || id;
 
-  if (adminId === undefined) {
-    throw new Error('Admin ID is undefined');
-  }
-
   try {
     await prisma.campaignLog.create({
       data: {
         message: message,
         campaignId: campaignId,
-        adminId: adminId,
+        ...(adminId && { adminId }),
         ...(metadata && { metadata }),
       },
     });
