@@ -2629,6 +2629,8 @@ export const getV4SubmissionById = async (req: Request, res: Response) => {
           },
         },
         feedback: {
+          // NOTE: `replies` relation is added in Prisma schema; until `prisma generate` runs,
+          // TS types may not include it yet. Keep this cast to avoid blocking builds.
           include: {
             admin: {
               select: {
@@ -2637,7 +2639,22 @@ export const getV4SubmissionById = async (req: Request, res: Response) => {
                 role: true,
               },
             },
-          },
+            replies: {
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    name: true,
+                    role: true,
+                    photoURL: true,
+                  },
+                },
+              },
+              orderBy: {
+                createdAt: 'asc',
+              },
+            },
+          } as any,
           orderBy: {
             createdAt: 'desc',
           },

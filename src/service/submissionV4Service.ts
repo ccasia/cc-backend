@@ -73,6 +73,7 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
             id: true,
             name: true,
             email: true,
+            photoURL: true,
           },
         },
         video: {
@@ -85,6 +86,7 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
             feedbackAt: true,
             createdAt: true,
             adminId: true,
+            resubmittedFromId: true,
             admin: {
               select: {
                 id: true,
@@ -92,6 +94,7 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
               },
             },
           },
+          orderBy: { createdAt: 'desc' as const },
         },
         photos: {
           select: {
@@ -129,9 +132,25 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
                 id: true,
                 name: true,
                 role: true,
+                photoURL: true,
               },
             },
-          },
+            replies: {
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    name: true,
+                    role: true,
+                    photoURL: true,
+                  },
+                },
+              },
+              orderBy: {
+                createdAt: 'asc',
+              },
+            },
+          } as any,
           orderBy: {
             createdAt: 'desc',
           },
@@ -177,18 +196,37 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
             id: true,
             name: true,
             email: true,
+            photoURL: true,
           },
         },
         feedback: {
+          // NOTE: `replies` relation is added in Prisma schema; until `prisma generate` runs,
+          // TS types may not include it yet. Keep this cast to avoid blocking builds.
           include: {
             admin: {
               select: {
                 id: true,
                 name: true,
                 role: true,
+                photoURL: true,
               },
             },
-          },
+            replies: {
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    name: true,
+                    role: true,
+                    photoURL: true,
+                  },
+                },
+              },
+              orderBy: {
+                createdAt: 'asc',
+              },
+            },
+          } as any,
           orderBy: {
             createdAt: 'desc',
           },
@@ -203,7 +241,7 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
     const allSubmissions = [...v4Submissions, ...uniqueAgreementSubmissions];
 
     // Sort combined submissions
-    allSubmissions.sort((a, b) => {
+    allSubmissions.sort((a: any, b: any) => {
       // Agreement forms first, then by type, then by content order
       if (a.submissionType.type === 'AGREEMENT_FORM' && b.submissionType.type !== 'AGREEMENT_FORM') {
         return -1;

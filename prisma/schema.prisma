@@ -40,6 +40,7 @@ model User {
   creator            Creator?
   creatorAgreement   CreatorAgreement[]
   feedback           Feedback[]
+  feedbackReplies    FeedbackReply[]
   finance            Finance?
   invoice            Invoice[]           @relation("CreatedBy")
   sentMessages       Message[]           @relation("UserMessages")
@@ -1244,6 +1245,11 @@ model Video {
 
   // Previous video draft URLs
   previousDrafts String[] // Array of previous video URLs
+
+  // Reupload version chain: links to the video this one replaced
+  resubmittedFromId String?
+  resubmittedFrom   Video?  @relation("VideoResubmissions", fields: [resubmittedFromId], references: [id])
+  resubmissions     Video[] @relation("VideoResubmissions")
 }
 
 model RawFootage {
@@ -1377,6 +1383,21 @@ model Feedback {
   updatedAt          DateTime      @updatedAt
   admin              User          @relation(fields: [adminId], references: [id])
   submission         Submission    @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  replies            FeedbackReply[]
+}
+
+model FeedbackReply {
+  id        String   @id @unique @default(cuid())
+  content   String
+  feedbackId String
+  userId    String
+  createdAt DateTime @default(now())
+
+  feedback  Feedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([feedbackId])
+  @@index([userId])
 }
 
 model Invoice {
