@@ -79,7 +79,7 @@ app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 app.use(
   fileUpload({
-    limits: { fileSize: 500 * 1024 * 1024 },
+    limits: { fileSize: 1024 * 1024 * 1024 },
     useTempFiles: true,
     tempFileDir: '/tmp/',
   }),
