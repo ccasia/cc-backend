@@ -405,7 +405,7 @@ export const bulkInvoiceWorker = new Worker(
           }
 
           await logChange(
-            `Bulk approved invoice ${updatedInvoice.invoiceNumber}`,
+            `Bulk approved invoice ${updatedInvoice.invoiceNumber} for ${updatedInvoice.creator.user?.name || 'Unknown Creator'}`,
             updatedInvoice.campaignId,
             undefined,
             adminId,

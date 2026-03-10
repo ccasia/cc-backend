@@ -1025,6 +1025,15 @@ export const updateInvoiceStatus = async (req: Request, res: Response) => {
     });
     res.status(200).json(invoice);
 
+    if (status !== 'failed' && status !== 'rejected') {
+      const creatorName = invoice.user?.name || 'Unknown Creator';
+      await logChange(
+        `Invoice ${invoice.invoiceNumber || invoice.id} for ${creatorName} status changed to ${status}`,
+        invoice.campaignId,
+        req,
+      );
+    }
+
     const { title, message } = notificationInvoiceStatus(invoice.campaign.name);
 
     // Notify Finance Admins and Creator
@@ -1420,8 +1429,27 @@ export const updateInvoice = async (req: Request, res: Response) => {
           campaignName: updatedInvoice.campaign.name,
         });
       }
+
       return updatedInvoice;
     });
+
+    // Log invoice status changes to campaign activity log
+    if (status && status !== 'failed') {
+      const creatorName = invoice.creator?.user?.name || 'Unknown Creator';
+      if (status === 'rejected') {
+        await logChange(
+          `Rejected invoice ${invoice.invoiceNumber} for ${creatorName}`,
+          invoice.campaignId,
+          req,
+        );
+      } else {
+        await logChange(
+          `Invoice ${invoice.invoiceNumber} for ${creatorName} status changed to ${status}`,
+          invoice.campaignId,
+          req,
+        );
+      }
+    }
 
     const creatorUser = invoice.creator.user;
     const creatorPaymentForm = creatorUser?.paymentForm;
