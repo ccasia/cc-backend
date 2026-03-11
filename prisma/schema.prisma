@@ -92,6 +92,10 @@ model User {
   userFlow      UserFlow[]
   activatedAt   DateTime?
   passwordSetAt DateTime?
+
+  userFlow      UserFlow[]
+  activatedAt   DateTime?
+  passwordSetAt DateTime?
 }
 
 model EmailVerification {
@@ -2277,4 +2281,19 @@ model SubscriptionHistory {
   createdAt DateTime @default(now())
 
   actionByUserId String?
+}
+
+model AiModel {
+  id String @id @unique @default(cuid())
+
+  model           String
+  temperature     Float
+  systemPrompt    Json?
+  maxOutputTokens Int
+  apiKey          String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("ai_model")
 }

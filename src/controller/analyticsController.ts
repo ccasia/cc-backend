@@ -58,11 +58,8 @@ const getFilters = (req: Request) => {
     packageWhere = {
       subscriptions: {
         some: {
-          status: 'ACTIVE', // Only look at current package ??
           OR: [
-            // Match Standard Package Name
             { package: { name: { equals: packageType as string, mode: 'insensitive' } } },
-            // OR Match Custom Package (if type is 'Custom')
             { customPackage: { customName: { contains: packageType as string, mode: 'insensitive' } } },
           ],
         },
@@ -74,24 +71,61 @@ const getFilters = (req: Request) => {
   return { dateFilter, dateCondition, packageWhere };
 };
 
-export const getClientActivationMetrics = async (req: Request, res: Response) => {
+export const getBrandsMetrics = async (req: Request, res: Response) => {
   try {
     const { dateCondition, packageWhere } = getFilters(req);
 
     const userPackageFilter = Object.keys(packageWhere).length ? { client: { company: packageWhere } } : {};
+    const companyPackageFilter = Object.keys(packageWhere).length ? packageWhere : {};
 
-    const [totalInvited, totalActivated, activatedUsers] = await Promise.all([
-      prisma.user.count({ where: { role: 'client', ...dateCondition, ...userPackageFilter } }),
-      prisma.user.count({ where: { role: 'client', status: 'active', ...dateCondition, ...userPackageFilter } }),
-      prisma.user.findMany({
-        where: { role: 'client', status: 'active', ...dateCondition, ...userPackageFilter },
-        select: { createdAt: true, activatedAt: true },
-      }),
-    ]);
+    const [totalCompanies, v4Companies, v2Companies, inactiveCompanies, totalInvited, totalActivated, activatedUsers] =
+      await Promise.all([
+        prisma.company.count({ where: { ...dateCondition, ...companyPackageFilter } }),
+
+        prisma.company.count({
+          where: {
+            clients: { some: {} },
+            ...dateCondition,
+            AND: [
+              { subscriptions: { some: { status: 'ACTIVE' } } },
+              Object.keys(companyPackageFilter).length ? companyPackageFilter : {},
+            ],
+          },
+        }),
+
+        prisma.company.count({
+          where: {
+            clients: { none: {} },
+            ...dateCondition,
+            AND: [
+              { subscriptions: { some: { status: 'ACTIVE' } } },
+              Object.keys(companyPackageFilter).length ? companyPackageFilter : {},
+            ],
+          },
+        }),
+
+        prisma.company.count({
+          where: {
+            ...dateCondition,
+            AND: [
+              { subscriptions: { none: { status: 'ACTIVE' } } },
+              Object.keys(companyPackageFilter).length ? companyPackageFilter : {},
+            ],
+          },
+        }),
+
+        prisma.user.count({ where: { role: 'client', ...dateCondition, ...userPackageFilter } }),
+        prisma.user.count({ where: { role: 'client', status: 'active', ...dateCondition, ...userPackageFilter } }),
+        prisma.user.findMany({
+          where: { role: 'client', status: 'active', ...dateCondition, ...userPackageFilter },
+          select: { createdAt: true, activatedAt: true },
+        }),
+      ]);
 
     let totalHours = 0;
     let actionUnder24h = 0;
     let actionUnder7d = 0;
+
     activatedUsers.forEach((user) => {
       if (user.activatedAt && user.createdAt) {
         const diffHours = dayjs(user.activatedAt).diff(dayjs(user.createdAt), 'hour');
@@ -110,7 +144,17 @@ export const getClientActivationMetrics = async (req: Request, res: Response) =>
 
     const rateUnder7d = activatedUsers.length ? Math.round((actionUnder7d / activatedUsers.length) * 100) : 0;
 
-    res.status(200).json({ totalInvited, totalActivated, activationRate, avgTimeHours, rateUnder24h, rateUnder7d });
+    res.status(200).json({
+      totalCompanies,
+      v4Companies,
+      v2Companies,
+      inactiveCompanies,
+      totalActivated,
+      activationRate,
+      avgTimeHours,
+      rateUnder24h,
+      rateUnder7d,
+    });
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch activation metrics' });
   }
@@ -118,7 +162,9 @@ export const getClientActivationMetrics = async (req: Request, res: Response) =>
 
 export const getClientApprovalMetrics = async (req: Request, res: Response) => {
   try {
-    const { dateCondition } = getFilters(req);
+    const { dateCondition, packageWhere } = getFilters(req);
+
+    const userPackageFilter = Object.keys(packageWhere).length ? { campaign: { company: packageWhere } } : {};
 
     const submissions = await prisma.submission.findMany({
       where: {
@@ -126,11 +172,17 @@ export const getClientApprovalMetrics = async (req: Request, res: Response) => {
         campaign: { submissionVersion: 'v4' },
         status: { in: ['APPROVED', 'CLIENT_APPROVED'] },
         ...dateCondition,
+        ...userPackageFilter,
       },
-      select: {
-        id: true,
-        createdAt: true,
-        completedAt: true,
+      include: {
+        campaign: {
+          select: {
+            name: true,
+            company: { select: { name: true } },
+            brand: { select: { name: true } },
+            campaignBrief: { select: { images: true } },
+          },
+        },
         _count: { select: { feedback: true } },
       },
     });
@@ -156,9 +208,12 @@ export const getClientApprovalMetrics = async (req: Request, res: Response) => {
 
     const scatterPoints = submissions
       .map((sub) => ({
-        name: `Sub ${sub.id.slice(-4)}`,
+        id: sub.id,
         x: sub.createdAt && sub.completedAt ? dayjs(sub.completedAt).diff(dayjs(sub.createdAt), 'hour') : 0,
         y: 1 + sub._count.feedback,
+        campaignName: sub.campaign.name,
+        clientName: sub.campaign.company?.name || sub.campaign.brand?.name || 'Unknown',
+        image: sub.campaign.campaignBrief?.images || '',
       }))
       .filter((point) => point.x > 0);
 
@@ -177,33 +232,34 @@ export const getClientApprovalMetrics = async (req: Request, res: Response) => {
 
 export const getClientJourneyMetrics = async (req: Request, res: Response) => {
   try {
-    const { dateCondition } = getFilters(req);
+    const { dateCondition, packageWhere } = getFilters(req);
+
+    const userPackageFilter = Object.keys(packageWhere).length ? { user: { client: { company: packageWhere } } } : {};
 
     const abandonedSessions = await prisma.userFlow.findMany({
       where: {
         flow: 'CAMPAIGN_CREATION',
         status: 'ABANDONED',
         ...dateCondition,
+        ...userPackageFilter,
       },
-      select: { sessionId: true },
-      distinct: ['sessionId'],
+      select: { sessionId: true, step: true },
     });
 
-    const abandonedSessionIds = abandonedSessions
-      .map((session) => session.sessionId)
-      .filter((id): id is string => id !== null);
+    const dropoffs: Record<string, number> = {};
+    const abandonedSessionIds: string[] = [];
 
-    const [dropoffs, avgTimes, filledFields] = await Promise.all([
+    abandonedSessions.forEach((session) => {
+      if (session.sessionId) abandonedSessionIds.push(session.sessionId);
+
+      // Count exactly 1 drop-off per step, no duplicates
+      dropoffs[session.step] = (dropoffs[session.step] || 0) + 1;
+    });
+
+    const [avgTimes, filledFields] = await Promise.all([
       prisma.userFlow.groupBy({
         by: ['step'],
-        where: { flow: 'CAMPAIGN_CREATION', status: 'ABANDONED', ...dateCondition },
-        _count: { step: true },
-        orderBy: { _count: { step: 'desc' } },
-        take: 5,
-      }),
-      prisma.userFlow.groupBy({
-        by: ['step'],
-        where: { flow: 'CAMPAIGN_CREATION', timeSpentSeconds: { gt: 0 }, ...dateCondition },
+        where: { flow: 'CAMPAIGN_CREATION', timeSpentSeconds: { gt: 0 }, ...dateCondition, ...userPackageFilter },
         _avg: { timeSpentSeconds: true },
       }),
       prisma.userFlow.findMany({
@@ -211,8 +267,9 @@ export const getClientJourneyMetrics = async (req: Request, res: Response) => {
           flow: 'CAMPAIGN_CREATION',
           meta: { not: { equals: null } },
           status: 'COMPLETED',
-          sessionId: { notIn: abandonedSessionIds },
+          ...(abandonedSessionIds.length > 0 ? { sessionId: { notIn: abandonedSessionIds } } : {}),
           ...dateCondition,
+          ...userPackageFilter,
         },
         select: { meta: true },
       }),
@@ -231,7 +288,7 @@ export const getClientJourneyMetrics = async (req: Request, res: Response) => {
     });
 
     const results = {
-      dropoffs: dropoffs.map((d) => ({ name: d.step, value: d._count.step })),
+      dropoffs: Object.entries(dropoffs).map(([name, value]) => ({ name, value })),
       avgTimes: avgTimes.map((d) => ({ name: d.step, value: Math.round(d._avg.timeSpentSeconds || 0) })),
       skippedFields: Object.entries(skippedFields)
         .map(([name, value]) => ({ name, value }))
@@ -246,31 +303,38 @@ export const getClientJourneyMetrics = async (req: Request, res: Response) => {
   }
 };
 
-interface MonthlyStats {
-  name: string;
-  Upgrades: number;
-  Renewals: number;
-  Downgrades: number;
-}
-
 export const getClientSupportMetrics = async (req: Request, res: Response) => {
   try {
-    const { dateCondition } = getFilters(req);
+    const { dateCondition, packageWhere } = getFilters(req);
+
+    const userPackageFilter = Object.keys(packageWhere).length ? { client: { company: packageWhere } } : {};
+    const companyPackageFilter = Object.keys(packageWhere).length ? packageWhere : {};
 
     const [bugCount, subscriptions, nps, subHistoryWithDates] = await Promise.all([
-      prisma.bugs.count({ where: { user: { role: 'client' }, ...dateCondition } }),
+      prisma.bugs.count({ where: { user: { role: 'client', ...userPackageFilter }, ...dateCondition } }),
       prisma.subscriptionHistory.groupBy({
         by: ['changeType'],
-        where: dateCondition,
+        where: {
+          company: companyPackageFilter,
+          ...dateCondition,
+        },
         _count: { id: true },
       }),
       prisma.npsFeedback.aggregate({
-        where: { userType: 'CLIENT', ...dateCondition },
+        where: {
+          userType: 'CLIENT',
+          user: userPackageFilter,
+          ...dateCondition,
+        },
         _avg: { rating: true },
         _count: { id: true },
       }),
       prisma.subscriptionHistory.findMany({
-        where: { changeType: { in: ['RENEWAL', 'UPGRADE', 'DOWNGRADE'] }, ...dateCondition },
+        where: {
+          changeType: { in: ['RENEWAL', 'UPGRADE', 'DOWNGRADE'] },
+          company: companyPackageFilter,
+          ...dateCondition,
+        },
         select: {
           createdAt: true,
           changeType: true,
@@ -295,7 +359,18 @@ export const getClientSupportMetrics = async (req: Request, res: Response) => {
 
     let totalGapDays = 0;
     let gapCount = 0;
-    const monthlyData: { [key: string]: MonthlyStats } = {};
+
+    const monthlyRenewals: any[] = [];
+    const monthMap: Record<string, any> = {};
+
+    // Loop backwards from 5 to 0 to get chronological order (e.g., Oct, Nov, Dec, Jan, Feb, Mar)
+    for (let i = 11; i >= 0; i--) {
+      const monthName = dayjs().subtract(i, 'month').format('MMM YYYY');
+      const newMonthData = { name: monthName, Upgrades: 0, Renewals: 0, Downgrades: 0 };
+
+      monthlyRenewals.push(newMonthData);
+      monthMap[monthName] = newMonthData; // Keep a reference map for O(1) lookups
+    }
 
     subHistoryWithDates.forEach((history) => {
       const oldSubscription = history.company?.subscriptions[0];
@@ -305,15 +380,15 @@ export const getClientSupportMetrics = async (req: Request, res: Response) => {
         gapCount++;
       }
 
-      const month = dayjs(history.createdAt).format('MMM');
+      const month = dayjs(history.createdAt).format('MMM YYYY');
 
-      if (!monthlyData[month]) {
-        monthlyData[month] = { name: month, Upgrades: 0, Renewals: 0, Downgrades: 0 };
+      if (!monthMap[month]) {
+        monthMap[month] = { name: month, Upgrades: 0, Renewals: 0, Downgrades: 0 };
       }
 
-      if (history.changeType === 'UPGRADE') monthlyData[month].Upgrades++;
-      if (history.changeType === 'RENEWAL') monthlyData[month].Renewals++;
-      if (history.changeType === 'DOWNGRADE') monthlyData[month].Downgrades++;
+      if (history.changeType === 'UPGRADE') monthMap[month].Upgrades++;
+      if (history.changeType === 'RENEWAL') monthMap[month].Renewals++;
+      if (history.changeType === 'DOWNGRADE') monthMap[month].Downgrades++;
     });
 
     // Convert the object to an array for Recharts
@@ -324,7 +399,6 @@ export const getClientSupportMetrics = async (req: Request, res: Response) => {
     const npsScore = nps._avg.rating ? Number(nps._avg.rating.toFixed(1)) : 0;
     const totalNpsReports = nps._count.id || 0;
     const avgDaysToNextPackage = gapCount ? Math.round(totalGapDays / gapCount) : 0;
-    const monthlyRenewals = Object.values(monthlyData);
 
     res.json({
       totalTickets: bugCount,
@@ -431,16 +505,19 @@ export const getClientCampaignMetrics = async (req: Request, res: Response) => {
 
 export const getClientShortlistMetrics = async (req: Request, res: Response) => {
   try {
-    const { dateCondition } = getFilters(req);
+    const { dateCondition, packageWhere } = getFilters(req);
 
-    const [statusCounts, reasonsData, timeData, fullyUtilizedCampaigns] = await Promise.all([
-      prisma.pitch.groupBy({
-        by: ['status'],
-        where: { campaign: { submissionVersion: 'v4' }, ...dateCondition },
-        _count: { id: true },
-      }),
+    const pitchPackageFilter = Object.keys(packageWhere).length ? { campaign: { company: packageWhere } } : {};
+    const campaignPackageFilter = Object.keys(packageWhere).length ? { company: packageWhere } : {};
+
+    const [reasonsData, timeData, fullyUtilizedCampaigns] = await Promise.all([
       prisma.pitch.findMany({
-        where: { status: 'REJECTED', campaign: { submissionVersion: 'v4' } },
+        where: {
+          status: 'REJECTED',
+          campaign: { submissionVersion: 'v4' },
+          ...dateCondition,
+          ...pitchPackageFilter,
+        },
         select: { rejectionReason: true, customRejectionText: true },
       }),
       prisma.pitch.findMany({
@@ -450,25 +527,37 @@ export const getClientShortlistMetrics = async (req: Request, res: Response) => 
             submissionVersion: 'v4',
           },
           ...dateCondition,
+          ...pitchPackageFilter,
+        },
+        select: {
+          createdAt: true,
+          completedAt: true,
+          campaign: {
+            select: {
+              name: true,
+              company: { select: { name: true } },
+              campaignBrief: { select: { images: true } },
+            },
+          },
         },
       }),
       prisma.campaign.findMany({
-        where: { origin: 'CLIENT', creditsPending: 0, campaignCredits: { gt: 0 }, ...dateCondition },
+        where: {
+          origin: 'CLIENT',
+          creditsPending: 0,
+          campaignCredits: { gt: 0 },
+          ...dateCondition,
+          ...campaignPackageFilter,
+        },
         select: {
           createdAt: true,
+          company: { select: { name: true } },
           creatorAgreement: { select: { completedAt: true }, orderBy: { completedAt: 'desc' }, take: 1 },
         },
       }),
     ]);
 
-    let approved = 0,
-      rejected = 0;
-
-    statusCounts.forEach((group) => {
-      if (group.status === 'APPROVED') approved += group._count.id;
-      if (group.status === 'REJECTED') rejected += group._count.id;
-    });
-
+    // rejection reasons
     const reasons: Record<string, number> = {};
 
     reasonsData.forEach((p) => {
@@ -482,35 +571,118 @@ export const getClientShortlistMetrics = async (req: Request, res: Response) => 
       reasons[reason] = (reasons[reason] || 0) + 1;
     });
 
-    let totalHours = 0,
-      timeCount = 0;
-
-    timeData.forEach((p) => {
-      if (p.createdAt && p.completedAt) {
-        totalHours += dayjs(p.completedAt).diff(dayjs(p.createdAt), 'hour');
-        timeCount++;
-      }
-    });
-
+    // selection phase tracker
     let selectionPhaseHours = 0;
     let selectionPhaseCount = 0;
 
-    fullyUtilizedCampaigns.forEach((camp) => {
-      const lastAgreement = camp.creatorAgreement[0];
-      if (camp.createdAt && lastAgreement?.completedAt) {
-        selectionPhaseHours += dayjs(lastAgreement.completedAt).diff(dayjs(camp.createdAt), 'hour');
+    const companySelectionStats: Record<string, { totalHours: number; count: number }> = {};
+    const monthlySelection: Record<string, { totalHours: number; count: number }> = {};
+
+    for (let i = 5; i >= 0; i--) {
+      monthlySelection[dayjs().subtract(i, 'month').format('MMM YYYY')] = { totalHours: 0, count: 0 };
+    }
+
+    fullyUtilizedCampaigns.forEach((campaign) => {
+      const lastAgreement = campaign.creatorAgreement[0];
+      if (campaign.createdAt && lastAgreement?.completedAt) {
+        const diffHours = dayjs(lastAgreement.completedAt).diff(dayjs(campaign.createdAt), 'hour');
+        selectionPhaseHours += diffHours;
         selectionPhaseCount++;
+
+        const company = campaign.company?.name || 'Unknown Brand';
+        if (!companySelectionStats[company]) companySelectionStats[company] = { totalHours: 0, count: 0 };
+        companySelectionStats[company].totalHours += diffHours;
+        companySelectionStats[company].count++;
+
+        const month = dayjs(lastAgreement.completedAt).format('MMM YYYY');
+        if (monthlySelection[month]) {
+          monthlySelection[month].totalHours += diffHours;
+          monthlySelection[month].count++;
+        }
       }
     });
 
-    const trendData = timeData.slice(0, 5).map((p, i) => ({
-      name: `Pitch ${i + 1}`,
-      hours: p.createdAt && p.completedAt ? dayjs(p.completedAt).diff(dayjs(p.createdAt), 'hour') : 0,
-    }));
+    // turnaround trend
+    const turnaroundMonths: Record<string, any> = {};
+
+    for (let i = 11; i >= 0; i--) {
+      turnaroundMonths[dayjs().subtract(i, 'month').format('MMM YY')] = {
+        totalHours: 0,
+        count: 0,
+        campaigns: {},
+      };
+    }
+
+    let overallTotalHours = 0,
+      turnaroundCount = 0;
+
+    timeData.forEach((p) => {
+      if (p.createdAt && p.completedAt) {
+        const hours = dayjs(p.completedAt).diff(dayjs(p.createdAt), 'hour');
+        const month = dayjs(p.completedAt).format('MMM YY');
+        const campaignName = p.campaign?.name || 'Unknown Campaign';
+        const clientName = p.campaign?.company?.name || 'Unknown Client';
+        const image = p.campaign?.campaignBrief?.images || '';
+
+        overallTotalHours += hours;
+        turnaroundCount++;
+
+        if (turnaroundMonths[month]) {
+          turnaroundMonths[month].totalHours += hours;
+          turnaroundMonths[month].count++;
+
+          if (!turnaroundMonths[month].campaigns[campaignName]) {
+            turnaroundMonths[month].campaigns[campaignName] = {
+              name: campaignName,
+              clientName,
+              image,
+              totalHours: 0,
+              count: 0,
+              min: hours,
+              max: hours,
+            };
+          }
+
+          const campaignStats = turnaroundMonths[month].campaigns[campaignName];
+          campaignStats.totalHours += hours;
+          campaignStats.count++;
+          if (hours < campaignStats.min) campaignStats.min = hours;
+          if (hours > campaignStats.max) campaignStats.max = hours;
+        }
+      }
+    });
+
+    type CampaignStats = { name: string; clientName: string; image: any; avg: number; min: number; max: number };
+
+    const trendData = Object.entries(turnaroundMonths).map(([month, stats]) => {
+      const platformAvg = stats.count > 0 ? Math.round(stats.totalHours / stats.count) : 0;
+
+      const campaignsArray: CampaignStats[] = Object.entries(stats.campaigns).map(([name, cStats]: [string, any]) => ({
+        name,
+        clientName: cStats.clientName,
+        image: cStats.image,
+        avg: Math.round(cStats.totalHours / cStats.count),
+        min: cStats.min,
+        max: cStats.max,
+      }));
+
+      campaignsArray.sort((a, b) => a.avg - b.avg);
+
+      const fastestCampaign = campaignsArray.length > 0 ? campaignsArray[0] : null;
+      const slowestCampaign = campaignsArray.length > 0 ? campaignsArray[campaignsArray.length - 1] : null;
+
+      return {
+        name: month,
+        average: platformAvg > 0 ? platformAvg : null,
+        slowestAvg: slowestCampaign ? slowestCampaign.avg : null,
+        slowestCampaign,
+        fastestAvg: fastestCampaign ? fastestCampaign.avg : null,
+        fastestCampaign,
+      };
+    });
 
     const results = {
-      acceptanceRate: approved + rejected > 0 ? Math.round((approved / (approved + rejected)) * 100) : 0,
-      avgTurnaroundHours: timeCount ? Math.round(totalHours / timeCount) : 0,
+      avgTurnaroundHours: turnaroundCount ? Math.round(overallTotalHours / turnaroundCount) : 0,
       rejectionReasons: Object.entries(reasons)
         .map(([name, value]) => ({ name, value }))
         .sort((a, b) => b.value - a.value)
