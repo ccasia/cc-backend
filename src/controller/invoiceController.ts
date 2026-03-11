@@ -1382,6 +1382,11 @@ export const updateInvoice = async (req: Request, res: Response) => {
 
   try {
     const invoice = await prisma.$transaction(async (tx) => {
+      const oldInvoice = await tx.invoice.findUnique({
+        where: { id: invoiceId },
+        select: { amount: true, status: true },
+      });
+
       const updatedInvoice = await tx.invoice.update({
         where: { id: invoiceId },
         data: {
@@ -1430,11 +1435,14 @@ export const updateInvoice = async (req: Request, res: Response) => {
         });
       }
 
-      return updatedInvoice;
+      return { ...updatedInvoice, _oldAmount: oldInvoice?.amount, _oldStatus: oldInvoice?.status };
     });
 
-    // Log invoice status changes to campaign activity log
-    if (status && status !== 'failed') {
+    const oldAmount = invoice._oldAmount;
+    const oldStatus = invoice._oldStatus;
+
+    // Log invoice status changes to campaign activity log (only if status actually changed)
+    if (status && status !== 'failed' && oldStatus !== status) {
       const creatorName = invoice.creator?.user?.name || 'Unknown Creator';
       if (status === 'rejected') {
         await logChange(
@@ -1449,6 +1457,42 @@ export const updateInvoice = async (req: Request, res: Response) => {
           req,
         );
       }
+    }
+
+    // Log invoice amount changes to campaign activity log
+    const newAmount = parseFloat(totalAmount as any);
+    if (oldAmount != null && totalAmount && oldAmount.toFixed(2) !== newAmount.toFixed(2)) {
+      const creatorName = invoice.creator?.user?.name || 'Unknown Creator';
+      const admin = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
+      const adminName = admin?.name || 'Admin';
+
+      const agreement = invoice.creator?.user?.creatorAgreement?.find(
+        (a: any) => a.campaignId === campaignId,
+      );
+      const currency = agreement?.currency || 'MYR';
+      const getCurrencySymbol = (code: string) => {
+        switch (code) {
+          case 'SGD':
+          case 'AUD':
+          case 'USD':
+            return '$';
+          case 'MYR':
+            return 'RM';
+          case 'JPY':
+            return '¥';
+          case 'IDR':
+            return 'Rp';
+          default:
+            return 'RM';
+        }
+      };
+      const sym = getCurrencySymbol(currency);
+
+      await logChange(
+        `${adminName} changed the amount on invoice ${invoice.invoiceNumber} from ${sym}${oldAmount.toFixed(2)} to ${sym}${newAmount.toFixed(2)} for ${creatorName}`,
+        invoice.campaignId,
+        req,
+      );
     }
 
     const creatorUser = invoice.creator.user;
