@@ -14,9 +14,9 @@ export const GEMINI_MODEL = (process.env.GEMINI_MODEL as GeminiModelName) || 'ge
  * @param maxTokens    Max output tokens (default 1500)
  */
 export async function createGemini(temperature = 0.2, maxTokens = 1500): Promise<ChatGoogleGenerativeAI> {
-  if (!process.env.GOOGLE_API_KEY) {
-    throw new Error('GOOGLE_API_KEY is not set in .env');
-  }
+  // if (!process.env.GOOGLE_API_KEY) {
+  //   throw new Error('GOOGLE_API_KEY is not set in .env');
+  // }
 
   const aiModel = await prisma.aiModel.findFirst();
 
