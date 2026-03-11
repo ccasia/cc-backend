@@ -1,6 +1,9 @@
+import { PrismaClient } from '@prisma/client';
 import { Request, Response } from 'express';
-import { prisma } from 'src/prisma/prisma';
-import { ReportSection } from 'src/types/index';
+
+import { ReportSection } from '../types/index';
+
+const prisma = new PrismaClient();
 
 interface AISettingsRequest extends Request {
   body: {
