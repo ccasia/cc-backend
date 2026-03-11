@@ -2319,6 +2319,7 @@ interface RejectionRateRow {
   campaignId: string;
   campaignName: string;
   packageName: string;
+  campaignStatus: string;
   rejected: number;
   total: number;
   campaignImages: unknown;
@@ -2333,16 +2334,13 @@ export const getClientRejectionRateData = async (startDate?: Date, endDate?: Dat
           c.id AS "campaignId",
           c.name AS "campaignName",
           COALESCE(pkg.name, cpkg."customName", 'Custom') AS "packageName",
+          c.status AS "campaignStatus",
           COUNT(CASE WHEN p."rejectedByClientId" IS NOT NULL THEN 1 END)::int AS "rejected",
           COUNT(p.id)::int AS "total",
           cb.images AS "campaignImages"
-        FROM "Pitch" p
-        INNER JOIN "Campaign" c ON c.id = p."campaignId"
-        LEFT JOIN "CampaignBrief" cb ON cb."campaignId" = c.id
-        LEFT JOIN "Subscription" sub ON sub.id = c."subscriptionId"
-        LEFT JOIN "Package" pkg ON pkg.id = sub."packageId"
-        LEFT JOIN "CustomPackage" cpkg ON cpkg.id = sub."customPackageId"
-        WHERE c."submissionVersion" = 'v4'
+        FROM "Campaign" c
+        LEFT JOIN "Pitch" p
+          ON p."campaignId" = c.id
           AND (
             p."rejectedByClientId" IS NOT NULL
             OR p."approvedByClientId" IS NOT NULL
@@ -2351,32 +2349,41 @@ export const getClientRejectionRateData = async (startDate?: Date, endDate?: Dat
           )
           AND p."createdAt" >= ${startDate}
           AND p."createdAt" <= ${endDate}
-        GROUP BY c.id, c.name, COALESCE(pkg.name, cpkg."customName", 'Custom'), cb.images
-        ORDER BY (COUNT(CASE WHEN p."rejectedByClientId" IS NOT NULL THEN 1 END)::float / NULLIF(COUNT(p.id), 0)::float) DESC
+        LEFT JOIN "CampaignBrief" cb ON cb."campaignId" = c.id
+        LEFT JOIN "Subscription" sub ON sub.id = c."subscriptionId"
+        LEFT JOIN "Package" pkg ON pkg.id = sub."packageId"
+        LEFT JOIN "CustomPackage" cpkg ON cpkg.id = sub."customPackageId"
+        WHERE c."submissionVersion" = 'v4'
+          AND c.status IN ('ACTIVE', 'PAUSED', 'COMPLETED')
+        GROUP BY c.id, c.name, COALESCE(pkg.name, cpkg."customName", 'Custom'), c.status, cb.images
+        ORDER BY (COUNT(CASE WHEN p."rejectedByClientId" IS NOT NULL THEN 1 END)::float / NULLIF(COUNT(p.id), 0)::float) DESC NULLS LAST
       `
     : await prisma.$queryRaw<RejectionRateRow[]>`
         SELECT
           c.id AS "campaignId",
           c.name AS "campaignName",
           COALESCE(pkg.name, cpkg."customName", 'Custom') AS "packageName",
+          c.status AS "campaignStatus",
           COUNT(CASE WHEN p."rejectedByClientId" IS NOT NULL THEN 1 END)::int AS "rejected",
           COUNT(p.id)::int AS "total",
           cb.images AS "campaignImages"
-        FROM "Pitch" p
-        INNER JOIN "Campaign" c ON c.id = p."campaignId"
-        LEFT JOIN "CampaignBrief" cb ON cb."campaignId" = c.id
-        LEFT JOIN "Subscription" sub ON sub.id = c."subscriptionId"
-        LEFT JOIN "Package" pkg ON pkg.id = sub."packageId"
-        LEFT JOIN "CustomPackage" cpkg ON cpkg.id = sub."customPackageId"
-        WHERE c."submissionVersion" = 'v4'
+        FROM "Campaign" c
+        LEFT JOIN "Pitch" p
+          ON p."campaignId" = c.id
           AND (
             p."rejectedByClientId" IS NOT NULL
             OR p."approvedByClientId" IS NOT NULL
             OR p."maybeByClientId" IS NOT NULL
             OR p.status = 'SENT_TO_CLIENT'
           )
-        GROUP BY c.id, c.name, COALESCE(pkg.name, cpkg."customName", 'Custom'), cb.images
-        ORDER BY (COUNT(CASE WHEN p."rejectedByClientId" IS NOT NULL THEN 1 END)::float / NULLIF(COUNT(p.id), 0)::float) DESC
+        LEFT JOIN "CampaignBrief" cb ON cb."campaignId" = c.id
+        LEFT JOIN "Subscription" sub ON sub.id = c."subscriptionId"
+        LEFT JOIN "Package" pkg ON pkg.id = sub."packageId"
+        LEFT JOIN "CustomPackage" cpkg ON cpkg.id = sub."customPackageId"
+        WHERE c."submissionVersion" = 'v4'
+          AND c.status IN ('ACTIVE', 'PAUSED', 'COMPLETED')
+        GROUP BY c.id, c.name, COALESCE(pkg.name, cpkg."customName", 'Custom'), c.status, cb.images
+        ORDER BY (COUNT(CASE WHEN p."rejectedByClientId" IS NOT NULL THEN 1 END)::float / NULLIF(COUNT(p.id), 0)::float) DESC NULLS LAST
       `;
 
   const breakdown = rows.map((row) => {
@@ -2388,6 +2395,7 @@ export const getClientRejectionRateData = async (startDate?: Date, endDate?: Dat
       campaign: row.campaignName,
       campaignImage,
       package: row.packageName,
+      status: row.campaignStatus,
       rate: row.total > 0 ? Math.round((row.rejected / row.total) * 1000) / 10 : 0,
       rejected: row.rejected,
       total: row.total,
@@ -2411,6 +2419,7 @@ export const getClientRejectionRateData = async (startDate?: Date, endDate?: Dat
         FROM "Pitch" p
         INNER JOIN "Campaign" c ON c.id = p."campaignId"
         WHERE c."submissionVersion" = 'v4'
+          AND c.status IN ('ACTIVE', 'PAUSED', 'COMPLETED')
           AND (
             p."rejectedByClientId" IS NOT NULL
             OR p."approvedByClientId" IS NOT NULL
@@ -2431,6 +2440,7 @@ export const getClientRejectionRateData = async (startDate?: Date, endDate?: Dat
         FROM "Pitch" p
         INNER JOIN "Campaign" c ON c.id = p."campaignId"
         WHERE c."submissionVersion" = 'v4'
+          AND c.status IN ('ACTIVE', 'PAUSED', 'COMPLETED')
           AND (
             p."rejectedByClientId" IS NOT NULL
             OR p."approvedByClientId" IS NOT NULL
