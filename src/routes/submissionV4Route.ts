@@ -21,7 +21,11 @@ import {
   getSubmissionStatusInfo,
   updateSubmissionDueDate,
   getCaptionHistory,
+  getComments,
+  createComment,
+  toggleAgree,
 } from '../controller/submissionV4Controller';
+
 import { isLoggedIn } from '../middleware/onlyLogin';
 import { isAdmin } from '../middleware/onlySuperadmin';
 import { isClient } from '@middlewares/clientOnly';
@@ -83,5 +87,9 @@ router.get('/content/feedback/:contentType/:contentId', isLoggedIn, getIndividua
 
 // Caption history endpoint
 router.get('/:submissionId/caption-history', isLoggedIn, getCaptionHistory);
+
+router.get('/submission/:submissionId/comments', isLoggedIn, getComments);
+router.post('/submission/:submissionId/comments', isLoggedIn, createComment);
+router.post('/comments/:commentId/agree', isLoggedIn, isClient, toggleAgree);
 
 export default router;

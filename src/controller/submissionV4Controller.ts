@@ -2912,3 +2912,91 @@ export const getCaptionHistory = async (req: Request, res: Response) => {
     });
   }
 };
+
+export const getComments = async (req: Request, res: Response) => {
+  const { submissionId } = req.params;
+  const user = await prisma.user.findUnique({ where: { id: req.session.userid } });
+
+  if (!user) return res.status(401).send('Unauthorized');
+
+  let roleFilter = {};
+
+  if (user.role === 'client') {
+    roleFilter = { in: ['admin', 'client'] };
+  } else if (user.role === 'creator') {
+    roleFilter = { in: ['admin'] };
+  } else {
+    roleFilter = {};
+  }
+
+  try {
+    const comments = await prisma.submissionComment.findMany({
+      where: {
+        submissionId,
+        parentId: null,
+        user: { role: roleFilter },
+      },
+      orderBy: { createdAt: 'asc' },
+      include: {
+        user: { select: { id: true, name: true, role: true } },
+        agreedBy: { select: { userId: true } },
+        replies: {
+          where: { user: { role: roleFilter } },
+          orderBy: { createdAt: 'asc' },
+          include: { user: { select: { id: true, name: true, role: true } } },
+        },
+      },
+    });
+    return res.status(200).json(comments);
+  } catch (error) {
+    return res.status(400).json({ error: 'Failed to fetch comments' });
+  }
+};
+
+export const createComment = async (req: Request, res: Response) => {
+  const { submissionId } = req.params;
+  const { text, parentId, timestamp } = req.body;
+  const userId = req.session.userid;
+
+  try {
+    const newComment = await prisma.submissionComment.create({
+      data: {
+        text,
+        timestamp,
+        submissionId,
+        parentId,
+        userId: userId as string,
+      },
+      include: {
+        user: { select: { id: true, name: true, role: true } },
+      },
+    });
+    return res.status(201).json(newComment);
+  } catch (error) {
+    return res.status(400).json({ error: 'Failed to create comment' });
+  }
+};
+
+export const toggleAgree = async (req: Request, res: Response) => {
+  const { commentId } = req.params;
+  const userId = req.session.userid as string;
+
+  try {
+    const existing = await prisma.commentAgreement.findUnique({
+      where: { commentId_userId: { commentId, userId } },
+    });
+
+    if (existing) {
+      await prisma.commentAgreement.delete({ where: { id: existing.id } });
+      return res.status(200).json({ agreed: false });
+    } else {
+      await prisma.commentAgreement.create({
+        data: { commentId, userId },
+      });
+      return res.status(200).json({ agreed: true });
+    }
+  } catch (error) {
+    return res.status(500).json({ error: 'Failed to toggle agreement' });
+  }
+};
+
