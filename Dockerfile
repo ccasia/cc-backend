@@ -49,6 +49,7 @@ COPY . .
 # Generate Prisma client
 RUN npx prisma generate
 
+
 # Build the application
 RUN yarn build
 
