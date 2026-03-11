@@ -14,9 +14,12 @@ import {
   CampaignReportResult,
   GenerateReportRequest,
   ExternalMetrics,
-} from 'src/types/index';
+} from '../types/index';
 
-import { prisma } from 'src/prisma/prisma';
+import { PrismaClient } from '@prisma/client';
+
+// import { prisma } from 'src/prisma/prisma';
+const prisma = new PrismaClient();
 
 // ── Shared format rule ─────────────────────────────────────────────────────────
 
