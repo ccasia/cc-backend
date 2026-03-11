@@ -931,8 +931,8 @@ model CampaignLog {
   message    String
   metadata   Json?
   campaignId String
-  adminId    String
-  admin      User     @relation(fields: [adminId], references: [id])
+  adminId    String?
+  admin      User?    @relation(fields: [adminId], references: [id])
   campaign   Campaign @relation(fields: [campaignId], references: [id])
 }
 
