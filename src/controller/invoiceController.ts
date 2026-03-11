@@ -1382,6 +1382,11 @@ export const updateInvoice = async (req: Request, res: Response) => {
 
   try {
     const invoice = await prisma.$transaction(async (tx) => {
+      const oldInvoice = await tx.invoice.findUnique({
+        where: { id: invoiceId },
+        select: { amount: true, status: true, dueDate: true, bankAcc: true, task: true, campaignId: true },
+      });
+
       const updatedInvoice = await tx.invoice.update({
         where: { id: invoiceId },
         data: {
@@ -1430,11 +1435,15 @@ export const updateInvoice = async (req: Request, res: Response) => {
         });
       }
 
-      return updatedInvoice;
+      return { ...updatedInvoice, _oldAmount: oldInvoice?.amount, _oldStatus: oldInvoice?.status, _oldInvoice: oldInvoice };
     });
 
-    // Log invoice status changes to campaign activity log
-    if (status && status !== 'failed') {
+    const oldAmount = invoice._oldAmount;
+    const oldStatus = invoice._oldStatus;
+    const oldInvoice = invoice._oldInvoice;
+
+    // Log invoice status changes to campaign activity log (only if status actually changed)
+    if (status && status !== 'failed' && oldStatus !== status) {
       const creatorName = invoice.creator?.user?.name || 'Unknown Creator';
       if (status === 'rejected') {
         await logChange(
@@ -1447,6 +1456,95 @@ export const updateInvoice = async (req: Request, res: Response) => {
           `Invoice ${invoice.invoiceNumber} for ${creatorName} status changed to ${status}`,
           invoice.campaignId,
           req,
+        );
+      }
+    }
+
+    // Log invoice amount changes to campaign activity log
+    const newAmount = parseFloat(totalAmount as any);
+    if (oldAmount != null && totalAmount && oldAmount.toFixed(2) !== newAmount.toFixed(2)) {
+      const creatorName = invoice.creator?.user?.name || 'Unknown Creator';
+      const admin = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
+      const adminName = admin?.name || 'Admin';
+
+      const agreement = invoice.creator?.user?.creatorAgreement?.find(
+        (a: any) => a.campaignId === campaignId,
+      );
+      const currency = agreement?.currency || 'MYR';
+      const getCurrencySymbol = (code: string) => {
+        switch (code) {
+          case 'SGD':
+          case 'AUD':
+          case 'USD':
+            return '$';
+          case 'MYR':
+            return 'RM';
+          case 'JPY':
+            return '¥';
+          case 'IDR':
+            return 'Rp';
+          default:
+            return 'RM';
+        }
+      };
+      const sym = getCurrencySymbol(currency);
+
+      await logChange(
+        `${adminName} changed the amount on invoice ${invoice.invoiceNumber} from ${sym}${oldAmount.toFixed(2)} to ${sym}${newAmount.toFixed(2)} for ${creatorName}`,
+        invoice.campaignId,
+        req,
+      );
+    }
+
+    // Log invoice detail changes (due date, bank info, task fields)
+    {
+      const oldBankAcc = typeof oldInvoice?.bankAcc === 'object' && oldInvoice.bankAcc !== null ? oldInvoice.bankAcc as Record<string, any> : {};
+      const oldTask = typeof oldInvoice?.task === 'object' && oldInvoice.task !== null ? oldInvoice.task as Record<string, any> : {};
+      const newBankAcc = typeof bankInfo === 'object' && bankInfo !== null ? bankInfo as Record<string, any> : {};
+      const newTask = typeof items[0] === 'object' && items[0] !== null ? items[0] as Record<string, any> : {};
+
+      const fieldDefs: { key: string; label: string; oldVal: any; newVal: any }[] = [
+        { key: 'dueDate', label: 'Due Date', oldVal: oldInvoice?.dueDate, newVal: dueDate },
+        { key: 'bankName', label: 'Bank Name', oldVal: oldBankAcc.bankName, newVal: newBankAcc.bankName },
+        { key: 'payTo', label: 'Recipient Name', oldVal: oldBankAcc.payTo, newVal: newBankAcc.payTo },
+        { key: 'accountNumber', label: 'Account Number', oldVal: oldBankAcc.accountNumber, newVal: newBankAcc.accountNumber },
+        { key: 'accountEmail', label: 'Payment Notification Email', oldVal: oldBankAcc.accountEmail, newVal: newBankAcc.accountEmail },
+        { key: 'clientName', label: 'Client Name', oldVal: oldTask.clientName, newVal: newTask.clientName },
+        { key: 'campaignName', label: 'Campaign Name', oldVal: oldTask.campaignName, newVal: newTask.campaignName },
+        { key: 'service', label: 'Service', oldVal: oldTask.service, newVal: newTask.service },
+      ];
+
+      const toDateStr = (v: any): string | null => {
+        if (v == null) return null;
+        const d = new Date(v);
+        return isNaN(d.getTime()) ? null : d.toISOString().split('T')[0];
+      };
+
+      const changes = fieldDefs
+        .filter(({ key, oldVal, newVal }) => {
+          if (newVal === undefined) return false;
+          if (key === 'dueDate') {
+            return toDateStr(oldVal) !== toDateStr(newVal);
+          }
+          const o = String(oldVal ?? '');
+          const n = String(newVal ?? '');
+          return o !== n;
+        })
+        .map(({ key, label, oldVal, newVal }) => ({
+          field: key,
+          label,
+          old: key === 'dueDate' ? toDateStr(oldVal) : (oldVal ?? null),
+          new: key === 'dueDate' ? toDateStr(newVal) : (newVal ?? null),
+        }));
+
+      if (changes.length > 0) {
+        const creatorName = invoice.creator?.user?.name || 'Unknown Creator';
+        await logChange(
+          `Invoice details updated on ${invoice.invoiceNumber} for ${creatorName}`,
+          invoice.campaignId,
+          req,
+          undefined,
+          { section: 'Invoice Details', changes },
         );
       }
     }
