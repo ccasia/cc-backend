@@ -405,7 +405,7 @@ export const submitV4ContentController = async (req: Request, res: Response) => 
  * POST /api/submissions/v4/approve
  */
 export const approveV4Submission = async (req: Request, res: Response) => {
-  const { submissionId, action, feedback, reasons, caption } = req.body;
+  const { submissionId, action, feedback, reasons, caption, videoId } = req.body;
   const currentUserId = req.session.userid;
 
   try {
@@ -572,6 +572,10 @@ export const approveV4Submission = async (req: Request, res: Response) => {
       // Send to Client = COMMENT type
       feedbackType = 'COMMENT';
     }
+    // For video submissions, scope feedback to the reviewed video (admin sends videoId or we use first video)
+    const feedbackVideoId =
+      videoId ||
+      (submission.video && submission.video.length > 0 ? submission.video[0].id : null);
 
     updates.push(
       prisma.feedback.create({
@@ -581,6 +585,7 @@ export const approveV4Submission = async (req: Request, res: Response) => {
           submissionId,
           adminId: currentUserId,
           type: feedbackType,
+          videoId: feedbackVideoId || undefined,
           sentToCreator: action !== 'approve', // Set to true for reject and request_revision
         },
       }),
@@ -2629,8 +2634,6 @@ export const getV4SubmissionById = async (req: Request, res: Response) => {
           },
         },
         feedback: {
-          // NOTE: `replies` relation is added in Prisma schema; until `prisma generate` runs,
-          // TS types may not include it yet. Keep this cast to avoid blocking builds.
           include: {
             admin: {
               select: {
@@ -2639,22 +2642,26 @@ export const getV4SubmissionById = async (req: Request, res: Response) => {
                 role: true,
               },
             },
-            replies: {
+            submissionComment: {
               include: {
-                user: {
-                  select: {
-                    id: true,
-                    name: true,
-                    role: true,
-                    photoURL: true,
+                replies: {
+                  include: {
+                    user: {
+                      select: {
+                        id: true,
+                        name: true,
+                        role: true,
+                        photoURL: true,
+                      },
+                    },
+                  },
+                  orderBy: {
+                    createdAt: 'asc',
                   },
                 },
               },
-              orderBy: {
-                createdAt: 'asc',
-              },
             },
-          } as any,
+          },
           orderBy: {
             createdAt: 'desc',
           },
@@ -2670,7 +2677,21 @@ export const getV4SubmissionById = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Not a v4 submission' });
     }
 
-    res.status(200).json({ submission });
+    const mapFeedbackReplies = (f: any) => ({
+      ...f,
+      replies: (f.submissionComment?.replies ?? []).map((r: any) => ({
+        id: r.id,
+        content: r.text,
+        createdAt: r.createdAt,
+        user: r.user,
+      })),
+    });
+    const submissionWithReplies = {
+      ...submission,
+      feedback: (submission.feedback || []).map(mapFeedbackReplies),
+    };
+
+    res.status(200).json({ submission: submissionWithReplies });
   } catch (error) {
     console.error('Error getting v4 submission by ID:', error);
     res.status(500).json({

@@ -40,7 +40,8 @@ model User {
   creator            Creator?
   creatorAgreement   CreatorAgreement[]
   feedback           Feedback[]
-  feedbackReplies    FeedbackReply[]
+  commentAgreements  CommentAgreement[]
+  submissionComments SubmissionComment[]
   finance            Finance?
   invoice            Invoice[]           @relation("CreatedBy")
   sentMessages       Message[]           @relation("UserMessages")
@@ -1109,6 +1110,7 @@ model Submission {
   publicFeedback       PublicFeedback[]
   photosDriveLink      String?
   rawFootagesDriveLink String?
+  comments             SubmissionComment[]
 
   // V4 specific fields
   contentOrder          Int? // Order of content (Video 1, Video 2, etc.)
@@ -1250,6 +1252,9 @@ model Video {
   resubmittedFromId String?
   resubmittedFrom   Video?  @relation("VideoResubmissions", fields: [resubmittedFromId], references: [id])
   resubmissions     Video[] @relation("VideoResubmissions")
+
+  feedbackRecords   Feedback[]
+  submissionComments SubmissionComment[]
 }
 
 model RawFootage {
@@ -1378,26 +1383,53 @@ model Feedback {
   photosToUpdate     String[]
   submissionId       String
   adminId            String
+  videoId            String?
   sentToCreator      Boolean       @default(false)
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt
   admin              User          @relation(fields: [adminId], references: [id])
   submission         Submission    @relation(fields: [submissionId], references: [id], onDelete: Cascade)
-  replies            FeedbackReply[]
+  video              Video?        @relation(fields: [videoId], references: [id], onDelete: SetNull)
+  submissionCommentId String?              @unique
+  submissionComment   SubmissionComment?   @relation(fields: [submissionCommentId], references: [id], onDelete: SetNull)
 }
 
-model FeedbackReply {
-  id        String   @id @unique @default(cuid())
-  content   String
-  feedbackId String
+model SubmissionComment {
+  id           String              @id @default(cuid())
+  text         String              @db.Text
+  timestamp    String?
+
+  submissionId String
+  submission   Submission          @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  videoId      String?
+  video        Video?              @relation(fields: [videoId], references: [id], onDelete: SetNull)
+
+  userId       String
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  parentId     String?
+  parent       SubmissionComment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies      SubmissionComment[] @relation("CommentReplies")
+
+  agreedBy     CommentAgreement[]
+  feedback     Feedback?
+
+  createdAt    DateTime            @default(now())
+  updateAt     DateTime            @updatedAt
+
+  @@index([submissionId])
+  @@index([videoId])
+}
+
+model CommentAgreement {
+  id        String            @id @default(cuid())
+  commentId String
+  comment   SubmissionComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
   userId    String
-  createdAt DateTime @default(now())
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  feedback  Feedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([feedbackId])
-  @@index([userId])
+  @@unique([commentId, userId])
 }
 
 model Invoice {

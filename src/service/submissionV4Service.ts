@@ -135,26 +135,30 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
                 photoURL: true,
               },
             },
-            replies: {
+            submissionComment: {
               include: {
-                user: {
-                  select: {
-                    id: true,
-                    name: true,
-                    role: true,
-                    photoURL: true,
+                replies: {
+                  include: {
+                    user: {
+                      select: {
+                        id: true,
+                        name: true,
+                        role: true,
+                        photoURL: true,
+                      },
+                    },
+                  },
+                  orderBy: {
+                    createdAt: 'asc',
                   },
                 },
               },
-              orderBy: {
-                createdAt: 'asc',
-              },
             },
-          } as any,
+          },
           orderBy: {
             createdAt: 'desc',
           },
-        },
+        } as any,
       },
       orderBy: [
         {
@@ -200,8 +204,6 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
           },
         },
         feedback: {
-          // NOTE: `replies` relation is added in Prisma schema; until `prisma generate` runs,
-          // TS types may not include it yet. Keep this cast to avoid blocking builds.
           include: {
             admin: {
               select: {
@@ -211,26 +213,30 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
                 photoURL: true,
               },
             },
-            replies: {
+            submissionComment: {
               include: {
-                user: {
-                  select: {
-                    id: true,
-                    name: true,
-                    role: true,
-                    photoURL: true,
+                replies: {
+                  include: {
+                    user: {
+                      select: {
+                        id: true,
+                        name: true,
+                        role: true,
+                        photoURL: true,
+                      },
+                    },
+                  },
+                  orderBy: {
+                    createdAt: 'asc',
                   },
                 },
               },
-              orderBy: {
-                createdAt: 'asc',
-              },
             },
-          } as any,
+          },
           orderBy: {
             createdAt: 'desc',
           },
-        },
+        } as any,
       },
     });
 
@@ -239,6 +245,20 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
 
     // Combine both sets of submissions (now without duplicates)
     const allSubmissions = [...v4Submissions, ...uniqueAgreementSubmissions];
+
+    // Map feedback.replies from SubmissionComment to same shape as old FeedbackReply (content, user, createdAt)
+    const mapFeedbackReplies = (feedback: any) => ({
+      ...feedback,
+      replies: (feedback.submissionComment?.replies ?? []).map((r: any) => ({
+        id: r.id,
+        content: r.text,
+        createdAt: r.createdAt,
+        user: r.user,
+      })),
+    });
+    allSubmissions.forEach((s: any) => {
+      if (s.feedback) s.feedback = s.feedback.map(mapFeedbackReplies);
+    });
 
     // Sort combined submissions
     allSubmissions.sort((a: any, b: any) => {

@@ -697,19 +697,23 @@ export const getMySubmissionDetails = async (req: Request, res: Response) => {
                 name: true,
               },
             },
-            replies: {
+            submissionComment: {
               include: {
-                user: {
-                  select: {
-                    id: true,
-                    name: true,
-                    role: true,
-                    photoURL: true,
+                replies: {
+                  include: {
+                    user: {
+                      select: {
+                        id: true,
+                        name: true,
+                        role: true,
+                        photoURL: true,
+                      },
+                    },
+                  },
+                  orderBy: {
+                    createdAt: 'asc',
                   },
                 },
-              },
-              orderBy: {
-                createdAt: 'asc',
               },
             },
           },
@@ -744,6 +748,17 @@ export const getMySubmissionDetails = async (req: Request, res: Response) => {
         (feedback) => feedback.sentToCreator && (feedback.type === 'REQUEST' || feedback.type === 'COMMENT'),
       );
     }
+
+    const mapFeedbackReplies = (f: any) => ({
+      ...f,
+      replies: (f.submissionComment?.replies ?? []).map((r: any) => ({
+        id: r.id,
+        content: r.text,
+        createdAt: r.createdAt,
+        user: r.user,
+      })),
+    });
+    filteredFeedback = filteredFeedback.map(mapFeedbackReplies);
 
     // Add creator-friendly status mapping
     const getCreatorStatus = (status: string) => {
@@ -790,6 +805,7 @@ export const getMySubmissionDetails = async (req: Request, res: Response) => {
 /**
  * Create a reply for a feedback item (creator)
  * POST /api/creator/submissions/v4/feedback/:feedbackId/replies
+ * Uses SubmissionComment; creator reply is stored as a reply under the feedback's root comment.
  */
 export const createMyFeedbackReply = async (req: Request, res: Response) => {
   const { feedbackId } = req.params;
@@ -805,6 +821,11 @@ export const createMyFeedbackReply = async (req: Request, res: Response) => {
       where: { id: feedbackId },
       select: {
         id: true,
+        submissionId: true,
+        submissionCommentId: true,
+        adminId: true,
+        content: true,
+        videoId: true,
         submission: {
           select: {
             id: true,
@@ -819,11 +840,32 @@ export const createMyFeedbackReply = async (req: Request, res: Response) => {
       return res.status(403).json({ message: 'You can only reply to feedback on your own submissions' });
     }
 
-    const reply = await prisma.feedbackReply.create({
+    let rootCommentId = feedback.submissionCommentId;
+    if (!rootCommentId) {
+      const rootComment = await prisma.submissionComment.create({
+        data: {
+          submissionId: feedback.submissionId,
+          userId: feedback.adminId,
+          text: feedback.content ?? '',
+          timestamp: null,
+          videoId: feedback.videoId ?? undefined,
+        },
+      });
+      rootCommentId = rootComment.id;
+      await prisma.feedback.update({
+        where: { id: feedbackId },
+        data: { submissionCommentId: rootCommentId },
+      });
+    }
+
+    const reply = await prisma.submissionComment.create({
       data: {
-        feedbackId,
+        submissionId: feedback.submissionId,
         userId: creatorId,
-        content: content.trim(),
+        text: content.trim(),
+        parentId: rootCommentId,
+        timestamp: null,
+        videoId: feedback.videoId ?? undefined,
       },
       include: {
         user: {
@@ -837,7 +879,14 @@ export const createMyFeedbackReply = async (req: Request, res: Response) => {
       },
     });
 
-    return res.status(201).json({ reply });
+    return res.status(201).json({
+      reply: {
+        id: reply.id,
+        content: reply.text,
+        createdAt: reply.createdAt,
+        user: reply.user,
+      },
+    });
   } catch (error) {
     console.error('Error creating feedback reply:', error);
     return res.status(500).json({
