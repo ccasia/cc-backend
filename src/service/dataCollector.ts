@@ -10,9 +10,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 // import { prisma } from 'src/prisma/prisma';
-const prisma = new PrismaClient();
 import { PrismaClient } from '@prisma/client';
+
 import { ReportSection, ExternalMetrics } from '../types/index';
+
+const prisma = new PrismaClient();
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
