@@ -14,6 +14,7 @@ interface CreateManualCreatorInput {
   shares: number;
   saved?: number;
   createdBy: string;
+  photoURL?: string;
 }
 
 //Calculate engagement rate based on platform
@@ -107,6 +108,7 @@ export const createManualCreatorEntry = async (input: CreateManualCreatorInput) 
       saved: platform === 'Instagram' ? saved : null,
       engagementRate,
       createdBy,
+      photoUrl: photoURL || null,
     },
   });
 

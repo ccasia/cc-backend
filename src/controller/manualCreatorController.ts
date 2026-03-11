@@ -79,6 +79,7 @@ export const createEntry = async (req: Request, res: Response) => {
       shares: Number(shares),
       saved: saved !== undefined ? Number(saved) : undefined,
       createdBy: adminId,
+      photoURL,
     });
 
     return res.status(201).json({

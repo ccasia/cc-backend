@@ -440,41 +440,27 @@ async function deleteFileIfExists(filePath: string) {
                 // await deleteFileIfExists(videoFile.outputPath);
 
                 // await fs.promises.unlink(videoFile.outputPath);
-                if (content.isV4 && content.preserveExistingMedia) {
-                  // V4: Check if there's an existing video for this submission to update
+                if (content.isV4 && content.preserveExistingMedia && !requestChangeVideos.length) {
+                  // V4: Create NEW video on reupload (don't overwrite) - previous draft stays, linked via resubmittedFromId
                   const existingVideo = submission.video && submission.video[index];
-                  
-                  if (existingVideo) {
-                    // Update existing video, preserving old URL in previousDrafts
-                    const existingPreviousDrafts = (existingVideo as any).previousDrafts || [];
-                    const oldUrl = existingVideo.url;
 
-                    await prisma.video.update({
-                      where: { id: existingVideo.id },
-                      data: {
-                        url: videoPublicURL,
-                        status: 'PENDING',
-                        // Append old URL to previousDrafts array
-                        previousDrafts: oldUrl ? [...existingPreviousDrafts, oldUrl] : existingPreviousDrafts,
-                        // Clear feedback for new draft
-                        feedback: null,
-                        reasons: [],
-                        feedbackAt: null,
-                      },
-                    });
-                    console.log(`✅ V4 Video ${existingVideo.id} updated, old URL preserved in previousDrafts.`);
-                  } else {
-                    // No existing video, create new one
-                    await prisma.video.create({
-                      data: {
-                        url: videoPublicURL,
-                        submissionId: submission.id,
-                        campaignId: submission.campaignId,
-                        userId: submission.userId,
-                      },
-                    });
-                    console.log('✅ V4 Video entry created (no existing video found).');
-                  }
+                  await prisma.video.create({
+                    data: {
+                      url: videoPublicURL,
+                      submissionId: submission.id,
+                      campaignId: submission.campaignId,
+                      userId: submission.userId,
+                      status: 'PENDING',
+                      ...(existingVideo && {
+                        resubmittedFromId: existingVideo.id,
+                      }),
+                    },
+                  });
+                  console.log(
+                    existingVideo
+                      ? `✅ V4 Video created as new version (resubmittedFromId: ${existingVideo.id}), previous draft preserved.`
+                      : '✅ V4 Video entry created (no existing video).'
+                  );
                 } else if (!requestChangeVideos.length) {
                   await prisma.video.create({
                     data: {
@@ -493,30 +479,22 @@ async function deleteFileIfExists(filePath: string) {
               const url = await Promise.all(videoPromises);
 
               if (requestChangeVideos.length) {
+                // V4: Create NEW videos instead of updating (preserve previous drafts)
                 await Promise.all(
-                  requestChangeVideos.map(async (video, index) => {
-                    // Preserve the old URL in previousDrafts before updating with new URL
-                    const existingPreviousDrafts = (video as any).previousDrafts || [];
-                    const oldUrl = video.url;
-
-                    return prisma.video.update({
-                      where: { id: video.id },
+                  requestChangeVideos.map(async (video, index) =>
+                    prisma.video.create({
                       data: {
                         url: url[index],
                         submissionId: submission.id,
                         campaignId: content.campaignId,
                         userId: submission.userId,
                         status: 'PENDING',
-                        // Append old URL to previousDrafts array
-                        previousDrafts: oldUrl ? [...existingPreviousDrafts, oldUrl] : existingPreviousDrafts,
-                        // Clear feedback for new draft
-                        feedback: null,
-                        reasons: [],
-                        feedbackAt: null,
+                        resubmittedFromId: video.id,
                       },
-                    });
-                  }),
+                    })
+                  )
                 );
+                console.log(`✅ V4 Created ${requestChangeVideos.length} new video version(s), previous draft(s) preserved.`);
               }
 
               const data = await prisma.submission.update({

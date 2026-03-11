@@ -40,6 +40,8 @@ model User {
   creator            Creator?
   creatorAgreement   CreatorAgreement[]
   feedback           Feedback[]
+  commentAgreements  CommentAgreement[]
+  submissionComments SubmissionComment[]
   finance            Finance?
   invoice            Invoice[]           @relation("CreatedBy")
   sentMessages       Message[]           @relation("UserMessages")
@@ -47,8 +49,9 @@ model User {
   paymentForm        PaymentForm?
   pitch              Pitch[]
   approvedPitches    Pitch[]             @relation("ApprovedByClient")
-  rejectedPitches    Pitch[]             @relation("RejectedByClient")
-  maybePitches       Pitch[]             @relation("MaybeByClient")
+  rejectedPitches         Pitch[] @relation("RejectedByClient")
+  maybePitches            Pitch[] @relation("MaybeByClient")
+  acceptedInviteByCreator Pitch[] @relation("AcceptedInviteByCreator")
 
   resetPasswordToken ResetPasswordToken?
   seenMessages       SeenMessage[]
@@ -85,6 +88,10 @@ model User {
   assignedLogistics Logistic[]      @relation("AssignedLogistics")
   createdLogistics  Logistic[]      @relation("CreatedLogistics")
   reportedIssues    LogisticIssue[]
+
+  userFlow      UserFlow[]
+  activatedAt   DateTime?
+  passwordSetAt DateTime?
 }
 
 model EmailVerification {
@@ -247,6 +254,7 @@ model Creator {
   userId                 String      @unique
   socialMediaData        Json?
   isFormCompleted        Boolean?
+  formCompletedAt        DateTime?
   socialMediaUpdateCount Json?
   allowToChange          Boolean     @default(false)
   industries             Json?
@@ -277,6 +285,8 @@ model Creator {
   creditTierId        String?
   creditTier          CreditTier? @relation("UserCurrentTier", fields: [creditTierId], references: [id])
   tierUpdatedAt       DateTime? // Last time tier was calculated
+
+  @@index([formCompletedAt])
 }
 
 // model TiktokUser {
@@ -541,11 +551,12 @@ model Company {
   createdAt           DateTime     @default(now())
   updatedAt           DateTime     @updatedAt
 
-  brand         Brand[]
-  campaign      Campaign[]
-  pic           Pic[]
-  subscriptions Subscription[]
-  clients       Client[]
+  brand               Brand[]
+  campaign            Campaign[]
+  pic                 Pic[]
+  subscriptions       Subscription[]
+  clients             Client[]
+  SubscriptionHistory SubscriptionHistory[]
 
   @@index([clientId])
 }
@@ -952,6 +963,7 @@ model Pitch {
   rejectionReason     String?
   customRejectionText String?
   maybeByClientId     String?
+  acceptedInviteByCreatorId String?
   amount              Int?
   ugcCredits          Int?
   agreementTemplateId String?
@@ -960,6 +972,7 @@ model Pitch {
   engagementRate      String?
   adminComments       String?
   adminCommentedBy    String?
+  isInvited           Boolean        @default(false)
   adminCommenter      Admin?         @relation("AdminCommenter", fields: [adminCommentedBy], references: [userId])
 
   // Outreach status tracking
@@ -971,9 +984,10 @@ model Pitch {
   user             User     @relation(fields: [userId], references: [id])
   admin            Admin?   @relation(fields: [approvedByAdminId], references: [userId], name: "ApprovedByAdmin")
   client           User?    @relation("ApprovedByClient", fields: [approvedByClientId], references: [id])
-  rejectedByAdmin  Admin?   @relation("RejectedByAdmin", fields: [rejectedByAdminId], references: [userId])
-  rejectedByClient User?    @relation("RejectedByClient", fields: [rejectedByClientId], references: [id])
-  maybeByClient    User?    @relation("MaybeByClient", fields: [maybeByClientId], references: [id])
+  rejectedByAdmin         Admin? @relation("RejectedByAdmin", fields: [rejectedByAdminId], references: [userId])
+  rejectedByClient        User?  @relation("RejectedByClient", fields: [rejectedByClientId], references: [id])
+  maybeByClient           User?  @relation("MaybeByClient", fields: [maybeByClientId], references: [id])
+  acceptedInviteByCreator User?  @relation("AcceptedInviteByCreator", fields: [acceptedInviteByCreatorId], references: [id])
 
   @@unique([userId, campaignId])
 }
@@ -1078,6 +1092,7 @@ model Submission {
   isReview             Boolean                @default(false)
   startDate            DateTime?
   endDate              DateTime?
+  approvedAt           DateTime?
   submittedByAdminId   String? // Track if admin submitted for creator
   feedback             Feedback[]
   Notification         Notification[]
@@ -1095,6 +1110,7 @@ model Submission {
   publicFeedback       PublicFeedback[]
   photosDriveLink      String?
   rawFootagesDriveLink String?
+  comments             SubmissionComment[]
 
   // V4 specific fields
   contentOrder          Int? // Order of content (Video 1, Video 2, etc.)
@@ -1191,6 +1207,7 @@ model ManualCreatorEntry {
 
   creatorName     String
   creatorUsername String
+  photoUrl        String?
   platform        String // "Instagram" | "TikTok"
   postUrl         String?
 
@@ -1230,6 +1247,14 @@ model Video {
 
   // Previous video draft URLs
   previousDrafts String[] // Array of previous video URLs
+
+  // Reupload version chain: links to the video this one replaced
+  resubmittedFromId String?
+  resubmittedFrom   Video?  @relation("VideoResubmissions", fields: [resubmittedFromId], references: [id])
+  resubmissions     Video[] @relation("VideoResubmissions")
+
+  feedbackRecords   Feedback[]
+  submissionComments SubmissionComment[]
 }
 
 model RawFootage {
@@ -1358,11 +1383,53 @@ model Feedback {
   photosToUpdate     String[]
   submissionId       String
   adminId            String
+  videoId            String?
   sentToCreator      Boolean       @default(false)
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt
   admin              User          @relation(fields: [adminId], references: [id])
   submission         Submission    @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  video              Video?        @relation(fields: [videoId], references: [id], onDelete: SetNull)
+  submissionCommentId String?              @unique
+  submissionComment   SubmissionComment?   @relation(fields: [submissionCommentId], references: [id], onDelete: SetNull)
+}
+
+model SubmissionComment {
+  id           String              @id @default(cuid())
+  text         String              @db.Text
+  timestamp    String?
+
+  submissionId String
+  submission   Submission          @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  videoId      String?
+  video        Video?              @relation(fields: [videoId], references: [id], onDelete: SetNull)
+
+  userId       String
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  parentId     String?
+  parent       SubmissionComment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies      SubmissionComment[] @relation("CommentReplies")
+
+  agreedBy     CommentAgreement[]
+  feedback     Feedback?
+
+  createdAt    DateTime            @default(now())
+  updateAt     DateTime            @updatedAt
+
+  @@index([submissionId])
+  @@index([videoId])
+}
+
+model CommentAgreement {
+  id        String            @id @default(cuid())
+  commentId String
+  comment   SubmissionComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([commentId, userId])
 }
 
 model Invoice {
@@ -1520,23 +1587,24 @@ model Bugs {
 }
 
 model Subscription {
-  id              String             @id @unique @default(cuid())
-  subscriptionId  String?            @unique
+  id              String                @id @unique @default(cuid())
+  subscriptionId  String?               @unique
   companyId       String?
   packageId       String?
   customPackageId String?
   currency        String?
-  company         Company?           @relation(references: [id], fields: [companyId])
+  company         Company?              @relation(references: [id], fields: [companyId])
   creditsUsed     Int
   totalCredits    Int?
   packagePrice    Float?
-  status          SubscriptionStatus @default(ACTIVE)
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
-  package         Package?           @relation(fields: [packageId], references: [id])
-  customPackage   CustomPackage?     @relation(fields: [customPackageId], references: [id])
+  status          SubscriptionStatus    @default(ACTIVE)
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+  package         Package?              @relation(fields: [packageId], references: [id])
+  customPackage   CustomPackage?        @relation(fields: [customPackageId], references: [id])
   expiredAt       DateTime
   campaign        Campaign[]
+  history         SubscriptionHistory[]
 }
 
 model CustomPackage {
@@ -1742,6 +1810,7 @@ enum PitchStatus {
   AGREEMENT_PENDING
   AGREEMENT_SUBMITTED
   WITHDRAWN
+  INVITED
 }
 
 // Outreach status for internal admin tracking of creator outreach

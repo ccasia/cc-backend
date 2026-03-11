@@ -164,6 +164,26 @@ export const getInstagramOverviewService = async (accessToken: string) => {
   }
 };
 
+export const getTikTokOverviewService = async (accessToken: string) => {
+  if (!accessToken) throw new Error('Access token is required');
+
+  try {
+    const res = await axios.get('https://open.tiktokapis.com/v2/user/info/', {
+      params: {
+        fields:
+          'open_id,union_id,display_name,bio_description,username,avatar_url,following_count,follower_count,likes_count',
+      },
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    return res.data;
+  } catch (error) {
+    throw new Error(error);
+  }
+};
+
 export const getInstagramUserInsight = async (accessToken: string, instagramUserId: string) => {
   if (!accessToken || !instagramUserId) {
     throw new Error('Missing required parameters: accessToken, instagramUserId');
@@ -249,14 +269,7 @@ export const getInstagramMediaObject = async (
     const totalLikes = videos.reduce((acc: any, cur: any) => acc + cur.like_count, 0);
     const averageLikes = totalLikes / videos.length;
 
-    // Always return latest posts first based on Instagram timestamp.
-    const sortedVideos = [...videos]
-      .sort((a: any, b: any) => {
-        const aTime = a?.timestamp ? new Date(a.timestamp).getTime() : 0;
-        const bTime = b?.timestamp ? new Date(b.timestamp).getTime() : 0;
-        return bTime - aTime;
-      })
-      .slice(0, 5);
+    const sortedVideos = videos.slice(0, 5);
 
     return { sortedVideos, averageLikes, averageComments, totalComments, totalLikes };
   } catch (error) {
@@ -350,6 +363,24 @@ export const getInstagramMedias = async (
     });
 
     const videos = res.data.data || [];
+
+
+    const mediaTypeBreakdown = (videos || []).reduce((acc: Record<string, number>, video: any) => {
+      const type = String(video?.media_type || 'UNKNOWN');
+      acc[type] = (acc[type] || 0) + 1;
+      return acc;
+    }, {});
+
+    console.log('[Discovery][Debug] getInstagramMedias response', {
+      requestedLimit: limit || null,
+      returnedCount: videos.length,
+      hasPagingNext: Boolean(res?.data?.paging?.next),
+      withMediaUrlCount: videos.filter((video: any) => Boolean(video?.media_url)).length,
+      withThumbnailCount: videos.filter((video: any) => Boolean(video?.thumbnail_url)).length,
+      withPermalinkCount: videos.filter((video: any) => Boolean(video?.permalink)).length,
+      mediaTypeBreakdown,
+    });
+
 
     const totalComments = videos.reduce((acc: any, cur: any) => acc + cur.comments_count, 0);
     const averageComments = totalComments / videos.length;
