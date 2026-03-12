@@ -151,6 +151,14 @@ export interface InviteDiscoveryCreatorsInput {
   invitedByUserId: string;
 }
 
+export interface NonPlatformDiscoveryQueryInput {
+  platform?: 'all' | 'instagram' | 'tiktok';
+  keyword?: string;
+  followers?: number;
+  page?: number;
+  limit?: number;
+}
+
 const isRateLimitError = (error: any) => {
   const status = error?.response?.status;
   const code = error?.response?.data?.error?.code;
@@ -1462,6 +1470,197 @@ export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
           : connectedTotal,
     },
     availableLocations: sortedLocations,
+  };
+};
+
+const normalizeNonPlatformFilter = (
+  platform?: string,
+): {
+  platform: 'all' | 'instagram' | 'tiktok';
+  token: string | null;
+} => {
+  if (platform === 'instagram') {
+    return { platform: 'instagram', token: 'instagram' };
+  }
+
+  if (platform === 'tiktok') {
+    return { platform: 'tiktok', token: 'tiktok' };
+  }
+
+  return { platform: 'all', token: null };
+};
+
+const normalizeProfileLink = (value?: string | null): string | null => {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+
+  if (/^https?:\/\//i.test(raw)) {
+    return raw;
+  }
+
+  return `https://${raw}`;
+};
+
+const resolveNonPlatform = (row: any): 'instagram' | 'tiktok' | 'unknown' => {
+  const profileLink = String(row?.creator?.profileLink || '').toLowerCase();
+  if (profileLink.includes('instagram')) return 'instagram';
+  if (profileLink.includes('tiktok')) return 'tiktok';
+
+  if (row?.creator?.instagram) return 'instagram';
+  if (row?.creator?.tiktok) return 'tiktok';
+
+  return 'unknown';
+};
+
+export const getNonPlatformDiscoveryCreators = async (input: NonPlatformDiscoveryQueryInput) => {
+  const keyword = String(input.keyword || '').trim();
+  const followers = Number.isFinite(input.followers) ? Math.max(0, Number(input.followers)) : undefined;
+  const { page, limit, skip } = normalizePagination(input.page, input.limit);
+  const { platform, token: platformToken } = normalizeNonPlatformFilter(input.platform);
+
+  const platformCondition =
+    platformToken == null
+      ? undefined
+      : {
+          OR: [
+            {
+              creator: {
+                is: {
+                  profileLink: {
+                    contains: platformToken,
+                    mode: 'insensitive' as const,
+                  },
+                },
+              },
+            },
+            platform === 'instagram'
+              ? {
+                  creator: {
+                    is: {
+                      instagram: {
+                        not: null,
+                      },
+                    },
+                  },
+                }
+              : {
+                  creator: {
+                    is: {
+                      tiktok: {
+                        not: null,
+                      },
+                    },
+                  },
+                },
+          ],
+        };
+
+  const keywordCondition =
+    keyword.length > 0
+      ? {
+          OR: [
+            { name: { contains: keyword, mode: 'insensitive' as const } },
+            {
+              creator: {
+                is: {
+                  instagram: { contains: keyword, mode: 'insensitive' as const },
+                },
+              },
+            },
+            {
+              creator: {
+                is: {
+                  tiktok: { contains: keyword, mode: 'insensitive' as const },
+                },
+              },
+            },
+            {
+              creator: {
+                is: {
+                  profileLink: { contains: keyword, mode: 'insensitive' as const },
+                },
+              },
+            },
+          ],
+        }
+      : undefined;
+
+  const followersCondition =
+    followers != null
+      ? {
+          creator: {
+            is: {
+              manualFollowerCount: {
+                gte: followers,
+              },
+            },
+          },
+        }
+      : undefined;
+
+  const where = {
+    role: 'creator',
+    creator: {
+      is: {},
+    },
+    OR: [{ status: 'guest' }, { creator: { is: { isGuest: true } } }],
+    AND: [platformCondition, keywordCondition, followersCondition].filter(Boolean),
+  } as any;
+
+  const [total, rows] = await Promise.all([
+    prisma.user.count({ where }),
+    prisma.user.findMany({
+      where,
+      skip,
+      take: limit,
+      orderBy: [{ creator: { manualFollowerCount: 'desc' } }, { name: 'asc' }],
+      select: {
+        id: true,
+        name: true,
+        status: true,
+        creator: {
+          select: {
+            id: true,
+            instagram: true,
+            tiktok: true,
+            profileLink: true,
+            manualFollowerCount: true,
+            isGuest: true,
+          },
+        },
+      },
+    }),
+  ]);
+
+  const data = rows.map((row) => {
+    const platformValue = resolveNonPlatform(row);
+    return {
+      rowId: row.id,
+      userId: row.id,
+      creatorId: row.creator?.id || null,
+      name: row.name || 'Guest Creator',
+      platform: platformValue,
+      followers: Number(row.creator?.manualFollowerCount || 0),
+      profileLink: normalizeProfileLink(row.creator?.profileLink),
+      handles: {
+        instagram: row.creator?.instagram || null,
+        tiktok: row.creator?.tiktok || null,
+      },
+    };
+  });
+
+  return {
+    filters: {
+      platform,
+      keyword,
+      followers: followers ?? null,
+    },
+    data,
+    pagination: {
+      page,
+      limit,
+      total,
+    },
   };
 };
 
