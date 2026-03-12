@@ -965,16 +965,16 @@ export const getInstagramMediaKit = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Creator is not connected to instagram account' });
     }
 
-    if (dayjs().isAfter(dayjs.unix(creator?.instagramUser?.expiresIn!))) {
-      return res.status(400).json({ message: 'Instagram Token expired' });
+    // ensure we have a valid access token; helper will refresh if expired
+    let accessToken: string;
+    try {
+      accessToken = await ensureValidInstagramToken(userId);
+    } catch (tokenError: any) {
+      return res.status(400).json({
+        message: tokenError.message,
+        requiresReconnection: tokenError.message.includes('refresh failed'),
+      });
     }
-
-    const encryptedAccessToken = creator.instagramUser?.accessToken;
-    if (!encryptedAccessToken) {
-      return res.status(404).json({ message: 'Access token not found' });
-    }
-
-    const accessToken = decryptToken(encryptedAccessToken as any);
 
     const overview = await getInstagramOverviewService(accessToken);
     const medias = await getInstagramMediaObject(accessToken, overview.user_id);
