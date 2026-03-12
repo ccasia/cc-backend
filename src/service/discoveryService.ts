@@ -14,6 +14,7 @@ import {
   mapInstagramApiTopVideos,
   mapTikTokApiTopVideos,
 } from '@helper/discovery/mediaHelpers';
+import { clients, io } from '../server';
 import {
   ageRangeToBirthDateRange,
   extractHashtags,
@@ -33,6 +34,7 @@ import {
 } from '@helper/discovery/sortHelpers';
 import { mapPronounsToGender } from '@utils/mapPronounsToGender';
 import { calculateAge } from '@utils/calculateAge';
+import { saveNotification } from '@controllers/notificationController';
 
 const prisma = new PrismaClient();
 const prismaAny = prisma as any;
@@ -1702,7 +1704,7 @@ export const inviteDiscoveryCreators = async (input: InviteDiscoveryCreatorsInpu
     throw new Error('Not authorized to invite creators for this campaign');
   }
 
-  return prisma.$transaction(async (tx) => {
+  const inviteResult = await prisma.$transaction(async (tx) => {
     const campaign = await tx.campaign.findUnique({
       where: { id: campaignId },
       include: {
@@ -1742,6 +1744,11 @@ export const inviteDiscoveryCreators = async (input: InviteDiscoveryCreatorsInpu
     let invitedCount = 0;
     let skippedExistingCount = 0;
     let skippedNotFoundCount = 0;
+    const invitedCreatorNotifications: Array<{
+      userId: string;
+      campaignId: string;
+      campaignName: string;
+    }> = [];
 
     for (const creatorId of creatorIds) {
       const creatorUser = creatorById.get(creatorId);
@@ -1749,6 +1756,8 @@ export const inviteDiscoveryCreators = async (input: InviteDiscoveryCreatorsInpu
         skippedNotFoundCount += 1;
         continue;
       }
+
+      const invitePitchStatus = isV4Campaign ? 'SENT_TO_CLIENT' : 'APPROVED';
 
       const existingPitch = await tx.pitch.findFirst({
         where: {
@@ -1763,12 +1772,12 @@ export const inviteDiscoveryCreators = async (input: InviteDiscoveryCreatorsInpu
         continue;
       }
 
-      await tx.pitch.create({
+      const pitch = await tx.pitch.create({
         data: {
           userId: creatorUser.id,
           campaignId,
           type: 'shortlisted',
-          status: 'INVITED',
+          status: invitePitchStatus,
           isInvited: true,
           content: `Creator ${creatorUser.name} has been invited for campaign "${campaign.name}"`,
           amount: null,
@@ -1776,6 +1785,146 @@ export const inviteDiscoveryCreators = async (input: InviteDiscoveryCreatorsInpu
           approvedByAdminId: invitedByUserId,
         } as any,
       });
+
+      if (!isV4Campaign) {
+        const existingShortlist = await tx.shortListedCreator.findUnique({
+          where: {
+            userId_campaignId: {
+              userId: creatorUser.id,
+              campaignId,
+            },
+          },
+        });
+
+        if (existingShortlist) {
+          await tx.shortListedCreator.update({
+            where: {
+              userId_campaignId: {
+                userId: creatorUser.id,
+                campaignId,
+              },
+            },
+            data: {
+              isAgreementReady: false,
+            },
+          });
+        } else {
+          await tx.shortListedCreator.create({
+            data: {
+              userId: creatorUser.id,
+              campaignId,
+              isAgreementReady: false,
+              currency: 'MYR',
+            },
+          });
+        }
+
+        const existingAgreement = await tx.creatorAgreement.findFirst({
+          where: {
+            userId: creatorUser.id,
+            campaignId,
+          },
+        });
+
+        if (!existingAgreement) {
+          await tx.creatorAgreement.create({
+            data: {
+              userId: creatorUser.id,
+              campaignId,
+              agreementUrl: '',
+            },
+          });
+        }
+
+        const existingSubmissions = await tx.submission.findMany({
+          where: {
+            userId: creatorUser.id,
+            campaignId,
+          },
+          include: {
+            submissionType: true,
+          },
+        });
+
+        const timelines = await tx.campaignTimeline.findMany({
+          where: {
+            campaignId,
+            for: 'creator',
+            name: { not: 'Open For Pitch' },
+          },
+          include: { submissionType: true },
+          orderBy: { order: 'asc' },
+        });
+
+        const existingSubmissionTypes = new Set<string | undefined>(
+          existingSubmissions.map((submission) => submission.submissionType?.type),
+        );
+
+        const timelinesWithoutExisting = timelines.filter(
+          (timeline) => timeline.submissionType?.type && !existingSubmissionTypes.has(timeline.submissionType.type),
+        );
+
+        const board = await tx.board.findUnique({
+          where: { userId: creatorUser.id },
+          include: { columns: true },
+        });
+
+        if (board && timelinesWithoutExisting.length > 0) {
+          const columnToDo = board.columns.find((column) => column.name.includes('To Do'));
+          const columnInProgress = board.columns.find((column) => column.name.includes('In Progress'));
+
+          if (columnToDo && columnInProgress) {
+            const submissions = await Promise.all(
+              timelinesWithoutExisting.map(async (timeline, index) => {
+                return tx.submission.create({
+                  data: {
+                    dueDate: timeline.endDate,
+                    campaignId: timeline.campaignId,
+                    userId: creatorUser.id,
+                    status: timeline.submissionType?.type === 'AGREEMENT_FORM' ? 'IN_PROGRESS' : 'NOT_STARTED',
+                    submissionTypeId: timeline.submissionTypeId as string,
+                    task: {
+                      create: {
+                        name: timeline.name,
+                        position: index,
+                        columnId: timeline.submissionType?.type ? columnInProgress.id : columnToDo.id,
+                        priority: '',
+                        status: timeline.submissionType?.type ? 'In Progress' : 'To Do',
+                      },
+                    },
+                  },
+                  include: {
+                    submissionType: true,
+                  },
+                });
+              }),
+            );
+
+            const agreement = submissions.find((submission) => submission.submissionType?.type === 'AGREEMENT_FORM');
+            const draft = submissions.find((submission) => submission.submissionType?.type === 'FIRST_DRAFT');
+            const finalDraft = submissions.find((submission) => submission.submissionType?.type === 'FINAL_DRAFT');
+            const posting = submissions.find((submission) => submission.submissionType?.type === 'POSTING');
+
+            const dependencies = [
+              { submissionId: draft?.id, dependentSubmissionId: agreement?.id },
+              { submissionId: finalDraft?.id, dependentSubmissionId: draft?.id },
+              { submissionId: posting?.id, dependentSubmissionId: finalDraft?.id },
+            ].filter((dependency) => dependency.submissionId && dependency.dependentSubmissionId);
+
+            if (dependencies.length > 0) {
+              await tx.submissionDependency.createMany({ data: dependencies });
+            }
+          }
+        }
+      }
+
+      if (!isV4Campaign) {
+        invitedCreatorNotifications.push({
+          userId: pitch.userId,
+          campaignId: pitch.campaignId,
+          campaignName: campaign.name,
+        });
+      }
 
       if (threadId) {
         const existingUserThread = await tx.userThread.findUnique({
@@ -1831,6 +1980,35 @@ export const inviteDiscoveryCreators = async (input: InviteDiscoveryCreatorsInpu
       invitedCount,
       skippedExistingCount,
       skippedNotFoundCount,
+      invitedCreatorNotifications,
     };
   });
+
+  if (!inviteResult.isV4Campaign) {
+    for (const creatorInvite of inviteResult.invitedCreatorNotifications) {
+      const creatorNotification = await saveNotification({
+        title: 'Campaign Invitation',
+        message: `You have been invited to campaign "${creatorInvite.campaignName}".`,
+        entity: 'Pitch',
+        entityId: creatorInvite.campaignId,
+        creatorId: creatorInvite.userId,
+        userId: creatorInvite.userId,
+      });
+
+      const creatorSocketId = clients.get(creatorInvite.userId);
+
+      if (creatorSocketId) {
+        io.to(creatorSocketId).emit('notification', creatorNotification);
+        io.to(creatorSocketId).emit('pitchUpdate');
+      }
+    }
+  }
+
+  return {
+    campaignId: inviteResult.campaignId,
+    isV4Campaign: inviteResult.isV4Campaign,
+    invitedCount: inviteResult.invitedCount,
+    skippedExistingCount: inviteResult.skippedExistingCount,
+    skippedNotFoundCount: inviteResult.skippedNotFoundCount,
+  };
 };
