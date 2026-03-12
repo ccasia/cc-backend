@@ -1,5 +1,9 @@
 import { Request, Response } from 'express';
-import { getDiscoveryCreators, inviteDiscoveryCreators } from '@services/discoveryService';
+import {
+  getDiscoveryCreators,
+  getNonPlatformDiscoveryCreators,
+  inviteDiscoveryCreators,
+} from '@services/discoveryService';
 
 const parseStringArrayQuery = (value?: string | string[]) => {
   if (!value) return undefined;
@@ -34,6 +38,25 @@ const parseSortDirection = (value: unknown): 'asc' | 'desc' => {
   return value === 'desc' ? 'desc' : 'asc';
 };
 
+const parseNonPlatform = (value: unknown): 'all' | 'instagram' | 'tiktok' => {
+  if (value === 'instagram' || value === 'tiktok') {
+    return value;
+  }
+
+  return 'all';
+};
+
+const parseNonNegativeInt = (value: unknown): number | undefined => {
+  if (value == null || value === '') return undefined;
+
+  const parsed = parseInt(String(value), 10);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return undefined;
+  }
+
+  return parsed;
+};
+
 export const getDiscoveryCreatorsList = async (req: Request, res: Response) => {
   try {
     const interests = parseStringArrayQuery(req.query.interests as string | string[] | undefined);
@@ -62,6 +85,23 @@ export const getDiscoveryCreatorsList = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Error fetching discovery creators:', error);
     return res.status(500).json({ message: 'Failed to fetch discovery creators' });
+  }
+};
+
+export const getNonPlatformDiscoveryCreatorsList = async (req: Request, res: Response) => {
+  try {
+    const data = await getNonPlatformDiscoveryCreators({
+      platform: parseNonPlatform(req.query.platform),
+      keyword: (req.query.keyword as string) || undefined,
+      followers: parseNonNegativeInt(req.query.followers),
+      page: parsePositiveInt(req.query.page, 1),
+      limit: parsePositiveInt(req.query.limit, 20),
+    });
+
+    return res.status(200).json(data);
+  } catch (error: any) {
+    console.error('Error fetching non-platform discovery creators:', error);
+    return res.status(500).json({ message: 'Failed to fetch non-platform discovery creators' });
   }
 };
 
