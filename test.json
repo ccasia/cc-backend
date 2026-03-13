@@ -1,48 +1,18 @@
-{
-  "campaignId": "cmh1oj1d502jbo601g401ysl8",
-  "campaignName": "Sunway Oasis & Terrace Celebration",
-  "geminiModel": "gemini-1.5-pro",
-  "period": {
-    "startDate": "2025-10-21T16:00:00.000Z",
-    "endDate": "2025-11-07T00:00:00.000Z"
+[
+  {
+    "scope": "email profile openid accounting.contacts accounting.settings accounting.reports.read accounting.attachments accounting.journals.read accounting.transactions offline_access",
+    "id_token": "eyJhbGciOiJSUzI1NiIsImtpZCI6IjFDQUY4RTY2NzcyRDZEQzAyOEQ2NzI2RkQwMjYxNTgxNTcwRUZDMTkiLCJ0eXAiOiJKV1QiLCJ4NXQiOiJISy1PWm5jdGJjQW8xbkp2MENZVmdWY09fQmsifQ.eyJuYmYiOjE3NzE5MjE2MDQsImV4cCI6MTc3MTkyMTkwNCwiaXNzIjoiaHR0cHM6Ly9pZGVudGl0eS54ZXJvLmNvbSIsImF1ZCI6IkVEMTAxRTJBQUZBMjQyNzBCODVBMUZFMjNDMUQ4OEUxIiwiaWF0IjoxNzcxOTIxNjA0LCJhdF9oYXNoIjoiZkQ3NE8yVUpGT3lmMWRzZDFBc0ctZyIsInN1YiI6IjcxNDcyNWYwY2JjYTU1N2RhN2FhMTQxMTIzOWM2OGI4IiwiYXV0aF90aW1lIjoxNzY4ODA1NTY2LCJ4ZXJvX3VzZXJpZCI6IjVkODYzNWIxLTA3NjctNGEwZS1iZGRiLTQ1NDczZTk0ZDlkOSIsImdsb2JhbF9zZXNzaW9uX2lkIjoiMTM5OGZlZWM2MjNlNGNiNDg2ZjAxNGRmNzg5OGIyMTAiLCJzaWQiOiIxMzk4ZmVlYzYyM2U0Y2I0ODZmMDE0ZGY3ODk4YjIxMCIsInByZWZlcnJlZF91c2VybmFtZSI6ImZpbmFuY2VocmN1bHRjcmVhdGl2ZUBnbWFpbC5jb20iLCJlbWFpbCI6ImZpbmFuY2VocmN1bHRjcmVhdGl2ZUBnbWFpbC5jb20iLCJnaXZlbl9uYW1lIjoiVml0aHlhbWFuaSIsImZhbWlseV9uYW1lIjoiU2VsdmFtYW5pIiwibmFtZSI6IlZpdGh5YW1hbmkgU2VsdmFtYW5pIiwiYW1yIjpbImxlZ2FjeSJdfQ.vkHPcrYgkE7v3eeo5YeA-vcj_xsprTmcEc8RFQWIJCOeH8UR7jaE8Qi7MSYJGs49SXkhPDMQgAJuMCwD1XnzXeb6W7HO2eEmLWcO8isZAm33VO8RIW2OnByAdZ_gmpdORVHhX-uKbHk8T4CGmMe8I7lpBHkKMIot-fT-_z4dDoOPU30GgDKNKIu2pVGJXID28uc_k-EZ8FJfPacsU84LIKQuSIqb5zdfx235M8MxiMp1XucyfDfFb_wIHZTSERnHqsAVzHxqH1Yk9YmQ-tj0FKVtV2SxH3JJMktNMRc_ojMoFUNzWJrL2tr6nW6Ng9XE74Dhe2ru01Vjg0YL1xMaVQ",
+    "expires_at": 1771923404,
+    "token_type": "Bearer",
+    "access_token": "eyJhbGciOiJSUzI1NiIsImtpZCI6IjFDQUY4RTY2NzcyRDZEQzAyOEQ2NzI2RkQwMjYxNTgxNTcwRUZDMTkiLCJ0eXAiOiJKV1QiLCJ4NXQiOiJISy1PWm5jdGJjQW8xbkp2MENZVmdWY09fQmsifQ.eyJuYmYiOjE3NzE5MjE2MDQsImV4cCI6MTc3MTkyMzQwNCwiaXNzIjoiaHR0cHM6Ly9pZGVudGl0eS54ZXJvLmNvbSIsImF1ZCI6Imh0dHBzOi8vaWRlbnRpdHkueGVyby5jb20vcmVzb3VyY2VzIiwiY2xpZW50X2lkIjoiRUQxMDFFMkFBRkEyNDI3MEI4NUExRkUyM0MxRDg4RTEiLCJzdWIiOiI3MTQ3MjVmMGNiY2E1NTdkYTdhYTE0MTEyMzljNjhiOCIsImF1dGhfdGltZSI6MTc2ODgwNTU2NiwieGVyb191c2VyaWQiOiI1ZDg2MzViMS0wNzY3LTRhMGUtYmRkYi00NTQ3M2U5NGQ5ZDkiLCJnbG9iYWxfc2Vzc2lvbl9pZCI6IjEzOThmZWVjNjIzZTRjYjQ4NmYwMTRkZjc4OThiMjEwIiwic2lkIjoiMTM5OGZlZWM2MjNlNGNiNDg2ZjAxNGRmNzg5OGIyMTAiLCJhdXRoZW50aWNhdGlvbl9ldmVudF9pZCI6ImRmZmMzMzQ4LWVhZWQtNDA1OC05YjJmLWZkZGM5NzNmNDk1YiIsImp0aSI6IjhGMzI4NkJCOTYyODJFN0YxRUJCQTc2REIxRDQyMDFGIiwic2NvcGUiOlsiZW1haWwiLCJwcm9maWxlIiwib3BlbmlkIiwiYWNjb3VudGluZy5jb250YWN0cyIsImFjY291bnRpbmcuc2V0dGluZ3MiLCJhY2NvdW50aW5nLnJlcG9ydHMucmVhZCIsImFjY291bnRpbmcuYXR0YWNobWVudHMiLCJhY2NvdW50aW5nLmpvdXJuYWxzLnJlYWQiLCJhY2NvdW50aW5nLnRyYW5zYWN0aW9ucyIsIm9mZmxpbmVfYWNjZXNzIl0sImFtciI6WyJsZWdhY3kiXX0.ZDcqNRjvfuFVKR-5HTIvrLVMDXmNzfXuLCFAQ-zf4j0MwZWCfk324pqMMmFlIK4Var2_JplnRuEY6P448VNRmZxdTExOLPyge_eIP0hFFvlmwWPOeKRt2Q32LXO-JIav1Kh_fSemcnLFSeEcI6XsYGLBHdgloUysPbhbLj07sFBll7T2jEZXXujyfdUZNY6mX65_UnTzUEJZVSbEMNc1qi-4D6c0DoyPUTinpziAmi3G51E1duepPpWOUWaPqizN08eYtz2SU072IOCIRApB_CWmtJAL6RXWq4qI3DQF9LC5mNN6hF0j9KspiNcLSHghobPIRXZkbOmqCoYttizM8g",
+    "refresh_token": "4NWlVjK3aX2xzy4FYyC895mdb7ecF1JPr8AJ_wVQebY"
   },
-  "sections": [
-    {
-      "section": "campaign_summary",
-      "summary": "The Sunway Oasis & Terrace Celebration campaign successfully published **27 posts** and fully utilized all **25 allocated credits**, achieving a **100%** utilization rate. However, the campaign recorded **0 views** and **0 engagements**, meaning an engagement rate could not be calculated against the **3%** industry benchmark, and ROAS data is unavailable. Future campaigns must ensure comprehensive data capture for performance evaluation.",
-      "data": {}
-    },
-    {
-      "section": "engagement_interactions",
-      "summary": "The campaign generated a total of **27 posts** across platforms, with TikTok leading at **15 posts** and Instagram contributing **12 posts**. While overall engagement metrics are being finalized, the top-performing creators demonstrated significant audience interaction. Vincy Tan achieved an exceptional engagement rate of **3",
-      "data": {}
-    },
-    {
-      "section": "views_analysis",
-      "summary": "The campaign generated a total of **0 views**. The peak week was N/A with **0 views**, and the lowest weekly view count was also **0 views**, resulting in an overall view range of **0K – 0K**. The growth trend remained stable throughout the campaign, indicating no fluctuation in view performance. This complete absence of views suggests a critical issue with content visibility or distribution that requires immediate investigation.",
-      "data": {}
-    },
-    {
-      "section": "audience_sentiment",
-      "summary": "Audience sentiment is predominantly negative, with **54%** of feedback classified as negative, **44%** as neutral, and only **2%** as positive. This indicates a significant disconnect between the content and audience expectations, reflecting poor overall reception. No common negative themes were identified from the feedback, suggesting the issues may be varied or not easily categorized. The overwhelming negative sentiment, coupled with a minimal positive response, clearly demonstrates a lack of strong content-audience alignment, necessitating a deeper investigation into audience dissatisfaction.",
-      "data": {}
-    },
-    {
-      "section": "top_creator_personas",
-      "summary": "Top performers are identified by their exceptional engagement rates, indicating highly connected audiences. Vincy Tan stands out with an extraordinary **360%** engagement rate from her **58** followers, demonstrating a deeply loyal micro-audience for her Beauty & Skincare, Motherhood & Family, and Lifestyle",
-      "data": {}
-    },
-    {
-      "section": "campaign_recommendations",
-      "summary": "For the next campaign, prioritize creator selection by focusing on those who demonstrated exceptional engagement, particularly on TikTok. Creators like Puteri Awani, with an impressive **91%** engagement rate from **9592** followers, and Mitunasree Loganathan, achieving a **3",
-      "data": {}
-    },
-    {
-      "section": "campaign_recommendations",
-      "summary": "For the next campaign, prioritize creator selection based on engagement rates relative to follower count. Creators like Vincy Tan, who achieved a remarkable **360% engagement rate** with just **58 followers**, and Puteri Awani, with a **91% engagement rate** from",
-      "data": {}
-    }
-  ],
-  "durationMs": 21370,
-  "createdAt": "2026-02-23T00:38:55.552Z"
-}
+  {
+    "scope": "email profile openid accounting.contacts accounting.settings accounting.reports.read accounting.attachments accounting.journals.read accounting.transactions offline_access",
+    "id_token": "eyJhbGciOiJSUzI1NiIsImtpZCI6IjFDQUY4RTY2NzcyRDZEQzAyOEQ2NzI2RkQwMjYxNTgxNTcwRUZDMTkiLCJ0eXAiOiJKV1QiLCJ4NXQiOiJISy1PWm5jdGJjQW8xbkp2MENZVmdWY09fQmsifQ.eyJuYmYiOjE3NzMzODU5ODEsImV4cCI6MTc3MzM4NjI4MSwiaXNzIjoiaHR0cHM6Ly9pZGVudGl0eS54ZXJvLmNvbSIsImF1ZCI6IjMxMjIwN0JGRjMxMDRDMjg4NUMzMjlEQjM4QTFGQTY3IiwiaWF0IjoxNzczMzg1OTgxLCJhdF9oYXNoIjoiVEc5MUZ3VGV6Tk9vbmItTW1pOXd4dyIsInN1YiI6ImRkZDJiOTMyZGRlYjVhMjI5NWFiYWZiZTYxNzdlNmU0IiwiYXV0aF90aW1lIjoxNzcxOTgzNjc2LCJ4ZXJvX3VzZXJpZCI6ImIwNmM2OGQ4LWRjNWQtNGFmYS04N2Y1LTVmMGM1NzFiNDU4MSIsImdsb2JhbF9zZXNzaW9uX2lkIjoiMGI4ZWFkNWJlMDIyNDQzZDkwZDM4NWNhOTM1Yjk1OGYiLCJzaWQiOiIwYjhlYWQ1YmUwMjI0NDNkOTBkMzg1Y2E5MzViOTU4ZiIsInByZWZlcnJlZF91c2VybmFtZSI6ImF0aXFAY3VsdGNyZWF0aXZlLmFzaWEiLCJlbWFpbCI6ImF0aXFAY3VsdGNyZWF0aXZlLmFzaWEiLCJnaXZlbl9uYW1lIjoiTnVyIEF0aXFhaCIsImZhbWlseV9uYW1lIjoiWmFpbnVsIiwibmFtZSI6Ik51ciBBdGlxYWggWmFpbnVsIiwiYW1yIjpbInB3ZCIsIm1mYSIsInN3ayJdfQ.uDW2Mid9yJBSrZ6NLejMm3mjR9L8aUyoqgc6Mxq8i5HJUBHW9yew4wuUMox5zIxREIZJtdXLuatQ-KBSO7OFrTlfA5wT4xueS8PLJpF2WaOY-g5ZdzZmBnTxGXoPof0_n6hcUkoNLrTW53CAV80Yde7ntl3x1KSuWUp3NNNz54TwTqaDbTmYuMoR8Mx68IWhaUOJFkKIn9qDhwkKAXPZ_r6o244cHir4__bB5FIDPapRt8vn6A9I-iWY9DG1pbhkJmLmAMQPe8BWgEAbc_n7yAZtsYUDgMCSquVO-lxj9M_dJqlnEYNwPyZQiu4Zj-y7ZaDrVFLlRayGTTypBbdv0w",
+    "expires_at": 1773387781,
+    "token_type": "Bearer",
+    "access_token": "eyJhbGciOiJSUzI1NiIsImtpZCI6IjFDQUY4RTY2NzcyRDZEQzAyOEQ2NzI2RkQwMjYxNTgxNTcwRUZDMTkiLCJ0eXAiOiJKV1QiLCJ4NXQiOiJISy1PWm5jdGJjQW8xbkp2MENZVmdWY09fQmsifQ.eyJuYmYiOjE3NzMzODU5ODEsImV4cCI6MTc3MzM4Nzc4MSwiaXNzIjoiaHR0cHM6Ly9pZGVudGl0eS54ZXJvLmNvbSIsImF1ZCI6Imh0dHBzOi8vaWRlbnRpdHkueGVyby5jb20vcmVzb3VyY2VzIiwiY2xpZW50X2lkIjoiMzEyMjA3QkZGMzEwNEMyODg1QzMyOURCMzhBMUZBNjciLCJzdWIiOiJkZGQyYjkzMmRkZWI1YTIyOTVhYmFmYmU2MTc3ZTZlNCIsImF1dGhfdGltZSI6MTc3MTk4MzY3NiwieGVyb191c2VyaWQiOiJiMDZjNjhkOC1kYzVkLTRhZmEtODdmNS01ZjBjNTcxYjQ1ODEiLCJnbG9iYWxfc2Vzc2lvbl9pZCI6IjBiOGVhZDViZTAyMjQ0M2Q5MGQzODVjYTkzNWI5NThmIiwic2lkIjoiMGI4ZWFkNWJlMDIyNDQzZDkwZDM4NWNhOTM1Yjk1OGYiLCJhdXRoZW50aWNhdGlvbl9ldmVudF9pZCI6ImJjODAwODZiLTM1OWEtNDhhOC05N2NjLTc3ZWYwODIxNDA5ZSIsImp0aSI6IjcyOTkzM0RDMDY1RUNEQTNDNTFGQjQ3MjU3MTZBNDRBIiwic2NvcGUiOlsiZW1haWwiLCJwcm9maWxlIiwib3BlbmlkIiwiYWNjb3VudGluZy5jb250YWN0cyIsImFjY291bnRpbmcuc2V0dGluZ3MiLCJhY2NvdW50aW5nLnJlcG9ydHMucmVhZCIsImFjY291bnRpbmcuYXR0YWNobWVudHMiLCJhY2NvdW50aW5nLmpvdXJuYWxzLnJlYWQiLCJhY2NvdW50aW5nLnRyYW5zYWN0aW9ucyIsIm9mZmxpbmVfYWNjZXNzIl0sImFtciI6WyJwd2QiLCJtZmEiLCJzd2siXX0.Od8P6voQB1QrAEaWZrbK8t2CMvDW9hQGDvZSWowPWZ2mOL_Z9SsNFiYfUIQYvBL-KiS0O_M5x93mpK1dfGol5DdjjmUqT1_7cGL_x7IrTtCwEWGPgkvUX1eosS4uUrb2wZIFfD3COXE2RYO86tBBOVWOBWpeURIsDxqfiQbtCsE2BdZ2DB3vTo730C4NS7qLLHPYQeKc2u41Vnc0blu_0HfzKEAaI0inS0kcln0lrq9QIAqNb1IRj5_UM0HDsTOzyBVUH-n_9ErLfqYBtQVSOHXP5KAsSIM8z9UFCWstFKhpGloTMT5YyYK67YJ07DTyC1S-ScNk5DpYYOEHeXpb5A",
+    "refresh_token": "AJMwccYXL8-MEB-72CvFNnHNRX6gB1gBuZPSgXLHiTs"
+  }
+]

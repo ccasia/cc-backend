@@ -1163,10 +1163,11 @@ export const getprofile = async (req: Request, res: Response) => {
 
       if (tokenSet) {
         xero.setTokenSet(tokenSet);
+        console.log('1');
 
         if (dayjs.unix(tokenSet.expires_at!).isBefore(dayjs())) {
           const newTokenSet = await xero.refreshToken();
-
+          console.log('2');
           await prisma.admin.update({
             where: {
               userId: user.id,
@@ -1176,8 +1177,10 @@ export const getprofile = async (req: Request, res: Response) => {
             },
           });
         }
+        console.log('3');
 
         await xero.updateTenants();
+        console.log('4');
         xeroinformation = xero.tenants;
         console.log(xeroinformation);
       }
