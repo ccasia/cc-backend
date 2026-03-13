@@ -1156,35 +1156,35 @@ export const getprofile = async (req: Request, res: Response) => {
   try {
     const user = await getUser(userId);
 
-    if (user?.role === 'admin' && user.admin?.role?.name?.toLowerCase() === 'finance') {
-      await xero.initialize();
+    // if (user?.role === 'admin' && user.admin?.role?.name?.toLowerCase() === 'finance') {
+    //   await xero.initialize();
 
-      const tokenSet = user.admin.xeroTokenSet as TokenSet;
+    //   const tokenSet = user.admin.xeroTokenSet as TokenSet;
 
-      if (tokenSet) {
-        xero.setTokenSet(tokenSet);
-        console.log('1');
+    //   if (tokenSet) {
+    //     xero.setTokenSet(tokenSet);
+    //     console.log('1');
 
-        if (dayjs.unix(tokenSet.expires_at!).isBefore(dayjs())) {
-          const newTokenSet = await xero.refreshToken();
-          console.log('2');
-          await prisma.admin.update({
-            where: {
-              userId: user.id,
-            },
-            data: {
-              xeroTokenSet: newTokenSet as any,
-            },
-          });
-        }
-        console.log('3');
+    //     if (dayjs.unix(tokenSet.expires_at!).isBefore(dayjs())) {
+    //       const newTokenSet = await xero.refreshToken();
+    //       console.log('2');
+    //       await prisma.admin.update({
+    //         where: {
+    //           userId: user.id,
+    //         },
+    //         data: {
+    //           xeroTokenSet: newTokenSet as any,
+    //         },
+    //       });
+    //     }
+    //     console.log('3');
 
-        await xero.updateTenants();
-        console.log('4');
-        xeroinformation = xero.tenants;
-        console.log(xeroinformation);
-      }
-    }
+    //     await xero.updateTenants();
+    //     console.log('4');
+    //     xeroinformation = xero.tenants;
+    //     console.log(xeroinformation);
+    //   }
+    // }
 
     if (!user) return res.status(401).json({ message: 'Unauthorized' });
 
