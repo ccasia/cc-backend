@@ -1179,6 +1179,7 @@ export const getprofile = async (req: Request, res: Response) => {
 
         await xero.updateTenants();
         xeroinformation = xero.tenants;
+        console.log(xeroinformation);
       }
     }
 
@@ -1216,6 +1217,7 @@ export const getprofile = async (req: Request, res: Response) => {
       },
     });
   } catch (error) {
+    console.log(error);
     return res.status(404).json(error);
   }
 };
