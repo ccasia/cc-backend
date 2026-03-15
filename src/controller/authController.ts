@@ -1158,7 +1158,10 @@ export const getprofile = async (req: Request, res: Response) => {
   try {
     const user = await getUser(userId);
 
-    if (user?.role === 'superadmin') {
+    if (
+      user?.role === 'superadmin' ||
+      (user?.role === 'admin' && user?.admin?.role?.name.toLowerCase() === 'finance')
+    ) {
       try {
         await xero.initialize();
 
