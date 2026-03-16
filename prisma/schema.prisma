@@ -85,8 +85,8 @@ model User {
   npsFeedback NpsFeedback[]
 
   // logistics
-  assignedLogistics Logistic[]          @relation("AssignedLogistics")
-  createdLogistics  Logistic[]          @relation("CreatedLogistics")
+  assignedLogistics Logistic[]      @relation("AssignedLogistics")
+  createdLogistics  Logistic[]      @relation("CreatedLogistics")
   reportedIssues    LogisticIssue[]
 
   userFlow      UserFlow[]
@@ -1412,8 +1412,9 @@ model SubmissionComment {
   parent   SubmissionComment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
   replies  SubmissionComment[] @relation("CommentReplies")
 
-  agreedBy CommentAgreement[]
-  feedback Feedback?
+  agreedBy      CommentAgreement[]
+  feedback      Feedback?
+  isClientDraft Boolean            @default(false)
 
   createdAt DateTime @default(now())
   updateAt  DateTime @updatedAt
@@ -2278,4 +2279,3 @@ model SubscriptionHistory {
 
   actionByUserId String?
 }
-

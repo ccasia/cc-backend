@@ -734,7 +734,7 @@ export const approveV4Submission = async (req: Request, res: Response) => {
  * POST /api/submissions/v4/approve/client
  */
 export const approveV4SubmissionByClient = async (req: Request, res: Response) => {
-  const { submissionId, action, feedback, reasons } = req.body;
+  const { submissionId, action, feedback, reasons, videoId } = req.body;
   const clientId = req.session.userid;
 
   try {
@@ -820,6 +820,19 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
 
     // Update submission and individual content items
     const updates = [];
+
+    if (action === 'request_changes') {
+      updates.push(
+        prisma.submissionComment.updateMany({
+          where: {
+            submissionId: submissionId,
+            videoId: videoId,
+            isClientDraft: true,
+          },
+          data: { isClientDraft: false },
+        }),
+      );
+    }
 
     // Update submission status
     updates.push(
@@ -2915,9 +2928,12 @@ export const getCaptionHistory = async (req: Request, res: Response) => {
 
 export const getComments = async (req: Request, res: Response) => {
   const { submissionId } = req.params;
+  const { videoId } = req.query;
   const user = await prisma.user.findUnique({ where: { id: req.session.userid } });
 
   if (!user) return res.status(401).send('Unauthorized');
+
+  const draftFilter = user.role === 'client' ? {} : { isClientDraft: false };
 
   let roleFilter = {};
 
@@ -2933,7 +2949,9 @@ export const getComments = async (req: Request, res: Response) => {
     const comments = await prisma.submissionComment.findMany({
       where: {
         submissionId,
+        videoId: videoId as string,
         parentId: null,
+        ...draftFilter,
         user: { role: roleFilter },
       },
       orderBy: { createdAt: 'asc' },
@@ -2955,23 +2973,35 @@ export const getComments = async (req: Request, res: Response) => {
 
 export const createComment = async (req: Request, res: Response) => {
   const { submissionId } = req.params;
-  const { text, parentId, timestamp } = req.body;
-  const userId = req.session.userid;
+  const { text, parentId, timestamp, videoId } = req.body;
+  const sessionUserId = req.session.userid;
+
+  if (!sessionUserId) {
+    return res.status(401).json({ error: 'Unauthorized: No session found' });
+  }
 
   try {
-    const newComment = await prisma.submissionComment.create({
+    const user = await prisma.user.findUnique({ where: { id: sessionUserId } });
+
+    if (!user) {
+      return res.status(401).json({ error: 'Unauthorized: User not found' });
+    }
+
+    const comment = await prisma.submissionComment.create({
       data: {
         text,
         timestamp,
         submissionId,
+        videoId,
         parentId,
-        userId: userId as string,
+        userId: user.id,
+        isClientDraft: user.role === 'client',
       },
       include: {
         user: { select: { id: true, name: true, role: true } },
       },
     });
-    return res.status(201).json(newComment);
+    return res.status(201).json(comment);
   } catch (error) {
     return res.status(400).json({ error: 'Failed to create comment' });
   }
@@ -2999,4 +3029,3 @@ export const toggleAgree = async (req: Request, res: Response) => {
     return res.status(500).json({ error: 'Failed to toggle agreement' });
   }
 };
-
