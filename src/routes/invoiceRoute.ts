@@ -32,8 +32,6 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-// router.get('/executeInvoice', generateMissingInvoices);
-
 router.get('/', isSuperAdmin, getAllInvoices);
 
 router.get('/getAll', isLoggedIn, getAllSelectedInvoices);

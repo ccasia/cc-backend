@@ -84,7 +84,6 @@ interface invoiceData {
 
 export const getXero = async (req: Request, res: Response) => {
   try {
-    console.log(process.env.XERO_CLIENT_ID);
     const consentUrl = await xero.buildConsentUrl();
 
     return res.status(200).json({ url: consentUrl });
@@ -121,6 +120,8 @@ export const xeroCallBack = async (req: Request, res: Response) => {
         },
       },
     });
+
+    await xero.updateTenants();
 
     return res.status(200).json({ token: decodedAccessToken || null }); // Send the token response back to the client
   } catch (err) {
@@ -332,7 +333,13 @@ export const getAllInvoices = async (req: Request, res: Response) => {
       // Compute statusCounts from the fully filtered (but not status-filtered) dataset
       const statusCounts: Record<string, number> = {
         total: invoicesWithCurrency.length,
-        paid: 0, approved: 0, pending: 0, overdue: 0, draft: 0, rejected: 0, failed: 0,
+        paid: 0,
+        approved: 0,
+        pending: 0,
+        overdue: 0,
+        draft: 0,
+        rejected: 0,
+        failed: 0,
       };
       for (const inv of invoicesWithCurrency) {
         if (inv.status in statusCounts) {

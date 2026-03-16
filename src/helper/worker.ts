@@ -74,12 +74,15 @@ const worker = new Worker(
 
     await xero.updateTenants();
 
+    console.log('Xero tenant: ', xero.tenants);
+
     const activeTenant = xero.tenants.find(
       (item) =>
         item?.orgData.baseCurrency.toUpperCase() === ((agreement?.currency?.toUpperCase() as 'MYR' | 'SGD') ?? 'MYR'),
     );
-    console.log('ACTIVE UPDATE:', activeTenant);
-    console.log('CREATOR NAME:', creatorUser.name?.trim());
+
+    console.log('Active tenant: ', activeTenant);
+
     const result = await xero.accountingApi.getContacts(
       activeTenant.tenantId,
       undefined, // IDs
@@ -87,6 +90,7 @@ const worker = new Worker(
       // `EmailAddress=="${creatorUser.email}" || Name=="${creatorUser.name}"`,
       `Name=="${invoice.invoiceFrom.name?.trim()}"`,
     );
+
     if (result.body.contacts && result.body.contacts.length > 0) {
       contactID = result.body.contacts[0].contactID || null;
     } else {
@@ -112,6 +116,7 @@ const worker = new Worker(
         });
       }
     }
+
     if (contactID) {
       const createdInvoice = await createXeroInvoiceLocal(
         contactID,
@@ -291,9 +296,13 @@ export const bulkInvoiceWorker = new Worker(
 
         const agreement = invoice.creator.user.creatorAgreement.find((a) => a.campaignId === invoice.campaignId);
 
-        const currency = (agreement?.currency?.toUpperCase() as 'MYR' | 'SGD') ?? 'MYR';
+        // const currency = (agreement?.currency?.toUpperCase() as 'MYR' | 'SGD') ?? 'MYR';
 
-        const activeTenant = xero.tenants.find((t) => t?.orgData.baseCurrency.toUpperCase() === currency);
+        const activeTenant = xero.tenants.find(
+          (item) =>
+            item?.orgData.baseCurrency.toUpperCase() ===
+            ((agreement?.currency?.toUpperCase() as 'MYR' | 'SGD') ?? 'MYR'),
+        );
 
         if (!activeTenant) continue;
 
@@ -307,18 +316,38 @@ export const bulkInvoiceWorker = new Worker(
           invoice.creator.user.paymentForm?.bankAccountName ||
           invoice.creator.user.name;
 
-        const result = await xero.accountingApi.getContacts(tenantId, undefined, `Name=="${recipientName.trim()}"`);
+        const result = await xero.accountingApi.getContacts(
+          activeTenant.tenantId,
+          undefined, // IDs
+          // `EmailAddress=="${creatorUser.email}"`,
+          // `EmailAddress=="${creatorUser.email}" || Name=="${creatorUser.name}"`,
+          `Name=="${recipientName.trim()}"`,
+        );
 
-        if (result.body.contacts && result.body.contacts?.length > 0) {
+        if (result.body.contacts && result.body.contacts.length > 0) {
           contactID = result.body.contacts[0].contactID || null;
         } else {
-          const [contact] = await createXeroContact(invoice.bankAcc, invoice.creator, invoice.invoiceFrom, currency);
-          contactID = contact.contactID || null;
-
-          await prisma.creator.update({
-            where: { id: invoice.creator.id },
-            data: { xeroContactId: contactID },
-          });
+          const result = await xero.accountingApi.getContacts(
+            activeTenant.tenantId,
+            undefined, // IDs
+            `EmailAddress=="${invoice.creator.user.email.trim()}"`,
+            // `EmailAddress=="${creatorUser.email}" || Name=="${creatorUser.name}"`,
+          );
+          if (result.body.contacts && result.body.contacts.length > 0) {
+            contactID = result.body.contacts[0].contactID || null;
+          } else {
+            const [contact] = await createXeroContact(
+              invoice.bankAcc,
+              invoice.creator,
+              invoice.invoiceFrom,
+              (agreement?.currency?.toUpperCase() as 'MYR' | 'SGD') ?? 'MYR',
+            );
+            contactID = contact.contactID || null;
+            await prisma.creator.update({
+              where: { id: invoice.creator.id },
+              data: { xeroContactId: contactID },
+            });
+          }
         }
 
         if (!batches[tenantId]) batches[tenantId] = { tenantId, xeroInvoices: [], invoiceIds: [] };
