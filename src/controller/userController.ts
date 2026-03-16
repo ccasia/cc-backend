@@ -37,9 +37,9 @@ export const updateProfileAdmin = async (req: Request, res: Response) => {
     if (files && files.image) {
       const { image } = files as any;
       const publicURL = await uploadProfileImage(image.tempFilePath, image.name, 'admin');
-      await updateAdmin(req.body, publicURL);
+      await updateAdmin(req.body, publicURL, req.session.userid as string | undefined);
     } else {
-      await updateAdmin(req.body);
+      await updateAdmin(req.body, undefined, req.session.userid as string | undefined);
     }
 
     return res.status(200).json({ message: 'Successfully updated' });
