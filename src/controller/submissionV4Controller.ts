@@ -2934,7 +2934,10 @@ export const getCaptionHistory = async (req: Request, res: Response) => {
 export const getComments = async (req: Request, res: Response) => {
   const { submissionId } = req.params;
   const { videoId } = req.query;
-  const user = await prisma.user.findUnique({ where: { id: req.session.userid } });
+  const user = await prisma.user.findUnique({
+    where: { id: req.session.userid },
+    include: { client: { select: { company: { select: { logo: true } } } } },
+  });
 
   if (!user) return res.status(401).send('Unauthorized');
 
@@ -3020,7 +3023,7 @@ export const createComment = async (req: Request, res: Response) => {
         submissionId,
         videoId,
         campaignId: commentCampaignId,
-        comment: newComment,
+        commaent: newComment,
         ...(parentId ? { parentCommentId: parentId } : {}),
       });
     }
