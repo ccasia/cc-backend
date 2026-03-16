@@ -2947,7 +2947,13 @@ export const getComments = async (req: Request, res: Response) => {
   }
 
   try {
-    const comments = await fetchCommentsForVideo(submissionId, videoId as string | undefined, roleFilter);
+    const excludeClientDrafts = user.role !== 'client';
+    const comments = await fetchCommentsForVideo(
+      submissionId,
+      videoId as string | undefined,
+      roleFilter,
+      excludeClientDrafts,
+    );
     return res.status(200).json(comments);
   } catch (error) {
     return res.status(400).json({ error: 'Failed to fetch comments' });
@@ -3005,10 +3011,10 @@ export const createComment = async (req: Request, res: Response) => {
       },
     });
 
-    // Emit socket event for real-time updates
+    // Emit socket event for real-time updates (skip client drafts)
     const commentCampaignId = newComment.submission?.campaignId;
 
-    if (commentCampaignId && io) {
+    if (commentCampaignId && io && !newComment.isClientDraft) {
       const eventName = parentId ? 'v4:comment:reply:added' : 'v4:comment:added';
       io.to(commentCampaignId).emit(eventName, {
         submissionId,
@@ -3119,7 +3125,7 @@ export const toggleResolve = async (req: Request, res: Response) => {
  */
 export const updateComment = async (req: Request, res: Response) => {
   const { commentId } = req.params;
-  const { text } = req.body;
+  const { text, timestamp } = req.body;
   const adminId = req.session.userid as string;
 
   if (!text || typeof text !== 'string' || !text.trim()) {
@@ -3143,7 +3149,7 @@ export const updateComment = async (req: Request, res: Response) => {
 
     // Only set forwardedByUserId when editing someone else's comment (client's)
     const forwardedByUserId = comment.userId !== adminId ? adminId : undefined;
-    const updatedComment = await editCommentRecord(commentId, text, forwardedByUserId);
+    const updatedComment = await editCommentRecord(commentId, text, forwardedByUserId, timestamp);
 
     // campaignId is included from the service query
     const editCampaignId = (updatedComment as any).submission?.campaignId;
@@ -3255,18 +3261,19 @@ export const sendVideoFeedbackToCreator = async (req: Request, res: Response) =>
 
     // Transaction: mark forwarded + create feedback + update statuses
     await prisma.$transaction([
-      // Mark all unforwarded top-level comments as forwarded by this admin
+      // Mark all unforwarded, published top-level comments as forwarded by this admin
       prisma.submissionComment.updateMany({
-        where: { submissionId, videoId, forwardedByUserId: null },
+        where: { submissionId, videoId, forwardedByUserId: null, isClientDraft: false },
         data: { forwardedByUserId: adminId },
       }),
-      // Also mark replies of those comments
+      // Also mark replies of those comments (excluding drafts)
       ...(parentIds.length > 0
         ? [
             prisma.submissionComment.updateMany({
               where: {
                 parentId: { in: parentIds },
                 forwardedByUserId: null,
+                isClientDraft: false,
               },
               data: { forwardedByUserId: adminId },
             }),

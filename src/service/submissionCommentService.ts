@@ -21,6 +21,7 @@ export const fetchCommentsForVideo = async (
   submissionId: string,
   videoId: string | undefined,
   roleFilter: any,
+  excludeClientDrafts = false,
 ) => {
   const where: any = {
     submissionId,
@@ -31,23 +32,28 @@ export const fetchCommentsForVideo = async (
     where.videoId = videoId;
   }
 
+  // Hide unpublished client draft comments from admins and creators
+  if (excludeClientDrafts) {
+    where.isClientDraft = false;
+  }
+
   // For role-filtered queries, also include forwarded comments (client comments
   // that have been forwarded by an admin should be visible to creators)
   if (roleFilter && Object.keys(roleFilter).length > 0) {
-    where.OR = [
-      { user: { role: roleFilter } },
-      { forwardedByUserId: { not: null } },
-    ];
+    where.OR = [{ user: { role: roleFilter } }, { forwardedByUserId: { not: null } }];
   }
 
-  const replyWhere = roleFilter && Object.keys(roleFilter).length > 0
-    ? {
-        OR: [
-          { user: { role: roleFilter } },
-          { forwardedByUserId: { not: null } },
-        ],
-      }
-    : undefined;
+  let replyWhere: any =
+    roleFilter && Object.keys(roleFilter).length > 0
+      ? {
+          OR: [{ user: { role: roleFilter } }, { forwardedByUserId: { not: null } }],
+        }
+      : undefined;
+
+  // Also exclude client drafts from replies
+  if (excludeClientDrafts) {
+    replyWhere = replyWhere ? { ...replyWhere, isClientDraft: false } : { isClientDraft: false };
+  }
 
   const comments = await prisma.submissionComment.findMany({
     where,
@@ -93,12 +99,11 @@ export const createCommentRecord = async (
 };
 
 // Edit a comment's text and optionally set forwardedByUserId
-export const editCommentRecord = async (
-  commentId: string,
-  newText: string,
-  forwardedByUserId?: string,
-) => {
+export const editCommentRecord = async (commentId: string, newText: string, forwardedByUserId?: string, timestamp?: string) => {
   const data: any = { text: newText };
+  if (timestamp !== undefined) {
+    data.timestamp = timestamp;
+  }
   if (forwardedByUserId) {
     data.forwardedByUserId = forwardedByUserId;
   }
