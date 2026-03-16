@@ -42,6 +42,8 @@ model User {
   feedback                Feedback[]
   commentAgreements       CommentAgreement[]
   submissionComments      SubmissionComment[]
+  forwardedComments       SubmissionComment[] @relation("ForwardedComments")
+  resolvedComments        SubmissionComment[] @relation("ResolvedComments")
   finance                 Finance?
   invoice                 Invoice[]           @relation("CreatedBy")
   sentMessages            Message[]           @relation("UserMessages")
@@ -1415,6 +1417,13 @@ model SubmissionComment {
   agreedBy      CommentAgreement[]
   feedback      Feedback?
   isClientDraft Boolean            @default(false)
+
+  forwardedByUserId String?
+  forwardedBy       User?   @relation("ForwardedComments", fields: [forwardedByUserId], references: [id], onDelete: SetNull)
+
+  resolvedAt        DateTime?
+  resolvedByUserId  String?
+  resolvedBy        User?   @relation("ResolvedComments", fields: [resolvedByUserId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
   updateAt  DateTime @updatedAt

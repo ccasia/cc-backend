@@ -13,6 +13,7 @@ import {
   getStatusAfterForwardingClientFeedback,
 } from '../utils/v4StatusUtils';
 import { checkAndCompleteV4Campaign } from '../service/submissionV4CompletionService';
+import { fetchCommentsForVideo, createCommentRecord, editCommentRecord } from '../service/submissionCommentService';
 import { clients, io } from '../server';
 import { saveNotification } from './notificationController';
 import { notificationDraft } from '@helper/notification';
@@ -574,8 +575,7 @@ export const approveV4Submission = async (req: Request, res: Response) => {
     }
     // For video submissions, scope feedback to the reviewed video (admin sends videoId or we use first video)
     const feedbackVideoId =
-      videoId ||
-      (submission.video && submission.video.length > 0 ? submission.video[0].id : null);
+      videoId || (submission.video && submission.video.length > 0 ? submission.video[0].id : null);
 
     updates.push(
       prisma.feedback.create({
@@ -2926,6 +2926,11 @@ export const getCaptionHistory = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * Get comments for a submission, optionally filtered by videoId.
+ * Role-based: creators see admin-only, clients see admin+client, admins see all.
+ * GET /api/submissions/v4/submission/:submissionId/comments?videoId=xxx
+ */
 export const getComments = async (req: Request, res: Response) => {
   const { submissionId } = req.params;
   const { videoId } = req.query;
@@ -2933,44 +2938,27 @@ export const getComments = async (req: Request, res: Response) => {
 
   if (!user) return res.status(401).send('Unauthorized');
 
-  const draftFilter = user.role === 'client' ? {} : { isClientDraft: false };
-
-  let roleFilter = {};
+  let roleFilter: any = {};
 
   if (user.role === 'client') {
     roleFilter = { in: ['admin', 'client'] };
   } else if (user.role === 'creator') {
     roleFilter = { in: ['admin'] };
-  } else {
-    roleFilter = {};
   }
 
   try {
-    const comments = await prisma.submissionComment.findMany({
-      where: {
-        submissionId,
-        videoId: videoId as string,
-        parentId: null,
-        ...draftFilter,
-        user: { role: roleFilter },
-      },
-      orderBy: { createdAt: 'asc' },
-      include: {
-        user: { select: { id: true, name: true, role: true } },
-        agreedBy: { select: { userId: true } },
-        replies: {
-          where: { user: { role: roleFilter } },
-          orderBy: { createdAt: 'asc' },
-          include: { user: { select: { id: true, name: true, role: true } } },
-        },
-      },
-    });
+    const comments = await fetchCommentsForVideo(submissionId, videoId as string | undefined, roleFilter);
     return res.status(200).json(comments);
   } catch (error) {
     return res.status(400).json({ error: 'Failed to fetch comments' });
   }
 };
 
+/**
+ * Create a comment or reply on a submission.
+ * POST /api/submissions/v4/submission/:submissionId/comments
+ * Body: { text, timestamp?, videoId?, parentId? }
+ */
 export const createComment = async (req: Request, res: Response) => {
   const { submissionId } = req.params;
   const { text, parentId, timestamp, videoId } = req.body;
@@ -2980,6 +2968,10 @@ export const createComment = async (req: Request, res: Response) => {
     return res.status(401).json({ error: 'Unauthorized: No session found' });
   }
 
+  if (!text || typeof text !== 'string' || !text.trim()) {
+    return res.status(400).json({ error: 'Comment text is required' });
+  }
+
   try {
     const user = await prisma.user.findUnique({ where: { id: sessionUserId } });
 
@@ -2987,26 +2979,56 @@ export const createComment = async (req: Request, res: Response) => {
       return res.status(401).json({ error: 'Unauthorized: User not found' });
     }
 
-    const comment = await prisma.submissionComment.create({
+    // Validate videoId belongs to this submission if provided
+    if (videoId) {
+      const video = await prisma.video.findFirst({
+        where: { id: videoId, submissionId },
+      });
+      if (!video) {
+        return res.status(400).json({ error: 'Video does not belong to this submission' });
+      }
+    }
+
+    const newComment = await prisma.submissionComment.create({
       data: {
         text,
-        timestamp,
+        timestamp: timestamp || null,
         submissionId,
-        videoId,
-        parentId,
+        videoId: videoId || null,
+        parentId: parentId || null,
         userId: user.id,
         isClientDraft: user.role === 'client',
       },
       include: {
         user: { select: { id: true, name: true, role: true } },
+        submission: { select: { campaignId: true } },
       },
     });
-    return res.status(201).json(comment);
+
+    // Emit socket event for real-time updates
+    const commentCampaignId = newComment.submission?.campaignId;
+
+    if (commentCampaignId && io) {
+      const eventName = parentId ? 'v4:comment:reply:added' : 'v4:comment:added';
+      io.to(commentCampaignId).emit(eventName, {
+        submissionId,
+        videoId,
+        campaignId: commentCampaignId,
+        comment: newComment,
+        ...(parentId ? { parentCommentId: parentId } : {}),
+      });
+    }
+
+    return res.status(201).json(newComment);
   } catch (error) {
     return res.status(400).json({ error: 'Failed to create comment' });
   }
 };
 
+/**
+ * Toggle agreement (thumbs-up) on a comment. Client-only.
+ * POST /api/submissions/v4/comments/:commentId/agree
+ */
 export const toggleAgree = async (req: Request, res: Response) => {
   const { commentId } = req.params;
   const userId = req.session.userid as string;
@@ -3027,5 +3049,424 @@ export const toggleAgree = async (req: Request, res: Response) => {
     }
   } catch (error) {
     return res.status(500).json({ error: 'Failed to toggle agreement' });
+  }
+};
+
+/**
+ * Admin toggles resolved status on a comment.
+ * PATCH /api/submissions/v4/comments/:commentId/resolve
+ */
+export const toggleResolve = async (req: Request, res: Response) => {
+  const { commentId } = req.params;
+  const adminId = req.session.userid as string;
+
+  try {
+    const comment = await prisma.submissionComment.findUnique({
+      where: { id: commentId },
+      select: {
+        id: true,
+        submissionId: true,
+        videoId: true,
+        resolvedByUserId: true,
+        submission: { select: { campaignId: true } },
+      },
+    });
+
+    if (!comment) {
+      return res.status(404).json({ error: 'Comment not found' });
+    }
+
+    const isCurrentlyResolved = !!comment.resolvedByUserId;
+
+    const updated = await prisma.submissionComment.update({
+      where: { id: commentId },
+      data: isCurrentlyResolved
+        ? { resolvedByUserId: null, resolvedAt: null }
+        : { resolvedByUserId: adminId, resolvedAt: new Date() },
+      select: {
+        id: true,
+        resolvedAt: true,
+        resolvedByUserId: true,
+        resolvedBy: { select: { id: true, name: true } },
+      },
+    });
+
+    const campaignId = comment.submission?.campaignId;
+    if (campaignId && io) {
+      io.to(campaignId).emit('v4:comment:updated', {
+        submissionId: comment.submissionId,
+        videoId: comment.videoId,
+        campaignId,
+        comment: updated,
+      });
+    }
+
+    return res.status(200).json({
+      resolved: !isCurrentlyResolved,
+      resolvedAt: updated.resolvedAt,
+      resolvedBy: updated.resolvedBy,
+    });
+  } catch (error) {
+    return res.status(500).json({ error: 'Failed to toggle resolve status' });
+  }
+};
+
+/**
+ * Admin edits a comment (typically a client's comment before forwarding).
+ * Sets forwardedByUserId to the admin who edited it.
+ * PATCH /api/submissions/v4/comments/:commentId
+ * Body: { text }
+ */
+export const updateComment = async (req: Request, res: Response) => {
+  const { commentId } = req.params;
+  const { text } = req.body;
+  const adminId = req.session.userid as string;
+
+  if (!text || typeof text !== 'string' || !text.trim()) {
+    return res.status(400).json({ error: 'Comment text is required' });
+  }
+
+  try {
+    const comment = await prisma.submissionComment.findUnique({
+      where: { id: commentId },
+      include: { user: { select: { id: true, role: true } } },
+    });
+
+    if (!comment) {
+      return res.status(404).json({ error: 'Comment not found' });
+    }
+
+    // Admin can edit client comments or their own
+    if (comment.user.role !== 'client' && comment.userId !== adminId) {
+      return res.status(403).json({ error: 'Cannot edit this comment' });
+    }
+
+    // Only set forwardedByUserId when editing someone else's comment (client's)
+    const forwardedByUserId = comment.userId !== adminId ? adminId : undefined;
+    const updatedComment = await editCommentRecord(commentId, text, forwardedByUserId);
+
+    // campaignId is included from the service query
+    const editCampaignId = (updatedComment as any).submission?.campaignId;
+
+    if (editCampaignId && io) {
+      io.to(editCampaignId).emit('v4:comment:updated', {
+        submissionId: comment.submissionId,
+        videoId: comment.videoId,
+        campaignId: editCampaignId,
+        comment: updatedComment,
+      });
+    }
+
+    return res.status(200).json(updatedComment);
+  } catch (error) {
+    return res.status(500).json({ error: 'Failed to update comment' });
+  }
+};
+
+/**
+ * Admin deletes a comment.
+ * DELETE /api/submissions/v4/comments/:commentId
+ */
+export const deleteComment = async (req: Request, res: Response) => {
+  const { commentId } = req.params;
+  const adminId = req.session.userid as string;
+
+  try {
+    const comment = await prisma.submissionComment.findUnique({
+      where: { id: commentId },
+      select: {
+        id: true,
+        submissionId: true,
+        videoId: true,
+        userId: true,
+        submission: { select: { campaignId: true } },
+      },
+    });
+
+    if (!comment) {
+      return res.status(404).json({ error: 'Comment not found' });
+    }
+
+    const deleteCampaignId = comment.submission?.campaignId;
+
+    await prisma.submissionComment.delete({ where: { id: commentId } });
+
+    if (deleteCampaignId && io) {
+      io.to(deleteCampaignId).emit('v4:comment:deleted', {
+        commentId,
+        submissionId: comment.submissionId,
+        videoId: comment.videoId,
+        campaignId: deleteCampaignId,
+      });
+    }
+
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    return res.status(500).json({ error: 'Failed to delete comment' });
+  }
+};
+
+/**
+ * Send video feedback comments to creator.
+ * Marks all comments as forwarded, creates Feedback record, transitions status to CHANGES_REQUIRED.
+ * POST /api/submissions/v4/submission/:submissionId/send-to-creator
+ * Body: { videoId }
+ */
+export const sendVideoFeedbackToCreator = async (req: Request, res: Response) => {
+  const { submissionId } = req.params;
+  const { videoId } = req.body;
+  const adminId = req.session.userid as string;
+
+  try {
+    if (!videoId) {
+      return res.status(400).json({ message: 'videoId is required' });
+    }
+
+    const submission = await prisma.submission.findUnique({
+      where: { id: submissionId },
+      include: {
+        campaign: {
+          include: { campaignAdmin: { include: { admin: { include: { user: true } } } } },
+        },
+        submissionType: true,
+        user: true,
+        video: true,
+      },
+    });
+
+    if (!submission) {
+      return res.status(404).json({ message: 'Submission not found' });
+    }
+
+    if (!['PENDING_REVIEW', 'CLIENT_FEEDBACK'].includes(submission.status)) {
+      return res.status(400).json({
+        message: `Cannot send feedback to creator. Current status: ${submission.status}`,
+      });
+    }
+
+    const { submissionStatus: newStatus, videoStatus: contentStatus } = getStatusAfterForwardingClientFeedback();
+
+    // Find all top-level comment IDs for this video to also mark their replies
+    const parentCommentIds = await prisma.submissionComment.findMany({
+      where: { submissionId, videoId, parentId: null },
+      select: { id: true },
+    });
+    const parentIds = parentCommentIds.map((c) => c.id);
+
+    // Transaction: mark forwarded + create feedback + update statuses
+    await prisma.$transaction([
+      // Mark all unforwarded top-level comments as forwarded by this admin
+      prisma.submissionComment.updateMany({
+        where: { submissionId, videoId, forwardedByUserId: null },
+        data: { forwardedByUserId: adminId },
+      }),
+      // Also mark replies of those comments
+      ...(parentIds.length > 0
+        ? [
+            prisma.submissionComment.updateMany({
+              where: {
+                parentId: { in: parentIds },
+                forwardedByUserId: null,
+              },
+              data: { forwardedByUserId: adminId },
+            }),
+          ]
+        : []),
+      // Create backward-compat Feedback record
+      prisma.feedback.create({
+        data: {
+          submissionId,
+          adminId,
+          videoId,
+          type: 'REQUEST',
+          sentToCreator: true,
+          content: '',
+        },
+      }),
+      // Update submission status
+      prisma.submission.update({
+        where: { id: submissionId },
+        data: { status: newStatus, updatedAt: new Date() },
+      }),
+      // Update video status
+      prisma.video.updateMany({
+        where: { submissionId },
+        data: {
+          status: contentStatus as any,
+          adminId,
+          feedbackAt: new Date(),
+        },
+      }),
+    ]);
+
+    // Socket: reuse existing v4:submission:updated event
+    if (io) {
+      io.to(submission.campaign.id).emit('v4:submission:updated', {
+        submissionId,
+        campaignId: submission.campaign.id,
+        newStatus,
+        action: 'request_revision',
+        updatedAt: new Date().toISOString(),
+      });
+    }
+
+    // Notify creator
+    const creatorId = submission.userId;
+    const notification = await saveNotification({
+      userId: creatorId,
+      title: `📝 Feedback for Video for ${submission.campaign.name} is ready to view.`,
+      message: `CSM has requested changes for your submission to the "${submission.campaign.name}" campaign. Please review the feedback.`,
+      entity: 'Draft',
+      entityId: submission.campaign.id,
+    });
+
+    const creatorSocketId = clients.get(creatorId);
+    if (io && creatorSocketId) {
+      io.to(creatorSocketId).emit('notification', notification);
+    }
+
+    console.log(`✅ V4 submission ${submissionId} feedback sent to creator by admin ${adminId}`);
+
+    return res.status(200).json({
+      message: 'Feedback sent to creator successfully',
+      submissionId,
+      newStatus,
+    });
+  } catch (error) {
+    console.error('Error sending feedback to creator:', error);
+    return res.status(500).json({
+      message: 'Failed to send feedback to creator',
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+};
+
+/**
+ * Send video feedback comments to client.
+ * Creates Feedback record, transitions status to SENT_TO_CLIENT.
+ * POST /api/submissions/v4/submission/:submissionId/send-to-client
+ * Body: { videoId }
+ */
+export const sendVideoFeedbackToClient = async (req: Request, res: Response) => {
+  const { submissionId } = req.params;
+  const { videoId } = req.body;
+  const adminId = req.session.userid as string;
+
+  try {
+    if (!videoId) {
+      return res.status(400).json({ message: 'videoId is required' });
+    }
+
+    const submission = await prisma.submission.findUnique({
+      where: { id: submissionId },
+      include: {
+        campaign: {
+          include: { campaignAdmin: { include: { admin: { include: { user: true } } } } },
+        },
+        submissionType: true,
+        user: true,
+        video: true,
+      },
+    });
+
+    if (!submission) {
+      return res.status(404).json({ message: 'Submission not found' });
+    }
+
+    if (submission.status !== 'PENDING_REVIEW') {
+      return res.status(400).json({
+        message: `Cannot send to client. Current status: ${submission.status}`,
+      });
+    }
+
+    const effectiveOrigin = getEffectiveCampaignOrigin(submission.campaign);
+    if (effectiveOrigin !== 'CLIENT') {
+      return res.status(400).json({
+        message: 'Cannot send to client for non-client campaigns',
+      });
+    }
+
+    // Use status utilities for consistent status values
+    const { submissionStatus: newStatus, videoStatus: contentStatus } = getNextStatusAfterAdminAction(
+      'approve',
+      'CLIENT',
+    );
+
+    // Transaction: create feedback + update statuses
+    await prisma.$transaction([
+      // Create backward-compat Feedback record
+      prisma.feedback.create({
+        data: {
+          submissionId,
+          adminId,
+          videoId,
+          type: 'COMMENT',
+          sentToCreator: false,
+          content: '',
+        },
+      }),
+      // Update submission status
+      prisma.submission.update({
+        where: { id: submissionId },
+        data: { status: newStatus, updatedAt: new Date() },
+      }),
+      // Update video status
+      prisma.video.updateMany({
+        where: { submissionId },
+        data: {
+          status: contentStatus as any,
+          adminId,
+          feedbackAt: new Date(),
+        },
+      }),
+    ]);
+
+    // Socket: reuse existing v4:submission:updated event
+    if (io) {
+      io.to(submission.campaign.id).emit('v4:submission:updated', {
+        submissionId,
+        campaignId: submission.campaign.id,
+        newStatus,
+        action: 'approve',
+        updatedAt: new Date().toISOString(),
+      });
+    }
+
+    // Notify client users in parallel
+    const clientUsers = submission.campaign.campaignAdmin.filter((ca: any) => ca.admin.user.role === 'client');
+
+    await Promise.all(
+      clientUsers.map(async (clientUser: any) => {
+        const { title, message } = notificationDraft(submission.campaign.name, 'Admin', submission.user.name as string);
+        const clientUserId = clientUser.admin.userId;
+
+        const notification = await saveNotification({
+          userId: clientUserId,
+          message,
+          title,
+          entity: 'Draft',
+          entityId: submission.campaign.id,
+        });
+
+        const clientSocketId = clients.get(clientUserId);
+        if (clientSocketId) {
+          io.to(clientSocketId).emit('notification', notification);
+        }
+      }),
+    );
+
+    console.log(`✅ V4 submission ${submissionId} sent to client by admin ${adminId}`);
+
+    return res.status(200).json({
+      message: 'Feedback sent to client successfully',
+      submissionId,
+      newStatus,
+    });
+  } catch (error) {
+    console.error('Error sending feedback to client:', error);
+    return res.status(500).json({
+      message: 'Failed to send feedback to client',
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
   }
 };
