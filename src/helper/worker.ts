@@ -74,10 +74,14 @@ const worker = new Worker(
 
     await xero.updateTenants();
 
+    console.log('Xero tenant: ', xero.tenants);
+
     const activeTenant = xero.tenants.find(
       (item) =>
         item?.orgData.baseCurrency.toUpperCase() === ((agreement?.currency?.toUpperCase() as 'MYR' | 'SGD') ?? 'MYR'),
     );
+
+    console.log('Active tenant: ', activeTenant);
 
     const result = await xero.accountingApi.getContacts(
       activeTenant.tenantId,
