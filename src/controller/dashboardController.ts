@@ -125,7 +125,7 @@ export const getDashboardStats = async (req: Request, res: Response) => {
       completedCampaigns,
       totalPitches,
       approvedPitches,
-      rejectedPitches,
+      totalCreatorsIncludingAll,
       pendingPitches,
       creatorsWithMediaKit,
       creatorsInCampaigns,
@@ -173,12 +173,10 @@ export const getDashboardStats = async (req: Request, res: Response) => {
         },
       }),
 
-      // Rejected pitches count
-      prisma.pitch.count({
+      // Total creators including NPCs (all statuses)
+      prisma.user.count({
         where: {
-          status: {
-            in: ['REJECTED', 'rejected'],
-          },
+          role: 'creator',
         },
       }),
 
@@ -234,7 +232,7 @@ export const getDashboardStats = async (req: Request, res: Response) => {
         completedCampaigns,
         totalPitches,
         approvedPitches,
-        rejectedPitches,
+        totalCreatorsIncludingAll,
         pendingPitches,
         maybePitches,
         creatorsWithMediaKit,
