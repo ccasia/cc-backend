@@ -13,7 +13,6 @@ import {
   getStatusAfterForwardingClientFeedback,
 } from '../utils/v4StatusUtils';
 import { checkAndCompleteV4Campaign } from '../service/submissionV4CompletionService';
-import { fetchCommentsForVideo, createCommentRecord, editCommentRecord } from '../service/submissionCommentService';
 import { clients, io } from '../server';
 import { saveNotification } from './notificationController';
 import { notificationDraft } from '@helper/notification';
@@ -575,7 +574,8 @@ export const approveV4Submission = async (req: Request, res: Response) => {
     }
     // For video submissions, scope feedback to the reviewed video (admin sends videoId or we use first video)
     const feedbackVideoId =
-      videoId || (submission.video && submission.video.length > 0 ? submission.video[0].id : null);
+      videoId ||
+      (submission.video && submission.video.length > 0 ? submission.video[0].id : null);
 
     updates.push(
       prisma.feedback.create({
@@ -734,7 +734,7 @@ export const approveV4Submission = async (req: Request, res: Response) => {
  * POST /api/submissions/v4/approve/client
  */
 export const approveV4SubmissionByClient = async (req: Request, res: Response) => {
-  const { submissionId, action, feedback, reasons, videoId } = req.body;
+  const { submissionId, action, feedback, reasons } = req.body;
   const clientId = req.session.userid;
 
   try {
@@ -820,19 +820,6 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
 
     // Update submission and individual content items
     const updates = [];
-
-    if (action === 'request_changes') {
-      updates.push(
-        prisma.submissionComment.updateMany({
-          where: {
-            submissionId: submissionId,
-            videoId: videoId,
-            isClientDraft: true,
-          },
-          data: { isClientDraft: false },
-        }),
-      );
-    }
 
     // Update submission status
     updates.push(
@@ -1071,23 +1058,16 @@ export const forwardClientFeedbackV4 = async (req: Request, res: Response) => {
     );
 
     if (submission.video && submission.video.length > 0) {
-      // Only update the latest video (most recently created), not all video versions
-      const latestVideo = [...submission.video].sort(
-        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-      )[0];
-
-      if (latestVideo) {
-        updates.push(
-          prisma.video.update({
-            where: { id: latestVideo.id },
-            data: {
-              status: contentStatus as any,
-              adminId: adminId,
-              feedbackAt: new Date(),
-            },
-          }),
-        );
-      }
+      updates.push(
+        prisma.video.updateMany({
+          where: { submissionId },
+          data: {
+            status: contentStatus as any,
+            adminId: adminId,
+            feedbackAt: new Date(),
+          },
+        }),
+      );
     }
 
     if (submission.photos && submission.photos.length > 0) {
@@ -2615,14 +2595,12 @@ export const getV4SubmissionById = async (req: Request, res: Response) => {
             id: true,
             name: true,
             email: true,
-            photoURL: true,
           },
         },
         campaign: {
           select: {
             id: true,
             name: true,
-            campaignType: true,
           },
         },
         video: {
@@ -2633,11 +2611,7 @@ export const getV4SubmissionById = async (req: Request, res: Response) => {
             feedback: true,
             reasons: true,
             feedbackAt: true,
-            createdAt: true,
-            adminId: true,
-            resubmittedFromId: true,
           },
-          orderBy: { createdAt: 'desc' as const },
         },
         photos: {
           select: {
@@ -2950,10 +2924,7 @@ export const getCaptionHistory = async (req: Request, res: Response) => {
 export const getComments = async (req: Request, res: Response) => {
   const { submissionId } = req.params;
   const { videoId } = req.query;
-  const user = await prisma.user.findUnique({
-    where: { id: req.session.userid },
-    include: { client: { select: { company: { select: { logo: true } } } } },
-  });
+  const user = await prisma.user.findUnique({ where: { id: req.session.userid } });
 
   if (!user) return res.status(401).send('Unauthorized');
 
@@ -3324,7 +3295,7 @@ export const sendVideoFeedbackToCreator = async (req: Request, res: Response) =>
             }),
           ]
         : []),
-      // Create backward-compat Feedback record
+      // Create backward-compat Feedback record linked to the first comment
       prisma.feedback.create({
         data: {
           submissionId,
@@ -3471,9 +3442,9 @@ export const sendVideoFeedbackToClient = async (req: Request, res: Response) => 
         where: { id: submissionId },
         data: { status: newStatus, updatedAt: new Date() },
       }),
-      // Update only the specific video's status (not all videos for the submission)
-      prisma.video.update({
-        where: { id: videoId },
+      // Update video status
+      prisma.video.updateMany({
+        where: { submissionId },
         data: {
           status: contentStatus as any,
           adminId,
