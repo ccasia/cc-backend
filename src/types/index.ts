@@ -88,6 +88,7 @@ export interface GenerateReportRequest {
   externalMetrics?: ExternalMetrics; // API data passed from your frontend/backend
   onChunk?: (section: ReportSection, chunk: string) => void;
   onDone?: () => void;
+  userId: string;
 }
 
 // ── Result ────────────────────────────────────────────────────────────────────
