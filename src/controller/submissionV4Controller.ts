@@ -2705,6 +2705,9 @@ export const getV4SubmissionById = async (req: Request, res: Response) => {
 
     const mapFeedbackReplies = (f: any) => ({
       ...f,
+      // Map the main comment's text and timestamp to the feedback
+      content: f.submissionComment?.text || f.content,
+      timestamp: f.submissionComment?.timestamp,
       replies: (f.submissionComment?.replies ?? []).map((r: any) => ({
         id: r.id,
         content: r.text,
@@ -3055,7 +3058,7 @@ export const createComment = async (req: Request, res: Response) => {
         submissionId,
         videoId,
         campaignId: commentCampaignId,
-        commaent: newComment,
+        comment: newComment,
         ...(parentId ? { parentCommentId: parentId } : {}),
       });
     }
@@ -3294,6 +3297,13 @@ export const sendVideoFeedbackToCreator = async (req: Request, res: Response) =>
     });
     const parentIds = parentCommentIds.map((c) => c.id);
 
+    // Find the first unforwarded comment to link to Feedback
+    const firstComment = await prisma.submissionComment.findFirst({
+      where: { submissionId, videoId, forwardedByUserId: null, isClientDraft: false, parentId: null },
+      select: { id: true },
+      orderBy: { createdAt: 'desc' },
+    });
+
     // Transaction: mark forwarded + create feedback + update statuses
     await prisma.$transaction([
       // Mark all unforwarded, published top-level comments as forwarded by this admin
@@ -3323,6 +3333,7 @@ export const sendVideoFeedbackToCreator = async (req: Request, res: Response) =>
           type: 'REQUEST',
           sentToCreator: true,
           content: '',
+          submissionCommentId: firstComment?.id || null,
         },
       }),
       // Update submission status
@@ -3330,9 +3341,9 @@ export const sendVideoFeedbackToCreator = async (req: Request, res: Response) =>
         where: { id: submissionId },
         data: { status: newStatus, updatedAt: new Date() },
       }),
-      // Update only the specific video's status (not all videos for the submission)
-      prisma.video.update({
-        where: { id: videoId },
+      // Update video status
+      prisma.video.updateMany({
+        where: { submissionId },
         data: {
           status: contentStatus as any,
           adminId,
@@ -3434,9 +3445,16 @@ export const sendVideoFeedbackToClient = async (req: Request, res: Response) => 
       'CLIENT',
     );
 
+    // Find the latest comment for this video to link to Feedback
+    const latestComment = await prisma.submissionComment.findFirst({
+      where: { submissionId, videoId, parentId: null },
+      select: { id: true },
+      orderBy: { createdAt: 'desc' },
+    });
+
     // Transaction: create feedback + update statuses
     await prisma.$transaction([
-      // Create backward-compat Feedback record
+      // Create backward-compat Feedback record linked to latest comment
       prisma.feedback.create({
         data: {
           submissionId,
@@ -3445,6 +3463,7 @@ export const sendVideoFeedbackToClient = async (req: Request, res: Response) => 
           type: 'COMMENT',
           sentToCreator: false,
           content: '',
+          submissionCommentId: latestComment?.id || null,
         },
       }),
       // Update submission status
