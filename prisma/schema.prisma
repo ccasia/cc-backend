@@ -89,6 +89,7 @@ model User {
   userFlow      UserFlow[]
   activatedAt   DateTime?
   passwordSetAt DateTime?
+  aiModel       AiModel?
 }
 
 model EmailVerification {
@@ -723,8 +724,8 @@ model Campaign {
   manualCreatorEntries  ManualCreatorEntry[]
 
   // PCR (Post Campaign Report)
-  pcr        CampaignPCR?
-  isPCRReady Boolean @default(false)
+  pcr            CampaignPCR?
+  isPCRReady     Boolean      @default(false)
   isForSurfShark Boolean?
 
   publishedAt DateTime?
@@ -2217,6 +2218,9 @@ model AiModel {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  userId String? @unique
+  user   User?   @relation(references: [id], fields: [userId])
 
   @@map("ai_model")
 }

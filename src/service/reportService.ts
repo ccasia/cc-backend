@@ -78,8 +78,12 @@ const HUMAN_TEMPLATES: Record<ReportSection, string> = {
 
 // ── Chain runner ──────────────────────────────────────────────────────────────
 
-async function runSectionChain(section: ReportSection, data: Record<string, unknown>): Promise<string | any> {
-  const result = await prisma.aiModel.findFirst({ select: { systemPrompt: true } });
+async function runSectionChain(
+  section: ReportSection,
+  data: Record<string, unknown>,
+  userId: string,
+): Promise<string | any> {
+  const result = await prisma.aiModel.findFirst({ where: { userId: userId }, select: { systemPrompt: true } });
 
   const dbSections = result?.systemPrompt as unknown as Record<ReportSection, string>;
 
@@ -136,7 +140,7 @@ export class ReportService {
     const sectionResults: SectionResult[] | any = await Promise.all(
       collectedEntries.map(async ({ section, data }) => {
         const summaryData = section === 'campaign_recommendations' ? allSectionData : data;
-        const summary = await runSectionChain(section, summaryData);
+        const summary = await runSectionChain(section, summaryData, req.userId);
 
         return { section, summary: summary, data };
       }),
