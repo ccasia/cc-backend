@@ -49,6 +49,9 @@ export const getMyV4Submissions = async (req: Request, res: Response) => {
       ...feedback,
       content: feedback.submissionComment?.text || feedback.content,
       timestamp: feedback.submissionComment?.timestamp,
+      resolved: !!feedback.submissionComment?.resolvedByUserId,
+      resolvedAt: feedback.submissionComment?.resolvedAt ?? undefined,
+      resolvedBy: feedback.submissionComment?.resolvedBy ?? undefined,
     });
 
     // Filter feedback for each submission based on submission status and type
@@ -768,6 +771,9 @@ export const getMySubmissionDetails = async (req: Request, res: Response) => {
       // Map the main comment's text and timestamp to the feedback
       content: f.submissionComment?.text || f.content,
       timestamp: f.submissionComment?.timestamp,
+      resolved: !!f.submissionComment?.resolvedByUserId,
+      resolvedAt: f.submissionComment?.resolvedAt ?? undefined,
+      resolvedBy: f.submissionComment?.resolvedBy ?? undefined,
       replies: (f.submissionComment?.replies ?? []).map((r: any) => ({
         id: r.id,
         content: r.text,

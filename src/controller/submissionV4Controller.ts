@@ -13,6 +13,7 @@ import {
   getStatusAfterForwardingClientFeedback,
 } from '../utils/v4StatusUtils';
 import { checkAndCompleteV4Campaign } from '../service/submissionV4CompletionService';
+import { fetchCommentsForVideo, editCommentRecord } from '../service/submissionCommentService';
 import { clients, io } from '../server';
 import { saveNotification } from './notificationController';
 import { notificationDraft } from '@helper/notification';
@@ -733,8 +734,10 @@ export const approveV4Submission = async (req: Request, res: Response) => {
  * Client approve/reject V4 submission content
  * POST /api/submissions/v4/approve/client
  */
+const CLIENT_THREADED_FEEDBACK_PLACEHOLDER = 'Client left detailed feedback via the threaded video comments.';
+
 export const approveV4SubmissionByClient = async (req: Request, res: Response) => {
-  const { submissionId, action, feedback, reasons } = req.body;
+  const { submissionId, action, feedback, reasons, videoId: bodyVideoId } = req.body;
   const clientId = req.session.userid;
 
   try {
@@ -874,19 +877,42 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
       );
     }
 
+    let submissionCommentId: string | null = null;
+    const videoIdForFeedback = bodyVideoId || undefined;
+    if (action === 'request_changes' && (bodyVideoId || feedback === CLIENT_THREADED_FEEDBACK_PLACEHOLDER)) {
+      const videoIdToUse = bodyVideoId || submission.video?.[0]?.id;
+      if (videoIdToUse) {
+        const latestClientComment = await prisma.submissionComment.findFirst({
+          where: {
+            submissionId,
+            videoId: videoIdToUse,
+            userId: clientId,
+            parentId: null,
+            isClientDraft: false,
+          },
+          select: { id: true },
+          orderBy: { createdAt: 'desc' },
+        });
+        if (latestClientComment) submissionCommentId = latestClientComment.id;
+      }
+    }
+
     // Always add client feedback record to maintain consistent display
-    // Determine feedback type based on action
     const feedbackType = action === 'request_changes' ? 'REQUEST' : 'COMMENT';
+    const displayContent =
+      submissionCommentId != null ? '' : (feedback || '');
 
     updates.push(
       prisma.feedback.create({
         data: {
-          content: feedback || '',
+          content: displayContent,
           reasons: reasons || [],
           submissionId,
           adminId: clientId,
           sentToCreator: false, // Client feedback needs admin to forward
           type: feedbackType,
+          ...(videoIdForFeedback && { videoId: videoIdForFeedback }),
+          ...(submissionCommentId && { submissionCommentId }),
         },
       }),
     );
@@ -2584,6 +2610,7 @@ export const forwardRawFootageFeedbackV4 = async (req: Request, res: Response) =
  */
 export const getV4SubmissionById = async (req: Request, res: Response) => {
   const { id } = req.params;
+  const currentUserId = req.session?.userid as string | undefined;
 
   try {
     const submission = await prisma.submission.findUnique({
@@ -2644,6 +2671,7 @@ export const getV4SubmissionById = async (req: Request, res: Response) => {
             },
             submissionComment: {
               include: {
+                resolvedBy: { select: { id: true, name: true } },
                 replies: {
                   include: {
                     user: {
@@ -2677,11 +2705,29 @@ export const getV4SubmissionById = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Not a v4 submission' });
     }
 
+    let feedbackList = submission.feedback || [];
+    if (currentUserId && submission.userId === currentUserId) {
+      const currentUser = await prisma.user.findUnique({
+        where: { id: currentUserId },
+        select: { role: true },
+      });
+      if (currentUser?.role === 'creator') {
+        feedbackList = feedbackList.filter(
+          (fb: any) =>
+            fb.sentToCreator && (fb.type === 'REQUEST' || fb.type === 'COMMENT'),
+        );
+      }
+    }
+
     const mapFeedbackReplies = (f: any) => ({
       ...f,
       // Map the main comment's text and timestamp to the feedback
       content: f.submissionComment?.text || f.content,
       timestamp: f.submissionComment?.timestamp,
+
+      resolved: !!f.submissionComment?.resolvedByUserId,
+      resolvedAt: f.submissionComment?.resolvedAt ?? undefined,
+      resolvedBy: f.submissionComment?.resolvedBy ?? undefined,
       replies: (f.submissionComment?.replies ?? []).map((r: any) => ({
         id: r.id,
         content: r.text,
@@ -2691,7 +2737,7 @@ export const getV4SubmissionById = async (req: Request, res: Response) => {
     });
     const submissionWithReplies = {
       ...submission,
-      feedback: (submission.feedback || []).map(mapFeedbackReplies),
+      feedback: feedbackList.map(mapFeedbackReplies),
     };
 
     res.status(200).json({ submission: submissionWithReplies });
