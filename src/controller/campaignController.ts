@@ -3369,6 +3369,11 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
       }
     }
 
+    // CSM Admin: on Completed tab show all completed campaigns, not just their own
+    const isCSMAdmin =
+      user.admin?.role?.name === 'CSM' || user.admin?.role?.name === 'Customer Success Manager';
+    const showAllCompletedForCSM = isCSMAdmin && status === 'COMPLETED';
+
     console.log('Non-superadmin user, status condition:', statusCondition);
 
     const campaigns = await prisma.campaign.findMany({
@@ -3379,23 +3384,26 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
       }),
       where: {
         AND: [
-          // When excludeOwn=true, show campaigns NOT managed by this user (for "All" tab)
-          // Otherwise, show only campaigns managed by this user
-          excludeOwn === 'true'
-            ? {
-                campaignAdmin: {
-                  none: {
-                    adminId: user.id,
-                  },
-                },
-              }
-            : {
-                campaignAdmin: {
-                  some: {
-                    adminId: user.id,
-                  },
-                },
-              },
+          // CSM Admin on Completed tab: no campaignAdmin filter (show all completed). Otherwise filter by this user.
+          ...(showAllCompletedForCSM
+            ? []
+            : [
+                excludeOwn === 'true'
+                  ? {
+                      campaignAdmin: {
+                        none: {
+                          adminId: user.id,
+                        },
+                      },
+                    }
+                  : {
+                      campaignAdmin: {
+                        some: {
+                          adminId: user.id,
+                        },
+                      },
+                    },
+              ]),
           // Force ACTIVE status when excludeOwn=true, otherwise use the provided status filter
           excludeOwn === 'true' ? { status: 'ACTIVE' as CampaignStatus } : statusCondition,
           // Filter by specific admin if provided
