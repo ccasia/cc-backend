@@ -2608,12 +2608,14 @@ export const getV4SubmissionById = async (req: Request, res: Response) => {
             id: true,
             name: true,
             email: true,
+            photoURL: true,
           },
         },
         campaign: {
           select: {
             id: true,
             name: true,
+            campaignType: true,
           },
         },
         video: {
@@ -2625,6 +2627,8 @@ export const getV4SubmissionById = async (req: Request, res: Response) => {
             reasons: true,
             feedbackAt: true,
             createdAt: true,
+            adminId: true,
+            resubmittedFromId: true,
           },
           orderBy: { createdAt: 'desc' as const },
         },
