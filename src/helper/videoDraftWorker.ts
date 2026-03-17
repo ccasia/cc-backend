@@ -394,9 +394,9 @@ async function deleteFileIfExists(filePath: string) {
 
             const requestChangeVideos = await prisma.video.findMany({
               where: {
-                userId: submission.userId,
-                campaignId: submission.campaignId,
+                submissionId: submission.id,
                 status: 'REVISION_REQUESTED',
+                resubmissions: { none: {} }, // Only videos not yet replaced by a newer version
               },
             });
 

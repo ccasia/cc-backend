@@ -17,13 +17,12 @@ export const handleDeleteAdminById = async (id: string) => {
       prisma.unreadMessage.deleteMany({ where: { userId: id } }),
       prisma.seenMessage.deleteMany({ where: { userId: id } }),
       prisma.bookMarkCampaign.deleteMany({ where: { userId: id } }),
-      prisma.campaignLog.deleteMany({ where: { adminId: id } }),
+      // prisma.campaignLog.deleteMany({ where: { adminId: id } }),
       prisma.campaignTaskAdmin.deleteMany({ where: { userId: id } }),
       prisma.feedback.deleteMany({ where: { adminId: id } }),
       prisma.notification.deleteMany({ where: { userId: id } }),
       prisma.userNotification.deleteMany({ where: { userId: id } }),
       prisma.resetPasswordToken.deleteMany({ where: { userId: id } }),
-      // prisma.invoice.deleteMany({ where: { adminId: id } }),
       prisma.campaignAdmin.deleteMany({ where: { adminId: admin.admin?.id } }),
     ]);
 
