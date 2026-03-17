@@ -300,9 +300,9 @@ async function deleteFileIfExists(filePath: string) {
 
             const requestChangeVideos = await prisma.video.findMany({
               where: {
-                userId: submission.userId,
-                campaignId: submission.campaignId,
+                submissionId: submission.id,
                 status: 'REVISION_REQUESTED',
+                resubmissions: { none: {} },
               },
             });
 
@@ -346,7 +346,19 @@ async function deleteFileIfExists(filePath: string) {
 
                 // await fs.promises.unlink(videoFile.outputPath);
 
-                if (!requestChangeVideos.length) {
+                if (content.isV4 && content.preserveExistingMedia && !requestChangeVideos.length) {
+                  const existingVideo = submission.video && submission.video[index];
+                  await prisma.video.create({
+                    data: {
+                      url: videoPublicURL,
+                      submissionId: submission.id,
+                      campaignId: submission.campaignId,
+                      userId: submission.userId,
+                      status: 'PENDING',
+                      ...(existingVideo && { resubmittedFromId: existingVideo.id }),
+                    },
+                  });
+                } else if (!requestChangeVideos.length) {
                   await prisma.video.create({
                     data: {
                       url: videoPublicURL,
@@ -364,30 +376,46 @@ async function deleteFileIfExists(filePath: string) {
               const url = await Promise.all(videoPromises);
 
               if (requestChangeVideos.length) {
-                await Promise.all(
-                  requestChangeVideos.map(async (video, index) => {
-                    // Preserve the old URL in previousDrafts before updating with new URL
-                    const existingPreviousDrafts = (video as any).previousDrafts || [];
-                    const oldUrl = video.url;
+                if (content.isV4) {
+                  // V4: Create NEW video entries (preserve previous drafts as separate records)
+                  await Promise.all(
+                    requestChangeVideos.map(async (video, index) =>
+                      prisma.video.create({
+                        data: {
+                          url: url[index],
+                          submissionId: submission.id,
+                          campaignId: content.campaignId,
+                          userId: submission.userId,
+                          status: 'PENDING',
+                          resubmittedFromId: video.id,
+                        },
+                      }),
+                    ),
+                  );
+                } else {
+                  // Non-V4: Original behavior — update in-place, save old URL in previousDrafts
+                  await Promise.all(
+                    requestChangeVideos.map(async (video, index) => {
+                      const existingPreviousDrafts = (video as any).previousDrafts || [];
+                      const oldUrl = video.url;
 
-                    return prisma.video.update({
-                      where: { id: video.id },
-                      data: {
-                        url: url[index],
-                        submissionId: submission.id,
-                        campaignId: content.campaignId,
-                        userId: submission.userId,
-                        status: 'PENDING',
-                        // Append old URL to previousDrafts array
-                        previousDrafts: oldUrl ? [...existingPreviousDrafts, oldUrl] : existingPreviousDrafts,
-                        // Clear feedback for new draft
-                        feedback: null,
-                        reasons: [],
-                        feedbackAt: null,
-                      },
-                    });
-                  }),
-                );
+                      return prisma.video.update({
+                        where: { id: video.id },
+                        data: {
+                          url: url[index],
+                          submissionId: submission.id,
+                          campaignId: content.campaignId,
+                          userId: submission.userId,
+                          status: 'PENDING',
+                          previousDrafts: oldUrl ? [...existingPreviousDrafts, oldUrl] : existingPreviousDrafts,
+                          feedback: null,
+                          reasons: [],
+                          feedbackAt: null,
+                        },
+                      });
+                    }),
+                  );
+                }
               }
 
               const data = await prisma.submission.update({

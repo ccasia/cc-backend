@@ -1071,16 +1071,23 @@ export const forwardClientFeedbackV4 = async (req: Request, res: Response) => {
     );
 
     if (submission.video && submission.video.length > 0) {
-      updates.push(
-        prisma.video.updateMany({
-          where: { submissionId },
-          data: {
-            status: contentStatus as any,
-            adminId: adminId,
-            feedbackAt: new Date(),
-          },
-        }),
-      );
+      // Only update the latest video (most recently created), not all video versions
+      const latestVideo = [...submission.video].sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      )[0];
+
+      if (latestVideo) {
+        updates.push(
+          prisma.video.update({
+            where: { id: latestVideo.id },
+            data: {
+              status: contentStatus as any,
+              adminId: adminId,
+              feedbackAt: new Date(),
+            },
+          }),
+        );
+      }
     }
 
     if (submission.photos && submission.photos.length > 0) {
@@ -3323,9 +3330,9 @@ export const sendVideoFeedbackToCreator = async (req: Request, res: Response) =>
         where: { id: submissionId },
         data: { status: newStatus, updatedAt: new Date() },
       }),
-      // Update video status
-      prisma.video.updateMany({
-        where: { submissionId },
+      // Update only the specific video's status (not all videos for the submission)
+      prisma.video.update({
+        where: { id: videoId },
         data: {
           status: contentStatus as any,
           adminId,
@@ -3445,9 +3452,9 @@ export const sendVideoFeedbackToClient = async (req: Request, res: Response) => 
         where: { id: submissionId },
         data: { status: newStatus, updatedAt: new Date() },
       }),
-      // Update video status
-      prisma.video.updateMany({
-        where: { submissionId },
+      // Update only the specific video's status (not all videos for the submission)
+      prisma.video.update({
+        where: { id: videoId },
         data: {
           status: contentStatus as any,
           adminId,
