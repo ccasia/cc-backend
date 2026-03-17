@@ -830,7 +830,7 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
       const draftsCount = await prisma.submissionComment.count({
         where: {
           submissionId: submissionId,
-          videoId: videoId,
+          videoId: bodyVideoId,
           isClientDraft: true,
         },
       });
