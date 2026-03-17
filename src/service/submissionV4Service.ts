@@ -247,8 +247,12 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
     const allSubmissions = [...v4Submissions, ...uniqueAgreementSubmissions];
 
     // Map feedback.replies from SubmissionComment to same shape as old FeedbackReply (content, user, createdAt)
+    // Also map the main comment's text and timestamp to the feedback
     const mapFeedbackReplies = (feedback: any) => ({
       ...feedback,
+      // Map the main comment's text and timestamp to the feedback
+      content: feedback.submissionComment?.text || feedback.content,
+      timestamp: feedback.submissionComment?.timestamp,
       replies: (feedback.submissionComment?.replies ?? []).map((r: any) => ({
         id: r.id,
         content: r.text,

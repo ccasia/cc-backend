@@ -364,30 +364,22 @@ async function deleteFileIfExists(filePath: string) {
               const url = await Promise.all(videoPromises);
 
               if (requestChangeVideos.length) {
+                // V4: Create NEW videos instead of updating (preserve previous drafts)
                 await Promise.all(
-                  requestChangeVideos.map(async (video, index) => {
-                    // Preserve the old URL in previousDrafts before updating with new URL
-                    const existingPreviousDrafts = (video as any).previousDrafts || [];
-                    const oldUrl = video.url;
-
-                    return prisma.video.update({
-                      where: { id: video.id },
+                  requestChangeVideos.map(async (video, index) =>
+                    prisma.video.create({
                       data: {
                         url: url[index],
                         submissionId: submission.id,
                         campaignId: content.campaignId,
                         userId: submission.userId,
                         status: 'PENDING',
-                        // Append old URL to previousDrafts array
-                        previousDrafts: oldUrl ? [...existingPreviousDrafts, oldUrl] : existingPreviousDrafts,
-                        // Clear feedback for new draft
-                        feedback: null,
-                        reasons: [],
-                        feedbackAt: null,
+                        resubmittedFromId: video.id,
                       },
-                    });
-                  }),
+                    }),
+                  ),
                 );
+                console.log(`✅ V4 Created ${requestChangeVideos.length} new video version(s), previous draft(s) preserved.`);
               }
 
               const data = await prisma.submission.update({

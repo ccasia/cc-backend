@@ -44,6 +44,13 @@ export const getMyV4Submissions = async (req: Request, res: Response) => {
 
     const submissions = await getV4Submissions(campaignId as string, creatorId);
 
+    // Map feedback to include submissionComment text and timestamp
+    const mapFeedbackWithComments = (feedback: any) => ({
+      ...feedback,
+      content: feedback.submissionComment?.text || feedback.content,
+      timestamp: feedback.submissionComment?.timestamp,
+    });
+
     // Filter feedback for each submission based on submission status and type
     const submissionsWithFilteredFeedback = submissions.map((submission) => {
       let filteredFeedback = submission.feedback;
@@ -55,6 +62,10 @@ export const getMyV4Submissions = async (req: Request, res: Response) => {
         // For other statuses, show all feedback that was sent to creator (both COMMENT and REQUEST types)
         filteredFeedback = submission.feedback.filter((feedback) => feedback.sentToCreator);
       }
+      
+      // Map feedback to include submissionComment data
+      filteredFeedback = filteredFeedback.map(mapFeedbackWithComments);
+      
       return {
         ...submission,
         feedback: filteredFeedback,
@@ -69,7 +80,6 @@ export const getMyV4Submissions = async (req: Request, res: Response) => {
       rawFootage: submissionsWithFilteredFeedback.filter((s) => s.submissionType.type === 'RAW_FOOTAGE'),
     };
 
-    console.log(groupedSubmissions);
 
     // Calculate overall progress
     const totalSubmissions = submissionsWithFilteredFeedback.length;
@@ -667,6 +677,10 @@ export const getMySubmissionDetails = async (req: Request, res: Response) => {
             feedback: true,
             reasons: true,
             feedbackAt: true,
+            createdAt: true,
+          },
+          orderBy: {
+            createdAt: 'desc',
           },
         },
         photos: {
@@ -751,6 +765,9 @@ export const getMySubmissionDetails = async (req: Request, res: Response) => {
 
     const mapFeedbackReplies = (f: any) => ({
       ...f,
+      // Map the main comment's text and timestamp to the feedback
+      content: f.submissionComment?.text || f.content,
+      timestamp: f.submissionComment?.timestamp,
       replies: (f.submissionComment?.replies ?? []).map((r: any) => ({
         id: r.id,
         content: r.text,
