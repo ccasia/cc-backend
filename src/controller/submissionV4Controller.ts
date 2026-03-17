@@ -467,16 +467,15 @@ export const approveV4Submission = async (req: Request, res: Response) => {
     const effectiveCampaignOrigin = getEffectiveCampaignOrigin(submission.campaign);
 
     // Use status utilities to determine next status
-    let { submissionStatus: newStatus, videoStatus: contentStatus } = getNextStatusAfterAdminAction(
+    const { submissionStatus: baseStatus, videoStatus: baseContentStatus } = getNextStatusAfterAdminAction(
       action as any,
       effectiveCampaignOrigin as any,
     );
 
     // For VIDEO submissions, admin approve always goes to APPROVED directly
-    if (action === 'approve' && submission.submissionType.type === 'VIDEO') {
-      newStatus = 'APPROVED';
-      contentStatus = 'APPROVED';
-    }
+    const isVideoDirectApprove = action === 'approve' && submission.submissionType.type === 'VIDEO';
+    const newStatus = isVideoDirectApprove ? 'APPROVED' : baseStatus;
+    const contentStatus = isVideoDirectApprove ? 'APPROVED' : baseContentStatus;
 
     // Save current caption to history before updating (if caption is being changed)
     if (caption !== undefined) {
