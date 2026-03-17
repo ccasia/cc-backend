@@ -467,10 +467,15 @@ export const approveV4Submission = async (req: Request, res: Response) => {
     const effectiveCampaignOrigin = getEffectiveCampaignOrigin(submission.campaign);
 
     // Use status utilities to determine next status
-    const { submissionStatus: newStatus, videoStatus: contentStatus } = getNextStatusAfterAdminAction(
+    const { submissionStatus: baseStatus, videoStatus: baseContentStatus } = getNextStatusAfterAdminAction(
       action as any,
       effectiveCampaignOrigin as any,
     );
+
+    // For VIDEO submissions, admin approve always goes to APPROVED directly
+    const isVideoDirectApprove = action === 'approve' && submission.submissionType.type === 'VIDEO';
+    const newStatus = isVideoDirectApprove ? 'APPROVED' : baseStatus;
+    const contentStatus = isVideoDirectApprove ? 'APPROVED' : baseContentStatus;
 
     // Save current caption to history before updating (if caption is being changed)
     if (caption !== undefined) {
@@ -626,11 +631,11 @@ export const approveV4Submission = async (req: Request, res: Response) => {
     // This controller only handles the actual content submissions (VIDEO, PHOTO, RAW_FOOTAGE)
 
     const actionMessage =
-      submission.campaign.origin === 'CLIENT' && action === 'approve'
+      submission.campaign.origin === 'CLIENT' && action === 'approve' && submission.submissionType.type !== 'VIDEO'
         ? 'approved and sent to client for review'
         : `${action}d successfully`;
 
-    if (submission.campaign.origin === 'CLIENT' && action === 'approve') {
+    if (submission.campaign.origin === 'CLIENT' && action === 'approve' && submission.submissionType.type !== 'VIDEO') {
       const clientUsers = submission.campaign.campaignAdmin.filter((ca) => ca.admin.user.role === 'client');
 
       for (const clientUser of clientUsers) {
