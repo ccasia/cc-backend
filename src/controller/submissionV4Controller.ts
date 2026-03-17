@@ -2624,7 +2624,9 @@ export const getV4SubmissionById = async (req: Request, res: Response) => {
             feedback: true,
             reasons: true,
             feedbackAt: true,
+            createdAt: true,
           },
+          orderBy: { createdAt: 'desc' as const },
         },
         photos: {
           select: {
@@ -2941,9 +2943,9 @@ export const getComments = async (req: Request, res: Response) => {
   let roleFilter: any = {};
 
   if (user.role === 'client') {
-    roleFilter = { in: ['admin', 'client'] };
+    roleFilter = { in: ['admin', 'superadmin', 'finance', 'client'] };
   } else if (user.role === 'creator') {
-    roleFilter = { in: ['admin'] };
+    roleFilter = { in: ['admin', 'superadmin', 'finance'] };
   }
 
   try {
@@ -2954,6 +2956,25 @@ export const getComments = async (req: Request, res: Response) => {
       roleFilter,
       excludeClientDrafts,
     );
+
+    // Role-based text mapping: admins and creators see editedText (admin-curated version),
+    // clients always see their original text
+    if (user.role !== 'client') {
+      const mapEditedText = (comment: any) => {
+        if (comment.editedText) {
+          comment.text = comment.editedText;
+        }
+        if (comment.editedTimestamp) {
+          comment.timestamp = comment.editedTimestamp;
+        }
+        if (comment.replies) {
+          comment.replies.forEach(mapEditedText);
+        }
+        return comment;
+      };
+      comments.forEach(mapEditedText);
+    }
+
     return res.status(200).json(comments);
   } catch (error) {
     return res.status(400).json({ error: 'Failed to fetch comments' });

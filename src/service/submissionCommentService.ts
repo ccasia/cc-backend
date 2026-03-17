@@ -100,12 +100,21 @@ export const createCommentRecord = async (
 
 // Edit a comment's text and optionally set forwardedByUserId
 export const editCommentRecord = async (commentId: string, newText: string, forwardedByUserId?: string, timestamp?: string) => {
-  const data: any = { text: newText };
-  if (timestamp !== undefined) {
-    data.timestamp = timestamp;
-  }
+  const data: any = {};
+
   if (forwardedByUserId) {
+    // Editing a client's comment — preserve original text, store admin's version in editedText
+    data.editedText = newText;
+    if (timestamp !== undefined) {
+      data.editedTimestamp = timestamp;
+    }
     data.forwardedByUserId = forwardedByUserId;
+  } else {
+    // Admin editing their own comment — overwrite text directly
+    data.text = newText;
+    if (timestamp !== undefined) {
+      data.timestamp = timestamp;
+    }
   }
 
   const comment = await prisma.submissionComment.update({

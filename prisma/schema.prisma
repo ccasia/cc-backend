@@ -1398,8 +1398,10 @@ model Feedback {
 
 model SubmissionComment {
   id        String  @id @default(cuid())
-  text      String  @db.Text
-  timestamp String?
+  text            String  @db.Text
+  editedText      String? @db.Text
+  timestamp       String?
+  editedTimestamp  String?
 
   submissionId String
   submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
