@@ -7,6 +7,9 @@ const COMMENT_USER_SELECT = {
   name: true,
   role: true,
   photoURL: true,
+  client: {
+    select: { company: { select: { logo: true } } },
+  },
 };
 
 const COMMENT_BASE_INCLUDE = {
