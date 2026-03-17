@@ -620,6 +620,7 @@ export const approveV4Submission = async (req: Request, res: Response) => {
     if (io) {
       io.to(submission.campaign.id).emit('v4:submission:updated', {
         submissionId,
+        userId: currentUserId, 
         campaignId: submission.campaign.id,
         newStatus,
         action,
@@ -814,10 +815,36 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
       return res.status(403).json({ message: 'You do not have access to this campaign' });
     }
 
+    const isAlreadyFeedback = submission.status === 'CLIENT_FEEDBACK';
+
     // Verify submission is in correct status (sent to client)
-    if (submission.status !== 'SENT_TO_CLIENT') {
+    if (submission.status !== 'SENT_TO_CLIENT' && !(isAlreadyFeedback && action === 'request_changes')) {
       return res.status(400).json({
         message: `Cannot ${action} submission. Current status: ${submission.status}`,
+      });
+    }
+
+    // Skip duplicate empty requests (no change in comments)
+    let skipDuplicate = false;
+    if (action === 'request_changes' && isAlreadyFeedback) {
+      const draftsCount = await prisma.submissionComment.count({
+        where: {
+          submissionId: submissionId,
+          videoId: videoId,
+          isClientDraft: true,
+        },
+      });
+
+      if (draftsCount === 0 && !feedback && (!reasons || reasons.length === 0)) {
+        skipDuplicate = true;
+      }
+    }
+
+    if (skipDuplicate) {
+      return res.status(200).json({
+        message: 'No new feedback to process',
+        submissionId,
+        newStatus: submission.status,
       });
     }
 
@@ -930,6 +957,7 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
     if (io) {
       io.to(submission.campaign.id).emit('v4:submission:updated', {
         submissionId,
+        userId: clientId, 
         campaignId: submission.campaign.id,
         newStatus: newSubmissionStatus,
         action,
@@ -3027,7 +3055,7 @@ export const getComments = async (req: Request, res: Response) => {
  */
 export const createComment = async (req: Request, res: Response) => {
   const { submissionId } = req.params;
-  const { text, parentId, timestamp, videoId } = req.body;
+  const { text, parentId, timestamp, videoId, isClientDraft } = req.body;
   const sessionUserId = req.session.userid;
 
   if (!sessionUserId) {
@@ -3055,6 +3083,8 @@ export const createComment = async (req: Request, res: Response) => {
       }
     }
 
+    const shouldBeDraft = user.role === 'client' ? (typeof isClientDraft === 'boolean' ? isClientDraft : true) : false;
+
     const newComment = await prisma.submissionComment.create({
       data: {
         text,
@@ -3063,7 +3093,7 @@ export const createComment = async (req: Request, res: Response) => {
         videoId: videoId || null,
         parentId: parentId || null,
         userId: user.id,
-        isClientDraft: user.role === 'client',
+        isClientDraft: shouldBeDraft,
       },
       include: {
         user: { select: { id: true, name: true, role: true } },
