@@ -1,32 +1,6 @@
-// import {
-//   approvalOfDraft,
-//   creatorInvoice,
-//   creatorVerificationEmail,
-//   csmAdminInvoice,
-//   deliveryConfirmation,
-//   feedbackOnDraft,
-//   finalDraftDue,
-//   financeAdminInvoice,
-//   firstDraftDue,
-//   postingSchedule,
-//   shortlisted,
-//   // trackingNumber,
-// } from '../cc-backend/src/config/nodemailer.config';
+const obb = { name: 'dasd', age: 123, phone: 123123123 };
 
-// // shortlisted('email@gmail.com', 'Design Better', 'Afiq', '1234567890', 'kkk');
-// // firstDraftDue("email@gmail.com", "Design Better", "Afiq")
-// // feedbackOnDraft("email@gmail.com", "Design Better", "Afiq")
-// // finalDraftDue("email@gmail.com", "Design Better", "Afiq")
-// // approvalOfDraft("email@gmail.com", "Design Better", "Afiq", "12323", "kkk")
-// // postingSchedule("email@gmail.com", "Design Better", "Afiq")
-// // trackingNumber("email@gmail.com", "Design Better", "Afiq", "12345678910")
-// // deliveryConfirmation("email@gmail.com", "Design Better", "Afiq")
-// // creatorInvoice("email@gmail.com", "Design Better", "Afiq", "aaa")
-// // csmAdminInvoice("email@gmail.com", "Design Better", "Administrator")
-// // financeAdminInvoice("novagaming991@gmail.com", "Design Better", "Administrator")
-
-// // console.log('Email Sent!');
-
-// // Design Better is a placeholder Campaign
-// // Uncomment to test
-// // To execute code, run "npx ts-node tests.ts"
+for (const a of Object.entries(obb)) {
+  console.log(a.at(-1));
+}
+console.log(performance.now());
