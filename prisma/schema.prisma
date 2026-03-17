@@ -838,7 +838,8 @@ model CampaignBrief {
   campaignId          String    @unique
   otherAttachments    String[]
   referencesLinks     String[]
-  campaign            Campaign  @relation(fields: [campaignId], references: [id])
+
+  campaign Campaign @relation(fields: [campaignId], references: [id])
 }
 
 model CampaignAdditionalDetails {
