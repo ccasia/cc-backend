@@ -580,8 +580,7 @@ export const approveV4Submission = async (req: Request, res: Response) => {
     }
     // For video submissions, scope feedback to the reviewed video (admin sends videoId or we use first video)
     const feedbackVideoId =
-      videoId ||
-      (submission.video && submission.video.length > 0 ? submission.video[0].id : null);
+      videoId || (submission.video && submission.video.length > 0 ? submission.video[0].id : null);
 
     updates.push(
       prisma.feedback.create({
@@ -620,7 +619,7 @@ export const approveV4Submission = async (req: Request, res: Response) => {
     if (io) {
       io.to(submission.campaign.id).emit('v4:submission:updated', {
         submissionId,
-        userId: currentUserId, 
+        userId: currentUserId,
         campaignId: submission.campaign.id,
         newStatus,
         action,
@@ -856,6 +855,19 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
     // Update submission and individual content items
     const updates = [];
 
+    if (action === 'request_changes') {
+      updates.push(
+        prisma.submissionComment.updateMany({
+          where: {
+            submissionId: submissionId,
+            videoId: bodyVideoId,
+            isClientDraft: true,
+          },
+          data: { isClientDraft: false },
+        }),
+      );
+    }
+
     // Update submission status
     updates.push(
       prisma.submission.update({
@@ -931,8 +943,7 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
 
     // Always add client feedback record to maintain consistent display
     const feedbackType = action === 'request_changes' ? 'REQUEST' : 'COMMENT';
-    const displayContent =
-      submissionCommentId != null ? '' : (feedback || '');
+    const displayContent = submissionCommentId != null ? '' : feedback || '';
 
     updates.push(
       prisma.feedback.create({
@@ -957,7 +968,7 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
     if (io) {
       io.to(submission.campaign.id).emit('v4:submission:updated', {
         submissionId,
-        userId: clientId, 
+        userId: clientId,
         campaignId: submission.campaign.id,
         newStatus: newSubmissionStatus,
         action,
@@ -2662,6 +2673,7 @@ export const getV4SubmissionById = async (req: Request, res: Response) => {
             id: true,
             name: true,
             email: true,
+            photoURL: true,
           },
         },
         campaign: {
@@ -2678,7 +2690,11 @@ export const getV4SubmissionById = async (req: Request, res: Response) => {
             feedback: true,
             reasons: true,
             feedbackAt: true,
+            createdAt: true,
+            adminId: true,
+            resubmittedFromId: true,
           },
+          orderBy: { createdAt: 'desc' as const },
         },
         photos: {
           select: {
@@ -2753,8 +2769,7 @@ export const getV4SubmissionById = async (req: Request, res: Response) => {
       });
       if (currentUser?.role === 'creator') {
         feedbackList = feedbackList.filter(
-          (fb: any) =>
-            fb.sentToCreator && (fb.type === 'REQUEST' || fb.type === 'COMMENT'),
+          (fb: any) => fb.sentToCreator && (fb.type === 'REQUEST' || fb.type === 'COMMENT'),
         );
       }
     }
@@ -3010,7 +3025,10 @@ export const getCaptionHistory = async (req: Request, res: Response) => {
 export const getComments = async (req: Request, res: Response) => {
   const { submissionId } = req.params;
   const { videoId } = req.query;
-  const user = await prisma.user.findUnique({ where: { id: req.session.userid } });
+  const user = await prisma.user.findUnique({
+    where: { id: req.session.userid },
+    include: { client: { select: { company: { select: { logo: true } } } } },
+  });
 
   if (!user) return res.status(401).send('Unauthorized');
 
