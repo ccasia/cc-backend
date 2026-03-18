@@ -16,7 +16,12 @@ const COMMENT_BASE_INCLUDE = {
   user: { select: COMMENT_USER_SELECT },
   forwardedBy: { select: COMMENT_USER_SELECT },
   resolvedBy: { select: { id: true, name: true } },
-  agreedBy: { select: { userId: true } },
+  agreedBy: {
+    select: {
+      userId: true,
+      user: { select: { id: true, name: true } },
+    },
+  },
 };
 
 // Fetch comments for a submission, optionally filtered by videoId and user role
