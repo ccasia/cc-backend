@@ -3155,19 +3155,49 @@ export const toggleAgree = async (req: Request, res: Response) => {
   const userId = req.session.userid as string;
 
   try {
+    const comment = await prisma.submissionComment.findUnique({
+      where: { id: commentId },
+      select: {
+        id: true,
+        submissionId: true,
+        videoId: true,
+        submission: { select: { campaignId: true } },
+      },
+    });
+
+    if (!comment) {
+      return res.status(404).json({ error: 'Comment not found' });
+    }
+
     const existing = await prisma.commentAgreement.findUnique({
       where: { commentId_userId: { commentId, userId } },
     });
 
     if (existing) {
       await prisma.commentAgreement.delete({ where: { id: existing.id } });
-      return res.status(200).json({ agreed: false });
     } else {
-      await prisma.commentAgreement.create({
-        data: { commentId, userId },
-      });
-      return res.status(200).json({ agreed: true });
+      await prisma.commentAgreement.create({ data: { commentId, userId } });
     }
+
+    // Fetch updated agreedBy for the socket payload
+    const updatedAgreedBy = await prisma.commentAgreement.findMany({
+      where: { commentId },
+      select: { userId: true, user: { select: { id: true, name: true } } },
+    });
+
+    const campaignId = comment.submission?.campaignId;
+    if (campaignId && io) {
+      io.to(campaignId).emit('v4:comment:agreed', {
+        submissionId: comment.submissionId,
+        videoId: comment.videoId,
+        campaignId,
+        commentId,
+        agreedBy: updatedAgreedBy,
+        userId,
+      });
+    }
+
+    return res.status(200).json({ agreed: !existing });
   } catch (error) {
     return res.status(500).json({ error: 'Failed to toggle agreement' });
   }
@@ -3374,9 +3404,16 @@ export const sendVideoFeedbackToCreator = async (req: Request, res: Response) =>
     });
     const parentIds = parentCommentIds.map((c) => c.id);
 
-    // Find the first unforwarded comment to link to Feedback
+    // Find the first unforwarded comment to link to Feedback (must not already have a Feedback linked)
     const firstComment = await prisma.submissionComment.findFirst({
-      where: { submissionId, videoId, forwardedByUserId: null, isClientDraft: false, parentId: null },
+      where: {
+        submissionId,
+        videoId,
+        forwardedByUserId: null,
+        isClientDraft: false,
+        parentId: null,
+        feedback: { is: null },
+      },
       select: { id: true },
       orderBy: { createdAt: 'desc' },
     });
