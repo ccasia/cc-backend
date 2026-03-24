@@ -120,7 +120,7 @@ export const getNextStatusAfterAdminAction = (
       if (campaignOrigin === 'CLIENT') {
         return {
           submissionStatus: 'SENT_TO_CLIENT',
-          videoStatus: 'PENDING',
+          videoStatus: 'SENT_TO_CLIENT',
         };
       } else {
         return {
