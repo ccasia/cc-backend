@@ -509,20 +509,29 @@ export const approveV4Submission = async (req: Request, res: Response) => {
 
     // contentStatus already determined above based on campaign origin
 
-    // Update videos
+    // Update only the latest video (not all video versions) to avoid resurrecting old archived videos
     if (submission.video && submission.video.length > 0) {
-      updates.push(
-        prisma.video.updateMany({
-          where: { submissionId },
-          data: {
-            status: contentStatus as any,
-            feedback: feedback,
-            reasons: reasons || [],
-            adminId: currentUserId,
-            feedbackAt: new Date(),
-          },
-        }),
-      );
+      const latestVideo = (videoId
+        ? submission.video.find((v: any) => v.id === videoId)
+        : null)
+        || [...submission.video].sort(
+            (a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+          )[0];
+
+      if (latestVideo) {
+        updates.push(
+          prisma.video.update({
+            where: { id: latestVideo.id },
+            data: {
+              status: contentStatus as any,
+              feedback: feedback,
+              reasons: reasons || [],
+              adminId: currentUserId,
+              feedbackAt: new Date(),
+            },
+          }),
+        );
+      }
     }
 
     // Update photos
@@ -879,18 +888,27 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
       }),
     );
 
-    // Update videos
+    // Update only the latest video (not all video versions) to avoid resurrecting old archived videos
     if (submission.video && submission.video.length > 0) {
-      updates.push(
-        prisma.video.updateMany({
-          where: { submissionId },
-          data: {
-            status: newContentStatus as FeedbackStatus,
-            feedback: feedback || null,
-            reasons: reasons || [],
-          },
-        }),
-      );
+      const latestVideo = (bodyVideoId
+        ? submission.video.find((v: any) => v.id === bodyVideoId)
+        : null)
+        || [...submission.video].sort(
+            (a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+          )[0];
+
+      if (latestVideo) {
+        updates.push(
+          prisma.video.update({
+            where: { id: latestVideo.id },
+            data: {
+              status: newContentStatus as FeedbackStatus,
+              feedback: feedback || null,
+              reasons: reasons || [],
+            },
+          }),
+        );
+      }
     }
 
     // Update photos
@@ -1134,11 +1152,16 @@ export const forwardClientFeedbackV4 = async (req: Request, res: Response) => {
       )[0];
 
       if (latestVideo) {
+        // Preserve CLIENT_FEEDBACK if video was previously sent to client (so it stays visible to them);
+        // otherwise set to REVISION_REQUESTED (video was never sent to client)
+        const clientSeenStatuses = ['SENT_TO_CLIENT', 'CLIENT_FEEDBACK', 'APPROVED'];
+        const wasSeenByClient = clientSeenStatuses.includes(latestVideo.status);
+
         updates.push(
           prisma.video.update({
             where: { id: latestVideo.id },
             data: {
-              status: contentStatus as any,
+              status: wasSeenByClient ? 'CLIENT_FEEDBACK' : (contentStatus as any),
               adminId: adminId,
               feedbackAt: new Date(),
             },
@@ -3455,15 +3478,21 @@ export const sendVideoFeedbackToCreator = async (req: Request, res: Response) =>
         where: { id: submissionId },
         data: { status: newStatus, updatedAt: new Date() },
       }),
-      // Update only the specific video's status (not all videos for the submission)
-      prisma.video.update({
-        where: { id: videoId },
-        data: {
-          status: contentStatus as any,
-          adminId,
-          feedbackAt: new Date(),
-        },
-      }),
+      // Preserve CLIENT_FEEDBACK if video was previously sent to client (so it stays visible to them);
+      // otherwise set to REVISION_REQUESTED (video was never sent to client)
+      (() => {
+        const targetVideo = submission.video?.find((v: any) => v.id === videoId);
+        const clientSeenStatuses = ['SENT_TO_CLIENT', 'CLIENT_FEEDBACK', 'APPROVED'];
+        const wasSeenByClient = targetVideo && clientSeenStatuses.includes(targetVideo.status);
+        return prisma.video.update({
+          where: { id: videoId },
+          data: {
+            status: wasSeenByClient ? 'CLIENT_FEEDBACK' : (contentStatus as any),
+            adminId,
+            feedbackAt: new Date(),
+          },
+        });
+      })(),
     ]);
 
     // Socket: reuse existing v4:submission:updated event
