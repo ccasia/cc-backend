@@ -1419,6 +1419,7 @@ model SubmissionComment {
   agreedBy      CommentAgreement[]
   feedback      Feedback?
   isClientDraft Boolean            @default(false)
+  isAdminDraft  Boolean            @default(false)
 
   forwardedByUserId String?
   forwardedBy       User?   @relation("ForwardedComments", fields: [forwardedByUserId], references: [id], onDelete: SetNull)
