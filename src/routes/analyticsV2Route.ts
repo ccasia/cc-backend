@@ -2,6 +2,7 @@ import { Router } from 'express';
 import {
   getCreatorGrowth,
   getCreatorGrowthCreators,
+  getCreatorsByCountry,
   getActivationRate,
   getPitchRate,
   getTimeToActivation,
@@ -40,6 +41,7 @@ const router = Router();
 
 router.get('/creator-growth', isLoggedIn, isSuperAdmin, getCreatorGrowth);
 router.get('/creator-growth/creators', isLoggedIn, isSuperAdmin, getCreatorGrowthCreators);
+router.get('/creator-growth/creators-by-country', isLoggedIn, isSuperAdmin, getCreatorsByCountry);
 router.get('/activation-rate', isLoggedIn, isSuperAdmin, getActivationRate);
 router.get('/pitch-rate', isLoggedIn, isSuperAdmin, getPitchRate);
 router.get('/time-to-activation', isLoggedIn, isSuperAdmin, getTimeToActivation);

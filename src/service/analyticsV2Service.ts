@@ -35,6 +35,7 @@ interface CreatorGrowthResponse {
   demographics: {
     gender: DemographicItem[];
     ageGroups: DemographicItem[];
+    countries: DemographicItem[];
   };
   periodComparison?: PeriodComparison;
 }
@@ -207,6 +208,13 @@ export const getCreatorGrowthData = async (
       },
       select: { birthDate: true },
     }),
+    prisma.creator.findMany({
+      where: {
+        user: { role: 'creator', status: { in: ['active', 'pending'] } },
+        ...(buildCreditTierOrmFilter(creditTierNames) || {}),
+      },
+      select: { country: true },
+    }),
   ]);
 
   // Baseline count (creators before the date range)
@@ -221,7 +229,7 @@ export const getCreatorGrowthData = async (
 
   if (granularity === 'daily') {
     // --- Daily granularity ---
-    const [dailySignups, baseline, [genderData, ageData]] = await Promise.all([
+    const [dailySignups, baseline, [genderData, ageData, countryData]] = await Promise.all([
       prisma.$queryRaw<DailySignupRow[]>`
         SELECT
           TO_CHAR(DATE_TRUNC('day', u."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'), 'YYYY-MM-DD') AS date,
@@ -270,7 +278,7 @@ export const getCreatorGrowthData = async (
         ? Math.round(((currentPeriodSignups - previousPeriodSignups) / previousPeriodSignups) * 100 * 10) / 10
         : 0;
 
-    const demographics = processDemographics(genderData, ageData);
+    const demographics = processDemographics(genderData, ageData, countryData);
 
     return {
       granularity: 'daily',
@@ -281,7 +289,7 @@ export const getCreatorGrowthData = async (
   }
 
   // --- Monthly granularity (default) ---
-  const [monthlySignups, baseline, [genderData, ageData]] = await Promise.all([
+  const [monthlySignups, baseline, [genderData, ageData, countryData]] = await Promise.all([
     prisma.$queryRaw<MonthlySignupRow[]>`
       SELECT
         EXTRACT(YEAR FROM DATE_TRUNC('month', u."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur'))::int AS year,
@@ -301,7 +309,7 @@ export const getCreatorGrowthData = async (
   ]);
 
   const creatorGrowth = fillMonthGaps(monthlySignups, startDate, endDate, baseline);
-  const demographics = processDemographics(genderData, ageData);
+  const demographics = processDemographics(genderData, ageData, countryData);
 
   return {
     granularity: 'monthly',
@@ -357,6 +365,39 @@ export const getCreatorGrowthCreators = async (startDate: Date, endDate: Date, c
     WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
       AND (u."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')::date >= ${startDate}::date
       AND (u."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kuala_Lumpur')::date <= ${endDate}::date
+    ORDER BY u."createdAt" DESC
+  `;
+
+  const genderBreakdown = { male: 0, female: 0, nonBinary: 0 };
+  for (const c of creators) {
+    const p = (c.pronounce || '').toLowerCase();
+    if (p === 'he/him') genderBreakdown.male++;
+    else if (p === 'she/her') genderBreakdown.female++;
+    else genderBreakdown.nonBinary++;
+  }
+
+  return { creators, count: creators.length, genderBreakdown };
+};
+
+// Creators by Country (drilldown)
+
+export const getCreatorsByCountry = async (country: string, creditTierNames: string[] = []) => {
+  const isUnknown = country === 'Unknown';
+
+  const creators = await prisma.$queryRaw<CreatorGrowthCreatorRow[]>`
+    SELECT
+      u.id AS "userId",
+      u.name,
+      u."photoURL" AS "photoUrl",
+      u."createdAt",
+      c.pronounce
+    FROM "User" u
+    INNER JOIN "Creator" c ON c."userId" = u.id
+    ${buildCreditTierJoin('c', creditTierNames)}
+    WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
+      AND ${isUnknown
+        ? Prisma.sql`(c.country IS NULL OR TRIM(c.country) = '')`
+        : Prisma.sql`TRIM(c.country) = ${country}`}
     ORDER BY u."createdAt" DESC
   `;
 
@@ -1717,8 +1758,52 @@ export const getCreatorEarningsData = async (startDate?: Date, endDate?: Date, c
   return { creators, totalPaidAmount };
 };
 
+// Flag-inspired colors for country chart (dominant flag color per country)
+const COUNTRY_FLAG_COLORS: Record<string, string> = {
+  Malaysia: '#1340FF',
+  Singapore: '#EF4444',
+  Indonesia: '#DC2626',
+  Philippines: '#1E40AF',
+  Thailand: '#2563EB',
+  Vietnam: '#DC2626',
+  India: '#F97316',
+  Japan: '#DC2626',
+  'South Korea': '#1E3A8A',
+  China: '#DC2626',
+  Taiwan: '#1E3A8A',
+  'Hong Kong': '#DC2626',
+  'United States': '#3B82F6',
+  'United Kingdom': '#1E40AF',
+  Australia: '#1D4ED8',
+  Canada: '#EF4444',
+  Germany: '#111827',
+  France: '#2563EB',
+  Brazil: '#16A34A',
+  Mexico: '#16A34A',
+  Nigeria: '#16A34A',
+  'South Africa': '#16A34A',
+  'Saudi Arabia': '#16A34A',
+  'United Arab Emirates': '#DC2626',
+  Pakistan: '#16A34A',
+  Bangladesh: '#16A34A',
+  Myanmar: '#FBBF24',
+  Cambodia: '#1E40AF',
+  Laos: '#DC2626',
+  Brunei: '#FBBF24',
+};
+
+// Fallback palette for countries not in the flag map
+const COUNTRY_FALLBACK_COLORS = [
+  '#8B5CF6', '#EC4899', '#14B8A6', '#F59E0B', '#6366F1',
+  '#84CC16', '#F472B6', '#06B6D4', '#A855F7', '#FB923C',
+];
+
 // Shared demographics processing
-function processDemographics(genderData: { pronounce: string | null }[], ageData: { birthDate: Date | null }[]) {
+function processDemographics(
+  genderData: { pronounce: string | null }[],
+  ageData: { birthDate: Date | null }[],
+  countryData: { country: string | null }[],
+) {
   const genderCounts = { Female: 0, Male: 0, Other: 0 };
   for (const { pronounce } of genderData) {
     const p = (pronounce || '').toLowerCase();
@@ -1769,7 +1854,26 @@ function processDemographics(genderData: { pronounce: string | null }[], ageData
     color: ageColors[label],
   }));
 
-  return { gender, ageGroups };
+  // Country breakdown
+  const countryCounts: Record<string, number> = {};
+  for (const { country } of countryData) {
+    const name = country?.trim() || 'Unknown';
+    countryCounts[name] = (countryCounts[name] || 0) + 1;
+  }
+
+  const countries: DemographicItem[] = Object.entries(countryCounts)
+    .sort((a, b) => b[1] - a[1])
+    .map(([label, value]) => {
+      let color = COUNTRY_FLAG_COLORS[label];
+      if (!color) {
+        let hash = 0;
+        for (let i = 0; i < label.length; i++) hash = (hash * 31 + label.charCodeAt(i)) >>> 0;
+        color = COUNTRY_FALLBACK_COLORS[hash % COUNTRY_FALLBACK_COLORS.length];
+      }
+      return { label, value, color };
+    });
+
+  return { gender, ageGroups, countries };
 }
 
 // Avg Agreement Response Time

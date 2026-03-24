@@ -5,6 +5,7 @@ import dayjs from 'dayjs';
 import {
   getCreatorGrowthData,
   getCreatorGrowthCreators as getCreatorGrowthCreatorsData,
+  getCreatorsByCountry as getCreatorsByCountryData,
   getActivationRateData,
   getPitchRateData,
   getTimeToActivationData,
@@ -147,6 +148,21 @@ export const getCreatorGrowthCreators = async (req: Request, res: Response) => {
     return res.status(200).json({ success: true, data });
   } catch (error: any) {
     console.error('Error fetching creator growth creators:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch data' });
+  }
+};
+
+export const getCreatorsByCountry = async (req: Request, res: Response) => {
+  try {
+    const country = req.query.country as string;
+    if (!country || !country.trim()) {
+      return res.status(400).json({ success: false, message: 'Country parameter is required.' });
+    }
+    const creditTierNames = parseCreditTiers(req);
+    const data = await getCreatorsByCountryData(country.trim(), creditTierNames);
+    return res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    console.error('Error fetching creators by country:', error);
     return res.status(500).json({ success: false, message: 'Failed to fetch data' });
   }
 };
