@@ -304,6 +304,7 @@ export const updatePostingLink = async (submissionId: string, postingLink: strin
         },
         video: {
           select: { status: true },
+          orderBy: { createdAt: 'desc' as const },
         },
       },
     });
@@ -376,6 +377,7 @@ export const submitV4Content = async (
         campaign: true,
         video: {
           select: { status: true },
+          orderBy: { createdAt: 'desc' as const },
         },
       },
     });
