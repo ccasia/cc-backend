@@ -1,5 +1,5 @@
 import { uploadImage } from '@configs/cloudStorage.config';
-import { Bugs, PrismaClient } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 import { createNewBugRowData } from '@services/google_sheets/sheets';
 import dayjs from 'dayjs';
 import { Request, Response } from 'express';
@@ -11,14 +11,6 @@ export const createNewBug = async (req: Request, res: Response) => {
   const { userid } = req.session;
 
   try {
-    const data: {
-      stepsToReproduce: string;
-      attachment?: string;
-      userId?: string;
-    } = {
-      stepsToReproduce,
-    };
-
     const user = await prisma.user.findUnique({
       where: {
         id: userid,
@@ -27,18 +19,23 @@ export const createNewBug = async (req: Request, res: Response) => {
 
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    if ((req.files as any)?.attachment) {
-      const image = (req.files as any).attachment;
-      const imageUrl = await uploadImage(image.tempFilePath, image.name, 'bugs');
-      data.attachment = imageUrl;
-    }
+    // Normalize uploaded files to always be an array (express-fileupload returns single object or array)
+    const rawFiles = (req.files as any)?.attachment;
+    const fileList = Array.isArray(rawFiles) ? rawFiles : rawFiles ? [rawFiles] : [];
+    const cappedFiles = fileList.slice(0, 5);
 
-    if (req.session.userid) {
-      data.userId = req.session.userid;
-    }
+    // Upload all files to GCS in parallel
+    const uploadedUrls = await Promise.all(
+      cappedFiles.map((f: any, i: number) => uploadImage(f.tempFilePath, `${Date.now()}-${i}-${f.name}`, 'bugs'))
+    );
 
     const item = await prisma.bugs.create({
-      data: { ...data, campaignName: campaignName } as Bugs,
+      data: {
+        stepsToReproduce,
+        attachment: uploadedUrls,
+        campaignName: campaignName || undefined,
+        userId: req.session.userid || undefined,
+      },
     });
 
     await createNewBugRowData({
@@ -50,7 +47,7 @@ export const createNewBug = async (req: Request, res: Response) => {
         campaignName: campaignName || '',
         createdAt: dayjs(item.createdAt).format('LLL'),
         stepsToReproduce: item.stepsToReproduce,
-        attachment: item.attachment || '',
+        attachment: item.attachment.join('\n\n'),
       },
     });
 
