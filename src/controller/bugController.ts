@@ -20,19 +20,19 @@ export const createNewBug = async (req: Request, res: Response) => {
     if (!user) return res.status(404).json({ message: 'User not found' });
 
     // Normalize uploaded files to always be an array (express-fileupload returns single object or array)
-    const rawFiles = (req.files as any)?.attachments;
+    const rawFiles = (req.files as any)?.attachment;
     const fileList = Array.isArray(rawFiles) ? rawFiles : rawFiles ? [rawFiles] : [];
     const cappedFiles = fileList.slice(0, 5);
 
     // Upload all files to GCS in parallel
-    const attachments = await Promise.all(
-      cappedFiles.map((f: any) => uploadImage(f.tempFilePath, `${Date.now()}-${f.name}`, 'bugs'))
+    const uploadedUrls = await Promise.all(
+      cappedFiles.map((f: any, i: number) => uploadImage(f.tempFilePath, `${Date.now()}-${i}-${f.name}`, 'bugs'))
     );
 
     const item = await prisma.bugs.create({
       data: {
         stepsToReproduce,
-        attachments,
+        attachment: uploadedUrls,
         campaignName: campaignName || undefined,
         userId: req.session.userid || undefined,
       },
@@ -47,7 +47,7 @@ export const createNewBug = async (req: Request, res: Response) => {
         campaignName: campaignName || '',
         createdAt: dayjs(item.createdAt).format('LLL'),
         stepsToReproduce: item.stepsToReproduce,
-        attachment: item.attachments.join('\n\n'),
+        attachment: item.attachment.join('\n\n'),
       },
     });
 
