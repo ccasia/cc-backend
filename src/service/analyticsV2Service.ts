@@ -208,10 +208,11 @@ export const getCreatorGrowthData = async (
       },
       select: { birthDate: true },
     }),
-    prisma.creator.findMany({
+    prisma.user.findMany({
       where: {
-        user: { role: 'creator', status: { in: ['active', 'pending'] } },
-        ...(buildCreditTierOrmFilter(creditTierNames) || {}),
+        role: 'creator',
+        status: { in: ['active', 'pending'] },
+        ...(creditTierNames.length > 0 ? { creator: buildCreditTierOrmFilter(creditTierNames) } : {}),
       },
       select: { country: true },
     }),
@@ -396,8 +397,8 @@ export const getCreatorsByCountry = async (country: string, creditTierNames: str
     ${buildCreditTierJoin('c', creditTierNames)}
     WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
       AND ${isUnknown
-        ? Prisma.sql`(c.country IS NULL OR TRIM(c.country) = '')`
-        : Prisma.sql`TRIM(c.country) = ${country}`}
+        ? Prisma.sql`(u.country IS NULL OR TRIM(u.country) = '')`
+        : Prisma.sql`TRIM(u.country) = ${country}`}
     ORDER BY u."createdAt" DESC
   `;
 
