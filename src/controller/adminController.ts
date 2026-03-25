@@ -70,15 +70,6 @@ export const impersonateCreator = async (req: Request<{}, {}, { userId: string }
     const admin = await prisma.user.findUnique({ where: { id: sessionUserId } });
     if (!admin) return res.status(404).json({ success: false, message: 'Admin not found' });
 
-    // req.session.destroy((err) => {
-    //   if (err) {
-    //     return res.status(400).json({ message: 'Error logging out' });
-    //   }
-    //   res.clearCookie('connect.sid');
-    //   res.clearCookie('userid');
-    //   res.clearCookie('accessToken');
-    // });
-
     const session = req.session;
     session.isImpersonating = true;
     session.impersonatingBy = { userId: admin.id, name: admin.name! };
@@ -166,5 +157,46 @@ export const endImpersonatingSession = async (req: Request, res: Response) => {
       message: 'Internal server error',
       success: false,
     });
+  }
+};
+
+export const impersonateClient = async (req: Request<{}, {}, { email: string }>, res: Response) => {
+  try {
+    const email = req.body.email;
+    const sessionUserId = req.session.userid;
+
+    if (!email) return res.status(404).json({ message: 'email is required', success: false });
+
+    const user = await prisma.user.findFirst({
+      where: {
+        email: {
+          equals: email,
+          mode: 'insensitive',
+        },
+        status: 'active',
+      },
+    });
+
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+    if (user.role != 'client')
+      return res.status(404).json({ success: false, message: 'Cannot impersonate other administrators' });
+
+    const admin = await prisma.user.findUnique({ where: { id: sessionUserId } });
+    if (!admin) return res.status(404).json({ success: false, message: 'Admin not found' });
+
+    const session = req.session;
+    session.isImpersonating = true;
+    session.impersonatingBy = { userId: admin.id, name: admin.name! };
+    session.userid = user.id;
+
+    res.cookie('userid', user.id, {
+      maxAge: 60 * 60 * 24 * 1000, // 1 Day
+      httpOnly: true,
+    });
+
+    return res.sendStatus(200);
+  } catch (error) {
+    console.log(error);
+    return res.status(500).json(error);
   }
 };
