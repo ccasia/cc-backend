@@ -683,6 +683,7 @@ export const activateClient = async (req: Request, res: Response) => {
       where: { id: companyId },
       include: {
         pic: true, // Get person in charge details
+        clients: true,
       },
     });
 
@@ -699,9 +700,37 @@ export const activateClient = async (req: Request, res: Response) => {
       where: { email: company.pic[0].email.toLowerCase() },
     });
 
-    if (existingUser) {
-      return res.status(400).json({ message: 'Client already activated' });
+    if (existingUser && !company.clients.find((a) => a.userId !== existingUser.id)) {
+      const existingClient = await prisma.client.findFirst({
+        where: {
+          userId: existingUser.id,
+        },
+      });
+
+      if (existingClient) {
+        await prisma.client.update({
+          where: {
+            id: existingClient.id,
+          },
+          data: {
+            companyId: companyId,
+          },
+        });
+      } else {
+        await prisma.client.create({
+          data: {
+            companyId: companyId,
+            userId: existingUser.id,
+          },
+        });
+      }
+
+      return res.status(200).json({ message: 'Client account is activated!' });
     }
+
+    // if (existingUser) {
+    //   return res.status(400).json({ message: 'Client already activated' });
+    // }
 
     // Create user with client role
     const result = await prisma.$transaction(async (tx) => {

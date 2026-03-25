@@ -94,7 +94,9 @@ export const getChildAccounts = async (req: Request, res: Response) => {
       },
     });
 
-    return res.status(200).json(childAccounts);
+    const sanitizedData = childAccounts.map((ca) => ({ ...ca, password: null }));
+
+    return res.status(200).json(sanitizedData);
   } catch (error) {
     console.error('Error fetching child accounts:', error);
     return res.status(500).json({ message: 'Internal server error' });
@@ -168,7 +170,8 @@ export const createChildAccount = async (req: Request, res: Response) => {
     if (!parentClient.user || parentClient.user.status !== 'active') {
       console.log('Parent client user status:', parentClient.user?.status);
       return res.status(403).json({
-        message: 'Cannot invite child accounts until the main account has been activated. The primary account holder must complete their activation first.',
+        message:
+          'Cannot invite child accounts until the main account has been activated. The primary account holder must complete their activation first.',
       });
     }
 
@@ -905,7 +908,7 @@ export const activateChildAccount = async (req: Request, res: Response) => {
         name: `${childAccount.firstName || ''} ${childAccount.lastName || ''}`.trim(),
         role: 'client' as any,
         status: 'active' as any,
-        activatedAt: new Date()
+        activatedAt: new Date(),
       },
     });
 
