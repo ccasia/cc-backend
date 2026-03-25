@@ -1526,7 +1526,7 @@ model AgreementTemplate {
 model Bugs {
   id               String   @id @unique @default(cuid())
   stepsToReproduce String
-  attachment       String?
+  attachments      String[]
   campaignName     String?
   createdAt        DateTime @default(now())
   userId           String?
