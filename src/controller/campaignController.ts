@@ -13,6 +13,7 @@ import {
   LogisticStatus,
   PaymentForm,
   Pitch,
+  Prisma,
   PrismaClient,
   ShortListedCreator,
   Submission,
@@ -36,7 +37,13 @@ import {
   uploadPitchVideo,
 } from '@configs/cloudStorage.config';
 import dayjs from 'dayjs';
-import { logChange, logAdminChange, uploadCampaignAssets, createNewSpreadSheetAsync } from '@services/campaignServices';
+import {
+  logChange,
+  logAdminChange,
+  uploadCampaignAssets,
+  createNewSpreadSheetAsync,
+  rejectPendingPitchInternal,
+} from '@services/campaignServices';
 import { saveNotification } from '@controllers/notificationController';
 import { clients, io } from '../server';
 import fs from 'fs';
@@ -3870,35 +3877,132 @@ export const closeCampaign = async (req: Request, res: Response) => {
   const adminId = req.session.userid;
 
   try {
-    const campaign = await prisma.campaign.update({
-      where: {
-        id: id,
-      },
-      data: {
-        status: 'COMPLETED',
-        completedAt: new Date(),
-      },
-      include: {
-        campaignAdmin: true,
-      },
+    // Use transaction for atomicity
+    const result = await prisma.$transaction(async (tx) => {
+      // Step 1: Fetch campaign with all necessary relations
+      const campaign = await tx.campaign.findUnique({
+        where: { id },
+        include: {
+          campaignAdmin: true,
+          pitch: true,
+        },
+      });
+
+      if (!campaign) {
+        throw new Error('Campaign not found');
+      }
+
+      // Step 2: Identify and reject pending creators
+      const pendingPitches = campaign.pitch.filter(
+        (p) => p.status === 'PENDING_REVIEW' || p.status === 'SENT_TO_CLIENT',
+      );
+
+      for (const pitch of pendingPitches) {
+        if (!pitch.userId) continue;
+        await rejectPendingPitchInternal(pitch.userId, id, pitch.id, tx as PrismaClient);
+      }
+
+      // Step 3: Refund unutilized credits using allocation breakdown (LIFO - newest subscription first)
+      const totalRefundedCredits = campaign.creditsPending || 0;
+      let remainingToRefund = totalRefundedCredits;
+      const newBreakdown: Array<{ subscriptionId: string; amount: number }> = [];
+
+      if (remainingToRefund > 0 && campaign.creditAllocationBreakdown) {
+        // Get allocation breakdown
+        const breakdown = campaign.creditAllocationBreakdown as Array<{ subscriptionId: string; amount: number }>;
+
+        if (breakdown.length > 0) {
+          // Reverse order: newest allocation first (reverse FIFO = LIFO)
+          const reversedBreakdown = [...breakdown].reverse();
+
+          for (const allocation of reversedBreakdown) {
+            // If we've refunded everything, just keep the remaining allocations untouched
+            if (remainingToRefund <= 0) {
+              newBreakdown.push(allocation);
+              continue;
+            }
+
+            const refundAmount = Math.min(allocation.amount, remainingToRefund);
+
+            // Refund the allocated amount back to that subscription
+            await tx.subscription.update({
+              where: { id: allocation.subscriptionId },
+              data: {
+                creditsUsed: { decrement: refundAmount },
+              },
+            });
+
+            remainingToRefund -= refundAmount;
+
+            // Re-calculate how much of this specific allocation was actually consumed
+            const remainingAllocation = allocation.amount - refundAmount;
+            if (remainingAllocation > 0) {
+              newBreakdown.push({ subscriptionId: allocation.subscriptionId, amount: remainingAllocation });
+            }
+          }
+
+          // Reverse back to chronological order
+          newBreakdown.reverse();
+        }
+      }
+
+      // Update campaign level - adjust campaignCredits to match what was actually used (creditsPending becomes 0)
+      await tx.campaign.update({
+        where: { id },
+        data: {
+          campaignCredits: campaign.creditsUtilized,
+          creditsPending: 0,
+          creditAllocationBreakdown: newBreakdown.length > 0 ? newBreakdown : Prisma.DbNull, // Store new state
+        },
+      });
+
+      // Step 4: Close the campaign
+      const closedCampaign = await tx.campaign.update({
+        where: { id },
+        data: {
+          status: 'COMPLETED',
+          completedAt: new Date(),
+        },
+        include: {
+          campaignAdmin: true,
+        },
+      });
+
+      return {
+        campaign: closedCampaign,
+        rejectedCount: pendingPitches.length,
+        refundedCredits: totalRefundedCredits,
+      };
     });
-    campaign.campaignAdmin.forEach(async (item) => {
+
+    // Step 6: Send notifications (outside of transaction)
+    result.campaign.campaignAdmin.forEach(async (item) => {
       const data = await saveNotification({
         userId: item.adminId,
-        message: `${campaign.name} is close on ${dayjs().format('ddd LL')}`,
+        message: `${result.campaign.name} is close on ${dayjs().format('ddd LL')}`,
         entity: 'Campaign',
-        entityId: campaign.id,
+        entityId: result.campaign.id,
       });
       io.to(clients.get(item.adminId)).emit('notification', data);
     });
 
+    // Step 7: Log admin activity
     if (adminId) {
-      const adminLogMessage = `Closed campaign ${campaign.name} `;
+      const rejectionInfo =
+        result.rejectedCount > 0
+          ? ` and auto-rejected ${result.rejectedCount} pending creator(s), refunding ${result.refundedCredits} credits`
+          : '';
+      const adminLogMessage = `Closed campaign ${result.campaign.name}${rejectionInfo}`;
       logAdminChange(adminLogMessage, adminId, req);
     }
 
-    return res.status(200).json({ message: 'Campaign closed successfully.' });
+    return res.status(200).json({
+      message: 'Campaign closed successfully.',
+      rejectedCreators: result.rejectedCount,
+      refundedCredits: result.refundedCredits,
+    });
   } catch (error) {
+    console.error('Error closing campaign:', error);
     return res.status(400).json(error);
   }
 };

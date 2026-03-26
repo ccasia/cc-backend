@@ -655,6 +655,8 @@ model Campaign {
   campaignCredits Int?
   creditsPending  Int?
   creditsUtilized Int?
+  creditAllocationBreakdown Json?  // Tracks which subscriptions were charged and how much
+                                   // Format: [{ subscriptionId: string, amount: number }, ...]
 
   brandId        String?
   subscriptionId String?
