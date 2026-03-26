@@ -11759,32 +11759,58 @@ export const updateAllCampaignCredits = async (req: Request, res: Response) => {
 
     if (campaignCredits !== undefined && campaignCredits !== null) {
       // Validate against subscription limits if subscription exists
-      if (campaign.subscription) {
-        const subscribedCampaigns = await prisma.subscription.findFirst({
-          where: { id: campaign.subscription.id },
-          select: {
-            totalCredits: true,
-            campaign: {
-              select: {
-                campaignCredits: true,
-                id: true,
-              },
-            },
-          },
+      // if (campaign.subscription) {
+      //   const subscribedCampaigns = await prisma.subscription.findFirst({
+      //     where: { id: campaign.subscription.id },
+      //     select: {
+      //       totalCredits: true,
+      //       campaign: {
+      //         select: {
+      //           campaignCredits: true,
+      //           id: true,
+      //         },
+      //       },
+      //     },
+      //   });
+
+      //   // Calculate total assigned credits excluding current campaign
+      //   const otherCampaignsCredits =
+      //     subscribedCampaigns?.campaign
+      //       .filter((c) => c.id !== campaignId)
+      //       .reduce((acc, cur) => acc + (cur.campaignCredits ?? 0), 0) || 0;
+
+      //   const totalAfterUpdate = otherCampaignsCredits + campaignCredits;
+
+      //   if (totalAfterUpdate > (subscribedCampaigns?.totalCredits ?? 0)) {
+      //     return res.status(400).json({
+      //       message: `Cannot exceed subscription limit. Maximum available: ${(subscribedCampaigns?.totalCredits ?? 0) - otherCampaignsCredits} credits.`,
+      //     });
+      //   }
+      // }
+
+      // Validate against the Company's entire active subscription pool
+      if (campaign.companyId) {
+        const activeSubs = await prisma.subscription.findMany({
+          where: { companyId: campaign.companyId, status: 'ACTIVE' },
         });
 
-        // Calculate total assigned credits excluding current campaign
-        const otherCampaignsCredits =
-          subscribedCampaigns?.campaign
-            .filter((c) => c.id !== campaignId)
-            .reduce((acc, cur) => acc + (cur.campaignCredits ?? 0), 0) || 0;
+        const totalActiveCredits = activeSubs.reduce((sum, sub) => sum + (sub.totalCredits || 0), 0);
+        
+        const totalUsedAcrossCompany = activeSubs.reduce((sum, sub) => sum + (sub.creditsUsed || 0), 0);
+        
+        const currentlyAvailable = totalActiveCredits - totalUsedAcrossCompany;
 
-        const totalAfterUpdate = otherCampaignsCredits + campaignCredits;
+        const requestedCredits = Number(campaignCredits) || 0;
+        const currentCampaignCredits = Number(campaign.campaignCredits) || 0;
 
-        if (totalAfterUpdate > (subscribedCampaigns?.totalCredits ?? 0)) {
-          return res.status(400).json({
-            message: `Cannot exceed subscription limit. Maximum available: ${(subscribedCampaigns?.totalCredits ?? 0) - otherCampaignsCredits} credits.`,
-          });
+        if (requestedCredits > currentCampaignCredits) {
+          const additionalNeeded = requestedCredits - currentCampaignCredits;
+          
+          if (additionalNeeded > currentlyAvailable) {
+            return res.status(400).json({
+              message: `Cannot exceed company's subscription limits. You need ${additionalNeeded} more credits, but only ${currentlyAvailable} are available across all active packages.`,
+            });
+          }
         }
       }
 
