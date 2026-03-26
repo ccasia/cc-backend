@@ -20,7 +20,7 @@ export const createNewBug = async (req: Request, res: Response) => {
     if (!user) return res.status(404).json({ message: 'User not found' });
 
     // Normalize uploaded files to always be an array (express-fileupload returns single object or array)
-    const rawFiles = (req.files as any)?.attachment;
+    const rawFiles = (req.files as any)?.attachments;
     const fileList = Array.isArray(rawFiles) ? rawFiles : rawFiles ? [rawFiles] : [];
     const cappedFiles = fileList.slice(0, 5);
 
@@ -32,7 +32,7 @@ export const createNewBug = async (req: Request, res: Response) => {
     const item = await prisma.bugs.create({
       data: {
         stepsToReproduce,
-        attachment: uploadedUrls,
+        attachments: uploadedUrls,
         campaignName: campaignName || undefined,
         userId: req.session.userid || undefined,
       },
@@ -47,7 +47,7 @@ export const createNewBug = async (req: Request, res: Response) => {
         campaignName: campaignName || '',
         createdAt: dayjs(item.createdAt).format('LLL'),
         stepsToReproduce: item.stepsToReproduce,
-        attachment: item.attachment.join('\n\n'),
+        attachment: item.attachments.join('\n\n'),
       },
     });
 
