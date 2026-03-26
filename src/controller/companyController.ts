@@ -73,13 +73,7 @@ export const getAllCompanies = async (_req: Request, res: Response) => {
       const activeSubscriptions = company.subscriptions.filter((sub) => sub.status === 'ACTIVE');
       const totalCredits = activeSubscriptions.reduce((sum, sub) => sum + (sub.totalCredits || 0), 0);
 
-      const usedCredits = activeSubscriptions.reduce((sum, sub) => {
-        const subCreditsUtilized = sub.campaign.reduce(
-          (campaignSum, campaign) => campaignSum + (campaign.creditsUtilized || 0),
-          0,
-        );
-        return sum + subCreditsUtilized;
-      }, 0);
+      const usedCredits = activeSubscriptions.reduce((sum, sub) => sum + (sub.creditsUsed || 0), 0);
 
       const creditSummary = {
         totalCredits,
@@ -167,7 +161,7 @@ export const getCompanyById = async (req: Request, res: Response) => {
       const data = {
         ...subs,
         creditsUtilized: totalCreditsUtilized,
-        creditsUsed: totalCreditsUtilized,
+        creditsUsed: subs.creditsUsed || 0,
       };
 
       sanitizedSubs.push(data);
