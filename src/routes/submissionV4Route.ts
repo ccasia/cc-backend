@@ -21,7 +21,16 @@ import {
   getSubmissionStatusInfo,
   updateSubmissionDueDate,
   getCaptionHistory,
+  getComments,
+  createComment,
+  toggleAgree,
+  toggleResolve,
+  updateComment,
+  deleteComment,
+  sendVideoFeedbackToCreator,
+  sendVideoFeedbackToClient,
 } from '../controller/submissionV4Controller';
+
 import { isLoggedIn } from '../middleware/onlyLogin';
 import { isAdmin } from '../middleware/onlySuperadmin';
 import { isClient } from '@middlewares/clientOnly';
@@ -83,5 +92,17 @@ router.get('/content/feedback/:contentType/:contentId', isLoggedIn, getIndividua
 
 // Caption history endpoint
 router.get('/:submissionId/caption-history', isLoggedIn, getCaptionHistory);
+
+// Comment endpoints
+router.get('/submission/:submissionId/comments', isLoggedIn, getComments);
+router.post('/submission/:submissionId/comments', isLoggedIn, createComment);
+router.patch('/comments/:commentId', isLoggedIn, isAdmin, updateComment);
+router.delete('/comments/:commentId', isLoggedIn, isAdmin, deleteComment);
+router.post('/comments/:commentId/agree', isLoggedIn, isClient, toggleAgree);
+router.patch('/comments/:commentId/resolve', isLoggedIn, isAdmin, toggleResolve);
+
+// Comment-based feedback actions
+router.post('/submission/:submissionId/send-to-creator', isLoggedIn, isAdmin, sendVideoFeedbackToCreator);
+router.post('/submission/:submissionId/send-to-client', isLoggedIn, isAdmin, sendVideoFeedbackToClient);
 
 export default router;

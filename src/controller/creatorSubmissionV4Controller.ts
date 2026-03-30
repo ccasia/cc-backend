@@ -44,6 +44,16 @@ export const getMyV4Submissions = async (req: Request, res: Response) => {
 
     const submissions = await getV4Submissions(campaignId as string, creatorId);
 
+    // Map feedback to include submissionComment text and timestamp
+    const mapFeedbackWithComments = (feedback: any) => ({
+      ...feedback,
+      content: feedback.submissionComment?.text || feedback.content,
+      timestamp: feedback.submissionComment?.timestamp,
+      resolved: !!feedback.submissionComment?.resolvedByUserId,
+      resolvedAt: feedback.submissionComment?.resolvedAt ?? undefined,
+      resolvedBy: feedback.submissionComment?.resolvedBy ?? undefined,
+    });
+
     // Filter feedback for each submission based on submission status and type
     const submissionsWithFilteredFeedback = submissions.map((submission) => {
       let filteredFeedback = submission.feedback;
@@ -55,6 +65,10 @@ export const getMyV4Submissions = async (req: Request, res: Response) => {
         // For other statuses, show all feedback that was sent to creator (both COMMENT and REQUEST types)
         filteredFeedback = submission.feedback.filter((feedback) => feedback.sentToCreator);
       }
+      
+      // Map feedback to include submissionComment data
+      filteredFeedback = filteredFeedback.map(mapFeedbackWithComments);
+      
       return {
         ...submission,
         feedback: filteredFeedback,
@@ -69,7 +83,6 @@ export const getMyV4Submissions = async (req: Request, res: Response) => {
       rawFootage: submissionsWithFilteredFeedback.filter((s) => s.submissionType.type === 'RAW_FOOTAGE'),
     };
 
-    console.log(groupedSubmissions);
 
     // Calculate overall progress
     const totalSubmissions = submissionsWithFilteredFeedback.length;
@@ -667,6 +680,10 @@ export const getMySubmissionDetails = async (req: Request, res: Response) => {
             feedback: true,
             reasons: true,
             feedbackAt: true,
+            createdAt: true,
+          },
+          orderBy: {
+            createdAt: 'desc',
           },
         },
         photos: {
@@ -695,6 +712,25 @@ export const getMySubmissionDetails = async (req: Request, res: Response) => {
               select: {
                 id: true,
                 name: true,
+              },
+            },
+            submissionComment: {
+              include: {
+                replies: {
+                  include: {
+                    user: {
+                      select: {
+                        id: true,
+                        name: true,
+                        role: true,
+                        photoURL: true,
+                      },
+                    },
+                  },
+                  orderBy: {
+                    createdAt: 'asc',
+                  },
+                },
               },
             },
           },
@@ -729,6 +765,23 @@ export const getMySubmissionDetails = async (req: Request, res: Response) => {
         (feedback) => feedback.sentToCreator && (feedback.type === 'REQUEST' || feedback.type === 'COMMENT'),
       );
     }
+
+    const mapFeedbackReplies = (f: any) => ({
+      ...f,
+      // Map the main comment's text and timestamp to the feedback
+      content: f.submissionComment?.text || f.content,
+      timestamp: f.submissionComment?.timestamp,
+      resolved: !!f.submissionComment?.resolvedByUserId,
+      resolvedAt: f.submissionComment?.resolvedAt ?? undefined,
+      resolvedBy: f.submissionComment?.resolvedBy ?? undefined,
+      replies: (f.submissionComment?.replies ?? []).map((r: any) => ({
+        id: r.id,
+        content: r.text,
+        createdAt: r.createdAt,
+        user: r.user,
+      })),
+    });
+    filteredFeedback = filteredFeedback.map(mapFeedbackReplies);
 
     // Add creator-friendly status mapping
     const getCreatorStatus = (status: string) => {
@@ -767,6 +820,100 @@ export const getMySubmissionDetails = async (req: Request, res: Response) => {
     console.error('Error getting creator submission details:', error);
     res.status(500).json({
       message: 'Failed to get submission details',
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+};
+
+/**
+ * Create a reply for a feedback item (creator)
+ * POST /api/creator/submissions/v4/feedback/:feedbackId/replies
+ * Uses SubmissionComment; creator reply is stored as a reply under the feedback's root comment.
+ */
+export const createMyFeedbackReply = async (req: Request, res: Response) => {
+  const { feedbackId } = req.params;
+  const creatorId = req.session.userid;
+  const { content } = req.body as { content?: string };
+
+  try {
+    if (!creatorId) return res.status(401).json({ message: 'You are not logged in' });
+    if (!feedbackId) return res.status(400).json({ message: 'feedbackId is required' });
+    if (!content || !content.trim()) return res.status(400).json({ message: 'content is required' });
+
+    const feedback = await prisma.feedback.findUnique({
+      where: { id: feedbackId },
+      select: {
+        id: true,
+        submissionId: true,
+        submissionCommentId: true,
+        adminId: true,
+        content: true,
+        videoId: true,
+        submission: {
+          select: {
+            id: true,
+            userId: true,
+          },
+        },
+      },
+    });
+
+    if (!feedback) return res.status(404).json({ message: 'Feedback not found' });
+    if (!feedback.submission || feedback.submission.userId !== creatorId) {
+      return res.status(403).json({ message: 'You can only reply to feedback on your own submissions' });
+    }
+
+    let rootCommentId = feedback.submissionCommentId;
+    if (!rootCommentId) {
+      const rootComment = await prisma.submissionComment.create({
+        data: {
+          submissionId: feedback.submissionId,
+          userId: feedback.adminId,
+          text: feedback.content ?? '',
+          timestamp: null,
+          videoId: feedback.videoId ?? undefined,
+        },
+      });
+      rootCommentId = rootComment.id;
+      await prisma.feedback.update({
+        where: { id: feedbackId },
+        data: { submissionCommentId: rootCommentId },
+      });
+    }
+
+    const reply = await prisma.submissionComment.create({
+      data: {
+        submissionId: feedback.submissionId,
+        userId: creatorId,
+        text: content.trim(),
+        parentId: rootCommentId,
+        timestamp: null,
+        videoId: feedback.videoId ?? undefined,
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            role: true,
+            photoURL: true,
+          },
+        },
+      },
+    });
+
+    return res.status(201).json({
+      reply: {
+        id: reply.id,
+        content: reply.text,
+        createdAt: reply.createdAt,
+        user: reply.user,
+      },
+    });
+  } catch (error) {
+    console.error('Error creating feedback reply:', error);
+    return res.status(500).json({
+      message: 'Failed to create feedback reply',
       error: error instanceof Error ? error.message : 'Unknown error',
     });
   }

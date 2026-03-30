@@ -5,6 +5,7 @@ import {
   updateMyPostingLink,
   getMySubmissionDetails,
   getMyCampaignOverview,
+  createMyFeedbackReply,
 } from '../controller/creatorSubmissionV4Controller';
 import { isLoggedIn } from '../middleware/onlyLogin';
 import { isCreator } from '../middleware/isCreator';
@@ -54,5 +55,14 @@ router.post('/submit-content', submitMyV4Content);
  * @body submissionId, postingLink
  */
 router.put('/posting-link', updateMyPostingLink);
+
+/**
+ * @route POST /api/creator/submissions/v4/feedback/:feedbackId/replies
+ * @desc Reply to a feedback item (creator)
+ * @access Private (Creator only)
+ * @param feedbackId - Feedback ID
+ * @body content
+ */
+router.post('/feedback/:feedbackId/replies', createMyFeedbackReply);
 
 export default router;

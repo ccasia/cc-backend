@@ -73,6 +73,7 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
             id: true,
             name: true,
             email: true,
+            photoURL: true,
           },
         },
         video: {
@@ -85,6 +86,7 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
             feedbackAt: true,
             createdAt: true,
             adminId: true,
+            resubmittedFromId: true,
             admin: {
               select: {
                 id: true,
@@ -92,6 +94,7 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
               },
             },
           },
+          orderBy: { createdAt: 'desc' as const },
         },
         photos: {
           select: {
@@ -129,13 +132,33 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
                 id: true,
                 name: true,
                 role: true,
+                photoURL: true,
+              },
+            },
+            submissionComment: {
+              include: {
+                replies: {
+                  include: {
+                    user: {
+                      select: {
+                        id: true,
+                        name: true,
+                        role: true,
+                        photoURL: true,
+                      },
+                    },
+                  },
+                  orderBy: {
+                    createdAt: 'asc',
+                  },
+                },
               },
             },
           },
           orderBy: {
             createdAt: 'desc',
           },
-        },
+        } as any,
       },
       orderBy: [
         {
@@ -177,6 +200,7 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
             id: true,
             name: true,
             email: true,
+            photoURL: true,
           },
         },
         feedback: {
@@ -186,13 +210,33 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
                 id: true,
                 name: true,
                 role: true,
+                photoURL: true,
+              },
+            },
+            submissionComment: {
+              include: {
+                replies: {
+                  include: {
+                    user: {
+                      select: {
+                        id: true,
+                        name: true,
+                        role: true,
+                        photoURL: true,
+                      },
+                    },
+                  },
+                  orderBy: {
+                    createdAt: 'asc',
+                  },
+                },
               },
             },
           },
           orderBy: {
             createdAt: 'desc',
           },
-        },
+        } as any,
       },
     });
 
@@ -202,8 +246,26 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
     // Combine both sets of submissions (now without duplicates)
     const allSubmissions = [...v4Submissions, ...uniqueAgreementSubmissions];
 
+    // Map feedback.replies from SubmissionComment to same shape as old FeedbackReply (content, user, createdAt)
+    // Also map the main comment's text and timestamp to the feedback
+    const mapFeedbackReplies = (feedback: any) => ({
+      ...feedback,
+      // Map the main comment's text and timestamp to the feedback
+      content: feedback.submissionComment?.text || feedback.content,
+      timestamp: feedback.submissionComment?.timestamp,
+      replies: (feedback.submissionComment?.replies ?? []).map((r: any) => ({
+        id: r.id,
+        content: r.text,
+        createdAt: r.createdAt,
+        user: r.user,
+      })),
+    });
+    allSubmissions.forEach((s: any) => {
+      if (s.feedback) s.feedback = s.feedback.map(mapFeedbackReplies);
+    });
+
     // Sort combined submissions
-    allSubmissions.sort((a, b) => {
+    allSubmissions.sort((a: any, b: any) => {
       // Agreement forms first, then by type, then by content order
       if (a.submissionType.type === 'AGREEMENT_FORM' && b.submissionType.type !== 'AGREEMENT_FORM') {
         return -1;
@@ -242,6 +304,7 @@ export const updatePostingLink = async (submissionId: string, postingLink: strin
         },
         video: {
           select: { status: true },
+          orderBy: { createdAt: 'desc' as const },
         },
       },
     });
@@ -314,6 +377,7 @@ export const submitV4Content = async (
         campaign: true,
         video: {
           select: { status: true },
+          orderBy: { createdAt: 'desc' as const },
         },
       },
     });
