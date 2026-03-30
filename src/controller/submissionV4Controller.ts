@@ -3060,7 +3060,7 @@ export const getComments = async (req: Request, res: Response) => {
   if (user.role === 'client') {
     roleFilter = { in: ['admin', 'superadmin', 'finance', 'client'] };
   } else if (user.role === 'creator') {
-    roleFilter = { in: ['admin', 'superadmin', 'finance'] };
+    roleFilter = { in: ['admin', 'superadmin', 'finance', 'creator'] };
   }
 
   try {
