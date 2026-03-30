@@ -17,39 +17,43 @@ model User {
   emailVerificationId String?            @unique
   emailVerifcation    EmailVerification? @relation(fields: [emailVerificationId], references: [id])
 
-  createdAt          DateTime            @default(now())
-  name               String?             @db.VarChar(255)
-  photoURL           String?             @db.VarChar(255)
-  country            String?             @db.VarChar(100)
-  city               String?             @db.VarChar(100)
-  phoneNumber        String?             @db.VarChar(100)
-  updatedAt          DateTime            @updatedAt
-  status             Status              @default(pending)
-  eventId            String?
-  role               RoleEnum
-  photoBackgroundURL String?             @db.VarChar(255)
-  updateRefershToken DateTime?
-  xeroRefreshToken   String?
-  admin              Admin?
-  client             Client?
-  agreementTemplate  AgreementTemplate[]
-  Board              Board?
-  BookMarkCampaign   BookMarkCampaign[]
-  campaignLogs       CampaignLog[]
-  CampaignTaskAdmin  CampaignTaskAdmin[]
-  creator            Creator?
-  creatorAgreement   CreatorAgreement[]
-  feedback           Feedback[]
-  finance            Finance?
-  invoice            Invoice[]           @relation("CreatedBy")
-  sentMessages       Message[]           @relation("UserMessages")
-  notifications      Notification[]
-  paymentForm        PaymentForm?
-  pitch              Pitch[]
-  approvedPitches    Pitch[]             @relation("ApprovedByClient")
-  rejectedPitches         Pitch[] @relation("RejectedByClient")
-  maybePitches            Pitch[] @relation("MaybeByClient")
-  acceptedInviteByCreator Pitch[] @relation("AcceptedInviteByCreator")
+  createdAt               DateTime            @default(now())
+  name                    String?             @db.VarChar(255)
+  photoURL                String?             @db.VarChar(255)
+  country                 String?             @db.VarChar(100)
+  city                    String?             @db.VarChar(100)
+  phoneNumber             String?             @db.VarChar(100)
+  updatedAt               DateTime            @updatedAt
+  status                  Status              @default(pending)
+  eventId                 String?
+  role                    RoleEnum
+  photoBackgroundURL      String?             @db.VarChar(255)
+  updateRefershToken      DateTime?
+  xeroRefreshToken        String?
+  admin                   Admin?
+  client                  Client?
+  agreementTemplate       AgreementTemplate[]
+  Board                   Board?
+  BookMarkCampaign        BookMarkCampaign[]
+  campaignLogs            CampaignLog[]
+  CampaignTaskAdmin       CampaignTaskAdmin[]
+  creator                 Creator?
+  creatorAgreement        CreatorAgreement[]
+  feedback                Feedback[]
+  commentAgreements       CommentAgreement[]
+  submissionComments      SubmissionComment[]
+  forwardedComments       SubmissionComment[] @relation("ForwardedComments")
+  resolvedComments        SubmissionComment[] @relation("ResolvedComments")
+  finance                 Finance?
+  invoice                 Invoice[]           @relation("CreatedBy")
+  sentMessages            Message[]           @relation("UserMessages")
+  notifications           Notification[]
+  paymentForm             PaymentForm?
+  pitch                   Pitch[]
+  approvedPitches         Pitch[]             @relation("ApprovedByClient")
+  rejectedPitches         Pitch[]             @relation("RejectedByClient")
+  maybePitches            Pitch[]             @relation("MaybeByClient")
+  acceptedInviteByCreator Pitch[]             @relation("AcceptedInviteByCreator")
 
   resetPasswordToken ResetPasswordToken?
   seenMessages       SeenMessage[]
@@ -652,11 +656,11 @@ model Campaign {
   description String
   status      CampaignStatus @default(SCHEDULED)
 
-  campaignCredits Int?
-  creditsPending  Int?
-  creditsUtilized Int?
-  creditAllocationBreakdown Json?  // Tracks which subscriptions were charged and how much
-                                   // Format: [{ subscriptionId: string, amount: number }, ...]
+  campaignCredits           Int?
+  creditsPending            Int?
+  creditsUtilized           Int?
+  creditAllocationBreakdown Json? // Tracks which subscriptions were charged and how much
+  // Format: [{ subscriptionId: string, amount: number }, ...]
 
   brandId        String?
   subscriptionId String?
@@ -726,8 +730,8 @@ model Campaign {
   manualCreatorEntries  ManualCreatorEntry[]
 
   // PCR (Post Campaign Report)
-  pcr        CampaignPCR?
-  isPCRReady Boolean @default(false)
+  pcr            CampaignPCR?
+  isPCRReady     Boolean      @default(false)
   isForSurfShark Boolean?
 
   publishedAt DateTime?
@@ -948,46 +952,46 @@ model AdminLog {
 }
 
 model Pitch {
-  id                  String         @id @unique @default(cuid())
-  type                PitchType
-  campaignId          String
-  userId              String
-  status              PitchStatus?   @default(pending)
-  content             String         @default("test")
-  createdAt           DateTime       @default(now())
-  completedAt         DateTime?
-  approvedByAdminId   String?
-  approvedByClientId  String?
-  rejectedByAdminId   String?
-  rejectedByClientId  String?
-  rejectionReason     String?
-  customRejectionText String?
-  maybeByClientId     String?
+  id                        String         @id @unique @default(cuid())
+  type                      PitchType
+  campaignId                String
+  userId                    String
+  status                    PitchStatus?   @default(pending)
+  content                   String         @default("test")
+  createdAt                 DateTime       @default(now())
+  completedAt               DateTime?
+  approvedByAdminId         String?
+  approvedByClientId        String?
+  rejectedByAdminId         String?
+  rejectedByClientId        String?
+  rejectionReason           String?
+  customRejectionText       String?
+  maybeByClientId           String?
   acceptedInviteByCreatorId String?
-  amount              Int?
-  ugcCredits          Int?
-  agreementTemplateId String?
-  Notification        Notification[]
-  followerCount       String?
-  engagementRate      String?
-  adminComments       String?
-  adminCommentedBy    String?
-  isInvited           Boolean        @default(false)
-  adminCommenter      Admin?         @relation("AdminCommenter", fields: [adminCommentedBy], references: [userId])
+  amount                    Int?
+  ugcCredits                Int?
+  agreementTemplateId       String?
+  Notification              Notification[]
+  followerCount             String?
+  engagementRate            String?
+  adminComments             String?
+  adminCommentedBy          String?
+  isInvited                 Boolean        @default(false)
+  adminCommenter            Admin?         @relation("AdminCommenter", fields: [adminCommentedBy], references: [userId])
 
   // Outreach status tracking
   outreachStatus    OutreachStatus?
   outreachUpdatedAt DateTime?
   outreachUpdatedBy String?
 
-  campaign         Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  user             User     @relation(fields: [userId], references: [id])
-  admin            Admin?   @relation(fields: [approvedByAdminId], references: [userId], name: "ApprovedByAdmin")
-  client           User?    @relation("ApprovedByClient", fields: [approvedByClientId], references: [id])
-  rejectedByAdmin         Admin? @relation("RejectedByAdmin", fields: [rejectedByAdminId], references: [userId])
-  rejectedByClient        User?  @relation("RejectedByClient", fields: [rejectedByClientId], references: [id])
-  maybeByClient           User?  @relation("MaybeByClient", fields: [maybeByClientId], references: [id])
-  acceptedInviteByCreator User?  @relation("AcceptedInviteByCreator", fields: [acceptedInviteByCreatorId], references: [id])
+  campaign                Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  user                    User     @relation(fields: [userId], references: [id])
+  admin                   Admin?   @relation(fields: [approvedByAdminId], references: [userId], name: "ApprovedByAdmin")
+  client                  User?    @relation("ApprovedByClient", fields: [approvedByClientId], references: [id])
+  rejectedByAdmin         Admin?   @relation("RejectedByAdmin", fields: [rejectedByAdminId], references: [userId])
+  rejectedByClient        User?    @relation("RejectedByClient", fields: [rejectedByClientId], references: [id])
+  maybeByClient           User?    @relation("MaybeByClient", fields: [maybeByClientId], references: [id])
+  acceptedInviteByCreator User?    @relation("AcceptedInviteByCreator", fields: [acceptedInviteByCreatorId], references: [id])
 
   @@unique([userId, campaignId])
 }
@@ -1110,6 +1114,7 @@ model Submission {
   publicFeedback       PublicFeedback[]
   photosDriveLink      String?
   rawFootagesDriveLink String?
+  comments             SubmissionComment[]
 
   // V4 specific fields
   contentOrder          Int? // Order of content (Video 1, Video 2, etc.)
@@ -1246,6 +1251,14 @@ model Video {
 
   // Previous video draft URLs
   previousDrafts String[] // Array of previous video URLs
+
+  // Reupload version chain: links to the video this one replaced
+  resubmittedFromId String?
+  resubmittedFrom   Video?  @relation("VideoResubmissions", fields: [resubmittedFromId], references: [id])
+  resubmissions     Video[] @relation("VideoResubmissions")
+
+  feedbackRecords    Feedback[]
+  submissionComments SubmissionComment[]
 }
 
 model RawFootage {
@@ -1363,22 +1376,74 @@ model SubmissionType {
 }
 
 model Feedback {
-  id                 String        @id @unique @default(cuid())
-  content            String?
-  rawFootageContent  String?
-  photoContent       String?
-  type               FeedbackType?
-  reasons            String[]
-  videosToUpdate     String[]
-  rawFootageToUpdate String[]
-  photosToUpdate     String[]
-  submissionId       String
-  adminId            String
-  sentToCreator      Boolean       @default(false)
-  createdAt          DateTime      @default(now())
-  updatedAt          DateTime      @updatedAt
-  admin              User          @relation(fields: [adminId], references: [id])
-  submission         Submission    @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  id                  String             @id @unique @default(cuid())
+  content             String?
+  rawFootageContent   String?
+  photoContent        String?
+  type                FeedbackType?
+  reasons             String[]
+  videosToUpdate      String[]
+  rawFootageToUpdate  String[]
+  photosToUpdate      String[]
+  submissionId        String
+  adminId             String
+  videoId             String?
+  sentToCreator       Boolean            @default(false)
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  admin               User               @relation(fields: [adminId], references: [id])
+  submission          Submission         @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  video               Video?             @relation(fields: [videoId], references: [id], onDelete: SetNull)
+  submissionCommentId String?            @unique
+  submissionComment   SubmissionComment? @relation(fields: [submissionCommentId], references: [id], onDelete: SetNull)
+}
+
+model SubmissionComment {
+  id              String  @id @default(cuid())
+  text            String  @db.Text
+  editedText      String? @db.Text
+  timestamp       String?
+  editedTimestamp String?
+
+  submissionId String
+  submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  videoId String?
+  video   Video?  @relation(fields: [videoId], references: [id], onDelete: SetNull)
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  parentId String?
+  parent   SubmissionComment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies  SubmissionComment[] @relation("CommentReplies")
+
+  agreedBy      CommentAgreement[]
+  feedback      Feedback?
+  isClientDraft Boolean            @default(false)
+
+  forwardedByUserId String?
+  forwardedBy       User?   @relation("ForwardedComments", fields: [forwardedByUserId], references: [id], onDelete: SetNull)
+
+  resolvedAt       DateTime?
+  resolvedByUserId String?
+  resolvedBy       User?     @relation("ResolvedComments", fields: [resolvedByUserId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updateAt  DateTime @updatedAt
+
+  @@index([submissionId])
+  @@index([videoId])
+}
+
+model CommentAgreement {
+  id        String            @id @default(cuid())
+  commentId String
+  comment   SubmissionComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([commentId, userId])
 }
 
 model Invoice {
@@ -2125,6 +2190,21 @@ model CreditTier {
   @@index([minFollowers])
 }
 
+model AiModel {
+  id String @id @unique @default(cuid())
+
+  model           String
+  temperature     Float
+  systemPrompt    Json?
+  maxOutputTokens Int
+  apiKey          String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("ai_model")
+}
+
 // NPS Feedback
 enum NpsUserType {
   CLIENT
@@ -2212,19 +2292,4 @@ model SubscriptionHistory {
   createdAt DateTime @default(now())
 
   actionByUserId String?
-}
-
-model AiModel {
-  id String @id @unique @default(cuid())
-
-  model           String
-  temperature     Float
-  systemPrompt    Json?
-  maxOutputTokens Int
-  apiKey          String
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@map("ai_model")
 }
