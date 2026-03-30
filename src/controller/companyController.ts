@@ -72,11 +72,11 @@ export const getAllCompanies = async (_req: Request, res: Response) => {
     const companiesWithSummary = companies.map((company) => {
       const activeSubscriptions = company.subscriptions.filter((sub) => sub.status === 'ACTIVE');
       const totalCredits = activeSubscriptions.reduce((sum, sub) => sum + (sub.totalCredits || 0), 0);
-      
+
       const usedCredits = activeSubscriptions.reduce((sum, sub) => {
         const subCreditsUtilized = sub.campaign.reduce(
           (campaignSum, campaign) => campaignSum + (campaign.creditsUtilized || 0),
-          0
+          0,
         );
         return sum + subCreditsUtilized;
       }, 0);
@@ -102,7 +102,6 @@ export const getAllCompanies = async (_req: Request, res: Response) => {
 
 export const getCompanyById = async (req: Request, res: Response) => {
   const { id } = req.params;
-
   try {
     const company = await prisma.company.findUnique({
       where: {
@@ -150,10 +149,11 @@ export const getCompanyById = async (req: Request, res: Response) => {
     if (!company) return res.status(404).json({ message: 'Company not found' });
 
     const activeSubscriptions = company.subscriptions.filter((sub) => sub.status === 'ACTIVE');
+
     const packagesWithRemainingCredits = activeSubscriptions.filter((sub) => (sub.totalCredits || 0) > sub.creditsUsed);
     packagesWithRemainingCredits.sort((a, b) => new Date(a.expiredAt).getTime() - new Date(b.expiredAt).getTime());
-
     const validityTrackingPackage = packagesWithRemainingCredits[0] || null;
+
     const totalCredits = activeSubscriptions.reduce((sum, sub) => sum + (sub.totalCredits || 0), 0);
     const usedCredits = activeSubscriptions.reduce((sum, sub) => sum + (sub.creditsUsed || 0), 0);
 
@@ -183,8 +183,8 @@ export const getCompanyById = async (req: Request, res: Response) => {
 
     const creditSummary = {
       totalCredits,
-      usedCredits: creditsUtilized,
-      remainingCredits: totalCredits - creditsUtilized,
+      usedCredits,
+      remainingCredits: totalCredits - usedCredits,
       validityPackageExpiry: validityTrackingPackage ? validityTrackingPackage.expiredAt : null,
       activePackagesCount: activeSubscriptions.length,
       nextExpiryDate:
@@ -194,10 +194,10 @@ export const getCompanyById = async (req: Request, res: Response) => {
           : null,
     };
 
-    return res.status(200).json({ 
-      ...company, 
+    return res.status(200).json({
+      ...company,
       subscriptions: sanitizedSubs,
-      creditSummary 
+      creditSummary,
     });
   } catch (err) {
     // console.log(err);
@@ -484,10 +484,20 @@ export const getBrandsByClientId = async (req: Request, res: Response) => {
   }
 };
 
+const PACKAGE_HIERARCHY: Record<string, number> = {
+  Trial: 0,
+  Basic: 1,
+  Essential: 2,
+  Pro: 3,
+  Ultra: 4,
+  Custom: 99,
+};
+
 export const handleLinkNewPackage = async (req: Request, res: Response) => {
   const { companyId } = req.params;
   const data = req.body;
   const { invoiceDate, validityPeriod, currency, packageId, packageType, totalUGCCredits, packageValue } = data;
+  const adminId = req.session.userid;
 
   if (!companyId) return res.status(404).json({ message: 'Company ID not found.' });
 
@@ -532,6 +542,8 @@ export const handleLinkNewPackage = async (req: Request, res: Response) => {
 
       let customPackage: CustomPackage | null = null;
       let fixedPackage: Package | null = null;
+      let newPrice = parseFloat(packageValue);
+      let newPackageName = '';
 
       // Parallelize independent operations
       if (packageType === 'Custom') {
@@ -543,16 +555,48 @@ export const handleLinkNewPackage = async (req: Request, res: Response) => {
             customValidityPeriod: parseInt(validityPeriod),
           },
         });
+        newPackageName = 'Custom';
       }
 
       if (packageId) {
         fixedPackage = await tx.package.findUnique({
           where: { id: packageId },
         });
+        newPackageName = fixedPackage?.name || 'Unknown';
       }
 
       if (packageType !== 'Custom' && !fixedPackage) {
         throw new Error('Fixed package not found');
+      }
+
+      const sortedSubscriptions = [...company.subscriptions].sort(
+        (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
+      );
+      const previousSubscription = sortedSubscriptions[0];
+
+      let changeType: 'NEW_PACKAGE' | 'RENEWAL' | 'UPGRADE' | 'DOWNGRADE' = 'NEW_PACKAGE';
+      let previousPackageId = null;
+
+      if (previousSubscription) {
+        previousPackageId = previousSubscription.packageId || previousSubscription.customPackageId;
+
+        let oldPackageName = '';
+        if (previousSubscription.package) {
+          oldPackageName = previousSubscription.package.name || '';
+        } else if (previousSubscription.customPackage) {
+          oldPackageName = 'Custom';
+        }
+
+        const oldRank = PACKAGE_HIERARCHY[oldPackageName] ?? -1;
+        const newRank = PACKAGE_HIERARCHY[newPackageName] ?? -1;
+
+        if (newRank > oldRank) {
+          changeType = 'UPGRADE';
+        } else if (newRank < oldRank) {
+          changeType = 'DOWNGRADE';
+        } else {
+          changeType = 'RENEWAL';
+        }
       }
 
       const subscriptionsExpiring = company.subscriptions.filter(
@@ -570,7 +614,7 @@ export const handleLinkNewPackage = async (req: Request, res: Response) => {
         });
       }
 
-      await tx.subscription.create({
+      const newSubscription = await tx.subscription.create({
         data: {
           companyId: company.id,
           ...(packageType === 'Custom'
@@ -585,6 +629,19 @@ export const handleLinkNewPackage = async (req: Request, res: Response) => {
                 packagePrice: parseFloat(packageValue),
               }),
           ...subscriptionData,
+        },
+      });
+
+      await tx.subscriptionHistory.create({
+        data: {
+          companyId: company.id,
+          subscriptionId: newSubscription.id,
+          changeType: changeType,
+          previousPackageId: previousPackageId,
+          newPackageId: packageType === 'Custom' ? customPackage!.id : fixedPackage!.id,
+          amountPaid: newPrice,
+          currency: currency || 'MYR',
+          actionByUserId: adminId,
         },
       });
     });
@@ -626,6 +683,7 @@ export const activateClient = async (req: Request, res: Response) => {
       where: { id: companyId },
       include: {
         pic: true, // Get person in charge details
+        clients: true,
       },
     });
 
@@ -633,20 +691,8 @@ export const activateClient = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Company not found' });
     }
 
-    // Validate PIC exists
-    if (!company.pic || company.pic.length === 0) {
-      return res.status(400).json({
-        message:
-          'PIC information is required. Please add a Person In Charge with an email before activating the client account.',
-      });
-    }
-
-    // Validate PIC has email
-    if (!company.pic[0]?.email) {
-      return res.status(400).json({
-        message:
-          'PIC email is required. Please update the Person In Charge with a valid email before activating the client account.',
-      });
+    if (!company.pic[0].email) {
+      return res.status(400).json({ message: 'PIC email not found' });
     }
 
     // Check if client user already exists
@@ -654,9 +700,37 @@ export const activateClient = async (req: Request, res: Response) => {
       where: { email: company.pic[0].email.toLowerCase() },
     });
 
-    if (existingUser) {
-      return res.status(400).json({ message: 'Client already activated' });
+    if (existingUser && !company.clients.find((a) => a.userId !== existingUser.id)) {
+      const existingClient = await prisma.client.findFirst({
+        where: {
+          userId: existingUser.id,
+        },
+      });
+
+      if (existingClient) {
+        await prisma.client.update({
+          where: {
+            id: existingClient.id,
+          },
+          data: {
+            companyId: companyId,
+          },
+        });
+      } else {
+        await prisma.client.create({
+          data: {
+            companyId: companyId,
+            userId: existingUser.id,
+          },
+        });
+      }
+
+      return res.status(200).json({ message: 'Client account is activated!' });
     }
+
+    // if (existingUser) {
+    //   return res.status(400).json({ message: 'Client already activated' });
+    // }
 
     // Create user with client role
     const result = await prisma.$transaction(async (tx) => {
@@ -755,18 +829,14 @@ export const resendClientActivation = async (req: Request, res: Response) => {
     }
 
     // Find the specific PIC by ID or use first PIC as fallback
-    const pic = picId
-      ? company.pic.find((p) => p.id === picId)
-      : company.pic[0];
+    const pic = picId ? company.pic.find((p) => p.id === picId) : company.pic[0];
 
     if (!pic || !pic.email) {
       return res.status(400).json({ message: 'PIC email is required' });
     }
 
     // Find the client account by matching PIC email (normalize both sides)
-    const client = company.clients.find(
-      (c) => c.user.email.toLowerCase() === pic.email?.toLowerCase()
-    );
+    const client = company.clients.find((c) => c.user.email.toLowerCase() === pic.email?.toLowerCase());
     if (!client) {
       return res.status(404).json({
         message: 'Client account not found. Please activate client first.',
@@ -779,11 +849,9 @@ export const resendClientActivation = async (req: Request, res: Response) => {
     }
 
     // Generate new JWT token (7 day expiry)
-    const newInviteToken = jwt.sign(
-      { id: client.userId, companyId },
-      process.env.SESSION_SECRET as Secret,
-      { expiresIn: '7d' }
-    );
+    const newInviteToken = jwt.sign({ id: client.userId, companyId }, process.env.SESSION_SECRET as Secret, {
+      expiresIn: '7d',
+    });
 
     // Update Client and Admin records in transaction
     await prisma.$transaction(async (tx) => {

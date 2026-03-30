@@ -29,7 +29,12 @@ import childAccountRoute from './childAccountRoute';
 import picRoute from './picRoute';
 import logisticsRoute from './logisticsRoute';
 import creditTierRoute from './creditTierRoute';
+import npsFeedbackRoute from './npsFeedbackRoute';
 import dashboardRoute from './dashboardRoute';
+import analyticsV2Route from './analyticsV2Route';
+import discoveryRoute from './discoveryRoute';
+import { reportsRouter } from './reports';
+import aiRouter from './aiRoute';
 
 export const router = express.Router();
 
@@ -63,4 +68,9 @@ router.use('/child-account', childAccountRoute);
 router.use('/pic', picRoute);
 router.use('/logistics', logisticsRoute);
 router.use('/credit-tier', creditTierRoute);
+router.use('/nps-feedback', npsFeedbackRoute);
 router.use('/dashboard', dashboardRoute);
+router.use('/analytics/v2', analyticsV2Route);
+router.use('/discovery', discoveryRoute);
+router.use('/reports', reportsRouter);
+router.use('/ai', aiRouter);

@@ -539,6 +539,7 @@ async function deleteFileIfExists(filePath: string) {
                             select: {
                               user: {
                                 select: {
+                                  role: true,
                                   Board: {
                                     include: {
                                       columns: true,
@@ -598,6 +599,8 @@ async function deleteFileIfExists(filePath: string) {
               });
 
               io?.to(clients.get(data.userId)).emit('notification', notification);
+              
+              const adminUser = data.campaign.campaignAdmin.filter((ca) => ca.admin.user.role === 'admin');
 
               const { title: adminTitle, message: adminMessage } = notificationDraft(
                 data.campaign.name,
@@ -605,15 +608,15 @@ async function deleteFileIfExists(filePath: string) {
                 data.user.name as string,
               );
 
-              for (const item of data.campaign.campaignAdmin) {
-                const notification = await saveNotification({
-                  userId: item.adminId,
-                  message: adminMessage,
-                  creatorId: data.user?.id,
-                  title: adminTitle,
-                  entity: 'Draft',
-                  entityId: data.campaignId,
-                });
+              for (const item of adminUser) {
+                // const notification = await saveNotification({
+                //   userId: item.adminId,
+                //   message: adminMessage,
+                //   creatorId: data.user?.id,
+                //   title: adminTitle,
+                //   entity: 'Draft',
+                //   entityId: data.campaignId,
+                // });
 
                 if (item.admin.user.Board) {
                   const actionNeededColumn = item.admin.user.Board.columns.find(
@@ -645,9 +648,9 @@ async function deleteFileIfExists(filePath: string) {
                   }
                 }
 
-                if (io) {
-                  io.to(clients.get(item.adminId)).emit('notification', notification);
-                }
+                // if (io) {
+                //   io.to(clients.get(item.adminId)).emit('notification', notification);
+                // }
               }
 
               activeProcesses.delete(submission.id);

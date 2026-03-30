@@ -5,7 +5,10 @@ import { uploadAgreementForm, uploadProfileImage } from '@configs/cloudStorage.c
 import { Title, saveNotification } from './notificationController';
 import { clients, io } from '../server';
 import { updateInvoices } from '@services/invoiceService';
-import { exportCreatorsToSpreadsheet } from '@services/creatorsSpreadsheetService';
+import {
+  exportCreatorsToSpreadsheet,
+  exportMediaKitStatusToSpreadsheet,
+} from '@services/creatorsSpreadsheetService';
 import { createKanbanBoard } from './kanbanController';
 import { createCampaignCreatorSpreadSheet } from '@services/google_sheets/sheets';
 import {
@@ -69,6 +72,7 @@ export const getCreators = async (_req: Request, res: Response) => {
         status: true,
         email: true,
         role: true,
+        mediaKitMandatory: true,
         creator: {
           include: {
             instagramUser: {
@@ -256,6 +260,78 @@ export const updateCreator = async (req: Request, res: Response) => {
     return res.status(200).json({ message: 'Successfully updated' });
   } catch (error) {
     return res.status(400).json(error);
+  }
+};
+
+/**
+ * POST /api/creator/markMediaKitMandatory
+ * Mark selected users as Media Kit Mandatory
+ * Only accessible by Super Admin
+ */
+export const markMediaKitMandatory = async (req: Request, res: Response) => {
+  const { userIds } = req.body;
+
+  if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
+    return res.status(400).json({ message: 'userIds array is required' });
+  }
+
+  try {
+    // Update all selected users to have mediaKitMandatory = true
+    const result = await prisma.user.updateMany({
+      where: {
+        id: {
+          in: userIds,
+        },
+        role: 'creator', // Only update creators
+      },
+      data: {
+        mediaKitMandatory: true,
+      },
+    });
+
+    return res.status(200).json({
+      message: `Successfully marked ${result.count} creator(s) as Media Kit Mandatory`,
+      count: result.count,
+    });
+  } catch (error) {
+    console.error('Error marking creators as Media Kit Mandatory:', error);
+    return res.status(400).json({ message: 'Failed to update creators', error });
+  }
+};
+
+/**
+ * POST /api/creator/unmarkMediaKitMandatory
+ * Remove Media Kit Mandatory flag from selected users
+ * Only accessible by Super Admin
+ */
+export const unmarkMediaKitMandatory = async (req: Request, res: Response) => {
+  const { userIds } = req.body;
+
+  if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
+    return res.status(400).json({ message: 'userIds array is required' });
+  }
+
+  try {
+    // Update all selected users to have mediaKitMandatory = false
+    const result = await prisma.user.updateMany({
+      where: {
+        id: {
+          in: userIds,
+        },
+        role: 'creator', // Only update creators
+      },
+      data: {
+        mediaKitMandatory: false,
+      },
+    });
+
+    return res.status(200).json({
+      message: `Successfully unmarked ${result.count} creator(s) from Media Kit Mandatory`,
+      count: result.count,
+    });
+  } catch (error) {
+    console.error('Error unmarking creators from Media Kit Mandatory:', error);
+    return res.status(400).json({ message: 'Failed to update creators', error });
   }
 };
 
@@ -492,12 +568,17 @@ export const updatePaymentForm = async (req: Request, res: Response) => {
       },
     });
 
+    // Set isFormCompleted + timestamp (only set timestamp the first time)
+    const existing = await prisma.creator.findUnique({
+      where: { userId: paymentForm.userId },
+      select: { formCompletedAt: true },
+    });
+
     await prisma.creator.update({
-      where: {
-        userId: paymentForm.userId,
-      },
+      where: { userId: paymentForm.userId },
       data: {
         isFormCompleted: true,
+        formCompletedAt: existing?.formCompletedAt ?? new Date(),
       },
     });
 
@@ -537,6 +618,7 @@ export const updateCreatorForm = async (req: Request, res: Response) => {
           update: {
             // address: address,
             isFormCompleted: true,
+            formCompletedAt: user.creator?.formCompletedAt ?? new Date(),
           },
         },
         paymentForm: {
@@ -812,13 +894,23 @@ export const updateCreatorPreference = async (req: Request, res: Response) => {
 
 export const exportCreatorsToSheet = async (req: Request, res: Response) => {
   try {
-    // Call the service function to export creators to spreadsheet
+    // Call both service functions to export creators and media kit status to spreadsheet
+    console.log('Starting export to spreadsheet...');
+    
+    // Export main creator data
+    console.log('Exporting main creator data...');
     const spreadsheetUrl = await exportCreatorsToSpreadsheet();
+    
+    // Export media kit status data to a separate sheet
+    console.log('Exporting media kit status data...');
+    await exportMediaKitStatusToSpreadsheet();
+
+    console.log('All exports completed successfully');
 
     // Return the URL of the spreadsheet
     return res.status(200).json({
       success: true,
-      message: 'Creators exported to spreadsheet successfully',
+      message: 'Creators and Media Kit Status exported to spreadsheet successfully',
       url: spreadsheetUrl,
     });
   } catch (error) {

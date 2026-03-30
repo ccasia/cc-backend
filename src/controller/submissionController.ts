@@ -81,10 +81,7 @@ function scheduleUrlExtractionAndFetch(submissionId: string, content: string | u
       console.log(`⏰ Scheduling initial insight fetch for campaign ${submission.campaignId}...`);
       await scheduleInitialInsightFetch(submission.campaignId, submissionId);
     } catch (error: any) {
-      console.error(
-        `❌ Error extracting URLs/scheduling fetch for submission ${submissionId}:`,
-        error.message
-      );
+      console.error(`❌ Error extracting URLs/scheduling fetch for submission ${submissionId}:`, error.message);
       // Don't throw - this is background work
     }
   });
@@ -359,6 +356,7 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
           isReview: true,
           completedAt: new Date(),
           approvedByAdminId: adminId as string,
+          approvedAt: new Date(),
         },
         include: {
           task: true,
@@ -1057,6 +1055,7 @@ export const adminManageDraft = async (req: Request, res: Response) => {
             isReview: true,
             completedAt: new Date(),
             approvedByAdminId: req.session.userid as string,
+            ...((!sectionOnly || allSectionsApproved) && { approvedAt: new Date() }),
             dueDate: dueDate ? new Date(dueDate) : undefined,
             feedback: feedback && {
               create: {
@@ -1626,6 +1625,7 @@ export const adminManagePosting = async (req: Request, res: Response) => {
             isReview: true,
             completedAt: new Date(),
             approvedByAdminId: userId as string,
+            approvedAt: new Date(),
           },
           include: {
             user: {
@@ -1832,7 +1832,12 @@ export const approvePostingLinkBySuperadminV2 = async (req: Request, res: Respon
     if (!submission) return res.status(404).json({ message: 'Submission not found' });
     await prisma.submission.update({
       where: { id: submissionId },
-      data: { status: 'APPROVED', completedAt: new Date(), approvedByAdminId: superadminId },
+      data: {
+        status: 'APPROVED',
+        completedAt: new Date(),
+        approvedByAdminId: superadminId,
+        approvedAt: new Date(),
+      },
     });
 
     // Schedule URL extraction and initial insight fetch (non-blocking)
@@ -1992,6 +1997,7 @@ export const adminManagePhotos = async (req: Request, res: Response) => {
           status: 'APPROVED',
           completedAt: new Date(),
           approvedByAdminId: req.session.userid as string,
+          approvedAt: new Date(),
           feedback: photoFeedback
             ? {
                 create: {
@@ -3368,6 +3374,7 @@ export const updateSubmissionStatus = async (req: Request, res: Response) => {
         where: { id: submissionId },
         data: {
           status,
+          ...(status === 'APPROVED' && { approvedAt: new Date() }),
           ...(feedback && { feedback: { create: { content: feedback, adminId: req.session.userid } } }),
           ...(dueDate && { dueDate: new Date(dueDate) }),
         },
@@ -3713,6 +3720,7 @@ export const adminManagePhotosV2 = async (req: Request, res: Response) => {
               status: 'APPROVED',
               completedAt: new Date(),
               approvedByAdminId: req.session.userid as string,
+              approvedAt: new Date(),
             },
           });
 
@@ -4071,6 +4079,7 @@ export const adminManageDraftVideosV2 = async (req: Request, res: Response) => {
               status: 'APPROVED',
               completedAt: new Date(),
               approvedByAdminId: req.session.userid as string,
+              approvedAt: new Date(),
             },
           });
 
@@ -4429,6 +4438,7 @@ export const adminManageRawFootagesV2 = async (req: Request, res: Response) => {
               status: 'APPROVED',
               completedAt: new Date(),
               approvedByAdminId: req.session.userid as string,
+              approvedAt: new Date(),
             },
           });
 

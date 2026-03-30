@@ -684,13 +684,13 @@ async function deleteFileIfExists(filePath: string) {
 
             console.log(`CPU Usage: ${endUsage.user} microseconds (user) / ${endUsage.system} microseconds (system)`);
 
-            for (const item of content.admins) {
-              if (item.admin && item.admin.user && item.admin.user.id) {
-                io.to(clients.get(item.admin.user.id)).emit('newSubmission');
-              } else {
-                console.warn('[videoDraft] Skipping admin notification: missing admin or user for item:', item);
-              }
-            }
+            // for (const item of content.admins) {
+            //   if (item.admin && item.admin.user && item.admin.user.id) {
+            //     io.to(clients.get(item.admin.user.id)).emit('newSubmission');
+            //   } else {
+            //     console.warn('[videoDraft] Skipping admin notification: missing admin or user for item:', item);
+            //   }
+            // }
 
             const allSuperadmins = await prisma.user.findMany({
               where: {

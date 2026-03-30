@@ -78,13 +78,25 @@ import {
   cleanupOrphanedGuestUsers,
   getGuestCreatorsForCampaign,
 } from '@controllers/swapCreatorController';
+import { getPCRData, savePCRData } from '@controllers/pcrController';
+import { markPCRAsReady } from '@controllers/campaignController';
 import {
   getEngagementHeatmapController,
   getTopCreatorsTrendController,
   getTrendsSummaryController,
   refreshCampaignInsightsController,
 } from '@controllers/trendController';
-import { isSuperAdmin } from '@middlewares/onlySuperadmin';
+import {
+  createEntry as createManualCreator,
+  getEntries as getManualCreators,
+  deleteEntry as deleteManualCreator,
+  updateEntry as updateManualCreator,
+} from '@controllers/manualCreatorController';
+import {
+  getCampaignPostSnapshots,
+  triggerManualSnapshot,
+} from '@controllers/postEngagementSnapshotController';
+import { isSuperAdmin, isAdmin } from '@middlewares/onlySuperadmin';
 import { canActivateCampaign } from '@middlewares/adminOrClient';
 
 import {
@@ -256,5 +268,20 @@ router.get('/:campaignId/trends/engagement-heatmap', isLoggedIn, getEngagementHe
 router.get('/:campaignId/trends/top-creators', getTopCreatorsTrendController);
 router.get('/:campaignId/trends/summary', isLoggedIn, getTrendsSummaryController);
 router.post('/:campaignId/trends/refresh', isLoggedIn, isSuperAdmin, refreshCampaignInsightsController);
+
+// PCR (Post Campaign Report) endpoints
+router.get('/:campaignId/pcr', isLoggedIn, getPCRData);
+router.post('/:campaignId/pcr', isLoggedIn, savePCRData);
+router.patch('/:id/pcr-ready', isLoggedIn, isAdmin, markPCRAsReady);
+
+// Manual Creator Entry endpoints (for campaign analytics)
+router.post('/:campaignId/manual-creator', isLoggedIn, isAdmin, createManualCreator);
+router.get('/:campaignId/manual-creators', isLoggedIn, getManualCreators);
+router.put('/:campaignId/manual-creator/:entryId', isLoggedIn, isAdmin, updateManualCreator);
+router.delete('/:campaignId/manual-creator/:entryId', isLoggedIn, isAdmin, deleteManualCreator);
+
+// Post Engagement Snapshot endpoints (Day 7, 15, 30 ER tracking)
+router.get('/:campaignId/post-engagement-snapshots', isLoggedIn, getCampaignPostSnapshots);
+router.post('/:campaignId/post-engagement-snapshots/capture', isLoggedIn, isAdmin, triggerManualSnapshot);
 
 export default router;

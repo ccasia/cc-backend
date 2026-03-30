@@ -70,20 +70,25 @@ model User {
 
   referralCode String? @db.VarChar(50)
 
+  // Media Kit Mandatory flag for selected creators
+  mediaKitMandatory Boolean @default(false)
+
   // Individual feedback relations
   videoFeedback      Video[]      @relation("VideoFeedback")
   rawFootageFeedback RawFootage[] @relation("RawFootageFeedback")
   photoFeedback      Photo[]      @relation("PhotoFeedback")
+
+  npsFeedback NpsFeedback[]
 
   // logistics
   assignedLogistics Logistic[]      @relation("AssignedLogistics")
   createdLogistics  Logistic[]      @relation("CreatedLogistics")
   reportedIssues    LogisticIssue[]
 
-  twoFactorSecret String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  userFlow      UserFlow[]
+  activatedAt   DateTime?
+  passwordSetAt DateTime?
+  aiModel       AiModel?
 }
 
 model EmailVerification {
@@ -246,6 +251,7 @@ model Creator {
   userId                 String      @unique
   socialMediaData        Json?
   isFormCompleted        Boolean?
+  formCompletedAt        DateTime?
   socialMediaUpdateCount Json?
   allowToChange          Boolean     @default(false)
   industries             Json?
@@ -276,6 +282,8 @@ model Creator {
   creditTierId        String?
   creditTier          CreditTier? @relation("UserCurrentTier", fields: [creditTierId], references: [id])
   tierUpdatedAt       DateTime? // Last time tier was calculated
+
+  @@index([formCompletedAt])
 }
 
 // model TiktokUser {
@@ -309,6 +317,7 @@ model TiktokUser {
   display_name String?
   username     String?
   avatar_url   String?
+  biography    String?
 
   following_count Int?
   follower_count  Int?
@@ -356,19 +365,26 @@ model InstagramUser {
   creatorId String  @unique
   creator   Creator @relation(references: [id], fields: [creatorId])
 
-  accessToken     Json?
-  expiresIn       Int?
-  user_id         String?   @unique
-  followers_count Int?
-  follows_count   Int?
-  media_count     Int?
-  username        String?
-  totalLikes      Int?
-  totalComments   Int?
-  averageLikes    Float?
-  averageComments Float?
-  engagement_rate Float?
-  lastUpdated     DateTime?
+  accessToken         Json?
+  expiresIn           Int?
+  user_id             String?   @unique
+  profile_picture_url String?
+  biography           String?
+  followers_count     Int?
+  follows_count       Int?
+  media_count         Int?
+  username            String?
+  totalLikes          Int?
+  totalComments       Int?
+  totalShares         Int?
+  totalSaves          Int?
+  averageLikes        Float?
+  averageComments     Float?
+  averageShares       Float?
+  averageSaves        Float?
+  insightData         Json?
+  engagement_rate     Float?
+  lastUpdated         DateTime?
 
   instagramVideo InstagramVideo[]
 
@@ -532,11 +548,12 @@ model Company {
   createdAt           DateTime     @default(now())
   updatedAt           DateTime     @updatedAt
 
-  brand         Brand[]
-  campaign      Campaign[]
-  pic           Pic[]
-  subscriptions Subscription[]
-  clients       Client[]
+  brand               Brand[]
+  campaign            Campaign[]
+  pic                 Pic[]
+  subscriptions       Subscription[]
+  clients             Client[]
+  SubscriptionHistory SubscriptionHistory[]
 
   @@index([clientId])
 }
@@ -703,8 +720,15 @@ model Campaign {
   // Trends analysis
   submissionPostingUrls SubmissionPostingUrl[]
   insightSnapshots      InsightSnapshot[]
+  manualCreatorEntries  ManualCreatorEntry[]
 
+  // PCR (Post Campaign Report)
+  pcr            CampaignPCR?
+  isPCRReady     Boolean      @default(false)
   isForSurfShark Boolean?
+
+  publishedAt DateTime?
+  completedAt DateTime?
 }
 
 model BookMarkCampaign {
@@ -904,9 +928,10 @@ model CampaignLog {
   id         String   @id @unique @default(cuid())
   createdAt  DateTime @default(now())
   message    String
+  metadata   Json?
   campaignId String
-  adminId    String
-  admin      User     @relation(fields: [adminId], references: [id])
+  adminId    String?
+  admin      User?    @relation(fields: [adminId], references: [id])
   campaign   Campaign @relation(fields: [campaignId], references: [id])
 }
 
@@ -1061,6 +1086,7 @@ model Submission {
   isReview             Boolean                @default(false)
   startDate            DateTime?
   endDate              DateTime?
+  approvedAt           DateTime?
   submittedByAdminId   String? // Track if admin submitted for creator
   feedback             Feedback[]
   Notification         Notification[]
@@ -1131,6 +1157,65 @@ model InsightSnapshot {
   @@unique([campaignId, platform, snapshotDate])
   @@index([campaignId, snapshotDate])
   @@index([campaignId, snapshotType])
+}
+
+model PostEngagementSnapshot {
+  id           String @id @unique @default(cuid())
+  campaignId   String
+  submissionId String
+  postUrl      String
+  platform     String // "Instagram" | "TikTok"
+  userId       String // Creator user ID
+
+  // Snapshot timing
+  snapshotDay Int // Day number from campaign start (7, 15, 30)
+  postDate    DateTime // When the post was originally published
+  capturedAt  DateTime // When this snapshot was captured
+
+  // Engagement metrics at snapshot time
+  views          Int   @default(0)
+  likes          Int   @default(0)
+  comments       Int   @default(0)
+  shares         Int   @default(0)
+  saved          Int   @default(0)
+  reach          Int   @default(0)
+  engagementRate Float // ER at this snapshot
+
+  // Raw insight data for reference
+  rawMetrics Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([campaignId, postUrl, snapshotDay])
+  @@index([campaignId, snapshotDay])
+  @@index([submissionId])
+  @@index([userId])
+}
+
+model ManualCreatorEntry {
+  id         String   @id @unique @default(cuid())
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  creatorName     String
+  creatorUsername String
+  photoUrl        String?
+  platform        String // "Instagram" | "TikTok"
+  postUrl         String?
+
+  views          Int   @default(0)
+  likes          Int   @default(0)
+  comments       Int   @default(0)
+  shares         Int   @default(0)
+  saved          Int? // Only for Instagram
+  engagementRate Float @default(0)
+
+  createdBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([campaignId])
 }
 
 model Video {
@@ -1300,15 +1385,20 @@ model Invoice {
   invoiceFrom   Json?
   invoiceTo     Json?
   deliverables  Json?
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
-  dueDate       DateTime
-  creatorId     String
-  campaignId    String
-  adminId       String?
-  user          User?         @relation("CreatedBy", fields: [adminId], references: [id])
-  campaign      Campaign      @relation(fields: [campaignId], references: [id])
-  creator       Creator       @relation(fields: [creatorId], references: [userId])
+
+  dueDate    DateTime
+  creatorId  String
+  campaignId String
+  adminId    String?
+
+  xeroInvoiceId String?
+
+  user     User?    @relation("CreatedBy", fields: [adminId], references: [id])
+  campaign Campaign @relation(fields: [campaignId], references: [id])
+  creator  Creator  @relation(fields: [creatorId], references: [userId])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 // model Logistic {
@@ -1433,6 +1523,7 @@ model Bugs {
   id               String   @id @unique @default(cuid())
   stepsToReproduce String
   attachment       String?
+  attachments      String[]
   campaignName     String?
   createdAt        DateTime @default(now())
   userId           String?
@@ -1440,23 +1531,24 @@ model Bugs {
 }
 
 model Subscription {
-  id              String             @id @unique @default(cuid())
-  subscriptionId  String?            @unique
+  id              String                @id @unique @default(cuid())
+  subscriptionId  String?               @unique
   companyId       String?
   packageId       String?
   customPackageId String?
   currency        String?
-  company         Company?           @relation(references: [id], fields: [companyId])
+  company         Company?              @relation(references: [id], fields: [companyId])
   creditsUsed     Int
   totalCredits    Int?
   packagePrice    Float?
-  status          SubscriptionStatus @default(ACTIVE)
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
-  package         Package?           @relation(fields: [packageId], references: [id])
-  customPackage   CustomPackage?     @relation(fields: [customPackageId], references: [id])
+  status          SubscriptionStatus    @default(ACTIVE)
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+  package         Package?              @relation(fields: [packageId], references: [id])
+  customPackage   CustomPackage?        @relation(fields: [customPackageId], references: [id])
   expiredAt       DateTime
   campaign        Campaign[]
+  history         SubscriptionHistory[]
 }
 
 model CustomPackage {
@@ -1997,6 +2089,18 @@ model ReservationSlot {
   updatedAt DateTime @updatedAt
 }
 
+model CampaignPCR {
+  id String @id @unique @default(cuid())
+
+  campaignId String   @unique
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  content Json // Stores all editable PCR content as JSON
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 // Credit Tiering System
 model CreditTier {
   id              String   @id @unique @default(cuid())
@@ -2012,4 +2116,111 @@ model CreditTier {
   shortlistedCreators ShortListedCreator[]
 
   @@index([minFollowers])
+}
+
+// NPS Feedback
+enum NpsUserType {
+  CLIENT
+  CREATOR
+}
+
+model NpsFeedback {
+  id           String      @id @unique @default(cuid())
+  userId       String
+  userType     NpsUserType @default(CLIENT)
+  rating       Int // 1-5 star rating
+  feedback     String? // Optional text feedback
+  deviceType   String? // "mobile", "tablet", "desktop"
+  deviceModel  String? // "iPhone", "Galaxy S21"
+  deviceVendor String? // "Apple", "Samsung"
+  os           String? // "macOS 15.1", "iOS 18.0", "Windows 11"
+  browser      String? // "Chrome 131.0", "Safari 18.1"
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userType])
+}
+
+enum FlowType {
+  CAMPAIGN_CREATION
+  CREATOR_ONBOARDING
+}
+
+enum StepStatus {
+  STARTED
+  COMPLETED
+  ABANDONED
+  FAILED
+}
+
+enum SubscriptionChangeType {
+  NEW_PACKAGE
+  RENEWAL
+  UPGRADE
+  DOWNGRADE
+}
+
+model UserFlow {
+  id     String @id @unique @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  sessionId String?
+
+  // Context
+  flow FlowType // e.g., CAMPAIGN_CREATION
+  step String // e.g., "BRIEF_DETAILS", "AUDIENCE"
+
+  // Metrics
+  status           StepStatus @default(STARTED)
+  timeSpentSeconds Int?       @default(0) // Cumulative time (Frontend stopwatch)
+  meta             Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Allows updating the specific step time instead of creating duplicates
+  @@unique([userId, flow, step, sessionId])
+  @@index([flow, step])
+}
+
+model SubscriptionHistory {
+  id String @id @unique @default(cuid())
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id])
+
+  subscriptionId String?
+  subscription   Subscription? @relation(fields: [subscriptionId], references: [id])
+
+  changeType        SubscriptionChangeType
+  previousPackageId String?
+  newPackageId      String
+  amountPaid        Float
+  currency          String                 @default("MYR")
+
+  createdAt DateTime @default(now())
+
+  actionByUserId String?
+}
+
+model AiModel {
+  id String @id @unique @default(cuid())
+
+  model           String
+  temperature     Float
+  systemPrompt    Json?
+  maxOutputTokens Int
+  apiKey          String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId String? @unique
+  user   User?   @relation(references: [id], fields: [userId])
+
+  @@map("ai_model")
 }

@@ -86,6 +86,7 @@ const xero = new XeroClient({
   clientSecret: client_secret,
   redirectUris: [redirectUrl],
   scopes: scopes?.split(' '),
+  // grantType: 'client_credentials',
 });
 
 export const registerUser = async (req: Request, res: Response) => {
@@ -728,6 +729,7 @@ export const verifyCreator = async (req: Request, res: Response) => {
       },
       data: {
         status: 'active',
+        activatedAt: new Date(),
       },
     });
 
@@ -818,6 +820,7 @@ export const verifyClient = async (req: Request, res: Response) => {
       data: {
         status: 'active',
         isActive: true,
+        activatedAt: new Date(),
       },
     });
 
@@ -1147,6 +1150,7 @@ export const getprofile = async (req: Request, res: Response) => {
   const isImpersonating = req.session.isImpersonating;
   const impersonatingBy = req.session.impersonatingBy;
   let xeroinformation;
+  let xeroError;
 
   if (!userId) {
     res.clearCookie('accessToken');
@@ -1157,15 +1161,20 @@ export const getprofile = async (req: Request, res: Response) => {
   try {
     const user = await getUser(userId);
 
-    if (user?.role === 'admin' && user.admin?.role?.name?.toLowerCase() === 'finance') {
-      await xero.initialize();
+    if (
+      user?.role === 'superadmin' ||
+      (user?.role === 'admin' && user?.admin?.role?.name.toLowerCase() === 'finance')
+    ) {
+      try {
+        await xero.initialize();
 
-      const tokenSet = user.admin.xeroTokenSet as TokenSet;
+        const savedTokenSet = user.admin?.xeroTokenSet as TokenSet;
 
-      if (tokenSet) {
-        xero.setTokenSet(tokenSet);
+        xero.setTokenSet(savedTokenSet);
 
-        if (dayjs.unix(tokenSet.expires_at!).isBefore(dayjs())) {
+        const isExpired = xero.readTokenSet().expired();
+
+        if (isExpired) {
           const newTokenSet = await xero.refreshToken();
 
           await prisma.admin.update({
@@ -1176,10 +1185,15 @@ export const getprofile = async (req: Request, res: Response) => {
               xeroTokenSet: newTokenSet as any,
             },
           });
+
+          xero.setTokenSet(newTokenSet);
         }
 
         await xero.updateTenants();
+
         xeroinformation = xero.tenants;
+      } catch (error) {
+        xeroError = true;
       }
     }
 
@@ -1215,6 +1229,10 @@ export const getprofile = async (req: Request, res: Response) => {
         isImpersonating,
         impersonatingBy,
       },
+      ...((user.role === 'superadmin' ||
+        (user.role === 'admin' && user?.admin?.role?.name.toLowerCase() === 'finance')) && {
+        reauth_required: xeroError,
+      }),
     });
   } catch (error) {
     return res.status(404).json(error);
@@ -1750,7 +1768,7 @@ export const setupClientPassword = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Invalid or expired invitation' });
     }
 
-    // Hash password and update user
+    // Hash password and update usera
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const result = await prisma.$transaction(async (tx) => {
@@ -1761,6 +1779,7 @@ export const setupClientPassword = async (req: Request, res: Response) => {
           password: hashedPassword,
           status: 'active',
           isActive: true,
+          activatedAt: new Date(),
         },
       });
 

@@ -154,7 +154,7 @@ export const getInstagramOverviewService = async (accessToken: string) => {
     const res = await axios.get('https://graph.instagram.com/v22.0/me', {
       params: {
         access_token: accessToken,
-        fields: 'user_id,followers_count,follows_count,media_count,username',
+        fields: 'user_id,profile_picture_url,biography,followers_count,follows_count,media_count,username',
       },
     });
 
@@ -164,7 +164,58 @@ export const getInstagramOverviewService = async (accessToken: string) => {
   }
 };
 
-export const getAllMediaObject = async (
+export const getInstagramUserInsight = async (accessToken: string, instagramUserId: string) => {
+  if (!accessToken || !instagramUserId) {
+    throw new Error('Missing required parameters: accessToken, instagramUserId');
+  }
+
+  const since = dayjs().subtract(2, 'year').unix();
+  const until = dayjs().unix();
+
+  try {
+    const response = await axios.get(`https://graph.instagram.com/v22.0/${instagramUserId}/insights`, {
+      params: {
+        metric: 'likes,saves,shares,reach,total_interactions,profile_views,comments,accounts_engaged',
+        period: 'day',
+        metric_type: 'total_value',
+        since,
+        until,
+        access_token: accessToken,
+      },
+    });
+
+    const metrics = (response?.data?.data || []) as Array<{ name: string; total_value?: { value?: number } }>;
+
+    const metricMap = metrics.reduce(
+      (acc, item) => {
+        acc[item.name] = item?.total_value?.value || 0;
+        return acc;
+      },
+      {} as Record<string, number>,
+    );
+
+    return {
+      raw: response?.data,
+      since,
+      until,
+      totals: {
+        likes: metricMap.likes || 0,
+        saves: metricMap.saves || 0,
+        shares: metricMap.shares || 0,
+        reach: metricMap.reach || 0,
+        totalInteractions: metricMap.total_interactions || 0,
+        profileViews: metricMap.profile_views || 0,
+        comments: metricMap.comments || 0,
+        accountsEngaged: metricMap.accounts_engaged || 0,
+      },
+    };
+  } catch (error: any) {
+    console.error('Error fetching Instagram user insight:', error?.response?.data || error?.message);
+    throw new Error('Failed to fetch Instagram user insights');
+  }
+};
+
+export const getInstagramMediaObject = async (
   accessToken: string,
   instaUserId: string,
   limit?: number,
@@ -198,9 +249,14 @@ export const getAllMediaObject = async (
     const totalLikes = videos.reduce((acc: any, cur: any) => acc + cur.like_count, 0);
     const averageLikes = totalLikes / videos.length;
 
-    // sort but highest like_count
-    // let sortedVideos: any[] = videos?.sort((a: any, b: any) => a.like_count > b.like_count);
-    const sortedVideos = videos.slice(0, 5);
+    // Always return latest posts first based on Instagram timestamp.
+    const sortedVideos = [...videos]
+      .sort((a: any, b: any) => {
+        const aTime = a?.timestamp ? new Date(a.timestamp).getTime() : 0;
+        const bTime = b?.timestamp ? new Date(b.timestamp).getTime() : 0;
+        return bTime - aTime;
+      })
+      .slice(0, 5);
 
     return { sortedVideos, averageLikes, averageComments, totalComments, totalLikes };
   } catch (error) {
@@ -333,6 +389,74 @@ export const refreshTikTokToken = async (refreshToken: string) => {
   } catch (error) {
     console.error('Error refreshing TikTok token:', error);
     throw new Error('Error refreshing TikTok token');
+  }
+};
+
+export const getTikTokMediaObject = async (accessToken: string, limit = 20) => {
+  if (!accessToken) throw new Error('Access token is required');
+
+  try {
+    const response = await axios.post(
+      'https://open.tiktokapis.com/v2/video/list/',
+      { max_count: limit },
+      {
+        params: {
+          fields:
+            'id,title,video_description,duration,cover_image_url,embed_link,embed_html,like_count,comment_count,share_count,view_count,create_time',
+        },
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+      },
+    );
+
+    const videos = response.data.data?.videos || [];
+
+    const mappedVideos = videos.map((video: any) => ({
+      ...video,
+      like: video.like_count || 0,
+      comment: video.comment_count || 0,
+      share: video.share_count || 0,
+      view: video.view_count || 0,
+      like_count: video.like_count || 0,
+      comment_count: video.comment_count || 0,
+      share_count: video.share_count || 0,
+      view_count: video.view_count || 0,
+    }));
+
+    const sortedVideos = [...mappedVideos]
+      .sort((a: any, b: any) => {
+        const aTime = a?.create_time ? Number(a.create_time) : 0;
+        const bTime = b?.create_time ? Number(b.create_time) : 0;
+        return bTime - aTime;
+      })
+      .slice(0, 5);
+
+    const totalLikes = mappedVideos.reduce((sum: number, video: any) => sum + (video.like_count || 0), 0);
+    const totalComments = mappedVideos.reduce((sum: number, video: any) => sum + (video.comment_count || 0), 0);
+    const totalShares = mappedVideos.reduce((sum: number, video: any) => sum + (video.share_count || 0), 0);
+    const totalViews = mappedVideos.reduce((sum: number, video: any) => sum + (video.view_count || 0), 0);
+
+    const averageLikes = mappedVideos.length > 0 ? totalLikes / mappedVideos.length : 0;
+    const averageComments = mappedVideos.length > 0 ? totalComments / mappedVideos.length : 0;
+    const averageShares = mappedVideos.length > 0 ? totalShares / mappedVideos.length : 0;
+    const averageViews = mappedVideos.length > 0 ? totalViews / mappedVideos.length : 0;
+
+    return {
+      videos: mappedVideos,
+      sortedVideos,
+      totalLikes,
+      totalComments,
+      totalShares,
+      totalViews,
+      averageLikes,
+      averageComments,
+      averageShares,
+      averageViews,
+    };
+  } catch (error) {
+    throw error;
   }
 };
 
