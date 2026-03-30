@@ -1276,7 +1276,7 @@ export const getClientShortlistMetrics = async (req: Request, res: Response) => 
       }),
       prisma.pitch.findMany({
         where: {
-          status: { in: ['APPROVED', 'REJECTED'] },
+          status: { in: ['APPROVED', 'REJECTED', 'MAYBE'] },
           campaign: {
             submissionVersion: 'v4',
             ...campaignPackageFilter,
