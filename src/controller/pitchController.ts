@@ -109,6 +109,7 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
       approvedByAdminId: string;
       adminComments?: string;
       adminCommentedBy?: string;
+      completedAt?: string;
     } = {
       status: newStatus,
       approvedByAdminId: adminId,
@@ -145,6 +146,8 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
           },
         },
       });
+
+      updateData.completedAt = new Date().toISOString();
 
       // For credit tier campaigns, calculate creditPerVideo from creator's tier
       let creditPerVideo: number | null = null;
@@ -418,6 +421,7 @@ export const rejectPitchByAdmin = async (req: Request, res: Response) => {
         status: 'REJECTED',
         rejectedByAdminId: adminId,
         rejectionReason: rejectionReason || 'Rejected by admin',
+        completedAt: new Date().toISOString(),
       },
     });
 
@@ -561,6 +565,7 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
       data: {
         status: 'APPROVED',
         approvedByClientId: clientId,
+        completedAt: new Date().toISOString(),
       },
     });
 
@@ -877,6 +882,7 @@ export const rejectPitchByClient = async (req: Request, res: Response) => {
         rejectedByClientId: clientId,
         rejectionReason: rejectionReason || 'Rejected by client',
         customRejectionText: customRejectionText,
+        completedAt: new Date().toISOString(),
       },
     });
 
@@ -1127,6 +1133,7 @@ export const maybePitchByClient = async (req: Request, res: Response) => {
         maybeByClientId: clientId,
         rejectionReason: rejectionReason,
         customRejectionText: customRejectionText,
+        completedAt: new Date().toISOString(),
       },
     });
 
