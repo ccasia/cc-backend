@@ -3151,10 +3151,10 @@ export const createComment = async (req: Request, res: Response) => {
       },
     });
 
-    // Emit socket event for real-time updates (skip client drafts)
+    // Emit socket event for real-time updates (including client drafts for client-to-client sync)
     const commentCampaignId = newComment.submission?.campaignId;
 
-    if (commentCampaignId && io && !newComment.isClientDraft) {
+    if (commentCampaignId && io) {
       const eventName = parentId ? 'v4:comment:reply:added' : 'v4:comment:added';
       io.to(commentCampaignId).emit(eventName, {
         submissionId,
