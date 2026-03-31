@@ -5,6 +5,7 @@ import {
   getV4Submissions,
   updatePostingLink,
   submitV4Content,
+  V4_ACTIVE_VIDEO_VERSIONS_LIMIT,
 } from '../service/submissionV4Service';
 import { V4SubmissionCreateData, PostingLinkUpdate, V4ContentSubmission } from '../types/submissionV4Types';
 import {
@@ -2718,6 +2719,7 @@ export const getV4SubmissionById = async (req: Request, res: Response) => {
             resubmittedFromId: true,
           },
           orderBy: { createdAt: 'desc' as const },
+          take: V4_ACTIVE_VIDEO_VERSIONS_LIMIT,
         },
         photos: {
           select: {

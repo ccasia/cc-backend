@@ -400,6 +400,15 @@ async function deleteFileIfExists(filePath: string) {
               },
             });
 
+            // Current head = newest video by createdAt (submission.video from DB may be unsorted)
+            const previousHeadVideoForV4 =
+              submission.video && submission.video.length > 0
+                ? [...submission.video].sort(
+                    (a: any, b: any) =>
+                      new Date(b.createdAt as Date).getTime() - new Date(a.createdAt as Date).getTime(),
+                  )[0]
+                : null;
+
             // For videos
             if (filePaths?.video?.length) {
               console.log(`Worker - Processing ${filePaths.video.length} videos for submission ${submission.id}`);
@@ -441,8 +450,7 @@ async function deleteFileIfExists(filePath: string) {
 
                 // await fs.promises.unlink(videoFile.outputPath);
                 if (content.isV4 && content.preserveExistingMedia && !requestChangeVideos.length) {
-                  // V4: Create NEW video on reupload (don't overwrite) - previous draft stays, linked via resubmittedFromId
-                  const existingVideo = submission.video && submission.video[index];
+                  const parentVideo = index === 0 ? previousHeadVideoForV4 : null;
 
                   await prisma.video.create({
                     data: {
@@ -451,14 +459,14 @@ async function deleteFileIfExists(filePath: string) {
                       campaignId: submission.campaignId,
                       userId: submission.userId,
                       status: 'PENDING',
-                      ...(existingVideo && {
-                        resubmittedFromId: existingVideo.id,
+                      ...(parentVideo && {
+                        resubmittedFromId: parentVideo.id,
                       }),
                     },
                   });
                   console.log(
-                    existingVideo
-                      ? `✅ V4 Video created as new version (resubmittedFromId: ${existingVideo.id}), previous draft preserved.`
+                    parentVideo
+                      ? `✅ V4 Video created as new version (resubmittedFromId: ${parentVideo.id}), previous draft preserved.`
                       : '✅ V4 Video entry created (no existing video).'
                   );
                 } else if (!requestChangeVideos.length) {
