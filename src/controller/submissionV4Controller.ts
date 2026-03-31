@@ -3079,10 +3079,12 @@ export const getComments = async (req: Request, res: Response) => {
     if (user.role !== 'client') {
       const mapEditedText = (comment: any) => {
         if (comment.editedText) {
+          comment.originalText = comment.text;
+          comment.originalTimestamp = comment.timestamp;
           comment.text = comment.editedText;
-        }
-        if (comment.editedTimestamp) {
-          comment.timestamp = comment.editedTimestamp;
+          if (comment.editedTimestamp) {
+            comment.timestamp = comment.editedTimestamp;
+          }
         }
         if (comment.replies) {
           comment.replies.forEach(mapEditedText);
