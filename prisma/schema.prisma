@@ -1240,6 +1240,8 @@ model Video {
   createdAt    DateTime       @default(now())
   updatedAt    DateTime?      @updatedAt
 
+  feedbackDeadline DateTime?
+
   // Individual feedback fields
   feedback   String? // Individual feedback message
   reasons    String[] // Reasons for changes (if any)
@@ -1397,11 +1399,11 @@ model Feedback {
 }
 
 model SubmissionComment {
-  id        String  @id @default(cuid())
+  id              String  @id @default(cuid())
   text            String  @db.Text
   editedText      String? @db.Text
   timestamp       String?
-  editedTimestamp  String?
+  editedTimestamp String?
 
   submissionId String
   submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
@@ -1423,9 +1425,9 @@ model SubmissionComment {
   forwardedByUserId String?
   forwardedBy       User?   @relation("ForwardedComments", fields: [forwardedByUserId], references: [id], onDelete: SetNull)
 
-  resolvedAt        DateTime?
-  resolvedByUserId  String?
-  resolvedBy        User?   @relation("ResolvedComments", fields: [resolvedByUserId], references: [id], onDelete: SetNull)
+  resolvedAt       DateTime?
+  resolvedByUserId String?
+  resolvedBy       User?     @relation("ResolvedComments", fields: [resolvedByUserId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
   updateAt  DateTime @updatedAt
