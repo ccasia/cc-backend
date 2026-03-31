@@ -2,11 +2,11 @@ export const mapInstagramApiTopVideos = (videos: any[]) =>
   (videos || [])
     .slice()
     .sort((a: any, b: any) => {
-      const aTime = a?.timestamp ? new Date(a.timestamp).getTime() : 0;
-      const bTime = b?.timestamp ? new Date(b.timestamp).getTime() : 0;
-      return bTime - aTime;
+      const aLikes = Number(a?.like_count || 0);
+      const bLikes = Number(b?.like_count || 0);
+      return bLikes - aLikes;
     })
-    .slice(0, 5)
+    .slice(0, 3)
     .map((media: any) => ({
       id: media.id,
       media_url: media.media_url,
@@ -23,11 +23,11 @@ export const mapTikTokApiTopVideos = (videos: any[]) =>
   (videos || [])
     .slice()
     .sort((a: any, b: any) => {
-      const aTime = a?.create_time ? Number(a.create_time) : 0;
-      const bTime = b?.create_time ? Number(b.create_time) : 0;
-      return bTime - aTime;
+      const aLikes = Number(a?.like_count || 0);
+      const bLikes = Number(b?.like_count || 0);
+      return bLikes - aLikes;
     })
-    .slice(0, 5)
+    .slice(0, 3)
     .map((video: any) => ({
       video_id: video.id,
       cover_image_url: video.cover_image_url,
