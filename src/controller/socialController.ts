@@ -18,6 +18,8 @@ import {
   getTikTokVideoById,
   refreshInstagramToken,
   refreshTikTokToken,
+  withCachedInstagramThumbnail,
+  cacheInstagramThumbnail,
   getInstagramEngagementRateOverTime,
   getInstagramMonthlyInteractions,
   getTikTokEngagementRateOverTime,
@@ -743,7 +745,11 @@ export const instagramCallback = async (req: Request, res: Response) => {
 
     // const medias = await getAllMediaObject(access_token, overview.user_id);
 
-    for (const media of medias.sortedVideos) {
+    const cachedSortedVideos = await Promise.all(
+      (medias.sortedVideos || []).map((media: any) => withCachedInstagramThumbnail(media, creator.id)),
+    );
+
+    for (const media of cachedSortedVideos) {
       const videoId = media.id;
 
       await (prisma.instagramVideo as any).upsert({
@@ -980,6 +986,21 @@ export const getInstagramMediaKit = async (req: Request, res: Response) => {
     const medias = await getInstagramMediaObject(accessToken, overview.user_id);
     const insightData = await getInstagramUserInsight(accessToken, overview.user_id);
 
+    console.log('[InstagramMediaKit] Instagram API fetch summary', {
+      userId,
+      creatorId: creator.id,
+      instagramUserId: overview.user_id,
+      profileUsername: overview.username || null,
+      followerCount: overview.followers_count || 0,
+      mediaCount: overview.media_count || 0,
+      sortedVideosCount: medias?.sortedVideos?.length || 0,
+      totalLikes: medias?.totalLikes || 0,
+      totalComments: medias?.totalComments || 0,
+      totalReach: insightData?.totals?.reach || 0,
+      totalShares: insightData?.totals?.shares || 0,
+      totalSaves: insightData?.totals?.saves || 0,
+    });
+
     const averageLikes = medias.averageLikes || 0;
     const averageComments = medias.averageComments || 0;
     const averageShares = overview.media_count ? insightData.totals.shares / overview.media_count : 0;
@@ -1093,7 +1114,11 @@ export const getInstagramMediaKit = async (req: Request, res: Response) => {
       });
     });
 
-    const topInstagramVideoIds = medias.sortedVideos
+    const cachedSortedVideos = await Promise.all(
+      (medias.sortedVideos || []).map((media: any) => withCachedInstagramThumbnail(media, creator.id)),
+    );
+
+    const topInstagramVideoIds = cachedSortedVideos
       .map((media: any) => media?.id || null)
       .filter((id: any): id is string => id !== null);
 
@@ -1119,7 +1144,7 @@ export const getInstagramMediaKit = async (req: Request, res: Response) => {
       });
     }
 
-    for (const media of medias.sortedVideos) {
+    for (const media of cachedSortedVideos) {
       const videoId = media.id;
 
       await (prisma.instagramVideo as any).upsert({
@@ -1154,7 +1179,12 @@ export const getInstagramMediaKit = async (req: Request, res: Response) => {
       });
     }
 
-    return res.status(200).json({ instagramUser, medias, creator });
+    // Opportunistic backfill for existing DB rows that still have expiring Instagram URLs.
+    void backfillPersistedInstagramThumbnails(instagramUser.id, creator.id);
+
+    return res
+      .status(200)
+      .json({ instagramUser, medias: { ...medias, sortedVideos: cachedSortedVideos }, creator });
 
     // return res.status(200).json({
     //   overview,
@@ -1613,6 +1643,49 @@ function calculateCampaignComparison(
   return comparison;
 }
 
+async function backfillPersistedInstagramThumbnails(instagramUserId: string, creatorId: string): Promise<void> {
+  try {
+    const existingVideos = await prisma.instagramVideo.findMany({
+      where: {
+        instagramUserId,
+      },
+      orderBy: {
+        updatedAt: 'desc',
+      },
+      take: 20,
+    });
+
+    await Promise.allSettled(
+      existingVideos.map(async (video: any) => {
+        const cachedThumbnailUrl = await cacheInstagramThumbnail(video, creatorId);
+        if (!cachedThumbnailUrl) return;
+
+        const needsThumbnailUpdate = cachedThumbnailUrl !== video?.thumbnail_url;
+        const needsMediaUpdate =
+          video?.media_type !== 'VIDEO' && cachedThumbnailUrl !== video?.media_url;
+
+        if (!needsThumbnailUpdate && !needsMediaUpdate) return;
+
+        await (prisma.instagramVideo as any).update({
+          where: {
+            id: video.id,
+          },
+          data: {
+            ...(needsThumbnailUpdate ? { thumbnail_url: cachedThumbnailUrl } : {}),
+            ...(needsMediaUpdate ? { media_url: cachedThumbnailUrl } : {}),
+          },
+        });
+      }),
+    );
+  } catch (error: any) {
+    console.error('[InstagramThumbnailCache] Backfill failed', {
+      instagramUserId,
+      creatorId,
+      message: error?.message,
+    });
+  }
+}
+
 async function ensureValidInstagramToken(userId: string): Promise<string> {
   const creator = await prisma.creator.findFirst({
     where: {
@@ -1637,7 +1710,12 @@ async function ensureValidInstagramToken(userId: string): Promise<string> {
   const isExpired = dayjs().isAfter(dayjs.unix(creator.instagramUser.expiresIn!));
 
   if (isExpired) {
-    console.log('Instagram token expired, attempting refresh...');
+    console.log('[InstagramTokenRefresh] Expired token detected', {
+      userId,
+      creatorId: creator.id,
+      expiresIn: creator.instagramUser.expiresIn,
+      nowUnix: dayjs().unix(),
+    });
 
     try {
       // Refresh the token using the existing service
@@ -1662,9 +1740,22 @@ async function ensureValidInstagramToken(userId: string): Promise<string> {
       });
 
       accessToken = refreshedTokenData.access_token;
-      console.log('Instagram token refreshed successfully');
+      console.log('[InstagramTokenRefresh] Refresh succeeded', {
+        userId,
+        creatorId: creator.id,
+        newExpiresIn: newExpiryTime,
+      });
     } catch (refreshError) {
-      console.error('Failed to refresh Instagram token:', refreshError);
+      console.error('[InstagramTokenRefresh] Refresh failed', {
+        userId,
+        creatorId: creator.id,
+        previousExpiresIn: creator.instagramUser.expiresIn,
+        nowUnix: dayjs().unix(),
+        status: (refreshError as any)?.response?.status,
+        statusText: (refreshError as any)?.response?.statusText,
+        responseData: (refreshError as any)?.response?.data || null,
+        message: (refreshError as any)?.message,
+      });
       throw new Error(
         'Instagram token expired and refresh failed. Creator needs to reconnect their Instagram account.',
       );
