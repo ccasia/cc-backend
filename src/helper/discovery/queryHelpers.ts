@@ -115,16 +115,24 @@ const hasKeywordPhraseMatch = (text: string, keywordTerm?: string) => {
   return hasBoundaryTerm(normalizedText, normalizedKeyword);
 };
 
-export const matchesContentTerms = (texts: string[], options: { keywordTerm?: string; hashtagTerms: string[] }) => {
+export interface ContentTermMatchOptions {
+  keywordTerm?: string;
+  hashtagTerms: string[];
+  keywordOnlyTexts?: string[];
+}
+
+export const matchesContentTerms = (texts: string[], options: ContentTermMatchOptions) => {
   const normalizedTexts = (texts || []).map((text) => normalizeContentText(text));
+  const normalizedKeywordOnlyTexts = (options.keywordOnlyTexts || []).map((text) => normalizeContentText(text));
+  const keywordSearchTexts = [...normalizedTexts, ...normalizedKeywordOnlyTexts];
 
   const keywordTerms = parseKeywordWords(options.keywordTerm);
 
   const keywordMatches =
     !options.keywordTerm ||
-    normalizedTexts.some((text) => hasKeywordPhraseMatch(text, options.keywordTerm)) ||
+    keywordSearchTexts.some((text) => hasKeywordPhraseMatch(text, options.keywordTerm)) ||
     keywordTerms.every((term) =>
-      normalizedTexts.some((text) => {
+      keywordSearchTexts.some((text) => {
         const normalizedText = normalizeKeywordComparableText(text);
         return hasBoundaryTerm(normalizedText, term);
       }),
