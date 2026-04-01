@@ -2,6 +2,15 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
+const parseTimestampToSeconds = (timestamp: string | null): number => {
+  if (!timestamp) return Infinity;
+  const parts = timestamp.split(':').map(Number);
+  if (parts.some(Number.isNaN)) return Infinity;
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  return Infinity;
+};
+
 const COMMENT_USER_SELECT = {
   id: true,
   name: true,
@@ -155,6 +164,14 @@ export const fetchCommentsForVideo = async (
       (a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
     );
   }
+
+  // Sort parent comments by video timestamp (ascending), comments without timestamps go last
+  comments.sort((a, b) => {
+    const aSeconds = parseTimestampToSeconds(a.timestamp);
+    const bSeconds = parseTimestampToSeconds(b.timestamp);
+    if (aSeconds === bSeconds) return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+    return aSeconds - bSeconds;
+  });
 
   return comments;
 };
