@@ -3345,11 +3345,12 @@ export const toggleCreatorVisibility = async (req: Request, res: Response) => {
 
     const campaignId = comment.submission?.campaignId;
     if (campaignId && io) {
-      io.to(campaignId).emit('v4:comment:updated', {
+      io.to(campaignId).emit('v4:comment:visibility:toggled', {
         submissionId: comment.submissionId,
         videoId: comment.videoId,
         campaignId,
-        comment: updated,
+        commentId: updated.id,
+        isVisibleToCreator: updated.isVisibleToCreator,
       });
     }
 
@@ -3520,7 +3521,7 @@ export const sendVideoFeedbackToCreator = async (req: Request, res: Response) =>
       // Mark all unforwarded, published top-level comments as forwarded by this admin
       prisma.submissionComment.updateMany({
         where: { submissionId, videoId, forwardedByUserId: null, isClientDraft: false },
-        data: { forwardedByUserId: adminId },
+        data: { forwardedByUserId: adminId, isVisibleToCreator: true },
       }),
       // Also mark replies of those comments (excluding drafts)
       ...(parentIds.length > 0
@@ -3531,7 +3532,7 @@ export const sendVideoFeedbackToCreator = async (req: Request, res: Response) =>
                 forwardedByUserId: null,
                 isClientDraft: false,
               },
-              data: { forwardedByUserId: adminId },
+              data: { forwardedByUserId: adminId, isVisibleToCreator: true },
             }),
           ]
         : []),
