@@ -443,7 +443,7 @@ async function deleteFileIfExists(filePath: string) {
                 if (content.isV4 && content.preserveExistingMedia) {
                   // V4: Check if there's an existing video for this submission to update
                   const existingVideo = submission.video && submission.video[index];
-                  
+
                   if (existingVideo) {
                     // Update existing video, preserving old URL in previousDrafts
                     const existingPreviousDrafts = (existingVideo as any).previousDrafts || [];
@@ -599,7 +599,7 @@ async function deleteFileIfExists(filePath: string) {
               });
 
               io?.to(clients.get(data.userId)).emit('notification', notification);
-              
+
               const adminUser = data.campaign.campaignAdmin.filter((ca) => ca.admin.user.role === 'admin');
 
               const { title: adminTitle, message: adminMessage } = notificationDraft(

@@ -42,9 +42,9 @@ import { TokenSet } from 'xero-node';
 import { prisma } from './prisma/prisma';
 import { xero } from '@configs/xero';
 import { logChange } from '@services/campaignServices';
-import connection, { subClient } from '@configs/redis';
+// import connection, { subClient } from '@configs/redis';
 import { users } from '@utils/activeUsers';
-import WhatsappSetting from '@services/verificationCode';
+import WhatsappSetting from '@services/whatsappSetting';
 
 Ffmpeg.setFfmpegPath(FfmpegPath.path);
 
@@ -249,19 +249,18 @@ app.get('/users', isLoggedIn, async (_req, res) => {
   }
 });
 
-app.post('/whatsapp', async (req, res) => {
-  const { accessToken, businessAccountId } = req.body;
-  try {
-    const data = await WhatsappSetting.initialize();
+// app.get('/verification-code', async (req, res) => {
+//   try {
+//     const data = new WhatsappSetting();
+//     await data.initialize();
 
-    if (!data.success) return res.status(400).json(data);
+//     await data.sendVerificationCode('60124447936');
 
-    return res.status(200).json(data);
-  } catch (error) {
-    console.log(error);
-    return res.status(500).json(error);
-  }
-});
+//     return res.sendStatus(200);
+//   } catch (error) {
+//     return res.status(500).json(error);
+//   }
+// });
 
 export const clients = new Map();
 export const activeProcesses = new Map();
@@ -495,6 +494,20 @@ app.post('/sendMessage', async (req: Request, res: Response) => {
     if (con) await con.close();
     if (amqp) await amqp.close();
   }
+});
+
+app.get('/report/:campaignId', async (req, res) => {
+  const campaignId = req.params.campaignId;
+
+  const data = await prisma.insightSnapshot.findMany({
+    where: {
+      campaignId: campaignId,
+    },
+  });
+
+  const dbViews = data.reduce((s, r) => s + r.totalViews, 0);
+
+  return res.status(200).json(dbViews);
 });
 
 if (require.main === module) {
