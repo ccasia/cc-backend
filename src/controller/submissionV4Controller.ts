@@ -889,6 +889,8 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
       }),
     );
 
+    let deadline: Date | null = null;
+
     // Update only the latest video (not all video versions) to avoid resurrecting old archived videos
     if (submission.video && submission.video.length > 0) {
       const latestVideo = (bodyVideoId
@@ -899,6 +901,12 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
           )[0];
 
       if (latestVideo) {
+        deadline = latestVideo.feedbackDeadline || null;
+
+        if (action === 'request_changes' && !deadline) {
+          deadline = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        }
+
         updates.push(
           prisma.video.update({
             where: { id: latestVideo.id },
@@ -906,6 +914,7 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
               status: newContentStatus as FeedbackStatus,
               feedback: feedback || null,
               reasons: reasons || [],
+              feedbackDeadline: deadline,
             },
           }),
         );
@@ -993,6 +1002,7 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
         action,
         byClient: true,
         updatedAt: new Date().toISOString(),
+        feedbackDeadline: deadline?.toISOString() || null,
       });
     }
 
@@ -1073,6 +1083,7 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
       submissionId,
       newStatus: newSubmissionStatus,
       ...(showNPS && { showNPS: true }),
+      feedbackDeadline: deadline?.toISOString() || null,
     });
   } catch (error) {
     console.error('Error processing client v4 submission:', error);
@@ -2717,6 +2728,7 @@ export const getV4SubmissionById = async (req: Request, res: Response) => {
             createdAt: true,
             adminId: true,
             resubmittedFromId: true,
+            feedbackDeadline: true,
           },
           orderBy: { createdAt: 'desc' as const },
           take: V4_ACTIVE_VIDEO_VERSIONS_LIMIT,
