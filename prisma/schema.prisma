@@ -1242,7 +1242,8 @@ model Video {
   createdAt    DateTime       @default(now())
   updatedAt    DateTime?      @updatedAt
 
-  feedbackDeadline DateTime?
+  feedbackDeadline    DateTime?
+  feedbackSentByName  String?
 
   // Individual feedback fields
   feedback   String? // Individual feedback message
