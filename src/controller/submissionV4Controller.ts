@@ -3079,10 +3079,12 @@ export const getComments = async (req: Request, res: Response) => {
     if (user.role !== 'client') {
       const mapEditedText = (comment: any) => {
         if (comment.editedText) {
+          comment.originalText = comment.text;
+          comment.originalTimestamp = comment.timestamp;
           comment.text = comment.editedText;
-        }
-        if (comment.editedTimestamp) {
-          comment.timestamp = comment.editedTimestamp;
+          if (comment.editedTimestamp) {
+            comment.timestamp = comment.editedTimestamp;
+          }
         }
         if (comment.replies) {
           comment.replies.forEach(mapEditedText);
@@ -3151,10 +3153,10 @@ export const createComment = async (req: Request, res: Response) => {
       },
     });
 
-    // Emit socket event for real-time updates (skip client drafts)
+    // Emit socket event for real-time updates (including client drafts for client-to-client sync)
     const commentCampaignId = newComment.submission?.campaignId;
 
-    if (commentCampaignId && io && !newComment.isClientDraft) {
+    if (commentCampaignId && io) {
       const eventName = parentId ? 'v4:comment:reply:added' : 'v4:comment:added';
       io.to(commentCampaignId).emit(eventName, {
         submissionId,
