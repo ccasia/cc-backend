@@ -787,6 +787,7 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
                     user: {
                       select: {
                         role: true,
+                        name: true,
                       },
                     },
                   },
@@ -819,6 +820,7 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
     const clientAccess = submission.campaign.campaignAdmin.find(
       (ca) => ca.admin.userId === clientId && ca.admin.user.role === 'client',
     );
+    const clientName = clientAccess?.admin?.user?.name || null;
 
     if (!clientAccess) {
       return res.status(403).json({ message: 'You do not have access to this campaign' });
@@ -915,6 +917,7 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
               feedback: feedback || null,
               reasons: reasons || [],
               feedbackDeadline: deadline,
+              feedbackSentByName: clientName,
             },
           }),
         );
@@ -1003,6 +1006,7 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
         byClient: true,
         updatedAt: new Date().toISOString(),
         feedbackDeadline: deadline?.toISOString() || null,
+        feedbackSentByName: clientName,
       });
     }
 
@@ -1084,6 +1088,7 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
       newStatus: newSubmissionStatus,
       ...(showNPS && { showNPS: true }),
       feedbackDeadline: deadline?.toISOString() || null,
+      feedbackSentByName: clientName,
     });
   } catch (error) {
     console.error('Error processing client v4 submission:', error);
@@ -2729,6 +2734,7 @@ export const getV4SubmissionById = async (req: Request, res: Response) => {
             adminId: true,
             resubmittedFromId: true,
             feedbackDeadline: true,
+            feedbackSentByName: true,
           },
           orderBy: { createdAt: 'desc' as const },
           take: V4_ACTIVE_VIDEO_VERSIONS_LIMIT,
