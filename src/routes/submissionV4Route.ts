@@ -25,6 +25,7 @@ import {
   createComment,
   toggleAgree,
   toggleResolve,
+  toggleCreatorVisibility,
   updateComment,
   deleteComment,
   sendVideoFeedbackToCreator,
@@ -100,6 +101,7 @@ router.patch('/comments/:commentId', isLoggedIn, isAdmin, updateComment);
 router.delete('/comments/:commentId', isLoggedIn, isAdmin, deleteComment);
 router.post('/comments/:commentId/agree', isLoggedIn, isClient, toggleAgree);
 router.patch('/comments/:commentId/resolve', isLoggedIn, isAdmin, toggleResolve);
+router.patch('/comments/:commentId/visibility', isLoggedIn, isAdmin, toggleCreatorVisibility);
 
 // Comment-based feedback actions
 router.post('/submission/:submissionId/send-to-creator', isLoggedIn, isAdmin, sendVideoFeedbackToCreator);

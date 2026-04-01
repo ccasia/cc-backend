@@ -30,6 +30,7 @@ export const fetchCommentsForVideo = async (
   videoId: string | undefined,
   roleFilter: any,
   excludeClientDrafts = false,
+  filterInvisibleToCreator = false,
 ) => {
   const where: any = {
     submissionId,
@@ -63,6 +64,14 @@ export const fetchCommentsForVideo = async (
     replyWhere = replyWhere ? { ...replyWhere, isClientDraft: false } : { isClientDraft: false };
   }
 
+  // Hide comments marked as not visible to creator
+  if (filterInvisibleToCreator) {
+    where.isVisibleToCreator = true;
+    replyWhere = replyWhere
+      ? { ...replyWhere, isVisibleToCreator: true }
+      : { isVisibleToCreator: true };
+  }
+
   const comments = await prisma.submissionComment.findMany({
     where,
     orderBy: { createdAt: 'asc' },
@@ -75,6 +84,63 @@ export const fetchCommentsForVideo = async (
       },
     },
   });
+
+  // Flatten orphaned replies: visible replies whose parent is hidden should
+  // be promoted to top-level so creators can still see them
+  if (filterInvisibleToCreator) {
+    const orphanWhere: any = {
+      submissionId,
+      parentId: { not: null },
+      isVisibleToCreator: true,
+      parent: { isVisibleToCreator: false },
+    };
+    if (videoId) orphanWhere.videoId = videoId;
+    if (excludeClientDrafts) orphanWhere.isClientDraft = false;
+    if (roleFilter && Object.keys(roleFilter).length > 0) {
+      orphanWhere.OR = [{ user: { role: roleFilter } }, { forwardedByUserId: { not: null } }];
+    }
+
+    const orphanedReplies = await prisma.submissionComment.findMany({
+      where: orphanWhere,
+      orderBy: { createdAt: 'asc' },
+      include: {
+        ...COMMENT_BASE_INCLUDE,
+        parent: { select: { timestamp: true, editedTimestamp: true } },
+      },
+    });
+
+    // Group orphaned replies by their shared hidden parent.
+    // First reply (by createdAt) becomes the virtual top-level comment,
+    // subsequent siblings become its replies.
+    // Replies without a timestamp inherit from their hidden parent.
+    const inheritTimestamp = (reply: any) => {
+      if (!reply.timestamp && reply.parent) {
+        const parentTs = reply.parent.editedTimestamp || reply.parent.timestamp;
+        if (parentTs) reply.timestamp = parentTs;
+      }
+      delete reply.parent;
+      return reply;
+    };
+
+    const groupedByParent = new Map<string, any[]>();
+    for (const reply of orphanedReplies) {
+      const pid = reply.parentId as string;
+      if (!groupedByParent.has(pid)) {
+        groupedByParent.set(pid, []);
+      }
+      groupedByParent.get(pid)!.push(inheritTimestamp(reply));
+    }
+
+    for (const siblings of groupedByParent.values()) {
+      const [first, ...rest] = siblings; // already sorted by createdAt asc
+      (comments as any[]).push({ ...first, replies: rest });
+    }
+
+    // Re-sort by createdAt after merging
+    (comments as any[]).sort(
+      (a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    );
+  }
 
   return comments;
 };
@@ -117,6 +183,7 @@ export const editCommentRecord = async (commentId: string, newText: string, forw
       data.editedTimestamp = timestamp;
     }
     data.forwardedByUserId = forwardedByUserId;
+    data.isVisibleToCreator = true;
   } else {
     // Admin editing their own comment — overwrite text directly
     data.text = newText;

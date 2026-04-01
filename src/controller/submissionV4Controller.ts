@@ -3085,11 +3085,13 @@ export const getComments = async (req: Request, res: Response) => {
 
   try {
     const excludeClientDrafts = user.role !== 'client';
+    const filterInvisibleToCreator = user.role === 'creator';
     const comments = await fetchCommentsForVideo(
       submissionId,
       videoId as string | undefined,
       roleFilter,
       excludeClientDrafts,
+      filterInvisibleToCreator,
     );
 
     // Role-based text mapping: admins and creators see editedText (admin-curated version),
@@ -3110,6 +3112,17 @@ export const getComments = async (req: Request, res: Response) => {
         return comment;
       };
       comments.forEach(mapEditedText);
+    }
+
+    // Strip visibility flag from creator responses
+    if (user.role === 'creator') {
+      const stripVisibility = (comment: any) => {
+        delete comment.isVisibleToCreator;
+        if (comment.replies) {
+          comment.replies.forEach(stripVisibility);
+        }
+      };
+      comments.forEach(stripVisibility);
     }
 
     return res.status(200).json(comments);
@@ -3308,6 +3321,52 @@ export const toggleResolve = async (req: Request, res: Response) => {
 };
 
 /**
+ * Admin toggles creator visibility on a comment.
+ * PATCH /api/submissions/v4/comments/:commentId/visibility
+ */
+export const toggleCreatorVisibility = async (req: Request, res: Response) => {
+  const { commentId } = req.params;
+
+  try {
+    const comment = await prisma.submissionComment.findUnique({
+      where: { id: commentId },
+      select: {
+        id: true,
+        submissionId: true,
+        videoId: true,
+        isVisibleToCreator: true,
+        submission: { select: { campaignId: true } },
+      },
+    });
+
+    if (!comment) {
+      return res.status(404).json({ error: 'Comment not found' });
+    }
+
+    const updated = await prisma.submissionComment.update({
+      where: { id: commentId },
+      data: { isVisibleToCreator: !comment.isVisibleToCreator },
+      select: { id: true, isVisibleToCreator: true },
+    });
+
+    const campaignId = comment.submission?.campaignId;
+    if (campaignId && io) {
+      io.to(campaignId).emit('v4:comment:visibility:toggled', {
+        submissionId: comment.submissionId,
+        videoId: comment.videoId,
+        campaignId,
+        commentId: updated.id,
+        isVisibleToCreator: updated.isVisibleToCreator,
+      });
+    }
+
+    return res.status(200).json({ isVisibleToCreator: updated.isVisibleToCreator });
+  } catch (error) {
+    return res.status(500).json({ error: 'Failed to toggle creator visibility' });
+  }
+};
+
+/**
  * Admin edits a comment (typically a client's comment before forwarding).
  * Sets forwardedByUserId to the admin who edited it.
  * PATCH /api/submissions/v4/comments/:commentId
@@ -3468,7 +3527,7 @@ export const sendVideoFeedbackToCreator = async (req: Request, res: Response) =>
       // Mark all unforwarded, published top-level comments as forwarded by this admin
       prisma.submissionComment.updateMany({
         where: { submissionId, videoId, forwardedByUserId: null, isClientDraft: false },
-        data: { forwardedByUserId: adminId },
+        data: { forwardedByUserId: adminId, isVisibleToCreator: true },
       }),
       // Also mark replies of those comments (excluding drafts)
       ...(parentIds.length > 0
@@ -3479,7 +3538,7 @@ export const sendVideoFeedbackToCreator = async (req: Request, res: Response) =>
                 forwardedByUserId: null,
                 isClientDraft: false,
               },
-              data: { forwardedByUserId: adminId },
+              data: { forwardedByUserId: adminId, isVisibleToCreator: true },
             }),
           ]
         : []),
