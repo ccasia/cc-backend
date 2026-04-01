@@ -306,6 +306,14 @@ async function deleteFileIfExists(filePath: string) {
               },
             });
 
+            const previousHeadVideoForV4 =
+              submission.video && submission.video.length > 0
+                ? [...submission.video].sort(
+                    (a: any, b: any) =>
+                      new Date(b.createdAt as Date).getTime() - new Date(a.createdAt as Date).getTime(),
+                  )[0]
+                : null;
+
             // For videos
             if (filePaths?.video?.length) {
               const videoPromises = filePaths.video.map(async (videoFile: VideoFile, index: any) => {
@@ -347,7 +355,7 @@ async function deleteFileIfExists(filePath: string) {
                 // await fs.promises.unlink(videoFile.outputPath);
 
                 if (content.isV4 && content.preserveExistingMedia && !requestChangeVideos.length) {
-                  const existingVideo = submission.video && submission.video[index];
+                  const parentVideo = index === 0 ? previousHeadVideoForV4 : null;
                   await prisma.video.create({
                     data: {
                       url: videoPublicURL,
@@ -355,7 +363,7 @@ async function deleteFileIfExists(filePath: string) {
                       campaignId: submission.campaignId,
                       userId: submission.userId,
                       status: 'PENDING',
-                      ...(existingVideo && { resubmittedFromId: existingVideo.id }),
+                      ...(parentVideo && { resubmittedFromId: parentVideo.id }),
                     },
                   });
                 } else if (!requestChangeVideos.length) {

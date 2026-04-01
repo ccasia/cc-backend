@@ -4,6 +4,9 @@ import { saveCaptionToHistory } from '../utils/captionHistoryUtils';
 
 const prisma = new PrismaClient();
 
+/** Max video versions returned in V4 list/detail APIs (newest first). Older rows stay in DB. */
+export const V4_ACTIVE_VIDEO_VERSIONS_LIMIT = 3;
+
 /**
  * Create V4 submissions for an approved creator
  * This function is now mainly for consistency - actual content submissions
@@ -95,6 +98,7 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
             },
           },
           orderBy: { createdAt: 'desc' as const },
+          take: V4_ACTIVE_VIDEO_VERSIONS_LIMIT,
         },
         photos: {
           select: {
@@ -406,7 +410,12 @@ export const submitV4Content = async (
     const updates: any[] = [];
 
     if (submissionType === 'VIDEO' && contentData.videoUrls) {
-      for (const url of contentData.videoUrls) {
+      const latestExistingVideo = await prisma.video.findFirst({
+        where: { submissionId: submission.id },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true },
+      });
+      contentData.videoUrls.forEach((url, index) => {
         updates.push(
           prisma.video.create({
             data: {
@@ -415,10 +424,13 @@ export const submitV4Content = async (
               userId: submission.userId,
               submissionId: submission.id,
               status: 'PENDING',
+              ...(index === 0 && latestExistingVideo
+                ? { resubmittedFromId: latestExistingVideo.id }
+                : {}),
             },
           }),
         );
-      }
+      });
     }
 
     if (submissionType === 'PHOTO' && contentData.photoUrls) {
