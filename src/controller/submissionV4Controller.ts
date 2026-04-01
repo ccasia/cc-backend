@@ -904,7 +904,7 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
         deadline = latestVideo.feedbackDeadline || null;
 
         if (action === 'request_changes' && !deadline) {
-          deadline = new Date(Date.now() + 24 * 60 * 60 * 1000);
+          deadline = new Date(Date.now() + 5 * 60 * 1000);
         }
 
         updates.push(
