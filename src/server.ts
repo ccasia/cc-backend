@@ -44,6 +44,7 @@ import { xero } from '@configs/xero';
 import { logChange } from '@services/campaignServices';
 import connection, { subClient } from '@configs/redis';
 import { users } from '@utils/activeUsers';
+import WhatsappSetting from '@services/verificationCode';
 
 Ffmpeg.setFfmpegPath(FfmpegPath.path);
 
@@ -245,6 +246,20 @@ app.get('/users', isLoggedIn, async (_req, res) => {
     res.send(users);
   } catch (error) {
     //console.log(error);
+  }
+});
+
+app.post('/whatsapp', async (req, res) => {
+  const { accessToken, businessAccountId } = req.body;
+  try {
+    const data = await WhatsappSetting.initialize();
+
+    if (!data.success) return res.status(400).json(data);
+
+    return res.status(200).json(data);
+  } catch (error) {
+    console.log(error);
+    return res.status(500).json(error);
   }
 });
 

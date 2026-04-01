@@ -87,8 +87,8 @@ model User {
 
   twoFactorSecret String?
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime  @default(now())
+  updatedAt DateTime? @updatedAt
 
   userFlow      UserFlow[]
   activatedAt   DateTime?
@@ -2228,4 +2228,20 @@ model AiModel {
   user   User?   @relation(references: [id], fields: [userId])
 
   @@map("ai_model")
+}
+
+model WhatsappSetting {
+  id String @id @unique @default(cuid())
+
+  accessToken       String?
+  businessAccountId String?
+  phoneNumberId     String?
+  templateName      String?
+
+  isFeatureEnabled Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("whatsapp-setting")
 }
