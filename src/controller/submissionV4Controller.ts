@@ -3462,6 +3462,52 @@ export const deleteComment = async (req: Request, res: Response) => {
 };
 
 /**
+ * Client deletes their own comment.
+ * DELETE /api/submissions/v4/comments/:commentId/client
+ */
+export const deleteCommentByClient = async (req: Request, res: Response) => {
+  const { commentId } = req.params;
+  const clientId = req.session.userid as string;
+
+  try {
+    if (!clientId) return res.status(401).json({ error: 'Not logged in' });
+
+    const comment = await prisma.submissionComment.findUnique({
+      where: { id: commentId },
+      select: {
+        id: true,
+        userId: true,
+        submissionId: true,
+        videoId: true,
+        submission: { select: { campaignId: true } },
+      },
+    });
+
+    if (!comment) return res.status(404).json({ error: 'Comment not found' });
+    if (comment.userId !== clientId) {
+      return res.status(403).json({ error: 'You can only delete your own comments' });
+    }
+
+    const deleteCampaignId = comment.submission?.campaignId;
+
+    await prisma.submissionComment.delete({ where: { id: commentId } });
+
+    if (deleteCampaignId && io) {
+      io.to(deleteCampaignId).emit('v4:comment:deleted', {
+        commentId,
+        submissionId: comment.submissionId,
+        videoId: comment.videoId,
+        campaignId: deleteCampaignId,
+      });
+    }
+
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    return res.status(500).json({ error: 'Failed to delete comment' });
+  }
+};
+
+/**
  * Send video feedback comments to creator.
  * Marks all comments as forwarded, creates Feedback record, transitions status to CHANGES_REQUIRED.
  * POST /api/submissions/v4/submission/:submissionId/send-to-creator
@@ -3524,10 +3570,12 @@ export const sendVideoFeedbackToCreator = async (req: Request, res: Response) =>
 
     // Transaction: mark forwarded + create feedback + update statuses
     await prisma.$transaction([
-      // Mark all unforwarded, published top-level comments as forwarded by this admin
+      // Mark all unforwarded, published top-level comments as forwarded by this admin.
+      // Note: isVisibleToCreator is NOT overridden here so the admin's selection/de-selection
+      // toggles are respected — deselected comments stay hidden from creators.
       prisma.submissionComment.updateMany({
         where: { submissionId, videoId, forwardedByUserId: null, isClientDraft: false },
-        data: { forwardedByUserId: adminId, isVisibleToCreator: true },
+        data: { forwardedByUserId: adminId },
       }),
       // Also mark replies of those comments (excluding drafts)
       ...(parentIds.length > 0
@@ -3538,7 +3586,7 @@ export const sendVideoFeedbackToCreator = async (req: Request, res: Response) =>
                 forwardedByUserId: null,
                 isClientDraft: false,
               },
-              data: { forwardedByUserId: adminId, isVisibleToCreator: true },
+              data: { forwardedByUserId: adminId },
             }),
           ]
         : []),
