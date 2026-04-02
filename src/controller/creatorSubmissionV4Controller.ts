@@ -920,6 +920,56 @@ export const createMyFeedbackReply = async (req: Request, res: Response) => {
 };
 
 /**
+ * Creator deletes their own reply.
+ * DELETE /api/creator/submissions/v4/comments/:commentId
+ */
+export const deleteMyReply = async (req: Request, res: Response) => {
+  const { commentId } = req.params;
+  const creatorId = req.session.userid as string;
+
+  try {
+    if (!creatorId) return res.status(401).json({ error: 'Not logged in' });
+
+    const comment = await prisma.submissionComment.findUnique({
+      where: { id: commentId },
+      select: {
+        id: true,
+        userId: true,
+        parentId: true,
+        submissionId: true,
+        videoId: true,
+        submission: { select: { campaignId: true } },
+      },
+    });
+
+    if (!comment) return res.status(404).json({ error: 'Comment not found' });
+    if (comment.userId !== creatorId) {
+      return res.status(403).json({ error: 'You can only delete your own replies' });
+    }
+    if (!comment.parentId) {
+      return res.status(403).json({ error: 'Cannot delete top-level comments' });
+    }
+
+    const deleteCampaignId = comment.submission?.campaignId;
+
+    await prisma.submissionComment.delete({ where: { id: commentId } });
+
+    if (deleteCampaignId && io) {
+      io.to(deleteCampaignId).emit('v4:comment:deleted', {
+        commentId,
+        submissionId: comment.submissionId,
+        videoId: comment.videoId,
+        campaignId: deleteCampaignId,
+      });
+    }
+
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    return res.status(500).json({ error: 'Failed to delete reply' });
+  }
+};
+
+/**
  * Get creator's campaign overview with submission summary
  * GET /api/creator/submissions/v4/campaign-overview?campaignId=xxx
  */

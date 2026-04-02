@@ -30,6 +30,7 @@ export const fetchCommentsForVideo = async (
   videoId: string | undefined,
   roleFilter: any,
   excludeClientDrafts = false,
+  filterInvisibleToCreator = false,
 ) => {
   const where: any = {
     submissionId,
@@ -45,18 +46,33 @@ export const fetchCommentsForVideo = async (
     where.isClientDraft = false;
   }
 
-  // For role-filtered queries, also include forwarded comments (client comments
-  // that have been forwarded by an admin should be visible to creators)
-  if (roleFilter && Object.keys(roleFilter).length > 0) {
+  // Creator visibility: own comments always visible; others only if forwarded AND marked visible.
+  // This prevents admin comments from leaking to creators before "Send to Creator" is used.
+  if (filterInvisibleToCreator) {
+    where.OR = [
+      { user: { role: 'creator' } },
+      { isVisibleToCreator: true, forwardedByUserId: { not: null } },
+    ];
+  } else if (roleFilter && Object.keys(roleFilter).length > 0) {
+    // For role-filtered queries (client), also include forwarded comments (client comments
+    // that have been forwarded by an admin should be visible)
     where.OR = [{ user: { role: roleFilter } }, { forwardedByUserId: { not: null } }];
   }
 
-  let replyWhere: any =
-    roleFilter && Object.keys(roleFilter).length > 0
-      ? {
-          OR: [{ user: { role: roleFilter } }, { forwardedByUserId: { not: null } }],
-        }
-      : undefined;
+  let replyWhere: any = undefined;
+
+  if (filterInvisibleToCreator) {
+    replyWhere = {
+      OR: [
+        { user: { role: 'creator' } },
+        { isVisibleToCreator: true, forwardedByUserId: { not: null } },
+      ],
+    };
+  } else if (roleFilter && Object.keys(roleFilter).length > 0) {
+    replyWhere = {
+      OR: [{ user: { role: roleFilter } }, { forwardedByUserId: { not: null } }],
+    };
+  }
 
   // Also exclude client drafts from replies
   if (excludeClientDrafts) {
@@ -75,6 +91,70 @@ export const fetchCommentsForVideo = async (
       },
     },
   });
+
+  // Flatten orphaned replies: visible replies whose parent is hidden should
+  // be promoted to top-level so creators can still see them
+  if (filterInvisibleToCreator) {
+    const orphanWhere: any = {
+      submissionId,
+      parentId: { not: null },
+      // Reply is visible to creator: own comment OR forwarded + marked visible
+      OR: [
+        { user: { role: 'creator' } },
+        { isVisibleToCreator: true, forwardedByUserId: { not: null } },
+      ],
+      // Parent is hidden from creator: not creator's own AND (not visible OR not forwarded)
+      parent: {
+        AND: [
+          { user: { role: { not: 'creator' } } },
+          { OR: [{ isVisibleToCreator: false }, { forwardedByUserId: null }] },
+        ],
+      },
+    };
+    if (videoId) orphanWhere.videoId = videoId;
+    if (excludeClientDrafts) orphanWhere.isClientDraft = false;
+
+    const orphanedReplies = await prisma.submissionComment.findMany({
+      where: orphanWhere,
+      orderBy: { createdAt: 'asc' },
+      include: {
+        ...COMMENT_BASE_INCLUDE,
+        parent: { select: { timestamp: true, editedTimestamp: true } },
+      },
+    });
+
+    // Group orphaned replies by their shared hidden parent.
+    // First reply (by createdAt) becomes the virtual top-level comment,
+    // subsequent siblings become its replies.
+    // Replies without a timestamp inherit from their hidden parent.
+    const inheritTimestamp = (reply: any) => {
+      if (!reply.timestamp && reply.parent) {
+        const parentTs = reply.parent.editedTimestamp || reply.parent.timestamp;
+        if (parentTs) reply.timestamp = parentTs;
+      }
+      delete reply.parent;
+      return reply;
+    };
+
+    const groupedByParent = new Map<string, any[]>();
+    for (const reply of orphanedReplies) {
+      const pid = reply.parentId as string;
+      if (!groupedByParent.has(pid)) {
+        groupedByParent.set(pid, []);
+      }
+      groupedByParent.get(pid)!.push(inheritTimestamp(reply));
+    }
+
+    for (const siblings of groupedByParent.values()) {
+      const [first, ...rest] = siblings; // already sorted by createdAt asc
+      (comments as any[]).push({ ...first, replies: rest });
+    }
+
+    // Re-sort by createdAt after merging
+    (comments as any[]).sort(
+      (a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    );
+  }
 
   return comments;
 };
@@ -117,6 +197,7 @@ export const editCommentRecord = async (commentId: string, newText: string, forw
       data.editedTimestamp = timestamp;
     }
     data.forwardedByUserId = forwardedByUserId;
+    data.isVisibleToCreator = true;
   } else {
     // Admin editing their own comment — overwrite text directly
     data.text = newText;
