@@ -17,39 +17,39 @@ model User {
   emailVerificationId String?            @unique
   emailVerifcation    EmailVerification? @relation(fields: [emailVerificationId], references: [id])
 
-  createdAt          DateTime            @default(now())
-  name               String?             @db.VarChar(255)
-  photoURL           String?             @db.VarChar(255)
-  country            String?             @db.VarChar(100)
-  city               String?             @db.VarChar(100)
-  phoneNumber        String?             @db.VarChar(100)
-  updatedAt          DateTime            @updatedAt
-  status             Status              @default(pending)
-  eventId            String?
-  role               RoleEnum
-  photoBackgroundURL String?             @db.VarChar(255)
-  updateRefershToken DateTime?
-  xeroRefreshToken   String?
-  admin              Admin?
-  client             Client?
-  agreementTemplate  AgreementTemplate[]
-  Board              Board?
-  BookMarkCampaign   BookMarkCampaign[]
-  campaignLogs       CampaignLog[]
-  CampaignTaskAdmin  CampaignTaskAdmin[]
-  creator            Creator?
-  creatorAgreement   CreatorAgreement[]
-  feedback           Feedback[]
-  finance            Finance?
-  invoice            Invoice[]           @relation("CreatedBy")
-  sentMessages       Message[]           @relation("UserMessages")
-  notifications      Notification[]
-  paymentForm        PaymentForm?
-  pitch              Pitch[]
-  approvedPitches    Pitch[]             @relation("ApprovedByClient")
-  rejectedPitches         Pitch[] @relation("RejectedByClient")
-  maybePitches            Pitch[] @relation("MaybeByClient")
-  acceptedInviteByCreator Pitch[] @relation("AcceptedInviteByCreator")
+  createdAt               DateTime            @default(now())
+  name                    String?             @db.VarChar(255)
+  photoURL                String?             @db.VarChar(255)
+  country                 String?             @db.VarChar(100)
+  city                    String?             @db.VarChar(100)
+  phoneNumber             String?             @db.VarChar(100)
+  updatedAt               DateTime?           @updatedAt
+  status                  Status              @default(pending)
+  eventId                 String?
+  role                    RoleEnum
+  photoBackgroundURL      String?             @db.VarChar(255)
+  updateRefershToken      DateTime?
+  xeroRefreshToken        String?
+  admin                   Admin?
+  client                  Client?
+  agreementTemplate       AgreementTemplate[]
+  Board                   Board?
+  BookMarkCampaign        BookMarkCampaign[]
+  campaignLogs            CampaignLog[]
+  CampaignTaskAdmin       CampaignTaskAdmin[]
+  creator                 Creator?
+  creatorAgreement        CreatorAgreement[]
+  feedback                Feedback[]
+  finance                 Finance?
+  invoice                 Invoice[]           @relation("CreatedBy")
+  sentMessages            Message[]           @relation("UserMessages")
+  notifications           Notification[]
+  paymentForm             PaymentForm?
+  pitch                   Pitch[]
+  approvedPitches         Pitch[]             @relation("ApprovedByClient")
+  rejectedPitches         Pitch[]             @relation("RejectedByClient")
+  maybePitches            Pitch[]             @relation("MaybeByClient")
+  acceptedInviteByCreator Pitch[]             @relation("AcceptedInviteByCreator")
 
   resetPasswordToken ResetPasswordToken?
   seenMessages       SeenMessage[]
@@ -947,46 +947,46 @@ model AdminLog {
 }
 
 model Pitch {
-  id                  String         @id @unique @default(cuid())
-  type                PitchType
-  campaignId          String
-  userId              String
-  status              PitchStatus?   @default(pending)
-  content             String         @default("test")
-  createdAt           DateTime       @default(now())
-  completedAt         DateTime?
-  approvedByAdminId   String?
-  approvedByClientId  String?
-  rejectedByAdminId   String?
-  rejectedByClientId  String?
-  rejectionReason     String?
-  customRejectionText String?
-  maybeByClientId     String?
+  id                        String         @id @unique @default(cuid())
+  type                      PitchType
+  campaignId                String
+  userId                    String
+  status                    PitchStatus?   @default(pending)
+  content                   String         @default("test")
+  createdAt                 DateTime       @default(now())
+  completedAt               DateTime?
+  approvedByAdminId         String?
+  approvedByClientId        String?
+  rejectedByAdminId         String?
+  rejectedByClientId        String?
+  rejectionReason           String?
+  customRejectionText       String?
+  maybeByClientId           String?
   acceptedInviteByCreatorId String?
-  amount              Int?
-  ugcCredits          Int?
-  agreementTemplateId String?
-  Notification        Notification[]
-  followerCount       String?
-  engagementRate      String?
-  adminComments       String?
-  adminCommentedBy    String?
-  isInvited           Boolean        @default(false)
-  adminCommenter      Admin?         @relation("AdminCommenter", fields: [adminCommentedBy], references: [userId])
+  amount                    Int?
+  ugcCredits                Int?
+  agreementTemplateId       String?
+  Notification              Notification[]
+  followerCount             String?
+  engagementRate            String?
+  adminComments             String?
+  adminCommentedBy          String?
+  isInvited                 Boolean        @default(false)
+  adminCommenter            Admin?         @relation("AdminCommenter", fields: [adminCommentedBy], references: [userId])
 
   // Outreach status tracking
   outreachStatus    OutreachStatus?
   outreachUpdatedAt DateTime?
   outreachUpdatedBy String?
 
-  campaign         Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  user             User     @relation(fields: [userId], references: [id])
-  admin            Admin?   @relation(fields: [approvedByAdminId], references: [userId], name: "ApprovedByAdmin")
-  client           User?    @relation("ApprovedByClient", fields: [approvedByClientId], references: [id])
-  rejectedByAdmin         Admin? @relation("RejectedByAdmin", fields: [rejectedByAdminId], references: [userId])
-  rejectedByClient        User?  @relation("RejectedByClient", fields: [rejectedByClientId], references: [id])
-  maybeByClient           User?  @relation("MaybeByClient", fields: [maybeByClientId], references: [id])
-  acceptedInviteByCreator User?  @relation("AcceptedInviteByCreator", fields: [acceptedInviteByCreatorId], references: [id])
+  campaign                Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  user                    User     @relation(fields: [userId], references: [id])
+  admin                   Admin?   @relation(fields: [approvedByAdminId], references: [userId], name: "ApprovedByAdmin")
+  client                  User?    @relation("ApprovedByClient", fields: [approvedByClientId], references: [id])
+  rejectedByAdmin         Admin?   @relation("RejectedByAdmin", fields: [rejectedByAdminId], references: [userId])
+  rejectedByClient        User?    @relation("RejectedByClient", fields: [rejectedByClientId], references: [id])
+  maybeByClient           User?    @relation("MaybeByClient", fields: [maybeByClientId], references: [id])
+  acceptedInviteByCreator User?    @relation("AcceptedInviteByCreator", fields: [acceptedInviteByCreatorId], references: [id])
 
   @@unique([userId, campaignId])
 }
