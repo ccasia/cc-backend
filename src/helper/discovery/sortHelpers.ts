@@ -28,6 +28,26 @@ export const buildDiscoveryUserOrderBy = (
   sortDirection: DiscoverySortDirection,
 ) => {
   if (sortBy === 'followers') {
+    if (platform === 'all') {
+      return [
+        {
+          creator: {
+            instagramUser: {
+              followers_count: sortDirection,
+            },
+          },
+        },
+        {
+          creator: {
+            tiktokUser: {
+              follower_count: sortDirection,
+            },
+          },
+        },
+        { name: 'asc' as const },
+      ];
+    }
+
     if (platform === 'instagram') {
       return [
         {
