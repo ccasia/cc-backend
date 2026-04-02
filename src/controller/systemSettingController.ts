@@ -1,5 +1,5 @@
 import WhatsappSetting from '@services/whatsappSetting';
-import { Request, Response } from 'express';
+import { Request, response, Response } from 'express';
 
 export const getWhatsappSetting = async (req: Request, res: Response) => {
   try {
@@ -60,6 +60,19 @@ export const getInsight = async (req: Request, res: Response) => {
     const messageInsights = await whatsappSetting.getMessageInsight();
 
     return res.status(200).json(messageInsights);
+  } catch (error) {
+    return res.status(500).json(error);
+  }
+};
+
+export const toggleWhatsappSetting = async (req: Request, res: Response) => {
+  try {
+    const whatsapp = new WhatsappSetting();
+    await whatsapp.initialize();
+
+    const response = whatsapp.toggleSetting();
+
+    return res.status(200).json(response);
   } catch (error) {
     return res.status(500).json(error);
   }

@@ -60,6 +60,18 @@ class WhatsappSetting {
     return { success: true, message: 'Successfully updated.' };
   }
 
+  async toggleSetting() {
+    const existing = await prisma.whatsappSetting.findFirst();
+
+    await prisma.whatsappSetting.upsert({
+      where: { id: existing?.id ?? '' },
+      update: { isFeatureEnabled: !existing?.isFeatureEnabled },
+      create: { isFeatureEnabled: true },
+    });
+
+    return { success: true, message: 'Successfully updated.' };
+  }
+
   async sendVerificationCode(to: string) {
     if (!to) throw new Error('Phone number is required.');
 
