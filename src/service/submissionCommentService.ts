@@ -46,30 +46,37 @@ export const fetchCommentsForVideo = async (
     where.isClientDraft = false;
   }
 
-  // For role-filtered queries, also include forwarded comments (client comments
-  // that have been forwarded by an admin should be visible to creators)
-  if (roleFilter && Object.keys(roleFilter).length > 0) {
+  // Creator visibility: own comments always visible; others only if forwarded AND marked visible.
+  // This prevents admin comments from leaking to creators before "Send to Creator" is used.
+  if (filterInvisibleToCreator) {
+    where.OR = [
+      { user: { role: 'creator' } },
+      { isVisibleToCreator: true, forwardedByUserId: { not: null } },
+    ];
+  } else if (roleFilter && Object.keys(roleFilter).length > 0) {
+    // For role-filtered queries (client), also include forwarded comments (client comments
+    // that have been forwarded by an admin should be visible)
     where.OR = [{ user: { role: roleFilter } }, { forwardedByUserId: { not: null } }];
   }
 
-  let replyWhere: any =
-    roleFilter && Object.keys(roleFilter).length > 0
-      ? {
-          OR: [{ user: { role: roleFilter } }, { forwardedByUserId: { not: null } }],
-        }
-      : undefined;
+  let replyWhere: any = undefined;
+
+  if (filterInvisibleToCreator) {
+    replyWhere = {
+      OR: [
+        { user: { role: 'creator' } },
+        { isVisibleToCreator: true, forwardedByUserId: { not: null } },
+      ],
+    };
+  } else if (roleFilter && Object.keys(roleFilter).length > 0) {
+    replyWhere = {
+      OR: [{ user: { role: roleFilter } }, { forwardedByUserId: { not: null } }],
+    };
+  }
 
   // Also exclude client drafts from replies
   if (excludeClientDrafts) {
     replyWhere = replyWhere ? { ...replyWhere, isClientDraft: false } : { isClientDraft: false };
-  }
-
-  // Hide comments marked as not visible to creator
-  if (filterInvisibleToCreator) {
-    where.isVisibleToCreator = true;
-    replyWhere = replyWhere
-      ? { ...replyWhere, isVisibleToCreator: true }
-      : { isVisibleToCreator: true };
   }
 
   const comments = await prisma.submissionComment.findMany({
@@ -91,14 +98,21 @@ export const fetchCommentsForVideo = async (
     const orphanWhere: any = {
       submissionId,
       parentId: { not: null },
-      isVisibleToCreator: true,
-      parent: { isVisibleToCreator: false },
+      // Reply is visible to creator: own comment OR forwarded + marked visible
+      OR: [
+        { user: { role: 'creator' } },
+        { isVisibleToCreator: true, forwardedByUserId: { not: null } },
+      ],
+      // Parent is hidden from creator: not creator's own AND (not visible OR not forwarded)
+      parent: {
+        AND: [
+          { user: { role: { not: 'creator' } } },
+          { OR: [{ isVisibleToCreator: false }, { forwardedByUserId: null }] },
+        ],
+      },
     };
     if (videoId) orphanWhere.videoId = videoId;
     if (excludeClientDrafts) orphanWhere.isClientDraft = false;
-    if (roleFilter && Object.keys(roleFilter).length > 0) {
-      orphanWhere.OR = [{ user: { role: roleFilter } }, { forwardedByUserId: { not: null } }];
-    }
 
     const orphanedReplies = await prisma.submissionComment.findMany({
       where: orphanWhere,

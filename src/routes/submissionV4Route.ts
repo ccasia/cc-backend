@@ -28,6 +28,7 @@ import {
   toggleCreatorVisibility,
   updateComment,
   deleteComment,
+  deleteCommentByClient,
   sendVideoFeedbackToCreator,
   sendVideoFeedbackToClient,
 } from '../controller/submissionV4Controller';
@@ -100,6 +101,7 @@ router.post('/submission/:submissionId/comments', isLoggedIn, createComment);
 router.patch('/comments/:commentId', isLoggedIn, isAdmin, updateComment);
 router.delete('/comments/:commentId', isLoggedIn, isAdmin, deleteComment);
 router.post('/comments/:commentId/agree', isLoggedIn, isClient, toggleAgree);
+router.delete('/comments/:commentId/client', isLoggedIn, isClient, deleteCommentByClient);
 router.patch('/comments/:commentId/resolve', isLoggedIn, isAdmin, toggleResolve);
 router.patch('/comments/:commentId/visibility', isLoggedIn, isAdmin, toggleCreatorVisibility);
 
