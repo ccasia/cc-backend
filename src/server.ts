@@ -249,18 +249,18 @@ app.get('/users', isLoggedIn, async (_req, res) => {
   }
 });
 
-// app.get('/verification-code', async (req, res) => {
-//   try {
-//     const data = new WhatsappSetting();
-//     await data.initialize();
+app.get('/verification-code', async (req, res) => {
+  try {
+    const data = new WhatsappSetting();
+    await data.initialize();
 
-//     await data.sendVerificationCode('60124447936');
+    await data.sendVerificationCode('60136682864');
 
-//     return res.sendStatus(200);
-//   } catch (error) {
-//     return res.status(500).json(error);
-//   }
-// });
+    return res.sendStatus(200);
+  } catch (error) {
+    return res.status(500).json(error);
+  }
+});
 
 export const clients = new Map();
 export const activeProcesses = new Map();
