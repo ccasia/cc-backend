@@ -223,6 +223,7 @@ model ChildAccount {
 model Role {
   id          String       @id @unique @default(cuid())
   name        String
+  slug        String?      @unique
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
   admin       Admin[]
