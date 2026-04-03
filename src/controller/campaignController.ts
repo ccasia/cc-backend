@@ -3034,15 +3034,6 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
   const { userId } = req.params;
 
   const { cursor, limit = 10, search, status, excludeOwn, filterAdminId } = req.query;
-  console.log('getAllCampaignsByAdminId called with:', {
-    userId,
-    status,
-    search,
-    limit,
-    cursor,
-    excludeOwn,
-    filterAdminId,
-  });
 
   try {
     const user = await prisma.user.findUnique({
@@ -3073,7 +3064,12 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
         }
       : {};
 
-    if (user.admin?.mode === 'god' || user.admin?.role?.name === 'CSL' || user.admin?.mode === 'advanced') {
+    if (
+      user.admin?.mode === 'god' ||
+      user.admin?.role?.name === 'CSL' ||
+      user.admin?.mode === 'advanced' ||
+      user.admin?.role?.slug === 'sales_and_marketing'
+    ) {
       // Handle comma-separated status values
       let statusCondition = {};
       if (status) {
@@ -3370,8 +3366,7 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
     }
 
     // CSM Admin: on Completed tab show all completed campaigns, not just their own
-    const isCSMAdmin =
-      user.admin?.role?.name === 'CSM' || user.admin?.role?.name === 'Customer Success Manager';
+    const isCSMAdmin = user.admin?.role?.name === 'CSM' || user.admin?.role?.name === 'Customer Success Manager';
     const showAllCompletedForCSM = isCSMAdmin && status === 'COMPLETED';
 
     console.log('Non-superadmin user, status condition:', statusCondition);
@@ -9587,9 +9582,9 @@ export const markPCRAsReady = async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Error updating PCR ready status:', error);
-    return res.status(500).json({ 
+    return res.status(500).json({
       success: false,
-      message: 'Failed to update PCR ready status' 
+      message: 'Failed to update PCR ready status',
     });
   }
 };
