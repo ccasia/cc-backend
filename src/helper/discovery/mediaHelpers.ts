@@ -2,9 +2,10 @@ export const mapInstagramApiTopVideos = (videos: any[]) =>
   (videos || [])
     .slice()
     .sort((a: any, b: any) => {
-      const aLikes = Number(a?.like_count || 0);
-      const bLikes = Number(b?.like_count || 0);
-      return bLikes - aLikes;
+      const likesDiff = Number(b?.like_count || 0) - Number(a?.like_count || 0);
+      const bTime = b?.timestamp ? new Date(b.timestamp).getTime() : 0;
+      const aTime = a?.timestamp ? new Date(a.timestamp).getTime() : 0;
+      return likesDiff || bTime - aTime;
     })
     .slice(0, 3)
     .map((media: any) => ({
@@ -23,9 +24,10 @@ export const mapTikTokApiTopVideos = (videos: any[]) =>
   (videos || [])
     .slice()
     .sort((a: any, b: any) => {
-      const aLikes = Number(a?.like_count || 0);
-      const bLikes = Number(b?.like_count || 0);
-      return bLikes - aLikes;
+      const likesDiff = Number(b?.like_count || 0) - Number(a?.like_count || 0);
+      const bTime = b?.create_time ? Number(b.create_time) : 0;
+      const aTime = a?.create_time ? Number(a.create_time) : 0;
+      return likesDiff || bTime - aTime;
     })
     .slice(0, 3)
     .map((video: any) => ({
