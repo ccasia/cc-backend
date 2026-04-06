@@ -1228,14 +1228,34 @@ export const setPitchAgreement = async (req: Request, res: Response) => {
     }
 
     // Update pitch status and set agreement details
-    await prisma.pitch.update({
+    const updatedPitchAgreement = await prisma.pitch.update({
       where: { id: pitchId },
       data: {
         status: 'AGREEMENT_PENDING',
         amount: amount ? (typeof amount === 'string' ? parseInt(amount) : amount) : null,
         agreementTemplateId: agreementTemplateId,
+        outreachStatus: 'CONFIRMED',
+        outreachUpdatedAt: new Date(),
+        outreachUpdatedBy: adminId,
+      },
+      select: {
+        id: true,
+        outreachStatus: true,
+        outreachUpdatedAt: true,
+        outreachUpdatedBy: true,
       },
     });
+
+    if (io) {
+      io.to(pitch.campaignId).emit('v3:pitch:outreach-updated', {
+        pitchId: updatedPitchAgreement.id,
+        campaignId: pitch.campaignId,
+        outreachStatus: updatedPitchAgreement.outreachStatus,
+        outreachUpdatedAt: updatedPitchAgreement.outreachUpdatedAt,
+        outreachUpdatedBy: updatedPitchAgreement.outreachUpdatedBy,
+        updatedAt: new Date().toISOString(),
+      });
+    }
 
     // Create notification for creator
     await prisma.notification.create({
