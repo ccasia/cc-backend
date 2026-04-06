@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { FeedbackStatus, SubmissionStatus } from '@prisma/client';
+import { FeedbackStatus, PrismaClient, SubmissionStatus } from '@prisma/client';
 import {
   createV4SubmissionsForCreator,
   getV4Submissions,
@@ -22,7 +22,8 @@ import { saveCaptionToHistory } from '../utils/captionHistoryUtils';
 import { extractAndStoreSubmissionUrls } from '@services/submissionUrlService';
 import { scheduleInitialInsightFetch } from '@services/insightFetchService';
 import { checkShouldShowNPS } from '@services/npsFeedbackService';
-import { prisma } from '../../src/prisma/prisma';
+// import { prisma } from '../../src/prisma/prisma';
+const prisma = new PrismaClient();
 
 /**
  * Determine effective campaign origin for V4 status flow
