@@ -22,7 +22,7 @@ import { saveCaptionToHistory } from '../utils/captionHistoryUtils';
 import { extractAndStoreSubmissionUrls } from '@services/submissionUrlService';
 import { scheduleInitialInsightFetch } from '@services/insightFetchService';
 import { checkShouldShowNPS } from '@services/npsFeedbackService';
-// import { prisma } from '../../src/prisma/prisma';
+
 const prisma = new PrismaClient();
 
 /**
