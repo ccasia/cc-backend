@@ -7123,6 +7123,41 @@ export const sendAgreement = async (req: Request, res: Response) => {
       });
     }
 
+    await prisma.pitch.updateMany({
+      where: {
+        userId: isUserExist.id,
+        campaignId,
+      },
+      data: {
+        outreachStatus: 'CONFIRMED',
+        outreachUpdatedAt: new Date(),
+        outreachUpdatedBy: adminId,
+      },
+    });
+
+    // Real-time SWR refresh for pitch lists (usePitchSocket listens for this)
+    if (io) {
+      const pitchForSocket = await prisma.pitch.findFirst({
+        where: { userId: isUserExist.id, campaignId },
+        select: {
+          id: true,
+          outreachStatus: true,
+          outreachUpdatedAt: true,
+          outreachUpdatedBy: true,
+        },
+      });
+      if (pitchForSocket) {
+        io.to(campaignId).emit('v3:pitch:outreach-updated', {
+          pitchId: pitchForSocket.id,
+          campaignId,
+          outreachStatus: pitchForSocket.outreachStatus,
+          outreachUpdatedAt: pitchForSocket.outreachUpdatedAt,
+          outreachUpdatedBy: pitchForSocket.outreachUpdatedBy,
+          updatedAt: new Date().toISOString(),
+        });
+      }
+    }
+
     if (campaign.campaignCredits) {
       const sentAgreements = await prisma.creatorAgreement.findMany({
         where: { campaignId, isSent: true },
