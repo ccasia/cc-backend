@@ -23,6 +23,8 @@ import { extractAndStoreSubmissionUrls } from '@services/submissionUrlService';
 import { scheduleInitialInsightFetch } from '@services/insightFetchService';
 import { checkShouldShowNPS } from '@services/npsFeedbackService';
 
+const prisma = new PrismaClient();
+
 /**
  * Determine effective campaign origin for V4 status flow
  * V4 campaigns with client managers should follow CLIENT flow even if origin is ADMIN
@@ -215,7 +217,7 @@ const updateSubmissionStatusBasedOnContent = async (submissionId: string) => {
   }
 };
 
-const prisma = new PrismaClient();
+// const prisma = new PrismaClient();
 
 /**
  * Create V4 submissions when creator is approved
@@ -512,12 +514,11 @@ export const approveV4Submission = async (req: Request, res: Response) => {
 
     // Update only the latest video (not all video versions) to avoid resurrecting old archived videos
     if (submission.video && submission.video.length > 0) {
-      const latestVideo = (videoId
-        ? submission.video.find((v: any) => v.id === videoId)
-        : null)
-        || [...submission.video].sort(
-            (a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-          )[0];
+      const latestVideo =
+        (videoId ? submission.video.find((v: any) => v.id === videoId) : null) ||
+        [...submission.video].sort(
+          (a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+        )[0];
 
       if (latestVideo) {
         updates.push(
@@ -895,12 +896,11 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
 
     // Update only the latest video (not all video versions) to avoid resurrecting old archived videos
     if (submission.video && submission.video.length > 0) {
-      const latestVideo = (bodyVideoId
-        ? submission.video.find((v: any) => v.id === bodyVideoId)
-        : null)
-        || [...submission.video].sort(
-            (a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-          )[0];
+      const latestVideo =
+        (bodyVideoId ? submission.video.find((v: any) => v.id === bodyVideoId) : null) ||
+        [...submission.video].sort(
+          (a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+        )[0];
 
       if (latestVideo) {
         deadline = latestVideo.feedbackDeadline || null;
