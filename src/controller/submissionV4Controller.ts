@@ -891,6 +891,7 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
 
     // Emit socket event for real-time updates
     const io = req.app.get('io');
+
     if (io) {
       io.to(submission.campaign.id).emit('v4:submission:updated', {
         submissionId,

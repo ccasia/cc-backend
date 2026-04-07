@@ -59,6 +59,8 @@ export const getInsight = async (req: Request, res: Response) => {
 
     const messageInsights = await whatsappSetting.getMessageInsight();
 
+    console.log(messageInsights);
+
     return res.status(200).json(messageInsights);
   } catch (error) {
     return res.status(500).json(error);

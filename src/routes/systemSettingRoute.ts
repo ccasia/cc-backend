@@ -23,7 +23,7 @@ router.use(isLoggedIn);
 
 router.get('/whatsapp', getWhatsappSetting);
 
-router.get('/whatsapp/insight', limiter, getInsight);
+router.get('/whatsapp-insight', limiter, getInsight);
 
 router.post('/whatsapp', limiter, updateWhatsappSetting);
 

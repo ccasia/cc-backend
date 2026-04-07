@@ -15,7 +15,7 @@ class WhatsappSetting {
 
   get #initialized(): WhatsappSettingType {
     if (!this.#setting) {
-      throw new Error('WhatsApp setting is not initialized. Call initialize() first.');
+      throw new Error('Whatsapp setting is not initialized. Call initialize() first.');
     }
     return this.#setting;
   }
@@ -72,12 +72,12 @@ class WhatsappSetting {
     return { success: true, message: 'Successfully updated.' };
   }
 
-  async sendVerificationCode(to: string) {
+  async sendVerificationCode(to: string, token: string) {
     if (!to) throw new Error('Phone number is required.');
 
     await whatsappQueue.add(
       'verification-code',
-      { to, settings: this.#initialized, code: '123123' },
+      { to, settings: this.#initialized, code: token },
       { removeOnComplete: true },
     );
 

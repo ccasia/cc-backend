@@ -42,9 +42,10 @@ import { TokenSet } from 'xero-node';
 import { prisma } from './prisma/prisma';
 import { xero } from '@configs/xero';
 import { logChange } from '@services/campaignServices';
-// import connection, { subClient } from '@configs/redis';
+
 import { users } from '@utils/activeUsers';
-import WhatsappSetting from '@services/whatsappSetting';
+
+import { OTPTypes } from '@/types/index';
 
 Ffmpeg.setFfmpegPath(FfmpegPath.path);
 
@@ -115,6 +116,14 @@ declare module 'express-session' {
     xeroActiveTenants: any;
     isImpersonating?: boolean;
     impersonatingBy?: { userId: string; name: string } | null;
+    otp: OTPTypes | undefined;
+    pendingRegistration:
+      | {
+          phone: string;
+          verified: boolean;
+          authType: 'otp' | 'email';
+        }
+      | undefined;
   }
 }
 
@@ -246,19 +255,6 @@ app.get('/users', isLoggedIn, async (_req, res) => {
     res.send(users);
   } catch (error) {
     //console.log(error);
-  }
-});
-
-app.get('/verification-code', async (req, res) => {
-  try {
-    const data = new WhatsappSetting();
-    await data.initialize();
-
-    await data.sendVerificationCode('60136682864');
-
-    return res.sendStatus(200);
-  } catch (error) {
-    return res.status(500).json(error);
   }
 });
 
