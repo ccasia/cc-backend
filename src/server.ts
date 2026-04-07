@@ -42,8 +42,10 @@ import { TokenSet } from 'xero-node';
 import { prisma } from './prisma/prisma';
 import { xero } from '@configs/xero';
 import { logChange } from '@services/campaignServices';
-import connection, { subClient } from '@configs/redis';
+
 import { users } from '@utils/activeUsers';
+
+import { OTPTypes } from '@/types/index';
 
 Ffmpeg.setFfmpegPath(FfmpegPath.path);
 
@@ -114,6 +116,14 @@ declare module 'express-session' {
     xeroActiveTenants: any;
     isImpersonating?: boolean;
     impersonatingBy?: { userId: string; name: string } | null;
+    otp: OTPTypes | undefined;
+    pendingRegistration:
+      | {
+          phone: string;
+          verified: boolean;
+          authType: 'otp' | 'email';
+        }
+      | undefined;
   }
 }
 
@@ -480,6 +490,20 @@ app.post('/sendMessage', async (req: Request, res: Response) => {
     if (con) await con.close();
     if (amqp) await amqp.close();
   }
+});
+
+app.get('/report/:campaignId', async (req, res) => {
+  const campaignId = req.params.campaignId;
+
+  const data = await prisma.insightSnapshot.findMany({
+    where: {
+      campaignId: campaignId,
+    },
+  });
+
+  const dbViews = data.reduce((s, r) => s + r.totalViews, 0);
+
+  return res.status(200).json(dbViews);
 });
 
 if (require.main === module) {

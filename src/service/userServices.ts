@@ -229,7 +229,7 @@ export const getUser = async (id: string) => {
     });
 
     return user;
-  } catch (error) {
+  } catch (error: any) {
     throw new Error(error);
   }
 };

@@ -48,8 +48,6 @@ async function collectCampaignSummary(campaignId: string, ext?: ExternalMetrics[
     where: { campaignId },
   });
 
-  // console.log(snapshots);
-
   const dbViews = snapshots.reduce((s, r) => s + r.totalViews, 0);
   const dbLikes = snapshots.reduce((s, r) => s + r.totalLikes, 0);
   const dbComments = snapshots.reduce((s, r) => s + r.totalComments, 0);

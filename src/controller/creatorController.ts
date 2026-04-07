@@ -5,7 +5,10 @@ import { uploadAgreementForm, uploadProfileImage } from '@configs/cloudStorage.c
 import { Title, saveNotification } from './notificationController';
 import { clients, io } from '../server';
 import { updateInvoices } from '@services/invoiceService';
-import { exportCreatorsToSpreadsheet } from '@services/creatorsSpreadsheetService';
+import {
+  exportCreatorsToSpreadsheet,
+  exportMediaKitStatusToSpreadsheet,
+} from '@services/creatorsSpreadsheetService';
 import { createKanbanBoard } from './kanbanController';
 import { createCampaignCreatorSpreadSheet } from '@services/google_sheets/sheets';
 import {
@@ -891,13 +894,23 @@ export const updateCreatorPreference = async (req: Request, res: Response) => {
 
 export const exportCreatorsToSheet = async (req: Request, res: Response) => {
   try {
-    // Call the service function to export creators to spreadsheet
+    // Call both service functions to export creators and media kit status to spreadsheet
+    console.log('Starting export to spreadsheet...');
+    
+    // Export main creator data
+    console.log('Exporting main creator data...');
     const spreadsheetUrl = await exportCreatorsToSpreadsheet();
+    
+    // Export media kit status data to a separate sheet
+    console.log('Exporting media kit status data...');
+    await exportMediaKitStatusToSpreadsheet();
+
+    console.log('All exports completed successfully');
 
     // Return the URL of the spreadsheet
     return res.status(200).json({
       success: true,
-      message: 'Creators exported to spreadsheet successfully',
+      message: 'Creators and Media Kit Status exported to spreadsheet successfully',
       url: spreadsheetUrl,
     });
   } catch (error) {

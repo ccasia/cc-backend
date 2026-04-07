@@ -94,7 +94,9 @@ export const getChildAccounts = async (req: Request, res: Response) => {
       },
     });
 
-    return res.status(200).json(childAccounts);
+    const sanitizedData = childAccounts.map((ca) => ({ ...ca, password: null }));
+
+    return res.status(200).json(sanitizedData);
   } catch (error) {
     console.error('Error fetching child accounts:', error);
     return res.status(500).json({ message: 'Internal server error' });

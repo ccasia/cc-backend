@@ -1476,21 +1476,6 @@ export const getPitchesV3 = async (req: Request, res: Response) => {
       },
     });
 
-    console.log('🔍 V3 Pitches Debug:', {
-      campaignId,
-      requestedStatus: status,
-      userRole: user.role,
-      totalPitches: pitches.length,
-      v4Pitches: pitches.filter((p) => p.campaign?.submissionVersion === 'v4').length,
-      v2Pitches: pitches.filter((p) => p.campaign?.submissionVersion === 'v2').length,
-      pitchStatuses: pitches.map((p) => ({
-        id: p.id,
-        status: p.status,
-        campaignOrigin: p.campaign?.origin,
-        submissionVersion: p.campaign?.submissionVersion,
-      })),
-    });
-
     const transformedPitches = pitches
       .filter((pitch) => {
         const normalizedStatus = normalizePitchStatusForV4(pitch);
@@ -1522,20 +1507,26 @@ export const getPitchesV3 = async (req: Request, res: Response) => {
             displayStatus = 'SENT_TO_CLIENT_WITH_COMMENTS';
           } else if (normalizedStatus === 'INVITED') {
             displayStatus = 'SENT_TO_CLIENT';
+          } else if (normalizedStatus === 'INVITED') {
+            displayStatus = 'SENT_TO_CLIENT';
           } else {
             displayStatus = normalizedStatus;
           }
         } else if (user.role === 'client') {
           if (normalizedStatus === 'SENT_TO_CLIENT' || normalizedStatus === 'INVITED') {
-            displayStatus = 'PENDING_REVIEW';
-          } else if (normalizedStatus === 'AGREEMENT_PENDING' || normalizedStatus === 'AGREEMENT_SUBMITTED') {
-            displayStatus = 'APPROVED';
+            if (normalizedStatus === 'SENT_TO_CLIENT' || normalizedStatus === 'INVITED') {
+              displayStatus = 'PENDING_REVIEW';
+            } else if (normalizedStatus === 'AGREEMENT_PENDING' || normalizedStatus === 'AGREEMENT_SUBMITTED') {
+              displayStatus = 'APPROVED';
+            }
           }
         } else if (user.role === 'creator') {
           if (normalizedStatus === 'SENT_TO_CLIENT' || normalizedStatus === 'INVITED') {
-            displayStatus = 'PENDING_REVIEW';
-          } else if (normalizedStatus === 'AGREEMENT_PENDING' || normalizedStatus === 'AGREEMENT_SUBMITTED') {
-            displayStatus = 'APPROVED';
+            if (normalizedStatus === 'SENT_TO_CLIENT' || normalizedStatus === 'INVITED') {
+              displayStatus = 'PENDING_REVIEW';
+            } else if (normalizedStatus === 'AGREEMENT_PENDING' || normalizedStatus === 'AGREEMENT_SUBMITTED') {
+              displayStatus = 'APPROVED';
+            }
           }
         }
 

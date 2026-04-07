@@ -7,6 +7,18 @@ const prisma = new PrismaClient();
 // Define the expected headers for the creator spreadsheet
 const CREATOR_HEADERS = ['Name', 'Email', 'Phone Number', 'Country', 'Date Registered', 'Social Handle'];
 
+// Define the expected headers for the media kit status spreadsheet
+const MEDIA_KIT_HEADERS = [
+  'Name',
+  'Email',
+  'Phone Number',
+  'Country',
+  'Media Kit Status',
+  'TikTok Connected',
+  'Instagram Connected',
+  'Date Registered',
+];
+
 // Rate limiting constants
 const BATCH_SIZE = 500; // Process users in batches
 const DELAY_BETWEEN_BATCHES = 200;
@@ -377,3 +389,292 @@ function arraysEqual(a: any[], b: any[]): boolean {
   }
   return true;
 }
+
+/**
+ * Determine Media Kit Status based on creator data
+ */
+function getMediaKitStatus(
+  mediaKitMandatory: boolean | null,
+  isTiktokConnected: boolean | null,
+  isFacebookConnected: boolean | null,
+): string {
+  const isConnected = isTiktokConnected || isFacebookConnected;
+  if (isConnected) return 'Connected';
+  if (mediaKitMandatory) return 'Marked';
+  return 'Unmarked';
+}
+
+/**
+ * Batch update rows for Media Kit sheet using the Sheets API directly
+ */
+async function batchUpdateMediaKitSpreadsheet(
+  spreadsheetId: string,
+  sheetName: string,
+  updates: { row: number; values: string[] }[],
+) {
+  if (updates.length === 0) return;
+
+  try {
+    const { JWT } = await import('google-auth-library');
+
+    const serviceAccountAuth = new JWT({
+      email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
+      key: process.env.GOOGLE_PRIVATE_KEY,
+      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+    });
+
+    const { token } = await serviceAccountAuth.getAccessToken();
+
+    const requests = updates.map((update) => ({
+      range: `'${sheetName}'!A${update.row}:H${update.row}`,
+      values: [update.values],
+    }));
+
+    const chunks = [];
+    for (let i = 0; i < requests.length; i += 100) {
+      chunks.push(requests.slice(i, i + 100));
+    }
+
+    console.log(`Updating ${updates.length} media kit rows in ${chunks.length} chunks`);
+
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+
+      await withRetry(async () => {
+        const response = await fetch(
+          `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              valueInputOption: 'USER_ENTERED',
+              data: chunk,
+            }),
+          },
+        );
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(`Google API error - [${response.status}] ${errorData.error?.message || response.statusText}`);
+        }
+
+        return response.json();
+      });
+
+      console.log(`Completed media kit chunk ${i + 1}/${chunks.length}`);
+
+      if (i < chunks.length - 1) {
+        await sleep(500);
+      }
+    }
+
+    console.log(`Successfully updated ${updates.length} media kit rows`);
+  } catch (error) {
+    console.error('Error in media kit batch update:', error);
+    throw error;
+  }
+}
+
+/**
+ * Export Media Kit Status data to a separate sheet in the same spreadsheet
+ */
+export const exportMediaKitStatusToSpreadsheet = async (): Promise<string> => {
+  try {
+    console.log('Starting export of Media Kit Status to spreadsheet');
+
+    const SPREADSHEET_ID = process.env.REGISTERED_CREATORS_SPREADSHEET_ID;
+
+    if (!SPREADSHEET_ID) {
+      console.error('Missing REGISTERED_CREATORS_SPREADSHEET_ID environment variable');
+      throw new Error('Missing REGISTERED_CREATORS_SPREADSHEET_ID environment variable');
+    }
+
+    console.log(`Using spreadsheet ID: ${SPREADSHEET_ID}`);
+
+    // Connect to the spreadsheet
+    const doc = await accessGoogleSheetAPI(SPREADSHEET_ID);
+    await doc.loadInfo();
+    console.log(`Connected to spreadsheet: ${doc.title}`);
+
+    // Get or create the Media Kit Status sheet
+    let sheet;
+    const sheetName = 'Media Kit Status';
+
+    if (doc.sheetsByTitle[sheetName]) {
+      sheet = doc.sheetsByTitle[sheetName];
+      console.log(`Found existing sheet: ${sheetName}`);
+    } else {
+      console.log(`Creating new sheet: ${sheetName}`);
+      sheet = await doc.addSheet({
+        title: sheetName,
+        headerValues: MEDIA_KIT_HEADERS,
+      });
+      console.log(`Created new sheet: ${sheetName}`);
+    }
+
+    // Load header row
+    await sheet.loadHeaderRow();
+    console.log('Sheet header row loaded');
+
+    // Ensure headers are correct
+    try {
+      const headers = sheet.headerValues;
+      console.log('Current headers:', headers);
+
+      if (!headers || headers.length === 0 || !arraysEqual(headers, MEDIA_KIT_HEADERS)) {
+        await sheet.setHeaderRow(MEDIA_KIT_HEADERS);
+        console.log('Headers updated successfully');
+      }
+    } catch (headerError) {
+      console.error('Error checking headers:', headerError);
+      await sheet.setHeaderRow(MEDIA_KIT_HEADERS);
+      console.log('Headers set successfully');
+    }
+
+    // Fetch all existing rows from the spreadsheet
+    console.log('Loading existing spreadsheet data...');
+    const existingRows = await sheet.getRows();
+    console.log(`Found ${existingRows.length} existing records in spreadsheet`);
+
+    // Create a map of existing data for fast lookup
+    const existingDataMap = new Map();
+    const rowsToUpdate: { row: number; values: string[] }[] = [];
+
+    for (let i = 0; i < existingRows.length; i++) {
+      const row = existingRows[i];
+      const email = row.get('Email')?.trim().toLowerCase();
+
+      if (email) {
+        existingDataMap.set(email, {
+          row: i + 2,
+          existingRow: row,
+        });
+      }
+    }
+
+    console.log(`Found ${existingDataMap.size} unique emails in spreadsheet`);
+
+    // Fetch all creators from the database
+    console.log('Fetching creators from database...');
+    const totalCreators = await prisma.user.count({
+      where: { role: 'creator' },
+    });
+
+    console.log(`Total creators in database: ${totalCreators}`);
+
+    const newRowsToAdd: Record<string, string>[] = [];
+    let processedCount = 0;
+    const dbBatchSize = 500;
+
+    for (let offset = 0; offset < totalCreators; offset += dbBatchSize) {
+      const users = await prisma.user.findMany({
+        where: {
+          role: 'creator',
+        },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          phoneNumber: true,
+          country: true,
+          createdAt: true,
+          mediaKitMandatory: true,
+          creator: {
+            select: {
+              isTiktokConnected: true,
+              isFacebookConnected: true,
+            },
+          },
+        },
+        skip: offset,
+        take: dbBatchSize,
+      });
+
+      console.log(`Processing batch ${Math.floor(offset / dbBatchSize) + 1}: ${users.length} users`);
+
+      for (const user of users) {
+        const email = user.email?.trim().toLowerCase();
+        if (!email) continue;
+
+        const mediaKitStatus = getMediaKitStatus(
+          user.mediaKitMandatory,
+          user.creator?.isTiktokConnected ?? false,
+          user.creator?.isFacebookConnected ?? false,
+        );
+
+        const tiktokConnected = user.creator?.isTiktokConnected ? 'Yes' : 'No';
+        const instagramConnected = user.creator?.isFacebookConnected ? 'Yes' : 'No';
+
+        const rowData = [
+          user.name || '',
+          user.email || '',
+          user.phoneNumber || '',
+          user.country || '',
+          mediaKitStatus,
+          tiktokConnected,
+          instagramConnected,
+          formatDateTimeMY(user.createdAt),
+        ];
+
+        const existingData = existingDataMap.get(email);
+
+        if (existingData) {
+          // Always update existing rows to reflect current status
+          rowsToUpdate.push({
+            row: existingData.row,
+            values: rowData,
+          });
+        } else {
+          // New user to add
+          newRowsToAdd.push({
+            Name: user.name || '',
+            Email: user.email || '',
+            'Phone Number': user.phoneNumber || '',
+            Country: user.country || '',
+            'Media Kit Status': mediaKitStatus,
+            'TikTok Connected': tiktokConnected,
+            'Instagram Connected': instagramConnected,
+            'Date Registered': formatDateTimeMY(user.createdAt),
+          });
+        }
+
+        processedCount++;
+      }
+
+      if (offset + dbBatchSize < totalCreators) {
+        await sleep(100);
+      }
+    }
+
+    console.log(`Processed ${processedCount} creators from database`);
+    console.log(`Found ${rowsToUpdate.length} rows to update`);
+    console.log(`Found ${newRowsToAdd.length} new rows to add`);
+
+    // Batch update existing rows
+    if (rowsToUpdate.length > 0) {
+      console.log('Starting batch update of existing media kit rows...');
+      await batchUpdateMediaKitSpreadsheet(SPREADSHEET_ID, sheetName, rowsToUpdate);
+    }
+
+    // Batch add new rows
+    if (newRowsToAdd.length > 0) {
+      console.log('Starting batch add of new media kit rows...');
+      await batchAddRows(SPREADSHEET_ID, sheetName, newRowsToAdd);
+    }
+
+    console.log(`Media Kit Status export completed successfully!`);
+    console.log(`- Updated: ${rowsToUpdate.length} existing records`);
+    console.log(`- Added: ${newRowsToAdd.length} new records`);
+    console.log(`- Total processed: ${processedCount} creators`);
+
+    const spreadsheetUrl = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}`;
+    console.log(`Spreadsheet URL: ${spreadsheetUrl}`);
+    return spreadsheetUrl;
+  } catch (error) {
+    console.error('Error in exportMediaKitStatusToSpreadsheet:', error);
+    throw new Error(`Failed to export Media Kit Status: ${error.message}`);
+  }
+};

@@ -23,7 +23,7 @@ model User {
   country                 String?             @db.VarChar(100)
   city                    String?             @db.VarChar(100)
   phoneNumber             String?             @db.VarChar(100)
-  updatedAt               DateTime            @updatedAt
+  updatedAt               DateTime?           @updatedAt
   status                  Status              @default(pending)
   eventId                 String?
   role                    RoleEnum
@@ -91,9 +91,14 @@ model User {
   createdLogistics  Logistic[]      @relation("CreatedLogistics")
   reportedIssues    LogisticIssue[]
 
+  twoFactorSecret String?
+
   userFlow      UserFlow[]
   activatedAt   DateTime?
   passwordSetAt DateTime?
+  aiModel       AiModel?
+
+  @@index([phoneNumber])
 }
 
 model EmailVerification {
@@ -224,6 +229,7 @@ model ChildAccount {
 model Role {
   id          String       @id @unique @default(cuid())
   name        String
+  slug        String?      @unique
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
   admin       Admin[]
@@ -1242,8 +1248,8 @@ model Video {
   createdAt    DateTime       @default(now())
   updatedAt    DateTime?      @updatedAt
 
-  feedbackDeadline    DateTime?
-  feedbackSentByName  String?
+  feedbackDeadline   DateTime?
+  feedbackSentByName String?
 
   // Individual feedback fields
   feedback   String? // Individual feedback message
@@ -1421,10 +1427,10 @@ model SubmissionComment {
   parent   SubmissionComment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
   replies  SubmissionComment[] @relation("CommentReplies")
 
-  agreedBy      CommentAgreement[]
-  feedback      Feedback?
-  isClientDraft      Boolean @default(false)
-  isVisibleToCreator Boolean @default(true)
+  agreedBy           CommentAgreement[]
+  feedback           Feedback?
+  isClientDraft      Boolean            @default(false)
+  isVisibleToCreator Boolean            @default(true)
 
   forwardedByUserId String?
   forwardedBy       User?   @relation("ForwardedComments", fields: [forwardedByUserId], references: [id], onDelete: SetNull)
@@ -2194,21 +2200,6 @@ model CreditTier {
   @@index([minFollowers])
 }
 
-model AiModel {
-  id String @id @unique @default(cuid())
-
-  model           String
-  temperature     Float
-  systemPrompt    Json?
-  maxOutputTokens Int
-  apiKey          String
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@map("ai_model")
-}
-
 // NPS Feedback
 enum NpsUserType {
   CLIENT
@@ -2296,4 +2287,52 @@ model SubscriptionHistory {
   createdAt DateTime @default(now())
 
   actionByUserId String?
+}
+
+model AiModel {
+  id String @id @unique @default(cuid())
+
+  model           String
+  temperature     Float
+  systemPrompt    Json?
+  maxOutputTokens Int
+  apiKey          String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId String? @unique
+  user   User?   @relation(references: [id], fields: [userId])
+
+  @@map("ai_model")
+}
+
+model WhatsappSetting {
+  id String @id @unique @default(cuid())
+
+  accessToken       String?
+  businessAccountId String?
+  phoneNumberId     String?
+  templateName      String?
+
+  isFeatureEnabled Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("whatsapp-setting")
+}
+
+model VerificationCode {
+  id String @id @unique @default(cuid())
+
+  verificationCode String
+  accessToken      String
+  phoneNumber      String
+  isUsed           Boolean @default(false)
+  attempts         Int     @default(0)
+
+  expiredAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

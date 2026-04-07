@@ -4,6 +4,7 @@ import {
   disconnectXero,
   endImpersonatingSession,
   getAllAdmins,
+  impersonateClient,
   impersonateCreator,
 } from '@controllers/adminController';
 import { needPermissions } from '@middlewares/needPermissions';
@@ -18,6 +19,8 @@ router.get('/getAllAdmins', isLoggedIn, getAllAdmins);
 router.patch('/xero/disconnect', isLoggedIn, disconnectXeroIntegration);
 
 router.post('/impersonate-creator', isLoggedIn, impersonateCreator);
+
+router.post('/impersonate-client', isLoggedIn, impersonateClient);
 
 router.post('/impersonate-creator/end', isLoggedIn, endImpersonatingSession);
 

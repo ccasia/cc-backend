@@ -1,8 +1,5 @@
 import { decryptToken } from '@helper/encrypt';
-import {
-  getInstagramMedias,
-  getTikTokMediaObject,
-} from '@services/socialMediaService';
+import { getInstagramMedias, getTikTokMediaObject } from '@services/socialMediaService';
 import {
   getLatestInstagramCaptionsForMatch,
   getLatestTikTokTitlesForMatch,
@@ -14,20 +11,20 @@ import { getCreatorTopVideosFromCacheOrFetch } from '@helper/discovery/topVideos
 
 export type TopVideosByCreator = Map<string, any[]>;
 
-export type PlatformApiStats = {
+export interface PlatformApiStats {
   success: number;
   failed: number;
   rateLimitedSkips: number;
   dbFallback: number;
   cacheHits: number;
-};
+}
 
-export type DiscoveryApiSummary = {
+export interface DiscoveryApiSummary {
   context: 'content-search' | 'default';
   processedCreators: number;
   instagram: PlatformApiStats;
   tiktok: PlatformApiStats;
-};
+}
 
 const createPlatformApiStats = (): PlatformApiStats => ({
   success: 0,

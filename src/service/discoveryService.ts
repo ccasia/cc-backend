@@ -1,17 +1,17 @@
 import { PrismaClient } from '@prisma/client';
 import { decryptToken, encryptToken } from '@helper/encrypt';
-import { refreshTikTokToken } from '@services/socialMediaService';
+
 import {
   createDiscoveryApiSummary,
   resolvePlatformContentMatchesFromApi,
 } from '@helper/discovery/platformContentResolver';
+
 import { buildConnectedSelect, buildConnectedWhere } from '@helper/discovery/queryBuilders';
-import {
-  hydrateMissingInstagramData,
-  hydrateMissingTikTokData,
-  TopVideosByCreator,
-} from '@helper/discovery/hydration';
+
+import { hydrateMissingInstagramData, hydrateMissingTikTokData, TopVideosByCreator } from '@helper/discovery/hydration';
+
 import { clients, io } from '../server';
+
 import {
   extractHashtags,
   normalizeKeywordTerm,
@@ -19,6 +19,7 @@ import {
   normalizePlatform,
   PlatformFilter,
 } from '@helper/discovery/queryHelpers';
+
 import {
   buildDiscoveryUserOrderBy,
   DiscoverySortBy,
@@ -26,18 +27,174 @@ import {
   normalizeDiscoverySort,
   sortDiscoveryRows,
 } from '@helper/discovery/sortHelpers';
+
 import { mapPronounsToGender } from '@utils/mapPronounsToGender';
 import { calculateAge } from '@utils/calculateAge';
 import { saveNotification } from '@controllers/notificationController';
+import { refreshTikTokToken } from './socialMediaService';
 
 const prisma = new PrismaClient();
 const prismaAny = prisma as any;
 
+const DISCOVERY_API_CACHE_TTL_MS = Number(process.env.DISCOVERY_API_CACHE_TTL_MS || 5 * 60 * 1000);
+const DISCOVERY_API_CACHE_MAX_ENTRIES = Number(process.env.DISCOVERY_API_CACHE_MAX_ENTRIES || 2000);
 const DISCOVERY_DEBUG_ENABLED = process.env.DISCOVERY_DEBUG === 'true';
+const DISCOVERY_CONTENT_SEARCH_LIVE_API_FALLBACK = process.env.DISCOVERY_CONTENT_SEARCH_LIVE_API_FALLBACK === 'true';
+const DISCOVERY_CONTENT_QUERY_CACHE_TTL_MS = Number(process.env.DISCOVERY_CONTENT_QUERY_CACHE_TTL_MS || 30 * 1000);
+const DISCOVERY_CONTENT_QUERY_CACHE_MAX_ENTRIES = Number(process.env.DISCOVERY_CONTENT_QUERY_CACHE_MAX_ENTRIES || 200);
+
+const discoveryApiResponseCache = new Map<string, { expiresAt: number; value: any }>();
+const discoveryApiInFlightRequests = new Map<string, Promise<any>>();
+const discoveryContentQueryCache = new Map<string, { expiresAt: number; value: any }>();
+const discoveryApiCacheStats = {
+  hits: 0,
+  misses: 0,
+  inflightReuses: 0,
+};
+
+const pruneDiscoveryContentQueryCache = () => {
+  if (discoveryContentQueryCache.size <= DISCOVERY_CONTENT_QUERY_CACHE_MAX_ENTRIES) {
+    return;
+  }
+
+  const now = Date.now();
+  for (const [key, entry] of discoveryContentQueryCache.entries()) {
+    if (entry.expiresAt <= now) {
+      discoveryContentQueryCache.delete(key);
+    }
+  }
+
+  if (discoveryContentQueryCache.size <= DISCOVERY_CONTENT_QUERY_CACHE_MAX_ENTRIES) {
+    return;
+  }
+
+  const entries = Array.from(discoveryContentQueryCache.entries()).sort((a, b) => a[1].expiresAt - b[1].expiresAt);
+  const excess = discoveryContentQueryCache.size - DISCOVERY_CONTENT_QUERY_CACHE_MAX_ENTRIES;
+  for (let index = 0; index < excess; index += 1) {
+    const key = entries[index]?.[0];
+    if (key) {
+      discoveryContentQueryCache.delete(key);
+    }
+  }
+};
+
+const getCachedContentQueryResult = (key: string) => {
+  const cached = discoveryContentQueryCache.get(key);
+  if (!cached) return null;
+
+  if (cached.expiresAt <= Date.now()) {
+    discoveryContentQueryCache.delete(key);
+    return null;
+  }
+
+  return cached.value;
+};
+
+const setCachedContentQueryResult = (key: string, value: any) => {
+  discoveryContentQueryCache.set(key, {
+    expiresAt: Date.now() + DISCOVERY_CONTENT_QUERY_CACHE_TTL_MS,
+    value,
+  });
+  pruneDiscoveryContentQueryCache();
+};
+
+interface PlatformApiStats {
+  success: number;
+  failed: number;
+  rateLimitedSkips: number;
+  dbFallback: number;
+}
+
+interface DiscoveryApiSummary {
+  context: 'content-search' | 'default';
+  processedCreators: number;
+  instagram: PlatformApiStats;
+  tiktok: PlatformApiStats;
+}
+
+const createPlatformApiStats = (): PlatformApiStats => ({
+  success: 0,
+  failed: 0,
+  rateLimitedSkips: 0,
+  dbFallback: 0,
+});
+
+const mergeDiscoveryApiSummary = (target: DiscoveryApiSummary, source: DiscoveryApiSummary) => {
+  target.processedCreators += source.processedCreators;
+  target.instagram.success += source.instagram.success;
+  target.instagram.failed += source.instagram.failed;
+  target.instagram.rateLimitedSkips += source.instagram.rateLimitedSkips;
+  target.instagram.dbFallback += source.instagram.dbFallback;
+  target.tiktok.success += source.tiktok.success;
+  target.tiktok.failed += source.tiktok.failed;
+  target.tiktok.rateLimitedSkips += source.tiktok.rateLimitedSkips;
+  target.tiktok.dbFallback += source.tiktok.dbFallback;
+};
 
 const logDiscoveryDebug = (message: string, payload: Record<string, any>) => {
   if (!DISCOVERY_DEBUG_ENABLED) return;
   console.log(`[Discovery][Debug] ${message}`, payload);
+};
+
+const pruneDiscoveryApiCache = () => {
+  if (discoveryApiResponseCache.size <= DISCOVERY_API_CACHE_MAX_ENTRIES) {
+    return;
+  }
+
+  const now = Date.now();
+  for (const [key, entry] of discoveryApiResponseCache.entries()) {
+    if (entry.expiresAt <= now) {
+      discoveryApiResponseCache.delete(key);
+    }
+  }
+
+  if (discoveryApiResponseCache.size <= DISCOVERY_API_CACHE_MAX_ENTRIES) {
+    return;
+  }
+
+  const entries = Array.from(discoveryApiResponseCache.entries()).sort((a, b) => a[1].expiresAt - b[1].expiresAt);
+  const excess = discoveryApiResponseCache.size - DISCOVERY_API_CACHE_MAX_ENTRIES;
+  for (let index = 0; index < excess; index += 1) {
+    const key = entries[index]?.[0];
+    if (key) {
+      discoveryApiResponseCache.delete(key);
+    }
+  }
+};
+
+const getCachedDiscoveryApiResponse = async <T>(key: string, fetcher: () => Promise<T>): Promise<T> => {
+  const now = Date.now();
+  const cached = discoveryApiResponseCache.get(key);
+  if (cached && cached.expiresAt > now) {
+    discoveryApiCacheStats.hits += 1;
+    return cached.value as T;
+  }
+
+  const inFlight = discoveryApiInFlightRequests.get(key);
+  if (inFlight) {
+    discoveryApiCacheStats.inflightReuses += 1;
+    return inFlight as Promise<T>;
+  }
+
+  discoveryApiCacheStats.misses += 1;
+
+  const request = (async () => {
+    const value = await fetcher();
+    discoveryApiResponseCache.set(key, {
+      expiresAt: Date.now() + DISCOVERY_API_CACHE_TTL_MS,
+      value,
+    });
+    pruneDiscoveryApiCache();
+    return value;
+  })();
+
+  discoveryApiInFlightRequests.set(key, request as Promise<any>);
+
+  try {
+    return await request;
+  } finally {
+    discoveryApiInFlightRequests.delete(key);
+  }
 };
 
 export interface DiscoveryQueryInput {
@@ -85,7 +242,7 @@ const ensureValidTikTokAccessTokenForCreator = async (creator: any): Promise<str
 
   if (!encryptedAccessToken) return null;
 
-  let accessToken = decryptToken(encryptedAccessToken as any);
+  const accessToken = decryptToken(encryptedAccessToken as any);
   const currentTime = Math.floor(Date.now() / 1000);
   const isExpired = expiresIn && currentTime >= expiresIn;
 
@@ -143,6 +300,7 @@ export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
   const search = (input.search || '').trim();
   const platform = normalizePlatform(input.platform);
   const { sortBy, sortDirection } = normalizeDiscoverySort(input.sortBy, input.sortDirection);
+
   const keywordTerm = normalizeKeywordTerm(input.keyword);
   const hashtagTerms = extractHashtags(input.hashtag);
   const hasContentSearch = Boolean(keywordTerm || hashtagTerms.length > 0);
@@ -230,6 +388,7 @@ export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
       skip: platform === 'all' ? 0 : pagination.skip,
       take: platform === 'all' ? allPlatformWindowSize : pagination.limit,
       orderBy: connectedOrderBy,
+
       select: buildConnectedSelect(false),
     });
   }
@@ -362,9 +521,7 @@ export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
 
   const paginatedCreatorUserIds = Array.from(
     new Set(
-      (paginatedConnectedCreators || [])
-        .map((creator: any) => String(creator?.userId || '').trim())
-        .filter(Boolean),
+      (paginatedConnectedCreators || []).map((creator: any) => String(creator?.userId || '').trim()).filter(Boolean),
     ),
   );
 
@@ -409,9 +566,7 @@ export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
 
     const instagramTopVideos = apiInstagramTopVideos.get(creatorId) || creator?.instagram?.topVideos || [];
     const tiktokTopVideosRaw = apiTikTokTopVideos.get(creatorId) || creator?.tiktok?.topVideos || [];
-    const normalizedTiktokHandle = creator?.handles?.tiktok
-      ? String(creator.handles.tiktok).replace(/^@/, '')
-      : null;
+    const normalizedTiktokHandle = creator?.handles?.tiktok ? String(creator.handles.tiktok).replace(/^@/, '') : null;
 
     const tiktokTopVideos = (tiktokTopVideosRaw || []).map((video: any) => ({
       ...video,
@@ -435,10 +590,7 @@ export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
     };
   });
 
-  const creatorTopVideoStatusByUserId = new Map<
-    string,
-    { name: string; returnedTopVideos: boolean }
-  >();
+  const creatorTopVideoStatusByUserId = new Map<string, { name: string; returnedTopVideos: boolean }>();
 
   for (const creatorRow of enrichedPaginatedConnectedCreators as any[]) {
     const userId = String(creatorRow?.userId || '').trim();
@@ -505,6 +657,7 @@ export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
     platform,
     sortBy,
     sortDirection,
+
     page: pagination.page,
     limit: pagination.limit,
     returned: enrichedPaginatedConnectedCreators.length,
@@ -798,11 +951,11 @@ export const inviteDiscoveryCreators = async (input: InviteDiscoveryCreatorsInpu
     let invitedCount = 0;
     let skippedExistingCount = 0;
     let skippedNotFoundCount = 0;
-    const invitedCreatorNotifications: Array<{
+    const invitedCreatorNotifications: {
       userId: string;
       campaignId: string;
       campaignName: string;
-    }> = [];
+    }[] = [];
 
     for (const creatorId of creatorIds) {
       const creatorUser = creatorById.get(creatorId);
