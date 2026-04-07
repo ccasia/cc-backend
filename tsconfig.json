@@ -1,12 +1,14 @@
 {
   "compilerOptions": {
     "lib": ["ES6", "dom"],
+    // "ignoreDeprecations": "6.0",
     "target": "ES6",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "strict": false,
     "outDir": "./dist",
-    "rootDir": "./src",
+    "rootDir": ".",
+    "baseUrl": ".",
     "paths": {
       "@/*": ["./*"],
       "@controllers/*": ["./src/controller/*"],
