@@ -103,9 +103,6 @@ EXPOSE 3001
 RUN echo "Final directory structure (excluding node_modules):" && \
     find /app -not -path "*/node_modules/*" -not -name "node_modules"
 
-# Debug: Check file permissions
-RUN ls -l /app/dist/server.js
-
 # Debug: Print current working directory
 RUN pwd
 
