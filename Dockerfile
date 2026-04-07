@@ -36,7 +36,7 @@ EXPOSE 3001
 CMD [ "yarn", "dev" ]
 
 # Build stage
-FROM node:20-alpine3.17 AS builder
+FROM node:22-alpine3.22 AS builder
 WORKDIR /app
 
 # Copy package files and install dependencies
@@ -54,7 +54,7 @@ RUN npx prisma generate
 RUN yarn build
 
 # Production stage
-FROM node:20-alpine3.17 AS production
+FROM node:22-alpine3.22 AS production
 ENV NODE_ENV=production
 
 WORKDIR /app
