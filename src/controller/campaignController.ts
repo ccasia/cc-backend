@@ -13,6 +13,7 @@ import {
   LogisticStatus,
   PaymentForm,
   Pitch,
+  Prisma,
   PrismaClient,
   ShortListedCreator,
   Submission,
@@ -36,7 +37,13 @@ import {
   uploadPitchVideo,
 } from '@configs/cloudStorage.config';
 import dayjs from 'dayjs';
-import { logChange, logAdminChange, uploadCampaignAssets, createNewSpreadSheetAsync } from '@services/campaignServices';
+import {
+  logChange,
+  logAdminChange,
+  uploadCampaignAssets,
+  createNewSpreadSheetAsync,
+  rejectPendingPitchInternal,
+} from '@services/campaignServices';
 import { saveNotification } from '@controllers/notificationController';
 import { clients, io } from '../server';
 import fs from 'fs';
@@ -274,7 +281,12 @@ export const createCampaign = async (req: Request, res: Response) => {
 
         const existingClient = await tx.company.findUnique({
           where: { id: client.id },
-          include: { subscriptions: { where: { status: 'ACTIVE' } } },
+          include: {
+            subscriptions: {
+              where: { status: 'ACTIVE' },
+              orderBy: { createdAt: 'asc' },
+            },
+          },
         });
 
         if (!existingClient) throw new Error('Company not found');
@@ -289,6 +301,36 @@ export const createCampaign = async (req: Request, res: Response) => {
         // Check if campaignCredits exceed availableCredits
         if (campaignCredits > availableCredits) {
           throw new Error('Not enough credits to create the campaign');
+        }
+
+        // Smart allocation: Build allocation breakdown for FIFO charging
+        const creditAllocationBreakdown: any[] = [];
+        const parsedCampaignCredits = Number(campaignCredits) || 0;
+        let remainingCreditsToAllocate = parsedCampaignCredits;
+        let selectedSubscriptionId: string | undefined = existingClient.subscriptions?.[0]?.id;
+
+        if (existingClient.subscriptions && existingClient.subscriptions.length > 0 && parsedCampaignCredits > 0) {
+          // FIFO: Charge oldest subscriptions first
+          for (const sub of existingClient.subscriptions) {
+            if (remainingCreditsToAllocate <= 0) break;
+
+            const available = (sub.totalCredits || 0) - (sub.creditsUsed || 0);
+            if (available > 0) {
+              const chargeAmount = Math.min(available, remainingCreditsToAllocate);
+
+              creditAllocationBreakdown.push({
+                subscriptionId: sub.id,
+                amount: chargeAmount,
+              });
+
+              remainingCreditsToAllocate -= chargeAmount;
+
+              await tx.subscription.update({
+                where: { id: sub.id },
+                data: { creditsUsed: { increment: chargeAmount } },
+              });
+            }
+          }
         }
 
         // Create Campaign
@@ -344,6 +386,7 @@ export const createCampaign = async (req: Request, res: Response) => {
             origin: requestedOrigin === 'CLIENT' ? 'CLIENT' : 'ADMIN',
             submissionVersion: submissionVersion || undefined, // Set v4 if client user is added as manager
             isCreditTier: isCreditTier,
+            creditAllocationBreakdown: creditAllocationBreakdown.length > 0 ? creditAllocationBreakdown : Prisma.DbNull,
             brandTone: brandTone,
             rawFootage: rawFootage || false,
             ads: ads || false,
@@ -413,11 +456,13 @@ export const createCampaign = async (req: Request, res: Response) => {
             campaignCredits,
             creditsPending: campaignCredits,
             creditsUtilized: 0,
-            subscription: {
-              connect: {
-                id: existingClient.subscriptions[0].id,
-              },
-            },
+            subscription: selectedSubscriptionId
+              ? {
+                  connect: {
+                    id: selectedSubscriptionId,
+                  },
+                }
+              : undefined,
           },
           include: {
             campaignBrief: true,
@@ -427,16 +472,16 @@ export const createCampaign = async (req: Request, res: Response) => {
         });
 
         // Deduct credits from subscription
-        await tx.subscription.update({
-          where: {
-            id: existingClient.subscriptions[0].id,
-          },
-          data: {
-            creditsUsed: {
-              increment: campaignCredits,
-            },
-          },
-        });
+        // await tx.subscription.update({
+        //   where: {
+        //     id: existingClient.subscriptions[0].id,
+        //   },
+        //   data: {
+        //     creditsUsed: {
+        //       increment: campaignCredits,
+        //     },
+        //   },
+        // });
 
         // Create Campaign Timeline using helper
         // For v4 campaigns, timelines are created based on campaign dates proportionally
@@ -873,7 +918,7 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
 
         const existingClient = await tx.company.findUnique({
           where: { id: client.id },
-          include: { subscriptions: { where: { status: 'ACTIVE' } } },
+          include: { subscriptions: { where: { status: 'ACTIVE' }, orderBy: { createdAt: 'asc' } } },
         });
 
         if (!existingClient) throw new Error('Company not found');
@@ -886,6 +931,31 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
 
         if (campaignCredits > availableCredits) {
           throw new Error('Not enough credits to create the campaign');
+        }
+
+        const creditAllocationBreakdown: any[] = [];
+        const parsedCampaignCredits = Number(campaignCredits) || 0;
+        let remainingCreditsToAllocate = parsedCampaignCredits;
+        let selectedSubscriptionId: string | undefined = existingClient.subscriptions?.[0]?.id;
+
+        if (existingClient.subscriptions && existingClient.subscriptions.length > 0 && parsedCampaignCredits > 0) {
+          for (const sub of existingClient.subscriptions) {
+            if (remainingCreditsToAllocate <= 0) break;
+
+            const available = (sub.totalCredits || 0) - (sub.creditsUsed || 0);
+            if (available > 0) {
+              const chargeAmount = Math.min(available, remainingCreditsToAllocate);
+
+              creditAllocationBreakdown.push({ subscriptionId: sub.id, amount: chargeAmount });
+
+              remainingCreditsToAllocate -= chargeAmount;
+
+              await tx.subscription.update({
+                where: { id: sub.id },
+                data: { creditsUsed: { increment: chargeAmount } },
+              });
+            }
+          }
         }
 
         // Process uploaded images
@@ -1018,9 +1088,12 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
             campaignCredits,
             creditsPending: campaignCredits,
             creditsUtilized: 0,
-            subscription: {
-              connect: { id: existingClient.subscriptions[0].id },
-            },
+            creditAllocationBreakdown: creditAllocationBreakdown.length > 0 ? creditAllocationBreakdown : Prisma.DbNull,
+            subscription: selectedSubscriptionId
+              ? {
+                  connect: { id: selectedSubscriptionId },
+                }
+              : undefined,
           },
           include: {
             campaignBrief: true,
@@ -1122,10 +1195,10 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
         }
 
         // Deduct credits from subscription
-        await tx.subscription.update({
-          where: { id: existingClient.subscriptions[0].id },
-          data: { creditsUsed: { increment: campaignCredits } },
-        });
+        // await tx.subscription.update({
+        //   where: { id: existingClient.subscriptions[0].id },
+        //   data: { creditsUsed: { increment: campaignCredits } },
+        // });
 
         // Create Campaign Timeline
         // For v4 campaigns: uses proportional date calculation based on campaign dates
@@ -3873,35 +3946,132 @@ export const closeCampaign = async (req: Request, res: Response) => {
   const adminId = req.session.userid;
 
   try {
-    const campaign = await prisma.campaign.update({
-      where: {
-        id: id,
-      },
-      data: {
-        status: 'COMPLETED',
-        completedAt: new Date(),
-      },
-      include: {
-        campaignAdmin: true,
-      },
+    // Use transaction for atomicity
+    const result = await prisma.$transaction(async (tx) => {
+      // Step 1: Fetch campaign with all necessary relations
+      const campaign = await tx.campaign.findUnique({
+        where: { id },
+        include: {
+          campaignAdmin: true,
+          pitch: true,
+        },
+      });
+
+      if (!campaign) {
+        throw new Error('Campaign not found');
+      }
+
+      // Step 2: Identify and reject pending creators
+      const pendingPitches = campaign.pitch.filter(
+        (p) => p.status === 'PENDING_REVIEW' || p.status === 'SENT_TO_CLIENT',
+      );
+
+      for (const pitch of pendingPitches) {
+        if (!pitch.userId) continue;
+        await rejectPendingPitchInternal(pitch.userId, id, pitch.id, tx as PrismaClient);
+      }
+
+      // Step 3: Refund unutilized credits using allocation breakdown (LIFO - newest subscription first)
+      const totalRefundedCredits = campaign.creditsPending || 0;
+      let remainingToRefund = totalRefundedCredits;
+      const newBreakdown: Array<{ subscriptionId: string; amount: number }> = [];
+
+      if (remainingToRefund > 0 && campaign.creditAllocationBreakdown) {
+        // Get allocation breakdown
+        const breakdown = campaign.creditAllocationBreakdown as Array<{ subscriptionId: string; amount: number }>;
+
+        if (breakdown.length > 0) {
+          // Reverse order: newest allocation first (reverse FIFO = LIFO)
+          const reversedBreakdown = [...breakdown].reverse();
+
+          for (const allocation of reversedBreakdown) {
+            // If we've refunded everything, just keep the remaining allocations untouched
+            if (remainingToRefund <= 0) {
+              newBreakdown.push(allocation);
+              continue;
+            }
+
+            const refundAmount = Math.min(allocation.amount, remainingToRefund);
+
+            // Refund the allocated amount back to that subscription
+            await tx.subscription.update({
+              where: { id: allocation.subscriptionId },
+              data: {
+                creditsUsed: { decrement: refundAmount },
+              },
+            });
+
+            remainingToRefund -= refundAmount;
+
+            // Re-calculate how much of this specific allocation was actually consumed
+            const remainingAllocation = allocation.amount - refundAmount;
+            if (remainingAllocation > 0) {
+              newBreakdown.push({ subscriptionId: allocation.subscriptionId, amount: remainingAllocation });
+            }
+          }
+
+          // Reverse back to chronological order
+          newBreakdown.reverse();
+        }
+      }
+
+      // Update campaign level - adjust campaignCredits to match what was actually used (creditsPending becomes 0)
+      await tx.campaign.update({
+        where: { id },
+        data: {
+          campaignCredits: campaign.creditsUtilized,
+          creditsPending: 0,
+          creditAllocationBreakdown: newBreakdown.length > 0 ? newBreakdown : Prisma.DbNull, // Store new state
+        },
+      });
+
+      // Step 4: Close the campaign
+      const closedCampaign = await tx.campaign.update({
+        where: { id },
+        data: {
+          status: 'COMPLETED',
+          completedAt: new Date(),
+        },
+        include: {
+          campaignAdmin: true,
+        },
+      });
+
+      return {
+        campaign: closedCampaign,
+        rejectedCount: pendingPitches.length,
+        refundedCredits: totalRefundedCredits,
+      };
     });
-    campaign.campaignAdmin.forEach(async (item) => {
+
+    // Step 6: Send notifications (outside of transaction)
+    result.campaign.campaignAdmin.forEach(async (item) => {
       const data = await saveNotification({
         userId: item.adminId,
-        message: `${campaign.name} is close on ${dayjs().format('ddd LL')}`,
+        message: `${result.campaign.name} is close on ${dayjs().format('ddd LL')}`,
         entity: 'Campaign',
-        entityId: campaign.id,
+        entityId: result.campaign.id,
       });
       io.to(clients.get(item.adminId)).emit('notification', data);
     });
 
+    // Step 7: Log admin activity
     if (adminId) {
-      const adminLogMessage = `Closed campaign ${campaign.name} `;
+      const rejectionInfo =
+        result.rejectedCount > 0
+          ? ` and auto-rejected ${result.rejectedCount} pending creator(s), refunding ${result.refundedCredits} credits`
+          : '';
+      const adminLogMessage = `Closed campaign ${result.campaign.name}${rejectionInfo}`;
       logAdminChange(adminLogMessage, adminId, req);
     }
 
-    return res.status(200).json({ message: 'Campaign closed successfully.' });
+    return res.status(200).json({
+      message: 'Campaign closed successfully.',
+      rejectedCreators: result.rejectedCount,
+      refundedCredits: result.refundedCredits,
+    });
   } catch (error) {
+    console.error('Error closing campaign:', error);
     return res.status(400).json(error);
   }
 };
@@ -11346,121 +11516,120 @@ export const changeCampaignCredit = async (req: Request, res: Response) => {
       where: {
         id: campaignId,
       },
-      include: {
-        brand: true,
-        company: {
-          select: {
-            subscriptions: {
-              where: {
-                status: 'ACTIVE',
-              },
-            },
-            brand: true,
-          },
-        },
-        subscription: true,
-      },
+      include: { subscription: true },
     });
 
     if (!campaign) return res.status(404).json({ message: 'Campaign not found' });
 
-    const subscription = campaign?.subscription || null;
+    await prisma.$transaction(async (tx) => {
+      if (newCredit < 0) {
+        const refundAmount = Math.abs(newCredit);
 
-    if (!subscription) return res.status(404).json({ message: 'No subscription found' });
+        if ((campaign.creditsPending || 0) < refundAmount) {
+          throw new Error('Cannot deduct more credit than are currently pending.');
+        }
 
-    const subscribedCampaigns = await prisma.subscription.findFirst({
-      where: {
-        id: subscription.id,
-      },
-      select: {
-        campaign: {
-          select: {
-            campaignCredits: true,
-            shortlisted: true,
-            id: true,
-            name: true,
-            creditsPending: true,
+        let remainingToRefund = refundAmount;
+
+        const breakdown =
+          (campaign.creditAllocationBreakdown as Array<{ subscriptionId: string; amount: number }>) || [];
+        const reversedBreakdown = [...breakdown].reverse();
+        const newBreakdown: any[] = [];
+
+        for (const allocation of reversedBreakdown) {
+          if (remainingToRefund <= 0) {
+            newBreakdown.push(allocation);
+            continue;
+          }
+
+          const amountToRefund = Math.min(allocation.amount, remainingToRefund);
+
+          await tx.subscription.update({
+            where: { id: allocation.subscriptionId },
+            data: { creditsUsed: { decrement: amountToRefund } },
+          });
+
+          remainingToRefund -= amountToRefund;
+
+          if (allocation.amount - amountToRefund > 0) {
+            newBreakdown.push({
+              subscriptionId: allocation.subscriptionId,
+              amount: allocation.amount - amountToRefund,
+            });
+          }
+        }
+
+        newBreakdown.reverse();
+
+        await tx.campaign.update({
+          where: { id: campaign.id },
+          data: {
+            campaignCredits: { decrement: refundAmount },
+            creditsPending: { decrement: refundAmount },
+            creditAllocationBreakdown: newBreakdown.length > 0 ? newBreakdown : Prisma.DbNull,
           },
+        });
+      } else {
+        const activeSubs = await tx.subscription.findMany({
+          where: { companyId: campaign.companyId, status: 'ACTIVE' },
+          orderBy: { createdAt: 'asc' },
+        });
+
+        let remainingToCharge = newCredit;
+        const breakdown =
+          (campaign.creditAllocationBreakdown as Array<{ subscriptionId: string; amount: number }>) || [];
+
+        for (const sub of activeSubs) {
+          if (remainingToCharge <= 0) break;
+
+          const available = (sub.totalCredits || 0) - (sub.creditsUsed || 0);
+
+          if (available > 0) {
+            const chargeAmount = Math.min(available, remainingToCharge);
+
+            await tx.subscription.update({
+              where: { id: sub.id },
+              data: { creditsUsed: { increment: chargeAmount } },
+            });
+
+            const existingIdx = breakdown.findIndex((b) => b.subscriptionId === sub.id);
+
+            if (existingIdx >= 0) {
+              breakdown[existingIdx].amount += chargeAmount;
+            } else {
+              breakdown.push({ subscriptionId: sub.id, amount: chargeAmount });
+            }
+
+            remainingToCharge -= chargeAmount;
+          }
+        }
+
+        if (remainingToCharge > 0) {
+          throw new Error(
+            `Only ${newCredit - remainingToCharge} credits are available to add from active subscriptions.`,
+          );
+        }
+
+        await tx.campaign.update({
+          where: { id: campaign.id },
+          data: {
+            campaignCredits: { increment: newCredit },
+            creditsPending: { increment: newCredit },
+            creditAllocationBreakdown: breakdown.length > 0 ? breakdown : Prisma.DbNull,
+          },
+        });
+      }
+
+      await tx.adminLog.create({
+        data: {
+          message: `${user?.name} changed the campaign credit for "${campaign.name}" by ${newCredit} credits.`,
+          admin: { connect: { userId: user?.id } },
+          performedBy: user?.name,
         },
-      },
+      });
     });
 
-    const totalAssignedCredits = subscribedCampaigns?.campaign.reduce(
-      (acc, cur) => acc + (cur.campaignCredits ?? 0),
-      0,
-    );
-
-    if (newCredit < 0) {
-      //Deduct from existing credits and add into subscription credit
-
-      await prisma.campaign.update({
-        where: {
-          id: campaign.id,
-        },
-        data: {
-          campaignCredits: {
-            decrement: Math.abs(newCredit),
-          },
-          creditsPending: {
-            decrement: Math.abs(newCredit),
-          },
-        },
-      });
-    } else {
-      if (totalAssignedCredits === subscription.totalCredits) {
-        // const campaigns = subscribedCampaigns?.campaign || [];
-
-        // const newCampaigns = campaigns.map((item) => {
-        //   const shortlistedCreditsAssigned = item.shortlisted.reduce((acc, cur) => acc + (cur?.ugcVideos ?? 0), 0);
-
-        //   return {
-        //     campaignId: item.id,
-        //     campaignName: item.name,
-        //     creditsPending: (item.campaignCredits ?? 0) - shortlistedCreditsAssigned,
-        //   };
-        // });
-
-        // console.log(newCampaigns);
-
-        return res.status(400).json({ message: 'All available credits have been used.' });
-      }
-
-      if (totalAssignedCredits + newCredit > (subscription?.totalCredits ?? 0)) {
-        return res.status(400).json({
-          message: `Only ${(subscription?.totalCredits ?? 0) - (totalAssignedCredits ?? 0)} credits is available to add.`,
-        });
-      }
-
-      await prisma.$transaction(async (tx) => {
-        const updatedCampaign = await tx.campaign.update({
-          where: {
-            id: campaign.id,
-          },
-          data: {
-            campaignCredits: {
-              increment: newCredit,
-            },
-            creditsPending: {
-              increment: newCredit,
-            },
-          },
-        });
-
-        await tx.adminLog.create({
-          data: {
-            message: `${user?.name} changed the campaign credit for "${campaign.name}" from ${campaign.campaignCredits} to ${updatedCampaign.campaignCredits} credits.`,
-            admin: {
-              connect: {
-                userId: user?.id,
-              },
-            },
-            performedBy: user?.name,
-          },
-        });
-      });
-    }
-
-    res.status(200).json({ message: 'Successfully changed' });
+    res.status(200).json({ message: 'Successfully changed campaign credits' });
   } catch (error) {
     console.log(error);
     res.status(400).json({ message: error });
@@ -11588,36 +11757,63 @@ export const updateAllCampaignCredits = async (req: Request, res: Response) => {
       campaignCredits?: number;
       creditsUtilized?: number;
       creditsPending?: number;
+      creditAllocationBreakdown?: any;
     } = {};
 
     if (campaignCredits !== undefined && campaignCredits !== null) {
       // Validate against subscription limits if subscription exists
-      if (campaign.subscription) {
-        const subscribedCampaigns = await prisma.subscription.findFirst({
-          where: { id: campaign.subscription.id },
-          select: {
-            totalCredits: true,
-            campaign: {
-              select: {
-                campaignCredits: true,
-                id: true,
-              },
-            },
-          },
+      // if (campaign.subscription) {
+      //   const subscribedCampaigns = await prisma.subscription.findFirst({
+      //     where: { id: campaign.subscription.id },
+      //     select: {
+      //       totalCredits: true,
+      //       campaign: {
+      //         select: {
+      //           campaignCredits: true,
+      //           id: true,
+      //         },
+      //       },
+      //     },
+      //   });
+
+      //   // Calculate total assigned credits excluding current campaign
+      //   const otherCampaignsCredits =
+      //     subscribedCampaigns?.campaign
+      //       .filter((c) => c.id !== campaignId)
+      //       .reduce((acc, cur) => acc + (cur.campaignCredits ?? 0), 0) || 0;
+
+      //   const totalAfterUpdate = otherCampaignsCredits + campaignCredits;
+
+      //   if (totalAfterUpdate > (subscribedCampaigns?.totalCredits ?? 0)) {
+      //     return res.status(400).json({
+      //       message: `Cannot exceed subscription limit. Maximum available: ${(subscribedCampaigns?.totalCredits ?? 0) - otherCampaignsCredits} credits.`,
+      //     });
+      //   }
+      // }
+
+      // Validate against the Company's entire active subscription pool
+      if (campaign.companyId) {
+        const activeSubs = await prisma.subscription.findMany({
+          where: { companyId: campaign.companyId, status: 'ACTIVE' },
         });
 
-        // Calculate total assigned credits excluding current campaign
-        const otherCampaignsCredits =
-          subscribedCampaigns?.campaign
-            .filter((c) => c.id !== campaignId)
-            .reduce((acc, cur) => acc + (cur.campaignCredits ?? 0), 0) || 0;
+        const totalActiveCredits = activeSubs.reduce((sum, sub) => sum + (sub.totalCredits || 0), 0);
+        
+        const totalUsedAcrossCompany = activeSubs.reduce((sum, sub) => sum + (sub.creditsUsed || 0), 0);
+        
+        const currentlyAvailable = totalActiveCredits - totalUsedAcrossCompany;
 
-        const totalAfterUpdate = otherCampaignsCredits + campaignCredits;
+        const requestedCredits = Number(campaignCredits) || 0;
+        const currentCampaignCredits = Number(campaign.campaignCredits) || 0;
 
-        if (totalAfterUpdate > (subscribedCampaigns?.totalCredits ?? 0)) {
-          return res.status(400).json({
-            message: `Cannot exceed subscription limit. Maximum available: ${(subscribedCampaigns?.totalCredits ?? 0) - otherCampaignsCredits} credits.`,
-          });
+        if (requestedCredits > currentCampaignCredits) {
+          const additionalNeeded = requestedCredits - currentCampaignCredits;
+          
+          if (additionalNeeded > currentlyAvailable) {
+            return res.status(400).json({
+              message: `Cannot exceed company's subscription limits. You need ${additionalNeeded} more credits, but only ${currentlyAvailable} are available across all active packages.`,
+            });
+          }
         }
       }
 
@@ -11634,6 +11830,79 @@ export const updateAllCampaignCredits = async (req: Request, res: Response) => {
 
     // Perform the update in a transaction with logging
     const updatedCampaign = await prisma.$transaction(async (tx) => {
+      if (campaignCredits !== undefined && campaignCredits !== null && campaignCredits !== campaign.campaignCredits) {
+        const creditDelta = campaignCredits - (campaign.campaignCredits || 0);
+        let newBreakdown = campaign.creditAllocationBreakdown ? [...(campaign.creditAllocationBreakdown as any[])] : [];
+
+        if (creditDelta < 0) {
+          // LIFO Refund
+          const refundAmount = Math.abs(creditDelta);
+          let remainingToRefund = refundAmount;
+
+          if (newBreakdown.length > 0) {
+            const reversedBreakdown = [...newBreakdown].reverse();
+            const updatedBreakdown: any[] = [];
+
+            for (const allocation of reversedBreakdown) {
+              if (remainingToRefund <= 0) {
+                updatedBreakdown.push(allocation);
+                continue;
+              }
+              const amountToRefund = Math.min(allocation.amount, remainingToRefund);
+              await tx.subscription.update({
+                where: { id: allocation.subscriptionId },
+                data: { creditsUsed: { decrement: amountToRefund } },
+              });
+              remainingToRefund -= amountToRefund;
+              if (allocation.amount - amountToRefund > 0) {
+                updatedBreakdown.push({
+                  subscriptionId: allocation.subscriptionId,
+                  amount: allocation.amount - amountToRefund,
+                });
+              }
+            }
+            newBreakdown = updatedBreakdown.reverse();
+          } else if (campaign.subscriptionId) {
+            await tx.subscription.update({
+              where: { id: campaign.subscriptionId },
+              data: { creditsUsed: { decrement: remainingToRefund } },
+            });
+          }
+        } else if (creditDelta > 0) {
+          // FIFO Charge
+          const activeSubs = await tx.subscription.findMany({
+            where: { companyId: campaign.companyId, status: 'ACTIVE' },
+            orderBy: { createdAt: 'asc' },
+          });
+
+          let remainingToCharge = creditDelta;
+          for (const sub of activeSubs) {
+            if (remainingToCharge <= 0) break;
+            const available = (sub.totalCredits || 0) - (sub.creditsUsed || 0);
+            if (available > 0) {
+              const chargeAmount = Math.min(available, remainingToCharge);
+              await tx.subscription.update({
+                where: { id: sub.id },
+                data: { creditsUsed: { increment: chargeAmount } },
+              });
+
+              const existingIdx = newBreakdown.findIndex((b) => b.subscriptionId === sub.id);
+              if (existingIdx >= 0) {
+                newBreakdown[existingIdx].amount += chargeAmount;
+              } else {
+                newBreakdown.push({ subscriptionId: sub.id, amount: chargeAmount });
+              }
+              remainingToCharge -= chargeAmount;
+            }
+          }
+          if (remainingToCharge > 0) {
+            throw new Error(`Only ${creditDelta - remainingToCharge} credits available across active subscriptions.`);
+          }
+        }
+
+        updateData.creditAllocationBreakdown = newBreakdown.length > 0 ? newBreakdown : Prisma.DbNull;
+      }
+
       const updated = await tx.campaign.update({
         where: { id: campaignId },
         data: updateData,
