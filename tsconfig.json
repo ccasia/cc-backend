@@ -38,7 +38,7 @@
     "noImplicitThis": true,
     "alwaysStrict": true
   },
-  "include": ["src/**/*", "../types/*"],
+  "include": ["src/**/*", "types/**/*"],
   "exclude": ["node_modules", "**/*.spec.ts"],
   "ts-node": {
     "require": ["tsconfig-paths/register"]
