@@ -3171,13 +3171,15 @@ export const createComment = async (req: Request, res: Response) => {
     // Auto-forward admin replies when the parent comment is already forwarded to the creator.
     // This ensures admin replies are immediately visible to creators without a separate forward step.
     let autoForwardedByUserId: string | null = null;
+    let autoSentToCreator = false;
     if (parentId && user.role !== 'client' && user.role !== 'creator') {
       const parentComment = await prisma.submissionComment.findUnique({
         where: { id: parentId },
-        select: { forwardedByUserId: true },
+        select: { forwardedByUserId: true, isSentToCreator: true },
       });
       if (parentComment?.forwardedByUserId) {
         autoForwardedByUserId = user.id;
+        autoSentToCreator = parentComment.isSentToCreator;
       }
     }
 
@@ -3190,7 +3192,12 @@ export const createComment = async (req: Request, res: Response) => {
         parentId: parentId || null,
         userId: user.id,
         isClientDraft: shouldBeDraft,
-        ...(autoForwardedByUserId ? { forwardedByUserId: autoForwardedByUserId } : {}),
+        ...(autoForwardedByUserId
+          ? {
+              forwardedByUserId: autoForwardedByUserId,
+              ...(autoSentToCreator ? { isSentToCreator: true, isVisibleToCreator: true } : {}),
+            }
+          : {}),
       },
       include: {
         user: { select: { id: true, name: true, role: true } },
