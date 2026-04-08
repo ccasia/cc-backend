@@ -3568,12 +3568,12 @@ export const sendVideoFeedbackToCreator = async (req: Request, res: Response) =>
     });
     const parentIds = parentCommentIds.map((c) => c.id);
 
-    // Find the first unforwarded comment to link to Feedback (must not already have a Feedback linked)
+    // Find the first unsent comment to link to Feedback (must not already have a Feedback linked)
     const firstComment = await prisma.submissionComment.findFirst({
       where: {
         submissionId,
         videoId,
-        forwardedByUserId: null,
+        isSentToCreator: false,
         isClientDraft: false,
         parentId: null,
         feedback: { is: null },
@@ -3585,13 +3585,15 @@ export const sendVideoFeedbackToCreator = async (req: Request, res: Response) =>
     // Transaction: mark forwarded + create feedback + update statuses
     await prisma.$transaction([
       // Mark all unforwarded, published top-level comments as forwarded by this admin.
+      // Mark all unsent, published top-level comments as sent by this admin.
       // During PENDING_REVIEW (first round), all comments are force-included regardless of
       // any prior isVisibleToCreator toggle — selection UI is disabled in that status.
       // During CLIENT_FEEDBACK the admin's per-comment selection/de-selection is respected.
       prisma.submissionComment.updateMany({
-        where: { submissionId, videoId, forwardedByUserId: null, isClientDraft: false },
+        where: { submissionId, videoId, isSentToCreator: false, isClientDraft: false },
         data: {
           forwardedByUserId: adminId,
+          isSentToCreator: true,
           ...(submission.status === 'PENDING_REVIEW' && { isVisibleToCreator: true }),
         },
       }),
@@ -3601,11 +3603,12 @@ export const sendVideoFeedbackToCreator = async (req: Request, res: Response) =>
             prisma.submissionComment.updateMany({
               where: {
                 parentId: { in: parentIds },
-                forwardedByUserId: null,
+                isSentToCreator: false,
                 isClientDraft: false,
               },
               data: {
                 forwardedByUserId: adminId,
+                isSentToCreator: true,
                 ...(submission.status === 'PENDING_REVIEW' && { isVisibleToCreator: true }),
               },
             }),

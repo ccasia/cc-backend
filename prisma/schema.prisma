@@ -1423,6 +1423,7 @@ model SubmissionComment {
   feedback      Feedback?
   isClientDraft      Boolean @default(false)
   isVisibleToCreator Boolean @default(true)
+  isSentToCreator    Boolean @default(false)
 
   forwardedByUserId String?
   forwardedBy       User?   @relation("ForwardedComments", fields: [forwardedByUserId], references: [id], onDelete: SetNull)

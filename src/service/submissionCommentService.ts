@@ -55,12 +55,13 @@ export const fetchCommentsForVideo = async (
     where.isClientDraft = false;
   }
 
-  // Creator visibility: own comments always visible; others only if forwarded AND marked visible.
-  // This prevents admin comments from leaking to creators before "Send to Creator" is used.
+  // Creator visibility: own comments always visible; others only if explicitly sent to creator
+  // AND marked visible. isSentToCreator is only set when admin clicks "Send Feedback to Creator",
+  // preventing admin-edited client comments from leaking before that action.
   if (filterInvisibleToCreator) {
     where.OR = [
       { user: { role: 'creator' } },
-      { isVisibleToCreator: true, forwardedByUserId: { not: null } },
+      { isVisibleToCreator: true, isSentToCreator: true },
     ];
   } else if (roleFilter && Object.keys(roleFilter).length > 0) {
     // For role-filtered queries (client), also include forwarded comments (client comments
@@ -74,7 +75,7 @@ export const fetchCommentsForVideo = async (
     replyWhere = {
       OR: [
         { user: { role: 'creator' } },
-        { isVisibleToCreator: true, forwardedByUserId: { not: null } },
+        { isVisibleToCreator: true, isSentToCreator: true },
       ],
     };
   } else if (roleFilter && Object.keys(roleFilter).length > 0) {
@@ -107,16 +108,16 @@ export const fetchCommentsForVideo = async (
     const orphanWhere: any = {
       submissionId,
       parentId: { not: null },
-      // Reply is visible to creator: own comment OR forwarded + marked visible
+      // Reply is visible to creator: own comment OR sent to creator + marked visible
       OR: [
         { user: { role: 'creator' } },
-        { isVisibleToCreator: true, forwardedByUserId: { not: null } },
+        { isVisibleToCreator: true, isSentToCreator: true },
       ],
-      // Parent is hidden from creator: not creator's own AND (not visible OR not forwarded)
+      // Parent is hidden from creator: not creator's own AND (not visible OR not sent)
       parent: {
         AND: [
           { user: { role: { not: 'creator' } } },
-          { OR: [{ isVisibleToCreator: false }, { forwardedByUserId: null }] },
+          { OR: [{ isVisibleToCreator: false }, { isSentToCreator: false }] },
         ],
       },
     };
