@@ -3919,8 +3919,10 @@ export const changeCampaignStage = async (req: Request, res: Response) => {
       const adminName = admin?.name || 'Admin';
       const userRole = admin?.role || 'admin';
 
+      const isReactivation = campaign.status === 'COMPLETED';
+
       // Log campaign activity for activation
-      const campaignActivityMessage = `Campaign Activated`;
+      const campaignActivityMessage = isReactivation ? 'Campaign Reactivated' : 'Campaign Activated';
       await prisma.campaignLog.create({
         data: {
           message: campaignActivityMessage,
@@ -3929,7 +3931,9 @@ export const changeCampaignStage = async (req: Request, res: Response) => {
         },
       });
 
-      const adminLogMessage = `Resumed the campaign - ${campaign.name} `;
+      const adminLogMessage = isReactivation
+        ? `Reactivated the campaign - ${campaign.name}`
+        : `Resumed the campaign - ${campaign.name} `;
       logAdminChange(adminLogMessage, adminId, req);
     }
 
