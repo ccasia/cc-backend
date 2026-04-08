@@ -390,6 +390,12 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
         },
       });
 
+      // Auto-resolve all unresolved comments when creator submits new content
+      await prisma.submissionComment.updateMany({
+        where: { submissionId, resolvedAt: null },
+        data: { resolvedAt: new Date(), resolvedByUserId: creatorId },
+      });
+
     // Always trigger worker if there are changes (new files OR photos to remove)
     const hasNewFiles = uploadedVideos.length > 0 || uploadedPhotos.length > 0 || uploadedRawFootages.length > 0;
     const hasPhotosToRemove = photosToRemove.length > 0;
