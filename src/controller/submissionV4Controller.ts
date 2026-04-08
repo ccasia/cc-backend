@@ -3585,11 +3585,15 @@ export const sendVideoFeedbackToCreator = async (req: Request, res: Response) =>
     // Transaction: mark forwarded + create feedback + update statuses
     await prisma.$transaction([
       // Mark all unforwarded, published top-level comments as forwarded by this admin.
-      // Note: isVisibleToCreator is NOT overridden here so the admin's selection/de-selection
-      // toggles are respected — deselected comments stay hidden from creators.
+      // During PENDING_REVIEW (first round), all comments are force-included regardless of
+      // any prior isVisibleToCreator toggle — selection UI is disabled in that status.
+      // During CLIENT_FEEDBACK the admin's per-comment selection/de-selection is respected.
       prisma.submissionComment.updateMany({
         where: { submissionId, videoId, forwardedByUserId: null, isClientDraft: false },
-        data: { forwardedByUserId: adminId },
+        data: {
+          forwardedByUserId: adminId,
+          ...(submission.status === 'PENDING_REVIEW' && { isVisibleToCreator: true }),
+        },
       }),
       // Also mark replies of those comments (excluding drafts)
       ...(parentIds.length > 0
@@ -3600,7 +3604,10 @@ export const sendVideoFeedbackToCreator = async (req: Request, res: Response) =>
                 forwardedByUserId: null,
                 isClientDraft: false,
               },
-              data: { forwardedByUserId: adminId },
+              data: {
+                forwardedByUserId: adminId,
+                ...(submission.status === 'PENDING_REVIEW' && { isVisibleToCreator: true }),
+              },
             }),
           ]
         : []),
