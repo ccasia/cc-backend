@@ -2336,3 +2336,30 @@ model VerificationCode {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
+model WhatsappMessage {
+  id String @id @unique @default(cuid())
+
+  messageId String? @unique
+
+  from String?
+  to   String?
+
+  message String?
+  sticker Json?
+
+  type String?
+
+  status String?
+  sentAt DateTime
+
+  direction TypeEnum?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum TypeEnum {
+  inbound
+  outbound
+}

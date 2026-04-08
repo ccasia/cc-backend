@@ -115,6 +115,21 @@ class WhatsappSetting {
 
     return { ...res.data, customData };
   }
+
+  async getMessagesData() {
+    const [inbound, outbound] = await Promise.all([
+      prisma.whatsappMessage.findMany({
+        where: { direction: 'inbound' },
+        orderBy: { sentAt: 'desc' },
+      }),
+      prisma.whatsappMessage.findMany({
+        where: { direction: 'outbound' },
+        orderBy: { sentAt: 'desc' },
+      }),
+    ]);
+
+    return { inbound, outbound };
+  }
 }
 
 export default WhatsappSetting;
