@@ -79,3 +79,16 @@ export const toggleWhatsappSetting = async (req: Request, res: Response) => {
     return res.status(500).json(error);
   }
 };
+
+export const getWhatsappMessage = async (req: Request, res: Response) => {
+  try {
+    const whatsapp = new WhatsappSetting();
+    await whatsapp.initialize();
+
+    const message = await whatsapp.getMessagesData();
+
+    return res.status(200).json({ message });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+};

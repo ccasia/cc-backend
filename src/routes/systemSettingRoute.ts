@@ -1,5 +1,6 @@
 import {
   getInsight,
+  getWhatsappMessage,
   getWhatsappSetting,
   toggleWhatsappSetting,
   updateWhatsappSetting,
@@ -24,6 +25,8 @@ router.use(isLoggedIn);
 router.get('/whatsapp', getWhatsappSetting);
 
 router.get('/whatsapp-insight', limiter, getInsight);
+
+router.get('/whatsapp-message', getWhatsappMessage);
 
 router.post('/whatsapp', limiter, updateWhatsappSetting);
 
