@@ -3171,13 +3171,15 @@ export const createComment = async (req: Request, res: Response) => {
     // Auto-forward admin replies when the parent comment is already forwarded to the creator.
     // This ensures admin replies are immediately visible to creators without a separate forward step.
     let autoForwardedByUserId: string | null = null;
+    let autoSentToCreator = false;
     if (parentId && user.role !== 'client' && user.role !== 'creator') {
       const parentComment = await prisma.submissionComment.findUnique({
         where: { id: parentId },
-        select: { forwardedByUserId: true },
+        select: { forwardedByUserId: true, isSentToCreator: true },
       });
       if (parentComment?.forwardedByUserId) {
         autoForwardedByUserId = user.id;
+        autoSentToCreator = parentComment.isSentToCreator;
       }
     }
 
@@ -3190,7 +3192,12 @@ export const createComment = async (req: Request, res: Response) => {
         parentId: parentId || null,
         userId: user.id,
         isClientDraft: shouldBeDraft,
-        ...(autoForwardedByUserId ? { forwardedByUserId: autoForwardedByUserId } : {}),
+        ...(autoForwardedByUserId
+          ? {
+              forwardedByUserId: autoForwardedByUserId,
+              ...(autoSentToCreator ? { isSentToCreator: true, isVisibleToCreator: true } : {}),
+            }
+          : {}),
       },
       include: {
         user: { select: { id: true, name: true, role: true } },
@@ -3568,12 +3575,12 @@ export const sendVideoFeedbackToCreator = async (req: Request, res: Response) =>
     });
     const parentIds = parentCommentIds.map((c) => c.id);
 
-    // Find the first unforwarded comment to link to Feedback (must not already have a Feedback linked)
+    // Find the first unsent comment to link to Feedback (must not already have a Feedback linked)
     const firstComment = await prisma.submissionComment.findFirst({
       where: {
         submissionId,
         videoId,
-        forwardedByUserId: null,
+        isSentToCreator: false,
         isClientDraft: false,
         parentId: null,
         feedback: { is: null },
@@ -3585,11 +3592,17 @@ export const sendVideoFeedbackToCreator = async (req: Request, res: Response) =>
     // Transaction: mark forwarded + create feedback + update statuses
     await prisma.$transaction([
       // Mark all unforwarded, published top-level comments as forwarded by this admin.
-      // Note: isVisibleToCreator is NOT overridden here so the admin's selection/de-selection
-      // toggles are respected — deselected comments stay hidden from creators.
+      // Mark all unsent, published top-level comments as sent by this admin.
+      // During PENDING_REVIEW (first round), all comments are force-included regardless of
+      // any prior isVisibleToCreator toggle — selection UI is disabled in that status.
+      // During CLIENT_FEEDBACK the admin's per-comment selection/de-selection is respected.
       prisma.submissionComment.updateMany({
-        where: { submissionId, videoId, forwardedByUserId: null, isClientDraft: false },
-        data: { forwardedByUserId: adminId },
+        where: { submissionId, videoId, isSentToCreator: false, isClientDraft: false },
+        data: {
+          forwardedByUserId: adminId,
+          isSentToCreator: true,
+          ...(submission.status === 'PENDING_REVIEW' && { isVisibleToCreator: true }),
+        },
       }),
       // Also mark replies of those comments (excluding drafts)
       ...(parentIds.length > 0
@@ -3597,10 +3610,14 @@ export const sendVideoFeedbackToCreator = async (req: Request, res: Response) =>
             prisma.submissionComment.updateMany({
               where: {
                 parentId: { in: parentIds },
-                forwardedByUserId: null,
+                isSentToCreator: false,
                 isClientDraft: false,
               },
-              data: { forwardedByUserId: adminId },
+              data: {
+                forwardedByUserId: adminId,
+                isSentToCreator: true,
+                ...(submission.status === 'PENDING_REVIEW' && { isVisibleToCreator: true }),
+              },
             }),
           ]
         : []),
