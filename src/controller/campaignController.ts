@@ -4015,6 +4015,41 @@ export const closeCampaign = async (req: Request, res: Response) => {
         }
       }
 
+      if (remainingToRefund > 0 && !campaign.creditAllocationBreakdown) {
+        if (campaign.subscriptionId) {
+          await tx.subscription.update({
+            where: { id: campaign.subscriptionId },
+            data: { creditsUsed: { decrement: totalRefundedCredits } },
+          });
+        } else {
+          const company = await tx.campaign.findUnique({
+            where: { id },
+            select: {
+              company: {
+                select: {
+                  subscriptions: {
+                    where: { status: 'ACTIVE' },
+                    orderBy: { createdAt: 'desc' },
+                    take: 1,
+                  },
+                },
+              },
+            },
+          });
+
+          const fallbackSubscription = company?.company?.subscriptions?.[0];
+
+          if (fallbackSubscription) {
+            await tx.subscription.update({
+              where: { id: fallbackSubscription.id },
+              data: { creditsUsed: { decrement: totalRefundedCredits } },
+            });
+          } else {
+            console.warn(`⚠️  Campaign ${id} has ${totalRefundedCredits} credits to refund but no subscription found`);
+          }
+        }
+      }
+
       // Update campaign level - adjust campaignCredits to match what was actually used (creditsPending becomes 0)
       await tx.campaign.update({
         where: { id },
