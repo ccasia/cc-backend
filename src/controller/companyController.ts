@@ -153,7 +153,7 @@ export const getCompanyById = async (req: Request, res: Response) => {
 
     const sanitizedSubs = [];
 
-    for (const subs of activeSubscriptions) {
+    for (const subs of company.subscriptions) {
       const campaigns = subs.campaign;
 
       const totalCreditsUtilized = campaigns.reduce((acc, cur) => acc + (cur.creditsUtilized ?? 0), 0);
