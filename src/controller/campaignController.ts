@@ -3919,8 +3919,10 @@ export const changeCampaignStage = async (req: Request, res: Response) => {
       const adminName = admin?.name || 'Admin';
       const userRole = admin?.role || 'admin';
 
+      const isReactivation = campaign.status === 'COMPLETED';
+
       // Log campaign activity for activation
-      const campaignActivityMessage = `Campaign Activated`;
+      const campaignActivityMessage = isReactivation ? 'Campaign Reactivated' : 'Campaign Activated';
       await prisma.campaignLog.create({
         data: {
           message: campaignActivityMessage,
@@ -3929,7 +3931,9 @@ export const changeCampaignStage = async (req: Request, res: Response) => {
         },
       });
 
-      const adminLogMessage = `Resumed the campaign - ${campaign.name} `;
+      const adminLogMessage = isReactivation
+        ? `Reactivated the campaign - ${campaign.name}`
+        : `Resumed the campaign - ${campaign.name} `;
       logAdminChange(adminLogMessage, adminId, req);
     }
 
@@ -4012,6 +4016,41 @@ export const closeCampaign = async (req: Request, res: Response) => {
 
           // Reverse back to chronological order
           newBreakdown.reverse();
+        }
+      }
+
+      if (remainingToRefund > 0 && !campaign.creditAllocationBreakdown) {
+        if (campaign.subscriptionId) {
+          await tx.subscription.update({
+            where: { id: campaign.subscriptionId },
+            data: { creditsUsed: { decrement: totalRefundedCredits } },
+          });
+        } else {
+          const company = await tx.campaign.findUnique({
+            where: { id },
+            select: {
+              company: {
+                select: {
+                  subscriptions: {
+                    where: { status: 'ACTIVE' },
+                    orderBy: { createdAt: 'desc' },
+                    take: 1,
+                  },
+                },
+              },
+            },
+          });
+
+          const fallbackSubscription = company?.company?.subscriptions?.[0];
+
+          if (fallbackSubscription) {
+            await tx.subscription.update({
+              where: { id: fallbackSubscription.id },
+              data: { creditsUsed: { decrement: totalRefundedCredits } },
+            });
+          } else {
+            console.warn(`⚠️  Campaign ${id} has ${totalRefundedCredits} credits to refund but no subscription found`);
+          }
         }
       }
 
