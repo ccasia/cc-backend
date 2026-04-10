@@ -130,6 +130,35 @@ class WhatsappSetting {
 
     return { inbound, outbound };
   }
+
+  async getConversationAnalytics() {
+    const end = Math.floor(Date.now() / 1000);
+    const start = end - 30 * 24 * 60 * 60;
+
+    const res = await axios.get(
+      `https://graph.facebook.com/v25.0/${this.#initialized.businessAccountId}?fields=conversation_analytics.start(${start}).end(${end}).granularity(DAILY).phone_numbers([]).dimensions(["CONVERSATION_CATEGORY","CONVERSATION_TYPE","COUNTRY","PHONE"])&access_token=${this.#initialized.accessToken}`,
+    );
+
+    // const res = await axios.get(`${GRAPH_API_BASE}/${this.#initialized.businessAccountId}`, {
+    //   params: {
+    //     fields,
+    //     access_token: this.#initialized.accessToken,
+    //   },
+    // });
+
+    console.log(res.data);
+    return res.data;
+  }
 }
 
 export default WhatsappSetting;
+
+for (var feature in fs) {
+  var split_array = Split(feature['Report_road_condition'], ',');
+  var count_arr = Count(split_array);
+  for (var i = 0; i < count_arr; i++) {
+    choicesDict.features[index++] = {
+      attributes: { split_choices: Trim(split_array[i]) },
+    };
+  }
+}

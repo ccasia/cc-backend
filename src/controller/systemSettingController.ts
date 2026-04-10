@@ -58,11 +58,11 @@ export const getInsight = async (req: Request, res: Response) => {
     await whatsappSetting.initialize();
 
     const messageInsights = await whatsappSetting.getMessageInsight();
-
-    console.log(messageInsights);
+    await whatsappSetting.getConversationAnalytics();
 
     return res.status(200).json(messageInsights);
   } catch (error) {
+    console.log(error.response);
     return res.status(500).json(error);
   }
 };

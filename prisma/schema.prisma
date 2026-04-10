@@ -1788,7 +1788,7 @@ enum DraftStatus {
 
 enum TaskStatus {
   NOT_STARTED
-  TO_DO
+  TO_DO  
   IN_PROGRESS
   COMPLETED
   OVERDUE
