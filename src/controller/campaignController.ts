@@ -9050,6 +9050,7 @@ export const getClientCampaigns = async (req: Request, res: Response) => {
         company: true,
         campaignBrief: true,
         campaignTimeline: true,
+        submission: true,
       },
       orderBy: {
         createdAt: 'desc',
@@ -11798,9 +11799,9 @@ export const updateAllCampaignCredits = async (req: Request, res: Response) => {
         });
 
         const totalActiveCredits = activeSubs.reduce((sum, sub) => sum + (sub.totalCredits || 0), 0);
-        
+
         const totalUsedAcrossCompany = activeSubs.reduce((sum, sub) => sum + (sub.creditsUsed || 0), 0);
-        
+
         const currentlyAvailable = totalActiveCredits - totalUsedAcrossCompany;
 
         const requestedCredits = Number(campaignCredits) || 0;
@@ -11808,7 +11809,7 @@ export const updateAllCampaignCredits = async (req: Request, res: Response) => {
 
         if (requestedCredits > currentCampaignCredits) {
           const additionalNeeded = requestedCredits - currentCampaignCredits;
-          
+
           if (additionalNeeded > currentlyAvailable) {
             return res.status(400).json({
               message: `Cannot exceed company's subscription limits. You need ${additionalNeeded} more credits, but only ${currentlyAvailable} are available across all active packages.`,
