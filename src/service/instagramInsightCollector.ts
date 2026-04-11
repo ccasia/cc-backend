@@ -281,6 +281,9 @@ export async function fetchInstagramCampaignMetrics(campaignId: string): Promise
       engagementRate,
       reach: totalReach,
       impressions: totalImpressions,
+      totalLikes,
+      totalComments,
+      totalShares,
     },
     engagement: {
       totalEngagement: totalEngagements,
