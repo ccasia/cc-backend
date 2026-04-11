@@ -107,7 +107,7 @@ export class ReportService {
     // Auto-fetch live Instagram metrics from Meta API, merged with any caller-supplied overrides
     try {
       const liveMetrics = await fetchInstagramCampaignMetrics(campaignId);
-      console.log('LIVE METRICS', liveMetrics);
+
       externalMetrics = {
         summary: { ...liveMetrics.summary, ...externalMetrics?.summary },
         engagement: { ...liveMetrics.engagement, ...externalMetrics?.engagement },
@@ -115,6 +115,8 @@ export class ReportService {
         sentiment: externalMetrics?.sentiment,
         creators: externalMetrics?.creators ?? liveMetrics.creators,
       };
+
+      console.log('EXTERANL', externalMetrics);
     } catch (err) {
       console.warn('[ReportService] Instagram live fetch failed, falling back to snapshots:', (err as Error).message);
     }
