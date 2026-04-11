@@ -107,6 +107,7 @@ export class ReportService {
     // Auto-fetch live Instagram metrics from Meta API, merged with any caller-supplied overrides
     try {
       const liveMetrics = await fetchInstagramCampaignMetrics(campaignId);
+      console.log('LIVE METRICS', liveMetrics);
       externalMetrics = {
         summary: { ...liveMetrics.summary, ...externalMetrics?.summary },
         engagement: { ...liveMetrics.engagement, ...externalMetrics?.engagement },
