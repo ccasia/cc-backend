@@ -6,7 +6,13 @@ import { createNewSpreadSheet } from './google_sheets/sheets';
 const prisma = new PrismaClient();
 
 // `req` is for the admin ID
-export const logChange = async (message: string, campaignId: string, req: Request | undefined, id?: string, metadata?: Record<string, any>) => {
+export const logChange = async (
+  message: string,
+  campaignId: string,
+  req: Request | undefined,
+  id?: string,
+  metadata?: Record<string, any>,
+) => {
   const adminId = req?.session.userid || id;
 
   try {

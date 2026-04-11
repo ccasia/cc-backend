@@ -82,7 +82,7 @@ export const syncSubscriptionCredits = async (req: Request, res: Response) => {
 
     const totalCreditsUtilized = subscription.campaign.reduce(
       (sum, campaign) => sum + (campaign.creditsUtilized || 0),
-      0
+      0,
     );
 
     const updatedSubscription = await prisma.subscription.update({
@@ -93,7 +93,7 @@ export const syncSubscriptionCredits = async (req: Request, res: Response) => {
     });
 
     console.log(
-      `Subscription credits synced for ${id}: ${totalCreditsUtilized} credits utilized from ${subscription.campaign.length} campaigns`
+      `Subscription credits synced for ${id}: ${totalCreditsUtilized} credits utilized from ${subscription.campaign.length} campaigns`,
     );
 
     return res.status(200).json({

@@ -1,9 +1,6 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
-import {
-  getEngagementHeatmap,
-  getTopCreatorsTrend,
-} from '@services/trendAnalysisService';
+import { getEngagementHeatmap, getTopCreatorsTrend } from '@services/trendAnalysisService';
 import { fetchAndStoreInsightsForCampaign } from '@services/insightFetchService';
 
 const prisma = new PrismaClient();
@@ -35,11 +32,7 @@ export const getEngagementHeatmapController = async (req: Request, res: Response
     }
 
     // Get heatmap data
-    const heatmapData = await getEngagementHeatmap(
-      campaignId,
-      platform as string,
-      parseInt(weeks as string, 10)
-    );
+    const heatmapData = await getEngagementHeatmap(campaignId, platform as string, parseInt(weeks as string, 10));
 
     // Transform for frontend consumption
     const transformedData = transformHeatmapData(heatmapData, parseInt(weeks as string, 10));
@@ -95,11 +88,7 @@ export const getTopCreatorsTrendController = async (req: Request, res: Response)
     }
 
     // Get trend data
-    const trendData = await getTopCreatorsTrend(
-      campaignId,
-      platform as string,
-      parseInt(days as string, 10)
-    );
+    const trendData = await getTopCreatorsTrend(campaignId, platform as string, parseInt(days as string, 10));
 
     // Transform for frontend chart consumption
     const transformedData = transformTrendData(trendData);
@@ -202,7 +191,7 @@ export const getTrendsSummaryController = async (req: Request, res: Response) =>
             acc[item.platform] = item._count.id;
             return acc;
           },
-          {} as Record<string, number>
+          {} as Record<string, number>,
         ),
       },
     });
@@ -331,9 +320,7 @@ function calculateHeatmapSummary(data: any[]): any {
 
   const min = engagementRates.length > 0 ? Math.min(...engagementRates) : 0;
   const max = engagementRates.length > 0 ? Math.max(...engagementRates) : 0;
-  const avg = engagementRates.length > 0
-    ? engagementRates.reduce((a, b) => a + b, 0) / engagementRates.length
-    : 0;
+  const avg = engagementRates.length > 0 ? engagementRates.reduce((a, b) => a + b, 0) / engagementRates.length : 0;
 
   return {
     totalDays: data.length,
@@ -361,7 +348,7 @@ function calculateDynamicScales(engagementRates: number[]): {
 
   // Sort rates for quartile calculation
   const sorted = [...engagementRates].sort((a, b) => a - b);
-  
+
   const q1 = getPercentile(sorted, 25);
   const q2 = getPercentile(sorted, 50); // median
   const q3 = getPercentile(sorted, 75);
@@ -403,11 +390,11 @@ function getPercentile(sorted: number[], percentile: number): number {
   const index = (percentile / 100) * (sorted.length - 1);
   const lower = Math.floor(index);
   const upper = Math.ceil(index);
-  
+
   if (lower === upper) {
     return sorted[lower];
   }
-  
+
   return sorted[lower] + (sorted[upper] - sorted[lower]) * (index - lower);
 }
 

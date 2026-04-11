@@ -2,7 +2,7 @@ import { storage } from '@configs/cloudStorage.config';
 import amqp from 'amqplib';
 import dayjs from 'dayjs';
 import fse from 'fs-extra';
-import { io } from 'src/server';
+import { io } from '@/src/server';
 
 (async () => {
   console.log('Test');

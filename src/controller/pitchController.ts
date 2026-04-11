@@ -65,9 +65,7 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
   const adminId = req.session.userid;
 
   try {
-    console.log(
-      `Admin ${adminId} approving pitch ${pitchId} with comments: ${adminComments}`,
-    );
+    console.log(`Admin ${adminId} approving pitch ${pitchId} with comments: ${adminComments}`);
 
     const pitch = await prisma.pitch.findUnique({
       where: { id: pitchId },
@@ -95,7 +93,7 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
     }
 
     // Check if pitch is in correct status - allow admin to approve from PENDING_REVIEW or MAYBE
-      if (pitch.status !== 'PENDING_REVIEW' && pitch.status !== 'MAYBE' && pitch.status !== 'INVITED') {
+    if (pitch.status !== 'PENDING_REVIEW' && pitch.status !== 'MAYBE' && pitch.status !== 'INVITED') {
       return res.status(400).json({ message: 'Pitch is not in correct status for admin approval' });
     }
 
@@ -177,10 +175,11 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
           },
           data: {
             isAgreementReady: false,
-            ...(pitch.campaign.isCreditTier && creditPerVideo !== null && {
-              creditPerVideo,
-              creditTierId,
-            }),
+            ...(pitch.campaign.isCreditTier &&
+              creditPerVideo !== null && {
+                creditPerVideo,
+                creditTierId,
+              }),
           },
         });
       } else {
@@ -190,10 +189,11 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
             campaignId: pitch.campaignId,
             isAgreementReady: false,
             currency: 'MYR',
-            ...(pitch.campaign.isCreditTier && creditPerVideo !== null && {
-              creditPerVideo,
-              creditTierId,
-            }),
+            ...(pitch.campaign.isCreditTier &&
+              creditPerVideo !== null && {
+                creditPerVideo,
+                creditTierId,
+              }),
           },
         });
       }
@@ -322,9 +322,7 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
         },
       });
 
-      console.log(
-        `Pitch ${pitchId} approved by admin, status updated to SENT_TO_CLIENT (v4 flow)`,
-      );
+      console.log(`Pitch ${pitchId} approved by admin, status updated to SENT_TO_CLIENT (v4 flow)`);
       console.log(adminComments ? `Comments: ${adminComments}` : 'No comments provided');
 
       // Emit to campaign room for real-time updates
@@ -366,9 +364,7 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
         },
       });
 
-      console.log(
-        `Pitch ${pitchId} approved by admin, status updated to APPROVED (non-v4 direct approval)`,
-      );
+      console.log(`Pitch ${pitchId} approved by admin, status updated to APPROVED (non-v4 direct approval)`);
       console.log(adminComments ? `Comments: ${adminComments}` : 'No comments provided');
 
       // Emit to campaign room for real-time updates
@@ -626,10 +622,11 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
         },
         data: {
           isAgreementReady: false,
-          ...(pitch.campaign.isCreditTier && creditPerVideo !== null && {
-            creditPerVideo,
-            creditTierId,
-          }),
+          ...(pitch.campaign.isCreditTier &&
+            creditPerVideo !== null && {
+              creditPerVideo,
+              creditTierId,
+            }),
         },
       });
     } else {
@@ -639,10 +636,11 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
           campaignId: pitch.campaignId,
           isAgreementReady: false,
           currency: 'MYR',
-          ...(pitch.campaign.isCreditTier && creditPerVideo !== null && {
-            creditPerVideo,
-            creditTierId,
-          }),
+          ...(pitch.campaign.isCreditTier &&
+            creditPerVideo !== null && {
+              creditPerVideo,
+              creditTierId,
+            }),
         },
       });
     }
@@ -700,13 +698,13 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
             ? timelines.filter((t) => !v2SubmissionTypes.includes(t.submissionType?.type || ''))
             : timelines;
 
-          const existingSubmissionTypes = new Set<string | undefined>(
-            existingSubmissions.map((s) => s.submissionType?.type),
-          );
+        const existingSubmissionTypes = new Set<string | undefined>(
+          existingSubmissions.map((s) => s.submissionType?.type),
+        );
 
-          const timelinesWithoutExisting = timelinesFiltered.filter(
-            (t) => t.submissionType?.type && !existingSubmissionTypes.has(t.submissionType.type),
-          );
+        const timelinesWithoutExisting = timelinesFiltered.filter(
+          (t) => t.submissionType?.type && !existingSubmissionTypes.has(t.submissionType.type),
+        );
 
           console.log(
             `Creating submissions for ${isV4Campaign ? 'v4' : 'v2'} campaign - ${timelinesWithoutExisting.length} timeline(s) (${existingSubmissions.length} already exist)`,
@@ -1230,14 +1228,34 @@ export const setPitchAgreement = async (req: Request, res: Response) => {
     }
 
     // Update pitch status and set agreement details
-    await prisma.pitch.update({
+    const updatedPitchAgreement = await prisma.pitch.update({
       where: { id: pitchId },
       data: {
         status: 'AGREEMENT_PENDING',
         amount: amount ? (typeof amount === 'string' ? parseInt(amount) : amount) : null,
         agreementTemplateId: agreementTemplateId,
+        outreachStatus: 'CONFIRMED',
+        outreachUpdatedAt: new Date(),
+        outreachUpdatedBy: adminId,
+      },
+      select: {
+        id: true,
+        outreachStatus: true,
+        outreachUpdatedAt: true,
+        outreachUpdatedBy: true,
       },
     });
+
+    if (io) {
+      io.to(pitch.campaignId).emit('v3:pitch:outreach-updated', {
+        pitchId: updatedPitchAgreement.id,
+        campaignId: pitch.campaignId,
+        outreachStatus: updatedPitchAgreement.outreachStatus,
+        outreachUpdatedAt: updatedPitchAgreement.outreachUpdatedAt,
+        outreachUpdatedBy: updatedPitchAgreement.outreachUpdatedBy,
+        updatedAt: new Date().toISOString(),
+      });
+    }
 
     // Create notification for creator
     await prisma.notification.create({
@@ -1456,21 +1474,6 @@ export const getPitchesV3 = async (req: Request, res: Response) => {
       orderBy: {
         createdAt: 'desc',
       },
-    });
-
-    console.log('🔍 V3 Pitches Debug:', {
-      campaignId,
-      requestedStatus: status,
-      userRole: user.role,
-      totalPitches: pitches.length,
-      v4Pitches: pitches.filter((p) => p.campaign?.submissionVersion === 'v4').length,
-      v2Pitches: pitches.filter((p) => p.campaign?.submissionVersion === 'v2').length,
-      pitchStatuses: pitches.map((p) => ({
-        id: p.id,
-        status: p.status,
-        campaignOrigin: p.campaign?.origin,
-        submissionVersion: p.campaign?.submissionVersion,
-      })),
     });
 
     const transformedPitches = pitches
@@ -2282,10 +2285,7 @@ export const updateGuestCreatorInfo = async (req: Request, res: Response) => {
             where: {
               isActive: true,
               minFollowers: { lte: parsedFollowerCount },
-              OR: [
-                { maxFollowers: { gte: parsedFollowerCount } },
-                { maxFollowers: null },
-              ],
+              OR: [{ maxFollowers: { gte: parsedFollowerCount } }, { maxFollowers: null }],
             },
             orderBy: [{ minFollowers: 'desc' }],
           });
@@ -2293,7 +2293,9 @@ export const updateGuestCreatorInfo = async (req: Request, res: Response) => {
           if (tier) {
             creatorUpdateData.creditTierId = tier.id;
             creatorUpdateData.tierUpdatedAt = new Date();
-            console.log(`Updated guest creator ${pitch.userId} tier to ${tier.name} based on ${parsedFollowerCount} followers`);
+            console.log(
+              `Updated guest creator ${pitch.userId} tier to ${tier.name} based on ${parsedFollowerCount} followers`,
+            );
           }
         } else if (followerCount?.trim?.() === '' || followerCount === null) {
           // Clear follower count if empty
@@ -2359,7 +2361,7 @@ const VALID_OUTREACH_STATUSES = [
   'UNRESPONSIVE',
 ] as const;
 
-type OutreachStatusType = typeof VALID_OUTREACH_STATUSES[number];
+type OutreachStatusType = (typeof VALID_OUTREACH_STATUSES)[number];
 
 // Update outreach status for a pitch (admin internal tracking)
 // PATCH /api/pitch/v3/:pitchId/outreach-status

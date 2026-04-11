@@ -9,10 +9,7 @@
  */
 
 import { PrismaClient } from '@prisma/client';
-import {
-  getHighestFollowerCount,
-  getTierByFollowerCount,
-} from '../service/creditTierService';
+import { getHighestFollowerCount, getTierByFollowerCount } from '../service/creditTierService';
 
 const prisma = new PrismaClient();
 

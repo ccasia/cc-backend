@@ -1442,12 +1442,7 @@ export const updateInvoice = async (req: Request, res: Response) => {
         });
       }
 
-      return {
-        ...updatedInvoice,
-        _oldAmount: oldInvoice?.amount,
-        _oldStatus: oldInvoice?.status,
-        _oldInvoice: oldInvoice,
-      };
+      return { ...updatedInvoice, _oldAmount: oldInvoice?.amount, _oldStatus: oldInvoice?.status, _oldInvoice: oldInvoice };
     });
 
     const oldAmount = invoice._oldAmount;
@@ -1458,7 +1453,11 @@ export const updateInvoice = async (req: Request, res: Response) => {
     if (status && status !== 'failed' && oldStatus !== status) {
       const creatorName = invoice.creator?.user?.name || 'Unknown Creator';
       if (status === 'rejected') {
-        await logChange(`Rejected invoice ${invoice.invoiceNumber} for ${creatorName}`, invoice.campaignId, req);
+        await logChange(
+          `Rejected invoice ${invoice.invoiceNumber} for ${creatorName}`,
+          invoice.campaignId,
+          req,
+        );
       } else {
         await logChange(
           `Invoice ${invoice.invoiceNumber} for ${creatorName} status changed to ${status}`,
@@ -1475,7 +1474,9 @@ export const updateInvoice = async (req: Request, res: Response) => {
       const admin = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
       const adminName = admin?.name || 'Admin';
 
-      const agreement = invoice.creator?.user?.creatorAgreement?.find((a: any) => a.campaignId === campaignId);
+      const agreement = invoice.creator?.user?.creatorAgreement?.find(
+        (a: any) => a.campaignId === campaignId,
+      );
       const currency = agreement?.currency || 'MYR';
       const getCurrencySymbol = (code: string) => {
         switch (code) {
@@ -1504,33 +1505,17 @@ export const updateInvoice = async (req: Request, res: Response) => {
 
     // Log invoice detail changes (due date, bank info, task fields)
     {
-      const oldBankAcc =
-        typeof oldInvoice?.bankAcc === 'object' && oldInvoice.bankAcc !== null
-          ? (oldInvoice.bankAcc as Record<string, any>)
-          : {};
-      const oldTask =
-        typeof oldInvoice?.task === 'object' && oldInvoice.task !== null
-          ? (oldInvoice.task as Record<string, any>)
-          : {};
-      const newBankAcc = typeof bankInfo === 'object' && bankInfo !== null ? (bankInfo as Record<string, any>) : {};
-      const newTask = typeof items[0] === 'object' && items[0] !== null ? (items[0] as Record<string, any>) : {};
+      const oldBankAcc = typeof oldInvoice?.bankAcc === 'object' && oldInvoice.bankAcc !== null ? oldInvoice.bankAcc as Record<string, any> : {};
+      const oldTask = typeof oldInvoice?.task === 'object' && oldInvoice.task !== null ? oldInvoice.task as Record<string, any> : {};
+      const newBankAcc = typeof bankInfo === 'object' && bankInfo !== null ? bankInfo as Record<string, any> : {};
+      const newTask = typeof items[0] === 'object' && items[0] !== null ? items[0] as Record<string, any> : {};
 
       const fieldDefs: { key: string; label: string; oldVal: any; newVal: any }[] = [
         { key: 'dueDate', label: 'Due Date', oldVal: oldInvoice?.dueDate, newVal: dueDate },
         { key: 'bankName', label: 'Bank Name', oldVal: oldBankAcc.bankName, newVal: newBankAcc.bankName },
         { key: 'payTo', label: 'Recipient Name', oldVal: oldBankAcc.payTo, newVal: newBankAcc.payTo },
-        {
-          key: 'accountNumber',
-          label: 'Account Number',
-          oldVal: oldBankAcc.accountNumber,
-          newVal: newBankAcc.accountNumber,
-        },
-        {
-          key: 'accountEmail',
-          label: 'Payment Notification Email',
-          oldVal: oldBankAcc.accountEmail,
-          newVal: newBankAcc.accountEmail,
-        },
+        { key: 'accountNumber', label: 'Account Number', oldVal: oldBankAcc.accountNumber, newVal: newBankAcc.accountNumber },
+        { key: 'accountEmail', label: 'Payment Notification Email', oldVal: oldBankAcc.accountEmail, newVal: newBankAcc.accountEmail },
         { key: 'clientName', label: 'Client Name', oldVal: oldTask.clientName, newVal: newTask.clientName },
         { key: 'campaignName', label: 'Campaign Name', oldVal: oldTask.campaignName, newVal: newTask.campaignName },
         { key: 'service', label: 'Service', oldVal: oldTask.service, newVal: newTask.service },
@@ -1555,8 +1540,8 @@ export const updateInvoice = async (req: Request, res: Response) => {
         .map(({ key, label, oldVal, newVal }) => ({
           field: key,
           label,
-          old: key === 'dueDate' ? toDateStr(oldVal) : oldVal ?? null,
-          new: key === 'dueDate' ? toDateStr(newVal) : newVal ?? null,
+          old: key === 'dueDate' ? toDateStr(oldVal) : (oldVal ?? null),
+          new: key === 'dueDate' ? toDateStr(newVal) : (newVal ?? null),
         }));
 
       if (changes.length > 0) {

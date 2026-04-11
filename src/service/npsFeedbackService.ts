@@ -152,7 +152,17 @@ export const getNpsFeedbackList = async (params: {
   userType?: string;
   rating?: number;
 }) => {
-  const { page = 1, limit = 10, search, sortBy = 'createdAt', sortOrder = 'desc', startDate, endDate, userType, rating } = params;
+  const {
+    page = 1,
+    limit = 10,
+    search,
+    sortBy = 'createdAt',
+    sortOrder = 'desc',
+    startDate,
+    endDate,
+    userType,
+    rating,
+  } = params;
   const skip = (page - 1) * limit;
 
   const where: any = {};
@@ -163,10 +173,7 @@ export const getNpsFeedbackList = async (params: {
 
   if (search) {
     where.user = {
-      OR: [
-        { name: { contains: search, mode: 'insensitive' } },
-        { email: { contains: search, mode: 'insensitive' } },
-      ],
+      OR: [{ name: { contains: search, mode: 'insensitive' } }, { email: { contains: search, mode: 'insensitive' } }],
     };
   }
 
@@ -301,12 +308,8 @@ export const getNpsFeedbackStats = async (params?: { startDate?: string; endDate
       })),
     ),
     // Only compute breakdown when not already filtered by userType
-    !params?.userType
-      ? prisma.npsFeedback.count({ where: { ...dateFilter, userType: 'CREATOR' } })
-      : null,
-    !params?.userType
-      ? prisma.npsFeedback.count({ where: { ...dateFilter, userType: 'CLIENT' } })
-      : null,
+    !params?.userType ? prisma.npsFeedback.count({ where: { ...dateFilter, userType: 'CREATOR' } }) : null,
+    !params?.userType ? prisma.npsFeedback.count({ where: { ...dateFilter, userType: 'CLIENT' } }) : null,
   ]);
 
   return {

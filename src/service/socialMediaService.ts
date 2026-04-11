@@ -302,7 +302,7 @@ export const getInstagramUserInsight = async (accessToken: string, instagramUser
       },
     });
 
-    const metrics = (response?.data?.data || []) as Array<{ name: string; total_value?: { value?: number } }>;
+    const metrics = (response?.data?.data || []) as { name: string; total_value?: { value?: number } }[];
 
     const metricMap = metrics.reduce(
       (acc, item) => {
@@ -586,7 +586,7 @@ export const getTikTokMediaObject = async (accessToken: string, limit = 20) => {
 export const resolveTikTokShortCode = async (shortCode: string): Promise<string> => {
   try {
     console.log(`🔗 Resolving TikTok short code: ${shortCode}`);
-    
+
     // Short codes are typically 10-15 characters of alphanumeric/underscore/hyphen
     // If it's already a long numeric ID, return it as-is
     if (/^\d{15,}$/.test(shortCode)) {

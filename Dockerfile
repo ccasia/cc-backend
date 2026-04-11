@@ -36,7 +36,7 @@ EXPOSE 3001
 CMD [ "yarn", "dev" ]
 
 # Build stage
-FROM node:20-alpine3.17 AS builder
+FROM node:22-alpine3.22 AS builder
 WORKDIR /app
 
 # Copy package files and install dependencies
@@ -54,7 +54,7 @@ RUN npx prisma generate
 RUN yarn build
 
 # Production stage
-FROM node:20-alpine3.17 AS production
+FROM node:22-alpine3.22 AS production
 ENV NODE_ENV=production
 
 WORKDIR /app
@@ -103,9 +103,6 @@ EXPOSE 3001
 RUN echo "Final directory structure (excluding node_modules):" && \
     find /app -not -path "*/node_modules/*" -not -name "node_modules"
 
-# Debug: Check file permissions
-RUN ls -l /app/dist/server.js
-
 # Debug: Print current working directory
 RUN pwd
 
@@ -114,4 +111,4 @@ WORKDIR /app/dist
 RUN mkdir -p form/tmp form/pdf upload
 
 # Use node to run the built app.js file
-CMD ["node", "server.js"]
+CMD ["node", "src/server.js"]

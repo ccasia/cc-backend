@@ -1410,7 +1410,14 @@ export const getClientShortlistMetrics = async (req: Request, res: Response) => 
       }
     });
 
-    type CampaignStats = { name: string; clientName: string; image: any; avg: number; min: number; max: number };
+    interface CampaignStats {
+      name: string;
+      clientName: string;
+      image: any;
+      avg: number;
+      min: number;
+      max: number;
+    }
 
     const trendData = Object.entries(turnaroundMonths).map(([month, stats]) => {
       const platformAvg = stats.count > 0 ? Math.round(stats.totalHours / stats.count) : 0;

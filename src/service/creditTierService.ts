@@ -103,10 +103,7 @@ export const calculateCreatorTier = async (userId: string): Promise<TierCalculat
  * Update creator's credit tier in the database
  * Called when follower counts change (social media sync, manual input)
  */
-export const updateCreatorTier = async (
-  userId: string,
-  prismaFunc?: PrismaClient
-): Promise<CreditTier | null> => {
+export const updateCreatorTier = async (userId: string, prismaFunc?: PrismaClient): Promise<CreditTier | null> => {
   const tx = prismaFunc ?? prisma;
 
   const { tier } = await calculateCreatorTier(userId);
@@ -127,7 +124,7 @@ export const updateCreatorTier = async (
  * Useful for migration scripts and bulk updates
  */
 export const batchUpdateCreatorTiers = async (
-  userIds: string[]
+  userIds: string[],
 ): Promise<{ userId: string; success: boolean; tier?: CreditTier | null; error?: string }[]> => {
   const results = [];
 
@@ -147,17 +144,14 @@ export const batchUpdateCreatorTiers = async (
  * Calculate total credit cost for a creator based on video count and their tier
  * Used when shortlisting/assigning creators to credit tier campaigns
  */
-export const calculateCreatorCreditCost = async (
-  userId: string,
-  videoCount: number
-): Promise<CreditCostResult> => {
+export const calculateCreatorCreditCost = async (userId: string, videoCount: number): Promise<CreditCostResult> => {
   const { tier, followerCount } = await calculateCreatorTier(userId);
 
   if (!tier) {
     throw new Error(
       followerCount === 0
         ? 'Creator does not have follower data. Please connect media kit or enter follower count manually.'
-        : 'No credit tier found for this creator\'s follower count.'
+        : "No credit tier found for this creator's follower count.",
     );
   }
 
@@ -198,7 +192,7 @@ export const getAllActiveTiers = async (): Promise<CreditTier[]> => {
  * Useful for API responses and display
  */
 export const getCreatorTierInfo = async (
-  userId: string
+  userId: string,
 ): Promise<{
   followerCount: number;
   tier: CreditTier | null;
@@ -256,10 +250,7 @@ export const getCreatorTierInfo = async (
  * Update a creator's manual follower count
  * Used when creators without media kit enter their follower count manually
  */
-export const updateManualFollowerCount = async (
-  userId: string,
-  followerCount: number
-): Promise<CreditTier | null> => {
+export const updateManualFollowerCount = async (userId: string, followerCount: number): Promise<CreditTier | null> => {
   // Validate follower count
   if (followerCount < 0) {
     throw new Error('Follower count cannot be negative');

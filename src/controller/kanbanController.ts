@@ -368,7 +368,7 @@ export const createKanbanBoard = async (userId: string, type?: any) => {
     }
 
     return { board, ...columns };
-  } catch (error) {
+  } catch (error: any) {
     throw new Error(error);
   }
 };

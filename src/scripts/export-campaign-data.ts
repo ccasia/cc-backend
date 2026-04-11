@@ -1,6 +1,9 @@
-import { prisma } from 'src/prisma/prisma';
+// import { prisma } from 'src/prisma/prisma';
+import { PrismaClient } from '@prisma/client';
 import fs from 'fs-extra';
 import path from 'path';
+
+const prisma = new PrismaClient();
 
 const exportData = async () => {
   const id = process.argv.slice(-1)[0];

@@ -10,9 +10,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 // import { prisma } from 'src/prisma/prisma';
-import { PrismaClient } from '@prisma/client';
-
 import { ReportSection, ExternalMetrics } from '../types/index';
+import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
@@ -48,8 +47,6 @@ async function collectCampaignSummary(campaignId: string, ext?: ExternalMetrics[
   const snapshots = await prisma.insightSnapshot.findMany({
     where: { campaignId },
   });
-
-  // console.log(snapshots);
 
   const dbViews = snapshots.reduce((s, r) => s + r.totalViews, 0);
   const dbLikes = snapshots.reduce((s, r) => s + r.totalLikes, 0);

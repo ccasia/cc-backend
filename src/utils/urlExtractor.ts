@@ -188,7 +188,7 @@ async function extractTikTokData(url: string): Promise<ExtractedUrlData> {
       }
     } catch (error: any) {
       console.warn(`⚠️  Could not resolve short URL: ${error.message}, using as-is`);
-      
+
       // Fallback: Store the short URL itself as valid - it can be resolved later by TikTok API
       // Extract short code from URL (e.g., ZS5NQoDLq from https://vt.tiktok.com/ZS5NQoDLq/)
       const shortCodeMatch = url.match(/(?:vm|vt)\.tiktok\.com\/([A-Za-z0-9]+)/);
@@ -267,11 +267,7 @@ async function resolveShortUrl(url: string): Promise<string> {
 /**
  * Retry wrapper with transient error detection
  */
-export async function extractWithRetry(
-  url: string,
-  maxRetries: number = 3,
-  retryDelay: number = 1000
-): Promise<ExtractedUrlData> {
+export async function extractWithRetry(url: string, maxRetries = 3, retryDelay = 1000): Promise<ExtractedUrlData> {
   let lastError: any;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {

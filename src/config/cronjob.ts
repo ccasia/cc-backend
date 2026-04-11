@@ -98,10 +98,10 @@ new CronJob(
   '0 0 * * *', // 12:00 AM daily
   async function () {
     console.log('[Cronjob] Starting daily insight collection at', dayjs().tz('Asia/Kuala_Lumpur').format());
-    
+
     try {
       const result = await fetchInsightsForAllCampaigns();
-      
+
       console.log('[Cronjob] Daily insight collection completed:', {
         processed: result.processed,
         success: result.success,
@@ -114,18 +114,17 @@ new CronJob(
   },
   null, // onComplete
   true, // start
-  'Asia/Kuala_Lumpur', 
+  'Asia/Kuala_Lumpur',
 );
 
-
 new CronJob(
-  '0 1 * * *', 
+  '0 1 * * *',
   async function () {
     console.log('[Cronjob] Starting post engagement snapshot collection at', dayjs().tz('Asia/Kuala_Lumpur').format());
-    
+
     try {
       const result = await capturePostEngagementSnapshots();
-      
+
       console.log('[Cronjob] Post engagement snapshot collection completed:', {
         processed: result.processed,
         captured: result.captured,

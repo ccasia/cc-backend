@@ -1,11 +1,7 @@
 // @ts-nocheck
 import { backfillAllSubmissionUrls, getCampaignSubmissionUrls } from '../src/service/submissionUrlService';
 import { batchFetchInsights } from '../src/service/socialMediaBatchService';
-import {
-  calculateDailyMetrics,
-  storeInsightSnapshot,
-  NormalizedInsight,
-} from '../src/service/trendAnalysisService';
+import { calculateDailyMetrics, storeInsightSnapshot, NormalizedInsight } from '../src/service/trendAnalysisService';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
@@ -176,7 +172,7 @@ async function processCampaignInsights(campaignId: string): Promise<void> {
 async function processPlatformInsights(
   campaignId: string,
   platform: 'Instagram' | 'TikTok',
-  urls: any[]
+  urls: any[],
 ): Promise<void> {
   try {
     // Prepare batch requests
@@ -238,8 +234,8 @@ async function processPlatformInsights(
 
       // Apply variation multipliers to simulate growth over time
       // Day 0 (oldest) = ~60% of current, Day 6 (today) = 100%
-      const growthFactor = 0.6 + (0.4 * (DAYS_TO_BACKFILL - 1 - daysAgo) / (DAYS_TO_BACKFILL - 1));
-      
+      const growthFactor = 0.6 + (0.4 * (DAYS_TO_BACKFILL - 1 - daysAgo)) / (DAYS_TO_BACKFILL - 1);
+
       // Add some daily randomness (±15%)
       const dailyVariation = 0.85 + Math.random() * 0.3;
       const multiplier = growthFactor * dailyVariation;
@@ -276,7 +272,6 @@ async function processPlatformInsights(
  */
 function getMetricValue(metrics: any, possibleKeys: string[]): number {
   if (!metrics) return 0;
-
 
   // If metrics is an array (Instagram format)
   if (Array.isArray(metrics)) {

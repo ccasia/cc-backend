@@ -3919,8 +3919,10 @@ export const changeCampaignStage = async (req: Request, res: Response) => {
       const adminName = admin?.name || 'Admin';
       const userRole = admin?.role || 'admin';
 
+      const isReactivation = campaign.status === 'COMPLETED';
+
       // Log campaign activity for activation
-      const campaignActivityMessage = `Campaign Activated`;
+      const campaignActivityMessage = isReactivation ? 'Campaign Reactivated' : 'Campaign Activated';
       await prisma.campaignLog.create({
         data: {
           message: campaignActivityMessage,
@@ -3929,7 +3931,9 @@ export const changeCampaignStage = async (req: Request, res: Response) => {
         },
       });
 
-      const adminLogMessage = `Resumed the campaign - ${campaign.name} `;
+      const adminLogMessage = isReactivation
+        ? `Reactivated the campaign - ${campaign.name}`
+        : `Resumed the campaign - ${campaign.name} `;
       logAdminChange(adminLogMessage, adminId, req);
     }
 
@@ -4012,6 +4016,41 @@ export const closeCampaign = async (req: Request, res: Response) => {
 
           // Reverse back to chronological order
           newBreakdown.reverse();
+        }
+      }
+
+      if (remainingToRefund > 0 && !campaign.creditAllocationBreakdown) {
+        if (campaign.subscriptionId) {
+          await tx.subscription.update({
+            where: { id: campaign.subscriptionId },
+            data: { creditsUsed: { decrement: totalRefundedCredits } },
+          });
+        } else {
+          const company = await tx.campaign.findUnique({
+            where: { id },
+            select: {
+              company: {
+                select: {
+                  subscriptions: {
+                    where: { status: 'ACTIVE' },
+                    orderBy: { createdAt: 'desc' },
+                    take: 1,
+                  },
+                },
+              },
+            },
+          });
+
+          const fallbackSubscription = company?.company?.subscriptions?.[0];
+
+          if (fallbackSubscription) {
+            await tx.subscription.update({
+              where: { id: fallbackSubscription.id },
+              data: { creditsUsed: { decrement: totalRefundedCredits } },
+            });
+          } else {
+            console.warn(`⚠️  Campaign ${id} has ${totalRefundedCredits} credits to refund but no subscription found`);
+          }
         }
       }
 
@@ -7124,6 +7163,41 @@ export const sendAgreement = async (req: Request, res: Response) => {
           ugcCredits: videoCount, // Store video count in pitch as well
         },
       });
+    }
+
+    await prisma.pitch.updateMany({
+      where: {
+        userId: isUserExist.id,
+        campaignId,
+      },
+      data: {
+        outreachStatus: 'CONFIRMED',
+        outreachUpdatedAt: new Date(),
+        outreachUpdatedBy: adminId,
+      },
+    });
+
+    // Real-time SWR refresh for pitch lists (usePitchSocket listens for this)
+    if (io) {
+      const pitchForSocket = await prisma.pitch.findFirst({
+        where: { userId: isUserExist.id, campaignId },
+        select: {
+          id: true,
+          outreachStatus: true,
+          outreachUpdatedAt: true,
+          outreachUpdatedBy: true,
+        },
+      });
+      if (pitchForSocket) {
+        io.to(campaignId).emit('v3:pitch:outreach-updated', {
+          pitchId: pitchForSocket.id,
+          campaignId,
+          outreachStatus: pitchForSocket.outreachStatus,
+          outreachUpdatedAt: pitchForSocket.outreachUpdatedAt,
+          outreachUpdatedBy: pitchForSocket.outreachUpdatedBy,
+          updatedAt: new Date().toISOString(),
+        });
+      }
     }
 
     if (campaign.campaignCredits) {
@@ -11799,9 +11873,9 @@ export const updateAllCampaignCredits = async (req: Request, res: Response) => {
         });
 
         const totalActiveCredits = activeSubs.reduce((sum, sub) => sum + (sub.totalCredits || 0), 0);
-
+        
         const totalUsedAcrossCompany = activeSubs.reduce((sum, sub) => sum + (sub.creditsUsed || 0), 0);
-
+        
         const currentlyAvailable = totalActiveCredits - totalUsedAcrossCompany;
 
         const requestedCredits = Number(campaignCredits) || 0;
@@ -11809,7 +11883,7 @@ export const updateAllCampaignCredits = async (req: Request, res: Response) => {
 
         if (requestedCredits > currentCampaignCredits) {
           const additionalNeeded = requestedCredits - currentCampaignCredits;
-
+          
           if (additionalNeeded > currentlyAvailable) {
             return res.status(400).json({
               message: `Cannot exceed company's subscription limits. You need ${additionalNeeded} more credits, but only ${currentlyAvailable} are available across all active packages.`,

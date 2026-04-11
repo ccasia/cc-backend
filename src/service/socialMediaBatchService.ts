@@ -14,12 +14,12 @@ const prisma = new PrismaClient();
 
 export interface BatchRequestConfig {
   platform: 'Instagram' | 'TikTok';
-  requests: Array<{
+  requests: {
     mediaId?: string;
     shortCode?: string;
     userId: string;
     campaignId?: string;
-  }>;
+  }[];
   batchSize?: number;
   delayMs?: number;
 }
@@ -38,9 +38,7 @@ export interface BatchInsightResult {
  * Unified batching across both platforms
  * Respects rate limits and uses consistent 3 concurrent, 200ms delay pattern
  */
-export async function batchFetchInsights(
-  config: BatchRequestConfig
-): Promise<BatchInsightResult[]> {
+export async function batchFetchInsights(config: BatchRequestConfig): Promise<BatchInsightResult[]> {
   const { platform, requests, batchSize = 3, delayMs = 200 } = config;
 
   if (requests.length === 0) {
@@ -49,7 +47,7 @@ export async function batchFetchInsights(
   }
 
   console.log(
-    `📦 Batch fetching ${requests.length} ${platform} insights (batch size: ${batchSize}, delay: ${delayMs}ms)`
+    `📦 Batch fetching ${requests.length} ${platform} insights (batch size: ${batchSize}, delay: ${delayMs}ms)`,
   );
 
   const results: BatchInsightResult[] = [];
@@ -64,9 +62,7 @@ export async function batchFetchInsights(
 
     // Fetch batch concurrently using Promise.allSettled to capture all results
     const batchResults = await Promise.allSettled(
-      batch.map((req) =>
-        platform === 'Instagram' ? fetchInstagramInsight(req) : fetchTikTokInsight(req)
-      )
+      batch.map((req) => (platform === 'Instagram' ? fetchInstagramInsight(req) : fetchTikTokInsight(req))),
     );
 
     // Process results
@@ -83,9 +79,7 @@ export async function batchFetchInsights(
           insight: result.value,
           timestamp: new Date(),
         });
-        console.log(
-          `✅ [${i + j + 1}/${requests.length}] ${platform} insight fetched for user ${request.userId}`
-        );
+        console.log(`✅ [${i + j + 1}/${requests.length}] ${platform} insight fetched for user ${request.userId}`);
       } else {
         results.push({
           mediaId: request.mediaId,
@@ -98,7 +92,7 @@ export async function batchFetchInsights(
         });
         console.error(
           `❌ [${i + j + 1}/${requests.length}] Failed to fetch ${platform} insight for ${request.mediaId || request.shortCode}:`,
-          result.reason?.message
+          result.reason?.message,
         );
       }
     }
@@ -113,9 +107,7 @@ export async function batchFetchInsights(
   const successCount = results.filter((r) => !r.error).length;
   const errorCount = results.filter((r) => r.error).length;
 
-  console.log(
-    `\n✨ ${platform} batch complete: ${successCount} success, ${errorCount} errors\n`
-  );
+  console.log(`\n✨ ${platform} batch complete: ${successCount} success, ${errorCount} errors\n`);
 
   return results;
 }
@@ -174,10 +166,7 @@ async function fetchInstagramInsight(req: {
       metrics: insight,
     };
   } catch (error: any) {
-    console.error(
-      `Instagram fetch error for user ${req.userId}, mediaId ${req.mediaId}:`,
-      error.message
-    );
+    console.error(`Instagram fetch error for user ${req.userId}, mediaId ${req.mediaId}:`, error.message);
     throw error;
   }
 }
@@ -186,11 +175,7 @@ async function fetchInstagramInsight(req: {
  * Fetch TikTok insight for a single video
  * Reuses existing socialMediaService functions
  */
-async function fetchTikTokInsight(req: {
-  mediaId?: string;
-  userId: string;
-  campaignId?: string;
-}): Promise<any> {
+async function fetchTikTokInsight(req: { mediaId?: string; userId: string; campaignId?: string }): Promise<any> {
   try {
     // 1. Get creator's TikTok user record + access token
     const creator = await prisma.creator.findUnique({
@@ -233,10 +218,7 @@ async function fetchTikTokInsight(req: {
       },
     };
   } catch (error: any) {
-    console.error(
-      `TikTok fetch error for user ${req.userId}, mediaId ${req.mediaId}:`,
-      error.message
-    );
+    console.error(`TikTok fetch error for user ${req.userId}, mediaId ${req.mediaId}:`, error.message);
     throw error;
   }
 }

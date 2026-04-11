@@ -33,7 +33,147 @@ import { saveNotification } from '@controllers/notificationController';
 const prisma = new PrismaClient();
 const prismaAny = prisma as any;
 
+const DISCOVERY_API_CACHE_TTL_MS = Number(process.env.DISCOVERY_API_CACHE_TTL_MS || 5 * 60 * 1000);
+const DISCOVERY_API_CACHE_MAX_ENTRIES = Number(process.env.DISCOVERY_API_CACHE_MAX_ENTRIES || 2000);
 const DISCOVERY_DEBUG_ENABLED = process.env.DISCOVERY_DEBUG === 'true';
+const DISCOVERY_CONTENT_SEARCH_LIVE_API_FALLBACK = process.env.DISCOVERY_CONTENT_SEARCH_LIVE_API_FALLBACK === 'true';
+const DISCOVERY_CONTENT_QUERY_CACHE_TTL_MS = Number(process.env.DISCOVERY_CONTENT_QUERY_CACHE_TTL_MS || 30 * 1000);
+const DISCOVERY_CONTENT_QUERY_CACHE_MAX_ENTRIES = Number(process.env.DISCOVERY_CONTENT_QUERY_CACHE_MAX_ENTRIES || 200);
+
+const discoveryApiResponseCache = new Map<string, { expiresAt: number; value: any }>();
+const discoveryApiInFlightRequests = new Map<string, Promise<any>>();
+const discoveryContentQueryCache = new Map<string, { expiresAt: number; value: any }>();
+const discoveryApiCacheStats = {
+  hits: 0,
+  misses: 0,
+  inflightReuses: 0,
+};
+
+const pruneDiscoveryContentQueryCache = () => {
+  if (discoveryContentQueryCache.size <= DISCOVERY_CONTENT_QUERY_CACHE_MAX_ENTRIES) {
+    return;
+  }
+
+  const now = Date.now();
+  for (const [key, entry] of discoveryContentQueryCache.entries()) {
+    if (entry.expiresAt <= now) {
+      discoveryContentQueryCache.delete(key);
+    }
+  }
+
+  if (discoveryContentQueryCache.size <= DISCOVERY_CONTENT_QUERY_CACHE_MAX_ENTRIES) {
+    return;
+  }
+
+  const entries = Array.from(discoveryContentQueryCache.entries()).sort((a, b) => a[1].expiresAt - b[1].expiresAt);
+  const excess = discoveryContentQueryCache.size - DISCOVERY_CONTENT_QUERY_CACHE_MAX_ENTRIES;
+  for (let index = 0; index < excess; index += 1) {
+    const key = entries[index]?.[0];
+    if (key) {
+      discoveryContentQueryCache.delete(key);
+    }
+  }
+};
+
+const getCachedContentQueryResult = (key: string) => {
+  const cached = discoveryContentQueryCache.get(key);
+  if (!cached) return null;
+
+  if (cached.expiresAt <= Date.now()) {
+    discoveryContentQueryCache.delete(key);
+    return null;
+  }
+
+  return cached.value;
+};
+
+const setCachedContentQueryResult = (key: string, value: any) => {
+  discoveryContentQueryCache.set(key, {
+    expiresAt: Date.now() + DISCOVERY_CONTENT_QUERY_CACHE_TTL_MS,
+    value,
+  });
+  pruneDiscoveryContentQueryCache();
+};
+
+interface PlatformApiStats {
+  success: number;
+  failed: number;
+  rateLimitedSkips: number;
+  dbFallback: number;
+}
+
+interface DiscoveryApiSummary {
+  context: 'content-search' | 'default';
+  processedCreators: number;
+  instagram: PlatformApiStats;
+  tiktok: PlatformApiStats;
+}
+
+const createPlatformApiStats = (): PlatformApiStats => ({
+  success: 0,
+  failed: 0,
+  rateLimitedSkips: 0,
+  dbFallback: 0,
+});
+
+const mergeDiscoveryApiSummary = (target: DiscoveryApiSummary, source: DiscoveryApiSummary) => {
+  target.processedCreators += source.processedCreators;
+  target.instagram.success += source.instagram.success;
+  target.instagram.failed += source.instagram.failed;
+  target.instagram.rateLimitedSkips += source.instagram.rateLimitedSkips;
+  target.instagram.dbFallback += source.instagram.dbFallback;
+  target.tiktok.success += source.tiktok.success;
+  target.tiktok.failed += source.tiktok.failed;
+  target.tiktok.rateLimitedSkips += source.tiktok.rateLimitedSkips;
+  target.tiktok.dbFallback += source.tiktok.dbFallback;
+};
+
+const logDiscoveryDebug = (message: string, payload: Record<string, any>) => {
+  if (!DISCOVERY_DEBUG_ENABLED) return;
+  console.log(`[Discovery][Debug] ${message}`, payload);
+};
+
+const pruneDiscoveryApiCache = () => {
+  if (discoveryApiResponseCache.size <= DISCOVERY_API_CACHE_MAX_ENTRIES) {
+    return;
+  }
+
+  const now = Date.now();
+  for (const [key, entry] of discoveryApiResponseCache.entries()) {
+    if (entry.expiresAt <= now) {
+      discoveryApiResponseCache.delete(key);
+    }
+  }
+
+  if (discoveryApiResponseCache.size <= DISCOVERY_API_CACHE_MAX_ENTRIES) {
+    return;
+  }
+
+  const entries = Array.from(discoveryApiResponseCache.entries()).sort((a, b) => a[1].expiresAt - b[1].expiresAt);
+  const excess = discoveryApiResponseCache.size - DISCOVERY_API_CACHE_MAX_ENTRIES;
+  for (let index = 0; index < excess; index += 1) {
+    const key = entries[index]?.[0];
+    if (key) {
+      discoveryApiResponseCache.delete(key);
+    }
+  }
+};
+
+const getCachedDiscoveryApiResponse = async <T>(key: string, fetcher: () => Promise<T>): Promise<T> => {
+  const now = Date.now();
+  const cached = discoveryApiResponseCache.get(key);
+  if (cached && cached.expiresAt > now) {
+    discoveryApiCacheStats.hits += 1;
+    return cached.value as T;
+  }
+
+  const inFlight = discoveryApiInFlightRequests.get(key);
+  if (inFlight) {
+    discoveryApiCacheStats.inflightReuses += 1;
+    return inFlight as Promise<T>;
+  }
+
+  discoveryApiCacheStats.misses += 1;
 
 const logDiscoveryDebug = (message: string, payload: Record<string, any>) => {
   if (!DISCOVERY_DEBUG_ENABLED) return;
