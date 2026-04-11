@@ -11,6 +11,7 @@ reportsRouter.post('/generate/:campaignId', async (req: Request, res: Response):
 
   // Validate requested sections
   let sections: ReportSection[] | undefined;
+
   if (req.body?.sections) {
     const invalid = (req.body.sections as string[]).filter((s) => !VALID_SECTIONS.has(s as ReportSection));
     if (invalid.length) {
@@ -25,6 +26,7 @@ reportsRouter.post('/generate/:campaignId', async (req: Request, res: Response):
   }
 
   const validation = await reportService.validateCampaign(campaignId);
+
   if (!validation.valid) {
     res.status(400).json({ success: false, error: validation.reason });
     return;
