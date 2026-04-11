@@ -61,6 +61,9 @@ async function collectCampaignSummary(campaignId: string, ext?: ExternalMetrics[
 
   // Merge: external overrides DB when present
   const totalViews = ext?.totalViews ?? dbViews;
+  console.log('EXTERNAL', ext?.totalViews);
+
+  console.log('DB', dbViews);
 
   const totalEngagements = ext?.totalEngagements ?? dbEngagements;
   const engagementRate = ext?.engagementRate ?? dbEngRate;
