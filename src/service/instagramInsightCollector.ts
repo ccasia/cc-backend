@@ -29,20 +29,25 @@ function parseInsight(metrics: { name: string; value: number }[]): PostInsight {
 }
 
 export async function fetchInstagramCampaignMetrics(campaignId: string): Promise<ExternalMetrics> {
-  const allUrls = await getCampaignSubmissionUrls(campaignId);
+  // Fetch live API data and manual entries in parallel
+  const [allUrls, manualEntries] = await Promise.all([
+    getCampaignSubmissionUrls(campaignId),
+    prisma.manualCreatorEntry.findMany({
+      where: { campaignId, platform: 'Instagram' },
+    }),
+  ]);
+
   const instagramUrls = allUrls.filter((u) => u.platform === 'Instagram');
 
-  if (instagramUrls.length === 0) return {};
+  // ── 1. Live API metrics ───────────────────────────────────────────────────────
 
-  // Group URLs by creator
   const urlsByUser = new Map<string, typeof instagramUrls>();
   for (const urlData of instagramUrls) {
     if (!urlsByUser.has(urlData.userId)) urlsByUser.set(urlData.userId, []);
     urlsByUser.get(urlData.userId)!.push(urlData);
   }
 
-  // Fetch insights per creator
-  const creatorResults: {
+  const apiCreatorResults: {
     userId: string;
     followers: number;
     posts: PostInsight[];
@@ -60,7 +65,6 @@ export async function fetchInstagramCampaignMetrics(campaignId: string): Promise
 
       const mediaCount = creator?.instagramUser?.media_count ?? 50;
       const followers = creator?.instagramUser?.followers_count ?? 0;
-
       const { videos } = await getInstagramMedias(accessToken, mediaCount);
       const posts: PostInsight[] = [];
 
@@ -79,39 +83,30 @@ export async function fetchInstagramCampaignMetrics(campaignId: string): Promise
         }
       }
 
-      creatorResults.push({ userId, followers, posts });
+      apiCreatorResults.push({ userId, followers, posts });
     } catch (err) {
-      // Creator token expired or not connected — skip, snapshot fallback applies
+      // Token expired or not connected — skip, snapshot fallback applies
       console.warn(`[InstagramInsightCollector] Skipping creator ${userId}:`, (err as Error).message);
     }
   }
 
-  if (creatorResults.length === 0) return {};
+  // ── 2. Aggregate API totals ───────────────────────────────────────────────────
 
-  // Aggregate totals
-  let totalViews = 0,
-    totalLikes = 0,
-    totalComments = 0,
-    totalShares = 0,
-    totalReach = 0,
-    totalImpressions = 0;
+  let apiViews = 0, apiLikes = 0, apiComments = 0, apiShares = 0, apiReach = 0, apiImpressions = 0;
 
   const creatorMetrics: NonNullable<ExternalMetrics['engagement']>['creatorMetrics'] = [];
   const creatorPersonas: NonNullable<ExternalMetrics['creators']> = [];
 
-  for (const creator of creatorResults) {
-    let cViews = 0,
-      cLikes = 0,
-      cComments = 0,
-      cShares = 0;
+  for (const creator of apiCreatorResults) {
+    let cViews = 0, cLikes = 0, cComments = 0, cShares = 0;
 
     for (const post of creator.posts) {
-      totalViews += post.views;
-      totalLikes += post.likes;
-      totalComments += post.comments;
-      totalShares += post.shares;
-      totalReach += post.reach;
-      totalImpressions += post.impressions;
+      apiViews += post.views;
+      apiLikes += post.likes;
+      apiComments += post.comments;
+      apiShares += post.shares;
+      apiReach += post.reach;
+      apiImpressions += post.impressions;
       cViews += post.views;
       cLikes += post.likes;
       cComments += post.comments;
@@ -141,21 +136,43 @@ export async function fetchInstagramCampaignMetrics(campaignId: string): Promise
     });
   }
 
+  // ── 3. Aggregate manual entry totals ─────────────────────────────────────────
+
+  let manualViews = 0, manualLikes = 0, manualComments = 0, manualShares = 0;
+
+  for (const entry of manualEntries) {
+    manualViews += entry.views;
+    manualLikes += entry.likes;
+    manualComments += entry.comments;
+    manualShares += entry.shares;
+  }
+
+  // ── 4. Combine both sources ───────────────────────────────────────────────────
+
+  const totalViews = apiViews + manualViews;
+  const totalLikes = apiLikes + manualLikes;
+  const totalComments = apiComments + manualComments;
+  const totalShares = apiShares + manualShares;
   const totalEngagements = totalLikes + totalComments + totalShares;
-  const totalFollowers = creatorResults.reduce((s, c) => s + c.followers, 0);
+
+  const totalFollowers = apiCreatorResults.reduce((s, c) => s + c.followers, 0);
   const engagementRate = totalFollowers > 0 ? +((totalEngagements / totalFollowers) * 100).toFixed(2) : 0;
+
+  const totalPosts = instagramUrls.length + manualEntries.length;
+
+  if (totalViews === 0 && totalEngagements === 0) return {};
 
   return {
     summary: {
       totalViews,
       totalEngagements,
       engagementRate,
-      reach: totalReach,
-      impressions: totalImpressions,
+      reach: apiReach,
+      impressions: apiImpressions,
     },
     engagement: {
       totalEngagement: totalEngagements,
-      platformBreakdown: [{ platform: 'Instagram', posts: instagramUrls.length, engagement: totalEngagements }],
+      platformBreakdown: [{ platform: 'Instagram', posts: totalPosts, engagement: totalEngagements }],
       creatorMetrics,
     },
     views: {
