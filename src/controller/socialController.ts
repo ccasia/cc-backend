@@ -1780,9 +1780,11 @@ export const getInstagramMediaInsight = async (req: Request, res: Response) => {
 
     // Use the helper function to ensure we have a valid token
     let accessToken: string;
+
     try {
       accessToken = await ensureValidInstagramToken(user.id);
     } catch (tokenError) {
+      console.log('ERROR', tokenError);
       return res.status(400).json({
         message: tokenError.message,
         requiresReconnection: tokenError.message.includes('refresh failed'),
