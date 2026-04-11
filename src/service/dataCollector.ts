@@ -67,6 +67,9 @@ async function collectCampaignSummary(campaignId: string, ext?: ExternalMetrics[
   const reach = ext?.reach ?? null;
   const impressions = ext?.impressions ?? null;
   const roas = ext?.roas ?? null;
+  const shares = ext?.totalShares ?? dbShares;
+  const likes = ext?.totalLikes ?? dbLikes;
+  const comments = ext?.totalComments ?? dbComments;
 
   return {
     // Meta
@@ -85,6 +88,9 @@ async function collectCampaignSummary(campaignId: string, ext?: ExternalMetrics[
     engagementRate,
     reach,
     impressions,
+    shares,
+    likes,
+    comments,
     roas,
     totalPosts: postCount,
     // Credits (DB only)
