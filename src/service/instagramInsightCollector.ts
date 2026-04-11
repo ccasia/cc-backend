@@ -92,13 +92,21 @@ export async function fetchInstagramCampaignMetrics(campaignId: string): Promise
 
   // ── 2. Aggregate API totals ───────────────────────────────────────────────────
 
-  let apiViews = 0, apiLikes = 0, apiComments = 0, apiShares = 0, apiReach = 0, apiImpressions = 0;
+  let apiViews = 0,
+    apiLikes = 0,
+    apiComments = 0,
+    apiShares = 0,
+    apiReach = 0,
+    apiImpressions = 0;
 
   const creatorMetrics: NonNullable<ExternalMetrics['engagement']>['creatorMetrics'] = [];
   const creatorPersonas: NonNullable<ExternalMetrics['creators']> = [];
 
   for (const creator of apiCreatorResults) {
-    let cViews = 0, cLikes = 0, cComments = 0, cShares = 0;
+    let cViews = 0,
+      cLikes = 0,
+      cComments = 0,
+      cShares = 0;
 
     for (const post of creator.posts) {
       apiViews += post.views;
@@ -138,7 +146,10 @@ export async function fetchInstagramCampaignMetrics(campaignId: string): Promise
 
   // ── 3. Aggregate manual entry totals ─────────────────────────────────────────
 
-  let manualViews = 0, manualLikes = 0, manualComments = 0, manualShares = 0;
+  let manualViews = 0,
+    manualLikes = 0,
+    manualComments = 0,
+    manualShares = 0;
 
   for (const entry of manualEntries) {
     manualViews += entry.views;
@@ -169,6 +180,9 @@ export async function fetchInstagramCampaignMetrics(campaignId: string): Promise
       engagementRate,
       reach: apiReach,
       impressions: apiImpressions,
+      totalShares,
+      totalComments,
+      totalLikes,
     },
     engagement: {
       totalEngagement: totalEngagements,

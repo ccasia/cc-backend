@@ -14,6 +14,7 @@ reportsRouter.post('/generate/:campaignId', async (req: Request, res: Response):
 
   if (req.body?.sections) {
     const invalid = (req.body.sections as string[]).filter((s) => !VALID_SECTIONS.has(s as ReportSection));
+
     if (invalid.length) {
       res.status(400).json({
         success: false,
@@ -22,6 +23,7 @@ reportsRouter.post('/generate/:campaignId', async (req: Request, res: Response):
       });
       return;
     }
+
     sections = req.body.sections as ReportSection[];
   }
 

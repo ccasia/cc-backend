@@ -32,6 +32,9 @@ export interface ExternalMetrics {
     roas?: number; // Return on Ad Spend %
     reach?: number;
     impressions?: number;
+    totalShares?: number;
+    totalComments?: number;
+    totalLikes?: number;
   };
 
   // Section 2 — Engagement & Interactions
