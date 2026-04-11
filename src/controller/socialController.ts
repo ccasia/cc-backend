@@ -118,7 +118,7 @@ export function extractInstagramShortcode(url: string) {
   return match ? match[1] : null;
 }
 
-function extractTikTokVideoId(url: string): string | null {
+export function extractTikTokVideoId(url: string): string | null {
   try {
     const urlObj = new URL(url);
 
@@ -1917,7 +1917,7 @@ export const getInstagramMediaInsight = async (req: Request, res: Response) => {
   }
 };
 
-async function ensureValidTikTokToken(userId: string): Promise<string> {
+export async function ensureValidTikTokToken(userId: string): Promise<string> {
   const creator = await prisma.creator.findFirst({
     where: {
       userId: userId,
