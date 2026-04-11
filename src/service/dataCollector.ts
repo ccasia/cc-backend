@@ -10,9 +10,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 // import { prisma } from 'src/prisma/prisma';
-import { PrismaClient } from '@prisma/client';
-
 import { ReportSection, ExternalMetrics } from '../types/index';
+import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
@@ -49,8 +48,6 @@ async function collectCampaignSummary(campaignId: string, ext?: ExternalMetrics[
     where: { campaignId },
   });
 
-  // console.log(snapshots);
-
   const dbViews = snapshots.reduce((s, r) => s + r.totalViews, 0);
   const dbLikes = snapshots.reduce((s, r) => s + r.totalLikes, 0);
   const dbComments = snapshots.reduce((s, r) => s + r.totalComments, 0);
@@ -70,6 +67,9 @@ async function collectCampaignSummary(campaignId: string, ext?: ExternalMetrics[
   const reach = ext?.reach ?? null;
   const impressions = ext?.impressions ?? null;
   const roas = ext?.roas ?? null;
+  const shares = ext?.totalShares ?? dbShares;
+  const likes = ext?.totalLikes ?? dbLikes;
+  const comments = ext?.totalComments ?? dbComments;
 
   return {
     // Meta
@@ -88,6 +88,9 @@ async function collectCampaignSummary(campaignId: string, ext?: ExternalMetrics[
     engagementRate,
     reach,
     impressions,
+    shares,
+    likes,
+    comments,
     roas,
     totalPosts: postCount,
     // Credits (DB only)
