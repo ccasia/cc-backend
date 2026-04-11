@@ -77,11 +77,7 @@ const HUMAN_TEMPLATES: Record<ReportSection, string> = {
 
 // ── Chain runner ──────────────────────────────────────────────────────────────
 
-async function runSectionChain(
-  section: ReportSection,
-  data: Record<string, unknown>,
-  userId: string,
-): Promise<string> {
+async function runSectionChain(section: ReportSection, data: Record<string, unknown>, userId: string): Promise<string> {
   const result = await prisma.aiModel.findFirst({ where: { userId } });
 
   const dbSections = result?.systemPrompt as unknown as Record<ReportSection, string> | undefined;
@@ -116,7 +112,6 @@ export class ReportService {
         sentiment: externalMetrics?.sentiment,
         creators: externalMetrics?.creators ?? liveMetrics.creators,
       };
-
     } catch (err) {
       console.warn('[ReportService] Instagram live fetch failed, falling back to snapshots:', (err as Error).message);
     }

@@ -13,12 +13,12 @@ export const GEMINI_MODEL = (process.env.GEMINI_MODEL as GeminiModelName) || 'ge
  * @param temperature  0–1. Low = more factual/consistent (default 0.2)
  * @param maxTokens    Max output tokens (default 1500)
  */
-export async function createGemini(aiModel: AiModel): Promise<ChatGoogleGenerativeAI> {
+export async function createGemini(aiModel?: AiModel): Promise<ChatGoogleGenerativeAI> {
   // if (!process.env.GOOGLE_API_KEY) {
   //   throw new Error('GOOGLE_API_KEY is not set in .env');
   // }
 
-  if (!aiModel.apiKey) throw new Error('API key not found');
+  if (!aiModel?.apiKey) throw new Error('API key not found');
 
   return new ChatGoogleGenerativeAI({
     model: aiModel?.model || 'gemini-2.5-flash',
