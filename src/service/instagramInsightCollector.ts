@@ -253,7 +253,10 @@ export async function fetchInstagramCampaignMetrics(campaignId: string): Promise
   const totalImpressions = ig.totalImpressions + tt.totalImpressions;
 
   const totalFollowers = [...igResults, ...ttResults].reduce((s, c) => s + c.followers, 0);
-  const engagementRate = totalFollowers > 0 ? +((totalEngagements / totalFollowers) * 100).toFixed(2) : 0;
+  const engagementRate =
+    totalFollowers > 0
+      ? +((totalEngagements / totalFollowers) * 100).toFixed(2)
+      : +((totalEngagements / totalViews) * 100).toFixed(2);
 
   if (totalViews === 0 && totalEngagements === 0) return {};
 
