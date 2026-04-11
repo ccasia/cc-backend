@@ -202,8 +202,6 @@ export async function fetchInstagramCampaignMetrics(campaignId: string): Promise
     prisma.manualCreatorEntry.findMany({ where: { campaignId } }),
   ]);
 
-  console.log('MANUAL', manualEntries);
-
   // Group URLs by platform then by userId
   const igUrlsByUser = new Map<string, typeof allUrls>();
   const ttUrlsByUser = new Map<string, typeof allUrls>();
