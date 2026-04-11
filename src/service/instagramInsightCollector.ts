@@ -1,8 +1,10 @@
-import { getInstagramMedias, getMediaInsight } from '@services/socialMediaService';
+import { getInstagramMedias, getMediaInsight, getTikTokVideoById } from '@services/socialMediaService';
 import {
   getCampaignSubmissionUrls,
   ensureValidInstagramToken,
+  ensureValidTikTokToken,
   extractInstagramShortcode,
+  extractTikTokVideoId,
 } from '@controllers/socialController';
 import { prisma } from '../prisma/prisma';
 import { ExternalMetrics } from '../types/index';
@@ -16,7 +18,7 @@ interface PostInsight {
   impressions: number;
 }
 
-function parseInsight(metrics: { name: string; value: number }[]): PostInsight {
+function parseInstagramInsight(metrics: { name: string; value: number }[]): PostInsight {
   const map = Object.fromEntries(metrics.map((m) => [m.name, m.value ?? 0]));
   return {
     views: map['views'] ?? 0,
@@ -28,25 +30,21 @@ function parseInsight(metrics: { name: string; value: number }[]): PostInsight {
   };
 }
 
-export async function fetchInstagramCampaignMetrics(campaignId: string): Promise<ExternalMetrics> {
-  const allUrls = await getCampaignSubmissionUrls(campaignId);
-  const instagramUrls = allUrls.filter((u) => u.platform === 'Instagram');
+function parseTikTokVideo(video: any): PostInsight {
+  return {
+    views: video.view_count ?? 0,
+    likes: video.like_count ?? 0,
+    comments: video.comment_count ?? 0,
+    shares: video.share_count ?? 0,
+    reach: 0,
+    impressions: 0,
+  };
+}
 
-  if (instagramUrls.length === 0) return {};
+// ── Instagram ─────────────────────────────────────────────────────────────────
 
-  // Group URLs by creator
-  const urlsByUser = new Map<string, typeof instagramUrls>();
-  for (const urlData of instagramUrls) {
-    if (!urlsByUser.has(urlData.userId)) urlsByUser.set(urlData.userId, []);
-    urlsByUser.get(urlData.userId)!.push(urlData);
-  }
-
-  // Fetch insights per creator
-  const creatorResults: {
-    userId: string;
-    followers: number;
-    posts: PostInsight[];
-  }[] = [];
+async function fetchInstagramMetrics(urlsByUser: Map<string, { url: string; userId: string }[]>) {
+  const results: { userId: string; followers: number; posts: PostInsight[] }[] = [];
 
   for (const [userId, urls] of urlsByUser) {
     try {
@@ -60,7 +58,6 @@ export async function fetchInstagramCampaignMetrics(campaignId: string): Promise
 
       const mediaCount = creator?.instagramUser?.media_count ?? 50;
       const followers = creator?.instagramUser?.followers_count ?? 0;
-
       const { videos } = await getInstagramMedias(accessToken, mediaCount);
       const posts: PostInsight[] = [];
 
@@ -73,22 +70,67 @@ export async function fetchInstagramCampaignMetrics(campaignId: string): Promise
 
         try {
           const raw = await getMediaInsight(accessToken, video.id);
-          if (raw && raw.length > 0) posts.push(parseInsight(raw));
+          if (raw && raw.length > 0) posts.push(parseInstagramInsight(raw));
         } catch (err) {
-          console.error(`[InstagramInsightCollector] Failed to fetch insight for ${urlData.url}:`, err);
+          console.error(`[InsightCollector] Instagram insight failed for ${urlData.url}:`, err);
         }
       }
 
-      creatorResults.push({ userId, followers, posts });
+      results.push({ userId, followers, posts });
     } catch (err) {
-      // Creator token expired or not connected — skip, snapshot fallback applies
-      console.warn(`[InstagramInsightCollector] Skipping creator ${userId}:`, (err as Error).message);
+      console.warn(`[InsightCollector] Skipping Instagram creator ${userId}:`, (err as Error).message);
     }
   }
 
-  if (creatorResults.length === 0) return {};
+  return results;
+}
 
-  // Aggregate totals
+// ── TikTok ────────────────────────────────────────────────────────────────────
+
+async function fetchTikTokMetrics(urlsByUser: Map<string, { url: string; userId: string }[]>) {
+  const results: { userId: string; followers: number; posts: PostInsight[] }[] = [];
+
+  for (const [userId, urls] of urlsByUser) {
+    try {
+      const [accessToken, creator] = await Promise.all([
+        ensureValidTikTokToken(userId),
+        prisma.creator.findFirst({
+          where: { userId },
+          select: { tiktokUser: { select: { follower_count: true } } },
+        }),
+      ]);
+
+      const followers = creator?.tiktokUser?.follower_count ?? 0;
+      const posts: PostInsight[] = [];
+
+      for (const urlData of urls) {
+        const videoId = extractTikTokVideoId(urlData.url);
+        if (!videoId) continue;
+
+        try {
+          const response = await getTikTokVideoById(accessToken, videoId);
+          const video = response?.data?.videos?.[0];
+          if (video) posts.push(parseTikTokVideo(video));
+        } catch (err) {
+          console.error(`[InsightCollector] TikTok insight failed for ${urlData.url}:`, err);
+        }
+      }
+
+      results.push({ userId, followers, posts });
+    } catch (err) {
+      console.warn(`[InsightCollector] Skipping TikTok creator ${userId}:`, (err as Error).message);
+    }
+  }
+
+  return results;
+}
+
+// ── Aggregator ────────────────────────────────────────────────────────────────
+
+function aggregateCreatorResults(
+  results: { userId: string; followers: number; posts: PostInsight[] }[],
+  platform: string,
+) {
   let totalViews = 0,
     totalLikes = 0,
     totalComments = 0,
@@ -99,7 +141,7 @@ export async function fetchInstagramCampaignMetrics(campaignId: string): Promise
   const creatorMetrics: NonNullable<ExternalMetrics['engagement']>['creatorMetrics'] = [];
   const creatorPersonas: NonNullable<ExternalMetrics['creators']> = [];
 
-  for (const creator of creatorResults) {
+  for (const creator of results) {
     let cViews = 0,
       cLikes = 0,
       cComments = 0,
@@ -123,14 +165,13 @@ export async function fetchInstagramCampaignMetrics(campaignId: string): Promise
 
     creatorMetrics.push({
       userId: creator.userId,
-      platform: 'Instagram',
+      platform,
       engagementRate: cEngRate,
       followers: creator.followers,
       views: cViews,
       likes: cLikes,
       comments: cComments,
     });
-
     creatorPersonas.push({
       userId: creator.userId,
       totalViews: cViews,
@@ -141,9 +182,100 @@ export async function fetchInstagramCampaignMetrics(campaignId: string): Promise
     });
   }
 
+  return {
+    totalViews,
+    totalLikes,
+    totalComments,
+    totalShares,
+    totalReach,
+    totalImpressions,
+    creatorMetrics,
+    creatorPersonas,
+  };
+}
+
+// ── Main ──────────────────────────────────────────────────────────────────────
+
+export async function fetchInstagramCampaignMetrics(campaignId: string): Promise<ExternalMetrics> {
+  const [allUrls, manualEntries] = await Promise.all([
+    getCampaignSubmissionUrls(campaignId),
+    prisma.manualCreatorEntry.findMany({ where: { campaignId } }),
+  ]);
+
+  // Group URLs by platform then by userId
+  const igUrlsByUser = new Map<string, typeof allUrls>();
+  const ttUrlsByUser = new Map<string, typeof allUrls>();
+
+  for (const urlData of allUrls) {
+    if (urlData.platform === 'Instagram') {
+      if (!igUrlsByUser.has(urlData.userId)) igUrlsByUser.set(urlData.userId, []);
+      igUrlsByUser.get(urlData.userId)!.push(urlData);
+    } else if (urlData.platform === 'TikTok') {
+      if (!ttUrlsByUser.has(urlData.userId)) ttUrlsByUser.set(urlData.userId, []);
+      ttUrlsByUser.get(urlData.userId)!.push(urlData);
+    }
+  }
+
+  // Fetch both platforms in parallel
+  const [igResults, ttResults] = await Promise.all([
+    fetchInstagramMetrics(igUrlsByUser),
+    fetchTikTokMetrics(ttUrlsByUser),
+  ]);
+
+  const ig = aggregateCreatorResults(igResults, 'Instagram');
+  const tt = aggregateCreatorResults(ttResults, 'TikTok');
+
+  // Manual entries by platform
+  const manualIg = manualEntries.filter((e) => e.platform === 'Instagram');
+  const manualTt = manualEntries.filter((e) => e.platform === 'TikTok');
+
+  const manualSum = (entries: typeof manualEntries) =>
+    entries.reduce(
+      (acc, e) => ({
+        views: acc.views + e.views,
+        likes: acc.likes + e.likes,
+        comments: acc.comments + e.comments,
+        shares: acc.shares + e.shares,
+      }),
+      { views: 0, likes: 0, comments: 0, shares: 0 },
+    );
+
+  const manualIgTotals = manualSum(manualIg);
+  const manualTtTotals = manualSum(manualTt);
+
+  // Combined totals
+  const totalViews = ig.totalViews + tt.totalViews + manualIgTotals.views + manualTtTotals.views;
+  const totalLikes = ig.totalLikes + tt.totalLikes + manualIgTotals.likes + manualTtTotals.likes;
+  const totalComments = ig.totalComments + tt.totalComments + manualIgTotals.comments + manualTtTotals.comments;
+  const totalShares = ig.totalShares + tt.totalShares + manualIgTotals.shares + manualTtTotals.shares;
   const totalEngagements = totalLikes + totalComments + totalShares;
-  const totalFollowers = creatorResults.reduce((s, c) => s + c.followers, 0);
-  const engagementRate = totalFollowers > 0 ? +((totalEngagements / totalFollowers) * 100).toFixed(2) : 0;
+  const totalReach = ig.totalReach + tt.totalReach;
+  const totalImpressions = ig.totalImpressions + tt.totalImpressions;
+
+  const totalFollowers = [...igResults, ...ttResults].reduce((s, c) => s + c.followers, 0);
+  const engagementRate =
+    totalFollowers > 0
+      ? +((totalEngagements / totalFollowers) * 100).toFixed(2)
+      : +((totalEngagements / totalViews) * 100).toFixed(2);
+
+  if (totalViews === 0 && totalEngagements === 0) return {};
+
+  const igPostCount = allUrls.filter((u) => u.platform === 'Instagram').length + manualIg.length;
+  const ttPostCount = allUrls.filter((u) => u.platform === 'TikTok').length + manualTt.length;
+  const igEngagements =
+    ig.totalLikes +
+    ig.totalComments +
+    ig.totalShares +
+    manualIgTotals.likes +
+    manualIgTotals.comments +
+    manualIgTotals.shares;
+  const ttEngagements =
+    tt.totalLikes +
+    tt.totalComments +
+    tt.totalShares +
+    manualTtTotals.likes +
+    manualTtTotals.comments +
+    manualTtTotals.shares;
 
   return {
     summary: {
@@ -152,15 +284,19 @@ export async function fetchInstagramCampaignMetrics(campaignId: string): Promise
       engagementRate,
       reach: totalReach,
       impressions: totalImpressions,
+      totalLikes,
+      totalComments,
+      totalShares,
     },
     engagement: {
       totalEngagement: totalEngagements,
-      platformBreakdown: [{ platform: 'Instagram', posts: instagramUrls.length, engagement: totalEngagements }],
-      creatorMetrics,
+      platformBreakdown: [
+        { platform: 'Instagram', posts: igPostCount, engagement: igEngagements },
+        { platform: 'TikTok', posts: ttPostCount, engagement: ttEngagements },
+      ],
+      creatorMetrics: [...ig.creatorMetrics, ...tt.creatorMetrics],
     },
-    views: {
-      totalViews,
-    },
-    creators: creatorPersonas,
+    views: { totalViews },
+    creators: [...ig.creatorPersonas, ...tt.creatorPersonas],
   };
 }
