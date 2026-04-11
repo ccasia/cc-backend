@@ -690,13 +690,13 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
       const columnToDo = board.columns.find((c) => c.name.includes('To Do'));
       const columnInProgress = board.columns.find((c) => c.name.includes('In Progress'));
 
-      if (columnToDo && columnInProgress) {
-        const isV4Campaign = pitch.campaign.submissionVersion === 'v4';
-        const v2SubmissionTypes = ['FIRST_DRAFT', 'FINAL_DRAFT', 'POSTING'];
+        if (columnToDo && columnInProgress) {
+          const isV4Campaign = pitch.campaign.submissionVersion === 'v4';
+          const v2SubmissionTypes = ['FIRST_DRAFT', 'FINAL_DRAFT', 'POSTING'];
 
-        const timelinesFiltered = isV4Campaign
-          ? timelines.filter((t) => !v2SubmissionTypes.includes(t.submissionType?.type || ''))
-          : timelines;
+          const timelinesFiltered = isV4Campaign
+            ? timelines.filter((t) => !v2SubmissionTypes.includes(t.submissionType?.type || ''))
+            : timelines;
 
         const existingSubmissionTypes = new Set<string | undefined>(
           existingSubmissions.map((s) => s.submissionType?.type),
@@ -706,63 +706,63 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
           (t) => t.submissionType?.type && !existingSubmissionTypes.has(t.submissionType.type),
         );
 
-        console.log(
-          `Creating submissions for ${isV4Campaign ? 'v4' : 'v2'} campaign - ${timelinesWithoutExisting.length} timeline(s) (${existingSubmissions.length} already exist)`,
-        );
+          console.log(
+            `Creating submissions for ${isV4Campaign ? 'v4' : 'v2'} campaign - ${timelinesWithoutExisting.length} timeline(s) (${existingSubmissions.length} already exist)`,
+          );
 
-        if (timelinesWithoutExisting.length > 0) {
-          const submissions = await Promise.all(
-            timelinesWithoutExisting.map(async (timeline, index) => {
-              return await prisma.submission.create({
-                data: {
-                  dueDate: timeline.endDate,
-                  campaignId: timeline.campaignId,
-                  userId: pitch.userId,
-                  status: timeline.submissionType?.type === 'AGREEMENT_FORM' ? 'IN_PROGRESS' : 'NOT_STARTED',
-                  submissionTypeId: timeline.submissionTypeId as string,
-                  submissionVersion: isV4Campaign ? 'v4' : undefined,
-                  task: {
-                    create: {
-                      name: timeline.name,
-                      position: index,
-                      columnId: timeline.submissionType?.type ? columnInProgress.id : columnToDo.id,
-                      priority: '',
-                      status: timeline.submissionType?.type ? 'In Progress' : 'To Do',
+          if (timelinesWithoutExisting.length > 0) {
+            const submissions = await Promise.all(
+              timelinesWithoutExisting.map(async (timeline, index) => {
+                return await prisma.submission.create({
+                  data: {
+                    dueDate: timeline.endDate,
+                    campaignId: timeline.campaignId,
+                    userId: pitch.userId,
+                    status: timeline.submissionType?.type === 'AGREEMENT_FORM' ? 'IN_PROGRESS' : 'NOT_STARTED',
+                    submissionTypeId: timeline.submissionTypeId as string,
+                    submissionVersion: isV4Campaign ? 'v4' : undefined,
+                    task: {
+                      create: {
+                        name: timeline.name,
+                        position: index,
+                        columnId: timeline.submissionType?.type ? columnInProgress.id : columnToDo.id,
+                        priority: '',
+                        status: timeline.submissionType?.type ? 'In Progress' : 'To Do',
+                      },
                     },
                   },
-                },
-                include: {
-                  submissionType: true,
-                },
-              });
-            }),
-          );
+                  include: {
+                    submissionType: true,
+                  },
+                });
+              }),
+            );
 
-          if (!isV4Campaign) {
-            const agreement = submissions.find((s) => s.submissionType?.type === 'AGREEMENT_FORM');
-            const draft = submissions.find((s) => s.submissionType?.type === 'FIRST_DRAFT');
-            const finalDraft = submissions.find((s) => s.submissionType?.type === 'FINAL_DRAFT');
-            const posting = submissions.find((s) => s.submissionType?.type === 'POSTING');
+            if (!isV4Campaign) {
+              const agreement = submissions.find((s) => s.submissionType?.type === 'AGREEMENT_FORM');
+              const draft = submissions.find((s) => s.submissionType?.type === 'FIRST_DRAFT');
+              const finalDraft = submissions.find((s) => s.submissionType?.type === 'FINAL_DRAFT');
+              const posting = submissions.find((s) => s.submissionType?.type === 'POSTING');
 
-            const dependencies = [
-              { submissionId: draft?.id, dependentSubmissionId: agreement?.id },
-              { submissionId: finalDraft?.id, dependentSubmissionId: draft?.id },
-              { submissionId: posting?.id, dependentSubmissionId: finalDraft?.id },
-            ].filter((dep) => dep.submissionId && dep.dependentSubmissionId);
+              const dependencies = [
+                { submissionId: draft?.id, dependentSubmissionId: agreement?.id },
+                { submissionId: finalDraft?.id, dependentSubmissionId: draft?.id },
+                { submissionId: posting?.id, dependentSubmissionId: finalDraft?.id },
+              ].filter((dep) => dep.submissionId && dep.dependentSubmissionId);
 
-            if (dependencies.length > 0) {
-              await prisma.submissionDependency.createMany({ data: dependencies });
+              if (dependencies.length > 0) {
+                await prisma.submissionDependency.createMany({ data: dependencies });
+              }
             }
-          }
 
-          console.log(`Created ${submissions.length} submissions for V3 pitch approval`);
-        } else {
-          console.log(
-            `No new submissions to create - ${existingSubmissions.length} already exist for this user/campaign`,
-          );
+            console.log(`Created ${submissions.length} submissions for V3 pitch approval`);
+          } else {
+            console.log(
+              `No new submissions to create - ${existingSubmissions.length} already exist for this user/campaign`,
+            );
+          }
         }
       }
-    }
 
     if (pitch.campaign.submissionVersion !== 'v4') {
       console.log(
@@ -1487,8 +1487,7 @@ export const getPitchesV3 = async (req: Request, res: Response) => {
 
         if (user.role === 'client') {
           return (
-            normalizedStatus === 'SENT_TO_CLIENT' ||
-            normalizedStatus === 'INVITED' ||
+            normalizedStatus === 'SENT_TO_CLIENT' || normalizedStatus === 'INVITED' ||
             normalizedStatus === 'APPROVED' ||
             normalizedStatus === 'REJECTED' ||
             normalizedStatus === 'MAYBE' ||
@@ -1507,26 +1506,20 @@ export const getPitchesV3 = async (req: Request, res: Response) => {
             displayStatus = 'SENT_TO_CLIENT_WITH_COMMENTS';
           } else if (normalizedStatus === 'INVITED') {
             displayStatus = 'SENT_TO_CLIENT';
-          } else if (normalizedStatus === 'INVITED') {
-            displayStatus = 'SENT_TO_CLIENT';
           } else {
             displayStatus = normalizedStatus;
           }
         } else if (user.role === 'client') {
           if (normalizedStatus === 'SENT_TO_CLIENT' || normalizedStatus === 'INVITED') {
-            if (normalizedStatus === 'SENT_TO_CLIENT' || normalizedStatus === 'INVITED') {
-              displayStatus = 'PENDING_REVIEW';
-            } else if (normalizedStatus === 'AGREEMENT_PENDING' || normalizedStatus === 'AGREEMENT_SUBMITTED') {
-              displayStatus = 'APPROVED';
-            }
+            displayStatus = 'PENDING_REVIEW';
+          } else if (normalizedStatus === 'AGREEMENT_PENDING' || normalizedStatus === 'AGREEMENT_SUBMITTED') {
+            displayStatus = 'APPROVED';
           }
         } else if (user.role === 'creator') {
           if (normalizedStatus === 'SENT_TO_CLIENT' || normalizedStatus === 'INVITED') {
-            if (normalizedStatus === 'SENT_TO_CLIENT' || normalizedStatus === 'INVITED') {
-              displayStatus = 'PENDING_REVIEW';
-            } else if (normalizedStatus === 'AGREEMENT_PENDING' || normalizedStatus === 'AGREEMENT_SUBMITTED') {
-              displayStatus = 'APPROVED';
-            }
+            displayStatus = 'PENDING_REVIEW';
+          } else if (normalizedStatus === 'AGREEMENT_PENDING' || normalizedStatus === 'AGREEMENT_SUBMITTED') {
+            displayStatus = 'APPROVED';
           }
         }
 
@@ -2516,3 +2509,4 @@ export const acceptInviteByCreator = async (req: Request, res: Response) => {
     return res.status(500).json({ message: 'Failed to accept invite' });
   }
 };
+

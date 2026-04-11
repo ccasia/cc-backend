@@ -9124,6 +9124,7 @@ export const getClientCampaigns = async (req: Request, res: Response) => {
         company: true,
         campaignBrief: true,
         campaignTimeline: true,
+        submission: true,
       },
       orderBy: {
         createdAt: 'desc',

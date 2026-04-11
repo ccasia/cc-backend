@@ -35,6 +35,7 @@ import dayjs from 'dayjs';
 import passport from 'passport';
 
 import amqplib from 'amqplib';
+import { model } from './scripts/ai';
 
 import crypto from 'crypto';
 
@@ -380,6 +381,49 @@ app.get('/users', isLoggedIn, async (_req, res) => {
     res.send(users);
   } catch (error) {
     //console.log(error);
+  }
+});
+
+app.get('/campaign/:id', async (req, res) => {
+  const message = req.query.message as string;
+
+  const campaignId = req.params.id;
+
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.setHeader('Transfer-Encoding', 'chunked');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('X-Accel-Buffering', 'no');
+
+  try {
+    const chunks = await model.stream(
+      {
+        messages: [
+          {
+            role: 'human',
+            content: message ?? 'call get_user_info and create a summary of the account in 5-10 sentences.',
+          },
+        ],
+        campaignId: campaignId,
+      },
+      {
+        context: { campaignId: campaignId },
+        streamMode: 'messages',
+        configurable: { thread_id: req.session.userid.toString() },
+      },
+    );
+
+    for await (const [a, _] of chunks) {
+      if (a.type === 'ai' && typeof a.content === 'string' && a.content) {
+        io.emit('report', { content: a.content, id: a.id });
+        res.write(a.content);
+      }
+    }
+    io.emit('report:done');
+    return res.end();
+    // return res.sendStatus(200);
+  } catch (error) {
+    console.log(error);
+    return res.status(500).json(error);
   }
 });
 

@@ -8,7 +8,6 @@ export const mapInstagramApiTopVideos = (videos: any[]) =>
       return likesDiff || bTime - aTime;
     })
     .slice(0, 3)
-    .slice(0, 3)
     .map((media: any) => ({
       id: media.id,
       media_url: media.media_url,

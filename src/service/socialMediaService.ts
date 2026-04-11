@@ -469,6 +469,7 @@ export const getInstagramMedias = async (
 
     const videos = res.data.data || [];
 
+
     const mediaTypeBreakdown = (videos || []).reduce((acc: Record<string, number>, video: any) => {
       const type = String(video?.media_type || 'UNKNOWN');
       acc[type] = (acc[type] || 0) + 1;

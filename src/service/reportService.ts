@@ -6,6 +6,7 @@ import { RunnableSequence } from '@langchain/core/runnables';
 import { createGemini, GEMINI_MODEL } from '../lib/gemini';
 
 import { collectSectionData } from './dataCollector';
+import { fetchInstagramCampaignMetrics } from './instagramInsightCollector';
 
 import {
   ReportSection,
@@ -100,7 +101,22 @@ export class ReportService {
   async generateCampaignReport(req: GenerateReportRequest): Promise<CampaignReportResult> {
     const t0 = Date.now();
     const sections = req.sections ?? ALL_SECTIONS;
-    const { campaignId, externalMetrics } = req;
+    const { campaignId } = req;
+    let { externalMetrics } = req;
+
+    // Auto-fetch live Instagram metrics from Meta API, merged with any caller-supplied overrides
+    try {
+      const liveMetrics = await fetchInstagramCampaignMetrics(campaignId);
+      externalMetrics = {
+        summary: { ...liveMetrics.summary, ...externalMetrics?.summary },
+        engagement: { ...liveMetrics.engagement, ...externalMetrics?.engagement },
+        views: { ...liveMetrics.views, ...externalMetrics?.views },
+        sentiment: externalMetrics?.sentiment,
+        creators: externalMetrics?.creators ?? liveMetrics.creators,
+      };
+    } catch (err) {
+      console.warn('[ReportService] Instagram live fetch failed, falling back to snapshots:', (err as Error).message);
+    }
 
     // logger.info('Generating report', { campaignId, sections: sections.length });
 
@@ -145,17 +161,6 @@ export class ReportService {
     );
 
     const durationMs = Date.now() - t0;
-
-    // await prisma.aiCampaignReport.create({
-    //   data: {
-    //     model: GEMINI_MODEL,
-    //     temperature: 0.2,
-    //     systemPrompt: `Sections: ${sections.join(', ')}`,
-    //     maxTokens: 2000,
-    //   },
-    // });
-
-    // logger.info('Report complete', { campaignId, durationMs });
 
     return {
       campaignId,

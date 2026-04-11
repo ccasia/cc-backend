@@ -1,17 +1,17 @@
 import { PrismaClient } from '@prisma/client';
 import { decryptToken, encryptToken } from '@helper/encrypt';
-
+import { refreshTikTokToken } from '@services/socialMediaService';
 import {
   createDiscoveryApiSummary,
   resolvePlatformContentMatchesFromApi,
 } from '@helper/discovery/platformContentResolver';
-
 import { buildConnectedSelect, buildConnectedWhere } from '@helper/discovery/queryBuilders';
-
-import { hydrateMissingInstagramData, hydrateMissingTikTokData, TopVideosByCreator } from '@helper/discovery/hydration';
-
+import {
+  hydrateMissingInstagramData,
+  hydrateMissingTikTokData,
+  TopVideosByCreator,
+} from '@helper/discovery/hydration';
 import { clients, io } from '../server';
-
 import {
   extractHashtags,
   normalizeKeywordTerm,
@@ -19,7 +19,6 @@ import {
   normalizePlatform,
   PlatformFilter,
 } from '@helper/discovery/queryHelpers';
-
 import {
   buildDiscoveryUserOrderBy,
   DiscoverySortBy,
@@ -27,11 +26,9 @@ import {
   normalizeDiscoverySort,
   sortDiscoveryRows,
 } from '@helper/discovery/sortHelpers';
-
 import { mapPronounsToGender } from '@utils/mapPronounsToGender';
 import { calculateAge } from '@utils/calculateAge';
 import { saveNotification } from '@controllers/notificationController';
-import { refreshTikTokToken } from './socialMediaService';
 
 const prisma = new PrismaClient();
 const prismaAny = prisma as any;
@@ -178,23 +175,9 @@ const getCachedDiscoveryApiResponse = async <T>(key: string, fetcher: () => Prom
 
   discoveryApiCacheStats.misses += 1;
 
-  const request = (async () => {
-    const value = await fetcher();
-    discoveryApiResponseCache.set(key, {
-      expiresAt: Date.now() + DISCOVERY_API_CACHE_TTL_MS,
-      value,
-    });
-    pruneDiscoveryApiCache();
-    return value;
-  })();
-
-  discoveryApiInFlightRequests.set(key, request as Promise<any>);
-
-  try {
-    return await request;
-  } finally {
-    discoveryApiInFlightRequests.delete(key);
-  }
+const logDiscoveryDebug = (message: string, payload: Record<string, any>) => {
+  if (!DISCOVERY_DEBUG_ENABLED) return;
+  console.log(`[Discovery][Debug] ${message}`, payload);
 };
 
 export interface DiscoveryQueryInput {
@@ -242,7 +225,7 @@ const ensureValidTikTokAccessTokenForCreator = async (creator: any): Promise<str
 
   if (!encryptedAccessToken) return null;
 
-  const accessToken = decryptToken(encryptedAccessToken as any);
+  let accessToken = decryptToken(encryptedAccessToken as any);
   const currentTime = Math.floor(Date.now() / 1000);
   const isExpired = expiresIn && currentTime >= expiresIn;
 
@@ -300,7 +283,6 @@ export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
   const search = (input.search || '').trim();
   const platform = normalizePlatform(input.platform);
   const { sortBy, sortDirection } = normalizeDiscoverySort(input.sortBy, input.sortDirection);
-
   const keywordTerm = normalizeKeywordTerm(input.keyword);
   const hashtagTerms = extractHashtags(input.hashtag);
   const hasContentSearch = Boolean(keywordTerm || hashtagTerms.length > 0);
@@ -388,7 +370,6 @@ export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
       skip: platform === 'all' ? 0 : pagination.skip,
       take: platform === 'all' ? allPlatformWindowSize : pagination.limit,
       orderBy: connectedOrderBy,
-
       select: buildConnectedSelect(false),
     });
   }
@@ -403,7 +384,10 @@ export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
     const instagramTopVideosFromHydration = creatorId ? hydratedInstagramTopVideos.get(creatorId) : undefined;
 
     const instagramTopVideos = creatorId
-      ? instagramTopVideosFromApi || instagramTopVideosFromHydration || row.creator?.instagramUser?.instagramVideo || []
+      ? instagramTopVideosFromApi ||
+        instagramTopVideosFromHydration ||
+        row.creator?.instagramUser?.instagramVideo ||
+        []
       : row.creator?.instagramUser?.instagramVideo || [];
 
     const tiktokTopVideosRaw = creatorId
@@ -521,7 +505,9 @@ export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
 
   const paginatedCreatorUserIds = Array.from(
     new Set(
-      (paginatedConnectedCreators || []).map((creator: any) => String(creator?.userId || '').trim()).filter(Boolean),
+      (paginatedConnectedCreators || [])
+        .map((creator: any) => String(creator?.userId || '').trim())
+        .filter(Boolean),
     ),
   );
 
@@ -566,7 +552,9 @@ export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
 
     const instagramTopVideos = apiInstagramTopVideos.get(creatorId) || creator?.instagram?.topVideos || [];
     const tiktokTopVideosRaw = apiTikTokTopVideos.get(creatorId) || creator?.tiktok?.topVideos || [];
-    const normalizedTiktokHandle = creator?.handles?.tiktok ? String(creator.handles.tiktok).replace(/^@/, '') : null;
+    const normalizedTiktokHandle = creator?.handles?.tiktok
+      ? String(creator.handles.tiktok).replace(/^@/, '')
+      : null;
 
     const tiktokTopVideos = (tiktokTopVideosRaw || []).map((video: any) => ({
       ...video,
@@ -590,7 +578,10 @@ export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
     };
   });
 
-  const creatorTopVideoStatusByUserId = new Map<string, { name: string; returnedTopVideos: boolean }>();
+  const creatorTopVideoStatusByUserId = new Map<
+    string,
+    { name: string; returnedTopVideos: boolean }
+  >();
 
   for (const creatorRow of enrichedPaginatedConnectedCreators as any[]) {
     const userId = String(creatorRow?.userId || '').trim();
@@ -657,7 +648,6 @@ export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
     platform,
     sortBy,
     sortDirection,
-
     page: pagination.page,
     limit: pagination.limit,
     returned: enrichedPaginatedConnectedCreators.length,
@@ -951,11 +941,11 @@ export const inviteDiscoveryCreators = async (input: InviteDiscoveryCreatorsInpu
     let invitedCount = 0;
     let skippedExistingCount = 0;
     let skippedNotFoundCount = 0;
-    const invitedCreatorNotifications: {
+    const invitedCreatorNotifications: Array<{
       userId: string;
       campaignId: string;
       campaignName: string;
-    }[] = [];
+    }> = [];
 
     for (const creatorId of creatorIds) {
       const creatorUser = creatorById.get(creatorId);
@@ -1154,7 +1144,9 @@ export const inviteDiscoveryCreators = async (input: InviteDiscoveryCreatorsInpu
         }
       }
 
-      const clientUsers = campaign.campaignAdmin.filter((campaignAdmin) => campaignAdmin.admin.user.role === 'client');
+      const clientUsers = campaign.campaignAdmin.filter(
+        (campaignAdmin) => campaignAdmin.admin.user.role === 'client',
+      );
 
       for (const clientUser of clientUsers) {
         await tx.notification.create({

@@ -662,11 +662,11 @@ model Campaign {
   description String
   status      CampaignStatus @default(SCHEDULED)
 
-  campaignCredits           Int?
-  creditsPending            Int?
-  creditsUtilized           Int?
-  creditAllocationBreakdown Json? // Tracks which subscriptions were charged and how much
-  // Format: [{ subscriptionId: string, amount: number }, ...]
+  campaignCredits Int?
+  creditsPending  Int?
+  creditsUtilized Int?
+  creditAllocationBreakdown Json?  // Tracks which subscriptions were charged and how much
+                                   // Format: [{ subscriptionId: string, amount: number }, ...]
 
   brandId        String?
   subscriptionId String?
@@ -846,7 +846,8 @@ model CampaignBrief {
   campaignId          String    @unique
   otherAttachments    String[]
   referencesLinks     String[]
-  campaign            Campaign  @relation(fields: [campaignId], references: [id])
+
+  campaign Campaign @relation(fields: [campaignId], references: [id])
 }
 
 model CampaignAdditionalDetails {
