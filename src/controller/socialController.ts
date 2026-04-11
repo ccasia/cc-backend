@@ -112,13 +112,13 @@ interface InstagramData {
   expires_in: string;
 }
 
-function extractInstagramShortcode(url: string) {
+export function extractInstagramShortcode(url: string) {
   const regex = /(?:https?:\/\/)?(?:www\.)?instagram\.com\/(?:p|reel|tv)\/([A-Za-z0-9_-]+)/;
   const match = url.match(regex);
   return match ? match[1] : null;
 }
 
-function extractTikTokVideoId(url: string): string | null {
+export function extractTikTokVideoId(url: string): string | null {
   try {
     const urlObj = new URL(url);
 
@@ -1182,9 +1182,7 @@ export const getInstagramMediaKit = async (req: Request, res: Response) => {
     // Opportunistic backfill for existing DB rows that still have expiring Instagram URLs.
     void backfillPersistedInstagramThumbnails(instagramUser.id, creator.id);
 
-    return res
-      .status(200)
-      .json({ instagramUser, medias: { ...medias, sortedVideos: cachedSortedVideos }, creator });
+    return res.status(200).json({ instagramUser, medias: { ...medias, sortedVideos: cachedSortedVideos }, creator });
 
     // return res.status(200).json({
     //   overview,
@@ -1482,7 +1480,7 @@ export const getTikTokMediaKit = async (req: Request, res: Response) => {
   }
 };
 
-async function getCampaignSubmissionUrls(campaignId: string): Promise<UrlData[]> {
+export async function getCampaignSubmissionUrls(campaignId: string): Promise<UrlData[]> {
   try {
     const submissions = await prisma.submission.findMany({
       where: {
@@ -1661,8 +1659,7 @@ async function backfillPersistedInstagramThumbnails(instagramUserId: string, cre
         if (!cachedThumbnailUrl) return;
 
         const needsThumbnailUpdate = cachedThumbnailUrl !== video?.thumbnail_url;
-        const needsMediaUpdate =
-          video?.media_type !== 'VIDEO' && cachedThumbnailUrl !== video?.media_url;
+        const needsMediaUpdate = video?.media_type !== 'VIDEO' && cachedThumbnailUrl !== video?.media_url;
 
         if (!needsThumbnailUpdate && !needsMediaUpdate) return;
 
@@ -1686,7 +1683,7 @@ async function backfillPersistedInstagramThumbnails(instagramUserId: string, cre
   }
 }
 
-async function ensureValidInstagramToken(userId: string): Promise<string> {
+export async function ensureValidInstagramToken(userId: string): Promise<string> {
   const creator = await prisma.creator.findFirst({
     where: {
       userId: userId,
@@ -1918,7 +1915,7 @@ export const getInstagramMediaInsight = async (req: Request, res: Response) => {
   }
 };
 
-async function ensureValidTikTokToken(userId: string): Promise<string> {
+export async function ensureValidTikTokToken(userId: string): Promise<string> {
   const creator = await prisma.creator.findFirst({
     where: {
       userId: userId,

@@ -83,7 +83,7 @@ async function runSectionChain(
   data: Record<string, unknown>,
   userId: string,
 ): Promise<string | any> {
-  const result = await prisma.aiModel.findFirst({ where: { userId: userId }, select: { systemPrompt: true } });
+  const result = await prisma.aiModel.findFirst({ where: { userId: userId } });
 
   const dbSections = result?.systemPrompt as unknown as Record<ReportSection, string>;
 
@@ -91,7 +91,7 @@ async function runSectionChain(
     ['system', dbSections[section] || SECTION_PROMPTS[section]],
     ['human', HUMAN_TEMPLATES[section]],
   ]);
-  const chain = RunnableSequence.from([prompt, await createGemini(), new StringOutputParser()]);
+  const chain = RunnableSequence.from([prompt, await createGemini(result!), new StringOutputParser()]);
 
   return chain.invoke({ data: JSON.stringify(data, null, 2) });
 }
