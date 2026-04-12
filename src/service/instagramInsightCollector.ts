@@ -197,10 +197,20 @@ function aggregateCreatorResults(
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 export async function fetchInstagramCampaignMetrics(campaignId: string): Promise<ExternalMetrics> {
-  const [allUrls, manualEntries] = await Promise.all([
+  const [allUrls, manualEntries, snapshotIg, snapshotTt] = await Promise.all([
     getCampaignSubmissionUrls(campaignId),
     prisma.manualCreatorEntry.findMany({ where: { campaignId } }),
+    prisma.insightSnapshot.findFirst({
+      where: { campaignId, platform: 'Instagram' },
+      orderBy: { snapshotDate: 'desc' },
+    }),
+    prisma.insightSnapshot.findFirst({
+      where: { campaignId, platform: 'TikTok' },
+      orderBy: { snapshotDate: 'desc' },
+    }),
   ]);
+
+  console.log(manualEntries);
 
   // Group URLs by platform then by userId
   const igUrlsByUser = new Map<string, typeof allUrls>();
@@ -243,44 +253,99 @@ export async function fetchInstagramCampaignMetrics(campaignId: string): Promise
   const manualIgTotals = manualSum(manualIg);
   const manualTtTotals = manualSum(manualTt);
 
-  console.log('IG-MAN', manualIgTotals);
-  console.log('TT-MAN', manualTtTotals);
-  console.log('IG-AUTO', ig);
-  console.log('TT-AUTO', tt);
+  // Latest snapshot totals per platform
+  const snapIgTotals = {
+    views: snapshotIg?.totalViews ?? 0,
+    likes: snapshotIg?.totalLikes ?? 0,
+    comments: snapshotIg?.totalComments ?? 0,
+    shares: snapshotIg?.totalShares ?? 0,
+    reach: snapshotIg?.totalReach ?? 0,
+  };
+  const snapTtTotals = {
+    views: snapshotTt?.totalViews ?? 0,
+    likes: snapshotTt?.totalLikes ?? 0,
+    comments: snapshotTt?.totalComments ?? 0,
+    shares: snapshotTt?.totalShares ?? 0,
+    reach: snapshotTt?.totalReach ?? 0,
+  };
 
-  // Combined totals
-  const totalViews = ig.totalViews + tt.totalViews + manualIgTotals.views + manualTtTotals.views;
-  const totalLikes = ig.totalLikes + tt.totalLikes + manualIgTotals.likes + manualTtTotals.likes;
-  const totalComments = ig.totalComments + tt.totalComments + manualIgTotals.comments + manualTtTotals.comments;
-  const totalShares = ig.totalShares + tt.totalShares + manualIgTotals.shares + manualTtTotals.shares;
+  // Combined totals: API + Manual + Snapshot
+  const totalViews =
+    // ig.totalViews +
+    // tt.totalViews +
+    // manualIgTotals.views +
+    // manualTtTotals.views +
+    snapIgTotals.views + snapTtTotals.views;
+
+  console.log('TOTAL VIEWS', [
+    // ig.totalViews,
+    // tt.totalViews,
+    // manualIgTotals.views,
+    // manualTtTotals.views,
+    snapIgTotals.views,
+    snapTtTotals.views,
+  ]);
+
+  const totalLikes =
+    // ig.totalLikes +
+    // tt.totalLikes +
+    // manualIgTotals.likes +
+    // manualTtTotals.likes +
+    snapIgTotals.likes + snapTtTotals.likes;
+
+  const totalComments =
+    // ig.totalComments +
+    // tt.totalComments +
+    // manualIgTotals.comments +
+    // manualTtTotals.comments +
+    snapIgTotals.comments + snapTtTotals.comments;
+
+  const totalShares =
+    // ig.totalShares +
+    // tt.totalShares +
+    // manualIgTotals.shares +
+    // manualTtTotals.shares +
+    snapIgTotals.shares + snapTtTotals.shares;
+
   const totalEngagements = totalLikes + totalComments + totalShares;
-  const totalReach = ig.totalReach + tt.totalReach;
+  const totalReach = ig.totalReach + tt.totalReach + snapIgTotals.reach + snapTtTotals.reach;
   const totalImpressions = ig.totalImpressions + tt.totalImpressions;
 
   const totalFollowers = [...igResults, ...ttResults].reduce((s, c) => s + c.followers, 0);
-  const engagementRate =
-    totalFollowers > 0
-      ? +((totalEngagements / totalFollowers) * 100).toFixed(2)
-      : +((totalEngagements / totalViews) * 100).toFixed(2);
+  const engagementRate = Math.max(
+    +((totalEngagements / totalViews) * 100).toFixed(2),
+    +((totalEngagements / totalFollowers) * 100).toFixed(2),
+  );
+  // totalFollowers > 0
+  //   ? +((totalEngagements / totalFollowers) * 100).toFixed(2)
+  //   : +((totalEngagements / totalViews) * 100).toFixed(2);
 
   if (totalViews === 0 && totalEngagements === 0) return {};
 
-  const igPostCount = allUrls.filter((u) => u.platform === 'Instagram').length + manualIg.length;
-  const ttPostCount = allUrls.filter((u) => u.platform === 'TikTok').length + manualTt.length;
+  const igPostCount =
+    allUrls.filter((u) => u.platform === 'Instagram').length + manualIg.length + (snapshotIg?.totalPosts ?? 0);
+  const ttPostCount =
+    allUrls.filter((u) => u.platform === 'TikTok').length + manualTt.length + (snapshotTt?.totalPosts ?? 0);
   const igEngagements =
     ig.totalLikes +
     ig.totalComments +
     ig.totalShares +
     manualIgTotals.likes +
     manualIgTotals.comments +
-    manualIgTotals.shares;
+    manualIgTotals.shares +
+    snapIgTotals.likes +
+    snapIgTotals.comments +
+    snapIgTotals.shares;
   const ttEngagements =
     tt.totalLikes +
     tt.totalComments +
     tt.totalShares +
     manualTtTotals.likes +
     manualTtTotals.comments +
-    manualTtTotals.shares;
+    manualTtTotals.shares +
+    snapTtTotals.likes +
+    snapTtTotals.comments +
+    snapTtTotals.shares;
 
   return {
     summary: {
