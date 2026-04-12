@@ -243,8 +243,10 @@ export async function fetchInstagramCampaignMetrics(campaignId: string): Promise
   const manualIgTotals = manualSum(manualIg);
   const manualTtTotals = manualSum(manualTt);
 
-  console.log('IG', manualIgTotals);
-  console.log('TT', manualTtTotals);
+  console.log('IG-MAN', manualIgTotals);
+  console.log('TT-MAN', manualTtTotals);
+  console.log('IG-AUTO', ig);
+  console.log('TT-AUTO', tt);
 
   // Combined totals
   const totalViews = ig.totalViews + tt.totalViews + manualIgTotals.views + manualTtTotals.views;
