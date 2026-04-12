@@ -216,9 +216,6 @@ export async function fetchInstagramCampaignMetrics(campaignId: string): Promise
     }
   }
 
-  console.log('Instagram URLS', igUrlsByUser);
-  console.log('Tiktok URLS', ttUrlsByUser);
-
   // Fetch both platforms in parallel
   const [igResults, ttResults] = await Promise.all([
     fetchInstagramMetrics(igUrlsByUser),
@@ -245,6 +242,9 @@ export async function fetchInstagramCampaignMetrics(campaignId: string): Promise
 
   const manualIgTotals = manualSum(manualIg);
   const manualTtTotals = manualSum(manualTt);
+
+  console.log('IG', manualIgTotals);
+  console.log('TT', manualTtTotals);
 
   // Combined totals
   const totalViews = ig.totalViews + tt.totalViews + manualIgTotals.views + manualTtTotals.views;
