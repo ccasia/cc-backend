@@ -216,6 +216,9 @@ export async function fetchInstagramCampaignMetrics(campaignId: string): Promise
     }
   }
 
+  console.log('Instagram URLS', igUrlsByUser);
+  console.log('Tiktok URLS', ttUrlsByUser);
+
   // Fetch both platforms in parallel
   const [igResults, ttResults] = await Promise.all([
     fetchInstagramMetrics(igUrlsByUser),
