@@ -886,6 +886,8 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
     needAds,
     // Submission version - 'v2' by default, 'v4' for client-managed campaigns
     submissionVersion,
+    // Credit tier pricing
+    isCreditTier,
   } = rawData;
 
   const clientManagers = Array.isArray(rawData?.clientManagers) ? rawData.clientManagers : [];
@@ -1033,6 +1035,7 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
             websiteLink: websiteLink || '',
             origin: 'ADMIN',
             submissionVersion: submissionVersion || 'v2',
+            isCreditTier: isCreditTier === true,
             rawFootage: rawFootage || false,
             ads: ads || false,
             photos: photos || false,
@@ -4752,7 +4755,7 @@ export const editCampaignLogistics = async (req: Request, res: Response) => {
 };
 
 export const editCampaignFinalise = async (req: Request, res: Response) => {
-  const { campaignId, campaignManagers, campaignType, deliverables, isV4Submission } = req.body;
+  const { campaignId, campaignManagers, campaignType, deliverables, isV4Submission, isCreditTier } = req.body;
 
   const adminId = req.session.userid;
 
@@ -4814,6 +4817,7 @@ export const editCampaignFinalise = async (req: Request, res: Response) => {
         photos,
         ads,
         crossPosting,
+        isCreditTier: isCreditTier === true,
       },
     });
 
