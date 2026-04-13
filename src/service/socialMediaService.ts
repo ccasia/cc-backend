@@ -24,8 +24,7 @@ const getUrlExtension = (url?: string): string => {
 const isDurableStorageUrl = (url?: string): boolean => {
   if (!url) return false;
   return (
-    url.includes('storage.googleapis.com') ||
-    (process.env.BUCKET_NAME ? url.includes(process.env.BUCKET_NAME) : false)
+    url.includes('storage.googleapis.com') || (process.env.BUCKET_NAME ? url.includes(process.env.BUCKET_NAME) : false)
   );
 };
 
@@ -302,7 +301,7 @@ export const getInstagramUserInsight = async (accessToken: string, instagramUser
       },
     });
 
-    const metrics = (response?.data?.data || []) as Array<{ name: string; total_value?: { value?: number } }>;
+    const metrics = (response?.data?.data || []) as { name: string; total_value?: { value?: number } }[];
 
     const metricMap = metrics.reduce(
       (acc, item) => {
@@ -469,13 +468,11 @@ export const getInstagramMedias = async (
 
     const videos = res.data.data || [];
 
-
     const mediaTypeBreakdown = (videos || []).reduce((acc: Record<string, number>, video: any) => {
       const type = String(video?.media_type || 'UNKNOWN');
       acc[type] = (acc[type] || 0) + 1;
       return acc;
     }, {});
-
 
     const totalComments = videos.reduce((acc: any, cur: any) => acc + cur.comments_count, 0);
     const averageComments = totalComments / videos.length;
@@ -521,72 +518,68 @@ export const refreshTikTokToken = async (refreshToken: string) => {
 export const getTikTokMediaObject = async (accessToken: string, limit = 20) => {
   if (!accessToken) throw new Error('Access token is required');
 
-  try {
-    const response = await axios.post(
-      'https://open.tiktokapis.com/v2/video/list/',
-      { max_count: limit },
-      {
-        params: {
-          fields:
-            'id,title,video_description,duration,cover_image_url,embed_link,embed_html,like_count,comment_count,share_count,view_count,create_time',
-        },
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
+  const response = await axios.post(
+    'https://open.tiktokapis.com/v2/video/list/',
+    { max_count: limit },
+    {
+      params: {
+        fields:
+          'id,title,video_description,duration,cover_image_url,embed_link,embed_html,like_count,comment_count,share_count,view_count,create_time',
       },
-    );
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+    },
+  );
 
-    const videos = response.data.data?.videos || [];
+  const videos = response.data.data?.videos || [];
 
-    const mappedVideos = videos.map((video: any) => ({
-      ...video,
-      like: video.like_count || 0,
-      comment: video.comment_count || 0,
-      share: video.share_count || 0,
-      view: video.view_count || 0,
-      like_count: video.like_count || 0,
-      comment_count: video.comment_count || 0,
-      share_count: video.share_count || 0,
-      view_count: video.view_count || 0,
-    }));
+  const mappedVideos = videos.map((video: any) => ({
+    ...video,
+    like: video.like_count || 0,
+    comment: video.comment_count || 0,
+    share: video.share_count || 0,
+    view: video.view_count || 0,
+    like_count: video.like_count || 0,
+    comment_count: video.comment_count || 0,
+    share_count: video.share_count || 0,
+    view_count: video.view_count || 0,
+  }));
 
-    const sortedVideos = [...mappedVideos]
-      .sort((a: any, b: any) => Number(b?.like_count || 0) - Number(a?.like_count || 0))
-      .slice(0, 3);
+  const sortedVideos = [...mappedVideos]
+    .sort((a: any, b: any) => Number(b?.like_count || 0) - Number(a?.like_count || 0))
+    .slice(0, 3);
 
-    const totalLikes = mappedVideos.reduce((sum: number, video: any) => sum + (video.like_count || 0), 0);
-    const totalComments = mappedVideos.reduce((sum: number, video: any) => sum + (video.comment_count || 0), 0);
-    const totalShares = mappedVideos.reduce((sum: number, video: any) => sum + (video.share_count || 0), 0);
-    const totalViews = mappedVideos.reduce((sum: number, video: any) => sum + (video.view_count || 0), 0);
+  const totalLikes = mappedVideos.reduce((sum: number, video: any) => sum + (video.like_count || 0), 0);
+  const totalComments = mappedVideos.reduce((sum: number, video: any) => sum + (video.comment_count || 0), 0);
+  const totalShares = mappedVideos.reduce((sum: number, video: any) => sum + (video.share_count || 0), 0);
+  const totalViews = mappedVideos.reduce((sum: number, video: any) => sum + (video.view_count || 0), 0);
 
-    const averageLikes = mappedVideos.length > 0 ? totalLikes / mappedVideos.length : 0;
-    const averageComments = mappedVideos.length > 0 ? totalComments / mappedVideos.length : 0;
-    const averageShares = mappedVideos.length > 0 ? totalShares / mappedVideos.length : 0;
-    const averageViews = mappedVideos.length > 0 ? totalViews / mappedVideos.length : 0;
+  const averageLikes = mappedVideos.length > 0 ? totalLikes / mappedVideos.length : 0;
+  const averageComments = mappedVideos.length > 0 ? totalComments / mappedVideos.length : 0;
+  const averageShares = mappedVideos.length > 0 ? totalShares / mappedVideos.length : 0;
+  const averageViews = mappedVideos.length > 0 ? totalViews / mappedVideos.length : 0;
 
-    return {
-      videos: mappedVideos,
-      sortedVideos,
-      totalLikes,
-      totalComments,
-      totalShares,
-      totalViews,
-      averageLikes,
-      averageComments,
-      averageShares,
-      averageViews,
-    };
-  } catch (error) {
-    throw error;
-  }
+  return {
+    videos: mappedVideos,
+    sortedVideos,
+    totalLikes,
+    totalComments,
+    totalShares,
+    totalViews,
+    averageLikes,
+    averageComments,
+    averageShares,
+    averageViews,
+  };
 };
 
 // Helper function to resolve TikTok short codes (e.g., ZS5NQoDLq) to full video IDs
 export const resolveTikTokShortCode = async (shortCode: string): Promise<string> => {
   try {
     console.log(`🔗 Resolving TikTok short code: ${shortCode}`);
-    
+
     // Short codes are typically 10-15 characters of alphanumeric/underscore/hyphen
     // If it's already a long numeric ID, return it as-is
     if (/^\d{15,}$/.test(shortCode)) {
