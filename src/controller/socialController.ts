@@ -1507,7 +1507,7 @@ export async function getCampaignSubmissionUrls(campaignId: string): Promise<Url
         const instagramUrls = submission.content.match(instagramUrlRegex);
 
         // TikTok URL regex - handles multiple formats
-        const tiktokUrlRegex = /https?:\/\/(www\.)?(vm\.|m\.)?tiktok\.com\/[^\s]+/g;
+        const tiktokUrlRegex = /https?:\/\/(www\.)?(vt\.|vm\.|m\.)?tiktok\.com\/[^\s]+/g;
         const tiktokUrls = submission.content.match(tiktokUrlRegex);
 
         // Process Instagram URLs
