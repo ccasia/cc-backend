@@ -3200,7 +3200,7 @@ export const createComment = async (req: Request, res: Response) => {
           : {}),
       },
       include: {
-        user: { select: { id: true, name: true, role: true } },
+        user: { select: { id: true, name: true, role: true, client: { include: { company: true } } } },
         submission: { select: { campaignId: true } },
       },
     });
