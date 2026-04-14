@@ -30,33 +30,54 @@ export const updateAdmin = async (
   { userId, name, email, country, phoneNumber, status, mode, role }: AdminProfile,
   // permissions?: Permission[],
   publicURL?: string | undefined,
+  performedBy?: string,
 ) => {
   try {
-    const data = await prisma.user.update({
-      where: {
-        id: userId,
-      },
-      data: {
-        name,
-        email,
-        country,
-        phoneNumber,
-        photoURL: publicURL,
-        status,
-        admin: {
-          update: {
-            mode: mode as Mode,
-            roleId: role,
+    const data = await prisma.$transaction(async (tx) => {
+      const updatedUser = await tx.user.update({
+        where: {
+          id: userId,
+        },
+        data: {
+          name,
+          email,
+          country,
+          phoneNumber,
+          photoURL: publicURL,
+          status,
+          admin: {
+            update: {
+              mode: mode as Mode,
+              roleId: role,
+            },
           },
         },
-      },
-      include: {
-        admin: {
-          include: {
-            adminPermissionModule: true,
+        include: {
+          admin: {
+            include: {
+              adminPermissionModule: true,
+            },
           },
         },
-      },
+      });
+
+      if (status === 'banned') {
+        const removedAssignments = await tx.campaignAdmin.deleteMany({
+          where: {
+            adminId: userId,
+          },
+        });
+
+        await tx.adminLog.create({
+          data: {
+            message: `Admin marked inactive and removed from ${removedAssignments.count} campaign${removedAssignments.count === 1 ? '' : 's'}.`,
+            performedBy,
+            adminId: userId,
+          },
+        });
+      }
+
+      return updatedUser;
     });
 
     // if (permissions.length < 1) {

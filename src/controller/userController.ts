@@ -37,9 +37,9 @@ export const updateProfileAdmin = async (req: Request, res: Response) => {
     if (files && files.image) {
       const { image } = files as any;
       const publicURL = await uploadProfileImage(image.tempFilePath, image.name, 'admin');
-      await updateAdmin(req.body, publicURL);
+      await updateAdmin(req.body, publicURL, req.session.userid as string | undefined);
     } else {
-      await updateAdmin(req.body);
+      await updateAdmin(req.body, undefined, req.session.userid as string | undefined);
     }
 
     return res.status(200).json({ message: 'Successfully updated' });
@@ -569,8 +569,13 @@ export const getUserByEmail = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Email is required' });
     }
 
-    const user = await prisma.user.findUnique({
-      where: { email },
+    const user = await prisma.user.findFirst({
+      where: {
+        email: {
+          mode: 'insensitive',
+          equals: email,
+        },
+      },
       select: {
         id: true,
         email: true,

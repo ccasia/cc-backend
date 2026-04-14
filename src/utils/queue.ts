@@ -16,3 +16,7 @@ export const compressQueue = new Queue('compress', {
 export const uploadQueue = new Queue('upload', {
   connection,
 });
+
+export const bulkInvoiceQueue = new Queue('bulk-invoice-queue', {
+  connection,
+});

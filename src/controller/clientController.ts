@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { PrismaClient, CampaignStatus, LogisticType, ReservationMode } from '@prisma/client';
+import { PrismaClient, CampaignStatus, LogisticType, ReservationMode, Prisma } from '@prisma/client';
 import { uploadCompanyLogo, uploadAttachments } from '@configs/cloudStorage.config';
 import { getRemainingCredits } from '@services/companyService';
 import { clients, io } from '../server';
@@ -292,6 +292,7 @@ export const createClientCampaign = async (req: Request, res: Response) => {
     }
 
     const {
+      // Campaign general info
       campaignTitle,
       campaignDescription,
       campaignStartDate,
@@ -304,6 +305,7 @@ export const createClientCampaign = async (req: Request, res: Response) => {
       productName,
       websiteLink,
       campaignIndustries,
+      // Campaign objectives
       campaignObjectives,
       secondaryObjectives,
       boostContent,
@@ -311,11 +313,10 @@ export const createClientCampaign = async (req: Request, res: Response) => {
       performanceBaseline,
       audienceGender,
       audienceAge,
-      audienceLocation,
+      country,
       audienceLanguage,
       audienceCreatorPersona,
       audienceUserPersona,
-      country,
       secondaryAudienceGender,
       secondaryAudienceAge,
       secondaryAudienceLocation,
@@ -404,31 +405,8 @@ export const createClientCampaign = async (req: Request, res: Response) => {
       }
     }
 
-    const otherAttachments: string[] = [];
-    if (req.files && req.files.otherAttachments) {
-      const attachments: any = (req.files as any).otherAttachments as [];
-
-      if (attachments.length) {
-        for (const item of attachments as any) {
-          const url: string = await uploadAttachments({
-            tempFilePath: item.tempFilePath,
-            fileName: item.name,
-            folderName: 'otherAttachments',
-          });
-          otherAttachments.push(url);
-        }
-      } else {
-        const url: string = await uploadAttachments({
-          tempFilePath: attachments.tempFilePath,
-          fileName: attachments.name,
-          folderName: 'otherAttachments',
-        });
-        otherAttachments.push(url);
-      }
-    }
-
     // Process brand guidelines PDF/image upload (support multiple)
-    let brandGuidelinesUrls: string[] = [];
+    const brandGuidelinesUrls: string[] = [];
     if (req.files && (req.files as any).brandGuidelines) {
       const brandGuidelinesFiles = Array.isArray((req.files as any).brandGuidelines)
         ? (req.files as any).brandGuidelines
@@ -468,6 +446,42 @@ export const createClientCampaign = async (req: Request, res: Response) => {
     }
 
     const newCampaign = await prisma.$transaction(async (tx) => {
+      // --- FIFO Credit Deduction & breakdown
+      const activeSubscriptions = await tx.subscription.findMany({
+        where: {
+          companyId: company?.id || '',
+          status: 'ACTIVE',
+        },
+        orderBy: { createdAt: 'asc' },
+      });
+
+      let selectedSubscriptionId: string | undefined = activeSubscriptions?.[0]?.id;
+      let remainingCreditsToAllocate = requestedCredits;
+      const creditAllocationBreakdown: any[] = [];
+
+      if (activeSubscriptions.length > 0 && requestedCredits > 0) {
+        for (const sub of activeSubscriptions) {
+          if (remainingCreditsToAllocate <= 0) break;
+
+          const available = (sub.totalCredits || 0) - (sub.creditsUsed || 0);
+          if (available > 0) {
+            const chargeAmount = Math.min(available, remainingCreditsToAllocate);
+
+            creditAllocationBreakdown.push({
+              subscriptionId: sub.id,
+              amount: chargeAmount,
+            });
+
+            remainingCreditsToAllocate -= chargeAmount;
+
+            await tx.subscription.update({
+              where: { id: sub.id },
+              data: { creditsUsed: { increment: chargeAmount } },
+            });
+          }
+        }
+      }
+
       // --- LOGISTICS: Process Products ---
       let productsToCreate: any[] = [];
       if (logisticsType === 'PRODUCT_DELIVERY' && Array.isArray(products)) {
@@ -515,11 +529,6 @@ export const createClientCampaign = async (req: Request, res: Response) => {
       } else if (Array.isArray(secondaryCountry) && secondaryCountry.length > 0) {
         finalizedCountries.push(...secondaryCountry);
       }
-      if (typeof geographicFocusOthers === 'string' && geographicFocusOthers) {
-        finalizedCountries.push(geographicFocusOthers);
-      } else if (Array.isArray(geographicFocusOthers) && geographicFocusOthers.length > 0) {
-        finalizedCountries.push(...geographicFocusOthers);
-      }
       // Remove duplicates
       finalizedCountries = [...new Set(finalizedCountries)];
 
@@ -559,7 +568,7 @@ export const createClientCampaign = async (req: Request, res: Response) => {
               socialMediaPlatform: Array.isArray(socialMediaPlatform) ? socialMediaPlatform : [],
               campaigns_do: campaignDo || [],
               campaigns_dont: campaignDont || [],
-              otherAttachments: otherAttachments,
+              // otherAttachments: otherAttachments,
               referencesLinks: referencesLinks?.map((link: any) => link?.value).filter(Boolean) || [],
             },
           },
@@ -588,6 +597,12 @@ export const createClientCampaign = async (req: Request, res: Response) => {
           campaignCredits: requestedCredits,
           creditsPending: requestedCredits,
           creditsUtilized: 0,
+          creditAllocationBreakdown: creditAllocationBreakdown.length > 0 ? creditAllocationBreakdown : Prisma.DbNull,
+          subscription: selectedSubscriptionId
+            ? {
+                connect: { id: selectedSubscriptionId },
+              }
+            : undefined,
           company: {
             connect: {
               id: company?.id || '',
@@ -630,7 +645,12 @@ export const createClientCampaign = async (req: Request, res: Response) => {
             mainMessage: mainMessage || null,
             keyPoints: keyPoints || null,
             toneAndStyle: toneAndStyle || null,
-            brandGuidelinesUrl: brandGuidelinesUrls.length === 0 ? null : (brandGuidelinesUrls.length === 1 ? brandGuidelinesUrls[0] : brandGuidelinesUrls.join(',')),
+            brandGuidelinesUrl:
+              brandGuidelinesUrls.length === 0
+                ? null
+                : brandGuidelinesUrls.length === 1
+                  ? brandGuidelinesUrls[0]
+                  : brandGuidelinesUrls.join(','),
             referenceContent: referenceContent || null,
             productImage1Url: productImage1Url,
             productImage2Url: productImage2Url,
@@ -646,47 +666,6 @@ export const createClientCampaign = async (req: Request, res: Response) => {
             needAds: needAds || null,
           },
         });
-      }
-
-      // FIFO credit deduction logic
-      if (requestedCredits > 0) {
-        // Deduct credits from subscription
-        const activeSubscriptions = await tx.subscription.findMany({
-          where: {
-            companyId: company?.id || '',
-            status: 'ACTIVE',
-          },
-          orderBy: { expiredAt: 'asc' },
-        });
-
-        // if (activeSubscription && requestedCredits > 0) {
-        //   await prisma.subscription.update({
-        //     where: {
-        //       id: activeSubscription.id,
-        //     },
-        //     data: {
-        //       creditsUsed: {
-        //         increment: requestedCredits,
-        //       },
-        //     },
-        //   });
-        // }
-        let creditsToDeduct = requestedCredits;
-
-        for (const sub of activeSubscriptions) {
-          if (creditsToDeduct <= 0) break;
-
-          const remainingInSub = (sub.totalCredits || 0) - sub.creditsUsed;
-          const deductionAmount = Math.min(creditsToDeduct, remainingInSub);
-
-          if (deductionAmount > 0) {
-            await tx.subscription.update({
-              where: { id: sub.id },
-              data: { creditsUsed: { increment: deductionAmount } },
-            });
-            creditsToDeduct -= deductionAmount;
-          }
-        }
       }
 
       // Add the client to campaignAdmin so they can see it in their dashboard

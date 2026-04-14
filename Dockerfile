@@ -53,6 +53,7 @@ COPY . .
 # Generate Prisma client
 RUN npx prisma generate
 
+
 # Build the application
 RUN yarn build
 
@@ -66,6 +67,8 @@ RUN apk add --no-cache \
     ttf-dejavu \
     fontconfig \
     && rm -rf /var/cache/apk/*
+
+RUN yarn global add pm2
 
 # Define build argument
 ARG DATABASE_URL
@@ -87,6 +90,8 @@ COPY --from=builder /app/.env ./.env
 
 # Generate Prisma client in production environment
 RUN npx prisma generate
+
+RUN yarn global add pm2
 
 # RUN npx prisma migrate dev --name init
 

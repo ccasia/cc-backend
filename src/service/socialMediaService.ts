@@ -1,6 +1,102 @@
+import { storage } from '@configs/cloudStorage.config';
 import { encryptToken } from '@helper/encrypt';
 import axios from 'axios';
+import crypto from 'crypto';
 import dayjs from 'dayjs';
+import path from 'path';
+
+const INSTAGRAM_THUMBNAIL_FOLDER = 'instagram-thumbnails';
+
+const getUrlExtension = (url?: string): string => {
+  if (!url) return '.jpg';
+
+  try {
+    const parsed = new URL(url);
+    const ext = path.extname(parsed.pathname || '').toLowerCase();
+    if (ext && ext.length <= 5) return ext;
+  } catch (error) {
+    // Ignore parsing errors and fallback to jpg.
+  }
+
+  return '.jpg';
+};
+
+const isDurableStorageUrl = (url?: string): boolean => {
+  if (!url) return false;
+  return (
+    url.includes('storage.googleapis.com') || (process.env.BUCKET_NAME ? url.includes(process.env.BUCKET_NAME) : false)
+  );
+};
+
+const uploadInstagramThumbnailFromUrl = async (sourceUrl: string, destination: string): Promise<string | null> => {
+  if (!sourceUrl || !process.env.BUCKET_NAME) return null;
+
+  try {
+    const response = await axios.get(sourceUrl, {
+      responseType: 'arraybuffer',
+      timeout: 10000,
+    });
+
+    const contentType = response.headers?.['content-type'] || 'image/jpeg';
+    const buffer = Buffer.from(response.data);
+
+    const file = storage.bucket(process.env.BUCKET_NAME).file(destination);
+    await file.save(buffer, {
+      metadata: {
+        contentType,
+        cacheControl: 'public, max-age=31536000',
+      },
+      resumable: false,
+    });
+    await file.makePublic();
+
+    return `https://storage.googleapis.com/${process.env.BUCKET_NAME}/${destination}`;
+  } catch (error: any) {
+    console.error('[InstagramThumbnailCache] Upload failed', {
+      sourceUrl,
+      destination,
+      message: error?.message,
+      status: error?.response?.status,
+    });
+    return null;
+  }
+};
+
+export const cacheInstagramThumbnail = async (media: any, creatorId?: string): Promise<string | null> => {
+  const sourceUrl = media?.thumbnail_url || media?.media_url;
+  if (!sourceUrl) return null;
+
+  if (isDurableStorageUrl(sourceUrl)) return sourceUrl;
+
+  const mediaId = media?.id || media?.video_id || crypto.createHash('md5').update(sourceUrl).digest('hex');
+  const extension = getUrlExtension(sourceUrl);
+  const owner = creatorId || 'unknown';
+  const destination = `${INSTAGRAM_THUMBNAIL_FOLDER}/${owner}/${mediaId}${extension}`;
+
+  return uploadInstagramThumbnailFromUrl(sourceUrl, destination);
+};
+
+export const withCachedInstagramThumbnail = async (media: any, creatorId?: string): Promise<any> => {
+  if (!media) return media;
+
+  const cachedThumbnailUrl = await cacheInstagramThumbnail(media, creatorId);
+  if (!cachedThumbnailUrl) return media;
+
+  if (media?.media_type === 'VIDEO') {
+    return {
+      ...media,
+      cached_thumbnail_url: cachedThumbnailUrl,
+      thumbnail_url: cachedThumbnailUrl,
+    };
+  }
+
+  return {
+    ...media,
+    cached_thumbnail_url: cachedThumbnailUrl,
+    thumbnail_url: cachedThumbnailUrl,
+    media_url: cachedThumbnailUrl,
+  };
+};
 
 // Function to get Page ID
 export const getPageId = async (accessToken: string): Promise<string> => {
@@ -139,7 +235,7 @@ export const refreshInstagramToken = async (accessToken: string) => {
     const refreshedToken = await axios.get('https://graph.instagram.com/refresh_access_token', {
       params: {
         grant_type: 'ig_refresh_token',
-        accessToken: accessToken,
+        access_token: accessToken,
       },
     });
 
@@ -154,7 +250,7 @@ export const getInstagramOverviewService = async (accessToken: string) => {
     const res = await axios.get('https://graph.instagram.com/v22.0/me', {
       params: {
         access_token: accessToken,
-        fields: 'user_id,followers_count,follows_count,media_count,username',
+        fields: 'user_id,profile_picture_url,biography,followers_count,follows_count,media_count,username',
       },
     });
 
@@ -164,7 +260,84 @@ export const getInstagramOverviewService = async (accessToken: string) => {
   }
 };
 
-export const getAllMediaObject = async (
+export const getTikTokOverviewService = async (accessToken: string) => {
+  if (!accessToken) throw new Error('Access token is required');
+
+  try {
+    const res = await axios.get('https://open.tiktokapis.com/v2/user/info/', {
+      params: {
+        fields:
+          'open_id,union_id,display_name,bio_description,username,avatar_url,following_count,follower_count,likes_count',
+      },
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    return res.data;
+  } catch (error) {
+    throw new Error(error);
+  }
+};
+
+export const getInstagramUserInsight = async (accessToken: string, instagramUserId: string) => {
+  if (!accessToken || !instagramUserId) {
+    throw new Error('Missing required parameters: accessToken, instagramUserId');
+  }
+
+  // Keep a small safety buffer from "exactly 2 years" to avoid IG boundary validation issues.
+  const since = dayjs().subtract(729, 'day').startOf('day').unix();
+  const until = dayjs().subtract(1, 'day').endOf('day').unix();
+
+  try {
+    const response = await axios.get(`https://graph.instagram.com/v22.0/${instagramUserId}/insights`, {
+      params: {
+        metric: 'likes,saves,shares,reach,total_interactions,profile_views,comments,accounts_engaged',
+        period: 'day',
+        metric_type: 'total_value',
+        since,
+        until,
+        access_token: accessToken,
+      },
+    });
+
+    const metrics = (response?.data?.data || []) as { name: string; total_value?: { value?: number } }[];
+
+    const metricMap = metrics.reduce(
+      (acc, item) => {
+        acc[item.name] = item?.total_value?.value || 0;
+        return acc;
+      },
+      {} as Record<string, number>,
+    );
+
+    return {
+      raw: response?.data,
+      since,
+      until,
+      totals: {
+        likes: metricMap.likes || 0,
+        saves: metricMap.saves || 0,
+        shares: metricMap.shares || 0,
+        reach: metricMap.reach || 0,
+        totalInteractions: metricMap.total_interactions || 0,
+        profileViews: metricMap.profile_views || 0,
+        comments: metricMap.comments || 0,
+        accountsEngaged: metricMap.accounts_engaged || 0,
+      },
+    };
+  } catch (error: any) {
+    console.error('[InstagramInsight] request failed', {
+      instagramUserId,
+      status: error?.response?.status,
+      response: error?.response?.data || null,
+      message: error?.message,
+    });
+    throw new Error('Failed to fetch Instagram user insights');
+  }
+};
+
+export const getInstagramMediaObject = async (
   accessToken: string,
   instaUserId: string,
   limit?: number,
@@ -198,9 +371,9 @@ export const getAllMediaObject = async (
     const totalLikes = videos.reduce((acc: any, cur: any) => acc + cur.like_count, 0);
     const averageLikes = totalLikes / videos.length;
 
-    // sort but highest like_count
-    // let sortedVideos: any[] = videos?.sort((a: any, b: any) => a.like_count > b.like_count);
-    const sortedVideos = videos.slice(0, 5);
+    const sortedVideos = [...videos]
+      .sort((a: any, b: any) => Number(b?.like_count || 0) - Number(a?.like_count || 0))
+      .slice(0, 3);
 
     return { sortedVideos, averageLikes, averageComments, totalComments, totalLikes };
   } catch (error) {
@@ -295,6 +468,12 @@ export const getInstagramMedias = async (
 
     const videos = res.data.data || [];
 
+    const mediaTypeBreakdown = (videos || []).reduce((acc: Record<string, number>, video: any) => {
+      const type = String(video?.media_type || 'UNKNOWN');
+      acc[type] = (acc[type] || 0) + 1;
+      return acc;
+    }, {});
+
     const totalComments = videos.reduce((acc: any, cur: any) => acc + cur.comments_count, 0);
     const averageComments = totalComments / videos.length;
 
@@ -336,11 +515,71 @@ export const refreshTikTokToken = async (refreshToken: string) => {
   }
 };
 
+export const getTikTokMediaObject = async (accessToken: string, limit = 20) => {
+  if (!accessToken) throw new Error('Access token is required');
+
+  const response = await axios.post(
+    'https://open.tiktokapis.com/v2/video/list/',
+    { max_count: limit },
+    {
+      params: {
+        fields:
+          'id,title,video_description,duration,cover_image_url,embed_link,embed_html,like_count,comment_count,share_count,view_count,create_time',
+      },
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+    },
+  );
+
+  const videos = response.data.data?.videos || [];
+
+  const mappedVideos = videos.map((video: any) => ({
+    ...video,
+    like: video.like_count || 0,
+    comment: video.comment_count || 0,
+    share: video.share_count || 0,
+    view: video.view_count || 0,
+    like_count: video.like_count || 0,
+    comment_count: video.comment_count || 0,
+    share_count: video.share_count || 0,
+    view_count: video.view_count || 0,
+  }));
+
+  const sortedVideos = [...mappedVideos]
+    .sort((a: any, b: any) => Number(b?.like_count || 0) - Number(a?.like_count || 0))
+    .slice(0, 3);
+
+  const totalLikes = mappedVideos.reduce((sum: number, video: any) => sum + (video.like_count || 0), 0);
+  const totalComments = mappedVideos.reduce((sum: number, video: any) => sum + (video.comment_count || 0), 0);
+  const totalShares = mappedVideos.reduce((sum: number, video: any) => sum + (video.share_count || 0), 0);
+  const totalViews = mappedVideos.reduce((sum: number, video: any) => sum + (video.view_count || 0), 0);
+
+  const averageLikes = mappedVideos.length > 0 ? totalLikes / mappedVideos.length : 0;
+  const averageComments = mappedVideos.length > 0 ? totalComments / mappedVideos.length : 0;
+  const averageShares = mappedVideos.length > 0 ? totalShares / mappedVideos.length : 0;
+  const averageViews = mappedVideos.length > 0 ? totalViews / mappedVideos.length : 0;
+
+  return {
+    videos: mappedVideos,
+    sortedVideos,
+    totalLikes,
+    totalComments,
+    totalShares,
+    totalViews,
+    averageLikes,
+    averageComments,
+    averageShares,
+    averageViews,
+  };
+};
+
 // Helper function to resolve TikTok short codes (e.g., ZS5NQoDLq) to full video IDs
 export const resolveTikTokShortCode = async (shortCode: string): Promise<string> => {
   try {
     console.log(`🔗 Resolving TikTok short code: ${shortCode}`);
-    
+
     // Short codes are typically 10-15 characters of alphanumeric/underscore/hyphen
     // If it's already a long numeric ID, return it as-is
     if (/^\d{15,}$/.test(shortCode)) {

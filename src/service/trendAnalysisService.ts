@@ -42,16 +42,52 @@ export interface NormalizedInsight {
 }
 
 /**
+ * Transform a manual creator entry to NormalizedInsight format
+ * @param entry - Manual creator entry from database
+ * @returns NormalizedInsight object
+ */
+export function transformManualEntryToNormalizedInsight(entry: any): NormalizedInsight {
+  return {
+    userId: entry.id, // Use entry ID as userId for manual entries
+    userName: entry.creatorName,
+    postUrl: entry.postUrl || '',
+    postingDate: entry.createdAt, // Use createdAt as posting date
+    views: entry.views,
+    likes: entry.likes,
+    comments: 0, // Manual entries don't track comments
+    shares: entry.shares,
+    saved: entry.platform === 'Instagram' ? (entry.saved || 0) : undefined,
+    reach: undefined, // Manual entries don't track reach
+  };
+}
+
+/**
  * Calculate daily metrics from normalized insights data
+ * @param campaignId - Campaign ID
+ * @param platform - Platform filter ('Instagram', 'TikTok', 'All')
+ * @param insights - Array of normalized insights from API
+ * @param manualEntries - Optional array of manual creator entries to include
  */
 export async function calculateDailyMetrics(
   campaignId: string,
   platform: 'Instagram' | 'TikTok' | 'All',
-  insights: NormalizedInsight[]
+  insights: NormalizedInsight[],
+  manualEntries: any[] = []
 ): Promise<DailyMetrics> {
-  console.log(`📊 Calculating metrics for ${platform} (${insights.length} insights)...`);
+  // Transform manual entries to NormalizedInsight format and filter by platform
+  const transformedManualEntries: NormalizedInsight[] = manualEntries
+    .filter((entry) => {
+      if (platform === 'All') return true;
+      return entry.platform === platform;
+    })
+    .map(transformManualEntryToNormalizedInsight);
 
-  if (insights.length === 0) {
+  // Combine API insights with manual entries
+  const allInsights = [...insights, ...transformedManualEntries];
+
+  console.log(`📊 Calculating metrics for ${platform} (${insights.length} API insights + ${transformedManualEntries.length} manual entries = ${allInsights.length} total)...`);
+
+  if (allInsights.length === 0) {
     console.warn(`⚠️  No insights to calculate for ${platform}`);
     return {
       platform,
@@ -68,7 +104,7 @@ export async function calculateDailyMetrics(
   }
 
   // Aggregate totals
-  const totals = insights.reduce(
+  const totals = allInsights.reduce(
     (acc, insight) => ({
       views: acc.views + insight.views,
       likes: acc.likes + insight.likes,
@@ -84,9 +120,11 @@ export async function calculateDailyMetrics(
   let averageEngagementRate = 0;
   if (platform === 'Instagram') {
     // Instagram: (likes + comments + shares + saved) / reach * 100
-    if (totals.reach > 0) {
+    // If no reach data (e.g., manual entries), use views as fallback
+    const denominator = totals.reach > 0 ? totals.reach : totals.views;
+    if (denominator > 0) {
       averageEngagementRate =
-        ((totals.likes + totals.comments + totals.shares + totals.saved) / totals.reach) * 100;
+        ((totals.likes + totals.comments + totals.shares + totals.saved) / denominator) * 100;
     }
   } else if (platform === 'TikTok') {
     // TikTok: (likes + comments + shares) / views * 100
@@ -103,7 +141,7 @@ export async function calculateDailyMetrics(
   }
 
   // Calculate top creators by views
-  const creatorsWithEngagement = insights.map((insight) => {
+  const creatorsWithEngagement = allInsights.map((insight) => {
     let engagementRate = 0;
     if (platform === 'Instagram' && insight.reach && insight.reach > 0) {
       engagementRate =
@@ -130,12 +168,12 @@ export async function calculateDailyMetrics(
   // Sort by views and take top 5
   const topCreators = creatorsWithEngagement.sort((a, b) => b.views - a.views).slice(0, 5);
 
-  console.log(`✅ Metrics calculated: ${insights.length} posts, avg engagement ${averageEngagementRate.toFixed(2)}%`);
+  console.log(`✅ Metrics calculated: ${allInsights.length} posts, avg engagement ${averageEngagementRate.toFixed(2)}%`);
   console.log(`🏆 Top creator: ${topCreators[0]?.userName} with ${topCreators[0]?.views} views`);
 
   return {
     platform,
-    totalPosts: insights.length,
+    totalPosts: allInsights.length,
     totalViews: totals.views,
     totalLikes: totals.likes,
     totalComments: totals.comments,
@@ -206,6 +244,7 @@ export async function storeInsightSnapshot(
 
 /**
  * Get engagement heatmap data for last N weeks
+ * Includes both snapshot data and manual creator entries
  */
 export async function getEngagementHeatmap(
   campaignId: string,
@@ -216,6 +255,7 @@ export async function getEngagementHeatmap(
 
   const startDate = dayjs().subtract(weeks, 'week').startOf('day').toDate();
 
+  // Fetch snapshots
   const snapshots = await prisma.insightSnapshot.findMany({
     where: {
       campaignId,
@@ -228,13 +268,147 @@ export async function getEngagementHeatmap(
 
   console.log(`📊 Found ${snapshots.length} snapshots`);
 
-  // Transform into week x day grid
-  const heatmapData = snapshots.map((snapshot) => ({
-    date: snapshot.snapshotDate,
-    engagementRate: snapshot.averageEngagementRate,
-    totalPosts: snapshot.totalPosts,
-    totalViews: snapshot.totalViews,
-  }));
+  // Fetch manual entries
+  const manualEntries = await prisma.manualCreatorEntry.findMany({
+    where: {
+      campaignId,
+      platform: platform === 'All' ? undefined : platform,
+      createdAt: { gte: startDate },
+    },
+  });
+
+  console.log(`📝 Found ${manualEntries.length} manual entries`);
+
+  // Group manual entries by date (using createdAt, normalized to start of day)
+  const manualEntriesByDate = new Map<string, any[]>();
+  manualEntries.forEach((entry) => {
+    const dateKey = dayjs(entry.createdAt).startOf('day').toISOString();
+    if (!manualEntriesByDate.has(dateKey)) {
+      manualEntriesByDate.set(dateKey, []);
+    }
+    manualEntriesByDate.get(dateKey)!.push(entry);
+  });
+
+  // Transform snapshots into date-keyed map
+  const snapshotByDate = new Map<string, any>();
+  snapshots.forEach((snapshot) => {
+    const dateKey = dayjs(snapshot.snapshotDate).startOf('day').toISOString();
+    snapshotByDate.set(dateKey, snapshot);
+  });
+
+  // Combine snapshot and manual entry data by date
+  const combinedDates = new Set([
+    ...Array.from(snapshotByDate.keys()),
+    ...Array.from(manualEntriesByDate.keys()),
+  ]);
+
+  const heatmapData = Array.from(combinedDates).map((dateKey) => {
+    const snapshot = snapshotByDate.get(dateKey);
+    const manualEntriesForDate = manualEntriesByDate.get(dateKey) || [];
+
+    // If we have both snapshot and manual entries, combine them
+    if (snapshot && manualEntriesForDate.length > 0) {
+      // Calculate totals from manual entries
+      const manualTotals = manualEntriesForDate.reduce(
+        (acc, entry) => ({
+          views: acc.views + entry.views,
+          likes: acc.likes + entry.likes,
+          shares: acc.shares + entry.shares,
+          saved: acc.saved + (entry.saved || 0),
+        }),
+        { views: 0, likes: 0, shares: 0, saved: 0 }
+      );
+
+      // Combine with snapshot totals
+      const totalViews = snapshot.totalViews + manualTotals.views;
+      const totalLikes = snapshot.totalLikes + manualTotals.likes;
+      const totalShares = snapshot.totalShares + manualTotals.shares;
+      const totalSaved = snapshot.totalSaved + manualTotals.saved;
+      const totalPosts = snapshot.totalPosts + manualEntriesForDate.length;
+
+      // Calculate combined engagement rate
+      let engagementRate = snapshot.averageEngagementRate;
+      if (platform === 'Instagram') {
+        const denominator = snapshot.totalReach > 0 ? snapshot.totalReach : totalViews;
+        if (denominator > 0) {
+          engagementRate = ((totalLikes + snapshot.totalComments + totalShares + totalSaved) / denominator) * 100;
+        }
+      } else if (platform === 'TikTok') {
+        if (totalViews > 0) {
+          engagementRate = ((totalLikes + snapshot.totalComments + totalShares) / totalViews) * 100;
+        }
+      } else {
+        const denominator = snapshot.totalReach > 0 ? snapshot.totalReach : totalViews;
+        if (denominator > 0) {
+          engagementRate = ((totalLikes + snapshot.totalComments + totalShares + totalSaved) / denominator) * 100;
+        }
+      }
+
+      return {
+        date: new Date(dateKey),
+        engagementRate: parseFloat(engagementRate.toFixed(2)),
+        totalPosts,
+        totalViews,
+      };
+    }
+
+    // If we only have snapshot data
+    if (snapshot) {
+      return {
+        date: snapshot.snapshotDate,
+        engagementRate: snapshot.averageEngagementRate,
+        totalPosts: snapshot.totalPosts,
+        totalViews: snapshot.totalViews,
+      };
+    }
+
+    // If we only have manual entries for this date
+    if (manualEntriesForDate.length > 0) {
+      const manualTotals = manualEntriesForDate.reduce(
+        (acc, entry) => ({
+          views: acc.views + entry.views,
+          likes: acc.likes + entry.likes,
+          shares: acc.shares + entry.shares,
+          saved: acc.saved + (entry.saved || 0),
+        }),
+        { views: 0, likes: 0, shares: 0, saved: 0 }
+      );
+
+      // Calculate engagement rate for manual entries only
+      let engagementRate = 0;
+      if (platform === 'Instagram') {
+        if (manualTotals.views > 0) {
+          engagementRate = ((manualTotals.likes + manualTotals.shares + manualTotals.saved) / manualTotals.views) * 100;
+        }
+      } else if (platform === 'TikTok') {
+        if (manualTotals.views > 0) {
+          engagementRate = ((manualTotals.likes + manualTotals.shares) / manualTotals.views) * 100;
+        }
+      } else {
+        if (manualTotals.views > 0) {
+          engagementRate = ((manualTotals.likes + manualTotals.shares + manualTotals.saved) / manualTotals.views) * 100;
+        }
+      }
+
+      return {
+        date: new Date(dateKey),
+        engagementRate: parseFloat(engagementRate.toFixed(2)),
+        totalPosts: manualEntriesForDate.length,
+        totalViews: manualTotals.views,
+      };
+    }
+
+    // Fallback (shouldn't happen)
+    return {
+      date: new Date(dateKey),
+      engagementRate: 0,
+      totalPosts: 0,
+      totalViews: 0,
+    };
+  });
+
+  // Sort by date
+  heatmapData.sort((a, b) => a.date.getTime() - b.date.getTime());
 
   return heatmapData;
 }

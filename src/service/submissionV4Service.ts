@@ -574,7 +574,7 @@ export const updateV4Submissions = async (
   userId: string,
   campaignId: string,
   newUgcVideos: number,
-): Promise<{ deleted: number; created: number }> => {
+): Promise<{ deleted: number; created: number; preserved: number }> => {
   try {
     console.log(`🔄 Updating V4 submissions for user ${userId} in campaign ${campaignId}`);
     console.log(`📊 New ugcVideos count: ${newUgcVideos}`);
@@ -597,7 +597,7 @@ export const updateV4Submissions = async (
 
     if (campaign.submissionVersion !== 'v4') {
       console.log(`⚠️ Campaign ${campaignId} is not a V4 campaign, skipping submission update`);
-      return { deleted: 0, created: 0 };
+      return { deleted: 0, created: 0, preserved: 0 };
     }
 
     // Get submission type records
@@ -617,33 +617,57 @@ export const updateV4Submissions = async (
 
     const videoTypeId = getSubmissionTypeId('VIDEO');
 
-    // Delete existing VIDEO submissions for this user/campaign
-    const deletedResult = await prisma.submission.deleteMany({
+    // Get existing VIDEO submissions to preserve completed/in-progress ones
+    const existingSubmissions = await prisma.submission.findMany({
       where: {
         userId,
         campaignId,
         submissionTypeId: videoTypeId,
         submissionVersion: 'v4',
       },
+      orderBy: {
+        contentOrder: 'asc',
+      },
     });
 
-    console.log(`🗑️ Deleted ${deletedResult.count} existing VIDEO submissions`);
+    console.log(`Found ${existingSubmissions.length} existing VIDEO submissions`);
+
+    const deletedResult = await prisma.submission.deleteMany({
+      where: {
+        userId,
+        campaignId,
+        submissionTypeId: videoTypeId,
+        submissionVersion: 'v4',
+        status: 'NOT_STARTED',
+      },
+    });
+
+    console.log(`Deleted ${deletedResult.count} NOT_STARTED VIDEO submissions`);
+
+    // Count how many submissions are already in progress or completed
+    const preservedSubmissions = existingSubmissions.filter((s) => s.status !== 'NOT_STARTED');
+    const preservedCount = preservedSubmissions.length;
+
+    console.log(`Preserved ${preservedCount} in-progress/completed submissions`);
 
     // Prepare new submissions
     const newSubmissions: any[] = [];
 
-    // Create VIDEO submissions based on new ugcVideos count
-    for (let i = 1; i <= newUgcVideos; i++) {
+    const submissionsToCreate = Math.max(0, newUgcVideos - preservedCount);
+    
+    for (let i = 1; i <= submissionsToCreate; i++) {
       newSubmissions.push({
         campaignId,
         userId,
         submissionTypeId: videoTypeId,
-        contentOrder: i,
+        contentOrder: preservedCount + i,
         submissionVersion: 'v4',
         status: 'NOT_STARTED' as const,
         content: null,
       });
     }
+
+    console.log(`Creating ${submissionsToCreate} new VIDEO submissions (total will be ${newUgcVideos})`);
 
     // Check for existing PHOTO submission and create if missing
     if (campaign.photos) {
@@ -708,10 +732,10 @@ export const updateV4Submissions = async (
     }
 
     console.log(
-      `📊 Summary: Deleted ${deletedResult.count} VIDEO submissions, created ${createdCount} new submissions`,
+      `Summary: Deleted ${deletedResult.count} NOT_STARTED submissions, preserved ${preservedCount} in-progress/completed, created ${createdCount} new submissions. Total: ${preservedCount + createdCount}`,
     );
 
-    return { deleted: deletedResult.count, created: createdCount };
+    return { deleted: deletedResult.count, created: createdCount, preserved: preservedCount };
   } catch (error) {
     console.error('Error updating V4 submissions:', error);
     throw error;

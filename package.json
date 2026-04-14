@@ -25,13 +25,16 @@
     "push-campaigns": "ts-node campaignLogs.ts",
     "run-video-worker": "npx tsx --watch src/helper/video-worker.ts",
     "start-compress-worker": "npx tsx --watch src/helper/compress-worker.ts",
-    "start-upload-worker": "npx tsx --watch src/helper/upload-worker.ts"
+    "start-upload-worker": "npx tsx --watch src/helper/upload-worker.ts",
+    "run-worker": "npx tsx src/helper/worker"
   },
   "dependencies": {
     "@dotenvx/dotenvx": "^1.9.0",
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@ffprobe-installer/ffprobe": "^2.1.2",
     "@google-cloud/storage": "^7.11.2",
+    "@langchain/core": "^1.1.27",
+    "@langchain/google-genai": "^2.1.20",
     "@prisma/client": "6.4.0",
     "@quixo3/prisma-session-store": "^3.1.13",
     "@socket.io/redis-adapter": "^8.3.0",
@@ -64,6 +67,7 @@
     "ipinfo-express": "^2.0.2",
     "jest": "^29.7.0",
     "jsonwebtoken": "^9.0.2",
+    "langchain": "^1.2.25",
     "libreoffice-convert": "^1.6.0",
     "mime": "^4.0.4",
     "morgan": "^1.10.0",

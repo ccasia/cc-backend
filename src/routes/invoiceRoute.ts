@@ -19,6 +19,8 @@ import {
   checkRefreshToken,
   deleteInvoice,
   generateMissingInvoices,
+  bulkUpdateInvoices,
+  getAllSelectedInvoices,
 } from '@controllers/invoiceController';
 import { checkAndRefreshAccessToken } from '@controllers/invoiceController';
 import { creatorInvoice } from '@controllers/invoiceController';
@@ -30,7 +32,9 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-// router.get('/executeInvoice', generateMissingInvoices);
+router.get('/', isSuperAdmin, getAllInvoices);
+
+router.get('/getAll', isLoggedIn, getAllSelectedInvoices);
 
 router.get('/xeroConnect', isSuperAdmin, getXero);
 
@@ -49,13 +53,13 @@ router.get('/getInvoicesByCampaignId/:id', getInvoicesByCampaignId);
 
 router.get('/:id', isLoggedIn, getInvoiceById);
 
-router.get('/', isSuperAdmin, getAllInvoices);
-
 router.get('/creator/:creatorId/campaign/:campaignId', getInvoiceByCreatorIdAndCampaignId);
 
 router.get('/creatorInvoice/:invoiceId', isLoggedIn, creatorInvoice);
 
 router.post('/create', createInvoice);
+
+router.post('/bulk-update', bulkUpdateInvoices);
 
 router.patch('/updateStatus', updateInvoiceStatus);
 

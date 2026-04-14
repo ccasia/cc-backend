@@ -86,58 +86,6 @@ export const impersonateCreator = async (req: Request<{}, {}, { userId: string }
   }
 };
 
-// export const endImpersonatingSession = async (req: Request, res: Response) => {
-//   try {
-//     const isImpersonating = req.session.isImpersonating;
-//     const impersonatingBy = req.session.impersonatingBy;
-
-//     if (!isImpersonating) {
-//       return res.status(200).json({ message: 'Not in impersonating session' });
-//     }
-
-//     const adminId = impersonatingBy?.userId;
-
-//     const admin = await prisma.admin.findFirst({
-//       where: {
-//         userId: adminId,
-//       },
-//       include: {
-//         user: true,
-//       },
-//     });
-
-//     if (!admin) {
-//       return res.status(404).json({ message: 'Admin not found', success: false });
-//     }
-
-//     // Update session
-//     req.session.isImpersonating = false;
-//     req.session.impersonatingBy = null;
-//     req.session.userid = admin.userId;
-//     req.session.role = admin.user.role!;
-//     req.session.name = admin.user.name || '';
-//     req.session.photoURL = admin.user.photoURL || '';
-
-//     // Explicitly save session before responding
-//     req.session.regenerate((err) => {
-//       if (err) {
-//         return res.status(500).json({ message: 'Session save failed', error: err });
-//       }
-
-//       res.cookie('userid', admin.userId, {
-//         maxAge: 60 * 60 * 24 * 1000, // 1 Day
-//         httpOnly: true,
-//         secure: process.env.NODE_ENV === 'production', // Add this
-//         sameSite: 'lax', // Add this
-//       });
-
-//       return res.status(200).json({ message: 'Impersonation ended successfully' });
-//     });
-//   } catch (error) {
-//     return res.status(500).json({ message: 'Internal server error', error });
-//   }
-// };
-
 export const endImpersonatingSession = async (req: Request, res: Response) => {
   try {
     if (!req.session?.isImpersonating || !req.session.impersonatingBy?.userId) {
@@ -209,5 +157,46 @@ export const endImpersonatingSession = async (req: Request, res: Response) => {
       message: 'Internal server error',
       success: false,
     });
+  }
+};
+
+export const impersonateClient = async (req: Request<{}, {}, { email: string }>, res: Response) => {
+  try {
+    const email = req.body.email;
+    const sessionUserId = req.session.userid;
+
+    if (!email) return res.status(404).json({ message: 'email is required', success: false });
+
+    const user = await prisma.user.findFirst({
+      where: {
+        email: {
+          equals: email,
+          mode: 'insensitive',
+        },
+        status: 'active',
+      },
+    });
+
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+    if (user.role != 'client')
+      return res.status(404).json({ success: false, message: 'Cannot impersonate other administrators' });
+
+    const admin = await prisma.user.findUnique({ where: { id: sessionUserId } });
+    if (!admin) return res.status(404).json({ success: false, message: 'Admin not found' });
+
+    const session = req.session;
+    session.isImpersonating = true;
+    session.impersonatingBy = { userId: admin.id, name: admin.name! };
+    session.userid = user.id;
+
+    res.cookie('userid', user.id, {
+      maxAge: 60 * 60 * 24 * 1000, // 1 Day
+      httpOnly: true,
+    });
+
+    return res.sendStatus(200);
+  } catch (error) {
+    console.log(error);
+    return res.status(500).json(error);
   }
 };

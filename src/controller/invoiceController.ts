@@ -1,5 +1,3 @@
-import axios from 'axios';
-
 import { XeroClient, Contact, LineItem, Invoice, Phone } from 'xero-node';
 import jwt, { Secret } from 'jsonwebtoken';
 
@@ -9,7 +7,7 @@ import { creatorInvoice as emailCreatorInvoice } from '@configs/nodemailer.confi
 import { logAdminChange } from '@services/campaignServices';
 import { logChange } from '@services/campaignServices';
 
-import { InvoiceStatus, PrismaClient } from '@prisma/client';
+import { InvoiceStatus, Prisma, PrismaClient } from '@prisma/client';
 import {
   notificationInvoiceGenerate,
   notificationInvoiceStatus,
@@ -22,6 +20,8 @@ import { TokenSet } from 'openid-client';
 import { error } from 'console';
 
 import fs from 'fs-extra';
+import path from 'path';
+
 import {
   createInvoiceService,
   generateUniqueInvoiceNumber,
@@ -32,21 +32,23 @@ import dayjs from 'dayjs';
 import { getCreatorInvoiceLists } from '@services/submissionService';
 import { missingInvoices } from '@constants/missing-invoices';
 import { creatorAgreements } from './campaignController';
+import { bulkInvoiceQueue, invoiceQueue } from '@utils/queue';
+import { xero } from '@configs/xero';
 // import { decreamentCreditCampiagn } from '@services/packageService';
 
 const prisma = new PrismaClient();
 
-const client_id: string = process.env.XERO_CLIENT_ID as string;
-const client_secret: string = process.env.XERO_CLIENT_SECRET as string;
-const redirectUrl: string = process.env.XERO_REDIRECT_URL as string;
-const scopes: string = process.env.XERO_SCOPES as string;
+// const client_id: string = process.env.XERO_CLIENT_ID as string;
+// const client_secret: string = process.env.XERO_CLIENT_SECRET as string;
+// const redirectUrl: string = process.env.XERO_REDIRECT_URL as string;
+// const scopes: string = process.env.XERO_SCOPES as string;
 
-export const xero = new XeroClient({
-  clientId: client_id,
-  clientSecret: client_secret,
-  redirectUris: [redirectUrl],
-  scopes: scopes?.split(' '),
-});
+// export const xero = new XeroClient({
+//   clientId: client_id,
+//   clientSecret: client_secret,
+//   redirectUris: [redirectUrl],
+//   scopes: scopes?.split(' '),
+// });
 
 // invoice item type definition
 interface InvoiceItem {
@@ -67,7 +69,7 @@ interface invoiceData {
   invoiceFrom: any;
   invoiceTo: object;
   items: InvoiceItem[];
-  totalAmount: number;
+  totalAmount: string;
   subTotal?: number;
   bankInfo: object;
   createdBy: string;
@@ -120,6 +122,8 @@ export const xeroCallBack = async (req: Request, res: Response) => {
       },
     });
 
+    await xero.updateTenants();
+
     return res.status(200).json({ token: decodedAccessToken || null }); // Send the token response back to the client
   } catch (err) {
     console.log(err);
@@ -132,31 +136,47 @@ export const xeroCallBack = async (req: Request, res: Response) => {
  * GET /api/invoice/?page=1&limit=50&status=paid&currency=MYR&search=...
  */
 export const getAllInvoices = async (req: Request, res: Response) => {
-  const { page = '1', limit = '50', status, currency, search, campaignName, startDate, endDate } = req.query;
+  const {
+    page = '1',
+    limit = '50',
+    status,
+    currency,
+    search,
+    campaignName,
+    startDate,
+    endDate,
+    invoiceIds,
+  } = req.query;
 
   try {
     const pageNum = parseInt(page as string, 10);
     const limitNum = parseInt(limit as string, 10);
     const skip = (pageNum - 1) * limitNum;
 
-    // Build where clause
-    const where: any = {};
+    // Build base where clause (without status — used for computing statusCounts)
+    const baseWhere: Prisma.InvoiceWhereInput = {};
 
+    // Date filter (single date or range) — endDate is exclusive (start of next day)
+    const hasDateFilter = !!startDate;
+    if (startDate) {
+      const start = new Date(startDate as string);
+      if (endDate) {
+        baseWhere.dueDate = { gte: start, lt: new Date(endDate as string) };
+      } else {
+        // Single date fallback: cover 24 hours from start
+        baseWhere.dueDate = { gte: start, lt: new Date(start.getTime() + 86400000) };
+      }
+    }
+
+    if (invoiceIds) {
+      const ids = invoiceIds.toString().split(',');
+      baseWhere.id = { in: ids };
+    }
+
+    // Full where includes status filter on top of baseWhere
+    const fullWhere: Prisma.InvoiceWhereInput = { ...baseWhere };
     if (status && status !== 'all') {
-      where.status = status as InvoiceStatus;
-    }
-
-    // Date range filter
-    if (startDate && endDate) {
-      where.createdAt = {
-        gte: new Date(startDate as string),
-        lte: new Date(endDate as string),
-      };
-    }
-
-    // Search filter (invoice number)
-    if (search) {
-      where.invoiceNumber = { contains: search as string, mode: 'insensitive' };
+      fullWhere.status = status as InvoiceStatus;
     }
 
     // Campaign name filter (will filter in memory after fetching)
@@ -174,9 +194,9 @@ export const getAllInvoices = async (req: Request, res: Response) => {
     let total;
 
     if (hasJsonFilters) {
-      // Fetch ALL invoices matching basic filters (status, date range) for JSON filtering
+      // Fetch ALL invoices matching base filters (date range, NO status) for JSON filtering + statusCounts
       invoices = await prisma.invoice.findMany({
-        where,
+        where: baseWhere,
         select: {
           id: true,
           invoiceNumber: true,
@@ -189,6 +209,8 @@ export const getAllInvoices = async (req: Request, res: Response) => {
           creatorId: true,
           campaignId: true,
           // Only include minimal creator data
+          bankAcc: true,
+          invoiceTo: true,
           creator: {
             select: {
               userId: true,
@@ -198,6 +220,15 @@ export const getAllInvoices = async (req: Request, res: Response) => {
                   name: true,
                   photoURL: true,
                   email: true,
+                  phoneNumber: true,
+                  paymentForm: {
+                    select: {
+                      bankName: true,
+                      bankAccountName: true,
+                      bankAccountNumber: true,
+                      icNumber: true,
+                    },
+                  },
                 },
               },
             },
@@ -207,6 +238,22 @@ export const getAllInvoices = async (req: Request, res: Response) => {
             select: {
               id: true,
               name: true,
+              campaignBrief: {
+                select: {
+                  images: true,
+                },
+              },
+              brand: {
+                select: {
+                  name: true,
+                  logo: true,
+                },
+              },
+              company: {
+                select: {
+                  name: true,
+                },
+              },
               creatorAgreement: {
                 select: {
                   userId: true,
@@ -235,7 +282,11 @@ export const getAllInvoices = async (req: Request, res: Response) => {
           null;
 
         // Extract creator name from invoiceFrom JSON
-        const invoiceFromName = (invoice.invoiceFrom as any)?.name || invoice.creator?.user?.name;
+        const invoiceFromName =
+          invoice.creator?.user?.paymentForm?.bankAccountName ||
+          (invoice.bankAcc as any)?.payTo ||
+          invoice.creator?.user?.name ||
+          (invoice.invoiceFrom as any)?.name;
 
         return {
           ...invoice,
@@ -268,15 +319,40 @@ export const getAllInvoices = async (req: Request, res: Response) => {
       // Apply search filter on creator name (JSON field)
       if (search) {
         const searchLower = (search as string).toLowerCase();
-        invoicesWithCurrency = invoicesWithCurrency.filter(
-          (inv) =>
+        invoicesWithCurrency = invoicesWithCurrency.filter((inv) => {
+          return (
             inv.invoiceNumber.toLowerCase().includes(searchLower) ||
-            (inv.invoiceFrom as any)?.name?.toLowerCase().includes(searchLower) ||
-            inv.campaign?.name?.toLowerCase().includes(searchLower),
-        );
+            inv.campaign?.name?.toLowerCase().includes(searchLower) ||
+            inv.creator?.user?.paymentForm?.bankAccountName?.toLowerCase().includes(searchLower) ||
+            (inv.bankAcc as any)?.payTo?.toLowerCase().includes(searchLower) ||
+            inv.creator?.user?.name?.toLowerCase().includes(searchLower)
+          );
+        });
       }
 
-      // Calculate total after JSON filtering
+      // Compute statusCounts from the fully filtered (but not status-filtered) dataset
+      const statusCounts: Record<string, number> = {
+        total: invoicesWithCurrency.length,
+        paid: 0,
+        approved: 0,
+        pending: 0,
+        overdue: 0,
+        draft: 0,
+        rejected: 0,
+        failed: 0,
+      };
+      for (const inv of invoicesWithCurrency) {
+        if (inv.status in statusCounts) {
+          statusCounts[inv.status]++;
+        }
+      }
+
+      // Apply status filter (if user selected a tab)
+      if (status && status !== 'all') {
+        invoicesWithCurrency = invoicesWithCurrency.filter((inv) => inv.status === status);
+      }
+
+      // Calculate total after status filtering
       total = invoicesWithCurrency.length;
 
       // Apply pagination after filtering
@@ -290,13 +366,29 @@ export const getAllInvoices = async (req: Request, res: Response) => {
           total,
           totalPages: Math.ceil(total / limitNum),
         },
+        statusCounts,
       });
     } else {
       // No JSON filters - use efficient database-level pagination
-      total = await prisma.invoice.count({ where });
+      let statusCounts: Record<string, number> | undefined;
+
+      // If date filter is active, compute per-status counts from the DB
+      if (hasDateFilter) {
+        const statusKeys: InvoiceStatus[] = ['paid', 'approved', 'pending', 'overdue', 'draft', 'rejected', 'failed'];
+        const [totalCount, ...perStatusCounts] = await Promise.all([
+          prisma.invoice.count({ where: baseWhere }),
+          ...statusKeys.map((s) => prisma.invoice.count({ where: { ...baseWhere, status: s } })),
+        ]);
+        statusCounts = { total: totalCount };
+        statusKeys.forEach((key, i) => {
+          statusCounts![key] = perStatusCounts[i];
+        });
+      }
+
+      total = await prisma.invoice.count({ where: fullWhere });
 
       invoices = await prisma.invoice.findMany({
-        where,
+        where: fullWhere,
         skip,
         take: limitNum,
         select: {
@@ -310,6 +402,8 @@ export const getAllInvoices = async (req: Request, res: Response) => {
           task: true,
           creatorId: true,
           campaignId: true,
+          bankAcc: true,
+          invoiceTo: true,
           creator: {
             select: {
               userId: true,
@@ -319,6 +413,15 @@ export const getAllInvoices = async (req: Request, res: Response) => {
                   name: true,
                   photoURL: true,
                   email: true,
+                  phoneNumber: true,
+                  paymentForm: {
+                    select: {
+                      bankName: true,
+                      bankAccountName: true,
+                      bankAccountNumber: true,
+                      icNumber: true,
+                    },
+                  },
                 },
               },
             },
@@ -327,6 +430,22 @@ export const getAllInvoices = async (req: Request, res: Response) => {
             select: {
               id: true,
               name: true,
+              campaignBrief: {
+                select: {
+                  images: true,
+                },
+              },
+              brand: {
+                select: {
+                  name: true,
+                  logo: true,
+                },
+              },
+              company: {
+                select: {
+                  name: true,
+                },
+              },
               creatorAgreement: {
                 select: {
                   userId: true,
@@ -378,6 +497,7 @@ export const getAllInvoices = async (req: Request, res: Response) => {
           total,
           totalPages: Math.ceil(total / limitNum),
         },
+        ...(statusCounts && { statusCounts }),
       });
     }
   } catch (error) {
@@ -439,12 +559,15 @@ export const getInvoicesByCampaignId = async (req: Request, res: Response) => {
       where.status = status as InvoiceStatus;
     }
 
-    // Date range filter
-    if (startDate && endDate) {
-      where.createdAt = {
-        gte: new Date(startDate as string),
-        lte: new Date(endDate as string),
-      };
+    // Date filter (single date or range) — endDate is exclusive (start of next day)
+    if (startDate) {
+      const start = new Date(startDate as string);
+      if (endDate) {
+        where.dueDate = { gte: start, lt: new Date(endDate as string) };
+      } else {
+        // Single date fallback: cover 24 hours from start
+        where.dueDate = { gte: start, lt: new Date(start.getTime() + 86400000) };
+      }
     }
 
     // Search filter (invoice number only - JSON fields filtered in memory)
@@ -466,6 +589,7 @@ export const getInvoicesByCampaignId = async (req: Request, res: Response) => {
         task: true,
         creatorId: true,
         campaignId: true,
+        bankAcc: true,
         // Only include minimal creator data
         creator: {
           select: {
@@ -476,6 +600,7 @@ export const getInvoicesByCampaignId = async (req: Request, res: Response) => {
                 name: true,
                 photoURL: true,
                 email: true,
+                paymentForm: { select: { bankAccountName: true } },
               },
             },
           },
@@ -574,6 +699,8 @@ export const getAllInvoiceStats = async (req: Request, res: Response) => {
       overdue,
       draft,
       rejected,
+      failed,
+      processing,
       totalAmount,
       paidAmount,
       approvedAmount,
@@ -581,6 +708,7 @@ export const getAllInvoiceStats = async (req: Request, res: Response) => {
       overdueAmount,
       draftAmount,
       rejectedAmount,
+      failedAmount,
     ] = await Promise.all([
       // Counts by status
       prisma.invoice.count(),
@@ -590,6 +718,8 @@ export const getAllInvoiceStats = async (req: Request, res: Response) => {
       prisma.invoice.count({ where: { status: 'overdue' } }),
       prisma.invoice.count({ where: { status: 'draft' } }),
       prisma.invoice.count({ where: { status: 'rejected' } }),
+      prisma.invoice.count({ where: { status: 'failed' } }),
+      prisma.invoice.count({ where: { status: 'processing' } }),
 
       // Total amounts by status
       prisma.invoice.aggregate({ _sum: { amount: true } }),
@@ -599,6 +729,7 @@ export const getAllInvoiceStats = async (req: Request, res: Response) => {
       prisma.invoice.aggregate({ where: { status: 'overdue' }, _sum: { amount: true } }),
       prisma.invoice.aggregate({ where: { status: 'draft' }, _sum: { amount: true } }),
       prisma.invoice.aggregate({ where: { status: 'rejected' }, _sum: { amount: true } }),
+      prisma.invoice.aggregate({ where: { status: 'failed' }, _sum: { amount: true } }),
     ]);
 
     return res.status(200).json({
@@ -612,6 +743,8 @@ export const getAllInvoiceStats = async (req: Request, res: Response) => {
           overdue,
           draft,
           rejected,
+          failed,
+          processing,
         },
         amounts: {
           total: totalAmount._sum.amount || 0,
@@ -621,6 +754,8 @@ export const getAllInvoiceStats = async (req: Request, res: Response) => {
           overdue: overdueAmount._sum.amount || 0,
           draft: draftAmount._sum.amount || 0,
           rejected: rejectedAmount._sum.amount || 0,
+          failed: failedAmount._sum.amount || 0,
+          // processing: rejectedAmount._sum.amount || 0,
         },
       },
     });
@@ -861,7 +996,7 @@ export const createInvoice = async (req: Request, res: Response) => {
         invoiceFrom: invoiceFrom,
         invoiceTo: invoiceTo,
         task: item, // The currency info is already included in the item object
-        amount: totalAmount,
+        amount: parseFloat(totalAmount),
         bankAcc: bankInfo,
         campaignId: campaignId,
         creatorId: creatorIdInfo,
@@ -896,6 +1031,15 @@ export const updateInvoiceStatus = async (req: Request, res: Response) => {
       },
     });
     res.status(200).json(invoice);
+
+    if (status !== 'failed' && status !== 'rejected') {
+      const creatorName = invoice.user?.name || 'Unknown Creator';
+      await logChange(
+        `Invoice ${invoice.invoiceNumber || invoice.id} for ${creatorName} status changed to ${status}`,
+        invoice.campaignId,
+        req,
+      );
+    }
 
     const { title, message } = notificationInvoiceStatus(invoice.campaign.name);
 
@@ -1245,6 +1389,11 @@ export const updateInvoice = async (req: Request, res: Response) => {
 
   try {
     const invoice = await prisma.$transaction(async (tx) => {
+      const oldInvoice = await tx.invoice.findUnique({
+        where: { id: invoiceId },
+        select: { amount: true, status: true, dueDate: true, bankAcc: true, task: true, campaignId: true },
+      });
+
       const updatedInvoice = await tx.invoice.update({
         where: { id: invoiceId },
         data: {
@@ -1253,7 +1402,7 @@ export const updateInvoice = async (req: Request, res: Response) => {
           invoiceFrom,
           invoiceTo,
           task: items[0],
-          amount: totalAmount,
+          amount: parseFloat(totalAmount as any),
           bankAcc: bankInfo,
           campaignId,
         },
@@ -1289,193 +1438,177 @@ export const updateInvoice = async (req: Request, res: Response) => {
           userId: updatedInvoice?.creator?.user?.id,
           tx,
           reason: reason || '',
-          campaignName: campaign.name,
+          campaignName: updatedInvoice.campaign.name,
         });
       }
-      return updatedInvoice;
+
+      return {
+        ...updatedInvoice,
+        _oldAmount: oldInvoice?.amount,
+        _oldStatus: oldInvoice?.status,
+        _oldInvoice: oldInvoice,
+      };
     });
+
+    const oldAmount = invoice._oldAmount;
+    const oldStatus = invoice._oldStatus;
+    const oldInvoice = invoice._oldInvoice;
+
+    // Log invoice status changes to campaign activity log (only if status actually changed)
+    if (status && status !== 'failed' && oldStatus !== status) {
+      const creatorName = invoice.creator?.user?.name || 'Unknown Creator';
+      if (status === 'rejected') {
+        await logChange(`Rejected invoice ${invoice.invoiceNumber} for ${creatorName}`, invoice.campaignId, req);
+      } else {
+        await logChange(
+          `Invoice ${invoice.invoiceNumber} for ${creatorName} status changed to ${status}`,
+          invoice.campaignId,
+          req,
+        );
+      }
+    }
+
+    // Log invoice amount changes to campaign activity log
+    const newAmount = parseFloat(totalAmount as any);
+    if (oldAmount != null && totalAmount && oldAmount.toFixed(2) !== newAmount.toFixed(2)) {
+      const creatorName = invoice.creator?.user?.name || 'Unknown Creator';
+      const admin = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
+      const adminName = admin?.name || 'Admin';
+
+      const agreement = invoice.creator?.user?.creatorAgreement?.find((a: any) => a.campaignId === campaignId);
+      const currency = agreement?.currency || 'MYR';
+      const getCurrencySymbol = (code: string) => {
+        switch (code) {
+          case 'SGD':
+          case 'AUD':
+          case 'USD':
+            return '$';
+          case 'MYR':
+            return 'RM';
+          case 'JPY':
+            return '¥';
+          case 'IDR':
+            return 'Rp';
+          default:
+            return 'RM';
+        }
+      };
+      const sym = getCurrencySymbol(currency);
+
+      await logChange(
+        `${adminName} changed the amount on invoice ${invoice.invoiceNumber} from ${sym}${oldAmount.toFixed(2)} to ${sym}${newAmount.toFixed(2)} for ${creatorName}`,
+        invoice.campaignId,
+        req,
+      );
+    }
+
+    // Log invoice detail changes (due date, bank info, task fields)
+    {
+      const oldBankAcc =
+        typeof oldInvoice?.bankAcc === 'object' && oldInvoice.bankAcc !== null
+          ? (oldInvoice.bankAcc as Record<string, any>)
+          : {};
+      const oldTask =
+        typeof oldInvoice?.task === 'object' && oldInvoice.task !== null
+          ? (oldInvoice.task as Record<string, any>)
+          : {};
+      const newBankAcc = typeof bankInfo === 'object' && bankInfo !== null ? (bankInfo as Record<string, any>) : {};
+      const newTask = typeof items[0] === 'object' && items[0] !== null ? (items[0] as Record<string, any>) : {};
+
+      const fieldDefs: { key: string; label: string; oldVal: any; newVal: any }[] = [
+        { key: 'dueDate', label: 'Due Date', oldVal: oldInvoice?.dueDate, newVal: dueDate },
+        { key: 'bankName', label: 'Bank Name', oldVal: oldBankAcc.bankName, newVal: newBankAcc.bankName },
+        { key: 'payTo', label: 'Recipient Name', oldVal: oldBankAcc.payTo, newVal: newBankAcc.payTo },
+        {
+          key: 'accountNumber',
+          label: 'Account Number',
+          oldVal: oldBankAcc.accountNumber,
+          newVal: newBankAcc.accountNumber,
+        },
+        {
+          key: 'accountEmail',
+          label: 'Payment Notification Email',
+          oldVal: oldBankAcc.accountEmail,
+          newVal: newBankAcc.accountEmail,
+        },
+        { key: 'clientName', label: 'Client Name', oldVal: oldTask.clientName, newVal: newTask.clientName },
+        { key: 'campaignName', label: 'Campaign Name', oldVal: oldTask.campaignName, newVal: newTask.campaignName },
+        { key: 'service', label: 'Service', oldVal: oldTask.service, newVal: newTask.service },
+      ];
+
+      const toDateStr = (v: any): string | null => {
+        if (v == null) return null;
+        const d = new Date(v);
+        return isNaN(d.getTime()) ? null : d.toISOString().split('T')[0];
+      };
+
+      const changes = fieldDefs
+        .filter(({ key, oldVal, newVal }) => {
+          if (newVal === undefined) return false;
+          if (key === 'dueDate') {
+            return toDateStr(oldVal) !== toDateStr(newVal);
+          }
+          const o = String(oldVal ?? '');
+          const n = String(newVal ?? '');
+          return o !== n;
+        })
+        .map(({ key, label, oldVal, newVal }) => ({
+          field: key,
+          label,
+          old: key === 'dueDate' ? toDateStr(oldVal) : oldVal ?? null,
+          new: key === 'dueDate' ? toDateStr(newVal) : newVal ?? null,
+        }));
+
+      if (changes.length > 0) {
+        const creatorName = invoice.creator?.user?.name || 'Unknown Creator';
+        await logChange(
+          `Invoice details updated on ${invoice.invoiceNumber} for ${creatorName}`,
+          invoice.campaignId,
+          req,
+          undefined,
+          { section: 'Invoice Details', changes },
+        );
+      }
+    }
 
     const creatorUser = invoice.creator.user;
     const creatorPaymentForm = creatorUser?.paymentForm;
-    const campaign = invoice.campaign;
     const agreement = invoice.creator.user.creatorAgreement.find((item) => item.campaignId === campaignId);
 
-    let contactID = invoice.creator.xeroContactId;
-
     if (status === 'approved') {
-      const user = await prisma.user.findUnique({
-        where: {
-          id: userId,
-        },
-        include: {
-          admin: {
-            select: {
-              xeroTokenSet: true,
-            },
-          },
-        },
+      await prisma.invoice.update({
+        where: { id: invoiceId },
+        data: { status: 'processing' },
       });
 
-      if (!user) throw new Error('User not found');
-
-      const tokenSet: TokenSet = (user.admin?.xeroTokenSet as TokenSet) || null;
-
-      if (!tokenSet) throw new Error('You are not connected to Xero');
-
-      await xero.initialize();
-      xero.setTokenSet(tokenSet);
-
-      if (dayjs.unix(tokenSet.expires_at!).isBefore(dayjs())) {
-        const validTokenSet = await xero.refreshToken();
-        // save the new tokenset
-        await prisma.admin.update({
-          where: {
-            userId: user.id,
-          },
-          data: {
-            xeroTokenSet: validTokenSet as any,
-          },
-        });
-      }
-
-      await xero.updateTenants();
-
-      const activeTenant = xero.tenants.find(
-        (item) =>
-          item?.orgData.baseCurrency.toUpperCase() === ((agreement?.currency?.toUpperCase() as 'MYR' | 'SGD') ?? 'MYR'),
-      );
-      console.log('ACTIVE UPDATE:', activeTenant);
-      console.log('CREATOR NAME:', creatorUser.name?.trim());
-      const result = await xero.accountingApi.getContacts(
-        activeTenant.tenantId,
-        undefined, // IDs
-        // `EmailAddress=="${creatorUser.email}"`,
-        // `EmailAddress=="${creatorUser.email}" || Name=="${creatorUser.name}"`,
-        `Name=="${invoiceFrom.name?.trim()}"`,
-      );
-      if (result.body.contacts && result.body.contacts.length > 0) {
-        contactID = result.body.contacts[0].contactID || null;
-      } else {
-        const result = await xero.accountingApi.getContacts(
-          activeTenant.tenantId,
-          undefined, // IDs
-          `EmailAddress=="${creatorUser.email.trim()}"`,
-          // `EmailAddress=="${creatorUser.email}" || Name=="${creatorUser.name}"`,
-        );
-        if (result.body.contacts && result.body.contacts.length > 0) {
-          contactID = result.body.contacts[0].contactID || null;
-        } else {
-          const [contact] = await createXeroContact(
-            bankInfo,
-            invoice.creator,
-            invoiceFrom,
-            (agreement?.currency?.toUpperCase() as 'MYR' | 'SGD') ?? 'MYR',
-          );
-          contactID = contact.contactID || null;
-          await prisma.creator.update({
-            where: { id: invoice.creator.id },
-            data: { xeroContactId: contactID },
-          });
-        }
-      }
-      if (contactID) {
-        const createdInvoice = await createXeroInvoiceLocal(
-          contactID,
-          items,
-          dueDate,
-          campaign.name,
-          invoice.invoiceNumber,
-          invoice.user?.email!,
-          invoiceFrom,
-          invoice.creator,
-          bankInfo,
-          campaign.brand?.name || campaign.company?.name,
-          (agreement?.currency?.toUpperCase() as 'MYR' | 'SGD') ?? 'MYR',
-        );
-
-        await prisma.invoice.update({
-          where: {
-            id: invoice.id,
-          },
-          data: {
-            xeroInvoiceId: createdInvoice.body.invoices[0].invoiceID,
-          },
-        });
-
-        if (invoiceAttachment && createdInvoice.body.invoices[0].invoiceID) {
-          const buffer = fs.readFileSync(invoiceAttachment.tempFilePath);
-          await xero.accountingApi.createInvoiceAttachmentByFileName(
-            activeTenant.tenantId,
-            createdInvoice.body.invoices[0].invoiceID,
-            invoiceAttachment.name,
-            buffer,
-            false,
-            undefined,
-            {
-              headers: {
-                'Content-Type': invoiceAttachment.mimetype,
-              },
-            },
-          );
-        }
-      }
-
-      const { title, message } = notificationInvoiceUpdate(campaign.name);
-      // Notify CSM admins
-      await Promise.all(
-        campaign.campaignAdmin
-          .filter((admin) => admin.admin.role?.name === 'CSM')
-          .map(async (admin) => {
-            const notification = await saveNotification({
-              userId: admin.adminId,
-              title,
-              message,
-              entity: 'Invoice',
-              threadId: invoice.id,
-              entityId: invoice.campaignId,
-            });
-            io.to(clients.get(admin.adminId)).emit('notification', notification);
-          }),
-      );
-      const adminId = req.session.userid;
-      if (adminId) {
-        const adminLogMessage = `Updated Invoice for - "${creatorUser?.name}"`;
-        logAdminChange(adminLogMessage, adminId, req);
-      }
-      // Log invoice approval in campaign logs for Invoice Actions tab
-      if (adminId && invoice.campaignId) {
-        const creatorName = creatorUser?.name || 'Unknown Creator';
-        const logMessage = `Approved invoice ${invoice.invoiceNumber} for ${creatorName}`;
-        await logChange(logMessage, invoice.campaignId, req);
-      }
-      await sendToSpreadSheet(
+      await invoiceQueue.add(
+        'invoice-queue',
         {
-          createdAt: dayjs().format('YYYY-MM-DD'),
-          name: creatorUser?.name || '',
-          icNumber: creatorPaymentForm?.icNumber || '',
-          bankName: creatorPaymentForm?.bankAccountName || '',
-          bankAccountNumber: creatorPaymentForm?.bankAccountNumber || '',
-          campaignName: campaign.name,
-          amount: invoice.amount,
+          invoice,
+          invoiceId,
+          dueDate,
+          status,
+          invoiceFrom,
+          invoiceTo,
+          items,
+          totalAmount,
+          campaignId,
+          bankInfo,
+          newContact,
+          reason,
+          adminId: req.session.userid,
+          invoiceAttachment,
         },
-        '1VClmvYJV9R4HqjADhGA6KYIR9KCFoXTag5SMVSL4rFc',
-        'Invoices',
+        {
+          jobId: `invoice-${invoiceId}`,
+          removeOnComplete: true,
+        },
       );
-      // Notify creator
-      const creatorNotification = await saveNotification({
-        userId: invoice.creatorId,
-        title,
-        message,
-        entity: 'Invoice',
-        threadId: invoice.id,
-        entityId: invoice.campaignId,
-      });
-      io.to(clients.get(invoice.creatorId)).emit('notification', creatorNotification);
     }
 
     return res.status(200).json(invoice);
   } catch (error) {
-    console.error('asdsads', error);
+    console.error('Failed to update invoice', error);
     const message = error instanceof Error ? error.message : 'Unknown error occurred';
     return res.status(400).json({ error: message });
   }
@@ -1732,7 +1865,11 @@ export const createXeroInvoiceLocal = async (
   let activeTenant;
 
   try {
-    const where = 'Status=="ACTIVE"';
+    // await xero.updateTenants();
+
+    // let contact: Contact = { contactID: contactId };
+
+    const where = 'Status=="ACTIVE" AND (Type=="EXPENSE" OR Type=="DIRECTCOSTS")';
 
     if (currency) {
       activeTenant = xero.tenants.find((item) => item?.orgData.baseCurrency.toUpperCase() === currency);
@@ -1742,7 +1879,7 @@ export const createXeroInvoiceLocal = async (
 
     const lineItemsArray: LineItem[] = lineItems.map((item: any) => ({
       accountID: accounts.body.accounts[0].accountID,
-      accountCode: '50930',
+      accountCode: accounts.body.accounts[0].code || '50930',
       // description: item.description,
       description: `${clientName} ${campaignName}`,
       quantity: item.quantity,
@@ -2135,3 +2272,135 @@ export async function generateMissingInvoices(req: Request, res: Response) {
     res.sendStatus(400);
   }
 }
+
+export const bulkUpdateInvoices = async (req: Request, res: Response) => {
+  let { invoiceIds } = req.body;
+  const adminId = req.session.userid;
+  const attachments: Record<string, any> = {};
+
+  if (typeof invoiceIds === 'string') {
+    try {
+      invoiceIds = JSON.parse(invoiceIds);
+    } catch (e) {
+      invoiceIds = [];
+    }
+  }
+
+  if (!invoiceIds || !Array.isArray(invoiceIds) || invoiceIds.length === 0) {
+    return res.status(400).json({ message: 'No invoices selected' });
+  }
+
+  await prisma.invoice.updateMany({
+    where: {
+      id: {
+        in: invoiceIds,
+      },
+    },
+    data: {
+      status: 'processing',
+    },
+  });
+
+  if (req.files) {
+    const uploadDir = path.join(process.cwd(), 'uploads/bulk');
+    await fs.ensureDir(uploadDir);
+
+    for (const key of Object.keys(req.files)) {
+      if (key.startsWith('file_')) {
+        const file = req.files[key] as any;
+        const id = key.replace('file_', '');
+
+        const permanentPath = path.join(uploadDir, `${Date.now()}_${file.name}`);
+        await file.mv(permanentPath);
+
+        attachments[id] = {
+          name: file.name,
+          mimetype: file.mimetype,
+          tempFilePath: permanentPath,
+        };
+      }
+    }
+  }
+
+  try {
+    // Add to queue
+    await bulkInvoiceQueue.add(
+      'bulk-approve',
+      {
+        invoiceIds,
+        adminId,
+        attachments,
+      },
+      {
+        jobId: `bulk-inv-${dayjs().valueOf()}`,
+        removeOnComplete: true,
+      },
+    );
+
+    return res.status(200).json({
+      message: `Successfully queued ${invoiceIds.length} invoices for approval.`,
+    });
+  } catch (error) {
+    console.error('Bulk Queue Error:', error);
+    return res.status(500).json({ error: 'Failed to queue bulk process' });
+  }
+};
+
+export const getAllSelectedInvoices = async (req: Request, res: Response) => {
+  const { invoiceIds } = req.query;
+
+  try {
+    if (!invoiceIds) return res.status(404).json({ message: 'Query is required.' });
+
+    const ids = invoiceIds.toString().split(',');
+
+    const invoices = await prisma.invoice.findMany({
+      where: {
+        id: {
+          in: ids,
+        },
+      },
+      include: {
+        creator: {
+          include: {
+            user: {
+              include: {
+                paymentForm: true,
+              },
+            },
+          },
+        },
+        campaign: {
+          select: {
+            id: true,
+            name: true,
+            company: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+            brand: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+            creatorAgreement: true,
+          },
+        },
+        user: {
+          include: {
+            creatorAgreement: true,
+          },
+        },
+      },
+    });
+
+    console.log(invoices);
+
+    return res.status(200).json(invoices);
+  } catch (error) {
+    return res.status(500).json(error);
+  }
+};

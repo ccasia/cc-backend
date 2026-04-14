@@ -47,6 +47,7 @@ import { app, clients, io, server } from '@configs/socket';
 import { QueueEvents } from 'bullmq';
 
 export { io };
+import { logChange } from '@services/campaignServices';
 
 Ffmpeg.setFfmpegPath(FfmpegPath.path);
 
@@ -83,7 +84,7 @@ app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 app.use(
   fileUpload({
-    limits: { fileSize: 500 * 1024 * 1024 },
+    limits: { fileSize: 1024 * 1024 * 1024 },
     useTempFiles: true,
     tempFileDir: '/tmp/',
   }),
@@ -146,84 +147,90 @@ app.use(passport.session());
 
 app.use(router);
 
-app.post('/webhooks/xero', express.raw({ type: 'application/json' }), async (req, res) => {
+app.post('/webhooks/xero', express.raw({ type: 'application/json', limit: '100mb' }), async (req, res) => {
   try {
     const xeroSignature = req.headers['x-xero-signature'];
-    console.log(req.session);
+    if (!xeroSignature) return res.status(401).send('Missing signature');
 
-    if (!xeroSignature) {
-      return res.status(401).send('Missing signature');
-    }
+    // Verify signature
+    const expectedSignature = crypto.createHmac('sha256', process.env.WEBHOOK_KEY!).update(req.body).digest('base64');
 
-    // Generate expected signature
-    const expectedSignature = crypto
-      .createHmac('sha256', 'UtH0zJbM1oFEw3K662zollAzzkJuKORDAKJvJ/LtiXIN9VqXghooPmhOInHhewxX2Axb9BYa4lXeHCV+ImyfnA==')
-      .update(req.body)
-      .digest('base64');
+    if (xeroSignature !== expectedSignature) return res.status(401).send('Invalid signature');
 
-    if (xeroSignature !== expectedSignature) {
-      return res.status(401).send('Invalid signature');
-    }
-
-    // Parse payload AFTER verification
     const payload = JSON.parse(req.body.toString('utf8'));
+    console.log('✅ Xero Webhook Verified', payload);
 
-    console.log('✅ Xero Webhook Verified');
+    if (!payload.events || !payload.events.length) return res.status(200).send('OK');
 
     const user = await prisma.user.findFirst({
       where: {
-        email: {
-          equals: process.env.NODE_ENV === 'development' ? 'super@cultcreativeasia.com' : 'vidya@cultcreative.asia', //Need to change to V's email
-        },
+        email: process.env.NODE_ENV === 'development' ? 'super@cultcreativeasia.com' : 'super@cultcreativeasia.com',
       },
-      include: {
-        admin: {
-          select: {
-            xeroTokenSet: true,
-          },
-        },
-      },
+      include: { admin: { select: { xeroTokenSet: true } } },
     });
 
     if (!user) return res.sendStatus(400);
 
-    const data = payload.events[0] as { tenantId: string; resourceId: string };
-
-    const tokenSet: TokenSet = (user.admin?.xeroTokenSet as TokenSet) || null;
-
-    if (!tokenSet) throw new Error('You are not connected to Xero');
+    const tokenSet: TokenSet = user.admin?.xeroTokenSet as TokenSet;
+    if (!tokenSet) throw new Error('User not connected to Xero');
 
     await xero.initialize();
-
     xero.setTokenSet(tokenSet);
 
-    const where = 'Status=="PAID"';
-
-    const invoiceData = await xero.accountingApi.getInvoices(data.tenantId, undefined, where);
-
-    // Check based on invoiceID
-    const xeroInvoices = invoiceData.body.invoices;
-
-    const xeroInvoicesIds = xeroInvoices?.map((xeroInvoice) => xeroInvoice.invoiceID);
-
-    if (xeroInvoicesIds?.length) {
-      const invoices = await prisma.invoice.updateMany({
+    if (dayjs.unix(tokenSet.expires_at!).isBefore(dayjs())) {
+      const validTokenSet = await xero.refreshToken();
+      // save the new tokenset
+      await prisma.admin.update({
         where: {
-          xeroInvoiceId: {
-            in: xeroInvoicesIds as any,
-          },
+          userId: user.id,
         },
         data: {
-          status: 'paid',
+          xeroTokenSet: validTokenSet as any,
         },
       });
+    }
 
-      console.log('INVOICES', invoices);
+    await xero.updateTenants();
+
+    // Handle all events
+    for (const event of payload.events) {
+      const { tenantId } = event;
+
+      // Fetch all paid invoices (or filter by invoiceID if needed)
+      const invoiceData = await xero.accountingApi.getInvoices(tenantId, undefined, 'Status=="PAID"');
+      const xeroInvoices = invoiceData.body.invoices || [];
+      const xeroInvoicesIds = xeroInvoices.map((inv) => inv.invoiceID);
+
+      if (xeroInvoicesIds.length) {
+        // Query invoices not yet paid before updating, so we only log newly-paid ones
+        const notYetPaid = await prisma.invoice.findMany({
+          where: { xeroInvoiceId: { in: xeroInvoicesIds as string[] }, status: { not: 'paid' } },
+          select: { invoiceNumber: true, campaignId: true, user: { select: { name: true } } },
+        });
+
+        const invoices = await prisma.invoice.updateMany({
+          where: { xeroInvoiceId: { in: xeroInvoicesIds as string[] } },
+          data: { status: 'paid' },
+        });
+        console.log('Updated invoices:', invoices);
+
+        // Log only invoices that actually transitioned to paid
+        for (const inv of notYetPaid) {
+          logChange(
+            `Invoice ${inv.invoiceNumber} for ${inv.user?.name || 'Unknown Creator'} was marked as paid`,
+            inv.campaignId,
+            undefined,
+            undefined,
+            { systemLabel: 'Xero' },
+          );
+        }
+      }
     }
 
     res.status(200).send('OK');
   } catch (error) {
-    console.log('ERROR WEBHOOK XERO', error);
+    console.error('ERROR WEBHOOK XERO', error);
+    res.status(500).send('Server error');
   }
 });
 
@@ -253,6 +260,7 @@ io.on('connection', (socket) => {
   io.emit('onlineUsers', { onlineUsers: clients.size });
   socket.on('register', (userId) => {
     clients.set(userId, socket.id);
+    users.set(userId, socket.id);
   });
 
   socket.on('online-user', () => {

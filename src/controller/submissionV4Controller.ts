@@ -19,6 +19,7 @@ import { notificationDraft } from '@helper/notification';
 import { saveCaptionToHistory } from '../utils/captionHistoryUtils';
 import { extractAndStoreSubmissionUrls } from '@services/submissionUrlService';
 import { scheduleInitialInsightFetch } from '@services/insightFetchService';
+import { checkShouldShowNPS } from '@services/npsFeedbackService';
 
 /**
  * Determine effective campaign origin for V4 status flow
@@ -199,9 +200,13 @@ const updateSubmissionStatusBasedOnContent = async (submissionId: string) => {
 
   // Update submission status if it changed
   if (newSubmissionStatus !== submission.status) {
+    const isFinalApproval = newSubmissionStatus === 'APPROVED' || newSubmissionStatus === 'CLIENT_APPROVED';
     await prisma.submission.update({
       where: { id: submissionId },
-      data: { status: newSubmissionStatus as any },
+      data: {
+        status: newSubmissionStatus as any,
+        approvedAt: isFinalApproval ? new Date() : undefined,
+      },
     });
 
     console.log(`📝 Updated submission ${submissionId} status from ${submission.status} to ${newSubmissionStatus}`);
@@ -483,6 +488,10 @@ export const approveV4Submission = async (req: Request, res: Response) => {
     // Update caption if provided (only for admin actions)
     if (caption !== undefined) {
       updateData.caption = caption || null;
+    }
+
+    if (newStatus === 'APPROVED' || newStatus === 'CLIENT_APPROVED') {
+      updateData.approvedAt = new Date();
     }
 
     updates.push(
@@ -813,6 +822,7 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
         where: { id: submissionId },
         data: {
           status: newSubmissionStatus as SubmissionStatus,
+          approvedAt: newSubmissionStatus === 'CLIENT_APPROVED' ? new Date() : undefined,
         },
       }),
     );
@@ -954,10 +964,21 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
       }
     }
 
+    // Check if NPS feedback should be shown (only for VIDEO submissions)
+    let showNPS = false;
+    if (submission.submissionType.type === 'VIDEO') {
+      try {
+        showNPS = await checkShouldShowNPS(clientId);
+      } catch (error) {
+        console.error('Error checking NPS trigger:', error);
+      }
+    }
+
     res.status(200).json({
       message: `Submission ${action}d by client successfully`,
       submissionId,
       newStatus: newSubmissionStatus,
+      ...(showNPS && { showNPS: true }),
     });
   } catch (error) {
     console.error('Error processing client v4 submission:', error);
