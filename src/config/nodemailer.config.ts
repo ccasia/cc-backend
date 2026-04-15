@@ -1751,3 +1751,133 @@ export const csShortlistCreators = (
       return err;
     });
 };
+
+export const bdDraftCreated = async (payload: {
+  to: string;
+  bdName: string;
+  brandName: string;
+  campaignId: string;
+}) => {
+  const { to, bdName, brandName, campaignId } = payload;
+  const editUrl = `${process.env.BASE_EMAIL_URL}/dashboard/campaign/manage/edit/${campaignId}`;
+
+  try {
+    await transport.sendMail({
+      from: user,
+      to,
+      subject: `[Cult Creative] New draft campaign from ${brandName}`,
+      html: `
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>New Draft Campaign</title>
+            <style type="text/css">
+              @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap');
+              @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
+            </style>
+          </head>
+          <body style="margin: 0; padding: 0; background-color: #f0f2f5; font-family: 'Inter', Arial, sans-serif;">
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #f0f2f5;">
+              <tr>
+                <td align="center" style="padding: 20px 10px;">
+                  <table role="presentation" width="500" cellspacing="0" cellpadding="0" border="0" align="center" style="max-width: 400px; width: 100%; background-color: #ffffff;
+                    border-radius: 12px; overflow: hidden;">
+
+                    <!-- Header: Logo -->
+                    <tr>
+                      <td style="padding: 30px 20px 10px 20px;">
+                        <img src="https://drive.google.com/uc?id=1wbwEJp2qX5Hb9iirUQJVCmdpq-fg34oE" alt="Cult Creative Logo" width="120">
+                      </td>
+                    </tr>
+
+                    <!-- Headline -->
+                    <tr>
+                      <td style="padding: 10px 30px 20px 30px;">
+                        <h1 style="margin: 0; font-family: 'Instrument Serif', Georgia, serif; font-size: 32px; color: #000000; font-weight: 400; line-height: 36px;">
+                          A new draft just landed
+                        </h1>
+                      </td>
+                    </tr>
+
+                    <!-- Icon -->
+                    <tr>
+                      <td align="center" style="padding: 10px 20px;">
+                        <img src="https://drive.google.com/uc?id=13c5VhONNva9BMQIwXzn7t8stQrnT0OvV" alt="Rocket Icon" width="80" style="width: 80px; height: auto;">
+                      </td>
+                    </tr>
+
+                    <!-- Body -->
+                    <tr>
+                      <td style="padding: 20px 20px;">
+                        <p style="margin: 0 0 15px 0; font-family: 'Inter', Arial, sans-serif; font-size: 16px; color: #000000; line-height: 1.5;">
+                          Hey <strong>${bdName}</strong>,
+                        </p>
+                        <p style="margin: 0; font-family: 'Inter', Arial, sans-serif; font-size: 16px; color: #000000; line-height: 1.5;">
+                          <strong>${brandName}</strong> just submitted a campaign brief through your invite link.<br><br>
+                          We've spun it up as a draft in your account. Open it to fill in the remaining details, attach a package, and send it over for CSM review.
+                        </p>
+                      </td>
+                    </tr>
+
+                    <!-- CTA -->
+                    <tr>
+                      <td style="padding: 20px 20px;">
+                        <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" width="100%">
+                          <tr>
+                            <td align="center" style="background-color: #1340FF; border-radius: 50px;">
+                              <a href="${editUrl}" target="_blank" style="display: block; padding: 16px 20px; font-family: 'Inter', Arial, sans-serif; font-size: 16px; font-weight:
+                                 bold; color: #ffffff; text-decoration: none; border-radius: 50px;">Open Draft Campaign</a>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+
+                    <!-- Footer note -->
+                    <tr>
+                      <td style="padding: 20px 20px;">
+                        <p style="margin: 0; font-family: 'Inter', Arial, sans-serif; font-size: 14px; color: #919191; line-height: 1.5;">
+                          This draft is only visible to you until you submit it for CSM review.
+                        </p>
+                      </td>
+                    </tr>
+
+                    <!-- Footer -->
+                    <tr>
+                      <td style="padding: 20px 20px 40px;">
+                        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #f7f7f7;">
+                          <tr>
+                            <td align="center" style="padding: 20px 0 0;">
+                              <table role="presentation" cellspacing="0" cellpadding="0" border="0">
+                                <tr>
+                                  <td style="padding: 0 15px;"><a href="https://www.instagram.com/cultcreativeasia/" target="_blank"><img
+                                    src="https://drive.google.com/uc?id=18U5OsbRLVFGBXpG3Tod3_E_V-CKCoPxn" alt="Instagram" width="28"></a></td>
+                                  <td style="padding: 0 15px;"><a href="https://www.linkedin.com/company/cultcreativeapp/" target="_blank"><img
+                                    src="https://drive.google.com/uc?id=1-OLY5OezbzS7m37xcfLNXvmJyoNhAtTL" alt="LinkedIn" width="28"></a></td>
+                                  <td style="padding: 0 15px;"><a href="https://www.cultcreative.asia" target="_blank"><img
+                                    src="https://drive.google.com/uc?id=1L5rZbPbK3zouf40Krj-CRtmMa94qc_sP" alt="Website" width="28"></a></td>
+                                </tr>
+                              </table>
+                            </td>
+                          </tr>
+                          <tr>
+                            <td align="center" style="padding: 10px 0 0;">
+                              <a href="mailto:hello@cultcreative.asia" style="font-family: Arial, sans-serif; font-size: 14px; color: #333333; text-decoration: underline; font-weight:
+                                  bold;">hello@cultcreative.asia</a>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+          </body>
+        `,
+    });
+  } catch (error) {
+    console.error('bdDraftCreated email failed:', error);
+    throw error;
+  }
+};
