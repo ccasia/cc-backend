@@ -72,6 +72,7 @@ import {
   syncCampaignCredits,
   updateAllCampaignCredits,
   getCampaignStatus,
+  submitDraftForReview,
 } from '@controllers/campaignController';
 import {
   swapGuestWithPlatformCreator,
@@ -280,5 +281,7 @@ router.delete('/:campaignId/manual-creator/:entryId', isLoggedIn, isAdmin, delet
 // Post Engagement Snapshot endpoints (Day 7, 15, 30 ER tracking)
 router.get('/:campaignId/post-engagement-snapshots', isLoggedIn, getCampaignPostSnapshots);
 router.post('/:campaignId/post-engagement-snapshots/capture', isLoggedIn, isAdmin, triggerManualSnapshot);
+
+router.post('/:id/submit-for-review', isLoggedIn, submitDraftForReview);
 
 export default router;

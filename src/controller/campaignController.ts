@@ -12063,9 +12063,9 @@ export const updateAllCampaignCredits = async (req: Request, res: Response) => {
         });
 
         const totalActiveCredits = activeSubs.reduce((sum, sub) => sum + (sub.totalCredits || 0), 0);
-        
+
         const totalUsedAcrossCompany = activeSubs.reduce((sum, sub) => sum + (sub.creditsUsed || 0), 0);
-        
+
         const currentlyAvailable = totalActiveCredits - totalUsedAcrossCompany;
 
         const requestedCredits = Number(campaignCredits) || 0;
@@ -12073,7 +12073,7 @@ export const updateAllCampaignCredits = async (req: Request, res: Response) => {
 
         if (requestedCredits > currentCampaignCredits) {
           const additionalNeeded = requestedCredits - currentCampaignCredits;
-          
+
           if (additionalNeeded > currentlyAvailable) {
             return res.status(400).json({
               message: `Cannot exceed company's subscription limits. You need ${additionalNeeded} more credits, but only ${currentlyAvailable} are available across all active packages.`,
@@ -12373,5 +12373,141 @@ export const getCampaignStatus = async (req: Request, res: Response) => {
     return res.status(200).json(campaignStatus);
   } catch (error) {
     return res.status(500).json(error);
+  }
+};
+
+const BD_DRAFT_REQUIRED_FIELDS = {
+  campaign: ['productName'] as const,
+  brief: ['industries'] as const,
+  requirement: [
+    'gender',
+    'age',
+    'countries',
+    'language',
+    'creator_persona',
+    'user_persona',
+    'geographic_focus',
+  ] as const,
+};
+
+type MissingField = {
+  section: 'campaign' | 'brief' | 'requirement' | 'package';
+  field: string;
+  label: string;
+};
+
+const FIELD_LABELS: Record<string, string> = {
+  productName: 'Product / Service Name',
+  industries: "Creator's Interest / Industries",
+  gender: 'Gender',
+  age: 'Age',
+  countries: 'Country',
+  language: 'Language',
+  creator_persona: 'Creator Persona',
+  user_persona: 'User Persona',
+  geographic_focus: 'Geographic Focus',
+  package: 'Package (brand / company)',
+};
+
+const isEmpty = (value: unknown): boolean => {
+  if (value === null || value === undefined) return true;
+  if (typeof value === 'string') return value.trim().length === 0;
+  if (Array.isArray(value)) return value.length === 0;
+  return false;
+};
+
+export const submitDraftForReview = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const userid = req.session.userid;
+
+  if (!userid) return res.status(401).json({ message: 'User not authenticated' });
+  if (!id) return res.status(400).json({ message: 'Campaign id is required' });
+
+  try {
+    const campaign = await prisma.campaign.findUnique({
+      where: { id },
+      include: {
+        campaignBrief: true,
+        campaignRequirement: true,
+        campaignAdmin: true,
+        brand: true,
+        company: true,
+      },
+    });
+
+    if (!campaign) {
+      return res.status(404).json({ message: 'Campaign not found' });
+    }
+
+    // Must be a draft — any other state means this endpoint doesn't apply.
+    if (campaign.status !== 'DRAFT') {
+      return res.status(409).json({
+        message: `Campaign is already in ${campaign.status} state and cannot be re-submitted for review.`,
+      });
+    }
+
+    // Caller must be an admin on this campaign with a non-viewer role (owner/editor/manager).
+    const assignedAdmin = campaign.campaignAdmin.find((a) => a.adminId === userid);
+    if (!assignedAdmin || assignedAdmin.role === 'viewer') {
+      return res.status(403).json({
+        message: 'Only a campaign owner, editor, or manager can submit this draft for review.',
+      });
+    }
+
+    const missing: MissingField[] = [];
+
+    for (const field of BD_DRAFT_REQUIRED_FIELDS.campaign) {
+      if (isEmpty((campaign as any)[field])) {
+        missing.push({ section: 'campaign', field, label: FIELD_LABELS[field] ?? field });
+      }
+    }
+
+    if (!campaign.campaignBrief) {
+      missing.push({ section: 'brief', field: 'campaignBrief', label: 'Campaign brief' });
+    } else {
+      for (const field of BD_DRAFT_REQUIRED_FIELDS.brief) {
+        if (isEmpty((campaign.campaignBrief as any)[field])) {
+          missing.push({ section: 'brief', field, label: FIELD_LABELS[field] ?? field });
+        }
+      }
+    }
+
+    if (!campaign.campaignRequirement) {
+      missing.push({
+        section: 'requirement',
+        field: 'campaignRequirement',
+        label: 'Target audience',
+      });
+    } else {
+      for (const field of BD_DRAFT_REQUIRED_FIELDS.requirement) {
+        if (isEmpty((campaign.campaignRequirement as any)[field])) {
+          missing.push({ section: 'requirement', field, label: FIELD_LABELS[field] ?? field });
+        }
+      }
+    }
+
+    if (!campaign.companyId) {
+      missing.push({ section: 'package', field: 'package', label: FIELD_LABELS.package });
+    }
+
+    if (missing.length > 0) {
+      return res.status(422).json({
+        message: 'Please fill in all mandatory fields before submitting for review.',
+        missingFields: missing,
+      });
+    }
+
+    const updated = await prisma.campaign.update({
+      where: { id },
+      data: { status: 'PENDING_CSM_REVIEW' as CampaignStatus },
+    });
+
+    return res.status(200).json({
+      ok: true,
+      campaign: { id: updated.id, status: updated.status },
+    });
+  } catch (error) {
+    console.error('submitDraftForReview error:', error);
+    return res.status(500).json({ message: 'Failed to submit draft for review' });
   }
 };
