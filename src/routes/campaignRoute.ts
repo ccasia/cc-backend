@@ -73,6 +73,9 @@ import {
   updateAllCampaignCredits,
   getCampaignStatus,
   submitDraftForReview,
+  getDraftCampaigns,
+  deleteDraftCampaign,
+  unlinkCampaignCompany,
 } from '@controllers/campaignController';
 import {
   swapGuestWithPlatformCreator,
@@ -94,7 +97,7 @@ import {
   updateEntry as updateManualCreator,
 } from '@controllers/manualCreatorController';
 import { getCampaignPostSnapshots, triggerManualSnapshot } from '@controllers/postEngagementSnapshotController';
-import { isSuperAdmin, isAdmin } from '@middlewares/onlySuperadmin';
+import { isSuperAdmin, isAdmin, isBdOrSuperadmin } from '@middlewares/onlySuperadmin';
 import { canActivateCampaign } from '@middlewares/adminOrClient';
 
 import {
@@ -231,11 +234,11 @@ router.patch('/updateAllCredits', isLoggedIn, isSuperAdmin, updateAllCampaignCre
 router.patch('/pitch', isLoggedIn, creatorMakePitch);
 router.patch('/changeCampaignStage/:campaignId', changeCampaignStage);
 router.patch('/closeCampaign/:id', isSuperAdmin, closeCampaign);
-router.patch('/editCampaignInfo', isSuperAdmin, editCampaignInfo);
-router.patch('/editCampaignObjectives', isSuperAdmin, editCampaignObjectives);
-router.patch('/editCampaignBrandOrCompany', isSuperAdmin, editCampaignBrandOrCompany);
+router.patch('/editCampaignInfo', isBdOrSuperadmin, editCampaignInfo);
+router.patch('/editCampaignObjectives', isBdOrSuperadmin, editCampaignObjectives);
+router.patch('/editCampaignBrandOrCompany', isBdOrSuperadmin, editCampaignBrandOrCompany);
 router.patch('/editCampaignDosAndDonts', isSuperAdmin, editCampaignDosAndDonts);
-router.patch('/editCampaignRequirements', isSuperAdmin, editCampaignRequirements);
+router.patch('/editCampaignRequirements', isBdOrSuperadmin, editCampaignRequirements);
 router.patch('/editCampaignLogistics', isSuperAdmin, editCampaignLogistics);
 router.patch('/editCampaignFinalise', isSuperAdmin, editCampaignFinalise);
 router.patch('/editCampaignAdditionalDetails', isSuperAdmin, editCampaignAdditionalDetails);
@@ -282,6 +285,10 @@ router.delete('/:campaignId/manual-creator/:entryId', isLoggedIn, isAdmin, delet
 router.get('/:campaignId/post-engagement-snapshots', isLoggedIn, getCampaignPostSnapshots);
 router.post('/:campaignId/post-engagement-snapshots/capture', isLoggedIn, isAdmin, triggerManualSnapshot);
 
+// BD campaign brief link endpoints
 router.post('/:id/submit-for-review', isLoggedIn, submitDraftForReview);
+router.get('/drafts', isLoggedIn, isBdOrSuperadmin, getDraftCampaigns);
+router.delete('/:id/draft', isLoggedIn, isBdOrSuperadmin, deleteDraftCampaign);
+router.patch('/:id/unlink-company', isLoggedIn, isBdOrSuperadmin, unlinkCampaignCompany);
 
 export default router;

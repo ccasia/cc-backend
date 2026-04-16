@@ -9,7 +9,7 @@ const prisma = new PrismaClient();
 const TOKEN_LENGTH = 24;
 
 const publicUrl = (token: string) => {
-  const base = process.env.APP_PUBLIC_URL || process.env.FRONTEND_URL || 'http://localhost:3030';
+  const base = process.env.APP_PUBLIC_URL || process.env.FRONTEND_URL || 'http://localhost';
   return `${base.replace(/\/$/, '')}/public/bd/${token}`;
 };
 
@@ -159,6 +159,12 @@ export const bdSubmitDraft = async (req: Request, res: Response) => {
               postingEndDate: postingEnd ? new Date(postingEnd) : null,
               startDate: start,
               endDate: end,
+              images: ['/assets/images/login/cultimage.png'],
+            },
+          },
+          campaignRequirement: {
+            create: {
+              user_persona: '',
             },
           },
           campaignAdmin: {
