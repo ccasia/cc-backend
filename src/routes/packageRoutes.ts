@@ -1,11 +1,11 @@
 import { Router } from 'express';
 
-import { isSuperAdmin } from '@middlewares/onlySuperadmin';
+import { isSuperAdmin, isBdOrSuperadmin } from '@middlewares/onlySuperadmin';
 import { createPackage, getAllPackages, updatePackage } from '@controllers/packageController';
 
 const router = Router();
 
-router.get('/', isSuperAdmin, getAllPackages);
+router.get('/', isBdOrSuperadmin, getAllPackages);
 router.get('/:id');
 router.post('/', isSuperAdmin, createPackage);
 router.patch('/:id', isSuperAdmin, updatePackage);

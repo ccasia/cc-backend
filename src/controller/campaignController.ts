@@ -12244,8 +12244,8 @@ export const submitDraftForReview = async (req: Request, res: Response) => {
         campaignBrief: true,
         campaignRequirement: true,
         campaignAdmin: true,
-        brand: true,
-        company: true,
+        // brand: { include: { company: { include: { subscriptions: { where: { status: 'ACTIVE' } } } } } },
+        company: { include: { subscriptions: { where: { status: 'ACTIVE' } } } },
       },
     });
 
@@ -12300,8 +12300,14 @@ export const submitDraftForReview = async (req: Request, res: Response) => {
       }
     }
 
-    if (!campaign.companyId) {
-      missing.push({ section: 'package', field: 'package', label: FIELD_LABELS.package });
+    if (!campaign.companyId && !campaign.brandId) {
+      missing.push({ section: 'package', field: 'company', label: 'Company / Brand' });
+    } else {
+      const company = (campaign as any).brand?.company || (campaign as any).company;
+      const hasActiveSubscription = company?.subscriptions?.some((s: any) => s.status === 'ACTIVE');
+      if (!hasActiveSubscription) {
+        missing.push({ section: 'package', field: 'subscription', label: 'Active Package' });
+      }
     }
 
     if (missing.length > 0) {
@@ -12323,5 +12329,106 @@ export const submitDraftForReview = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('submitDraftForReview error:', error);
     return res.status(500).json({ message: 'Failed to submit draft for review' });
+  }
+};
+
+export const getDraftCampaigns = async (req: Request, res: Response) => {
+  const userid = req.session.userid;
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userid },
+      include: { admin: true },
+    });
+
+    const isSuperAdmin = user?.role === 'superadmin' || ['god', 'advanced'].includes(user?.admin?.mode || '');
+
+    const drafts = await prisma.campaign.findMany({
+      where: {
+        status: 'DRAFT',
+        ...(isSuperAdmin ? {} : { campaignAdmin: { some: { adminId: userid } } }),
+      },
+      include: {
+        campaignBrief: true,
+        campaignRequirement: true,
+        company: true,
+        brand: true,
+        campaignAdmin: {
+          include: {
+            admin: {
+              include: {
+                user: { select: { id: true, name: true, email: true } },
+              },
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return res.status(200).json(drafts);
+  } catch (error) {
+    console.error('getDraftCampaigns error:', error);
+    return res.status(500).json({ message: 'Failed to load draft campaigns' });
+  }
+};
+
+export const deleteDraftCampaign = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const userid = req.session.userid;
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userid },
+      include: { admin: true },
+    });
+
+    const campaign = await prisma.campaign.findUnique({
+      where: { id },
+      include: { campaignAdmin: true },
+    });
+
+    if (!campaign) return res.status(404).json({ message: 'Campaign not found' });
+    if (campaign.status !== 'DRAFT') return res.status(400).json({ message: 'Only draft campaigns can be deleted' });
+
+    const isSuperadmin = user?.role === 'superadmin' || ['god', 'advanced'].includes(user?.admin?.mode || '');
+
+    const isOwner = campaign.campaignAdmin.some((ca) => ca.adminId === userid && ca.role !== 'viewer');
+
+    if (!isSuperadmin && !isOwner) return res.status(403).json({ message: 'Forbidden' });
+
+    await prisma.$transaction(async (tx) => {
+      await tx.campaignAdmin.deleteMany({ where: { campaignId: id } });
+      await tx.campaignBrief.deleteMany({ where: { campaignId: id } });
+      await tx.campaignRequirement.deleteMany({ where: { campaignId: id } });
+      await tx.campaign.delete({ where: { id } });
+    });
+
+    return res.status(200).json({ message: 'Draft deleted' });
+  } catch (error) {
+    console.error('deleteDraftCampaign error:', error);
+    return res.status(500).json({ message: 'Failed to delete draft' });
+  }
+};
+
+export const unlinkCampaignCompany = async (req: Request, res: Response) => {
+  const { id } = req.params;
+
+  try {
+    const campaign = await prisma.campaign.findUnique({ where: { id } });
+
+    if (!campaign || campaign.status !== 'DRAFT') {
+      return res.status(404).json({ message: 'Draft campaign not found' });
+    }
+
+    await prisma.campaign.update({
+      where: { id },
+      data: { brandId: null, companyId: null },
+    });
+
+    return res.status(200).json({ message: 'Company unlinked' });
+  } catch (error) {
+    console.error('unlinkCampaignCompany error:', error);
+    return res.status(500).json({ message: 'Failed to unlink company' });
   }
 };
