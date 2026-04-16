@@ -12419,9 +12419,15 @@ const isEmpty = (value: unknown): boolean => {
 export const submitDraftForReview = async (req: Request, res: Response) => {
   const { id } = req.params;
   const userid = req.session.userid;
+  const { campaignCredits: rawCredits } = req.body;
 
   if (!userid) return res.status(401).json({ message: 'User not authenticated' });
   if (!id) return res.status(400).json({ message: 'Campaign id is required' });
+
+  const campaignCredits = Number(rawCredits) || 0;
+  if (campaignCredits <= 0) {
+    return res.status(400).json({ message: 'Campaign credits must be greater than 0' });
+  }
 
   try {
     const campaign = await prisma.campaign.findUnique({
@@ -12430,8 +12436,8 @@ export const submitDraftForReview = async (req: Request, res: Response) => {
         campaignBrief: true,
         campaignRequirement: true,
         campaignAdmin: true,
-        // brand: { include: { company: { include: { subscriptions: { where: { status: 'ACTIVE' } } } } } },
-        company: { include: { subscriptions: { where: { status: 'ACTIVE' } } } },
+        brand: { include: { company: { include: { subscriptions: { where: { status: 'ACTIVE' }, orderBy: { createdAt: 'asc' } } } } } },
+        company: { include: { subscriptions: { where: { status: 'ACTIVE' }, orderBy: { createdAt: 'asc' } } } },
       },
     });
 
@@ -12503,9 +12509,60 @@ export const submitDraftForReview = async (req: Request, res: Response) => {
       });
     }
 
-    const updated = await prisma.campaign.update({
-      where: { id },
-      data: { status: 'PENDING_CSM_REVIEW' as CampaignStatus },
+    // --- Credit allocation (FIFO, same logic as createCampaignV2) ---
+    const company = (campaign as any).brand?.company || (campaign as any).company;
+    const availableCredits = await getRemainingCredits(company.id);
+
+    if (availableCredits === null || typeof availableCredits !== 'number') {
+      return res.status(400).json({ message: 'Unable to retrieve available credits for the company' });
+    }
+
+    if (campaignCredits > availableCredits) {
+      return res.status(400).json({
+        message: `Not enough credits. Available: ${availableCredits}, requested: ${campaignCredits}`,
+      });
+    }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const activeSubs = company.subscriptions;
+      const creditAllocationBreakdown: Array<{ subscriptionId: string; amount: number }> = [];
+      let remainingToAllocate = campaignCredits;
+      let firstSubscriptionId: string | undefined;
+
+      for (const sub of activeSubs) {
+        if (remainingToAllocate <= 0) break;
+
+        const available = (sub.totalCredits || 0) - (sub.creditsUsed || 0);
+        if (available > 0) {
+          const chargeAmount = Math.min(available, remainingToAllocate);
+
+          if (!firstSubscriptionId) firstSubscriptionId = sub.id;
+
+          creditAllocationBreakdown.push({
+            subscriptionId: sub.id,
+            amount: chargeAmount,
+          });
+
+          remainingToAllocate -= chargeAmount;
+
+          await tx.subscription.update({
+            where: { id: sub.id },
+            data: { creditsUsed: { increment: chargeAmount } },
+          });
+        }
+      }
+
+      return tx.campaign.update({
+        where: { id },
+        data: {
+          status: 'PENDING_CSM_REVIEW' as CampaignStatus,
+          campaignCredits,
+          creditsPending: campaignCredits,
+          creditsUtilized: 0,
+          creditAllocationBreakdown: creditAllocationBreakdown.length > 0 ? creditAllocationBreakdown : Prisma.DbNull,
+          subscriptionId: firstSubscriptionId || undefined,
+        },
+      });
     });
 
     return res.status(200).json({
