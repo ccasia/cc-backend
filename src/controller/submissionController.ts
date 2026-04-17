@@ -727,8 +727,6 @@ export const getAllSubmissions = async (req: Request, res: Response) => {
               select: {
                 isFacebookConnected: true,
                 isTiktokConnected: true,
-                instagram: true,
-                tiktok: true,
               },
             },
           },
@@ -787,6 +785,8 @@ export const getAllSubmissions = async (req: Request, res: Response) => {
       content: submission.content || null,
       user: submission.user,
       userId: submission.user.id,
+      isInstagramConnected: submission.user.creator?.isFacebookConnected || false,
+      isTiktokConnected: submission.user.creator?.isTiktokConnected || false,
       campaign: submission.campaign,
       campaignId: submission.campaignId,
       feedback: submission.feedback,
