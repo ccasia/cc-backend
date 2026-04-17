@@ -136,12 +136,6 @@ export function extractTikTokVideoId(url: string): string | null {
         return photoId;
       }
 
-      // Handle short URLs like vm.tiktok.com and vt.tiktok.com
-      if (urlObj.hostname.includes('vm.tiktok.com') || urlObj.hostname.includes('vt.tiktok.com')) {
-        const shortCode = urlObj.pathname.substring(1).split('?')[0].split('/')[0]; // Remove leading slash and trailing params
-        return shortCode;
-      }
-
       // Handle mobile URLs like m.tiktok.com
       if (urlObj.hostname.includes('m.tiktok.com')) {
         if (urlObj.pathname.includes('/v/')) {
@@ -149,11 +143,47 @@ export function extractTikTokVideoId(url: string): string | null {
           return videoId;
         }
       }
+
+      // Short URLs (vm.tiktok.com, vt.tiktok.com) — return null so caller knows to resolve
+      if (urlObj.hostname.includes('vm.tiktok.com') || urlObj.hostname.includes('vt.tiktok.com')) {
+        return null;
+      }
     }
 
     return null;
   } catch (error) {
     console.error('Invalid TikTok URL:', error);
+    return null;
+  }
+}
+
+// Resolve TikTok short/mobile URLs (vt.tiktok.com, vm.tiktok.com) to full URLs and extract video ID
+export async function resolveTikTokShortUrl(url: string): Promise<string | null> {
+  try {
+    const urlObj = new URL(url);
+    const isShortUrl =
+      urlObj.hostname.includes('vm.tiktok.com') || urlObj.hostname.includes('vt.tiktok.com');
+
+    if (!isShortUrl) return extractTikTokVideoId(url);
+
+    // Follow redirects to get the final URL
+    const response = await axios.get(url, {
+      maxRedirects: 5,
+      timeout: 10000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; CultCreative/1.0)',
+      },
+      // We only need the final URL, not the body
+      validateStatus: (status) => status < 400,
+    });
+
+    const finalUrl = response.request?.res?.responseUrl || response.request?.responseURL || url;
+    console.log(`🔗 Resolved TikTok short URL: ${url} → ${finalUrl}`);
+
+    const videoId = extractTikTokVideoId(finalUrl);
+    return videoId;
+  } catch (error: any) {
+    console.error(`Failed to resolve TikTok short URL ${url}:`, error.message);
     return null;
   }
 }
@@ -1482,10 +1512,11 @@ export const getTikTokMediaKit = async (req: Request, res: Response) => {
 
 export async function getCampaignSubmissionUrls(campaignId: string): Promise<UrlData[]> {
   try {
+    // Primary source: submission.content (this is where postings are inserted/updated)
     const submissions = await prisma.submission.findMany({
       where: {
         campaignId: campaignId,
-        status: 'POSTED',
+        status: { in: ['POSTED', 'APPROVED'] },
       },
       select: {
         id: true,
@@ -1500,45 +1531,148 @@ export async function getCampaignSubmissionUrls(campaignId: string): Promise<Url
     });
 
     const allUrls: UrlData[] = [];
-    submissions.forEach((submission) => {
-      if (submission.content) {
-        // Instagram URL regex
-        const instagramUrlRegex = /https?:\/\/(www\.)?instagram\.com\/[^\s]+/g;
-        const instagramUrls = submission.content.match(instagramUrlRegex);
+    const seenUrls = new Set<string>();
 
-        // TikTok URL regex - handles multiple formats
-        const tiktokUrlRegex = /https?:\/\/(www\.)?(vt\.|vm\.|m\.)?tiktok\.com\/[^\s]+/g;
-        const tiktokUrls = submission.content.match(tiktokUrlRegex);
+    // Extract URLs from submission.content via regex
+    for (const submission of submissions) {
+      if (!submission.content) continue;
 
-        // Process Instagram URLs
-        if (instagramUrls && instagramUrls.length > 0) {
-          instagramUrls.forEach((url) => {
-            const cleanUrl = url.replace(/[.,;!?]+$/, '');
+      // Instagram URL regex
+      const instagramUrlRegex = /https?:\/\/(www\.)?instagram\.com\/[^\s]+/g;
+      const instagramMatches = submission.content.match(instagramUrlRegex);
+
+      // TikTok URL regex - handles multiple formats
+      const tiktokUrlRegex = /https?:\/\/(www\.)?(vt\.|vm\.|m\.)?tiktok\.com\/[^\s]+/g;
+      const tiktokMatches = submission.content.match(tiktokUrlRegex);
+
+      if (instagramMatches) {
+        for (const rawUrl of instagramMatches) {
+          const cleanUrl = rawUrl.replace(/[.,;!?]+$/, '');
+          if (!seenUrls.has(cleanUrl)) {
+            seenUrls.add(cleanUrl);
             allUrls.push({
               url: cleanUrl,
               submissionId: submission.id,
               userId: submission.userId,
               userName: submission.user.name || '',
-              platform: 'Instagram', // Add platform identifier
+              platform: 'Instagram',
             });
-          });
+          }
+        }
+      }
+
+      if (tiktokMatches) {
+        for (const rawUrl of tiktokMatches) {
+          const cleanUrl = rawUrl.replace(/[.,;!?]+$/, '');
+          if (!seenUrls.has(cleanUrl)) {
+            seenUrls.add(cleanUrl);
+            allUrls.push({
+              url: cleanUrl,
+              submissionId: submission.id,
+              userId: submission.userId,
+              userName: submission.user.name || '',
+              platform: 'TikTok',
+            });
+          }
+        }
+      }
+    }
+
+    // Sync: keep SubmissionPostingUrl table in sync with submission.content
+    if (allUrls.length > 0) {
+      try {
+        const existingPostingUrls = await prisma.submissionPostingUrl.findMany({
+          where: { campaignId },
+          select: { id: true, submissionId: true, platform: true, postUrl: true },
+        });
+
+        // Map by submissionId+platform so we can detect URL changes
+        const existingByKey = new Map<string, { id: string; postUrl: string }>();
+        for (const p of existingPostingUrls) {
+          existingByKey.set(`${p.submissionId}|${p.platform}`, { id: p.id, postUrl: p.postUrl });
         }
 
-        // Process TikTok URLs
-        if (tiktokUrls && tiktokUrls.length > 0) {
-          tiktokUrls.forEach((url) => {
-            const cleanUrl = url.replace(/[.,;!?]+$/, '');
-            allUrls.push({
-              url: cleanUrl,
-              submissionId: submission.id,
-              userId: submission.userId,
-              userName: submission.user.name || '',
-              platform: 'TikTok', // Add platform identifier
+        // Update or create — one row per submission+platform
+        for (const urlData of allUrls) {
+          const key = `${urlData.submissionId}|${urlData.platform}`;
+          const existing = existingByKey.get(key);
+
+          // Extract shortCode for Instagram, mediaId for TikTok
+          const shortCode = urlData.platform === 'Instagram' ? extractInstagramShortcode(urlData.url) : null;
+          const mediaId = urlData.platform === 'TikTok' ? extractTikTokVideoId(urlData.url) : null;
+
+          if (existing) {
+            // Row exists — update postUrl if it changed
+            if (existing.postUrl !== urlData.url) {
+              await prisma.submissionPostingUrl.update({
+                where: { id: existing.id },
+                data: {
+                  postUrl: urlData.url,
+                  postingDate: new Date(),
+                  ...(shortCode ? { shortCode } : {}),
+                  ...(mediaId ? { mediaId } : {}),
+                },
+              });
+              console.log(`🔄 Updated SubmissionPostingUrl: ${existing.postUrl} → ${urlData.url}`);
+            }
+          } else {
+            // No row yet — create
+            await prisma.submissionPostingUrl.create({
+              data: {
+                campaignId,
+                submissionId: urlData.submissionId,
+                platform: urlData.platform,
+                postUrl: urlData.url,
+                postingDate: new Date(),
+                ...(shortCode ? { shortCode } : {}),
+                ...(mediaId ? { mediaId } : {}),
+              },
             });
+            console.log(`🔄 Created SubmissionPostingUrl: ${urlData.url}`);
+          }
+        }
+      } catch (syncError) {
+        console.error('Non-blocking: failed to sync SubmissionPostingUrl table:', syncError);
+      }
+    }
+
+    // Fallback: if submission.content had no URLs, use SubmissionPostingUrl table
+    if (allUrls.length === 0) {
+      const postingUrls = await prisma.submissionPostingUrl.findMany({
+        where: {
+          campaignId: campaignId,
+          postingDate: { not: null },
+        },
+        include: {
+          submission: {
+            include: {
+              user: {
+                select: {
+                  name: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      for (const postingUrl of postingUrls) {
+        if (!seenUrls.has(postingUrl.postUrl)) {
+          seenUrls.add(postingUrl.postUrl);
+          allUrls.push({
+            url: postingUrl.postUrl,
+            submissionId: postingUrl.submissionId,
+            userId: postingUrl.submission.userId,
+            userName: postingUrl.submission.user.name || '',
+            platform: postingUrl.platform as 'Instagram' | 'TikTok',
           });
         }
       }
-    });
+
+      if (allUrls.length > 0) {
+        console.log(`📋 Used SubmissionPostingUrl fallback: found ${allUrls.length} URLs`);
+      }
+    }
 
     console.log(`Extracted ${allUrls.length} URLs from campaign ${campaignId}`);
 
@@ -1629,12 +1763,16 @@ function calculateCampaignComparison(
     const average = campaignAverages[metric] || 0;
     const change = average > 0 ? ((current - average) / average) * 100 : current > 0 ? 100 : 0;
 
+    // Cap displayed percentage at ±999% for readability
+    const cappedChange = Math.max(-999, Math.min(999, change));
+    const displayChange = Math.abs(change) > 999 ? cappedChange : change;
+
     comparison[metric] = {
       current,
       average,
       change,
       isAboveAverage: change > 0,
-      changeText: `${change > 0 ? '+' : ''}${change.toFixed(0)}%`,
+      changeText: `${displayChange > 0 ? '+' : ''}${displayChange.toFixed(0)}%`,
     };
   });
 
@@ -1811,7 +1949,7 @@ export const getInstagramMediaInsight = async (req: Request, res: Response) => {
       console.error('Shortcode not found:', { shortCode, url, videoCount: videos.length });
 
       return res.status(404).json({
-        message: `This is the url shortcode: ${shortCode} but we can't find the video. This post might not belong to the connected Instagram account.`,
+        message: `Submission posting link: ${url}. Video not found or not accessible with current creator.`,
         shortCode,
         url,
         videoCount: videos.length,
@@ -1828,6 +1966,8 @@ export const getInstagramMediaInsight = async (req: Request, res: Response) => {
 
     if (campaignId) {
       console.log(`🎯 Calculating campaign averages for campaign: ${campaignId}`);
+
+      await getCampaignSubmissionUrls(campaignId as string);
 
       // Check cache first
       const cachedAverages = getCachedCampaignAverages(campaignId as string, 'Instagram');
@@ -1846,51 +1986,110 @@ export const getInstagramMediaInsight = async (req: Request, res: Response) => {
             `📊 Found ${instagramUrls.length} Instagram campaign URLs out of ${campaignUrls.length} total URLs`,
           );
 
+          const allCampaignInsights: MetricData[][] = [];
+          const processedShortCodes = new Set<string>();
+
           if (instagramUrls.length > 0) {
-            // Process each campaign URL to get insights
-            const campaignInsightsResults = await batchRequests(
-              instagramUrls,
-              async (urlData, index) => {
-                const campaignShortCode = extractInstagramShortcode(urlData.url);
-                if (!campaignShortCode) return null;
-
-                const campaignVideo = videos.find((item: any) => item?.shortcode === campaignShortCode);
-                if (!campaignVideo) return null;
-
-                try {
-                  const campaignInsight = await getMediaInsight(accessToken, campaignVideo.id);
-                  return campaignInsight && campaignInsight.length > 0 ? campaignInsight : null;
-                } catch (error) {
-                  console.error(`Error processing campaign URL ${urlData.url}:`, error);
-                  return null;
-                }
-              },
-              3, // Process 2 at a time
-              1200, // 800ms delay between batches
-            );
-
-            const campaignInsights = campaignInsightsResults
-              .filter((result) => result.status === 'fulfilled' && result.value !== null)
-              .map((result) => result.value);
-
-            console.log(`📈 Successfully processed ${campaignInsights.length} campaign posts`);
-            campaignPostsCount = campaignInsights.length;
-
-            // Calculate averages (reusing existing function)
-            if (campaignInsights.length > 0) {
-              campaignAverages = calculateCampaignAverages(campaignInsights);
-
-              // Cache the result
-              setCachedCampaignAverages(campaignId as string, 'Instagram', {
-                averages: campaignAverages,
-                postsCount: campaignPostsCount,
-              });
-
-              // Compare current post with campaign averages (reusing existing function)
-              campaignComparison = calculateCampaignComparison(insight, campaignAverages, campaignInsights.length);
-
-              console.log('Campaign averages calculated and cached:', campaignAverages);
+            // Group campaign URLs by userId to handle cross-creator posts
+            const urlsByUser = new Map<string, typeof instagramUrls>();
+            for (const urlData of instagramUrls) {
+              const existing = urlsByUser.get(urlData.userId) || [];
+              existing.push(urlData);
+              urlsByUser.set(urlData.userId, existing);
             }
+
+            for (const [campaignUserId, userUrls] of urlsByUser) {
+              try {
+                // For the current user, reuse existing token and videos
+                let userAccessToken = accessToken;
+                let userVideos = videos;
+
+                if (campaignUserId !== userId) {
+                  // Get access token for this campaign creator
+                  try {
+                    userAccessToken = await ensureValidInstagramToken(campaignUserId);
+                    const creatorData = await prisma.creator.findFirst({
+                      where: { userId: campaignUserId },
+                      select: { instagramUser: true },
+                    });
+                    const result = await getInstagramMedias(
+                      userAccessToken,
+                      creatorData?.instagramUser?.media_count as number,
+                    );
+                    userVideos = result.videos;
+                  } catch (tokenError: any) {
+                    console.error(
+                      `Cannot access Instagram for campaign user ${campaignUserId}:`,
+                      tokenError.message,
+                    );
+                    continue;
+                  }
+                }
+
+                // Process this user's URLs
+                const userResults = await batchRequests(
+                  userUrls,
+                  async (urlData) => {
+                    const campaignShortCode = extractInstagramShortcode(urlData.url);
+                    if (!campaignShortCode) return null;
+
+                    const campaignVideo = userVideos.find(
+                      (item: any) => item?.shortcode === campaignShortCode,
+                    );
+                    if (!campaignVideo) return null;
+
+                    try {
+                      const campaignInsight = await getMediaInsight(userAccessToken, campaignVideo.id);
+                      if (campaignInsight && campaignInsight.length > 0) {
+                        processedShortCodes.add(campaignShortCode);
+                        return campaignInsight;
+                      }
+                      return null;
+                    } catch (error) {
+                      console.error(`Error processing campaign URL ${urlData.url}:`, error);
+                      return null;
+                    }
+                  },
+                  3,
+                  1200,
+                );
+
+                userResults
+                  .filter((r: any) => r.status === 'fulfilled' && r.value !== null)
+                  .forEach((r: any) => allCampaignInsights.push(r.value));
+              } catch (error) {
+                console.error(`Error processing campaign URLs for user ${campaignUserId}:`, error);
+              }
+            }
+          }
+
+          // Ensure current post's insight is always included in the pool
+          // Check against actually processed shortcodes, not just the URL list
+          const currentShortCode = extractInstagramShortcode(url as string);
+          const currentPostProcessed = currentShortCode && processedShortCodes.has(currentShortCode);
+
+          if (!currentPostProcessed && insight && insight.length > 0) {
+            allCampaignInsights.push(insight);
+            console.log(`📌 Added current post insight (shortcode: ${currentShortCode}) to campaign pool`);
+          }
+
+          console.log(`📈 Successfully processed ${allCampaignInsights.length} Instagram campaign posts`);
+          campaignPostsCount = allCampaignInsights.length;
+
+          // Calculate averages
+          if (allCampaignInsights.length > 0) {
+            campaignAverages = calculateCampaignAverages(allCampaignInsights);
+
+            // Cache the result
+            setCachedCampaignAverages(campaignId as string, 'Instagram', {
+              averages: campaignAverages,
+              postsCount: campaignPostsCount,
+            });
+
+            // Compare current post with campaign averages
+            campaignComparison = calculateCampaignComparison(insight, campaignAverages, allCampaignInsights.length);
+
+            console.log('Campaign averages calculated and cached:', campaignAverages);
           }
         } catch (error) {
           console.error('Error calculating campaign averages:', error);
@@ -2035,12 +2234,15 @@ export const getTikTokVideoInsight = async (req: Request, res: Response) => {
       });
     }
 
-    // Extract video ID from URL
-    const videoId = extractTikTokVideoId(url as string);
+    // Extract video ID from URL (resolves short URLs like vt.tiktok.com via redirect)
+    let videoId = extractTikTokVideoId(url as string);
+    if (!videoId) {
+      videoId = await resolveTikTokShortUrl(url as string);
+    }
     console.log('Extracted video ID:', videoId);
 
     if (!videoId) {
-      return res.status(400).json({ message: 'Invalid TikTok URL or unable to extract video ID' });
+      return res.status(400).json({ message: `Submission posting link: ${url}. Invalid TikTok URL or unable to extract video ID.` });
     }
 
     // Fetch the current video
@@ -2048,7 +2250,7 @@ export const getTikTokVideoInsight = async (req: Request, res: Response) => {
     const videos = videoResponse?.data?.videos;
 
     if (!videos || videos.length === 0) {
-      return res.status(404).json({ message: 'Video not found or not accessible' });
+      return res.status(404).json({ message: `Submission posting link: ${url}. Video not found or not accessible with current creator.` });
     }
 
     const video = videos[0];
@@ -2090,6 +2292,8 @@ export const getTikTokVideoInsight = async (req: Request, res: Response) => {
     if (campaignId) {
       console.log(`🎯 Calculating TikTok campaign averages for campaign: ${campaignId}`);
 
+      await getCampaignSubmissionUrls(campaignId as string);
+
       // Check cache first
       const cachedAverages = getCachedCampaignAverages(campaignId as string, 'TikTok');
       if (cachedAverages) {
@@ -2105,72 +2309,111 @@ export const getTikTokVideoInsight = async (req: Request, res: Response) => {
           const tiktokUrls = campaignUrls.filter((urlData) => urlData.platform === 'TikTok');
           console.log(`📊 Found ${tiktokUrls.length} TikTok campaign URLs out of ${campaignUrls.length} total URLs`);
 
+          const allCampaignInsights: MetricData[][] = [];
+          const processedVideoIds = new Set<string>();
+
           if (tiktokUrls.length > 0) {
-            // Process each campaign URL to get insights
-            const campaignInsightsResults = await batchRequests(
-              tiktokUrls,
-              async (urlData, index) => {
-                const campaignVideoId = extractTikTokVideoId(urlData.url);
-                if (!campaignVideoId) return null;
-
-                try {
-                  const campaignVideoResponse = await getTikTokVideoById(accessToken, campaignVideoId);
-                  const campaignVideos = campaignVideoResponse?.data?.videos;
-
-                  if (!campaignVideos || campaignVideos.length === 0) return null;
-
-                  const campaignVideo = campaignVideos[0];
-
-                  // Create insight data from campaign video metrics
-                  const campaignInsight = [
-                    { name: 'views', value: campaignVideo.view_count || 0 },
-                    { name: 'likes', value: campaignVideo.like_count || 0 },
-                    {
-                      name: 'comments',
-                      value: campaignVideo.comment_count || 0,
-                    },
-                    { name: 'shares', value: campaignVideo.share_count || 0 },
-                    {
-                      name: 'total_interactions',
-                      value:
-                        (campaignVideo.like_count || 0) +
-                        (campaignVideo.comment_count || 0) +
-                        (campaignVideo.share_count || 0),
-                    },
-                  ];
-
-                  return campaignInsight;
-                } catch (error) {
-                  console.error(`Error processing TikTok campaign URL ${urlData.url}:`, error);
-                  return null;
-                }
-              },
-              2, // Process 2 at a time
-              1200, // 1200ms delay between batches for TikTok
-            );
-
-            const campaignInsights = campaignInsightsResults
-              .filter((result) => result.status === 'fulfilled' && result.value !== null)
-              .map((result) => result.value);
-
-            console.log(`📈 Successfully processed ${campaignInsights.length} TikTok campaign posts`);
-            campaignPostsCount = campaignInsights.length;
-
-            // Calculate averages (reusing existing function)
-            if (campaignInsights.length > 0) {
-              campaignAverages = calculateCampaignAverages(campaignInsights);
-
-              // Cache the result
-              setCachedCampaignAverages(campaignId as string, 'TikTok', {
-                averages: campaignAverages,
-                postsCount: campaignPostsCount,
-              });
-
-              // Compare current post with campaign averages (reusing existing function)
-              campaignComparison = calculateCampaignComparison(insight, campaignAverages, campaignInsights.length);
-
-              console.log('TikTok Campaign averages calculated and cached:', campaignAverages);
+            // Group campaign URLs by userId to handle cross-creator posts
+            const urlsByUser = new Map<string, typeof tiktokUrls>();
+            for (const urlData of tiktokUrls) {
+              const existing = urlsByUser.get(urlData.userId) || [];
+              existing.push(urlData);
+              urlsByUser.set(urlData.userId, existing);
             }
+
+            for (const [campaignUserId, userUrls] of urlsByUser) {
+              let userAccessToken = accessToken;
+
+              if (campaignUserId !== userId) {
+                try {
+                  userAccessToken = await ensureValidTikTokToken(campaignUserId);
+                } catch (tokenError: any) {
+                  console.error(
+                    `Cannot access TikTok for campaign user ${campaignUserId}:`,
+                    tokenError.message,
+                  );
+                  continue;
+                }
+              }
+
+              const userResults = await batchRequests(
+                userUrls,
+                async (urlData) => {
+                  let campaignVideoId = extractTikTokVideoId(urlData.url);
+                  if (!campaignVideoId) {
+                    campaignVideoId = await resolveTikTokShortUrl(urlData.url);
+                  }
+                  if (!campaignVideoId) return null;
+
+                  try {
+                    const campaignVideoResponse = await getTikTokVideoById(userAccessToken, campaignVideoId);
+                    const campaignVideos = campaignVideoResponse?.data?.videos;
+
+                    if (!campaignVideos || campaignVideos.length === 0) return null;
+
+                    const campaignVideo = campaignVideos[0];
+
+                    const campaignInsight = [
+                      { name: 'views', value: campaignVideo.view_count || 0 },
+                      { name: 'likes', value: campaignVideo.like_count || 0 },
+                      {
+                        name: 'comments',
+                        value: campaignVideo.comment_count || 0,
+                      },
+                      { name: 'shares', value: campaignVideo.share_count || 0 },
+                      {
+                        name: 'total_interactions',
+                        value:
+                          (campaignVideo.like_count || 0) +
+                          (campaignVideo.comment_count || 0) +
+                          (campaignVideo.share_count || 0),
+                      },
+                    ];
+
+                    processedVideoIds.add(campaignVideoId);
+                    return campaignInsight;
+                  } catch (error) {
+                    console.error(`Error processing TikTok campaign URL ${urlData.url}:`, error);
+                    return null;
+                  }
+                },
+                2,
+                1200,
+              );
+
+              userResults
+                .filter((r: any) => r.status === 'fulfilled' && r.value !== null)
+                .forEach((r: any) => allCampaignInsights.push(r.value));
+            }
+          }
+
+          // Ensure current post's insight is always included in the pool
+          // Check against actually processed video IDs, not just the URL list
+          // Use the already-resolved videoId (handles short URLs)
+          const currentPostProcessed = videoId && processedVideoIds.has(videoId);
+
+          if (!currentPostProcessed && insight && insight.length > 0) {
+            allCampaignInsights.push(insight);
+            console.log(`📌 Added current TikTok post insight (videoId: ${videoId}) to campaign pool`);
+          }
+
+          console.log(`📈 Successfully processed ${allCampaignInsights.length} TikTok campaign posts`);
+          campaignPostsCount = allCampaignInsights.length;
+
+          // Calculate averages
+          if (allCampaignInsights.length > 0) {
+            campaignAverages = calculateCampaignAverages(allCampaignInsights);
+
+            // Cache the result
+            setCachedCampaignAverages(campaignId as string, 'TikTok', {
+              averages: campaignAverages,
+              postsCount: campaignPostsCount,
+            });
+
+            // Compare current post with campaign averages
+            campaignComparison = calculateCampaignComparison(insight, campaignAverages, allCampaignInsights.length);
+
+            console.log('TikTok Campaign averages calculated and cached:', campaignAverages);
           }
         } catch (error) {
           console.error('Error calculating TikTok campaign averages:', error);
