@@ -100,7 +100,17 @@ export const bdSubmitDraft = async (req: Request, res: Response) => {
   const { token } = req.params;
   if (!token) return res.status(404).json({ message: 'Not found' });
 
-  const { brandName, industry, postingStart, postingEnd, primaryGoal, kpis, kpiNotes, additionalInfo } = req.body ?? {};
+  const {
+    brandName,
+    industry,
+    postingStart,
+    postingEnd,
+    primaryGoal,
+    secondaryObjectives,
+    kpis,
+    kpiNotes,
+    additionalInfo,
+  } = req.body ?? {};
 
   // Strict server-side validation
   const errors: string[] = [];
@@ -108,6 +118,12 @@ export const bdSubmitDraft = async (req: Request, res: Response) => {
   if (!industry || typeof industry !== 'string') errors.push('industry');
   if (!postingStart && !postingEnd) errors.push('postingTimeline');
   if (!primaryGoal || typeof primaryGoal !== 'string') errors.push('primaryGoal');
+  if (!Array.isArray(secondaryObjectives) || secondaryObjectives.length !== 2) {
+    errors.push('secondaryObjectives');
+  }
+  if (!Array.isArray(kpis) || kpis.length === 0) {
+    errors.push('kpis');
+  }
   if (errors.length > 0) {
     return res.status(400).json({ message: 'Invalid submission', invalidFields: errors });
   }
@@ -122,14 +138,22 @@ export const bdSubmitDraft = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'This link is no longer valid' });
     }
 
-    const descriptionParts: string[] = [];
-    if (typeof additionalInfo === 'string' && additionalInfo.trim()) {
-      descriptionParts.push(additionalInfo.trim());
+    const kpiArray = Array.isArray(kpis) ? kpis.filter((k) => typeof k === 'string') : [];
+    const objectiveArray = (secondaryObjectives as unknown[]).filter(
+      (s): s is string => typeof s === 'string',
+    );
+
+    const description =
+      typeof additionalInfo === 'string' && additionalInfo.trim() ? additionalInfo.trim() : '';
+
+    const specialNotesParts: string[] = [];
+    if (kpiArray.length) {
+      specialNotesParts.push(`KPIs: ${kpiArray.join(', ')}`);
     }
     if (typeof kpiNotes === 'string' && kpiNotes.trim()) {
-      descriptionParts.push(`KPI notes: ${kpiNotes.trim()}`);
+      specialNotesParts.push(`KPI notes: ${kpiNotes.trim()}`);
     }
-    const description = descriptionParts.join('\n\n');
+    const specialNotesInstructions = specialNotesParts.join('\n\n') || null;
 
     const startSource = postingStart || postingEnd;
     const endSource = postingEnd || postingStart;
@@ -139,22 +163,21 @@ export const bdSubmitDraft = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Invalid posting dates' });
     }
 
-    const kpiArray = Array.isArray(kpis) ? kpis.filter((k) => typeof k === 'string') : [];
-
     const campaign = await prisma.$transaction(async (tx) => {
       return tx.campaign.create({
         data: {
           name: brandName.trim(),
           description,
           status: 'DRAFT',
-          origin: 'CLIENT', // client-originated draft; the BD is the owner admin
+          origin: 'CLIENT',
+          submissionVersion: 'v4',
           bdInviteToken: token,
           campaignBrief: {
             create: {
               title: brandName.trim(),
               industries: industry,
               objectives: primaryGoal,
-              secondaryObjectives: kpiArray,
+              secondaryObjectives: objectiveArray,
               postingStartDate: postingStart ? new Date(postingStart) : null,
               postingEndDate: postingEnd ? new Date(postingEnd) : null,
               startDate: start,
@@ -167,6 +190,13 @@ export const bdSubmitDraft = async (req: Request, res: Response) => {
               user_persona: '',
             },
           },
+          ...(specialNotesInstructions
+            ? {
+                campaignAdditionalDetails: {
+                  create: { specialNotesInstructions },
+                },
+              }
+            : {}),
           campaignAdmin: {
             create: {
               adminId: bdAdmin.userId,
