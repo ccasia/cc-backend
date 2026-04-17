@@ -42,11 +42,30 @@ import {
   handleKanbanSubmission,
   handleSubmissionNotification,
 } from '@services/submissionService';
+import { ensureValidInstagramToken, ensureValidTikTokToken } from '@controllers/socialController';
 
 Ffmpeg.setFfmpegPath(FfmpegPath.path);
 // Ffmpeg.setFfmpegPath(FfmpegProbe.path);
 
 const prisma = new PrismaClient();
+
+const INSTAGRAM_POST_REGEX = /(?:https?:\/\/)?(?:www\.)?instagram\.com\/(?:p|reel|tv)\/[A-Za-z0-9_-]+/i;
+const TIKTOK_POST_REGEX = /(?:https?:\/\/)?(?:www\.)?tiktok\.com\/@[^/]+\/(?:video|photo)\/\d+/i;
+const TIKTOK_MOBILE_REGEX = /(?:https?:\/\/)?(?:vt|vm|m)\.tiktok\.com\/[A-Za-z0-9_-]+/i;
+
+type ReportPlatform = 'Instagram' | 'TikTok' | null;
+
+const getSubmissionReportPlatform = (content?: string | null): ReportPlatform => {
+  if (!content) return null;
+
+  const isInstagramPost = INSTAGRAM_POST_REGEX.test(content);
+  const isTiktokPost = TIKTOK_POST_REGEX.test(content) || TIKTOK_MOBILE_REGEX.test(content);
+
+  if (!isInstagramPost && !isTiktokPost) return null;
+
+  // Keep existing table behavior where Instagram takes precedence if both exist in content.
+  return isInstagramPost ? 'Instagram' : 'TikTok';
+};
 
 /**
  * Extract URLs and schedule initial insight fetch for a submission (non-blocking background task)
@@ -700,6 +719,8 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
 
 export const getAllSubmissions = async (req: Request, res: Response) => {
   try {
+    const onlyValidSocialInsights = String(req.query.onlyValidSocialInsights || '').toLowerCase() === 'true';
+
     const submissions = await prisma.submission.findMany({
       include: {
         submissionType: {
@@ -759,6 +780,7 @@ export const getAllSubmissions = async (req: Request, res: Response) => {
       type: submission.submissionType.type,
       status: submission.status,
       createdAt: submission.createdAt,
+      updatedAt: submission.updatedAt,
       submissionDate: submission.submissionDate,
       completedAt: submission.completedAt,
       nextsubmission: submission.nextsubmissionDate,
@@ -789,13 +811,100 @@ export const getAllSubmissions = async (req: Request, res: Response) => {
       userId: submission.user.id,
       isInstagramConnected: submission.user.creator?.isFacebookConnected || false,
       isTiktokConnected: submission.user.creator?.isTiktokConnected || false,
+      reportPlatform: getSubmissionReportPlatform(submission.content),
+      isInstagramTokenValid: null as boolean | null,
+      isTiktokTokenValid: null as boolean | null,
       campaign: submission.campaign,
       campaignId: submission.campaignId,
       feedback: submission.feedback,
       approvedByAdmin: submission.admin?.user,
     }));
 
-    return res.status(200).json({ submissions: formattedSubmissions });
+    if (!onlyValidSocialInsights) {
+      return res.status(200).json({ submissions: formattedSubmissions });
+    }
+
+    const instagramTokenValidity = new Map<string, boolean>();
+    const tiktokTokenValidity = new Map<string, boolean>();
+
+    const instagramUserIds = new Set<string>();
+    const tiktokUserIds = new Set<string>();
+
+    formattedSubmissions.forEach((submission) => {
+      if (submission.reportPlatform === 'Instagram' && submission.isInstagramConnected) {
+        instagramUserIds.add(submission.userId);
+      }
+
+      if (submission.reportPlatform === 'TikTok' && submission.isTiktokConnected) {
+        tiktokUserIds.add(submission.userId);
+      }
+    });
+
+    await Promise.all([
+      Promise.all(
+        Array.from(instagramUserIds).map(async (userId) => {
+          try {
+            await ensureValidInstagramToken(userId);
+            instagramTokenValidity.set(userId, true);
+          } catch (error: any) {
+            instagramTokenValidity.set(userId, false);
+            console.warn('[SubmissionReports] Instagram token validation failed', {
+              userId,
+              message: error?.message,
+            });
+          }
+        }),
+      ),
+      Promise.all(
+        Array.from(tiktokUserIds).map(async (userId) => {
+          try {
+            await ensureValidTikTokToken(userId);
+            tiktokTokenValidity.set(userId, true);
+          } catch (error: any) {
+            tiktokTokenValidity.set(userId, false);
+            console.warn('[SubmissionReports] TikTok token validation failed', {
+              userId,
+              message: error?.message,
+            });
+          }
+        }),
+      ),
+    ]);
+
+    const submissionsWithTokenStatus = formattedSubmissions.map((submission) => {
+      let isInstagramTokenValid: boolean | null = null;
+      let isTiktokTokenValid: boolean | null = null;
+
+      if (submission.reportPlatform === 'Instagram') {
+        isInstagramTokenValid = submission.isInstagramConnected
+          ? instagramTokenValidity.get(submission.userId) || false
+          : false;
+      }
+
+      if (submission.reportPlatform === 'TikTok') {
+        isTiktokTokenValid = submission.isTiktokConnected ? tiktokTokenValidity.get(submission.userId) || false : false;
+      }
+
+      return {
+        ...submission,
+        isInstagramTokenValid,
+        isTiktokTokenValid,
+      };
+    });
+
+    const validSubmissions = submissionsWithTokenStatus.filter((submission) => {
+      if (submission.reportPlatform === 'Instagram') {
+        return submission.isInstagramConnected && submission.isInstagramTokenValid;
+      }
+
+      if (submission.reportPlatform === 'TikTok') {
+        return submission.isTiktokConnected && submission.isTiktokTokenValid;
+      }
+
+      return true;
+    });
+
+    return res.status(200).json({ submissions: validSubmissions });
   } catch (error) {
     return res.status(500).json({ message: 'Failed to retrieve submissions', error });
   }
