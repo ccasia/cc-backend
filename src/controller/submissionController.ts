@@ -727,6 +727,8 @@ export const getAllSubmissions = async (req: Request, res: Response) => {
               select: {
                 isFacebookConnected: true,
                 isTiktokConnected: true,
+                instagram: true,
+                tiktok: true,
               },
             },
           },
