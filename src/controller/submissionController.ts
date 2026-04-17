@@ -723,6 +723,14 @@ export const getAllSubmissions = async (req: Request, res: Response) => {
             name: true,
             email: true,
             photoURL: true,
+            creator: {
+              select: {
+                isFacebookConnected: true,
+                isTiktokConnected: true,
+                instagram: true,
+                tiktok: true,
+              },
+            },
           },
         },
         campaign: {
