@@ -74,9 +74,13 @@ export const isBdOrSuperadmin = async (req: Request, res: Response, next: NextFu
     if (isSuperAdmin) return next();
 
     const roleName = (user?.admin?.role?.name || '').toLowerCase();
-    const isBD = roleName === 'bd' || roleName.includes('business development');
+    const isBDorSales =
+      roleName === 'bd' ||
+      roleName.includes('business development') ||
+      roleName === 'sales and marketing' ||
+      roleName.includes('sales and marketing');
 
-    if (!isBD) {
+    if (!isBDorSales) {
       return res.status(403).json({ message: 'Access denied. BD or superadmin role required.' });
     }
 

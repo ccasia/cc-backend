@@ -12204,11 +12204,11 @@ const BD_DRAFT_REQUIRED_FIELDS = {
   ] as const,
 };
 
-type MissingField = {
+interface MissingField {
   section: 'campaign' | 'brief' | 'requirement' | 'package';
   field: string;
   label: string;
-};
+}
 
 const FIELD_LABELS: Record<string, string> = {
   productName: 'Product / Service Name',
@@ -12250,8 +12250,16 @@ export const submitDraftForReview = async (req: Request, res: Response) => {
         campaignBrief: true,
         campaignRequirement: true,
         campaignAdmin: true,
-        brand: { include: { company: { include: { subscriptions: { where: { status: 'ACTIVE' }, orderBy: { createdAt: 'asc' } } } } } },
-        company: { include: { subscriptions: { where: { status: 'ACTIVE' }, orderBy: { createdAt: 'asc' } } } },
+        brand: {
+          include: {
+            company: {
+              include: { subscriptions: { where: { status: 'ACTIVE' }, orderBy: { createdAt: 'asc' } } },
+            },
+          },
+        },
+        company: {
+          include: { subscriptions: { where: { status: 'ACTIVE' }, orderBy: { createdAt: 'asc' } } },
+        },
       },
     });
 
@@ -12339,7 +12347,7 @@ export const submitDraftForReview = async (req: Request, res: Response) => {
 
     const updated = await prisma.$transaction(async (tx) => {
       const activeSubs = company.subscriptions;
-      const creditAllocationBreakdown: Array<{ subscriptionId: string; amount: number }> = [];
+      const creditAllocationBreakdown: { subscriptionId: string; amount: number }[] = [];
       let remainingToAllocate = campaignCredits;
       let firstSubscriptionId: string | undefined;
 
