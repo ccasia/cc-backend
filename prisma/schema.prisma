@@ -2197,20 +2197,20 @@ model CreditTier {
   @@index([minFollowers])
 }
 
-model AiModel {
-  id String @id @unique @default(cuid())
+// model AiModel {
+//   id String @id @unique @default(cuid())
 
-  model           String
-  temperature     Float
-  systemPrompt    Json?
-  maxOutputTokens Int
-  apiKey          String
+//   model           String
+//   temperature     Float
+//   systemPrompt    Json?
+//   maxOutputTokens Int
+//   apiKey          String
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+//   createdAt DateTime @default(now())
+//   updatedAt DateTime @updatedAt
 
-  @@map("ai_model")
-}
+//   @@map("ai_model")
+// }
 
 // NPS Feedback
 enum NpsUserType {
