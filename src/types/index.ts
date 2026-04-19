@@ -32,6 +32,9 @@ export interface ExternalMetrics {
     roas?: number; // Return on Ad Spend %
     reach?: number;
     impressions?: number;
+    totalLikes?: number;
+    totalComments?: number;
+    totalShares?: number;
   };
 
   // Section 2 — Engagement & Interactions
@@ -88,6 +91,7 @@ export interface GenerateReportRequest {
   externalMetrics?: ExternalMetrics; // API data passed from your frontend/backend
   onChunk?: (section: ReportSection, chunk: string) => void;
   onDone?: () => void;
+  userId: string;
 }
 
 // ── Result ────────────────────────────────────────────────────────────────────

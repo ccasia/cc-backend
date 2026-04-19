@@ -73,13 +73,7 @@ export const getAllCompanies = async (_req: Request, res: Response) => {
       const activeSubscriptions = company.subscriptions.filter((sub) => sub.status === 'ACTIVE');
       const totalCredits = activeSubscriptions.reduce((sum, sub) => sum + (sub.totalCredits || 0), 0);
 
-      const usedCredits = activeSubscriptions.reduce((sum, sub) => {
-        const subCreditsUtilized = sub.campaign.reduce(
-          (campaignSum, campaign) => campaignSum + (campaign.creditsUtilized || 0),
-          0,
-        );
-        return sum + subCreditsUtilized;
-      }, 0);
+      const usedCredits = activeSubscriptions.reduce((sum, sub) => sum + (sub.creditsUsed || 0), 0);
 
       const creditSummary = {
         totalCredits,
@@ -159,7 +153,7 @@ export const getCompanyById = async (req: Request, res: Response) => {
 
     const sanitizedSubs = [];
 
-    for (const subs of activeSubscriptions) {
+    for (const subs of company.subscriptions) {
       const campaigns = subs.campaign;
 
       const totalCreditsUtilized = campaigns.reduce((acc, cur) => acc + (cur.creditsUtilized ?? 0), 0);
@@ -167,7 +161,7 @@ export const getCompanyById = async (req: Request, res: Response) => {
       const data = {
         ...subs,
         creditsUtilized: totalCreditsUtilized,
-        creditsUsed: totalCreditsUtilized,
+        creditsUsed: subs.creditsUsed || 0,
       };
 
       sanitizedSubs.push(data);
@@ -683,6 +677,7 @@ export const activateClient = async (req: Request, res: Response) => {
       where: { id: companyId },
       include: {
         pic: true, // Get person in charge details
+        clients: true,
       },
     });
 
@@ -699,9 +694,37 @@ export const activateClient = async (req: Request, res: Response) => {
       where: { email: company.pic[0].email.toLowerCase() },
     });
 
-    if (existingUser) {
-      return res.status(400).json({ message: 'Client already activated' });
+    if (existingUser && !company.clients.find((a) => a.userId !== existingUser.id)) {
+      const existingClient = await prisma.client.findFirst({
+        where: {
+          userId: existingUser.id,
+        },
+      });
+
+      if (existingClient) {
+        await prisma.client.update({
+          where: {
+            id: existingClient.id,
+          },
+          data: {
+            companyId: companyId,
+          },
+        });
+      } else {
+        await prisma.client.create({
+          data: {
+            companyId: companyId,
+            userId: existingUser.id,
+          },
+        });
+      }
+
+      return res.status(200).json({ message: 'Client account is activated!' });
     }
+
+    // if (existingUser) {
+    //   return res.status(400).json({ message: 'Client already activated' });
+    // }
 
     // Create user with client role
     const result = await prisma.$transaction(async (tx) => {

@@ -168,6 +168,105 @@ export const deductCredits = async (campaignId: string, userId: string, prismaFu
   }
 };
 
+/**
+ * Internal helper to reject a pending pitch and clean up all related records
+ * Used by both changePitchStatus endpoint and closeCampaign function
+ * Does NOT handle credit refunds - caller must manage credits separately
+ *
+ * @param userId Creator user ID
+ * @param campaignId Campaign ID
+ * @param pitchId Pitch ID
+ * @param prismaFunc Optional Prisma transaction client
+ * @returns Object with success status and refunded credits (ugcVideos count)
+ */
+export async function rejectPendingPitchInternal(
+  userId: string,
+  campaignId: string,
+  pitchId: string,
+  prismaFunc?: PrismaClient,
+) {
+  try {
+    const tx = prismaFunc ?? prisma;
+
+    // Step 1: Update pitch status to rejected
+    const pitch = await tx.pitch.update({
+      where: { id: pitchId },
+      data: { status: 'rejected' },
+      include: {
+        campaign: { include: { campaignBrief: true } },
+      },
+    });
+
+    // Step 2: Delete ShortListedCreator
+    const shortList = await tx.shortListedCreator.findUnique({
+      where: {
+        userId_campaignId: { userId, campaignId },
+      },
+    });
+
+    const refundedCredits = shortList?.ugcVideos ?? 0;
+
+    if (shortList) {
+      await tx.shortListedCreator.delete({
+        where: {
+          userId_campaignId: { userId, campaignId },
+        },
+      });
+    }
+
+    // Step 3: Delete all submissions for user in this campaign
+    await tx.submission.deleteMany({
+      where: {
+        AND: [
+          { campaignId },
+          { userId },
+        ],
+      },
+    });
+
+    // Step 4: Delete all tasks from user's board
+    const board = await tx.board.findUnique({
+      where: { userId },
+      include: {
+        columns: {
+          include: { task: true },
+        },
+      },
+    });
+
+    if (board) {
+      await tx.task.deleteMany({
+        where: {
+          column: { boardId: board.id },
+        },
+      });
+    }
+
+    // Step 5: Delete creator agreement
+    const agreement = await tx.creatorAgreement.findFirst({
+      where: {
+        AND: [
+          { userId },
+          { campaignId },
+        ],
+      },
+    });
+
+    if (agreement) {
+      await tx.creatorAgreement.delete({
+        where: { id: agreement.id },
+      });
+    }
+
+    return {
+      success: true,
+      refundedCredits,
+    };
+  } catch (error) {
+    throw new Error(`Failed to reject pitch: ${error}`);
+  }
+}
+
 export async function uploadCampaignAssets(files: any) {
   const imageTasks: Promise<string>[] = [];
   const attachmentTasks: Promise<string>[] = [];

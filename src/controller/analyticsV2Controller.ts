@@ -5,6 +5,7 @@ import dayjs from 'dayjs';
 import {
   getCreatorGrowthData,
   getCreatorGrowthCreators as getCreatorGrowthCreatorsData,
+  getCreatorsByCountry as getCreatorsByCountryData,
   getActivationRateData,
   getPitchRateData,
   getTimeToActivationData,
@@ -147,6 +148,21 @@ export const getCreatorGrowthCreators = async (req: Request, res: Response) => {
     return res.status(200).json({ success: true, data });
   } catch (error: any) {
     console.error('Error fetching creator growth creators:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch data' });
+  }
+};
+
+export const getCreatorsByCountry = async (req: Request, res: Response) => {
+  try {
+    const country = req.query.country as string;
+    if (!country || !country.trim()) {
+      return res.status(400).json({ success: false, message: 'Country parameter is required.' });
+    }
+    const creditTierNames = parseCreditTiers(req);
+    const data = await getCreatorsByCountryData(country.trim(), creditTierNames);
+    return res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    console.error('Error fetching creators by country:', error);
     return res.status(500).json({ success: false, message: 'Failed to fetch data' });
   }
 };
@@ -787,19 +803,22 @@ export const getClientApprovalMetrics = async (req: Request, res: Response) => {
   try {
     const { dateCondition, packageWhere } = getFilters(req);
 
-    const userPackageFilter = Object.keys(packageWhere).length ? { campaign: { company: packageWhere } } : {};
+    const campaignPackageFilter = Object.keys(packageWhere).length ? { company: packageWhere } : {};
 
     const submissions = await prisma.submission.findMany({
       where: {
         // track campaigns that have clients
-        campaign: { submissionVersion: 'v4' },
+        campaign: {
+          submissionVersion: 'v4',
+          ...campaignPackageFilter,
+        },
         status: { in: ['APPROVED', 'CLIENT_APPROVED'] },
         ...dateCondition,
-        ...userPackageFilter,
       },
       include: {
         campaign: {
           select: {
+            id: true,
             name: true,
             company: { select: { name: true } },
             brand: { select: { name: true } },
@@ -816,6 +835,8 @@ export const getClientApprovalMetrics = async (req: Request, res: Response) => {
     let firstDraftApprovedCount = 0;
     let twoRoundsOrLessCount = 0;
 
+    const campaignMap: Record<string, any> = {};
+
     submissions.forEach((sub) => {
       const rounds = 1 + sub._count.feedback;
       totalRounds += rounds;
@@ -823,22 +844,42 @@ export const getClientApprovalMetrics = async (req: Request, res: Response) => {
       if (rounds === 1) firstDraftApprovedCount++;
       if (rounds <= 2) twoRoundsOrLessCount++;
 
+      let diffHours = 0;
       if (sub.createdAt && sub.completedAt) {
-        totalReviewTimeHours += dayjs(sub.completedAt).diff(dayjs(sub.createdAt), 'hour');
+        diffHours = Math.max(0, dayjs(sub.completedAt).diff(dayjs(sub.createdAt), 'hour'));
+        totalReviewTimeHours += diffHours;
         reviewTimeCount++;
       }
+
+      // Grouping logic
+      const campId = sub.campaign.id;
+      if (!campaignMap[campId]) {
+        campaignMap[campId] = {
+          id: campId,
+          campaignName: sub.campaign.name,
+          clientName: sub.campaign.company?.name || sub.campaign.brand?.name || 'Unknown',
+          image: sub.campaign.campaignBrief?.images || '',
+          totalHours: 0,
+          totalRounds: 0,
+          count: 0,
+        };
+      }
+
+      campaignMap[campId].totalHours += diffHours;
+      campaignMap[campId].totalRounds += rounds;
+      campaignMap[campId].count += 1;
     });
 
-    const scatterPoints = submissions
-      .map((sub) => ({
-        id: sub.id,
-        x: sub.createdAt && sub.completedAt ? dayjs(sub.completedAt).diff(dayjs(sub.createdAt), 'hour') : 0,
-        y: 1 + sub._count.feedback,
-        campaignName: sub.campaign.name,
-        clientName: sub.campaign.company?.name || sub.campaign.brand?.name || 'Unknown',
-        image: sub.campaign.campaignBrief?.images || '',
+    const scatterPoints = Object.values(campaignMap)
+      .map((camp: any) => ({
+        id: camp.id,
+        x: camp.count > 0 ? Math.round(camp.totalHours / camp.count) : 0,
+        y: camp.count > 0 ? Number((camp.totalRounds / camp.count).toFixed(1)) : 0,
+        campaignName: camp.campaignName,
+        clientName: camp.clientName,
+        image: camp.image,
       }))
-      .filter((point) => point.x > 0);
+      .filter((point) => point.x > 0 || point.y > 0);
 
     const results = {
       firstDraftApprovalRate: submissions.length ? Math.round((firstDraftApprovedCount / submissions.length) * 100) : 0,
@@ -1101,7 +1142,7 @@ export const getClientSupportMetrics = async (req: Request, res: Response) => {
       ? Math.round(((currentUpgrades + currentRenewals + currentDowngrades) / currentTotalRetention) * 100)
       : 0;
     const currentNpsScore = currentPeriodNps?._avg?.rating ? Number(currentPeriodNps._avg.rating.toFixed(1)) : npsScore;
-    
+
     const prevTotalRetention = prevUpgrades + prevRenewals + prevDowngrades;
     const prevRetentionRate = prevTotalRetention
       ? Math.round(((prevUpgrades + prevRenewals + prevDowngrades) / prevTotalRetention) * 100)
@@ -1119,7 +1160,9 @@ export const getClientSupportMetrics = async (req: Request, res: Response) => {
       upgradeRate,
       avgDaysToNextPackage,
       monthlyRenewals,
-      retentionRateTrend: prevDateFilter ? calcTrend(hasDateFilter ? retentionRate : currentRetentionRate, prevRetentionRate) : null,
+      retentionRateTrend: prevDateFilter
+        ? calcTrend(hasDateFilter ? retentionRate : currentRetentionRate, prevRetentionRate)
+        : null,
       npsScoreTrend: prevDateFilter ? calcTrend(hasDateFilter ? npsScore : currentNpsScore, prevNpsScore) : null,
     });
   } catch (error) {
@@ -1217,27 +1260,28 @@ export const getClientShortlistMetrics = async (req: Request, res: Response) => 
   try {
     const { dateCondition, packageWhere } = getFilters(req);
 
-    const pitchPackageFilter = Object.keys(packageWhere).length ? { campaign: { company: packageWhere } } : {};
     const campaignPackageFilter = Object.keys(packageWhere).length ? { company: packageWhere } : {};
 
     const [reasonsData, timeData, fullyUtilizedCampaigns] = await Promise.all([
       prisma.pitch.findMany({
         where: {
           status: 'REJECTED',
-          campaign: { submissionVersion: 'v4' },
+          campaign: {
+            submissionVersion: 'v4',
+            ...campaignPackageFilter,
+          },
           ...dateCondition,
-          ...pitchPackageFilter,
         },
         select: { rejectionReason: true, customRejectionText: true },
       }),
       prisma.pitch.findMany({
         where: {
-          status: { in: ['APPROVED', 'REJECTED'] },
+          status: { in: ['APPROVED', 'REJECTED', 'MAYBE'] },
           campaign: {
             submissionVersion: 'v4',
+            ...campaignPackageFilter,
           },
           ...dateCondition,
-          ...pitchPackageFilter,
         },
         select: {
           createdAt: true,
@@ -1270,13 +1314,17 @@ export const getClientShortlistMetrics = async (req: Request, res: Response) => 
     // rejection reasons
     const reasons: Record<string, number> = {};
 
-    reasonsData.forEach((p) => {
-      let reason = 'No Reason Provided';
+    const STANDARD_REASONS = [
+      'Engagement Rate Too Low',
+      'Does Not Fit Criteria in Campaign Brief',
+      'Content is Not Fit for the Campaign',
+    ];
 
-      if (p.rejectionReason && p.rejectionReason !== 'Other') {
+    reasonsData.forEach((p) => {
+      let reason = 'Other';
+
+      if (p.rejectionReason && STANDARD_REASONS.includes(p.rejectionReason)) {
         reason = p.rejectionReason;
-      } else if (p.customRejectionText) {
-        reason = 'Other';
       }
       reasons[reason] = (reasons[reason] || 0) + 1;
     });
@@ -1395,8 +1443,7 @@ export const getClientShortlistMetrics = async (req: Request, res: Response) => 
       avgTurnaroundHours: turnaroundCount ? Math.round(overallTotalHours / turnaroundCount) : 0,
       rejectionReasons: Object.entries(reasons)
         .map(([name, value]) => ({ name, value }))
-        .sort((a, b) => b.value - a.value)
-        .slice(0, 5),
+        .sort((a, b) => b.value - a.value),
       avgSelectionPhaseDays: selectionPhaseCount ? Math.round(selectionPhaseHours / selectionPhaseCount / 24) : 0,
       trendData,
     };

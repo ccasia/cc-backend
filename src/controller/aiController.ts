@@ -15,8 +15,13 @@ interface AISettingsRequest extends Request {
 }
 
 export const aiSettings = async (req: Request, res: Response) => {
+  const userId = req.session.userid;
   try {
-    const aiModel = await prisma.aiModel.findFirst();
+    const aiModel = await prisma.aiModel.findFirst({
+      where: {
+        userId: userId,
+      },
+    });
 
     return res.status(200).json(aiModel);
   } catch (error) {
@@ -46,9 +51,14 @@ export const getCampaigns = async (req: Request, res: Response) => {
 
 export const updateAiSettings = async (req: AISettingsRequest, res: Response) => {
   const { apiKey, temperature, maxTokens, sectionPrompts } = req.body;
+  const userId = req.session.userid;
 
   try {
-    const existingAiSetting = await prisma.aiModel.findFirst();
+    const existingAiSetting = await prisma.aiModel.findFirst({
+      where: {
+        userId: userId,
+      },
+    });
 
     if (!existingAiSetting) {
       await prisma.aiModel.create({
@@ -58,6 +68,7 @@ export const updateAiSettings = async (req: AISettingsRequest, res: Response) =>
           temperature,
           maxOutputTokens: maxTokens,
           systemPrompt: sectionPrompts,
+          userId: userId,
         },
       });
     } else {

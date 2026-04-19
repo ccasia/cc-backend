@@ -23,7 +23,7 @@ model User {
   country                 String?             @db.VarChar(100)
   city                    String?             @db.VarChar(100)
   phoneNumber             String?             @db.VarChar(100)
-  updatedAt               DateTime            @updatedAt
+  updatedAt               DateTime?           @updatedAt
   status                  Status              @default(pending)
   eventId                 String?
   role                    RoleEnum
@@ -94,6 +94,7 @@ model User {
   userFlow      UserFlow[]
   activatedAt   DateTime?
   passwordSetAt DateTime?
+  aiModel       AiModel?
 }
 
 model EmailVerification {
@@ -224,6 +225,7 @@ model ChildAccount {
 model Role {
   id          String       @id @unique @default(cuid())
   name        String
+  slug        String?      @unique
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
   admin       Admin[]
@@ -659,6 +661,8 @@ model Campaign {
   campaignCredits Int?
   creditsPending  Int?
   creditsUtilized Int?
+  creditAllocationBreakdown Json?  // Tracks which subscriptions were charged and how much
+                                   // Format: [{ subscriptionId: string, amount: number }, ...]
 
   brandId        String?
   subscriptionId String?
@@ -1597,6 +1601,7 @@ model Bugs {
   id               String   @id @unique @default(cuid())
   stepsToReproduce String
   attachment       String?
+  attachments      String[]
   campaignName     String?
   createdAt        DateTime @default(now())
   userId           String?
@@ -2294,4 +2299,22 @@ model SubscriptionHistory {
   createdAt DateTime @default(now())
 
   actionByUserId String?
+}
+
+model AiModel {
+  id String @id @unique @default(cuid())
+
+  model           String
+  temperature     Float
+  systemPrompt    Json?
+  maxOutputTokens Int
+  apiKey          String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId String? @unique
+  user   User?   @relation(references: [id], fields: [userId])
+
+  @@map("ai_model")
 }

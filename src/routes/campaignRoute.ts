@@ -92,10 +92,7 @@ import {
   deleteEntry as deleteManualCreator,
   updateEntry as updateManualCreator,
 } from '@controllers/manualCreatorController';
-import {
-  getCampaignPostSnapshots,
-  triggerManualSnapshot,
-} from '@controllers/postEngagementSnapshotController';
+import { getCampaignPostSnapshots, triggerManualSnapshot } from '@controllers/postEngagementSnapshotController';
 import { isSuperAdmin, isAdmin } from '@middlewares/onlySuperadmin';
 import { canActivateCampaign } from '@middlewares/adminOrClient';
 

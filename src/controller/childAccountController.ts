@@ -94,7 +94,9 @@ export const getChildAccounts = async (req: Request, res: Response) => {
       },
     });
 
-    return res.status(200).json(childAccounts);
+    const sanitizedData = childAccounts.map((ca) => ({ ...ca, password: null }));
+
+    return res.status(200).json(sanitizedData);
   } catch (error) {
     console.error('Error fetching child accounts:', error);
     return res.status(500).json({ message: 'Internal server error' });
@@ -144,6 +146,10 @@ export const createChildAccount = async (req: Request, res: Response) => {
     // Normalize email to lowercase for consistent storage and lookup
     const email = rawEmail.toLowerCase().trim();
 
+    if (!firstName || !firstName.trim() || !lastName || !lastName.trim()) {
+      return res.status(400).json({ message: 'First name and last name are required' });
+    }
+
     console.log('Creating child account for client ID:', clientId);
     console.log('Request body:', { email, firstName, lastName });
 
@@ -168,7 +174,8 @@ export const createChildAccount = async (req: Request, res: Response) => {
     if (!parentClient.user || parentClient.user.status !== 'active') {
       console.log('Parent client user status:', parentClient.user?.status);
       return res.status(403).json({
-        message: 'Cannot invite child accounts until the main account has been activated. The primary account holder must complete their activation first.',
+        message:
+          'Cannot invite child accounts until the main account has been activated. The primary account holder must complete their activation first.',
       });
     }
 
@@ -193,86 +200,38 @@ export const createChildAccount = async (req: Request, res: Response) => {
     });
 
     if (existingUser) {
-      const childAccount = await prisma.childAccount.create({
-        data: {
-          email,
-          firstName,
-          lastName,
-          isActive: true,
-          parentClientId: clientId,
-        },
+      return res.status(400).json({
+        message: 'This email is already associated with an existing account and cannot be invited as a child account',
       });
+    }
 
-      const parentUserId = parentClient.user?.id;
+    // Generate invitation token
+    const invitationToken = crypto.randomBytes(32).toString('hex');
+    const tokenExpiresAt = new Date();
+    tokenExpiresAt.setDate(tokenExpiresAt.getDate() + 7); // Token expires in 7 days
 
-      if (parentUserId) {
-        const parentCampaigns = await prisma.campaignAdmin.findMany({
-          where: {
-            adminId: parentUserId,
-          },
-          select: {
-            campaignId: true,
-          },
-        });
-        const campaignIds = parentCampaigns.map((c) => c.campaignId);
+    // Create child account
+    const childAccount = await prisma.childAccount.create({
+      data: {
+        email,
+        firstName,
+        lastName,
+        parentClientId: clientId,
+        invitationToken,
+        tokenExpiresAt,
+      },
+    });
 
-        const newAdminEntries = campaignIds.map((campaignId) => ({
-          campaignId: campaignId,
-          adminId: existingUser.id,
-        }));
+    const baseUrl = process.env.BASE_EMAIL_URL || 'http://localhost:3000';
+    const invitationLink = `${baseUrl}/auth/child-account-setup/${invitationToken}`;
 
-        if (newAdminEntries.length > 0) {
-          await prisma.campaignAdmin.createMany({
-            data: newAdminEntries,
-            skipDuplicates: true,
-          });
-          console.log(
-            `Added existing child ${email} to ${newAdminEntries.length} campaigns from new parent ${clientId}`,
-          );
-        }
-      }
+    console.log('BASE_EMAIL_URL:', process.env.BASE_EMAIL_URL);
+    console.log('Generated invitation link:', invitationLink);
 
-      return res.status(201).json({
-        message: 'Child account invitation sent successfully',
-        childAccount,
-      });
-    } else {
-      // Generate invitation token
-      const invitationToken = crypto.randomBytes(32).toString('hex');
-      const tokenExpiresAt = new Date();
-      tokenExpiresAt.setDate(tokenExpiresAt.getDate() + 7); // Token expires in 7 days
-
-      // Create child account
-      const childAccount = await prisma.childAccount.create({
-        data: {
-          email,
-          firstName,
-          lastName,
-          parentClientId: clientId,
-          invitationToken,
-          tokenExpiresAt,
-        },
-      });
-
-      // Send invitation email
-      // const parentClientWithDetails = await prisma.client.findUnique({
-      //   where: { id: clientId },
-      //   include: {
-      //     user: true,
-      //     company: true,
-      //   },
-      // });
-
-      const baseUrl = process.env.BASE_EMAIL_URL || 'http://localhost:3000';
-      const invitationLink = `${baseUrl}/auth/child-account-setup/${invitationToken}`;
-
-      console.log('BASE_EMAIL_URL:', process.env.BASE_EMAIL_URL);
-      console.log('Generated invitation link:', invitationLink);
-
-      const emailContent = {
-        to: email,
-        subject: `Welcome to Your Client Portal`,
-        html: `
+    const emailContent = {
+      to: email,
+      subject: `Welcome to Your Client Portal`,
+      html: `
           <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -404,18 +363,17 @@ export const createChildAccount = async (req: Request, res: Response) => {
           </table>
       </body>
           `,
-      };
+    };
 
-      sendEmail(emailContent).catch((emailError) => {
-        console.error('Error sending invitation email:', emailError);
-        return res.status(500).json({ message: 'Failed to send invitation email' });
-      });
+    sendEmail(emailContent).catch((emailError) => {
+      console.error('Error sending invitation email:', emailError);
+      return res.status(500).json({ message: 'Failed to send invitation email' });
+    });
 
-      return res.status(201).json({
-        message: 'Child account invitation sent successfully',
-        childAccount,
-      });
-    }
+    return res.status(201).json({
+      message: 'Child account invitation sent successfully',
+      childAccount,
+    });
   } catch (error) {
     console.error('Error creating child account:', error);
     console.error('Full error details:', JSON.stringify(error, null, 2));
@@ -905,7 +863,7 @@ export const activateChildAccount = async (req: Request, res: Response) => {
         name: `${childAccount.firstName || ''} ${childAccount.lastName || ''}`.trim(),
         role: 'client' as any,
         status: 'active' as any,
-        activatedAt: new Date()
+        activatedAt: new Date(),
       },
     });
 
