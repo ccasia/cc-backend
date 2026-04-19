@@ -512,12 +512,11 @@ export const approveV4Submission = async (req: Request, res: Response) => {
 
     // Update only the latest video (not all video versions) to avoid resurrecting old archived videos
     if (submission.video && submission.video.length > 0) {
-      const latestVideo = (videoId
-        ? submission.video.find((v: any) => v.id === videoId)
-        : null)
-        || [...submission.video].sort(
-            (a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-          )[0];
+      const latestVideo =
+        (videoId ? submission.video.find((v: any) => v.id === videoId) : null) ||
+        [...submission.video].sort(
+          (a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+        )[0];
 
       if (latestVideo) {
         updates.push(
@@ -895,12 +894,11 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
 
     // Update only the latest video (not all video versions) to avoid resurrecting old archived videos
     if (submission.video && submission.video.length > 0) {
-      const latestVideo = (bodyVideoId
-        ? submission.video.find((v: any) => v.id === bodyVideoId)
-        : null)
-        || [...submission.video].sort(
-            (a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-          )[0];
+      const latestVideo =
+        (bodyVideoId ? submission.video.find((v: any) => v.id === bodyVideoId) : null) ||
+        [...submission.video].sort(
+          (a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+        )[0];
 
       if (latestVideo) {
         deadline = latestVideo.feedbackDeadline || null;

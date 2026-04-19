@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import {
-	getDiscoveryCreatorsList,
-	getNonPlatformDiscoveryCreatorsList,
-	inviteDiscoveryCreatorsController,
+  getDiscoveryCreatorsList,
+  getNonPlatformDiscoveryCreatorsList,
+  inviteDiscoveryCreatorsController,
 } from '@controllers/discoveryController';
 import { isLoggedIn } from '@middlewares/onlyLogin';
 

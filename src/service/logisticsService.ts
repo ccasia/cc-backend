@@ -753,7 +753,7 @@ export const retryDeliveryService = async (logisticId: string, resolvedBy: strin
   });
 };
 
-type LogisticsInfoInput = {
+interface LogisticsInfoInput {
   userId: string;
   campaignId: string;
   dietaryRestrictions?: string;
@@ -765,7 +765,7 @@ type LogisticsInfoInput = {
     country: string;
     postcode: string;
   };
-};
+}
 
 export const creatorProductInfoService = async ({
   userId,
@@ -859,7 +859,7 @@ export const creatorProductInfoService = async ({
 
 // -----------------------Reservation services ----------------------------
 
-type ReservationConfigData = {
+interface ReservationConfigData {
   mode: 'MANUAL_CONFIRMATION' | 'AUTO_SCHEDULE';
   locations: {
     name: string;
@@ -876,7 +876,7 @@ type ReservationConfigData = {
   }[];
   clientRemarks?: string;
   allowMultipleBookings: boolean;
-};
+}
 
 export const upsertReservationConfigService = async (campaignId: string, data: ReservationConfigData) => {
   const { mode, locations, availabilityRules, clientRemarks, allowMultipleBookings } = data;
@@ -1035,7 +1035,7 @@ export const getAvailableSlotsService = async (campaignId: string, monthDate: Da
     if (activeRules.length === 0) {
       daysInMonth.push({ date: displayDate, available: false, slots: [] });
     } else {
-      let daySlots: any[] = [];
+      const daySlots: any[] = [];
 
       const matchedTimeKeys = new Set<number>();
 
@@ -1046,10 +1046,10 @@ export const getAvailableSlotsService = async (campaignId: string, monthDate: Da
           const [startHour, startMinute] = slotDef.startTime.split(':').map(Number);
           const [endHour, endMinute] = slotDef.endTime.split(':').map(Number);
 
-          let slotStart = new Date(currentDate);
+          const slotStart = new Date(currentDate);
           slotStart.setHours(startHour, startMinute, 0, 0);
 
-          let slotEnd = new Date(currentDate);
+          const slotEnd = new Date(currentDate);
           slotEnd.setHours(endHour, endMinute, 0, 0);
 
           const timeKey = slotStart.getTime();
@@ -1108,14 +1108,14 @@ export const getAvailableSlotsService = async (campaignId: string, monthDate: Da
   return daysInMonth;
 };
 
-type ReservationSelectionData = {
+interface ReservationSelectionData {
   creatorId: string;
   outlet: string;
   phoneNumber: string;
   remarks?: string;
   pax: number;
   selectedSlots: { start: string; end: string }[];
-};
+}
 
 export const createReservationService = async (campaignId: string, creatorId: string) => {
   return await prisma.$transaction(async (tx) => {
@@ -1251,7 +1251,7 @@ export const submitReservationService = async (campaignId: string, data: Reserva
   });
 };
 
-type ConfirmReservationData = {
+interface ConfirmReservationData {
   slotId: string;
   picName?: string;
   picContact?: string;
@@ -1259,7 +1259,7 @@ type ConfirmReservationData = {
   promoCode?: string;
   clientRemarks?: string;
   outlet?: string;
-};
+}
 
 export const updateReservationDetailService = async (logisticId: string, data: any) => {
   return await prisma.logistic.update({

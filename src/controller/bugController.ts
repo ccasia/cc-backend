@@ -26,7 +26,7 @@ export const createNewBug = async (req: Request, res: Response) => {
 
     // Upload all files to GCS in parallel
     const uploadedUrls = await Promise.all(
-      cappedFiles.map((f: any, i: number) => uploadImage(f.tempFilePath, `${Date.now()}-${i}-${f.name}`, 'bugs'))
+      cappedFiles.map((f: any, i: number) => uploadImage(f.tempFilePath, `${Date.now()}-${i}-${f.name}`, 'bugs')),
     );
 
     const item = await prisma.bugs.create({

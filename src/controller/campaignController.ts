@@ -307,7 +307,7 @@ export const createCampaign = async (req: Request, res: Response) => {
         const creditAllocationBreakdown: any[] = [];
         const parsedCampaignCredits = Number(campaignCredits) || 0;
         let remainingCreditsToAllocate = parsedCampaignCredits;
-        let selectedSubscriptionId: string | undefined = existingClient.subscriptions?.[0]?.id;
+        const selectedSubscriptionId: string | undefined = existingClient.subscriptions?.[0]?.id;
 
         if (existingClient.subscriptions && existingClient.subscriptions.length > 0 && parsedCampaignCredits > 0) {
           // FIFO: Charge oldest subscriptions first
@@ -938,7 +938,7 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
         const creditAllocationBreakdown: any[] = [];
         const parsedCampaignCredits = Number(campaignCredits) || 0;
         let remainingCreditsToAllocate = parsedCampaignCredits;
-        let selectedSubscriptionId: string | undefined = existingClient.subscriptions?.[0]?.id;
+        const selectedSubscriptionId: string | undefined = existingClient.subscriptions?.[0]?.id;
 
         if (existingClient.subscriptions && existingClient.subscriptions.length > 0 && parsedCampaignCredits > 0) {
           for (const sub of existingClient.subscriptions) {
@@ -3981,11 +3981,11 @@ export const closeCampaign = async (req: Request, res: Response) => {
       // Step 3: Refund unutilized credits using allocation breakdown (LIFO - newest subscription first)
       const totalRefundedCredits = campaign.creditsPending || 0;
       let remainingToRefund = totalRefundedCredits;
-      const newBreakdown: Array<{ subscriptionId: string; amount: number }> = [];
+      const newBreakdown: { subscriptionId: string; amount: number }[] = [];
 
       if (remainingToRefund > 0 && campaign.creditAllocationBreakdown) {
         // Get allocation breakdown
-        const breakdown = campaign.creditAllocationBreakdown as Array<{ subscriptionId: string; amount: number }>;
+        const breakdown = campaign.creditAllocationBreakdown as { subscriptionId: string; amount: number }[];
 
         if (breakdown.length > 0) {
           // Reverse order: newest allocation first (reverse FIFO = LIFO)
@@ -11575,8 +11575,7 @@ export const changeCampaignCredit = async (req: Request, res: Response) => {
 
         let remainingToRefund = refundAmount;
 
-        const breakdown =
-          (campaign.creditAllocationBreakdown as Array<{ subscriptionId: string; amount: number }>) || [];
+        const breakdown = (campaign.creditAllocationBreakdown as { subscriptionId: string; amount: number }[]) || [];
         const reversedBreakdown = [...breakdown].reverse();
         const newBreakdown: any[] = [];
 
@@ -11620,8 +11619,7 @@ export const changeCampaignCredit = async (req: Request, res: Response) => {
         });
 
         let remainingToCharge = newCredit;
-        const breakdown =
-          (campaign.creditAllocationBreakdown as Array<{ subscriptionId: string; amount: number }>) || [];
+        const breakdown = (campaign.creditAllocationBreakdown as { subscriptionId: string; amount: number }[]) || [];
 
         for (const sub of activeSubs) {
           if (remainingToCharge <= 0) break;

@@ -14,12 +14,12 @@ const prisma = new PrismaClient();
 
 export interface BatchRequestConfig {
   platform: 'Instagram' | 'TikTok';
-  requests: Array<{
+  requests: {
     mediaId?: string;
     shortCode?: string;
     userId: string;
     campaignId?: string;
-  }>;
+  }[];
   batchSize?: number;
   delayMs?: number;
 }

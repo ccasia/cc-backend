@@ -455,7 +455,7 @@ export const createClientCampaign = async (req: Request, res: Response) => {
         orderBy: { createdAt: 'asc' },
       });
 
-      let selectedSubscriptionId: string | undefined = activeSubscriptions?.[0]?.id;
+      const selectedSubscriptionId: string | undefined = activeSubscriptions?.[0]?.id;
       let remainingCreditsToAllocate = requestedCredits;
       const creditAllocationBreakdown: any[] = [];
 

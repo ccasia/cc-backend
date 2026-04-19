@@ -65,10 +65,10 @@ export const getMyV4Submissions = async (req: Request, res: Response) => {
         // For other statuses, show all feedback that was sent to creator (both COMMENT and REQUEST types)
         filteredFeedback = submission.feedback.filter((feedback) => feedback.sentToCreator);
       }
-      
+
       // Map feedback to include submissionComment data
       filteredFeedback = filteredFeedback.map(mapFeedbackWithComments);
-      
+
       return {
         ...submission,
         feedback: filteredFeedback,
@@ -82,7 +82,6 @@ export const getMyV4Submissions = async (req: Request, res: Response) => {
       photos: submissionsWithFilteredFeedback.filter((s) => s.submissionType.type === 'PHOTO'),
       rawFootage: submissionsWithFilteredFeedback.filter((s) => s.submissionType.type === 'RAW_FOOTAGE'),
     };
-
 
     // Calculate overall progress
     const totalSubmissions = submissionsWithFilteredFeedback.length;
@@ -396,38 +395,38 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
         data: { resolvedAt: new Date(), resolvedByUserId: creatorId },
       });
 
-    // Always trigger worker if there are changes (new files OR photos to remove)
-    const hasNewFiles = uploadedVideos.length > 0 || uploadedPhotos.length > 0 || uploadedRawFootages.length > 0;
-    const hasPhotosToRemove = photosToRemove.length > 0;
+      // Always trigger worker if there are changes (new files OR photos to remove)
+      const hasNewFiles = uploadedVideos.length > 0 || uploadedPhotos.length > 0 || uploadedRawFootages.length > 0;
+      const hasPhotosToRemove = photosToRemove.length > 0;
 
-    if (hasNewFiles || hasPhotosToRemove) {
-      try {
-        amqp = await amqplib.connect(process.env.RABBIT_MQ!);
-        channel = await amqp.createChannel();
-        await channel.assertQueue('draft', { durable: true });
+      if (hasNewFiles || hasPhotosToRemove) {
+        try {
+          amqp = await amqplib.connect(process.env.RABBIT_MQ!);
+          channel = await amqp.createChannel();
+          await channel.assertQueue('draft', { durable: true });
 
-        const payload = {
-          userid: creatorId,
-          submissionId,
-          campaignId: submission.campaignId,
-          folder: submission.submissionType.type,
-          caption,
-          admins: submission.campaign.campaignAdmin,
-          filePaths: Object.fromEntries(filePaths),
-          // V4 specific flags
-          isV4: true,
-          submissionType: submission.submissionType.type,
-          // Add existing media info for worker to preserve
-          existingMedia: {
-            videos: submission.video?.map((v) => ({ id: v.id, status: v.status })) || [],
-            photos: submission.photos?.map((p) => ({ id: p.id, status: p.status })) || [],
-            rawFootages: submission.rawFootages?.map((r) => ({ id: r.id, status: r.status })) || [],
-          },
-          // V4 Additive System: Always preserve existing media, never replace
-          preserveExistingMedia: true,
-          // Include photos to remove for worker processing
-          photosToRemove: photosToRemove,
-        };
+          const payload = {
+            userid: creatorId,
+            submissionId,
+            campaignId: submission.campaignId,
+            folder: submission.submissionType.type,
+            caption,
+            admins: submission.campaign.campaignAdmin,
+            filePaths: Object.fromEntries(filePaths),
+            // V4 specific flags
+            isV4: true,
+            submissionType: submission.submissionType.type,
+            // Add existing media info for worker to preserve
+            existingMedia: {
+              videos: submission.video?.map((v) => ({ id: v.id, status: v.status })) || [],
+              photos: submission.photos?.map((p) => ({ id: p.id, status: p.status })) || [],
+              rawFootages: submission.rawFootages?.map((r) => ({ id: r.id, status: r.status })) || [],
+            },
+            // V4 Additive System: Always preserve existing media, never replace
+            preserveExistingMedia: true,
+            // Include photos to remove for worker processing
+            photosToRemove: photosToRemove,
+          };
 
           channel.sendToQueue('draft', Buffer.from(JSON.stringify(payload)), { persistent: true });
         } finally {

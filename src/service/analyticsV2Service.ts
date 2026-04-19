@@ -396,9 +396,9 @@ export const getCreatorsByCountry = async (country: string, creditTierNames: str
     INNER JOIN "Creator" c ON c."userId" = u.id
     ${buildCreditTierJoin('c', creditTierNames)}
     WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
-      AND ${isUnknown
-        ? Prisma.sql`(u.country IS NULL OR TRIM(u.country) = '')`
-        : Prisma.sql`TRIM(u.country) = ${country}`}
+      AND ${
+        isUnknown ? Prisma.sql`(u.country IS NULL OR TRIM(u.country) = '')` : Prisma.sql`TRIM(u.country) = ${country}`
+      }
     ORDER BY u."createdAt" DESC
   `;
 
@@ -805,8 +805,7 @@ export const getTimeToActivationData = async (
 
     const currentAvg = currentAvgResult[0]?.avgdays != null ? Number(currentAvgResult[0].avgdays) : null;
     const previousAvg = previousAvgResult[0]?.avgdays != null ? Number(previousAvgResult[0].avgdays) : null;
-    const change =
-      currentAvg != null && previousAvg != null ? Math.round((currentAvg - previousAvg) * 10) / 10 : null;
+    const change = currentAvg != null && previousAvg != null ? Math.round((currentAvg - previousAvg) * 10) / 10 : null;
 
     return {
       granularity: 'daily',
@@ -939,8 +938,7 @@ export const getTimeToIgActivationData = async (
 
     const currentAvg = currentAvgResult[0]?.avgdays != null ? Number(currentAvgResult[0].avgdays) : null;
     const previousAvg = previousAvgResult[0]?.avgdays != null ? Number(previousAvgResult[0].avgdays) : null;
-    const change =
-      currentAvg != null && previousAvg != null ? Math.round((currentAvg - previousAvg) * 10) / 10 : null;
+    const change = currentAvg != null && previousAvg != null ? Math.round((currentAvg - previousAvg) * 10) / 10 : null;
 
     return {
       granularity: 'daily',
@@ -1071,8 +1069,7 @@ export const getTimeToTiktokActivationData = async (
 
     const currentAvg = currentAvgResult[0]?.avgdays != null ? Number(currentAvgResult[0].avgdays) : null;
     const previousAvg = previousAvgResult[0]?.avgdays != null ? Number(previousAvgResult[0].avgdays) : null;
-    const change =
-      currentAvg != null && previousAvg != null ? Math.round((currentAvg - previousAvg) * 10) / 10 : null;
+    const change = currentAvg != null && previousAvg != null ? Math.round((currentAvg - previousAvg) * 10) / 10 : null;
 
     return {
       granularity: 'daily',
@@ -1117,7 +1114,11 @@ interface TimeToTiktokActivationCreatorRow {
   daysToActivation: number;
 }
 
-export const getTimeToTiktokActivationCreators = async (startDate: Date, endDate: Date, creditTierNames: string[] = []) => {
+export const getTimeToTiktokActivationCreators = async (
+  startDate: Date,
+  endDate: Date,
+  creditTierNames: string[] = [],
+) => {
   const creators = await prisma.$queryRaw<TimeToTiktokActivationCreatorRow[]>`
     SELECT
       u.id AS "userId",
@@ -1399,8 +1400,18 @@ export const getMediaKitActivationData = async (startDate?: Date, endDate?: Date
     return {
       uniqueConnected,
       platforms: [
-        { platform: 'TikTok', connected: tiktokConnected, total, rate: total > 0 ? Math.round((tiktokConnected / total) * 1000) / 10 : 0 },
-        { platform: 'Instagram', connected: instagramConnected, total, rate: total > 0 ? Math.round((instagramConnected / total) * 1000) / 10 : 0 },
+        {
+          platform: 'TikTok',
+          connected: tiktokConnected,
+          total,
+          rate: total > 0 ? Math.round((tiktokConnected / total) * 1000) / 10 : 0,
+        },
+        {
+          platform: 'Instagram',
+          connected: instagramConnected,
+          total,
+          rate: total > 0 ? Math.round((instagramConnected / total) * 1000) / 10 : 0,
+        },
       ],
     };
   }
@@ -1410,13 +1421,19 @@ export const getMediaKitActivationData = async (startDate?: Date, endDate?: Date
     prisma.tiktokUser.count({
       where: {
         createdAt: { gte: startDate, lte: endDate },
-        creator: { user: { role: 'creator', status: { in: ['active', 'pending'] } }, ...(buildCreditTierOrmFilter(creditTierNames) || {}) },
+        creator: {
+          user: { role: 'creator', status: { in: ['active', 'pending'] } },
+          ...(buildCreditTierOrmFilter(creditTierNames) || {}),
+        },
       },
     }),
     prisma.instagramUser.count({
       where: {
         createdAt: { gte: startDate, lte: endDate },
-        creator: { user: { role: 'creator', status: { in: ['active', 'pending'] } }, ...(buildCreditTierOrmFilter(creditTierNames) || {}) },
+        creator: {
+          user: { role: 'creator', status: { in: ['active', 'pending'] } },
+          ...(buildCreditTierOrmFilter(creditTierNames) || {}),
+        },
       },
     }),
     prisma.creator.count({ where: baseWhere }), // Total is always ALL active creators
@@ -1438,8 +1455,18 @@ export const getMediaKitActivationData = async (startDate?: Date, endDate?: Date
   return {
     uniqueConnected,
     platforms: [
-      { platform: 'TikTok', connected: tiktokConnected, total, rate: total > 0 ? Math.round((tiktokConnected / total) * 1000) / 10 : 0 },
-      { platform: 'Instagram', connected: instagramConnected, total, rate: total > 0 ? Math.round((instagramConnected / total) * 1000) / 10 : 0 },
+      {
+        platform: 'TikTok',
+        connected: tiktokConnected,
+        total,
+        rate: total > 0 ? Math.round((tiktokConnected / total) * 1000) / 10 : 0,
+      },
+      {
+        platform: 'Instagram',
+        connected: instagramConnected,
+        total,
+        rate: total > 0 ? Math.round((instagramConnected / total) * 1000) / 10 : 0,
+      },
     ],
   };
 };
@@ -1768,8 +1795,16 @@ const COUNTRY_FLAG_COLORS: Record<string, string> = {
 
 // Fallback palette for countries not in the flag map
 const COUNTRY_FALLBACK_COLORS = [
-  '#8B5CF6', '#EC4899', '#14B8A6', '#F59E0B', '#6366F1',
-  '#84CC16', '#F472B6', '#06B6D4', '#A855F7', '#FB923C',
+  '#8B5CF6',
+  '#EC4899',
+  '#14B8A6',
+  '#F59E0B',
+  '#6366F1',
+  '#84CC16',
+  '#F472B6',
+  '#06B6D4',
+  '#A855F7',
+  '#FB923C',
 ];
 
 // Shared demographics processing
@@ -2015,8 +2050,7 @@ export const getAvgAgreementResponseData = async (
 
     const currentAvg = currentAvgResult[0]?.avghours != null ? Number(currentAvgResult[0].avghours) : null;
     const previousAvg = previousAvgResult[0]?.avghours != null ? Number(previousAvgResult[0].avghours) : null;
-    const change =
-      currentAvg != null && previousAvg != null ? Math.round((currentAvg - previousAvg) * 10) / 10 : null;
+    const change = currentAvg != null && previousAvg != null ? Math.round((currentAvg - previousAvg) * 10) / 10 : null;
 
     return {
       granularity: 'daily',
@@ -2064,7 +2098,11 @@ interface AgreementResponseDetailRow {
   responseHours: number;
 }
 
-export const getAvgAgreementResponseDetails = async (startDate: Date, endDate: Date, creditTierNames: string[] = []) => {
+export const getAvgAgreementResponseDetails = async (
+  startDate: Date,
+  endDate: Date,
+  creditTierNames: string[] = [],
+) => {
   const rows = await prisma.$queryRaw<AgreementResponseDetailRow[]>`
     SELECT
       u.name,
@@ -2112,18 +2150,25 @@ export const getAvgAgreementResponseDetails = async (startDate: Date, endDate: D
 
   const avg = avgResult[0]?.avghours != null ? Number(avgResult[0].avghours) : null;
 
-  const fastest = mapped.length > 0
-    ? { name: mapped[0].name, avatar: mapped[0].avatar, time: mapped[0].responseHours, campaign: mapped[0].campaign }
-    : null;
-
-  const slowest = mapped.length > 1
-    ? { name: mapped[mapped.length - 1].name, avatar: mapped[mapped.length - 1].avatar, time: mapped[mapped.length - 1].responseHours, campaign: mapped[mapped.length - 1].campaign }
-    : mapped.length === 1
-      ? fastest
+  const fastest =
+    mapped.length > 0
+      ? { name: mapped[0].name, avatar: mapped[0].avatar, time: mapped[0].responseHours, campaign: mapped[0].campaign }
       : null;
 
+  const slowest =
+    mapped.length > 1
+      ? {
+          name: mapped[mapped.length - 1].name,
+          avatar: mapped[mapped.length - 1].avatar,
+          time: mapped[mapped.length - 1].responseHours,
+          campaign: mapped[mapped.length - 1].campaign,
+        }
+      : mapped.length === 1
+        ? fastest
+        : null;
+
   return { avg, count: mapped.length, fastest, slowest };
-}
+};
 
 // Avg Time to 1st Accepted Campaign
 
@@ -2176,11 +2221,7 @@ const fillFirstCampaignMonthGaps = (
   return result;
 };
 
-const fillFirstCampaignDayGaps = (
-  rows: DailyAvgHoursRow[],
-  startDate: Date,
-  endDate: Date,
-): AvgFirstCampaignDay[] => {
+const fillFirstCampaignDayGaps = (rows: DailyAvgHoursRow[], startDate: Date, endDate: Date): AvgFirstCampaignDay[] => {
   const avgMap = new Map<string, number>();
   for (const row of rows) {
     avgMap.set(row.date, row.avghours);
@@ -2300,8 +2341,7 @@ export const getAvgFirstCampaignData = async (
 
     const currentAvg = currentAvgResult[0]?.avghours != null ? Number(currentAvgResult[0].avghours) : null;
     const previousAvg = previousAvgResult[0]?.avghours != null ? Number(previousAvgResult[0].avghours) : null;
-    const change =
-      currentAvg != null && previousAvg != null ? Math.round((currentAvg - previousAvg) * 10) / 10 : null;
+    const change = currentAvg != null && previousAvg != null ? Math.round((currentAvg - previousAvg) * 10) / 10 : null;
 
     return {
       granularity: 'daily',
@@ -2423,18 +2463,25 @@ export const getAvgFirstCampaignDetails = async (startDate: Date, endDate: Date,
 
   const avg = avgResult[0]?.avghours != null ? Number(avgResult[0].avghours) : null;
 
-  const fastest = mapped.length > 0
-    ? { name: mapped[0].name, avatar: mapped[0].avatar, time: mapped[0].responseHours, campaign: mapped[0].campaign }
-    : null;
-
-  const slowest = mapped.length > 1
-    ? { name: mapped[mapped.length - 1].name, avatar: mapped[mapped.length - 1].avatar, time: mapped[mapped.length - 1].responseHours, campaign: mapped[mapped.length - 1].campaign }
-    : mapped.length === 1
-      ? fastest
+  const fastest =
+    mapped.length > 0
+      ? { name: mapped[0].name, avatar: mapped[0].avatar, time: mapped[0].responseHours, campaign: mapped[0].campaign }
       : null;
 
+  const slowest =
+    mapped.length > 1
+      ? {
+          name: mapped[mapped.length - 1].name,
+          avatar: mapped[mapped.length - 1].avatar,
+          time: mapped[mapped.length - 1].responseHours,
+          campaign: mapped[mapped.length - 1].campaign,
+        }
+      : mapped.length === 1
+        ? fastest
+        : null;
+
   return { avg, count: mapped.length, fastest, slowest };
-}
+};
 
 // Avg Submission Response Time
 // Measures time from agreement completion to first video draft submission.
@@ -2599,8 +2646,7 @@ export const getAvgSubmissionResponseData = async (
 
     const currentAvg = currentAvgResult[0]?.avghours != null ? Number(currentAvgResult[0].avghours) : null;
     const previousAvg = previousAvgResult[0]?.avghours != null ? Number(previousAvgResult[0].avghours) : null;
-    const change =
-      currentAvg != null && previousAvg != null ? Math.round((currentAvg - previousAvg) * 10) / 10 : null;
+    const change = currentAvg != null && previousAvg != null ? Math.round((currentAvg - previousAvg) * 10) / 10 : null;
 
     return {
       granularity: 'daily',
@@ -2639,7 +2685,11 @@ interface SubmissionResponseDetailRow {
   responseHours: number;
 }
 
-export const getAvgSubmissionResponseDetails = async (startDate: Date, endDate: Date, creditTierNames: string[] = []) => {
+export const getAvgSubmissionResponseDetails = async (
+  startDate: Date,
+  endDate: Date,
+  creditTierNames: string[] = [],
+) => {
   const rows = await prisma.$queryRaw<SubmissionResponseDetailRow[]>`
     SELECT
       u.name,
@@ -2669,15 +2719,22 @@ export const getAvgSubmissionResponseDetails = async (startDate: Date, endDate: 
 
   const avg = avgResult[0]?.avghours != null ? Number(avgResult[0].avghours) : null;
 
-  const fastest = mapped.length > 0
-    ? { name: mapped[0].name, avatar: mapped[0].avatar, time: mapped[0].responseHours, campaign: mapped[0].campaign }
-    : null;
-
-  const slowest = mapped.length > 1
-    ? { name: mapped[mapped.length - 1].name, avatar: mapped[mapped.length - 1].avatar, time: mapped[mapped.length - 1].responseHours, campaign: mapped[mapped.length - 1].campaign }
-    : mapped.length === 1
-      ? fastest
+  const fastest =
+    mapped.length > 0
+      ? { name: mapped[0].name, avatar: mapped[0].avatar, time: mapped[0].responseHours, campaign: mapped[0].campaign }
       : null;
+
+  const slowest =
+    mapped.length > 1
+      ? {
+          name: mapped[mapped.length - 1].name,
+          avatar: mapped[mapped.length - 1].avatar,
+          time: mapped[mapped.length - 1].responseHours,
+          campaign: mapped[mapped.length - 1].campaign,
+        }
+      : mapped.length === 1
+        ? fastest
+        : null;
 
   return { avg, count: mapped.length, fastest, slowest };
 };
@@ -2776,7 +2833,12 @@ export const getClientRejectionRateData = async (startDate?: Date, endDate?: Dat
   const avgRate = totalSent > 0 ? Math.round((totalRejected / totalSent) * 1000) / 10 : 0;
 
   // Monthly trend — aggregate rejection rate by month
-  interface RejectionTrendRow { year: number; month: number; rejected: number; total: number; }
+  interface RejectionTrendRow {
+    year: number;
+    month: number;
+    rejected: number;
+    total: number;
+  }
 
   const trendRows = hasDateFilter
     ? await prisma.$queryRaw<RejectionTrendRow[]>`
@@ -2996,7 +3058,8 @@ export const getCreditsPerCSData = async (startDate?: Date, endDate?: Date) => {
       creditsUtilized,
       creditsPending,
       version: row.submissionVersion === 'v4' ? 'V4' : 'V2',
-      package: pkgLower === 'basic' ? 'Basic' : pkgLower === 'essential' ? 'Essential' : pkgLower === 'pro' ? 'Pro' : 'Custom',
+      package:
+        pkgLower === 'basic' ? 'Basic' : pkgLower === 'essential' ? 'Essential' : pkgLower === 'pro' ? 'Pro' : 'Custom',
       campaignImage,
     });
   }
@@ -3171,7 +3234,11 @@ interface TopShortlistedCreatorRow {
   rejected: number;
 }
 
-export const getTopShortlistedCreatorsData = async (startDate?: Date, endDate?: Date, creditTierNames: string[] = []) => {
+export const getTopShortlistedCreatorsData = async (
+  startDate?: Date,
+  endDate?: Date,
+  creditTierNames: string[] = [],
+) => {
   const hasDateFilter = !!startDate && !!endDate;
 
   const rows = hasDateFilter

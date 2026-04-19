@@ -424,9 +424,7 @@ export const submitV4Content = async (
               userId: submission.userId,
               submissionId: submission.id,
               status: 'PENDING',
-              ...(index === 0 && latestExistingVideo
-                ? { resubmittedFromId: latestExistingVideo.id }
-                : {}),
+              ...(index === 0 && latestExistingVideo ? { resubmittedFromId: latestExistingVideo.id } : {}),
             },
           }),
         );
@@ -730,7 +728,7 @@ export const updateV4Submissions = async (
     const newSubmissions: any[] = [];
 
     const submissionsToCreate = Math.max(0, newUgcVideos - preservedCount);
-    
+
     for (let i = 1; i <= submissionsToCreate; i++) {
       newSubmissions.push({
         campaignId,

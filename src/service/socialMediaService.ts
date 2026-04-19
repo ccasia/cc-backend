@@ -484,7 +484,6 @@ export const getInstagramMedias = async (
       mediaTypeBreakdown,
     });
 
-
     const totalComments = videos.reduce((acc: any, cur: any) => acc + cur.comments_count, 0);
     const averageComments = totalComments / videos.length;
 

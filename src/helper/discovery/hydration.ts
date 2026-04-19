@@ -338,8 +338,7 @@ export const hydrateMissingTikTokData = async (
             tiktok: overview.username || creator?.tiktok || null,
           },
         });
-      } catch (error) {
-      }
+      } catch (error) {}
     }),
   );
 

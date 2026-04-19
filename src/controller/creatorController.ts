@@ -5,10 +5,7 @@ import { uploadAgreementForm, uploadProfileImage } from '@configs/cloudStorage.c
 import { Title, saveNotification } from './notificationController';
 import { clients, io } from '../server';
 import { updateInvoices } from '@services/invoiceService';
-import {
-  exportCreatorsToSpreadsheet,
-  exportMediaKitStatusToSpreadsheet,
-} from '@services/creatorsSpreadsheetService';
+import { exportCreatorsToSpreadsheet, exportMediaKitStatusToSpreadsheet } from '@services/creatorsSpreadsheetService';
 import { createKanbanBoard } from './kanbanController';
 import { createCampaignCreatorSpreadSheet } from '@services/google_sheets/sheets';
 import {
@@ -896,11 +893,11 @@ export const exportCreatorsToSheet = async (req: Request, res: Response) => {
   try {
     // Call both service functions to export creators and media kit status to spreadsheet
     console.log('Starting export to spreadsheet...');
-    
+
     // Export main creator data
     console.log('Exporting main creator data...');
     const spreadsheetUrl = await exportCreatorsToSpreadsheet();
-    
+
     // Export media kit status data to a separate sheet
     console.log('Exporting media kit status data...');
     await exportMediaKitStatusToSpreadsheet();

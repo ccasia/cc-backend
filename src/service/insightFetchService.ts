@@ -25,10 +25,7 @@ const scheduledFetches = new Map<string, NodeJS.Timeout>();
  * @param campaignId - Campaign ID
  * @param submissionId - Submission ID (for tracking)
  */
-export async function scheduleInitialInsightFetch(
-  campaignId: string,
-  submissionId: string
-): Promise<void> {
+export async function scheduleInitialInsightFetch(campaignId: string, submissionId: string): Promise<void> {
   const fetchKey = `${campaignId}_${submissionId}`;
 
   // Cancel any existing scheduled fetch for this submission
@@ -117,7 +114,7 @@ export async function fetchAndStoreInsightsForCampaign(campaignId: string): Prom
 async function fetchAndStorePlatformInsights(
   campaignId: string,
   platform: 'Instagram' | 'TikTok',
-  urls: any[]
+  urls: any[],
 ): Promise<void> {
   console.log(`\n   📦 Fetching ${platform} insights...`);
 
@@ -164,9 +161,7 @@ async function fetchAndStorePlatformInsights(
 
     // Fetch manual creator entries for this platform
     const allManualEntries = await getManualCreatorEntries(campaignId);
-    const manualEntriesForPlatform = allManualEntries.filter(
-      (entry) => entry.platform === platform
-    );
+    const manualEntriesForPlatform = allManualEntries.filter((entry) => entry.platform === platform);
 
     if (normalizedInsights.length === 0 && manualEntriesForPlatform.length === 0) {
       console.log(`⚠️  No insights or manual entries for ${platform}, skipping snapshot...`);
@@ -174,12 +169,7 @@ async function fetchAndStorePlatformInsights(
     }
 
     // Calculate metrics including manual entries
-    const metrics = await calculateDailyMetrics(
-      campaignId,
-      platform,
-      normalizedInsights,
-      manualEntriesForPlatform
-    );
+    const metrics = await calculateDailyMetrics(campaignId, platform, normalizedInsights, manualEntriesForPlatform);
 
     // Store snapshot
     await storeInsightSnapshot(campaignId, metrics, new Date());
@@ -324,10 +314,7 @@ async function backfillMissingSubmissionUrls(campaignId: string): Promise<void> 
           await extractAndStoreSubmissionUrls(submission.id, submission.content);
         }
       } catch (error: any) {
-        console.error(
-          `   ⚠️  Failed to backfill URLs for submission ${submission.id}:`,
-          error.message
-        );
+        console.error(`   ⚠️  Failed to backfill URLs for submission ${submission.id}:`, error.message);
         // Continue with next submission
       }
     }

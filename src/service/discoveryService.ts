@@ -13,15 +13,13 @@ import {
   createDiscoveryApiSummary,
   resolvePlatformContentMatchesFromApi,
 } from '@helper/discovery/platformContentResolver';
-import { buildConnectedSelect, buildConnectedWhere } from '@helper/discovery/queryBuilders';
+import { buildConnectedSelect } from '@helper/discovery/queryBuilders';
+import { hydrateMissingInstagramData, hydrateMissingTikTokData, TopVideosByCreator } from '@helper/discovery/hydration';
+import { clients, getIo } from '../config/socket';
 import {
-  hydrateMissingInstagramData,
-  hydrateMissingTikTokData,
-  TopVideosByCreator,
-} from '@helper/discovery/hydration';
-import { clients, io } from '../server';
-import {
+  ageRangeToBirthDateRange,
   extractHashtags,
+  genderToPronounce,
   normalizeKeywordTerm,
   normalizePagination,
   normalizePlatform,
@@ -40,8 +38,6 @@ import { saveNotification } from '@controllers/notificationController';
 
 const prisma = new PrismaClient();
 const prismaAny = prisma as any;
-
-type TopVideosByCreator = Map<string, any[]>;
 
 const DISCOVERY_API_CACHE_TTL_MS = Number(process.env.DISCOVERY_API_CACHE_TTL_MS || 5 * 60 * 1000);
 const DISCOVERY_API_CACHE_MAX_ENTRIES = Number(process.env.DISCOVERY_API_CACHE_MAX_ENTRIES || 2000);
@@ -104,6 +100,7 @@ const getCachedDiscoveryApiResponse = async <T>(key: string, fetcher: () => Prom
   }
 
   const inFlight = discoveryApiInFlightRequests.get(key);
+
   if (inFlight) {
     discoveryApiCacheStats.inflightReuses += 1;
     return inFlight as Promise<T>;
@@ -111,9 +108,20 @@ const getCachedDiscoveryApiResponse = async <T>(key: string, fetcher: () => Prom
 
   discoveryApiCacheStats.misses += 1;
 
-const logDiscoveryDebug = (message: string, payload: Record<string, any>) => {
-  if (!DISCOVERY_DEBUG_ENABLED) return;
-  console.log(`[Discovery][Debug] ${message}`, payload);
+  const fetchPromise = fetcher()
+    .then((value) => {
+      pruneDiscoveryApiCache();
+      discoveryApiResponseCache.set(key, { expiresAt: Date.now() + DISCOVERY_API_CACHE_TTL_MS, value });
+      discoveryApiInFlightRequests.delete(key);
+      return value;
+    })
+    .catch((error) => {
+      discoveryApiInFlightRequests.delete(key);
+      throw error;
+    });
+
+  discoveryApiInFlightRequests.set(key, fetchPromise);
+  return fetchPromise;
 };
 
 export interface DiscoveryQueryInput {
@@ -161,213 +169,6 @@ const getCreatorKeywordOnlyTexts = (row: any): string[] => {
     .filter(Boolean);
 };
 
-const resolvePlatformContentMatchesFromApi = async (
-  rows: any[],
-  options: { keywordTerm?: string; hashtagTerms: string[] },
-  config: { rateLimitState?: { instagram: boolean; tiktok: boolean } } = {},
-) => {
-  const matchesByCreator = new Map<string, { instagram: boolean; tiktok: boolean }>();
-  const instagramTopVideosByCreator: TopVideosByCreator = new Map();
-  const tiktokTopVideosByCreator: TopVideosByCreator = new Map();
-  const rateLimitState = config.rateLimitState || { instagram: false, tiktok: false };
-
-  await Promise.allSettled(
-    (rows || []).map(async (row) => {
-      const creator = row?.creator;
-      const creatorId = creator?.id;
-      const creatorUserId = row?.id;
-      const creatorUserName = row?.name;
-
-      if (!creatorId) {
-        return;
-      }
-
-      let instagramMatched = false;
-      let tiktokMatched = false;
-
-      const dbInstagramVideos = creator?.instagramUser?.instagramVideo || [];
-      const dbTikTokVideos = creator?.tiktokUser?.tiktokVideo || [];
-      const dbInstagramCaptions = getLatestInstagramCaptionsForMatch(dbInstagramVideos, 5);
-      const dbTikTokCaptions = getLatestTikTokTitlesForMatch(dbTikTokVideos, 5);
-      const keywordOnlyTexts = getCreatorKeywordOnlyTexts(row);
-      const matchesCreatorContentTerms = (texts: string[]) =>
-        matchesContentTerms(texts, {
-          ...options,
-          keywordOnlyTexts,
-        });
-
-      if (creator?.isFacebookConnected && creator?.instagramUser) {
-        if (rateLimitState.instagram) {
-          instagramMatched = matchesCreatorContentTerms(dbInstagramCaptions);
-          instagramTopVideosByCreator.set(creatorId, dbInstagramVideos);
-          logDiscoveryDebug('Instagram skipped API due rate-limit state', {
-            creatorId,
-            creatorUserId,
-            creatorUserName,
-            dbVideoCount: dbInstagramVideos.length,
-            hashtagTermsCount: options.hashtagTerms?.length || 0,
-            hasKeyword: Boolean(options.keywordTerm),
-          });
-        } else {
-        try {
-          const encryptedAccessToken = creator?.instagramUser?.accessToken;
-
-          if (encryptedAccessToken) {
-            const accessToken = decryptToken(encryptedAccessToken as any);
-            const instagramMediaResponse = await getCachedDiscoveryApiResponse(
-              `discovery:instagram:medias:${creatorId}`,
-              () => getInstagramMedias(accessToken, 20),
-            );
-            const videos = instagramMediaResponse?.videos || [];
-            const mediaTypeBreakdown = (videos || []).reduce((acc: Record<string, number>, video: any) => {
-              const type = String(video?.media_type || 'UNKNOWN');
-              acc[type] = (acc[type] || 0) + 1;
-              return acc;
-            }, {});
-            logDiscoveryDebug('Instagram API response summary', {
-              creatorId,
-              creatorUserId,
-              creatorUserName,
-              apiVideoCount: videos.length,
-              withMediaUrlCount: videos.filter((video: any) => Boolean(video?.media_url)).length,
-              withThumbnailCount: videos.filter((video: any) => Boolean(video?.thumbnail_url)).length,
-              withPermalinkCount: videos.filter((video: any) => Boolean(video?.permalink)).length,
-              mediaTypeBreakdown,
-            });
-
-            const captions = getLatestInstagramCaptionsForMatch(videos, 5);
-            const mappedVideos = mapInstagramApiTopVideos(videos || []);
-
-            instagramMatched = matchesCreatorContentTerms(captions);
-            instagramTopVideosByCreator.set(creatorId, mappedVideos);
-            logDiscoveryDebug('Instagram mapped top videos', {
-              creatorId,
-              creatorUserId,
-              creatorUserName,
-              mappedCount: mappedVideos.length,
-              mappedIds: mappedVideos.slice(0, 3).map((video: any) => video?.id || null),
-              mappedTimestamps: mappedVideos
-                .slice(0, 3)
-                .map((video: any) => (video?.datePosted ? new Date(video.datePosted).toISOString() : null)),
-              matchedByContentTerms: instagramMatched,
-            });
-          } else {
-            instagramMatched = matchesCreatorContentTerms(dbInstagramCaptions);
-            instagramTopVideosByCreator.set(creatorId, dbInstagramVideos);
-          }
-        } catch (error) {
-          if (isRateLimitError(error)) {
-            rateLimitState.instagram = true;
-          }
-          instagramMatched = matchesCreatorContentTerms(dbInstagramCaptions);
-          instagramTopVideosByCreator.set(creatorId, dbInstagramVideos);
-          logDiscoveryDebug('Instagram API fetch failed, fallback to DB', {
-            creatorId,
-            creatorUserId,
-            creatorUserName,
-            isRateLimited: isRateLimitError(error),
-            status: error?.response?.status,
-            errorCode: error?.response?.data?.error?.code,
-            errorMessage: error?.response?.data?.error?.message || error?.message,
-            dbVideoCount: dbInstagramVideos.length,
-            matchedByContentTerms: instagramMatched,
-          });
-        }
-        }
-      }
-
-      if (creator?.isTiktokConnected && creator?.tiktokUser) {
-        if (rateLimitState.tiktok) {
-          tiktokMatched = matchesCreatorContentTerms(dbTikTokCaptions);
-          tiktokTopVideosByCreator.set(creatorId, dbTikTokVideos);
-          logDiscoveryDebug('TikTok skipped API due rate-limit state', {
-            creatorId,
-            creatorUserId,
-            creatorUserName,
-            dbVideoCount: dbTikTokVideos.length,
-            hashtagTermsCount: options.hashtagTerms?.length || 0,
-            hasKeyword: Boolean(options.keywordTerm),
-            dbSummary: summarizeTikTokVideos(dbTikTokVideos),
-          });
-        } else {
-        try {
-          const encryptedAccessToken = creator?.tiktokData?.access_token;
-
-          if (encryptedAccessToken) {
-            const accessToken = decryptToken(encryptedAccessToken as any);
-            const mediaObject = await getCachedDiscoveryApiResponse(
-              `discovery:tiktok:medias:${creatorId}`,
-              () => getTikTokMediaObject(accessToken, 20),
-            );
-            const videos = mediaObject?.videos || [];
-            const captions = getLatestTikTokTitlesForMatch(videos, 5);
-            const mappedVideos = mapTikTokApiTopVideos(videos);
-
-            logDiscoveryDebug('TikTok API response summary', {
-              creatorId,
-              creatorUserId,
-              creatorUserName,
-              apiVideoCount: videos.length,
-              apiSummary: summarizeTikTokVideos(videos),
-              dbVideoCount: dbTikTokVideos.length,
-            });
-
-            tiktokMatched = matchesCreatorContentTerms(captions);
-            tiktokTopVideosByCreator.set(creatorId, mappedVideos);
-
-            logDiscoveryDebug('TikTok mapped top videos', {
-              creatorId,
-              creatorUserId,
-              creatorUserName,
-              mappedCount: mappedVideos.length,
-              mappedSummary: summarizeTikTokVideos(mappedVideos),
-              mappedIds: mappedVideos.slice(0, 3).map((video: any) => video?.video_id || video?.id || null),
-              mappedCreatedAt: mappedVideos
-                .slice(0, 3)
-                .map((video: any) => (video?.createdAt ? new Date(video.createdAt).toISOString() : null)),
-              matchedByContentTerms: tiktokMatched,
-            });
-
-            if (videos.length === 0 && dbTikTokVideos.length > 0) {
-              logDiscoveryDebug('TikTok API returned no videos but DB has videos', {
-                creatorId,
-                creatorUserId,
-                creatorUserName,
-                dbVideoCount: dbTikTokVideos.length,
-                dbSummary: summarizeTikTokVideos(dbTikTokVideos),
-              });
-            }
-          } else {
-            tiktokMatched = matchesCreatorContentTerms(dbTikTokCaptions);
-            tiktokTopVideosByCreator.set(creatorId, dbTikTokVideos);
-          }
-        } catch (error) {
-          if (isRateLimitError(error)) {
-            rateLimitState.tiktok = true;
-          }
-          tiktokMatched = matchesCreatorContentTerms(dbTikTokCaptions);
-          tiktokTopVideosByCreator.set(creatorId, dbTikTokVideos);
-          logDiscoveryDebug('TikTok API fetch failed, fallback to DB', {
-            creatorId,
-            creatorUserId,
-            creatorUserName,
-            isRateLimited: isRateLimitError(error),
-            status: error?.response?.status,
-            errorCode: error?.response?.data?.error?.code || error?.response?.data?.code,
-            errorMessage:
-              error?.response?.data?.error?.message ||
-              error?.response?.data?.message ||
-              error?.message,
-            responseData: error?.response?.data || null,
-            dbVideoCount: dbTikTokVideos.length,
-            dbSummary: summarizeTikTokVideos(dbTikTokVideos),
-            matchedByContentTerms: tiktokMatched,
-          });
-        }
-        }
-      }
-}
-
 export interface NonPlatformDiscoveryQueryInput {
   platform?: 'all' | 'instagram' | 'tiktok';
   keyword?: string;
@@ -388,7 +189,7 @@ const ensureValidTikTokAccessTokenForCreator = async (creator: any): Promise<str
 
   if (!encryptedAccessToken) return null;
 
-  let accessToken = decryptToken(encryptedAccessToken as any);
+  const accessToken = decryptToken(encryptedAccessToken as any);
   const currentTime = Math.floor(Date.now() / 1000);
   const isExpired = expiresIn && currentTime >= expiresIn;
 
@@ -396,10 +197,48 @@ const ensureValidTikTokAccessTokenForCreator = async (creator: any): Promise<str
     return accessToken;
   }
 
-  let total = 0;
-  if (hasInstagram && Boolean(match?.instagram)) total += 1;
-  if (hasTikTok && Boolean(match?.tiktok)) total += 1;
-  return total;
+  if (!encryptedRefreshToken) {
+    return null;
+  }
+
+  try {
+    const refreshToken = decryptToken(encryptedRefreshToken as any);
+    const refreshedTokenData = await refreshTikTokToken(refreshToken);
+
+    const newEncryptedAccessToken = encryptToken(refreshedTokenData.access_token);
+    const newEncryptedRefreshToken = encryptToken(refreshedTokenData.refresh_token);
+
+    await prismaAny.creator.update({
+      where: { id: creatorId },
+      data: {
+        tiktokData: {
+          ...tiktokData,
+          access_token: newEncryptedAccessToken,
+          refresh_token: newEncryptedRefreshToken,
+          expires_in: refreshedTokenData.expires_in ? currentTime + refreshedTokenData.expires_in : null,
+        },
+      },
+    });
+
+    return refreshedTokenData.access_token;
+  } catch (error) {
+    if (error?.response?.status === 400) {
+      console.log('[Discovery][CreatorApi400]', {
+        platform: 'tiktok',
+        creatorId,
+        stage: 'refresh-token',
+        status: error?.response?.status,
+        response: error?.response?.data || null,
+        message: error?.message,
+      });
+    }
+    logDiscoveryDebug('TikTok token refresh failed in discovery', {
+      creatorId,
+      message: error?.message,
+      status: error?.response?.status,
+    });
+    return null;
+  }
 };
 
 const collectContentMatchedRowsAcrossAllCandidates = async (
@@ -430,9 +269,16 @@ const collectContentMatchedRowsAcrossAllCandidates = async (
       break;
     }
 
-    const batchMatchResult = await resolvePlatformContentMatchesFromApi(batchRows, options, {
-      rateLimitState,
-    });
+    const batchMatchResult = await resolvePlatformContentMatchesFromApi(
+      batchRows,
+      options,
+      {
+        ensureValidTikTokAccessTokenForCreator,
+      },
+      {
+        rateLimitState,
+      },
+    );
 
     for (const [creatorId, match] of batchMatchResult.matchesByCreator.entries()) {
       matchesByCreator.set(creatorId, match);
@@ -664,7 +510,6 @@ const buildConnectedWhere = (
         }
       : undefined;
 
-  // Collect all AND conditions (only non-undefined ones)
   const andConditions = [
     genderCondition,
     ageCondition,
@@ -676,190 +521,24 @@ const buildConnectedWhere = (
     keywordCondition,
     hashtagCondition,
   ].filter(Boolean);
-  if (!encryptedRefreshToken) {
-    return null;
-  }
 
-  try {
-    const refreshToken = decryptToken(encryptedRefreshToken as any);
-    const refreshedTokenData = await refreshTikTokToken(refreshToken);
+  return {
+    AND: [platformCondition, ...(searchOr ? [{ OR: searchOr }] : []), ...andConditions].filter(Boolean),
+  };
+};
 
-    const newEncryptedAccessToken = encryptToken(refreshedTokenData.access_token);
-    const newEncryptedRefreshToken = encryptToken(refreshedTokenData.refresh_token);
-
-    await prismaAny.creator.update({
-      where: {
-        id: creatorId,
-      },
-      data: {
-        tiktokData: {
-          ...tiktokData,
-          access_token: newEncryptedAccessToken,
-          refresh_token: newEncryptedRefreshToken,
-          expires_in: refreshedTokenData.expires_in ? currentTime + refreshedTokenData.expires_in : null,
-        },
-      },
-    });
-
-    return refreshedTokenData.access_token;
-  } catch (error) {
-    if (error?.response?.status === 400) {
-      console.log('[Discovery][CreatorApi400]', {
-        platform: 'tiktok',
-        creatorId,
-        stage: 'refresh-token',
-        status: error?.response?.status,
-        response: error?.response?.data || null,
-        message: error?.message,
-      });
-    }
-    logDiscoveryDebug('TikTok token refresh failed in discovery', {
-      creatorId,
-      message: error?.message,
-      status: error?.response?.status,
-    });
-    return null;
-  }
-
-  const limitedCandidates = candidates.slice(0, 20);
-
-  await Promise.allSettled(
-    limitedCandidates.map(async (row) => {
-      try {
-        const creator = row?.creator;
-        const creatorId = creator?.id;
-        const encryptedAccessToken = creator?.tiktokData?.access_token;
-
-        if (!creatorId || !encryptedAccessToken) {
-          return;
-        }
-
-        const accessToken = decryptToken(encryptedAccessToken as any);
-
-        const overviewRes = await getCachedDiscoveryApiResponse(
-          `discovery:tiktok:userInfo:${creatorId}`,
-          () => getTikTokOverviewService(accessToken),
-        );
-
-        const overview = overviewRes?.data?.user || {};
-        const mediaObject = await getCachedDiscoveryApiResponse(
-          `discovery:tiktok:medias:${creatorId}`,
-          () => getTikTokMediaObject(accessToken, 20),
-        );
-
-        const topFiveVideos = mediaObject.sortedVideos;
-
-        const totalLikes = mediaObject.totalLikes;
-        const totalComments = mediaObject.totalComments;
-        const totalShares = mediaObject.totalShares;
-        const totalViews = mediaObject.totalViews;
-
-        const averageLikes = mediaObject.averageLikes;
-        const averageComments = mediaObject.averageComments;
-        const averageShares = mediaObject.averageShares;
-
-        const engagementRate = totalViews ? ((totalLikes + totalComments + totalShares) / totalViews) * 100 : 0;
-
-        const upsertedTiktokUser = await prismaAny.tiktokUser.upsert({
-          where: { creatorId },
-          update: {
-            display_name: overview.display_name,
-            username: overview.username,
-            avatar_url: overview.avatar_url,
-            biography: overview.bio_description,
-            following_count: overview.following_count,
-            follower_count: overview.follower_count,
-            likes_count: overview.likes_count,
-            totalLikes,
-            totalComments,
-            totalShares,
-            averageLikes,
-            averageComments,
-            averageShares,
-            engagement_rate: engagementRate,
-            lastUpdated: new Date(),
-          },
-          create: {
-            creatorId,
-            display_name: overview.display_name,
-            username: overview.username,
-            avatar_url: overview.avatar_url,
-            biography: overview.bio_description,
-            following_count: overview.following_count,
-            follower_count: overview.follower_count,
-            likes_count: overview.likes_count,
-            totalLikes,
-            totalComments,
-            totalShares,
-            averageLikes,
-            averageComments,
-            averageShares,
-            engagement_rate: engagementRate,
-            lastUpdated: new Date(),
-          },
-        });
-
-        const tiktokUserId = upsertedTiktokUser.id;
-
-        const topVideos = (topFiveVideos || []).map((video: any) => ({
-          video_id: video.id,
-          cover_image_url: video.cover_image_url,
-          title: video.title,
-          embed_link: video.embed_link,
-          like_count: video.like_count || 0,
-          comment_count: video.comment_count || 0,
-          share_count: video.share_count || 0,
-          createdAt: video.create_time ? new Date(video.create_time * 1000) : null,
-        }));
-
-        // Persist fresh cover_image_url values back to the DB so subsequent requests
-        // don't read stale (expired) TikTok CDN URLs.
-        await Promise.allSettled(
-          topVideos.map(async (video: any) => {
-            if (!video.video_id) return;
-            await prismaAny.tiktokVideo.upsert({
-              where: { video_id: video.video_id },
-              update: {
-                cover_image_url: video.cover_image_url,
-                title: video.title,
-                embed_link: video.embed_link,
-                like_count: video.like_count,
-                comment_count: video.comment_count,
-                share_count: video.share_count,
-                createdAt: video.createdAt || undefined,
-                tiktokUserId,
-              },
-              create: {
-                video_id: video.video_id,
-                cover_image_url: video.cover_image_url,
-                title: video.title,
-                embed_link: video.embed_link,
-                like_count: video.like_count,
-                comment_count: video.comment_count,
-                share_count: video.share_count,
-                createdAt: video.createdAt || undefined,
-                tiktokUserId,
-              },
-            });
-          }),
-        );
-
-        topVideosByCreator.set(creatorId, topVideos);
-
-        await prismaAny.creator.update({
-          where: {
-            id: creatorId,
-          },
-          data: {
-            tiktok: overview.username || creator?.tiktok || null,
-          },
-        });
-      } catch (error) {
-      }
-    }),
-  );
-
-  return topVideosByCreator;
+const countRowsForPlatformMatch = (
+  row: any,
+  platform: PlatformFilter,
+  match: { instagram: boolean; tiktok: boolean } | undefined,
+): number => {
+  const creator = row?.creator;
+  const hasInstagram = creator?.isFacebookConnected && creator?.instagramUser;
+  const hasTikTok = creator?.isTiktokConnected && creator?.tiktokUser;
+  let total = 0;
+  if (platform !== 'tiktok' && hasInstagram && Boolean(match?.instagram)) total += 1;
+  if (platform !== 'instagram' && hasTikTok && Boolean(match?.tiktok)) total += 1;
+  return total;
 };
 
 export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
@@ -903,21 +582,21 @@ export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
     hasContentSearch
       ? Promise.resolve(0)
       : platform === 'all'
-      ? prismaAny.user.count({
-          where: {
-            ...connectedWhere,
-            creator: {
-              is: {
-                ...(connectedWhere.creator?.is || {}),
-                isFacebookConnected: true,
-                isTiktokConnected: true,
-                instagramUser: { isNot: null },
-                tiktokUser: { isNot: null },
+        ? prismaAny.user.count({
+            where: {
+              ...connectedWhere,
+              creator: {
+                is: {
+                  ...((connectedWhere as any).creator?.is || {}),
+                  isFacebookConnected: true,
+                  isTiktokConnected: true,
+                  instagramUser: { isNot: null },
+                  tiktokUser: { isNot: null },
+                },
               },
             },
-          },
-        })
-      : Promise.resolve(0),
+          })
+        : Promise.resolve(0),
     hasContentSearch
       ? Promise.resolve([])
       : prismaAny.user.findMany({
@@ -949,6 +628,8 @@ export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
   let apiTikTokTopVideos: TopVideosByCreator = new Map();
   let apiSummary = createDiscoveryApiSummary(hasContentSearch ? 'content-search' : 'default');
   const contentSearchRateLimitState = { instagram: false, tiktok: false };
+  let contentMatchesByCreator = new Map<string, { instagram: boolean; tiktok: boolean }>();
+  let contentMatchedTotal = 0;
 
   if (input.hydrateMissing === true) {
     [hydratedInstagramTopVideos, hydratedTikTokTopVideos] = await Promise.all([
@@ -971,13 +652,9 @@ export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
   if (!hasContentSearch) {
     const liveTopVideosResult = await resolvePlatformContentMatchesFromApi(
       connectedRows,
-      {
-        keywordTerm: undefined,
-        hashtagTerms: [],
-      },
-      {
-        rateLimitState: contentSearchRateLimitState,
-      },
+      { keywordTerm: undefined, hashtagTerms: [] },
+      { ensureValidTikTokAccessTokenForCreator },
+      { rateLimitState: contentSearchRateLimitState },
     );
 
     apiInstagramTopVideos = liveTopVideosResult.instagramTopVideosByCreator;
@@ -1014,10 +691,7 @@ export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
     const instagramTopVideosFromHydration = creatorId ? hydratedInstagramTopVideos.get(creatorId) : undefined;
 
     const instagramTopVideos = creatorId
-      ? instagramTopVideosFromApi ||
-        instagramTopVideosFromHydration ||
-        row.creator?.instagramUser?.instagramVideo ||
-        []
+      ? instagramTopVideosFromApi || instagramTopVideosFromHydration || row.creator?.instagramUser?.instagramVideo || []
       : row.creator?.instagramUser?.instagramVideo || [];
 
     const tiktokTopVideosRaw = creatorId
@@ -1135,9 +809,7 @@ export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
 
   const paginatedCreatorUserIds = Array.from(
     new Set(
-      (paginatedConnectedCreators || [])
-        .map((creator: any) => String(creator?.userId || '').trim())
-        .filter(Boolean),
+      (paginatedConnectedCreators || []).map((creator: any) => String(creator?.userId || '').trim()).filter(Boolean),
     ),
   );
 
@@ -1182,9 +854,7 @@ export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
 
     const instagramTopVideos = apiInstagramTopVideos.get(creatorId) || creator?.instagram?.topVideos || [];
     const tiktokTopVideosRaw = apiTikTokTopVideos.get(creatorId) || creator?.tiktok?.topVideos || [];
-    const normalizedTiktokHandle = creator?.handles?.tiktok
-      ? String(creator.handles.tiktok).replace(/^@/, '')
-      : null;
+    const normalizedTiktokHandle = creator?.handles?.tiktok ? String(creator.handles.tiktok).replace(/^@/, '') : null;
 
     const tiktokTopVideos = (tiktokTopVideosRaw || []).map((video: any) => ({
       ...video,
@@ -1208,10 +878,7 @@ export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
     };
   });
 
-  const creatorTopVideoStatusByUserId = new Map<
-    string,
-    { name: string; returnedTopVideos: boolean }
-  >();
+  const creatorTopVideoStatusByUserId = new Map<string, { name: string; returnedTopVideos: boolean }>();
 
   for (const creatorRow of enrichedPaginatedConnectedCreators as any[]) {
     const userId = String(creatorRow?.userId || '').trim();
@@ -1571,11 +1238,11 @@ export const inviteDiscoveryCreators = async (input: InviteDiscoveryCreatorsInpu
     let invitedCount = 0;
     let skippedExistingCount = 0;
     let skippedNotFoundCount = 0;
-    const invitedCreatorNotifications: Array<{
+    const invitedCreatorNotifications: {
       userId: string;
       campaignId: string;
       campaignName: string;
-    }> = [];
+    }[] = [];
 
     for (const creatorId of creatorIds) {
       const creatorUser = creatorById.get(creatorId);
@@ -1774,9 +1441,7 @@ export const inviteDiscoveryCreators = async (input: InviteDiscoveryCreatorsInpu
         }
       }
 
-      const clientUsers = campaign.campaignAdmin.filter(
-        (campaignAdmin) => campaignAdmin.admin.user.role === 'client',
-      );
+      const clientUsers = campaign.campaignAdmin.filter((campaignAdmin) => campaignAdmin.admin.user.role === 'client');
 
       for (const clientUser of clientUsers) {
         await tx.notification.create({
@@ -1825,8 +1490,8 @@ export const inviteDiscoveryCreators = async (input: InviteDiscoveryCreatorsInpu
       const creatorSocketId = clients.get(creatorInvite.userId);
 
       if (creatorSocketId) {
-        io.to(creatorSocketId).emit('notification', creatorNotification);
-        io.to(creatorSocketId).emit('pitchUpdate');
+        getIo().to(creatorSocketId).emit('notification', creatorNotification);
+        getIo().to(creatorSocketId).emit('pitchUpdate');
       }
     }
   }
@@ -1838,172 +1503,4 @@ export const inviteDiscoveryCreators = async (input: InviteDiscoveryCreatorsInpu
     skippedExistingCount: inviteResult.skippedExistingCount,
     skippedNotFoundCount: inviteResult.skippedNotFoundCount,
   };
-};
-
-export const inviteDiscoveryCreators = async (input: InviteDiscoveryCreatorsInput) => {
-  const campaignId = String(input.campaignId || '').trim();
-  const creatorIds = Array.from(new Set((input.creatorIds || []).map((id) => String(id).trim()).filter(Boolean)));
-  const invitedByUserId = String(input.invitedByUserId || '').trim();
-
-  if (!campaignId) {
-    throw new Error('campaignId is required');
-  }
-
-  if (!invitedByUserId) {
-    throw new Error('invitedByUserId is required');
-  }
-
-  if (!creatorIds.length) {
-    throw new Error('At least one creator is required');
-  }
-
-  const currentUser = await prisma.user.findUnique({
-    where: { id: invitedByUserId },
-    select: { role: true },
-  });
-
-  const isSuperadmin = currentUser?.role === 'superadmin';
-
-  const campaignAccess = await prisma.campaignAdmin.findFirst({
-    where: {
-      campaignId,
-      adminId: invitedByUserId,
-    },
-  });
-
-  if (!campaignAccess && !isSuperadmin) {
-    throw new Error('Not authorized to invite creators for this campaign');
-  }
-
-  return prisma.$transaction(async (tx) => {
-    const campaign = await tx.campaign.findUnique({
-      where: { id: campaignId },
-      include: {
-        thread: true,
-        campaignAdmin: {
-          include: {
-            admin: {
-              include: {
-                user: true,
-              },
-            },
-          },
-        },
-      },
-    });
-
-    if (!campaign) {
-      throw new Error('Campaign not found');
-    }
-
-    const isV4Campaign = campaign.submissionVersion === 'v4';
-    const threadId = campaign.thread?.id;
-
-    const creatorUsers = await tx.user.findMany({
-      where: {
-        id: { in: creatorIds },
-        role: 'creator',
-      },
-      select: {
-        id: true,
-        name: true,
-      },
-    });
-
-    const creatorById = new Map(creatorUsers.map((user) => [user.id, user]));
-
-    let invitedCount = 0;
-    let skippedExistingCount = 0;
-    let skippedNotFoundCount = 0;
-
-    for (const creatorId of creatorIds) {
-      const creatorUser = creatorById.get(creatorId);
-      if (!creatorUser) {
-        skippedNotFoundCount += 1;
-        continue;
-      }
-
-      const existingPitch = await tx.pitch.findFirst({
-        where: {
-          campaignId,
-          userId: creatorUser.id,
-        },
-        select: { id: true },
-      });
-
-      if (existingPitch) {
-        skippedExistingCount += 1;
-        continue;
-      }
-
-      await tx.pitch.create({
-        data: {
-          userId: creatorUser.id,
-          campaignId,
-          type: 'shortlisted',
-          status: 'INVITED',
-          isInvited: true,
-          content: `Creator ${creatorUser.name} has been invited for campaign "${campaign.name}"`,
-          amount: null,
-          agreementTemplateId: null,
-          approvedByAdminId: invitedByUserId,
-        } as any,
-      });
-
-      if (threadId) {
-        const existingUserThread = await tx.userThread.findUnique({
-          where: {
-            userId_threadId: {
-              userId: creatorUser.id,
-              threadId,
-            },
-          },
-          select: { userId: true },
-        });
-
-        if (!existingUserThread) {
-          await tx.userThread.create({
-            data: {
-              userId: creatorUser.id,
-              threadId,
-            },
-          });
-        }
-      }
-
-      const clientUsers = campaign.campaignAdmin.filter(
-        (campaignAdmin) => campaignAdmin.admin.user.role === 'client',
-      );
-
-      for (const clientUser of clientUsers) {
-        await tx.notification.create({
-          data: {
-            title: 'Creator Invited',
-            message: `Creator ${creatorUser.name} has been invited for campaign "${campaign.name}".`,
-            entity: 'Pitch',
-            campaignId,
-            userId: clientUser.admin.userId,
-          },
-        });
-      }
-
-      await tx.campaignLog.create({
-        data: {
-          message: `${creatorUser.name || 'Creator'} has been invited`,
-          adminId: invitedByUserId,
-          campaignId,
-        },
-      });
-
-      invitedCount += 1;
-    }
-
-    return {
-      campaignId,
-      isV4Campaign,
-      invitedCount,
-      skippedExistingCount,
-      skippedNotFoundCount,
-    };
-  });
 };

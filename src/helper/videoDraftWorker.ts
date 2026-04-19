@@ -467,7 +467,7 @@ async function deleteFileIfExists(filePath: string) {
                   console.log(
                     parentVideo
                       ? `✅ V4 Video created as new version (resubmittedFromId: ${parentVideo.id}), previous draft preserved.`
-                      : '✅ V4 Video entry created (no existing video).'
+                      : '✅ V4 Video entry created (no existing video).',
                   );
                 } else if (!requestChangeVideos.length) {
                   await prisma.video.create({
@@ -499,10 +499,12 @@ async function deleteFileIfExists(filePath: string) {
                         status: 'PENDING',
                         resubmittedFromId: video.id,
                       },
-                    })
-                  )
+                    }),
+                  ),
                 );
-                console.log(`✅ V4 Created ${requestChangeVideos.length} new video version(s), previous draft(s) preserved.`);
+                console.log(
+                  `✅ V4 Created ${requestChangeVideos.length} new video version(s), previous draft(s) preserved.`,
+                );
               }
 
               const data = await prisma.submission.update({
@@ -585,7 +587,7 @@ async function deleteFileIfExists(filePath: string) {
               });
 
               io?.to(clients.get(data.userId)).emit('notification', notification);
-              
+
               const adminUser = data.campaign.campaignAdmin.filter((ca) => ca.admin.user.role === 'admin');
 
               const { title: adminTitle, message: adminMessage } = notificationDraft(

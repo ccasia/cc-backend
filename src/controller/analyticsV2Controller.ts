@@ -261,7 +261,12 @@ export const getTimeToTiktokActivation = async (req: Request, res: Response) => 
     if ('error' in parsed) return res.status(parsed.error.status).json(parsed.error.body);
 
     const creditTierNames = parseCreditTiers(req);
-    const data = await getTimeToTiktokActivationData(parsed.startDate, parsed.endDate, parsed.granularity, creditTierNames);
+    const data = await getTimeToTiktokActivationData(
+      parsed.startDate,
+      parsed.endDate,
+      parsed.granularity,
+      creditTierNames,
+    );
     return res.status(200).json({ success: true, data });
   } catch (error: any) {
     console.error('Error fetching time to TikTok activation data:', error);
@@ -1410,7 +1415,14 @@ export const getClientShortlistMetrics = async (req: Request, res: Response) => 
       }
     });
 
-    type CampaignStats = { name: string; clientName: string; image: any; avg: number; min: number; max: number };
+    interface CampaignStats {
+      name: string;
+      clientName: string;
+      image: any;
+      avg: number;
+      min: number;
+      max: number;
+    }
 
     const trendData = Object.entries(turnaroundMonths).map(([month, stats]) => {
       const platformAvg = stats.count > 0 ? Math.round(stats.totalHours / stats.count) : 0;
