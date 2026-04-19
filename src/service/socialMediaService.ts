@@ -474,6 +474,17 @@ export const getInstagramMedias = async (
       return acc;
     }, {});
 
+    console.log('[Discovery][Debug] getInstagramMedias response', {
+      requestedLimit: limit || null,
+      returnedCount: videos.length,
+      hasPagingNext: Boolean(res?.data?.paging?.next),
+      withMediaUrlCount: videos.filter((video: any) => Boolean(video?.media_url)).length,
+      withThumbnailCount: videos.filter((video: any) => Boolean(video?.thumbnail_url)).length,
+      withPermalinkCount: videos.filter((video: any) => Boolean(video?.permalink)).length,
+      mediaTypeBreakdown,
+    });
+
+
     const totalComments = videos.reduce((acc: any, cur: any) => acc + cur.comments_count, 0);
     const averageComments = totalComments / videos.length;
 

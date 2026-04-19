@@ -40,6 +40,10 @@ model User {
   creator                 Creator?
   creatorAgreement        CreatorAgreement[]
   feedback                Feedback[]
+  commentAgreements       CommentAgreement[]
+  submissionComments      SubmissionComment[]
+  forwardedComments       SubmissionComment[] @relation("ForwardedComments")
+  resolvedComments        SubmissionComment[] @relation("ResolvedComments")
   finance                 Finance?
   invoice                 Invoice[]           @relation("CreatedBy")
   sentMessages            Message[]           @relation("UserMessages")
@@ -1112,6 +1116,7 @@ model Submission {
   publicFeedback       PublicFeedback[]
   photosDriveLink      String?
   rawFootagesDriveLink String?
+  comments             SubmissionComment[]
 
   // V4 specific fields
   contentOrder          Int? // Order of content (Video 1, Video 2, etc.)
@@ -1239,6 +1244,9 @@ model Video {
   createdAt    DateTime       @default(now())
   updatedAt    DateTime?      @updatedAt
 
+  feedbackDeadline    DateTime?
+  feedbackSentByName  String?
+
   // Individual feedback fields
   feedback   String? // Individual feedback message
   reasons    String[] // Reasons for changes (if any)
@@ -1248,6 +1256,14 @@ model Video {
 
   // Previous video draft URLs
   previousDrafts String[] // Array of previous video URLs
+
+  // Reupload version chain: links to the video this one replaced
+  resubmittedFromId String?
+  resubmittedFrom   Video?  @relation("VideoResubmissions", fields: [resubmittedFromId], references: [id])
+  resubmissions     Video[] @relation("VideoResubmissions")
+
+  feedbackRecords    Feedback[]
+  submissionComments SubmissionComment[]
 }
 
 model RawFootage {
@@ -1365,22 +1381,76 @@ model SubmissionType {
 }
 
 model Feedback {
-  id                 String        @id @unique @default(cuid())
-  content            String?
-  rawFootageContent  String?
-  photoContent       String?
-  type               FeedbackType?
-  reasons            String[]
-  videosToUpdate     String[]
-  rawFootageToUpdate String[]
-  photosToUpdate     String[]
-  submissionId       String
-  adminId            String
-  sentToCreator      Boolean       @default(false)
-  createdAt          DateTime      @default(now())
-  updatedAt          DateTime      @updatedAt
-  admin              User          @relation(fields: [adminId], references: [id])
-  submission         Submission    @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  id                  String             @id @unique @default(cuid())
+  content             String?
+  rawFootageContent   String?
+  photoContent        String?
+  type                FeedbackType?
+  reasons             String[]
+  videosToUpdate      String[]
+  rawFootageToUpdate  String[]
+  photosToUpdate      String[]
+  submissionId        String
+  adminId             String
+  videoId             String?
+  sentToCreator       Boolean            @default(false)
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  admin               User               @relation(fields: [adminId], references: [id])
+  submission          Submission         @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  video               Video?             @relation(fields: [videoId], references: [id], onDelete: SetNull)
+  submissionCommentId String?            @unique
+  submissionComment   SubmissionComment? @relation(fields: [submissionCommentId], references: [id], onDelete: SetNull)
+}
+
+model SubmissionComment {
+  id              String  @id @default(cuid())
+  text            String  @db.Text
+  editedText      String? @db.Text
+  timestamp       String?
+  editedTimestamp String?
+
+  submissionId String
+  submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  videoId String?
+  video   Video?  @relation(fields: [videoId], references: [id], onDelete: SetNull)
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  parentId String?
+  parent   SubmissionComment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies  SubmissionComment[] @relation("CommentReplies")
+
+  agreedBy      CommentAgreement[]
+  feedback      Feedback?
+  isClientDraft      Boolean @default(false)
+  isVisibleToCreator Boolean @default(true)
+  isSentToCreator    Boolean @default(false)
+
+  forwardedByUserId String?
+  forwardedBy       User?   @relation("ForwardedComments", fields: [forwardedByUserId], references: [id], onDelete: SetNull)
+
+  resolvedAt       DateTime?
+  resolvedByUserId String?
+  resolvedBy       User?     @relation("ResolvedComments", fields: [resolvedByUserId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updateAt  DateTime @updatedAt
+
+  @@index([submissionId])
+  @@index([videoId])
+}
+
+model CommentAgreement {
+  id        String            @id @default(cuid())
+  commentId String
+  comment   SubmissionComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([commentId, userId])
 }
 
 model Invoice {
@@ -2125,6 +2195,21 @@ model CreditTier {
   shortlistedCreators ShortListedCreator[]
 
   @@index([minFollowers])
+}
+
+model AiModel {
+  id String @id @unique @default(cuid())
+
+  model           String
+  temperature     Float
+  systemPrompt    Json?
+  maxOutputTokens Int
+  apiKey          String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("ai_model")
 }
 
 // NPS Feedback

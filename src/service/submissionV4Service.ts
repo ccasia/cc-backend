@@ -4,6 +4,9 @@ import { saveCaptionToHistory } from '../utils/captionHistoryUtils';
 
 const prisma = new PrismaClient();
 
+/** Max video versions returned in V4 list/detail APIs (newest first). Older rows stay in DB. */
+export const V4_ACTIVE_VIDEO_VERSIONS_LIMIT = 3;
+
 /**
  * Create V4 submissions for an approved creator
  * This function is now mainly for consistency - actual content submissions
@@ -73,6 +76,7 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
             id: true,
             name: true,
             email: true,
+            photoURL: true,
           },
         },
         video: {
@@ -85,6 +89,7 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
             feedbackAt: true,
             createdAt: true,
             adminId: true,
+            resubmittedFromId: true,
             admin: {
               select: {
                 id: true,
@@ -92,6 +97,8 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
               },
             },
           },
+          orderBy: { createdAt: 'desc' as const },
+          take: V4_ACTIVE_VIDEO_VERSIONS_LIMIT,
         },
         photos: {
           select: {
@@ -129,13 +136,33 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
                 id: true,
                 name: true,
                 role: true,
+                photoURL: true,
+              },
+            },
+            submissionComment: {
+              include: {
+                replies: {
+                  include: {
+                    user: {
+                      select: {
+                        id: true,
+                        name: true,
+                        role: true,
+                        photoURL: true,
+                      },
+                    },
+                  },
+                  orderBy: {
+                    createdAt: 'asc',
+                  },
+                },
               },
             },
           },
           orderBy: {
             createdAt: 'desc',
           },
-        },
+        } as any,
       },
       orderBy: [
         {
@@ -177,6 +204,7 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
             id: true,
             name: true,
             email: true,
+            photoURL: true,
           },
         },
         feedback: {
@@ -186,13 +214,33 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
                 id: true,
                 name: true,
                 role: true,
+                photoURL: true,
+              },
+            },
+            submissionComment: {
+              include: {
+                replies: {
+                  include: {
+                    user: {
+                      select: {
+                        id: true,
+                        name: true,
+                        role: true,
+                        photoURL: true,
+                      },
+                    },
+                  },
+                  orderBy: {
+                    createdAt: 'asc',
+                  },
+                },
               },
             },
           },
           orderBy: {
             createdAt: 'desc',
           },
-        },
+        } as any,
       },
     });
 
@@ -202,8 +250,26 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
     // Combine both sets of submissions (now without duplicates)
     const allSubmissions = [...v4Submissions, ...uniqueAgreementSubmissions];
 
+    // Map feedback.replies from SubmissionComment to same shape as old FeedbackReply (content, user, createdAt)
+    // Also map the main comment's text and timestamp to the feedback
+    const mapFeedbackReplies = (feedback: any) => ({
+      ...feedback,
+      // Map the main comment's text and timestamp to the feedback
+      content: feedback.submissionComment?.text || feedback.content,
+      timestamp: feedback.submissionComment?.timestamp,
+      replies: (feedback.submissionComment?.replies ?? []).map((r: any) => ({
+        id: r.id,
+        content: r.text,
+        createdAt: r.createdAt,
+        user: r.user,
+      })),
+    });
+    allSubmissions.forEach((s: any) => {
+      if (s.feedback) s.feedback = s.feedback.map(mapFeedbackReplies);
+    });
+
     // Sort combined submissions
-    allSubmissions.sort((a, b) => {
+    allSubmissions.sort((a: any, b: any) => {
       // Agreement forms first, then by type, then by content order
       if (a.submissionType.type === 'AGREEMENT_FORM' && b.submissionType.type !== 'AGREEMENT_FORM') {
         return -1;
@@ -242,6 +308,7 @@ export const updatePostingLink = async (submissionId: string, postingLink: strin
         },
         video: {
           select: { status: true },
+          orderBy: { createdAt: 'desc' as const },
         },
       },
     });
@@ -314,6 +381,7 @@ export const submitV4Content = async (
         campaign: true,
         video: {
           select: { status: true },
+          orderBy: { createdAt: 'desc' as const },
         },
       },
     });
@@ -342,7 +410,12 @@ export const submitV4Content = async (
     const updates: any[] = [];
 
     if (submissionType === 'VIDEO' && contentData.videoUrls) {
-      for (const url of contentData.videoUrls) {
+      const latestExistingVideo = await prisma.video.findFirst({
+        where: { submissionId: submission.id },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true },
+      });
+      contentData.videoUrls.forEach((url, index) => {
         updates.push(
           prisma.video.create({
             data: {
@@ -351,10 +424,13 @@ export const submitV4Content = async (
               userId: submission.userId,
               submissionId: submission.id,
               status: 'PENDING',
+              ...(index === 0 && latestExistingVideo
+                ? { resubmittedFromId: latestExistingVideo.id }
+                : {}),
             },
           }),
         );
-      }
+      });
     }
 
     if (submissionType === 'PHOTO' && contentData.photoUrls) {

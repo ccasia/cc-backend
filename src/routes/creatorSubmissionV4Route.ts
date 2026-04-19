@@ -5,6 +5,8 @@ import {
   updateMyPostingLink,
   getMySubmissionDetails,
   getMyCampaignOverview,
+  createMyFeedbackReply,
+  deleteMyReply,
 } from '../controller/creatorSubmissionV4Controller';
 import { isLoggedIn } from '../middleware/onlyLogin';
 import { isCreator } from '../middleware/isCreator';
@@ -54,5 +56,22 @@ router.post('/submit-content', submitMyV4Content);
  * @body submissionId, postingLink
  */
 router.put('/posting-link', updateMyPostingLink);
+
+/**
+ * @route POST /api/creator/submissions/v4/feedback/:feedbackId/replies
+ * @desc Reply to a feedback item (creator)
+ * @access Private (Creator only)
+ * @param feedbackId - Feedback ID
+ * @body content
+ */
+router.post('/feedback/:feedbackId/replies', createMyFeedbackReply);
+
+/**
+ * @route DELETE /api/creator/submissions/v4/comments/:commentId
+ * @desc Creator deletes their own reply
+ * @access Private (Creator only)
+ * @param commentId - Comment ID (must be a reply owned by the creator)
+ */
+router.delete('/comments/:commentId', deleteMyReply);
 
 export default router;

@@ -135,3 +135,4 @@ src/config/*.json
 
 .env
 .DS_Store
+CLAUDE.md
