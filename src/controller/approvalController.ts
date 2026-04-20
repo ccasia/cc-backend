@@ -297,9 +297,16 @@ export const createApprovalRequest = async (req: Request, res: Response) => {
 
       const creatorsPayload = orderedPitches.map((p) => buildApprovalEmailCreatorRow(p));
 
+      const senderId = (req as any).session?.userid as string | undefined;
+      const senderUser = senderId
+        ? await prisma.user.findUnique({ where: { id: senderId }, select: { name: true } })
+        : null;
+      const senderName = senderUser?.name?.trim() || undefined;
+
       await sendCreatorApprovalListEmail({
         to: approverEmail.toLowerCase(),
         approverName,
+        senderName,
         campaignName: campaign?.name || 'Campaign',
         approvalLink: link,
         creators: creatorsPayload,

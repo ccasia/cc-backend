@@ -1789,14 +1789,24 @@ function escapeHtmlAttr(s: string): string {
 export const sendCreatorApprovalListEmail = async (params: {
   to: string;
   approverName: string;
+  senderName?: string;
   campaignName: string;
   approvalLink: string;
   creators: ApprovalListEmailCreatorRow[];
 }): Promise<void> => {
-  const { to, approverName, campaignName, approvalLink, creators } = params;
+  const { to, approverName, senderName, campaignName, approvalLink, creators } = params;
   const safeApprover = escapeHtmlForEmail(approverName.trim() || 'there');
+  const trimmedSender = senderName?.trim();
+  const safeSender = trimmedSender ? escapeHtmlForEmail(trimmedSender) : '';
   const safeCampaign = escapeHtmlForEmail(campaignName);
   const safeHref = escapeHtmlAttr(approvalLink);
+
+  const bodyPara1 = trimmedSender
+    ? `Your campaign manager <strong>${safeSender}</strong> has put together a shortlist of creators for <strong>${safeCampaign}</strong>.`
+    : `Your campaign manager has put together a shortlist of creators for <strong>${safeCampaign}</strong>.`;
+  const bodyPara2 = trimmedSender
+    ? `Please review these profiles and approve or reject each creator so <strong>${safeSender}</strong> can proceed with campaign execution.`
+    : `Please review these profiles and approve or reject each creator so your campaign manager can proceed with campaign execution.`;
 
   const creatorRows = creators
     .map((c) => {
@@ -1857,7 +1867,7 @@ export const sendCreatorApprovalListEmail = async (params: {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Review creators</title>
+<title>📢  Input needed! Creator shortlist ready for review</title>
 <style type="text/css">
   @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap');
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
@@ -1881,21 +1891,28 @@ export const sendCreatorApprovalListEmail = async (params: {
         <tr>
           <td style="padding: 12px 20px 8px 20px;">
             <h1 class="approval-email-headline" style="margin: 0; font-family: 'Instrument Serif', Georgia, 'Times New Roman', serif; font-size: 35px; color: #000000; font-weight: 550; line-height: 1.1;">
-              📢 You Have Been Sent a List for Approval
+              📢  Input needed! Creator shortlist ready for review
             </h1>
           </td>
         </tr>
         <tr>
           <td style="padding: 16px 20px 8px 20px;">
             <p style="margin: 0; font-family: 'Inter', Arial, sans-serif; font-size: 16px; color: #333333; line-height: 1.5;">
-              Hey <strong>${safeApprover}</strong>,
+              Hi <strong>${safeApprover}</strong>,
             </p>
             <p style="margin: 12px 0 0 0; font-family: 'Inter', Arial, sans-serif; font-size: 16px; color: #333333; line-height: 1.45;">
-              You've been sent some creator profiles to review for the <strong>${safeCampaign}</strong> campaign.
+              ${bodyPara1}
             </p>
           </td>
         </tr>
         ${creatorRows}
+        <tr>
+          <td style="padding: 16px 20px 8px 20px;">
+            <p style="margin: 0; font-family: 'Inter', Arial, sans-serif; font-size: 16px; color: #333333; line-height: 1.45;">
+              ${bodyPara2}
+            </p>
+          </td>
+        </tr>
         <tr>
           <td align="center" style="padding: 20px 20px 12px 20px;">
             <table role="presentation" width="315" cellspacing="0" cellpadding="0" border="0" align="center" style="width:315px;max-width:100%;border-collapse:separate;">
@@ -1909,8 +1926,8 @@ export const sendCreatorApprovalListEmail = async (params: {
         </tr>
         <tr>
           <td style="padding: 8px 20px 24px 20px;">
-            <p style="margin: 0; font-family: 'Inter', Arial, sans-serif; font-size: 16px; color: #333333; line-height: 1.4;">
-              Looking forward to your selections,<br>Cult Creative.
+            <p style="margin: 0; font-family: 'Inter', Arial, sans-serif; font-size: 16px; color: #333333; line-height: 1.45;">
+              You'll be able to approve or reject individual creators from the review page.
             </p>
           </td>
         </tr>
@@ -1956,7 +1973,7 @@ export const sendCreatorApprovalListEmail = async (params: {
 
   await sendEmail({
     to,
-    subject: `[Cult Creative] Review creators — ${campaignName}`,
+    subject: `[Cult Creative] 📢  Input needed! Creator shortlist ready for review`,
     html,
   });
 };
