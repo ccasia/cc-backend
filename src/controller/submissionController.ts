@@ -914,11 +914,20 @@ export const getSubmissionByCampaignCreatorId = async (req: Request, res: Respon
   const { creatorId, campaignId } = req.query;
 
   try {
+    const cid = typeof campaignId === 'string' ? campaignId : undefined;
+    const uid = typeof creatorId === 'string' ? creatorId : undefined;
+
+    // Agreements UI loads `/api/submission/?campaignId=...` (no creatorId) to merge AGREEMENT_FORM rows.
+    if (!cid && !uid) {
+      return res.status(400).json({ message: 'campaignId or creatorId is required' });
+    }
+
+    const where: { campaignId?: string; userId?: string } = {};
+    if (cid) where.campaignId = cid;
+    if (uid) where.userId = uid;
+
     const data = await prisma.submission.findMany({
-      where: {
-        userId: creatorId as string,
-        campaignId: campaignId as string,
-      },
+      where,
       include: {
         submissionType: {
           select: {

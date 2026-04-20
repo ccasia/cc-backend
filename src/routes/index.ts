@@ -36,6 +36,7 @@ import aiRouter from './aiRoute';
 import analyticsV2Route from './analyticsV2Route';
 import discoveryRoute from './discoveryRoute';
 import systemSettingRoute from './systemSettingRoute';
+import approvalRoute from './approvalRoute';
 
 export const router = express.Router();
 
@@ -76,3 +77,4 @@ router.use('/ai', aiRouter);
 router.use('/analytics/v2', analyticsV2Route);
 router.use('/discovery', discoveryRoute);
 router.use('/system-settings', systemSettingRoute);
+router.use('/approval-requests', approvalRoute);

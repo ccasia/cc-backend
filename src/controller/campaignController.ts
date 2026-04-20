@@ -1900,7 +1900,33 @@ export const getCampaignById = async (req: Request, res: Response) => {
       status: campaign?.status,
     });
 
-    return res.status(200).json(campaign);
+    // Attach approverPitchIds for approver-role clients so frontend can enforce row-level UI
+    const sessionUserId = req.session?.userid;
+    let approverPitchIds: string[] | undefined;
+    if (sessionUserId && campaign) {
+      const sessionUser = await prisma.user.findUnique({
+        where: { id: sessionUserId },
+        include: { client: true },
+      });
+      if (sessionUser?.role === 'client' && sessionUser.client) {
+        const campaignClientEntry = await prisma.campaignClient.findFirst({
+          where: { clientId: sessionUser.client.id, campaignId: campaign.id },
+        });
+        if (campaignClientEntry?.role === 'approver') {
+          const approvalRequests = await prisma.approvalRequest.findMany({
+            where: {
+              campaignId: campaign.id,
+              approverEmail: sessionUser.email,
+              expiresAt: { gt: new Date() },
+            },
+            include: { creators: { select: { pitchId: true } } },
+          });
+          approverPitchIds = approvalRequests.flatMap((ar) => ar.creators.map((c) => c.pitchId));
+        }
+      }
+    }
+
+    return res.status(200).json({ ...campaign, approverPitchIds });
   } catch (error) {
     return res.status(400).json(error);
   }
@@ -6953,7 +6979,7 @@ export const sendAgreement = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Agreement not found.' });
     }
 
-    const shortlistedCreator = await prisma.shortListedCreator.findUnique({
+    let shortlistedCreator = await prisma.shortListedCreator.findUnique({
       where: {
         userId_campaignId: {
           userId: isUserExist.id,
@@ -6970,8 +6996,112 @@ export const sendAgreement = async (req: Request, res: Response) => {
       },
     });
 
+    // Pitch-only flow (e.g. external approver) can leave APPROVED pitches without a shortlist row.
+    // Client approval path creates ShortListedCreator; mirror that here so sendAgreement can run.
     if (!shortlistedCreator) {
-      return res.status(404).json({ message: 'This creator is not shortlisted.' });
+      const pitchForUser = await prisma.pitch.findUnique({
+        where: {
+          userId_campaignId: {
+            userId: isUserExist.id,
+            campaignId,
+          },
+        },
+        include: {
+          campaign: {
+            select: {
+              isCreditTier: true,
+              submissionVersion: true,
+              origin: true,
+            },
+          },
+        },
+      });
+
+      const campMeta = pitchForUser?.campaign;
+      const allowAutoShortlist =
+        !!campMeta &&
+        (campMeta.submissionVersion === 'v4' || campMeta.origin === 'CLIENT');
+
+      const pitchStatusOk =
+        !!pitchForUser &&
+        ['APPROVED', 'approved', 'AGREEMENT_PENDING', 'AGREEMENT_SUBMITTED'].includes(
+          String(pitchForUser.status || ''),
+        );
+
+      if (!allowAutoShortlist || !pitchStatusOk) {
+        return res.status(404).json({ message: 'This creator is not shortlisted.' });
+      }
+
+      let creditPerVideo: number | null = null;
+      let creditTierId: string | null = null;
+      if (campMeta.isCreditTier) {
+        try {
+          const { calculateCreatorTier } = require('@services/creditTierService');
+          const { tier } = await calculateCreatorTier(isUserExist.id);
+          if (tier) {
+            creditPerVideo = tier.creditsPerVideo;
+            creditTierId = tier.id;
+          }
+        } catch (tierErr) {
+          console.log('calculateCreatorTier in sendAgreement shortlist backfill:', tierErr);
+        }
+      }
+
+      const shortlistData: any = {
+        userId: isUserExist.id,
+        campaignId,
+        isAgreementReady: false,
+        currency: 'MYR',
+      };
+      if (
+        pitchForUser.ugcCredits != null &&
+        Number(pitchForUser.ugcCredits) > 0
+      ) {
+        shortlistData.ugcVideos = pitchForUser.ugcCredits;
+      }
+      if (campMeta.isCreditTier && creditPerVideo != null) {
+        shortlistData.creditPerVideo = creditPerVideo;
+        shortlistData.creditTierId = creditTierId;
+      }
+
+      try {
+        shortlistedCreator = await prisma.shortListedCreator.create({
+          data: shortlistData,
+          include: {
+            campaign: true,
+            user: {
+              include: {
+                creator: true,
+              },
+            },
+          },
+        });
+      } catch (createErr: any) {
+        if (createErr?.code === 'P2002') {
+          shortlistedCreator = await prisma.shortListedCreator.findUnique({
+            where: {
+              userId_campaignId: {
+                userId: isUserExist.id,
+                campaignId,
+              },
+            },
+            include: {
+              campaign: true,
+              user: {
+                include: {
+                  creator: true,
+                },
+              },
+            },
+          });
+        } else {
+          throw createErr;
+        }
+      }
+
+      if (!shortlistedCreator) {
+        return res.status(404).json({ message: 'This creator is not shortlisted.' });
+      }
     }
 
     const campaign = await prisma.campaign.findUnique({
@@ -6999,6 +7129,62 @@ export const sendAgreement = async (req: Request, res: Response) => {
     let creditPerVideo = 1; // Default for non-tier campaigns
     let tierSnapshot: any = null;
     let videoCount = 0;
+
+    const existingAgreementSubmission = await prisma.submission.findFirst({
+      where: {
+        campaignId,
+        userId: isUserExist.id,
+        submissionType: {
+          type: 'AGREEMENT_FORM',
+        },
+      },
+    });
+
+    if (!existingAgreementSubmission) {
+      const agreementTimeline = await prisma.campaignTimeline.findFirst({
+        where: {
+          campaignId,
+          for: 'creator',
+          submissionType: {
+            type: 'AGREEMENT_FORM',
+          },
+        },
+        include: {
+          submissionType: true,
+        },
+      });
+
+      if (agreementTimeline) {
+        const creatorBoard = await prisma.board.findUnique({
+          where: { userId: isUserExist.id },
+          include: { columns: true },
+        });
+
+        const inProgressColumn = creatorBoard?.columns.find((column) => column.name.includes('In Progress'));
+
+        await prisma.submission.create({
+          data: {
+            campaignId,
+            userId: isUserExist.id,
+            submissionTypeId: agreementTimeline.submissionTypeId as string,
+            dueDate: agreementTimeline.endDate,
+            status: 'IN_PROGRESS',
+            ...(isV4Campaign && { submissionVersion: 'v4' }),
+            ...(inProgressColumn && {
+              task: {
+                create: {
+                  name: agreementTimeline.name,
+                  position: 0,
+                  columnId: inProgressColumn.id,
+                  priority: '',
+                  status: 'In Progress',
+                },
+              },
+            }),
+          },
+        });
+      }
+    }
 
     if (!isGuestCreator) {
       videoCount = Math.floor(Number(credits ?? shortlistedCreator.ugcVideos ?? 0));
