@@ -30,7 +30,7 @@ import {
 
 const router = Router();
 
-router.get('/', getSubmissionByCampaignCreatorId);
+router.get('/', isLoggedIn, getSubmissionByCampaignCreatorId);
 router.get('/getAllsubmission', getAllSubmissions);
 router.get('/deliverables/:userId/:campaignId', isLoggedIn, getDeliverables);
 

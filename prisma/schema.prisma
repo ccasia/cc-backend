@@ -742,6 +742,8 @@ model Campaign {
 
   publishedAt DateTime?
   completedAt DateTime?
+
+  approvalRequests ApprovalRequest[]
 }
 
 model BookMarkCampaign {
@@ -973,6 +975,8 @@ model Pitch {
   rejectedByClientId        String?
   rejectionReason           String?
   customRejectionText       String?
+  /// From public approval link; shown only to brand client UI, not admin
+  clientVisibleApprovalNote String?
   maybeByClientId           String?
   acceptedInviteByCreatorId String?
   amount                    Int?
@@ -999,6 +1003,8 @@ model Pitch {
   rejectedByClient        User?    @relation("RejectedByClient", fields: [rejectedByClientId], references: [id])
   maybeByClient           User?    @relation("MaybeByClient", fields: [maybeByClientId], references: [id])
   acceptedInviteByCreator User?    @relation("AcceptedInviteByCreator", fields: [acceptedInviteByCreatorId], references: [id])
+
+  approvalRequestCreators ApprovalRequestCreator[]
 
   @@unique([userId, campaignId])
 }
@@ -1709,6 +1715,42 @@ model PublicFeedback {
   submission   Submission    @relation(fields: [submissionId], references: [id], onDelete: Cascade)
 }
 
+model ApprovalRequest {
+  id            String   @id @default(cuid())
+  token         String   @unique
+  campaignId    String
+  approverName  String
+  approverEmail String
+  inviteToken   String?
+  expiresAt     DateTime
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  campaign Campaign                 @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  creators ApprovalRequestCreator[]
+}
+
+model ApprovalRequestCreator {
+  id                String                @id @default(cuid())
+  approvalRequestId String
+  pitchId           String
+  status            ApprovalCreatorStatus @default(PENDING)
+  comment           String?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  approvalRequest ApprovalRequest @relation(fields: [approvalRequestId], references: [id], onDelete: Cascade)
+  pitch           Pitch           @relation(fields: [pitchId], references: [id], onDelete: Cascade)
+
+  @@unique([approvalRequestId, pitchId])
+}
+
+enum ApprovalCreatorStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 // enum LogisticStatus {
 //   Product_is_being_packaged
 //   Proudct_is_at_delivery_warehouse_in_transit
@@ -1837,6 +1879,7 @@ enum PitchStatus {
   AGREEMENT_SUBMITTED
   WITHDRAWN
   INVITED
+  AWAITING_APPROVAL
 }
 
 // Outreach status for internal admin tracking of creator outreach
