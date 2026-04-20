@@ -59,3 +59,34 @@ export const isAdmin = async (req: Request, res: Response, next: NextFunction) =
     return res.status(500).json({ message: 'Internal server error checking permissions' });
   }
 };
+
+export const isBdOrSuperadmin = async (req: Request, res: Response, next: NextFunction) => {
+  const userid = req.session.userid;
+
+  if (!userid) {
+    return res.status(401).json({ message: 'User not authenticated' });
+  }
+
+  try {
+    const user = await getUser(userid);
+
+    const isSuperAdmin = user?.role === 'superadmin' || ['god', 'advanced'].includes(user?.admin?.mode || '');
+    if (isSuperAdmin) return next();
+
+    const roleName = (user?.admin?.role?.name || '').toLowerCase();
+    const isBDorSales =
+      roleName === 'bd' ||
+      roleName.includes('business development') ||
+      roleName === 'sales and marketing' ||
+      roleName.includes('sales and marketing');
+
+    if (!isBDorSales) {
+      return res.status(403).json({ message: 'Access denied. BD or superadmin role required.' });
+    }
+
+    next();
+  } catch (error) {
+    console.error('Error in isBDOrSuperadmin middleware:', error);
+    return res.status(500).json({ message: 'Internal server error checking permissions' });
+  }
+};
