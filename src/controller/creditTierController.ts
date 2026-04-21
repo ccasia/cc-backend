@@ -3,6 +3,16 @@ import { Request, Response } from 'express';
 
 const prisma = new PrismaClient();
 
+const getPlatformFollowers = (creator: any, platform: 'instagram' | 'tiktok'): number => {
+  if (platform === 'instagram') {
+    if (creator?.instagramUser) return creator?.instagramUser?.followers_count || 0;
+    return creator?.manualInstagramFollowerCount || 0;
+  }
+
+  if (creator?.tiktokUser) return creator?.tiktokUser?.follower_count || 0;
+  return creator?.manualTiktokFollowerCount || 0;
+};
+
 // Get all credit tiers
 export const getAllCreditTiers = async (req: Request, res: Response) => {
   try {
@@ -17,9 +27,36 @@ export const getAllCreditTiers = async (req: Request, res: Response) => {
       },
     });
 
+    const creators = await prisma.creator.findMany({
+      include: {
+        instagramUser: {
+          select: {
+            followers_count: true,
+          },
+        },
+        tiktokUser: {
+          select: {
+            follower_count: true,
+          },
+        },
+      },
+    });
+
     const creditTiersWithCounts = creditTiers.map((tier) => ({
       ...tier,
       creatorsCount: tier._count?.creators ?? 0,
+      instagramCount: creators.filter((creator) => {
+        const followers = getPlatformFollowers(creator, 'instagram');
+        if (followers <= 0) return false;
+        if (tier.maxFollowers === null) return followers >= tier.minFollowers;
+        return followers >= tier.minFollowers && followers <= tier.maxFollowers;
+      }).length,
+      tiktokCount: creators.filter((creator) => {
+        const followers = getPlatformFollowers(creator, 'tiktok');
+        if (followers <= 0) return false;
+        if (tier.maxFollowers === null) return followers >= tier.minFollowers;
+        return followers >= tier.minFollowers && followers <= tier.maxFollowers;
+      }).length,
       _count: undefined,
     }));
 

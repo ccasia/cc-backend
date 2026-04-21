@@ -290,10 +290,12 @@ model Creator {
   dietaryRestrictions String?
 
   // Credit Tier fields
-  manualFollowerCount Int?        @default(0) // Manually entered follower count (when no media kit)
-  creditTierId        String?
-  creditTier          CreditTier? @relation("UserCurrentTier", fields: [creditTierId], references: [id])
-  tierUpdatedAt       DateTime? // Last time tier was calculated
+  manualFollowerCount         Int?             @default(0) // Legacy fallback manual follower count
+  manualInstagramFollowerCount Int?            @default(0) // Platform-specific manual Instagram followers
+  manualTiktokFollowerCount    Int?            @default(0) // Platform-specific manual TikTok followers
+  creditTierId                 String?
+  creditTier                   CreditTier?      @relation("UserCurrentTier", fields: [creditTierId], references: [id])
+  tierUpdatedAt                DateTime? // Last time tier was calculated
 
   @@index([formCompletedAt])
 }
@@ -988,6 +990,7 @@ model Pitch {
   agreementTemplateId       String?
   Notification              Notification[]
   followerCount             String?
+  selectedPlatform          SocialPlatform?
   engagementRate            String?
   adminComments             String?
   adminCommentedBy          String?
@@ -1025,6 +1028,8 @@ model ShortListedCreator {
   isCreatorPaid    Boolean? @default(false)
   ugcVideos        Int?
   amount           Int?
+  followerCount    Int?
+  selectedPlatform SocialPlatform?
   campaign         Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   user             User?    @relation(fields: [userId], references: [id])
 
@@ -1884,6 +1889,11 @@ enum PitchStatus {
   WITHDRAWN
   INVITED
   AWAITING_APPROVAL
+}
+
+enum SocialPlatform {
+  instagram
+  tiktok
 }
 
 // Outreach status for internal admin tracking of creator outreach
