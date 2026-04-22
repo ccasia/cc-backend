@@ -160,13 +160,9 @@ export const swapGuestWithPlatformCreator = async (req: Request, res: Response) 
         console.log(`[SWAP] Transferred guest profile link to platform creator: ${guestUser.creator.profileLink}`);
       }
 
-      // Transfer guest's tier + manualFollowerCount to the platform creator's global Creator
-      // record — but ONLY if the platform creator doesn't already have its own tier (e.g. they
-      // have no media kit connected). Linking is the admin asserting "this guest data is this
-      // person", so we propagate it to source-of-truth so tier shows everywhere — not just in
-      // the per-campaign snapshot. We never overwrite an existing tier (which would be derived
-      // from real social data via creditTierService and is more authoritative than admin's
-      // manual entry).
+      // Copy guest's tier to the platform creator so it shows up across the app, not just
+      // in this campaign. Skip if they already have a tier, since their real one is better
+      // than the admin's manual guess.
       if (platformUser.creator && !platformUser.creator.creditTierId && guestCreator?.creditTierId) {
         const followerCountToCopy =
           (platformUser.creator.manualFollowerCount ?? 0) > 0
