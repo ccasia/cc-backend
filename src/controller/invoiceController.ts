@@ -37,6 +37,7 @@ import { xero } from '@configs/xero';
 // import { decreamentCreditCampiagn } from '@services/packageService';
 
 const prisma = new PrismaClient();
+const MAX_INVOICE_NUMBER_RETRIES = 8;
 
 // const client_id: string = process.env.XERO_CLIENT_ID as string;
 // const client_secret: string = process.env.XERO_CLIENT_SECRET as string;
@@ -984,32 +985,58 @@ export const createInvoice = async (req: Request, res: Response) => {
   }
 
   const creatorIdInfo = invoiceFrom.id;
+  const requestedInvoiceNumber = invoiceNumber;
 
-  try {
-    // Store the invoice with the currency information embedded in the task object
-    const invoice = await prisma.invoice.create({
-      data: {
-        invoiceNumber,
-        createdAt: createDate,
-        dueDate,
-        status: status as InvoiceStatus,
-        invoiceFrom: invoiceFrom,
-        invoiceTo: invoiceTo,
-        task: item, // The currency info is already included in the item object
-        amount: parseFloat(totalAmount),
-        bankAcc: bankInfo,
-        campaignId: campaignId,
-        creatorId: creatorIdInfo,
-        adminId: userid,
-      },
-    });
+  for (let attempt = 0; attempt < MAX_INVOICE_NUMBER_RETRIES; attempt++) {
+    const nextInvoiceNumber =
+      attempt === 0 && requestedInvoiceNumber ? requestedInvoiceNumber : await generateUniqueInvoiceNumber();
 
-    const message = `Invoice generated in campaign - ${invoice.campaignId} `;
-    logAdminChange(message, userid, req);
-    return res.status(201).json(invoice);
-  } catch (error) {
-    return res.status(400).json(error);
+    try {
+      // Store the invoice with the currency information embedded in the task object
+      const invoice = await prisma.invoice.create({
+        data: {
+          invoiceNumber: nextInvoiceNumber,
+          createdAt: createDate,
+          dueDate,
+          status: status as InvoiceStatus,
+          invoiceFrom: invoiceFrom,
+          invoiceTo: invoiceTo,
+          task: item, // The currency info is already included in the item object
+          amount: parseFloat(totalAmount),
+          bankAcc: bankInfo,
+          campaignId: campaignId,
+          creatorId: creatorIdInfo,
+          adminId: userid,
+        },
+      });
+
+      const message = `Invoice generated in campaign - ${invoice.campaignId} `;
+      logAdminChange(message, userid, req);
+      return res.status(201).json(invoice);
+    } catch (error: any) {
+      const isDuplicateInvoiceNumber =
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002' &&
+        Array.isArray(error.meta?.target) &&
+        error.meta.target.includes('invoiceNumber');
+
+      if (isDuplicateInvoiceNumber && attempt < MAX_INVOICE_NUMBER_RETRIES - 1) {
+        continue;
+      }
+
+      if (isDuplicateInvoiceNumber) {
+        return res.status(409).json({
+          message: 'Unable to create invoice because invoice number already exists.',
+        });
+      }
+
+      return res.status(400).json(error);
+    }
   }
+
+  return res.status(409).json({
+    message: 'Unable to create invoice due to repeated invoice number conflicts. Please try again.',
+  });
 };
 
 // update invoice status
