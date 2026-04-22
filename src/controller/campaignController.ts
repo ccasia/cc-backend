@@ -6991,6 +6991,30 @@ export const sendAgreement = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Campaign not found.' });
     }
 
+    // Defense-in-depth: don't let admin send an agreement for a creator whose pitch
+    // hasn't been approved yet. Frontend already hides the button, but a stale UI or
+    // direct API call should still be rejected. Pitches without a record (legacy /
+    // backwards-compat shortlists) are allowed since shortlist itself is the approval.
+    const pitchForGate = await prisma.pitch.findFirst({
+      where: { userId: isUserExist.id, campaignId },
+      select: { status: true },
+    });
+    if (pitchForGate) {
+      const allowedPitchStatuses = [
+        'APPROVED',
+        'approved',
+        'AGREEMENT_PENDING',
+        'AGREEMENT_SUBMITTED',
+      ];
+      const pitchStatus = pitchForGate.status ?? '';
+      if (!allowedPitchStatuses.includes(pitchStatus)) {
+        return res.status(400).json({
+          message:
+            'Cannot send agreement: this creator has not been approved yet. Awaiting client/admin approval.',
+        });
+      }
+    }
+
     const isV4Campaign = campaign.submissionVersion === 'v4';
     const isGuestCreator = shortlistedCreator.user?.creator?.isGuest === true;
     const isCreditTierCampaign = campaign.isCreditTier === true;
@@ -8392,6 +8416,27 @@ export const resendAgreement = async (req: Request, res: Response) => {
 
     if (!user || !campaign) {
       return res.status(404).json({ message: 'User or campaign not found.' });
+    }
+
+    // Defense-in-depth: same approval gate as sendAgreement.
+    const pitchForGate = await prisma.pitch.findFirst({
+      where: { userId, campaignId },
+      select: { status: true },
+    });
+    if (pitchForGate) {
+      const allowedPitchStatuses = [
+        'APPROVED',
+        'approved',
+        'AGREEMENT_PENDING',
+        'AGREEMENT_SUBMITTED',
+      ];
+      const pitchStatus = pitchForGate.status ?? '';
+      if (!allowedPitchStatuses.includes(pitchStatus)) {
+        return res.status(400).json({
+          message:
+            'Cannot resend agreement: this creator has not been approved yet. Awaiting client/admin approval.',
+        });
+      }
     }
 
     // Find the agreement
