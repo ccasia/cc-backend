@@ -1,16 +1,18 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
+import { UploadedFile } from 'express-fileupload';
 import { generateRandomString } from '@utils/randomString';
 import { getUser } from '@services/userServices';
 import { bdDraftCreated } from '@configs/nodemailer.config';
+import { uploadAttachments } from '@configs/cloudStorage.config';
 
 const prisma = new PrismaClient();
 
 const TOKEN_LENGTH = 24;
 
 const publicUrl = (token: string) => {
-  const base = process.env.APP_PUBLIC_URL || process.env.BACKEND_URL || 'http://localhost';
-  return `${base.replace(/\/$/, '')}/public/bd/${token}`;
+  const base = process.env.APP_PUBLIC_URL || 'http://localhost';
+  return `${base.replace(/\/$/, '')}/bd/${token}`;
 };
 
 const generateUniqueBdToken = async (): Promise<string> => {
@@ -96,21 +98,59 @@ export const getPublicInviteInfo = async (req: Request, res: Response) => {
 };
 
 // POST /bd/invite/public/:token/submit   (no auth)
+//
+// Accepts either application/json or multipart/form-data. When a brandGuidelines
+// file is present the client must use multipart — in that case array-typed fields
+// (secondaryObjectives, kpis) arrive as JSON strings.
 export const bdSubmitDraft = async (req: Request, res: Response) => {
   const { token } = req.params;
   if (!token) return res.status(404).json({ message: 'Not found' });
 
+  // Normalize array fields: JSON posts send arrays, multipart posts send strings.
+  const toStringArray = (raw: unknown): string[] => {
+    if (Array.isArray(raw)) return raw.filter((v): v is string => typeof v === 'string');
+    if (typeof raw === 'string' && raw.trim()) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed.filter((v): v is string => typeof v === 'string');
+      } catch {
+        // not JSON — treat as a single value
+        return [raw];
+      }
+    }
+    return [];
+  };
+
+  const body = req.body ?? {};
   const {
     brandName,
     industry,
     postingStart,
     postingEnd,
     primaryGoal,
-    secondaryObjectives,
-    kpis,
     kpiNotes,
     additionalInfo,
-  } = req.body ?? {};
+    // Optional primary audience (CampaignRequirement)
+    user_persona: userPersona,
+    geographic_focus: geographicFocus,
+  } = body;
+
+  const secondaryObjectives = toStringArray(body.secondaryObjectives);
+  const kpis = toStringArray(body.kpis);
+  const gender = toStringArray(body.gender);
+  const age = toStringArray(body.age);
+  const countrySingle: string =
+    typeof body.country === 'string' && body.country.trim() ? body.country.trim() : '';
+  const language = toStringArray(body.language);
+  const creatorPersona = toStringArray(body.creator_persona);
+
+  // Map the prospect form's human-readable geographic focus labels to the value
+  // tokens UpdateAudience expects on the BD edit screen.
+  const GEO_FOCUS_LABEL_TO_VALUE: Record<string, string> = {
+    'SEA Region': 'SEAregion',
+    Global: 'global',
+    Others: 'others',
+  };
 
   // Strict server-side validation
   const errors: string[] = [];
@@ -118,14 +158,40 @@ export const bdSubmitDraft = async (req: Request, res: Response) => {
   if (!industry || typeof industry !== 'string') errors.push('industry');
   if (!postingStart && !postingEnd) errors.push('postingTimeline');
   if (!primaryGoal || typeof primaryGoal !== 'string') errors.push('primaryGoal');
-  if (!Array.isArray(secondaryObjectives) || secondaryObjectives.length !== 2) {
+  if (secondaryObjectives.length !== 2) {
     errors.push('secondaryObjectives');
   }
-  if (!Array.isArray(kpis) || kpis.length === 0) {
+  if (kpis.length === 0) {
     errors.push('kpis');
   }
   if (errors.length > 0) {
     return res.status(400).json({ message: 'Invalid submission', invalidFields: errors });
+  }
+
+  // File validation — all optional, but strict if present.
+  const FILE_MAX = 10 * 1024 * 1024; // 10MB
+  const DOC_MIMES = new Set(['application/pdf', 'image/jpeg', 'image/jpg', 'image/png']);
+
+  const pickFile = (key: string): UploadedFile | null => {
+    const entry = req.files?.[key];
+    if (!entry) return null;
+    return Array.isArray(entry) ? entry[0] : entry;
+  };
+
+  const brandGuidelinesFile = pickFile('brandGuidelines');
+
+  const validateFile = (file: UploadedFile | null, allowed: Set<string>, label: string): string | null => {
+    if (!file) return null;
+    if (file.size > FILE_MAX) return `${label} exceeds the 10MB size limit`;
+    if (!allowed.has(file.mimetype)) return `${label} must be one of: ${Array.from(allowed).join(', ')}`;
+    return null;
+  };
+
+  const fileErrors: string[] = [];
+  const bgErr = validateFile(brandGuidelinesFile, DOC_MIMES, 'Brand guidelines');
+  if (bgErr) fileErrors.push(bgErr);
+  if (fileErrors.length > 0) {
+    return res.status(400).json({ message: 'Invalid file upload', fileErrors });
   }
 
   try {
@@ -138,17 +204,11 @@ export const bdSubmitDraft = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'This link is no longer valid' });
     }
 
-    const kpiArray = Array.isArray(kpis) ? kpis.filter((k) => typeof k === 'string') : [];
-    const objectiveArray = (secondaryObjectives as unknown[]).filter(
-      (s): s is string => typeof s === 'string',
-    );
-
-    const description =
-      typeof additionalInfo === 'string' && additionalInfo.trim() ? additionalInfo.trim() : '';
+    const description = typeof additionalInfo === 'string' && additionalInfo.trim() ? additionalInfo.trim() : '';
 
     const specialNotesParts: string[] = [];
-    if (kpiArray.length) {
-      specialNotesParts.push(`KPIs: ${kpiArray.join(', ')}`);
+    if (kpis.length) {
+      specialNotesParts.push(`KPIs: ${kpis.join(', ')}`);
     }
     if (typeof kpiNotes === 'string' && kpiNotes.trim()) {
       specialNotesParts.push(`KPI notes: ${kpiNotes.trim()}`);
@@ -161,6 +221,40 @@ export const bdSubmitDraft = async (req: Request, res: Response) => {
     const end = new Date(endSource);
     if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
       return res.status(400).json({ message: 'Invalid posting dates' });
+    }
+
+    // Upload files to GCS BEFORE opening the DB transaction so we don't hold a DB
+    // connection open during network I/O. If the DB write fails afterward the
+    // uploaded files become orphans, which is acceptable for a lead-capture flow.
+    const safeName = (base: string, orig: string) => {
+      const ext = orig.includes('.') ? orig.slice(orig.lastIndexOf('.')) : '';
+      return `${base}-${generateRandomString(12)}${ext}`;
+    };
+
+    let brandGuidelinesUrl: string | null = null;
+    if (brandGuidelinesFile) {
+      brandGuidelinesUrl = await uploadAttachments({
+        tempFilePath: brandGuidelinesFile.tempFilePath,
+        fileName: safeName('brand-guidelines', brandGuidelinesFile.name),
+        folderName: 'bdInviteAttachments',
+      });
+    }
+
+    const additionalDetailsData: Record<string, string> = {};
+    if (specialNotesInstructions) additionalDetailsData.specialNotesInstructions = specialNotesInstructions;
+    if (brandGuidelinesUrl) additionalDetailsData.brandGuidelinesUrl = brandGuidelinesUrl;
+
+    const requirementData: Record<string, unknown> = {
+      user_persona: typeof userPersona === 'string' ? userPersona : '',
+    };
+    if (gender.length) requirementData.gender = gender;
+    if (age.length) requirementData.age = age;
+    if (countrySingle) requirementData.country = countrySingle;
+    if (language.length) requirementData.language = language;
+    if (creatorPersona.length) requirementData.creator_persona = creatorPersona;
+    if (typeof geographicFocus === 'string' && geographicFocus.trim()) {
+      const raw = geographicFocus.trim();
+      requirementData.geographic_focus = GEO_FOCUS_LABEL_TO_VALUE[raw] ?? raw;
     }
 
     const campaign = await prisma.$transaction(async (tx) => {
@@ -177,7 +271,7 @@ export const bdSubmitDraft = async (req: Request, res: Response) => {
               title: brandName.trim(),
               industries: industry,
               objectives: primaryGoal,
-              secondaryObjectives: objectiveArray,
+              secondaryObjectives,
               postingStartDate: postingStart ? new Date(postingStart) : null,
               postingEndDate: postingEnd ? new Date(postingEnd) : null,
               startDate: start,
@@ -186,14 +280,12 @@ export const bdSubmitDraft = async (req: Request, res: Response) => {
             },
           },
           campaignRequirement: {
-            create: {
-              user_persona: '',
-            },
+            create: requirementData as any,
           },
-          ...(specialNotesInstructions
+          ...(Object.keys(additionalDetailsData).length > 0
             ? {
                 campaignAdditionalDetails: {
-                  create: { specialNotesInstructions },
+                  create: additionalDetailsData,
                 },
               }
             : {}),
