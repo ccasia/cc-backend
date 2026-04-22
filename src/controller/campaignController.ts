@@ -12501,7 +12501,7 @@ const BD_DRAFT_REQUIRED_FIELDS = {
   requirement: [
     'gender',
     'age',
-    'countries',
+    'country',
     'language',
     'creator_persona',
     'user_persona',
@@ -12520,7 +12520,7 @@ const FIELD_LABELS: Record<string, string> = {
   industries: "Creator's Interest / Industries",
   gender: 'Gender',
   age: 'Age',
-  countries: 'Country',
+  country: 'Country',
   language: 'Language',
   creator_persona: 'Creator Persona',
   user_persona: 'User Persona',
@@ -12543,10 +12543,10 @@ export const submitDraftForReview = async (req: Request, res: Response) => {
   if (!userid) return res.status(401).json({ message: 'User not authenticated' });
   if (!id) return res.status(400).json({ message: 'Campaign id is required' });
 
-  const campaignCredits = Number(rawCredits) || 0;
-  if (campaignCredits <= 0) {
-    return res.status(400).json({ message: 'Campaign credits must be greater than 0' });
-  }
+  // BD flow prefills credits to 1; CS adjusts the actual amount later. Accept any positive
+  // integer from the request, but default to 1 when the field is missing/blank.
+  const parsedCredits = Number(rawCredits);
+  const campaignCredits = Number.isFinite(parsedCredits) && parsedCredits > 0 ? parsedCredits : 1;
 
   try {
     const campaign = await prisma.campaign.findUnique({
