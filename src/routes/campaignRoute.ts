@@ -229,7 +229,7 @@ router.patch('/v4/changeCredits', isLoggedIn, isSuperAdmin, changeCampaignCredit
 
 // Credit management routes
 router.post('/syncCredits/:campaignId', isLoggedIn, syncCampaignCredits);
-router.patch('/updateAllCredits', isLoggedIn, isSuperAdmin, updateAllCampaignCredits);
+router.patch('/updateAllCredits', isLoggedIn, canActivateCampaign, updateAllCampaignCredits);
 
 router.patch('/pitch', isLoggedIn, creatorMakePitch);
 router.patch('/changeCampaignStage/:campaignId', changeCampaignStage);
