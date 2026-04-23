@@ -1900,12 +1900,48 @@ export async function ensureValidInstagramToken(userId: string): Promise<string>
   return accessToken;
 }
 
+// Local-dev only: deterministic mock insight payload keyed by post URL.
+// Activated by MOCK_INSIGHTS=1. Lets the insight→row matching fix be verified
+// without real Instagram/TikTok credentials.
+const buildMockInsight = (postUrl: string, platform: 'Instagram' | 'TikTok') => {
+  const seed = [...postUrl].reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
+  const label = encodeURIComponent(postUrl.slice(-10));
+  const views = 1000 + (seed % 4000);
+  const likes = 10 + (seed % 90);
+  const comments = seed % 20;
+  const shares = seed % 30;
+  const saved = seed % 15;
+  const insight = [
+    { name: 'views', values: [{ value: views }] },
+    { name: 'likes', values: [{ value: likes }] },
+    { name: 'comments', values: [{ value: comments }] },
+    { name: 'shares', values: [{ value: shares }] },
+  ];
+  if (platform === 'Instagram') {
+    insight.push({ name: 'saved', values: [{ value: saved }] });
+    insight.push({ name: 'reach', values: [{ value: views * 2 }] });
+  }
+  return {
+    video: {
+      thumbnail_url: `https://placehold.co/280x160/orange/white?text=${label}`,
+      media_url: `https://placehold.co/280x160/orange/white?text=${label}`,
+      permalink: postUrl,
+    },
+    insight,
+    hasCampaignData: false,
+  };
+};
+
 export const getInstagramMediaInsight = async (req: Request, res: Response) => {
   const { userId } = req.params;
   const { url, campaignId } = req.query; // Added campaignId parameter
 
   if (!userId) return res.status(404).json({ message: 'Parameter missing: userId' });
   if (!url) return res.status(404).json({ message: 'Query missing: url' });
+
+  if (process.env.MOCK_INSIGHTS === '1') {
+    return res.json(buildMockInsight(String(url), 'Instagram'));
+  }
 
   try {
     const user = await prisma.user.findUnique({
@@ -2196,6 +2232,10 @@ export const getTikTokVideoInsight = async (req: Request, res: Response) => {
 
   if (!userId) return res.status(404).json({ message: 'Parameter missing: userId' });
   if (!url) return res.status(404).json({ message: 'Query missing: url' });
+
+  if (process.env.MOCK_INSIGHTS === '1') {
+    return res.json(buildMockInsight(String(url), 'TikTok'));
+  }
 
   try {
     const user = await prisma.user.findUnique({
