@@ -7,6 +7,7 @@ import {
   updateManualCreatorEntry,
   validateUrl,
   detectPlatformFromUrl,
+  DuplicateManualCreatorEntryError,
 } from '@services/manualCreatorService';
 
 const prisma = new PrismaClient();
@@ -99,6 +100,12 @@ export const createEntry = async (req: Request, res: Response) => {
       data: entry,
     });
   } catch (error: any) {
+    if (error instanceof DuplicateManualCreatorEntryError || error?.code === 'P2002') {
+      return res.status(409).json({
+        success: false,
+        message: 'This creator is already in the list.',
+      });
+    }
     console.error('Error creating manual creator entry:', error.message);
     return res.status(500).json({
       success: false,
