@@ -88,13 +88,6 @@ export const validateUrl = (url: string, expectedPlatform?: string): { isValid: 
   }
 };
 
-export class DuplicateManualCreatorEntryError extends Error {
-  constructor(message = 'This creator is already in the list.') {
-    super(message);
-    this.name = 'DuplicateManualCreatorEntryError';
-  }
-}
-
 //Create a manual creator entry
 export const createManualCreatorEntry = async (input: CreateManualCreatorInput) => {
   const {
@@ -111,19 +104,6 @@ export const createManualCreatorEntry = async (input: CreateManualCreatorInput) 
     createdBy,
     photoURL,
   } = input;
-
-  const existing = await prisma.manualCreatorEntry.findFirst({
-    where: {
-      campaignId,
-      creatorUsername,
-      platform,
-      postUrl: postUrl || null,
-    },
-  });
-
-  if (existing) {
-    throw new DuplicateManualCreatorEntryError();
-  }
 
   const engagementRate = calculateEngagementRate(platform, views, likes, comments, shares, saved);
 
