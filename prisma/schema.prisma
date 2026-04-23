@@ -1248,7 +1248,6 @@ model ManualCreatorEntry {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([campaignId, creatorUsername, platform, postUrl])
   @@index([campaignId])
 }
 
