@@ -520,8 +520,22 @@ export const refreshTikTokToken = async (refreshToken: string) => {
 
     return refreshedToken.data;
   } catch (error) {
-    console.error('Error refreshing TikTok token:', error);
-    throw new Error('Error refreshing TikTok token');
+    const status = error?.response?.status;
+    const data = error?.response?.data;
+    console.error('Error refreshing TikTok token:', {
+      status,
+      data,
+      message: error?.message,
+    });
+    const tiktokError = data?.error || data?.error_code;
+    const tiktokDescription = data?.error_description || data?.message;
+    const detail = tiktokError
+      ? `${tiktokError}${tiktokDescription ? `: ${tiktokDescription}` : ''}`
+      : error?.message || 'unknown error';
+    const wrapped: any = new Error(`TikTok refresh failed (${status ?? 'no-status'}): ${detail}`);
+    wrapped.tiktokStatus = status;
+    wrapped.tiktokData = data;
+    throw wrapped;
   }
 };
 

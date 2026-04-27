@@ -2218,7 +2218,13 @@ export async function ensureValidTikTokToken(userId: string): Promise<string> {
       accessToken = refreshedTokenData.access_token;
       console.log('TikTok token refreshed successfully');
     } catch (refreshError) {
-      console.error('Failed to refresh TikTok token:', refreshError);
+      console.error('Failed to refresh TikTok token:', {
+        userId,
+        creatorId: creator.id,
+        tiktokStatus: refreshError?.tiktokStatus,
+        tiktokData: refreshError?.tiktokData,
+        message: refreshError?.message,
+      });
       throw new Error('TikTok token expired and refresh failed. Please reconnect your TikTok account.');
     }
   }
