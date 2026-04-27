@@ -253,6 +253,21 @@ export const createApprovalRequest = async (req: Request, res: Response) => {
       return approvalRequest;
     });
 
+    const senderIdForLog = (req as any).session?.userid as string | undefined;
+    try {
+      const count = validPitchIds.length;
+      const countLabel = `${count} creator${count === 1 ? '' : 's'}`;
+      await prisma.campaignLog.create({
+        data: {
+          campaignId,
+          ...(senderIdForLog ? { adminId: senderIdForLog } : {}),
+          message: `sent creator shortlist for approval to approver ${approverName.trim()} (${countLabel})`,
+        },
+      });
+    } catch (logErr) {
+      console.error('Failed to write campaign log for approval request:', logErr);
+    }
+
     const baseUrl = process.env.BASE_EMAIL_URL || 'http://localhost:3000';
     const link = `${baseUrl}/public/approval/${token}`;
 
@@ -453,6 +468,29 @@ export const actionApprovalCreator = async (req: Request, res: Response) => {
           },
         }),
       ]);
+
+      try {
+        const pitchForLog = await prisma.pitch.findUnique({
+          where: { id: pitchId },
+          select: {
+            user: { select: { name: true } },
+          },
+        });
+        const creatorLabel = pitchForLog?.user?.name?.trim() || 'Creator';
+        const approverNameFromRequest = approvalRequest.approverName?.trim() || 'Approver';
+        const logMessage =
+          action === 'approve'
+            ? `${creatorLabel}'s profile has been approved by approver ${approverNameFromRequest}`
+            : `${creatorLabel}'s profile has been rejected by approver ${approverNameFromRequest}`;
+        await prisma.campaignLog.create({
+          data: {
+            campaignId: approvalRequest.campaignId,
+            message: logMessage,
+          },
+        });
+      } catch (logErr) {
+        console.error('Failed to write campaign log for approver action:', logErr);
+      }
     } else {
       const matches =
         (creatorEntry.status === 'APPROVED' && action === 'approve') ||
