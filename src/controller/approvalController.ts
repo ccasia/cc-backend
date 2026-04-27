@@ -420,8 +420,8 @@ export const actionApprovalCreator = async (req: Request, res: Response) => {
   const { token, pitchId } = req.params;
   const { action, comment } = req.body;
 
-  if (action !== 'approve' && action !== 'reject') {
-    return res.status(400).json({ message: "action must be 'approve' or 'reject'" });
+  if (action !== 'approve' && action !== 'reject' && action !== 'maybe') {
+    return res.status(400).json({ message: "action must be 'approve', 'reject', or 'maybe'" });
   }
 
   const rawComment = typeof comment === 'string' ? comment.trim() : '';
@@ -447,10 +447,20 @@ export const actionApprovalCreator = async (req: Request, res: Response) => {
     }
 
     const isPending = creatorEntry.status === 'PENDING';
+    const pitchBefore = await prisma.pitch.findUnique({
+      where: { id: pitchId },
+      select: { status: true, user: { select: { name: true } } },
+    });
 
     if (isPending) {
       const approvalStatus = action === 'approve' ? 'APPROVED' : 'REJECTED';
-      const pitchStatus = action === 'approve' ? 'APPROVED' : 'REJECTED';
+      const pitchStatus = action === 'approve' ? 'APPROVED' : action === 'reject' ? 'REJECTED' : 'MAYBE';
+
+      if (pitchBefore?.status && pitchBefore.status !== 'AWAITING_APPROVAL') {
+        return res.status(400).json({
+          message: `This creator has already been actioned (${pitchBefore.status}).`,
+        });
+      }
 
       await prisma.$transaction([
         prisma.approvalRequestCreator.update({
@@ -470,18 +480,14 @@ export const actionApprovalCreator = async (req: Request, res: Response) => {
       ]);
 
       try {
-        const pitchForLog = await prisma.pitch.findUnique({
-          where: { id: pitchId },
-          select: {
-            user: { select: { name: true } },
-          },
-        });
-        const creatorLabel = pitchForLog?.user?.name?.trim() || 'Creator';
+        const creatorLabel = pitchBefore?.user?.name?.trim() || 'Creator';
         const approverNameFromRequest = approvalRequest.approverName?.trim() || 'Approver';
         const logMessage =
           action === 'approve'
             ? `${creatorLabel}'s profile has been approved by approver ${approverNameFromRequest}`
-            : `${creatorLabel}'s profile has been rejected by approver ${approverNameFromRequest}`;
+            : action === 'reject'
+              ? `${creatorLabel}'s profile has been rejected by approver ${approverNameFromRequest}`
+              : `Chose maybe for ${creatorLabel} by approver ${approverNameFromRequest}`;
         await prisma.campaignLog.create({
           data: {
             campaignId: approvalRequest.campaignId,
@@ -494,7 +500,7 @@ export const actionApprovalCreator = async (req: Request, res: Response) => {
     } else {
       const matches =
         (creatorEntry.status === 'APPROVED' && action === 'approve') ||
-        (creatorEntry.status === 'REJECTED' && action === 'reject');
+        (creatorEntry.status === 'REJECTED' && (action === 'reject' || action === 'maybe'));
       if (!matches) {
         return res.status(400).json({
           message: 'Action does not match current approval state',
@@ -549,8 +555,11 @@ export const actionApprovalCreator = async (req: Request, res: Response) => {
       });
     }
 
+    const actionMessage =
+      action === 'approve' ? 'Creator approved successfully' : action === 'reject' ? 'Creator rejected successfully' : 'Creator marked as maybe successfully';
+
     return res.status(200).json({
-      message: isPending ? `Creator ${action}d successfully` : 'Comment saved successfully',
+      message: isPending ? actionMessage : 'Comment saved successfully',
       allActioned,
       inviteToken: allActioned ? approvalRequest.inviteToken : null,
       approverNeedsSetup: approvalRequest.inviteToken !== null,

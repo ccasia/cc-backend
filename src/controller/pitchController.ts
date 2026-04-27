@@ -1146,8 +1146,8 @@ export const maybePitchByClient = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'This endpoint is only for client-created campaigns or v4 campaigns' });
     }
 
-    // Check if pitch is in correct status
-    if (pitch.status !== 'SENT_TO_CLIENT' && pitch.status !== 'INVITED') {
+    // Check if pitch is in correct status (also allow AWAITING_APPROVAL for fallback/client-approver flows)
+    if (pitch.status !== 'SENT_TO_CLIENT' && pitch.status !== 'INVITED' && pitch.status !== 'AWAITING_APPROVAL') {
       return res.status(400).json({ message: 'Pitch is not in correct status for client action' });
     }
 
@@ -1158,6 +1158,23 @@ export const maybePitchByClient = async (req: Request, res: Response) => {
 
     if (!clientAccess) {
       return res.status(403).json({ message: 'Client not authorized for this campaign' });
+    }
+
+    // Row-level permission for approver role: can only maybe pitches assigned to them
+    const campaignClientMaybe = await prisma.campaignClient.findFirst({
+      where: { campaignId: pitch.campaignId, client: { userId: clientId as string } },
+    });
+    if (campaignClientMaybe?.role === 'approver') {
+      const userMaybe = await prisma.user.findUnique({ where: { id: clientId as string } });
+      const assignedCreatorMaybe = await prisma.approvalRequestCreator.findFirst({
+        where: {
+          pitchId: pitchId,
+          approvalRequest: { approverEmail: userMaybe?.email as string, campaignId: pitch.campaignId },
+        },
+      });
+      if (!assignedCreatorMaybe) {
+        return res.status(403).json({ message: 'Approver can only action pitches assigned to them' });
+      }
     }
 
     await prisma.pitch.update({
