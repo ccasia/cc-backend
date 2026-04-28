@@ -98,11 +98,14 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
     }
 
     const isV4Campaign = pitch.campaign.submissionVersion === 'v4';
+    const isMaybeApproval = pitch.status === 'MAYBE';
 
-    // Determine status based on campaign type:
-    // - v4 campaigns: SENT_TO_CLIENT (client needs to approve)
+    // Determine status based on campaign type and current pitch status:
+    // - MAYBE pitches: APPROVED directly (skip client review, follow client-approved flow)
+    // - v4 campaigns (PENDING_REVIEW/INVITED): SENT_TO_CLIENT (client needs to approve)
     // - non-v4 campaigns: APPROVED directly (admin approval is final)
-    const newStatus = isV4Campaign ? 'SENT_TO_CLIENT' : 'APPROVED';
+    const newStatus = isMaybeApproval || !isV4Campaign ? 'APPROVED' : 'SENT_TO_CLIENT';
+    const skipClientReview = isMaybeApproval || !isV4Campaign;
 
     const updateData: {
       status: 'SENT_TO_CLIENT' | 'APPROVED';
@@ -114,6 +117,10 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
       status: newStatus,
       approvedByAdminId: adminId,
     };
+
+    if (skipClientReview) {
+      updateData.completedAt = new Date().toISOString();
+    }
 
     if (adminComments && typeof adminComments === 'string' && adminComments.trim().length > 0) {
       updateData.adminComments = adminComments.trim();
@@ -135,8 +142,8 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
       },
     });
 
-    // For non-v4 campaigns: Handle full approval flow (shortlist, credits, submissions)
-    if (!isV4Campaign) {
+    // For non-v4 campaigns OR MAYBE pitches: Handle full approval flow (shortlist, credits, submissions)
+    if (skipClientReview) {
       // Create or update ShortListedCreator
       const existingShortlist = await prisma.shortListedCreator.findUnique({
         where: {
@@ -146,8 +153,6 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
           },
         },
       });
-
-      updateData.completedAt = new Date().toISOString();
 
       // For credit tier campaigns, calculate creditPerVideo from creator's tier
       let creditPerVideo: number | null = null;
@@ -220,7 +225,15 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
       // Note: Credits are now only utilized when agreement is sent (in sendAgreement function)
       // ugcVideos is still assigned to shortlistedCreator for submission creation
 
-      // Create submission records for non-v4 approved pitches
+      // Create submission records for approved pitches
+      const existingSubmissions = await prisma.submission.findMany({
+        where: {
+          userId: pitch.userId,
+          campaignId: pitch.campaignId,
+        },
+        include: { submissionType: true },
+      });
+
       const timelines = await prisma.campaignTimeline.findMany({
         where: {
           campaignId: pitch.campaignId,
@@ -242,57 +255,77 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
         const columnInProgress = board.columns.find((c) => c.name.includes('In Progress'));
 
         if (columnToDo && columnInProgress) {
-          console.log(`Creating submissions for non-v4 campaign - ${timelines.length} timeline(s)`);
+          const v2SubmissionTypes = ['FIRST_DRAFT', 'FINAL_DRAFT', 'POSTING'];
 
-          // Create submissions for timeline items
-          const submissions = await Promise.all(
-            timelines.map(async (timeline, index) => {
-              return await prisma.submission.create({
-                data: {
-                  dueDate: timeline.endDate,
-                  campaignId: timeline.campaignId,
-                  userId: pitch.userId,
-                  status: timeline.submissionType?.type === 'AGREEMENT_FORM' ? 'IN_PROGRESS' : 'NOT_STARTED',
-                  submissionTypeId: timeline.submissionTypeId as string,
-                  task: {
-                    create: {
-                      name: timeline.name,
-                      position: index,
-                      columnId: timeline.submissionType?.type ? columnInProgress.id : columnToDo.id,
-                      priority: '',
-                      status: timeline.submissionType?.type ? 'In Progress' : 'To Do',
-                    },
-                  },
-                },
-                include: {
-                  submissionType: true,
-                },
-              });
-            }),
+          const timelinesFiltered = isV4Campaign
+            ? timelines.filter((t) => !v2SubmissionTypes.includes(t.submissionType?.type || ''))
+            : timelines;
+
+          const existingSubmissionTypes = new Set<string | undefined>(
+            existingSubmissions.map((s) => s.submissionType?.type),
           );
 
-          // Create dependencies between submissions for non-v4 campaigns
-          const agreement = submissions.find((s) => s.submissionType?.type === 'AGREEMENT_FORM');
-          const draft = submissions.find((s) => s.submissionType?.type === 'FIRST_DRAFT');
-          const finalDraft = submissions.find((s) => s.submissionType?.type === 'FINAL_DRAFT');
-          const posting = submissions.find((s) => s.submissionType?.type === 'POSTING');
+          const timelinesWithoutExisting = timelinesFiltered.filter(
+            (t) => t.submissionType?.type && !existingSubmissionTypes.has(t.submissionType.type),
+          );
 
-          const dependencies = [
-            { submissionId: draft?.id, dependentSubmissionId: agreement?.id },
-            { submissionId: finalDraft?.id, dependentSubmissionId: draft?.id },
-            { submissionId: posting?.id, dependentSubmissionId: finalDraft?.id },
-          ].filter((dep) => dep.submissionId && dep.dependentSubmissionId);
+          console.log(
+            `Creating submissions for ${isV4Campaign ? 'v4' : 'non-v4'} campaign - ${timelinesWithoutExisting.length} timeline(s) (${existingSubmissions.length} already exist)`,
+          );
 
-          if (dependencies.length > 0) {
-            await prisma.submissionDependency.createMany({ data: dependencies });
+          if (timelinesWithoutExisting.length > 0) {
+            const submissions = await Promise.all(
+              timelinesWithoutExisting.map(async (timeline, index) => {
+                return await prisma.submission.create({
+                  data: {
+                    dueDate: timeline.endDate,
+                    campaignId: timeline.campaignId,
+                    userId: pitch.userId,
+                    status: timeline.submissionType?.type === 'AGREEMENT_FORM' ? 'IN_PROGRESS' : 'NOT_STARTED',
+                    submissionTypeId: timeline.submissionTypeId as string,
+                    submissionVersion: isV4Campaign ? 'v4' : undefined,
+                    task: {
+                      create: {
+                        name: timeline.name,
+                        position: index,
+                        columnId: timeline.submissionType?.type ? columnInProgress.id : columnToDo.id,
+                        priority: '',
+                        status: timeline.submissionType?.type ? 'In Progress' : 'To Do',
+                      },
+                    },
+                  },
+                  include: {
+                    submissionType: true,
+                  },
+                });
+              }),
+            );
+
+            if (!isV4Campaign) {
+              // Create dependencies between submissions for non-v4 campaigns
+              const agreement = submissions.find((s) => s.submissionType?.type === 'AGREEMENT_FORM');
+              const draft = submissions.find((s) => s.submissionType?.type === 'FIRST_DRAFT');
+              const finalDraft = submissions.find((s) => s.submissionType?.type === 'FINAL_DRAFT');
+              const posting = submissions.find((s) => s.submissionType?.type === 'POSTING');
+
+              const dependencies = [
+                { submissionId: draft?.id, dependentSubmissionId: agreement?.id },
+                { submissionId: finalDraft?.id, dependentSubmissionId: draft?.id },
+                { submissionId: posting?.id, dependentSubmissionId: finalDraft?.id },
+              ].filter((dep) => dep.submissionId && dep.dependentSubmissionId);
+
+              if (dependencies.length > 0) {
+                await prisma.submissionDependency.createMany({ data: dependencies });
+              }
+            }
+
+            console.log(`Created ${submissions.length} submissions for admin pitch approval`);
           }
-
-          console.log(`Created ${submissions.length} submissions for non-v4 admin pitch approval`);
         }
       }
     }
 
-    if (isV4Campaign) {
+    if (isV4Campaign && !isMaybeApproval) {
       // V4 flow: Notify client users for review
       const clientUsers = pitch.campaign.campaignAdmin.filter((ca) => ca.admin.user.role === 'client');
 
@@ -364,7 +397,9 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
         },
       });
 
-      console.log(`Pitch ${pitchId} approved by admin, status updated to APPROVED (non-v4 direct approval)`);
+      console.log(
+        `Pitch ${pitchId} approved by admin, status updated to APPROVED (${isMaybeApproval ? 'MAYBE direct approval' : 'non-v4 direct approval'})`,
+      );
       console.log(adminComments ? `Comments: ${adminComments}` : 'No comments provided');
 
       // Emit to campaign room for real-time updates
