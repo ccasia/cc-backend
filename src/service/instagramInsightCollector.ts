@@ -67,16 +67,16 @@ async function fetchInstagramMetrics(urlsByUser: Map<string, { url: string; user
 
       for (const urlData of urls) {
         const shortCode = extractInstagramShortcode(urlData.url);
-        console.log('Instagram Shortcode', shortCode);
+
         if (!shortCode) continue;
 
         const video = videos.find((v: any) => v.shortcode === shortCode);
-        console.log('Instagram Videos', video);
+
         if (!video) continue;
 
         try {
           const raw = await getMediaInsight(accessToken, video.id);
-          console.log('RAW INSTAGRAM DATA', raw);
+
           if (raw && raw.length > 0) posts.push(parseInstagramInsight(raw));
         } catch (err) {
           console.error(`[InsightCollector] Instagram insight failed for ${urlData.url}:`, err);
@@ -112,13 +112,11 @@ async function fetchTikTokMetrics(urlsByUser: Map<string, { url: string; userId:
 
       for (const urlData of urls) {
         const videoId = extractTikTokVideoId(urlData.url);
-        console.log('Tiktok Video Id ', videoId);
         if (!videoId) continue;
 
         try {
           const response = await getTikTokVideoById(accessToken, videoId);
           const video = response?.data?.videos?.[0];
-          console.log('Tiktok Video ', video);
           if (video) posts.push(parseTikTokVideo(video));
         } catch (err) {
           console.error(`[InsightCollector] TikTok insight failed for ${urlData.url}:`, err);
@@ -231,6 +229,7 @@ export async function fetchInstagramCampaignMetrics(campaignId: string): Promise
       ttUrlsByUser.get(urlData.userId)!.push(urlData);
     }
   }
+  console.log(Object.keys(igUrlsByUser).length, Object.keys(ttUrlsByUser).length);
 
   // Fetch both platforms in parallel
   const [igResults, ttResults] = await Promise.all([

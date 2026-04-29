@@ -161,8 +161,7 @@ export function extractTikTokVideoId(url: string): string | null {
 export async function resolveTikTokShortUrl(url: string): Promise<string | null> {
   try {
     const urlObj = new URL(url);
-    const isShortUrl =
-      urlObj.hostname.includes('vm.tiktok.com') || urlObj.hostname.includes('vt.tiktok.com');
+    const isShortUrl = urlObj.hostname.includes('vm.tiktok.com') || urlObj.hostname.includes('vt.tiktok.com');
 
     if (!isShortUrl) return extractTikTokVideoId(url);
 
@@ -2054,10 +2053,7 @@ export const getInstagramMediaInsight = async (req: Request, res: Response) => {
                     );
                     userVideos = result.videos;
                   } catch (tokenError: any) {
-                    console.error(
-                      `Cannot access Instagram for campaign user ${campaignUserId}:`,
-                      tokenError.message,
-                    );
+                    console.error(`Cannot access Instagram for campaign user ${campaignUserId}:`, tokenError.message);
                     continue;
                   }
                 }
@@ -2069,9 +2065,7 @@ export const getInstagramMediaInsight = async (req: Request, res: Response) => {
                     const campaignShortCode = extractInstagramShortcode(urlData.url);
                     if (!campaignShortCode) return null;
 
-                    const campaignVideo = userVideos.find(
-                      (item: any) => item?.shortcode === campaignShortCode,
-                    );
+                    const campaignVideo = userVideos.find((item: any) => item?.shortcode === campaignShortCode);
                     if (!campaignVideo) return null;
 
                     try {
@@ -2288,7 +2282,9 @@ export const getTikTokVideoInsight = async (req: Request, res: Response) => {
     console.log('Extracted video ID:', videoId);
 
     if (!videoId) {
-      return res.status(400).json({ message: `Submission posting link: ${url}. Invalid TikTok URL or unable to extract video ID.` });
+      return res
+        .status(400)
+        .json({ message: `Submission posting link: ${url}. Invalid TikTok URL or unable to extract video ID.` });
     }
 
     // Fetch the current video
@@ -2296,7 +2292,9 @@ export const getTikTokVideoInsight = async (req: Request, res: Response) => {
     const videos = videoResponse?.data?.videos;
 
     if (!videos || videos.length === 0) {
-      return res.status(404).json({ message: `Submission posting link: ${url}. Video not found or not accessible with current creator.` });
+      return res
+        .status(404)
+        .json({ message: `Submission posting link: ${url}. Video not found or not accessible with current creator.` });
     }
 
     const video = videos[0];
@@ -2374,10 +2372,7 @@ export const getTikTokVideoInsight = async (req: Request, res: Response) => {
                 try {
                   userAccessToken = await ensureValidTikTokToken(campaignUserId);
                 } catch (tokenError: any) {
-                  console.error(
-                    `Cannot access TikTok for campaign user ${campaignUserId}:`,
-                    tokenError.message,
-                  );
+                  console.error(`Cannot access TikTok for campaign user ${campaignUserId}:`, tokenError.message);
                   continue;
                 }
               }
