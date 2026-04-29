@@ -297,7 +297,7 @@ export async function fetchInstagramCampaignMetrics(campaignId: string): Promise
   const totalFollowers = [...igResults, ...ttResults].reduce((s, c) => s + c.followers, 0);
   const engagementRate = Math.max(
     +((totalEngagements / totalViews) * 100).toFixed(2),
-    +((totalEngagements / totalFollowers) * 100).toFixed(2),
+    // +((totalEngagements / totalFollowers) * 100).toFixed(2),
   );
   // totalFollowers > 0
   //   ? +((totalEngagements / totalFollowers) * 100).toFixed(2)
