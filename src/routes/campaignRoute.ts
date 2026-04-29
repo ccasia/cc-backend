@@ -96,7 +96,14 @@ import {
   deleteEntry as deleteManualCreator,
   updateEntry as updateManualCreator,
 } from '@controllers/manualCreatorController';
-import { getCampaignPostSnapshots, triggerManualSnapshot } from '@controllers/postEngagementSnapshotController';
+import {
+  getCampaignPostSnapshots,
+  triggerManualSnapshot,
+  getPostDailyTrend,
+  getPostDailyTrendByUrl,
+  getCampaignDailyTrends,
+  triggerDailyCapture,
+} from '@controllers/postEngagementSnapshotController';
 import { isSuperAdmin, isAdmin, isBdOrSuperadmin } from '@middlewares/onlySuperadmin';
 import { canActivateCampaign } from '@middlewares/adminOrClient';
 
@@ -284,6 +291,25 @@ router.delete('/:campaignId/manual-creator/:entryId', isLoggedIn, isAdmin, delet
 // Post Engagement Snapshot endpoints (Day 7, 15, 30 ER tracking)
 router.get('/:campaignId/post-engagement-snapshots', isLoggedIn, getCampaignPostSnapshots);
 router.post('/:campaignId/post-engagement-snapshots/capture', isLoggedIn, isAdmin, triggerManualSnapshot);
+
+// Daily per-post engagement trend endpoints
+router.get('/:campaignId/post-engagement-snapshots/daily', isLoggedIn, getCampaignDailyTrends);
+router.get(
+  '/:campaignId/post-engagement-snapshots/daily-by-url',
+  isLoggedIn,
+  getPostDailyTrendByUrl,
+);
+router.get(
+  '/:campaignId/post-engagement-snapshots/daily/:submissionId',
+  isLoggedIn,
+  getPostDailyTrend,
+);
+router.post(
+  '/:campaignId/post-engagement-snapshots/daily/capture',
+  isLoggedIn,
+  isAdmin,
+  triggerDailyCapture,
+);
 
 // BD campaign brief link endpoints
 router.post('/:id/submit-for-review', isLoggedIn, submitDraftForReview);
