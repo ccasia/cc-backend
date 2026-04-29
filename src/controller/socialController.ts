@@ -118,7 +118,7 @@ export function extractInstagramShortcode(url: string) {
   return match ? match[1] : null;
 }
 
-export function extractTikTokVideoId(url: string): string | null {
+export async function extractTikTokVideoId(url: string): Promise<string | null> {
   try {
     const urlObj = new URL(url);
 
@@ -146,7 +146,16 @@ export function extractTikTokVideoId(url: string): string | null {
 
       // Short URLs (vm.tiktok.com, vt.tiktok.com) — return null so caller knows to resolve
       if (urlObj.hostname.includes('vm.tiktok.com') || urlObj.hostname.includes('vt.tiktok.com')) {
-        return null;
+        const response = await fetch('https://vt.tiktok.com/ZSu7nDxaa/', {
+          method: 'HEAD',
+          redirect: 'follow',
+        });
+        const fullUrl = response.url;
+        // Extract video ID from the resolved URL
+        const match = fullUrl.match(/\/video\/(\d+)/);
+        const videoId = match ? match[1] : null;
+        return videoId;
+        // return null;
       }
     }
 
@@ -1598,7 +1607,7 @@ export async function getCampaignSubmissionUrls(campaignId: string): Promise<Url
 
           // Extract shortCode for Instagram, mediaId for TikTok
           const shortCode = urlData.platform === 'Instagram' ? extractInstagramShortcode(urlData.url) : null;
-          const mediaId = urlData.platform === 'TikTok' ? extractTikTokVideoId(urlData.url) : null;
+          const mediaId = urlData.platform === 'TikTok' ? await extractTikTokVideoId(urlData.url) : null;
 
           if (existing) {
             // Row exists — update postUrl if it changed
@@ -2275,7 +2284,7 @@ export const getTikTokVideoInsight = async (req: Request, res: Response) => {
     }
 
     // Extract video ID from URL (resolves short URLs like vt.tiktok.com via redirect)
-    let videoId = extractTikTokVideoId(url as string);
+    let videoId = await extractTikTokVideoId(url as string);
     if (!videoId) {
       videoId = await resolveTikTokShortUrl(url as string);
     }
@@ -2380,7 +2389,7 @@ export const getTikTokVideoInsight = async (req: Request, res: Response) => {
               const userResults = await batchRequests(
                 userUrls,
                 async (urlData) => {
-                  let campaignVideoId = extractTikTokVideoId(urlData.url);
+                  let campaignVideoId = await extractTikTokVideoId(urlData.url);
                   if (!campaignVideoId) {
                     campaignVideoId = await resolveTikTokShortUrl(urlData.url);
                   }
