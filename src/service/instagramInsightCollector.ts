@@ -112,6 +112,7 @@ async function fetchTikTokMetrics(urlsByUser: Map<string, { url: string; userId:
 
       for (const urlData of urls) {
         const videoId = extractTikTokVideoId(urlData.url);
+        console.log('Video ID', videoId);
         if (!videoId) continue;
 
         try {
@@ -229,7 +230,6 @@ export async function fetchInstagramCampaignMetrics(campaignId: string): Promise
       ttUrlsByUser.get(urlData.userId)!.push(urlData);
     }
   }
-  console.log(igUrlsByUser.size, ttUrlsByUser.size);
 
   // Fetch both platforms in parallel
   const [igResults, ttResults] = await Promise.all([
