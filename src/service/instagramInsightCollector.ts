@@ -229,7 +229,7 @@ export async function fetchInstagramCampaignMetrics(campaignId: string): Promise
       ttUrlsByUser.get(urlData.userId)!.push(urlData);
     }
   }
-  console.log(Object.keys(igUrlsByUser).length, Object.keys(ttUrlsByUser).length);
+  console.log(igUrlsByUser.size, ttUrlsByUser.size);
 
   // Fetch both platforms in parallel
   const [igResults, ttResults] = await Promise.all([
