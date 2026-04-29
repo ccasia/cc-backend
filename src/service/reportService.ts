@@ -112,7 +112,6 @@ export class ReportService {
         sentiment: externalMetrics?.sentiment,
         creators: externalMetrics?.creators ?? liveMetrics.creators,
       };
-      console.log('AI METRICS: ', externalMetrics);
     } catch (err) {
       console.warn('[ReportService] Instagram live fetch failed, falling back to snapshots:', (err as Error).message);
     }
