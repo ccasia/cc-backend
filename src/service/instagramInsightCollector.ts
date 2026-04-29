@@ -179,6 +179,7 @@ function aggregateCreatorResults(
       followers: creator.followers,
       views: cViews,
       likes: cLikes,
+      saved: cSaved,
       comments: cComments,
     });
     creatorPersonas.push({
@@ -187,6 +188,7 @@ function aggregateCreatorResults(
       totalLikes: cLikes,
       totalComments: cComments,
       engagementRate: cEngRate,
+      totalSaved: cSaved,
       followers: creator.followers,
     });
   }

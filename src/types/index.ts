@@ -52,6 +52,7 @@ export interface ExternalMetrics {
       views: number;
       likes: number;
       comments: number;
+      saved: number;
     }[];
   };
 
@@ -80,6 +81,7 @@ export interface ExternalMetrics {
     totalComments?: number;
     engagementRate?: number;
     followers?: number;
+    totalSaved?: number;
   }[];
 }
 
