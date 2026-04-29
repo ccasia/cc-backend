@@ -737,7 +737,11 @@ export const getAllSubmissions = async (req: Request, res: Response) => {
         dependencies: true,
         rawFootages: true,
         photos: true,
-        video: true,
+        video: {
+          select: {
+            url: true,
+          }
+        },
         user: {
           select: {
             id: true,
@@ -746,10 +750,12 @@ export const getAllSubmissions = async (req: Request, res: Response) => {
             photoURL: true,
             creator: {
               select: {
+                id: true,
                 isFacebookConnected: true,
                 isTiktokConnected: true,
                 instagram: true,
                 tiktok: true,
+                creditTier: true,
               },
             },
           },
@@ -758,6 +764,7 @@ export const getAllSubmissions = async (req: Request, res: Response) => {
           select: {
             name: true,
             company: true,
+            isCreditTier: true,
           },
         },
         admin: {
@@ -817,6 +824,7 @@ export const getAllSubmissions = async (req: Request, res: Response) => {
       campaign: submission.campaign,
       campaignId: submission.campaignId,
       feedback: submission.feedback,
+      video: submission.video[0]?.url || null,
       approvedByAdmin: submission.admin?.user,
     }));
 
