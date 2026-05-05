@@ -285,7 +285,7 @@ export async function fetchInstagramCampaignMetrics(campaignId: string): Promise
 
   const totalShares = ig.totalShares + tt.totalShares + manualIgTotals.shares + manualTtTotals.shares;
 
-  const totalSaved = ig.totalSaved + tt.totalSaved + manualIgTotals.shares + manualTtTotals.shares;
+  const totalSaved = ig.totalSaved + tt.totalSaved + manualIgTotals.saved + manualTtTotals.saved;
 
   const totalEngagements = totalLikes + totalComments + totalShares + totalSaved;
   const totalReach = ig.totalReach + tt.totalReach;
