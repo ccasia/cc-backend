@@ -119,6 +119,7 @@ export function extractInstagramShortcode(url: string) {
 }
 
 export async function extractTikTokVideoId(url: string): Promise<string | null> {
+  console.log('EXTRACT TIKTOK VIDEO ID', url);
   try {
     const urlObj = new URL(url);
 
