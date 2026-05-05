@@ -119,7 +119,6 @@ export function extractInstagramShortcode(url: string) {
 }
 
 export async function extractTikTokVideoId(url: string): Promise<string | null> {
-  console.log('EXTRACT TIKTOK VIDEO ID', url);
   try {
     const urlObj = new URL(url);
 
@@ -147,7 +146,7 @@ export async function extractTikTokVideoId(url: string): Promise<string | null> 
 
       // Short URLs (vm.tiktok.com, vt.tiktok.com) — return null so caller knows to resolve
       if (urlObj.hostname.includes('vm.tiktok.com') || urlObj.hostname.includes('vt.tiktok.com')) {
-        const response = await fetch('https://vt.tiktok.com/ZSu7nDxaa/', {
+        const response = await fetch(url, {
           method: 'HEAD',
           redirect: 'follow',
         });
