@@ -27,6 +27,7 @@ import {
   setupClientPassword,
   verifyClient,
   deleteAccount,
+  mobileLogin,
 } from '@controllers/authController';
 
 import { validateToken } from '@utils/jwtHelper';

@@ -24,6 +24,7 @@ import bcrypt from 'bcryptjs';
 import { generateRandomString } from '@utils/randomString';
 import dayjs from 'dayjs';
 import { TokenSet, XeroClient } from 'xero-node';
+import crypto from 'crypto';
 
 const prisma = new PrismaClient();
 
@@ -1143,8 +1144,10 @@ export const updateClient = async (req: Request, res: Response) => {
 // Function to get user's information
 export const getprofile = async (req: Request, res: Response) => {
   const userId = req.session.userid as string;
+
   const isImpersonating = req.session.isImpersonating;
   const impersonatingBy = req.session.impersonatingBy;
+
   let xeroinformation;
   let xeroError;
 
@@ -1933,5 +1936,67 @@ export const deleteAccount = async (req: Request, res: Response) => {
   } catch (error) {
     console.error(error);
     return res.status(400).json({ message: 'Failed to delete account' });
+  }
+};
+
+const hashToken = (token: string) => crypto.createHash('sha256').update(token).digest('hex');
+
+export const mobileLogin = async (req: Request<{}, {}, { email: string; password: string }>, res: Response) => {
+  const { email, password } = req.body;
+
+  try {
+    // Validation checking on server
+    if (!email.match(/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/g)) {
+      return res.status(400).json({ message: 'Please enter the correct email format', success: false });
+    }
+
+    const user = await prisma.user.findFirst({
+      where: {
+        email: {
+          mode: 'insensitive',
+          equals: email,
+        },
+      },
+    });
+
+    if (!user) return res.status(404).json({ message: 'User not found', success: false });
+
+    switch (user.status) {
+      case 'banned':
+        return res.status(400).json({ message: 'Account banned.' });
+      case 'pending':
+        return res.status(400).json({ message: 'Account pending.' });
+      case 'blacklisted':
+        return res.status(400).json({ message: 'Account blacklisted.' });
+      case 'suspended':
+        return res.status(400).json({ message: 'Account suspended.' });
+      case 'spam':
+        return res.status(400).json({ message: 'Account spam.' });
+      case 'rejected':
+        return res.status(400).json({ message: 'Account rejected.' });
+    }
+
+    const isMatch = await bcrypt.compare(password, user.password as string);
+
+    if (!isMatch) {
+      return res.status(404).json({ message: 'Wrong password' });
+    }
+
+    const accessToken = jwt.sign({ userId: user.id, email: user.email }, process.env.ACCESSKEY!, { expiresIn: '15m' });
+    const refreshToken = jwt.sign({ userId: user.id, email: user.email }, process.env.REFRESHKEY!, {
+      expiresIn: '30d',
+    });
+
+    const savedRefreshToken = await prisma.refreshToken.create({
+      data: {
+        tokenHash: hashToken(refreshToken),
+        userId: user.id,
+        expiresAt: dayjs().add(30, 'days').toDate(),
+      },
+    });
+
+    return res.status(200).json({ user, token: { accessToken, refreshToken: savedRefreshToken.tokenHash } });
+  } catch (error) {
+    return res.status(500).json(error);
   }
 };

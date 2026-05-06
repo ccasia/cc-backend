@@ -95,6 +95,27 @@ model User {
   activatedAt   DateTime?
   passwordSetAt DateTime?
   aiModel       AiModel?
+  refreshTokens RefreshToken[]
+}
+
+model RefreshToken {
+  id        String @id @default(cuid())
+  tokenHash String @unique
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  expiresAt DateTime
+
+  userAgent String?
+  ipAddress String?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([tokenHash])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
 }
 
 model EmailVerification {
@@ -658,11 +679,11 @@ model Campaign {
   description String
   status      CampaignStatus @default(SCHEDULED)
 
-  campaignCredits Int?
-  creditsPending  Int?
-  creditsUtilized Int?
-  creditAllocationBreakdown Json?  // Tracks which subscriptions were charged and how much
-                                   // Format: [{ subscriptionId: string, amount: number }, ...]
+  campaignCredits           Int?
+  creditsPending            Int?
+  creditsUtilized           Int?
+  creditAllocationBreakdown Json? // Tracks which subscriptions were charged and how much
+  // Format: [{ subscriptionId: string, amount: number }, ...]
 
   brandId        String?
   subscriptionId String?
@@ -1244,8 +1265,8 @@ model Video {
   createdAt    DateTime       @default(now())
   updatedAt    DateTime?      @updatedAt
 
-  feedbackDeadline    DateTime?
-  feedbackSentByName  String?
+  feedbackDeadline   DateTime?
+  feedbackSentByName String?
 
   // Individual feedback fields
   feedback   String? // Individual feedback message
@@ -1423,11 +1444,11 @@ model SubmissionComment {
   parent   SubmissionComment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
   replies  SubmissionComment[] @relation("CommentReplies")
 
-  agreedBy      CommentAgreement[]
-  feedback      Feedback?
-  isClientDraft      Boolean @default(false)
-  isVisibleToCreator Boolean @default(true)
-  isSentToCreator    Boolean @default(false)
+  agreedBy           CommentAgreement[]
+  feedback           Feedback?
+  isClientDraft      Boolean            @default(false)
+  isVisibleToCreator Boolean            @default(true)
+  isSentToCreator    Boolean            @default(false)
 
   forwardedByUserId String?
   forwardedBy       User?   @relation("ForwardedComments", fields: [forwardedByUserId], references: [id], onDelete: SetNull)

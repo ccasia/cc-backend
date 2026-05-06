@@ -42,8 +42,9 @@ import { TokenSet } from 'xero-node';
 import { prisma } from './prisma/prisma';
 import { xero } from '@configs/xero';
 import { logChange } from '@services/campaignServices';
-import connection, { subClient } from '@configs/redis';
+
 import { users } from '@utils/activeUsers';
+import { mobileRouter } from '@routes/mobile';
 
 Ffmpeg.setFfmpegPath(FfmpegPath.path);
 
@@ -141,6 +142,7 @@ app.use(
 app.use(passport.initialize());
 app.use(passport.session());
 
+app.use('/mobile', mobileRouter);
 app.use(router);
 
 app.post('/webhooks/xero', express.raw({ type: 'application/json', limit: '100mb' }), async (req, res) => {
