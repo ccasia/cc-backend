@@ -264,9 +264,10 @@ export async function fetchInstagramCampaignMetrics(campaignId: string): Promise
   const igEngRate = ig.creatorPersonas.reduce((acc, cur) => acc + (cur?.engagementRate ?? 0), 0);
   const tiktokEngRate = tt.creatorPersonas.reduce((acc, cur) => acc + (cur?.engagementRate ?? 0), 0);
 
-  const engagementRevised = Math.max(+(igEngRate + tiktokEngRate / allUrls.length).toFixed(2));
+  console.log('IG', igEngRate);
+  console.log('TT', tiktokEngRate);
 
-  console.log('REVISED', engagementRevised);
+  const engagementRevised = Math.max(+(igEngRate + tiktokEngRate / allUrls.length).toFixed(2));
 
   // Combined totals: API + Manual + Snapshot
   const totalViews = ig.totalViews + tt.totalViews + manualIgTotals.views + manualTtTotals.views;
