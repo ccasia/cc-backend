@@ -264,11 +264,16 @@ export async function fetchInstagramCampaignMetrics(campaignId: string): Promise
   const igEngRate = ig.creatorPersonas.reduce((acc, cur) => acc + (cur?.engagementRate ?? 0), 0);
   const tiktokEngRate = tt.creatorPersonas.reduce((acc, cur) => acc + (cur?.engagementRate ?? 0), 0);
 
-  const manualIgEngRate = manualIg.reduce((acc, cur) => acc + cur.engagementRate, 0);
-  const manualTtEngRate = manualTt.reduce((acc, cur) => acc + cur.engagementRate, 0);
+  const manualIgEngRate = manualIg.reduce((acc, cur) => acc + (cur.engagementRate ?? 0), 0);
+  const manualTtEngRate = manualTt.reduce((acc, cur) => acc + (cur.engagementRate ?? 0), 0);
+
+  const totalCreators = ig.creatorPersonas.length + tt.creatorPersonas.length + manualIg.length + manualTt.length;
 
   const engagementRevised = Math.max(
-    +((igEngRate + tiktokEngRate + manualIgEngRate + manualTtEngRate) / allUrls.length).toFixed(2),
+    totalCreators > 0
+      ? +((igEngRate + tiktokEngRate + manualIgEngRate + manualTtEngRate) / totalCreators).toFixed(2)
+      : 0,
+    0,
   );
 
   console.log('MAN - IG RATE', manualIg);
