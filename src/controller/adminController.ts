@@ -41,7 +41,7 @@ export const disconnectXero = async (req: Request, res: Response) => {
   try {
     const user = await prisma.user.findUnique({
       where: {
-        id: req.session.userid,
+        id: req.userId,
       },
     });
 
@@ -57,7 +57,7 @@ export const disconnectXero = async (req: Request, res: Response) => {
 export const impersonateCreator = async (req: Request<{}, {}, { userId: string }>, res: Response) => {
   try {
     const userId = req.body.userId;
-    const sessionUserId = req.session.userid;
+    const sessionUserId = req.userId;
 
     if (!userId) return res.status(404).json({ message: 'userId is required', success: false });
 
@@ -125,7 +125,7 @@ export const endImpersonatingSession = async (req: Request, res: Response) => {
       req.session.isImpersonating = false;
       req.session.impersonatingBy = null;
 
-      req.session.userid = admin.userId;
+      req.userId = admin.userId;
       req.session.role = admin.user.role ?? 'ADMIN';
       req.session.name = admin.user.name ?? '';
       req.session.photoURL = admin.user.photoURL ?? '';
@@ -163,7 +163,7 @@ export const endImpersonatingSession = async (req: Request, res: Response) => {
 export const impersonateClient = async (req: Request<{}, {}, { email: string }>, res: Response) => {
   try {
     const email = req.body.email;
-    const sessionUserId = req.session.userid;
+    const sessionUserId = req.userId;
 
     if (!email) return res.status(404).json({ message: 'email is required', success: false });
 

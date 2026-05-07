@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { getUser } from '@services/userServices';
 
 export const isSuperAdmin = async (req: Request, res: Response, next: NextFunction) => {
-  const userid = req.session.userid;
+  const userid = req.userId;
 
   if (!userid) {
     return res.status(404).json({ message: 'forbidden' });
@@ -20,7 +20,7 @@ export const isSuperAdmin = async (req: Request, res: Response, next: NextFuncti
 };
 
 export const isAdmin = async (req: Request, res: Response, next: NextFunction) => {
-  const userid = req.session.userid;
+  const userid = req.userId;
 
   if (!userid) {
     return res.status(401).json({ message: 'User not authenticated' });

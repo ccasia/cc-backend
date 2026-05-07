@@ -514,7 +514,7 @@ export const updatePaymentForm = async (req: Request, res: Response) => {
   try {
     const existingPaymentForm = await prisma.paymentForm.findFirst({
       where: {
-        userId: req.session.userid,
+        userId: req.userId,
       },
       include: {
         user: {
@@ -545,7 +545,7 @@ export const updatePaymentForm = async (req: Request, res: Response) => {
 
     const paymentForm = await prisma.paymentForm.upsert({
       where: {
-        userId: req.session.userid as string,
+        userId: req.userId as string,
       },
       update: {
         icNumber: icPassportNumber.toString(),
@@ -556,7 +556,7 @@ export const updatePaymentForm = async (req: Request, res: Response) => {
         status: 'approved',
       },
       create: {
-        user: { connect: { id: req.session.userid } },
+        user: { connect: { id: req.userId } },
         icNumber: icPassportNumber.toString(),
         bankAccountNumber: bankNumber.toString(),
         bankAccountName: bankAccName.toString(),
@@ -587,7 +587,7 @@ export const updatePaymentForm = async (req: Request, res: Response) => {
 
 export const updateCreatorForm = async (req: Request, res: Response) => {
   //   const { fullName, address, icNumber, bankName, accountNumber } = req.body;
-  //   const userId = req.session.userid as string;
+  //   const userId = req.userId as string;
 
   const { fullName, address, icNumber, bankName, accountName, accountNumber, userId } = req.body;
 
@@ -716,7 +716,7 @@ export const getCreatorSocialMediaData = async (req: Request, res: Response) => 
   try {
     const creator = await prisma.creator.findUnique({
       where: {
-        userId: req.session.userid as string,
+        userId: req.userId as string,
       },
       select: {
         socialMediaData: true,

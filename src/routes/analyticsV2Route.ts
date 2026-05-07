@@ -34,45 +34,45 @@ import {
   getClientShortlistMetrics,
   getClientSupportMetrics,
 } from '@controllers/analyticsV2Controller';
-import { isLoggedIn } from '@middlewares/onlyLogin';
+import { authenticate } from '@middlewares/onlyLogin';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 
 const router = Router();
 
-router.get('/creator-growth', isLoggedIn, isSuperAdmin, getCreatorGrowth);
-router.get('/creator-growth/creators', isLoggedIn, isSuperAdmin, getCreatorGrowthCreators);
-router.get('/creator-growth/creators-by-country', isLoggedIn, isSuperAdmin, getCreatorsByCountry);
-router.get('/activation-rate', isLoggedIn, isSuperAdmin, getActivationRate);
-router.get('/pitch-rate', isLoggedIn, isSuperAdmin, getPitchRate);
-router.get('/time-to-activation', isLoggedIn, isSuperAdmin, getTimeToActivation);
-router.get('/time-to-activation/creators', isLoggedIn, isSuperAdmin, getTimeToActivationCreators);
-router.get('/time-to-ig-activation', isLoggedIn, isSuperAdmin, getTimeToIgActivation);
-router.get('/time-to-ig-activation/creators', isLoggedIn, isSuperAdmin, getTimeToIgActivationCreators);
-router.get('/time-to-tiktok-activation', isLoggedIn, isSuperAdmin, getTimeToTiktokActivation);
-router.get('/time-to-tiktok-activation/creators', isLoggedIn, isSuperAdmin, getTimeToTiktokActivationCreators);
-router.get('/pitch-rate/creators', isLoggedIn, isSuperAdmin, getPitchRateCreators);
-router.get('/media-kit-activation', isLoggedIn, isSuperAdmin, getMediaKitActivation);
-router.get('/creator-satisfaction', isLoggedIn, isSuperAdmin, getCreatorSatisfaction);
-router.get('/creator-earnings', isLoggedIn, isSuperAdmin, getCreatorEarnings);
-router.get('/avg-agreement-response', isLoggedIn, isSuperAdmin, getAvgAgreementResponse);
-router.get('/avg-agreement-response/details', isLoggedIn, isSuperAdmin, getAvgAgreementResponseDetails);
-router.get('/avg-first-campaign', isLoggedIn, isSuperAdmin, getAvgFirstCampaign);
-router.get('/avg-first-campaign/details', isLoggedIn, isSuperAdmin, getAvgFirstCampaignDetails);
-router.get('/avg-submission-response', isLoggedIn, isSuperAdmin, getAvgSubmissionResponse);
-router.get('/avg-submission-response/details', isLoggedIn, isSuperAdmin, getAvgSubmissionResponseDetails);
-router.get('/client-rejection-rate', isLoggedIn, isSuperAdmin, getClientRejectionRate);
-router.get('/credits-per-cs', isLoggedIn, isSuperAdmin, getCreditsPerCS);
-router.get('/rejection-reasons', isLoggedIn, isSuperAdmin, getRejectionReasons);
-router.get('/require-changes-rate', isLoggedIn, isSuperAdmin, getRequireChangesRate);
-router.get('/top-shortlisted-creators', isLoggedIn, isSuperAdmin, getTopShortlistedCreators);
+router.get('/creator-growth', authenticate, isSuperAdmin, getCreatorGrowth);
+router.get('/creator-growth/creators', authenticate, isSuperAdmin, getCreatorGrowthCreators);
+router.get('/creator-growth/creators-by-country', authenticate, isSuperAdmin, getCreatorsByCountry);
+router.get('/activation-rate', authenticate, isSuperAdmin, getActivationRate);
+router.get('/pitch-rate', authenticate, isSuperAdmin, getPitchRate);
+router.get('/time-to-activation', authenticate, isSuperAdmin, getTimeToActivation);
+router.get('/time-to-activation/creators', authenticate, isSuperAdmin, getTimeToActivationCreators);
+router.get('/time-to-ig-activation', authenticate, isSuperAdmin, getTimeToIgActivation);
+router.get('/time-to-ig-activation/creators', authenticate, isSuperAdmin, getTimeToIgActivationCreators);
+router.get('/time-to-tiktok-activation', authenticate, isSuperAdmin, getTimeToTiktokActivation);
+router.get('/time-to-tiktok-activation/creators', authenticate, isSuperAdmin, getTimeToTiktokActivationCreators);
+router.get('/pitch-rate/creators', authenticate, isSuperAdmin, getPitchRateCreators);
+router.get('/media-kit-activation', authenticate, isSuperAdmin, getMediaKitActivation);
+router.get('/creator-satisfaction', authenticate, isSuperAdmin, getCreatorSatisfaction);
+router.get('/creator-earnings', authenticate, isSuperAdmin, getCreatorEarnings);
+router.get('/avg-agreement-response', authenticate, isSuperAdmin, getAvgAgreementResponse);
+router.get('/avg-agreement-response/details', authenticate, isSuperAdmin, getAvgAgreementResponseDetails);
+router.get('/avg-first-campaign', authenticate, isSuperAdmin, getAvgFirstCampaign);
+router.get('/avg-first-campaign/details', authenticate, isSuperAdmin, getAvgFirstCampaignDetails);
+router.get('/avg-submission-response', authenticate, isSuperAdmin, getAvgSubmissionResponse);
+router.get('/avg-submission-response/details', authenticate, isSuperAdmin, getAvgSubmissionResponseDetails);
+router.get('/client-rejection-rate', authenticate, isSuperAdmin, getClientRejectionRate);
+router.get('/credits-per-cs', authenticate, isSuperAdmin, getCreditsPerCS);
+router.get('/rejection-reasons', authenticate, isSuperAdmin, getRejectionReasons);
+router.get('/require-changes-rate', authenticate, isSuperAdmin, getRequireChangesRate);
+router.get('/top-shortlisted-creators', authenticate, isSuperAdmin, getTopShortlistedCreators);
 
-router.post('/tracker', isLoggedIn, trackUserFlow);
+router.post('/tracker', authenticate, trackUserFlow);
 
-router.get('/client/brands', isLoggedIn, isSuperAdmin, getBrandsMetrics);
-router.get('/client/approve', isLoggedIn, isSuperAdmin, getClientApprovalMetrics);
-router.get('/client/journey', isLoggedIn, isSuperAdmin, getClientJourneyMetrics);
-router.get('/client/support', isLoggedIn, isSuperAdmin, getClientSupportMetrics);
-router.get('/client/campaigns', isLoggedIn, isSuperAdmin, getClientCampaignMetrics);
-router.get('/client/shortlist', isLoggedIn, isSuperAdmin, getClientShortlistMetrics);
+router.get('/client/brands', authenticate, isSuperAdmin, getBrandsMetrics);
+router.get('/client/approve', authenticate, isSuperAdmin, getClientApprovalMetrics);
+router.get('/client/journey', authenticate, isSuperAdmin, getClientJourneyMetrics);
+router.get('/client/support', authenticate, isSuperAdmin, getClientSupportMetrics);
+router.get('/client/campaigns', authenticate, isSuperAdmin, getClientCampaignMetrics);
+router.get('/client/shortlist', authenticate, isSuperAdmin, getClientShortlistMetrics);
 
 export default router;

@@ -1,5 +1,5 @@
 import express from 'express';
-import { isLoggedIn } from '@middlewares/onlyLogin';
+import { authenticate } from '@middlewares/onlyLogin';
 import { isCreator } from '@middlewares/isCreator';
 import { isAdminOrClient } from '@middlewares/adminOrClient';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
@@ -37,17 +37,17 @@ import {
 const router = express.Router();
 
 // creator routes
-router.get('/me', isLoggedIn, isCreator, getCreatorLogistics); // maybe no need
-router.get('/creator/campaign/:campaignId', isLoggedIn, isCreator, getCreatorLogisticForCampaign);
-router.patch('/creator/:logisticId/details', isLoggedIn, isCreator, updateCreatorDeliveryDetails);
-router.patch('/creator/:logisticId/received', isLoggedIn, isCreator, markLogisticReceived);
-router.post('/creator/:logisticId/issue', isLoggedIn, isCreator, reportIssue);
-router.post('/creator/campaign/:campaignId/onboarding-details', isLoggedIn, isCreator, submitCreatorProductInfo);
+router.get('/me', authenticate, isCreator, getCreatorLogistics); // maybe no need
+router.get('/creator/campaign/:campaignId', authenticate, isCreator, getCreatorLogisticForCampaign);
+router.patch('/creator/:logisticId/details', authenticate, isCreator, updateCreatorDeliveryDetails);
+router.patch('/creator/:logisticId/received', authenticate, isCreator, markLogisticReceived);
+router.post('/creator/:logisticId/issue', authenticate, isCreator, reportIssue);
+router.post('/creator/campaign/:campaignId/onboarding-details', authenticate, isCreator, submitCreatorProductInfo);
 
 // admin & client routes
 router.get(
   '/campaign/:campaignId',
-  isLoggedIn,
+  authenticate,
   isAdminOrClient,
   isSuperAdmin,
   checkCampaignAccess,
@@ -55,56 +55,62 @@ router.get(
 );
 
 // product specific routes
-router.get('/products/campaign/:campaignId', isLoggedIn, isAdminOrClient, checkCampaignAccess, getProductsForCampaign);
-router.post('/products/:campaignId', isLoggedIn, isAdminOrClient, checkCampaignAccess, createProduct);
-router.delete('/products/:productId', isLoggedIn, isAdminOrClient, deleteProduct);
+router.get(
+  '/products/campaign/:campaignId',
+  authenticate,
+  isAdminOrClient,
+  checkCampaignAccess,
+  getProductsForCampaign,
+);
+router.post('/products/:campaignId', authenticate, isAdminOrClient, checkCampaignAccess, createProduct);
+router.delete('/products/:productId', authenticate, isAdminOrClient, deleteProduct);
 
-router.post('/bulk-assign/:campaignId', isLoggedIn, isAdminOrClient, checkCampaignAccess, bulkAssignmentLogistics);
-router.post('/assign/:campaignId', isLoggedIn, isAdminOrClient, checkCampaignAccess, singleAssignmentLogistics);
+router.post('/bulk-assign/:campaignId', authenticate, isAdminOrClient, checkCampaignAccess, bulkAssignmentLogistics);
+router.post('/assign/:campaignId', authenticate, isAdminOrClient, checkCampaignAccess, singleAssignmentLogistics);
 router.patch(
   '/campaign/:campaignId/:logisticId/schedule',
-  isLoggedIn,
+  authenticate,
   isAdminOrClient,
   checkCampaignAccess,
   scheduleDelivery,
 );
 router.patch(
   '/campaign/:campaignId/:logisticId/resolve',
-  isLoggedIn,
+  authenticate,
   isAdminOrClient,
   checkCampaignAccess,
   resolveLogisticIssue,
 );
 router.patch(
   '/campaign/:campaignId/:logisticId/retry',
-  isLoggedIn,
+  authenticate,
   isAdminOrClient,
   checkCampaignAccess,
   retryLogisticDelivery,
 );
-router.patch('/admin/:logisticId/status', isLoggedIn, isAdminOrClient, updateLogisticStatus);
-router.put('/admin/:logisticId/details', isLoggedIn, isAdminOrClient, adminUpdateLogisticDetails);
+router.patch('/admin/:logisticId/status', authenticate, isAdminOrClient, updateLogisticStatus);
+router.put('/admin/:logisticId/details', authenticate, isAdminOrClient, adminUpdateLogisticDetails);
 
 // ------------------reservation routes--------------------------
 
 // creator routes
-router.get('/campaign/:campaignId/slots', isLoggedIn, getReservationSlots);
-router.post('/campaign/:campaignId/reservation', isLoggedIn, isCreator, submitReservationDetails);
-router.patch('/creator/:logisticId/complete', isLoggedIn, isCreator, markLogisticCompleted);
+router.get('/campaign/:campaignId/slots', authenticate, getReservationSlots);
+router.post('/campaign/:campaignId/reservation', authenticate, isCreator, submitReservationDetails);
+router.patch('/creator/:logisticId/complete', authenticate, isCreator, markLogisticCompleted);
 
 // admin & client routes
-router.get('/campaign/:campaignId/reservation-config', isLoggedIn, getReservationConfig);
+router.get('/campaign/:campaignId/reservation-config', authenticate, getReservationConfig);
 router.post(
   '/campaign/:campaignId/reservation-config',
-  isLoggedIn,
+  authenticate,
   isAdminOrClient,
   checkCampaignAccess,
   upsertReservationConfig,
 );
-router.post('/campaign/:campaignId/:logisticId/reschedule', isLoggedIn, rescheduleReservation);
+router.post('/campaign/:campaignId/:logisticId/reschedule', authenticate, rescheduleReservation);
 router.patch(
   '/campaign/:campaignId/:logisticId/reservation-detail',
-  isLoggedIn,
+  authenticate,
   isAdminOrClient,
   checkCampaignAccess,
   updateReservationDetails,
@@ -112,11 +118,11 @@ router.patch(
 
 router.patch(
   '/campaign/:campaignId/:logisticId/schedule-reservation',
-  isLoggedIn,
+  authenticate,
   isAdminOrClient,
   checkCampaignAccess,
   scheduleReservation,
 );
-router.patch('/campaign/:campaignId/:logisticId/admin-schedule', isLoggedIn, isAdminOrClient, adminSchedule);
+router.patch('/campaign/:campaignId/:logisticId/admin-schedule', authenticate, isAdminOrClient, adminSchedule);
 
 export default router;

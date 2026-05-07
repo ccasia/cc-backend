@@ -13,14 +13,14 @@ import {
   getUserByEmail,
 } from '@controllers/userController';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
-import { isLoggedIn } from '@middlewares/onlyLogin';
+import { authenticate } from '@middlewares/onlyLogin';
 
 const router = Router();
 
 router.get('/admins', isSuperAdmin, getAdmins);
 router.get('/alladmins', getAdmins);
 router.get('/forget-password-token/:token', checkForgetPasswordToken);
-router.get('/overview/:userId', isLoggedIn, getOverview);
+router.get('/overview/:userId', authenticate, getOverview);
 router.get('/by-email/:email', isSuperAdmin, getUserByEmail);
 // router.get('/getAdmins', isSuperAdmin, getAllActiveAdmins);
 

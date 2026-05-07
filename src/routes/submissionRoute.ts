@@ -19,7 +19,7 @@ import {
   adminManageDraftVideosV2,
   adminManageRawFootagesV2,
 } from '@controllers/submissionController';
-import { isLoggedIn } from '@middlewares/onlyLogin';
+import { authenticate } from '@middlewares/onlyLogin';
 import { isSuperAdmin, isAdmin } from '@middlewares/onlySuperadmin';
 import { generateInvoice } from '@controllers/invoiceController';
 import {
@@ -32,12 +32,12 @@ const router = Router();
 
 router.get('/', getSubmissionByCampaignCreatorId);
 router.get('/getAllsubmission', getAllSubmissions);
-router.get('/deliverables/:userId/:campaignId', isLoggedIn, getDeliverables);
+router.get('/deliverables/:userId/:campaignId', authenticate, getDeliverables);
 
-router.post('/submitAgreement', isLoggedIn, agreementSubmission);
-router.post('/draftSubmission', isLoggedIn, draftSubmission);
-router.post('/postSubmission', isLoggedIn, postingSubmission);
-router.post('/adminPostSubmission', isLoggedIn, postingSubmission);
+router.post('/submitAgreement', authenticate, agreementSubmission);
+router.post('/draftSubmission', authenticate, draftSubmission);
+router.post('/postSubmission', authenticate, postingSubmission);
+router.post('/adminPostSubmission', authenticate, postingSubmission);
 router.post('/generateInvoice', isSuperAdmin, generateInvoice);
 // New posting link flow (V2)
 // Allow admin/CSM to submit link in V2 as well (not only superadmin)
@@ -47,8 +47,8 @@ router.post('/v2/posting/superadmin/reject', isSuperAdmin, rejectPostingLinkBySu
 
 router.patch('/adminManageAgreementSubmission', isSuperAdmin, adminManageAgreementSubmission);
 router.patch('/adminManageDraft', isSuperAdmin, adminManageDraft);
-router.patch('/adminManagePosting', isLoggedIn, adminManagePosting);
-router.patch('/posting', isLoggedIn, isSuperAdmin, changePostingDate);
+router.patch('/adminManagePosting', authenticate, adminManagePosting);
+router.patch('/posting', authenticate, isSuperAdmin, changePostingDate);
 
 // Section-specific management routes
 router.patch('/managePhotos', isSuperAdmin, adminManagePhotos);

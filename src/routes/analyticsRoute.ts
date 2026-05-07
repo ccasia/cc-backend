@@ -1,6 +1,6 @@
 import { Router } from 'express';
 
-import { isLoggedIn } from '@middlewares/onlyLogin';
+import { authenticate } from '@middlewares/onlyLogin';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 import {
   getBrandsMetrics,
@@ -16,11 +16,11 @@ const router = Router();
 
 router.post('/tracker', trackUserFlow);
 
-router.get('/client/brands', isLoggedIn, getBrandsMetrics);
-router.get('/client/approve', isLoggedIn, getClientApprovalMetrics);
-router.get('/client/journey', isLoggedIn, getClientJourneyMetrics);
-router.get('/client/support', isLoggedIn, getClientSupportMetrics);
-router.get('/client/campaigns', isLoggedIn, getClientCampaignMetrics);
-router.get('/client/shortlist', isLoggedIn, getClientShortlistMetrics);
+router.get('/client/brands', authenticate, getBrandsMetrics);
+router.get('/client/approve', authenticate, getClientApprovalMetrics);
+router.get('/client/journey', authenticate, getClientJourneyMetrics);
+router.get('/client/support', authenticate, getClientSupportMetrics);
+router.get('/client/campaigns', authenticate, getClientCampaignMetrics);
+router.get('/client/shortlist', authenticate, getClientShortlistMetrics);
 
 export default router;

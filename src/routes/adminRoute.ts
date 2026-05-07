@@ -9,20 +9,20 @@ import {
 } from '@controllers/adminController';
 import { needPermissions } from '@middlewares/needPermissions';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
-import { isLoggedIn } from '@middlewares/onlyLogin';
+import { authenticate } from '@middlewares/onlyLogin';
 import { disconnectXeroIntegration } from '@controllers/invoiceController';
 
 const router = Router();
 
-router.get('/getAllAdmins', isLoggedIn, getAllAdmins);
+router.get('/getAllAdmins', authenticate, getAllAdmins);
 
-router.patch('/xero/disconnect', isLoggedIn, disconnectXeroIntegration);
+router.patch('/xero/disconnect', authenticate, disconnectXeroIntegration);
 
-router.post('/impersonate-creator', isLoggedIn, impersonateCreator);
+router.post('/impersonate-creator', authenticate, impersonateCreator);
 
-router.post('/impersonate-client', isLoggedIn, impersonateClient);
+router.post('/impersonate-client', authenticate, impersonateClient);
 
-router.post('/impersonate-creator/end', isLoggedIn, endImpersonatingSession);
+router.post('/impersonate-creator/end', authenticate, endImpersonatingSession);
 
 router.delete('/:id', needPermissions(['delete:admin']), isSuperAdmin, deleteAdminById);
 

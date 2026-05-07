@@ -34,7 +34,7 @@ export const createNewBug = async (req: Request, res: Response) => {
         stepsToReproduce,
         attachments: uploadedUrls,
         campaignName: campaignName || undefined,
-        userId: req.session.userid || undefined,
+        userId: req.userId || undefined,
       },
     });
 

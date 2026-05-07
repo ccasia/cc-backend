@@ -13,7 +13,7 @@ import '@configs/cronjob';
 import http from 'http';
 import { markMessagesAsSeen } from '@controllers/threadController';
 import { handleSendMessage, fetchMessagesFromThread } from '@services/threadService';
-import { isLoggedIn } from '@middlewares/onlyLogin';
+import { authenticate } from '@middlewares/onlyLogin';
 import { Server } from 'socket.io';
 import '@services/uploadVideo';
 
@@ -236,7 +236,7 @@ app.get('/', (req: Request, res: Response) => {
   res.send(`Your IP is ${req.ip}. ${process.env.NODE_ENV} is running...`);
 });
 
-app.get('/users', isLoggedIn, async (_req, res) => {
+app.get('/users', authenticate, async (_req, res) => {
   const prisma = new PrismaClient();
   try {
     const users = await prisma.user.findMany({

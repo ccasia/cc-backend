@@ -90,7 +90,7 @@ export const getThreadById = async (req: Request, res: Response) => {
 
 export const archiveThread = async (req: Request, res: Response) => {
   const { threadId } = req.params;
-  const userId = req.session.userid;
+  const userId = req.userId;
   try {
     const updatedUserThread = await prisma.userThread.update({
       where: {
@@ -112,7 +112,7 @@ export const archiveThread = async (req: Request, res: Response) => {
 
 export const unarchiveThread = async (req: Request, res: Response) => {
   const { threadId } = req.params;
-  const userId = req.session.userid;
+  const userId = req.userId;
   try {
     const updatedUserThread = await prisma.userThread.update({
       where: {
@@ -233,7 +233,7 @@ export const addUserToThread = async (req: Request, res: Response) => {
 // Function to send a message in a thread
 export const sendMessageInThread = async (req: Request, res: Response) => {
   const { threadId, content } = req.body as SendMessageParams;
-  const userId = req.session.userid;
+  const userId = req.userId;
 
   try {
     if (!userId) {
@@ -405,7 +405,7 @@ export const sendMessageInThread = async (req: Request, res: Response) => {
 
 export const getMessagesFromThread = async (req: Request, res: Response) => {
   const { threadId } = req.params;
-  const userId = req.session.userid;
+  const userId = req.userId;
   try {
     const messages = await fetchMessagesFromThread(threadId);
 
@@ -435,7 +435,7 @@ export const getMessagesFromThread = async (req: Request, res: Response) => {
 };
 
 export const getUnreadMessageCount = async (req: Request, res: Response) => {
-  const userId = req.session.userid;
+  const userId = req.userId;
   const { threadId } = req.params;
 
   try {
@@ -457,7 +457,7 @@ export const getUnreadMessageCount = async (req: Request, res: Response) => {
 };
 
 export const getTotalUnreadMessageCount = async (req: Request, res: Response) => {
-  const userId = req.session.userid;
+  const userId = req.userId;
 
   if (!userId) {
     return res.status(400).json({ error: 'Missing user information.' });
@@ -475,7 +475,7 @@ export const getTotalUnreadMessageCount = async (req: Request, res: Response) =>
 // Mark a message as read
 export const markMessagesAsSeen = async (req: Request, res: Response) => {
   const { threadId } = req.params;
-  const userId = req.session.userid;
+  const userId = req.userId;
 
   if (!userId) {
     return res.status(400).json({ error: 'User ID is missing from the session.' });

@@ -5,7 +5,7 @@ import { Event } from '@prisma/client';
 // @desc Create Event
 // @method POST
 export const createEvent = async (req: Request, res: Response) => {
-  const userId = req.session.userid;
+  const userId = req.userId;
 
   if (!userId) {
     //console.log('ab');
@@ -25,7 +25,7 @@ export const createEvent = async (req: Request, res: Response) => {
 // @desc Display all events based on user id
 // @method GET
 export const getAllEvents = async (req: Request, res: Response) => {
-  const id = req.session.userid;
+  const id = req.userId;
   try {
     const events = await getEvents(id as string);
     return res.status(200).json({ events: events });

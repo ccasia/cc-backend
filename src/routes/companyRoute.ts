@@ -24,6 +24,7 @@ import {
   resendClientActivation,
   getClientsByCompanyId,
 } from '@controllers/companyController';
+import { authenticate } from '@middlewares/authenticate';
 const router = Router();
 
 router.get('/', isSuperAdmin, clientOverview);
@@ -36,7 +37,7 @@ router.get('/getBrands/:id', isSuperAdmin, getBrandsByClientId);
 router.get('/getClientUsers/:companyId', isAdminOrClient, getClientsByCompanyId);
 router.get('/getUniqueCompanyId', isSuperAdmin, getUniqueClientId);
 
-router.post('/createCompany', isSuperAdmin, createCompany);
+router.post('/createCompany', authenticate, isSuperAdmin, createCompany);
 router.post('/createBrand', isSuperAdmin, createBrand);
 router.post('/createOneCompany', isSuperAdmin, createOneCompany);
 router.post('/createOneBrand', isSuperAdmin, createOneBrand);

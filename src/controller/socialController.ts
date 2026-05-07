@@ -240,7 +240,7 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
 
     const creator = await prisma.creator.update({
       where: {
-        userId: req.session.userid,
+        userId: req.userId,
       },
       data: {
         tiktokData: { ...tokenResponse.data, access_token: encryptedAccessToken, refresh_token: encryptedRefreshToken },
@@ -302,7 +302,7 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
       // Update creator's credit tier after TikTok follower data changes
       try {
         const { updateCreatorTier } = require('@services/creditTierService');
-        await updateCreatorTier(req.session.userid as string);
+        await updateCreatorTier(req.userId as string);
       } catch (tierError) {
         console.error('Failed to update credit tier after TikTok connect:', tierError);
         // Non-blocking - don't fail the callback if tier update fails
@@ -353,7 +353,7 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
       // Find campaigns where this user has submissions
       const userSubmissions = await prisma.submission.findMany({
         where: {
-          userId: req.session.userid,
+          userId: req.userId,
           status: 'POSTED',
           content: { not: null },
         },
@@ -366,7 +366,7 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
       // Emit analytics refresh event to each campaign room
       userSubmissions.forEach(({ campaignId }) => {
         io.to(campaignId).emit('analytics:refresh', {
-          userId: req.session.userid,
+          userId: req.userId,
           platform: 'TikTok',
           reason: 'mediakit_connected',
           timestamp: new Date().toISOString(),
@@ -509,7 +509,7 @@ export const redirectFacebookAuth = async (req: Request, res: Response) => {
   const code = req.query.code; // Facebook sends the code here
 
   try {
-    if (!code || !req.session.userid) return res.status(400).json({ message: 'Bad requests' });
+    if (!code || !req.userId) return res.status(400).json({ message: 'Bad requests' });
 
     // Exchange the code for an access token
     const response = await axios.get('https://graph.facebook.com/v22.0/oauth/access_token', {
@@ -535,7 +535,7 @@ export const redirectFacebookAuth = async (req: Request, res: Response) => {
 
     await prisma.creator.update({
       where: {
-        userId: req.session.userid,
+        userId: req.userId,
       },
       data: {
         instagramData: {
@@ -564,7 +564,7 @@ export const redirectFacebookAuth = async (req: Request, res: Response) => {
 };
 
 export const getUserInstagramData = async (req: Request, res: Response) => {
-  const userId = req.session.userid || req.params.userId;
+  const userId = req.userId || req.params.userId;
   const userContents = [];
 
   try {
@@ -677,7 +677,7 @@ export const handleDisconnectFacebook = async (req: Request, res: Response) => {
 
 export const instagramCallback = async (req: Request, res: Response) => {
   const code = req.query.code;
-  const userId = req.session.userid;
+  const userId = req.userId;
 
   if (!code) return res.status(404).json({ message: 'Code not found.' });
   if (!userId) return res.status(404).json({ message: 'Session Expired. Please log in again.' });
@@ -825,7 +825,7 @@ export const instagramCallback = async (req: Request, res: Response) => {
 };
 
 export const getInstagramOverview = async (req: Request, res: Response) => {
-  const userId = req.params.userId || req.session.userid;
+  const userId = req.params.userId || req.userId;
   try {
     const user = await prisma.creator.findUnique({
       where: {
@@ -914,7 +914,7 @@ export const removeInstagramPermissions = async (req: Request, res: Response) =>
 // V2 INSTAGRAM
 export const handleInstagramCallback = async (req: Request, res: Response) => {
   const code = req.query.code;
-  const userId = req.session.userid;
+  const userId = req.userId;
 
   if (!code) return res.status(404).json({ message: 'Code not found.' });
   if (!userId) return res.status(404).json({ message: 'Session Expired. Please log in again.' });

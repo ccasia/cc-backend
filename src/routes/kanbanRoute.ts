@@ -8,21 +8,21 @@ import {
   moveColumn,
   moveTask,
 } from '@controllers/kanbanController';
-import { isLoggedIn } from '@middlewares/onlyLogin';
+import { authenticate } from '@middlewares/onlyLogin';
 import { Router } from 'express';
 
 const router = Router();
 
-router.get('/', isLoggedIn, getKanbanBoard);
+router.get('/', authenticate, getKanbanBoard);
 
-router.post('/createColumn', isLoggedIn, createColumn);
-router.post('/createTask', isLoggedIn, createTask);
+router.post('/createColumn', authenticate, createColumn);
+router.post('/createTask', authenticate, createTask);
 
-router.patch('/moveColumn', isLoggedIn, moveColumn);
-router.patch('/updateColumn', isLoggedIn, editColumn);
-router.patch('/moveTask', isLoggedIn, moveTask);
-router.patch('/clearColumn', isLoggedIn, clearColumn);
+router.patch('/moveColumn', authenticate, moveColumn);
+router.patch('/updateColumn', authenticate, editColumn);
+router.patch('/moveTask', authenticate, moveTask);
+router.patch('/clearColumn', authenticate, clearColumn);
 
-router.delete('/deleteColumn', isLoggedIn, deleteColumn);
+router.delete('/deleteColumn', authenticate, deleteColumn);
 
 export default router;

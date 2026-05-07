@@ -1,5 +1,5 @@
 import express from 'express';
-import { isLoggedIn } from '@middlewares/onlyLogin';
+import { authenticate } from '@middlewares/onlyLogin';
 import { isAdminOrClient } from '@middlewares/adminOrClient';
 import {
   getChildAccounts,
@@ -15,13 +15,13 @@ import {
 
 const router = express.Router();
 
-router.get('/all', isLoggedIn, getAllChildAccounts);
-router.get('/client/:clientId', isLoggedIn, getChildAccounts);
-router.post('/client/:clientId', isLoggedIn, isAdminOrClient, createChildAccount);
-router.post('/:childAccountId/resend', isLoggedIn, isAdminOrClient, resendInvitation);
-router.post('/:childAccountId/grant-access', isLoggedIn, isAdminOrClient, grantAccess);
-router.post('/:childAccountId/remove-access', isLoggedIn, isAdminOrClient, removeAccess);
-router.delete('/:childAccountId', isLoggedIn, isAdminOrClient, deleteChildAccount);
+router.get('/all', authenticate, getAllChildAccounts);
+router.get('/client/:clientId', authenticate, getChildAccounts);
+router.post('/client/:clientId', authenticate, isAdminOrClient, createChildAccount);
+router.post('/:childAccountId/resend', authenticate, isAdminOrClient, resendInvitation);
+router.post('/:childAccountId/grant-access', authenticate, isAdminOrClient, grantAccess);
+router.post('/:childAccountId/remove-access', authenticate, isAdminOrClient, removeAccess);
+router.delete('/:childAccountId', authenticate, isAdminOrClient, deleteChildAccount);
 
 router.get('/token/:token', getChildAccountByToken);
 router.post('/activate/:token', activateChildAccount);

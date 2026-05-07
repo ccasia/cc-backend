@@ -6,7 +6,7 @@ const prisma = new PrismaClient();
 export const needPermissions = (permissions: string[]) => {
   return async (req: Request, res: Response, next: NextFunction) => {
     // Check if admin is logged in
-    const userid = req.session.userid;
+    const userid = req.userId;
     if (!userid) {
       return res.status(400).json({ message: 'You are not logged in' });
     }

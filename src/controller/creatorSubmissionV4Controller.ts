@@ -17,7 +17,7 @@ const prisma = new PrismaClient();
  */
 export const getMyV4Submissions = async (req: Request, res: Response) => {
   const { campaignId } = req.query;
-  const creatorId = req.session.userid;
+  const creatorId = req.userId;
 
   try {
     if (!creatorId) {
@@ -117,7 +117,7 @@ export const getMyV4Submissions = async (req: Request, res: Response) => {
 export const submitMyV4Content = async (req: Request, res: Response) => {
   let submissionId: string, caption: string;
   const files = req.files as any;
-  const creatorId = req.session.userid;
+  const creatorId = req.userId;
 
   try {
     if (!creatorId) {
@@ -559,7 +559,7 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
  */
 export const updateMyPostingLink = async (req: Request, res: Response) => {
   const { submissionId, postingLink } = req.body as PostingLinkUpdate;
-  const creatorId = req.session.userid;
+  const creatorId = req.userId;
 
   try {
     if (!creatorId) {
@@ -659,7 +659,7 @@ export const updateMyPostingLink = async (req: Request, res: Response) => {
  */
 export const getMySubmissionDetails = async (req: Request, res: Response) => {
   const { submissionId } = req.params;
-  const creatorId = req.session.userid;
+  const creatorId = req.userId;
 
   try {
     if (!creatorId) {
@@ -837,7 +837,7 @@ export const getMySubmissionDetails = async (req: Request, res: Response) => {
  */
 export const createMyFeedbackReply = async (req: Request, res: Response) => {
   const { feedbackId } = req.params;
-  const creatorId = req.session.userid;
+  const creatorId = req.userId;
   const { content } = req.body as { content?: string };
 
   try {
@@ -930,7 +930,7 @@ export const createMyFeedbackReply = async (req: Request, res: Response) => {
  */
 export const deleteMyReply = async (req: Request, res: Response) => {
   const { commentId } = req.params;
-  const creatorId = req.session.userid as string;
+  const creatorId = req.userId as string;
 
   try {
     if (!creatorId) return res.status(401).json({ error: 'Not logged in' });
@@ -980,7 +980,7 @@ export const deleteMyReply = async (req: Request, res: Response) => {
  */
 export const getMyCampaignOverview = async (req: Request, res: Response) => {
   const { campaignId } = req.query;
-  const creatorId = req.session.userid;
+  const creatorId = req.userId;
 
   try {
     if (!creatorId) {

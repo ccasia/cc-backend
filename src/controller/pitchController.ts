@@ -62,7 +62,9 @@ const normalizePitchStatusForV4 = (pitch: any): string | null => {
 export const approvePitchByAdmin = async (req: Request, res: Response) => {
   const { pitchId } = req.params;
   const { adminComments } = req.body;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
+
+  if (!adminId) return res.status(401).json({ message: 'Unauthorized' });
 
   try {
     console.log(`Admin ${adminId} approving pitch ${pitchId} with comments: ${adminComments}`);
@@ -427,7 +429,7 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
 export const rejectPitchByAdmin = async (req: Request, res: Response) => {
   const { pitchId } = req.params;
   const { rejectionReason } = req.body;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     console.log(`Admin ${adminId} rejecting pitch ${pitchId}`);
@@ -536,7 +538,7 @@ export const rejectPitchByAdmin = async (req: Request, res: Response) => {
 // New Flow: Client approves pitch
 export const approvePitchByClient = async (req: Request, res: Response) => {
   const { pitchId } = req.params;
-  const clientId = req.session.userid;
+  const clientId = req.userId;
 
   try {
     console.log(`Client ${clientId} approving pitch ${pitchId}`);
@@ -861,7 +863,7 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
 export const rejectPitchByClient = async (req: Request, res: Response) => {
   const { pitchId } = req.params;
   const { rejectionReason, customRejectionText } = req.body;
-  const clientId = req.session.userid;
+  const clientId = req.userId;
 
   try {
     console.log(`Client ${clientId} rejecting pitch ${pitchId}`);
@@ -1000,7 +1002,7 @@ export const rejectPitchByClient = async (req: Request, res: Response) => {
 export const withdrawCreatorFromCampaign = async (req: Request, res: Response) => {
   const { pitchId } = req.params;
   const { reason } = req.body;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     console.log(`Admin ${adminId} withdrawing creator from pitch ${pitchId}`);
@@ -1113,7 +1115,7 @@ export const withdrawCreatorFromCampaign = async (req: Request, res: Response) =
 export const maybePitchByClient = async (req: Request, res: Response) => {
   const { pitchId } = req.params;
   const { rejectionReason, customRejectionText } = req.body;
-  const clientId = req.session.userid;
+  const clientId = req.userId;
 
   try {
     console.log(`Client ${clientId} setting pitch ${pitchId} to maybe`);
@@ -1235,7 +1237,7 @@ export const maybePitchByClient = async (req: Request, res: Response) => {
 export const setPitchAgreement = async (req: Request, res: Response) => {
   const { pitchId } = req.params;
   const { amount, agreementTemplateId } = req.body;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     console.log(`Admin ${adminId} setting agreement for pitch ${pitchId}`);
@@ -1295,7 +1297,7 @@ export const setPitchAgreement = async (req: Request, res: Response) => {
 // V3 Flow: Creator submits agreement
 export const submitAgreement = async (req: Request, res: Response) => {
   const { pitchId } = req.params;
-  const creatorId = req.session.userid;
+  const creatorId = req.userId;
 
   try {
     console.log(`Creator ${creatorId} submitting agreement for pitch ${pitchId}`);
@@ -1426,7 +1428,7 @@ export const submitAgreement = async (req: Request, res: Response) => {
 // Get pitches for v3 flow with role-based status display
 export const getPitchesV3 = async (req: Request, res: Response) => {
   const { campaignId, status } = req.query;
-  const userId = req.session.userid;
+  const userId = req.userId;
 
   try {
     // Get user role
@@ -1578,7 +1580,7 @@ export const getPitchesV3 = async (req: Request, res: Response) => {
 // Get single pitch with role-based status display
 export const getPitchByIdV3 = async (req: Request, res: Response) => {
   const { pitchId } = req.params;
-  const userId = req.session.userid;
+  const userId = req.userId;
 
   try {
     // Get user role
@@ -1679,7 +1681,7 @@ export const getPitchByIdV3 = async (req: Request, res: Response) => {
 export const submitDraftV3 = async (req: Request, res: Response) => {
   const { submissionId, caption, photosDriveLink, rawFootagesDriveLink } = JSON.parse(req.body.data);
   const files = req.files as any;
-  const creatorId = req.session.userid;
+  const creatorId = req.userId;
 
   try {
     console.log(`Creator ${creatorId} submitting draft V3 for submission ${submissionId}`);
@@ -1769,7 +1771,9 @@ export const submitDraftV3 = async (req: Request, res: Response) => {
 // V3: Admin approves draft and sends to client
 export const approveDraftByAdminV3 = async (req: Request, res: Response) => {
   const { submissionId, feedback } = req.body;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
+
+  if (!adminId) return res.status(401).json({ message: 'Unauthorized' });
 
   try {
     console.log(`Admin ${adminId} approving draft V3 for submission ${submissionId}`);
@@ -1859,7 +1863,9 @@ export const approveDraftByAdminV3 = async (req: Request, res: Response) => {
 // V3: Admin requests changes for draft
 export const requestChangesByAdminV3 = async (req: Request, res: Response) => {
   const { submissionId, feedback, reasons } = req.body;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
+
+  if (!adminId) return res.status(401).json({ message: 'Unauthorized' });
 
   try {
     console.log(`Admin ${adminId} requesting changes for draft V3 submission ${submissionId}`);
@@ -1932,7 +1938,9 @@ export const requestChangesByAdminV3 = async (req: Request, res: Response) => {
 // V3: Client approves draft
 export const approveDraftByClientV3 = async (req: Request, res: Response) => {
   const { submissionId, feedback } = req.body;
-  const clientId = req.session.userid;
+  const clientId = req.userId;
+
+  if (!clientId) return res.status(401).json({ message: 'Unauthorized' });
 
   try {
     console.log(`Client ${clientId} approving draft V3 for submission ${submissionId}`);
@@ -2076,7 +2084,9 @@ export const approveDraftByClientV3 = async (req: Request, res: Response) => {
 // V3: Client requests changes for draft
 export const requestChangesByClientV3 = async (req: Request, res: Response) => {
   const { submissionId, feedback, reasons } = req.body;
-  const clientId = req.session.userid;
+  const clientId = req.userId;
+
+  if (!clientId) return res.status(401).json({ message: 'Unauthorized' });
 
   try {
     console.log(`Client ${clientId} requesting changes for draft V3 submission ${submissionId}`);
@@ -2178,11 +2188,11 @@ export const requestChangesByClientV3 = async (req: Request, res: Response) => {
 // V3: Admin reviews client feedback and forwards to creator
 export const forwardClientFeedbackV3 = async (req: Request, res: Response) => {
   const { submissionId, adminFeedback } = req.body;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
+
+  if (!adminId) return res.status(401).json({ message: 'Unauthorized' });
 
   try {
-    console.log(`Admin ${adminId} forwarding client feedback for submission ${submissionId}`);
-
     const submission = await prisma.submission.findUnique({
       where: { id: submissionId },
       include: {
@@ -2255,7 +2265,7 @@ export const forwardClientFeedbackV3 = async (req: Request, res: Response) => {
 export const updateGuestCreatorInfo = async (req: Request, res: Response) => {
   const { pitchId } = req.params;
   const { name, followerCount, engagementRate, profileLink, adminComments } = req.body;
-  const userId = req.session.userid;
+  const userId = req.userId;
 
   try {
     console.log(`User ${userId} updating guest creator info for pitch ${pitchId}`);
@@ -2399,7 +2409,7 @@ type OutreachStatusType = (typeof VALID_OUTREACH_STATUSES)[number];
 export const updateOutreachStatus = async (req: Request, res: Response) => {
   const { pitchId } = req.params;
   const { outreachStatus } = req.body;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     // Validate required fields
@@ -2500,7 +2510,7 @@ export const updateOutreachStatus = async (req: Request, res: Response) => {
 // Creator accepts an invited campaign – tracks acceptor and sets isInvited to false
 export const acceptInviteByCreator = async (req: Request, res: Response) => {
   const { pitchId } = req.params;
-  const userId = req.session.userid;
+  const userId = req.userId;
 
   try {
     const pitch = await prisma.pitch.findUnique({

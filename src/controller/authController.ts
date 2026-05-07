@@ -1143,7 +1143,7 @@ export const updateClient = async (req: Request, res: Response) => {
 
 // Function to get user's information
 export const getprofile = async (req: Request, res: Response) => {
-  const userId = req.session.userid as string;
+  const userId = req?.userId || (req.userId as string);
 
   const isImpersonating = req.session.isImpersonating;
   const impersonatingBy = req.session.impersonatingBy;
@@ -1874,7 +1874,7 @@ export const setupClientPassword = async (req: Request, res: Response) => {
   }
 };
 export const deleteAccount = async (req: Request, res: Response) => {
-  const userId = req.session.userid as string;
+  const userId = req.userId as string;
 
   if (!userId) {
     return res.status(401).json({ message: 'Unauthorized' });
@@ -1941,8 +1941,11 @@ export const deleteAccount = async (req: Request, res: Response) => {
 
 const hashToken = (token: string) => crypto.createHash('sha256').update(token).digest('hex');
 
-export const mobileLogin = async (req: Request<{}, {}, { email: string; password: string }>, res: Response) => {
-  const { email, password } = req.body;
+export const mobileLogin = async (
+  req: Request<{}, {}, { email: string; password: string; ipAddress: string; userAgent: string }>,
+  res: Response,
+) => {
+  const { email, password, ipAddress, userAgent } = req.body;
 
   try {
     // Validation checking on server
@@ -1992,6 +1995,8 @@ export const mobileLogin = async (req: Request<{}, {}, { email: string; password
         tokenHash: hashToken(refreshToken),
         userId: user.id,
         expiresAt: dayjs().add(30, 'days').toDate(),
+        ipAddress,
+        userAgent,
       },
     });
 

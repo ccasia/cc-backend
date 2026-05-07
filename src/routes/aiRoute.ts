@@ -1,12 +1,12 @@
 import { aiSettings, getCampaigns, updateAiSettings } from '@controllers/aiController';
-import { isLoggedIn } from '@middlewares/onlyLogin';
+import { authenticate } from '@middlewares/onlyLogin';
 import { Router } from 'express';
 
 const aiRouter = Router();
 
-aiRouter.get('/', isLoggedIn, aiSettings);
-aiRouter.get('/campaigns', isLoggedIn, getCampaigns);
+aiRouter.get('/', authenticate, aiSettings);
+aiRouter.get('/campaigns', authenticate, getCampaigns);
 
-aiRouter.patch('/configure', isLoggedIn, updateAiSettings);
+aiRouter.patch('/configure', authenticate, updateAiSettings);
 
 export default aiRouter;

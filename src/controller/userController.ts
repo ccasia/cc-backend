@@ -37,9 +37,9 @@ export const updateProfileAdmin = async (req: Request, res: Response) => {
     if (files && files.image) {
       const { image } = files as any;
       const publicURL = await uploadProfileImage(image.tempFilePath, image.name, 'admin');
-      await updateAdmin(req.body, publicURL, req.session.userid as string | undefined);
+      await updateAdmin(req.body, publicURL, req.userId as string | undefined);
     } else {
-      await updateAdmin(req.body, undefined, req.session.userid as string | undefined);
+      await updateAdmin(req.body, undefined, req.userId as string | undefined);
     }
 
     return res.status(200).json({ message: 'Successfully updated' });
@@ -50,7 +50,7 @@ export const updateProfileAdmin = async (req: Request, res: Response) => {
 
 // Only superadmin is allow to run this function
 export const getAdmins = async (req: Request, res: Response) => {
-  const userid = req.session.userid;
+  const userid = req.userId;
   try {
     if (req.query.target && req.query.target === 'active') {
       const admins = await prisma.user.findMany({

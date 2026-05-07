@@ -33,12 +33,13 @@ import {
 import { validateToken } from '@utils/jwtHelper';
 
 import passport from '../auth/googleAuth';
-import { isLoggedIn } from '@middlewares/onlyLogin';
+import { authenticate } from '@middlewares/onlyLogin';
+import { jwtAuthMiddleware } from '@middlewares/jwtMiddleware';
 
 const router = Router();
 
-// router.get('/', isLoggedIn, displayAll);
-router.get('/me', getprofile);
+// router.get('/', authenticate, displayAll);
+router.get('/me', jwtAuthMiddleware, getprofile);
 router.get('/verifyAdmin', verifyAdmin);
 router.get('/checkTokenValidity/:token', checkTokenValidity);
 router.get('/currentUser', validateToken, getCurrentUser);
@@ -76,12 +77,12 @@ router.post('/invite-client', inviteClient);
 router.get('/verify-client-invite', verifyClientInvite);
 router.post('/setup-client-password', setupClientPassword);
 
-router.put('/updateCreator', isLoggedIn, updateCreator);
-router.patch('/updateClient', isLoggedIn, updateClient);
+router.put('/updateCreator', authenticate, updateCreator);
+router.patch('/updateClient', authenticate, updateClient);
 
 router.patch('/updateProfileCreator', updateProfileCreator);
 router.patch('/changePassword', validateToken, changePassword);
 
-router.delete('/account', isLoggedIn, deleteAccount);
+router.delete('/account', authenticate, deleteAccount);
 
 export default router;

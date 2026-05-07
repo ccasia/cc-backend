@@ -408,7 +408,11 @@ export const submitV4ContentController = async (req: Request, res: Response) => 
  */
 export const approveV4Submission = async (req: Request, res: Response) => {
   const { submissionId, action, feedback, reasons, caption, videoId } = req.body;
-  const currentUserId = req.session.userid;
+  const currentUserId = req.userId;
+
+  if (!currentUserId) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
 
   try {
     if (!submissionId || !action) {
@@ -752,7 +756,11 @@ const CLIENT_THREADED_FEEDBACK_PLACEHOLDER = 'Client left detailed feedback via 
 
 export const approveV4SubmissionByClient = async (req: Request, res: Response) => {
   const { submissionId, action, feedback, reasons, videoId: bodyVideoId } = req.body;
-  const clientId = req.session.userid;
+  const clientId = req.userId;
+
+  if (!clientId) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
 
   try {
     if (!submissionId || !action) {
@@ -1103,7 +1111,11 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
  */
 export const forwardClientFeedbackV4 = async (req: Request, res: Response) => {
   const { submissionId, adminFeedback } = req.body;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
+
+  if (!adminId) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
 
   try {
     if (!submissionId) {
@@ -1264,7 +1276,7 @@ export const forwardClientFeedbackV4 = async (req: Request, res: Response) => {
  */
 export const updatePostingLinkController = async (req: Request, res: Response) => {
   const { submissionId, postingLink } = req.body as PostingLinkUpdate;
-  const currentUserId = req.session.userid;
+  const currentUserId = req.userId;
 
   try {
     if (!submissionId || !postingLink) {
@@ -1319,7 +1331,11 @@ export const updatePostingLinkController = async (req: Request, res: Response) =
  */
 export const approvePostingLinkV4 = async (req: Request, res: Response) => {
   const { submissionId, action, reasons } = req.body;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
+
+  if (!adminId) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
 
   try {
     if (!submissionId || !action) {
@@ -1473,7 +1489,7 @@ export const approvePostingLinkV4 = async (req: Request, res: Response) => {
  */
 export const approveIndividualContentV4 = async (req: Request, res: Response) => {
   const { contentType, contentId, feedback, reasons } = req.body;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     if (!contentType || !contentId) {
@@ -1686,7 +1702,7 @@ export const approveIndividualContentV4 = async (req: Request, res: Response) =>
  */
 export const requestChangesIndividualContentV4 = async (req: Request, res: Response) => {
   const { contentType, contentId, feedback, reasons } = req.body;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     if (!contentType || !contentId || !feedback) {
@@ -1837,7 +1853,7 @@ export const requestChangesIndividualContentV4 = async (req: Request, res: Respo
  */
 export const approveIndividualContentByClientV4 = async (req: Request, res: Response) => {
   const { contentType, contentId, feedback } = req.body;
-  const clientId = req.session.userid;
+  const clientId = req.userId;
 
   try {
     if (!contentType || !contentId) {
@@ -2035,7 +2051,7 @@ export const approveIndividualContentByClientV4 = async (req: Request, res: Resp
  */
 export const requestChangesIndividualContentByClientV4 = async (req: Request, res: Response) => {
   const { contentType, contentId, feedback, reasons } = req.body;
-  const clientId = req.session.userid;
+  const clientId = req.userId;
 
   try {
     if (!contentType || !contentId || !feedback) {
@@ -2449,7 +2465,7 @@ export const getPhotoFeedbackV4 = async (req: Request, res: Response) => {
  */
 export const forwardPhotoFeedbackV4 = async (req: Request, res: Response) => {
   const { feedbackId } = req.body;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     if (!feedbackId) {
@@ -2623,7 +2639,7 @@ export const getRawFootageFeedbackV4 = async (req: Request, res: Response) => {
  */
 export const forwardRawFootageFeedbackV4 = async (req: Request, res: Response) => {
   const { feedbackId } = req.body;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     if (!feedbackId) {
@@ -3002,7 +3018,7 @@ export const checkV4CompletionStatus = async (req: Request, res: Response) => {
  */
 export const triggerV4Completion = async (req: Request, res: Response) => {
   const { campaignId, userId } = req.body;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     if (!campaignId || !userId) {
@@ -3067,7 +3083,7 @@ export const getComments = async (req: Request, res: Response) => {
   const { submissionId } = req.params;
   const { videoId } = req.query;
   const user = await prisma.user.findUnique({
-    where: { id: req.session.userid },
+    where: { id: req.userId },
     include: { client: { select: { company: { select: { logo: true } } } } },
   });
 
@@ -3137,7 +3153,7 @@ export const getComments = async (req: Request, res: Response) => {
 export const createComment = async (req: Request, res: Response) => {
   const { submissionId } = req.params;
   const { text, parentId, timestamp, videoId, isClientDraft } = req.body;
-  const sessionUserId = req.session.userid;
+  const sessionUserId = req.userId;
 
   if (!sessionUserId) {
     return res.status(401).json({ error: 'Unauthorized: No session found' });
@@ -3229,7 +3245,7 @@ export const createComment = async (req: Request, res: Response) => {
  */
 export const toggleAgree = async (req: Request, res: Response) => {
   const { commentId } = req.params;
-  const userId = req.session.userid as string;
+  const userId = req.userId as string;
 
   try {
     const comment = await prisma.submissionComment.findUnique({
@@ -3286,7 +3302,7 @@ export const toggleAgree = async (req: Request, res: Response) => {
  */
 export const toggleResolve = async (req: Request, res: Response) => {
   const { commentId } = req.params;
-  const adminId = req.session.userid as string;
+  const adminId = req.userId as string;
 
   try {
     const comment = await prisma.submissionComment.findUnique({
@@ -3394,7 +3410,7 @@ export const toggleCreatorVisibility = async (req: Request, res: Response) => {
 export const updateComment = async (req: Request, res: Response) => {
   const { commentId } = req.params;
   const { text, timestamp } = req.body;
-  const adminId = req.session.userid as string;
+  const adminId = req.userId as string;
 
   if (!text || typeof text !== 'string' || !text.trim()) {
     return res.status(400).json({ error: 'Comment text is required' });
@@ -3443,7 +3459,7 @@ export const updateComment = async (req: Request, res: Response) => {
  */
 export const deleteComment = async (req: Request, res: Response) => {
   const { commentId } = req.params;
-  const adminId = req.session.userid as string;
+  const adminId = req.userId as string;
 
   try {
     const comment = await prisma.submissionComment.findUnique({
@@ -3486,7 +3502,7 @@ export const deleteComment = async (req: Request, res: Response) => {
  */
 export const deleteCommentByClient = async (req: Request, res: Response) => {
   const { commentId } = req.params;
-  const clientId = req.session.userid as string;
+  const clientId = req.userId as string;
 
   try {
     if (!clientId) return res.status(401).json({ error: 'Not logged in' });
@@ -3535,7 +3551,7 @@ export const deleteCommentByClient = async (req: Request, res: Response) => {
 export const sendVideoFeedbackToCreator = async (req: Request, res: Response) => {
   const { submissionId } = req.params;
   const { videoId } = req.body;
-  const adminId = req.session.userid as string;
+  const adminId = req.userId as string;
 
   try {
     if (!videoId) {
@@ -3704,7 +3720,7 @@ export const sendVideoFeedbackToCreator = async (req: Request, res: Response) =>
 export const sendVideoFeedbackToClient = async (req: Request, res: Response) => {
   const { submissionId } = req.params;
   const { videoId } = req.body;
-  const adminId = req.session.userid as string;
+  const adminId = req.userId as string;
 
   try {
     if (!videoId) {

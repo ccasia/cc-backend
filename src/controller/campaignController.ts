@@ -525,7 +525,7 @@ export const createCampaign = async (req: Request, res: Response) => {
         }
 
         // Check if the user creating the campaign is a Client
-        const userId = req.session.userid;
+        const userId = req.userId;
 
         if (userId) {
           const currentUser = await tx.user.findUnique({
@@ -655,7 +655,7 @@ export const createCampaign = async (req: Request, res: Response) => {
 
         // Get admin info for logging
         const admin = await tx.user.findUnique({
-          where: { id: req.session.userid },
+          where: { id: req.userId },
         });
         const adminName = admin?.name || 'Admin';
         const userRole = admin?.role || 'admin';
@@ -665,12 +665,12 @@ export const createCampaign = async (req: Request, res: Response) => {
         await tx.campaignLog.create({
           data: {
             message: campaignActivityMessage,
-            adminId: req.session.userid,
+            adminId: req.userId,
             campaignId: campaign.id,
           },
         });
 
-        const adminId = req.session.userid;
+        const adminId = req.userId;
         if (adminId) {
           const adminLogMessage = `Created campaign - "${campaign.name}" `;
           logAdminChange(adminLogMessage, adminId, req);
@@ -1234,7 +1234,7 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
         }
 
         // Check if creating user is a Client
-        const userId = req.session.userid;
+        const userId = req.userId;
         if (userId) {
           const currentUser = await tx.user.findUnique({
             where: { id: userId },
@@ -1323,12 +1323,12 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
         await tx.campaignLog.create({
           data: {
             message: 'Campaign Created',
-            adminId: req.session.userid,
+            adminId: req.userId,
             campaignId: campaign.id,
           },
         });
 
-        const adminId = req.session.userid;
+        const adminId = req.userId;
         if (adminId) {
           logAdminChange(`Created campaign - "${campaign.name}"`, adminId, req);
         }
@@ -1551,7 +1551,7 @@ export const exportCreatorsCampaignSheet = async (_req: Request, res: Response) 
 
 // Campaign Info for Admin
 export const getAllCampaigns = async (req: Request, res: Response) => {
-  const id = req.session.userid;
+  const id = req.userId;
 
   console.log('TEST');
 
@@ -2329,7 +2329,7 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
 
 export const creatorMakePitch = async (req: Request, res: Response) => {
   const { campaignId, content, type, followerCount } = req.body;
-  const id = req.session.userid;
+  const id = req.userId;
   let pitch;
 
   try {
@@ -2581,7 +2581,7 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
 };
 
 export const getAllPitches = async (req: Request, res: Response) => {
-  const userId = req.session.userid;
+  const userId = req.userId;
 
   try {
     // Get user role for role-based status display
@@ -2924,7 +2924,7 @@ export const getCampaignForCreatorById = async (req: Request, res: Response) => 
 };
 
 export const getCampaignPitchForCreator = async (req: Request, res: Response) => {
-  const userid = req.session.userid;
+  const userid = req.userId;
 
   try {
     const campaings = await prisma.pitch.findMany({
@@ -3036,7 +3036,7 @@ export const getCampaignLog = async (req: Request, res: Response) => {
 
 export const getPitchById = async (req: Request, res: Response) => {
   const { id } = req.params;
-  const userId = req.session.userid;
+  const userId = req.userId;
 
   try {
     // Get user role for role-based status display
@@ -3827,7 +3827,7 @@ export const getMyCampaigns = async (req: Request, res: Response) => {
 export const changeCampaignStage = async (req: Request, res: Response) => {
   const { status } = req.body;
   const { campaignId } = req.params;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   let updatedCampaign: any;
   try {
@@ -3950,7 +3950,7 @@ export const changeCampaignStage = async (req: Request, res: Response) => {
 
 export const closeCampaign = async (req: Request, res: Response) => {
   const { id } = req.params;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     // Use transaction for atomicity
@@ -4153,7 +4153,7 @@ export const editCampaignInfo = async (req: Request, res: Response) => {
     postingStartDate,
     postingEndDate,
   } = req.body;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   const publicURL: string[] = [];
   if (req.files && (req.files as any).campaignImages) {
@@ -4280,7 +4280,7 @@ export const editCampaignInfo = async (req: Request, res: Response) => {
 
 export const editCampaignObjectives = async (req: Request, res: Response) => {
   const { id, objectives, secondaryObjectives, boostContent, primaryKPI, performanceBaseline } = req.body;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     console.log('editCampaignObjectives received:', {
@@ -4388,7 +4388,7 @@ export const editCampaignBrandOrCompany = async (req: Request, res: Response) =>
           },
     });
 
-    const adminId = req.session.userid;
+    const adminId = req.userId;
 
     // Get admin info for logging
     if (adminId) {
@@ -4448,7 +4448,7 @@ export const editCampaignDosAndDonts = async (req: Request, res: Response) => {
       },
     });
 
-    const adminId = req.session.userid;
+    const adminId = req.userId;
 
     // Get admin info for logging
     if (adminId) {
@@ -4556,7 +4556,7 @@ export const editCampaignRequirements = async (req: Request, res: Response) => {
       },
     });
 
-    const adminId = req.session.userid;
+    const adminId = req.userId;
 
     // Get admin info for logging
     if (adminId) {
@@ -4643,7 +4643,7 @@ export const editCampaignLogistics = async (req: Request, res: Response) => {
     clientRemarks,
   } = req.body;
 
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     // Fetch old data for diff
@@ -4757,7 +4757,7 @@ export const editCampaignLogistics = async (req: Request, res: Response) => {
 export const editCampaignFinalise = async (req: Request, res: Response) => {
   const { campaignId, campaignManagers, campaignType, deliverables, isV4Submission, isCreditTier } = req.body;
 
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     // Get campaign for logging with current campaignType and submission version
@@ -5180,7 +5180,7 @@ export const editCampaignFinalise = async (req: Request, res: Response) => {
 };
 
 export const editCampaignAdditionalDetails = async (req: Request, res: Response) => {
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     // Handle both JSON body and FormData
@@ -5606,7 +5606,7 @@ export const editCampaignTimeline = async (req: Request, res: Response) => {
       },
     });
 
-    const adminId = req.session.userid;
+    const adminId = req.userId;
 
     // Get admin info for logging
     if (adminId) {
@@ -5703,7 +5703,7 @@ export const editCampaignTimeline = async (req: Request, res: Response) => {
 
 export const changePitchStatus = async (req: Request, res: Response) => {
   const { status, pitchId, totalUGCVideos } = req.body;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     const existingPitch = await prisma.pitch.findUnique({
@@ -6209,7 +6209,7 @@ export const uploadVideoTest = async (req: Request, res: Response) => {
 
 export const saveCampaign = async (req: Request, res: Response) => {
   const { campaignId } = req.body;
-  const userid = req.session.userid;
+  const userid = req.userId;
 
   try {
     const bookmark = await prisma.bookMarkCampaign.create({
@@ -6256,7 +6256,7 @@ export const unSaveCampaign = async (req: Request, res: Response) => {
 //     creatorId: userId,
 //   } = req.body;
 
-//   const adminId = req.session.userid;
+//   const adminId = req.userId;
 
 //   try {
 //     const logistics = await prisma.logistics.create({
@@ -6323,7 +6323,7 @@ export const unSaveCampaign = async (req: Request, res: Response) => {
 // export const updateStatusLogistic = async (req: Request, res: Response) => {
 //   // eslint-disable-next-line prefer-const
 //   let { logisticId, status } = req.body;
-//   const adminId = req.session.userid;
+//   const adminId = req.userId;
 
 //   if (status === 'Pending Delivery Confirmation') {
 //     status = status.split(' ').join('_');
@@ -6598,7 +6598,7 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
     });
 
     // Get admin info for logging
-    const adminId = req.session.userid;
+    const adminId = req.userId;
     const admin = await prisma.user.findUnique({
       where: { id: adminId },
     });
@@ -6914,7 +6914,7 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
 export const sendAgreement = async (req: Request, res: Response) => {
   const { user, id: agreementId, campaignId, isNew, credits } = req.body;
 
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     const isUserExist = await prisma.user.findUnique({
@@ -7000,17 +7000,11 @@ export const sendAgreement = async (req: Request, res: Response) => {
       select: { status: true },
     });
     if (pitchForGate) {
-      const allowedPitchStatuses = [
-        'APPROVED',
-        'approved',
-        'AGREEMENT_PENDING',
-        'AGREEMENT_SUBMITTED',
-      ];
+      const allowedPitchStatuses = ['APPROVED', 'approved', 'AGREEMENT_PENDING', 'AGREEMENT_SUBMITTED'];
       const pitchStatus = pitchForGate.status ?? '';
       if (!allowedPitchStatuses.includes(pitchStatus)) {
         return res.status(400).json({
-          message:
-            'Cannot send agreement: this creator has not been approved yet. Awaiting client/admin approval.',
+          message: 'Cannot send agreement: this creator has not been approved yet. Awaiting client/admin approval.',
         });
       }
     }
@@ -7326,7 +7320,7 @@ export const sendAgreement = async (req: Request, res: Response) => {
 export const editCampaignImages = async (req: Request, res: Response) => {
   const { campaignImages, campaignId } = req.body;
   const newImages: string[] = [];
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     const newCampaignImages = (req.files as any)?.campaignImages;
@@ -7498,7 +7492,7 @@ export const removePitchVideo = async (req: Request, res: Response) => {
 
 export const editCampaignAdmin = async (req: Request, res: Response) => {
   const { id } = req.params;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   const {
     data: { admins },
@@ -7768,7 +7762,7 @@ export const editCampaignAdmin = async (req: Request, res: Response) => {
 
 // Add client managers to a campaign and flip origin to CLIENT (V3)
 export const addClientManagers = async (req: Request, res: Response) => {
-  const adminId = req.session.userid;
+  const adminId = req.userId;
   const { campaignId, clientManagers } = req.body as {
     campaignId: string;
     clientManagers: ({ id?: string; email?: string } | string)[];
@@ -7839,7 +7833,7 @@ export const editCampaignAttachments = async (req: Request, res: Response) => {
   const { id } = req.params;
   const { otherAttachments: currentAttachments } = req.body;
   const otherAttachments: string[] = [];
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     const campaign = await prisma.campaign.findUnique({
@@ -7966,7 +7960,7 @@ export const createNewSpreadSheets = async (req: Request, res: Response) => {
 export const editCampaignReference = async (req: Request, res: Response) => {
   const { id } = req.params;
   const { referencesLinks } = req.body;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     const campaign = await prisma.campaign.findUnique({
@@ -8034,7 +8028,7 @@ export const editCampaignReference = async (req: Request, res: Response) => {
 
 export const linkNewAgreement = async (req: Request, res: Response) => {
   const { template, campaignId } = req.body;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     const campaign = await prisma.campaign.findUnique({
@@ -8098,7 +8092,7 @@ export const linkNewAgreement = async (req: Request, res: Response) => {
 
 export const removeCreatorFromCampaign = async (req: Request, res: Response) => {
   const { creatorId, campaignId } = req.body;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     console.log(`Attempting to remove creator ${creatorId} from campaign ${campaignId}`);
@@ -8396,7 +8390,7 @@ export const getCampaignsTotal = async (req: Request, res: Response) => {
 
 export const resendAgreement = async (req: Request, res: Response) => {
   const { userId, campaignId } = req.body;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     const user = await prisma.user.findUnique({
@@ -8424,17 +8418,11 @@ export const resendAgreement = async (req: Request, res: Response) => {
       select: { status: true },
     });
     if (pitchForGate) {
-      const allowedPitchStatuses = [
-        'APPROVED',
-        'approved',
-        'AGREEMENT_PENDING',
-        'AGREEMENT_SUBMITTED',
-      ];
+      const allowedPitchStatuses = ['APPROVED', 'approved', 'AGREEMENT_PENDING', 'AGREEMENT_SUBMITTED'];
       const pitchStatus = pitchForGate.status ?? '';
       if (!allowedPitchStatuses.includes(pitchStatus)) {
         return res.status(400).json({
-          message:
-            'Cannot resend agreement: this creator has not been approved yet. Awaiting client/admin approval.',
+          message: 'Cannot resend agreement: this creator has not been approved yet. Awaiting client/admin approval.',
         });
       }
     }
@@ -8525,7 +8513,7 @@ export const resendAgreement = async (req: Request, res: Response) => {
 export const submitAgreementV3 = async (req: Request, res: Response) => {
   const { pitchId } = req.params as { pitchId: string };
   const { agreementUrl } = req.body as { agreementUrl?: string };
-  const userId = req.session.userid;
+  const userId = req.userId;
 
   try {
     console.log('[submitAgreementV3] start', { pitchId, userId, hasAgreementUrl: !!agreementUrl });
@@ -8634,7 +8622,7 @@ export const submitAgreementV3 = async (req: Request, res: Response) => {
 export const shortlistCreator = async (req: Request, res: Response) => {
   const { newVal: creators, campaignId } = req.body;
 
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     await prisma.$transaction(
@@ -9166,7 +9154,7 @@ export const getClientCampaigns = async (req: Request, res: Response) => {
 
 export const activateClientCampaign = async (req: Request, res: Response) => {
   try {
-    const userId = req.session.userid;
+    const userId = req.userId;
     const { campaignId } = req.params;
 
     if (!userId) {
@@ -10392,7 +10380,7 @@ export const checkCampaignCreatorVisibility = async (req: Request, res: Response
 export const shortlistCreatorV3 = async (req: Request, res: Response) => {
   // Support both per-creator adminComments (new) and legacy single adminComments (backward compat)
   const { creators, campaignId, adminComments: legacyAdminComments, ugcCredits } = req.body;
-  const userId = req.session.userid;
+  const userId = req.userId;
 
   try {
     // Validate follower counts - max 10 billion (prevents 64-bit integer overflow)
@@ -10991,7 +10979,7 @@ export const shortlistCreatorV2ForClient = async (req: Request, res: Response) =
 
 export const initialActivateCampaign = async (req: Request, res: Response) => {
   try {
-    const userId = req.session.userid;
+    const userId = req.userId;
     const { campaignId } = req.params;
 
     if (!userId) {
@@ -11208,7 +11196,7 @@ export const initialActivateCampaign = async (req: Request, res: Response) => {
 // Add this function after the shortlistCreatorV3 function
 export const assignUGCCreditsV3 = async (req: Request, res: Response) => {
   const { creators, campaignId } = req.body;
-  const userId = req.session.userid;
+  const userId = req.userId;
 
   try {
     // Allow superadmin to bypass campaign admin check
@@ -11338,7 +11326,7 @@ export const assignUGCCreditsV3 = async (req: Request, res: Response) => {
 // 3.1 Shortlisting Non-Platform (Guest) Creators
 export const shortlistGuestCreators = async (req: Request, res: Response) => {
   const { campaignId, guestCreators } = req.body;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   if (!campaignId || !Array.isArray(guestCreators) || guestCreators.length === 0) {
     return res.status(400).json({ message: 'Campaign ID and a list of guest creators are required.' });

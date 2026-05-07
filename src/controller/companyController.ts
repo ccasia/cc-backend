@@ -18,7 +18,7 @@ const prisma = new PrismaClient();
 // for creating new company with brand
 export const createCompany = async (req: Request, res: Response) => {
   const data = JSON.parse(req.body.data);
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   const companyLogo = (req.files as { companyLogo: object })?.companyLogo as { tempFilePath: string; name: string };
   let publicURL: string | null = '';
@@ -200,7 +200,7 @@ export const getCompanyById = async (req: Request, res: Response) => {
 };
 
 export const createBrand = async (req: Request, res: Response) => {
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     const brand = await handleCreateBrand(req.body);
@@ -290,7 +290,7 @@ export const createOneBrand = async (req: Request, res: Response) => {
 
 export const deleteCompany = async (req: Request, res: Response) => {
   const { id } = req.params;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     const company = await prisma.company.findUnique({
@@ -347,7 +347,7 @@ export const editCompany = async (req: Request, res: Response) => {
     companyObjectives,
     companyRegistrationNumber,
   } = JSON.parse(req.body.data);
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     let logoURL = '';
@@ -491,7 +491,7 @@ export const handleLinkNewPackage = async (req: Request, res: Response) => {
   const { companyId } = req.params;
   const data = req.body;
   const { invoiceDate, validityPeriod, currency, packageId, packageType, totalUGCCredits, packageValue } = data;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   if (!companyId) return res.status(404).json({ message: 'Company ID not found.' });
 
@@ -669,7 +669,7 @@ export const clientOverview = async (req: Request, res: Response) => {
 
 export const activateClient = async (req: Request, res: Response) => {
   const { companyId } = req.params;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     // Get company information
@@ -800,7 +800,7 @@ export const activateClient = async (req: Request, res: Response) => {
 export const resendClientActivation = async (req: Request, res: Response) => {
   const { companyId } = req.params;
   const { picId } = req.body;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     if (!companyId) {
