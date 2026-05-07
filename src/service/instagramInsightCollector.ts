@@ -276,13 +276,6 @@ export async function fetchInstagramCampaignMetrics(campaignId: string): Promise
     0,
   );
 
-  console.log('MAN - IG RATE', manualIg);
-  console.log('MAN - TT RATE', manualTt);
-  console.log('AUTO - IG RATE', ig.creatorPersonas);
-  console.log('AUTO - TT RATE', tt.creatorPersonas);
-
-  console.log(engagementRevised);
-
   // Combined totals: API + Manual + Snapshot
   const totalViews = ig.totalViews + tt.totalViews + manualIgTotals.views + manualTtTotals.views;
 
