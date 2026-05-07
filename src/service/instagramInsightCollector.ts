@@ -267,18 +267,14 @@ export async function fetchInstagramCampaignMetrics(campaignId: string): Promise
   const manualIgEngRate = manualIg.reduce((acc, cur) => acc + cur.engagementRate, 0);
   const manualTtEngRate = manualTt.reduce((acc, cur) => acc + cur.engagementRate, 0);
 
-  // const totalCreators = ig.creatorPersonas.length + tt.creatorPersonas.length + manualIg.length + manualTt.length;
-
-  // console.log(totalCreators, allUrls);
-
   const engagementRevised = Math.max(
     +((igEngRate + tiktokEngRate + manualIgEngRate + manualTtEngRate) / allUrls.length).toFixed(2),
   );
 
-  console.log('MAN - IG RATE', manualIgEngRate);
-  console.log('MAN - TT RATE', manualTtEngRate);
-  console.log('AUTO - IG RATE', igEngRate);
-  console.log('AUTO - TT RATE', tiktokEngRate);
+  console.log('MAN - IG RATE', manualIg);
+  console.log('MAN - TT RATE', manualTt);
+  console.log('AUTO - IG RATE', ig.creatorPersonas);
+  console.log('AUTO - TT RATE', tt.creatorPersonas);
 
   console.log(engagementRevised);
 
