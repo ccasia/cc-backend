@@ -510,11 +510,14 @@ export const getCreatorFullInfoByIdPublic = async (req: Request, res: Response) 
 
 export const updatePaymentForm = async (req: Request, res: Response) => {
   const { bankName, bankAccName, bankNumber, icPassportNumber, countryOfBank }: any = req.body;
+  const userId = req.userId;
+
+  console.log(req.body);
 
   try {
     const existingPaymentForm = await prisma.paymentForm.findFirst({
       where: {
-        userId: req.userId,
+        userId: userId,
       },
       include: {
         user: {
@@ -526,8 +529,6 @@ export const updatePaymentForm = async (req: Request, res: Response) => {
         },
       },
     });
-    // {"payTo":"Dan","bankName":"Affin Bank Berhad","accountName":"asdasdasd","accountEmail":"debis60817@lxheir.com","accountNumber":"131231231"}
-    // if (!existingPaymentForm) return res.status(404).json({ message: 'Payment form not found' });
 
     if (existingPaymentForm?.status === 'rejected') {
       const { name, email } = existingPaymentForm.user;
@@ -579,8 +580,9 @@ export const updatePaymentForm = async (req: Request, res: Response) => {
       },
     });
 
-    return res.status(200).json({ message: 'Successfully updated payment form.' });
+    return res.status(200).json({ message: 'Successfully updated payment form.', success: true });
   } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   }
 };

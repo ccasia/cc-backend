@@ -1990,9 +1990,9 @@ export const mobileLogin = async (
       return res.status(404).json({ message: 'Wrong password' });
     }
 
-    const accessToken = jwt.sign({ userId: user.id, email: user.email }, process.env.ACCESSKEY!, { expiresIn: '30s' });
+    const accessToken = jwt.sign({ userId: user.id, email: user.email }, process.env.ACCESSKEY!, { expiresIn: '1m' });
     const refreshToken = jwt.sign({ userId: user.id, email: user.email }, process.env.REFRESHKEY!, {
-      expiresIn: '1m',
+      expiresIn: '30d',
     });
 
     const savedRefreshToken = await prisma.refreshToken.create({
@@ -2066,11 +2066,11 @@ export const mobileTokenRefresh = async (req: Request, res: Response) => {
     }
 
     const newAccessToken = jwt.sign({ userId: stored.userId, email: stored.user.email }, process.env.ACCESSKEY!, {
-      expiresIn: '30s',
+      expiresIn: '1m',
     });
 
     const newRefreshToken = jwt.sign({ userId: stored.userId, email: stored.user.email }, process.env.REFRESHKEY!, {
-      expiresIn: '1m',
+      expiresIn: '30d',
     });
 
     const newRefreshTokenHash = hashToken(newRefreshToken);
