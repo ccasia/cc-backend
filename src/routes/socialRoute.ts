@@ -17,7 +17,7 @@ import {
   getTikTokMediaKit,
 } from '@controllers/socialController';
 import { Router } from 'express';
-import { authenticate } from '@middlewares/onlyLogin';
+import { authenticate } from '@middlewares/authenticate';
 
 const router = Router();
 

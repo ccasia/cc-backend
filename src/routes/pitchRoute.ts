@@ -1,5 +1,5 @@
 import express from 'express';
-import { authenticate } from '@middlewares/onlyLogin';
+import { authenticate } from '@middlewares/authenticate';
 import { isAdminOrClient } from '@middlewares/adminOrClient';
 import {
   approvePitchByAdmin,

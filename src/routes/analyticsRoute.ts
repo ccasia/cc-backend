@@ -1,6 +1,6 @@
 import { Router } from 'express';
 
-import { authenticate } from '@middlewares/onlyLogin';
+import { authenticate } from '@middlewares/authenticate';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 import {
   getBrandsMetrics,

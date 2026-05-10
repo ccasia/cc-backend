@@ -9,7 +9,7 @@ import {
 } from '@controllers/adminController';
 import { needPermissions } from '@middlewares/needPermissions';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
-import { authenticate } from '@middlewares/onlyLogin';
+import { authenticate } from '@middlewares/authenticate';
 import { disconnectXeroIntegration } from '@controllers/invoiceController';
 
 const router = Router();

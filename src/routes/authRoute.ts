@@ -33,13 +33,14 @@ import {
 import { validateToken } from '@utils/jwtHelper';
 
 import passport from '../auth/googleAuth';
-import { authenticate } from '@middlewares/onlyLogin';
+// import { authenticate } from '@middlewares/authenticate';
 import { jwtAuthMiddleware } from '@middlewares/jwtMiddleware';
+import { authenticate } from '@middlewares/authenticate';
 
 const router = Router();
 
 // router.get('/', authenticate, displayAll);
-router.get('/me', jwtAuthMiddleware, getprofile);
+router.get('/me', authenticate, getprofile);
 router.get('/verifyAdmin', verifyAdmin);
 router.get('/checkTokenValidity/:token', checkTokenValidity);
 router.get('/currentUser', validateToken, getCurrentUser);

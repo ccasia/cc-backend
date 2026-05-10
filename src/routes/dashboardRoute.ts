@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { getDashboardStats, getDashboardCampaigns } from '@controllers/dashboardController';
-import { authenticate } from '@middlewares/onlyLogin';
+import { authenticate } from '@middlewares/authenticate';
 
 const router = Router();
 

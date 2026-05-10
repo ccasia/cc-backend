@@ -6,7 +6,7 @@ import {
   submitFinalDraft,
 } from '@controllers/draftController';
 import { submitFirstDraft } from '@controllers/draftController';
-import { authenticate } from '@middlewares/onlyLogin';
+import { authenticate } from '@middlewares/authenticate';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 
 const router = Router();

@@ -8,7 +8,7 @@ import {
   createMyFeedbackReply,
   deleteMyReply,
 } from '../controller/creatorSubmissionV4Controller';
-import { authenticate } from '../middleware/onlyLogin';
+import { authenticate } from '../middleware/authenticate';
 import { isCreator } from '../middleware/isCreator';
 
 const router = Router();

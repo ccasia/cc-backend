@@ -2,7 +2,7 @@ import { Router } from 'express';
 
 import { creatorUploadAgreement } from '@controllers/tasksController';
 
-import { authenticate } from '@middlewares/onlyLogin';
+import { authenticate } from '@middlewares/authenticate';
 
 const router = Router();
 

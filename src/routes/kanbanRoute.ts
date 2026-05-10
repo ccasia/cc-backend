@@ -8,7 +8,7 @@ import {
   moveColumn,
   moveTask,
 } from '@controllers/kanbanController';
-import { authenticate } from '@middlewares/onlyLogin';
+import { authenticate } from '@middlewares/authenticate';
 import { Router } from 'express';
 
 const router = Router();

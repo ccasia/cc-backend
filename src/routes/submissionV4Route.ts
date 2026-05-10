@@ -33,7 +33,7 @@ import {
   sendVideoFeedbackToClient,
 } from '../controller/submissionV4Controller';
 
-import { authenticate } from '../middleware/onlyLogin';
+import { authenticate } from '../middleware/authenticate';
 import { isAdmin } from '../middleware/onlySuperadmin';
 import { isClient } from '@middlewares/clientOnly';
 

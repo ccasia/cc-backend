@@ -13,6 +13,7 @@ declare global {
 
 export const authenticate = (req: Request, res: Response, next: NextFunction) => {
   // 1. Try session-based auth first (web)
+
   if (req.session?.userid) {
     req.userId = req.session.userid;
     req.authMethod = 'session';
@@ -21,20 +22,22 @@ export const authenticate = (req: Request, res: Response, next: NextFunction) =>
 
   // 2. Try JWT (mobile)
   const authHeader = req.headers.authorization;
+
   if (authHeader?.startsWith('Bearer ')) {
     const token = authHeader.split(' ')[1];
     try {
-      const payload = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET!) as {
+      const payload = jwt.verify(token, process.env.ACCESSKEY!) as {
         userId: string;
       };
       req.userId = payload.userId;
       req.authMethod = 'jwt';
       return next();
     } catch {
+      console.log('ASDASD');
       return res.status(401).json({ success: false, message: 'Invalid or expired token' });
     }
   }
 
   // 3. Neither worked
-  return res.status(401).json({ success: false, message: 'Unauthorized' });
+  return res.status(401).json({ success: false, message: 'Unauthorized', sessionExpired: true });
 };

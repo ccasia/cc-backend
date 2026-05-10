@@ -26,7 +26,7 @@ import {
 } from '@controllers/creatorController';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 // import { needPermissions } from '@middlewares/needPermissions';
-import { authenticate } from '@middlewares/onlyLogin';
+import { authenticate } from '@middlewares/authenticate';
 
 const router = Router();
 

@@ -34,7 +34,7 @@ import {
   getClientShortlistMetrics,
   getClientSupportMetrics,
 } from '@controllers/analyticsV2Controller';
-import { authenticate } from '@middlewares/onlyLogin';
+import { authenticate } from '@middlewares/authenticate';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 
 const router = Router();

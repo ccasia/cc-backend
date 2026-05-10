@@ -25,7 +25,7 @@ import {
 import { checkAndRefreshAccessToken } from '@controllers/invoiceController';
 import { creatorInvoice } from '@controllers/invoiceController';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
-import { authenticate } from '@middlewares/onlyLogin';
+import { authenticate } from '@middlewares/authenticate';
 import { createInvoiceService } from '@services/invoiceService';
 // import { prisma } from 'src/prisma/prisma';
 import { PrismaClient } from '@prisma/client';

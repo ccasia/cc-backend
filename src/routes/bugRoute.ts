@@ -1,5 +1,5 @@
 import { createNewBug } from '@controllers/bugController';
-import { authenticate } from '@middlewares/onlyLogin';
+import { authenticate } from '@middlewares/authenticate';
 import { Router } from 'express';
 
 const router = Router();

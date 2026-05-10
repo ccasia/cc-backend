@@ -4,7 +4,7 @@ import {
   getNonPlatformDiscoveryCreatorsList,
   inviteDiscoveryCreatorsController,
 } from '@controllers/discoveryController';
-import { authenticate } from '@middlewares/onlyLogin';
+import { authenticate } from '@middlewares/authenticate';
 
 const router = Router();
 

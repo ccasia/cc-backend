@@ -25,6 +25,13 @@ import { generateRandomString } from '@utils/randomString';
 import dayjs from 'dayjs';
 import { TokenSet, XeroClient } from 'xero-node';
 import crypto from 'crypto';
+import * as z from 'zod';
+import {
+  generateAccessToken,
+  generateRefreshToken,
+  getRefreshTokenExpiryDate,
+  verifyRefreshToken,
+} from '@utils/tokens';
 
 const prisma = new PrismaClient();
 
@@ -1160,8 +1167,6 @@ export const getprofile = async (req: Request, res: Response) => {
   try {
     const user = await getUser(userId);
 
-    console.log(user);
-
     if (
       user?.role === 'superadmin' ||
       (user?.role === 'admin' && user?.admin?.role?.name.toLowerCase() === 'finance')
@@ -1985,9 +1990,9 @@ export const mobileLogin = async (
       return res.status(404).json({ message: 'Wrong password' });
     }
 
-    const accessToken = jwt.sign({ userId: user.id, email: user.email }, process.env.ACCESSKEY!, { expiresIn: '15m' });
+    const accessToken = jwt.sign({ userId: user.id, email: user.email }, process.env.ACCESSKEY!, { expiresIn: '30s' });
     const refreshToken = jwt.sign({ userId: user.id, email: user.email }, process.env.REFRESHKEY!, {
-      expiresIn: '30d',
+      expiresIn: '1m',
     });
 
     const savedRefreshToken = await prisma.refreshToken.create({
@@ -2000,7 +2005,102 @@ export const mobileLogin = async (
       },
     });
 
-    return res.status(200).json({ user, token: { accessToken, refreshToken: savedRefreshToken.tokenHash } });
+    return res.status(200).json({ user, token: { accessToken, refreshToken } });
+  } catch (error) {
+    return res.status(500).json(error);
+  }
+};
+
+export const mobileTokenRefresh = async (req: Request, res: Response) => {
+  try {
+    const refreshSchema = z.object({ refreshToken: z.string().min(1) });
+    const parsed = refreshSchema.safeParse(req.body);
+
+    if (!parsed.success) {
+      return res.status(400).json({ success: false, message: 'Refresh token required' });
+    }
+
+    const { refreshToken } = parsed.data;
+
+    let payload: { userId: string; email: string };
+
+    try {
+      payload = verifyRefreshToken(refreshToken);
+    } catch {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid or expired refresh token',
+      });
+    }
+
+    const tokenHash = hashToken(refreshToken);
+
+    const stored = await prisma.refreshToken.findUnique({
+      where: { tokenHash },
+      include: {
+        user: {
+          select: { id: true, email: true, name: true, isActive: true },
+        },
+      },
+    });
+
+    if (!stored) {
+      // Nuke the entire family (revoke ALL tokens from this login session)
+      await prisma.refreshToken.deleteMany({
+        where: { userId: payload.userId },
+      });
+
+      return res.status(401).json({
+        success: false,
+        message: 'Refresh token reuse detected. Please log in again.',
+      });
+    }
+
+    if (stored.expiresAt < new Date()) {
+      await prisma.refreshToken.delete({ where: { id: stored.id } });
+
+      return res.status(401).json({
+        success: false,
+        message: 'Refresh token expired',
+      });
+    }
+
+    const newAccessToken = jwt.sign({ userId: stored.userId, email: stored.user.email }, process.env.ACCESSKEY!, {
+      expiresIn: '30s',
+    });
+
+    const newRefreshToken = jwt.sign({ userId: stored.userId, email: stored.user.email }, process.env.REFRESHKEY!, {
+      expiresIn: '1m',
+    });
+
+    const newRefreshTokenHash = hashToken(newRefreshToken);
+
+    await prisma.$transaction([
+      // Mark old token as revoked + linked to replacement (audit trail)
+      prisma.refreshToken.delete({
+        where: { id: stored.id },
+      }),
+      // Insert new token
+      prisma.refreshToken.create({
+        data: {
+          tokenHash: newRefreshTokenHash,
+          userId: stored.user.id,
+          expiresAt: getRefreshTokenExpiryDate(),
+          userAgent: req.headers['user-agent'] ?? null,
+          ipAddress: req.ip ?? null,
+        },
+      }),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        tokens: {
+          accessToken: newAccessToken,
+          refreshToken: newRefreshToken,
+        },
+      },
+    });
   } catch (error) {
     return res.status(500).json(error);
   }

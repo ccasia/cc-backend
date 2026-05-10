@@ -1,5 +1,5 @@
 import express from 'express';
-import { authenticate } from '@middlewares/onlyLogin';
+import { authenticate } from '@middlewares/authenticate';
 import { isCreator } from '@middlewares/isCreator';
 import { isAdminOrClient } from '@middlewares/adminOrClient';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';

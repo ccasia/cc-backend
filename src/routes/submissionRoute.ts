@@ -19,7 +19,7 @@ import {
   adminManageDraftVideosV2,
   adminManageRawFootagesV2,
 } from '@controllers/submissionController';
-import { authenticate } from '@middlewares/onlyLogin';
+import { authenticate } from '@middlewares/authenticate';
 import { isSuperAdmin, isAdmin } from '@middlewares/onlySuperadmin';
 import { generateInvoice } from '@controllers/invoiceController';
 import {

@@ -1,5 +1,5 @@
 import { aiSettings, getCampaigns, updateAiSettings } from '@controllers/aiController';
-import { authenticate } from '@middlewares/onlyLogin';
+import { authenticate } from '@middlewares/authenticate';
 import { Router } from 'express';
 
 const aiRouter = Router();

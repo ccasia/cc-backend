@@ -104,7 +104,7 @@ import {
   getTimelineType,
   updateOrCreateDefaultTimeline,
 } from '@controllers/timelineController';
-import { authenticate } from '@middlewares/onlyLogin';
+import { authenticate } from '@middlewares/authenticate';
 // import { needPermissions } from '@middlewares/needPermissions';
 import { createNewTemplate, getAllTemplate, getTemplatebyId } from '@controllers/templateController';
 

@@ -13,7 +13,7 @@ import '@configs/cronjob';
 import http from 'http';
 import { markMessagesAsSeen } from '@controllers/threadController';
 import { handleSendMessage, fetchMessagesFromThread } from '@services/threadService';
-import { authenticate } from '@middlewares/onlyLogin';
+import { authenticate } from '@middlewares/authenticate';
 import { Server } from 'socket.io';
 import '@services/uploadVideo';
 
