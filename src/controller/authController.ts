@@ -2105,3 +2105,155 @@ export const mobileTokenRefresh = async (req: Request, res: Response) => {
     return res.status(500).json(error);
   }
 };
+
+interface MobileCreatorData {
+  phone?: string;
+  Nationality?: string;
+  city?: string;
+  pronounce?: string;
+  birthDate?: string | null;
+  employment?: string;
+  languages?: string[];
+  interests?: (string | { name: string })[];
+  instagram?: string;
+  tiktok?: string;
+  instagramProfileLink?: string;
+  tiktokProfileLink?: string;
+  location?: string;
+  referralCode?: string;
+}
+
+export const mobileRegisterCreator = async (
+  req: Request<{}, {}, { name: string; email: string; password: string; creatorData?: MobileCreatorData }>,
+  res: Response,
+) => {
+  const { name, email, password, creatorData } = req.body;
+
+  if (!name || !email || !password) {
+    return res.status(400).json({ success: false, message: 'Name, email, and password are required' });
+  }
+
+  if (!email.match(/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/)) {
+    return res.status(400).json({ success: false, message: 'Please enter the correct email format' });
+  }
+
+  // When creatorData is sent, enforce the same fields web yup requires
+  // (cc-frontend src/sections/creator/form/creatorForm.jsx:88-126).
+  if (creatorData) {
+    const missing: string[] = [];
+    if (!creatorData.Nationality) missing.push('Nationality');
+    if (!creatorData.city) missing.push('city');
+    if (!creatorData.phone || creatorData.phone.trim().length < 7) missing.push('phone');
+    if (!creatorData.pronounce) missing.push('pronounce');
+    if (!creatorData.birthDate) missing.push('birthDate');
+    if (!creatorData.languages || creatorData.languages.length < 1) missing.push('languages (min 1)');
+    if (!creatorData.interests || creatorData.interests.length < 3) missing.push('interests (min 3)');
+    const hasSocial =
+      (creatorData.instagramProfileLink && creatorData.instagramProfileLink.trim().length > 0) ||
+      (creatorData.tiktokProfileLink && creatorData.tiktokProfileLink.trim().length > 0);
+    if (!hasSocial) missing.push('instagramProfileLink or tiktokProfileLink');
+    if (missing.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Missing required fields: ${missing.join(', ')}`,
+      });
+    }
+  }
+
+  try {
+    const normalizedEmail = email.toLowerCase();
+
+    const existing = await prisma.user.findFirst({
+      where: { email: { mode: 'insensitive', equals: normalizedEmail } },
+    });
+
+    if (existing) {
+      return res.status(400).json({ success: false, message: 'Email already exists' });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const result = await prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          email: normalizedEmail,
+          password: hashedPassword,
+          role: 'creator',
+          name,
+          phoneNumber: creatorData?.phone || '',
+          country: creatorData?.Nationality || '',
+          city: creatorData?.city || '',
+          referralCode: creatorData?.referralCode || null,
+        },
+      });
+
+      const creatorObj: Prisma.CreatorUncheckedCreateInput = {
+        userId: user.id,
+        isOnBoardingFormCompleted: !!creatorData,
+      };
+
+      if (creatorData) {
+        Object.assign(creatorObj, {
+          instagram: creatorData.instagram || '',
+          pronounce: creatorData.pronounce || '',
+          location: creatorData.location || '',
+          birthDate: creatorData.birthDate ? new Date(creatorData.birthDate) : null,
+          employment: creatorData.employment || '',
+          tiktok: creatorData.tiktok || '',
+          languages: creatorData.languages || [],
+          instagramProfileLink: creatorData.instagramProfileLink || '',
+          tiktokProfileLink: creatorData.tiktokProfileLink || '',
+        });
+      }
+
+      await tx.creator.create({ data: creatorObj });
+
+      if (creatorData?.interests && creatorData.interests.length > 0) {
+        const interestsToCreate = creatorData.interests.map((interest) => {
+          const interestName = typeof interest === 'string' ? interest : interest.name;
+          return { name: interestName, userId: user.id };
+        });
+
+        if (interestsToCreate.length > 0) {
+          await tx.interest.createMany({ data: interestsToCreate });
+        }
+      }
+
+      return { user };
+    });
+
+    const token = jwt.sign({ id: result.user.id }, process.env.ACCESSKEY as Secret, { expiresIn: '15m' });
+
+    let shortCode: string | undefined;
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      shortCode = generateRandomString();
+      const isShortCodeExist = await prisma.emailVerification.findFirst({
+        where: { shortCode },
+      });
+      if (!isShortCodeExist) break;
+    }
+
+    const code = await prisma.emailVerification.create({
+      data: {
+        shortCode: shortCode!,
+        user: { connect: { id: result.user.id } },
+        expiredAt: dayjs().add(15, 'minute').toDate(),
+        token,
+      },
+    });
+
+    creatorVerificationEmail(result.user.email, code.shortCode);
+
+    return res.status(201).json({
+      success: true,
+      message: 'Verification email sent',
+      email: result.user.email,
+    });
+  } catch (error) {
+    console.error('Mobile creator registration error:', error);
+    return res
+      .status(400)
+      .json({ success: false, message: error instanceof Error ? error.message : 'Error registering creator' });
+  }
+};
