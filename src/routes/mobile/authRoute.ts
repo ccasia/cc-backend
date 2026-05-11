@@ -1,4 +1,11 @@
-import { mobileLogin, mobileRegisterCreator, mobileTokenRefresh } from '@controllers/authController';
+import {
+  mobileLogin,
+  mobileRegisterCreator,
+  mobileTokenRefresh,
+  mobileUpdateProfile,
+  mobileUpdatePhoto,
+} from '@controllers/authController';
+import { authenticate } from '@middlewares/authenticate';
 import { Router } from 'express';
 
 const authRoute = Router();
@@ -8,5 +15,9 @@ authRoute.post('/login', mobileLogin);
 authRoute.post('/register', mobileRegisterCreator);
 
 authRoute.post('/refresh', mobileTokenRefresh);
+
+authRoute.patch('/updateProfile', authenticate, mobileUpdateProfile);
+
+authRoute.patch('/updatePhoto', authenticate, mobileUpdatePhoto);
 
 export default authRoute;

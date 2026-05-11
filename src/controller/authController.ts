@@ -2257,3 +2257,101 @@ export const mobileRegisterCreator = async (
       .json({ success: false, message: error instanceof Error ? error.message : 'Error registering creator' });
   }
 };
+
+export const mobileUpdateProfile = async (
+  req: Request<
+    {},
+    {},
+    {
+      name?: string;
+      phone?: string;
+      Nationality?: string;
+      city?: string;
+      pronounce?: string;
+      birthDate?: string | null;
+    }
+  >,
+  res: Response,
+) => {
+  // `authenticate` middleware sets req.userId from session OR JWT bearer token
+  const userId = req.userId;
+  if (!userId) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  const { name, phone, Nationality, city, pronounce, birthDate } = req.body;
+
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const updatedUser = await tx.user.update({
+        where: { id: userId },
+        data: {
+          ...(name !== undefined && { name }),
+          ...(phone !== undefined && { phoneNumber: phone }),
+          ...(Nationality !== undefined && { country: Nationality }),
+          ...(city !== undefined && { city }),
+        },
+      });
+
+      if (updatedUser.role === 'creator' && (pronounce !== undefined || birthDate !== undefined)) {
+        await tx.creator.update({
+          where: { userId },
+          data: {
+            ...(pronounce !== undefined && { pronounce }),
+            ...(birthDate !== undefined && {
+              birthDate: birthDate ? new Date(birthDate) : null,
+            }),
+          },
+        });
+      }
+
+      return updatedUser;
+    });
+
+    return res.status(200).json({ success: true, message: 'Profile updated', user: result });
+  } catch (error) {
+    console.error('Mobile profile update error:', error);
+    return res
+      .status(500)
+      .json({ success: false, message: error instanceof Error ? error.message : 'Update failed' });
+  }
+};
+
+export const mobileUpdatePhoto = async (req: Request, res: Response) => {
+  const userId = req.userId;
+  if (!userId) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  try {
+    const image = (req.files as any)?.image;
+    const remove = req.body?.remove === true || req.body?.remove === 'true';
+
+    if (!image && !remove) {
+      return res.status(400).json({ success: false, message: 'No image or remove flag provided' });
+    }
+
+    let photoURL: string | null = null;
+
+    if (image) {
+      // Prefix with userId so concurrent uploads from different users don't collide in GCS.
+      const original = (image.name as string) || 'profile.jpg';
+      const ext = original.includes('.') ? original.slice(original.lastIndexOf('.')) : '.jpg';
+      const fileName = `${userId}-${Date.now()}${ext}`;
+      photoURL = await uploadProfileImage(image.tempFilePath, fileName, 'creator');
+    }
+
+    const updated = await prisma.user.update({
+      where: { id: userId },
+      data: { photoURL },
+      select: { id: true, photoURL: true },
+    });
+
+    return res.status(200).json({ success: true, photoURL: updated.photoURL });
+  } catch (error) {
+    console.error('Mobile photo update error:', error);
+    return res
+      .status(500)
+      .json({ success: false, message: error instanceof Error ? error.message : 'Photo update failed' });
+  }
+};
