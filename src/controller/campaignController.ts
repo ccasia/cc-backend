@@ -2016,7 +2016,7 @@ export const getAllCampaignsFinance = async (req: Request, res: Response) => {
 };
 
 export const matchCampaignWithCreator = async (req: Request, res: Response) => {
-  const { userid } = req.session;
+  const userid = req.userId;
   const { cursor, take = 10, search } = req.query;
   const campaignId = req.query?.campaignId as string;
 
@@ -2772,7 +2772,9 @@ export const getCampaignsByCreatorId = async (req: Request, res: Response) => {
 
 export const getCampaignForCreatorById = async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { userid } = req.session as any;
+
+  // `authenticate` middleware guarantees req.userId is set (returns 401 otherwise).
+  const userid = req.userId as string;
   try {
     const campaign = await prisma.campaign.findUnique({
       where: {
