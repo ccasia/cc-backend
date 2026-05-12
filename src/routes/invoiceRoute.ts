@@ -44,7 +44,7 @@ router.get('/getXeroContacts', checkAndRefreshAccessToken, getXeroContacts);
 
 router.get('/checkRefreshToken', isSuperAdmin, checkRefreshToken);
 
-router.get('/creator', getInvoicesByCreatorId);
+router.get('/creator', authenticate, getInvoicesByCreatorId);
 
 // IMPORTANT: Specific routes must come before parameterized routes
 router.get('/stats', authenticate, getAllInvoiceStats); // Stats for all invoices

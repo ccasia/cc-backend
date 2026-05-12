@@ -521,6 +521,7 @@ export const getInvoicesByCreatorId = async (req: Request, res: Response) => {
           include: {
             brand: true,
             company: true,
+            campaignBrief: { select: { images: true } },
             creatorAgreement: {
               where: {
                 userId: userid,
@@ -1959,6 +1960,9 @@ export const creatorInvoice = async (req: Request, res: Response) => {
                 userId: invoiceDetail.creatorId,
               },
             },
+            brand: { select: { id: true, name: true, logo: true } },
+            company: { select: { id: true, name: true, logo: true } },
+            campaignBrief: { select: { images: true } },
           },
         },
       },
