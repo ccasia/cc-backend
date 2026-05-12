@@ -1357,9 +1357,19 @@ export const updateProfileCreator = async (req: Request, res: Response) => {
     interests,
     removePhoto,
     city,
+    birthDate,
+    employment,
   } = JSON.parse(req.body.data);
 
   try {
+    let parsedBirthDate: Date | undefined;
+    if (birthDate) {
+      parsedBirthDate = new Date(birthDate);
+      if (isNaN(parsedBirthDate.getTime())) {
+        return res.status(400).json({ message: 'Invalid birth date' });
+      }
+    }
+
     const creator = await prisma.creator.findFirst({
       where: {
         userId: id,
@@ -1398,6 +1408,8 @@ export const updateProfileCreator = async (req: Request, res: Response) => {
       state,
       address,
       pronounce,
+      birthDate: parsedBirthDate,
+      employment: employment ? (employment as Employment) : undefined,
       mediaKit: {
         upsert: {
           where: {
