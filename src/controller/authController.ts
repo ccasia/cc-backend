@@ -2355,3 +2355,55 @@ export const mobileUpdatePhoto = async (req: Request, res: Response) => {
       .json({ success: false, message: error instanceof Error ? error.message : 'Photo update failed' });
   }
 };
+
+export const mobileChangePassword = async (
+  req: Request<{}, {}, { currentPassword: string; newPassword: string }>,
+  res: Response,
+) => {
+  const userId = req.userId;
+  if (!userId) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  const schema = z.object({
+    currentPassword: z.string().min(1),
+    newPassword: z
+      .string()
+      .min(8)
+      .regex(/[0-9]/)
+      .regex(/[@$!%*?&#]/)
+      .refine((p) => /[a-z]/.test(p) && /[A-Z]/.test(p)),
+  });
+
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ success: false, message: 'Invalid password format' });
+  }
+
+  const { currentPassword, newPassword } = parsed.data;
+
+  try {
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    if (!user.googleId && user.password) {
+      const isMatch = await bcrypt.compare(currentPassword, user.password);
+      if (!isMatch) {
+        return res.status(400).json({ success: false, message: 'Wrong current password' });
+      }
+    }
+
+    const latestPassword = await bcrypt.hash(newPassword, 10);
+    await handleChangePassword({ userId, latestPassword });
+
+    return res.status(200).json({ success: true, message: 'Password updated successfully' });
+  } catch (error) {
+    console.error('Mobile change password error:', error);
+    return res.status(500).json({
+      success: false,
+      message: error instanceof Error ? error.message : 'Password update failed',
+    });
+  }
+};
