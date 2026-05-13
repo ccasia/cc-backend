@@ -66,6 +66,7 @@ export const handleSendMessage = async (message: any, io: any) => {
       threadId,
       content,
     },
+    userId: senderId,
     session: {
       userid: senderId,
     },
@@ -81,14 +82,10 @@ export const handleSendMessage = async (message: any, io: any) => {
     status: (code: number) => ({
       json: async (data: any) => {
         if (code === 201) {
-          // //console.log('Message saved:', data);
-          io.to(threadId).emit('message', {
-            senderId,
-            threadId,
-            content,
-            sender: { role, name, photoURL },
-            createdAt: new Date().toISOString(),
-          });
+          // Socket emission is handled inside sendMessageInThread (with the
+          // saved DB message, including its `id`). Emitting again here would
+          // duplicate the message in clients that dedupe by id, because this
+          // synthetic payload has no `id`.
 
           // Fetch all users in the thread except the sender
           const usersInThread = await prisma.userThread.findMany({

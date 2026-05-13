@@ -483,6 +483,7 @@ export const markMessagesAsSeen = async (req: Request, res: Response) => {
 
   try {
     const result = await markMessagesService(threadId, userId);
+    io.to(threadId).emit('messagesSeen', { threadId, userId });
     res.status(200).json(result);
   } catch (error) {
     console.error('Error marking messages as seen:', error);
