@@ -1,68 +1,53 @@
 /**
  * Credit Tier Migration Script
  *
- * One-time migration script to:
- * 1. Ensure credit tier configuration exists (seed if missing)
- * 2. Assign credit tiers to existing creators with media kit data
+ * Assigns credit tiers to creators who do NOT yet have a tier (creditTierId IS NULL)
+ * and have follower data from Instagram, TikTok, or manualFollowerCount.
+ *
+ * Does NOT seed or modify the CreditTier configuration rows. Production tiers are
+ * managed manually via the admin UI; this script only reads them.
+ *
+ * Already-tiered creators are skipped entirely (their creditTierId is left untouched).
  *
  * Run with: yarn ts-node src/scripts/migrateCreditTiers.ts
  */
 
 import { PrismaClient } from '@prisma/client';
-import { getHighestFollowerCount, getTierByFollowerCount } from '../service/creditTierService';
+import {
+  getHighestFollowerCount,
+  getTierByFollowerCount,
+  getAllActiveTiers,
+} from '../service/creditTierService';
 
 const prisma = new PrismaClient();
 
-// Credit Tier configuration (same as seed.ts)
-const creditTiers = [
-  { name: 'Nano A', minFollowers: 1000, maxFollowers: 5000, creditsPerVideo: 1 },
-  { name: 'Nano B', minFollowers: 5001, maxFollowers: 15000, creditsPerVideo: 2 },
-  { name: 'Micro A', minFollowers: 15001, maxFollowers: 30000, creditsPerVideo: 3 },
-  { name: 'Micro B', minFollowers: 30001, maxFollowers: 50000, creditsPerVideo: 4 },
-  { name: 'Micro C', minFollowers: 50001, maxFollowers: 100000, creditsPerVideo: 5 },
-  { name: 'Macro', minFollowers: 100001, maxFollowers: null, creditsPerVideo: 8 }, // 100K+ followers - Unlimited
-];
+async function printActiveTiers() {
+  const tiers = await getAllActiveTiers();
 
-async function seedCreditTiers() {
-  console.log('Step 1: Seeding Credit Tier configuration...\n');
-
-  for (const tier of creditTiers) {
-    const existing = await prisma.creditTier.findUnique({
-      where: { name: tier.name },
-    });
-
-    if (existing) {
-      console.log(`  Tier "${tier.name}" already exists, updating...`);
-      await prisma.creditTier.update({
-        where: { name: tier.name },
-        data: {
-          minFollowers: tier.minFollowers,
-          maxFollowers: tier.maxFollowers,
-          creditsPerVideo: tier.creditsPerVideo,
-        },
-      });
-    } else {
-      await prisma.creditTier.create({
-        data: {
-          name: tier.name,
-          minFollowers: tier.minFollowers,
-          maxFollowers: tier.maxFollowers,
-          creditsPerVideo: tier.creditsPerVideo,
-        },
-      });
-      console.log(`  Created tier: ${tier.name}`);
-    }
+  if (tiers.length === 0) {
+    throw new Error(
+      'No active credit tiers found in the database. Aborting to avoid a no-op run.',
+    );
   }
 
-  console.log('\nCredit Tiers seeded successfully.\n');
+  console.log('Active Credit Tiers in database:');
+  console.log('  Name        Min        Max          Credits/Video');
+  console.log('  ---------   --------   ----------   -------------');
+  for (const tier of tiers) {
+    const min = tier.minFollowers.toLocaleString().padEnd(8);
+    const max = (tier.maxFollowers === null ? 'unlimited' : tier.maxFollowers.toLocaleString()).padEnd(10);
+    const name = tier.name.padEnd(9);
+    console.log(`  ${name}   ${min}   ${max}   ${tier.creditsPerVideo}`);
+  }
+  console.log('');
 }
 
-async function assignTiersToCreators() {
-  console.log('Step 2: Assigning tiers to creators with follower data...\n');
+async function assignTiersToUntierredCreators() {
+  console.log('Assigning tiers to untierred creators with follower data...\n');
 
-  // Find creators with Instagram or TikTok connected, or manual follower count
-  const creatorsWithFollowerData = await prisma.creator.findMany({
+  const creatorsToProcess = await prisma.creator.findMany({
     where: {
+      creditTierId: null,
       OR: [
         { instagramUser: { followers_count: { gt: 0 } } },
         { tiktokUser: { follower_count: { gt: 0 } } },
@@ -79,14 +64,15 @@ async function assignTiersToCreators() {
     },
   });
 
-  console.log(`  Found ${creatorsWithFollowerData.length} creators with follower data\n`);
+  console.log(`  Found ${creatorsToProcess.length} untierred creators with follower data\n`);
 
   let successCount = 0;
-  let skippedCount = 0;
+  let skippedBelowMinTier = 0;
+  let skippedAboveMaxTier = 0;
   let errorCount = 0;
-  const tierCounts: Record<string, number> = {};
+  const tierCounts: Record<string, { count: number; minFollowers: number }> = {};
 
-  for (const creator of creatorsWithFollowerData) {
+  for (const creator of creatorsToProcess) {
     try {
       const followerCount = getHighestFollowerCount({
         instagramFollowers: creator.instagramUser?.followers_count,
@@ -95,15 +81,15 @@ async function assignTiersToCreators() {
       });
 
       if (followerCount === 0) {
-        skippedCount++;
+        skippedBelowMinTier++;
         continue;
       }
 
       const tier = await getTierByFollowerCount(followerCount);
 
       if (!tier) {
-        // Follower count below minimum tier (< 1000)
-        skippedCount++;
+        skippedAboveMaxTier++;
+        console.log(`  Skipped creator ${creator.id}: ${followerCount.toLocaleString()} followers does not match any active tier`);
         continue;
       }
 
@@ -115,10 +101,12 @@ async function assignTiersToCreators() {
         },
       });
 
-      tierCounts[tier.name] = (tierCounts[tier.name] || 0) + 1;
+      if (!tierCounts[tier.name]) {
+        tierCounts[tier.name] = { count: 0, minFollowers: tier.minFollowers };
+      }
+      tierCounts[tier.name].count++;
       successCount++;
 
-      // Progress indicator every 50 creators
       if (successCount % 50 === 0) {
         console.log(`  Processed ${successCount} creators...`);
       }
@@ -129,11 +117,15 @@ async function assignTiersToCreators() {
   }
 
   console.log('\n--- Migration Summary ---');
-  console.log(`  Successfully assigned: ${successCount}`);
-  console.log(`  Skipped (no valid tier): ${skippedCount}`);
-  console.log(`  Errors: ${errorCount}`);
-  console.log('\n--- Tier Distribution ---');
-  for (const [tierName, count] of Object.entries(tierCounts).sort()) {
+  console.log(`  Successfully assigned:        ${successCount}`);
+  console.log(`  Skipped (no/low follower data): ${skippedBelowMinTier}`);
+  console.log(`  Skipped (above top tier max):   ${skippedAboveMaxTier}`);
+  console.log(`  Errors:                       ${errorCount}`);
+  console.log('\n--- Tier Distribution (newly assigned) ---');
+  const sortedTiers = Object.entries(tierCounts).sort(
+    ([, a], [, b]) => a.minFollowers - b.minFollowers,
+  );
+  for (const [tierName, { count }] of sortedTiers) {
     console.log(`  ${tierName}: ${count} creators`);
   }
 }
@@ -144,8 +136,8 @@ async function main() {
   console.log('=============================================\n');
 
   try {
-    await seedCreditTiers();
-    await assignTiersToCreators();
+    await printActiveTiers();
+    await assignTiersToUntierredCreators();
 
     console.log('\n=============================================');
     console.log('Migration completed successfully!');
