@@ -341,6 +341,69 @@ export const uploadAttachments = async ({
   }
 };
 
+export const uploadAttachmentStream = async ({
+  tempFilePath,
+  fileName,
+  folderName,
+  contentType,
+  size,
+  progressCallback,
+}: {
+  tempFilePath: string;
+  fileName: string;
+  folderName: string;
+  contentType: string;
+  size?: number;
+  progressCallback?: (progress: number) => void;
+}): Promise<string> => {
+  try {
+    const bucketName = process.env.BUCKET_NAME as string;
+    const destination = `${folderName}/${fileName}`;
+
+    const bucket = storage.bucket(bucketName);
+    const file = bucket.file(destination);
+
+    const readStream = fs.createReadStream(tempFilePath);
+    const writeStream = file.createWriteStream({
+      resumable: true,
+      metadata: { contentType },
+    });
+
+    let uploadedBytes = 0;
+    let lastEmitted = -1;
+    readStream.on('data', (chunk) => {
+      uploadedBytes += chunk.length;
+      if (size && progressCallback) {
+        const percent = Math.min(99, Math.floor((uploadedBytes / size) * 100));
+        if (percent !== lastEmitted) {
+          lastEmitted = percent;
+          progressCallback(percent);
+        }
+      }
+    });
+
+    readStream.pipe(writeStream);
+
+    return new Promise((resolve, reject) => {
+      writeStream.on('finish', async () => {
+        try {
+          await file.makePublic();
+          if (progressCallback) progressCallback(100);
+          const publicURL = `https://storage.googleapis.com/${bucketName}/${destination}?v=${dayjs().format()}`;
+          resolve(publicURL);
+        } catch (err) {
+          reject(new Error(`Error finalizing upload: ${err.message}`));
+        }
+      });
+      writeStream.on('error', (err) => {
+        reject(new Error(`Error uploading file: ${err.message}`));
+      });
+    });
+  } catch (err) {
+    throw new Error(`Error uploading file: ${err.message}`);
+  }
+};
+
 export const deleteContent = async ({ fileName, folderName }: any) => {
   const bucketName = process.env.BUCKET_NAME as string;
   const destination = `${folderName}/${fileName}`;

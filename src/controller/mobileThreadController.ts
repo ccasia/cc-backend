@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
-import { markMessagesService } from '@services/threadService';
+import { markMessagesService, sendMessageService, ThreadServiceError } from '@services/threadService';
 import { io } from '../server';
 
 const prisma = new PrismaClient();
@@ -101,6 +101,65 @@ export const getMyThreadMessages = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('mobile getMyThreadMessages error:', error);
     return res.status(500).json({ error: 'An error occurred while retrieving messages.' });
+  }
+};
+
+export const sendMyMessage = async (req: Request, res: Response) => {
+  const userId = req.userId;
+  const { threadId } = req.params;
+  const { content, clientNonce, fileWidth, fileHeight } = req.body as {
+    content?: string;
+    clientNonce?: string;
+    fileWidth?: string | number;
+    fileHeight?: string | number;
+  };
+
+  // multipart/form-data sends everything as strings; coerce to integers, drop
+  // anything non-positive or non-numeric.
+  const parseDim = (v: string | number | undefined): number | null => {
+    if (v == null) return null;
+    const n = typeof v === 'number' ? v : parseInt(v, 10);
+    return Number.isFinite(n) && n > 0 ? Math.round(n) : null;
+  };
+  const parsedFileWidth = parseDim(fileWidth);
+  const parsedFileHeight = parseDim(fileHeight);
+
+  if (!userId) {
+    return res.status(401).json({ error: 'Unauthorized.' });
+  }
+  if (!threadId) {
+    return res.status(400).json({ error: 'Missing threadId.' });
+  }
+
+  let file = null;
+  if (req.files && (req.files as any).attachments) {
+    const raw = (req.files as any).attachments;
+    file = Array.isArray(raw) ? raw[0] : raw;
+  }
+
+  if (!file && !(content && content.trim().length > 0)) {
+    return res.status(400).json({ error: 'Message must include text or an attachment.' });
+  }
+
+  try {
+    const message = await sendMessageService({
+      userId,
+      threadId,
+      content,
+      file,
+      fileWidth: parsedFileWidth,
+      fileHeight: parsedFileHeight,
+      allowedMimePrefix: ['image/', 'video/'],
+      maxFileSize: 1024 * 1024 * 1024, // 1 GB
+      clientNonce,
+    });
+    return res.status(201).json(message);
+  } catch (error) {
+    if (error instanceof ThreadServiceError) {
+      return res.status(error.status).json({ error: error.message });
+    }
+    console.error('mobile sendMyMessage error:', error);
+    return res.status(500).json({ error: 'Failed to send message.' });
   }
 };
 

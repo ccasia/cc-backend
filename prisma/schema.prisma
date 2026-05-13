@@ -461,6 +461,8 @@ model Message {
   senderId       String?
   file           String?
   fileType       String?
+  fileWidth      Int?
+  fileHeight     Int?
   sender         User?           @relation("UserMessages", fields: [senderId], references: [id])
   thread         Thread?         @relation(fields: [threadId], references: [id])
   seenMessages   SeenMessage[]
