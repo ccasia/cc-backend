@@ -91,10 +91,14 @@ model User {
   createdLogistics  Logistic[]      @relation("CreatedLogistics")
   reportedIssues    LogisticIssue[]
 
+  twoFactorSecret String?
+
   userFlow      UserFlow[]
   activatedAt   DateTime?
   passwordSetAt DateTime?
   aiModel       AiModel?
+
+  @@index([phoneNumber])
 }
 
 model EmailVerification {
@@ -121,7 +125,8 @@ model Admin {
   userId      String  @unique
   roleId      String?
 
-  xeroTokenSet Json?
+  xeroTokenSet  Json?
+  bdInviteToken String? @unique
 
   role Role? @relation(fields: [roleId], references: [id])
   user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -285,10 +290,12 @@ model Creator {
   dietaryRestrictions String?
 
   // Credit Tier fields
-  manualFollowerCount Int?        @default(0) // Manually entered follower count (when no media kit)
-  creditTierId        String?
-  creditTier          CreditTier? @relation("UserCurrentTier", fields: [creditTierId], references: [id])
-  tierUpdatedAt       DateTime? // Last time tier was calculated
+  manualFollowerCount         Int?             @default(0) // Legacy fallback manual follower count
+  manualInstagramFollowerCount Int?            @default(0) // Platform-specific manual Instagram followers
+  manualTiktokFollowerCount    Int?            @default(0) // Platform-specific manual TikTok followers
+  creditTierId                 String?
+  creditTier                   CreditTier?      @relation("UserCurrentTier", fields: [creditTierId], references: [id])
+  tierUpdatedAt                DateTime? // Last time tier was calculated
 
   @@index([formCompletedAt])
 }
@@ -658,11 +665,11 @@ model Campaign {
   description String
   status      CampaignStatus @default(SCHEDULED)
 
-  campaignCredits Int?
-  creditsPending  Int?
-  creditsUtilized Int?
-  creditAllocationBreakdown Json?  // Tracks which subscriptions were charged and how much
-                                   // Format: [{ subscriptionId: string, amount: number }, ...]
+  campaignCredits           Int?
+  creditsPending            Int?
+  creditsUtilized           Int?
+  creditAllocationBreakdown Json? // Tracks which subscriptions were charged and how much
+  // Format: [{ subscriptionId: string, amount: number }, ...]
 
   brandId        String?
   subscriptionId String?
@@ -736,8 +743,13 @@ model Campaign {
   isPCRReady     Boolean      @default(false)
   isForSurfShark Boolean?
 
+  // Bd invites
+  bdInviteToken String?
+
   publishedAt DateTime?
   completedAt DateTime?
+
+  approvalRequests ApprovalRequest[]
 }
 
 model BookMarkCampaign {
@@ -842,7 +854,8 @@ model CampaignBrief {
   campaignId          String    @unique
   otherAttachments    String[]
   referencesLinks     String[]
-  campaign            Campaign  @relation(fields: [campaignId], references: [id])
+
+  campaign Campaign @relation(fields: [campaignId], references: [id])
 }
 
 model CampaignAdditionalDetails {
@@ -968,6 +981,8 @@ model Pitch {
   rejectedByClientId        String?
   rejectionReason           String?
   customRejectionText       String?
+  /// From public approval link; shown only to brand client UI, not admin
+  clientVisibleApprovalNote String?
   maybeByClientId           String?
   acceptedInviteByCreatorId String?
   amount                    Int?
@@ -975,6 +990,7 @@ model Pitch {
   agreementTemplateId       String?
   Notification              Notification[]
   followerCount             String?
+  selectedPlatform          SocialPlatform?
   engagementRate            String?
   adminComments             String?
   adminCommentedBy          String?
@@ -995,6 +1011,8 @@ model Pitch {
   maybeByClient           User?    @relation("MaybeByClient", fields: [maybeByClientId], references: [id])
   acceptedInviteByCreator User?    @relation("AcceptedInviteByCreator", fields: [acceptedInviteByCreatorId], references: [id])
 
+  approvalRequestCreators ApprovalRequestCreator[]
+
   @@unique([userId, campaignId])
 }
 
@@ -1010,6 +1028,8 @@ model ShortListedCreator {
   isCreatorPaid    Boolean? @default(false)
   ugcVideos        Int?
   amount           Int?
+  followerCount    Int?
+  selectedPlatform SocialPlatform?
   campaign         Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   user             User?    @relation(fields: [userId], references: [id])
 
@@ -1206,6 +1226,41 @@ model PostEngagementSnapshot {
   @@index([userId])
 }
 
+model DailyPostEngagementSnapshot {
+  id           String @id @unique @default(cuid())
+  campaignId   String
+  submissionId String
+  postUrl      String
+  platform     String // "Instagram" | "TikTok"
+  userId       String // Creator user ID
+
+  // Snapshot timing
+  postDate      DateTime // When the post was originally published
+  snapshotDate  DateTime // Start-of-day for this snapshot (the "this day" anchor)
+  daysSincePost Int // Whole days between postDate and snapshotDate (anchored on the post)
+  capturedAt    DateTime // When this snapshot was captured
+
+  // Engagement metrics at snapshot time
+  views          Int   @default(0)
+  likes          Int   @default(0)
+  comments       Int   @default(0)
+  shares         Int   @default(0)
+  saved          Int   @default(0)
+  reach          Int   @default(0)
+  engagementRate Float
+
+  // Raw insight data for reference
+  rawMetrics Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([postUrl, snapshotDate])
+  @@index([campaignId, snapshotDate])
+  @@index([submissionId, snapshotDate])
+  @@index([userId, snapshotDate])
+}
+
 model ManualCreatorEntry {
   id         String   @id @unique @default(cuid())
   campaignId String
@@ -1244,8 +1299,8 @@ model Video {
   createdAt    DateTime       @default(now())
   updatedAt    DateTime?      @updatedAt
 
-  feedbackDeadline    DateTime?
-  feedbackSentByName  String?
+  feedbackDeadline   DateTime?
+  feedbackSentByName String?
 
   // Individual feedback fields
   feedback   String? // Individual feedback message
@@ -1705,6 +1760,42 @@ model PublicFeedback {
   submission   Submission    @relation(fields: [submissionId], references: [id], onDelete: Cascade)
 }
 
+model ApprovalRequest {
+  id            String   @id @default(cuid())
+  token         String   @unique
+  campaignId    String
+  approverName  String
+  approverEmail String
+  inviteToken   String?
+  expiresAt     DateTime
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  campaign Campaign                 @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  creators ApprovalRequestCreator[]
+}
+
+model ApprovalRequestCreator {
+  id                String                @id @default(cuid())
+  approvalRequestId String
+  pitchId           String
+  status            ApprovalCreatorStatus @default(PENDING)
+  comment           String?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  approvalRequest ApprovalRequest @relation(fields: [approvalRequestId], references: [id], onDelete: Cascade)
+  pitch           Pitch           @relation(fields: [pitchId], references: [id], onDelete: Cascade)
+
+  @@unique([approvalRequestId, pitchId])
+}
+
+enum ApprovalCreatorStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 // enum LogisticStatus {
 //   Product_is_being_packaged
 //   Proudct_is_at_delivery_warehouse_in_transit
@@ -1833,6 +1924,12 @@ enum PitchStatus {
   AGREEMENT_SUBMITTED
   WITHDRAWN
   INVITED
+  AWAITING_APPROVAL
+}
+
+enum SocialPlatform {
+  instagram
+  tiktok
 }
 
 // Outreach status for internal admin tracking of creator outreach

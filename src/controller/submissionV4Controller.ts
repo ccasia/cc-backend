@@ -23,6 +23,8 @@ import { extractAndStoreSubmissionUrls } from '@services/submissionUrlService';
 import { scheduleInitialInsightFetch } from '@services/insightFetchService';
 import { checkShouldShowNPS } from '@services/npsFeedbackService';
 
+const prisma = new PrismaClient();
+
 /**
  * Determine effective campaign origin for V4 status flow
  * V4 campaigns with client managers should follow CLIENT flow even if origin is ADMIN
@@ -215,7 +217,7 @@ const updateSubmissionStatusBasedOnContent = async (submissionId: string) => {
   }
 };
 
-const prisma = new PrismaClient();
+// const prisma = new PrismaClient();
 
 /**
  * Create V4 submissions when creator is approved
@@ -994,6 +996,7 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
 
     // Emit socket event for real-time updates
     const io = req.app.get('io');
+
     if (io) {
       io.to(submission.campaign.id).emit('v4:submission:updated', {
         submissionId,

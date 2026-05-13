@@ -8,6 +8,8 @@ interface FollowerData {
   manualFollowers?: number | null;
 }
 
+type PlatformType = 'instagram' | 'tiktok';
+
 interface TierCalculationResult {
   followerCount: number;
   tier: CreditTier | null;
@@ -35,6 +37,31 @@ export const getHighestFollowerCount = (data: FollowerData): number => {
   }
 
   return manual;
+};
+
+export const getFollowerCountByPlatform = (
+  data: FollowerData & {
+    manualInstagramFollowers?: number | null;
+    manualTiktokFollowers?: number | null;
+    hasInstagramConnected?: boolean;
+    hasTiktokConnected?: boolean;
+  },
+  selectedPlatform: PlatformType,
+): number => {
+  const instagram = data.instagramFollowers ?? 0;
+  const tiktok = data.tiktokFollowers ?? 0;
+  const manualInstagram = data.manualInstagramFollowers ?? 0;
+  const manualTiktok = data.manualTiktokFollowers ?? 0;
+  const hasInstagramConnected = data.hasInstagramConnected ?? false;
+  const hasTiktokConnected = data.hasTiktokConnected ?? false;
+
+  if (selectedPlatform === 'tiktok') {
+    if (hasTiktokConnected) return tiktok;
+    return manualTiktok || 0;
+  }
+
+  if (hasInstagramConnected) return instagram;
+  return manualInstagram || 0;
 };
 
 /**
@@ -68,7 +95,10 @@ export const getTierByFollowerCount = async (followerCount: number): Promise<Cre
  * Calculate credit tier for a creator based on their follower data
  * Fetches Instagram, TikTok, and manual follower counts
  */
-export const calculateCreatorTier = async (userId: string): Promise<TierCalculationResult> => {
+export const calculateCreatorTier = async (
+  userId: string,
+  selectedPlatform?: PlatformType,
+): Promise<TierCalculationResult> => {
   const creator = await prisma.creator.findUnique({
     where: { userId },
     include: {
@@ -91,10 +121,25 @@ export const calculateCreatorTier = async (userId: string): Promise<TierCalculat
     manualFollowers: creator.manualFollowerCount,
   });
 
-  const tier = await getTierByFollowerCount(followerCount);
+  const resolvedFollowerCount = selectedPlatform
+    ? getFollowerCountByPlatform(
+        {
+          instagramFollowers: creator.instagramUser?.followers_count,
+          tiktokFollowers: creator.tiktokUser?.follower_count,
+          manualFollowers: creator.manualFollowerCount,
+          manualInstagramFollowers: (creator as any).manualInstagramFollowerCount,
+          manualTiktokFollowers: (creator as any).manualTiktokFollowerCount,
+          hasInstagramConnected: !!creator.instagramUser,
+          hasTiktokConnected: !!creator.tiktokUser,
+        },
+        selectedPlatform,
+      )
+    : followerCount;
+
+  const tier = await getTierByFollowerCount(resolvedFollowerCount);
 
   return {
-    followerCount,
+    followerCount: resolvedFollowerCount,
     tier,
   };
 };
@@ -103,10 +148,14 @@ export const calculateCreatorTier = async (userId: string): Promise<TierCalculat
  * Update creator's credit tier in the database
  * Called when follower counts change (social media sync, manual input)
  */
-export const updateCreatorTier = async (userId: string, prismaFunc?: PrismaClient): Promise<CreditTier | null> => {
+export const updateCreatorTier = async (
+  userId: string,
+  prismaFunc?: PrismaClient,
+  selectedPlatform?: PlatformType,
+): Promise<CreditTier | null> => {
   const tx = prismaFunc ?? prisma;
 
-  const { tier } = await calculateCreatorTier(userId);
+  const { tier } = await calculateCreatorTier(userId, selectedPlatform);
 
   await tx.creator.update({
     where: { userId },
@@ -144,8 +193,12 @@ export const batchUpdateCreatorTiers = async (
  * Calculate total credit cost for a creator based on video count and their tier
  * Used when shortlisting/assigning creators to credit tier campaigns
  */
-export const calculateCreatorCreditCost = async (userId: string, videoCount: number): Promise<CreditCostResult> => {
-  const { tier, followerCount } = await calculateCreatorTier(userId);
+export const calculateCreatorCreditCost = async (
+  userId: string,
+  videoCount: number,
+  selectedPlatform?: PlatformType,
+): Promise<CreditCostResult> => {
+  const { tier, followerCount } = await calculateCreatorTier(userId, selectedPlatform);
 
   if (!tier) {
     throw new Error(

@@ -24,6 +24,10 @@ import bcrypt from 'bcryptjs';
 import { generateRandomString } from '@utils/randomString';
 import dayjs from 'dayjs';
 import { TokenSet, XeroClient } from 'xero-node';
+import { generate, generateSecret, generateURI, verify } from 'otplib';
+
+import QRCode from 'qrcode';
+import WhatsappSetting from '@services/whatsappSetting';
 
 const prisma = new PrismaClient();
 
@@ -199,8 +203,6 @@ export const registerSuperAdmin = async (req: Request, res: Response) => {
 export const registerCreator = async (req: Request, res: Response) => {
   const { name, email, password, recaptcha, creatorData } = req.body;
 
-  console.log('Backend received registration data:', { name, email, password: '***', recaptcha: '***', creatorData });
-
   if (!recaptcha) {
     return res.status(400).json({ success: false, message: 'Token is missing.' });
   }
@@ -306,6 +308,25 @@ export const registerCreator = async (req: Request, res: Response) => {
 
       // Create kanban board for the new creator
       await createKanbanBoard(result.user.id, 'creator');
+
+      if (req.session.pendingRegistration && req.session.pendingRegistration.authType === 'otp') {
+        const user = await prisma.user.update({
+          where: {
+            id: result.user.id,
+          },
+          data: {
+            status: 'active',
+            activatedAt: dayjs().toDate(),
+          },
+        });
+
+        req.session.pendingRegistration = undefined;
+
+        const session = req.session;
+        session.userid = user.id;
+
+        return res.sendStatus(200);
+      }
 
       // Send verification email
       const token = jwt.sign({ id: result.user.id }, process.env.ACCESSKEY as Secret, { expiresIn: '15m' });
@@ -1509,51 +1530,6 @@ export const resendVerificationLinkCreator = async (req: Request, res: Response)
 
   if (!token) return res.status(404).json({ message: 'Token is missing' });
 
-  // try {
-  // const decode = jwt.decode(token);
-
-  // if (!decode) return res.status(400).json({ message: 'Token is invalid' });
-
-  //   const user = await prisma.user.findUnique({
-  //     where: {
-  //       id: (decode as any).id,
-  //     },
-  //   });
-
-  //   if (!user) return res.status(404).json({ message: 'User is not registered.' });
-
-  // const newToken = jwt.sign({ id: user.id }, process.env.ACCESSKEY as Secret, { expiresIn: '15m' });
-
-  // let code;
-
-  // // eslint-disable-next-line no-constant-condition
-  // while (true) {
-  //   const shortCode = generateRandomString();
-
-  //   const isShortCodeExist = await prisma.emailVerification.findFirst({
-  //     where: { shortCode },
-  //   });
-
-  //   if (!isShortCodeExist) {
-  //     code = await prisma.emailVerification.create({
-  //       data: {
-  //         shortCode: shortCode,
-  //         userId: user.id,
-  //         expiredAt: dayjs().add(15, 'minute').toDate(),
-  //         token: token,
-  //       },
-  //     });
-  //     break;
-  //   }
-  // }
-
-  // creatorVerificationEmail(user.email, code.shortCode);
-
-  // return res.status(200).json({ message: 'New verification link has been sent.' });
-  // } catch (error) {
-  //   return res.status(400).json(error);
-  // }
-
   try {
     const { jwtToken, user, id } = await getJWTToken(token as string);
 
@@ -1882,6 +1858,7 @@ export const setupClientPassword = async (req: Request, res: Response) => {
     return res.status(400).json({ message: 'Error setting up password' });
   }
 };
+
 export const deleteAccount = async (req: Request, res: Response) => {
   const userId = req.session.userid as string;
 
@@ -1946,4 +1923,212 @@ export const deleteAccount = async (req: Request, res: Response) => {
     console.error(error);
     return res.status(400).json({ message: 'Failed to delete account' });
   }
+};
+
+export const setupTwoFactor = async (req: Request, res: Response) => {
+  try {
+    const userId = req.session.userid;
+
+    const user = await prisma.user.findUnique({
+      where: {
+        id: userId,
+      },
+    });
+
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    const secret = generateSecret();
+
+    const uri = generateURI({
+      issuer: 'Cult Creative Application',
+      label: user.email.trim().toLowerCase(),
+      secret,
+    });
+
+    const qrDataUrl = await QRCode.toDataURL(uri);
+
+    console.log(qrDataUrl);
+  } catch (error) {
+    return res.status(500).json(error);
+  }
+};
+
+export const sendVerificationCode = async (req: Request<{}, {}, { phoneNumber: string }>, res: Response) => {
+  const phoneNumber = req.body.phoneNumber;
+
+  if (!phoneNumber) {
+    return res.status(400).json({ success: false, message: 'Phone number is required' });
+  }
+
+  try {
+    // fetch only active users with a phone number
+    const phoneNumbers = await prisma.user.findMany({
+      where: {
+        status: 'active',
+        phoneNumber: { not: null },
+      },
+      select: { phoneNumber: true },
+    });
+
+    const normalizedInput = phoneNumber.replace(/\D/g, '');
+
+    const isExist = phoneNumbers.some(({ phoneNumber }) => phoneNumber?.replace(/\D/g, '') === normalizedInput);
+
+    if (isExist) return res.status(409).json({ success: false, message: 'Phone number exist' });
+
+    const whatsapp = new WhatsappSetting();
+    await whatsapp.initialize();
+
+    const secret = generateSecret();
+
+    // Generate current token
+    const token = await generate({ secret });
+
+    req.session.otp = {
+      secret,
+      phone: phoneNumber,
+      sentAt: dayjs().toDate(),
+      attempts: 0,
+      isCodeUsed: false,
+    };
+
+    await whatsapp.sendVerificationCode(phoneNumber, token);
+
+    return res.status(200).json({ success: true, message: 'Successfully sent' });
+  } catch (error) {
+    if (error?.message.includes('Whatsapp')) {
+      return res.status(400).json({ success: false, message: 'Please contact our admin.' });
+    }
+
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+};
+
+export const verifyCode = async (req: Request<{}, {}, { code: string }>, res: Response) => {
+  const { code } = req.body;
+
+  if (!code) {
+    return res.status(400).json({ success: false, message: 'Code is required' });
+  }
+
+  if (!req.session.otp) {
+    return res.status(401).json({ success: false, message: 'Session expired, please request a new code' });
+  }
+
+  // Extract early before any mutation
+  const { secret, phone, attempts } = req.session.otp;
+
+  // Guard: too many attempts
+  if (attempts >= 5) {
+    // eslint-disable-next-line @typescript-eslint/no-empty-function
+    req.session.destroy(() => {});
+    return res.status(429).json({ success: false, message: 'Too many attempts, please request a new code' });
+  }
+
+  try {
+    const isValid = await verify({ token: code, secret, epochTolerance: 600 });
+
+    if (!isValid.valid) {
+      req.session.otp.attempts += 1;
+      return res.status(400).json({ success: false, message: 'Invalid code' });
+    }
+
+    // Clear OTP and move to next stage
+    req.session.pendingRegistration = {
+      phone,
+      verified: true,
+      authType: 'otp',
+    };
+
+    req.session.otp = undefined;
+
+    return res.status(200).json({ success: true, message: 'Phone verified successfully' });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+};
+
+export const getOtpStatus = async (req: Request, res: Response) => {
+  const lastSent = req.session?.otp?.sentAt;
+
+  if (!lastSent) {
+    return res.status(200).json({ secondsLeft: 0 });
+  }
+
+  const elapsed = dayjs().diff(lastSent);
+  const cooldown = 60 * 1000;
+  const secondsLeft = Math.max(0, Math.ceil((cooldown - elapsed) / 1000));
+
+  return res.status(200).json({ secondsLeft, phoneNumber: req.session.otp?.phone });
+};
+
+export const resendVerificationCode = async (req: Request, res: Response) => {
+  const phoneNumber = req.session?.otp?.phone;
+
+  if (!phoneNumber) {
+    return res.status(401).json({
+      success: false,
+      message: 'Session expired, please start over',
+    });
+  }
+
+  if (!req.session.otp) {
+    return res.status(401).json({ success: false, message: 'Session expired, please request a new code' });
+  }
+
+  const lastSent = req.session.otp.sentAt;
+  const attempts = req.session.otp.attempts;
+  const cooldown = 60 * 1000;
+
+  if (lastSent && dayjs().diff(lastSent) < cooldown) {
+    const secondsLeft = Math.ceil((cooldown - dayjs().diff(lastSent)) / 1000);
+    return res.status(429).json({
+      success: false,
+      message: `Please wait ${secondsLeft} seconds before requesting a new code`,
+    });
+  }
+
+  if (attempts >= 5) return res.status(429).json({ success: false, message: 'Too many attempts' });
+
+  try {
+    const whatsapp = new WhatsappSetting();
+    await whatsapp.initialize();
+
+    const secret = generateSecret();
+    const token = await generate({ secret });
+
+    await whatsapp.sendVerificationCode(phoneNumber, token);
+
+    await new Promise<void>((resolve, reject) => {
+      req.session.regenerate((err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+
+    const currentAttempt = req.session?.otp?.attempts;
+
+    req.session.otp = {
+      secret,
+      phone: phoneNumber,
+      sentAt: dayjs().toDate(),
+      attempts: currentAttempt + 1,
+      isCodeUsed: false,
+    };
+
+    return res.status(200).json({ success: true, message: 'Verification code resent' });
+  } catch (error) {
+    if (error?.message?.includes('Whatsapp')) {
+      return res.status(400).json({ success: false, message: 'Please contact our admin.' });
+    }
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+};
+
+export const getSessionStatus = async (req: Request, res: Response) => {
+  return res.status(200).json({
+    otp: req.session.otp ? { sentAt: req.session.otp.sentAt } : null,
+    pendingRegistration: req.session.pendingRegistration ?? null,
+  });
 };

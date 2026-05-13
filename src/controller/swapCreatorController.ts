@@ -145,8 +145,7 @@ export const swapGuestWithPlatformCreator = async (req: Request, res: Response) 
         isCreatorPaid: guestShortlist?.isCreatorPaid ?? false,
         shortlisted_date: guestShortlist?.shortlisted_date ?? new Date(),
         creditTierId: guestShortlist?.creditTierId ?? guestCreator?.creditTierId ?? null,
-        creditPerVideo:
-          guestShortlist?.creditPerVideo ?? guestCreator?.creditTier?.creditsPerVideo ?? null,
+        creditPerVideo: guestShortlist?.creditPerVideo ?? guestCreator?.creditTier?.creditsPerVideo ?? null,
       };
 
       // Transfer guest creator's profileLink to platform creator

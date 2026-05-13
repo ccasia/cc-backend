@@ -579,10 +579,10 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Pitch already approved by this client' });
     }
 
-    // Check if pitch is in correct status
-    if (pitch.status !== 'SENT_TO_CLIENT' && pitch.status !== 'INVITED') {
+    // Check if pitch is in correct status (also allow AWAITING_APPROVAL for approver flow)
+    if (pitch.status !== 'SENT_TO_CLIENT' && pitch.status !== 'INVITED' && pitch.status !== 'AWAITING_APPROVAL') {
       return res.status(400).json({
-        message: `Pitch is not in correct status for client approval. Current status: ${pitch.status}, Expected: SENT_TO_CLIENT or INVITED`,
+        message: `Pitch is not in correct status for client approval. Current status: ${pitch.status}, Expected: SENT_TO_CLIENT, INVITED, or AWAITING_APPROVAL`,
       });
     }
 
@@ -593,6 +593,23 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
 
     if (!clientAccess) {
       return res.status(403).json({ message: 'Client not authorized for this campaign' });
+    }
+
+    // Row-level permission for approver role: can only approve pitches assigned to them
+    const campaignClient = await prisma.campaignClient.findFirst({
+      where: { campaignId: pitch.campaignId, client: { userId: clientId as string } },
+    });
+    if (campaignClient?.role === 'approver') {
+      const user = await prisma.user.findUnique({ where: { id: clientId as string } });
+      const assignedCreator = await prisma.approvalRequestCreator.findFirst({
+        where: {
+          pitchId: pitchId,
+          approvalRequest: { approverEmail: user?.email as string, campaignId: pitch.campaignId },
+        },
+      });
+      if (!assignedCreator) {
+        return res.status(403).json({ message: 'Approver can only approve/reject pitches assigned to them' });
+      }
     }
 
     await prisma.pitch.update({
@@ -895,8 +912,8 @@ export const rejectPitchByClient = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'This endpoint is only for client-created campaigns or v4 campaigns' });
     }
 
-    // Check if pitch is in correct status
-    if (pitch.status !== 'SENT_TO_CLIENT' && pitch.status !== 'INVITED') {
+    // Check if pitch is in correct status (also allow AWAITING_APPROVAL for approver flow)
+    if (pitch.status !== 'SENT_TO_CLIENT' && pitch.status !== 'INVITED' && pitch.status !== 'AWAITING_APPROVAL') {
       return res.status(400).json({ message: 'Pitch is not in correct status for client rejection' });
     }
 
@@ -907,6 +924,23 @@ export const rejectPitchByClient = async (req: Request, res: Response) => {
 
     if (!clientAccess) {
       return res.status(403).json({ message: 'Client not authorized for this campaign' });
+    }
+
+    // Row-level permission for approver role: can only reject pitches assigned to them
+    const campaignClientReject = await prisma.campaignClient.findFirst({
+      where: { campaignId: pitch.campaignId, client: { userId: clientId as string } },
+    });
+    if (campaignClientReject?.role === 'approver') {
+      const userReject = await prisma.user.findUnique({ where: { id: clientId as string } });
+      const assignedCreatorReject = await prisma.approvalRequestCreator.findFirst({
+        where: {
+          pitchId: pitchId,
+          approvalRequest: { approverEmail: userReject?.email as string, campaignId: pitch.campaignId },
+        },
+      });
+      if (!assignedCreatorReject) {
+        return res.status(403).json({ message: 'Approver can only approve/reject pitches assigned to them' });
+      }
     }
 
     // Update pitch status to rejected
@@ -1147,8 +1181,8 @@ export const maybePitchByClient = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'This endpoint is only for client-created campaigns or v4 campaigns' });
     }
 
-    // Check if pitch is in correct status
-    if (pitch.status !== 'SENT_TO_CLIENT' && pitch.status !== 'INVITED') {
+    // Check if pitch is in correct status (also allow AWAITING_APPROVAL for fallback/client-approver flows)
+    if (pitch.status !== 'SENT_TO_CLIENT' && pitch.status !== 'INVITED' && pitch.status !== 'AWAITING_APPROVAL') {
       return res.status(400).json({ message: 'Pitch is not in correct status for client action' });
     }
 
@@ -1159,6 +1193,23 @@ export const maybePitchByClient = async (req: Request, res: Response) => {
 
     if (!clientAccess) {
       return res.status(403).json({ message: 'Client not authorized for this campaign' });
+    }
+
+    // Row-level permission for approver role: can only maybe pitches assigned to them
+    const campaignClientMaybe = await prisma.campaignClient.findFirst({
+      where: { campaignId: pitch.campaignId, client: { userId: clientId as string } },
+    });
+    if (campaignClientMaybe?.role === 'approver') {
+      const userMaybe = await prisma.user.findUnique({ where: { id: clientId as string } });
+      const assignedCreatorMaybe = await prisma.approvalRequestCreator.findFirst({
+        where: {
+          pitchId: pitchId,
+          approvalRequest: { approverEmail: userMaybe?.email as string, campaignId: pitch.campaignId },
+        },
+      });
+      if (!assignedCreatorMaybe) {
+        return res.status(403).json({ message: 'Approver can only action pitches assigned to them' });
+      }
     }
 
     await prisma.pitch.update({
@@ -1262,15 +1313,43 @@ export const setPitchAgreement = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Pitch is not in correct status for agreement setup' });
     }
 
+    const resolvedTemplateId = (agreementTemplateId as string | undefined) || pitch.campaign.agreementTemplateId;
+    if (!resolvedTemplateId) {
+      return res.status(400).json({
+        message:
+          'Agreement template is required. Set a default agreement template on the campaign or pass agreementTemplateId.',
+      });
+    }
+
     // Update pitch status and set agreement details
-    await prisma.pitch.update({
+    const updatedPitchAgreement = await prisma.pitch.update({
       where: { id: pitchId },
       data: {
         status: 'AGREEMENT_PENDING',
         amount: amount ? (typeof amount === 'string' ? parseInt(amount) : amount) : null,
-        agreementTemplateId: agreementTemplateId,
+        agreementTemplateId: resolvedTemplateId,
+        outreachStatus: 'CONFIRMED',
+        outreachUpdatedAt: new Date(),
+        outreachUpdatedBy: adminId,
+      },
+      select: {
+        id: true,
+        outreachStatus: true,
+        outreachUpdatedAt: true,
+        outreachUpdatedBy: true,
       },
     });
+
+    if (io) {
+      io.to(pitch.campaignId).emit('v3:pitch:outreach-updated', {
+        pitchId: updatedPitchAgreement.id,
+        campaignId: pitch.campaignId,
+        outreachStatus: updatedPitchAgreement.outreachStatus,
+        outreachUpdatedAt: updatedPitchAgreement.outreachUpdatedAt,
+        outreachUpdatedBy: updatedPitchAgreement.outreachUpdatedBy,
+        updatedAt: new Date().toISOString(),
+      });
+    }
 
     // Create notification for creator
     await prisma.notification.create({
@@ -1491,21 +1570,6 @@ export const getPitchesV3 = async (req: Request, res: Response) => {
       },
     });
 
-    console.log('🔍 V3 Pitches Debug:', {
-      campaignId,
-      requestedStatus: status,
-      userRole: user.role,
-      totalPitches: pitches.length,
-      v4Pitches: pitches.filter((p) => p.campaign?.submissionVersion === 'v4').length,
-      v2Pitches: pitches.filter((p) => p.campaign?.submissionVersion === 'v2').length,
-      pitchStatuses: pitches.map((p) => ({
-        id: p.id,
-        status: p.status,
-        campaignOrigin: p.campaign?.origin,
-        submissionVersion: p.campaign?.submissionVersion,
-      })),
-    });
-
     const transformedPitches = pitches
       .filter((pitch) => {
         const normalizedStatus = normalizePitchStatusForV4(pitch);
@@ -1523,7 +1587,8 @@ export const getPitchesV3 = async (req: Request, res: Response) => {
             normalizedStatus === 'REJECTED' ||
             normalizedStatus === 'MAYBE' ||
             normalizedStatus === 'AGREEMENT_PENDING' ||
-            normalizedStatus === 'AGREEMENT_SUBMITTED'
+            normalizedStatus === 'AGREEMENT_SUBMITTED' ||
+            normalizedStatus === 'AWAITING_APPROVAL'
           );
         }
         return true;

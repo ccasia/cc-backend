@@ -599,45 +599,82 @@ export const getTikTokMediaObject = async (accessToken: string, limit = 20) => {
   };
 };
 
-// Helper function to resolve TikTok short codes (e.g., ZS5NQoDLq) to full video IDs
+/**
+ * Resolve TikTok short codes to full video IDs
+ * Supports multiple TikTok URL formats:
+ *   - vm.tiktok.com/{shortCode}  (mobile/app share links)
+ *   - vt.tiktok.com/{shortCode}  (desktop share links)
+ *   - www.tiktok.com/@username/video/{videoId}  (full URLs)
+ *   - m.tiktok.com/@username/video/{videoId}  (mobile full URLs)
+ *
+ * @param shortCode - Short code or video ID to resolve
+ * @returns - Full video ID
+ */
 export const resolveTikTokShortCode = async (shortCode: string): Promise<string> => {
   try {
     console.log(`🔗 Resolving TikTok short code: ${shortCode}`);
 
     // Short codes are typically 10-15 characters of alphanumeric/underscore/hyphen
-    // If it's already a long numeric ID, return it as-is
+    // If it's already a long numeric ID (15+ digits), return it as-is
     if (/^\d{15,}$/.test(shortCode)) {
       console.log(`✅ Already a full video ID: ${shortCode}`);
       return shortCode;
     }
 
-    // Try to resolve the short code by following the redirect
-    const shortUrl = `https://vt.tiktok.com/${shortCode}`;
-    const response = await axios.get(shortUrl, {
-      maxRedirects: 0,
-      validateStatus: (status) => status === 301 || status === 302 || status === 307 || status === 308,
-    });
+    // List of TikTok short URL domain prefixes to try
+    // Try both vm and vt variants since they're used differently by mobile/desktop apps
+    const domainPrefixes = [
+      'https://vm.tiktok.com', // Mobile/app share links - try first as more common recently
+      'https://vt.tiktok.com', // Desktop share links
+    ];
 
-    const location = response.headers.location;
-    if (!location) {
-      throw new Error('Could not resolve short code redirect');
+    let lastError: Error | null = null;
+
+    for (const domain of domainPrefixes) {
+      try {
+        const shortUrl = `${domain}/${shortCode}`;
+        console.log(`  📍 Attempting resolution with: ${domain}/...`);
+
+        const response = await axios.get(shortUrl, {
+          maxRedirects: 0,
+          timeout: 5000,
+          validateStatus: (status) => status >= 200 && status < 400,
+        });
+
+        const location = response.headers.location;
+        if (!location) {
+          console.log(`  ⚠️  No redirect from ${domain}`);
+          lastError = new Error(`No redirect from ${domain}`);
+          continue;
+        }
+
+        console.log(`  📍 Redirect location: ${location}`);
+
+        // Extract video ID from the full URL
+        // Handles formats:
+        //   - https://www.tiktok.com/@username/video/7518082807227223314
+        //   - https://m.tiktok.com/@username/video/7518082807227223314
+        const videoIdMatch = location.match(/\/video\/(\d+)/);
+        if (videoIdMatch && videoIdMatch[1]) {
+          const videoId = videoIdMatch[1];
+          console.log(`  ✅ Resolved to video ID: ${videoId} (via ${domain})`);
+          return videoId;
+        }
+
+        console.log(`  ⚠️  Could not extract video ID from redirect`);
+        lastError = new Error(`Could not extract video ID from redirect`);
+      } catch (domainError: any) {
+        console.log(`  ⚠️  Failed with ${domain}: ${domainError.message}`);
+        lastError = domainError;
+        // Continue to next domain prefix
+      }
     }
 
-    console.log(`📍 Redirect location: ${location}`);
-
-    // Extract video ID from the full URL
-    // Format: https://www.tiktok.com/@username/video/7518082807227223314
-    const videoIdMatch = location.match(/\/video\/(\d+)/);
-    if (videoIdMatch && videoIdMatch[1]) {
-      console.log(`✅ Resolved to video ID: ${videoIdMatch[1]}`);
-      return videoIdMatch[1];
-    }
-
-    // If redirect doesn't work, try using the short code directly as it might be a share ID
+    // If all domain prefixes failed, try using the short code directly
     // Some TikTok endpoints accept share IDs
-    console.log(`⚠️ Could not extract video ID from redirect, returning original short code`);
+    console.log(`⚠️ Could not resolve via any domain prefix, returning original short code as fallback`);
     return shortCode;
-  } catch (error) {
+  } catch (error: any) {
     console.error(`❌ Error resolving TikTok short code: ${error.message}`);
     // Return the short code anyway - might still work with some API endpoints
     return shortCode;

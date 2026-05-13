@@ -11,29 +11,26 @@ export const handleDeleteAdminById = async (id: string) => {
 
     if (!admin) throw new Error('Admin not found.');
 
-    await prisma.$transaction([
-      prisma.message.deleteMany({ where: { senderId: id } }),
-      prisma.userThread.deleteMany({ where: { userId: id } }),
-      prisma.unreadMessage.deleteMany({ where: { userId: id } }),
-      prisma.seenMessage.deleteMany({ where: { userId: id } }),
-      prisma.bookMarkCampaign.deleteMany({ where: { userId: id } }),
-      // prisma.campaignLog.deleteMany({ where: { adminId: id } }),
-      prisma.campaignTaskAdmin.deleteMany({ where: { userId: id } }),
-      prisma.feedback.deleteMany({ where: { adminId: id } }),
-      prisma.notification.deleteMany({ where: { userId: id } }),
-      prisma.userNotification.deleteMany({ where: { userId: id } }),
-      prisma.resetPasswordToken.deleteMany({ where: { userId: id } }),
-      prisma.campaignAdmin.deleteMany({ where: { adminId: admin.admin?.id } }),
-    ]);
+    const adminProfileId = admin.admin?.id;
 
-    await prisma.admin.delete({
-      where: {
-        userId: id,
-      },
-    });
+    await prisma.$transaction(async (tx) => {
+      await tx.message.deleteMany({ where: { senderId: id } });
+      await tx.userThread.deleteMany({ where: { userId: id } });
+      await tx.unreadMessage.deleteMany({ where: { userId: id } });
+      await tx.seenMessage.deleteMany({ where: { userId: id } });
+      await tx.bookMarkCampaign.deleteMany({ where: { userId: id } });
+      await tx.campaignTaskAdmin.deleteMany({ where: { userId: id } });
+      await tx.feedback.deleteMany({ where: { adminId: id } });
+      await tx.notification.deleteMany({ where: { userId: id } });
+      await tx.userNotification.deleteMany({ where: { userId: id } });
+      await tx.resetPasswordToken.deleteMany({ where: { userId: id } });
 
-    await prisma.user.delete({
-      where: { id: id },
+      if (adminProfileId) {
+        await tx.campaignAdmin.deleteMany({ where: { adminId: adminProfileId } });
+        await tx.admin.delete({ where: { userId: id } });
+      }
+
+      await tx.user.delete({ where: { id } });
     });
 
     // const res = await prisma.$transaction([

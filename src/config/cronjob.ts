@@ -10,7 +10,7 @@ import { notifications } from '@constants/reminders';
 import { clients, io } from '../server';
 import { reminderDueDate } from '@helper/notification';
 import { fetchInsightsForAllCampaigns } from '@services/insightFetchService';
-import { capturePostEngagementSnapshots } from '@services/postEngagementSnapshotService';
+import { capturePostEngagementSnapshots, captureDailyPostEngagement } from '@services/postEngagementSnapshotService';
 
 const prisma = new PrismaClient();
 
@@ -134,6 +134,20 @@ new CronJob(
       });
     } catch (error) {
       console.error('[Cronjob] Post engagement snapshot collection failed:', error);
+    }
+
+    try {
+      const dailyResult = await captureDailyPostEngagement();
+
+      console.log('[Cronjob] Daily post engagement collection completed:', {
+        processed: dailyResult.processed,
+        captured: dailyResult.captured,
+        skipped: dailyResult.skipped,
+        failed: dailyResult.failed,
+        timestamp: dayjs().tz('Asia/Kuala_Lumpur').format(),
+      });
+    } catch (error) {
+      console.error('[Cronjob] Daily post engagement collection failed:', error);
     }
   },
   null, // onComplete

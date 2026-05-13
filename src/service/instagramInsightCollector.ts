@@ -76,7 +76,6 @@ async function fetchInstagramMetrics(urlsByUser: Map<string, { url: string; user
 
         try {
           const raw = await getMediaInsight(accessToken, video.id);
-
           if (raw && raw.length > 0) posts.push(parseInstagramInsight(raw));
         } catch (err) {
           console.error(`[InsightCollector] Instagram insight failed for ${urlData.url}:`, err);

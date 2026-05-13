@@ -61,6 +61,12 @@ export const sendEmail = async (mailOptions: { to: string; subject: string; html
   }
 };
 
+const EMAIL_FOOTER_ICON_INSTAGRAM = 'https://api.iconify.design/mdi/instagram.svg?color=%238E8E93&width=64&height=64';
+const EMAIL_FOOTER_ICON_LINKEDIN = 'https://api.iconify.design/mdi/linkedin.svg?color=%238E8E93&width=64&height=64';
+const EMAIL_FOOTER_ICON_WEBSITE = 'https://api.iconify.design/mdi/web.svg?color=%238E8E93&width=64&height=64';
+const EMAIL_FOOTER_SOCIAL_IMG =
+  'width="32" height="32" style="width:32px;height:32px;display:block;border:0;outline:none;-ms-interpolation-mode:bicubic;"';
+
 export const ClientInvitation = (email: string, inviteToken: string, companyName: string) => {
   transport
     .sendMail({
@@ -165,9 +171,9 @@ export const ClientInvitation = (email: string, inviteToken: string, companyName
                             <td align="center" style="padding: 20px 0 0;">
                               <table role="presentation" cellspacing="0" cellpadding="0" border="0">
                                 <tr>
-                                  <td style="padding: 0 15px;"><a href="https://www.instagram.com/cultcreativeasia/" target="_blank"><img src="https://drive.google.com/uc?id=18U5OsbRLVFGBXpG3Tod3_E_V-CKCoPxn" alt="Instagram" width="28"></a></td>
-                                  <td style="padding: 0 15px;"><a href="https://www.linkedin.com/company/cultcreativeapp/" target="_blank"><img src="https://drive.google.com/uc?id=1-OLY5OezbzS7m37xcfLNXvmJyoNhAtTL" alt="LinkedIn" width="28"></a></td>
-                                  <td style="padding: 0 15px;"><a href="https://www.cultcreative.asia" target="_blank"><img src="https://drive.google.com/uc?id=1L5rZbPbK3zouf40Krj-CRtmMa94qc_sP" alt="Website" width="28"></a></td>
+                                  <td style="padding: 0 15px;"><a href="https://www.instagram.com/cultcreativeasia/" target="_blank"><img src="${EMAIL_FOOTER_ICON_INSTAGRAM}" alt="Instagram" ${EMAIL_FOOTER_SOCIAL_IMG}></a></td>
+                                  <td style="padding: 0 15px;"><a href="https://www.linkedin.com/company/cultcreativeapp/" target="_blank"><img src="${EMAIL_FOOTER_ICON_LINKEDIN}" alt="LinkedIn" ${EMAIL_FOOTER_SOCIAL_IMG}></a></td>
+                                  <td style="padding: 0 15px;"><a href="https://www.cultcreative.asia" target="_blank"><img src="${EMAIL_FOOTER_ICON_WEBSITE}" alt="Website" ${EMAIL_FOOTER_SOCIAL_IMG}></a></td>
                                 </tr>
                               </table>
                             </td>
@@ -1711,9 +1717,9 @@ export const csShortlistCreators = (
                             <td align="center" style="padding: 20px 0 0;">
                               <table role="presentation" cellspacing="0" cellpadding="0" border="0">
                                 <tr>
-                                  <td style="padding: 0 15px;"><a href="https://www.instagram.com/cultcreativeasia/" target="_blank"><img src="https://drive.google.com/uc?id=18U5OsbRLVFGBXpG3Tod3_E_V-CKCoPxn" alt="Instagram" width="28"></a></td>
-                                  <td style="padding: 0 15px;"><a href="https://www.linkedin.com/company/cultcreativeapp/" target="_blank"><img src="https://drive.google.com/uc?id=1-OLY5OezbzS7m37xcfLNXvmJyoNhAtTL" alt="LinkedIn" width="28"></a></td>
-                                  <td style="padding: 0 15px;"><a href="https://www.cultcreative.asia" target="_blank"><img src="https://drive.google.com/uc?id=1L5rZbPbK3zouf40Krj-CRtmMa94qc_sP" alt="Website" width="28"></a></td>
+                                  <td style="padding: 0 15px;"><a href="https://www.instagram.com/cultcreativeasia/" target="_blank"><img src="${EMAIL_FOOTER_ICON_INSTAGRAM}" alt="Instagram" ${EMAIL_FOOTER_SOCIAL_IMG}></a></td>
+                                  <td style="padding: 0 15px;"><a href="https://www.linkedin.com/company/cultcreativeapp/" target="_blank"><img src="${EMAIL_FOOTER_ICON_LINKEDIN}" alt="LinkedIn" ${EMAIL_FOOTER_SOCIAL_IMG}></a></td>
+                                  <td style="padding: 0 15px;"><a href="https://www.cultcreative.asia" target="_blank"><img src="${EMAIL_FOOTER_ICON_WEBSITE}" alt="Website" ${EMAIL_FOOTER_SOCIAL_IMG}></a></td>
                                 </tr>
                               </table>
                             </td>
@@ -1750,4 +1756,343 @@ export const csShortlistCreators = (
     .catch((err) => {
       return err;
     });
+};
+
+/** Row data for {@link sendCreatorApprovalListEmail} (public approval link flow). */
+export interface ApprovalListEmailCreatorRow {
+  name: string;
+  profilePicUrl: string;
+  instagramDisplay: string | null;
+  tiktokDisplay: string | null;
+  statsLine: string;
+}
+
+function escapeHtmlForEmail(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function escapeHtmlAttr(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+}
+
+/**
+ * Mobile-friendly approval request email: matches ClientInvitation / csShortlistCreators styling;
+ * primary CTA points at the tokenized public approval URL (same as “copy link” in the app).
+ */
+export const sendCreatorApprovalListEmail = async (params: {
+  to: string;
+  approverName: string;
+  senderName?: string;
+  campaignName: string;
+  approvalLink: string;
+  creators: ApprovalListEmailCreatorRow[];
+}): Promise<void> => {
+  const { to, approverName, senderName, campaignName, approvalLink, creators } = params;
+  const safeApprover = escapeHtmlForEmail(approverName.trim() || 'there');
+  const trimmedSender = senderName?.trim();
+  const safeSender = trimmedSender ? escapeHtmlForEmail(trimmedSender) : '';
+  const safeCampaign = escapeHtmlForEmail(campaignName);
+  const safeHref = escapeHtmlAttr(approvalLink);
+
+  const bodyPara1 = trimmedSender
+    ? `Your campaign manager <strong>${safeSender}</strong> has put together a shortlist of creators for <strong>${safeCampaign}</strong>.`
+    : `Your campaign manager has put together a shortlist of creators for <strong>${safeCampaign}</strong>.`;
+  const bodyPara2 = trimmedSender
+    ? `Please review these profiles and approve or reject each creator so <strong>${safeSender}</strong> can proceed with campaign execution.`
+    : `Please review these profiles and approve or reject each creator so your campaign manager can proceed with campaign execution.`;
+
+  const creatorRows = creators
+    .map((c) => {
+      const safeName = escapeHtmlForEmail(c.name);
+      const safePic = escapeHtmlAttr(c.profilePicUrl);
+      const safeStats = escapeHtmlForEmail(c.statsLine);
+      const ig = c.instagramDisplay ? escapeHtmlForEmail(c.instagramDisplay) : '';
+      const tk = c.tiktokDisplay ? escapeHtmlForEmail(c.tiktokDisplay) : '';
+      const handlesHtml =
+        c.instagramDisplay || c.tiktokDisplay
+          ? `<p style="margin:4px 0 0 0;font-family:'Inter',Arial,sans-serif;font-size:11px;line-height:1.35;color:#636366;">
+          ${
+            c.instagramDisplay
+              ? `<span style="white-space:nowrap;"><img src="https://cdn.simpleicons.org/instagram/8E8E93" alt="" width="12" height="12" style="vertical-align:middle;margin-right:3px;">${ig}</span>`
+              : ''
+          }
+          ${c.instagramDisplay && c.tiktokDisplay ? `<span style="color:#D1D1D6;margin:0 5px;">|</span>` : ''}
+          ${
+            c.tiktokDisplay
+              ? `<span style="white-space:nowrap;"><img src="https://cdn.simpleicons.org/tiktok/8E8E93" alt="" width="12" height="12" style="vertical-align:middle;margin-right:3px;">${tk}</span>`
+              : ''
+          }
+        </p>`
+          : '';
+
+      return `
+   <tr>
+    <td align="center" style="padding: 4px 20px 0;">
+      <table role="presentation" width="315" cellspacing="0" cellpadding="0" border="0" align="center" style="width:315px;max-width:100%;border-collapse:separate;background-color:#ffffff;border:1px solid #ebebeb;border-radius:8px;box-shadow:0px -3px 0px 0px #ebebeb inset;">
+        <tr>
+          <td style="padding:12px;height:80px;max-height:80px;overflow:hidden;vertical-align:top;">
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+              <tr>
+                <td width="40" valign="top" style="padding:0 4px 0 0;width:40px;">
+                  <img src="${safePic}" alt="" width="40" height="40" style="width:40px;height:40px;border-radius:50%;object-fit:cover;display:block;">
+                </td>
+                <td valign="top" style="padding:0;">
+                  <p style="margin:0 0 2px 0;font-family:'Inter',Arial,sans-serif;font-size:14px;line-height:1.15;color:#221f20;font-weight:600;">${safeName}</p>
+                  ${handlesHtml}
+                  <p style="margin:4px 0 0 0;font-family:'Inter',Arial,sans-serif;font-size:11px;line-height:1.3;color:#3a3a3c;">${safeStats}</p>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>`;
+    })
+    .join('');
+
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>📢  Input needed! Creator shortlist ready for review</title>
+<style type="text/css">
+  @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
+  /* Match public approval page campaign name: Instrument Serif, ~2.2rem / ~1.15rem, weight 550 */
+  .approval-email-headline { font-family: 'Instrument Serif', Georgia, 'Times New Roman', serif !important; font-size: 35px !important; font-weight: 550 !important; line-height: 1.1 !important; color: #000000 !important; margin: 0 !important; }
+  @media only screen and (max-width: 480px) {
+    .approval-email-headline { font-size: 18.4px !important; line-height: 1.15 !important; }
+  }
+</style>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f8f9fb; font-family: 'Inter', Arial, sans-serif;">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #f8f9fb;">
+  <tr>
+    <td align="center" style="padding: 16px 10px;">
+      <table role="presentation" width="400" cellspacing="0" cellpadding="0" border="0" align="center" style="max-width: 400px; width: 100%; background-color: #ffffff; border-radius: 12px; overflow: hidden;">
+        <tr>
+          <td style="padding: 24px 20px 8px 20px;">
+            <img src="https://drive.google.com/uc?id=1wbwEJp2qX5Hb9iirUQJVCmdpq-fg34oE" alt="Cult Creative" width="120" style="display:block;">
+          </td>
+        </tr>
+        <tr>
+          <td style="padding: 12px 20px 8px 20px;">
+            <h1 class="approval-email-headline" style="margin: 0; font-family: 'Instrument Serif', Georgia, 'Times New Roman', serif; font-size: 35px; color: #000000; font-weight: 550; line-height: 1.1;">
+              📢  Input needed! Creator shortlist ready for review
+            </h1>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding: 16px 20px 8px 20px;">
+            <p style="margin: 0; font-family: 'Inter', Arial, sans-serif; font-size: 16px; color: #333333; line-height: 1.5;">
+              Hi <strong>${safeApprover}</strong>,
+            </p>
+            <p style="margin: 12px 0 0 0; font-family: 'Inter', Arial, sans-serif; font-size: 16px; color: #333333; line-height: 1.45;">
+              ${bodyPara1}
+            </p>
+          </td>
+        </tr>
+        ${creatorRows}
+        <tr>
+          <td style="padding: 16px 20px 8px 20px;">
+            <p style="margin: 0; font-family: 'Inter', Arial, sans-serif; font-size: 16px; color: #333333; line-height: 1.45;">
+              ${bodyPara2}
+            </p>
+          </td>
+        </tr>
+        <tr>
+          <td align="center" style="padding: 20px 20px 12px 20px;">
+            <table role="presentation" width="315" cellspacing="0" cellpadding="0" border="0" align="center" style="width:315px;max-width:100%;border-collapse:separate;">
+              <tr>
+                <td align="center" height="48" valign="middle" style="height:48px;background-color:#1340ff;border-radius:32px;box-shadow:0px -3px 0px 0px rgba(0,0,0,0.45) inset, 0px 0px 0px 2px #e7e7e7;mso-line-height-rule:exactly;">
+                  <a href="${safeHref}" target="_blank" rel="noopener noreferrer" style="display:block;padding:10px 16px 13px 16px;font-family:'Inter',Arial,sans-serif;font-size:16px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:32px;line-height:1.2;text-align:center;">Review Creators</a>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 20px 24px 20px;">
+            <p style="margin: 0; font-family: 'Inter', Arial, sans-serif; font-size: 16px; color: #333333; line-height: 1.45;">
+              You'll be able to approve or reject individual creators from the review page.
+            </p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding: 0 0 32px 0;">
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #f7f7f7;">
+              <tr>
+                <td align="center" style="padding: 20px 0 0;">
+                  <table role="presentation" cellspacing="0" cellpadding="0" border="0">
+                    <tr>
+                      <td style="padding: 0 15px;"><a href="https://www.instagram.com/cultcreativeasia/" target="_blank" rel="noopener noreferrer"><img src="${EMAIL_FOOTER_ICON_INSTAGRAM}" alt="Instagram" ${EMAIL_FOOTER_SOCIAL_IMG}></a></td>
+                      <td style="padding: 0 15px;"><a href="https://www.linkedin.com/company/cultcreativeapp/" target="_blank" rel="noopener noreferrer"><img src="${EMAIL_FOOTER_ICON_LINKEDIN}" alt="LinkedIn" ${EMAIL_FOOTER_SOCIAL_IMG}></a></td>
+                      <td style="padding: 0 15px;"><a href="https://www.cultcreative.asia" target="_blank" rel="noopener noreferrer"><img src="${EMAIL_FOOTER_ICON_WEBSITE}" alt="Website" ${EMAIL_FOOTER_SOCIAL_IMG}></a></td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+              <tr>
+                <td align="center" style="padding: 12px 16px 0 16px;">
+                  <a href="mailto:hello@cultcreative.asia" style="font-family: Arial, sans-serif; font-size: 14px; color: #333333; text-decoration: underline; font-weight: bold;">hello@cultcreative.asia</a>
+                </td>
+              </tr>
+              <tr>
+                <td align="center">
+                  <p style="padding: 16px 20px 24px 20px; margin: 0; font-family: Arial, sans-serif; font-size: 11px; color: #aaaaaa; line-height: 1.5;">
+                    Cult Creative — Empowering creators to shape the future of brands.<br><br>
+                    Cult Creative Sdn. Bhd.<br>
+                    A-5-3A, Block A, Jaya One, Jln Profesor Diraja Ungku Aziz,<br>
+                    Seksyen 13, 46200 Petaling Jaya, Selangor, Malaysia<br>
+                    Copyright © ${new Date().getFullYear()} Cult Creative, All rights reserved
+                  </p>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+</body>
+</html>`;
+
+  await sendEmail({
+    to,
+    subject: `[Cult Creative] 📢  Input needed! Creator shortlist ready for review`,
+    html,
+  });
+};
+
+export const bdDraftCreated = async (payload: {
+  to: string;
+  bdName: string;
+  brandName: string;
+  campaignId: string;
+}) => {
+  const { to, bdName, brandName, campaignId } = payload;
+  const editUrl = `${process.env.BASE_EMAIL_URL}/dashboard/campaign/manage/edit/${campaignId}`;
+
+  try {
+    await transport.sendMail({
+      from: user,
+      to,
+      subject: `[Cult Creative] New draft campaign from ${brandName}`,
+      html: `
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>New Draft Campaign</title>
+            <style type="text/css">
+              @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap');
+              @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
+            </style>
+          </head>
+          <body style="margin: 0; padding: 0; background-color: #f0f2f5; font-family: 'Inter', Arial, sans-serif;">
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #f0f2f5;">
+              <tr>
+                <td align="center" style="padding: 20px 10px;">
+                  <table role="presentation" width="500" cellspacing="0" cellpadding="0" border="0" align="center" style="max-width: 400px; width: 100%; background-color: #ffffff;
+                    border-radius: 12px; overflow: hidden;">
+
+                    <!-- Header: Logo -->
+                    <tr>
+                      <td style="padding: 30px 20px 10px 20px;">
+                        <img src="https://drive.google.com/uc?id=1wbwEJp2qX5Hb9iirUQJVCmdpq-fg34oE" alt="Cult Creative Logo" width="120">
+                      </td>
+                    </tr>
+
+                    <!-- Headline -->
+                    <tr>
+                      <td style="padding: 10px 30px 20px 30px;">
+                        <h1 style="margin: 0; font-family: 'Instrument Serif', Georgia, serif; font-size: 32px; color: #000000; font-weight: 400; line-height: 36px;">
+                          A new draft just landed
+                        </h1>
+                      </td>
+                    </tr>
+
+                    <!-- Icon -->
+                    <tr>
+                      <td align="center" style="padding: 10px 20px;">
+                        <img src="https://drive.google.com/uc?id=13c5VhONNva9BMQIwXzn7t8stQrnT0OvV" alt="Rocket Icon" width="80" style="width: 80px; height: auto;">
+                      </td>
+                    </tr>
+
+                    <!-- Body -->
+                    <tr>
+                      <td style="padding: 20px 20px;">
+                        <p style="margin: 0 0 15px 0; font-family: 'Inter', Arial, sans-serif; font-size: 16px; color: #000000; line-height: 1.5;">
+                          Hey <strong>${bdName}</strong>,
+                        </p>
+                        <p style="margin: 0; font-family: 'Inter', Arial, sans-serif; font-size: 16px; color: #000000; line-height: 1.5;">
+                          <strong>${brandName}</strong> just submitted a campaign brief through your invite link.<br><br>
+                          We've spun it up as a draft in your account. Open it to fill in the remaining details, attach a package, and send it over for CSM review.
+                        </p>
+                      </td>
+                    </tr>
+
+                    <!-- CTA -->
+                    <tr>
+                      <td style="padding: 20px 20px;">
+                        <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" width="100%">
+                          <tr>
+                            <td align="center" style="background-color: #1340FF; border-radius: 50px;">
+                              <a href="${editUrl}" target="_blank" style="display: block; padding: 16px 20px; font-family: 'Inter', Arial, sans-serif; font-size: 16px; font-weight:
+                                 bold; color: #ffffff; text-decoration: none; border-radius: 50px;">Open Draft Campaign</a>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+
+                    <!-- Footer note -->
+                    <tr>
+                      <td style="padding: 20px 20px;">
+                        <p style="margin: 0; font-family: 'Inter', Arial, sans-serif; font-size: 14px; color: #919191; line-height: 1.5;">
+                          This draft is only visible to you until you submit it for CSM review.
+                        </p>
+                      </td>
+                    </tr>
+
+                    <!-- Footer -->
+                    <tr>
+                      <td style="padding: 20px 20px 40px;">
+                        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #f7f7f7;">
+                          <tr>
+                            <td align="center" style="padding: 20px 0 0;">
+                              <table role="presentation" cellspacing="0" cellpadding="0" border="0">
+                                <tr>
+                                  <td style="padding: 0 15px;"><a href="https://www.instagram.com/cultcreativeasia/" target="_blank"><img
+                                    src="https://drive.google.com/uc?id=18U5OsbRLVFGBXpG3Tod3_E_V-CKCoPxn" alt="Instagram" width="28"></a></td>
+                                  <td style="padding: 0 15px;"><a href="https://www.linkedin.com/company/cultcreativeapp/" target="_blank"><img
+                                    src="https://drive.google.com/uc?id=1-OLY5OezbzS7m37xcfLNXvmJyoNhAtTL" alt="LinkedIn" width="28"></a></td>
+                                  <td style="padding: 0 15px;"><a href="https://www.cultcreative.asia" target="_blank"><img
+                                    src="https://drive.google.com/uc?id=1L5rZbPbK3zouf40Krj-CRtmMa94qc_sP" alt="Website" width="28"></a></td>
+                                </tr>
+                              </table>
+                            </td>
+                          </tr>
+                          <tr>
+                            <td align="center" style="padding: 10px 0 0;">
+                              <a href="mailto:hello@cultcreative.asia" style="font-family: Arial, sans-serif; font-size: 14px; color: #333333; text-decoration: underline; font-weight:
+                                  bold;">hello@cultcreative.asia</a>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+          </body>
+        `,
+    });
+  } catch (error) {
+    console.error('bdDraftCreated email failed:', error);
+    throw error;
+  }
 };
