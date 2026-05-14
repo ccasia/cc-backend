@@ -8458,17 +8458,23 @@ export const removeCreatorFromCampaign = async (req: Request, res: Response) => 
         console.log(`Processing shortlisted creator: ${shortlistedCreator.id}`);
 
         if (shortlistedCreator.ugcVideos) {
+          // Re-read inside tx to clamp without going negative. Use creditPerVideo when present
+          // so tier campaigns return the correct credit amount, not just the video count.
+          const current = await tx.campaign.findUnique({
+            where: { id: campaign.id },
+            select: { creditsUtilized: true, creditsPending: true, campaignCredits: true },
+          });
+          const perVideo = shortlistedCreator.creditPerVideo ?? 1;
+          const creditsToReturn = shortlistedCreator.ugcVideos * perVideo;
+          const newUtilized = Math.max(0, (current?.creditsUtilized ?? 0) - creditsToReturn);
+          const budget = current?.campaignCredits ?? 0;
+          const newPending = Math.min(budget, (current?.creditsPending ?? 0) + creditsToReturn);
+
           await tx.campaign.update({
-            where: {
-              id: campaign.id,
-            },
+            where: { id: campaign.id },
             data: {
-              creditsUtilized: {
-                decrement: shortlistedCreator.ugcVideos!,
-              },
-              creditsPending: {
-                increment: shortlistedCreator.ugcVideos!,
-              },
+              creditsUtilized: newUtilized,
+              creditsPending: newPending,
             },
           });
           console.log(`Updated campaign credits for shortlisted creator`);

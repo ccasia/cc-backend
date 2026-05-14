@@ -11,6 +11,7 @@ import { clients, io } from '../server';
 import { reminderDueDate } from '@helper/notification';
 import { fetchInsightsForAllCampaigns } from '@services/insightFetchService';
 import { capturePostEngagementSnapshots, captureDailyPostEngagement } from '@services/postEngagementSnapshotService';
+import { runCreditDriftCheck } from '@services/creditDriftDetector';
 
 const prisma = new PrismaClient();
 
@@ -148,6 +149,20 @@ new CronJob(
       });
     } catch (error) {
       console.error('[Cronjob] Daily post engagement collection failed:', error);
+    }
+  },
+  null, // onComplete
+  true, // start
+  'Asia/Kuala_Lumpur',
+);
+
+new CronJob(
+  '0 2 * * *', // 02:00 AM daily
+  async function () {
+    try {
+      await runCreditDriftCheck();
+    } catch (error) {
+      console.error('[Cronjob] Credit drift check failed:', error);
     }
   },
   null, // onComplete
