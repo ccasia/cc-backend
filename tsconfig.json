@@ -7,8 +7,8 @@
     "moduleResolution": "NodeNext",
     "strict": false,
     "outDir": "./dist",
-    "rootDir": ".",
     "baseUrl": ".",
+    "rootDir": "./src", // Specify the root directory of source files
     "paths": {
       "@/*": ["./*"],
       "@controllers/*": ["./src/controller/*"],
