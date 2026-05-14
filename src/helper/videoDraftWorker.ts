@@ -514,7 +514,7 @@ async function deleteFileIfExists(filePath: string) {
                 data: {
                   caption: content.caption,
                   submissionDate: dayjs().format(),
-                  ...(!submission.campaign.campaignCredits && { content: url[0] }),
+                  ...(submission.campaign.campaignCredits == null && { content: url[0] }),
                 },
                 include: {
                   submissionType: true,

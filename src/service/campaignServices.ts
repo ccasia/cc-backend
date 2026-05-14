@@ -99,7 +99,7 @@ export const deductCredits = async (campaignId: string, userId: string, prismaFu
     });
 
     if (!campaign || !user) throw new Error('Data not found');
-    if (!campaign.campaignCredits) throw new Error('Campaign credits not found');
+    if (campaign.campaignCredits == null) throw new Error('Campaign credits not found');
 
     // For v4 campaigns, credits are already deducted when agreement is sent
     // Skip credit deduction to avoid double-counting

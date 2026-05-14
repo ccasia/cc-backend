@@ -6950,7 +6950,7 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
         console.log(`✅ V4 submissions updated: ${result.deleted} deleted, ${result.created} created`);
 
         // Recalculate campaign credits
-        if (campaign.campaignCredits) {
+        if (campaign.campaignCredits != null) {
           const sentAgreements = await prisma.creatorAgreement.findMany({
             where: { campaignId, isSent: true },
             include: {
@@ -7325,7 +7325,7 @@ export const sendAgreement = async (req: Request, res: Response) => {
         creditPerVideo = 1;
       }
 
-      if (campaign.campaignCredits) {
+      if (campaign.campaignCredits != null) {
         const sentAgreementsBefore = await prisma.creatorAgreement.findMany({
           where: { campaignId, isSent: true },
           include: {
@@ -7501,7 +7501,7 @@ export const sendAgreement = async (req: Request, res: Response) => {
       }
     }
 
-    if (campaign.campaignCredits) {
+    if (campaign.campaignCredits != null) {
       const sentAgreements = await prisma.creatorAgreement.findMany({
         where: { campaignId, isSent: true },
         include: {
@@ -9144,7 +9144,7 @@ export const shortlistCreatorV2 = async (req: Request, res: Response) => {
           );
         }
 
-        if (!campaign?.campaignCredits) throw new Error('Campaign is not assigned to any credits');
+        if (campaign?.campaignCredits == null) throw new Error('Campaign is not assigned to any credits');
 
         const existingCreators = campaign.shortlisted.reduce((acc, creator) => acc + (creator.ugcVideos ?? 0), 0);
 
@@ -11596,7 +11596,7 @@ export const assignUGCCreditsV3 = async (req: Request, res: Response) => {
       const alreadyUtilized = (campaign.shortlisted || []).reduce((acc, item) => acc + (item.ugcVideos || 0), 0);
 
       // Enforce remaining credits check (campaignCredits - alreadyUtilized) - only for non-v4 campaigns
-      if (campaign.campaignCredits && totalCreditsToAssign > campaign.campaignCredits - alreadyUtilized) {
+      if (campaign.campaignCredits != null && totalCreditsToAssign > campaign.campaignCredits - alreadyUtilized) {
         return res.status(400).json({
           message: `Not enough credits available. Remaining: ${
             campaign.campaignCredits - alreadyUtilized
