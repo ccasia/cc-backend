@@ -28,11 +28,6 @@ import {
   verifyClient,
   deleteAccount,
   setupTwoFactor,
-  sendVerificationCode,
-  verifyCode,
-  getOtpStatus,
-  resendVerificationCode,
-  getSessionStatus,
 } from '@controllers/authController';
 
 import { validateToken } from '@utils/jwtHelper';
@@ -54,12 +49,11 @@ const router = Router();
 
 // router.get('/', isLoggedIn, displayAll);
 router.get('/me', getprofile);
-router.get('/otp-status', getOtpStatus);
+
 router.get('/verifyAdmin', verifyAdmin);
 router.get('/checkTokenValidity/:token', checkTokenValidity);
 router.get('/currentUser', validateToken, getCurrentUser);
 router.get('/checkCreator', validateToken, checkCreator);
-router.get('/session-status', getSessionStatus);
 
 // Google Auth
 router.get('/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
@@ -88,10 +82,6 @@ router.post('/resendVerificationLinkCreator', resendVerificationLinkCreator);
 router.post('/resendVerificationLinkClient', resendVerificationLinkClient);
 router.post('/verifyClient', verifyClient);
 router.post('/setupTwoFactor', isLoggedIn, setupTwoFactor);
-
-router.post('/send-code', sendVerificationCode);
-router.post('/resend-code', resendVerificationCode);
-router.patch('/verify-code', verifyCode);
 
 // Client authentication routes
 router.post('/invite-client', inviteClient);
