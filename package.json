@@ -6,7 +6,8 @@
   "license": "MIT",
   "scripts": {
     "start": "node dist/src/server.js",
-    "build": "tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json",
+    "build": "swc src -d dist --strip-leading-paths && tsc-alias -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.build.json --noEmit",
     "build_watch": "tsc --watch",
     "dev": "npx nodemon",
     "lint": "npx eslint . --ext .ts",
@@ -92,6 +93,8 @@
   },
   "devDependencies": {
     "@faker-js/faker": "^9.4.0",
+    "@swc/cli": "^0.8.1",
+    "@swc/core": "^1.15.33",
     "@types/amqplib": "^0.10.5",
     "@types/bcrypt": "^5.0.2",
     "@types/connect-pg-simple": "^7.0.3",
