@@ -22,7 +22,6 @@
     }
   },
   "module": {
-    "type": "nodenext",
-    "resolveFully": true
+    "type": "commonjs"
   }
 }
