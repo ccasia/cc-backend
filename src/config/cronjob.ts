@@ -10,10 +10,7 @@ import { notifications } from '@constants/reminders';
 import { clients, io } from '../server';
 import { reminderDueDate } from '@helper/notification';
 import { fetchInsightsForAllCampaigns } from '@services/insightFetchService';
-import {
-  capturePostEngagementSnapshots,
-  captureDailyPostEngagement,
-} from '@services/postEngagementSnapshotService';
+import { capturePostEngagementSnapshots, captureDailyPostEngagement } from '@services/postEngagementSnapshotService';
 
 const prisma = new PrismaClient();
 
