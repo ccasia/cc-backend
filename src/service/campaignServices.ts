@@ -29,7 +29,7 @@ export const logChange = async (
   }
 };
 
-export const logAdminChange = async (message: string, adminId: string, req?: Request) => {
+export const logAdminChange = async (message: string, adminId?: string, req?: Request) => {
   if (adminId === undefined) {
     throw new Error('Admin ID is undefined');
   }
@@ -223,10 +223,7 @@ export async function rejectPendingPitchInternal(
     // Step 3: Delete all submissions for user in this campaign
     await tx.submission.deleteMany({
       where: {
-        AND: [
-          { campaignId },
-          { userId },
-        ],
+        AND: [{ campaignId }, { userId }],
       },
     });
 
@@ -251,10 +248,7 @@ export async function rejectPendingPitchInternal(
     // Step 5: Delete creator agreement
     const agreement = await tx.creatorAgreement.findFirst({
       where: {
-        AND: [
-          { userId },
-          { campaignId },
-        ],
+        AND: [{ userId }, { campaignId }],
       },
     });
 

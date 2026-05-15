@@ -13,7 +13,7 @@ import '@configs/cronjob';
 import http from 'http';
 import { markMessagesAsSeen } from '@controllers/threadController';
 import { handleSendMessage, fetchMessagesFromThread } from '@services/threadService';
-import { isLoggedIn } from '@middlewares/onlyLogin';
+import { authenticate } from '@middlewares/authenticate';
 import { Server } from 'socket.io';
 import '@services/uploadVideo';
 
@@ -45,6 +45,7 @@ import { xero } from '@configs/xero';
 import { logChange } from '@services/campaignServices';
 
 import { users } from '@utils/activeUsers';
+import { mobileRouter } from '@routes/mobile';
 
 import { OTPTypes } from '@/types/index';
 
@@ -152,6 +153,7 @@ app.use(
 app.use(passport.initialize());
 app.use(passport.session());
 
+app.use('/mobile', mobileRouter);
 app.use(router);
 
 app.post('/webhooks/xero', express.raw({ type: 'application/json', limit: '100mb' }), async (req, res) => {
@@ -370,7 +372,7 @@ app.get('/', (req: Request, res: Response) => {
   res.send(`Your IP is ${req.ip}. ${process.env.NODE_ENV} is running...`);
 });
 
-app.get('/users', isLoggedIn, async (_req, res) => {
+app.get('/users', authenticate, async (_req, res) => {
   const prisma = new PrismaClient();
   try {
     const users = await prisma.user.findMany({
@@ -408,7 +410,7 @@ app.get('/campaign/:id', async (req, res) => {
       {
         context: { campaignId: campaignId },
         streamMode: 'messages',
-        configurable: { thread_id: req.session.userid.toString() },
+        configurable: { thread_id: req.userId!.toString() },
       },
     );
 

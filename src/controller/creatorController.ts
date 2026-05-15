@@ -5,10 +5,7 @@ import { uploadAgreementForm, uploadProfileImage } from '@configs/cloudStorage.c
 import { Title, saveNotification } from './notificationController';
 import { clients, io } from '../server';
 import { updateInvoices } from '@services/invoiceService';
-import {
-  exportCreatorsToSpreadsheet,
-  exportMediaKitStatusToSpreadsheet,
-} from '@services/creatorsSpreadsheetService';
+import { exportCreatorsToSpreadsheet, exportMediaKitStatusToSpreadsheet } from '@services/creatorsSpreadsheetService';
 import { createKanbanBoard } from './kanbanController';
 import { createCampaignCreatorSpreadSheet } from '@services/google_sheets/sheets';
 import {
@@ -513,11 +510,14 @@ export const getCreatorFullInfoByIdPublic = async (req: Request, res: Response) 
 
 export const updatePaymentForm = async (req: Request, res: Response) => {
   const { bankName, bankAccName, bankNumber, icPassportNumber, countryOfBank }: any = req.body;
+  const userId = req.userId;
+
+  console.log(req.body);
 
   try {
     const existingPaymentForm = await prisma.paymentForm.findFirst({
       where: {
-        userId: req.session.userid,
+        userId: userId,
       },
       include: {
         user: {
@@ -529,8 +529,6 @@ export const updatePaymentForm = async (req: Request, res: Response) => {
         },
       },
     });
-    // {"payTo":"Dan","bankName":"Affin Bank Berhad","accountName":"asdasdasd","accountEmail":"debis60817@lxheir.com","accountNumber":"131231231"}
-    // if (!existingPaymentForm) return res.status(404).json({ message: 'Payment form not found' });
 
     if (existingPaymentForm?.status === 'rejected') {
       const { name, email } = existingPaymentForm.user;
@@ -548,7 +546,7 @@ export const updatePaymentForm = async (req: Request, res: Response) => {
 
     const paymentForm = await prisma.paymentForm.upsert({
       where: {
-        userId: req.session.userid as string,
+        userId: req.userId as string,
       },
       update: {
         icNumber: icPassportNumber.toString(),
@@ -559,7 +557,7 @@ export const updatePaymentForm = async (req: Request, res: Response) => {
         status: 'approved',
       },
       create: {
-        user: { connect: { id: req.session.userid } },
+        user: { connect: { id: req.userId } },
         icNumber: icPassportNumber.toString(),
         bankAccountNumber: bankNumber.toString(),
         bankAccountName: bankAccName.toString(),
@@ -582,15 +580,16 @@ export const updatePaymentForm = async (req: Request, res: Response) => {
       },
     });
 
-    return res.status(200).json({ message: 'Successfully updated payment form.' });
+    return res.status(200).json({ message: 'Successfully updated payment form.', success: true });
   } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   }
 };
 
 export const updateCreatorForm = async (req: Request, res: Response) => {
   //   const { fullName, address, icNumber, bankName, accountNumber } = req.body;
-  //   const userId = req.session.userid as string;
+  //   const userId = req.userId as string;
 
   const { fullName, address, icNumber, bankName, accountName, accountNumber, userId } = req.body;
 
@@ -719,7 +718,7 @@ export const getCreatorSocialMediaData = async (req: Request, res: Response) => 
   try {
     const creator = await prisma.creator.findUnique({
       where: {
-        userId: req.session.userid as string,
+        userId: req.userId as string,
       },
       select: {
         socialMediaData: true,
@@ -896,11 +895,11 @@ export const exportCreatorsToSheet = async (req: Request, res: Response) => {
   try {
     // Call both service functions to export creators and media kit status to spreadsheet
     console.log('Starting export to spreadsheet...');
-    
+
     // Export main creator data
     console.log('Exporting main creator data...');
     const spreadsheetUrl = await exportCreatorsToSpreadsheet();
-    
+
     // Export media kit status data to a separate sheet
     console.log('Exporting media kit status data...');
     await exportMediaKitStatusToSpreadsheet();

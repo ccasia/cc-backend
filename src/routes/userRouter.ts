@@ -13,24 +13,24 @@ import {
   getUserByEmail,
 } from '@controllers/userController';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
-import { isLoggedIn } from '@middlewares/onlyLogin';
+import { authenticate } from '@middlewares/authenticate';
 
 const router = Router();
 
-router.get('/admins', isSuperAdmin, getAdmins);
-router.get('/alladmins', getAdmins);
+router.get('/admins', authenticate, isSuperAdmin, getAdmins);
+router.get('/alladmins', authenticate, getAdmins);
 router.get('/forget-password-token/:token', checkForgetPasswordToken);
-router.get('/overview/:userId', isLoggedIn, getOverview);
-router.get('/by-email/:email', isSuperAdmin, getUserByEmail);
+router.get('/overview/:userId', authenticate, getOverview);
+router.get('/by-email/:email', authenticate, isSuperAdmin, getUserByEmail);
 // router.get('/getAdmins', isSuperAdmin, getAllActiveAdmins);
 
 router.get('/admin-logs/:adminId', getAdminLogs);
 
-router.post('/admins', isSuperAdmin, inviteAdmin);
-router.post('/createAdmin', isSuperAdmin, createAdmin);
+router.post('/admins', authenticate, isSuperAdmin, inviteAdmin);
+router.post('/createAdmin', authenticate, isSuperAdmin, createAdmin);
 router.post('/forget-password', forgetPassword);
 
-router.patch('/admin/profile', isSuperAdmin, updateProfileAdmin);
+router.patch('/admin/profile', authenticate, isSuperAdmin, updateProfileAdmin);
 router.patch('/changePassword', changePassword);
 
 router.put('/admins', updateAdminInformation);

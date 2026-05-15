@@ -26,7 +26,7 @@ const generateUniqueBdToken = async (): Promise<string> => {
 
 // GET /bd/my-invite-link
 export const getMyInviteLink = async (req: Request, res: Response) => {
-  const userid = req.session.userid;
+  const userid = req.userId;
   if (!userid) return res.status(401).json({ message: 'User not authenticated' });
 
   try {
@@ -54,7 +54,7 @@ export const getMyInviteLink = async (req: Request, res: Response) => {
 
 // POST /bd/my-invite-link/rotate
 export const rotateMyInviteLink = async (req: Request, res: Response) => {
-  const userid = req.session.userid;
+  const userid = req.userId;
   if (!userid) return res.status(401).json({ message: 'User not authenticated' });
 
   try {
@@ -139,8 +139,7 @@ export const bdSubmitDraft = async (req: Request, res: Response) => {
   const kpis = toStringArray(body.kpis);
   const gender = toStringArray(body.gender);
   const age = toStringArray(body.age);
-  const countrySingle: string =
-    typeof body.country === 'string' && body.country.trim() ? body.country.trim() : '';
+  const countrySingle: string = typeof body.country === 'string' && body.country.trim() ? body.country.trim() : '';
   const language = toStringArray(body.language);
   const creatorPersona = toStringArray(body.creator_persona);
 

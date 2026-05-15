@@ -106,7 +106,10 @@ export const getNonPlatformDiscoveryCreatorsList = async (req: Request, res: Res
 };
 
 export const inviteDiscoveryCreatorsController = async (req: Request, res: Response) => {
-  const userId = req.session.userid;
+  const userId = req.userId;
+
+  if (!userId) return res.status(401).json({ message: 'Unathorized' });
+
   const { campaignId, creatorIds, creators } = req.body || {};
 
   try {

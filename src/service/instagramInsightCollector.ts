@@ -16,6 +16,7 @@ interface PostInsight {
   shares: number;
   reach: number;
   impressions: number;
+  saves: number;
 }
 
 function parseInstagramInsight(metrics: { name: string; value: number }[]): PostInsight {
@@ -27,6 +28,7 @@ function parseInstagramInsight(metrics: { name: string; value: number }[]): Post
     shares: map['shares'] ?? 0,
     reach: map['reach'] ?? 0,
     impressions: map['impressions'] ?? 0,
+    saves: map['saved'] ?? 0,
   };
 }
 
@@ -38,13 +40,14 @@ function parseTikTokVideo(video: any): PostInsight {
     shares: video.share_count ?? 0,
     reach: 0,
     impressions: 0,
+    saves: 0,
   };
 }
 
 // ── Instagram ─────────────────────────────────────────────────────────────────
 
 async function fetchInstagramMetrics(urlsByUser: Map<string, { url: string; userId: string }[]>) {
-  const results: { userId: string; followers: number; posts: PostInsight[] }[] = [];
+  const results: { userId: string; followers: number; posts: PostInsight[]; totalSaved: number }[] = [];
 
   for (const [userId, urls] of urlsByUser) {
     try {
@@ -52,20 +55,23 @@ async function fetchInstagramMetrics(urlsByUser: Map<string, { url: string; user
         ensureValidInstagramToken(userId),
         prisma.creator.findFirst({
           where: { userId },
-          select: { instagramUser: { select: { media_count: true, followers_count: true } } },
+          select: { instagramUser: { select: { media_count: true, followers_count: true, totalSaves: true } } },
         }),
       ]);
 
       const mediaCount = creator?.instagramUser?.media_count ?? 50;
       const followers = creator?.instagramUser?.followers_count ?? 0;
+      const totalSaved = creator?.instagramUser?.totalSaves ?? 0;
       const { videos } = await getInstagramMedias(accessToken, mediaCount);
       const posts: PostInsight[] = [];
 
       for (const urlData of urls) {
         const shortCode = extractInstagramShortcode(urlData.url);
+
         if (!shortCode) continue;
 
         const video = videos.find((v: any) => v.shortcode === shortCode);
+
         if (!video) continue;
 
         try {
@@ -76,7 +82,7 @@ async function fetchInstagramMetrics(urlsByUser: Map<string, { url: string; user
         }
       }
 
-      results.push({ userId, followers, posts });
+      results.push({ userId, followers, posts, totalSaved });
     } catch (err) {
       console.warn(`[InsightCollector] Skipping Instagram creator ${userId}:`, (err as Error).message);
     }
@@ -104,8 +110,8 @@ async function fetchTikTokMetrics(urlsByUser: Map<string, { url: string; userId:
       const posts: PostInsight[] = [];
 
       for (const urlData of urls) {
-        const videoId = extractTikTokVideoId(urlData.url);
-
+        const videoId = await extractTikTokVideoId(urlData.url);
+        console.log('Video URL', urlData);
         if (!videoId) continue;
 
         try {
@@ -137,7 +143,8 @@ function aggregateCreatorResults(
     totalComments = 0,
     totalShares = 0,
     totalReach = 0,
-    totalImpressions = 0;
+    totalImpressions = 0,
+    totalSaved = 0;
 
   const creatorMetrics: NonNullable<ExternalMetrics['engagement']>['creatorMetrics'] = [];
   const creatorPersonas: NonNullable<ExternalMetrics['creators']> = [];
@@ -146,7 +153,8 @@ function aggregateCreatorResults(
     let cViews = 0,
       cLikes = 0,
       cComments = 0,
-      cShares = 0;
+      cShares = 0,
+      cSaved = 0;
 
     for (const post of creator.posts) {
       totalViews += post.views;
@@ -159,9 +167,11 @@ function aggregateCreatorResults(
       cLikes += post.likes;
       cComments += post.comments;
       cShares += post.shares;
+      totalSaved += post.saves;
+      cSaved += post.saves;
     }
 
-    const cEngagements = cLikes + cComments + cShares;
+    const cEngagements = cLikes + cComments + cShares + cSaved;
     const cEngRate = creator.followers > 0 ? +((cEngagements / creator.followers) * 100).toFixed(2) : 0;
 
     creatorMetrics.push({
@@ -171,6 +181,7 @@ function aggregateCreatorResults(
       followers: creator.followers,
       views: cViews,
       likes: cLikes,
+      saved: cSaved,
       comments: cComments,
     });
     creatorPersonas.push({
@@ -179,6 +190,7 @@ function aggregateCreatorResults(
       totalLikes: cLikes,
       totalComments: cComments,
       engagementRate: cEngRate,
+      totalSaved: cSaved,
       followers: creator.followers,
     });
   }
@@ -189,6 +201,7 @@ function aggregateCreatorResults(
     totalComments,
     totalShares,
     totalReach,
+    totalSaved,
     totalImpressions,
     creatorMetrics,
     creatorPersonas,
@@ -198,17 +211,9 @@ function aggregateCreatorResults(
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 export async function fetchInstagramCampaignMetrics(campaignId: string): Promise<ExternalMetrics> {
-  const [allUrls, manualEntries, snapshotIg, snapshotTt] = await Promise.all([
+  const [allUrls, manualEntries] = await Promise.all([
     getCampaignSubmissionUrls(campaignId), // Get all urls – Instagram & Tiktok
     prisma.manualCreatorEntry.findMany({ where: { campaignId } }), // Get all manual entry for insights
-    prisma.insightSnapshot.findFirst({
-      where: { campaignId, platform: 'Instagram' },
-      orderBy: { snapshotDate: 'desc' },
-    }),
-    prisma.insightSnapshot.findFirst({
-      where: { campaignId, platform: 'TikTok' },
-      orderBy: { snapshotDate: 'desc' },
-    }),
   ]);
 
   // Group URLs by platform then by userId
@@ -245,59 +250,50 @@ export async function fetchInstagramCampaignMetrics(campaignId: string): Promise
         likes: acc.likes + e.likes,
         comments: acc.comments + e.comments,
         shares: acc.shares + e.shares,
+        saved: acc.saved + (e.saved ?? 0),
       }),
-      { views: 0, likes: 0, comments: 0, shares: 0 },
+      { views: 0, likes: 0, comments: 0, shares: 0, saved: 0 },
     );
 
   const manualIgTotals = manualSum(manualIg);
   const manualTtTotals = manualSum(manualTt);
 
   // Latest snapshot totals per platform
-  const snapIgTotals = {
-    views: snapshotIg?.totalViews ?? 0,
-    likes: snapshotIg?.totalLikes ?? 0,
-    comments: snapshotIg?.totalComments ?? 0,
-    shares: snapshotIg?.totalShares ?? 0,
-    reach: snapshotIg?.totalReach ?? 0,
-  };
+  // const snapIgTotals = {
+  //   views: snapshotIg?.totalViews ?? 0,
+  //   likes: snapshotIg?.totalLikes ?? 0,
+  //   comments: snapshotIg?.totalComments ?? 0,
+  //   shares: snapshotIg?.totalShares ?? 0,
+  //   reach: snapshotIg?.totalReach ?? 0,
+  // };
 
-  const snapTtTotals = {
-    views: snapshotTt?.totalViews ?? 0,
-    likes: snapshotTt?.totalLikes ?? 0,
-    comments: snapshotTt?.totalComments ?? 0,
-    shares: snapshotTt?.totalShares ?? 0,
-    reach: snapshotTt?.totalReach ?? 0,
-  };
+  // const snapTtTotals = {
+  //   views: snapshotTt?.totalViews ?? 0,
+  //   likes: snapshotTt?.totalLikes ?? 0,
+  //   comments: snapshotTt?.totalComments ?? 0,
+  //   shares: snapshotTt?.totalShares ?? 0,
+  //   reach: snapshotTt?.totalReach ?? 0,
+  // };
 
   // Combined totals: API + Manual + Snapshot
-  const totalViews =
-    Math.max(ig.totalViews + tt.totalViews, snapIgTotals.views + snapTtTotals.views) +
-    manualIgTotals.views +
-    manualTtTotals.views;
+  const totalViews = ig.totalViews + tt.totalViews + manualIgTotals.views + manualTtTotals.views;
 
-  const totalLikes =
-    Math.max(ig.totalLikes + tt.totalLikes, snapIgTotals.likes + snapTtTotals.likes) +
-    manualIgTotals.likes +
-    manualTtTotals.likes;
+  const totalLikes = ig.totalLikes + tt.totalLikes + manualIgTotals.likes + manualTtTotals.likes;
 
-  const totalComments =
-    Math.max(ig.totalComments + tt.totalComments, snapIgTotals.comments + snapTtTotals.comments) +
-    manualIgTotals.comments +
-    manualTtTotals.comments;
+  const totalComments = ig.totalComments + tt.totalComments + manualIgTotals.comments + manualTtTotals.comments;
 
-  const totalShares =
-    Math.max(ig.totalShares + tt.totalShares, snapIgTotals.shares + snapTtTotals.shares) +
-    manualIgTotals.shares +
-    manualTtTotals.shares;
+  const totalShares = ig.totalShares + tt.totalShares + manualIgTotals.shares + manualTtTotals.shares;
 
-  const totalEngagements = totalLikes + totalComments + totalShares;
-  const totalReach = ig.totalReach + tt.totalReach + snapIgTotals.reach + snapTtTotals.reach;
+  const totalSaved = ig.totalSaved + tt.totalSaved + manualIgTotals.saved + manualTtTotals.saved;
+
+  const totalEngagements = totalLikes + totalComments + totalShares + totalSaved;
+  const totalReach = ig.totalReach + tt.totalReach;
   const totalImpressions = ig.totalImpressions + tt.totalImpressions;
 
   const totalFollowers = [...igResults, ...ttResults].reduce((s, c) => s + c.followers, 0);
   const engagementRate = Math.max(
     +((totalEngagements / totalViews) * 100).toFixed(2),
-    +((totalEngagements / totalFollowers) * 100).toFixed(2),
+    // +((totalEngagements / totalFollowers) * 100).toFixed(2),
   );
   // totalFollowers > 0
   //   ? +((totalEngagements / totalFollowers) * 100).toFixed(2)
@@ -305,11 +301,9 @@ export async function fetchInstagramCampaignMetrics(campaignId: string): Promise
 
   if (totalViews === 0 && totalEngagements === 0) return {};
 
-  const igPostCount =
-    allUrls.filter((u) => u.platform === 'Instagram').length + manualIg.length + (snapshotIg?.totalPosts ?? 0);
+  const igPostCount = allUrls.filter((u) => u.platform === 'Instagram').length + manualIg.length;
 
-  const ttPostCount =
-    allUrls.filter((u) => u.platform === 'TikTok').length + manualTt.length + (snapshotTt?.totalPosts ?? 0);
+  const ttPostCount = allUrls.filter((u) => u.platform === 'TikTok').length + manualTt.length;
 
   const igEngagements =
     ig.totalLikes +
@@ -317,10 +311,7 @@ export async function fetchInstagramCampaignMetrics(campaignId: string): Promise
     ig.totalShares +
     manualIgTotals.likes +
     manualIgTotals.comments +
-    manualIgTotals.shares +
-    snapIgTotals.likes +
-    snapIgTotals.comments +
-    snapIgTotals.shares;
+    manualIgTotals.shares;
 
   const ttEngagements =
     tt.totalLikes +
@@ -328,10 +319,7 @@ export async function fetchInstagramCampaignMetrics(campaignId: string): Promise
     tt.totalShares +
     manualTtTotals.likes +
     manualTtTotals.comments +
-    manualTtTotals.shares +
-    snapTtTotals.likes +
-    snapTtTotals.comments +
-    snapTtTotals.shares;
+    manualTtTotals.shares;
 
   return {
     summary: {

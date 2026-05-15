@@ -1,9 +1,9 @@
 import { createNewBug } from '@controllers/bugController';
-import { isLoggedIn } from '@middlewares/onlyLogin';
+import { authenticate } from '@middlewares/authenticate';
 import { Router } from 'express';
 
 const router = Router();
 
-router.post('/', isLoggedIn, createNewBug);
+router.post('/', authenticate, createNewBug);
 
 export default router;

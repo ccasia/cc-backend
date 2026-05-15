@@ -17,7 +17,7 @@ const prisma = new PrismaClient();
  */
 export const swapGuestWithPlatformCreator = async (req: Request, res: Response) => {
   const { campaignId, guestUserId, platformUserId } = req.body;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   // Validate input
   if (!campaignId || !guestUserId || !platformUserId) {
@@ -128,6 +128,12 @@ export const swapGuestWithPlatformCreator = async (req: Request, res: Response) 
       console.log(`[SWAP] Found guest shortlist:`, guestShortlist);
       console.log(`[SWAP] Found guest pitch:`, guestPitch?.id);
 
+      // Fallback for tier snapshot when shortlist row hasn't been created yet
+      const guestCreator = await tx.creator.findUnique({
+        where: { userId: guestUserId },
+        include: { creditTier: true },
+      });
+
       // Store guest data to transfer - prioritize shortlist data, fallback to pitch data
       const transferData = {
         ugcVideos: guestShortlist?.ugcVideos ?? guestPitch?.ugcCredits ?? null,
@@ -138,6 +144,8 @@ export const swapGuestWithPlatformCreator = async (req: Request, res: Response) 
         isCampaignDone: guestShortlist?.isCampaignDone ?? false,
         isCreatorPaid: guestShortlist?.isCreatorPaid ?? false,
         shortlisted_date: guestShortlist?.shortlisted_date ?? new Date(),
+        creditTierId: guestShortlist?.creditTierId ?? guestCreator?.creditTierId ?? null,
+        creditPerVideo: guestShortlist?.creditPerVideo ?? guestCreator?.creditTier?.creditsPerVideo ?? null,
       };
 
       // Transfer guest creator's profileLink to platform creator
@@ -149,6 +157,27 @@ export const swapGuestWithPlatformCreator = async (req: Request, res: Response) 
           },
         });
         console.log(`[SWAP] Transferred guest profile link to platform creator: ${guestUser.creator.profileLink}`);
+      }
+
+      // Copy guest's tier to the platform creator so it shows up across the app, not just
+      // in this campaign. Skip if they already have a tier, since their real one is better
+      // than the admin's manual guess.
+      if (platformUser.creator && !platformUser.creator.creditTierId && guestCreator?.creditTierId) {
+        const followerCountToCopy =
+          (platformUser.creator.manualFollowerCount ?? 0) > 0
+            ? platformUser.creator.manualFollowerCount
+            : guestCreator.manualFollowerCount;
+        await tx.creator.update({
+          where: { id: platformUser.creator.id },
+          data: {
+            creditTierId: guestCreator.creditTierId,
+            tierUpdatedAt: new Date(),
+            ...(followerCountToCopy != null && { manualFollowerCount: followerCountToCopy }),
+          },
+        });
+        console.log(
+          `[SWAP] Transferred guest tier (${guestCreator.creditTier?.name ?? guestCreator.creditTierId}) and follower count (${followerCountToCopy}) to platform creator`,
+        );
       }
 
       // 2. Delete old shortlist entry for guest (if exists)
@@ -460,7 +489,7 @@ export const swapGuestWithPlatformCreator = async (req: Request, res: Response) 
  * POST /api/campaign/cleanupGuestCreators
  */
 export const cleanupOrphanedGuestUsers = async (req: Request, res: Response) => {
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     // Find all guest users

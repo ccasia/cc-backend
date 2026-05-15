@@ -81,8 +81,7 @@ Ffmpeg.setFfprobePath(ffprobePath.path);
 
 const prisma = new PrismaClient();
 
-const normalizePlatform = (platform?: string): SocialPlatform =>
-  platform === 'tiktok' ? 'tiktok' : 'instagram';
+const normalizePlatform = (platform?: string): SocialPlatform => (platform === 'tiktok' ? 'tiktok' : 'instagram');
 
 const getFollowerForPlatform = (creator: any, platform: SocialPlatform): number => {
   const instagramFollowers = creator?.instagramUser?.followers_count || 0;
@@ -328,7 +327,7 @@ export const createCampaign = async (req: Request, res: Response) => {
         const creditAllocationBreakdown: any[] = [];
         const parsedCampaignCredits = Number(campaignCredits) || 0;
         let remainingCreditsToAllocate = parsedCampaignCredits;
-        let selectedSubscriptionId: string | undefined = existingClient.subscriptions?.[0]?.id;
+        const selectedSubscriptionId: string | undefined = existingClient.subscriptions?.[0]?.id;
 
         if (existingClient.subscriptions && existingClient.subscriptions.length > 0 && parsedCampaignCredits > 0) {
           // FIFO: Charge oldest subscriptions first
@@ -546,7 +545,7 @@ export const createCampaign = async (req: Request, res: Response) => {
         }
 
         // Check if the user creating the campaign is a Client
-        const userId = req.session.userid;
+        const userId = req.userId;
 
         if (userId) {
           const currentUser = await tx.user.findUnique({
@@ -676,7 +675,7 @@ export const createCampaign = async (req: Request, res: Response) => {
 
         // Get admin info for logging
         const admin = await tx.user.findUnique({
-          where: { id: req.session.userid },
+          where: { id: req.userId },
         });
         const adminName = admin?.name || 'Admin';
         const userRole = admin?.role || 'admin';
@@ -686,12 +685,12 @@ export const createCampaign = async (req: Request, res: Response) => {
         await tx.campaignLog.create({
           data: {
             message: campaignActivityMessage,
-            adminId: req.session.userid,
+            adminId: req.userId,
             campaignId: campaign.id,
           },
         });
 
-        const adminId = req.session.userid;
+        const adminId = req.userId;
         if (adminId) {
           const adminLogMessage = `Created campaign - "${campaign.name}" `;
           logAdminChange(adminLogMessage, adminId, req);
@@ -959,7 +958,7 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
         const creditAllocationBreakdown: any[] = [];
         const parsedCampaignCredits = Number(campaignCredits) || 0;
         let remainingCreditsToAllocate = parsedCampaignCredits;
-        let selectedSubscriptionId: string | undefined = existingClient.subscriptions?.[0]?.id;
+        const selectedSubscriptionId: string | undefined = existingClient.subscriptions?.[0]?.id;
 
         if (existingClient.subscriptions && existingClient.subscriptions.length > 0 && parsedCampaignCredits > 0) {
           for (const sub of existingClient.subscriptions) {
@@ -1255,7 +1254,7 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
         }
 
         // Check if creating user is a Client
-        const userId = req.session.userid;
+        const userId = req.userId;
         if (userId) {
           const currentUser = await tx.user.findUnique({
             where: { id: userId },
@@ -1344,12 +1343,12 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
         await tx.campaignLog.create({
           data: {
             message: 'Campaign Created',
-            adminId: req.session.userid,
+            adminId: req.userId,
             campaignId: campaign.id,
           },
         });
 
-        const adminId = req.session.userid;
+        const adminId = req.userId;
         if (adminId) {
           logAdminChange(`Created campaign - "${campaign.name}"`, adminId, req);
         }
@@ -1572,7 +1571,7 @@ export const exportCreatorsCampaignSheet = async (_req: Request, res: Response) 
 
 // Campaign Info for Admin
 export const getAllCampaigns = async (req: Request, res: Response) => {
-  const id = req.session.userid;
+  const id = req.userId;
 
   console.log('TEST');
 
@@ -2063,7 +2062,7 @@ export const getAllCampaignsFinance = async (req: Request, res: Response) => {
 };
 
 export const matchCampaignWithCreator = async (req: Request, res: Response) => {
-  const { userid } = req.session;
+  const userid = req.userId;
   const { cursor, take = 10, search } = req.query;
   const campaignId = req.query?.campaignId as string;
 
@@ -2376,7 +2375,7 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
 
 export const creatorMakePitch = async (req: Request, res: Response) => {
   const { campaignId, content, type, followerCount } = req.body;
-  const id = req.session.userid;
+  const id = req.userId;
   let pitch;
 
   try {
@@ -2628,7 +2627,7 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
 };
 
 export const getAllPitches = async (req: Request, res: Response) => {
-  const userId = req.session.userid;
+  const userId = req.userId;
 
   try {
     // Get user role for role-based status display
@@ -2819,7 +2818,9 @@ export const getCampaignsByCreatorId = async (req: Request, res: Response) => {
 
 export const getCampaignForCreatorById = async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { userid } = req.session as any;
+
+  // `authenticate` middleware guarantees req.userId is set (returns 401 otherwise).
+  const userid = req.userId as string;
   try {
     const campaign = await prisma.campaign.findUnique({
       where: {
@@ -2971,7 +2972,7 @@ export const getCampaignForCreatorById = async (req: Request, res: Response) => 
 };
 
 export const getCampaignPitchForCreator = async (req: Request, res: Response) => {
-  const userid = req.session.userid;
+  const userid = req.userId;
 
   try {
     const campaings = await prisma.pitch.findMany({
@@ -3083,7 +3084,7 @@ export const getCampaignLog = async (req: Request, res: Response) => {
 
 export const getPitchById = async (req: Request, res: Response) => {
   const { id } = req.params;
-  const userId = req.session.userid;
+  const userId = req.userId;
 
   try {
     // Get user role for role-based status display
@@ -3874,7 +3875,7 @@ export const getMyCampaigns = async (req: Request, res: Response) => {
 export const changeCampaignStage = async (req: Request, res: Response) => {
   const { status } = req.body;
   const { campaignId } = req.params;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   let updatedCampaign: any;
   try {
@@ -3997,7 +3998,7 @@ export const changeCampaignStage = async (req: Request, res: Response) => {
 
 export const closeCampaign = async (req: Request, res: Response) => {
   const { id } = req.params;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     // Use transaction for atomicity
@@ -4028,11 +4029,11 @@ export const closeCampaign = async (req: Request, res: Response) => {
       // Step 3: Refund unutilized credits using allocation breakdown (LIFO - newest subscription first)
       const totalRefundedCredits = campaign.creditsPending || 0;
       let remainingToRefund = totalRefundedCredits;
-      const newBreakdown: Array<{ subscriptionId: string; amount: number }> = [];
+      const newBreakdown: { subscriptionId: string; amount: number }[] = [];
 
       if (remainingToRefund > 0 && campaign.creditAllocationBreakdown) {
         // Get allocation breakdown
-        const breakdown = campaign.creditAllocationBreakdown as Array<{ subscriptionId: string; amount: number }>;
+        const breakdown = campaign.creditAllocationBreakdown as { subscriptionId: string; amount: number }[];
 
         if (breakdown.length > 0) {
           // Reverse order: newest allocation first (reverse FIFO = LIFO)
@@ -4200,7 +4201,7 @@ export const editCampaignInfo = async (req: Request, res: Response) => {
     postingStartDate,
     postingEndDate,
   } = req.body;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   const publicURL: string[] = [];
   if (req.files && (req.files as any).campaignImages) {
@@ -4327,7 +4328,7 @@ export const editCampaignInfo = async (req: Request, res: Response) => {
 
 export const editCampaignObjectives = async (req: Request, res: Response) => {
   const { id, objectives, secondaryObjectives, boostContent, primaryKPI, performanceBaseline } = req.body;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     console.log('editCampaignObjectives received:', {
@@ -4435,7 +4436,7 @@ export const editCampaignBrandOrCompany = async (req: Request, res: Response) =>
           },
     });
 
-    const adminId = req.session.userid;
+    const adminId = req.userId;
 
     // Get admin info for logging
     if (adminId) {
@@ -4495,7 +4496,7 @@ export const editCampaignDosAndDonts = async (req: Request, res: Response) => {
       },
     });
 
-    const adminId = req.session.userid;
+    const adminId = req.userId;
 
     // Get admin info for logging
     if (adminId) {
@@ -4603,7 +4604,7 @@ export const editCampaignRequirements = async (req: Request, res: Response) => {
       },
     });
 
-    const adminId = req.session.userid;
+    const adminId = req.userId;
 
     // Get admin info for logging
     if (adminId) {
@@ -4690,7 +4691,7 @@ export const editCampaignLogistics = async (req: Request, res: Response) => {
     clientRemarks,
   } = req.body;
 
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     // Fetch old data for diff
@@ -4804,7 +4805,7 @@ export const editCampaignLogistics = async (req: Request, res: Response) => {
 export const editCampaignFinalise = async (req: Request, res: Response) => {
   const { campaignId, campaignManagers, campaignType, deliverables, isV4Submission, isCreditTier } = req.body;
 
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     // Get campaign for logging with current campaignType and submission version
@@ -5227,7 +5228,7 @@ export const editCampaignFinalise = async (req: Request, res: Response) => {
 };
 
 export const editCampaignAdditionalDetails = async (req: Request, res: Response) => {
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     // Handle both JSON body and FormData
@@ -5653,7 +5654,7 @@ export const editCampaignTimeline = async (req: Request, res: Response) => {
       },
     });
 
-    const adminId = req.session.userid;
+    const adminId = req.userId;
 
     // Get admin info for logging
     if (adminId) {
@@ -5750,7 +5751,7 @@ export const editCampaignTimeline = async (req: Request, res: Response) => {
 
 export const changePitchStatus = async (req: Request, res: Response) => {
   const { status, pitchId, totalUGCVideos } = req.body;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     const existingPitch = await prisma.pitch.findUnique({
@@ -6256,7 +6257,7 @@ export const uploadVideoTest = async (req: Request, res: Response) => {
 
 export const saveCampaign = async (req: Request, res: Response) => {
   const { campaignId } = req.body;
-  const userid = req.session.userid;
+  const userid = req.userId;
 
   try {
     const bookmark = await prisma.bookMarkCampaign.create({
@@ -6303,7 +6304,7 @@ export const unSaveCampaign = async (req: Request, res: Response) => {
 //     creatorId: userId,
 //   } = req.body;
 
-//   const adminId = req.session.userid;
+//   const adminId = req.userId;
 
 //   try {
 //     const logistics = await prisma.logistics.create({
@@ -6370,7 +6371,7 @@ export const unSaveCampaign = async (req: Request, res: Response) => {
 // export const updateStatusLogistic = async (req: Request, res: Response) => {
 //   // eslint-disable-next-line prefer-const
 //   let { logisticId, status } = req.body;
-//   const adminId = req.session.userid;
+//   const adminId = req.userId;
 
 //   if (status === 'Pending Delivery Confirmation') {
 //     status = status.split(' ').join('_');
@@ -6588,8 +6589,17 @@ export const creatorAgreements = async (req: Request, res: Response) => {
 
 export const updateAmountAgreement = async (req: Request, res: Response) => {
   try {
-    const { paymentAmount, currency, user, campaignId, id: agreementId, isNew, credits, selectedPlatform, followerCount } =
-      JSON.parse(req.body.data);
+    const {
+      paymentAmount,
+      currency,
+      user,
+      campaignId,
+      id: agreementId,
+      isNew,
+      credits,
+      selectedPlatform,
+      followerCount,
+    } = JSON.parse(req.body.data);
     const normalizedPlatform = normalizePlatform(selectedPlatform);
 
     console.log('Received update data:', { paymentAmount, currency, campaignId, agreementId, isNew, credits });
@@ -6660,7 +6670,7 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
     });
 
     // Get admin info for logging
-    const adminId = req.session.userid;
+    const adminId = req.userId;
     const admin = await prisma.user.findUnique({
       where: { id: adminId },
     });
@@ -7006,7 +7016,7 @@ export const sendAgreement = async (req: Request, res: Response) => {
   const normalizedPlatform = normalizePlatform(selectedPlatform);
   const parsedFollowerCount = followerCount ? Math.floor(Number(followerCount)) : null;
 
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     const isUserExist = await prisma.user.findUnique({
@@ -7089,9 +7099,7 @@ export const sendAgreement = async (req: Request, res: Response) => {
       });
 
       const campMeta = pitchForUser?.campaign;
-      const allowAutoShortlist =
-        !!campMeta &&
-        (campMeta.submissionVersion === 'v4' || campMeta.origin === 'CLIENT');
+      const allowAutoShortlist = !!campMeta && (campMeta.submissionVersion === 'v4' || campMeta.origin === 'CLIENT');
 
       const pitchStatusOk =
         !!pitchForUser &&
@@ -7128,10 +7136,7 @@ export const sendAgreement = async (req: Request, res: Response) => {
       if (parsedFollowerCount && parsedFollowerCount > 0) {
         shortlistData.followerCount = parsedFollowerCount;
       }
-      if (
-        pitchForUser.ugcCredits != null &&
-        Number(pitchForUser.ugcCredits) > 0
-      ) {
+      if (pitchForUser.ugcCredits != null && Number(pitchForUser.ugcCredits) > 0) {
         shortlistData.ugcVideos = pitchForUser.ugcCredits;
       }
       if (campMeta.isCreditTier && creditPerVideo != null) {
@@ -7194,6 +7199,24 @@ export const sendAgreement = async (req: Request, res: Response) => {
 
     if (!campaign) {
       return res.status(404).json({ message: 'Campaign not found.' });
+    }
+
+    // Defense-in-depth: don't let admin send an agreement for a creator whose pitch
+    // hasn't been approved yet. Frontend already hides the button, but a stale UI or
+    // direct API call should still be rejected. Pitches without a record (legacy /
+    // backwards-compat shortlists) are allowed since shortlist itself is the approval.
+    const pitchForGate = await prisma.pitch.findFirst({
+      where: { userId: isUserExist.id, campaignId },
+      select: { status: true },
+    });
+    if (pitchForGate) {
+      const allowedPitchStatuses = ['APPROVED', 'approved', 'AGREEMENT_PENDING', 'AGREEMENT_SUBMITTED'];
+      const pitchStatus = pitchForGate.status ?? '';
+      if (!allowedPitchStatuses.includes(pitchStatus)) {
+        return res.status(400).json({
+          message: 'Cannot send agreement: this creator has not been approved yet. Awaiting client/admin approval.',
+        });
+      }
     }
 
     const isV4Campaign = campaign.submissionVersion === 'v4';
@@ -7613,7 +7636,7 @@ export const sendAgreement = async (req: Request, res: Response) => {
 export const editCampaignImages = async (req: Request, res: Response) => {
   const { campaignImages, campaignId } = req.body;
   const newImages: string[] = [];
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     const newCampaignImages = (req.files as any)?.campaignImages;
@@ -7785,7 +7808,7 @@ export const removePitchVideo = async (req: Request, res: Response) => {
 
 export const editCampaignAdmin = async (req: Request, res: Response) => {
   const { id } = req.params;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   const {
     data: { admins },
@@ -8055,7 +8078,7 @@ export const editCampaignAdmin = async (req: Request, res: Response) => {
 
 // Add client managers to a campaign and flip origin to CLIENT (V3)
 export const addClientManagers = async (req: Request, res: Response) => {
-  const adminId = req.session.userid;
+  const adminId = req.userId;
   const { campaignId, clientManagers } = req.body as {
     campaignId: string;
     clientManagers: ({ id?: string; email?: string } | string)[];
@@ -8126,7 +8149,7 @@ export const editCampaignAttachments = async (req: Request, res: Response) => {
   const { id } = req.params;
   const { otherAttachments: currentAttachments } = req.body;
   const otherAttachments: string[] = [];
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     const campaign = await prisma.campaign.findUnique({
@@ -8253,7 +8276,7 @@ export const createNewSpreadSheets = async (req: Request, res: Response) => {
 export const editCampaignReference = async (req: Request, res: Response) => {
   const { id } = req.params;
   const { referencesLinks } = req.body;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     const campaign = await prisma.campaign.findUnique({
@@ -8321,7 +8344,7 @@ export const editCampaignReference = async (req: Request, res: Response) => {
 
 export const linkNewAgreement = async (req: Request, res: Response) => {
   const { template, campaignId } = req.body;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     const campaign = await prisma.campaign.findUnique({
@@ -8385,7 +8408,7 @@ export const linkNewAgreement = async (req: Request, res: Response) => {
 
 export const removeCreatorFromCampaign = async (req: Request, res: Response) => {
   const { creatorId, campaignId } = req.body;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     console.log(`Attempting to remove creator ${creatorId} from campaign ${campaignId}`);
@@ -8683,7 +8706,7 @@ export const getCampaignsTotal = async (req: Request, res: Response) => {
 
 export const resendAgreement = async (req: Request, res: Response) => {
   const { userId, campaignId } = req.body;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     const user = await prisma.user.findUnique({
@@ -8703,6 +8726,21 @@ export const resendAgreement = async (req: Request, res: Response) => {
 
     if (!user || !campaign) {
       return res.status(404).json({ message: 'User or campaign not found.' });
+    }
+
+    // Defense-in-depth: same approval gate as sendAgreement.
+    const pitchForGate = await prisma.pitch.findFirst({
+      where: { userId, campaignId },
+      select: { status: true },
+    });
+    if (pitchForGate) {
+      const allowedPitchStatuses = ['APPROVED', 'approved', 'AGREEMENT_PENDING', 'AGREEMENT_SUBMITTED'];
+      const pitchStatus = pitchForGate.status ?? '';
+      if (!allowedPitchStatuses.includes(pitchStatus)) {
+        return res.status(400).json({
+          message: 'Cannot resend agreement: this creator has not been approved yet. Awaiting client/admin approval.',
+        });
+      }
     }
 
     // Find the agreement
@@ -8791,7 +8829,7 @@ export const resendAgreement = async (req: Request, res: Response) => {
 export const submitAgreementV3 = async (req: Request, res: Response) => {
   const { pitchId } = req.params as { pitchId: string };
   const { agreementUrl } = req.body as { agreementUrl?: string };
-  const userId = req.session.userid;
+  const userId = req.userId;
 
   try {
     console.log('[submitAgreementV3] start', { pitchId, userId, hasAgreementUrl: !!agreementUrl });
@@ -8900,7 +8938,7 @@ export const submitAgreementV3 = async (req: Request, res: Response) => {
 export const shortlistCreator = async (req: Request, res: Response) => {
   const { newVal: creators, campaignId } = req.body;
 
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     await prisma.$transaction(
@@ -9432,7 +9470,7 @@ export const getClientCampaigns = async (req: Request, res: Response) => {
 
 export const activateClientCampaign = async (req: Request, res: Response) => {
   try {
-    const userId = req.session.userid;
+    const userId = req.userId;
     const { campaignId } = req.params;
 
     if (!userId) {
@@ -10658,7 +10696,7 @@ export const checkCampaignCreatorVisibility = async (req: Request, res: Response
 export const shortlistCreatorV3 = async (req: Request, res: Response) => {
   // Support both per-creator adminComments (new) and legacy single adminComments (backward compat)
   const { creators, campaignId, adminComments: legacyAdminComments, ugcCredits } = req.body;
-  const userId = req.session.userid;
+  const userId = req.userId;
 
   try {
     // Validate follower counts - max 10 billion (prevents 64-bit integer overflow)
@@ -11282,7 +11320,7 @@ export const shortlistCreatorV2ForClient = async (req: Request, res: Response) =
 
 export const initialActivateCampaign = async (req: Request, res: Response) => {
   try {
-    const userId = req.session.userid;
+    const userId = req.userId;
     const { campaignId } = req.params;
 
     if (!userId) {
@@ -11499,7 +11537,7 @@ export const initialActivateCampaign = async (req: Request, res: Response) => {
 // Add this function after the shortlistCreatorV3 function
 export const assignUGCCreditsV3 = async (req: Request, res: Response) => {
   const { creators, campaignId } = req.body;
-  const userId = req.session.userid;
+  const userId = req.userId;
 
   try {
     // Allow superadmin to bypass campaign admin check
@@ -11629,7 +11667,7 @@ export const assignUGCCreditsV3 = async (req: Request, res: Response) => {
 // 3.1 Shortlisting Non-Platform (Guest) Creators
 export const shortlistGuestCreators = async (req: Request, res: Response) => {
   const { campaignId, guestCreators } = req.body;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   if (!campaignId || !Array.isArray(guestCreators) || guestCreators.length === 0) {
     return res.status(400).json({ message: 'Campaign ID and a list of guest creators are required.' });
@@ -11915,8 +11953,7 @@ export const changeCampaignCredit = async (req: Request, res: Response) => {
 
         let remainingToRefund = refundAmount;
 
-        const breakdown =
-          (campaign.creditAllocationBreakdown as Array<{ subscriptionId: string; amount: number }>) || [];
+        const breakdown = (campaign.creditAllocationBreakdown as { subscriptionId: string; amount: number }[]) || [];
         const reversedBreakdown = [...breakdown].reverse();
         const newBreakdown: any[] = [];
 
@@ -11960,8 +11997,7 @@ export const changeCampaignCredit = async (req: Request, res: Response) => {
         });
 
         let remainingToCharge = newCredit;
-        const breakdown =
-          (campaign.creditAllocationBreakdown as Array<{ subscriptionId: string; amount: number }>) || [];
+        const breakdown = (campaign.creditAllocationBreakdown as { subscriptionId: string; amount: number }[]) || [];
 
         for (const sub of activeSubs) {
           if (remainingToCharge <= 0) break;
@@ -12498,15 +12534,7 @@ export const getCampaignStatus = async (req: Request, res: Response) => {
 const BD_DRAFT_REQUIRED_FIELDS = {
   campaign: ['productName'] as const,
   brief: ['industries'] as const,
-  requirement: [
-    'gender',
-    'age',
-    'country',
-    'language',
-    'creator_persona',
-    'user_persona',
-    'geographic_focus',
-  ] as const,
+  requirement: ['gender', 'age', 'country', 'language', 'creator_persona', 'user_persona', 'geographic_focus'] as const,
 };
 
 interface MissingField {
@@ -12537,7 +12565,7 @@ const isEmpty = (value: unknown): boolean => {
 
 export const submitDraftForReview = async (req: Request, res: Response) => {
   const { id } = req.params;
-  const userid = req.session.userid;
+  const userid = req.userId;
   const { campaignCredits: rawCredits } = req.body;
 
   if (!userid) return res.status(401).json({ message: 'User not authenticated' });
@@ -12703,7 +12731,7 @@ export const submitDraftForReview = async (req: Request, res: Response) => {
 };
 
 export const getDraftCampaigns = async (req: Request, res: Response) => {
-  const userid = req.session.userid;
+  const userid = req.userId;
 
   try {
     const user = await prisma.user.findUnique({
@@ -12745,7 +12773,7 @@ export const getDraftCampaigns = async (req: Request, res: Response) => {
 
 export const deleteDraftCampaign = async (req: Request, res: Response) => {
   const { id } = req.params;
-  const userid = req.session.userid;
+  const userid = req.userId;
 
   try {
     const user = await prisma.user.findUnique({

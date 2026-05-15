@@ -8,7 +8,7 @@ const prisma = new PrismaClient();
 
 export const submitFirstDraft = async (req: Request, res: Response) => {
   //   Get creator Id
-  const userid = req.session.userid;
+  const userid = req.userId;
   const data = JSON.parse(req.body.data);
   const { caption, campaignId, taskId } = data;
 
@@ -77,7 +77,7 @@ export const submitFirstDraft = async (req: Request, res: Response) => {
 
 export const submitFinalDraft = async (req: Request, res: Response) => {
   //   Get creator Id
-  const userid = req.session.userid;
+  const userid = req.userId;
   const data = JSON.parse(req.body.data);
   const { caption, campaignId, taskId } = data;
 
@@ -139,7 +139,7 @@ export const getFirstDraft = async (req: Request, res: Response) => {
   // try {
   //   const firstDraft = await prisma.firstDraft.findFirst({
   //     where: {
-  //       creatorId: req.session.userid,
+  //       creatorId: req.userId,
   //       campaignId: id,
   //     },
   //   });
@@ -206,7 +206,7 @@ export const submitFeedBackFirstDraft = async (req: Request, res: Response) => {
   //               create: {
   //                 content: reasons,
   //                 type: 'REASON',
-  //                 adminId: req.session.userid as string,
+  //                 adminId: req.userId as string,
   //               },
   //             },
   //           },
@@ -248,7 +248,7 @@ export const submitFeedBackFirstDraft = async (req: Request, res: Response) => {
   //               create: {
   //                 content: comments,
   //                 type: 'COMMENT',
-  //                 adminId: req.session.userid as string,
+  //                 adminId: req.userId as string,
   //               },
   //             },
   //           },

@@ -5,9 +5,10 @@ import {
   toggleWhatsappSetting,
   updateWhatsappSetting,
 } from '@controllers/systemSettingController';
-import { isLoggedIn } from '@middlewares/onlyLogin';
+// import { isLoggedIn } from '@middlewares/onlyLogin';
 import { rateLimit } from 'express-rate-limit';
 import { Router } from 'express';
+import { authenticate } from '../middleware/authenticate';
 
 const router = Router();
 
@@ -20,7 +21,7 @@ const limiter = rateLimit({
   ipv6Subnet: 56,
 });
 
-router.use(isLoggedIn);
+router.use(authenticate);
 
 router.get('/whatsapp', getWhatsappSetting);
 

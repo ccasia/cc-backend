@@ -5,11 +5,23 @@ import {
   createDiscoveryApiSummary,
   resolvePlatformContentMatchesFromApi,
 } from '@helper/discovery/platformContentResolver';
-import { buildConnectedSelect, buildConnectedWhere } from '@helper/discovery/queryBuilders';
-import { hydrateMissingInstagramData, hydrateMissingTikTokData, TopVideosByCreator } from '@helper/discovery/hydration';
-import { clients, io } from '../server';
+import { buildConnectedSelect } from '@helper/discovery/queryBuilders';
+
 import {
+  getInstagramMediaObject,
+  getInstagramMedias,
+  getInstagramOverviewService,
+  getInstagramUserInsight,
+  getTikTokMediaObject,
+  getTikTokOverviewService,
+} from '@services/socialMediaService';
+
+import { hydrateMissingInstagramData, hydrateMissingTikTokData, TopVideosByCreator } from '@helper/discovery/hydration';
+import { clients, getIo } from '../config/socket';
+import {
+  ageRangeToBirthDateRange,
   extractHashtags,
+  genderToPronounce,
   normalizeKeywordTerm,
   normalizePagination,
   normalizePlatform,
@@ -164,12 +176,28 @@ const getCachedDiscoveryApiResponse = async <T>(key: string, fetcher: () => Prom
   }
 
   const inFlight = discoveryApiInFlightRequests.get(key);
+
   if (inFlight) {
     discoveryApiCacheStats.inflightReuses += 1;
     return inFlight as Promise<T>;
   }
 
   discoveryApiCacheStats.misses += 1;
+
+  const fetchPromise = fetcher()
+    .then((value) => {
+      pruneDiscoveryApiCache();
+      discoveryApiResponseCache.set(key, { expiresAt: Date.now() + DISCOVERY_API_CACHE_TTL_MS, value });
+      discoveryApiInFlightRequests.delete(key);
+      return value;
+    })
+    .catch((error) => {
+      discoveryApiInFlightRequests.delete(key);
+      throw error;
+    });
+
+  discoveryApiInFlightRequests.set(key, fetchPromise);
+  return fetchPromise;
 };
 
 export interface DiscoveryQueryInput {
@@ -196,6 +224,26 @@ export interface InviteDiscoveryCreatorsInput {
   creatorIds: string[];
   invitedByUserId: string;
 }
+
+const isRateLimitError = (error: any) => {
+  const status = error?.response?.status;
+  const code = error?.response?.data?.error?.code;
+  return status === 429 || code === 'rate_limit_exceeded';
+};
+
+const getCreatorKeywordOnlyTexts = (row: any): string[] => {
+  const creator = row?.creator;
+
+  return [
+    row?.name,
+    creator?.instagram,
+    creator?.tiktok,
+    creator?.tiktokUser?.username,
+    creator?.tiktokUser?.display_name,
+  ]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean);
+};
 
 export interface NonPlatformDiscoveryQueryInput {
   platform?: 'all' | 'instagram' | 'tiktok';
@@ -237,9 +285,7 @@ const ensureValidTikTokAccessTokenForCreator = async (creator: any): Promise<str
     const newEncryptedRefreshToken = encryptToken(refreshedTokenData.refresh_token);
 
     await prismaAny.creator.update({
-      where: {
-        id: creatorId,
-      },
+      where: { id: creatorId },
       data: {
         tiktokData: {
           ...tiktokData,
@@ -269,6 +315,306 @@ const ensureValidTikTokAccessTokenForCreator = async (creator: any): Promise<str
     });
     return null;
   }
+};
+
+const collectContentMatchedRowsAcrossAllCandidates = async (
+  where: any,
+  platform: PlatformFilter,
+  options: { keywordTerm?: string; hashtagTerms: string[] },
+  config: { orderBy?: any } = {},
+) => {
+  const batchSize = 25;
+  let skip = 0;
+  const matchedRows: any[] = [];
+  let matchedRowsCount = 0;
+  const matchesByCreator = new Map<string, { instagram: boolean; tiktok: boolean }>();
+  const instagramTopVideosByCreator: TopVideosByCreator = new Map();
+  const tiktokTopVideosByCreator: TopVideosByCreator = new Map();
+  const rateLimitState = { instagram: false, tiktok: false };
+
+  while (true) {
+    const batchRows = await prismaAny.user.findMany({
+      where,
+      skip,
+      take: batchSize,
+      orderBy: config.orderBy || { updatedAt: 'desc' },
+      select: buildConnectedSelect(true),
+    });
+
+    if (!batchRows.length) {
+      break;
+    }
+
+    const batchMatchResult = await resolvePlatformContentMatchesFromApi(
+      batchRows,
+      options,
+      {
+        ensureValidTikTokAccessTokenForCreator,
+      },
+      {
+        rateLimitState,
+      },
+    );
+
+    for (const [creatorId, match] of batchMatchResult.matchesByCreator.entries()) {
+      matchesByCreator.set(creatorId, match);
+    }
+
+    for (const [creatorId, videos] of batchMatchResult.instagramTopVideosByCreator.entries()) {
+      instagramTopVideosByCreator.set(creatorId, videos);
+    }
+
+    for (const [creatorId, videos] of batchMatchResult.tiktokTopVideosByCreator.entries()) {
+      tiktokTopVideosByCreator.set(creatorId, videos);
+    }
+
+    for (const row of batchRows) {
+      const creatorId = row?.creator?.id;
+      if (!creatorId) continue;
+      const match = matchesByCreator.get(creatorId);
+      const rowMatchCount = countRowsForPlatformMatch(row, platform, match);
+      matchedRowsCount += rowMatchCount;
+
+      if (rowMatchCount > 0) {
+        matchedRows.push(row);
+      }
+    }
+
+    skip += batchRows.length;
+    if (batchRows.length < batchSize) {
+      break;
+    }
+  }
+
+  return {
+    matchedRows,
+    matchedRowsCount,
+    matchesByCreator,
+    instagramTopVideosByCreator,
+    tiktokTopVideosByCreator,
+  };
+};
+
+const buildConnectedWhere = (
+  search: string,
+  platform: PlatformFilter,
+  filters: {
+    gender?: string;
+    ageRange?: string;
+    country?: string;
+    city?: string;
+    creditTier?: string;
+    languages?: string[];
+    interests?: string[];
+    keyword?: string;
+    hashtag?: string;
+  } = {},
+  options: {
+    includeContentFilters?: boolean;
+  } = {},
+) => {
+  const includeContentFilters = options.includeContentFilters ?? true;
+
+  const searchOr = search
+    ? [
+        { name: { contains: search, mode: 'insensitive' as const } },
+        { creator: { is: { instagram: { contains: search, mode: 'insensitive' as const } } } },
+        { creator: { is: { tiktok: { contains: search, mode: 'insensitive' as const } } } },
+        { creator: { is: { mediaKit: { about: { contains: search, mode: 'insensitive' as const } } } } },
+      ]
+    : undefined;
+
+  const instagramConnected = {
+    creator: {
+      is: {
+        isFacebookConnected: true,
+        instagramUser: {
+          isNot: null,
+        },
+      },
+    },
+  };
+
+  const tiktokConnected = {
+    creator: {
+      is: {
+        isTiktokConnected: true,
+        tiktokUser: {
+          isNot: null,
+        },
+      },
+    },
+  };
+
+  const platformCondition =
+    platform === 'instagram'
+      ? instagramConnected
+      : platform === 'tiktok'
+        ? tiktokConnected
+        : { OR: [instagramConnected, tiktokConnected] };
+
+  // ─── Additional filter conditions ─────────────────────────────────────────
+
+  // Gender → map to pronounce field on Creator
+  const pronounce = genderToPronounce(filters.gender);
+  const genderCondition = pronounce
+    ? { creator: { is: { pronounce: { equals: pronounce, mode: 'insensitive' as const } } } }
+    : undefined;
+
+  // Age range → birthDate between computed dates
+  const birthDateRange = ageRangeToBirthDateRange(filters.ageRange);
+  const ageCondition = birthDateRange
+    ? { creator: { is: { birthDate: { gte: birthDateRange.gte, lte: birthDateRange.lte } } } }
+    : undefined;
+
+  // Country → on User model directly
+  const countryCondition = filters.country
+    ? { country: { equals: filters.country, mode: 'insensitive' as const } }
+    : undefined;
+
+  // City → on User model directly
+  const cityCondition = filters.city ? { city: { equals: filters.city, mode: 'insensitive' as const } } : undefined;
+
+  // Credit tier → filter by CreditTier.name via relation
+  const creditTierCondition = filters.creditTier
+    ? { creator: { is: { creditTier: { name: { equals: filters.creditTier, mode: 'insensitive' as const } } } } }
+    : undefined;
+
+  // Languages → match against Creator.languages (Json array), any selected language
+  const languagesCondition =
+    filters.languages && filters.languages.length > 0
+      ? {
+          OR: filters.languages.map((language) => ({
+            creator: {
+              is: {
+                languages: {
+                  array_contains: [language],
+                },
+              },
+            },
+          })),
+        }
+      : undefined;
+
+  // Interests → match against Interest model (related to Creator via userId)
+  const interestsCondition =
+    filters.interests && filters.interests.length > 0
+      ? {
+          creator: {
+            is: {
+              interests: {
+                some: {
+                  name: { in: filters.interests, mode: 'insensitive' as const },
+                },
+              },
+            },
+          },
+        }
+      : undefined;
+
+  // Keyword → search through creator names/handles and content captions/titles
+  const keywordCondition =
+    includeContentFilters && filters.keyword
+      ? {
+          OR: [
+            { name: { contains: filters.keyword, mode: 'insensitive' as const } },
+            { creator: { is: { instagram: { contains: filters.keyword, mode: 'insensitive' as const } } } },
+            { creator: { is: { tiktok: { contains: filters.keyword, mode: 'insensitive' as const } } } },
+            {
+              creator: {
+                is: {
+                  instagramUser: {
+                    instagramVideo: {
+                      some: { caption: { contains: filters.keyword, mode: 'insensitive' as const } },
+                    },
+                  },
+                },
+              },
+            },
+            {
+              creator: {
+                is: {
+                  tiktokUser: {
+                    tiktokVideo: {
+                      some: { title: { contains: filters.keyword, mode: 'insensitive' as const } },
+                    },
+                  },
+                },
+              },
+            },
+          ],
+        }
+      : undefined;
+
+  // Hashtag → parse one or many hashtags and match in instagram captions / tiktok titles
+  const hashtagTerms = extractHashtags(filters.hashtag);
+  const hashtagCondition =
+    includeContentFilters && hashtagTerms.length > 0
+      ? {
+          OR: [
+            {
+              creator: {
+                is: {
+                  instagramUser: {
+                    instagramVideo: {
+                      some: {
+                        OR: hashtagTerms.map((tag) => ({
+                          caption: { contains: tag, mode: 'insensitive' as const },
+                        })),
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            {
+              creator: {
+                is: {
+                  tiktokUser: {
+                    tiktokVideo: {
+                      some: {
+                        OR: hashtagTerms.map((tag) => ({
+                          title: { contains: tag, mode: 'insensitive' as const },
+                        })),
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          ],
+        }
+      : undefined;
+
+  const andConditions = [
+    genderCondition,
+    ageCondition,
+    countryCondition,
+    cityCondition,
+    creditTierCondition,
+    languagesCondition,
+    interestsCondition,
+    keywordCondition,
+    hashtagCondition,
+  ].filter(Boolean);
+
+  return {
+    AND: [platformCondition, ...(searchOr ? [{ OR: searchOr }] : []), ...andConditions].filter(Boolean),
+  };
+};
+
+const countRowsForPlatformMatch = (
+  row: any,
+  platform: PlatformFilter,
+  match: { instagram: boolean; tiktok: boolean } | undefined,
+): number => {
+  const creator = row?.creator;
+  const hasInstagram = creator?.isFacebookConnected && creator?.instagramUser;
+  const hasTikTok = creator?.isTiktokConnected && creator?.tiktokUser;
+  let total = 0;
+  if (platform !== 'tiktok' && hasInstagram && Boolean(match?.instagram)) total += 1;
+  if (platform !== 'instagram' && hasTikTok && Boolean(match?.tiktok)) total += 1;
+  return total;
 };
 
 export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
@@ -315,7 +661,7 @@ export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
             ...connectedWhere,
             creator: {
               is: {
-                ...(connectedWhere.creator?.is || {}),
+                ...((connectedWhere as any).creator?.is || {}),
                 isFacebookConnected: true,
                 isTiktokConnected: true,
                 instagramUser: { isNot: null },
@@ -325,6 +671,34 @@ export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
           },
         })
       : Promise.resolve(0),
+    hasContentSearch ? Promise.resolve(0) : prismaAny.user.count({ where: connectedWhere }),
+    hasContentSearch
+      ? Promise.resolve(0)
+      : platform === 'all'
+        ? prismaAny.user.count({
+            where: {
+              ...connectedWhere,
+              creator: {
+                is: {
+                  ...((connectedWhere as any).creator?.is || {}),
+                  isFacebookConnected: true,
+                  isTiktokConnected: true,
+                  instagramUser: { isNot: null },
+                  tiktokUser: { isNot: null },
+                },
+              },
+            },
+          })
+        : Promise.resolve(0),
+    hasContentSearch
+      ? Promise.resolve([])
+      : prismaAny.user.findMany({
+          where: connectedWhere,
+          skip: platform === 'all' ? 0 : pagination.skip,
+          take: platform === 'all' ? allPlatformWindowSize : pagination.limit,
+          orderBy: connectedOrderBy,
+          select: buildConnectedSelect(includeAccessTokenSelect),
+        }),
     prismaAny.user.findMany({
       where: connectedWhere,
       skip: platform === 'all' ? 0 : pagination.skip,
@@ -347,6 +721,8 @@ export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
   let apiTikTokTopVideos: TopVideosByCreator = new Map();
   let apiSummary = createDiscoveryApiSummary(hasContentSearch ? 'content-search' : 'default');
   const contentSearchRateLimitState = { instagram: false, tiktok: false };
+  let contentMatchesByCreator = new Map<string, { instagram: boolean; tiktok: boolean }>();
+  let contentMatchedTotal = 0;
 
   if (input.hydrateMissing === true) {
     [hydratedInstagramTopVideos, hydratedTikTokTopVideos] = await Promise.all([
@@ -364,6 +740,38 @@ export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
       orderBy: connectedOrderBy,
       select: buildConnectedSelect(false),
     });
+  }
+
+  if (!hasContentSearch) {
+    const liveTopVideosResult = await resolvePlatformContentMatchesFromApi(
+      connectedRows,
+      { keywordTerm: undefined, hashtagTerms: [] },
+      { ensureValidTikTokAccessTokenForCreator },
+      { rateLimitState: contentSearchRateLimitState },
+    );
+
+    apiInstagramTopVideos = liveTopVideosResult.instagramTopVideosByCreator;
+    apiTikTokTopVideos = liveTopVideosResult.tiktokTopVideosByCreator;
+  }
+
+  if (hasContentSearch) {
+    const contentMatchResult = await collectContentMatchedRowsAcrossAllCandidates(
+      connectedWhere,
+      platform,
+      {
+        keywordTerm: keywordTerm || undefined,
+        hashtagTerms,
+      },
+      {
+        orderBy: connectedOrderBy,
+      },
+    );
+
+    finalRows = contentMatchResult.matchedRows;
+    contentMatchesByCreator = contentMatchResult.matchesByCreator;
+    apiInstagramTopVideos = contentMatchResult.instagramTopVideosByCreator;
+    apiTikTokTopVideos = contentMatchResult.tiktokTopVideosByCreator;
+    contentMatchedTotal = contentMatchResult.matchedRowsCount;
   }
 
   const connectedCreators = finalRows.flatMap((row: any) => {
@@ -1175,8 +1583,8 @@ export const inviteDiscoveryCreators = async (input: InviteDiscoveryCreatorsInpu
       const creatorSocketId = clients.get(creatorInvite.userId);
 
       if (creatorSocketId) {
-        io.to(creatorSocketId).emit('notification', creatorNotification);
-        io.to(creatorSocketId).emit('pitchUpdate');
+        getIo().to(creatorSocketId).emit('notification', creatorNotification);
+        getIo().to(creatorSocketId).emit('pitchUpdate');
       }
     }
   }

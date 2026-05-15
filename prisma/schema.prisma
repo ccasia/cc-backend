@@ -97,8 +97,27 @@ model User {
   activatedAt   DateTime?
   passwordSetAt DateTime?
   aiModel       AiModel?
+  refreshTokens RefreshToken[]
+}
 
-  @@index([phoneNumber])
+model RefreshToken {
+  id        String @id @default(cuid())
+  tokenHash String @unique
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  expiresAt DateTime
+
+  userAgent String?
+  ipAddress String?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([tokenHash])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
 }
 
 model EmailVerification {
@@ -1482,6 +1501,7 @@ model SubmissionComment {
   feedback           Feedback?
   isClientDraft      Boolean            @default(false)
   isVisibleToCreator Boolean            @default(true)
+  isSentToCreator    Boolean            @default(false)
 
   forwardedByUserId String?
   forwardedBy       User?   @relation("ForwardedComments", fields: [forwardedByUserId], references: [id], onDelete: SetNull)

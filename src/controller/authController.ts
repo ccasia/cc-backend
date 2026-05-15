@@ -28,6 +28,14 @@ import { generate, generateSecret, generateURI, verify } from 'otplib';
 
 import QRCode from 'qrcode';
 import WhatsappSetting from '@services/whatsappSetting';
+import crypto from 'crypto';
+import * as z from 'zod';
+import {
+  generateAccessToken,
+  generateRefreshToken,
+  getRefreshTokenExpiryDate,
+  verifyRefreshToken,
+} from '@utils/tokens';
 
 const prisma = new PrismaClient();
 
@@ -1163,9 +1171,11 @@ export const updateClient = async (req: Request, res: Response) => {
 
 // Function to get user's information
 export const getprofile = async (req: Request, res: Response) => {
-  const userId = req.session.userid as string;
+  const userId = req?.userId || (req.userId as string);
+
   const isImpersonating = req.session.isImpersonating;
   const impersonatingBy = req.session.impersonatingBy;
+
   let xeroinformation;
   let xeroError;
 
@@ -1177,8 +1187,6 @@ export const getprofile = async (req: Request, res: Response) => {
 
   try {
     const user = await getUser(userId);
-
-    console.log(user);
 
     if (
       user?.role === 'superadmin' ||
@@ -1848,7 +1856,7 @@ export const setupClientPassword = async (req: Request, res: Response) => {
 };
 
 export const deleteAccount = async (req: Request, res: Response) => {
-  const userId = req.session.userid as string;
+  const userId = req.userId as string;
 
   if (!userId) {
     return res.status(401).json({ message: 'Unauthorized' });
@@ -1915,7 +1923,7 @@ export const deleteAccount = async (req: Request, res: Response) => {
 
 export const setupTwoFactor = async (req: Request, res: Response) => {
   try {
-    const userId = req.session.userid;
+    const userId = req.userId;
 
     const user = await prisma.user.findUnique({
       where: {
@@ -1938,6 +1946,73 @@ export const setupTwoFactor = async (req: Request, res: Response) => {
     console.log(qrDataUrl);
   } catch (error) {
     return res.status(500).json(error);
+  }
+};
+
+const hashToken = (token: string) => crypto.createHash('sha256').update(token).digest('hex');
+
+export const mobileLogin = async (
+  req: Request<{}, {}, { email: string; password: string; ipAddress: string; userAgent: string }>,
+  res: Response,
+) => {
+  const { email, password, ipAddress, userAgent } = req.body;
+
+  try {
+    // Validation checking on server
+    if (!email.match(/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/g)) {
+      return res.status(400).json({ message: 'Please enter the correct email format', success: false });
+    }
+
+    const user = await prisma.user.findFirst({
+      where: {
+        email: {
+          mode: 'insensitive',
+          equals: email,
+        },
+      },
+    });
+
+    if (!user) return res.status(404).json({ message: 'User not found', success: false });
+
+    switch (user.status) {
+      case 'banned':
+        return res.status(400).json({ message: 'Account banned.' });
+      case 'pending':
+        return res.status(400).json({ message: 'Account pending.' });
+      case 'blacklisted':
+        return res.status(400).json({ message: 'Account blacklisted.' });
+      case 'suspended':
+        return res.status(400).json({ message: 'Account suspended.' });
+      case 'spam':
+        return res.status(400).json({ message: 'Account spam.' });
+      case 'rejected':
+        return res.status(400).json({ message: 'Account rejected.' });
+    }
+
+    const isMatch = await bcrypt.compare(password, user.password as string);
+
+    if (!isMatch) {
+      return res.status(404).json({ message: 'Wrong password' });
+    }
+
+    const accessToken = jwt.sign({ userId: user.id, email: user.email }, process.env.ACCESSKEY!, { expiresIn: '1m' });
+    const refreshToken = jwt.sign({ userId: user.id, email: user.email }, process.env.REFRESHKEY!, {
+      expiresIn: '30d',
+    });
+
+    const savedRefreshToken = await prisma.refreshToken.create({
+      data: {
+        tokenHash: hashToken(refreshToken),
+        userId: user.id,
+        expiresAt: dayjs().add(30, 'days').toDate(),
+        ipAddress,
+        userAgent,
+      },
+    });
+
+    return res.status(200).json({ user, token: { accessToken, refreshToken } });
+  } catch (err) {
+    return res.status(500).json(err);
   }
 };
 
@@ -2119,4 +2194,399 @@ export const getSessionStatus = async (req: Request, res: Response) => {
     otp: req.session.otp ? { sentAt: req.session.otp.sentAt } : null,
     pendingRegistration: req.session.pendingRegistration ?? null,
   });
+};
+
+export const mobileTokenRefresh = async (req: Request, res: Response) => {
+  try {
+    const refreshSchema = z.object({ refreshToken: z.string().min(1) });
+    const parsed = refreshSchema.safeParse(req.body);
+
+    if (!parsed.success) {
+      return res.status(400).json({ success: false, message: 'Refresh token required' });
+    }
+
+    const { refreshToken } = parsed.data;
+
+    let payload: { userId: string; email: string };
+
+    try {
+      payload = verifyRefreshToken(refreshToken);
+    } catch {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid or expired refresh token',
+      });
+    }
+
+    const tokenHash = hashToken(refreshToken);
+
+    const stored = await prisma.refreshToken.findUnique({
+      where: { tokenHash },
+      include: {
+        user: {
+          select: { id: true, email: true, name: true, isActive: true },
+        },
+      },
+    });
+
+    if (!stored) {
+      // Nuke the entire family (revoke ALL tokens from this login session)
+      await prisma.refreshToken.deleteMany({
+        where: { userId: payload.userId },
+      });
+
+      return res.status(401).json({
+        success: false,
+        message: 'Refresh token reuse detected. Please log in again.',
+      });
+    }
+
+    if (stored.expiresAt < new Date()) {
+      await prisma.refreshToken.delete({ where: { id: stored.id } });
+
+      return res.status(401).json({
+        success: false,
+        message: 'Refresh token expired',
+      });
+    }
+
+    const newAccessToken = jwt.sign({ userId: stored.userId, email: stored.user.email }, process.env.ACCESSKEY!, {
+      expiresIn: '1m',
+    });
+
+    const newRefreshToken = jwt.sign({ userId: stored.userId, email: stored.user.email }, process.env.REFRESHKEY!, {
+      expiresIn: '30d',
+    });
+
+    const newRefreshTokenHash = hashToken(newRefreshToken);
+
+    await prisma.$transaction([
+      // Mark old token as revoked + linked to replacement (audit trail)
+      prisma.refreshToken.delete({
+        where: { id: stored.id },
+      }),
+      // Insert new token
+      prisma.refreshToken.create({
+        data: {
+          tokenHash: newRefreshTokenHash,
+          userId: stored.user.id,
+          expiresAt: getRefreshTokenExpiryDate(),
+          userAgent: req.headers['user-agent'] ?? null,
+          ipAddress: req.ip ?? null,
+        },
+      }),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        tokens: {
+          accessToken: newAccessToken,
+          refreshToken: newRefreshToken,
+        },
+      },
+    });
+  } catch (error) {
+    return res.status(500).json(error);
+  }
+};
+
+interface MobileCreatorData {
+  phone?: string;
+  Nationality?: string;
+  city?: string;
+  pronounce?: string;
+  birthDate?: string | null;
+  employment?: string;
+  languages?: string[];
+  interests?: (string | { name: string })[];
+  instagram?: string;
+  tiktok?: string;
+  instagramProfileLink?: string;
+  tiktokProfileLink?: string;
+  location?: string;
+  referralCode?: string;
+}
+
+export const mobileRegisterCreator = async (
+  req: Request<{}, {}, { name: string; email: string; password: string; creatorData?: MobileCreatorData }>,
+  res: Response,
+) => {
+  const { name, email, password, creatorData } = req.body;
+
+  if (!name || !email || !password) {
+    return res.status(400).json({ success: false, message: 'Name, email, and password are required' });
+  }
+
+  if (!email.match(/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/)) {
+    return res.status(400).json({ success: false, message: 'Please enter the correct email format' });
+  }
+
+  // When creatorData is sent, enforce the same fields web yup requires
+  // (cc-frontend src/sections/creator/form/creatorForm.jsx:88-126).
+  if (creatorData) {
+    const missing: string[] = [];
+    if (!creatorData.Nationality) missing.push('Nationality');
+    if (!creatorData.city) missing.push('city');
+    if (!creatorData.phone || creatorData.phone.trim().length < 7) missing.push('phone');
+    if (!creatorData.pronounce) missing.push('pronounce');
+    if (!creatorData.birthDate) missing.push('birthDate');
+    if (!creatorData.languages || creatorData.languages.length < 1) missing.push('languages (min 1)');
+    if (!creatorData.interests || creatorData.interests.length < 3) missing.push('interests (min 3)');
+    const hasSocial =
+      (creatorData.instagramProfileLink && creatorData.instagramProfileLink.trim().length > 0) ||
+      (creatorData.tiktokProfileLink && creatorData.tiktokProfileLink.trim().length > 0);
+    if (!hasSocial) missing.push('instagramProfileLink or tiktokProfileLink');
+    if (missing.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Missing required fields: ${missing.join(', ')}`,
+      });
+    }
+  }
+
+  try {
+    const normalizedEmail = email.toLowerCase();
+
+    const existing = await prisma.user.findFirst({
+      where: { email: { mode: 'insensitive', equals: normalizedEmail } },
+    });
+
+    if (existing) {
+      return res.status(400).json({ success: false, message: 'Email already exists' });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const result = await prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          email: normalizedEmail,
+          password: hashedPassword,
+          role: 'creator',
+          name,
+          phoneNumber: creatorData?.phone || '',
+          country: creatorData?.Nationality || '',
+          city: creatorData?.city || '',
+          referralCode: creatorData?.referralCode || null,
+        },
+      });
+
+      const creatorObj: Prisma.CreatorUncheckedCreateInput = {
+        userId: user.id,
+        isOnBoardingFormCompleted: !!creatorData,
+      };
+
+      if (creatorData) {
+        Object.assign(creatorObj, {
+          instagram: creatorData.instagram || '',
+          pronounce: creatorData.pronounce || '',
+          location: creatorData.location || '',
+          birthDate: creatorData.birthDate ? new Date(creatorData.birthDate) : null,
+          employment: creatorData.employment || '',
+          tiktok: creatorData.tiktok || '',
+          languages: creatorData.languages || [],
+          instagramProfileLink: creatorData.instagramProfileLink || '',
+          tiktokProfileLink: creatorData.tiktokProfileLink || '',
+        });
+      }
+
+      await tx.creator.create({ data: creatorObj });
+
+      if (creatorData?.interests && creatorData.interests.length > 0) {
+        const interestsToCreate = creatorData.interests.map((interest) => {
+          const interestName = typeof interest === 'string' ? interest : interest.name;
+          return { name: interestName, userId: user.id };
+        });
+
+        if (interestsToCreate.length > 0) {
+          await tx.interest.createMany({ data: interestsToCreate });
+        }
+      }
+
+      return { user };
+    });
+
+    const token = jwt.sign({ id: result.user.id }, process.env.ACCESSKEY as Secret, { expiresIn: '15m' });
+
+    let shortCode: string | undefined;
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      shortCode = generateRandomString();
+      const isShortCodeExist = await prisma.emailVerification.findFirst({
+        where: { shortCode },
+      });
+      if (!isShortCodeExist) break;
+    }
+
+    const code = await prisma.emailVerification.create({
+      data: {
+        shortCode: shortCode!,
+        user: { connect: { id: result.user.id } },
+        expiredAt: dayjs().add(15, 'minute').toDate(),
+        token,
+      },
+    });
+
+    creatorVerificationEmail(result.user.email, code.shortCode);
+
+    return res.status(201).json({
+      success: true,
+      message: 'Verification email sent',
+      email: result.user.email,
+    });
+  } catch (error) {
+    console.error('Mobile creator registration error:', error);
+    return res
+      .status(400)
+      .json({ success: false, message: error instanceof Error ? error.message : 'Error registering creator' });
+  }
+};
+
+export const mobileUpdateProfile = async (
+  req: Request<
+    {},
+    {},
+    {
+      name?: string;
+      phone?: string;
+      Nationality?: string;
+      city?: string;
+      pronounce?: string;
+      birthDate?: string | null;
+    }
+  >,
+  res: Response,
+) => {
+  // `authenticate` middleware sets req.userId from session OR JWT bearer token
+  const userId = req.userId;
+  if (!userId) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  const { name, phone, Nationality, city, pronounce, birthDate } = req.body;
+
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const updatedUser = await tx.user.update({
+        where: { id: userId },
+        data: {
+          ...(name !== undefined && { name }),
+          ...(phone !== undefined && { phoneNumber: phone }),
+          ...(Nationality !== undefined && { country: Nationality }),
+          ...(city !== undefined && { city }),
+        },
+      });
+
+      if (updatedUser.role === 'creator' && (pronounce !== undefined || birthDate !== undefined)) {
+        await tx.creator.update({
+          where: { userId },
+          data: {
+            ...(pronounce !== undefined && { pronounce }),
+            ...(birthDate !== undefined && {
+              birthDate: birthDate ? new Date(birthDate) : null,
+            }),
+          },
+        });
+      }
+
+      return updatedUser;
+    });
+
+    return res.status(200).json({ success: true, message: 'Profile updated', user: result });
+  } catch (error) {
+    console.error('Mobile profile update error:', error);
+    return res.status(500).json({ success: false, message: error instanceof Error ? error.message : 'Update failed' });
+  }
+};
+
+export const mobileUpdatePhoto = async (req: Request, res: Response) => {
+  const userId = req.userId;
+  if (!userId) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  try {
+    const image = (req.files as any)?.image;
+    const remove = req.body?.remove === true || req.body?.remove === 'true';
+
+    if (!image && !remove) {
+      return res.status(400).json({ success: false, message: 'No image or remove flag provided' });
+    }
+
+    let photoURL: string | null = null;
+
+    if (image) {
+      // Prefix with userId so concurrent uploads from different users don't collide in GCS.
+      const original = (image.name as string) || 'profile.jpg';
+      const ext = original.includes('.') ? original.slice(original.lastIndexOf('.')) : '.jpg';
+      const fileName = `${userId}-${Date.now()}${ext}`;
+      photoURL = await uploadProfileImage(image.tempFilePath, fileName, 'creator');
+    }
+
+    const updated = await prisma.user.update({
+      where: { id: userId },
+      data: { photoURL },
+      select: { id: true, photoURL: true },
+    });
+
+    return res.status(200).json({ success: true, photoURL: updated.photoURL });
+  } catch (error) {
+    console.error('Mobile photo update error:', error);
+    return res
+      .status(500)
+      .json({ success: false, message: error instanceof Error ? error.message : 'Photo update failed' });
+  }
+};
+
+export const mobileChangePassword = async (
+  req: Request<{}, {}, { currentPassword: string; newPassword: string }>,
+  res: Response,
+) => {
+  const userId = req.userId;
+  if (!userId) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  const schema = z.object({
+    currentPassword: z.string().min(1),
+    newPassword: z
+      .string()
+      .min(8)
+      .regex(/[0-9]/)
+      .regex(/[@$!%*?&#]/)
+      .refine((p) => /[a-z]/.test(p) && /[A-Z]/.test(p)),
+  });
+
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ success: false, message: 'Invalid password format' });
+  }
+
+  const { currentPassword, newPassword } = parsed.data;
+
+  try {
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    if (!user.googleId && user.password) {
+      const isMatch = await bcrypt.compare(currentPassword, user.password);
+      if (!isMatch) {
+        return res.status(400).json({ success: false, message: 'Wrong current password' });
+      }
+    }
+
+    const latestPassword = await bcrypt.hash(newPassword, 10);
+    await handleChangePassword({ userId, latestPassword });
+
+    return res.status(200).json({ success: true, message: 'Password updated successfully' });
+  } catch (error) {
+    console.error('Mobile change password error:', error);
+    return res.status(500).json({
+      success: false,
+      message: error instanceof Error ? error.message : 'Password update failed',
+    });
+  }
 };

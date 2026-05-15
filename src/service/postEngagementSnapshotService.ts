@@ -260,12 +260,12 @@ function extractMetrics(
 } {
   const metrics = insight?.metrics;
 
-  const views = getMetricValue(metrics, ['views', 'plays', 'view_count']);
-  const likes = getMetricValue(metrics, ['likes', 'like_count']);
-  const comments = getMetricValue(metrics, ['comments', 'comment_count']);
-  const shares = getMetricValue(metrics, ['shares', 'share_count']);
-  const saved = platform === 'Instagram' ? getMetricValue(metrics, ['saved']) : 0;
-  const reach = platform === 'Instagram' ? getMetricValue(metrics, ['reach']) : views;
+  let views = getMetricValue(metrics, ['views', 'plays', 'view_count']);
+  let likes = getMetricValue(metrics, ['likes', 'like_count']);
+  let comments = getMetricValue(metrics, ['comments', 'comment_count']);
+  let shares = getMetricValue(metrics, ['shares', 'share_count']);
+  let saved = platform === 'Instagram' ? getMetricValue(metrics, ['saved']) : 0;
+  let reach = platform === 'Instagram' ? getMetricValue(metrics, ['reach']) : views;
 
   let engagementRate = 0;
   if (platform === 'Instagram') {
@@ -275,6 +275,14 @@ function extractMetrics(
     }
   } else if (views > 0) {
     engagementRate = ((likes + comments + shares) / views) * 100;
+  } else if (platform === 'TikTok') {
+    // Extract from TikTok insight structure
+    views = insight.video?.play_count || insight.video?.view_count || 0;
+    likes = insight.video?.like_count || 0;
+    comments = insight.video?.comment_count || 0;
+    shares = insight.video?.share_count || 0;
+    saved = 0;
+    reach = views;
   }
 
   return {

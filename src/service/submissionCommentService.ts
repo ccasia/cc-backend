@@ -55,13 +55,11 @@ export const fetchCommentsForVideo = async (
     where.isClientDraft = false;
   }
 
-  // Creator visibility: own comments always visible; others only if forwarded AND marked visible.
-  // This prevents admin comments from leaking to creators before "Send to Creator" is used.
+  // Creator visibility: own comments always visible; others only if explicitly sent to creator
+  // AND marked visible. isSentToCreator is only set when admin clicks "Send Feedback to Creator",
+  // preventing admin-edited client comments from leaking before that action.
   if (filterInvisibleToCreator) {
-    where.OR = [
-      { user: { role: 'creator' } },
-      { isVisibleToCreator: true, forwardedByUserId: { not: null } },
-    ];
+    where.OR = [{ user: { role: 'creator' } }, { isVisibleToCreator: true, isSentToCreator: true }];
   } else if (roleFilter && Object.keys(roleFilter).length > 0) {
     // For role-filtered queries (client), also include forwarded comments (client comments
     // that have been forwarded by an admin should be visible)
@@ -72,10 +70,7 @@ export const fetchCommentsForVideo = async (
 
   if (filterInvisibleToCreator) {
     replyWhere = {
-      OR: [
-        { user: { role: 'creator' } },
-        { isVisibleToCreator: true, forwardedByUserId: { not: null } },
-      ],
+      OR: [{ user: { role: 'creator' } }, { isVisibleToCreator: true, isSentToCreator: true }],
     };
   } else if (roleFilter && Object.keys(roleFilter).length > 0) {
     replyWhere = {
@@ -107,16 +102,13 @@ export const fetchCommentsForVideo = async (
     const orphanWhere: any = {
       submissionId,
       parentId: { not: null },
-      // Reply is visible to creator: own comment OR forwarded + marked visible
-      OR: [
-        { user: { role: 'creator' } },
-        { isVisibleToCreator: true, forwardedByUserId: { not: null } },
-      ],
-      // Parent is hidden from creator: not creator's own AND (not visible OR not forwarded)
+      // Reply is visible to creator: own comment OR sent to creator + marked visible
+      OR: [{ user: { role: 'creator' } }, { isVisibleToCreator: true, isSentToCreator: true }],
+      // Parent is hidden from creator: not creator's own AND (not visible OR not sent)
       parent: {
         AND: [
           { user: { role: { not: 'creator' } } },
-          { OR: [{ isVisibleToCreator: false }, { forwardedByUserId: null }] },
+          { OR: [{ isVisibleToCreator: false }, { isSentToCreator: false }] },
         ],
       },
     };
@@ -160,9 +152,7 @@ export const fetchCommentsForVideo = async (
     }
 
     // Re-sort by createdAt after merging
-    (comments as any[]).sort(
-      (a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-    );
+    (comments as any[]).sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
   }
 
   // Sort parent comments by video timestamp (ascending), comments without timestamps go last
@@ -204,7 +194,12 @@ export const createCommentRecord = async (
 };
 
 // Edit a comment's text and optionally set forwardedByUserId
-export const editCommentRecord = async (commentId: string, newText: string, forwardedByUserId?: string, timestamp?: string) => {
+export const editCommentRecord = async (
+  commentId: string,
+  newText: string,
+  forwardedByUserId?: string,
+  timestamp?: string,
+) => {
   const data: any = {};
 
   if (forwardedByUserId) {

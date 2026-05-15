@@ -33,7 +33,7 @@ import {
   sendVideoFeedbackToClient,
 } from '../controller/submissionV4Controller';
 
-import { isLoggedIn } from '../middleware/onlyLogin';
+import { authenticate } from '../middleware/authenticate';
 import { isAdmin } from '../middleware/onlySuperadmin';
 import { isClient } from '@middlewares/clientOnly';
 
@@ -60,53 +60,53 @@ router.get('/status/:submissionId', getSubmissionStatusInfo);
 router.post('/submit-content', submitV4ContentController);
 
 // Approve/reject V4 submission (admin action)
-router.post('/approve', isLoggedIn, isAdmin, approveV4Submission);
+router.post('/approve', authenticate, isAdmin, approveV4Submission);
 
 // Client approve/reject V4 submission (client action for client-created campaigns)
-router.post('/approve/client', isLoggedIn, isClient, approveV4SubmissionByClient);
+router.post('/approve/client', authenticate, isClient, approveV4SubmissionByClient);
 
 // Admin forward client feedback to creator
-router.post('/forward-client-feedback', isLoggedIn, isAdmin, forwardClientFeedbackV4);
+router.post('/forward-client-feedback', authenticate, isAdmin, forwardClientFeedbackV4);
 
 // Admin forward individual photo feedback to creator
-router.post('/forward-photo-feedback', isLoggedIn, isAdmin, forwardPhotoFeedbackV4);
+router.post('/forward-photo-feedback', authenticate, isAdmin, forwardPhotoFeedbackV4);
 
 // Admin forward individual raw footage feedback to creator
-router.post('/forward-raw-footage-feedback', isLoggedIn, isAdmin, forwardRawFootageFeedbackV4);
+router.post('/forward-raw-footage-feedback', authenticate, isAdmin, forwardRawFootageFeedbackV4);
 
 // Update posting link for approved submission (creator action)
 router.put('/posting-link', updatePostingLinkController);
 
 // Update due date for submission (admin action)
-router.put('/due-date', isLoggedIn, isAdmin, updateSubmissionDueDate);
+router.put('/due-date', authenticate, isAdmin, updateSubmissionDueDate);
 
 // Admin approve/reject posting link (admin action)
-router.post('/posting-link/approve', isLoggedIn, isAdmin, approvePostingLinkV4);
+router.post('/posting-link/approve', authenticate, isAdmin, approvePostingLinkV4);
 
 // Individual content feedback endpoints (following v3 pattern)
-router.patch('/content/approve', isLoggedIn, isAdmin, approveIndividualContentV4);
-router.patch('/content/request-changes', isLoggedIn, isAdmin, requestChangesIndividualContentV4);
-router.patch('/content/approve/client', isLoggedIn, isClient, approveIndividualContentByClientV4);
-router.patch('/content/request-changes/client', isLoggedIn, isClient, requestChangesIndividualContentByClientV4);
-router.get('/photo/:photoId/feedback', isLoggedIn, getPhotoFeedbackV4);
-router.get('/rawFootage/:rawFootageId/feedback', isLoggedIn, getRawFootageFeedbackV4);
-router.get('/content/feedback/:contentType/:contentId', isLoggedIn, getIndividualContentFeedbackV4);
+router.patch('/content/approve', authenticate, isAdmin, approveIndividualContentV4);
+router.patch('/content/request-changes', authenticate, isAdmin, requestChangesIndividualContentV4);
+router.patch('/content/approve/client', authenticate, isClient, approveIndividualContentByClientV4);
+router.patch('/content/request-changes/client', authenticate, isClient, requestChangesIndividualContentByClientV4);
+router.get('/photo/:photoId/feedback', authenticate, getPhotoFeedbackV4);
+router.get('/rawFootage/:rawFootageId/feedback', authenticate, getRawFootageFeedbackV4);
+router.get('/content/feedback/:contentType/:contentId', authenticate, getIndividualContentFeedbackV4);
 
 // Caption history endpoint
-router.get('/:submissionId/caption-history', isLoggedIn, getCaptionHistory);
+router.get('/:submissionId/caption-history', authenticate, getCaptionHistory);
 
 // Comment endpoints
-router.get('/submission/:submissionId/comments', isLoggedIn, getComments);
-router.post('/submission/:submissionId/comments', isLoggedIn, createComment);
-router.patch('/comments/:commentId', isLoggedIn, isAdmin, updateComment);
-router.delete('/comments/:commentId', isLoggedIn, isAdmin, deleteComment);
-router.post('/comments/:commentId/agree', isLoggedIn, isClient, toggleAgree);
-router.delete('/comments/:commentId/client', isLoggedIn, isClient, deleteCommentByClient);
-router.patch('/comments/:commentId/resolve', isLoggedIn, isAdmin, toggleResolve);
-router.patch('/comments/:commentId/visibility', isLoggedIn, isAdmin, toggleCreatorVisibility);
+router.get('/submission/:submissionId/comments', authenticate, getComments);
+router.post('/submission/:submissionId/comments', authenticate, createComment);
+router.patch('/comments/:commentId', authenticate, isAdmin, updateComment);
+router.delete('/comments/:commentId', authenticate, isAdmin, deleteComment);
+router.post('/comments/:commentId/agree', authenticate, isClient, toggleAgree);
+router.delete('/comments/:commentId/client', authenticate, isClient, deleteCommentByClient);
+router.patch('/comments/:commentId/resolve', authenticate, isAdmin, toggleResolve);
+router.patch('/comments/:commentId/visibility', authenticate, isAdmin, toggleCreatorVisibility);
 
 // Comment-based feedback actions
-router.post('/submission/:submissionId/send-to-creator', isLoggedIn, isAdmin, sendVideoFeedbackToCreator);
-router.post('/submission/:submissionId/send-to-client', isLoggedIn, isAdmin, sendVideoFeedbackToClient);
+router.post('/submission/:submissionId/send-to-creator', authenticate, isAdmin, sendVideoFeedbackToCreator);
+router.post('/submission/:submissionId/send-to-client', authenticate, isAdmin, sendVideoFeedbackToClient);
 
 export default router;

@@ -118,7 +118,7 @@ export function extractInstagramShortcode(url: string) {
   return match ? match[1] : null;
 }
 
-export function extractTikTokVideoId(url: string): string | null {
+export async function extractTikTokVideoId(url: string): Promise<string | null> {
   try {
     const urlObj = new URL(url);
 
@@ -146,7 +146,16 @@ export function extractTikTokVideoId(url: string): string | null {
 
       // Short URLs (vm.tiktok.com, vt.tiktok.com) — return null so caller knows to resolve
       if (urlObj.hostname.includes('vm.tiktok.com') || urlObj.hostname.includes('vt.tiktok.com')) {
-        return null;
+        const response = await fetch(url, {
+          method: 'HEAD',
+          redirect: 'follow',
+        });
+        const fullUrl = response.url;
+        // Extract video ID from the resolved URL
+        const match = fullUrl.match(/\/video\/(\d+)/);
+        const videoId = match ? match[1] : null;
+        return videoId;
+        // return null;
       }
     }
 
@@ -161,8 +170,7 @@ export function extractTikTokVideoId(url: string): string | null {
 export async function resolveTikTokShortUrl(url: string): Promise<string | null> {
   try {
     const urlObj = new URL(url);
-    const isShortUrl =
-      urlObj.hostname.includes('vm.tiktok.com') || urlObj.hostname.includes('vt.tiktok.com');
+    const isShortUrl = urlObj.hostname.includes('vm.tiktok.com') || urlObj.hostname.includes('vt.tiktok.com');
 
     if (!isShortUrl) return extractTikTokVideoId(url);
 
@@ -232,7 +240,7 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
 
     const creator = await prisma.creator.update({
       where: {
-        userId: req.session.userid,
+        userId: req.userId,
       },
       data: {
         tiktokData: { ...tokenResponse.data, access_token: encryptedAccessToken, refresh_token: encryptedRefreshToken },
@@ -294,7 +302,7 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
       // Update creator's credit tier after TikTok follower data changes
       try {
         const { updateCreatorTier } = require('@services/creditTierService');
-        await updateCreatorTier(req.session.userid as string);
+        await updateCreatorTier(req.userId as string);
       } catch (tierError) {
         console.error('Failed to update credit tier after TikTok connect:', tierError);
         // Non-blocking - don't fail the callback if tier update fails
@@ -345,7 +353,7 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
       // Find campaigns where this user has submissions
       const userSubmissions = await prisma.submission.findMany({
         where: {
-          userId: req.session.userid,
+          userId: req.userId,
           status: 'POSTED',
           content: { not: null },
         },
@@ -358,7 +366,7 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
       // Emit analytics refresh event to each campaign room
       userSubmissions.forEach(({ campaignId }) => {
         io.to(campaignId).emit('analytics:refresh', {
-          userId: req.session.userid,
+          userId: req.userId,
           platform: 'TikTok',
           reason: 'mediakit_connected',
           timestamp: new Date().toISOString(),
@@ -501,7 +509,7 @@ export const redirectFacebookAuth = async (req: Request, res: Response) => {
   const code = req.query.code; // Facebook sends the code here
 
   try {
-    if (!code || !req.session.userid) return res.status(400).json({ message: 'Bad requests' });
+    if (!code || !req.userId) return res.status(400).json({ message: 'Bad requests' });
 
     // Exchange the code for an access token
     const response = await axios.get('https://graph.facebook.com/v22.0/oauth/access_token', {
@@ -527,7 +535,7 @@ export const redirectFacebookAuth = async (req: Request, res: Response) => {
 
     await prisma.creator.update({
       where: {
-        userId: req.session.userid,
+        userId: req.userId,
       },
       data: {
         instagramData: {
@@ -556,7 +564,7 @@ export const redirectFacebookAuth = async (req: Request, res: Response) => {
 };
 
 export const getUserInstagramData = async (req: Request, res: Response) => {
-  const userId = req.session.userid || req.params.userId;
+  const userId = req.userId || req.params.userId;
   const userContents = [];
 
   try {
@@ -669,7 +677,7 @@ export const handleDisconnectFacebook = async (req: Request, res: Response) => {
 
 export const instagramCallback = async (req: Request, res: Response) => {
   const code = req.query.code;
-  const userId = req.session.userid;
+  const userId = req.userId;
 
   if (!code) return res.status(404).json({ message: 'Code not found.' });
   if (!userId) return res.status(404).json({ message: 'Session Expired. Please log in again.' });
@@ -817,7 +825,7 @@ export const instagramCallback = async (req: Request, res: Response) => {
 };
 
 export const getInstagramOverview = async (req: Request, res: Response) => {
-  const userId = req.params.userId || req.session.userid;
+  const userId = req.params.userId || req.userId;
   try {
     const user = await prisma.creator.findUnique({
       where: {
@@ -906,7 +914,7 @@ export const removeInstagramPermissions = async (req: Request, res: Response) =>
 // V2 INSTAGRAM
 export const handleInstagramCallback = async (req: Request, res: Response) => {
   const code = req.query.code;
-  const userId = req.session.userid;
+  const userId = req.userId;
 
   if (!code) return res.status(404).json({ message: 'Code not found.' });
   if (!userId) return res.status(404).json({ message: 'Session Expired. Please log in again.' });
@@ -1599,7 +1607,7 @@ export async function getCampaignSubmissionUrls(campaignId: string): Promise<Url
 
           // Extract shortCode for Instagram, mediaId for TikTok
           const shortCode = urlData.platform === 'Instagram' ? extractInstagramShortcode(urlData.url) : null;
-          const mediaId = urlData.platform === 'TikTok' ? extractTikTokVideoId(urlData.url) : null;
+          const mediaId = urlData.platform === 'TikTok' ? await extractTikTokVideoId(urlData.url) : null;
 
           if (existing) {
             // Row exists — update postUrl if it changed
@@ -2054,10 +2062,7 @@ export const getInstagramMediaInsight = async (req: Request, res: Response) => {
                     );
                     userVideos = result.videos;
                   } catch (tokenError: any) {
-                    console.error(
-                      `Cannot access Instagram for campaign user ${campaignUserId}:`,
-                      tokenError.message,
-                    );
+                    console.error(`Cannot access Instagram for campaign user ${campaignUserId}:`, tokenError.message);
                     continue;
                   }
                 }
@@ -2069,9 +2074,7 @@ export const getInstagramMediaInsight = async (req: Request, res: Response) => {
                     const campaignShortCode = extractInstagramShortcode(urlData.url);
                     if (!campaignShortCode) return null;
 
-                    const campaignVideo = userVideos.find(
-                      (item: any) => item?.shortcode === campaignShortCode,
-                    );
+                    const campaignVideo = userVideos.find((item: any) => item?.shortcode === campaignShortCode);
                     if (!campaignVideo) return null;
 
                     try {
@@ -2218,7 +2221,13 @@ export async function ensureValidTikTokToken(userId: string): Promise<string> {
       accessToken = refreshedTokenData.access_token;
       console.log('TikTok token refreshed successfully');
     } catch (refreshError) {
-      console.error('Failed to refresh TikTok token:', refreshError);
+      console.error('Failed to refresh TikTok token:', {
+        userId,
+        creatorId: creator.id,
+        tiktokStatus: refreshError?.tiktokStatus,
+        tiktokData: refreshError?.tiktokData,
+        message: refreshError?.message,
+      });
       throw new Error('TikTok token expired and refresh failed. Please reconnect your TikTok account.');
     }
   }
@@ -2275,14 +2284,16 @@ export const getTikTokVideoInsight = async (req: Request, res: Response) => {
     }
 
     // Extract video ID from URL (resolves short URLs like vt.tiktok.com via redirect)
-    let videoId = extractTikTokVideoId(url as string);
+    let videoId = await extractTikTokVideoId(url as string);
     if (!videoId) {
       videoId = await resolveTikTokShortUrl(url as string);
     }
     console.log('Extracted video ID:', videoId);
 
     if (!videoId) {
-      return res.status(400).json({ message: `Submission posting link: ${url}. Invalid TikTok URL or unable to extract video ID.` });
+      return res
+        .status(400)
+        .json({ message: `Submission posting link: ${url}. Invalid TikTok URL or unable to extract video ID.` });
     }
 
     // Fetch the current video
@@ -2290,7 +2301,9 @@ export const getTikTokVideoInsight = async (req: Request, res: Response) => {
     const videos = videoResponse?.data?.videos;
 
     if (!videos || videos.length === 0) {
-      return res.status(404).json({ message: `Submission posting link: ${url}. Video not found or not accessible with current creator.` });
+      return res
+        .status(404)
+        .json({ message: `Submission posting link: ${url}. Video not found or not accessible with current creator.` });
     }
 
     const video = videos[0];
@@ -2368,10 +2381,7 @@ export const getTikTokVideoInsight = async (req: Request, res: Response) => {
                 try {
                   userAccessToken = await ensureValidTikTokToken(campaignUserId);
                 } catch (tokenError: any) {
-                  console.error(
-                    `Cannot access TikTok for campaign user ${campaignUserId}:`,
-                    tokenError.message,
-                  );
+                  console.error(`Cannot access TikTok for campaign user ${campaignUserId}:`, tokenError.message);
                   continue;
                 }
               }
@@ -2379,7 +2389,7 @@ export const getTikTokVideoInsight = async (req: Request, res: Response) => {
               const userResults = await batchRequests(
                 userUrls,
                 async (urlData) => {
-                  let campaignVideoId = extractTikTokVideoId(urlData.url);
+                  let campaignVideoId = await extractTikTokVideoId(urlData.url);
                   if (!campaignVideoId) {
                     campaignVideoId = await resolveTikTokShortUrl(urlData.url);
                   }

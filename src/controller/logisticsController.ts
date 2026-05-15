@@ -163,13 +163,9 @@ export const singleAssignmentLogistics = async (req: Request, res: Response) => 
       name: productMap.get(i.productId) || 'Unknown Product',
       quantity: i.quantity,
     }));
-    await logChange(
-      `Logistics assigned to ${creator?.name || 'Unknown Creator'}`,
-      campaignId,
-      req,
-      undefined,
-      { assignedItems },
-    );
+    await logChange(`Logistics assigned to ${creator?.name || 'Unknown Creator'}`, campaignId, req, undefined, {
+      assignedItems,
+    });
 
     return res.status(201).json(logistic);
   } catch (error) {
@@ -218,13 +214,7 @@ export const bulkAssignmentLogistics = async (req: Request, res: Response) => {
         name: productMap.get(i.productId) || 'Unknown Product',
         quantity: i.quantity,
       }));
-      await logChange(
-        `Logistics assigned to ${creatorName}`,
-        campaignId,
-        req,
-        undefined,
-        { assignedItems },
-      );
+      await logChange(`Logistics assigned to ${creatorName}`, campaignId, req, undefined, { assignedItems });
     }
 
     return res.status(201).json(logistics);
@@ -293,9 +283,10 @@ export const markLogisticReceived = async (req: Request, res: Response) => {
     const updated = await completeLogisticService(logisticId, 'RECEIVED');
 
     const { campaignId, creatorName, type, outlet } = await getLogisticContext(logisticId);
-    const message = type === 'RESERVATION' && outlet
-      ? `${creatorName} checked in at ${outlet}`
-      : `${creatorName} marked logistics as received`;
+    const message =
+      type === 'RESERVATION' && outlet
+        ? `${creatorName} checked in at ${outlet}`
+        : `${creatorName} marked logistics as received`;
     const metadata = type === 'RESERVATION' && outlet ? { outlet } : undefined;
     await logChange(message, campaignId, req, undefined, metadata);
 
@@ -312,9 +303,10 @@ export const markLogisticCompleted = async (req: Request, res: Response) => {
     const updated = await completeLogisticService(logisticId, 'COMPLETED');
 
     const { campaignId, creatorName, type, outlet } = await getLogisticContext(logisticId);
-    const message = type === 'RESERVATION' && outlet
-      ? `${creatorName} completed their visit at ${outlet}`
-      : `${creatorName} marked logistics as completed`;
+    const message =
+      type === 'RESERVATION' && outlet
+        ? `${creatorName} completed their visit at ${outlet}`
+        : `${creatorName} marked logistics as completed`;
     const metadata = type === 'RESERVATION' && outlet ? { outlet } : undefined;
     await logChange(message, campaignId, req, undefined, metadata);
 
@@ -340,13 +332,13 @@ export const reportIssue = async (req: Request, res: Response) => {
       where: { id: logisticId },
       select: { deliveryDetails: { select: { items: { select: { product: { select: { productName: true } } } } } } },
     });
-    const productNames = logisticWithItems?.deliveryDetails?.items
-      ?.map((i: any) => i.product?.productName)
-      .filter(Boolean) || [];
+    const productNames =
+      logisticWithItems?.deliveryDetails?.items?.map((i: any) => i.product?.productName).filter(Boolean) || [];
 
-    const message = type === 'RESERVATION' && outlet
-      ? `${creatorName} reported an issue with their reservation at ${outlet}`
-      : `${creatorName} reported a logistics issue`;
+    const message =
+      type === 'RESERVATION' && outlet
+        ? `${creatorName} reported an issue with their reservation at ${outlet}`
+        : `${creatorName} reported a logistics issue`;
     await logChange(message, campaignId, req, undefined, {
       reason: reason || null,
       products: productNames.length > 0 ? productNames : null,
@@ -411,10 +403,16 @@ export const adminUpdateLogisticDetails = async (req: Request, res: Response) =>
         const fmt = (d: Date) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
         const oldStr = oldDate ? fmt(new Date(oldDate)) : 'unset';
         const newStr = fmt(newDate);
-        await logChange(`Expected delivery date for ${creatorName} changed from ${oldStr} to ${newStr}`, campaignId, req, undefined, {
-          oldDate: oldStr,
-          newDate: newStr,
-        });
+        await logChange(
+          `Expected delivery date for ${creatorName} changed from ${oldStr} to ${newStr}`,
+          campaignId,
+          req,
+          undefined,
+          {
+            oldDate: oldStr,
+            newDate: newStr,
+          },
+        );
       }
     }
 
@@ -437,7 +435,11 @@ export const adminUpdateLogisticDetails = async (req: Request, res: Response) =>
       if (expectedDeliveryDate) detailsMeta.expectedDeliveryDate = expectedDeliveryDate;
       if (address) detailsMeta.address = address;
 
-      await logChange(`Logistics details updated for ${creatorName}`, campaignId, req, undefined,
+      await logChange(
+        `Logistics details updated for ${creatorName}`,
+        campaignId,
+        req,
+        undefined,
         Object.keys(detailsMeta).length > 0 ? detailsMeta : undefined,
       );
     }
@@ -464,9 +466,10 @@ export const resolveLogisticIssue = async (req: Request, res: Response) => {
     const result = await resolveIssueService(logisticId, userid);
 
     const { campaignId, creatorName, type, outlet } = await getLogisticContext(logisticId);
-    const message = type === 'RESERVATION' && outlet
-      ? `Reservation issue resolved for ${creatorName} at ${outlet}`
-      : `Logistics issue resolved for ${creatorName}`;
+    const message =
+      type === 'RESERVATION' && outlet
+        ? `Reservation issue resolved for ${creatorName} at ${outlet}`
+        : `Logistics issue resolved for ${creatorName}`;
     const meta: Record<string, any> = {};
     if (type === 'RESERVATION' && outlet) meta.outlet = outlet;
     if (openIssue?.reason) meta.reason = openIssue.reason;
@@ -510,10 +513,16 @@ export const submitCreatorProductInfo = async (req: Request, res: Response) => {
     });
 
     const creator = await prisma.user.findUnique({ where: { id: userid }, select: { name: true } });
-    await logChange(`${creator?.name || 'Unknown Creator'} submitted logistics information`, campaignId, req, undefined, {
-      address: address || null,
-      dietaryRestrictions: dietaryRestrictions || null,
-    });
+    await logChange(
+      `${creator?.name || 'Unknown Creator'} submitted logistics information`,
+      campaignId,
+      req,
+      undefined,
+      {
+        address: address || null,
+        dietaryRestrictions: dietaryRestrictions || null,
+      },
+    );
 
     return res.status(200).json(result);
   } catch (error) {
@@ -691,7 +700,11 @@ export const rescheduleReservation = async (req: Request, res: Response) => {
     const result = await rescheduleReservationService(logisticId);
 
     const { campaignId, creatorName, outlet } = await getLogisticContext(logisticId);
-    await logChange(`Reservation rescheduled for ${creatorName}`, campaignId, req, undefined,
+    await logChange(
+      `Reservation rescheduled for ${creatorName}`,
+      campaignId,
+      req,
+      undefined,
       outlet ? { outlet } : undefined,
     );
 

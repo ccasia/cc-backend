@@ -77,20 +77,17 @@ const HUMAN_TEMPLATES: Record<ReportSection, string> = {
 
 // ── Chain runner ──────────────────────────────────────────────────────────────
 
-async function runSectionChain(
-  section: ReportSection,
-  data: Record<string, unknown>,
-  userId: string,
-): Promise<string | any> {
-  const result = await prisma.aiModel.findFirst({ where: { userId: userId } });
+async function runSectionChain(section: ReportSection, data: Record<string, unknown>, userId: string): Promise<string> {
+  const result = await prisma.aiModel.findFirst({ where: { userId } });
 
-  const dbSections = result?.systemPrompt as unknown as Record<ReportSection, string>;
+  const dbSections = result?.systemPrompt as unknown as Record<ReportSection, string> | undefined;
+  const systemPrompt = dbSections?.[section] || SECTION_PROMPTS[section];
 
   const prompt = ChatPromptTemplate.fromMessages([
-    ['system', dbSections[section] || SECTION_PROMPTS[section]],
+    ['system', systemPrompt],
     ['human', HUMAN_TEMPLATES[section]],
   ]);
-  const chain = RunnableSequence.from([prompt, await createGemini(result!), new StringOutputParser()]);
+  const chain = RunnableSequence.from([prompt, await createGemini(result ?? undefined), new StringOutputParser()]);
 
   return chain.invoke({ data: JSON.stringify(data, null, 2) });
 }
@@ -130,11 +127,11 @@ export class ReportService {
     }
 
     // 1. Collect non-recommendations sections in parallel
-    // const nonRecSections = sections.filter((s) => s !== 'campaign_recommendations');
+    const nonRecSections = sections.filter((s) => s !== 'campaign_recommendations');
 
-    const collectedEntries = await Promise.all(
-      sections.map(async (section) => ({
-        section,
+    const collectedEntries: { section: ReportSection; data: Record<string, unknown> }[] = await Promise.all(
+      nonRecSections.map(async (section) => ({
+        section: section as ReportSection,
         data: await collectSectionData(section, campaignId, externalMetrics),
       })),
     );

@@ -4,7 +4,7 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 export const isCreator = async (req: Request, res: Response, next: NextFunction) => {
-  const userId = req.session.userid;
+  const userId = req.userId;
 
   if (!userId) {
     return res.status(401).json({ message: 'You are not logged in' });
@@ -34,7 +34,7 @@ export const isCreator = async (req: Request, res: Response, next: NextFunction)
 };
 
 export const isCreatorOrClient = async (req: Request, res: Response, next: NextFunction) => {
-  const userId = req.session.userid;
+  const userId = req.userId;
 
   if (!userId) {
     return res.status(401).json({ message: 'You are not logged in' });

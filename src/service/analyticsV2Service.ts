@@ -396,9 +396,9 @@ export const getCreatorsByCountry = async (country: string, creditTierNames: str
     INNER JOIN "Creator" c ON c."userId" = u.id
     ${buildCreditTierJoin('c', creditTierNames)}
     WHERE u.role = 'creator' AND u.status IN ('active', 'pending')
-      AND ${isUnknown
-        ? Prisma.sql`(u.country IS NULL OR TRIM(u.country) = '')`
-        : Prisma.sql`TRIM(u.country) = ${country}`}
+      AND ${
+        isUnknown ? Prisma.sql`(u.country IS NULL OR TRIM(u.country) = '')` : Prisma.sql`TRIM(u.country) = ${country}`
+      }
     ORDER BY u."createdAt" DESC
   `;
 
@@ -1795,8 +1795,16 @@ const COUNTRY_FLAG_COLORS: Record<string, string> = {
 
 // Fallback palette for countries not in the flag map
 const COUNTRY_FALLBACK_COLORS = [
-  '#8B5CF6', '#EC4899', '#14B8A6', '#F59E0B', '#6366F1',
-  '#84CC16', '#F472B6', '#06B6D4', '#A855F7', '#FB923C',
+  '#8B5CF6',
+  '#EC4899',
+  '#14B8A6',
+  '#F59E0B',
+  '#6366F1',
+  '#84CC16',
+  '#F472B6',
+  '#06B6D4',
+  '#A855F7',
+  '#FB923C',
 ];
 
 // Shared demographics processing

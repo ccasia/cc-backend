@@ -1,12 +1,12 @@
 import { Router } from 'express';
 import { getDashboardStats, getDashboardCampaigns } from '@controllers/dashboardController';
-import { isLoggedIn } from '@middlewares/onlyLogin';
+import { authenticate } from '@middlewares/authenticate';
 
 const router = Router();
 
 // Dashboard statistics endpoint
-router.get('/stats', isLoggedIn, getDashboardStats);
+router.get('/stats', authenticate, getDashboardStats);
 // Dashboard campaigns endpoint (lightweight)
-router.get('/campaigns', isLoggedIn, getDashboardCampaigns);
+router.get('/campaigns', authenticate, getDashboardCampaigns);
 
 export default router;

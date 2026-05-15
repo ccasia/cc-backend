@@ -8,13 +8,13 @@ import {
   createMyFeedbackReply,
   deleteMyReply,
 } from '../controller/creatorSubmissionV4Controller';
-import { isLoggedIn } from '../middleware/onlyLogin';
+import { authenticate } from '../middleware/authenticate';
 import { isCreator } from '../middleware/isCreator';
 
 const router = Router();
 
 // Apply authentication middleware to all routes
-router.use(isLoggedIn);
+router.use(authenticate);
 router.use(isCreator);
 
 /**

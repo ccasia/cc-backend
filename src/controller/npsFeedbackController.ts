@@ -11,7 +11,10 @@ const VALID_USER_TYPES = ['CLIENT', 'CREATOR'];
 
 // POST /api/nps-feedback — Submit NPS feedback (client or creator)
 export const submitFeedback = async (req: Request, res: Response) => {
-  const userId = req.session.userid;
+  const userId = req.userId;
+
+  if (!userId) return res.status(401).json({ message: 'Unathorized' });
+
   const { rating, feedback, deviceType, deviceModel, deviceVendor, os, browser } = req.body;
 
   try {
@@ -42,7 +45,7 @@ export const submitFeedback = async (req: Request, res: Response) => {
 // GET /api/nps-feedback/check-creator — Check if creator should see NPS modal
 export const checkCreatorNps = async (req: Request, res: Response) => {
   try {
-    const shouldShow = await checkShouldShowCreatorNPS(req.session.userid);
+    const shouldShow = await checkShouldShowCreatorNPS(req.userId!);
     return res.status(200).json({ showNPS: shouldShow });
   } catch (error) {
     return res.status(200).json({ showNPS: false });

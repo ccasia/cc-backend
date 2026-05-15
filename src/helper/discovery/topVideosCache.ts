@@ -1,9 +1,9 @@
 type TopVideosPlatform = 'instagram' | 'tiktok';
 
-type CachedTopVideosEntry = {
+interface CachedTopVideosEntry {
   expiresAt: number;
   videos: any[];
-};
+}
 
 const DISCOVERY_CREATOR_TOP_VIDEOS_CACHE_TTL_MS = Number(
   process.env.DISCOVERY_CREATOR_TOP_VIDEOS_CACHE_TTL_MS || 3 * 60 * 1000,

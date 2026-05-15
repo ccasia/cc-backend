@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 
-import { isLoggedIn } from '@middlewares/onlyLogin';
+// import { isLoggedIn } from '@middlewares/onlyLogin';
 import { isBdOrSuperadmin } from '../middleware/onlySuperadmin';
 import {
   getMyInviteLink,
@@ -9,6 +9,7 @@ import {
   getPublicInviteInfo,
   bdSubmitDraft,
 } from '@controllers/bdInviteController';
+import { authenticate } from '../middleware/authenticate';
 
 const router = Router();
 
@@ -28,8 +29,8 @@ const publicSubmitLimiter = rateLimit({
   message: { message: 'Too many submissions, please slow down.' },
 });
 
-router.get('/my-invite-link', isLoggedIn, isBdOrSuperadmin, getMyInviteLink);
-router.post('/my-invite-link/rotate', isLoggedIn, isBdOrSuperadmin, rotateMyInviteLink);
+router.get('/my-invite-link', authenticate, isBdOrSuperadmin, getMyInviteLink);
+router.post('/my-invite-link/rotate', authenticate, isBdOrSuperadmin, rotateMyInviteLink);
 
 router.get('/invite/public/:token', publicLookupLimiter, getPublicInviteInfo);
 router.post('/invite/public/:token/submit', publicSubmitLimiter, bdSubmitDraft);
