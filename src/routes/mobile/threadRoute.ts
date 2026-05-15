@@ -2,6 +2,7 @@ import { Router } from 'express';
 
 import { authenticate } from '@middlewares/authenticate';
 import {
+  getThreadLinkPreview,
   getMyThreads,
   getMyThreadMessages,
   markThreadSeen,
@@ -12,6 +13,7 @@ import { archiveThread, unarchiveThread } from '@controllers/threadController';
 const router = Router();
 
 router.get('/threads', authenticate, getMyThreads);
+router.get('/link-preview', authenticate, getThreadLinkPreview);
 router.get('/:threadId/messages', authenticate, getMyThreadMessages);
 router.post('/:threadId/send', authenticate, sendMyMessage);
 router.put('/:threadId/seen', authenticate, markThreadSeen);

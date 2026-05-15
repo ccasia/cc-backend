@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { markMessagesService, sendMessageService, ThreadServiceError } from '@services/threadService';
+import { CHAT_DOC_ALLOWED_MIMES, CHAT_DOC_MAX_SIZE } from '@constants/chatFileTypes';
+import { getLinkPreviewForUrl } from '@services/linkPreviewService';
 import { io } from '../server';
 
 const prisma = new PrismaClient();
@@ -104,6 +106,27 @@ export const getMyThreadMessages = async (req: Request, res: Response) => {
   }
 };
 
+export const getThreadLinkPreview = async (req: Request, res: Response) => {
+  const userId = req.userId;
+  const url = typeof req.query.url === 'string' ? req.query.url : '';
+
+  if (!userId) {
+    return res.status(401).json({ error: 'Unauthorized.' });
+  }
+
+  if (!url) {
+    return res.status(400).json({ error: 'Missing url.' });
+  }
+
+  try {
+    const preview = await getLinkPreviewForUrl(url);
+    return res.status(200).json(preview);
+  } catch (error) {
+    console.error('mobile getThreadLinkPreview error:', error);
+    return res.status(500).json({ error: 'Failed to retrieve link preview.' });
+  }
+};
+
 export const sendMyMessage = async (req: Request, res: Response) => {
   const userId = req.userId;
   const { threadId } = req.params;
@@ -141,6 +164,24 @@ export const sendMyMessage = async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'Message must include text or an attachment.' });
   }
 
+  // Document MIME / size guards. Images and videos keep the existing prefix
+  // allowlist and 1 GB ceiling; documents have an exact-MIME allowlist and a
+  // tighter 100 MB cap so we reject early before streaming to GCS.
+  if (file) {
+    const mime: string = file.mimetype ?? '';
+    const isImage = mime.startsWith('image/');
+    const isVideo = mime.startsWith('video/');
+    const isDoc = CHAT_DOC_ALLOWED_MIMES.includes(mime);
+    if (!isImage && !isVideo && !isDoc) {
+      return res.status(415).json({
+        error: 'File type not allowed. Accepted: images, videos, PDF, DOC, DOCX, XLS, XLSX, PPT, PPTX, TXT, CSV.',
+      });
+    }
+    if (isDoc && typeof file.size === 'number' && file.size > CHAT_DOC_MAX_SIZE) {
+      return res.status(413).json({ error: 'Document exceeds the 100 MB limit.' });
+    }
+  }
+
   try {
     const message = await sendMessageService({
       userId,
@@ -150,6 +191,7 @@ export const sendMyMessage = async (req: Request, res: Response) => {
       fileWidth: parsedFileWidth,
       fileHeight: parsedFileHeight,
       allowedMimePrefix: ['image/', 'video/'],
+      allowedExactMimes: CHAT_DOC_ALLOWED_MIMES,
       maxFileSize: 1024 * 1024 * 1024, // 1 GB
       clientNonce,
     });

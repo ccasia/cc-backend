@@ -43,6 +43,7 @@ type SendMessageInput = {
   fileWidth?: number | null;
   fileHeight?: number | null;
   allowedMimePrefix?: string | string[];
+  allowedExactMimes?: string[];
   maxFileSize?: number;
   clientNonce?: string;
 };
@@ -57,6 +58,7 @@ export const sendMessageService = async ({
   fileWidth,
   fileHeight,
   allowedMimePrefix,
+  allowedExactMimes,
   maxFileSize = DEFAULT_MAX_FILE_SIZE,
   clientNonce,
 }: SendMessageInput) => {
@@ -66,9 +68,16 @@ export const sendMessageService = async ({
   let fileType: string | null = null;
 
   if (file) {
-    if (allowedMimePrefix) {
-      const prefixes = Array.isArray(allowedMimePrefix) ? allowedMimePrefix : [allowedMimePrefix];
-      if (!prefixes.some((p) => file.mimetype.startsWith(p))) {
+    if (allowedMimePrefix || allowedExactMimes) {
+      const prefixes = allowedMimePrefix
+        ? Array.isArray(allowedMimePrefix)
+          ? allowedMimePrefix
+          : [allowedMimePrefix]
+        : [];
+      const exact = allowedExactMimes ?? [];
+      const mimeOk =
+        prefixes.some((p) => file.mimetype.startsWith(p)) || exact.includes(file.mimetype);
+      if (!mimeOk) {
         throw new ThreadServiceError(415, `Unsupported file type: ${file.mimetype}`);
       }
     }
@@ -114,6 +123,8 @@ export const sendMessageService = async ({
         // correct aspect ratio without a fallback flash.
         fileWidth: fileUrl ? (fileWidth ?? null) : null,
         fileHeight: fileUrl ? (fileHeight ?? null) : null,
+        fileName: file ? file.name : null,
+        fileSize: file ? file.size : null,
         createdAt: new Date(),
       },
       include: {
@@ -152,6 +163,8 @@ export const sendMessageService = async ({
     fileType: datas.message.fileType,
     fileWidth: datas.message.fileWidth,
     fileHeight: datas.message.fileHeight,
+    fileName: datas.message.fileName,
+    fileSize: datas.message.fileSize,
     createdAt: datas.message.createdAt,
     sender: datas.message.sender,
     clientNonce,
