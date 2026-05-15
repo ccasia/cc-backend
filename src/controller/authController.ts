@@ -2012,6 +2012,7 @@ export const mobileLogin = async (
 
     return res.status(200).json({ user, token: { accessToken, refreshToken } });
   } catch (err) {
+    console.log(err);
     return res.status(500).json(err);
   }
 };
