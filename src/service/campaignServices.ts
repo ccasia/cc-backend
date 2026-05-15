@@ -99,7 +99,7 @@ export const deductCredits = async (campaignId: string, userId: string, prismaFu
     });
 
     if (!campaign || !user) throw new Error('Data not found');
-    if (!campaign.campaignCredits) throw new Error('Campaign credits not found');
+    if (campaign.campaignCredits == null) throw new Error('Campaign credits not found');
 
     // For v4 campaigns, credits are already deducted when agreement is sent
     // Skip credit deduction to avoid double-counting
@@ -143,27 +143,30 @@ export const deductCredits = async (campaignId: string, userId: string, prismaFu
       creditsToDeduct = ugcVideos;
     }
 
-    const data = await tx.campaign.update({
-      where: {
-        id: campaign.id,
-      },
-      data: {
-        creditsUtilized: {
-          increment: creditsToDeduct,
-        },
-        creditsPending: {
-          decrement: creditsToDeduct,
-        },
-      },
+    // Read-clamp-write so creditsPending floors at 0 instead of going negative.
+    // Negative pending used to leak through when an agreement-time deduction had already
+    // moved credits — clamping here keeps the invariant creditsUtilized + creditsPending ≥ 0.
+    const currentCounters = await tx.campaign.findUnique({
+      where: { id: campaign.id },
+      select: { creditsUtilized: true, creditsPending: true },
     });
+    const currentPending = currentCounters?.creditsPending ?? 0;
+    const currentUtilized = currentCounters?.creditsUtilized ?? 0;
+    const newPending = currentPending - creditsToDeduct;
 
-    // Allow negative creditsPending for backwards compatibility with campaigns
-    // that already had credits deducted when agreements were sent
-    if (data.creditsPending && data.creditsPending < 0) {
+    if (newPending < 0) {
       console.warn(
-        `⚠️  Campaign ${campaignId} has negative creditsPending: ${data.creditsPending} (backwards compatibility)`,
+        `⚠️  Campaign ${campaignId} deduction of ${creditsToDeduct} exceeded pending ${currentPending}; clamping to 0`,
       );
     }
+
+    await tx.campaign.update({
+      where: { id: campaign.id },
+      data: {
+        creditsUtilized: currentUtilized + creditsToDeduct,
+        creditsPending: Math.max(0, newPending),
+      },
+    });
 
     // NOTE: Do NOT update subscription.creditsUsed here.
     // Subscription credits are already deducted when the campaign is created.
