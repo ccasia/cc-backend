@@ -46,12 +46,28 @@ const MAX_INVOICE_NUMBER_RETRIES = 8;
 
 export async function generateUniqueInvoiceNumber() {
   for (let attempt = 0; attempt < MAX_INVOICE_NUMBER_RETRIES; attempt++) {
-    const timestamp = dayjs().format('YYYYMMDDHHmmss');
-    const randomSuffix = Math.floor(100000 + Math.random() * 900000); // 6 digits
-    const invoiceNumber = `INV-${timestamp}-${randomSuffix}`;
+    const suffix = Math.floor(Math.random() * 10000);
+    const invoiceNumber = `INV-${String(suffix).padStart(4, '0')}`;
     const existingInvoice = await prisma.invoice.findUnique({ where: { invoiceNumber } });
 
     if (!existingInvoice) return invoiceNumber;
+  }
+
+  const invoices = await prisma.invoice.findMany({
+    where: { invoiceNumber: { startsWith: 'INV-' } },
+    select: { invoiceNumber: true },
+  });
+
+  let maxNum = 0;
+  for (const { invoiceNumber } of invoices) {
+    const match = invoiceNumber.match(/^INV-(\d{4})$/);
+    if (match) maxNum = Math.max(maxNum, parseInt(match[1], 10));
+  }
+
+  for (let n = maxNum + 1; n <= 9999; n++) {
+    const invoiceNumber = `INV-${String(n).padStart(4, '0')}`;
+    const existing = await prisma.invoice.findUnique({ where: { invoiceNumber } });
+    if (!existing) return invoiceNumber;
   }
 
   throw new Error('Failed to generate a unique invoice number');
