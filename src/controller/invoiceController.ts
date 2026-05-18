@@ -985,11 +985,9 @@ export const createInvoice = async (req: Request, res: Response) => {
   }
 
   const creatorIdInfo = invoiceFrom.id;
-  const requestedInvoiceNumber = invoiceNumber;
 
   for (let attempt = 0; attempt < MAX_INVOICE_NUMBER_RETRIES; attempt++) {
-    const nextInvoiceNumber =
-      attempt === 0 && requestedInvoiceNumber ? requestedInvoiceNumber : await generateUniqueInvoiceNumber();
+    const nextInvoiceNumber = await generateUniqueInvoiceNumber();
 
     try {
       // Store the invoice with the currency information embedded in the task object
