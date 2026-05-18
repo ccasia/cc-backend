@@ -6572,6 +6572,9 @@ export const creatorAgreements = async (req: Request, res: Response) => {
               },
             },
           },
+          omit: {
+            password: true,
+          },
         },
       },
     });
