@@ -8,14 +8,15 @@ import {
   createClientWithCompany,
 } from '@controllers/clientController';
 import { isClient } from '@middlewares/clientOnly';
+import { authenticate } from '../middleware/authenticate';
 
 const router = Router();
 
-router.patch('/updateClient', isClient, updateClient);
-router.get('/checkCompany', isClient, checkClientCompany);
-router.post('/createCompany', isClient, createClientCompany);
-router.post('/createClientCampaign', isClient, createClientCampaign);
-router.post('/createClientRecord', createClientRecord);
-router.post('/createClientWithCompany', createClientWithCompany);
+router.patch('/updateClient', authenticate, isClient, updateClient);
+router.get('/checkCompany', authenticate, isClient, checkClientCompany);
+router.post('/createCompany', authenticate, isClient, createClientCompany);
+router.post('/createClientCampaign', authenticate, isClient, createClientCampaign);
+router.post('/createClientRecord', authenticate, createClientRecord);
+router.post('/createClientWithCompany', authenticate, createClientWithCompany);
 
 export default router;

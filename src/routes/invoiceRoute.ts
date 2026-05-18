@@ -32,17 +32,17 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-router.get('/', isSuperAdmin, getAllInvoices);
+router.get('/', authenticate, isSuperAdmin, getAllInvoices);
 
 router.get('/getAll', authenticate, getAllSelectedInvoices);
 
-router.get('/xeroConnect', isSuperAdmin, getXero);
+router.get('/xeroConnect', authenticate, isSuperAdmin, getXero);
 
 router.get('/xeroCallback', xeroCallBack);
 
 router.get('/getXeroContacts', checkAndRefreshAccessToken, getXeroContacts);
 
-router.get('/checkRefreshToken', isSuperAdmin, checkRefreshToken);
+router.get('/checkRefreshToken', authenticate, isSuperAdmin, checkRefreshToken);
 
 router.get('/creator', authenticate, getInvoicesByCreatorId);
 
@@ -57,15 +57,15 @@ router.get('/creator/:creatorId/campaign/:campaignId', getInvoiceByCreatorIdAndC
 
 router.get('/creatorInvoice/:invoiceId', authenticate, creatorInvoice);
 
-router.post('/create', createInvoice);
+router.post('/create', authenticate, createInvoice);
 
-router.post('/bulk-update', bulkUpdateInvoices);
+router.post('/bulk-update', authenticate, bulkUpdateInvoices);
 
 router.patch('/updateStatus', updateInvoiceStatus);
 
-router.patch('/update', updateInvoice);
+router.patch('/update', authenticate, updateInvoice);
 
-router.delete('/:id', isSuperAdmin, deleteInvoice);
+router.delete('/:id', authenticate, isSuperAdmin, deleteInvoice);
 
 // Temporary function
 router.post('/generateInvoice', async (req, res) => {

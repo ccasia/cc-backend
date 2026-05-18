@@ -42,8 +42,6 @@ import passport from '../auth/googleAuth';
 
 import rateLimit from 'express-rate-limit';
 
-// import { authenticate } from '@middlewares/authenticate';
-
 import { authenticate } from '@middlewares/authenticate';
 
 const limiter = rateLimit({

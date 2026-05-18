@@ -907,7 +907,7 @@ export const logout = async (req: Request, res: Response) => {
 
 // check creator full data with two tables user and creator
 export const checkCreator = async (req: Request, res: Response) => {
-  const { userid } = req.session;
+  const userid = req.userId;
 
   try {
     const creator = await prisma.creator.findFirst({
@@ -953,7 +953,7 @@ export const checkCreator = async (req: Request, res: Response) => {
 
 // Function to get current user
 export const getCurrentUser = async (req: Request, res: Response) => {
-  const { userid } = req.session;
+  const userid = req.userId;
   try {
     const user = await prisma.user.findFirst({
       where: {
@@ -985,7 +985,7 @@ export const getCurrentUser = async (req: Request, res: Response) => {
 
 // Function to update creator information
 export const updateCreator = async (req: Request, res: Response) => {
-  const { userid } = req.session;
+  const userid = req.userId;
 
   if (!userid) {
     return res.status(401).json({ message: 'User not authenticated' });
@@ -1116,7 +1116,7 @@ export const updateCreator = async (req: Request, res: Response) => {
 
 // Function to update client profile
 export const updateClient = async (req: Request, res: Response) => {
-  const { userid } = req.session;
+  const userid = req.userId;
 
   if (!userid) {
     return res.status(401).json({ message: 'User not authenticated' });

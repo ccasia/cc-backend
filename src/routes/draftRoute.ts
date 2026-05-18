@@ -17,6 +17,6 @@ router.get('/getAllDraftInfo/:campaignId', isSuperAdmin, getAllDraftInfo);
 router.post('/firstDraft', authenticate, submitFirstDraft);
 router.post('/finalDraft', authenticate, submitFinalDraft);
 
-router.patch('/submitFeedBackFirstDraft', isSuperAdmin, submitFeedBackFirstDraft);
+router.patch('/submitFeedBackFirstDraft', authenticate, isSuperAdmin, submitFeedBackFirstDraft);
 
 export default router;

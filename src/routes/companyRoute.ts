@@ -27,6 +27,8 @@ import {
 import { authenticate } from '@middlewares/authenticate';
 const router = Router();
 
+router.use(authenticate);
+
 router.get('/', isSuperAdmin, clientOverview);
 router.get('/getCompany/:id', isSuperAdmin, getCompanyById);
 router.get('/getCompanies', isAdminOrClient, getAllCompanies);
@@ -37,7 +39,7 @@ router.get('/getBrands/:id', isSuperAdmin, getBrandsByClientId);
 router.get('/getClientUsers/:companyId', isAdminOrClient, getClientsByCompanyId);
 router.get('/getUniqueCompanyId', isSuperAdmin, getUniqueClientId);
 
-router.post('/createCompany', authenticate, isSuperAdmin, createCompany);
+router.post('/createCompany', isSuperAdmin, createCompany);
 router.post('/createBrand', isSuperAdmin, createBrand);
 router.post('/createOneCompany', isBdOrSuperadmin, createOneCompany);
 router.post('/createOneBrand', isSuperAdmin, createOneBrand);

@@ -8,8 +8,9 @@ import { authenticate } from '@middlewares/authenticate';
 
 const router = Router();
 
-router.get('/creators', authenticate, getDiscoveryCreatorsList);
-router.get('/non-platform-creators', authenticate, getNonPlatformDiscoveryCreatorsList);
-router.post('/invite-creators', authenticate, inviteDiscoveryCreatorsController);
+router.use(authenticate);
+router.get('/creators', getDiscoveryCreatorsList);
+router.get('/non-platform-creators', getNonPlatformDiscoveryCreatorsList);
+router.post('/invite-creators', inviteDiscoveryCreatorsController);
 
 export default router;

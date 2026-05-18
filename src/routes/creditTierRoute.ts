@@ -7,8 +7,11 @@ import {
   updateCreditTier,
   deleteCreditTier,
 } from '@controllers/creditTierController';
+import { authenticate } from '../middleware/authenticate';
 
 const router = Router();
+
+router.use(authenticate);
 
 router.get('/', isSuperAdmin, getAllCreditTiers);
 router.post('/', isSuperAdmin, createCreditTier);

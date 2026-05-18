@@ -761,7 +761,7 @@ export const getCreatorSocialMediaDataById = async (req: Request, res: Response)
 };
 
 export const updateSocialMedia = async (req: Request, res: Response) => {
-  const { userid } = req.session;
+  const userid = req.userId;
   const { tiktok: tiktokUsername, instagram: instagramUsername } = req.body;
 
   try {

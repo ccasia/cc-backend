@@ -235,7 +235,7 @@ export const saveNotification = async ({
 };
 
 export const getNotificationByUserId = async (req: Request, res: Response) => {
-  const { userid } = req.session;
+  const userid = req.userId;
   try {
     const notifications = await prisma.userNotification.findMany({
       where: {
@@ -258,7 +258,7 @@ export const getNotificationByUserId = async (req: Request, res: Response) => {
 };
 
 export const markAllAsRead = async (req: Request, res: Response) => {
-  const { userid } = req.session;
+  const userid = req.userId;
   try {
     await prisma.userNotification.updateMany({
       where: {
@@ -276,7 +276,7 @@ export const markAllAsRead = async (req: Request, res: Response) => {
 
 export const markAsRead = async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { userid } = req.session;
+  const userid = req.userId;
 
   try {
     const userNotification = await prisma.userNotification.findUnique({
@@ -304,7 +304,7 @@ export const markAsRead = async (req: Request, res: Response) => {
 };
 
 export const archiveAll = async (req: Request, res: Response) => {
-  const { userid } = req.session;
+  const userid = req.userId;
   try {
     await prisma.userNotification.updateMany({
       where: {

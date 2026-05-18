@@ -8,7 +8,7 @@ const prisma = new PrismaClient();
 
 export const createNewBug = async (req: Request, res: Response) => {
   const { stepsToReproduce, campaignName } = JSON.parse(req.body.data);
-  const { userid } = req.session;
+  const userid = req.userId;
 
   try {
     const user = await prisma.user.findUnique({

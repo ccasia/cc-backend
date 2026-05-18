@@ -24,6 +24,6 @@ router.post('/impersonate-client', authenticate, impersonateClient);
 
 router.post('/impersonate-creator/end', authenticate, endImpersonatingSession);
 
-router.delete('/:id', needPermissions(['delete:admin']), isSuperAdmin, deleteAdminById);
+router.delete('/:id', authenticate, needPermissions(['delete:admin']), isSuperAdmin, deleteAdminById);
 
 export default router;

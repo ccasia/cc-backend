@@ -11,8 +11,6 @@ export const isClient = async (req: Request, res: Response, next: NextFunction) 
     return res.status(401).json({ message: 'You are not logged in' });
   }
 
-  console.log('Client middleware: Checking user with ID', userId);
-
   const user = await prisma.user.findUnique({
     where: {
       id: userId,

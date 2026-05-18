@@ -1774,7 +1774,6 @@ export const getCampaignById = async (req: Request, res: Response) => {
   const { id } = req.params;
 
   try {
-    console.log(`Getting campaign by ID: ${id}`);
     const campaign = await prisma.campaign.findFirst({
       where: {
         id: id,
@@ -1997,16 +1996,13 @@ export const getAllActiveCampaign = async (_req: Request, res: Response) => {
 };
 
 export const getAllCampaignsFinance = async (req: Request, res: Response) => {
-  const { userid } = req.session;
+  const userId = req.userId;
+
   const user = await prisma.user.findUnique({
     where: {
-      id: userid,
+      id: userId,
     },
   });
-
-  // if (user?.role !== 'finance') {
-  //   return res.status(401).json({ message: 'Unauthorized' });
-  // }
 
   try {
     const campaigns = await prisma.campaign.findMany({
@@ -2749,7 +2745,7 @@ export const getAllCreatorAgreements = async (req: Request, res: Response) => {
 };
 
 export const getCampaignsByCreatorId = async (req: Request, res: Response) => {
-  const { userid } = req.session;
+  const userid = req.userId;
   try {
     const shortlisted = await prisma.shortListedCreator.findMany({
       where: {
@@ -6183,7 +6179,7 @@ export const changePitchStatus = async (req: Request, res: Response) => {
 
 export const uploadVideoTest = async (req: Request, res: Response) => {
   const { campaignId } = req.body;
-  const { userid } = req.session;
+  const userid = req.userId;
 
   const fileName = `${userid}_${campaignId}_pitch.mp4`;
 
@@ -9349,7 +9345,7 @@ export const shortlistCreatorV2 = async (req: Request, res: Response) => {
 };
 
 export const getClientCampaigns = async (req: Request, res: Response) => {
-  const { userid } = req.session;
+  const userid = req.userId;
 
   console.log('getClientCampaigns called for user ID:', userid);
 
@@ -10175,7 +10171,7 @@ export const updateCampaignOrigin = async (req: Request, res: Response) => {
 
 // Check campaign admin entries for the current user
 export const checkCampaignAdmin = async (req: Request, res: Response) => {
-  const { userid } = req.session;
+  const userid = req.userId;
 
   console.log('checkCampaignAdmin called for user ID:', userid);
 
@@ -10250,7 +10246,7 @@ export const checkCampaignAdmin = async (req: Request, res: Response) => {
 
 // Add client to campaign admin for all company campaigns
 export const addClientToCampaignAdmin = async (req: Request, res: Response) => {
-  const { userid } = req.session;
+  const userid = req.userId;
 
   console.log('addClientToCampaignAdmin called for user ID:', userid);
 
@@ -11923,7 +11919,7 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
 
 export const changeCampaignCredit = async (req: Request, res: Response) => {
   const { campaignId, newCredit } = req.body;
-  const { userid } = req.session;
+  const userid = req.userId;
 
   try {
     const user = await prisma.user.findFirst({
@@ -12150,7 +12146,7 @@ export const syncCampaignCredits = async (req: Request, res: Response) => {
  */
 export const updateAllCampaignCredits = async (req: Request, res: Response) => {
   const { campaignId, campaignCredits, creditsUtilized, creditsPending } = req.body;
-  const { userid } = req.session;
+  const userid = req.userId;
 
   try {
     const user = await prisma.user.findFirst({

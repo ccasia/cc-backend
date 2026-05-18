@@ -33,15 +33,15 @@ const router = Router();
 // Optimized endpoint - returns only count instead of all creators
 router.get('/count', getCreatorCount);
 router.get('/getAllCreators', getCreators);
-router.get('/getMediaKit', isSuperAdmin, getMediaKit);
-router.get('/getCreatorByID/:id', isSuperAdmin, getCreatorByID);
+router.get('/getMediaKit', authenticate, isSuperAdmin, getMediaKit);
+router.get('/getCreatorByID/:id', authenticate, isSuperAdmin, getCreatorByID);
 router.get('/getCreatorFullInfoById/:id', getCreatorFullInfoById);
 router.get('/public/getCreatorFullInfoById/:id', getCreatorFullInfoByIdPublic);
 router.get('/getCreatorSocialMediaData', getCreatorSocialMediaData);
 router.get('/creator/:id/social-media', getCreatorSocialMediaDataById);
 router.get('/getPartnerships/:id', authenticate, getPartnerships);
 
-router.get('/exportCreators', isSuperAdmin, exportCreatorsToSheet);
+router.get('/exportCreators', authenticate, isSuperAdmin, exportCreatorsToSheet);
 
 // router.post('/crawl', crawlCreator);
 
@@ -57,6 +57,6 @@ router.patch('/updatePaymentForm', authenticate, updatePaymentForm);
 router.patch('/updateCreatorForm', authenticate, updateCreatorForm);
 router.patch('/updatePreference/:id', authenticate, updateCreatorPreference);
 
-router.delete('/delete/:id', isSuperAdmin, deleteCreator);
+router.delete('/delete/:id', authenticate, isSuperAdmin, deleteCreator);
 
 export default router;

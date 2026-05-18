@@ -29,10 +29,6 @@ import {
   getAllCampaignsFinance,
   saveCampaign,
   unSaveCampaign,
-  // createLogistics,
-  // getLogisticById,
-  // updateStatusLogistic,
-  // receiveLogistic,
   shortlistCreator,
   creatorAgreements,
   updateAmountAgreement,
@@ -116,47 +112,41 @@ import {
   updateOrCreateDefaultTimeline,
 } from '@controllers/timelineController';
 import { authenticate } from '@middlewares/authenticate';
-// import { needPermissions } from '@middlewares/needPermissions';
+
 import { createNewTemplate, getAllTemplate, getTemplatebyId } from '@controllers/templateController';
 
 const router = Router();
 
-// create isFinance permission later
+router.get('/total', authenticate, isSuperAdmin, getCampaignsTotal);
 
-// Agreement Template
-
-router.get('/total', isSuperAdmin, getCampaignsTotal);
-
-router.get('/template', isSuperAdmin, getAllTemplate);
+router.get('/template', authenticate, isSuperAdmin, getAllTemplate);
 router.get('/template/:id', getTemplatebyId);
 
-router.get('/getAllCampaignsByAdminID', isSuperAdmin, getAllCampaigns);
+router.get('/getAllCampaignsByAdminID', authenticate, isSuperAdmin, getAllCampaigns);
 
-router.get('/getCampaignById/:id', isSuperAdmin, getCampaignById);
+router.get('/getCampaignById/:id', authenticate, isSuperAdmin, getCampaignById);
 router.get('/getClientByCampID/:id', getCampaignById);
-// router.get('/getCampaignByIdInvoice/:id' , getCampaignById);
-router.get('/getAllActiveCampaign', getAllActiveCampaign);
-router.get('/getAllCampaignsFinance', getAllCampaignsFinance);
-// router.get('/getCampaignById/:id', isSuperAdmin, getCampaignById);
+
+router.get('/getAllCampaignsFinance', authenticate, getAllCampaignsFinance);
+
 router.get('/getAllActiveCampaign', getAllActiveCampaign);
 router.get('/matchCampaignWithCreator', authenticate, matchCampaignWithCreator);
-router.get('/pitch/:id', getPitchById);
+router.get('/pitch/:id', authenticate, getPitchById);
 
-// router.get('/firstDraft', getFirstDraft);
-router.get('/timelineType', isSuperAdmin, getTimelineType);
-router.get('/defaultTimeline', isSuperAdmin, getDefaultTimeline);
+router.get('/timelineType', authenticate, isSuperAdmin, getTimelineType);
+router.get('/defaultTimeline', authenticate, isSuperAdmin, getDefaultTimeline);
 router.get('/getCampaignsBySessionId', authenticate, getCampaignsByCreatorId);
 router.get('/getCampaignForCreatorById/:id', authenticate, getCampaignForCreatorById);
 router.get('/getCampaignPitch', authenticate, getCampaignPitchForCreator);
-// router.get('/getLogistics', isSuperAdmin, getLogisticById);
+
 router.get('/getSubmissions', getSubmission);
-// router.get('/pitch/:campaignId', getPitchByCampaignId);
+
 router.get('/getCampaignLog/:id', getCampaignLog);
 router.get('/creatorAgreements/:campaignId', creatorAgreements);
 
 // For Analytics
-router.get('/pitches', getAllPitches);
-router.get('/getCreatorAgreements', isSuperAdmin, getAllCreatorAgreements);
+router.get('/pitches', authenticate, getAllPitches);
+router.get('/getCreatorAgreements', authenticate, isSuperAdmin, getAllCreatorAgreements);
 
 // For creator MyCampaigns
 router.get('/getMyCampaigns/:userId', authenticate, getMyCampaigns);
@@ -212,22 +202,22 @@ router.get('/checkCreatorVisibility/:campaignId', authenticate, checkCampaignCre
 router.get('/public', getCampaignsForPublic);
 
 router.post('/updateOrCreateDefaultTimeline', updateOrCreateDefaultTimeline);
-router.post('/createCampaign', isSuperAdmin, createCampaign);
-router.post('/createCampaignV2', isSuperAdmin, createCampaignV2);
-router.post('/createNewTimeline', isSuperAdmin, createNewTimeline);
-router.post('/createSingleTimelineType', isSuperAdmin, createSingleTimelineType);
-router.post('/uploadVideo', uploadVideoTest);
+router.post('/createCampaign', authenticate, isSuperAdmin, createCampaign);
+router.post('/createCampaignV2', authenticate, isSuperAdmin, createCampaignV2);
+router.post('/createNewTimeline', authenticate, isSuperAdmin, createNewTimeline);
+router.post('/createSingleTimelineType', authenticate, isSuperAdmin, createSingleTimelineType);
+router.post('/uploadVideo', authenticate, uploadVideoTest);
 router.post('/saveCampaign', authenticate, saveCampaign);
-// router.post('/createLogistic', authenticate, createLogistics);
-router.post('/shortlistCreator', isSuperAdmin, shortlistCreator);
-router.post('/template/:id', isSuperAdmin, createNewTemplate);
+
+router.post('/shortlistCreator', authenticate, isSuperAdmin, shortlistCreator);
+router.post('/template/:id', authenticate, isSuperAdmin, createNewTemplate);
 router.post('/draftPitch', authenticate, draftPitch);
 router.post('/spreadsheet', authenticate, isSuperAdmin, createNewSpreadSheets);
-router.post('/export/active-completed', isSuperAdmin, exportActiveCompletedToSheet);
-router.post('/export/campaign-creators', isSuperAdmin, exportCreatorsCampaignSheet);
+router.post('/export/active-completed', authenticate, isSuperAdmin, exportActiveCompletedToSheet);
+router.post('/export/campaign-creators', authenticate, isSuperAdmin, exportCreatorsCampaignSheet);
 router.post('/removeCreatorFromCampaign', authenticate, isSuperAdmin, removeCreatorFromCampaign);
-router.post('/v2/shortlistCreator', isSuperAdmin, shortlistCreatorV2);
-router.post('/v2/shortlistCreator/client', isSuperAdmin, shortlistCreatorV2ForClient);
+router.post('/v2/shortlistCreator', authenticate, isSuperAdmin, shortlistCreatorV2);
+router.post('/v2/shortlistCreator/client', authenticate, isSuperAdmin, shortlistCreatorV2ForClient);
 router.post('/v3/shortlistCreator', authenticate, shortlistCreatorV3);
 router.post('/v3/shortlistCreator/guest', authenticate, shortlistGuestCreators);
 router.post('/v3/assignUGCCredits', authenticate, assignUGCCreditsV3);
@@ -239,22 +229,22 @@ router.post('/syncCredits/:campaignId', authenticate, syncCampaignCredits);
 router.patch('/updateAllCredits', authenticate, isSuperAdmin, updateAllCampaignCredits);
 
 router.patch('/pitch', authenticate, creatorMakePitch);
-router.patch('/changeCampaignStage/:campaignId', changeCampaignStage);
-router.patch('/closeCampaign/:id', isSuperAdmin, closeCampaign);
-router.patch('/editCampaignInfo', isBdOrSuperadmin, editCampaignInfo);
-router.patch('/editCampaignObjectives', isBdOrSuperadmin, editCampaignObjectives);
-router.patch('/editCampaignBrandOrCompany', isBdOrSuperadmin, editCampaignBrandOrCompany);
-router.patch('/editCampaignDosAndDonts', isSuperAdmin, editCampaignDosAndDonts);
-router.patch('/editCampaignRequirements', isBdOrSuperadmin, editCampaignRequirements);
-router.patch('/editCampaignLogistics', isSuperAdmin, editCampaignLogistics);
-router.patch('/editCampaignFinalise', isSuperAdmin, editCampaignFinalise);
-router.patch('/editCampaignAdditionalDetails', isSuperAdmin, editCampaignAdditionalDetails);
-router.patch('/editCampaignTimeline/:id', isSuperAdmin, editCampaignTimeline);
-router.patch('/editCampaignImages/:id', isSuperAdmin, editCampaignImages);
-router.patch('/editCampaignAdmins/:id', isSuperAdmin, editCampaignAdmin);
-router.patch('/editCampaignAttachments/:id', isSuperAdmin, editCampaignAttachments);
-router.patch('/editCampaignReference/:id', isSuperAdmin, editCampaignReference);
-router.patch('/changePitchStatus', isSuperAdmin, changePitchStatus);
+router.patch('/changeCampaignStage/:campaignId', authenticate, changeCampaignStage);
+router.patch('/closeCampaign/:id', authenticate, isSuperAdmin, closeCampaign);
+router.patch('/editCampaignInfo', authenticate, isBdOrSuperadmin, editCampaignInfo);
+router.patch('/editCampaignObjectives', authenticate, isBdOrSuperadmin, editCampaignObjectives);
+router.patch('/editCampaignBrandOrCompany', authenticate, isBdOrSuperadmin, editCampaignBrandOrCompany);
+router.patch('/editCampaignDosAndDonts', authenticate, isSuperAdmin, editCampaignDosAndDonts);
+router.patch('/editCampaignRequirements', authenticate, isBdOrSuperadmin, editCampaignRequirements);
+router.patch('/editCampaignLogistics', authenticate, isSuperAdmin, editCampaignLogistics);
+router.patch('/editCampaignFinalise', authenticate, isSuperAdmin, editCampaignFinalise);
+router.patch('/editCampaignAdditionalDetails', authenticate, isSuperAdmin, editCampaignAdditionalDetails);
+router.patch('/editCampaignTimeline/:id', authenticate, isSuperAdmin, editCampaignTimeline);
+router.patch('/editCampaignImages/:id', authenticate, isSuperAdmin, editCampaignImages);
+router.patch('/editCampaignAdmins/:id', authenticate, isSuperAdmin, editCampaignAdmin);
+router.patch('/editCampaignAttachments/:id', authenticate, isSuperAdmin, editCampaignAttachments);
+router.patch('/editCampaignReference/:id', authenticate, isSuperAdmin, editCampaignReference);
+router.patch('/changePitchStatus', authenticate, isSuperAdmin, changePitchStatus);
 // router.patch('/changeLogisticStatus', isSuperAdmin, updateStatusLogistic); //need permission later
 // router.patch('/receiveLogistic', authenticate, receiveLogistic);
 router.patch('/updateAmountAgreement', authenticate, isSuperAdmin, updateAmountAgreement);
@@ -264,12 +254,12 @@ router.patch('/removePitchVideo', authenticate, removePitchVideo);
 router.patch('/linkNewAgreement', authenticate, isSuperAdmin, linkNewAgreement);
 router.patch('/changeCredits', authenticate, isSuperAdmin, changeCampaignCredit);
 
-router.delete('/timelineType/:id', isSuperAdmin, deleteTimelineType);
+router.delete('/timelineType/:id', authenticate, isSuperAdmin, deleteTimelineType);
 router.delete('/unsaveCampaign/:id', authenticate, unSaveCampaign);
 
 // Client campaign activation by CSM
-router.post('/activateClientCampaign/:campaignId', canActivateCampaign, activateClientCampaign);
-router.post('/initialActivateCampaign/:campaignId', canActivateCampaign, initialActivateCampaign);
+router.post('/activateClientCampaign/:campaignId', authenticate, canActivateCampaign, activateClientCampaign);
+router.post('/initialActivateCampaign/:campaignId', authenticate, canActivateCampaign, initialActivateCampaign);
 
 // Campaign Trends Analytics endpoints
 router.get('/:campaignId/trends/engagement-heatmap', authenticate, getEngagementHeatmapController);
