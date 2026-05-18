@@ -15,7 +15,7 @@ export const authenticate = (req: Request, res: Response, next: NextFunction) =>
   // 1. Try session-based auth first (web)
 
   if (req.session?.userid) {
-    req.userId = req.userId;
+    req.userId = req.session.userid;
     req.authMethod = 'session';
     return next();
   }
