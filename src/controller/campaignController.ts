@@ -69,6 +69,7 @@ import { deliveryConfirmation, shortlisted, tracking } from '@configs/nodemailer
 import { createNewSpreadSheet, upsertSheetAndWriteRows } from '@services/google_sheets/sheets';
 import { getRemainingCredits } from '@services/companyService';
 import { handleGuestForShortListing } from '@services/shortlistService';
+import { saveCampaignBookmark, unsaveCampaignBookmark } from '@services/campaignBookmarkService';
 import getCountry from '@utils/getCountry';
 // import { applyCreditCampiagn } from '@services/packageService';
 import { sendShortlistEmailToClients, ShortlistedCreatorInput } from '@services/notificationService';
@@ -3684,6 +3685,7 @@ export const getMyCampaigns = async (req: Request, res: Response) => {
             userId: user.id,
           },
         },
+        bookMarkCampaign: true,
         campaignBrief: true,
         campaignAdmin: {
           include: {
@@ -6211,20 +6213,15 @@ export const uploadVideoTest = async (req: Request, res: Response) => {
 
 export const saveCampaign = async (req: Request, res: Response) => {
   const { campaignId } = req.body;
-  const userid = req.userId;
+  const userId = req.userId;
 
   try {
-    const bookmark = await prisma.bookMarkCampaign.create({
-      data: {
-        userId: userid as string,
-        campaignId: campaignId as string,
-      },
-      include: {
-        campaign: true,
-      },
+    const bookmark = await saveCampaignBookmark(prisma, {
+      userId: userId as string,
+      campaignId: campaignId as string,
     });
 
-    return res.status(200).json({ message: `Campaign ${bookmark.campaign?.name} has been bookmarked.` });
+    return res.status(200).json({ message: 'Campaign has been bookmarked.', bookmark });
   } catch (error) {
     return res.status(400).json(error);
   }
@@ -6232,20 +6229,19 @@ export const saveCampaign = async (req: Request, res: Response) => {
 
 export const unSaveCampaign = async (req: Request, res: Response) => {
   const { id } = req.params;
+  const userId = req.userId;
 
   try {
-    const bookmark = await prisma.bookMarkCampaign.delete({
-      where: {
-        id: id as string,
-      },
-      include: {
-        campaign: true,
-      },
+    const bookmark = await unsaveCampaignBookmark(prisma, {
+      bookmarkId: id as string,
+      userId: userId as string,
     });
 
-    return res
-      .status(200)
-      .json({ message: `Campaign ${bookmark.campaign?.name} has been removed from your saved campaigns.` });
+    if (!bookmark) {
+      return res.status(404).json({ message: 'Saved campaign not found.' });
+    }
+
+    return res.status(200).json({ message: 'Campaign has been removed from your saved campaigns.', bookmark });
   } catch (error) {
     return res.status(400).json(error);
   }
