@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
-import amqplib from 'amqplib';
+import amqplib, { ChannelModel } from 'amqplib';
 import { getV4Submissions, updatePostingLink } from '../service/submissionV4Service';
 import { PostingLinkUpdate } from '../types/submissionV4Types';
 import { io, clients } from '../server';
@@ -307,7 +307,7 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
     }
 
     // Build local file paths and enqueue processing job
-    let amqp: amqplib.Connection | null = null;
+    let amqp: ChannelModel | null = null;
     let channel: amqplib.Channel | null = null;
 
     const filePaths = new Map();
@@ -402,8 +402,8 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
       if (hasNewFiles || hasPhotosToRemove) {
         try {
           amqp = await amqplib.connect(process.env.RABBIT_MQ!);
-          channel = await amqp.createChannel();
-          await channel.assertQueue('draft', { durable: true });
+          channel = await amqp?.createChannel();
+          await channel?.assertQueue('draft', { durable: true });
 
           const payload = {
             userid: creatorId,
@@ -428,7 +428,7 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
             photosToRemove: photosToRemove,
           };
 
-          channel.sendToQueue('draft', Buffer.from(JSON.stringify(payload)), { persistent: true });
+          channel?.sendToQueue('draft', Buffer.from(JSON.stringify(payload)), { persistent: true });
         } finally {
           if (channel) await channel.close();
           if (amqp) await amqp.close();

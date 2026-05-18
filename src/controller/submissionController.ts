@@ -5,7 +5,7 @@ import { saveNotification } from './notificationController';
 import { activeProcesses, clients, io } from '../server';
 import Ffmpeg from 'fluent-ffmpeg';
 import FfmpegPath from '@ffmpeg-installer/ffmpeg';
-import amqplib from 'amqplib';
+import amqplib, { ChannelModel } from 'amqplib';
 import dayjs from 'dayjs';
 import { MAP_TIMELINE } from '@constants/map-timeline';
 import { logAdminChange, logChange } from '@services/campaignServices';
@@ -740,7 +740,7 @@ export const getAllSubmissions = async (req: Request, res: Response) => {
         video: {
           select: {
             url: true,
-          }
+          },
         },
         user: {
           select: {
@@ -977,7 +977,7 @@ export const draftSubmission = async (req: Request, res: Response) => {
   // Handle multiple photos
   const photos = Array.isArray(files?.photos) ? files.photos : files?.photos ? [files.photos] : [];
 
-  let amqp: amqplib.Connection | null = null;
+  let amqp: ChannelModel | null = null;
   let channel: amqplib.Channel | null = null;
 
   try {

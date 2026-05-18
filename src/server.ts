@@ -46,8 +46,9 @@ import { logChange } from '@services/campaignServices';
 
 import { users } from '@utils/activeUsers';
 import { mobileRouter } from '@routes/mobile';
+import { OTPTypes } from '@/types';
 
-import { OTPTypes } from '@/types/index';
+// import { OTPTypes } from '@/types';
 
 Ffmpeg.setFfmpegPath(FfmpegPath.path);
 

@@ -350,8 +350,6 @@ export const getV4SubmissionsController = async (req: Request, res: Response) =>
 export const submitV4ContentController = async (req: Request, res: Response) => {
   const { submissionId, videoUrls, photoUrls, rawFootageUrls, caption } = req.body as V4ContentSubmission;
 
-  console.log('ASDSD');
-
   try {
     if (!submissionId) {
       return res.status(400).json({ message: 'submissionId is required' });

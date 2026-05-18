@@ -41,13 +41,25 @@ const uploadInstagramThumbnailFromUrl = async (sourceUrl: string, destination: s
     const buffer = Buffer.from(response.data);
 
     const file = storage.bucket(process.env.BUCKET_NAME).file(destination);
-    await file.save(buffer, {
-      metadata: {
-        contentType,
-        cacheControl: 'public, max-age=31536000',
-      },
+
+    file.save(buffer, {
       resumable: false,
+      metadata: {
+        contentType: contentType as string,
+      },
     });
+
+    // file.save(buffer, {
+    //   metadata: {
+    //     contentType: contentType,
+    //   },
+    //   // metadata: {
+    //   //   contentType,
+    //   //   cacheControl: 'public, max-age=31536000',
+    //   // },
+    //   resumable: false,
+    // });
+
     await file.makePublic();
 
     return `https://storage.googleapis.com/${process.env.BUCKET_NAME}/${destination}`;
