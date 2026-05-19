@@ -8,6 +8,7 @@ import { saveNotification } from './notificationController';
 import { notificationDraft } from '@helper/notification';
 import { saveCaptionToHistory } from '../utils/captionHistoryUtils';
 import { completeLogisticService } from '@services/logisticsService';
+import { selectCurrentAgreementSubmission } from '@utils/submissionAgreement';
 
 const prisma = new PrismaClient();
 
@@ -77,7 +78,7 @@ export const getMyV4Submissions = async (req: Request, res: Response) => {
 
     // Group submissions by type for creator interface
     const groupedSubmissions = {
-      agreement: submissionsWithFilteredFeedback.find((s) => s.submissionType.type === 'AGREEMENT_FORM'),
+      agreement: selectCurrentAgreementSubmission(submissionsWithFilteredFeedback),
       videos: submissionsWithFilteredFeedback.filter((s) => s.submissionType.type === 'VIDEO'),
       photos: submissionsWithFilteredFeedback.filter((s) => s.submissionType.type === 'PHOTO'),
       rawFootage: submissionsWithFilteredFeedback.filter((s) => s.submissionType.type === 'RAW_FOOTAGE'),
@@ -1020,7 +1021,7 @@ export const getMyCampaignOverview = async (req: Request, res: Response) => {
     const submissions = await getV4Submissions(campaignId as string, creatorId);
 
     // Find agreement form submission status
-    const agreementSubmission = submissions.find((s) => s.submissionType.type === 'AGREEMENT_FORM');
+    const agreementSubmission = selectCurrentAgreementSubmission(submissions);
     const isAgreementApproved =
       agreementSubmission?.status === 'APPROVED' || agreementSubmission?.status === 'CLIENT_APPROVED';
 

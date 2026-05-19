@@ -36,6 +36,7 @@ import {
 import { createNewRowData } from '@services/google_sheets/sheets';
 import { createNewTask, getTaskId, updateTask } from '@services/kanbanService';
 import { deductCredits } from '@services/campaignServices';
+import { buildAgreementUploadFileName } from '@utils/submissionAgreement';
 import {
   getCreatorInvoiceLists,
   handleCompletedCampaign,
@@ -142,7 +143,7 @@ export const agreementSubmission = async (req: Request, res: Response) => {
 
       const url = await uploadAgreementForm(
         (req.files as any).agreementForm.tempFilePath,
-        `${submission.id}.pdf`,
+        buildAgreementUploadFileName(submission.id),
         'agreement',
       );
 

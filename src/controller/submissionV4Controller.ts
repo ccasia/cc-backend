@@ -22,6 +22,7 @@ import { saveCaptionToHistory } from '../utils/captionHistoryUtils';
 import { extractAndStoreSubmissionUrls } from '@services/submissionUrlService';
 import { scheduleInitialInsightFetch } from '@services/insightFetchService';
 import { checkShouldShowNPS } from '@services/npsFeedbackService';
+import { selectCurrentAgreementSubmission } from '@utils/submissionAgreement';
 
 const prisma = new PrismaClient();
 
@@ -321,7 +322,7 @@ export const getV4SubmissionsController = async (req: Request, res: Response) =>
 
     // Group submissions by type for easier frontend consumption
     const groupedSubmissions = {
-      agreement: submissions.find((s) => s.submissionType.type === 'AGREEMENT_FORM'),
+      agreement: selectCurrentAgreementSubmission(submissions),
       videos: submissions.filter((s) => s.submissionType.type === 'VIDEO'),
       photos: submissions.filter((s) => s.submissionType.type === 'PHOTO'),
       rawFootage: submissions.filter((s) => s.submissionType.type === 'RAW_FOOTAGE'),
