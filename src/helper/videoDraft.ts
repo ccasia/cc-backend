@@ -139,9 +139,15 @@ const checkCurrentSubmission = async (submissionId: string) => {
   }
 
   const [videos, rawFootages, photos] = await Promise.all([
-    prisma.video.count({ where: { userId: submission.userId, campaignId: submission.campaignId } }),
-    prisma.rawFootage.count({ where: { userId: submission.userId, campaignId: submission.campaignId } }),
-    prisma.photo.count({ where: { userId: submission.userId, campaignId: submission.campaignId } }),
+    prisma.video.count({
+      where: { submissionId: submission.id, userId: submission.userId, campaignId: submission.campaignId },
+    }),
+    prisma.rawFootage.count({
+      where: { submissionId: submission.id, userId: submission.userId, campaignId: submission.campaignId },
+    }),
+    prisma.photo.count({
+      where: { submissionId: submission.id, userId: submission.userId, campaignId: submission.campaignId },
+    }),
   ]);
 
   let allDeliverablesSent = false;
@@ -158,6 +164,7 @@ const checkCurrentSubmission = async (submissionId: string) => {
     const [videosWithRevision, rawFootagesWithRevision, photosWithRevision] = await Promise.all([
       prisma.video.count({
         where: {
+          submissionId: submission.id,
           userId: submission.userId,
           campaignId: submission.campaignId,
           status: 'REVISION_REQUESTED',
@@ -165,6 +172,7 @@ const checkCurrentSubmission = async (submissionId: string) => {
       }),
       prisma.rawFootage.count({
         where: {
+          submissionId: submission.id,
           userId: submission.userId,
           campaignId: submission.campaignId,
           status: 'REVISION_REQUESTED',
@@ -172,6 +180,7 @@ const checkCurrentSubmission = async (submissionId: string) => {
       }),
       prisma.photo.count({
         where: {
+          submissionId: submission.id,
           userId: submission.userId,
           campaignId: submission.campaignId,
           status: 'REVISION_REQUESTED',
