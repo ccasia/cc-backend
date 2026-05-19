@@ -2,6 +2,9 @@ import { uploadAttachments, uploadImage } from '@configs/cloudStorage.config';
 import { PrismaClient } from '@prisma/client';
 import { Request } from 'express';
 import { createNewSpreadSheet } from './google_sheets/sheets';
+import { JWT } from 'google-auth-library';
+import { google } from 'googleapis';
+import { GoogleSpreadsheet } from 'google-spreadsheet';
 
 const prisma = new PrismaClient();
 
@@ -314,3 +317,141 @@ export async function createNewSpreadSheetAsync({ title, campaignId }: { title: 
     }
   });
 }
+
+export const generateCampaignMasterListSheet = async (campaignId: string): Promise<string> => {
+  const campaign = await prisma.campaign.findUnique({
+    where: { id: campaignId },
+    include: {
+      shortlisted: {
+        include: {
+          user: { select: { name: true, email: true } },
+        },
+      },
+    },
+  });
+
+  if (!campaign) throw new Error('Campaign not found');
+
+  const creators = campaign.shortlisted;
+  const numCreators = creators.length;
+  const totalCost = creators.reduce((sum, c) => sum + (c.amount ?? 0), 0);
+  const creditsUsed = campaign.creditsUtilized ?? 0;
+  const creditsTotal = campaign.campaignCredits ?? 0;
+
+  const client = new JWT({
+    email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
+    key: process.env.GOOGLE_PRIVATE_KEY,
+    scopes: ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive.file'],
+  });
+
+  const doc = await GoogleSpreadsheet.createNewSpreadsheetDocument(client, {
+    title: `${campaign.name} - Master List`,
+  });
+
+  const sheet = doc.sheetsByIndex[0];
+  await sheet.updateProperties({ title: 'Master List' });
+
+  // Layout:
+  //   Row 0  — Title bar (campaign name)
+  //   Row 1  — blank
+  //   Row 2  — Summary headers
+  //   Row 3  — Summary values
+  //   Row 4  — blank
+  //   Row 5  — Creator table headers
+  //   Row 6+ — Creator rows
+  const COLS = 3;
+  const CREATOR_START = 6;
+  const totalRows = CREATOR_START + Math.max(numCreators, 1);
+
+  await sheet.loadCells({ startRowIndex: 0, endRowIndex: totalRows, startColumnIndex: 0, endColumnIndex: COLS });
+
+  interface RGB {
+    red: number;
+    green: number;
+    blue: number;
+  }
+
+  const DARK_BLUE: RGB = { red: 0.122, green: 0.306, blue: 0.475 }; // #1F4E79
+  const MID_BLUE: RGB = { red: 0.18, green: 0.459, blue: 0.714 }; // #2E75B6
+  const LIGHT_BLUE: RGB = { red: 0.839, green: 0.894, blue: 0.941 }; // #D6E4F0
+  const DARK_GREEN: RGB = { red: 0.216, green: 0.337, blue: 0.137 }; // #375623
+  const LIGHT_GREEN: RGB = { red: 0.886, green: 0.937, blue: 0.855 }; // #E2EFDA
+  const WHITE: RGB = { red: 1, green: 1, blue: 1 };
+  const NEAR_BLACK: RGB = { red: 0.1, green: 0.1, blue: 0.1 };
+
+  const paint = (
+    row: number,
+    col: number,
+    value: string | number,
+    bg: RGB,
+    fg: RGB,
+    opts: {
+      bold?: boolean;
+      align?: 'LEFT' | 'CENTER' | 'RIGHT';
+      currency?: boolean;
+    } = {},
+  ) => {
+    const cell = sheet.getCell(row, col);
+    cell.value = value;
+    cell.backgroundColor = bg;
+    cell.textFormat = { bold: opts.bold ?? false, foregroundColor: fg };
+    cell.horizontalAlignment = opts.align ?? 'CENTER';
+    cell.verticalAlignment = 'MIDDLE';
+    if (opts.currency) cell.numberFormat = { type: 'CURRENCY', pattern: '"RM "#,##0.00' };
+  };
+
+  // Row 0 — Title
+  paint(0, 0, campaign.name, DARK_BLUE, WHITE, { bold: true, align: 'LEFT' });
+  paint(0, 1, '', DARK_BLUE, WHITE);
+  paint(0, 2, '', DARK_BLUE, WHITE);
+
+  // Row 2 — Summary headers
+  paint(2, 0, 'No. of Creators', MID_BLUE, WHITE, { bold: true });
+  paint(2, 1, 'Credits Utilized', MID_BLUE, WHITE, { bold: true });
+  paint(2, 2, 'Total Spend', MID_BLUE, WHITE, { bold: true });
+
+  // Row 3 — Summary values
+  paint(3, 0, numCreators, LIGHT_BLUE, NEAR_BLACK);
+  paint(3, 1, `${creditsUsed} / ${creditsTotal}`, LIGHT_BLUE, NEAR_BLACK);
+  paint(3, 2, totalCost, LIGHT_BLUE, NEAR_BLACK, { currency: true });
+
+  // Row 5 — Creator table headers
+  paint(5, 0, 'Creator Name', DARK_GREEN, WHITE, { bold: true, align: 'LEFT' });
+  paint(5, 1, 'Email', DARK_GREEN, WHITE, { bold: true, align: 'LEFT' });
+  paint(5, 2, 'Price (RM)', DARK_GREEN, WHITE, { bold: true, align: 'RIGHT' });
+
+  // Rows 6+ — Creator rows (alternating white / light green)
+  creators.forEach((c, i) => {
+    const row = CREATOR_START + i;
+    const rowBg = i % 2 === 0 ? WHITE : LIGHT_GREEN;
+    paint(row, 0, c.user?.name ?? '', rowBg, NEAR_BLACK, { align: 'LEFT' });
+    paint(row, 1, c.user?.email ?? '', rowBg, NEAR_BLACK, { align: 'LEFT' });
+    paint(row, 2, c.amount ?? 0, rowBg, NEAR_BLACK, { align: 'RIGHT', currency: true });
+  });
+
+  await sheet.saveUpdatedCells();
+
+  const sheetsApi = google.sheets({ version: 'v4', auth: client });
+  await sheetsApi.spreadsheets.batchUpdate({
+    spreadsheetId: doc.spreadsheetId,
+    requestBody: {
+      requests: [
+        {
+          autoResizeDimensions: {
+            dimensions: {
+              sheetId: sheet.sheetId,
+              dimension: 'COLUMNS',
+              startIndex: 0,
+              endIndex: COLS,
+            },
+          },
+        },
+      ],
+    },
+  });
+
+  await doc.share('afiq@cultcreative.asia');
+  await doc.share('atiq@cultcreative.asia');
+
+  return `https://docs.google.com/spreadsheets/d/${doc.spreadsheetId}/`;
+};

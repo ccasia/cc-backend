@@ -4,7 +4,14 @@ const prisma = new PrismaClient();
 
 // Statuses where credits are still escrowed against the subscription.
 // COMPLETED / CANCELLED have already been refunded by closeCampaign.
-const ACTIVE_CAMPAIGN_STATUSES = ['DRAFT', 'ACTIVE', 'PAUSED', 'SCHEDULED', 'PENDING_CSM_REVIEW', 'PENDING_ADMIN_ACTIVATION'] as const;
+const ACTIVE_CAMPAIGN_STATUSES = [
+  'DRAFT',
+  'ACTIVE',
+  'PAUSED',
+  'SCHEDULED',
+  'PENDING_CSM_REVIEW',
+  'PENDING_ADMIN_ACTIVATION',
+] as const;
 
 type AllocationEntry = { subscriptionId: string; amount: number };
 

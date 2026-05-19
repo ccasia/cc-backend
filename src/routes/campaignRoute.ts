@@ -69,6 +69,7 @@ import {
   getCampaignsForPublic,
   exportActiveCompletedToSheet,
   exportCreatorsCampaignSheet,
+  exportCampaignMasterList,
   syncCampaignCredits,
   updateAllCampaignCredits,
   getCampaignStatus,
@@ -116,41 +117,33 @@ import {
   updateOrCreateDefaultTimeline,
 } from '@controllers/timelineController';
 import { isLoggedIn } from '@middlewares/onlyLogin';
-// import { needPermissions } from '@middlewares/needPermissions';
+
 import { createNewTemplate, getAllTemplate, getTemplatebyId } from '@controllers/templateController';
 
 const router = Router();
 
-// create isFinance permission later
-
-// Agreement Template
-
 router.get('/total', isSuperAdmin, getCampaignsTotal);
-
 router.get('/template', isSuperAdmin, getAllTemplate);
 router.get('/template/:id', getTemplatebyId);
-
 router.get('/getAllCampaignsByAdminID', isSuperAdmin, getAllCampaigns);
-
 router.get('/getCampaignById/:id', isSuperAdmin, getCampaignById);
 router.get('/getClientByCampID/:id', getCampaignById);
-// router.get('/getCampaignByIdInvoice/:id' , getCampaignById);
+
 router.get('/getAllActiveCampaign', getAllActiveCampaign);
 router.get('/getAllCampaignsFinance', getAllCampaignsFinance);
-// router.get('/getCampaignById/:id', isSuperAdmin, getCampaignById);
+
 router.get('/getAllActiveCampaign', getAllActiveCampaign);
 router.get('/matchCampaignWithCreator', isLoggedIn, matchCampaignWithCreator);
 router.get('/pitch/:id', getPitchById);
 
-// router.get('/firstDraft', getFirstDraft);
 router.get('/timelineType', isSuperAdmin, getTimelineType);
 router.get('/defaultTimeline', isSuperAdmin, getDefaultTimeline);
 router.get('/getCampaignsBySessionId', isLoggedIn, getCampaignsByCreatorId);
 router.get('/getCampaignForCreatorById/:id', isLoggedIn, getCampaignForCreatorById);
 router.get('/getCampaignPitch', isLoggedIn, getCampaignPitchForCreator);
-// router.get('/getLogistics', isSuperAdmin, getLogisticById);
+
 router.get('/getSubmissions', getSubmission);
-// router.get('/pitch/:campaignId', getPitchByCampaignId);
+
 router.get('/getCampaignLog/:id', getCampaignLog);
 router.get('/creatorAgreements/:campaignId', creatorAgreements);
 
@@ -225,6 +218,7 @@ router.post('/draftPitch', isLoggedIn, draftPitch);
 router.post('/spreadsheet', isLoggedIn, isSuperAdmin, createNewSpreadSheets);
 router.post('/export/active-completed', isSuperAdmin, exportActiveCompletedToSheet);
 router.post('/export/campaign-creators', isSuperAdmin, exportCreatorsCampaignSheet);
+router.post('/export/master-list/:campaignId', isSuperAdmin, exportCampaignMasterList);
 router.post('/removeCreatorFromCampaign', isLoggedIn, isSuperAdmin, removeCreatorFromCampaign);
 router.post('/v2/shortlistCreator', isSuperAdmin, shortlistCreatorV2);
 router.post('/v2/shortlistCreator/client', isSuperAdmin, shortlistCreatorV2ForClient);

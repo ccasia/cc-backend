@@ -360,7 +360,6 @@ async function deleteFileIfExists(filePath: string) {
                 );
 
                 // await deleteFileIfExists(videoFile.outputPath);
-
                 // await fs.promises.unlink(videoFile.outputPath);
 
                 if (content.isV4 && content.preserveExistingMedia && !requestChangeVideos.length) {
