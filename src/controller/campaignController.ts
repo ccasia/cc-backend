@@ -44,6 +44,7 @@ import {
   uploadCampaignAssets,
   createNewSpreadSheetAsync,
   rejectPendingPitchInternal,
+  generateCampaignMasterListSheet,
 } from '@services/campaignServices';
 import { saveNotification } from '@controllers/notificationController';
 import { clients, io } from '../server';
@@ -1566,6 +1567,27 @@ export const exportCreatorsCampaignSheet = async (_req: Request, res: Response) 
   } catch (error: any) {
     console.log(error);
     return res.status(500).json({ success: false, message: error?.message || 'Failed to export' });
+  }
+};
+
+export const exportCampaignMasterList = async (req: Request, res: Response) => {
+  const { campaignId } = req.params;
+  try {
+    const url = await generateCampaignMasterListSheet(campaignId);
+
+    await prisma.campaign.update({
+      where: {
+        id: campaignId,
+      },
+      data: {
+        summaryUrl: url,
+      },
+    });
+
+    return res.status(200).json({ success: true, url });
+  } catch (error: any) {
+    console.log(error);
+    return res.status(500).json({ success: false, message: error?.message || 'Failed to generate master list' });
   }
 };
 
@@ -4146,6 +4168,17 @@ export const closeCampaign = async (req: Request, res: Response) => {
       };
     });
 
+    const url = await generateCampaignMasterListSheet(result.campaign.id);
+
+    await prisma.campaign.update({
+      where: {
+        id: result.campaign.id,
+      },
+      data: {
+        summaryUrl: url,
+      },
+    });
+
     // Step 6: Send notifications (outside of transaction)
     result.campaign.campaignAdmin.forEach(async (item) => {
       const data = await saveNotification({
@@ -4171,30 +4204,13 @@ export const closeCampaign = async (req: Request, res: Response) => {
       message: 'Campaign closed successfully.',
       rejectedCreators: result.rejectedCount,
       refundedCredits: result.refundedCredits,
+      url,
     });
   } catch (error) {
     console.error('Error closing campaign:', error);
     return res.status(400).json(error);
   }
 };
-
-// export const editCampaign = async (req: Request, res: Response) => {
-//   const { id, name, desc, brief, admin } = req.body;
-//   try {
-//     const updatedCampaign = await prisma.campaign.update({
-//       where: { id: id },
-//       data: {
-//         name: name,
-//         description: desc,
-//         campaignBrief: brief,
-//         campaignAdmin: admin,
-//       },
-//     });
-//     return res.status(200).json({ message: 'Succesfully updated', ...updatedCampaign });
-//   } catch (error) {
-//     return res.status(400).json(error);
-//   }
-// };
 
 export const editCampaignInfo = async (req: Request, res: Response) => {
   const {
@@ -10897,7 +10913,8 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
 
           // Extract per-creator comments with fallback to legacy format
           const creatorAdminComments =
-            creator.adminComments?.trim() || (typeof legacyAdminComments === 'string' ? legacyAdminComments.trim() : '');
+            creator.adminComments?.trim() ||
+            (typeof legacyAdminComments === 'string' ? legacyAdminComments.trim() : '');
           const hasComments = creatorAdminComments && creatorAdminComments.length > 0;
 
           // Create a pitch record for this creator
