@@ -7,6 +7,12 @@ import { notificationPitchForClientReview } from '@helper/notification';
 
 const prisma = new PrismaClient();
 
+const normalizePlatform = (platform?: string | null): 'instagram' | 'tiktok' | undefined => {
+  if (platform === 'tiktok') return 'tiktok';
+  if (platform === 'instagram') return 'instagram';
+  return undefined;
+};
+
 // Utility function to map submission types to entities
 const getEntityFromSubmissionType = (submissionType: string, userRole?: 'admin' | 'client' | 'creator') => {
   const baseEntity = (() => {
@@ -159,10 +165,11 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
       // For credit tier campaigns, calculate creditPerVideo from creator's tier
       let creditPerVideo: number | null = null;
       let creditTierId: string | null = null;
+      const pitchPlatform = normalizePlatform(pitch.selectedPlatform);
       if (pitch.campaign.isCreditTier) {
         try {
           const { calculateCreatorTier } = require('@services/creditTierService');
-          const { tier } = await calculateCreatorTier(pitch.userId);
+          const { tier } = await calculateCreatorTier(pitch.userId, pitchPlatform);
           if (tier) {
             creditPerVideo = tier.creditsPerVideo;
             creditTierId = tier.id;
@@ -182,6 +189,7 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
           },
           data: {
             isAgreementReady: false,
+            ...(pitch.selectedPlatform ? { selectedPlatform: pitch.selectedPlatform } : {}),
             ...(pitch.campaign.isCreditTier &&
               creditPerVideo !== null && {
                 creditPerVideo,
@@ -196,6 +204,7 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
             campaignId: pitch.campaignId,
             isAgreementReady: false,
             currency: 'MYR',
+            ...(pitch.selectedPlatform ? { selectedPlatform: pitch.selectedPlatform } : {}),
             ...(pitch.campaign.isCreditTier &&
               creditPerVideo !== null && {
                 creditPerVideo,
@@ -644,10 +653,11 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
     // For credit tier campaigns, calculate creditPerVideo from creator's tier
     let creditPerVideo: number | null = null;
     let creditTierId: string | null = null;
+    const pitchPlatform = normalizePlatform(pitch.selectedPlatform);
     if (pitch.campaign.isCreditTier) {
       try {
         const { calculateCreatorTier } = require('@services/creditTierService');
-        const { tier } = await calculateCreatorTier(pitch.userId);
+        const { tier } = await calculateCreatorTier(pitch.userId, pitchPlatform);
         if (tier) {
           creditPerVideo = tier.creditsPerVideo;
           creditTierId = tier.id;
@@ -676,6 +686,7 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
         },
         data: {
           isAgreementReady: false,
+          ...(pitch.selectedPlatform ? { selectedPlatform: pitch.selectedPlatform } : {}),
           ...(pitch.campaign.isCreditTier &&
             creditPerVideo !== null && {
               creditPerVideo,
@@ -690,6 +701,7 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
           campaignId: pitch.campaignId,
           isAgreementReady: false,
           currency: 'MYR',
+          ...(pitch.selectedPlatform ? { selectedPlatform: pitch.selectedPlatform } : {}),
           ...(pitch.campaign.isCreditTier &&
             creditPerVideo !== null && {
               creditPerVideo,

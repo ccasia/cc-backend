@@ -1852,6 +1852,13 @@ export const getCampaignById = async (req: Request, res: Response) => {
                 creator: {
                   include: {
                     interests: true,
+                    creditTier: {
+                      select: {
+                        id: true,
+                        name: true,
+                        creditsPerVideo: true,
+                      },
+                    },
                   },
                 },
               },
@@ -1884,6 +1891,13 @@ export const getCampaignById = async (req: Request, res: Response) => {
                 creator: {
                   select: {
                     isGuest: true,
+                    creditTier: {
+                      select: {
+                        id: true,
+                        name: true,
+                        creditsPerVideo: true,
+                      },
+                    },
                   },
                 },
                 paymentForm: true,
@@ -10858,39 +10872,45 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
         });
 
         if (existingPitch) {
-          console.log(`Creator ${user.id} already has a pitch, skipping pitch creation`);
-          continue;
+          console.log(`Creator ${user.id} already has a pitch, syncing platform/tier snapshot`);
+          await tx.pitch.update({
+            where: { id: existingPitch.id },
+            data: {
+              selectedPlatform,
+              ...(resolvedFollowerCount > 0 ? { followerCount: String(resolvedFollowerCount) } : {}),
+            },
+          });
+        } else {
+          // Determine status based on campaign type:
+          // - v4 campaigns: SENT_TO_CLIENT (needs client approval)
+          // - non-v4 campaigns: APPROVED directly
+          const pitchStatus = isV4Campaign ? 'SENT_TO_CLIENT' : 'APPROVED';
+
+          // Extract per-creator comments with fallback to legacy format
+          const creatorAdminComments =
+            creator.adminComments?.trim() || (typeof legacyAdminComments === 'string' ? legacyAdminComments.trim() : '');
+          const hasComments = creatorAdminComments && creatorAdminComments.length > 0;
+
+          // Create a pitch record for this creator
+          console.log(
+            `Creating pitch for creator ${user.id} with status ${pitchStatus}${hasComments ? ' and admin comments' : ''}`,
+          );
+          await tx.pitch.create({
+            data: {
+              userId: user.id,
+              campaignId: campaign.id,
+              type: 'shortlisted',
+              status: pitchStatus,
+              content: `Creator ${user.name} has been shortlisted for campaign "${campaign.name}"`,
+              amount: null,
+              agreementTemplateId: null,
+              approvedByAdminId: userId,
+              selectedPlatform,
+              ...(resolvedFollowerCount > 0 ? { followerCount: String(resolvedFollowerCount) } : {}),
+              ...(hasComments ? { adminComments: creatorAdminComments, adminCommentedBy: userId } : {}),
+            },
+          });
         }
-
-        // Determine status based on campaign type:
-        // - v4 campaigns: SENT_TO_CLIENT (needs client approval)
-        // - non-v4 campaigns: APPROVED directly
-        const pitchStatus = isV4Campaign ? 'SENT_TO_CLIENT' : 'APPROVED';
-
-        // Extract per-creator comments with fallback to legacy format
-        const creatorAdminComments =
-          creator.adminComments?.trim() || (typeof legacyAdminComments === 'string' ? legacyAdminComments.trim() : '');
-        const hasComments = creatorAdminComments && creatorAdminComments.length > 0;
-
-        // Create a pitch record for this creator
-        console.log(
-          `Creating pitch for creator ${user.id} with status ${pitchStatus}${hasComments ? ' and admin comments' : ''}`,
-        );
-        await tx.pitch.create({
-          data: {
-            userId: user.id,
-            campaignId: campaign.id,
-            type: 'shortlisted',
-            status: pitchStatus,
-            content: `Creator ${user.name} has been shortlisted for campaign "${campaign.name}"`,
-            amount: null,
-            agreementTemplateId: null,
-            approvedByAdminId: userId,
-            selectedPlatform,
-            ...(resolvedFollowerCount > 0 ? { followerCount: String(resolvedFollowerCount) } : {}),
-            ...(hasComments ? { adminComments: creatorAdminComments, adminCommentedBy: userId } : {}),
-          },
-        });
 
         // For non-v4 campaigns: Also create ShortListedCreator and submissions (direct approval)
         if (!isV4Campaign) {
@@ -10970,7 +10990,11 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
             });
           }
 
-          // Create submission records for non-v4 campaigns
+          // Create submission records for non-v4 campaigns (only on first shortlist)
+          if (existingPitch) {
+            continue;
+          }
+
           const timelines = await tx.campaignTimeline.findMany({
             where: {
               campaignId: campaign.id,
