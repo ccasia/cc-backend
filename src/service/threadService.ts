@@ -2,7 +2,7 @@ import { PrismaClient } from '@prisma/client';
 import { sendMessageInThread } from '@controllers/threadController';
 import { Request, Response } from 'express';
 import { randomUUID } from 'crypto';
-import { uploadAttachments, uploadAttachmentStream } from '@configs/cloudStorage.config';
+import { storage, uploadAttachments, uploadAttachmentStream } from '@configs/cloudStorage.config';
 import { clients, io } from '../server';
 import { notificationCSMChat, notificationGroupChat } from '@helper/notification';
 import { saveNotification } from '@controllers/notificationController';
@@ -28,14 +28,14 @@ export const assertThreadMembership = async (userId: string, threadId: string) =
 
 const sanitizeFileName = (name: string) => name.replace(/[^a-zA-Z0-9._-]/g, '_');
 
-type UploadedFile = {
+interface UploadedFile {
   tempFilePath: string;
   name: string;
   mimetype: string;
   size: number;
-};
+}
 
-type SendMessageInput = {
+interface SendMessageInput {
   userId: string;
   threadId: string;
   content?: string;
@@ -46,9 +46,78 @@ type SendMessageInput = {
   allowedExactMimes?: string[];
   maxFileSize?: number;
   clientNonce?: string;
-};
+}
+
+interface MessageMutationInput {
+  userId: string;
+  threadId: string;
+  messageId: number;
+}
+
+interface EditMessageInput extends MessageMutationInput {
+  content: string;
+}
 
 const DEFAULT_MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+
+const messageInclude = {
+  sender: {
+    select: {
+      id: true,
+      name: true,
+      photoURL: true,
+      role: true,
+    },
+  },
+  seenMessages: {
+    select: {
+      userId: true,
+      seenAt: true,
+      user: {
+        select: {
+          id: true,
+          name: true,
+          photoURL: true,
+          role: true,
+          admin: {
+            select: {
+              role: { select: { name: true } },
+            },
+          },
+        },
+      },
+    },
+  },
+};
+
+const parseChatAttachmentPath = (url: string | null | undefined) => {
+  if (!url) return null;
+  try {
+    const parsed = new URL(url);
+    const bucketName = process.env.BUCKET_NAME;
+    if (parsed.hostname !== 'storage.googleapis.com' || !bucketName) return null;
+    const pathname = decodeURIComponent(parsed.pathname.replace(/^\/+/, ''));
+    const prefix = `${bucketName}/`;
+    if (!pathname.startsWith(prefix)) return null;
+    const objectPath = pathname.slice(prefix.length);
+    return objectPath.startsWith('chat-attachments/') ? objectPath : null;
+  } catch {
+    return null;
+  }
+};
+
+const deleteChatAttachmentIfPresent = async (url: string | null | undefined) => {
+  const objectPath = parseChatAttachmentPath(url);
+  if (!objectPath) return;
+  try {
+    await storage
+      .bucket(process.env.BUCKET_NAME as string)
+      .file(objectPath)
+      .delete({ ignoreNotFound: true });
+  } catch (error) {
+    console.error('Failed to delete chat attachment:', error);
+  }
+};
 
 export const sendMessageService = async ({
   userId,
@@ -75,8 +144,7 @@ export const sendMessageService = async ({
           : [allowedMimePrefix]
         : [];
       const exact = allowedExactMimes ?? [];
-      const mimeOk =
-        prefixes.some((p) => file.mimetype.startsWith(p)) || exact.includes(file.mimetype);
+      const mimeOk = prefixes.some((p) => file.mimetype.startsWith(p)) || exact.includes(file.mimetype);
       if (!mimeOk) {
         throw new ThreadServiceError(415, `Unsupported file type: ${file.mimetype}`);
       }
@@ -96,9 +164,10 @@ export const sendMessageService = async ({
         folderName: 'chat-attachments',
         contentType: file.mimetype,
         size: file.size,
-        progressCallback: clientNonce && senderSocketId
-          ? (percent) => io.to(senderSocketId).emit('attachmentProgress', { clientNonce, percent })
-          : undefined,
+        progressCallback:
+          clientNonce && senderSocketId
+            ? (percent) => io.to(senderSocketId).emit('attachmentProgress', { clientNonce, percent })
+            : undefined,
       });
     } else {
       fileUrl = await uploadAttachments({
@@ -121,8 +190,8 @@ export const sendMessageService = async ({
         // Only meaningful when an attachment is present; clients send these
         // alongside the upload so server-loaded messages render at the
         // correct aspect ratio without a fallback flash.
-        fileWidth: fileUrl ? (fileWidth ?? null) : null,
-        fileHeight: fileUrl ? (fileHeight ?? null) : null,
+        fileWidth: fileUrl ? fileWidth ?? null : null,
+        fileHeight: fileUrl ? fileHeight ?? null : null,
         fileName: file ? file.name : null,
         fileSize: file ? file.size : null,
         createdAt: new Date(),
@@ -228,27 +297,41 @@ export const sendMessageService = async ({
 
 export const markMessagesService = async (threadId: string, userId: string) => {
   try {
-    // Find all unread messages for the user in the thread
-    const unreadMessages = await prisma.unreadMessage.findMany({
+    await assertThreadMembership(userId, threadId);
+
+    const messagesToMark = await prisma.message.findMany({
       where: {
         threadId,
-        userId,
+        senderId: { not: userId },
       },
+      select: { id: true },
     });
 
-    if (unreadMessages.length === 0) {
-      return { message: 'No unread messages to mark as seen.' };
+    const messageIds = messagesToMark.map((message) => message.id);
+    const existingSeenMessages =
+      messageIds.length > 0
+        ? await prisma.seenMessage.findMany({
+            where: {
+              userId,
+              messageId: { in: messageIds },
+            },
+            select: { messageId: true },
+          })
+        : [];
+    const existingSeenIds = new Set(existingSeenMessages.map((message) => message.messageId));
+    const newMessageIds = messageIds.filter((messageId) => !existingSeenIds.has(messageId));
+    const seenAt = new Date();
+
+    if (newMessageIds.length > 0) {
+      await prisma.seenMessage.createMany({
+        data: newMessageIds.map((messageId) => ({
+          userId,
+          messageId,
+          seenAt,
+        })),
+        skipDuplicates: true,
+      });
     }
-
-    // Create seen messages and delete the unread messages
-    const seenMessages = unreadMessages.map((unreadMessage) => ({
-      userId: userId as string,
-      messageId: unreadMessage.messageId,
-    }));
-
-    await prisma.seenMessage.createMany({
-      data: seenMessages,
-    });
 
     await prisma.unreadMessage.deleteMany({
       where: {
@@ -257,11 +340,112 @@ export const markMessagesService = async (threadId: string, userId: string) => {
       },
     });
 
-    return { message: 'Messages marked as seen.' };
+    const reader = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        name: true,
+        photoURL: true,
+        role: true,
+        admin: {
+          select: {
+            role: { select: { name: true } },
+          },
+        },
+      },
+    });
+
+    return {
+      message: newMessageIds.length > 0 ? 'Messages marked as seen.' : 'No unread messages to mark as seen.',
+      threadId,
+      userId,
+      seenAt,
+      messageIds: newMessageIds,
+      reader,
+    };
   } catch (error) {
     console.error('Error marking messages as seen:', error);
     throw new Error('Failed to mark messages as seen.');
   }
+};
+
+const getOwnedMutableMessage = async ({ userId, threadId, messageId }: MessageMutationInput) => {
+  await assertThreadMembership(userId, threadId);
+
+  const message = await prisma.message.findUnique({
+    where: { id: messageId },
+    select: {
+      id: true,
+      threadId: true,
+      senderId: true,
+      file: true,
+      deletedAt: true,
+    },
+  });
+
+  if (!message || message.threadId !== threadId) {
+    throw new ThreadServiceError(404, 'Message not found.');
+  }
+  if (message.senderId !== userId) {
+    throw new ThreadServiceError(403, 'You can only modify your own messages.');
+  }
+  return message;
+};
+
+export const editMessageService = async ({ userId, threadId, messageId, content }: EditMessageInput) => {
+  const trimmed = content.trim();
+  if (!trimmed) {
+    throw new ThreadServiceError(400, 'Message content cannot be empty.');
+  }
+
+  const message = await getOwnedMutableMessage({ userId, threadId, messageId });
+  if (message.deletedAt) {
+    throw new ThreadServiceError(409, 'Deleted messages cannot be edited.');
+  }
+
+  const updated = await prisma.message.update({
+    where: { id: messageId },
+    data: {
+      content: trimmed,
+      editedAt: new Date(),
+    },
+    include: messageInclude,
+  });
+
+  io.to(threadId).emit('messageUpdated', updated);
+  return updated;
+};
+
+export const deleteMessageService = async ({ userId, threadId, messageId }: MessageMutationInput) => {
+  const message = await getOwnedMutableMessage({ userId, threadId, messageId });
+  if (message.deletedAt) {
+    const existing = await prisma.message.findUnique({
+      where: { id: messageId },
+      include: messageInclude,
+    });
+    if (!existing) throw new ThreadServiceError(404, 'Message not found.');
+    return existing;
+  }
+
+  const deleted = await prisma.message.update({
+    where: { id: messageId },
+    data: {
+      content: '',
+      file: null,
+      fileType: null,
+      fileWidth: null,
+      fileHeight: null,
+      fileName: null,
+      fileSize: null,
+      deletedAt: new Date(),
+      deletedById: userId,
+    },
+    include: messageInclude,
+  });
+
+  await deleteChatAttachmentIfPresent(message.file);
+  io.to(threadId).emit('messageDeleted', deleted);
+  return deleted;
 };
 
 export const totalUnreadMessagesService = async (userId: string) => {
@@ -358,16 +542,7 @@ export const fetchMessagesFromThread = async (threadId: string) => {
     const messages = await prisma.message.findMany({
       where: { threadId: String(threadId) },
       orderBy: { createdAt: 'asc' },
-      include: {
-        sender: {
-          select: {
-            id: true,
-            name: true,
-            photoURL: true,
-            role: true,
-          },
-        },
-      },
+      include: messageInclude,
     });
     return messages;
   } catch (error) {

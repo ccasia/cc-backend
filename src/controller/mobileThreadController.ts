@@ -1,6 +1,13 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
-import { markMessagesService, sendMessageService, ThreadServiceError } from '@services/threadService';
+import {
+  deleteMessageService,
+  editMessageService,
+  fetchMessagesFromThread,
+  markMessagesService,
+  sendMessageService,
+  ThreadServiceError,
+} from '@services/threadService';
 import { CHAT_DOC_ALLOWED_MIMES, CHAT_DOC_MAX_SIZE } from '@constants/chatFileTypes';
 import { getLinkPreviewForUrl } from '@services/linkPreviewService';
 import { io } from '../server';
@@ -84,20 +91,7 @@ export const getMyThreadMessages = async (req: Request, res: Response) => {
       return res.status(403).json({ error: 'Forbidden.' });
     }
 
-    const messages = await prisma.message.findMany({
-      where: { threadId: String(threadId) },
-      orderBy: { createdAt: 'asc' },
-      include: {
-        sender: {
-          select: { id: true, name: true, photoURL: true, role: true },
-        },
-        seenMessages: { select: { userId: true } },
-      },
-    });
-
-    await prisma.unreadMessage.deleteMany({
-      where: { threadId, userId },
-    });
+    const messages = await fetchMessagesFromThread(threadId);
 
     return res.status(200).json(messages);
   } catch (error) {
@@ -223,10 +217,73 @@ export const markThreadSeen = async (req: Request, res: Response) => {
     }
 
     const result = await markMessagesService(threadId, userId);
-    io.to(threadId).emit('messagesSeen', { threadId, userId });
+    io.to(threadId).emit('messagesSeen', result);
     return res.status(200).json(result);
   } catch (error) {
     console.error('mobile markThreadSeen error:', error);
     return res.status(500).json({ error: 'An error occurred while marking messages as seen.' });
+  }
+};
+
+const parseMessageId = (value: string) => {
+  const id = Number(value);
+  return Number.isInteger(id) && id > 0 ? id : null;
+};
+
+export const editMyMessage = async (req: Request, res: Response) => {
+  const userId = req.userId;
+  const { threadId, messageId } = req.params;
+  const content = typeof req.body.content === 'string' ? req.body.content : '';
+  const parsedMessageId = parseMessageId(messageId);
+
+  if (!userId) {
+    return res.status(401).json({ error: 'Unauthorized.' });
+  }
+  if (!parsedMessageId) {
+    return res.status(400).json({ error: 'Invalid messageId.' });
+  }
+
+  try {
+    const message = await editMessageService({
+      userId,
+      threadId,
+      messageId: parsedMessageId,
+      content,
+    });
+    return res.status(200).json(message);
+  } catch (error) {
+    if (error instanceof ThreadServiceError) {
+      return res.status(error.status).json({ error: error.message });
+    }
+    console.error('mobile editMyMessage error:', error);
+    return res.status(500).json({ error: 'Failed to edit message.' });
+  }
+};
+
+export const deleteMyMessage = async (req: Request, res: Response) => {
+  const userId = req.userId;
+  const { threadId, messageId } = req.params;
+  const parsedMessageId = parseMessageId(messageId);
+
+  if (!userId) {
+    return res.status(401).json({ error: 'Unauthorized.' });
+  }
+  if (!parsedMessageId) {
+    return res.status(400).json({ error: 'Invalid messageId.' });
+  }
+
+  try {
+    const message = await deleteMessageService({
+      userId,
+      threadId,
+      messageId: parsedMessageId,
+    });
+    return res.status(200).json(message);
+  } catch (error) {
+    if (error instanceof ThreadServiceError) {
+      return res.status(error.status).json({ error: error.message });
+    }
+    console.error('mobile deleteMyMessage error:', error);
+    return res.status(500).json({ error: 'Failed to delete message.' });
   }
 };
