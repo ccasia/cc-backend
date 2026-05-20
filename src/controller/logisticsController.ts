@@ -50,6 +50,10 @@ async function getLogisticContext(logisticId: string) {
   };
 }
 
+function getAuthedUserId(req: Request): string | undefined {
+  return req.userId ?? (req as any).session?.userid;
+}
+
 export const getLogisticsForCampaign = async (req: Request, res: Response) => {
   try {
     const { campaignId } = req.params;
@@ -66,7 +70,8 @@ export const getLogisticsForCampaign = async (req: Request, res: Response) => {
 
 export const getCreatorLogistics = async (req: Request, res: Response) => {
   try {
-    const { userid } = (req as any).session;
+    const userid = getAuthedUserId(req);
+    if (!userid) return res.status(401).json({ message: 'Unauthorized' });
 
     const logistics = await fetchAllLogisticsForCreator(userid);
     return res.status(200).json(logistics);
@@ -79,7 +84,8 @@ export const getCreatorLogistics = async (req: Request, res: Response) => {
 export const getCreatorLogisticForCampaign = async (req: Request, res: Response) => {
   try {
     const { campaignId } = req.params;
-    const { userid } = (req as any).session;
+    const userid = getAuthedUserId(req);
+    if (!userid) return res.status(401).json({ message: 'Unauthorized' });
 
     if (!campaignId) {
       return res.status(400).json({ message: 'Campaign ID is required.' });
@@ -145,7 +151,8 @@ export const singleAssignmentLogistics = async (req: Request, res: Response) => 
   try {
     const { campaignId } = req.params;
     const { creatorId, items } = req.body;
-    const { userid: createdById } = (req as any).session;
+    const createdById = getAuthedUserId(req);
+    if (!createdById) return res.status(401).json({ message: 'Unauthorized' });
 
     if (!creatorId || !items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ message: 'Creator ID and a non-empty array of items are required.' });
@@ -178,7 +185,8 @@ export const bulkAssignmentLogistics = async (req: Request, res: Response) => {
   try {
     const { campaignId } = req.params;
     const { assignments } = req.body;
-    const { userid: createdById } = (req as any).session;
+    const createdById = getAuthedUserId(req);
+    if (!createdById) return res.status(401).json({ message: 'Unauthorized' });
 
     if (!assignments || !Array.isArray(assignments) || assignments.length === 0) {
       return res.status(400).json({ message: 'Assignments array is required and cannot be empty.' });
@@ -321,7 +329,8 @@ export const reportIssue = async (req: Request, res: Response) => {
   try {
     const { logisticId } = req.params;
     const { reason } = req.body;
-    const { userid } = (req as any).session;
+    const userid = getAuthedUserId(req);
+    if (!userid) return res.status(401).json({ message: 'Unauthorized' });
 
     const updated = await reportLogisticIssue(logisticId, reason, userid);
 
@@ -454,7 +463,8 @@ export const adminUpdateLogisticDetails = async (req: Request, res: Response) =>
 export const resolveLogisticIssue = async (req: Request, res: Response) => {
   try {
     const { logisticId } = req.params;
-    const { userid } = (req as any).session;
+    const userid = getAuthedUserId(req);
+    if (!userid) return res.status(401).json({ message: 'Unauthorized' });
 
     // Fetch issue reason before resolving (status is still OPEN)
     const openIssue = await prisma.logisticIssue.findFirst({
@@ -485,7 +495,8 @@ export const resolveLogisticIssue = async (req: Request, res: Response) => {
 export const retryLogisticDelivery = async (req: Request, res: Response) => {
   try {
     const { logisticId } = req.params;
-    const { userid } = (req as any).session;
+    const userid = getAuthedUserId(req);
+    if (!userid) return res.status(401).json({ message: 'Unauthorized' });
 
     const result = await retryDeliveryService(logisticId, userid);
 
@@ -502,7 +513,8 @@ export const retryLogisticDelivery = async (req: Request, res: Response) => {
 export const submitCreatorProductInfo = async (req: Request, res: Response) => {
   try {
     const { campaignId } = req.params;
-    const { userid } = (req as any).session;
+    const userid = getAuthedUserId(req);
+    if (!userid) return res.status(401).json({ message: 'Unauthorized' });
     const { address, location, city, state, country, postcode, dietaryRestrictions } = req.body;
 
     const result = await creatorProductInfoService({
@@ -583,7 +595,8 @@ export const getReservationSlots = async (req: Request, res: Response) => {
 export const submitReservationDetails = async (req: Request, res: Response) => {
   try {
     const { campaignId } = req.params;
-    const { userid } = (req as any).session;
+    const userid = getAuthedUserId(req);
+    if (!userid) return res.status(401).json({ message: 'Unauthorized' });
     const { outlet, phoneNumber, remarks, pax, selectedSlots } = req.body;
 
     if (!selectedSlots || selectedSlots.length === 0) {
