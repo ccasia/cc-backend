@@ -56,6 +56,29 @@ const TIKTOK_MOBILE_REGEX = /(?:https?:\/\/)?(?:vt|vm|m)\.tiktok\.com\/[A-Za-z0-
 
 type ReportPlatform = 'Instagram' | 'TikTok' | null;
 
+const emitAgreementSubmissionUpdated = ({
+  submissionId,
+  campaignId,
+  userId,
+  newStatus,
+  action,
+}: {
+  submissionId: string;
+  campaignId: string;
+  userId?: string | null;
+  newStatus: string;
+  action: string;
+}) => {
+  io.to(campaignId).emit('v4:submission:updated', {
+    submissionId,
+    campaignId,
+    userId,
+    newStatus,
+    action,
+    updatedAt: new Date().toISOString(),
+  });
+};
+
 const getSubmissionReportPlatform = (content?: string | null): ReportPlatform => {
   if (!content) return null;
 
@@ -563,6 +586,13 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
 
       io.to(clients.get(userId)).emit('notification', notification);
       io.to(clients.get(userId)).emit('newFeedback');
+      emitAgreementSubmissionUpdated({
+        submissionId: agreementSubs.id,
+        campaignId,
+        userId,
+        newStatus: 'APPROVED',
+        action: 'approve',
+      });
     } else if (data.status === 'reject') {
       const { feedback, campaignTaskId, submissionId, userId, submission: sub } = data;
 
@@ -699,6 +729,13 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
 
       io.to(clients.get(userId)).emit('notification', notification);
       io.to(clients.get(userId)).emit('newFeedback');
+      emitAgreementSubmissionUpdated({
+        submissionId: submission.id,
+        campaignId,
+        userId,
+        newStatus: 'CHANGES_REQUIRED',
+        action: 'reject',
+      });
     }
 
     return res.status(200).json({ message: 'Successfully updated' });
@@ -3701,6 +3738,14 @@ export const updateSubmissionStatus = async (req: Request, res: Response) => {
           },
         });
       }
+
+      emitAgreementSubmissionUpdated({
+        submissionId: result.updatedSubmission.id,
+        campaignId: result.submission.campaignId,
+        userId: result.submission.userId,
+        newStatus: status,
+        action: status === 'CHANGES_REQUIRED' ? 'reject' : status === 'APPROVED' ? 'approve' : 'status_update',
+      });
     }
 
     return res.status(200).json({

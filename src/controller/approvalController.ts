@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import jwt, { Secret } from 'jsonwebtoken';
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 
 import {
   sendCreatorApprovalListEmail,
@@ -100,6 +100,166 @@ function buildApprovalEmailCreatorRow(pitch: {
     tiktokDisplay: tkUser ? `@${String(tkUser).replace(/^@/, '')}` : null,
     statsLine,
   };
+}
+
+async function ensureApprovedCreatorCampaignSetup(tx: Prisma.TransactionClient, pitchId: string) {
+  const pitch = await tx.pitch.findUnique({
+    where: { id: pitchId },
+    include: {
+      campaign: true,
+    },
+  });
+
+  if (!pitch) {
+    throw new Error('Pitch not found');
+  }
+
+  const existingShortlist = await tx.shortListedCreator.findUnique({
+    where: {
+      userId_campaignId: {
+        userId: pitch.userId,
+        campaignId: pitch.campaignId,
+      },
+    },
+  });
+
+  if (existingShortlist) {
+    await tx.shortListedCreator.update({
+      where: {
+        userId_campaignId: {
+          userId: pitch.userId,
+          campaignId: pitch.campaignId,
+        },
+      },
+      data: {
+        isAgreementReady: false,
+      },
+    });
+  } else {
+    await tx.shortListedCreator.create({
+      data: {
+        userId: pitch.userId,
+        campaignId: pitch.campaignId,
+        isAgreementReady: false,
+        currency: 'MYR',
+      },
+    });
+  }
+
+  const existingAgreement = await tx.creatorAgreement.findFirst({
+    where: {
+      userId: pitch.userId,
+      campaignId: pitch.campaignId,
+    },
+  });
+
+  if (!existingAgreement) {
+    await tx.creatorAgreement.create({
+      data: {
+        userId: pitch.userId,
+        campaignId: pitch.campaignId,
+        agreementUrl: '',
+      },
+    });
+  }
+
+  const existingSubmissions = await tx.submission.findMany({
+    where: {
+      userId: pitch.userId,
+      campaignId: pitch.campaignId,
+    },
+    include: { submissionType: true },
+  });
+
+  const timelines = await tx.campaignTimeline.findMany({
+    where: {
+      campaignId: pitch.campaignId,
+      for: 'creator',
+      name: { not: 'Open For Pitch' },
+    },
+    include: { submissionType: true },
+    orderBy: { order: 'asc' },
+  });
+
+  const v2SubmissionTypes = ['FIRST_DRAFT', 'FINAL_DRAFT', 'POSTING'];
+  const timelinesFiltered =
+    pitch.campaign.submissionVersion === 'v4'
+      ? timelines.filter((timeline) => !v2SubmissionTypes.includes(timeline.submissionType?.type || ''))
+      : timelines;
+
+  const existingSubmissionTypes = new Set<string | undefined>(
+    existingSubmissions.map((submission) => submission.submissionType?.type),
+  );
+
+  const timelinesWithoutExisting = timelinesFiltered.filter(
+    (timeline) => timeline.submissionType?.type && !existingSubmissionTypes.has(timeline.submissionType.type),
+  );
+
+  const board = await tx.board.findUnique({
+    where: { userId: pitch.userId },
+    include: { columns: true },
+  });
+
+  if (!board || timelinesWithoutExisting.length === 0) {
+    return;
+  }
+
+  const columnToDo = board.columns.find((column) => column.name.includes('To Do'));
+  const columnInProgress = board.columns.find((column) => column.name.includes('In Progress'));
+
+  if (!columnToDo || !columnInProgress) {
+    return;
+  }
+
+  const submissions = await Promise.all(
+    timelinesWithoutExisting.map((timeline, index) =>
+      tx.submission.create({
+        data: {
+          dueDate: timeline.endDate,
+          campaignId: timeline.campaignId,
+          userId: pitch.userId,
+          status: timeline.submissionType?.type === 'AGREEMENT_FORM' ? 'IN_PROGRESS' : 'NOT_STARTED',
+          submissionTypeId: timeline.submissionTypeId as string,
+          submissionVersion: pitch.campaign.submissionVersion === 'v4' ? 'v4' : undefined,
+          task: {
+            create: {
+              name: timeline.name,
+              position: index,
+              columnId: timeline.submissionType?.type ? columnInProgress.id : columnToDo.id,
+              priority: '',
+              status: timeline.submissionType?.type ? 'In Progress' : 'To Do',
+            },
+          },
+        },
+        include: {
+          submissionType: true,
+        },
+      }),
+    ),
+  );
+
+  if (pitch.campaign.submissionVersion === 'v4') {
+    return;
+  }
+
+  const agreement = submissions.find((submission) => submission.submissionType?.type === 'AGREEMENT_FORM');
+  const draft = submissions.find((submission) => submission.submissionType?.type === 'FIRST_DRAFT');
+  const finalDraft = submissions.find((submission) => submission.submissionType?.type === 'FINAL_DRAFT');
+  const posting = submissions.find((submission) => submission.submissionType?.type === 'POSTING');
+
+  const dependencies = [
+    { submissionId: draft?.id, dependentSubmissionId: agreement?.id },
+    { submissionId: finalDraft?.id, dependentSubmissionId: draft?.id },
+    { submissionId: posting?.id, dependentSubmissionId: finalDraft?.id },
+  ].flatMap((dependency) =>
+    dependency.submissionId && dependency.dependentSubmissionId
+      ? [{ submissionId: dependency.submissionId, dependentSubmissionId: dependency.dependentSubmissionId }]
+      : [],
+  );
+
+  if (dependencies.length > 0) {
+    await tx.submissionDependency.createMany({ data: dependencies });
+  }
 }
 
 // POST /api/approval-requests
@@ -462,22 +622,26 @@ export const actionApprovalCreator = async (req: Request, res: Response) => {
         });
       }
 
-      await prisma.$transaction([
-        prisma.approvalRequestCreator.update({
+      await prisma.$transaction(async (tx) => {
+        await tx.approvalRequestCreator.update({
           where: { id: creatorEntry.id },
           data: {
             status: approvalStatus,
             ...(commentToStore !== null && { comment: commentToStore }),
           },
-        }),
-        prisma.pitch.update({
+        });
+        await tx.pitch.update({
           where: { id: pitchId },
           data: {
             status: pitchStatus,
             ...(commentToStore !== null && { clientVisibleApprovalNote: commentToStore }),
           },
-        }),
-      ]);
+        });
+
+        if (action === 'approve') {
+          await ensureApprovedCreatorCampaignSetup(tx, pitchId);
+        }
+      });
 
       try {
         const creatorLabel = pitchBefore?.user?.name?.trim() || 'Creator';
