@@ -280,28 +280,9 @@ export const sendMessageInThread = async (req: Request, res: Response) => {
 
 export const getMessagesFromThread = async (req: Request, res: Response) => {
   const { threadId } = req.params;
-  const userId = req.userId;
   try {
     const messages = await fetchMessagesFromThread(threadId);
 
-    const unreadMessages = await prisma.unreadMessage.findMany({
-      where: {
-        threadId,
-        userId,
-      },
-    });
-    //console.log('Unread messages to be deleted:', unreadMessages);
-
-    // Delete unread messages
-    if (unreadMessages.length > 0) {
-      await prisma.unreadMessage.deleteMany({
-        where: {
-          threadId,
-          userId,
-        },
-      });
-      //console.log('Unread messages marked as seen.');
-    }
     res.status(200).json(messages);
   } catch (error) {
     console.error(error);
@@ -358,7 +339,7 @@ export const markMessagesAsSeen = async (req: Request, res: Response) => {
 
   try {
     const result = await markMessagesService(threadId, userId);
-    io.to(threadId).emit('messagesSeen', { threadId, userId });
+    io.to(threadId).emit('messagesSeen', result);
     res.status(200).json(result);
   } catch (error) {
     console.error('Error marking messages as seen:', error);

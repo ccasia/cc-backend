@@ -1,0 +1,1 @@
+ALTER TABLE "SeenMessage" ADD COLUMN "seenAt" TIMESTAMP(3);

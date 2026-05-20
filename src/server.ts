@@ -11,8 +11,7 @@ import { PrismaClient } from '@prisma/client';
 
 import '@configs/cronjob';
 import http from 'http';
-import { markMessagesAsSeen } from '@controllers/threadController';
-import { handleSendMessage, fetchMessagesFromThread } from '@services/threadService';
+import { handleSendMessage, fetchMessagesFromThread, markMessagesService } from '@services/threadService';
 import { authenticate } from '@middlewares/authenticate';
 import { Server } from 'socket.io';
 import '@services/uploadVideo';
@@ -519,15 +518,8 @@ io.on('connection', (socket) => {
     }
 
     try {
-      const mockRequest = {
-        params: { threadId },
-        session: { userid: userId },
-        cookies: {},
-        headers: {},
-      } as unknown as Request;
-
-      await markMessagesAsSeen(mockRequest, {} as Response);
-      io.to(threadId).emit('messagesSeen', { threadId, userId });
+      const result = await markMessagesService(threadId, userId);
+      io.to(threadId).emit('messagesSeen', result);
     } catch (error) {
       console.error('Error marking messages as seen:', error);
       socket.emit('error', 'Failed to mark messages as seen.');

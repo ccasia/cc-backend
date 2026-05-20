@@ -462,6 +462,9 @@ model Message {
   id             Int             @id @default(autoincrement())
   content        String
   createdAt      DateTime        @default(now())
+  editedAt       DateTime?
+  deletedAt      DateTime?
+  deletedById    String?
   threadId       String?
   senderId       String?
   file           String?
@@ -493,6 +496,7 @@ model SeenMessage {
   id        Int     @id @default(autoincrement())
   userId    String
   messageId Int
+  seenAt    DateTime?
   message   Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
   user      User    @relation(fields: [userId], references: [id])
 
