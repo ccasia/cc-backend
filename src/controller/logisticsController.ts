@@ -50,6 +50,25 @@ async function getLogisticContext(logisticId: string) {
   };
 }
 
+function getAuthedUserId(req: Request): string | undefined {
+  return req.userId ?? (req as any).session?.userid;
+}
+
+function emitLogisticSocket(
+  req: Request,
+  campaignId: string | null | undefined,
+  payload: { logisticId?: string; action?: string } = {},
+) {
+  if (!campaignId) return;
+  const io = req.app.get('io');
+  if (!io) return;
+  io.to(campaignId).emit('v4:logistic:updated', {
+    campaignId,
+    ...payload,
+    updatedAt: new Date().toISOString(),
+  });
+}
+
 export const getLogisticsForCampaign = async (req: Request, res: Response) => {
   try {
     const { campaignId } = req.params;
@@ -66,7 +85,8 @@ export const getLogisticsForCampaign = async (req: Request, res: Response) => {
 
 export const getCreatorLogistics = async (req: Request, res: Response) => {
   try {
-    const { userid } = (req as any).session;
+    const userid = getAuthedUserId(req);
+    if (!userid) return res.status(401).json({ message: 'Unauthorized' });
 
     const logistics = await fetchAllLogisticsForCreator(userid);
     return res.status(200).json(logistics);
@@ -79,7 +99,8 @@ export const getCreatorLogistics = async (req: Request, res: Response) => {
 export const getCreatorLogisticForCampaign = async (req: Request, res: Response) => {
   try {
     const { campaignId } = req.params;
-    const { userid } = (req as any).session;
+    const userid = getAuthedUserId(req);
+    if (!userid) return res.status(401).json({ message: 'Unauthorized' });
 
     if (!campaignId) {
       return res.status(400).json({ message: 'Campaign ID is required.' });
@@ -145,7 +166,8 @@ export const singleAssignmentLogistics = async (req: Request, res: Response) => 
   try {
     const { campaignId } = req.params;
     const { creatorId, items } = req.body;
-    const { userid: createdById } = (req as any).session;
+    const createdById = getAuthedUserId(req);
+    if (!createdById) return res.status(401).json({ message: 'Unauthorized' });
 
     if (!creatorId || !items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ message: 'Creator ID and a non-empty array of items are required.' });
@@ -167,6 +189,11 @@ export const singleAssignmentLogistics = async (req: Request, res: Response) => 
       assignedItems,
     });
 
+    emitLogisticSocket(req, campaignId, {
+      logisticId: (logistic as any)?.id,
+      action: 'assigned',
+    });
+
     return res.status(201).json(logistic);
   } catch (error) {
     console.error('Error in singleAssignmentLogistics controller', error);
@@ -178,7 +205,8 @@ export const bulkAssignmentLogistics = async (req: Request, res: Response) => {
   try {
     const { campaignId } = req.params;
     const { assignments } = req.body;
-    const { userid: createdById } = (req as any).session;
+    const createdById = getAuthedUserId(req);
+    if (!createdById) return res.status(401).json({ message: 'Unauthorized' });
 
     if (!assignments || !Array.isArray(assignments) || assignments.length === 0) {
       return res.status(400).json({ message: 'Assignments array is required and cannot be empty.' });
@@ -217,6 +245,8 @@ export const bulkAssignmentLogistics = async (req: Request, res: Response) => {
       await logChange(`Logistics assigned to ${creatorName}`, campaignId, req, undefined, { assignedItems });
     }
 
+    emitLogisticSocket(req, campaignId, { action: 'bulk-assigned' });
+
     return res.status(201).json(logistics);
   } catch (error) {
     console.error('Error in bulkAssignmentLogistics controller:', error);
@@ -244,6 +274,8 @@ export const scheduleDelivery = async (req: Request, res: Response) => {
       expectedDeliveryDate: expectedDeliveryDate || null,
       address: deliveryInfo?.deliveryDetails?.address || null,
     });
+
+    emitLogisticSocket(req, campaignId, { logisticId, action: 'scheduled' });
 
     return res.status(200).json(logistic);
   } catch (error) {
@@ -321,7 +353,8 @@ export const reportIssue = async (req: Request, res: Response) => {
   try {
     const { logisticId } = req.params;
     const { reason } = req.body;
-    const { userid } = (req as any).session;
+    const userid = getAuthedUserId(req);
+    if (!userid) return res.status(401).json({ message: 'Unauthorized' });
 
     const updated = await reportLogisticIssue(logisticId, reason, userid);
 
@@ -363,6 +396,11 @@ export const updateLogisticStatus = async (req: Request, res: Response) => {
 
     const { campaignId, creatorName } = await getLogisticContext(logisticId);
     await logChange(`Logistics status for ${creatorName} changed to ${status}`, campaignId, req);
+
+    emitLogisticSocket(req, campaignId, {
+      logisticId,
+      action: `status:${status}`,
+    });
 
     return res.status(200).json(updatedStatus);
   } catch (error) {
@@ -444,6 +482,11 @@ export const adminUpdateLogisticDetails = async (req: Request, res: Response) =>
       );
     }
 
+    emitLogisticSocket(req, campaignId, {
+      logisticId,
+      action: 'admin-updated',
+    });
+
     return res.status(200).json(updatedLogistic);
   } catch (error) {
     console.error('Error admin updating logistic:', error);
@@ -454,7 +497,8 @@ export const adminUpdateLogisticDetails = async (req: Request, res: Response) =>
 export const resolveLogisticIssue = async (req: Request, res: Response) => {
   try {
     const { logisticId } = req.params;
-    const { userid } = (req as any).session;
+    const userid = getAuthedUserId(req);
+    if (!userid) return res.status(401).json({ message: 'Unauthorized' });
 
     // Fetch issue reason before resolving (status is still OPEN)
     const openIssue = await prisma.logisticIssue.findFirst({
@@ -475,6 +519,11 @@ export const resolveLogisticIssue = async (req: Request, res: Response) => {
     if (openIssue?.reason) meta.reason = openIssue.reason;
     await logChange(message, campaignId, req, undefined, Object.keys(meta).length > 0 ? meta : undefined);
 
+    emitLogisticSocket(req, campaignId, {
+      logisticId,
+      action: 'issue-resolved',
+    });
+
     return res.status(200).json(result);
   } catch (error) {
     console.error('Error resolving issue:', error);
@@ -485,12 +534,18 @@ export const resolveLogisticIssue = async (req: Request, res: Response) => {
 export const retryLogisticDelivery = async (req: Request, res: Response) => {
   try {
     const { logisticId } = req.params;
-    const { userid } = (req as any).session;
+    const userid = getAuthedUserId(req);
+    if (!userid) return res.status(401).json({ message: 'Unauthorized' });
 
     const result = await retryDeliveryService(logisticId, userid);
 
     const { campaignId, creatorName } = await getLogisticContext(logisticId);
     await logChange(`Logistics delivery retry scheduled for ${creatorName}`, campaignId, req);
+
+    emitLogisticSocket(req, campaignId, {
+      logisticId,
+      action: 'delivery-retry',
+    });
 
     return res.status(200).json(result);
   } catch (error) {
@@ -502,7 +557,8 @@ export const retryLogisticDelivery = async (req: Request, res: Response) => {
 export const submitCreatorProductInfo = async (req: Request, res: Response) => {
   try {
     const { campaignId } = req.params;
-    const { userid } = (req as any).session;
+    const userid = getAuthedUserId(req);
+    if (!userid) return res.status(401).json({ message: 'Unauthorized' });
     const { address, location, city, state, country, postcode, dietaryRestrictions } = req.body;
 
     const result = await creatorProductInfoService({
@@ -542,6 +598,9 @@ export const upsertReservationConfig = async (req: Request, res: Response) => {
     }
 
     const config = await upsertReservationConfigService(campaignId, req.body);
+
+    emitLogisticSocket(req, campaignId, { action: 'reservation-config-updated' });
+
     return res.status(200).json(config);
   } catch (error) {
     console.error('Error saving reservation config:', error);
@@ -583,7 +642,8 @@ export const getReservationSlots = async (req: Request, res: Response) => {
 export const submitReservationDetails = async (req: Request, res: Response) => {
   try {
     const { campaignId } = req.params;
-    const { userid } = (req as any).session;
+    const userid = getAuthedUserId(req);
+    if (!userid) return res.status(401).json({ message: 'Unauthorized' });
     const { outlet, phoneNumber, remarks, pax, selectedSlots } = req.body;
 
     if (!selectedSlots || selectedSlots.length === 0) {
@@ -644,6 +704,11 @@ export const updateReservationDetails = async (req: Request, res: Response) => {
       });
     }
 
+    emitLogisticSocket(req, campaignId, {
+      logisticId,
+      action: 'reservation-details-updated',
+    });
+
     return res.status(200).json(result);
   } catch (error) {
     console.error('Error updating reservation details:', error);
@@ -686,6 +751,11 @@ export const scheduleReservation = async (req: Request, res: Response) => {
       picContact: picContact || null,
     });
 
+    emitLogisticSocket(req, campaignId, {
+      logisticId,
+      action: 'reservation-scheduled',
+    });
+
     return res.status(200).json(result);
   } catch (error) {
     console.error('Error confirming reservation:', error);
@@ -707,6 +777,11 @@ export const rescheduleReservation = async (req: Request, res: Response) => {
       undefined,
       outlet ? { outlet } : undefined,
     );
+
+    emitLogisticSocket(req, campaignId, {
+      logisticId,
+      action: 'reservation-rescheduled',
+    });
 
     return res.status(200).json({ message: 'Reservation reset successfully', result });
   } catch (error) {
@@ -744,6 +819,11 @@ export const adminSchedule = async (req: Request, res: Response) => {
       startTime: startTime || null,
       endTime: endTime || null,
       outlet: outlet || null,
+    });
+
+    emitLogisticSocket(req, campaignId, {
+      logisticId,
+      action: isReschedule ? 'admin-rescheduled' : 'admin-scheduled',
     });
 
     return res.status(200).json(result);
