@@ -4,8 +4,38 @@ import dayjs from 'dayjs';
 import { clients, io } from '../server';
 import { saveNotification } from './notificationController';
 import { notificationPitchForClientReview } from '@helper/notification';
+import {
+  CREATOR_CAMPAIGN_MEMBERSHIP_UPDATED_EVENT,
+  createCreatorCampaignMembershipUpdatedPayload,
+} from '@utils/campaignMembershipEvents';
 
 const prisma = new PrismaClient();
+
+const emitCreatorCampaignMembershipUpdated = ({
+  userId,
+  campaignId,
+  pitchId,
+  action,
+}: {
+  userId: string;
+  campaignId: string;
+  pitchId?: string;
+  action: 'withdraw' | 'remove';
+}) => {
+  const payload = createCreatorCampaignMembershipUpdatedPayload({
+    userId,
+    campaignId,
+    pitchId,
+    action,
+  });
+  const creatorSocketId = clients.get(userId);
+
+  if (creatorSocketId) {
+    io.to(creatorSocketId).emit(CREATOR_CAMPAIGN_MEMBERSHIP_UPDATED_EVENT, payload);
+  }
+
+  io.to(campaignId).emit(CREATOR_CAMPAIGN_MEMBERSHIP_UPDATED_EVENT, payload);
+};
 
 const normalizePlatform = (platform?: string | null): 'instagram' | 'tiktok' | undefined => {
   if (platform === 'tiktok') return 'tiktok';
@@ -1087,6 +1117,13 @@ export const withdrawCreatorFromCampaign = async (req: Request, res: Response) =
       },
     });
 
+    await prisma.shortListedCreator.deleteMany({
+      where: {
+        userId: pitch.userId,
+        campaignId: pitch.campaignId,
+      },
+    });
+
     // Delete any existing creator agreement for this campaign
     await prisma.creatorAgreement.deleteMany({
       where: {
@@ -1145,6 +1182,12 @@ export const withdrawCreatorFromCampaign = async (req: Request, res: Response) =
       action: 'withdraw',
       updatedBy: adminId,
       updatedAt: new Date().toISOString(),
+    });
+    emitCreatorCampaignMembershipUpdated({
+      userId: pitch.userId,
+      campaignId: pitch.campaignId,
+      pitchId,
+      action: 'withdraw',
     });
 
     return res.status(200).json({
@@ -1327,8 +1370,7 @@ export const setPitchAgreement = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Pitch is not in correct status for agreement setup' });
     }
 
-    const resolvedTemplateId =
-      (agreementTemplateId as string | undefined) || pitch.campaign.agreementTemplateId;
+    const resolvedTemplateId = (agreementTemplateId as string | undefined) || pitch.campaign.agreementTemplateId;
     if (!resolvedTemplateId) {
       return res.status(400).json({
         message:
