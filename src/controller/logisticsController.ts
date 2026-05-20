@@ -54,6 +54,21 @@ function getAuthedUserId(req: Request): string | undefined {
   return req.userId ?? (req as any).session?.userid;
 }
 
+function emitLogisticSocket(
+  req: Request,
+  campaignId: string | null | undefined,
+  payload: { logisticId?: string; action?: string } = {},
+) {
+  if (!campaignId) return;
+  const io = req.app.get('io');
+  if (!io) return;
+  io.to(campaignId).emit('v4:logistic:updated', {
+    campaignId,
+    ...payload,
+    updatedAt: new Date().toISOString(),
+  });
+}
+
 export const getLogisticsForCampaign = async (req: Request, res: Response) => {
   try {
     const { campaignId } = req.params;
@@ -174,6 +189,11 @@ export const singleAssignmentLogistics = async (req: Request, res: Response) => 
       assignedItems,
     });
 
+    emitLogisticSocket(req, campaignId, {
+      logisticId: (logistic as any)?.id,
+      action: 'assigned',
+    });
+
     return res.status(201).json(logistic);
   } catch (error) {
     console.error('Error in singleAssignmentLogistics controller', error);
@@ -225,6 +245,8 @@ export const bulkAssignmentLogistics = async (req: Request, res: Response) => {
       await logChange(`Logistics assigned to ${creatorName}`, campaignId, req, undefined, { assignedItems });
     }
 
+    emitLogisticSocket(req, campaignId, { action: 'bulk-assigned' });
+
     return res.status(201).json(logistics);
   } catch (error) {
     console.error('Error in bulkAssignmentLogistics controller:', error);
@@ -252,6 +274,8 @@ export const scheduleDelivery = async (req: Request, res: Response) => {
       expectedDeliveryDate: expectedDeliveryDate || null,
       address: deliveryInfo?.deliveryDetails?.address || null,
     });
+
+    emitLogisticSocket(req, campaignId, { logisticId, action: 'scheduled' });
 
     return res.status(200).json(logistic);
   } catch (error) {
@@ -373,6 +397,11 @@ export const updateLogisticStatus = async (req: Request, res: Response) => {
     const { campaignId, creatorName } = await getLogisticContext(logisticId);
     await logChange(`Logistics status for ${creatorName} changed to ${status}`, campaignId, req);
 
+    emitLogisticSocket(req, campaignId, {
+      logisticId,
+      action: `status:${status}`,
+    });
+
     return res.status(200).json(updatedStatus);
   } catch (error) {
     console.error('Error updating status:', error);
@@ -453,6 +482,11 @@ export const adminUpdateLogisticDetails = async (req: Request, res: Response) =>
       );
     }
 
+    emitLogisticSocket(req, campaignId, {
+      logisticId,
+      action: 'admin-updated',
+    });
+
     return res.status(200).json(updatedLogistic);
   } catch (error) {
     console.error('Error admin updating logistic:', error);
@@ -485,6 +519,11 @@ export const resolveLogisticIssue = async (req: Request, res: Response) => {
     if (openIssue?.reason) meta.reason = openIssue.reason;
     await logChange(message, campaignId, req, undefined, Object.keys(meta).length > 0 ? meta : undefined);
 
+    emitLogisticSocket(req, campaignId, {
+      logisticId,
+      action: 'issue-resolved',
+    });
+
     return res.status(200).json(result);
   } catch (error) {
     console.error('Error resolving issue:', error);
@@ -502,6 +541,11 @@ export const retryLogisticDelivery = async (req: Request, res: Response) => {
 
     const { campaignId, creatorName } = await getLogisticContext(logisticId);
     await logChange(`Logistics delivery retry scheduled for ${creatorName}`, campaignId, req);
+
+    emitLogisticSocket(req, campaignId, {
+      logisticId,
+      action: 'delivery-retry',
+    });
 
     return res.status(200).json(result);
   } catch (error) {
@@ -554,6 +598,9 @@ export const upsertReservationConfig = async (req: Request, res: Response) => {
     }
 
     const config = await upsertReservationConfigService(campaignId, req.body);
+
+    emitLogisticSocket(req, campaignId, { action: 'reservation-config-updated' });
+
     return res.status(200).json(config);
   } catch (error) {
     console.error('Error saving reservation config:', error);
@@ -657,6 +704,11 @@ export const updateReservationDetails = async (req: Request, res: Response) => {
       });
     }
 
+    emitLogisticSocket(req, campaignId, {
+      logisticId,
+      action: 'reservation-details-updated',
+    });
+
     return res.status(200).json(result);
   } catch (error) {
     console.error('Error updating reservation details:', error);
@@ -699,6 +751,11 @@ export const scheduleReservation = async (req: Request, res: Response) => {
       picContact: picContact || null,
     });
 
+    emitLogisticSocket(req, campaignId, {
+      logisticId,
+      action: 'reservation-scheduled',
+    });
+
     return res.status(200).json(result);
   } catch (error) {
     console.error('Error confirming reservation:', error);
@@ -720,6 +777,11 @@ export const rescheduleReservation = async (req: Request, res: Response) => {
       undefined,
       outlet ? { outlet } : undefined,
     );
+
+    emitLogisticSocket(req, campaignId, {
+      logisticId,
+      action: 'reservation-rescheduled',
+    });
 
     return res.status(200).json({ message: 'Reservation reset successfully', result });
   } catch (error) {
@@ -757,6 +819,11 @@ export const adminSchedule = async (req: Request, res: Response) => {
       startTime: startTime || null,
       endTime: endTime || null,
       outlet: outlet || null,
+    });
+
+    emitLogisticSocket(req, campaignId, {
+      logisticId,
+      action: isReschedule ? 'admin-rescheduled' : 'admin-scheduled',
     });
 
     return res.status(200).json(result);
