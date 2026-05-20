@@ -317,12 +317,14 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
     if (uploadedVideos.length) {
       filePaths.set('video', []);
       for (const video of uploadedVideos) {
-        const videoPath = `/tmp/${submissionId}_${video.name}`;
+        const uploadTs = Date.now();
+        const videoPath = `/tmp/${submissionId}_${uploadTs}_${video.name}`;
         await video.mv(videoPath);
+        const baseName = video.name.replace(/\.[^/.]+$/, '');
         filePaths.get('video').push({
           inputPath: videoPath,
-          outputPath: `/tmp/${submissionId}_${video.name.replace(/\.[^/.]+$/, '')}_compressed.mp4`,
-          fileName: `${submissionId}_${video.name}`,
+          outputPath: `/tmp/${submissionId}_${uploadTs}_${baseName}_compressed.mp4`,
+          fileName: `${submissionId}_${uploadTs}_${video.name}`,
           originalName: video.name,
         });
       }
