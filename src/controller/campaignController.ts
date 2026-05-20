@@ -13,6 +13,7 @@ import {
   LogisticStatus,
   PaymentForm,
   Pitch,
+  PitchStatus,
   Prisma,
   PrismaClient,
   ShortListedCreator,
@@ -76,11 +77,41 @@ import getCountry from '@utils/getCountry';
 import { sendShortlistEmailToClients, ShortlistedCreatorInput } from '@services/notificationService';
 import { calculateAverageMetrics } from '@utils/averagingMetrics';
 import { computeChanges, FieldMapping } from '@utils/campaignLogDiff';
+import {
+  CREATOR_CAMPAIGN_MEMBERSHIP_UPDATED_EVENT,
+  createCreatorCampaignMembershipUpdatedPayload,
+} from '@utils/campaignMembershipEvents';
 
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
 Ffmpeg.setFfprobePath(ffprobePath.path);
 
 const prisma = new PrismaClient();
+
+const emitCreatorCampaignMembershipUpdated = ({
+  userId,
+  campaignId,
+  pitchId,
+  action,
+}: {
+  userId: string;
+  campaignId: string;
+  pitchId?: string;
+  action: 'withdraw' | 'remove';
+}) => {
+  const payload = createCreatorCampaignMembershipUpdatedPayload({
+    userId,
+    campaignId,
+    pitchId,
+    action,
+  });
+  const creatorSocketId = clients.get(userId);
+
+  if (creatorSocketId) {
+    io.to(creatorSocketId).emit(CREATOR_CAMPAIGN_MEMBERSHIP_UPDATED_EVENT, payload);
+  }
+
+  io.to(campaignId).emit(CREATOR_CAMPAIGN_MEMBERSHIP_UPDATED_EVENT, payload);
+};
 
 const normalizePlatform = (platform?: string): SocialPlatform => (platform === 'tiktok' ? 'tiktok' : 'instagram');
 
@@ -3673,6 +3704,8 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
 };
 
 // For creator
+const REMOVED_CREATOR_PITCH_STATUSES: PitchStatus[] = [PitchStatus.WITHDRAWN];
+
 export const getMyCampaigns = async (req: Request, res: Response) => {
   const { userId } = req.params;
 
@@ -3691,18 +3724,35 @@ export const getMyCampaigns = async (req: Request, res: Response) => {
 
     const campaigns = await prisma.campaign.findMany({
       where: {
-        OR: [
+        AND: [
           {
-            shortlisted: {
-              some: {
-                userId: user.id,
+            OR: [
+              {
+                shortlisted: {
+                  some: {
+                    userId: user.id,
+                  },
+                },
               },
-            },
+              {
+                pitch: {
+                  some: {
+                    userId: user.id,
+                    status: {
+                      notIn: REMOVED_CREATOR_PITCH_STATUSES,
+                    },
+                  },
+                },
+              },
+            ],
           },
           {
             pitch: {
-              some: {
+              none: {
                 userId: user.id,
+                status: {
+                  in: REMOVED_CREATOR_PITCH_STATUSES,
+                },
               },
             },
           },
@@ -3739,6 +3789,9 @@ export const getMyCampaigns = async (req: Request, res: Response) => {
         pitch: {
           where: {
             userId: user.id,
+            status: {
+              notIn: REMOVED_CREATOR_PITCH_STATUSES,
+            },
           },
         },
         bookMarkCampaign: true,
@@ -8693,6 +8746,12 @@ export const removeCreatorFromCampaign = async (req: Request, res: Response) => 
       updatedBy: adminId,
       updatedAt: new Date().toISOString(),
     });
+    emitCreatorCampaignMembershipUpdated({
+      userId: creatorId,
+      campaignId,
+      pitchId: campaign.pitch?.[0]?.id,
+      action: 'remove',
+    });
 
     return res.status(200).json({ message: 'Creator has been successfully withdrawn from the campaign.' });
   } catch (error) {
@@ -10888,7 +10947,8 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
 
           // Extract per-creator comments with fallback to legacy format
           const creatorAdminComments =
-            creator.adminComments?.trim() || (typeof legacyAdminComments === 'string' ? legacyAdminComments.trim() : '');
+            creator.adminComments?.trim() ||
+            (typeof legacyAdminComments === 'string' ? legacyAdminComments.trim() : '');
           const hasComments = creatorAdminComments && creatorAdminComments.length > 0;
 
           // Create a pitch record for this creator
