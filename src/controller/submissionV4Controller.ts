@@ -3591,8 +3591,10 @@ export const sendVideoFeedbackToCreator = async (req: Request, res: Response) =>
     });
     const parentIds = parentCommentIds.map((c) => c.id);
 
-    // Find the first unsent comment to link to Feedback (must not already have a Feedback linked)
-    const firstComment = await prisma.submissionComment.findFirst({
+    // Find ALL unsent top-level comments without an existing Feedback link.
+    // Each one becomes its own Feedback row so the creator sees every comment,
+    // not just the first.
+    const unsentTopLevelComments = await prisma.submissionComment.findMany({
       where: {
         submissionId,
         videoId,
@@ -3602,7 +3604,7 @@ export const sendVideoFeedbackToCreator = async (req: Request, res: Response) =>
         feedback: { is: null },
       },
       select: { id: true },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: 'asc' },
     });
 
     // Transaction: mark forwarded + create feedback + update statuses
@@ -3637,18 +3639,37 @@ export const sendVideoFeedbackToCreator = async (req: Request, res: Response) =>
             }),
           ]
         : []),
-      // Create backward-compat Feedback record linked to the first comment
-      prisma.feedback.create({
-        data: {
-          submissionId,
-          adminId,
-          videoId,
-          type: 'REQUEST',
-          sentToCreator: true,
-          content: '',
-          submissionCommentId: firstComment?.id || null,
-        },
-      }),
+      // Create one Feedback row per unsent top-level comment so the creator
+      // sees all comments. If there are no unsent comments (e.g. resending
+      // status with no new content), still create a single empty Feedback for
+      // back-compat with consumers that expect at least one row.
+      ...(unsentTopLevelComments.length > 0
+        ? unsentTopLevelComments.map((c) =>
+            prisma.feedback.create({
+              data: {
+                submissionId,
+                adminId,
+                videoId,
+                type: 'REQUEST',
+                sentToCreator: true,
+                content: '',
+                submissionCommentId: c.id,
+              },
+            }),
+          )
+        : [
+            prisma.feedback.create({
+              data: {
+                submissionId,
+                adminId,
+                videoId,
+                type: 'REQUEST',
+                sentToCreator: true,
+                content: '',
+                submissionCommentId: null,
+              },
+            }),
+          ]),
       // Update submission status
       prisma.submission.update({
         where: { id: submissionId },
