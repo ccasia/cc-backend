@@ -453,6 +453,16 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
           creatorId,
           newStatus,
         });
+        // Also emit v4:submission:updated so admin listeners that only subscribe
+        // to status-change events (separate from content-submitted) refresh too.
+        io.to(submission.campaignId).emit('v4:submission:updated', {
+          submissionId,
+          campaignId: submission.campaignId,
+          newStatus,
+          creatorId,
+          action: 'creator_submitted',
+          updatedAt: new Date().toISOString(),
+        });
       }
 
       console.log(
@@ -907,8 +917,21 @@ export const createMyFeedbackReply = async (req: Request, res: Response) => {
             photoURL: true,
           },
         },
+        submission: { select: { campaignId: true } },
       },
     });
+
+    // Mirror createComment's emit so the admin webapp updates live.
+    const campaignId = reply.submission?.campaignId;
+    if (io && campaignId) {
+      io.to(campaignId).emit('v4:comment:reply:added', {
+        submissionId: feedback.submissionId,
+        videoId: feedback.videoId ?? null,
+        campaignId,
+        comment: reply,
+        parentCommentId: rootCommentId,
+      });
+    }
 
     return res.status(201).json({
       reply: {
