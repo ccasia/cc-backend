@@ -305,6 +305,7 @@ async function deleteFileIfExists(filePath: string) {
                 rawFootages: true,
                 photos: true,
                 submissionType: true,
+                submissionVersion: true,
                 userId: true,
                 campaign: {
                   select: {
@@ -706,9 +707,11 @@ async function deleteFileIfExists(filePath: string) {
 
             await checkCurrentSubmission(submission.id);
 
-            // Emit V4 socket event so admin UI refreshes with new content and status
-            if (content.isV4 && submission.campaignId) {
-              io?.to(submission.campaignId).emit('v4:content:processed', {
+            // Emit socket event to notify that content is now processed and available.
+            // Mirrors videoDraftWorker.ts: both consume the same 'draft' queue, so the
+            // v2 flow must fire here too or the mobile refresh would be flaky (~50%).
+            if (io && submission.campaignId) {
+              const processedPayload = {
                 submissionId: submission.id,
                 campaignId: submission.campaignId,
                 hasVideo: filePaths?.video?.length > 0,
@@ -716,7 +719,15 @@ async function deleteFileIfExists(filePath: string) {
                 hasRawFootage: filePaths?.rawFootages?.length > 0,
                 processedAt: new Date().toISOString(),
                 creatorId: content.userid,
+              };
+
+              io.to(submission.campaignId).emit('v4:content:processed', {
+                ...processedPayload,
               });
+
+              if (!content.isV4 && submission.submissionVersion !== 'v4') {
+                io.to(submission.campaignId).emit('v2:content:processed', processedPayload);
+              }
             }
 
             const endUsage = process.cpuUsage(startUsage);
