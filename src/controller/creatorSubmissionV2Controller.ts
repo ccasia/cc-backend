@@ -406,28 +406,32 @@ export const updateMyV2PostingLink = async (req: Request, res: Response) => {
       where: { id: submissionId },
       data: {
         content: trimmedLink,
-        videos: [trimmedLink],
         submissionDate: new Date(),
         status: 'PENDING_REVIEW',
       },
       include: submissionInclude as any,
     });
 
-    const io = req.app.get('io');
-    if (io) {
-      const payload = {
-        submissionId,
-        campaignId: (submission as any).campaignId,
-        postingLink: trimmedLink,
-        newStatus: 'PENDING_REVIEW',
-        updatedAt: new Date().toISOString(),
-        creatorId,
-      };
-      io.to((submission as any).campaignId).emit('v2:posting:updated', payload);
-      io.to((submission as any).campaignId).emit('v2:campaign:updated', {
-        campaignId: (submission as any).campaignId,
-        updatedAt: payload.updatedAt,
-      });
+    // Socket emit must not fail the request — the link is already saved.
+    try {
+      const io = req.app.get('io');
+      if (io) {
+        const payload = {
+          submissionId,
+          campaignId: (submission as any).campaignId,
+          postingLink: trimmedLink,
+          newStatus: 'PENDING_REVIEW',
+          updatedAt: new Date().toISOString(),
+          creatorId,
+        };
+        io.to((submission as any).campaignId).emit('v2:posting:updated', payload);
+        io.to((submission as any).campaignId).emit('v2:campaign:updated', {
+          campaignId: (submission as any).campaignId,
+          updatedAt: payload.updatedAt,
+        });
+      }
+    } catch (err) {
+      console.log(err);
     }
 
     return res.status(200).json({
