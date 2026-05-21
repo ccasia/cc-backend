@@ -5,7 +5,7 @@ import { saveNotification } from './notificationController';
 import { activeProcesses, clients, io } from '../server';
 import Ffmpeg from 'fluent-ffmpeg';
 import FfmpegPath from '@ffmpeg-installer/ffmpeg';
-import amqplib, { ChannelModel } from 'amqplib';
+import amqplib from 'amqplib';
 import dayjs from 'dayjs';
 import { MAP_TIMELINE } from '@constants/map-timeline';
 import { logAdminChange, logChange } from '@services/campaignServices';
@@ -37,6 +37,8 @@ import { createNewRowData } from '@services/google_sheets/sheets';
 import { createNewTask, getTaskId, updateTask } from '@services/kanbanService';
 import { deductCredits } from '@services/campaignServices';
 import { buildAgreementUploadFileName } from '@utils/submissionAgreement';
+import { normalizeVideoDraftHistory } from '@helper/draftSubmissionStatus';
+import { buildDraftVideoUploadPaths } from '@helper/draftVideoUploadName';
 import {
   getCreatorInvoiceLists,
   handleCompletedCampaign,
@@ -1015,15 +1017,17 @@ export const draftSubmission = async (req: Request, res: Response) => {
   // Handle multiple photos
   const photos = Array.isArray(files?.photos) ? files.photos : files?.photos ? [files.photos] : [];
 
-  let amqp: ChannelModel | null = null;
+  let amqp: Awaited<ReturnType<typeof amqplib.connect>> | null = null;
   let channel: amqplib.Channel | null = null;
 
   try {
-    amqp = await amqplib.connect(process.env.RABBIT_MQ!);
+    const connectedAmqp = await amqplib.connect(process.env.RABBIT_MQ!);
+    amqp = connectedAmqp;
 
-    channel = await amqp.createChannel();
+    const draftChannel = await connectedAmqp.createChannel();
+    channel = draftChannel;
 
-    await channel.assertQueue('draft', { durable: true });
+    await draftChannel.assertQueue('draft', { durable: true });
 
     const submission = await prisma.submission.findUnique({
       where: {
@@ -1084,17 +1088,16 @@ export const draftSubmission = async (req: Request, res: Response) => {
     if (draftVideos.length) {
       filePaths.set('video', []);
       for (const draftVideo of draftVideos) {
-        const draftVideoPath = `/tmp/${submissionId}_${draftVideo.name}`;
+        const draftVideoUploadPaths = buildDraftVideoUploadPaths({
+          submissionId,
+          originalFileName: draftVideo.name,
+        });
 
         // Move the draft video to the desired path
-        await draftVideo.mv(draftVideoPath);
+        await draftVideo.mv(draftVideoUploadPaths.inputPath);
 
         // Add to filePaths.video array
-        filePaths.get('video').push({
-          inputPath: draftVideoPath,
-          outputPath: `/tmp/${submissionId}_${draftVideo.name.replace('.mp4', '')}_compressed.mp4`,
-          fileName: `${submissionId}_${draftVideo.name}`,
-        });
+        filePaths.get('video').push(draftVideoUploadPaths);
       }
     }
 
@@ -1127,7 +1130,7 @@ export const draftSubmission = async (req: Request, res: Response) => {
 
     // amqp = await amqplib.connect(process.env.RABBIT_MQ as string);
 
-    const isSent = channel.sendToQueue(
+    const isSent = draftChannel.sendToQueue(
       'draft',
       Buffer.from(
         JSON.stringify({
@@ -1988,7 +1991,24 @@ export const submitPostingLinkByCSMV2 = async (req: Request, res: Response) => {
     });
     try {
       const io: any = (req as any).app?.get?.('io');
-      if (io) io.to(submission.campaignId).emit('v2:campaign:updated', { campaignId: submission.campaignId });
+      if (io) {
+        const updatedAt = new Date().toISOString();
+        io.to(submission.campaignId).emit('v2:posting:updated', {
+          submissionId,
+          campaignId: submission.campaignId,
+          postingLink: link,
+          newStatus: 'SENT_TO_ADMIN',
+          action: 'posting_link_submitted_by_csm',
+          updatedAt,
+        });
+        io.to(submission.campaignId).emit('v2:campaign:updated', {
+          campaignId: submission.campaignId,
+          submissionId,
+          newStatus: 'SENT_TO_ADMIN',
+          action: 'posting_link_submitted_by_csm',
+          updatedAt,
+        });
+      }
     } catch (err) {
       console.log(err);
     }
@@ -2065,7 +2085,24 @@ export const approvePostingLinkBySuperadminV2 = async (req: Request, res: Respon
     }
     try {
       const io: any = (req as any).app?.get?.('io');
-      if (io) io.to(submission.campaignId).emit('v2:campaign:updated', { campaignId: submission.campaignId });
+      if (io) {
+        const updatedAt = new Date().toISOString();
+        io.to(submission.campaignId).emit('v2:posting:updated', {
+          submissionId,
+          campaignId: submission.campaignId,
+          postingLink: submission.content,
+          newStatus: 'APPROVED',
+          action: 'posting_link_approved',
+          updatedAt,
+        });
+        io.to(submission.campaignId).emit('v2:campaign:updated', {
+          campaignId: submission.campaignId,
+          submissionId,
+          newStatus: 'APPROVED',
+          action: 'posting_link_approved',
+          updatedAt,
+        });
+      }
     } catch (err) {
       console.log(err);
     }
@@ -2097,7 +2134,24 @@ export const rejectPostingLinkBySuperadminV2 = async (req: Request, res: Respons
       });
     try {
       const io: any = (req as any).app?.get?.('io');
-      if (io) io.to(submission.campaignId).emit('v2:campaign:updated', { campaignId: submission.campaignId });
+      if (io) {
+        const updatedAt = new Date().toISOString();
+        io.to(submission.campaignId).emit('v2:posting:updated', {
+          submissionId,
+          campaignId: submission.campaignId,
+          postingLink: submission.content,
+          newStatus: 'CHANGES_REQUIRED',
+          action: 'posting_link_rejected',
+          updatedAt,
+        });
+        io.to(submission.campaignId).emit('v2:campaign:updated', {
+          campaignId: submission.campaignId,
+          submissionId,
+          newStatus: 'CHANGES_REQUIRED',
+          action: 'posting_link_rejected',
+          updatedAt,
+        });
+      }
     } catch (err) {
       console.log(err);
     }
@@ -3246,6 +3300,9 @@ export const getDeliverables = async (req: Request, res: Response) => {
         userId: user.id,
         campaignId: campaign.id,
       },
+      orderBy: {
+        createdAt: 'desc',
+      },
     });
 
     const rawFootages = await prisma.rawFootage.findMany({
@@ -3263,19 +3320,24 @@ export const getDeliverables = async (req: Request, res: Response) => {
     });
 
     // Helper function to get feedback for a specific media item
-    const getMediaFeedback = (mediaId: string, mediaType: 'video' | 'photo' | 'rawFootage', mediaStatus: string) => {
+    const getMediaFeedback = (
+      mediaId: string | string[],
+      mediaType: 'video' | 'photo' | 'rawFootage',
+      mediaStatus: string,
+    ) => {
       const allFeedback = submissions.flatMap((sub) => sub.feedback);
+      const mediaIds = Array.isArray(mediaId) ? mediaId : [mediaId];
 
       // Get feedback specifically for this media item
       const mediaSpecificFeedback = allFeedback
         .filter((feedback) => {
           switch (mediaType) {
             case 'video':
-              return feedback.videosToUpdate?.includes(mediaId);
+              return mediaIds.some((id) => feedback.videosToUpdate?.includes(id));
             case 'photo':
-              return feedback.photosToUpdate?.includes(mediaId);
+              return mediaIds.some((id) => feedback.photosToUpdate?.includes(id));
             case 'rawFootage':
-              return feedback.rawFootageToUpdate?.includes(mediaId);
+              return mediaIds.some((id) => feedback.rawFootageToUpdate?.includes(id));
             default:
               return false;
           }
@@ -3315,10 +3377,12 @@ export const getDeliverables = async (req: Request, res: Response) => {
     };
 
     // Add feedback to each media item
-    const videosWithFeedback = videos.map((video) => ({
-      ...video,
-      individualFeedback: getMediaFeedback(video.id, 'video', video.status),
-    }));
+    const videosWithFeedback = normalizeVideoDraftHistory(videos)
+      .filter((video) => video.isCurrentDraft)
+      .map((video) => ({
+        ...video,
+        individualFeedback: getMediaFeedback([video.id, ...video.previousDraftIds], 'video', video.status),
+      }));
 
     const photosWithFeedback = photos.map((photo) => ({
       ...photo,
@@ -4167,6 +4231,8 @@ export const adminManageDraftVideosV2 = async (req: Request, res: Response) => {
             submissionId: video.submissionId as string,
             type: status === 'APPROVED' ? 'COMMENT' : 'REQUEST',
             videosToUpdate: [mediaId], // Always include media ID for both approved and changes required
+            videoId: mediaId,
+            sentToCreator: status === 'CHANGES_REQUIRED',
             reasons: cleanReasons,
           },
         });

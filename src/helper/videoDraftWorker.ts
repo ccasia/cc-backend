@@ -16,6 +16,12 @@ import dayjs from 'dayjs';
 import { notificationDraft } from './notification';
 import { createNewTask, getTaskId, updateTask } from '@services/kanbanService';
 import { createNewRowData } from '@services/google_sheets/sheets';
+import {
+  hasCurrentFinalDraftRevisionRequest,
+  hasRequiredCurrentFinalDraftMedia,
+  pairUploadedDraftsWithRevisionRequests,
+  previousDraftUrlsForReplacement,
+} from './draftSubmissionStatus';
 
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
 Ffmpeg.setFfprobePath(ffprobePath.path);
@@ -208,42 +214,68 @@ const checkCurrentSubmission = async (submissionId: string) => {
       // where hasRawFootage/hasPhotos are true if not required by campaign
     }
   } else if (submission?.submissionType.type === 'FINAL_DRAFT') {
-    const [videosWithRevision, rawFootagesWithRevision, photosWithRevision] = await Promise.all([
+    const [
+      currentVideos,
+      currentRawFootages,
+      currentPhotos,
+      currentVideosWithRevision,
+      currentRawFootagesWithRevision,
+      currentPhotosWithRevision,
+    ] = await Promise.all([
+      prisma.video.count({ where: { submissionId: submission.id, resubmissions: { none: {} } } }),
+      prisma.rawFootage.count({ where: { submissionId: submission.id } }),
+      prisma.photo.count({ where: { submissionId: submission.id } }),
       prisma.video.count({
         where: {
-          userId: submission.userId,
-          campaignId: submission.campaignId,
+          submissionId: submission.id,
           status: 'REVISION_REQUESTED',
+          resubmissions: { none: {} },
         },
       }),
       prisma.rawFootage.count({
         where: {
-          userId: submission.userId,
-          campaignId: submission.campaignId,
+          submissionId: submission.id,
           status: 'REVISION_REQUESTED',
         },
       }),
       prisma.photo.count({
         where: {
-          userId: submission.userId,
-          campaignId: submission.campaignId,
+          submissionId: submission.id,
           status: 'REVISION_REQUESTED',
         },
       }),
     ]);
 
-    const hasVideos = videosWithRevision === 0;
+    const requiredCurrentMedia = hasRequiredCurrentFinalDraftMedia(
+      {
+        videos: currentVideos,
+        rawFootages: currentRawFootages,
+        photos: currentPhotos,
+      },
+      submission.campaign,
+    );
+    const currentMediaNeedsRevision = hasCurrentFinalDraftRevisionRequest(
+      {
+        videos: currentVideosWithRevision,
+        rawFootages: currentRawFootagesWithRevision,
+        photos: currentPhotosWithRevision,
+      },
+      submission.campaign,
+    );
 
-    const hasRawFootage = submission.campaign.rawFootage ? rawFootagesWithRevision === 0 : true;
-
-    const hasPhotos = submission.campaign.photos ? photosWithRevision === 0 : true;
-
-    allDeliverablesSent = hasVideos && hasRawFootage && hasPhotos;
+    allDeliverablesSent = requiredCurrentMedia.allDeliverablesSent && !currentMediaNeedsRevision;
 
     console.log(`Worker - Final Draft checks for submission ${submissionId}:`, {
-      hasVideos,
-      hasRawFootage,
-      hasPhotos,
+      hasVideos: requiredCurrentMedia.hasVideos,
+      hasRawFootage: requiredCurrentMedia.hasRawFootage,
+      hasPhotos: requiredCurrentMedia.hasPhotos,
+      currentMediaNeedsRevision,
+      currentVideos,
+      currentRawFootages,
+      currentPhotos,
+      currentVideosWithRevision,
+      currentRawFootagesWithRevision,
+      currentPhotosWithRevision,
       allDeliverablesSent,
     });
   }
@@ -398,6 +430,9 @@ async function deleteFileIfExists(filePath: string) {
                 status: 'REVISION_REQUESTED',
                 resubmissions: { none: {} }, // Only videos not yet replaced by a newer version
               },
+              orderBy: {
+                createdAt: 'asc',
+              },
             });
 
             // Current head = newest video by createdAt (submission.video from DB may be unsorted)
@@ -487,23 +522,23 @@ async function deleteFileIfExists(filePath: string) {
               const url = await Promise.all(videoPromises);
 
               if (requestChangeVideos.length) {
-                // V4: Create NEW videos instead of updating (preserve previous drafts)
                 await Promise.all(
-                  requestChangeVideos.map(async (video, index) =>
+                  pairUploadedDraftsWithRevisionRequests(requestChangeVideos, url).map(({ requested, url: videoUrl }) =>
                     prisma.video.create({
                       data: {
-                        url: url[index],
+                        url: videoUrl,
                         submissionId: submission.id,
-                        campaignId: content.campaignId,
+                        campaignId: content.campaignId ?? submission.campaignId,
                         userId: submission.userId,
                         status: 'PENDING',
-                        resubmittedFromId: video.id,
+                        previousDrafts: previousDraftUrlsForReplacement(requested),
+                        resubmittedFromId: requested.id,
                       },
                     }),
                   ),
                 );
                 console.log(
-                  `✅ V4 Created ${requestChangeVideos.length} new video version(s), previous draft(s) preserved.`,
+                  `✅ Created ${Math.min(requestChangeVideos.length, url.length)} new video version(s), previous draft(s) preserved.`,
                 );
               }
 
@@ -904,7 +939,7 @@ async function deleteFileIfExists(filePath: string) {
 
             // Emit socket event to notify that content is now processed and available
             if (io && submission.campaignId) {
-              io.to(submission.campaignId).emit('v4:content:processed', {
+              const processedPayload = {
                 submissionId: submission.id,
                 campaignId: submission.campaignId,
                 hasVideo: filePaths?.video?.length > 0,
@@ -912,8 +947,17 @@ async function deleteFileIfExists(filePath: string) {
                 hasRawFootage: filePaths?.rawFootages?.length > 0,
                 processedAt: new Date().toISOString(),
                 creatorId: content.userid,
+              };
+
+              io.to(submission.campaignId).emit('v4:content:processed', {
+                ...processedPayload,
               });
               console.log(`🚀 Emitted v4:content:processed for submission ${submission.id}`);
+
+              if (!content.isV4 && submission.submissionVersion !== 'v4') {
+                io.to(submission.campaignId).emit('v2:content:processed', processedPayload);
+                console.log(`🚀 Emitted v2:content:processed for submission ${submission.id}`);
+              }
             }
 
             const endUsage = process.cpuUsage(startUsage);
