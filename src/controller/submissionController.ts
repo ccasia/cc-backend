@@ -81,6 +81,40 @@ const emitAgreementSubmissionUpdated = ({
   });
 };
 
+const emitV2PostingUpdated = ({
+  submissionId,
+  campaignId,
+  creatorId,
+  postingLink,
+  newStatus,
+  action,
+}: {
+  submissionId: string;
+  campaignId: string;
+  creatorId?: string | null;
+  postingLink?: string | null;
+  newStatus: string;
+  action: string;
+}) => {
+  const updatedAt = new Date().toISOString();
+  const payload = {
+    submissionId,
+    campaignId,
+    creatorId,
+    postingLink,
+    newStatus,
+    action,
+    updatedAt,
+  };
+
+  try {
+    io.to(campaignId).emit('v2:posting:updated', payload);
+    io.to(campaignId).emit('v2:campaign:updated', payload);
+  } catch (err) {
+    console.log(err);
+  }
+};
+
 const getSubmissionReportPlatform = (content?: string | null): ReportPlatform => {
   if (!content) return null;
 
@@ -1967,6 +2001,15 @@ export const adminManagePosting = async (req: Request, res: Response) => {
       }
     });
 
+    emitV2PostingUpdated({
+      submissionId: submission.id,
+      campaignId: submission.campaignId,
+      creatorId: submission.userId,
+      postingLink: submission.content,
+      newStatus: status === 'APPROVED' ? 'APPROVED' : 'REJECTED',
+      action: status === 'APPROVED' ? 'posting_link_approved' : 'posting_link_rejected',
+    });
+
     return res.status(200).json({ message: 'Successfully submitted' });
   } catch (error) {
     console.log(error);
@@ -1990,25 +2033,14 @@ export const submitPostingLinkByCSMV2 = async (req: Request, res: Response) => {
       data: { content: link, status: 'SENT_TO_ADMIN', approvedByAdminId: adminId, updatedAt: new Date() },
     });
     try {
-      const io: any = (req as any).app?.get?.('io');
-      if (io) {
-        const updatedAt = new Date().toISOString();
-        io.to(submission.campaignId).emit('v2:posting:updated', {
-          submissionId,
-          campaignId: submission.campaignId,
-          postingLink: link,
-          newStatus: 'SENT_TO_ADMIN',
-          action: 'posting_link_submitted_by_csm',
-          updatedAt,
-        });
-        io.to(submission.campaignId).emit('v2:campaign:updated', {
-          campaignId: submission.campaignId,
-          submissionId,
-          newStatus: 'SENT_TO_ADMIN',
-          action: 'posting_link_submitted_by_csm',
-          updatedAt,
-        });
-      }
+      emitV2PostingUpdated({
+        submissionId,
+        campaignId: submission.campaignId,
+        creatorId: submission.userId,
+        postingLink: link,
+        newStatus: 'SENT_TO_ADMIN',
+        action: 'posting_link_submitted_by_csm',
+      });
     } catch (err) {
       console.log(err);
     }
@@ -2084,25 +2116,14 @@ export const approvePostingLinkBySuperadminV2 = async (req: Request, res: Respon
       console.log(err);
     }
     try {
-      const io: any = (req as any).app?.get?.('io');
-      if (io) {
-        const updatedAt = new Date().toISOString();
-        io.to(submission.campaignId).emit('v2:posting:updated', {
-          submissionId,
-          campaignId: submission.campaignId,
-          postingLink: submission.content,
-          newStatus: 'APPROVED',
-          action: 'posting_link_approved',
-          updatedAt,
-        });
-        io.to(submission.campaignId).emit('v2:campaign:updated', {
-          campaignId: submission.campaignId,
-          submissionId,
-          newStatus: 'APPROVED',
-          action: 'posting_link_approved',
-          updatedAt,
-        });
-      }
+      emitV2PostingUpdated({
+        submissionId,
+        campaignId: submission.campaignId,
+        creatorId: submission.userId,
+        postingLink: submission.content,
+        newStatus: 'APPROVED',
+        action: 'posting_link_approved',
+      });
     } catch (err) {
       console.log(err);
     }
@@ -2133,25 +2154,14 @@ export const rejectPostingLinkBySuperadminV2 = async (req: Request, res: Respons
         data: { content: feedback, type: 'REASON', adminId: superadminId, submissionId },
       });
     try {
-      const io: any = (req as any).app?.get?.('io');
-      if (io) {
-        const updatedAt = new Date().toISOString();
-        io.to(submission.campaignId).emit('v2:posting:updated', {
-          submissionId,
-          campaignId: submission.campaignId,
-          postingLink: submission.content,
-          newStatus: 'CHANGES_REQUIRED',
-          action: 'posting_link_rejected',
-          updatedAt,
-        });
-        io.to(submission.campaignId).emit('v2:campaign:updated', {
-          campaignId: submission.campaignId,
-          submissionId,
-          newStatus: 'CHANGES_REQUIRED',
-          action: 'posting_link_rejected',
-          updatedAt,
-        });
-      }
+      emitV2PostingUpdated({
+        submissionId,
+        campaignId: submission.campaignId,
+        creatorId: submission.userId,
+        postingLink: submission.content,
+        newStatus: 'CHANGES_REQUIRED',
+        action: 'posting_link_rejected',
+      });
     } catch (err) {
       console.log(err);
     }
