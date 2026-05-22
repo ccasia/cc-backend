@@ -421,14 +421,12 @@ export const updateMyV2PostingLink = async (req: Request, res: Response) => {
           campaignId: (submission as any).campaignId,
           postingLink: trimmedLink,
           newStatus: 'PENDING_REVIEW',
+          action: 'posting_link_submitted',
           updatedAt: new Date().toISOString(),
           creatorId,
         };
         io.to((submission as any).campaignId).emit('v2:posting:updated', payload);
-        io.to((submission as any).campaignId).emit('v2:campaign:updated', {
-          campaignId: (submission as any).campaignId,
-          updatedAt: payload.updatedAt,
-        });
+        io.to((submission as any).campaignId).emit('v2:campaign:updated', payload);
       }
     } catch (err) {
       console.log(err);
