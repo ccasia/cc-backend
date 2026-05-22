@@ -11227,6 +11227,15 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
       updatedAt: new Date().toISOString(),
     });
 
+    // Nudge each shortlisted creator's app to refetch "Your Campaigns" in real-time.
+    // The mobile useMyCampaignsRealtime hook listens for 'pitchUpdate' and invalidates the list.
+    for (const creator of creators) {
+      const creatorSocketId = clients.get(creator.id);
+      if (creatorSocketId) {
+        io.to(creatorSocketId).emit('pitchUpdate');
+      }
+    }
+
     return res.status(200).json({ message: 'Successfully shortlisted creators for V3 flow' });
   } catch (error) {
     console.error('Error shortlisting creators for V3:', error);

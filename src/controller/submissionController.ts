@@ -37,7 +37,7 @@ import { createNewRowData } from '@services/google_sheets/sheets';
 import { createNewTask, getTaskId, updateTask } from '@services/kanbanService';
 import { deductCredits } from '@services/campaignServices';
 import { buildAgreementUploadFileName } from '@utils/submissionAgreement';
-import { normalizeVideoDraftHistory } from '@helper/draftSubmissionStatus';
+import { getCurrentDraftVideos, normalizeVideoDraftHistory } from '@helper/draftSubmissionStatus';
 import { buildDraftVideoUploadPaths } from '@helper/draftVideoUploadName';
 import {
   getCreatorInvoiceLists,
@@ -109,6 +109,38 @@ const emitV2PostingUpdated = ({
 
   try {
     io.to(campaignId).emit('v2:posting:updated', payload);
+    io.to(campaignId).emit('v2:campaign:updated', payload);
+  } catch (err) {
+    console.log(err);
+  }
+};
+
+const emitV2SubmissionUpdated = ({
+  submissionId,
+  campaignId,
+  creatorId,
+  deliverableType,
+  newStatus,
+  action,
+}: {
+  submissionId: string;
+  campaignId: string;
+  creatorId?: string | null;
+  deliverableType?: string | null;
+  newStatus: string;
+  action: string;
+}) => {
+  const payload = {
+    submissionId,
+    campaignId,
+    creatorId,
+    deliverableType,
+    newStatus,
+    action,
+    updatedAt: new Date().toISOString(),
+  };
+
+  try {
     io.to(campaignId).emit('v2:campaign:updated', payload);
   } catch (err) {
     console.log(err);
@@ -3641,6 +3673,8 @@ export const updateSubmissionStatus = async (req: Request, res: Response) => {
         },
       });
 
+      let activatedPostingSubmission: any = null;
+
       // Handle status transitions based on submission type and only if not a section approval
       // or if explicitly requested to update posting status
       if (
@@ -3684,7 +3718,7 @@ export const updateSubmissionStatus = async (req: Request, res: Response) => {
                   return threeDaysFromToday;
                 })();
 
-            await tx.submission.update({
+            activatedPostingSubmission = await tx.submission.update({
               where: { id: postingSubmission.id },
               data: {
                 status: 'IN_PROGRESS',
@@ -3768,7 +3802,7 @@ export const updateSubmissionStatus = async (req: Request, res: Response) => {
                 return threeDaysFromToday;
               })();
 
-          await tx.submission.update({
+          activatedPostingSubmission = await tx.submission.update({
             where: { id: postingSubmission.id },
             data: {
               status: 'IN_PROGRESS',
@@ -3783,6 +3817,7 @@ export const updateSubmissionStatus = async (req: Request, res: Response) => {
       return {
         updatedSubmission,
         submission,
+        activatedPostingSubmission,
       };
     });
 
@@ -3820,6 +3855,32 @@ export const updateSubmissionStatus = async (req: Request, res: Response) => {
         newStatus: status,
         action: status === 'CHANGES_REQUIRED' ? 'reject' : status === 'APPROVED' ? 'approve' : 'status_update',
       });
+    }
+
+    const isV2DraftSubmission =
+      result.submission.campaign?.submissionVersion !== 'v4' &&
+      ['FIRST_DRAFT', 'FINAL_DRAFT'].includes(result.submission.submissionType.type);
+
+    if (isV2DraftSubmission) {
+      emitV2SubmissionUpdated({
+        submissionId: result.updatedSubmission.id,
+        campaignId: result.submission.campaignId,
+        creatorId: result.submission.userId,
+        deliverableType: result.submission.submissionType.type,
+        newStatus: status,
+        action: status === 'CHANGES_REQUIRED' ? 'reject' : status === 'APPROVED' ? 'approve' : 'status_update',
+      });
+
+      if (result.activatedPostingSubmission) {
+        emitV2SubmissionUpdated({
+          submissionId: result.activatedPostingSubmission.id,
+          campaignId: result.submission.campaignId,
+          creatorId: result.submission.userId,
+          deliverableType: 'POSTING',
+          newStatus: 'IN_PROGRESS',
+          action: 'posting_activated',
+        });
+      }
     }
 
     return res.status(200).json({
@@ -4275,6 +4336,7 @@ export const adminManageDraftVideosV2 = async (req: Request, res: Response) => {
           campaignId: video.campaignId,
         },
       });
+      const currentVideos = getCurrentDraftVideos(allVideos);
 
       const allPhotos = await tx.photo.findMany({
         where: {
@@ -4300,8 +4362,8 @@ export const adminManageDraftVideosV2 = async (req: Request, res: Response) => {
       // Check if all required media items have been reviewed (either approved or revision requested)
       const videosAllReviewed =
         !requiresVideos ||
-        allVideos.length === 0 ||
-        allVideos.every((v) => v.status === 'APPROVED' || v.status === 'REVISION_REQUESTED');
+        currentVideos.length === 0 ||
+        currentVideos.every((v) => v.status === 'APPROVED' || v.status === 'REVISION_REQUESTED');
 
       const photosAllReviewed =
         !requiresPhotos ||
@@ -4322,7 +4384,7 @@ export const adminManageDraftVideosV2 = async (req: Request, res: Response) => {
       if (allSectionsReviewed) {
         // Check final approval status
         const videosApproved =
-          !requiresVideos || allVideos.length === 0 || allVideos.every((v) => v.status === 'APPROVED');
+          !requiresVideos || currentVideos.length === 0 || currentVideos.every((v) => v.status === 'APPROVED');
 
         const photosApproved =
           !requiresPhotos || allPhotos.length === 0 || allPhotos.every((p) => p.status === 'APPROVED');
@@ -4331,7 +4393,7 @@ export const adminManageDraftVideosV2 = async (req: Request, res: Response) => {
           !requiresRawFootages || allRawFootages.length === 0 || allRawFootages.every((rf) => rf.status === 'APPROVED');
 
         // Check if any required section has changes requested
-        const videosHaveChanges = requiresVideos && allVideos.some((v) => v.status === 'REVISION_REQUESTED');
+        const videosHaveChanges = requiresVideos && currentVideos.some((v) => v.status === 'REVISION_REQUESTED');
 
         const photosHaveChanges = requiresPhotos && allPhotos.some((p) => p.status === 'REVISION_REQUESTED');
 
