@@ -336,13 +336,13 @@ export const updatePostingLink = async (submissionId: string, postingLink: strin
       );
     }
 
-    // Update the posting link and set status to PENDING_REVIEW
+    // Update the posting link and mark it ready for posting-link approval.
     // Track who added the posting link (admin or creator)
     const updatedSubmission = await prisma.submission.update({
       where: { id: submissionId },
       data: {
         content: postingLink,
-        status: 'CLIENT_APPROVED',
+        status: 'APPROVE_LINK',
         approvedByAdminId: adminId || null, // Track if admin added the link
         updatedAt: new Date(),
       },
