@@ -52,6 +52,7 @@ export type V4SubmissionStatus =
   | 'PENDING_REVIEW'
   | 'IN_PROGRESS'
   | 'APPROVED'
+  | 'APPROVE_LINK'
   | 'REJECTED'
   | 'SENT_TO_CLIENT'
   | 'CLIENT_APPROVED'

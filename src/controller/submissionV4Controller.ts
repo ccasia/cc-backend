@@ -97,6 +97,7 @@ const updateSubmissionStatusBasedOnContent = async (submissionId: string) => {
   const isRawFootageSubmission = submission.submissionType.type === 'RAW_FOOTAGE';
 
   if (!isPhotoSubmission && !isRawFootageSubmission) return;
+  if (submission.status === 'APPROVE_LINK' || submission.status === 'POSTED') return;
 
   let hasRevisionRequested = false;
   let hasApproved = false;
@@ -1381,6 +1382,20 @@ export const approvePostingLinkV4 = async (req: Request, res: Response) => {
     if (!submission.content) {
       return res.status(400).json({
         message: 'No posting link found to approve',
+      });
+    }
+
+    const reviewablePostingStatuses: SubmissionStatus[] = [
+      'APPROVE_LINK',
+      'PENDING_REVIEW',
+      'SENT_TO_ADMIN',
+      'APPROVED',
+      'CLIENT_APPROVED',
+    ];
+
+    if (!reviewablePostingStatuses.includes(submission.status)) {
+      return res.status(400).json({
+        message: 'Posting link is not ready for approval',
       });
     }
 
