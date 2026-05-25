@@ -1,6 +1,8 @@
 import { Entity, PrismaClient } from '@prisma/client';
 import { Request, Response } from 'express';
 
+import { sendExpoPushToUser } from '../helper/expoPush';
+
 const prisma = new PrismaClient();
 
 export enum Title {
@@ -34,6 +36,13 @@ export const saveNotification = async ({
   threadId?: string;
   invoiceId?: string;
 }) => {
+  // Fire-and-forget push notification (does not block DB write)
+  void sendExpoPushToUser(userId, {
+    title: title ?? 'New notification',
+    body: message,
+    data: { entity, campaignId, pitchId, threadId, invoiceId },
+  });
+
   if (entity === 'Agreement' || entity === 'Draft' || entity === 'Timeline' || entity === 'Post') {
     return prisma.notification.create({
       data: {
@@ -244,9 +253,20 @@ export const getNotificationByUserId = async (req: Request, res: Response) => {
       include: {
         notification: {
           include: {
-            campaign: true,
+            campaign: {
+              include: {
+                campaignBrief: { select: { images: true } },
+                company: { select: { id: true, name: true, logo: true } },
+                brand: { select: { id: true, name: true, logo: true } },
+              },
+            },
             pitch: true,
           },
+        },
+      },
+      orderBy: {
+        notification: {
+          createdAt: 'desc',
         },
       },
     });
