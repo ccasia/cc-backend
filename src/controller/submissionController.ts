@@ -1656,7 +1656,7 @@ export const postingSubmission = async (req: Request, res: Response) => {
       data: {
         videos: postingLinks.filter((link: string) => link && link.trim() !== ''),
         content: postingLinks.filter((link: string) => link && link.trim() !== '').join(', '),
-        status: 'PENDING_REVIEW',
+        status: 'APPROVE_LINK',
         submissionDate: dayjs().format(),
         // Note: submittedByAdminId field will be added in future database migration
         // ...(isAdminSubmission && { submittedByAdminId: currentUser.admin?.userId }),
@@ -1963,7 +1963,7 @@ export const adminManagePosting = async (req: Request, res: Response) => {
         await tx.submission.update({
           where: { id: submission.id },
           data: {
-            status: 'REJECTED',
+            status: 'CHANGES_REQUIRED',
             isReview: true,
             feedback: {
               create: { content: req.body.feedback, type: 'REASON', adminId: userId },
@@ -2059,10 +2059,10 @@ export const submitPostingLinkByCSMV2 = async (req: Request, res: Response) => {
   try {
     const submission = await prisma.submission.findUnique({ where: { id: submissionId }, include: { campaign: true } });
     if (!submission) return res.status(404).json({ message: 'Submission not found' });
-    // Save link and set to SENT_TO_ADMIN for superadmin review
+    // Save link and set to posting-link approval for superadmin review
     await prisma.submission.update({
       where: { id: submissionId },
-      data: { content: link, status: 'SENT_TO_ADMIN', approvedByAdminId: adminId, updatedAt: new Date() },
+      data: { content: link, status: 'APPROVE_LINK', approvedByAdminId: adminId, updatedAt: new Date() },
     });
     try {
       emitV2PostingUpdated({
@@ -2092,6 +2092,17 @@ export const approvePostingLinkBySuperadminV2 = async (req: Request, res: Respon
       include: { campaign: true, user: true },
     });
     if (!submission) return res.status(404).json({ message: 'Submission not found' });
+    const reviewablePostingStatuses: SubmissionStatus[] = [
+      'APPROVE_LINK',
+      'PENDING_REVIEW',
+      'SENT_TO_ADMIN',
+      'SENT_TO_SUPERADMIN',
+      'APPROVED',
+      'CLIENT_APPROVED',
+    ];
+    if (!submission.content || !reviewablePostingStatuses.includes(submission.status)) {
+      return res.status(400).json({ message: 'Posting link is not ready for approval' });
+    }
     await prisma.submission.update({
       where: { id: submissionId },
       data: {
@@ -2177,6 +2188,17 @@ export const rejectPostingLinkBySuperadminV2 = async (req: Request, res: Respons
   try {
     const submission = await prisma.submission.findUnique({ where: { id: submissionId }, include: { campaign: true } });
     if (!submission) return res.status(404).json({ message: 'Submission not found' });
+    const reviewablePostingStatuses: SubmissionStatus[] = [
+      'APPROVE_LINK',
+      'PENDING_REVIEW',
+      'SENT_TO_ADMIN',
+      'SENT_TO_SUPERADMIN',
+      'APPROVED',
+      'CLIENT_APPROVED',
+    ];
+    if (!submission.content || !reviewablePostingStatuses.includes(submission.status)) {
+      return res.status(400).json({ message: 'Posting link is not ready for rejection' });
+    }
     await prisma.submission.update({
       where: { id: submissionId },
       data: { status: 'CHANGES_REQUIRED', approvedByAdminId: superadminId },

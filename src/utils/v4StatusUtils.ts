@@ -49,6 +49,17 @@ export const getSubmissionStatusDisplay = (
       }
       break;
 
+    case 'APPROVE_LINK':
+      switch (userRole) {
+        case 'creator':
+          return 'In Review';
+        case 'admin':
+          return 'Approve Link';
+        case 'client':
+          return 'Approved';
+      }
+      break;
+
     case 'CHANGES_REQUIRED':
       switch (userRole) {
         case 'creator':
@@ -98,9 +109,11 @@ export const canAddPostingLink = (submissionStatus: SubmissionStatus, videoStatu
   // Posting link can be added when:
   // 1. Both submission and video are fully approved, OR
   // 2. Submission is CLIENT_APPROVED (regardless of video status)
+  // 3. Existing posting link is being changed while waiting for approval
   return (
     (submissionStatus === 'APPROVED' && videoStatus === 'APPROVED') ||
     submissionStatus === 'CLIENT_APPROVED' ||
+    submissionStatus === 'APPROVE_LINK' ||
     submissionStatus === 'REJECTED'
   );
 };
@@ -210,6 +223,8 @@ export const isValidStatusTransition = (
       'PENDING_REVIEW->APPROVED',
       'PENDING_REVIEW->CHANGES_REQUIRED',
       'CLIENT_FEEDBACK->CHANGES_REQUIRED',
+      'APPROVE_LINK->POSTED',
+      'APPROVE_LINK->REJECTED',
     ],
     client: ['SENT_TO_CLIENT->CLIENT_APPROVED', 'SENT_TO_CLIENT->CLIENT_FEEDBACK'],
   };
@@ -245,6 +260,9 @@ export const getAvailableActions = (
       }
       if (submissionStatus === 'CLIENT_FEEDBACK') {
         actions.push('forward_to_creator');
+      }
+      if (submissionStatus === 'APPROVE_LINK') {
+        actions.push('approve_posting_link', 'reject_posting_link');
       }
       break;
 

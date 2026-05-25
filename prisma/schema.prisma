@@ -1997,6 +1997,7 @@ enum SubmissionStatus {
   OVERDUE
   CHANGES_REQUIRED
   POSTED
+  APPROVE_LINK
   // V3 flow statuses for client-created campaigns
   SENT_TO_CLIENT
   CLIENT_APPROVED

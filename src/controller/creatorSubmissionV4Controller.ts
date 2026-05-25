@@ -58,9 +58,9 @@ export const getMyV4Submissions = async (req: Request, res: Response) => {
     // Filter feedback for each submission based on submission status and type
     const submissionsWithFilteredFeedback = submissions.map((submission) => {
       let filteredFeedback = submission.feedback;
-      // When submission status is CLIENT_APPROVED, return only the last two feedback entries
+      // When content is approved or posting link is under review, return only the last two feedback entries
       // regardless of sentToCreator status
-      if (submission.status === 'CLIENT_APPROVED') {
+      if (submission.status === 'CLIENT_APPROVED' || submission.status === 'APPROVE_LINK') {
         filteredFeedback = submission.feedback.slice(0, 2);
       } else {
         // For other statuses, show all feedback that was sent to creator (both COMMENT and REQUEST types)
@@ -776,7 +776,7 @@ export const getMySubmissionDetails = async (req: Request, res: Response) => {
     // Filter feedback based on submission status and type
     let filteredFeedback = submission.feedback;
 
-    if (submission.status === 'CLIENT_APPROVED') {
+    if (submission.status === 'CLIENT_APPROVED' || submission.status === 'APPROVE_LINK') {
       filteredFeedback = submission.feedback.slice(0, 2);
     } else {
       filteredFeedback = submission.feedback.filter(
@@ -812,6 +812,8 @@ export const getMySubmissionDetails = async (req: Request, res: Response) => {
           return 'Approved';
         case 'CLIENT_APPROVED':
           return 'Approved';
+        case 'APPROVE_LINK':
+          return 'In Review';
         case 'REJECTED':
           return 'Changes Required';
         case 'CHANGES_REQUIRED':
@@ -1057,7 +1059,9 @@ export const getMyCampaignOverview = async (req: Request, res: Response) => {
     const submissionSummary = {
       total: contentSubmissions.length,
       completed: contentSubmissions.filter((s) => s.status === 'APPROVED' || s.status === 'CLIENT_APPROVED').length,
-      inReview: contentSubmissions.filter((s) => s.status === 'PENDING_REVIEW' || s.status === 'SENT_TO_CLIENT').length,
+      inReview: contentSubmissions.filter(
+        (s) => s.status === 'PENDING_REVIEW' || s.status === 'SENT_TO_CLIENT' || s.status === 'APPROVE_LINK',
+      ).length,
       needsChanges: contentSubmissions.filter((s) => s.status === 'CHANGES_REQUIRED' || s.status === 'REJECTED').length,
       inProgress: contentSubmissions.filter((s) => s.status === 'IN_PROGRESS').length,
     };
