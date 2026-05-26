@@ -357,6 +357,7 @@ export const getInstagramMediaObject = async (
     'id',
     'comments_count',
     'like_count',
+    'video_views',
     'media_type',
     'media_url',
     'thumbnail_url',
@@ -385,7 +386,7 @@ export const getInstagramMediaObject = async (
 
     const sortedVideos = [...videos]
       .sort((a: any, b: any) => Number(b?.like_count || 0) - Number(a?.like_count || 0))
-      .slice(0, 3);
+      .slice(0, 4);
 
     return { sortedVideos, averageLikes, averageComments, totalComments, totalLikes };
   } catch (error) {
@@ -460,6 +461,7 @@ export const getInstagramMedias = async (
     'id',
     'comments_count',
     'like_count',
+    'video_views',
     'media_type',
     'media_url',
     'thumbnail_url',
@@ -585,7 +587,7 @@ export const getTikTokMediaObject = async (accessToken: string, limit = 20) => {
 
   const sortedVideos = [...mappedVideos]
     .sort((a: any, b: any) => Number(b?.like_count || 0) - Number(a?.like_count || 0))
-    .slice(0, 3);
+    .slice(0, 4);
 
   const totalLikes = mappedVideos.reduce((sum: number, video: any) => sum + (video.like_count || 0), 0);
   const totalComments = mappedVideos.reduce((sum: number, video: any) => sum + (video.comment_count || 0), 0);

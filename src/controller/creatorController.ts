@@ -415,6 +415,97 @@ export const getMediaKit = async (req: Request, res: Response) => {
   }
 };
 
+// Mobile-specific: reads cached social data from DB — no live API calls to Instagram/TikTok
+export const getMobileMediaKit = async (req: Request, res: Response) => {
+  const userId = req.userId;
+  if (!userId) return res.status(401).json({ message: 'Unauthorized' });
+
+  try {
+    const creator = await prisma.creator.findFirst({
+      where: { userId },
+      select: {
+        id: true,
+        isFacebookConnected: true,
+        isTiktokConnected: true,
+        instagram: true,
+        tiktok: true,
+        interests: { select: { id: true, name: true } },
+        mediaKit: { select: { displayName: true, about: true } },
+        instagramUser: {
+          select: {
+            username: true,
+            followers_count: true,
+            follows_count: true,
+            media_count: true,
+            biography: true,
+            profile_picture_url: true,
+            totalLikes: true,
+            totalComments: true,
+            totalShares: true,
+            totalSaves: true,
+            averageLikes: true,
+            averageComments: true,
+            averageShares: true,
+            averageSaves: true,
+            engagement_rate: true,
+            instagramVideo: {
+              orderBy: { like_count: 'desc' },
+              take: 4,
+              select: {
+                video_id: true,
+                thumbnail_url: true,
+                media_url: true,
+                like_count: true,
+                view_count: true,
+                comments_count: true,
+                caption: true,
+              },
+            },
+          },
+        },
+        tiktokUser: {
+          select: {
+            username: true,
+            display_name: true,
+            biography: true,
+            avatar_url: true,
+            follower_count: true,
+            following_count: true,
+            likes_count: true,
+            totalLikes: true,
+            totalComments: true,
+            totalShares: true,
+            averageLikes: true,
+            averageComments: true,
+            averageShares: true,
+            engagement_rate: true,
+            tiktokVideo: {
+              orderBy: { view_count: 'desc' },
+              take: 4,
+              select: {
+                video_id: true,
+                cover_image_url: true,
+                title: true,
+                description: true,
+                like_count: true,
+                comment_count: true,
+                share_count: true,
+                view_count: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!creator) return res.status(404).json({ message: 'Creator not found' });
+
+    return res.status(200).json({ creator });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
 export const getCreatorFullInfoById = async (req: Request, res: Response) => {
   const { id } = req.params;
   try {
