@@ -136,9 +136,11 @@ app.use(
     secret: process.env.SESSION_SECRET as string,
     resave: false,
     saveUninitialized: false,
-    proxy: process.env.NODE_ENV === 'production',
+    // proxy: process.env.NODE_ENV === 'production',
+    proxy: false,
     cookie: {
-      secure: process.env.NODE_ENV === 'production',
+      // secure: process.env.NODE_ENV === 'production',
+      secure: false,
       maxAge: 24 * 60 * 60 * 1000, //expires in 24hours
       httpOnly: true,
     },
