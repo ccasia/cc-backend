@@ -36,11 +36,10 @@ export const saveNotification = async ({
   threadId?: string;
   invoiceId?: string;
 }) => {
-  // Fire-and-forget push notification (does not block DB write)
   void sendExpoPushToUser(userId, {
     title: title ?? 'New notification',
     body: message,
-    data: { entity, campaignId, pitchId, threadId, invoiceId },
+    data: { entity, campaignId: campaignId ?? entityId, pitchId, threadId, invoiceId },
   });
 
   if (entity === 'Agreement' || entity === 'Draft' || entity === 'Timeline' || entity === 'Post') {
