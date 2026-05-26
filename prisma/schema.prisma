@@ -433,6 +433,7 @@ model InstagramVideo {
 
   comments_count Int?
   like_count     Int?
+  view_count     Int?
   media_type     String?
   media_url      String?
   thumbnail_url  String?
