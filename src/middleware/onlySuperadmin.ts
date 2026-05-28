@@ -80,10 +80,7 @@ export const isBdOrSuperadmin = async (req: Request, res: Response, next: NextFu
       roleName === 'sales and marketing' ||
       roleName.includes('sales and marketing');
     const isCSMorCSL =
-      roleName === 'csm' ||
-      roleName === 'csl' ||
-      roleName.includes('customer success') ||
-      roleName.includes('cs lead');
+      roleName === 'csm' || roleName === 'csl' || roleName.includes('customer success') || roleName.includes('cs lead');
 
     if (!isBDorSales && !isCSMorCSL) {
       return res.status(403).json({ message: 'Access denied. BD, CSM, or superadmin role required.' });

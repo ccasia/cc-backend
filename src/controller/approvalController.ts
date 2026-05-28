@@ -3,10 +3,7 @@ import jwt, { Secret } from 'jsonwebtoken';
 import { Request, Response } from 'express';
 import { Prisma, PrismaClient } from '@prisma/client';
 
-import {
-  sendCreatorApprovalListEmail,
-  type ApprovalListEmailCreatorRow,
-} from '@configs/nodemailer.config';
+import { sendCreatorApprovalListEmail, type ApprovalListEmailCreatorRow } from '@configs/nodemailer.config';
 
 import { io } from '../server';
 
@@ -64,16 +61,10 @@ function buildApprovalEmailCreatorRow(pitch: {
   const creator = user?.creator;
   const ig = creator?.instagramUser;
   const tk = creator?.tiktokUser;
-  const igUser =
-    ig?.username || extractUsernameFromProfileLink(creator?.instagramProfileLink ?? undefined);
-  const tkUser =
-    tk?.username || extractUsernameFromProfileLink(creator?.tiktokProfileLink ?? undefined);
+  const igUser = ig?.username || extractUsernameFromProfileLink(creator?.instagramProfileLink ?? undefined);
+  const tkUser = tk?.username || extractUsernameFromProfileLink(creator?.tiktokProfileLink ?? undefined);
 
-  const followerRaw =
-    pitch.followerCount ??
-    creator?.manualFollowerCount ??
-    ig?.followers_count ??
-    tk?.follower_count;
+  const followerRaw = pitch.followerCount ?? creator?.manualFollowerCount ?? ig?.followers_count ?? tk?.follower_count;
   let followerDisplay = '-';
   if (followerRaw !== null && followerRaw !== undefined && String(followerRaw).trim() !== '') {
     const n = Number(followerRaw);
@@ -273,7 +264,9 @@ export const createApprovalRequest = async (req: Request, res: Response) => {
 
   const validPitchIds = pitchIds.filter((id: unknown) => typeof id === 'string' && id.length > 0);
   if (validPitchIds.length === 0) {
-    return res.status(400).json({ message: 'No valid pitch IDs provided. Please re-select the creators and try again.' });
+    return res
+      .status(400)
+      .json({ message: 'No valid pitch IDs provided. Please re-select the creators and try again.' });
   }
 
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -324,11 +317,7 @@ export const createApprovalRequest = async (req: Request, res: Response) => {
           data: { userId: newUser.id, roleId: clientRole.id, mode: 'normal' },
         });
 
-        inviteToken = jwt.sign(
-          { id: newUser.id },
-          process.env.SESSION_SECRET as Secret,
-          { expiresIn: '7d' },
-        );
+        inviteToken = jwt.sign({ id: newUser.id }, process.env.SESSION_SECRET as Secret, { expiresIn: '7d' });
 
         const newClient = await tx.client.create({
           data: { userId: newUser.id, inviteToken },
@@ -348,11 +337,7 @@ export const createApprovalRequest = async (req: Request, res: Response) => {
           });
         }
 
-        inviteToken = jwt.sign(
-          { id: existingUser.id },
-          process.env.SESSION_SECRET as Secret,
-          { expiresIn: '7d' },
-        );
+        inviteToken = jwt.sign({ id: existingUser.id }, process.env.SESSION_SECRET as Secret, { expiresIn: '7d' });
 
         const newClient = await tx.client.create({
           data: { userId: existingUser.id, inviteToken },
@@ -369,11 +354,7 @@ export const createApprovalRequest = async (req: Request, res: Response) => {
 
         if (existingUser.status === 'pending') {
           // Case 3a: Hasn't set up a password yet — issue a fresh inviteToken so they can
-          inviteToken = jwt.sign(
-            { id: existingUser.id },
-            process.env.SESSION_SECRET as Secret,
-            { expiresIn: '7d' },
-          );
+          inviteToken = jwt.sign({ id: existingUser.id }, process.env.SESSION_SECRET as Secret, { expiresIn: '7d' });
 
           await tx.client.update({
             where: { id: existingUser.client.id },
@@ -720,7 +701,11 @@ export const actionApprovalCreator = async (req: Request, res: Response) => {
     }
 
     const actionMessage =
-      action === 'approve' ? 'Creator approved successfully' : action === 'reject' ? 'Creator rejected successfully' : 'Creator marked as maybe successfully';
+      action === 'approve'
+        ? 'Creator approved successfully'
+        : action === 'reject'
+          ? 'Creator rejected successfully'
+          : 'Creator marked as maybe successfully';
 
     return res.status(200).json({
       message: isPending ? actionMessage : 'Comment saved successfully',

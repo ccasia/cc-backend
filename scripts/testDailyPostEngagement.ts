@@ -158,7 +158,9 @@ async function main() {
   console.log('');
 
   // STEP 2 — seed SIM_DAYS of synthetic varied snapshots ending today
-  console.log(`🔁 Seeding ${SIM_DAYS} synthetic daily snapshots (Day 0 = ${syntheticPostDate.format('YYYY-MM-DD')} → Day ${SIM_DAYS - 1} = today)\n`);
+  console.log(
+    `🔁 Seeding ${SIM_DAYS} synthetic daily snapshots (Day 0 = ${syntheticPostDate.format('YYYY-MM-DD')} → Day ${SIM_DAYS - 1} = today)\n`,
+  );
 
   const captured: any[] = [];
   for (let i = 0; i < SIM_DAYS; i++) {

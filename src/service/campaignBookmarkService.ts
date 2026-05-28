@@ -8,9 +8,9 @@ export interface CampaignBookmark {
 
 type BookmarkDelegate = Pick<PrismaClient['bookMarkCampaign'], 'upsert' | 'findFirst' | 'delete'>;
 
-type PrismaLike = {
+interface PrismaLike {
   bookMarkCampaign: BookmarkDelegate;
-};
+}
 
 const bookmarkSelect = {
   id: true,

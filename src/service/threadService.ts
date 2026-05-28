@@ -190,8 +190,8 @@ export const sendMessageService = async ({
         // Only meaningful when an attachment is present; clients send these
         // alongside the upload so server-loaded messages render at the
         // correct aspect ratio without a fallback flash.
-        fileWidth: fileUrl ? fileWidth ?? null : null,
-        fileHeight: fileUrl ? fileHeight ?? null : null,
+        fileWidth: fileUrl ? (fileWidth ?? null) : null,
+        fileHeight: fileUrl ? (fileHeight ?? null) : null,
         fileName: file ? file.name : null,
         fileSize: file ? file.size : null,
         createdAt: new Date(),

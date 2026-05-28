@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto';
 
-type AgreementCandidate = {
+interface AgreementCandidate {
   createdAt?: Date | string | null;
   id?: string;
   status?: string | null;
@@ -9,7 +9,7 @@ type AgreementCandidate = {
     type?: string | null;
   } | null;
   updatedAt?: Date | string | null;
-};
+}
 
 const AGREEMENT_STATUS_PRIORITY: Record<string, number> = {
   PENDING_REVIEW: 4,

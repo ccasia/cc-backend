@@ -61,12 +61,9 @@ export const sendEmail = async (mailOptions: { to: string; subject: string; html
   }
 };
 
-const EMAIL_FOOTER_ICON_INSTAGRAM =
-  'https://api.iconify.design/mdi/instagram.svg?color=%238E8E93&width=64&height=64';
-const EMAIL_FOOTER_ICON_LINKEDIN =
-  'https://api.iconify.design/mdi/linkedin.svg?color=%238E8E93&width=64&height=64';
-const EMAIL_FOOTER_ICON_WEBSITE =
-  'https://api.iconify.design/mdi/web.svg?color=%238E8E93&width=64&height=64';
+const EMAIL_FOOTER_ICON_INSTAGRAM = 'https://api.iconify.design/mdi/instagram.svg?color=%238E8E93&width=64&height=64';
+const EMAIL_FOOTER_ICON_LINKEDIN = 'https://api.iconify.design/mdi/linkedin.svg?color=%238E8E93&width=64&height=64';
+const EMAIL_FOOTER_ICON_WEBSITE = 'https://api.iconify.design/mdi/web.svg?color=%238E8E93&width=64&height=64';
 const EMAIL_FOOTER_SOCIAL_IMG =
   'width="32" height="32" style="width:32px;height:32px;display:block;border:0;outline:none;-ms-interpolation-mode:bicubic;"';
 
@@ -1762,20 +1759,16 @@ export const csShortlistCreators = (
 };
 
 /** Row data for {@link sendCreatorApprovalListEmail} (public approval link flow). */
-export type ApprovalListEmailCreatorRow = {
+export interface ApprovalListEmailCreatorRow {
   name: string;
   profilePicUrl: string;
   instagramDisplay: string | null;
   tiktokDisplay: string | null;
   statsLine: string;
-};
+}
 
 function escapeHtmlForEmail(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 function escapeHtmlAttr(s: string): string {
@@ -1823,11 +1816,7 @@ export const sendCreatorApprovalListEmail = async (params: {
               ? `<span style="white-space:nowrap;"><img src="https://cdn.simpleicons.org/instagram/8E8E93" alt="" width="12" height="12" style="vertical-align:middle;margin-right:3px;">${ig}</span>`
               : ''
           }
-          ${
-            c.instagramDisplay && c.tiktokDisplay
-              ? `<span style="color:#D1D1D6;margin:0 5px;">|</span>`
-              : ''
-          }
+          ${c.instagramDisplay && c.tiktokDisplay ? `<span style="color:#D1D1D6;margin:0 5px;">|</span>` : ''}
           ${
             c.tiktokDisplay
               ? `<span style="white-space:nowrap;"><img src="https://cdn.simpleicons.org/tiktok/8E8E93" alt="" width="12" height="12" style="vertical-align:middle;margin-right:3px;">${tk}</span>`

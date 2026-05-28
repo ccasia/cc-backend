@@ -4,11 +4,11 @@ import { Expo, ExpoPushMessage, ExpoPushTicket } from 'expo-server-sdk';
 const prisma = new PrismaClient();
 const expo = new Expo();
 
-type ExpoPushPayload = {
+interface ExpoPushPayload {
   title?: string;
   body: string;
   data?: Record<string, unknown>;
-};
+}
 
 export const sendExpoPushToUser = async (userId: string, payload: ExpoPushPayload) => {
   try {
