@@ -1,5 +1,10 @@
 import { PrismaClient } from '@prisma/client';
 import { createInvoiceService } from './invoiceService';
+import { clients, io } from '../server';
+import {
+  CREATOR_CAMPAIGN_COMPLETED_EVENT,
+  createCreatorCampaignCompletedPayload,
+} from '@utils/campaignCompletionEvents';
 
 const prisma = new PrismaClient();
 
@@ -284,6 +289,14 @@ export const handleV4CompletedCampaign = async (
     });
 
     console.log(`✅ V4 Campaign completed for user ${userId} - invoice generated: ${invoice?.id}`);
+
+    // Notify the creator's app so the campaign moves from Active to Done in real time
+    const completedPayload = createCreatorCampaignCompletedPayload({ userId, campaignId });
+    const creatorSocketId = clients.get(userId);
+    if (creatorSocketId) {
+      io.to(creatorSocketId).emit(CREATOR_CAMPAIGN_COMPLETED_EVENT, completedPayload);
+    }
+    io.to(campaignId).emit(CREATOR_CAMPAIGN_COMPLETED_EVENT, completedPayload);
 
     // TODO: Send notification to creator (similar to V3 flow)
     // TODO: Send email notification (similar to V3 flow)
