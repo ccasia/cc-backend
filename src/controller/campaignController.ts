@@ -2954,6 +2954,10 @@ export const getCampaignForCreatorById = async (req: Request, res: Response) => 
 
     totalSubmissions = campaign.campaignType === 'ugc' ? (isChangesRequired ? 3 : 2) : isChangesRequired ? 4 : 3;
 
+    if (campaign.campaignType === 'normal') {
+      totalSubmissions = campaign?.submission.length;
+    }
+
     const adjustedData = {
       ...campaign,
       totalCompletion: ((completed / totalSubmissions) * 100).toFixed(),
@@ -3889,6 +3893,10 @@ export const getMyCampaigns = async (req: Request, res: Response) => {
         'CHANGES_REQUIRED';
 
       totalSubmissions = campaign.campaignType === 'ugc' ? (isChangesRequired ? 3 : 2) : isChangesRequired ? 4 : 3;
+
+      if (campaign.campaignType === 'normal') {
+        totalSubmissions = campaign?.submission.length;
+      }
 
       return {
         ...campaign,
