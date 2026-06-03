@@ -2955,7 +2955,7 @@ export const getCampaignForCreatorById = async (req: Request, res: Response) => 
     totalSubmissions = campaign.campaignType === 'ugc' ? (isChangesRequired ? 3 : 2) : isChangesRequired ? 4 : 3;
 
     if (campaign.campaignType === 'normal') {
-      totalSubmissions = campaign?.submission.length;
+      totalSubmissions = isChangesRequired ? campaign?.submission.length : campaign?.submission.length - 1;
     }
 
     const adjustedData = {
@@ -3895,7 +3895,7 @@ export const getMyCampaigns = async (req: Request, res: Response) => {
       totalSubmissions = campaign.campaignType === 'ugc' ? (isChangesRequired ? 3 : 2) : isChangesRequired ? 4 : 3;
 
       if (campaign.campaignType === 'normal') {
-        totalSubmissions = campaign?.submission.length;
+        totalSubmissions = isChangesRequired ? campaign?.submission.length : campaign?.submission.length - 1;
       }
 
       return {
