@@ -17,12 +17,14 @@ model User {
   emailVerificationId String?            @unique
   emailVerifcation    EmailVerification? @relation(fields: [emailVerificationId], references: [id])
 
-  createdAt               DateTime            @default(now())
-  name                    String?             @db.VarChar(255)
-  photoURL                String?             @db.VarChar(255)
-  country                 String?             @db.VarChar(100)
-  city                    String?             @db.VarChar(100)
-  phoneNumber             String?             @db.VarChar(100)
+  phoneNumber String? @unique @db.VarChar(100)
+
+  createdAt DateTime @default(now())
+  name      String?  @db.VarChar(255)
+  photoURL  String?  @db.VarChar(255)
+  country   String?  @db.VarChar(100)
+  city      String?  @db.VarChar(100)
+
   updatedAt               DateTime?           @updatedAt
   status                  Status              @default(pending)
   eventId                 String?
@@ -310,11 +312,11 @@ model Creator {
   dietaryRestrictions String?
 
   // Credit Tier fields
-  manualFollowerCount         Int?             @default(0) // Legacy fallback manual follower count
-  manualInstagramFollowerCount Int?            @default(0) // Platform-specific manual Instagram followers
-  manualTiktokFollowerCount    Int?            @default(0) // Platform-specific manual TikTok followers
+  manualFollowerCount          Int?        @default(0) // Legacy fallback manual follower count
+  manualInstagramFollowerCount Int?        @default(0) // Platform-specific manual Instagram followers
+  manualTiktokFollowerCount    Int?        @default(0) // Platform-specific manual TikTok followers
   creditTierId                 String?
-  creditTier                   CreditTier?      @relation("UserCurrentTier", fields: [creditTierId], references: [id])
+  creditTier                   CreditTier? @relation("UserCurrentTier", fields: [creditTierId], references: [id])
   tierUpdatedAt                DateTime? // Last time tier was calculated
 
   @@index([formCompletedAt])
@@ -495,12 +497,12 @@ model UnreadMessage {
 }
 
 model SeenMessage {
-  id        Int     @id @default(autoincrement())
+  id        Int       @id @default(autoincrement())
   userId    String
   messageId Int
   seenAt    DateTime?
-  message   Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  user      User    @relation(fields: [userId], references: [id])
+  message   Message   @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id])
 
   @@unique([userId, messageId])
 }
@@ -996,13 +998,13 @@ model AdminLog {
 }
 
 model Pitch {
-  id                        String         @id @unique @default(cuid())
+  id                        String          @id @unique @default(cuid())
   type                      PitchType
   campaignId                String
   userId                    String
-  status                    PitchStatus?   @default(pending)
-  content                   String         @default("test")
-  createdAt                 DateTime       @default(now())
+  status                    PitchStatus?    @default(pending)
+  content                   String          @default("test")
+  createdAt                 DateTime        @default(now())
   completedAt               DateTime?
   approvedByAdminId         String?
   approvedByClientId        String?
@@ -1023,8 +1025,8 @@ model Pitch {
   engagementRate            String?
   adminComments             String?
   adminCommentedBy          String?
-  isInvited                 Boolean        @default(false)
-  adminCommenter            Admin?         @relation("AdminCommenter", fields: [adminCommentedBy], references: [userId])
+  isInvited                 Boolean         @default(false)
+  adminCommenter            Admin?          @relation("AdminCommenter", fields: [adminCommentedBy], references: [userId])
 
   // Outreach status tracking
   outreachStatus    OutreachStatus?
@@ -1046,21 +1048,21 @@ model Pitch {
 }
 
 model ShortListedCreator {
-  id               String   @id @default(cuid())
+  id               String          @id @default(cuid())
   campaignId       String
   userId           String?
   adminComments    String?
   currency         String?
-  shortlisted_date DateTime @default(now())
-  isAgreementReady Boolean? @default(false)
-  isCampaignDone   Boolean? @default(false)
-  isCreatorPaid    Boolean? @default(false)
+  shortlisted_date DateTime        @default(now())
+  isAgreementReady Boolean?        @default(false)
+  isCampaignDone   Boolean?        @default(false)
+  isCreatorPaid    Boolean?        @default(false)
   ugcVideos        Int?
   amount           Int?
   followerCount    Int?
   selectedPlatform SocialPlatform?
-  campaign         Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  user             User?    @relation(fields: [userId], references: [id])
+  campaign         Campaign        @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  user             User?           @relation(fields: [userId], references: [id])
 
   // Credit Tier snapshot at assignment time (for tier campaigns)
   creditPerVideo Int? // Credits per video at time of assignment
