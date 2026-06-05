@@ -247,6 +247,7 @@ export const sendMessageInThread = async (req: Request, res: Response) => {
 
   const rawWidth = (req.body as any).fileWidth as string | number | undefined;
   const rawHeight = (req.body as any).fileHeight as string | number | undefined;
+  const rawReplyTo = (req.body as any).replyToMessageId as string | number | undefined;
   const parseDim = (v: string | number | undefined): number | null => {
     if (v == null) return null;
     const n = typeof v === 'number' ? v : parseInt(v, 10);
@@ -267,6 +268,7 @@ export const sendMessageInThread = async (req: Request, res: Response) => {
       file,
       fileWidth: parseDim(rawWidth),
       fileHeight: parseDim(rawHeight),
+      replyToId: parseDim(rawReplyTo),
     });
     return res.status(201).json(message);
   } catch (error) {

@@ -475,8 +475,11 @@ model Message {
   fileHeight     Int?
   fileName       String?
   fileSize       Int?
+  replyToId      Int?
   sender         User?           @relation("UserMessages", fields: [senderId], references: [id])
   thread         Thread?         @relation(fields: [threadId], references: [id])
+  replyTo        Message?        @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies        Message[]       @relation("MessageReplies")
   seenMessages   SeenMessage[]
   threadLatest   Thread?         @relation("LatestMessage")
   unreadMessages UnreadMessage[]
