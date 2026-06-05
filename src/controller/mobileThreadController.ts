@@ -124,11 +124,12 @@ export const getThreadLinkPreview = async (req: Request, res: Response) => {
 export const sendMyMessage = async (req: Request, res: Response) => {
   const userId = req.userId;
   const { threadId } = req.params;
-  const { content, clientNonce, fileWidth, fileHeight } = req.body as {
+  const { content, clientNonce, fileWidth, fileHeight, replyToMessageId } = req.body as {
     content?: string;
     clientNonce?: string;
     fileWidth?: string | number;
     fileHeight?: string | number;
+    replyToMessageId?: string | number;
   };
 
   // multipart/form-data sends everything as strings; coerce to integers, drop
@@ -140,6 +141,7 @@ export const sendMyMessage = async (req: Request, res: Response) => {
   };
   const parsedFileWidth = parseDim(fileWidth);
   const parsedFileHeight = parseDim(fileHeight);
+  const parsedReplyToId = parseDim(replyToMessageId);
 
   if (!userId) {
     return res.status(401).json({ error: 'Unauthorized.' });
@@ -188,6 +190,7 @@ export const sendMyMessage = async (req: Request, res: Response) => {
       allowedExactMimes: CHAT_DOC_ALLOWED_MIMES,
       maxFileSize: 1024 * 1024 * 1024, // 1 GB
       clientNonce,
+      replyToId: parsedReplyToId,
     });
     return res.status(201).json(message);
   } catch (error) {

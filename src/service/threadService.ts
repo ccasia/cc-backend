@@ -46,6 +46,7 @@ interface SendMessageInput {
   allowedExactMimes?: string[];
   maxFileSize?: number;
   clientNonce?: string;
+  replyToId?: number | null;
 }
 
 interface MessageMutationInput {
@@ -60,6 +61,28 @@ interface EditMessageInput extends MessageMutationInput {
 
 const DEFAULT_MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
+// Bounded one-level select of the parent a reply points to. Never recurse into
+// the parent's own `replyTo` — clients only render a single quoted snippet.
+const replyToSelect = {
+  select: {
+    id: true,
+    content: true,
+    senderId: true,
+    file: true,
+    fileType: true,
+    fileName: true,
+    deletedAt: true,
+    sender: {
+      select: {
+        id: true,
+        name: true,
+        photoURL: true,
+        role: true,
+      },
+    },
+  },
+};
+
 const messageInclude = {
   sender: {
     select: {
@@ -69,6 +92,7 @@ const messageInclude = {
       role: true,
     },
   },
+  replyTo: replyToSelect,
   seenMessages: {
     select: {
       userId: true,
@@ -130,8 +154,22 @@ export const sendMessageService = async ({
   allowedExactMimes,
   maxFileSize = DEFAULT_MAX_FILE_SIZE,
   clientNonce,
+  replyToId,
 }: SendMessageInput) => {
   await assertThreadMembership(userId, threadId);
+
+  // Only honour a reply reference if the parent exists in this same thread;
+  // otherwise drop it (cross-thread/bogus id) and still send the message.
+  let validReplyToId: number | null = null;
+  if (typeof replyToId === 'number' && Number.isInteger(replyToId) && replyToId > 0) {
+    const parent = await prisma.message.findUnique({
+      where: { id: replyToId },
+      select: { id: true, threadId: true },
+    });
+    if (parent && parent.threadId === threadId) {
+      validReplyToId = parent.id;
+    }
+  }
 
   let fileUrl: string | null = null;
   let fileType: string | null = null;
@@ -194,6 +232,7 @@ export const sendMessageService = async ({
         fileHeight: fileUrl ? (fileHeight ?? null) : null,
         fileName: file ? file.name : null,
         fileSize: file ? file.size : null,
+        replyToId: validReplyToId,
         createdAt: new Date(),
       },
       include: {
@@ -205,6 +244,7 @@ export const sendMessageService = async ({
             role: true,
           },
         },
+        replyTo: replyToSelect,
       },
     });
 
@@ -234,6 +274,8 @@ export const sendMessageService = async ({
     fileHeight: datas.message.fileHeight,
     fileName: datas.message.fileName,
     fileSize: datas.message.fileSize,
+    replyToId: datas.message.replyToId,
+    replyTo: datas.message.replyTo,
     createdAt: datas.message.createdAt,
     sender: datas.message.sender,
     clientNonce,
@@ -464,13 +506,14 @@ export const totalUnreadMessagesService = async (userId: string) => {
 };
 
 export const handleSendMessage = async (message: any, io: any) => {
-  const { senderId, threadId, content, role, name, photoURL } = message;
+  const { senderId, threadId, content, role, name, photoURL, replyToMessageId } = message;
 
   // Simulate the request and response for calling the API endpoint
   const req = {
     body: {
       threadId,
       content,
+      replyToMessageId,
     },
     userId: senderId,
     session: {
