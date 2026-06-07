@@ -8,6 +8,7 @@ interface ExpoPushPayload {
   title?: string;
   body: string;
   data?: Record<string, unknown>;
+  collapseId?: string; // for stacking notifications
 }
 
 export const sendExpoPushToUser = async (userId: string, payload: ExpoPushPayload) => {
@@ -33,6 +34,7 @@ export const sendExpoPushToUser = async (userId: string, payload: ExpoPushPayloa
         title: payload.title,
         body: payload.body,
         data: payload.data ?? {},
+        ...(payload.collapseId ? { collapseId: payload.collapseId } : {}),
       });
     }
 

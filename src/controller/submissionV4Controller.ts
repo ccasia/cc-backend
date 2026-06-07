@@ -17,6 +17,7 @@ import { checkAndCompleteV4Campaign } from '../service/submissionV4CompletionSer
 import { fetchCommentsForVideo, editCommentRecord } from '../service/submissionCommentService';
 import { clients, io } from '../server';
 import { saveNotification } from './notificationController';
+import { sendExpoPushToUser } from '../helper/expoPush';
 import { notificationDraft } from '@helper/notification';
 import { saveCaptionToHistory } from '../utils/captionHistoryUtils';
 import { extractAndStoreSubmissionUrls } from '@services/submissionUrlService';
@@ -3232,7 +3233,13 @@ export const createComment = async (req: Request, res: Response) => {
       },
       include: {
         user: { select: { id: true, name: true, role: true, client: { include: { company: true } } } },
-        submission: { select: { campaignId: true } },
+        submission: {
+          select: {
+            campaignId: true,
+            userId: true,
+            campaign: { select: { name: true } },
+          },
+        },
       },
     });
 
@@ -3248,6 +3255,90 @@ export const createComment = async (req: Request, res: Response) => {
         comment: newComment,
         ...(parentId ? { parentCommentId: parentId } : {}),
       });
+    }
+
+    // Notify the creator when an admin replies to a feedback thread. Replies are
+    // stacked per (creator, campaign): an existing unread reply notification is
+    // updated with a running count instead of inserting a new row, and the push
+    // shares a per-campaign collapseId so the OS banner replaces rather than piles up.
+    const creatorUserId = newComment.submission?.userId;
+    const isAdminReply =
+      !!parentId && (user.role === 'admin' || user.role === 'superadmin');
+
+    if (isAdminReply && commentCampaignId && creatorUserId && creatorUserId !== user.id) {
+      try {
+        const campaignName = newComment.submission?.campaign?.name ?? 'a campaign';
+
+        const existing = await prisma.userNotification.findFirst({
+          where: {
+            userId: creatorUserId,
+            read: false,
+            notification: {
+              entity: 'Feedback',
+              campaignId: commentCampaignId,
+            },
+          },
+          orderBy: { notification: { createdAt: 'desc' } },
+          include: { notification: true },
+        });
+
+        const replyMessage = (count: number) =>
+          count > 1
+            ? `You have ${count} new replies on "${campaignName}". Tap to review.`
+            : `An admin replied to your feedback on "${campaignName}". Tap to review.`;
+
+        if (existing) {
+          // Derive the new count from the prior message, defaulting to 2 on the
+          // second reply (the first created the row, this is the next one).
+          const prevCount = parseInt(existing.notification.message.match(/^You have (\d+)/)?.[1] ?? '1', 10);
+          const nextCount = prevCount + 1;
+
+          await prisma.notification.update({
+            where: { id: existing.notification.id },
+            // Point the stacked notification at the most recent reply's submission
+            // so tapping lands on the submission that was just replied to.
+            data: { message: replyMessage(nextCount), submissionId },
+          });
+          await prisma.userNotification.update({
+            where: { id: existing.id },
+            data: { read: false, readAt: null },
+          });
+
+          const updated = await prisma.userNotification.findUnique({
+            where: { id: existing.id },
+            include: { notification: true },
+          });
+
+          const creatorSocketId = clients.get(creatorUserId);
+          if (io && creatorSocketId && updated) {
+            io.to(creatorSocketId).emit('notification', updated.notification);
+          }
+
+          void sendExpoPushToUser(creatorUserId, {
+            title: `New feedback on ${campaignName}`,
+            body: replyMessage(nextCount),
+            data: { entity: 'Feedback', campaignId: commentCampaignId, submissionId },
+            collapseId: `feedback-reply-${commentCampaignId}`,
+          });
+        } else {
+          const notification = await saveNotification({
+            userId: creatorUserId,
+            title: `New feedback on ${campaignName}`,
+            message: replyMessage(1),
+            entity: 'Feedback',
+            entityId: commentCampaignId,
+            submissionId,
+          });
+
+          const creatorSocketId = clients.get(creatorUserId);
+          if (io && creatorSocketId) {
+            io.to(creatorSocketId).emit('notification', notification);
+          }
+        }
+      } catch (notifyError) {
+        // Never let a notification failure break comment creation.
+        console.error('[createComment] failed to notify creator of reply', notifyError);
+      }
     }
 
     return res.status(201).json(newComment);
