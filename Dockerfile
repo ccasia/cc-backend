@@ -49,7 +49,6 @@ COPY . .
 # Generate Prisma client
 RUN npx prisma generate
 
-
 # Build the application
 RUN yarn build
 
@@ -78,24 +77,12 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/.env ./.env
-
-# Update DATABASE_URL in .env file
-# RUN if [ -n "$DATABASE_URL" ]; then \
-#    sed -i "s|^DATABASE_URL=.*|DATABASE_URL=$DATABASE_URL|" .env; \
-#    fi
+COPY --from=builder /app/ecosystem.config.cjs ./dist/ecosystem.config.cjs
 
 # Generate Prisma client in production environment
 RUN npx prisma generate
 
 RUN yarn global add pm2
-
-# RUN npx prisma migrate dev --name init
-
-# Run database migrations
-# RUN yarn deploy
-
-# Add seed and create-timeline commands
-# RUN yarn seed && yarn create-timeline
 
 EXPOSE 3001
 
@@ -112,3 +99,4 @@ RUN mkdir -p form/tmp form/pdf upload
 
 # Use node to run the built app.js file
 CMD ["node", "src/server.js"]
+# CMD ["pm2-runtime", "start", d"ecosystem.config.cjs"]

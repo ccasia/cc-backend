@@ -2236,6 +2236,7 @@ export async function ensureValidTikTokToken(userId: string): Promise<string> {
 }
 
 export const getTikTokVideoInsight = async (req: Request, res: Response) => {
+  console.log('This get executed');
   const { userId } = req.params;
   const { url, campaignId } = req.query;
 
@@ -2288,7 +2289,7 @@ export const getTikTokVideoInsight = async (req: Request, res: Response) => {
     if (!videoId) {
       videoId = await resolveTikTokShortUrl(url as string);
     }
-    console.log('Extracted video ID:', videoId);
+    // console.log('Extracted video ID:', videoId);
 
     if (!videoId) {
       return res
@@ -2343,7 +2344,7 @@ export const getTikTokVideoInsight = async (req: Request, res: Response) => {
     let campaignPostsCount = 0;
 
     if (campaignId) {
-      console.log(`🎯 Calculating TikTok campaign averages for campaign: ${campaignId}`);
+      // console.log(`🎯 Calculating TikTok campaign averages for campaign: ${campaignId}`);
 
       await getCampaignSubmissionUrls(campaignId as string);
 
@@ -2353,14 +2354,14 @@ export const getTikTokVideoInsight = async (req: Request, res: Response) => {
         campaignAverages = cachedAverages.averages;
         campaignPostsCount = cachedAverages.postsCount;
         campaignComparison = calculateCampaignComparison(insight, campaignAverages, campaignPostsCount);
-        console.log('Using cached TikTok campaign averages:', campaignAverages);
+        // console.log('Using cached TikTok campaign averages:', campaignAverages);
       } else {
         try {
           // Get all campaign submission URLs (now includes both Instagram and TikTok)
           const campaignUrls = await getCampaignSubmissionUrls(campaignId as string);
           // Filter for TikTok URLs only
           const tiktokUrls = campaignUrls.filter((urlData) => urlData.platform === 'TikTok');
-          console.log(`📊 Found ${tiktokUrls.length} TikTok campaign URLs out of ${campaignUrls.length} total URLs`);
+          // console.log(`📊 Found ${tiktokUrls.length} TikTok campaign URLs out of ${campaignUrls.length} total URLs`);
 
           const allCampaignInsights: MetricData[][] = [];
           const processedVideoIds = new Set<string>();
@@ -2381,7 +2382,7 @@ export const getTikTokVideoInsight = async (req: Request, res: Response) => {
                 try {
                   userAccessToken = await ensureValidTikTokToken(campaignUserId);
                 } catch (tokenError: any) {
-                  console.error(`Cannot access TikTok for campaign user ${campaignUserId}:`, tokenError.message);
+                  // console.error(`Cannot access TikTok for campaign user ${campaignUserId}:`, tokenError.message);
                   continue;
                 }
               }
@@ -2423,7 +2424,7 @@ export const getTikTokVideoInsight = async (req: Request, res: Response) => {
                     processedVideoIds.add(campaignVideoId);
                     return campaignInsight;
                   } catch (error) {
-                    console.error(`Error processing TikTok campaign URL ${urlData.url}:`, error);
+                    // console.error(`Error processing TikTok campaign URL ${urlData.url}:`, error);
                     return null;
                   }
                 },
@@ -2444,10 +2445,10 @@ export const getTikTokVideoInsight = async (req: Request, res: Response) => {
 
           if (!currentPostProcessed && insight && insight.length > 0) {
             allCampaignInsights.push(insight);
-            console.log(`📌 Added current TikTok post insight (videoId: ${videoId}) to campaign pool`);
+            // console.log(`📌 Added current TikTok post insight (videoId: ${videoId}) to campaign pool`);
           }
 
-          console.log(`📈 Successfully processed ${allCampaignInsights.length} TikTok campaign posts`);
+          // console.log(`📈 Successfully processed ${allCampaignInsights.length} TikTok campaign posts`);
           campaignPostsCount = allCampaignInsights.length;
 
           // Calculate averages
@@ -2463,10 +2464,10 @@ export const getTikTokVideoInsight = async (req: Request, res: Response) => {
             // Compare current post with campaign averages
             campaignComparison = calculateCampaignComparison(insight, campaignAverages, allCampaignInsights.length);
 
-            console.log('TikTok Campaign averages calculated and cached:', campaignAverages);
+            console.log('TikTok C÷ampaign averages calculated and cached:', campaignAverages);
           }
         } catch (error) {
-          console.error('Error calculating TikTok campaign averages:', error);
+          // console.error('Error calculating TikTok campaign averages:', error);
           // Continue without campaign data if there's an error
         }
       }
@@ -2485,7 +2486,7 @@ export const getTikTokVideoInsight = async (req: Request, res: Response) => {
 
     return res.status(200).json(response);
   } catch (error) {
-    console.error('Error getting TikTok video insight:', error);
+    // console.error('Error getting TikTok video insight:', error);
     return res.status(400).json({
       message: 'Failed to get TikTok video insight',
       error: error.message,
