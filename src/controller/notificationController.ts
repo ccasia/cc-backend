@@ -23,6 +23,7 @@ export const saveNotification = async ({
   type,
   threadId,
   invoiceId,
+  submissionId,
 }: {
   userId: string;
   campaignId?: string;
@@ -35,12 +36,17 @@ export const saveNotification = async ({
   type?: string;
   threadId?: string;
   invoiceId?: string;
+  submissionId?: string;
 }) => {
   // Fire-and-forget push notification (does not block DB write)
   void sendExpoPushToUser(userId, {
     title: title ?? 'New notification',
     body: message,
-    data: { entity, campaignId, pitchId, threadId, invoiceId },
+    // entityId is always a campaign id at every call site (see DB branches below,
+    // which write campaignId: entityId). Most callers pass entityId rather than
+    // campaignId, so fall back to it so the mobile deep-link resolver can route to
+    // the campaign instead of dropping to the generic notifications page.
+    data: { entity, campaignId: campaignId ?? entityId, pitchId, threadId, invoiceId, submissionId },
   });
 
   if (entity === 'Agreement' || entity === 'Draft' || entity === 'Timeline' || entity === 'Post') {
@@ -150,6 +156,7 @@ export const saveNotification = async ({
         message: message,
         title: title,
         entity: entity,
+        ...(submissionId ? { submission: { connect: { id: submissionId } } } : {}),
         campaign: {
           connect: {
             id: entityId || '',
