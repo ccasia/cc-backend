@@ -147,7 +147,7 @@ app.use(
       secure: process.env.NODE_ENV === 'production',
       maxAge: 24 * 60 * 60 * 1000, //expires in 24hours
       httpOnly: true,
-      // sameSite: 'none',
+      sameSite: 'none',
     },
     store: new PrismaSessionStore(new PrismaClient(), {
       checkPeriod: 2 * 60 * 1000,
