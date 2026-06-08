@@ -2096,3 +2096,138 @@ export const bdDraftCreated = async (payload: {
     throw error;
   }
 };
+
+// Shared shell so the three new campaign-brief emails stay consistent with the
+// existing house style without duplicating the wrapper markup.
+const briefEmailShell = (params: { headline: string; iconUrl?: string; bodyHtml: string; ctaLabel?: string; ctaUrl?: string; footerNote?: string }) => {
+  const { headline, iconUrl, bodyHtml, ctaLabel, ctaUrl, footerNote } = params;
+  return `
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <style type="text/css">
+        @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
+      </style>
+    </head>
+    <body style="margin: 0; padding: 0; background-color: #f0f2f5; font-family: 'Inter', Arial, sans-serif;">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #f0f2f5;">
+        <tr>
+          <td align="center" style="padding: 20px 10px;">
+            <table role="presentation" width="500" cellspacing="0" cellpadding="0" border="0" align="center" style="max-width: 400px; width: 100%; background-color: #ffffff; border-radius: 12px; overflow: hidden;">
+              <tr><td style="padding: 30px 20px 10px 20px;"><img src="https://drive.google.com/uc?id=1wbwEJp2qX5Hb9iirUQJVCmdpq-fg34oE" alt="Cult Creative Logo" width="120"></td></tr>
+              <tr><td style="padding: 10px 30px 20px 30px;"><h1 style="margin: 0; font-family: 'Instrument Serif', Georgia, serif; font-size: 32px; color: #000000; font-weight: 400; line-height: 36px;">${headline}</h1></td></tr>
+              ${iconUrl ? `<tr><td align="center" style="padding: 10px 20px;"><img src="${iconUrl}" alt="" width="80" style="width: 80px; height: auto;"></td></tr>` : ''}
+              <tr><td style="padding: 20px 20px;">${bodyHtml}</td></tr>
+              ${ctaLabel && ctaUrl ? `
+              <tr>
+                <td style="padding: 20px 20px;">
+                  <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" width="100%">
+                    <tr><td align="center" style="background-color: #1340FF; border-radius: 50px;">
+                      <a href="${ctaUrl}" target="_blank" style="display: block; padding: 16px 20px; font-family: 'Inter', Arial, sans-serif; font-size: 16px; font-weight: bold; color: #ffffff; text-decoration: none; border-radius: 50px;">${ctaLabel}</a>
+                    </td></tr>
+                  </table>
+                </td>
+              </tr>` : ''}
+              ${footerNote ? `<tr><td style="padding: 20px 20px;"><p style="margin: 0; font-family: 'Inter', Arial, sans-serif; font-size: 14px; color: #919191; line-height: 1.5;">${footerNote}</p></td></tr>` : ''}
+            </table>
+          </td>
+        </tr>
+      </table>
+    </body>
+  `;
+};
+
+export const briefSentToClient = async (payload: {
+  to: string;
+  clientName: string;
+  brandName: string;
+  link: string;
+}) => {
+  const { to, clientName, brandName, link } = payload;
+  try {
+    await transport.sendMail({
+      from: user,
+      to,
+      subject: `[Cult Creative] Your campaign brief for ${brandName} is ready to review`,
+      html: briefEmailShell({
+        headline: 'Your campaign brief is ready',
+        iconUrl: 'https://drive.google.com/uc?id=13c5VhONNva9BMQIwXzn7t8stQrnT0OvV',
+        bodyHtml: `
+          <p style="margin: 0 0 15px 0; font-family: 'Inter', Arial, sans-serif; font-size: 16px; color: #000000; line-height: 1.5;">Hi <strong>${clientName}</strong>,</p>
+          <p style="margin: 0; font-family: 'Inter', Arial, sans-serif; font-size: 16px; color: #000000; line-height: 1.5;">
+            The Cult Creative team has prepared a campaign brief for <strong>${brandName}</strong>. Review the details, make any edits you'd like, and approve when ready.
+          </p>`,
+        ctaLabel: 'Review Brief',
+        ctaUrl: link,
+        footerNote: 'This link expires in 14 days.',
+      }),
+    });
+  } catch (error) {
+    console.error('briefSentToClient email failed:', error);
+    throw error;
+  }
+};
+
+export const briefApprovedByClient = async (payload: {
+  to: string;
+  bdName: string;
+  brandName: string;
+  briefId: string;
+  clientName: string;
+}) => {
+  const { to, bdName, brandName, briefId, clientName } = payload;
+  const url = `${process.env.BASE_EMAIL_URL}/dashboard/briefs/${briefId}`;
+  try {
+    await transport.sendMail({
+      from: user,
+      to,
+      subject: `[Cult Creative] ${brandName} approved the brief`,
+      html: briefEmailShell({
+        headline: 'Brief approved',
+        bodyHtml: `
+          <p style="margin: 0 0 15px 0; font-family: 'Inter', Arial, sans-serif; font-size: 16px; color: #000000; line-height: 1.5;">Hey <strong>${bdName}</strong>,</p>
+          <p style="margin: 0; font-family: 'Inter', Arial, sans-serif; font-size: 16px; color: #000000; line-height: 1.5;">
+            <strong>${clientName || brandName}</strong> just approved the campaign brief for <strong>${brandName}</strong>. You can now hand it over to CS to activate.
+          </p>`,
+        ctaLabel: 'Open Brief',
+        ctaUrl: url,
+      }),
+    });
+  } catch (error) {
+    console.error('briefApprovedByClient email failed:', error);
+    throw error;
+  }
+};
+
+export const briefHandedOver = async (payload: {
+  to: string;
+  csName: string;
+  brandName: string;
+  briefId: string;
+  internalComments: string | null;
+}) => {
+  const { to, csName, brandName, briefId, internalComments } = payload;
+  const url = `${process.env.BASE_EMAIL_URL}/dashboard/briefs/${briefId}`;
+  try {
+    await transport.sendMail({
+      from: user,
+      to,
+      subject: `[Cult Creative] Brief handed over: ${brandName}`,
+      html: briefEmailShell({
+        headline: 'A brief was handed to you',
+        bodyHtml: `
+          <p style="margin: 0 0 15px 0; font-family: 'Inter', Arial, sans-serif; font-size: 16px; color: #000000; line-height: 1.5;">Hey <strong>${csName}</strong>,</p>
+          <p style="margin: 0 0 15px 0; font-family: 'Inter', Arial, sans-serif; font-size: 16px; color: #000000; line-height: 1.5;">
+            A campaign brief for <strong>${brandName}</strong> has been handed over to you for activation.
+          </p>
+          ${internalComments ? `<p style="margin: 0; padding: 12px; background:#f7f7f7; border-radius: 8px; font-family: 'Inter', Arial, sans-serif; font-size: 14px; color: #333333; line-height: 1.5;"><strong>Internal note:</strong><br>${internalComments}</p>` : ''}`,
+        ctaLabel: 'Open Brief',
+        ctaUrl: url,
+      }),
+    });
+  } catch (error) {
+    console.error('briefHandedOver email failed:', error);
+    throw error;
+  }
+};

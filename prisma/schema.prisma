@@ -778,6 +778,24 @@ model Campaign {
   // Bd invites
   bdInviteToken String?
 
+  // BD-authored brief flow (Campaign Brief lifecycle before activation)
+  draftStatus          CampaignDraftStatus?
+  draftOrigin          CampaignDraftOrigin?
+  briefOwnerId         String?
+  clientName           String?
+  clientEmail          String?
+  clientMagicToken     String?              @unique
+  clientTokenExpiresAt DateTime?
+  editedByClientFields String[]             @default([])
+  
+  // Snapshot of the brief field values at the moment it was sent to the client
+  clientBriefSnapshot  Json?
+  clientPackage        String?
+  internalComments     String?
+  sentToClientAt       DateTime?
+  approvedAt           DateTime?
+  handedOverAt         DateTime?
+
   publishedAt DateTime?
   completedAt DateTime?
 
@@ -1909,6 +1927,19 @@ enum CampaignStatus {
   SCHEDULED
   PENDING_CSM_REVIEW
   PENDING_ADMIN_ACTIVATION
+}
+
+enum CampaignDraftStatus {
+  DRAFTED
+  SENT_TO_CLIENT
+  PENDING_REVIEW
+  APPROVED
+  HANDED_OVER
+}
+
+enum CampaignDraftOrigin {
+  BD_CREATED
+  CLIENT_INVITED
 }
 
 enum RoleEnum {
