@@ -23,7 +23,7 @@ const router = Router();
 
 router.get('/oauth/tiktok', authenticate, tiktokAuthentication);
 
-router.get('/tiktok/callback', authenticate, redirectTiktokAfterAuth);
+router.get('/tiktok/callback', redirectTiktokAfterAuth);
 
 router.get('/tiktok/:userId', authenticate, tiktokData);
 
