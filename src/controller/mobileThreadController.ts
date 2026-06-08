@@ -14,6 +14,41 @@ import { io } from '../server';
 
 const prisma = new PrismaClient();
 
+const mobileThreadInclude = (userId: string) => ({
+  UserThread: {
+    include: {
+      user: {
+        select: {
+          id: true,
+          name: true,
+          photoURL: true,
+          role: true,
+          admin: {
+            select: {
+              role: { select: { name: true } },
+            },
+          },
+        },
+      },
+    },
+  },
+  campaign: {
+    select: { id: true, name: true },
+  },
+  latestMessage: {
+    include: {
+      sender: {
+        select: { id: true, name: true, photoURL: true, role: true },
+      },
+    },
+  },
+  _count: {
+    select: {
+      unreadMessages: { where: { userId } },
+    },
+  },
+});
+
 export const getMyThreads = async (req: Request, res: Response) => {
   const userId = req.userId;
 
@@ -28,40 +63,7 @@ export const getMyThreads = async (req: Request, res: Response) => {
           some: { userId },
         },
       },
-      include: {
-        UserThread: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                name: true,
-                photoURL: true,
-                role: true,
-                admin: {
-                  select: {
-                    role: { select: { name: true } },
-                  },
-                },
-              },
-            },
-          },
-        },
-        campaign: {
-          select: { id: true, name: true },
-        },
-        latestMessage: {
-          include: {
-            sender: {
-              select: { id: true, name: true, photoURL: true, role: true },
-            },
-          },
-        },
-        _count: {
-          select: {
-            unreadMessages: { where: { userId } },
-          },
-        },
-      },
+      include: mobileThreadInclude(userId),
       orderBy: {
         latestMessage: { createdAt: 'desc' },
       },
@@ -71,6 +73,66 @@ export const getMyThreads = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('mobile getMyThreads error:', error);
     return res.status(500).json({ error: 'An error occurred while retrieving threads.' });
+  }
+};
+
+export const startDirectThread = async (req: Request, res: Response) => {
+  const userId = req.userId;
+  const recipientUserId = typeof req.body.recipientUserId === 'string' ? req.body.recipientUserId : '';
+
+  if (!userId) {
+    return res.status(401).json({ error: 'Unauthorized.' });
+  }
+  if (!recipientUserId) {
+    return res.status(400).json({ error: 'Missing recipientUserId.' });
+  }
+  if (recipientUserId === userId) {
+    return res.status(400).json({ error: 'Cannot start a chat with yourself.' });
+  }
+
+  try {
+    const users = await prisma.user.findMany({
+      where: { id: { in: [userId, recipientUserId] } },
+      select: { id: true, name: true },
+    });
+    const currentUser = users.find((user) => user.id === userId);
+    const recipient = users.find((user) => user.id === recipientUserId);
+
+    if (!recipient) {
+      return res.status(404).json({ error: 'Recipient not found.' });
+    }
+
+    const existingThread = await prisma.thread.findFirst({
+      where: {
+        isGroup: false,
+        campaignId: null,
+        AND: [{ UserThread: { some: { userId } } }, { UserThread: { some: { userId: recipientUserId } } }],
+      },
+      include: mobileThreadInclude(userId),
+    });
+
+    if (existingThread) {
+      return res.status(200).json(existingThread);
+    }
+
+    const thread = await prisma.thread.create({
+      data: {
+        title: `Chat between ${currentUser?.name ?? 'Creator'} & ${recipient.name ?? 'Campaign Admin'}`,
+        description: '',
+        photoURL: null,
+        campaignId: null,
+        isGroup: false,
+        UserThread: {
+          create: [{ userId }, { userId: recipientUserId }],
+        },
+      },
+      include: mobileThreadInclude(userId),
+    });
+
+    return res.status(201).json(thread);
+  } catch (error) {
+    console.error('mobile startDirectThread error:', error);
+    return res.status(500).json({ error: 'An error occurred while starting the chat.' });
   }
 };
 
