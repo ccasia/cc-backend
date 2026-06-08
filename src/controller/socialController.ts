@@ -197,8 +197,9 @@ export async function resolveTikTokShortUrl(url: string): Promise<string | null>
 }
 
 // Connect account
-export const tiktokAuthentication = (_req: Request, res: Response) => {
+export const tiktokAuthentication = (req: Request, res: Response) => {
   const csrfState = Math.random().toString(36).substring(2);
+  const state = `${csrfState}|${req.userId}`;
   res.cookie('csrfState', csrfState, { maxAge: 60000 });
 
   let url = 'https://www.tiktok.com/v2/auth/authorize/';
@@ -207,8 +208,8 @@ export const tiktokAuthentication = (_req: Request, res: Response) => {
   url += '&scope=user.info.basic,user.info.profile,user.info.stats,video.list';
   url += '&response_type=code';
   url += '&redirect_uri=' + process.env.TIKTOK_REDIRECT_URI;
-  url += '&state=' + csrfState;
-  url += '&disable_auto_auth=1';
+  url += '&state=' + state;
+  // url += '&disable_auto_auth=1';
 
   res.send(url);
 };
@@ -216,6 +217,7 @@ export const tiktokAuthentication = (_req: Request, res: Response) => {
 // Get refresh token and access token
 export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
   const code = req.query.code;
+  const [, userId] = (req.query.state as string ?? '').split('|');
 
   try {
     // Exchange code for access token
@@ -239,9 +241,7 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
     const encryptedRefreshToken = encryptToken(refresh_token);
 
     const creator = await prisma.creator.update({
-      where: {
-        userId: req.userId,
-      },
+      where: { userId: userId },
       data: {
         tiktokData: { ...tokenResponse.data, access_token: encryptedAccessToken, refresh_token: encryptedRefreshToken },
         isTiktokConnected: true,
@@ -302,7 +302,7 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
       // Update creator's credit tier after TikTok follower data changes
       try {
         const { updateCreatorTier } = require('@services/creditTierService');
-        await updateCreatorTier(req.userId as string);
+        await updateCreatorTier(userId);
       } catch (tierError) {
         console.error('Failed to update credit tier after TikTok connect:', tierError);
         // Non-blocking - don't fail the callback if tier update fails
@@ -353,7 +353,7 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
       // Find campaigns where this user has submissions
       const userSubmissions = await prisma.submission.findMany({
         where: {
-          userId: req.userId,
+          userId: userId,
           status: 'POSTED',
           content: { not: null },
         },
@@ -366,7 +366,7 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
       // Emit analytics refresh event to each campaign room
       userSubmissions.forEach(({ campaignId }) => {
         io.to(campaignId).emit('analytics:refresh', {
-          userId: req.userId,
+          userId: userId,
           platform: 'TikTok',
           reason: 'mediakit_connected',
           timestamp: new Date().toISOString(),
