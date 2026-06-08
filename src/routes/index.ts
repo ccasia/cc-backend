@@ -39,7 +39,7 @@ import analyticsV2Route from './analyticsV2Route';
 import discoveryRoute from './discoveryRoute';
 import systemSettingRoute from './systemSettingRoute';
 import approvalRoute from './approvalRoute';
-import bdInviteRoute from './bdInviteRoute';
+import campaignBriefRoute from './campaignBriefRoute';
 
 export const router = express.Router();
 
@@ -83,4 +83,4 @@ router.use('/analytics/v2', analyticsV2Route);
 router.use('/discovery', discoveryRoute);
 router.use('/system-settings', systemSettingRoute);
 router.use('/approval-requests', approvalRoute);
-router.use('/bd', bdInviteRoute);
+router.use('/briefs', campaignBriefRoute);
