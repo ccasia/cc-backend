@@ -90,6 +90,7 @@ app.use(
 app.use(
   cors({
     origin: ['https://app.cultcreativeasia.com', 'http://192.168.100.228'],
+    credentials: true,
   }),
 );
 
