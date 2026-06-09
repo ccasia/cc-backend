@@ -9652,6 +9652,18 @@ export const activateClientCampaign = async (req: Request, res: Response) => {
     const ads = deliverables?.includes('ADS') || false;
     const crossPosting = deliverables?.includes('CROSS_POSTING') || false;
 
+    const campaignImageUrls: string[] = [];
+    if (req.files && (req.files as any).campaignImages) {
+      const images = Array.isArray((req.files as any).campaignImages)
+        ? (req.files as any).campaignImages
+        : [(req.files as any).campaignImages];
+
+      for (const image of images) {
+        const url = await uploadCompanyLogo(image.tempFilePath, image.name);
+        campaignImageUrls.push(url);
+      }
+    }
+
     // Update campaign with CSM-provided information
     const updatedCampaign = await prisma.campaign.update({
       where: {
@@ -9670,6 +9682,13 @@ export const activateClientCampaign = async (req: Request, res: Response) => {
             id: agreementTemplateId,
           },
         },
+        ...(campaignImageUrls.length > 0 && {
+          campaignBrief: {
+            update: {
+              images: campaignImageUrls,
+            },
+          },
+        }),
       },
     });
 
