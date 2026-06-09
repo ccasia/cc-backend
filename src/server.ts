@@ -87,12 +87,11 @@ app.use(
   }),
 );
 
-const corsOptions = {
-  origin: true, //included origin as true
-  credentials: true, //included credentials as true
-};
-
-app.use(cors());
+app.use(
+  cors({
+    origin: ['https://app.cultcreativeasia.com', 'http://192.168.100.228'],
+  }),
+);
 
 app.use(morgan('combined'));
 
@@ -137,6 +136,7 @@ app.use(
       secure: process.env.NODE_ENV === 'production',
       maxAge: 24 * 60 * 60 * 1000, //expires in 24hours
       httpOnly: true,
+      sameSite: 'none',
     },
     store: new PrismaSessionStore(new PrismaClient(), {
       checkPeriod: 2 * 60 * 1000,
