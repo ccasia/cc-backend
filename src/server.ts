@@ -89,7 +89,12 @@ app.use(
 
 app.use(
   cors({
-    origin: ['https://app.cultcreativeasia.com', 'http://192.168.100.228', 'http://192.168.1.13'],
+    origin: [
+      'https://app.cultcreativeasia.com',
+      'http://192.168.100.228',
+      'http://192.168.1.13',
+      'http://192.168.0.125', // willy - cult
+    ],
     credentials: true,
   }),
 );
