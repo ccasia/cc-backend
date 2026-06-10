@@ -1570,6 +1570,7 @@ export const forgetPasswordEmail = (email: string, token: string, name?: string)
           `,
     })
     .catch((err) => {
+      console.log('ERROR', err);
       return err;
     });
 };
