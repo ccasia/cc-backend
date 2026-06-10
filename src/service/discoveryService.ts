@@ -535,6 +535,11 @@ const buildConnectedWhere = (
             },
             {
               creator: {
+                is: { mediaKit: { about: { contains: filters.keyword, mode: 'insensitive' as const } } },
+              },
+            },
+            {
+              creator: {
                 is: { interests: { some: { name: { contains: filters.keyword, mode: 'insensitive' as const } } } },
               },
             },
@@ -635,13 +640,13 @@ const countRowsForPlatformMatch = (
   return total;
 };
 
-type DiscoveryPastCampaign = {
+interface DiscoveryPastCampaign {
   id: string;
   name: string;
   image: string | null;
   date: string;
   views: number | null;
-};
+}
 
 const formatCampaignDate = (value: any): string | null => {
   if (!value) return null;
