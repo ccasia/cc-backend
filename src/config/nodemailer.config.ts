@@ -4,7 +4,7 @@ const user = process.env.SMTP_EMAIL || 'support@cultcreative.asia';
 const pass = process.env.SMTP_PASSWORD;
 
 const transport = nodemailer.createTransport({
-  service: 'gmail',
+  service: 'Gmail',
   host: 'smtp.gmail.com',
   secure: false,
   auth: {
