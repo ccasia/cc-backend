@@ -132,6 +132,11 @@ export const buildConnectedWhere = (
             },
             {
               creator: {
+                is: { mediaKit: { about: { contains: filters.keyword, mode: 'insensitive' as const } } },
+              },
+            },
+            {
+              creator: {
                 is: { interests: { some: { name: { contains: filters.keyword, mode: 'insensitive' as const } } } },
               },
             },

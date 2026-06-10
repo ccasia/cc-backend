@@ -75,13 +75,6 @@ const normalizeKeywordComparableText = (value?: string | null) =>
     .replace(/\s+/g, ' ')
     .trim();
 
-const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-const hasBoundaryTerm = (text: string, term: string) => {
-  const pattern = `(^|\\s)${escapeRegex(term)}(\\s|$)`;
-  return new RegExp(pattern).test(text);
-};
-
 const parseKeywordWords = (keywordTerm?: string) => {
   if (!keywordTerm) return [] as string[];
 
@@ -108,7 +101,9 @@ const hasKeywordPhraseMatch = (text: string, keywordTerm?: string) => {
   if (!normalizedKeyword) return true;
   if (!normalizedText) return false;
 
-  return hasBoundaryTerm(normalizedText, normalizedKeyword);
+  // Substring (partial) match so typing "hiki" surfaces "hiking" — consistent with the
+  // DB pre-filter, which uses Prisma `contains`.
+  return normalizedText.includes(normalizedKeyword);
 };
 
 export interface ContentTermMatchOptions {
@@ -128,10 +123,7 @@ export const matchesContentTerms = (texts: string[], options: ContentTermMatchOp
     !options.keywordTerm ||
     keywordSearchTexts.some((text) => hasKeywordPhraseMatch(text, options.keywordTerm)) ||
     keywordTerms.every((term) =>
-      keywordSearchTexts.some((text) => {
-        const normalizedText = normalizeKeywordComparableText(text);
-        return hasBoundaryTerm(normalizedText, term);
-      }),
+      keywordSearchTexts.some((text) => normalizeKeywordComparableText(text).includes(term)),
     );
 
   const hashtagMatches =

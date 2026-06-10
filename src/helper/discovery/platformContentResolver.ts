@@ -64,6 +64,7 @@ const getCreatorKeywordOnlyTexts = (row: any): string[] => {
     creator?.tiktokUser?.display_name,
     creator?.instagramUser?.biography,
     creator?.tiktokUser?.biography,
+    creator?.mediaKit?.about,
     ...(creator?.interests || []).map((interest: any) => interest?.name),
   ]
     .map((value) => String(value || '').trim())
