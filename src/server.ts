@@ -97,7 +97,12 @@ const corsOptions = {
 
 app.use(
   cors({
-    origin: ['https://staging.cultcreativeasia.com', 'http://localhost:3030', 'http://192.168.100.228'],
+    origin: [
+      'https://staging.cultcreativeasia.com',
+      'http://localhost:3030',
+      'http://192.168.100.228',
+      'http://192.168.100.55',
+    ],
     credentials: true,
   }),
 );
