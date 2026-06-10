@@ -1,8 +1,13 @@
 import { Request, Response } from 'express';
 import {
+  addDiscoveryBookmark,
+  getDiscoveryBookmarkedCreators,
   getDiscoveryCreators,
+  getDiscoveryCreatorsExportData,
   getNonPlatformDiscoveryCreators,
   inviteDiscoveryCreators,
+  isDiscoveryBookmarkPlatform,
+  removeDiscoveryBookmark,
 } from '@services/discoveryService';
 
 const parseStringArrayQuery = (value?: string | string[]) => {
@@ -88,6 +93,34 @@ export const getDiscoveryCreatorsList = async (req: Request, res: Response) => {
   }
 };
 
+export const getDiscoveryCreatorsExportDataController = async (req: Request, res: Response) => {
+  try {
+    const interests = parseStringArrayQuery(req.query.interests as string | string[] | undefined);
+    const languages = parseStringArrayQuery(req.query.languages as string | string[] | undefined);
+
+    const data = await getDiscoveryCreatorsExportData({
+      search: req.query.search as string,
+      platform: req.query.platform as 'all' | 'instagram' | 'tiktok',
+      gender: (req.query.gender as string) || undefined,
+      ageRange: (req.query.ageRange as string) || undefined,
+      country: (req.query.country as string) || undefined,
+      city: (req.query.city as string) || undefined,
+      creditTier: (req.query.creditTier as string) || undefined,
+      languages,
+      interests,
+      keyword: (req.query.keyword as string) || undefined,
+      hashtag: (req.query.hashtag as string) || undefined,
+      sortBy: parseSortBy(req.query.sortBy),
+      sortDirection: parseSortDirection(req.query.sortDirection),
+    });
+
+    return res.status(200).json(data);
+  } catch (error: any) {
+    console.error('Error exporting discovery creators:', error);
+    return res.status(500).json({ message: 'Failed to export discovery creators' });
+  }
+};
+
 export const getNonPlatformDiscoveryCreatorsList = async (req: Request, res: Response) => {
   try {
     const data = await getNonPlatformDiscoveryCreators({
@@ -102,6 +135,64 @@ export const getNonPlatformDiscoveryCreatorsList = async (req: Request, res: Res
   } catch (error: any) {
     console.error('Error fetching non-platform discovery creators:', error);
     return res.status(500).json({ message: 'Failed to fetch non-platform discovery creators' });
+  }
+};
+
+export const getDiscoveryBookmarksController = async (req: Request, res: Response) => {
+  const userId = req.userId;
+
+  if (!userId) return res.status(401).json({ message: 'Unauthorized' });
+
+  try {
+    const data = await getDiscoveryBookmarkedCreators(userId);
+    return res.status(200).json(data);
+  } catch (error: any) {
+    console.error('Error fetching discovery bookmarks:', error);
+    return res.status(500).json({ message: 'Failed to fetch bookmarked creators' });
+  }
+};
+
+export const addDiscoveryBookmarkController = async (req: Request, res: Response) => {
+  const userId = req.userId;
+
+  if (!userId) return res.status(401).json({ message: 'Unauthorized' });
+
+  const creatorUserId = String(req.body?.creatorUserId || '').trim();
+  const platform = req.body?.platform;
+
+  if (!creatorUserId) return res.status(400).json({ message: 'creatorUserId is required' });
+  if (!isDiscoveryBookmarkPlatform(platform)) {
+    return res.status(400).json({ message: 'platform must be instagram or tiktok' });
+  }
+
+  try {
+    const bookmark = await addDiscoveryBookmark(userId, creatorUserId, platform);
+    return res.status(200).json({ message: 'Creator bookmarked', bookmark });
+  } catch (error: any) {
+    console.error('Error adding discovery bookmark:', error);
+    return res.status(400).json({ message: error?.message || 'Failed to bookmark creator' });
+  }
+};
+
+export const removeDiscoveryBookmarkController = async (req: Request, res: Response) => {
+  const userId = req.userId;
+
+  if (!userId) return res.status(401).json({ message: 'Unauthorized' });
+
+  const creatorUserId = String(req.query.creatorUserId || '').trim();
+  const platform = req.query.platform;
+
+  if (!creatorUserId) return res.status(400).json({ message: 'creatorUserId is required' });
+  if (!isDiscoveryBookmarkPlatform(platform)) {
+    return res.status(400).json({ message: 'platform must be instagram or tiktok' });
+  }
+
+  try {
+    const data = await removeDiscoveryBookmark(userId, creatorUserId, platform);
+    return res.status(200).json({ message: 'Bookmark removed', ...data });
+  } catch (error: any) {
+    console.error('Error removing discovery bookmark:', error);
+    return res.status(500).json({ message: 'Failed to remove bookmark' });
   }
 };
 

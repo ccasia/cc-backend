@@ -35,6 +35,8 @@ model User {
   agreementTemplate       AgreementTemplate[]
   Board                   Board?
   BookMarkCampaign        BookMarkCampaign[]
+  bookMarkCreator         BookMarkCreator[]   @relation("BookMarkCreatorOwner")
+  bookMarkedBy            BookMarkCreator[]   @relation("BookMarkCreatorTarget")
   campaignLogs            CampaignLog[]
   CampaignTaskAdmin       CampaignTaskAdmin[]
   creator                 Creator?
@@ -810,6 +812,18 @@ model BookMarkCampaign {
   user       User     @relation(fields: [userId], references: [id])
 
   @@unique([userId, campaignId])
+}
+
+model BookMarkCreator {
+  id            String   @id @unique @default(cuid())
+  userId        String
+  creatorUserId String
+  platform      String
+  createdAt     DateTime @default(now())
+  user          User     @relation("BookMarkCreatorOwner", fields: [userId], references: [id])
+  creatorUser   User     @relation("BookMarkCreatorTarget", fields: [creatorUserId], references: [id])
+
+  @@unique([userId, creatorUserId, platform])
 }
 
 // Separate admin and client campaign access models

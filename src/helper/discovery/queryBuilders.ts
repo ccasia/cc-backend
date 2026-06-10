@@ -122,6 +122,21 @@ export const buildConnectedWhere = (
             { creator: { is: { tiktok: { contains: filters.keyword, mode: 'insensitive' as const } } } },
             {
               creator: {
+                is: { instagramUser: { biography: { contains: filters.keyword, mode: 'insensitive' as const } } },
+              },
+            },
+            {
+              creator: {
+                is: { tiktokUser: { biography: { contains: filters.keyword, mode: 'insensitive' as const } } },
+              },
+            },
+            {
+              creator: {
+                is: { interests: { some: { name: { contains: filters.keyword, mode: 'insensitive' as const } } } },
+              },
+            },
+            {
+              creator: {
                 is: {
                   instagramUser: {
                     instagramVideo: {
@@ -221,6 +236,7 @@ export const buildConnectedSelect = (includeAccessToken = false) => ({
       instagram: true,
       tiktok: true,
       industries: true,
+      languages: true,
       interests: {
         select: {
           id: true,
