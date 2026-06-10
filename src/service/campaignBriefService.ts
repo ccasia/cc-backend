@@ -59,7 +59,7 @@ const assertTransition = (from: CampaignDraftStatus, to: CampaignDraftStatus) =>
 export const createDraftBrief = async (bdUserId: string) => {
   return prisma.campaign.create({
     data: {
-      name: 'Untitled Brief',
+      name: '',
       description: '',
       status: 'DRAFT',
       origin: 'ADMIN',
@@ -570,48 +570,69 @@ export const deleteBrief = async (briefId: string) => {
   });
 };
 
-// Persist a brand-guidelines URL on the brief's additional-details record.
-// Caller is responsible for uploading the file to GCS and providing the URL.
-export const setBriefBrandGuidelinesUrl = async (briefId: string, url: string) => {
+// Max number of attachments a brief may carry.
+export const BRIEF_ATTACHMENT_MAX = 3;
+
+// Append an attachment URL to the brief's attachment list (campaignBrief.
+// otherAttachments). Caller uploads the file to GCS and provides the URL.
+// Enforces the BRIEF_ATTACHMENT_MAX cap and throws if it's already full.
+export const addBriefAttachmentUrl = async (briefId: string, url: string) => {
   const current = await prisma.campaign.findUnique({
     where: { id: briefId },
-    select: { id: true, draftStatus: true },
+    select: {
+      id: true,
+      draftStatus: true,
+      campaignBrief: { select: { id: true, otherAttachments: true } },
+    },
   });
   if (!current || !current.draftStatus) throw new Error('Brief not found');
 
-  return prisma.campaign.update({
+  const existing = current.campaignBrief?.otherAttachments || [];
+  if (existing.length >= BRIEF_ATTACHMENT_MAX) {
+    const err: any = new Error(`A brief can have at most ${BRIEF_ATTACHMENT_MAX} attachments`);
+    err.code = 'ATTACHMENT_LIMIT';
+    throw err;
+  }
+
+  const next = [...existing, url];
+  await prisma.campaign.update({
     where: { id: briefId },
     data: {
-      campaignAdditionalDetails: {
-        upsert: {
-          create: { brandGuidelinesUrl: url },
-          update: { brandGuidelinesUrl: url },
-        },
+      campaignBrief: {
+        update: { otherAttachments: next },
       },
     },
   });
+  return next;
 };
 
-// Clear the brand-guidelines attachment on a brief (sets the URL to null). The
-// GCS object itself is left in place — acceptable for this lead-capture flow,
-// mirroring how orphaned uploads are tolerated elsewhere.
-export const clearBriefBrandGuidelinesUrl = async (briefId: string) => {
+// Remove a single attachment from the brief by URL, or clear all when no URL is
+// given. The GCS object itself is left in place — acceptable for this
+// lead-capture flow, mirroring how orphaned uploads are tolerated elsewhere.
+export const removeBriefAttachmentUrl = async (briefId: string, url?: string) => {
   const current = await prisma.campaign.findUnique({
     where: { id: briefId },
-    select: { id: true, draftStatus: true, campaignAdditionalDetails: { select: { id: true } } },
+    select: {
+      id: true,
+      draftStatus: true,
+      campaignBrief: { select: { id: true, otherAttachments: true } },
+    },
   });
   if (!current || !current.draftStatus) throw new Error('Brief not found');
-  // Nothing to clear if the details row doesn't exist yet.
-  if (!current.campaignAdditionalDetails) return current;
+  if (!current.campaignBrief) return [];
 
-  return prisma.campaign.update({
+  const existing = current.campaignBrief.otherAttachments || [];
+  const next = url ? existing.filter((u) => u !== url) : [];
+
+  await prisma.campaign.update({
     where: { id: briefId },
     data: {
-      campaignAdditionalDetails: {
-        update: { brandGuidelinesUrl: null },
+      campaignBrief: {
+        update: { otherAttachments: next },
       },
     },
   });
+  return next;
 };
 
 // Listing visibility:
@@ -646,7 +667,7 @@ export const listBriefs = async (user: Parameters<typeof classifyBriefRole>[0], 
     return [];
   }
 
-  return prisma.campaign.findMany({
+  const briefs = await prisma.campaign.findMany({
     where,
     select: {
       id: true,
@@ -659,6 +680,7 @@ export const listBriefs = async (user: Parameters<typeof classifyBriefRole>[0], 
       // stuck on the draft's HANDED_OVER badge.
       status: true,
       draftOrigin: true,
+      briefOwnerId: true,
       createdAt: true,
       sentToClientAt: true,
       approvedAt: true,
@@ -671,6 +693,23 @@ export const listBriefs = async (user: Parameters<typeof classifyBriefRole>[0], 
     },
     orderBy: { createdAt: 'desc' },
   });
+
+  // briefOwnerId is a bare scalar (no relation), and the BD is removed from
+  // campaignAdmin on handover — so resolve owner names in one extra lookup and
+  // attach a `briefOwner` { id, name } to each brief for the BD-owner filter.
+  const ownerIds = [...new Set(briefs.map((b) => b.briefOwnerId).filter((v): v is string => !!v))];
+  const owners = ownerIds.length
+    ? await prisma.user.findMany({
+        where: { id: { in: ownerIds } },
+        select: { id: true, name: true },
+      })
+    : [];
+  const ownerById = new Map(owners.map((o) => [o.id, o]));
+
+  return briefs.map((b) => ({
+    ...b,
+    briefOwner: b.briefOwnerId ? ownerById.get(b.briefOwnerId) || null : null,
+  }));
 };
 
 export const getBriefById = async (briefId: string) => {

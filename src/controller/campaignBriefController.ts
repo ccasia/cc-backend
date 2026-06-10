@@ -24,8 +24,9 @@ import {
   getBriefById as svcGetBriefById,
   getBriefByMagicToken as svcGetBriefByMagicToken,
   listCslUsers as svcListCslUsers,
-  setBriefBrandGuidelinesUrl as svcSetBriefBrandGuidelinesUrl,
-  clearBriefBrandGuidelinesUrl as svcClearBriefBrandGuidelinesUrl,
+  addBriefAttachmentUrl as svcAddBriefAttachmentUrl,
+  removeBriefAttachmentUrl as svcRemoveBriefAttachmentUrl,
+  BRIEF_ATTACHMENT_MAX,
 } from '@services/campaignBriefService';
 
 const prisma = new PrismaClient();
@@ -187,28 +188,27 @@ export const bdSubmitDraft = async (req: Request, res: Response) => {
     return res.status(400).json({ message: 'Invalid submission', invalidFields: errors });
   }
 
-  // File validation — all optional, but strict if present.
+  // File validation — all optional, but strict if present. Up to
+  // BRIEF_ATTACHMENT_MAX attachments, sent under the `brandGuidelines` field.
   const FILE_MAX = 25 * 1024 * 1024; // 25MB
   const DOC_MIMES = new Set(['application/pdf', 'image/jpeg', 'image/jpg', 'image/png']);
 
-  const pickFile = (key: string): UploadedFile | null => {
+  const pickFiles = (key: string): UploadedFile[] => {
     const entry = req.files?.[key];
-    if (!entry) return null;
-    return Array.isArray(entry) ? entry[0] : entry;
+    if (!entry) return [];
+    return Array.isArray(entry) ? entry : [entry];
   };
 
-  const brandGuidelinesFile = pickFile('brandGuidelines');
-
-  const validateFile = (file: UploadedFile | null, allowed: Set<string>, label: string): string | null => {
-    if (!file) return null;
-    if (file.size > FILE_MAX) return `${label} exceeds the 10MB size limit`;
-    if (!allowed.has(file.mimetype)) return `${label} must be one of: ${Array.from(allowed).join(', ')}`;
-    return null;
-  };
+  const attachmentFiles = pickFiles('brandGuidelines');
 
   const fileErrors: string[] = [];
-  const bgErr = validateFile(brandGuidelinesFile, DOC_MIMES, 'Brand guidelines');
-  if (bgErr) fileErrors.push(bgErr);
+  if (attachmentFiles.length > BRIEF_ATTACHMENT_MAX) {
+    fileErrors.push(`You can attach at most ${BRIEF_ATTACHMENT_MAX} files`);
+  }
+  for (const file of attachmentFiles) {
+    if (file.size > FILE_MAX) fileErrors.push(`${file.name} exceeds the 25MB size limit`);
+    else if (!DOC_MIMES.has(file.mimetype)) fileErrors.push(`${file.name} must be PDF, JPG, or PNG`);
+  }
   if (fileErrors.length > 0) {
     return res.status(400).json({ message: 'Invalid file upload', fileErrors });
   }
@@ -260,18 +260,18 @@ export const bdSubmitDraft = async (req: Request, res: Response) => {
       return `${base}-${generateRandomString(12)}${ext}`;
     };
 
-    let brandGuidelinesUrl: string | null = null;
-    if (brandGuidelinesFile) {
-      brandGuidelinesUrl = await uploadAttachments({
-        tempFilePath: brandGuidelinesFile.tempFilePath,
-        fileName: safeName('brand-guidelines', brandGuidelinesFile.name),
+    const attachmentUrls: string[] = [];
+    for (const file of attachmentFiles) {
+      const url = await uploadAttachments({
+        tempFilePath: file.tempFilePath,
+        fileName: safeName('brief-attachment', file.name),
         folderName: 'bdInviteAttachments',
       });
+      attachmentUrls.push(url);
     }
 
     const additionalDetailsData: Record<string, string> = {};
     if (specialNotesInstructions) additionalDetailsData.specialNotesInstructions = specialNotesInstructions;
-    if (brandGuidelinesUrl) additionalDetailsData.brandGuidelinesUrl = brandGuidelinesUrl;
 
     const requirementData: Record<string, unknown> = {
       user_persona: typeof userPersona === 'string' ? userPersona : '',
@@ -311,6 +311,7 @@ export const bdSubmitDraft = async (req: Request, res: Response) => {
               startDate: start,
               endDate: end,
               images: ['/assets/images/login/cultimage.png'],
+              otherAttachments: attachmentUrls,
             },
           },
           campaignRequirement: {
@@ -568,29 +569,32 @@ export const uploadBriefAttachmentPublic = async (req: Request, res: Response) =
   });
 };
 
-// DELETE /briefs/:id/attachments  (BD)
+// DELETE /briefs/:id/attachments?url=...  (BD)
+// Removes a single attachment when `url` is provided, otherwise clears all.
 export const deleteBriefAttachment = async (req: Request, res: Response) => {
   const { id } = req.params;
+  const url = typeof req.query.url === 'string' ? req.query.url : undefined;
   try {
     const brief = await svcGetBriefById(id);
     if (!brief) return res.status(404).json({ message: 'Not found' });
-    await svcClearBriefBrandGuidelinesUrl(brief.id);
-    return res.status(200).json({ ok: true });
+    const attachments = await svcRemoveBriefAttachmentUrl(brief.id, url);
+    return res.status(200).json({ ok: true, attachments });
   } catch (error) {
     console.error('deleteBriefAttachment error:', error);
     return res.status(500).json({ message: 'Failed to delete attachment' });
   }
 };
 
-// DELETE /briefs/public/:magicToken/attachments  (public)
+// DELETE /briefs/public/:magicToken/attachments?url=...  (public)
 export const deleteBriefAttachmentPublic = async (req: Request, res: Response) => {
   res.setHeader('Referrer-Policy', 'no-referrer');
   const { magicToken } = req.params;
+  const url = typeof req.query.url === 'string' ? req.query.url : undefined;
   try {
     const brief = await svcGetBriefByMagicToken(magicToken);
     if (!brief) return res.status(404).json({ message: 'This link is no longer valid' });
-    await svcClearBriefBrandGuidelinesUrl(brief.id);
-    return res.status(200).json({ ok: true });
+    const attachments = await svcRemoveBriefAttachmentUrl(brief.id, url);
+    return res.status(200).json({ ok: true, attachments });
   } catch (error) {
     console.error('deleteBriefAttachmentPublic error:', error);
     return res.status(500).json({ message: 'Failed to delete attachment' });
@@ -611,17 +615,17 @@ const handleBriefAttachmentUpload = async (
 
     const entry = req.files?.brandGuidelines;
     const file = (Array.isArray(entry) ? entry[0] : entry) as UploadedFile | undefined;
-    if (!file) return res.status(400).json({ message: 'brandGuidelines file is required' });
+    if (!file) return res.status(400).json({ message: 'An attachment file is required' });
 
     if (file.size > BRIEF_FILE_MAX) {
-      return res.status(400).json({ message: 'Brand guidelines exceeds the 25MB size limit' });
+      return res.status(400).json({ message: 'Attachment exceeds the 25MB size limit' });
     }
     if (!BRIEF_DOC_MIMES.has(file.mimetype)) {
-      return res.status(400).json({ message: 'Brand guidelines must be PDF, JPG, or PNG' });
+      return res.status(400).json({ message: 'Attachment must be PDF, JPG, or PNG' });
     }
 
     const ext = file.name.includes('.') ? file.name.slice(file.name.lastIndexOf('.')) : '';
-    const safeName = `brand-guidelines-${generateRandomString(12)}${ext}`;
+    const safeName = `brief-attachment-${generateRandomString(12)}${ext}`;
 
     const url = await uploadAttachments({
       tempFilePath: file.tempFilePath,
@@ -629,8 +633,17 @@ const handleBriefAttachmentUpload = async (
       folderName: 'campaignBriefAttachments',
     });
 
-    await svcSetBriefBrandGuidelinesUrl(briefId, url);
-    return res.status(200).json({ url });
+    try {
+      const attachments = await svcAddBriefAttachmentUrl(briefId, url);
+      return res.status(200).json({ url, attachments });
+    } catch (err: any) {
+      if (err?.code === 'ATTACHMENT_LIMIT') {
+        return res
+          .status(400)
+          .json({ message: `You can attach at most ${BRIEF_ATTACHMENT_MAX} files` });
+      }
+      throw err;
+    }
   } catch (error) {
     console.error('uploadBriefAttachment error:', error);
     return res.status(500).json({ message: 'Failed to upload attachment' });
