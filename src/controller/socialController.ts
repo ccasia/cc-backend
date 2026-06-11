@@ -2011,7 +2011,7 @@ export const getInstagramMediaInsight = async (req: Request, res: Response) => {
     if (campaignId) {
       console.log(`🎯 Calculating campaign averages for campaign: ${campaignId}`);
 
-      await getCampaignSubmissionUrls(campaignId as string);
+      // await getCampaignSubmissionUrls(campaignId as string);
 
       // Check cache first
       const cachedAverages = getCachedCampaignAverages(campaignId as string, 'Instagram');

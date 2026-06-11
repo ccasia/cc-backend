@@ -29,7 +29,7 @@ router.get('/tiktok/:userId', isLoggedIn, tiktokData);
 
 router.get('/auth/facebook', facebookAuthentication);
 
-router.get('/auth/facebook/callback', redirectFacebookAuth);
+router.get('/auth/facebook/callback', isLoggedIn, redirectFacebookAuth);
 
 router.get('/instagram/:userId', isLoggedIn, getUserInstagramData);
 
@@ -37,14 +37,14 @@ router.post('/tiktok/disconnect', isLoggedIn, handleDisconnectTiktok);
 
 router.post('/facebook/disconnect', isLoggedIn, handleDisconnectFacebook);
 
-router.get('/auth/instagram/callback', instagramCallback);
+router.get('/auth/instagram/callback', isLoggedIn, instagramCallback);
 
 router.get('/instagram/overview/:userId', isLoggedIn, getInstagramOverview);
 
 router.delete('/instagram/permissions/:userId', isLoggedIn, removeInstagramPermissions);
 
 // Instagram, V2
-router.get('/v2/auth/instagram/callback', handleInstagramCallback);
+router.get('/v2/auth/instagram/callback', isLoggedIn, handleInstagramCallback);
 router.get('/v2/instagramOverview/:userId', getInstagramMediaKit);
 router.get('/v2/mediaInsight/:userId', getInstagramMediaInsight);
 

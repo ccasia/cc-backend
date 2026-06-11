@@ -3,8 +3,6 @@ import nodemailer from 'nodemailer';
 const user = process.env.SMTP_EMAIL || 'support@cultcreative.asia';
 const pass = process.env.SMTP_PASSWORD;
 
-console.log('PASS', pass);
-
 const transport = nodemailer.createTransport({
   service: 'Gmail',
   host: 'smtp.gmail.com',
