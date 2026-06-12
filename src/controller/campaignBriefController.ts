@@ -375,7 +375,15 @@ export const listBriefs = async (req: Request, res: Response) => {
   try {
     const user = await getUser(userid);
     const briefs = await svcListBriefs(user as any, userid);
-    return res.status(200).json(briefs);
+    const withLinks = briefs.map((b: any) => {
+      const { clientMagicToken, clientTokenExpiresAt, ...rest } = b;
+      const expired = clientTokenExpiresAt && new Date(clientTokenExpiresAt) < new Date();
+      return {
+        ...rest,
+        clientLink: clientMagicToken && !expired ? clientPublicUrl(clientMagicToken) : null,
+      };
+    });
+    return res.status(200).json(withLinks);
   } catch (error) {
     console.error('listBriefs error:', error);
     return res.status(500).json({ message: 'Failed to list briefs' });
