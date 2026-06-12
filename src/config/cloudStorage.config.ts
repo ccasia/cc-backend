@@ -8,12 +8,23 @@ export const storage = new Storage({
   keyFilename: pathToJSONKey,
 });
 
+export const encodeGcsObjectPath = (objectName: string): string =>
+  objectName.split('/').map(encodeURIComponent).join('/');
+
+export const buildGcsPublicUrl = (bucketName: string, objectName: string, version?: string): string => {
+  const url = `https://storage.googleapis.com/${bucketName}/${encodeGcsObjectPath(objectName)}`;
+
+  return version ? `${url}?v=${encodeURIComponent(version)}` : url;
+};
+
 export const uploadImage = async (tempFilePath: string, fileName: string, folderName: string) => {
   const uploadPromise = new Promise<string>((resolve, reject) => {
+    const destination = `${folderName}/${fileName}`;
+
     storage.bucket(process.env.BUCKET_NAME as string).upload(
       tempFilePath,
       {
-        destination: `${folderName}/${fileName}`,
+        destination,
         gzip: true,
         metadata: {
           cacheControl: 'public, max-age=31536000',
@@ -30,7 +41,7 @@ export const uploadImage = async (tempFilePath: string, fileName: string, folder
           ?.makePublic()
           // eslint-disable-next-line promise/always-return
           .then(() => {
-            const publicURL = `https://storage.googleapis.com/${process.env.BUCKET_NAME}/${folderName}/${fileName}?v=${dayjs().format()}`;
+            const publicURL = buildGcsPublicUrl(process.env.BUCKET_NAME as string, destination, dayjs().format());
             resolve(publicURL);
           })
           .catch((err) => {
@@ -61,7 +72,7 @@ export const uploadProfileImage = async (tempFilePath: string, fileName: string,
     });
 
     // Construct the URL manually
-    const publicUrl = `https://storage.googleapis.com/${process.env.BUCKET_NAME}/${destination}`;
+    const publicUrl = buildGcsPublicUrl(process.env.BUCKET_NAME as string, destination);
 
     return publicUrl;
   } catch (err) {
@@ -72,10 +83,12 @@ export const uploadProfileImage = async (tempFilePath: string, fileName: string,
 
 export const uploadCompanyLogo = async (tempFilePath: string, fileName: string) => {
   const uploadPromise = new Promise<string>((resolve, reject) => {
+    const destination = `companyLogo/${fileName}`;
+
     storage.bucket(process.env.BUCKET_NAME as string).upload(
       tempFilePath,
       {
-        destination: `companyLogo/${fileName}`,
+        destination,
         gzip: true,
         metadata: {
           cacheControl: 'public, max-age=31536000',
@@ -92,7 +105,7 @@ export const uploadCompanyLogo = async (tempFilePath: string, fileName: string) 
           ?.makePublic()
           // eslint-disable-next-line promise/always-return
           .then(() => {
-            const publicURL = `https://storage.googleapis.com/${process.env.BUCKET_NAME}/companyLogo/${fileName}`;
+            const publicURL = buildGcsPublicUrl(process.env.BUCKET_NAME as string, destination);
             resolve(publicURL);
           })
           .catch((err) => {
@@ -190,7 +203,7 @@ export const uploadPitchVideo = async (
 
     return new Promise((resolve, reject) => {
       writeStream.on('finish', () => {
-        const publicURL = `https://storage.googleapis.com/${bucketName}/${destination}?v=${dayjs().format()}`;
+        const publicURL = buildGcsPublicUrl(bucketName, destination, dayjs().format());
         resolve(publicURL);
       });
 
@@ -221,7 +234,7 @@ export const uploadAgreementForm = async (
     // Make the file public
     await file.makePublic();
 
-    const publicURL = file.publicUrl(); // <- This is the correct way
+    const publicURL = buildGcsPublicUrl(bucketName, destination);
 
     return publicURL;
 
@@ -276,7 +289,7 @@ export const uploadAgreementTemplate = async ({
     await file.makePublic();
 
     // Construct the public URL
-    const publicURL = `https://storage.googleapis.com/${bucketName}/${destination}?v=${dayjs().format()}`;
+    const publicURL = buildGcsPublicUrl(bucketName, destination, dayjs().format());
     return publicURL;
   } catch (err) {
     throw new Error(`Error uploading file: ${err.message}`);
@@ -305,7 +318,7 @@ export const uploadDigitalSignature = async ({
     await file.makePublic();
 
     // Construct the public URL
-    const publicURL = `https://storage.googleapis.com/${bucketName}/${destination}?v=${dayjs().format()}`;
+    const publicURL = buildGcsPublicUrl(bucketName, destination, dayjs().format());
     return publicURL;
   } catch (err) {
     throw new Error(`Error uploading file: ${err.message}`);
@@ -334,7 +347,7 @@ export const uploadAttachments = async ({
     await file.makePublic();
 
     // Construct the public URL
-    const publicURL = `https://storage.googleapis.com/${bucketName}/${destination}?v=${dayjs().format()}`;
+    const publicURL = buildGcsPublicUrl(bucketName, destination, dayjs().format());
     return publicURL;
   } catch (err) {
     throw new Error(`Error uploading file: ${err.message}`);
@@ -389,7 +402,7 @@ export const uploadAttachmentStream = async ({
         try {
           await file.makePublic();
           if (progressCallback) progressCallback(100);
-          const publicURL = `https://storage.googleapis.com/${bucketName}/${destination}?v=${dayjs().format()}`;
+          const publicURL = buildGcsPublicUrl(bucketName, destination, dayjs().format());
           resolve(publicURL);
         } catch (err) {
           reject(new Error(`Error finalizing upload: ${err.message}`));

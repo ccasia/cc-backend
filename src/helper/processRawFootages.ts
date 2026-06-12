@@ -1,4 +1,4 @@
-import { storage } from '@configs/cloudStorage.config';
+import { buildGcsPublicUrl, storage } from '@configs/cloudStorage.config';
 import amqp from 'amqplib';
 import dayjs from 'dayjs';
 import fse from 'fs-extra';
@@ -43,7 +43,7 @@ import { io } from '@/src/server';
           })
           .on('finish', async () => {
             await blob.makePublic();
-            const publicUrl = `https://storage.googleapis.com/${bucket.name}/${blob.name}`;
+            const publicUrl = buildGcsPublicUrl(bucket.name, blob.name);
             fse.unlinkSync(tempFilePath); // Cleanup temp file
             io.emit('uploadProgress', { name: name, percentage: 100, isDone: true });
           });
