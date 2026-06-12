@@ -1,4 +1,4 @@
-import { storage } from '@configs/cloudStorage.config';
+import { buildGcsPublicUrl, storage } from '@configs/cloudStorage.config';
 import { encryptToken } from '@helper/encrypt';
 import axios from 'axios';
 import crypto from 'crypto';
@@ -50,7 +50,7 @@ const uploadInstagramThumbnailFromUrl = async (sourceUrl: string, destination: s
     });
     await file.makePublic();
 
-    return `https://storage.googleapis.com/${process.env.BUCKET_NAME}/${destination}`;
+    return buildGcsPublicUrl(process.env.BUCKET_NAME, destination);
   } catch (error: any) {
     console.error('[InstagramThumbnailCache] Upload failed', {
       sourceUrl,
