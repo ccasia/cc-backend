@@ -685,6 +685,8 @@ export const listBriefs = async (user: Parameters<typeof classifyBriefRole>[0], 
       sentToClientAt: true,
       approvedAt: true,
       handedOverAt: true,
+      clientMagicToken: true,
+      clientTokenExpiresAt: true,
       campaignAdmin: {
         where: { role: 'owner' },
         select: { admin: { select: { user: { select: { id: true, name: true } } } } },
