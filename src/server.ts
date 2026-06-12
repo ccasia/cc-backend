@@ -30,7 +30,7 @@ import { PrismaSessionStore } from '@quixo3/prisma-session-store';
 
 import Ffmpeg from 'fluent-ffmpeg';
 import FfmpegPath from '@ffmpeg-installer/ffmpeg';
-import { storage } from '@configs/cloudStorage.config';
+import { buildGcsPublicUrl, storage } from '@configs/cloudStorage.config';
 import dayjs from 'dayjs';
 import passport from 'passport';
 
@@ -464,7 +464,7 @@ app.post('/video', async (req: Request, res: Response) => {
             })
             .on('finish', async () => {
               await blob.makePublic();
-              const publicUrl = `https://storage.googleapis.com/${bucket.name}/${blob.name}`;
+              const publicUrl = buildGcsPublicUrl(bucket.name, blob.name);
               urls.push(publicUrl);
               fse.unlinkSync(tempFilePath); // Cleanup temp file
               resolve();
@@ -505,7 +505,7 @@ app.post('/video', async (req: Request, res: Response) => {
           })
           .on('finish', async () => {
             await blob.makePublic();
-            const publicUrl = `https://storage.googleapis.com/${bucket.name}/${blob.name}`;
+            const publicUrl = buildGcsPublicUrl(bucket.name, blob.name);
             urls.push(publicUrl);
             fse.unlinkSync(tempFilePath); // Cleanup temp file
             resolve();
