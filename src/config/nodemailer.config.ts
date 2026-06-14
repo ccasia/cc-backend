@@ -1,7 +1,7 @@
 import nodemailer from 'nodemailer';
 
 const user = process.env.SMTP_EMAIL || 'support@cultcreative.asia';
-const pass = process.env.SMTP_PASSWORD || 'pdljdgzcyjpjukqn';
+const pass = process.env.SMTP_PASSWORD;
 
 const transport = nodemailer.createTransport({
   service: 'gmail',
@@ -387,6 +387,59 @@ export const creatorVerificationEmail = (email: string, confirmationToken: strin
     .catch((err) => {
       return err;
     });
+};
+
+export const mobileCreatorVerificationEmail = (email: string, code: string) => {
+  return transport.sendMail({
+    from: user,
+    to: email,
+    subject: `${code} is your Cult Creative verification code`,
+    html: `
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Verification code</title>
+  </head>
+  <body style="margin:0; padding:0; background-color:#f4f4f4; font-family:Arial, Helvetica, sans-serif;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#f4f4f4;">
+      <tr>
+        <td align="center" style="padding:40px 16px;">
+          <table role="presentation" width="360" cellspacing="0" cellpadding="0" border="0" style="max-width:360px; width:100%; background-color:#ffffff; border-radius:14px;">
+            <tr>
+              <td style="padding:32px 28px 28px; text-align:center;">
+                <p style="margin:0 0 28px; font-size:15px; font-weight:700; letter-spacing:0.5px; color:#111111;">Cult Creative</p>
+
+                <p style="margin:0 0 18px; font-size:14px; color:#666666;">Enter this code to verify your account</p>
+
+                <div style="margin:0 0 18px; padding:18px 0; background-color:#f6f6f6; border-radius:10px;">
+                  <span style="font-size:34px; font-weight:700; letter-spacing:10px; color:#111111; font-family:'Courier New', Courier, monospace; padding-left:10px;">${code}</span>
+                </div>
+
+                <p style="margin:0 0 28px; font-size:13px; color:#999999;">This code expires in 15 minutes.</p>
+
+                <hr style="border:none; border-top:1px solid #eeeeee; margin:0 0 20px;" />
+
+                <p style="margin:0; font-size:12px; line-height:18px; color:#999999;">If you didn't request this, you can safely ignore this email.</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:0 28px 28px; text-align:center;">
+                <p style="margin:0; font-size:11px; line-height:16px; color:#aaaaaa;">
+                  202001018157 (1374477-W) &middot; ${new Date().getFullYear()} &copy; Cult Creative<br />
+                  Need help? <a href="mailto:hello@cultcreative.asia" style="color:#0874dc; text-decoration:none;">hello@cultcreative.asia</a>
+                </p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>
+    `,
+  });
 };
 
 export const clientVerificationEmail = (email: string, confirmationToken: string) => {
@@ -2099,7 +2152,14 @@ export const bdDraftCreated = async (payload: {
 
 // Shared shell so the three new campaign-brief emails stay consistent with the
 // existing house style without duplicating the wrapper markup.
-const briefEmailShell = (params: { headline: string; iconUrl?: string; bodyHtml: string; ctaLabel?: string; ctaUrl?: string; footerNote?: string }) => {
+const briefEmailShell = (params: {
+  headline: string;
+  iconUrl?: string;
+  bodyHtml: string;
+  ctaLabel?: string;
+  ctaUrl?: string;
+  footerNote?: string;
+}) => {
   const { headline, iconUrl, bodyHtml, ctaLabel, ctaUrl, footerNote } = params;
   return `
     <head>
@@ -2119,7 +2179,9 @@ const briefEmailShell = (params: { headline: string; iconUrl?: string; bodyHtml:
               <tr><td style="padding: 10px 30px 20px 30px;"><h1 style="margin: 0; font-family: 'Instrument Serif', Georgia, serif; font-size: 32px; color: #000000; font-weight: 400; line-height: 36px;">${headline}</h1></td></tr>
               ${iconUrl ? `<tr><td align="center" style="padding: 10px 20px;"><img src="${iconUrl}" alt="" width="80" style="width: 80px; height: auto;"></td></tr>` : ''}
               <tr><td style="padding: 20px 20px;">${bodyHtml}</td></tr>
-              ${ctaLabel && ctaUrl ? `
+              ${
+                ctaLabel && ctaUrl
+                  ? `
               <tr>
                 <td style="padding: 20px 20px;">
                   <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" width="100%">
@@ -2128,7 +2190,9 @@ const briefEmailShell = (params: { headline: string; iconUrl?: string; bodyHtml:
                     </td></tr>
                   </table>
                 </td>
-              </tr>` : ''}
+              </tr>`
+                  : ''
+              }
               ${footerNote ? `<tr><td style="padding: 20px 20px;"><p style="margin: 0; font-family: 'Inter', Arial, sans-serif; font-size: 14px; color: #919191; line-height: 1.5;">${footerNote}</p></td></tr>` : ''}
             </table>
           </td>

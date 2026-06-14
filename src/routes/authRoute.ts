@@ -33,7 +33,7 @@ import {
   getOtpStatus,
   resendVerificationCode,
   getSessionStatus,
-  mobileLogin,
+  checkEmailExistence,
 } from '@controllers/authController';
 
 import { validateToken } from '@utils/jwtHelper';
@@ -55,7 +55,6 @@ const limiter = rateLimit({
 
 const router = Router();
 
-// router.get('/', authenticate, displayAll);
 router.get('/me', authenticate, getprofile);
 router.get('/otp-status', getOtpStatus);
 router.get('/verifyAdmin', verifyAdmin);
@@ -63,6 +62,7 @@ router.get('/checkTokenValidity/:token', checkTokenValidity);
 router.get('/currentUser', validateToken, getCurrentUser);
 router.get('/checkCreator', validateToken, checkCreator);
 router.get('/session-status', getSessionStatus);
+router.get('/check-email', limiter, checkEmailExistence);
 
 // Google Auth
 router.get('/google', passport.authenticate('google', { scope: ['profile', 'email'] }));

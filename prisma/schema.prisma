@@ -124,11 +124,14 @@ model RefreshToken {
 }
 
 model EmailVerification {
-  id        String   @id @unique @default(cuid())
+  id        String @id @unique @default(cuid())
   shortCode String
   token     String
-  expiredAt DateTime
-  user      User?
+  attempts  Int?   @default(0)
+
+  lastSendAt DateTime? @default(now())
+  expiredAt  DateTime
+  user       User?
 }
 
 model ResetPasswordToken {
@@ -290,7 +293,7 @@ model Creator {
   allowToChange          Boolean     @default(false)
   industries             Json?
   xeroContactId          String?
-  user                   User        @relation(fields: [userId], references: [id])
+  user                   User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   interests              Interest[]
   invoices               Invoice[]
   mediaKit               MediaKit?
@@ -312,11 +315,11 @@ model Creator {
   dietaryRestrictions String?
 
   // Credit Tier fields
-  manualFollowerCount         Int?             @default(0) // Legacy fallback manual follower count
-  manualInstagramFollowerCount Int?            @default(0) // Platform-specific manual Instagram followers
-  manualTiktokFollowerCount    Int?            @default(0) // Platform-specific manual TikTok followers
+  manualFollowerCount          Int?        @default(0) // Legacy fallback manual follower count
+  manualInstagramFollowerCount Int?        @default(0) // Platform-specific manual Instagram followers
+  manualTiktokFollowerCount    Int?        @default(0) // Platform-specific manual TikTok followers
   creditTierId                 String?
-  creditTier                   CreditTier?      @relation("UserCurrentTier", fields: [creditTierId], references: [id])
+  creditTier                   CreditTier? @relation("UserCurrentTier", fields: [creditTierId], references: [id])
   tierUpdatedAt                DateTime? // Last time tier was calculated
 
   @@index([formCompletedAt])
@@ -500,12 +503,12 @@ model UnreadMessage {
 }
 
 model SeenMessage {
-  id        Int     @id @default(autoincrement())
+  id        Int       @id @default(autoincrement())
   userId    String
   messageId Int
   seenAt    DateTime?
-  message   Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  user      User    @relation(fields: [userId], references: [id])
+  message   Message   @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id])
 
   @@unique([userId, messageId])
 }
@@ -789,14 +792,14 @@ model Campaign {
   clientMagicToken     String?              @unique
   clientTokenExpiresAt DateTime?
   editedByClientFields String[]             @default([])
-  
+
   // Snapshot of the brief field values at the moment it was sent to the client
-  clientBriefSnapshot  Json?
-  clientPackage        String?
-  internalComments     String?
-  sentToClientAt       DateTime?
-  approvedAt           DateTime?
-  handedOverAt         DateTime?
+  clientBriefSnapshot Json?
+  clientPackage       String?
+  internalComments    String?
+  sentToClientAt      DateTime?
+  approvedAt          DateTime?
+  handedOverAt        DateTime?
 
   publishedAt DateTime?
   completedAt DateTime?
@@ -1031,13 +1034,13 @@ model AdminLog {
 }
 
 model Pitch {
-  id                        String         @id @unique @default(cuid())
+  id                        String          @id @unique @default(cuid())
   type                      PitchType
   campaignId                String
   userId                    String
-  status                    PitchStatus?   @default(pending)
-  content                   String         @default("test")
-  createdAt                 DateTime       @default(now())
+  status                    PitchStatus?    @default(pending)
+  content                   String          @default("test")
+  createdAt                 DateTime        @default(now())
   completedAt               DateTime?
   approvedByAdminId         String?
   approvedByClientId        String?
@@ -1058,8 +1061,8 @@ model Pitch {
   engagementRate            String?
   adminComments             String?
   adminCommentedBy          String?
-  isInvited                 Boolean        @default(false)
-  adminCommenter            Admin?         @relation("AdminCommenter", fields: [adminCommentedBy], references: [userId])
+  isInvited                 Boolean         @default(false)
+  adminCommenter            Admin?          @relation("AdminCommenter", fields: [adminCommentedBy], references: [userId])
 
   // Outreach status tracking
   outreachStatus    OutreachStatus?
@@ -1081,21 +1084,21 @@ model Pitch {
 }
 
 model ShortListedCreator {
-  id               String   @id @default(cuid())
+  id               String          @id @default(cuid())
   campaignId       String
   userId           String?
   adminComments    String?
   currency         String?
-  shortlisted_date DateTime @default(now())
-  isAgreementReady Boolean? @default(false)
-  isCampaignDone   Boolean? @default(false)
-  isCreatorPaid    Boolean? @default(false)
+  shortlisted_date DateTime        @default(now())
+  isAgreementReady Boolean?        @default(false)
+  isCampaignDone   Boolean?        @default(false)
+  isCreatorPaid    Boolean?        @default(false)
   ugcVideos        Int?
   amount           Int?
   followerCount    Int?
   selectedPlatform SocialPlatform?
-  campaign         Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  user             User?    @relation(fields: [userId], references: [id])
+  campaign         Campaign        @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  user             User?           @relation(fields: [userId], references: [id])
 
   // Credit Tier snapshot at assignment time (for tier campaigns)
   creditPerVideo Int? // Credits per video at time of assignment
