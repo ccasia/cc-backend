@@ -1,26 +1,32 @@
 import {
-  mobileLogin,
-  mobileRegisterCreator,
-  mobileTokenRefresh,
-  mobileUpdateProfile,
-  mobileUpdatePhoto,
-  mobileChangePassword,
-} from '@controllers/authController';
+  login,
+  register,
+  tokenRefresh,
+  updateProfile,
+  updatePhoto,
+  changePasword,
+  verifyEmail,
+  resendVerification,
+} from '@controllers/mobile/authController';
 import { authenticate } from '@middlewares/authenticate';
 import { Router } from 'express';
 
 const authRoute = Router();
 
-authRoute.post('/login', mobileLogin);
+authRoute.post('/login', login);
 
-authRoute.post('/register', mobileRegisterCreator);
+authRoute.post('/register', register);
 
-authRoute.post('/refresh', mobileTokenRefresh);
+authRoute.post('/refresh', tokenRefresh);
 
-authRoute.patch('/updateProfile', authenticate, mobileUpdateProfile);
+authRoute.post('/verify-email', verifyEmail);
 
-authRoute.patch('/updatePhoto', authenticate, mobileUpdatePhoto);
+authRoute.post('/resend-verification', resendVerification);
 
-authRoute.patch('/changePassword', authenticate, mobileChangePassword);
+authRoute.patch('/updateProfile', authenticate, updateProfile);
+
+authRoute.patch('/updatePhoto', authenticate, updatePhoto);
+
+authRoute.patch('/changePassword', authenticate, changePasword);
 
 export default authRoute;
