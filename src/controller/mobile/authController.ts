@@ -197,14 +197,14 @@ export const register = async (
         await tx.interest.createMany({ data: interestsToCreate });
       }
 
-      const token = jwt.sign({ id: user.id }, process.env.ACCESSKEY as Secret, { expiresIn: '1m' });
+      const token = jwt.sign({ id: user.id }, process.env.ACCESSKEY as Secret, { expiresIn: '15m' });
       const shortCode = generateNumericCode();
 
       await tx.emailVerification.create({
         data: {
           shortCode,
           user: { connect: { id: user.id } },
-          expiredAt: dayjs().add(1, 'minute').toDate(),
+          expiredAt: dayjs().add(15, 'minute').toDate(),
           token,
         },
       });
@@ -493,6 +493,7 @@ export const verifyEmail = async (req: Request<{}, {}, { email: string; shortCod
   const userData = await prisma.user.findFirst({
     where: { email: { mode: 'insensitive', equals: normalizedEmail } },
   });
+
   if (!userData) return res.status(404).json({ success: false, message: 'No pending registration' });
   if (userData.status === 'active') return res.status(409).json({ success: false, message: 'Already verified' });
 
@@ -501,12 +502,15 @@ export const verifyEmail = async (req: Request<{}, {}, { email: string; shortCod
     orderBy: { expiredAt: 'desc' },
     include: { user: true },
   });
+
   if (!record) return res.status(404).json({ success: false, message: 'No pending registration' });
+
   if (record.attempts && record.attempts >= 5)
     return res.status(429).json({ success: false, message: 'Too many attempts' });
+
   if (record.expiredAt < new Date()) return res.status(410).json({ success: false, message: 'Code expired' });
 
-  if (record.shortCode !== shortCode) {
+  if (record.shortCode !== sanitizedCode) {
     await prisma.emailVerification.update({ where: { id: record.id }, data: { attempts: { increment: 1 } } });
     return res.status(401).json({ success: false, message: 'Invalid code' });
   }
@@ -527,6 +531,16 @@ export const verifyEmail = async (req: Request<{}, {}, { email: string; shortCod
     expiresIn: '30d',
   });
 
+  await prisma.refreshToken.create({
+    data: {
+      tokenHash: hashToken(refreshToken),
+      userId: user.id,
+      expiresAt: dayjs().add(30, 'days').toDate(),
+      userAgent: req.headers['user-agent'] ?? null,
+      ipAddress: req.ip ?? null,
+    },
+  });
+
   // issue your real access + refresh tokens here
   return res.json({ success: true, message: 'Email verified', token: { accessToken, refreshToken } });
 };
@@ -534,7 +548,6 @@ export const verifyEmail = async (req: Request<{}, {}, { email: string; shortCod
 export const resendVerification = async (req: Request<{}, {}, { email: string }>, res: Response) => {
   const normalizedEmail = req.body.email?.toLowerCase();
 
-  console.log(normalizedEmail);
   if (!normalizedEmail) {
     return res.status(400).json({ success: false, message: 'Email is required' });
   }
