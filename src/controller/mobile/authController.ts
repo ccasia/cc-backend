@@ -12,6 +12,7 @@ import { z } from 'zod';
 import { getRefreshTokenExpiryDate, hashToken, verifyRefreshToken } from '@/src/utils/tokens';
 import { delay } from 'bullmq';
 import crypto from 'crypto';
+import { createKanbanBoard } from '../kanbanController';
 
 interface MobileCreatorData {
   phone?: string;
@@ -211,6 +212,8 @@ export const register = async (
 
       return { user, shortCode };
     });
+
+    await createKanbanBoard(user.id, 'creator');
 
     // Send AFTER commit — never do network I/O inside a transaction.
     try {
