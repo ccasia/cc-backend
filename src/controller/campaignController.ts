@@ -1982,7 +1982,37 @@ export const getCampaignById = async (req: Request, res: Response) => {
       }
     }
 
-    return res.status(200).json({ ...campaign, approverPitchIds });
+    // Attach a creditSummary to the linked company so the activate dialog can
+    // show available credits. getCampaignById otherwise returns the raw company
+    // (subscriptions included but no summary), which is why availableCredits read
+    // null. Mirrors the shape built in companyController. (brand is deprecated.)
+    let companyWithSummary: any = campaign?.company;
+    if (campaign?.company) {
+      const activeSubs = (campaign.company.subscriptions || []).filter(
+        (sub: any) => sub.status === 'ACTIVE',
+      );
+      const totalCredits = activeSubs.reduce((sum: number, sub: any) => sum + (sub.totalCredits || 0), 0);
+      const usedCredits = activeSubs.reduce((sum: number, sub: any) => sum + (sub.creditsUsed || 0), 0);
+      companyWithSummary = {
+        ...campaign.company,
+        creditSummary: {
+          totalCredits,
+          usedCredits,
+          remainingCredits: totalCredits - usedCredits,
+          activePackagesCount: activeSubs.length,
+          nextExpiryDate:
+            activeSubs.length > 0
+              ? activeSubs
+                  .slice()
+                  .sort(
+                    (a: any, b: any) => new Date(a.expiredAt).getTime() - new Date(b.expiredAt).getTime(),
+                  )[0].expiredAt
+              : null,
+        },
+      };
+    }
+
+    return res.status(200).json({ ...campaign, company: companyWithSummary, approverPitchIds });
   } catch (error) {
     return res.status(400).json(error);
   }
@@ -9622,6 +9652,18 @@ export const activateClientCampaign = async (req: Request, res: Response) => {
     const ads = deliverables?.includes('ADS') || false;
     const crossPosting = deliverables?.includes('CROSS_POSTING') || false;
 
+    const campaignImageUrls: string[] = [];
+    if (req.files && (req.files as any).campaignImages) {
+      const images = Array.isArray((req.files as any).campaignImages)
+        ? (req.files as any).campaignImages
+        : [(req.files as any).campaignImages];
+
+      for (const image of images) {
+        const url = await uploadCompanyLogo(image.tempFilePath, image.name);
+        campaignImageUrls.push(url);
+      }
+    }
+
     // Update campaign with CSM-provided information
     const updatedCampaign = await prisma.campaign.update({
       where: {
@@ -9640,6 +9682,13 @@ export const activateClientCampaign = async (req: Request, res: Response) => {
             id: agreementTemplateId,
           },
         },
+        ...(campaignImageUrls.length > 0 && {
+          campaignBrief: {
+            update: {
+              images: campaignImageUrls,
+            },
+          },
+        }),
       },
     });
 
