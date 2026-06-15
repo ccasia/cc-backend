@@ -25,6 +25,7 @@ import {
   getTikTokEngagementRateOverTime,
   getTikTokMonthlyInteractions,
   getTikTokMediaObject,
+  getInstagramAudienceDemographics,
 } from '@services/socialMediaService';
 import { batchRequests } from '@helper/batchRequests';
 
@@ -212,6 +213,175 @@ export const tiktokAuthentication = (req: Request, res: Response) => {
   // url += '&disable_auto_auth=1';
 
   res.send(url);
+};
+
+export const instagramMobileAuth = (req: Request, res: Response) => {
+  const state = `${Math.random().toString(36).substring(2)}|${req.userId}`;
+
+  const params = new URLSearchParams({
+    enable_fb_login: '0',
+    force_authentication: '1',
+    client_id: process.env.INSTAGRAM_CLIENT_ID!,
+    redirect_uri: process.env.INSTAGRAM_MOBILE_REDIRECT_URI!,
+    response_type: 'code',
+    scope: 'instagram_business_basic,instagram_business_manage_insights',
+    state,
+  });
+
+  res.send(`https://www.instagram.com/oauth/authorize?${params.toString()}`);
+};
+
+export const instagramMobileCallback = async (req: Request, res: Response) => {
+  const code = req.query.code as string;
+  const [, userId] = (req.query.state as string ?? '').split('|');
+
+  if (!code) return res.status(400).json({ message: 'Code not found.' });
+  if (!userId) return res.status(400).json({ message: 'User not found in state.' });
+
+  try {
+    const data = await getInstagramAccessToken(code, process.env.INSTAGRAM_MOBILE_REDIRECT_URI);
+
+    const access_token = decryptToken(data.encryptedToken);
+
+    await prisma.$transaction(async (tx) => {
+      const user = await tx.creator.findUnique({ where: { userId } });
+      if (!user) throw new Error('User not found');
+
+      await tx.instagramUser.upsert({
+        where: { creatorId: user.id },
+        update: { accessToken: data.encryptedToken, expiresIn: data.expires_in },
+        create: { accessToken: data.encryptedToken, expiresIn: data.expires_in, creatorId: user.id },
+      });
+
+      await tx.creator.update({
+        where: { id: user.id },
+        data: { isFacebookConnected: true },
+      });
+    });
+
+    const overview = await getInstagramOverviewService(access_token);
+
+    const [mediasReal, insightDataReal, audienceReal] = await Promise.all([
+      getInstagramMediaObject(access_token, overview.user_id),
+      getInstagramUserInsight(access_token, overview.user_id),
+      getInstagramAudienceDemographics(access_token, overview.user_id),
+    ]);
+
+    const averageLikes = mediasReal.averageLikes || 0;
+    const averageComments = mediasReal.averageComments || 0;
+    const averageShares = overview.media_count ? insightDataReal.totals.shares / overview.media_count : 0;
+    const averageSaves = overview.media_count ? insightDataReal.totals.saves / overview.media_count : 0;
+    const instagramViews = insightDataReal.totals.reach || 0;
+    const instagramInteractions =
+      (insightDataReal.totals.likes || 0) +
+      (insightDataReal.totals.comments || 0) +
+      (insightDataReal.totals.shares || 0) +
+      (insightDataReal.totals.saves || 0);
+    const engagementRate = instagramViews ? (instagramInteractions / instagramViews) * 100 : 0;
+
+    const creator = await prisma.creator.findUnique({ where: { userId } });
+    if (creator) {
+      const instagramUser = await prisma.instagramUser.upsert({
+        where: { creatorId: creator.id },
+        update: {
+          user_id: overview.user_id,
+          profile_picture_url: overview.profile_picture_url,
+          biography: overview.biography,
+          followers_count: overview.followers_count,
+          follows_count: overview.follows_count,
+          media_count: overview.media_count,
+          username: overview.username,
+          totalLikes: mediasReal.totalLikes,
+          totalComments: mediasReal.totalComments,
+          totalShares: insightDataReal.totals.shares,
+          totalSaves: insightDataReal.totals.saves,
+          averageLikes,
+          averageComments,
+          averageShares,
+          averageSaves,
+          engagement_rate: engagementRate,
+          insightData: {
+            since: insightDataReal.since,
+            until: insightDataReal.until,
+            totals: insightDataReal.totals,
+            audience: audienceReal,
+          },
+        },
+        create: {
+          user_id: overview.user_id,
+          profile_picture_url: overview.profile_picture_url,
+          biography: overview.biography,
+          followers_count: overview.followers_count,
+          follows_count: overview.follows_count,
+          media_count: overview.media_count,
+          username: overview.username,
+          totalLikes: mediasReal.totalLikes,
+          totalComments: mediasReal.totalComments,
+          totalShares: insightDataReal.totals.shares,
+          totalSaves: insightDataReal.totals.saves,
+          averageLikes,
+          averageComments,
+          averageShares,
+          averageSaves,
+          engagement_rate: engagementRate,
+          insightData: {
+            since: insightDataReal.since,
+            until: insightDataReal.until,
+            totals: insightDataReal.totals,
+            audience: audienceReal,
+          },
+          creatorId: creator.id,
+          accessToken: data.encryptedToken,
+          expiresIn: data.expires_in,
+        },
+      });
+
+      const cachedVideos = await Promise.all(
+        (mediasReal.sortedVideos || []).map((media: any) => withCachedInstagramThumbnail(media, creator.id)),
+      );
+
+      for (const media of cachedVideos) {
+        await (prisma.instagramVideo as any).upsert({
+          where: { video_id: media.id },
+          update: {
+            video_id: media.id,
+            comments_count: media.comments_count,
+            like_count: media.like_count,
+            view_count: media.video_views ?? null,
+            media_type: media.media_type,
+            media_url: media.media_url,
+            thumbnail_url: media.thumbnail_url,
+            caption: media.caption,
+            permalink: media.permalink,
+          },
+          create: {
+            video_id: media.id,
+            comments_count: media.comments_count,
+            like_count: media.like_count,
+            view_count: media.video_views ?? null,
+            media_type: media.media_type,
+            media_url: media.media_url,
+            thumbnail_url: media.thumbnail_url,
+            caption: media.caption,
+            permalink: media.permalink,
+            instagramUserId: instagramUser.id,
+          },
+        });
+      }
+
+      try {
+        const { updateCreatorTier } = require('@services/creditTierService');
+        await updateCreatorTier(userId);
+      } catch (tierError) {
+        console.error('Failed to update credit tier after Instagram connect:', tierError);
+      }
+    }
+
+    return res.redirect(process.env.REDIRECT_CLIENT as string);
+  } catch (error) {
+    console.log(error);
+    return res.status(400).json({ message: 'Error authenticating Instagram user' });
+  }
 };
 
 // Get refresh token and access token

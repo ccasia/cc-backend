@@ -448,6 +448,7 @@ export const getMobileMediaKit = async (req: Request, res: Response) => {
             averageShares: true,
             averageSaves: true,
             engagement_rate: true,
+            insightData: true,
             instagramVideo: {
               orderBy: { like_count: 'desc' },
               take: 4,

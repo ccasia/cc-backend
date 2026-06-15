@@ -9,6 +9,8 @@ import {
   handleDisconnectTiktok,
   handleInstagramCallback,
   instagramCallback,
+  instagramMobileAuth,
+  instagramMobileCallback,
   redirectFacebookAuth,
   redirectTiktokAfterAuth,
   removeInstagramPermissions,
@@ -22,6 +24,9 @@ import { authenticate } from '@middlewares/authenticate';
 const router = Router();
 
 router.get('/oauth/tiktok', authenticate, tiktokAuthentication);
+
+router.get('/oauth/instagram', authenticate, instagramMobileAuth);
+router.get('/instagram/mobile/callback', instagramMobileCallback);
 
 router.get('/tiktok/callback', redirectTiktokAfterAuth);
 

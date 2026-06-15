@@ -194,7 +194,7 @@ export const getInstagramMediaData = async (
 };
 
 // Get Long-lived token
-export const getInstagramAccessToken = async (code: string) => {
+export const getInstagramAccessToken = async (code: string, redirectUri?: string) => {
   if (!code) throw new Error('Code not found');
 
   try {
@@ -203,9 +203,9 @@ export const getInstagramAccessToken = async (code: string) => {
       {
         client_id: process.env.INSTAGRAM_CLIENT_ID,
         client_secret: process.env.INSTAGRAM_CLIENT_SECRET,
-        redirect_uri: process.env.INSTAGRAM_AUTH_CALLBACK,
+        redirect_uri: redirectUri ?? process.env.INSTAGRAM_AUTH_CALLBACK,
         grant_type: 'authorization_code',
-        code: code, // The code received from the authorization server
+        code: code,
       },
       {
         headers: {
@@ -346,6 +346,44 @@ export const getInstagramUserInsight = async (accessToken: string, instagramUser
       message: error?.message,
     });
     throw new Error('Failed to fetch Instagram user insights');
+  }
+};
+
+export const getInstagramAudienceDemographics = async (accessToken: string, instagramUserId: string) => {
+  try {
+    const [genderAgeRes, countryRes] = await Promise.all([
+      axios.get(`https://graph.instagram.com/v22.0/${instagramUserId}/insights`, {
+        params: { metric: 'audience_gender_age', period: 'lifetime', access_token: accessToken },
+      }),
+      axios.get(`https://graph.instagram.com/v22.0/${instagramUserId}/insights`, {
+        params: { metric: 'audience_country', period: 'lifetime', access_token: accessToken },
+      }),
+    ]);
+
+    // Handle both old (values[].value as object) and new (total_value.breakdowns) response formats
+    const parseBreakdown = (res: any, metricName: string): Record<string, number> => {
+      const item = res.data?.data?.[0];
+      if (!item) return {};
+      // New format
+      const breakdown = item?.total_value?.breakdowns?.[0]?.results;
+      if (breakdown) {
+        return breakdown.reduce((acc: Record<string, number>, r: any) => {
+          acc[r.dimension_values.join('.')] = r.value;
+          return acc;
+        }, {});
+      }
+      // Old format
+      const val = item?.values?.[0]?.value;
+      return typeof val === 'object' ? val : {};
+    };
+
+    const genderAge = parseBreakdown(genderAgeRes, 'audience_gender_age');
+    const country = parseBreakdown(countryRes, 'audience_country');
+
+    return { genderAge, country };
+  } catch (error: any) {
+    console.error('[InstagramAudience] Failed to fetch demographics:', error?.response?.data || error?.message);
+    return null;
   }
 };
 
