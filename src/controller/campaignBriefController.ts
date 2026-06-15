@@ -54,7 +54,7 @@ const generateUniqueBdToken = async (): Promise<string> => {
 
 // GET /briefs/my-invite-link
 export const getMyInviteLink = async (req: Request, res: Response) => {
-  const userid = req.userId;
+  const userid = req.session.userid;
   if (!userid) return res.status(401).json({ message: 'User not authenticated' });
 
   try {
@@ -82,7 +82,7 @@ export const getMyInviteLink = async (req: Request, res: Response) => {
 
 // POST /briefs/my-invite-link/rotate
 export const rotateMyInviteLink = async (req: Request, res: Response) => {
-  const userid = req.userId;
+  const userid = req.session.userid;
   if (!userid) return res.status(401).json({ message: 'User not authenticated' });
 
   try {
@@ -357,7 +357,7 @@ export const bdSubmitDraft = async (req: Request, res: Response) => {
 
 // POST /briefs
 export const createBrief = async (req: Request, res: Response) => {
-  const userid = req.userId;
+  const userid = req.session.userid;
   if (!userid) return res.status(401).json({ message: 'User not authenticated' });
   try {
     const brief = await createDraftBrief(userid);
@@ -370,7 +370,7 @@ export const createBrief = async (req: Request, res: Response) => {
 
 // GET /briefs
 export const listBriefs = async (req: Request, res: Response) => {
-  const userid = req.userId;
+  const userid = req.session.userid;
   if (!userid) return res.status(401).json({ message: 'User not authenticated' });
   try {
     const user = await getUser(userid);
@@ -531,7 +531,7 @@ export const handoverBrief = async (req: Request, res: Response) => {
 // completes activation later. Body: { csmIds: string[] }.
 export const assignCsm = async (req: Request, res: Response) => {
   const { id } = req.params;
-  const userid = req.userId;
+  const userid = req.session.userid;
   if (!userid) return res.status(401).json({ message: 'User not authenticated' });
 
   try {
