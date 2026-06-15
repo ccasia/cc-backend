@@ -293,6 +293,8 @@ export const updateProfile = async (
       return updatedUser;
     });
 
+    await createKanbanBoard(result.id, 'creator');
+
     return res.status(200).json({ success: true, message: 'Profile updated', user: result });
   } catch (error) {
     console.error('Mobile profile update error:', error);
