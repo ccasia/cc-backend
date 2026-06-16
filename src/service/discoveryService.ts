@@ -788,7 +788,7 @@ export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
   // Base WHERE (platform only, no additional filters) for extracting available locations
   const baseWhere = buildConnectedWhere('', platform);
 
-  const [connectedTotal, dualConnectedTotal, , , , connectedRows, locationRows] = await Promise.all([
+  const [connectedTotal, dualConnectedTotal, connectedRows, locationRows] = await Promise.all([
     prismaAny.user.count({ where: connectedWhere }),
     platform === 'all'
       ? prismaAny.user.count({
@@ -806,34 +806,6 @@ export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
           },
         })
       : Promise.resolve(0),
-    hasContentSearch ? Promise.resolve(0) : prismaAny.user.count({ where: connectedWhere }),
-    hasContentSearch
-      ? Promise.resolve(0)
-      : platform === 'all'
-        ? prismaAny.user.count({
-            where: {
-              ...connectedWhere,
-              creator: {
-                is: {
-                  ...((connectedWhere as any).creator?.is || {}),
-                  isFacebookConnected: true,
-                  isTiktokConnected: true,
-                  instagramUser: { isNot: null },
-                  tiktokUser: { isNot: null },
-                },
-              },
-            },
-          })
-        : Promise.resolve(0),
-    hasContentSearch
-      ? Promise.resolve([])
-      : prismaAny.user.findMany({
-          where: connectedWhere,
-          skip: platform === 'all' ? 0 : pagination.skip,
-          take: platform === 'all' ? allPlatformWindowSize : pagination.limit,
-          orderBy: connectedOrderBy,
-          select: buildConnectedSelect(includeAccessTokenSelect),
-        }),
     prismaAny.user.findMany({
       where: connectedWhere,
       skip: platform === 'all' ? 0 : pagination.skip,
