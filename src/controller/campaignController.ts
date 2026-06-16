@@ -1796,7 +1796,6 @@ export const getCampaignById = async (req: Request, res: Response) => {
   const { id } = req.params;
 
   try {
-    console.log(`Getting campaign by ID: ${id}`);
     const campaign = await prisma.campaign.findFirst({
       where: {
         id: id,
@@ -1940,25 +1939,30 @@ export const getCampaignById = async (req: Request, res: Response) => {
                 creatorRemarks: true,
               },
             },
+            deliveryDetails: {
+              select: {
+                items: {
+                  select: {
+                    id: true,
+                    product: true,
+                    quantity: true,
+                  },
+                },
+              },
+            },
           },
         },
         products: true,
         reservationConfig: true,
-
         creatorAgreement: true,
       },
     });
 
-    console.log(`Campaign found:`, {
-      id: campaign?.id,
-      name: campaign?.name,
-      origin: campaign?.origin,
-      status: campaign?.status,
-    });
-
     // Attach approverPitchIds for approver-role clients so frontend can enforce row-level UI
     const sessionUserId = req.session?.userid;
+
     let approverPitchIds: string[] | undefined;
+
     if (sessionUserId && campaign) {
       const sessionUser = await prisma.user.findUnique({
         where: { id: sessionUserId },
@@ -1988,9 +1992,7 @@ export const getCampaignById = async (req: Request, res: Response) => {
     // null. Mirrors the shape built in companyController. (brand is deprecated.)
     let companyWithSummary: any = campaign?.company;
     if (campaign?.company) {
-      const activeSubs = (campaign.company.subscriptions || []).filter(
-        (sub: any) => sub.status === 'ACTIVE',
-      );
+      const activeSubs = (campaign.company.subscriptions || []).filter((sub: any) => sub.status === 'ACTIVE');
       const totalCredits = activeSubs.reduce((sum: number, sub: any) => sum + (sub.totalCredits || 0), 0);
       const usedCredits = activeSubs.reduce((sum: number, sub: any) => sum + (sub.creditsUsed || 0), 0);
       companyWithSummary = {
@@ -2004,9 +2006,8 @@ export const getCampaignById = async (req: Request, res: Response) => {
             activeSubs.length > 0
               ? activeSubs
                   .slice()
-                  .sort(
-                    (a: any, b: any) => new Date(a.expiredAt).getTime() - new Date(b.expiredAt).getTime(),
-                  )[0].expiredAt
+                  .sort((a: any, b: any) => new Date(a.expiredAt).getTime() - new Date(b.expiredAt).getTime())[0]
+                  .expiredAt
               : null,
         },
       };

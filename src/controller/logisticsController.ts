@@ -513,6 +513,7 @@ export const submitCreatorProductInfo = async (req: Request, res: Response) => {
     });
 
     const creator = await prisma.user.findUnique({ where: { id: userid }, select: { name: true } });
+
     await logChange(
       `${creator?.name || 'Unknown Creator'} submitted logistics information`,
       campaignId,
