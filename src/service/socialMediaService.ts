@@ -243,6 +243,7 @@ export const getInstagramAccessToken = async (code: string, redirectUri?: string
 
 export const refreshInstagramToken = async (accessToken: string) => {
   if (!accessToken) throw new Error('Access token is not provided');
+
   try {
     const refreshedToken = await axios.get('https://graph.instagram.com/refresh_access_token', {
       params: {
@@ -353,10 +354,25 @@ export const getInstagramAudienceDemographics = async (accessToken: string, inst
   try {
     const [genderAgeRes, countryRes] = await Promise.all([
       axios.get(`https://graph.instagram.com/v22.0/${instagramUserId}/insights`, {
-        params: { metric: 'audience_gender_age', period: 'lifetime', access_token: accessToken },
+        params: {
+          metric: 'follower_demographics',
+          period: 'lifetime',
+          access_token: accessToken,
+          timeframe: 'last_90_days',
+          metric_type: 'total_value',
+          breakdown: 'gender, age',
+        },
       }),
+
       axios.get(`https://graph.instagram.com/v22.0/${instagramUserId}/insights`, {
-        params: { metric: 'audience_country', period: 'lifetime', access_token: accessToken },
+        params: {
+          metric: 'follower_demographics',
+          period: 'lifetime',
+          access_token: accessToken,
+          timeframe: 'last_90_days',
+          metric_type: 'total_value',
+          breakdown: 'country',
+        },
       }),
     ]);
 
@@ -364,14 +380,17 @@ export const getInstagramAudienceDemographics = async (accessToken: string, inst
     const parseBreakdown = (res: any, metricName: string): Record<string, number> => {
       const item = res.data?.data?.[0];
       if (!item) return {};
+
       // New format
       const breakdown = item?.total_value?.breakdowns?.[0]?.results;
+
       if (breakdown) {
         return breakdown.reduce((acc: Record<string, number>, r: any) => {
           acc[r.dimension_values.join('.')] = r.value;
           return acc;
         }, {});
       }
+
       // Old format
       const val = item?.values?.[0]?.value;
       return typeof val === 'object' ? val : {};
@@ -379,6 +398,8 @@ export const getInstagramAudienceDemographics = async (accessToken: string, inst
 
     const genderAge = parseBreakdown(genderAgeRes, 'audience_gender_age');
     const country = parseBreakdown(countryRes, 'audience_country');
+
+    console.log(genderAge, country);
 
     return { genderAge, country };
   } catch (error: any) {

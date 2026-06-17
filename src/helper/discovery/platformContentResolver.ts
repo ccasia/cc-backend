@@ -123,7 +123,7 @@ export const resolvePlatformContentMatchesFromApi = async (
             if (encryptedAccessToken) {
               const accessToken = decryptToken(encryptedAccessToken as any);
               const topVideosResult = await getCreatorTopVideosFromCacheOrFetch('instagram', creatorId, async () => {
-                const instagramMediaResponse = await getInstagramMedias(accessToken);
+                const instagramMediaResponse = await getInstagramMedias(accessToken!);
                 const videos = instagramMediaResponse?.videos || [];
                 return mapInstagramApiTopVideos(videos || []);
               });

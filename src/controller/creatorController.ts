@@ -418,7 +418,6 @@ export const getMediaKit = async (req: Request, res: Response) => {
 // Mobile-specific: reads cached social data from DB — no live API calls to Instagram/TikTok
 export const getMobileMediaKit = async (req: Request, res: Response) => {
   const userId = req.userId;
-  if (!userId) return res.status(401).json({ message: 'Unauthorized' });
 
   try {
     const creator = await prisma.creator.findFirst({
@@ -498,6 +497,8 @@ export const getMobileMediaKit = async (req: Request, res: Response) => {
         },
       },
     });
+
+    console.log(creator?.instagramUser?.insightData);
 
     if (!creator) return res.status(404).json({ message: 'Creator not found' });
 
@@ -1158,8 +1159,8 @@ export const getCreatorAnalytics = async (req: Request, res: Response) => {
         const accessToken = decryptToken(creator.instagramUser.accessToken as { iv: string; content: string });
 
         // Get real-time analytics from Instagram API
-        const engagement = await getInstagramEngagementRateOverTime(accessToken);
-        const monthly = await getInstagramMonthlyInteractions(accessToken);
+        const engagement = await getInstagramEngagementRateOverTime(accessToken!);
+        const monthly = await getInstagramMonthlyInteractions(accessToken!);
 
         // Calculate overall engagement rate
         const totalEngagement = (creator.instagramUser.totalLikes || 0) + (creator.instagramUser.totalComments || 0);
@@ -1195,8 +1196,8 @@ export const getCreatorAnalytics = async (req: Request, res: Response) => {
           const accessToken = decryptToken(tiktokData.access_token as { iv: string; content: string });
 
           // Get real-time analytics from TikTok API
-          const engagement = await getTikTokEngagementRateOverTime(accessToken);
-          const monthly = await getTikTokMonthlyInteractions(accessToken);
+          const engagement = await getTikTokEngagementRateOverTime(accessToken!);
+          const monthly = await getTikTokMonthlyInteractions(accessToken!);
 
           // Calculate overall engagement rate
           const totalEngagement = creator.tiktokUser.likes_count || 0;

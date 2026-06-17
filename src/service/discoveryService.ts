@@ -282,7 +282,7 @@ const ensureValidTikTokAccessTokenForCreator = async (creator: any): Promise<str
 
   try {
     const refreshToken = decryptToken(encryptedRefreshToken as any);
-    const refreshedTokenData = await refreshTikTokToken(refreshToken);
+    const refreshedTokenData = await refreshTikTokToken(refreshToken!);
 
     const newEncryptedAccessToken = encryptToken(refreshedTokenData.access_token);
     const newEncryptedRefreshToken = encryptToken(refreshedTokenData.refresh_token);

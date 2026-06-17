@@ -118,10 +118,10 @@ export const hydrateMissingInstagramData = async (
         }
 
         const accessToken = decryptToken(encryptedAccessToken as any);
-        const overview = await getInstagramOverviewService(accessToken);
+        const overview = await getInstagramOverviewService(accessToken!);
         const instagramUserIdForInsight = overview.user_id || instagramUser.user_id;
-        const insight = await getInstagramUserInsight(accessToken, instagramUserIdForInsight);
-        const medias = await getInstagramMediaObject(accessToken, instagramUserIdForInsight);
+        const insight = await getInstagramUserInsight(accessToken!, instagramUserIdForInsight);
+        const medias = await getInstagramMediaObject(accessToken!, instagramUserIdForInsight);
 
         const mediaCount = overview.media_count || instagramUser.media_count || 0;
         const averageShares = mediaCount ? (insight.totals.shares || 0) / mediaCount : 0;
@@ -338,7 +338,9 @@ export const hydrateMissingTikTokData = async (
             tiktok: overview.username || creator?.tiktok || null,
           },
         });
-      } catch (error) {}
+      } catch (error) {
+        console.log(error);
+      }
     }),
   );
 
