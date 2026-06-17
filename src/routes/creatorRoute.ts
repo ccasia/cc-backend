@@ -35,7 +35,9 @@ const router = Router();
 router.get('/count', getCreatorCount);
 router.get('/getAllCreators', getCreators);
 router.get('/getMediaKit', authenticate, isSuperAdmin, getMediaKit);
+
 router.get('/mobile/media-kit', authenticate, getMobileMediaKit);
+
 router.get('/getCreatorByID/:id', authenticate, isSuperAdmin, getCreatorByID);
 router.get('/getCreatorFullInfoById/:id', getCreatorFullInfoById);
 router.get('/public/getCreatorFullInfoById/:id', getCreatorFullInfoByIdPublic);

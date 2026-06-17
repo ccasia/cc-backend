@@ -1256,6 +1256,8 @@ export const getprofile = async (req: Request, res: Response) => {
         isImpersonating,
         impersonatingBy,
         isPasswordExist: Boolean(user.password),
+        isInstagramConnected: !!user.creator?.instagram,
+        isTiktokConnected: !!user.creator?.tiktok,
       },
       ...((user.role === 'superadmin' ||
         (user.role === 'admin' && user?.admin?.role?.name.toLowerCase() === 'finance')) && {
