@@ -981,20 +981,6 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
           }
         }
 
-        // Process uploaded images
-        const publicURL: string[] = [];
-        if (req.files && (req.files as any).campaignImages) {
-          const images = Array.isArray((req.files as any).campaignImages)
-            ? (req.files as any).campaignImages
-            : [(req.files as any).campaignImages];
-
-          for (const image of images) {
-            // Use your existing image upload function
-            const url = await uploadCompanyLogo(image.tempFilePath, image.name);
-            publicURL.push(url);
-          }
-        }
-
         // Normalize dates
         const normalizedStartDate = campaignStartDate ? dayjs(campaignStartDate).toDate() : new Date();
         const normalizedEndDate = campaignEndDate ? dayjs(campaignEndDate).toDate() : normalizedStartDate;
@@ -1079,7 +1065,7 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
                 boostContent: boostContent || '',
                 primaryKPI: primaryKPI || '',
                 performanceBaseline: performanceBaseline || '',
-                images: publicURL,
+                images: images,
                 startDate: campaignStartDate ? new Date(campaignStartDate) : new Date(),
                 endDate: campaignEndDate ? new Date(campaignEndDate) : new Date(),
                 postingStartDate: postingStartDate ? new Date(postingStartDate) : null,
@@ -4277,8 +4263,7 @@ export const editCampaignInfo = async (req: Request, res: Response) => {
       : [(req.files as any).campaignImages];
 
     for (const image of images) {
-      // Use your existing image upload function
-      const url = await uploadCompanyLogo(image.tempFilePath, image.name);
+      const url = await uploadImage(image.tempFilePath, `${Date.now()}_${image.name}`, 'campaign');
       publicURL.push(url);
     }
   }
