@@ -26,6 +26,8 @@ import {
   listCslUsers as svcListCslUsers,
   addBriefAttachmentUrl as svcAddBriefAttachmentUrl,
   removeBriefAttachmentUrl as svcRemoveBriefAttachmentUrl,
+  snapshotPublicSubmission as svcSnapshotPublicSubmission,
+  resetBriefToSnapshot as svcResetBriefToSnapshot,
   BRIEF_ATTACHMENT_MAX,
 } from '@services/campaignBriefService';
 
@@ -334,6 +336,12 @@ export const bdSubmitDraft = async (req: Request, res: Response) => {
       });
     });
 
+    // Capture the as-submitted values as the BD's reset baseline. Best-effort —
+    // a failure here shouldn't fail the prospect's submission.
+    await svcSnapshotPublicSubmission(campaign.id).catch((err) =>
+      console.error('snapshotPublicSubmission failed:', err),
+    );
+
     // Fire-and-forget notification email to the BD. Don't block the response on email delivery.
     if (bdAdmin.user.email) {
       bdDraftCreated({
@@ -461,6 +469,27 @@ export const approveBrief = async (req: Request, res: Response) => {
       return res.status(400).json({ message: error.message });
     }
     return res.status(500).json({ message: 'Failed to approve brief' });
+  }
+};
+
+// POST /briefs/:id/reset
+//
+// Reverts a brief's editable fields back to its stored snapshot. For a
+// PENDING_REVIEW (CLIENT_INVITED) brief this restores the original prospect
+// submission — the BD-side analogue of the client's reset-to-sent-snapshot.
+// Returns the refreshed brief so the frontend can reseed the form.
+export const resetBrief = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  try {
+    await svcResetBriefToSnapshot(id);
+    const brief = await svcGetBriefById(id);
+    return res.status(200).json(brief);
+  } catch (error: any) {
+    console.error('resetBrief error:', error);
+    if (/snapshot|not found/i.test(error?.message || '')) {
+      return res.status(400).json({ message: error.message });
+    }
+    return res.status(500).json({ message: 'Failed to reset brief' });
   }
 };
 

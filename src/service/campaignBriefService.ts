@@ -44,7 +44,7 @@ const expiryFromNow = (): Date => {
 const allowedTransitions: Record<CampaignDraftStatus, CampaignDraftStatus[]> = {
   DRAFTED: ['SENT_TO_CLIENT'],
   SENT_TO_CLIENT: ['SENT_TO_CLIENT', 'APPROVED', 'PENDING_REVIEW'],
-  PENDING_REVIEW: ['APPROVED', 'HANDED_OVER'],
+  PENDING_REVIEW: ['SENT_TO_CLIENT', 'APPROVED', 'HANDED_OVER'],
   APPROVED: ['HANDED_OVER'],
   HANDED_OVER: [],
 };
@@ -434,6 +434,68 @@ export const approveBriefByBd = async (briefId: string) => {
       approvedAt: new Date(),
     },
   });
+};
+
+// Captures the as-submitted public-form values as the reset baseline. Called
+// right after a CLIENT_INVITED brief is created so the BD's RESET FORM can later
+// revert their edits back to what the prospect originally submitted. Reuses the
+// clientBriefSnapshot column (the brief is still in BD review; send-to-client
+// re-snapshots it afterward, by which point this baseline is no longer needed).
+export const snapshotPublicSubmission = async (briefId: string) => {
+  const current = await prisma.campaign.findUnique({
+    where: { id: briefId },
+    select: {
+      id: true,
+      name: true,
+      description: true,
+      campaignBrief: {
+        select: {
+          industries: true,
+          postingStartDate: true,
+          postingEndDate: true,
+          objectives: true,
+          secondaryObjectives: true,
+        },
+      },
+      campaignRequirement: {
+        select: {
+          gender: true,
+          age: true,
+          country: true,
+          language: true,
+          creator_persona: true,
+          user_persona: true,
+          geographic_focus: true,
+        },
+      },
+      campaignAdditionalDetails: { select: { specialNotesInstructions: true } },
+    },
+  });
+  if (!current) throw new Error('Brief not found');
+
+  const snapshot = buildBriefSnapshot(current);
+  return prisma.campaign.update({
+    where: { id: current.id },
+    data: { clientBriefSnapshot: snapshot as Prisma.InputJsonValue },
+  });
+};
+
+// Reverts a brief's editable fields back to the stored clientBriefSnapshot. For a
+// PENDING_REVIEW (CLIENT_INVITED) brief this is the original prospect submission;
+// it mirrors the client-side "reset to BD-sent snapshot" behavior. Returns the
+// updated brief so the caller can reseed the form.
+export const resetBriefToSnapshot = async (briefId: string) => {
+  const current = await prisma.campaign.findUnique({
+    where: { id: briefId },
+    select: { id: true, draftStatus: true, clientBriefSnapshot: true },
+  });
+  if (!current || !current.draftStatus) throw new Error('Brief not found');
+  const snapshot = (current.clientBriefSnapshot || null) as BriefSnapshot | null;
+  if (!snapshot) throw new Error('No snapshot to reset to');
+
+  // Reuse the standard BD update path so child records (brief/requirement/
+  // additionalDetails) are written consistently with normal autosave.
+  return updateDraftBrief(briefId, snapshot as BriefUpdateInput, 'bd');
 };
 
 export const approveBriefByClient = async (magicToken: string) => {
