@@ -14,6 +14,7 @@ import {
   patchBrief,
   sendBriefToClient,
   approveBrief,
+  resetBrief,
   handoverBrief,
   assignCsm,
   deleteBrief,
@@ -68,6 +69,7 @@ router.get('/:id', isLoggedIn, isBdOrSuperadmin, getBrief);
 router.patch('/:id', isLoggedIn, isBdOrSuperadmin, patchBrief);
 router.post('/:id/send', isLoggedIn, isBdOrSuperadmin, sendBriefToClient);
 router.post('/:id/approve', isLoggedIn, isBdOrSuperadmin, approveBrief);
+router.post('/:id/reset', isLoggedIn, isBdOrSuperadmin, resetBrief);
 router.post('/:id/handover', isLoggedIn, isBdOrSuperadmin, handoverBrief);
 // CSL-only assignment of CSMs to a handed-over campaign (controller enforces
 // the CSL/superadmin role; isBdOrSuperadmin already admits CSL).
