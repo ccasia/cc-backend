@@ -280,7 +280,7 @@ export async function uploadCampaignAssets(files: any) {
   if (files?.campaignImages) {
     const imgs = Array.isArray(files.campaignImages) ? files.campaignImages : [files.campaignImages];
 
-    imgs.forEach((img: any) => imageTasks.push(uploadImage(img.tempFilePath, img.name, 'campaign')));
+    imgs.forEach((img: any) => imageTasks.push(uploadImage(img.tempFilePath, `${Date.now()}_${img.name}`, 'campaign')));
   }
 
   if (files?.otherAttachments) {
