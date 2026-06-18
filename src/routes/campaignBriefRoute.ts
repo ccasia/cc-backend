@@ -14,6 +14,7 @@ import {
   patchBrief,
   sendBriefToClient,
   approveBrief,
+  resetBrief,
   handoverBrief,
   assignCsm,
   deleteBrief,
