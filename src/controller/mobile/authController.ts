@@ -17,6 +17,7 @@ import { createKanbanBoard } from '../kanbanController';
 interface MobileCreatorData {
   phone?: string;
   Nationality?: string;
+  state?: string;
   city?: string;
   pronounce?: string;
   birthDate?: string | null;
@@ -121,7 +122,7 @@ export const register = async (
   if (creatorData) {
     const missing: string[] = [];
     if (!creatorData.Nationality) missing.push('Nationality');
-    if (!creatorData.city) missing.push('city');
+    if (!creatorData.city && !creatorData.state) missing.push('city or state');
     if (!creatorData.phone || creatorData.phone.trim().length < 7) missing.push('phone');
     if (!creatorData.pronounce) missing.push('pronounce');
     if (!creatorData.birthDate) missing.push('birthDate');
@@ -164,7 +165,7 @@ export const register = async (
           name,
           phoneNumber: creatorData?.phone || '',
           country: creatorData?.Nationality || '',
-          city: creatorData?.city || '',
+          city: creatorData?.city || creatorData?.state || '',
           referralCode: creatorData?.referralCode || null,
         },
       });
@@ -185,6 +186,7 @@ export const register = async (
           languages: creatorData.languages || [],
           instagramProfileLink: creatorData.instagramProfileLink || '',
           tiktokProfileLink: creatorData.tiktokProfileLink || '',
+          state: creatorData.state || '', 
         });
       }
 
