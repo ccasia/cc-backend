@@ -24,7 +24,7 @@ router.get('/overview/:userId', isLoggedIn, getOverview);
 router.get('/by-email/:email', isSuperAdmin, getUserByEmail);
 // router.get('/getAdmins', isSuperAdmin, getAllActiveAdmins);
 
-router.get('/admin-logs/:adminId', getAdminLogs);
+router.get('/admin-logs/:adminId', isSuperAdmin, getAdminLogs);
 
 router.post('/admins', isSuperAdmin, inviteAdmin);
 router.post('/createAdmin', isSuperAdmin, createAdmin);
