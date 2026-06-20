@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { handleDeleteAdminById } from '@services/adminService';
+import { logAdminChange } from '@services/campaignServices';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
@@ -70,6 +71,8 @@ export const impersonateCreator = async (req: Request<{}, {}, { userId: string }
     const admin = await prisma.user.findUnique({ where: { id: sessionUserId } });
     if (!admin) return res.status(404).json({ success: false, message: 'Admin not found' });
 
+    await logAdminChange(`Started impersonating creator "${creator.name}" (${creator.email})`, admin.id);
+
     const session = req.session;
     session.isImpersonating = true;
     session.impersonatingBy = { userId: admin.id, name: admin.name! };
@@ -96,6 +99,15 @@ export const endImpersonatingSession = async (req: Request, res: Response) => {
     }
 
     const adminId = req.session.impersonatingBy.userId;
+
+    // Capture the impersonated target before the session is regenerated/swapped back.
+    const targetUserId = req.session.userid;
+    const targetUser = targetUserId
+      ? await prisma.user.findUnique({
+          where: { id: targetUserId },
+          select: { name: true, email: true, role: true },
+        })
+      : null;
 
     const admin = await prisma.admin.findFirst({
       where: { userId: adminId },
@@ -136,6 +148,13 @@ export const endImpersonatingSession = async (req: Request, res: Response) => {
             message: 'Session save failed',
             success: false,
           });
+        }
+
+        if (targetUser) {
+          logAdminChange(
+            `Ended impersonation of ${targetUser.role} "${targetUser.name}" (${targetUser.email})`,
+            adminId,
+          );
         }
 
         res.cookie('userid', admin.userId, {
@@ -183,6 +202,8 @@ export const impersonateClient = async (req: Request<{}, {}, { email: string }>,
 
     const admin = await prisma.user.findUnique({ where: { id: sessionUserId } });
     if (!admin) return res.status(404).json({ success: false, message: 'Admin not found' });
+
+    await logAdminChange(`Started impersonating client "${user.name}" (${user.email})`, admin.id);
 
     const session = req.session;
     session.isImpersonating = true;
