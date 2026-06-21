@@ -9,7 +9,6 @@ export const encryptToken = (token: string): any => {
   console.log('cypher', cipher);
   const encryptedToken = Buffer.concat([cipher.update(token), cipher.final()]);
 
-  console.log('encryptedToken', encryptedToken);
   return { iv: iv.toString('hex'), content: encryptedToken.toString('hex') };
 };
 

@@ -210,7 +210,7 @@ export const tiktokAuthentication = (req: Request, res: Response) => {
   url += '?client_key=' + process.env.TIKTOK_CLIENT_KEY;
   url += '&scope=user.info.basic,user.info.profile,user.info.stats,video.list';
   url += '&response_type=code';
-  url += '&redirect_uri=' + process.env.TIKTOK_REDIRECT_URI;
+  url += '&redirect_uri=' + 'https://2075-60-54-38-159.ngrok-free.app/api/social/tiktok/callback';
   url += '&state=' + state;
   // url += '&disable_auto_auth=1';
 
@@ -389,7 +389,7 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
         client_secret: process.env.TIKTOK_CLIENT_SECRET,
         code,
         grant_type: 'authorization_code',
-        redirect_uri: process.env.TIKTOK_REDIRECT_URI,
+        redirect_uri: 'https://2075-60-54-38-159.ngrok-free.app/api/social/tiktok/callback',
       },
       {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -536,7 +536,7 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
       });
     }
 
-    res.redirect(process.env.REDIRECT_CLIENT as string);
+    res.redirect('cultapp:///media-kit?status=success'); //later change
   } catch (error) {
     console.error('Error during TikTok OAuth:', error.response?.data || error.message);
     res.status(500).send('Error during TikTok OAuth');
@@ -601,7 +601,12 @@ export const tiktokData = async (req: Request, res: Response) => {
 };
 
 export const handleDisconnectTiktok = async (req: Request, res: Response) => {
-  const { userId } = req.body;
+  const userId = req.userId ?? req.body?.userId;
+
+  if (!userId) {
+    return res.status(400).json({ message: 'Missing user identifier.' });
+  }
+
   try {
     const creator = await prisma.creator.findFirst({
       where: {
@@ -628,29 +633,31 @@ export const handleDisconnectTiktok = async (req: Request, res: Response) => {
       },
     );
 
-    const updatedCreator = await prisma.creator.update({
-      where: {
-        userId: creator.userId,
-      },
-      data: {
-        isTiktokConnected: false,
-        tiktokData: {},
-      },
-      include: {
-        tiktokUser: true,
-      },
-    });
+    await prisma.$transaction(async (tx) => {
+      const updatedCreator = await tx.creator.update({
+        where: {
+          userId: creator.userId,
+        },
+        data: {
+          isTiktokConnected: false,
+          tiktokData: {},
+        },
+        include: {
+          tiktokUser: true,
+        },
+      });
 
-    await prisma.tiktokVideo.deleteMany({
-      where: {
-        tiktokUserId: updatedCreator.tiktokUser?.id,
-      },
-    });
+      await tx.tiktokVideo.deleteMany({
+        where: {
+          tiktokUserId: updatedCreator.tiktokUser?.id,
+        },
+      });
 
-    await prisma.tiktokUser.delete({
-      where: {
-        creatorId: creator.id,
-      },
+      await tx.tiktokUser.delete({
+        where: {
+          creatorId: creator.id,
+        },
+      });
     });
 
     return res.status(200).json({ message: 'TikTok account disconnected successfully' });

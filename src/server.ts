@@ -102,6 +102,7 @@ app.use(
       'http://localhost:3030',
       'http://192.168.100.228',
       'http://192.168.100.55',
+      'http://192.168.1.15',
     ],
     credentials: true,
   }),
