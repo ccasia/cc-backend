@@ -210,7 +210,9 @@ export const tiktokAuthentication = (req: Request, res: Response) => {
   url += '?client_key=' + process.env.TIKTOK_CLIENT_KEY;
   url += '&scope=user.info.basic,user.info.profile,user.info.stats,video.list';
   url += '&response_type=code';
-  url += '&redirect_uri=' + 'https://2075-60-54-38-159.ngrok-free.app/api/social/tiktok/callback';
+  url +=
+    '&redirect_uri=' +
+    (process.env.TIKTOK_REDIRECT_URI || 'https://2075-60-54-38-159.ngrok-free.app/api/social/tiktok/callback');
   url += '&state=' + state;
   // url += '&disable_auto_auth=1';
 
@@ -389,7 +391,8 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
         client_secret: process.env.TIKTOK_CLIENT_SECRET,
         code,
         grant_type: 'authorization_code',
-        redirect_uri: 'https://2075-60-54-38-159.ngrok-free.app/api/social/tiktok/callback',
+        redirect_uri:
+          process.env.TIKTOK_REDIRECT_URI || 'https://2075-60-54-38-159.ngrok-free.app/api/social/tiktok/callback',
       },
       {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
