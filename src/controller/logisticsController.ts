@@ -559,13 +559,15 @@ export const submitCreatorProductInfo = async (req: Request, res: Response) => {
     const { campaignId } = req.params;
     const userid = getAuthedUserId(req);
     if (!userid) return res.status(401).json({ message: 'Unauthorized' });
-    const { address, location, city, state, country, postcode, dietaryRestrictions } = req.body;
+    const { address, location, city, state, country, postcode, dietaryRestrictions, phoneNumber } =
+      req.body;
 
     const result = await creatorProductInfoService({
       userId: userid,
       campaignId,
       userData: { address, location, city, state, country, postcode },
       dietaryRestrictions,
+      phoneNumber,
     });
 
     const creator = await prisma.user.findUnique({ where: { id: userid }, select: { name: true } });
