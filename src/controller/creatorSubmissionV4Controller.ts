@@ -574,6 +574,8 @@ export const updateMyPostingLink = async (req: Request, res: Response) => {
   const { submissionId, postingLink } = req.body as PostingLinkUpdate;
   const creatorId = req.userId;
 
+  console.log(req.body);
+
   try {
     if (!creatorId) {
       return res.status(401).json({ message: 'You are not logged in' });
