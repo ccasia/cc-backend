@@ -29,6 +29,9 @@ import {
 import { logChange } from '@services/campaignServices';
 import { computeChanges, FieldMapping } from '@utils/campaignLogDiff';
 import { PrismaClient } from '@prisma/client';
+import { saveNotification } from '@controllers/notificationController';
+import { notificationLogisticShipped } from '@helper/notification';
+import { clients, io } from '../server';
 
 const prisma = new PrismaClient();
 
@@ -37,13 +40,19 @@ async function getLogisticContext(logisticId: string) {
     where: { id: logisticId },
     select: {
       campaignId: true,
+      creatorId: true,
       type: true,
       creator: { select: { name: true } },
+      campaign: { select: { name: true } },
       reservationDetails: { select: { outlet: true } },
     },
   });
   return {
     campaignId: logistic?.campaignId || '',
+    // creatorId on Logistic is the creator's User id (see creatorProductInfoService,
+    // which keys creatorId_campaignId by userId) — so it's usable for notifications.
+    creatorUserId: logistic?.creatorId || '',
+    campaignName: logistic?.campaign?.name || 'your campaign',
     creatorName: logistic?.creator?.name || 'Unknown Creator',
     type: logistic?.type || 'PRODUCT_DELIVERY',
     outlet: logistic?.reservationDetails?.outlet || null,
@@ -260,7 +269,8 @@ export const scheduleDelivery = async (req: Request, res: Response) => {
     const { trackingLink, expectedDeliveryDate } = req.body;
     const logistic = await scheduleDeliveryService(logisticId, req.body);
 
-    const { campaignId, creatorName } = await getLogisticContext(logisticId);
+    const { campaignId, creatorUserId, campaignName, creatorName } =
+      await getLogisticContext(logisticId);
 
     // Fetch address from delivery details for metadata
     const deliveryInfo = await prisma.logistic.findUnique({
@@ -274,6 +284,21 @@ export const scheduleDelivery = async (req: Request, res: Response) => {
       expectedDeliveryDate: expectedDeliveryDate || null,
       address: deliveryInfo?.deliveryDetails?.address || null,
     });
+
+    // Notify the creator that their product has shipped — important logistics
+    // info, mirrors the in-app/email cues the creator gets for other milestones.
+    if (creatorUserId) {
+      const { title, message } = notificationLogisticShipped(campaignName, trackingLink);
+      const notification = await saveNotification({
+        userId: creatorUserId,
+        title,
+        message,
+        entity: 'Logistic',
+        entityId: campaignId,
+      });
+      const socketId = clients.get(creatorUserId);
+      if (socketId) io.to(socketId).emit('notification', notification);
+    }
 
     emitLogisticSocket(req, campaignId, { logisticId, action: 'scheduled' });
 
