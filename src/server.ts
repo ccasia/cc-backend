@@ -13,7 +13,7 @@ import '@configs/cronjob';
 import http from 'http';
 import { handleSendMessage, fetchMessagesFromThread, markMessagesService } from '@services/threadService';
 import { authenticate } from '@middlewares/authenticate';
-import { Server } from 'socket.io';
+import { Server, Socket } from 'socket.io';
 import '@services/uploadVideo';
 
 import '@helper/processPitchVideo';
@@ -46,6 +46,8 @@ import { logChange } from '@services/campaignServices';
 import { users } from '@utils/activeUsers';
 import { mobileRouter } from '@routes/mobile';
 import { OTPTypes } from '@/types';
+
+import jwt from 'jsonwebtoken';
 
 // import { OTPTypes } from '@/types';
 
@@ -153,7 +155,7 @@ app.use(
       secure: process.env.NODE_ENV === 'production',
       maxAge: 24 * 60 * 60 * 1000, //expires in 24hours
       httpOnly: true,
-      sameSite: 'none',
+      // sameSite: 'none',
     },
     store: new PrismaSessionStore(new PrismaClient(), {
       checkPeriod: 2 * 60 * 1000,
@@ -270,30 +272,6 @@ app.get('/webhook/whatsapp', (req: Request, res: Response) => {
   return res.sendStatus(403);
 });
 
-// app.post('/webhook/whatsapp', async (req: Request, res: Response) => {
-//   // const messages = req.body.entry[0]?.changes[0]?.value?.messages;
-
-//   console.log(req.body.entry[0]?.changes[0]);
-
-//   // if (messages.length) {
-//   //   const data = messages.map((message: any) => ({
-//   //     from: message.from,
-//   //     message: message?.text?.body || '',
-//   //     type: message.type,
-//   //     sentAt: dayjs(message.timestamp).toDate(),
-//   //     sticker: message?.sticker,
-//   //   }));
-
-//   //   await prisma.whatsappMessage.createMany({ data: data });
-
-//   //   io.emit('whatsapp-message');
-
-//   //   return res.sendStatus(200);
-//   // }
-
-//   return res.sendStatus(200);
-// });
-
 app.post('/webhook/whatsapp', async (req: Request, res: Response) => {
   res.sendStatus(200);
 
@@ -399,55 +377,40 @@ app.get('/users', authenticate, async (_req, res) => {
   }
 });
 
-app.get('/campaign/:id', async (req, res) => {
-  const message = req.query.message as string;
-
-  const campaignId = req.params.id;
-
-  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-  res.setHeader('Transfer-Encoding', 'chunked');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('X-Accel-Buffering', 'no');
-
-  try {
-    const chunks = await model.stream(
-      {
-        messages: [
-          {
-            role: 'human',
-            content: message ?? 'call get_user_info and create a summary of the account in 5-10 sentences.',
-          },
-        ],
-        campaignId: campaignId,
-      },
-      {
-        context: { campaignId: campaignId },
-        streamMode: 'messages',
-        configurable: { thread_id: req.userId!.toString() },
-      },
-    );
-
-    for await (const [a, _] of chunks) {
-      if (a.type === 'ai' && typeof a.content === 'string' && a.content) {
-        io.emit('report', { content: a.content, id: a.id });
-        res.write(a.content);
-      }
-    }
-    io.emit('report:done');
-    return res.end();
-    // return res.sendStatus(200);
-  } catch (error) {
-    console.log(error);
-    return res.status(500).json(error);
-  }
-});
-
 export const clients = new Map();
 export const activeProcesses = new Map();
 export const queue = new Map();
 
+io.use((socket: Socket, next) => {
+  try {
+    const token = socket.handshake.auth?.token as string | undefined;
+
+    if (!token) {
+      return next();
+    }
+
+    const payload = jwt.verify(token, process.env.ACCESSKEY!) as {
+      userId: string;
+    };
+
+    console.log(payload);
+
+    // Identity comes from the verified token — never from anything the
+    // client tells us later. This is the whole point.
+    socket.data.userId = payload.userId;
+
+    return next();
+  } catch (err) {
+    console.log('SDadasd', err);
+    // Surfaces as `connect_error` on the client (err.message === "UNAUTHENTICATED").
+    // A thrown jwt error (expired/invalid signature) lands here too.
+    return next(new Error('UNAUTHENTICATED'));
+  }
+});
+
 io.on('connection', (socket) => {
   io.emit('onlineUsers', { onlineUsers: clients.size });
+
   socket.on('register', (userId) => {
     clients.set(userId, socket.id);
     users.set(userId, socket.id);

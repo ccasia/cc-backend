@@ -29,6 +29,7 @@ export const authenticate = (req: Request, res: Response, next: NextFunction) =>
       const payload = jwt.verify(token, process.env.ACCESSKEY!) as {
         userId: string;
       };
+
       req.userId = payload.userId;
       req.authMethod = 'jwt';
       return next();
