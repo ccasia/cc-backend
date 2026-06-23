@@ -3093,6 +3093,71 @@ export const getCaptionHistory = async (req: Request, res: Response) => {
 };
 
 /**
+ * Update a submission's caption without changing its review status.
+ * Admin-only, allowed only while the submission is still under review
+ * (PENDING_REVIEW / APPROVE_LINK). Records the change in caption history.
+ * PATCH /api/submissions/v4/submission/:submissionId/caption
+ */
+export const updateSubmissionCaption = async (req: Request, res: Response) => {
+  const { submissionId } = req.params;
+  const { caption } = req.body;
+  const currentUserId = req.userId;
+
+  if (!currentUserId) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  if (typeof caption !== 'string') {
+    return res.status(400).json({ message: 'caption must be a string' });
+  }
+
+  try {
+    const submission = await prisma.submission.findUnique({
+      where: { id: submissionId },
+      select: { id: true, caption: true, status: true, submissionVersion: true },
+    });
+
+    if (!submission) {
+      return res.status(404).json({ message: 'Submission not found' });
+    }
+
+    if (submission.submissionVersion !== 'v4') {
+      return res.status(400).json({ message: 'Not a v4 submission' });
+    }
+
+    if (!['PENDING_REVIEW', 'APPROVE_LINK'].includes(submission.status)) {
+      return res
+        .status(400)
+        .json({ message: 'Caption can only be edited while the submission is under review' });
+    }
+
+    const normalizedCaption = caption.trim();
+
+    // No-op if nothing changed
+    if (normalizedCaption === (submission.caption || '')) {
+      return res.status(200).json({ success: true, caption: submission.caption });
+    }
+
+    // Record the previous caption in history before overwriting
+    await saveCaptionToHistory(submissionId, normalizedCaption, currentUserId, 'admin');
+
+    const updated = await prisma.submission.update({
+      where: { id: submissionId },
+      data: { caption: normalizedCaption || null, updatedAt: new Date() },
+      select: { caption: true },
+    });
+
+    return res.status(200).json({ success: true, caption: updated.caption });
+  } catch (error) {
+    console.error('Error updating caption:', error);
+    return res.status(500).json({
+      message: 'Failed to update caption',
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+};
+
+/**
  * Get comments for a submission, optionally filtered by videoId.
  * Role-based: creators see admin-only, clients see admin+client, admins see all.
  * GET /api/submissions/v4/submission/:submissionId/comments?videoId=xxx

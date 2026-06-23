@@ -21,6 +21,7 @@ import {
   getSubmissionStatusInfo,
   updateSubmissionDueDate,
   getCaptionHistory,
+  updateSubmissionCaption,
   getComments,
   createComment,
   toggleAgree,
@@ -95,6 +96,9 @@ router.get('/content/feedback/:contentType/:contentId', getIndividualContentFeed
 
 // Caption history endpoint
 router.get('/:submissionId/caption-history', getCaptionHistory);
+
+// Update caption without changing review status (admin only)
+router.patch('/submission/:submissionId/caption', isAdmin, updateSubmissionCaption);
 
 // Comment endpoints
 router.get('/submission/:submissionId/comments', getComments);
