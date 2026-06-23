@@ -1,14 +1,18 @@
 import { Request, Response } from 'express';
 import {
-  addDiscoveryBookmark,
-  getDiscoveryBookmarkedCreators,
+  addCreatorToList,
+  createBookmarkList,
+  deleteBookmarkList,
+  getBookmarkLists,
+  getBookmarkedCreatorsByLists,
   getDiscoveryCreators,
   getDiscoveryCreatorsExportData,
   getNonPlatformDiscoveryCreators,
   inviteDiscoveryCreators,
   isDiscoveryBookmarkPlatform,
-  removeDiscoveryBookmark,
+  removeCreatorFromList,
 } from '@services/discoveryService';
+import { prisma } from '../prisma/prisma';
 
 const parseStringArrayQuery = (value?: string | string[]) => {
   if (!value) return undefined;
@@ -138,61 +142,115 @@ export const getNonPlatformDiscoveryCreatorsList = async (req: Request, res: Res
   }
 };
 
-export const getDiscoveryBookmarksController = async (req: Request, res: Response) => {
+export const getBookmarkListsController = async (req: Request, res: Response) => {
   const userId = req.userId;
 
   if (!userId) return res.status(401).json({ message: 'Unauthorized' });
 
   try {
-    const data = await getDiscoveryBookmarkedCreators(userId);
+    const data = await getBookmarkLists(userId);
     return res.status(200).json(data);
   } catch (error: any) {
-    console.error('Error fetching discovery bookmarks:', error);
+    console.error('Error fetching bookmark lists:', error);
+    return res.status(500).json({ message: 'Failed to fetch bookmark lists' });
+  }
+};
+
+export const createBookmarkListController = async (req: Request, res: Response) => {
+  const userId = req.userId;
+
+  if (!userId) return res.status(401).json({ message: 'Unauthorized' });
+
+  const name = String(req.body?.name || '').trim();
+  if (!name) return res.status(400).json({ message: 'List name is required' });
+
+  try {
+    const list = await createBookmarkList(userId, name);
+    return res.status(201).json({ message: 'List created', list });
+  } catch (error: any) {
+    console.error('Error creating bookmark list:', error);
+    return res.status(400).json({ message: error?.message || 'Failed to create list' });
+  }
+};
+
+export const deleteBookmarkListController = async (req: Request, res: Response) => {
+  const userId = req.userId;
+
+  if (!userId) return res.status(401).json({ message: 'Unauthorized' });
+
+  const listId = String(req.params.listId || '').trim();
+  if (!listId) return res.status(400).json({ message: 'listId is required' });
+
+  try {
+    const data = await deleteBookmarkList(userId, listId);
+    return res.status(200).json({ message: 'List deleted', ...data });
+  } catch (error: any) {
+    console.error('Error deleting bookmark list:', error);
+    return res.status(400).json({ message: error?.message || 'Failed to delete list' });
+  }
+};
+
+export const getBookmarkListCreatorsController = async (req: Request, res: Response) => {
+  const userId = req.userId;
+
+  if (!userId) return res.status(401).json({ message: 'Unauthorized' });
+
+  const listIds = parseStringArrayQuery(req.query.listIds as string | string[] | undefined) || [];
+
+  try {
+    const data = await getBookmarkedCreatorsByLists(userId, listIds);
+    return res.status(200).json(data);
+  } catch (error: any) {
+    console.error('Error fetching bookmark list creators:', error);
     return res.status(500).json({ message: 'Failed to fetch bookmarked creators' });
   }
 };
 
-export const addDiscoveryBookmarkController = async (req: Request, res: Response) => {
+export const addCreatorToListController = async (req: Request, res: Response) => {
   const userId = req.userId;
 
   if (!userId) return res.status(401).json({ message: 'Unauthorized' });
 
+  const listId = String(req.params.listId || '').trim();
   const creatorUserId = String(req.body?.creatorUserId || '').trim();
   const platform = req.body?.platform;
 
+  if (!listId) return res.status(400).json({ message: 'listId is required' });
   if (!creatorUserId) return res.status(400).json({ message: 'creatorUserId is required' });
   if (!isDiscoveryBookmarkPlatform(platform)) {
     return res.status(400).json({ message: 'platform must be instagram or tiktok' });
   }
 
   try {
-    const bookmark = await addDiscoveryBookmark(userId, creatorUserId, platform);
-    return res.status(200).json({ message: 'Creator bookmarked', bookmark });
+    const bookmark = await addCreatorToList(userId, listId, creatorUserId, platform);
+    return res.status(200).json({ message: 'Creator added to list', bookmark });
   } catch (error: any) {
-    console.error('Error adding discovery bookmark:', error);
-    return res.status(400).json({ message: error?.message || 'Failed to bookmark creator' });
+    console.error('Error adding creator to list:', error);
+    return res.status(400).json({ message: error?.message || 'Failed to add creator to list' });
   }
 };
 
-export const removeDiscoveryBookmarkController = async (req: Request, res: Response) => {
+export const removeCreatorFromListController = async (req: Request, res: Response) => {
   const userId = req.userId;
 
   if (!userId) return res.status(401).json({ message: 'Unauthorized' });
 
+  const listId = String(req.params.listId || '').trim();
   const creatorUserId = String(req.query.creatorUserId || '').trim();
   const platform = req.query.platform;
 
+  if (!listId) return res.status(400).json({ message: 'listId is required' });
   if (!creatorUserId) return res.status(400).json({ message: 'creatorUserId is required' });
   if (!isDiscoveryBookmarkPlatform(platform)) {
     return res.status(400).json({ message: 'platform must be instagram or tiktok' });
   }
 
   try {
-    const data = await removeDiscoveryBookmark(userId, creatorUserId, platform);
-    return res.status(200).json({ message: 'Bookmark removed', ...data });
+    const data = await removeCreatorFromList(userId, listId, creatorUserId, platform);
+    return res.status(200).json({ message: 'Creator removed from list', ...data });
   } catch (error: any) {
-    console.error('Error removing discovery bookmark:', error);
-    return res.status(500).json({ message: 'Failed to remove bookmark' });
+    console.error('Error removing creator from list:', error);
+    return res.status(400).json({ message: error?.message || 'Failed to remove creator from list' });
   }
 };
 
@@ -204,6 +262,11 @@ export const inviteDiscoveryCreatorsController = async (req: Request, res: Respo
   const { campaignId, creatorIds, creators } = req.body || {};
 
   try {
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+    if (user?.role === 'client_demo') {
+      return res.status(403).json({ message: 'Demo clients cannot invite creators to campaigns' });
+    }
+
     const normalizedCreatorIds = Array.from(
       new Set(
         [

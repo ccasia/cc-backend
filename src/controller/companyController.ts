@@ -66,6 +66,19 @@ export const getAllCompanies = async (_req: Request, res: Response) => {
           },
         },
         campaign: true,
+        clients: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                role: true,
+                status: true,
+              },
+            },
+          },
+        },
       },
     });
 

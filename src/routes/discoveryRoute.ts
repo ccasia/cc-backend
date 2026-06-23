@@ -1,12 +1,15 @@
 import { Router } from 'express';
 import {
-  addDiscoveryBookmarkController,
-  getDiscoveryBookmarksController,
+  addCreatorToListController,
+  createBookmarkListController,
+  deleteBookmarkListController,
+  getBookmarkListCreatorsController,
+  getBookmarkListsController,
   getDiscoveryCreatorsList,
   getDiscoveryCreatorsExportDataController,
   getNonPlatformDiscoveryCreatorsList,
   inviteDiscoveryCreatorsController,
-  removeDiscoveryBookmarkController,
+  removeCreatorFromListController,
 } from '@controllers/discoveryController';
 import { authenticate } from '@middlewares/authenticate';
 
@@ -17,8 +20,11 @@ router.get('/creators/export-data', getDiscoveryCreatorsExportDataController);
 router.get('/creators', getDiscoveryCreatorsList);
 router.get('/non-platform-creators', getNonPlatformDiscoveryCreatorsList);
 router.post('/invite-creators', inviteDiscoveryCreatorsController);
-router.get('/bookmarks', getDiscoveryBookmarksController);
-router.post('/bookmarks', addDiscoveryBookmarkController);
-router.delete('/bookmarks', removeDiscoveryBookmarkController);
+router.get('/bookmark-lists', getBookmarkListsController);
+router.post('/bookmark-lists', createBookmarkListController);
+router.get('/bookmark-lists/creators', getBookmarkListCreatorsController);
+router.delete('/bookmark-lists/:listId', deleteBookmarkListController);
+router.post('/bookmark-lists/:listId/creators', addCreatorToListController);
+router.delete('/bookmark-lists/:listId/creators', removeCreatorFromListController);
 
 export default router;
