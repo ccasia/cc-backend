@@ -2496,20 +2496,6 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Campaign not found' });
     }
 
-    // For credit tier campaigns, validate creator has follower data
-    if (campaignWithOrigin.isCreditTier) {
-      const { canPitchToCreditTierCampaign } = require('@services/creditTierService');
-      const canPitch = await canPitchToCreditTierCampaign(id as string);
-
-      if (!canPitch) {
-        return res.status(403).json({
-          message:
-            'You must have follower data (Instagram, TikTok, or manually entered) to pitch to this campaign. Please connect your social media account or update your profile with your follower count.',
-          code: 'NO_FOLLOWER_DATA',
-        });
-      }
-    }
-
     // Check if creator has media kit (used for manualFollowerCount update decision)
     const creatorWithMediaKit = await prisma.creator.findUnique({
       where: { userId: id as string },
