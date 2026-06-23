@@ -2178,7 +2178,7 @@ export const briefApprovedByClient = async (payload: {
   clientName: string;
 }) => {
   const { to, bdName, brandName, briefId, clientName } = payload;
-  const url = `${process.env.BASE_EMAIL_URL}/dashboard/briefs/${briefId}`;
+  const url = `${process.env.BASE_EMAIL_URL}/dashboard/campaign/briefs/${briefId}`;
   try {
     await transport.sendMail({
       from: user,
@@ -2209,7 +2209,7 @@ export const briefHandedOver = async (payload: {
   internalComments: string | null;
 }) => {
   const { to, csName, brandName, briefId, internalComments } = payload;
-  const url = `${process.env.BASE_EMAIL_URL}/dashboard/briefs/${briefId}`;
+  const url = `${process.env.BASE_EMAIL_URL}/dashboard/campaign/briefs/${briefId}`;
   try {
     await transport.sendMail({
       from: user,
