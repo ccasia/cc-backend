@@ -1,6 +1,8 @@
+import dayjs from 'dayjs';
 import { Request, Response } from 'express';
 import jwt, { Secret } from 'jsonwebtoken';
 import { generateRandomString } from '@utils/randomString';
+import { uploadCompanyLogo } from '@configs/cloudStorage.config';
 import { prisma } from '../prisma/prisma';
 
 const DEMO_TOKEN_LENGTH = 32;
@@ -161,6 +163,280 @@ export const regenerateClientDemoLink = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('regenerateClientDemoLink error:', error);
     return res.status(500).json({ message: error?.message || 'Failed to regenerate demo link' });
+  }
+};
+
+// Creates a campaign for a demo session. Fully isolated from the real
+// Campaign/credit system: no credit checks, no subscription writes, no file
+// uploads. Saves only a DemoCampaign row (core fields + full payload snapshot).
+export const createDemoCampaign = async (req: Request, res: Response) => {
+  const userId = req.userId;
+  if (!userId) {
+    return res.status(401).json({ message: 'User not authenticated' });
+  }
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { client: true },
+    });
+
+    if (
+      !user ||
+      user.role !== 'client_demo' ||
+      !user.client ||
+      user.client.clientType !== 'demoClient'
+    ) {
+      return res.status(403).json({ message: 'Only demo clients can create demo campaigns' });
+    }
+
+    if (!user.client.companyId) {
+      return res.status(400).json({ message: 'Demo client is not associated with a company' });
+    }
+
+    // Parse the form payload (same shape the client campaign form sends).
+    let campaignData: any;
+    try {
+      if (!req.body?.data) {
+        return res.status(400).json({ message: 'Missing campaign data' });
+      }
+      campaignData =
+        typeof req.body.data === 'string' ? JSON.parse(req.body.data) : req.body.data;
+    } catch (error) {
+      return res.status(400).json({ message: 'Invalid campaign data format' });
+    }
+
+    const { campaignTitle, campaignDescription, campaignStartDate, campaignEndDate } = campaignData;
+
+    if (!campaignTitle || !campaignDescription) {
+      return res.status(400).json({ message: 'Campaign title and description are required' });
+    }
+
+    const industries = Array.isArray(campaignData.campaignIndustries)
+      ? campaignData.campaignIndustries
+      : [];
+
+    const status =
+      campaignStartDate && dayjs(campaignStartDate).isSame(dayjs(), 'date') ? 'ACTIVE' : 'SCHEDULED';
+
+    // Upload the campaign image(s) to GCS and persist their URLs in the snapshot.
+    const imageUrls: string[] = [];
+    if (req.files && (req.files as any).campaignImages) {
+      const images = Array.isArray((req.files as any).campaignImages)
+        ? (req.files as any).campaignImages
+        : [(req.files as any).campaignImages];
+
+      for (const image of images) {
+        try {
+          const url = await uploadCompanyLogo(image.tempFilePath, image.name);
+          imageUrls.push(url);
+        } catch (uploadError) {
+          console.error('createDemoCampaign image upload error:', uploadError);
+        }
+      }
+    }
+    campaignData.campaignImages = imageUrls;
+
+    const demoCampaign = await prisma.demoCampaign.create({
+      data: {
+        name: campaignTitle,
+        description: campaignDescription,
+        industry: industries[0] || null,
+        startDate: campaignStartDate ? new Date(campaignStartDate) : null,
+        endDate: campaignEndDate ? new Date(campaignEndDate) : null,
+        status,
+        userId: user.id,
+        clientId: user.client.id,
+        companyId: user.client.companyId,
+        data: campaignData,
+      },
+    });
+
+    return res.status(201).json({ message: 'Demo campaign created', campaign: demoCampaign });
+  } catch (error: any) {
+    console.error('createDemoCampaign error:', error);
+    return res.status(500).json({ message: error?.message || 'Failed to create demo campaign' });
+  }
+};
+
+// Maps the flat client-form snapshot stored on a DemoCampaign into the deeply
+// nested `campaign` shape the client campaign-details page expects. Every array
+// a client tab iterates is populated (empty) so the read-only view never crashes.
+const mapDemoCampaignToCampaignShape = (demo: any, company: any) => {
+  const data = (demo.data || {}) as any;
+  const industries = Array.isArray(data.campaignIndustries) ? data.campaignIndustries : [];
+  const images = Array.isArray(data.campaignImages) ? data.campaignImages : [];
+
+  return {
+    id: demo.id,
+    name: data.campaignTitle || demo.name,
+    description: data.campaignDescription || demo.description || '',
+    status: demo.status,
+    origin: 'ADMIN',
+    submissionVersion: 'v2',
+    campaignCredits: null,
+    creditsUtilized: null,
+    creditsPending: null,
+    isCreditTier: false,
+    productName: data.productName || '',
+    brandAbout: data.brandAbout || '',
+    websiteLink: data.websiteLink || '',
+    logisticsType: data.logisticsType || null,
+
+    rawFootage: false,
+    photos: false,
+    ads: false,
+    crossPosting: false,
+
+    campaignBrief: {
+      images,
+      startDate: demo.startDate,
+      endDate: demo.endDate,
+      postingStartDate: data.postingStartDate || null,
+      postingEndDate: data.postingEndDate || null,
+      objectives: data.campaignObjectives || '',
+      secondaryObjectives: Array.isArray(data.secondaryObjectives) ? data.secondaryObjectives : [],
+      boostContent: data.boostContent || '',
+      primaryKPI: data.primaryKPI || '',
+      performanceBaseline: data.performanceBaseline || '',
+      socialMediaPlatform: Array.isArray(data.socialMediaPlatform) ? data.socialMediaPlatform : [],
+      industries: industries.join(', '),
+      referencesLinks: [],
+      otherAttachments: [],
+    },
+
+    campaignRequirement: {
+      gender: Array.isArray(data.audienceGender) ? data.audienceGender : [],
+      age: Array.isArray(data.audienceAge) ? data.audienceAge : [],
+      country: data.country || '',
+      language: Array.isArray(data.audienceLanguage) ? data.audienceLanguage : [],
+      creator_persona: Array.isArray(data.audienceCreatorPersona) ? data.audienceCreatorPersona : [],
+      user_persona: data.audienceUserPersona || '',
+      geographic_focus: data.geographicFocus || '',
+      geographicFocusOthers: data.geographicFocusOthers || '',
+      secondary_gender: Array.isArray(data.secondaryAudienceGender)
+        ? data.secondaryAudienceGender
+        : [],
+      secondary_age: Array.isArray(data.secondaryAudienceAge) ? data.secondaryAudienceAge : [],
+      secondary_country: data.secondaryCountry || '',
+      secondary_language: Array.isArray(data.secondaryAudienceLanguage)
+        ? data.secondaryAudienceLanguage
+        : [],
+      secondary_creator_persona: Array.isArray(data.secondaryAudienceCreatorPersona)
+        ? data.secondaryAudienceCreatorPersona
+        : [],
+      secondary_user_persona: data.secondaryAudienceUserPersona || '',
+    },
+
+    campaignAdditionalDetails: {
+      contentFormat: Array.isArray(data.contentFormat) ? data.contentFormat : [],
+      mainMessage: data.mainMessage || '',
+      keyPoints: data.keyPoints || '',
+      toneAndStyle: data.toneAndStyle || '',
+      brandGuidelinesUrl: null,
+      referenceContent: data.referenceContent || '',
+      productImage1Url: null,
+      productImage2Url: null,
+      hashtagsToUse: data.hashtagsToUse || '',
+      mentionsTagsRequired: data.mentionsTagsRequired || '',
+      creatorCompensation: data.creatorCompensation || '',
+      ctaDesiredAction: data.ctaDesiredAction || '',
+      ctaLinkUrl: data.ctaLinkUrl || '',
+      ctaPromoCode: data.ctaPromoCode || '',
+      ctaLinkInBioRequirements: data.ctaLinkInBioRequirements || '',
+      specialNotesInstructions: data.specialNotesInstructions || '',
+      needAds: data.needAds || '',
+    },
+
+    company: {
+      id: company?.id || demo.companyId,
+      name: company?.name || '',
+      logo: null,
+      about: data.brandAbout || company?.about || '',
+      address: null,
+      website: data.websiteLink || null,
+      pic: [],
+      subscriptions: [],
+    },
+    brand: null,
+
+    // Empty collections — every client tab iterates these.
+    pitch: [],
+    shortlisted: [],
+    submission: [],
+    campaignClients: [],
+    campaignAdmin: [],
+    campaignTimeline: [],
+    logistics: [],
+  };
+};
+
+export const getDemoCampaignById = async (req: Request, res: Response) => {
+  const userId = req.userId;
+  if (!userId) {
+    return res.status(401).json({ message: 'User not authenticated' });
+  }
+
+  const id = String(req.params.id || '').trim();
+  if (!id) {
+    return res.status(400).json({ message: 'Campaign id is required' });
+  }
+
+  try {
+    const client = await prisma.client.findFirst({
+      where: { userId, clientType: 'demoClient' },
+      select: { id: true },
+    });
+
+    if (!client) {
+      return res.status(403).json({ message: 'Demo client not found' });
+    }
+
+    const demo = await prisma.demoCampaign.findFirst({
+      where: { id, clientId: client.id },
+    });
+
+    if (!demo) {
+      return res.status(404).json({ message: 'Demo campaign not found' });
+    }
+
+    const company = await prisma.company.findUnique({
+      where: { id: demo.companyId },
+      select: { id: true, name: true, about: true },
+    });
+
+    return res.status(200).json(mapDemoCampaignToCampaignShape(demo, company));
+  } catch (error: any) {
+    console.error('getDemoCampaignById error:', error);
+    return res.status(500).json({ message: error?.message || 'Failed to fetch demo campaign' });
+  }
+};
+
+export const listDemoCampaigns = async (req: Request, res: Response) => {
+  const userId = req.userId;
+  if (!userId) {
+    return res.status(401).json({ message: 'User not authenticated' });
+  }
+
+  try {
+    const client = await prisma.client.findFirst({
+      where: { userId, clientType: 'demoClient' },
+      select: { id: true },
+    });
+
+    if (!client) {
+      return res.status(403).json({ message: 'Demo client not found' });
+    }
+
+    const campaigns = await prisma.demoCampaign.findMany({
+      where: { clientId: client.id },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return res.status(200).json(campaigns);
+  } catch (error: any) {
+    console.error('listDemoCampaigns error:', error);
+    return res.status(500).json({ message: error?.message || 'Failed to fetch demo campaigns' });
   }
 };
 
