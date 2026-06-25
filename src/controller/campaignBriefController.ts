@@ -163,6 +163,7 @@ export const bdSubmitDraft = async (req: Request, res: Response) => {
     // Optional primary audience (CampaignRequirement)
     user_persona: userPersona,
     geographic_focus: geographicFocus,
+    geographicFocusOthers,
   } = body;
 
   const secondaryObjectives = toStringArray(body.secondaryObjectives);
@@ -172,14 +173,6 @@ export const bdSubmitDraft = async (req: Request, res: Response) => {
   const countrySingle: string = typeof body.country === 'string' && body.country.trim() ? body.country.trim() : '';
   const language = toStringArray(body.language);
   const creatorPersona = toStringArray(body.creator_persona);
-
-  // Map the prospect form's human-readable geographic focus labels to the value
-  // tokens UpdateAudience expects on the BD edit screen.
-  const GEO_FOCUS_LABEL_TO_VALUE: Record<string, string> = {
-    'SEA Region': 'SEAregion',
-    Global: 'global',
-    Others: 'others',
-  };
 
   // Prospects may submit an incomplete brief — only a brand name is required so
   // the lead is identifiable. Everything else (dates, objectives, KPIs,
@@ -284,8 +277,10 @@ export const bdSubmitDraft = async (req: Request, res: Response) => {
     if (language.length) requirementData.language = language;
     if (creatorPersona.length) requirementData.creator_persona = creatorPersona;
     if (typeof geographicFocus === 'string' && geographicFocus.trim()) {
-      const raw = geographicFocus.trim();
-      requirementData.geographic_focus = GEO_FOCUS_LABEL_TO_VALUE[raw] ?? raw;
+      requirementData.geographic_focus = geographicFocus.trim();
+    }
+    if (typeof geographicFocusOthers === 'string' && geographicFocusOthers.trim()) {
+      requirementData.geographicFocusOthers = geographicFocusOthers.trim();
     }
 
     const campaign = await prisma.$transaction(async (tx) => {

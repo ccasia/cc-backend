@@ -55,6 +55,7 @@ import {
   getAllCreatorAgreements,
   getClientCampaigns,
   activateClientCampaign,
+  activateCampaignFull,
   initialActivateCampaign,
   checkCampaignAdmin,
   addClientToCampaignAdmin,
@@ -259,6 +260,7 @@ router.delete('/unsaveCampaign/:id', authenticate, unSaveCampaign);
 
 // Client campaign activation by CSM
 router.post('/activateClientCampaign/:campaignId', authenticate, canActivateCampaign, activateClientCampaign);
+router.post('/activateCampaignFull/:campaignId', authenticate, canActivateCampaign, activateCampaignFull);
 router.post('/initialActivateCampaign/:campaignId', authenticate, canActivateCampaign, initialActivateCampaign);
 
 // Campaign Trends Analytics endpoints

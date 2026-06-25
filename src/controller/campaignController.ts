@@ -1473,6 +1473,432 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
   }
 };
 
+export const activateCampaignFull = async (req: Request, res: Response) => {
+  const { campaignId } = req.params;
+  const rawData = JSON.parse(req.body.data);
+  const {
+    // General info
+    campaignName,
+    campaignDescription,
+    brandAbout,
+    campaignStartDate,
+    campaignEndDate,
+    postingStartDate,
+    postingEndDate,
+    productName,
+    campaignIndustries,
+    websiteLink,
+    // Objectives
+    campaignObjectives,
+    secondaryObjectives,
+    boostContent,
+    primaryKPI,
+    performanceBaseline,
+    // Target audience
+    country,
+    audienceGender,
+    audienceAge,
+    audienceLanguage,
+    audienceCreatorPersona,
+    audienceUserPersona,
+    geographicFocus,
+    geographicFocusOthers,
+    secondaryAudienceGender,
+    secondaryAudienceAge,
+    secondaryAudienceLanguage,
+    secondaryAudienceCreatorPersona,
+    secondaryAudienceUserPersona,
+    secondaryCountry,
+    // Logistics
+    logisticsType,
+    products,
+    schedulingOption,
+    locations,
+    availabilityRules,
+    allowMultipleBookings,
+    clientRemarks,
+    // Activation / deliverables
+    campaignType,
+    rawFootage,
+    photos,
+    crossPosting,
+    ads,
+    campaignManager,
+    agreementFrom,
+    timeline,
+    campaignStage,
+    socialMediaPlatform,
+    // Additional Details 1
+    contentFormat,
+    mainMessage,
+    keyPoints,
+    toneAndStyle,
+    referenceContent,
+    // Additional Details 2
+    hashtagsToUse,
+    mentionsTagsRequired,
+    creatorCompensation,
+    ctaDesiredAction,
+    ctaLinkUrl,
+    ctaPromoCode,
+    ctaLinkInBioRequirements,
+    specialNotesInstructions,
+    needAds,
+  } = rawData;
+
+  try {
+    const campaign = await prisma.$transaction(
+      async (tx) => {
+        // 1. Load + guard
+        const existing = await tx.campaign.findUnique({
+          where: { id: campaignId },
+          include: {
+            campaignBrief: true,
+            campaignRequirement: true,
+            campaignAdditionalDetails: true,
+            campaignTimeline: true,
+            thread: true,
+            campaignAdmin: true,
+          },
+        });
+
+        if (!existing) {
+          throw new Error('Campaign not found');
+        }
+
+        if (existing.status !== 'PENDING_ADMIN_ACTIVATION') {
+          throw new Error(
+            `Campaign cannot be activated from status "${existing.status}". Only campaigns pending admin activation can be activated.`,
+          );
+        }
+
+        // Resolve campaign manager users (admins to assign)
+        const admins = await Promise.all(
+          (campaignManager || []).map(async (admin: any) =>
+            tx.user.findUnique({
+              where: { id: admin?.id as string },
+              include: { admin: true, client: true },
+            }),
+          ),
+        );
+
+        // Upload any newly provided campaign cover images
+        const uploadedImageUrls: string[] = [];
+        if (req.files && (req.files as any).campaignImages) {
+          const images = Array.isArray((req.files as any).campaignImages)
+            ? (req.files as any).campaignImages
+            : [(req.files as any).campaignImages];
+          for (const image of images) {
+            const url = await uploadCompanyLogo(image.tempFilePath, image.name);
+            uploadedImageUrls.push(url);
+          }
+        }
+
+        // Normalize dates
+        const normalizedStartDate = campaignStartDate ? dayjs(campaignStartDate).toDate() : existing.campaignBrief?.startDate ?? new Date();
+        const normalizedEndDate = campaignEndDate ? dayjs(campaignEndDate).toDate() : existing.campaignBrief?.endDate ?? normalizedStartDate;
+        const normalizedPostingStartDate = postingStartDate ? dayjs(postingStartDate).toDate() : existing.campaignBrief?.postingStartDate ?? null;
+        const normalizedPostingEndDate = postingEndDate ? dayjs(postingEndDate).toDate() : existing.campaignBrief?.postingEndDate ?? null;
+
+        // Products (delivery logistics)
+        let productsToCreate: any[] = [];
+        if (logisticsType === 'PRODUCT_DELIVERY' && Array.isArray(products)) {
+          productsToCreate = products
+            .filter((product: any) => product.name && product.name.trim() !== '')
+            .map((product: any) => ({ productName: product.name }));
+        }
+
+        // Finalize countries - combine country + secondaryCountry
+        let finalizedCountries: string[] = [];
+        if (typeof country === 'string' && country) {
+          finalizedCountries.push(country);
+        } else if (Array.isArray(country) && country.length > 0) {
+          finalizedCountries.push(...country);
+        }
+        if (typeof secondaryCountry === 'string' && secondaryCountry) {
+          finalizedCountries.push(secondaryCountry);
+        } else if (Array.isArray(secondaryCountry) && secondaryCountry.length > 0) {
+          finalizedCountries.push(...secondaryCountry);
+        }
+        finalizedCountries = [...new Set(finalizedCountries)];
+
+        // Keep existing images unless new ones were uploaded
+        const existingImages = Array.isArray(existing.campaignBrief?.images)
+          ? (existing.campaignBrief?.images as string[])
+          : [];
+        const finalImages: string[] = uploadedImageUrls.length > 0 ? uploadedImageUrls : existingImages;
+
+        // Status transition (ACTIVE now / SCHEDULED future), default ACTIVE
+        const nextStatus = (campaignStage || 'ACTIVE') as CampaignStatus;
+        const setPublishedAt = (nextStatus === 'ACTIVE' || nextStatus === 'SCHEDULED') && !existing.publishedAt;
+
+        // 2. Update Campaign core (NOT origin / submissionVersion / credits)
+        const updatedCampaign = await tx.campaign.update({
+          where: { id: existing.id },
+          data: {
+            name: campaignName ?? existing.name,
+            description: campaignDescription ?? existing.description,
+            campaignType: campaignType ?? existing.campaignType,
+            brandAbout: brandAbout ?? existing.brandAbout ?? '',
+            productName: productName ?? existing.productName ?? '',
+            websiteLink: websiteLink ?? existing.websiteLink ?? '',
+            logisticsType: logisticsType && logisticsType !== '' ? (logisticsType as LogisticType) : null,
+            rawFootage: rawFootage || false,
+            ads: ads || false,
+            photos: photos || false,
+            crossPosting: crossPosting || false,
+            status: nextStatus,
+            publishedAt: setPublishedAt ? new Date() : existing.publishedAt,
+            agreementTemplate: agreementFrom?.id ? { connect: { id: agreementFrom.id } } : undefined,
+          },
+        });
+
+        // 3a. Brief (row exists for a pending-activation campaign; upsert defensively)
+        const briefData = {
+          title: campaignName ?? existing.campaignBrief?.title ?? '',
+          objectives: campaignObjectives || '',
+          secondaryObjectives: Array.isArray(secondaryObjectives) ? secondaryObjectives : [],
+          boostContent: boostContent || '',
+          primaryKPI: primaryKPI || '',
+          performanceBaseline: performanceBaseline || '',
+          images: finalImages,
+          startDate: normalizedStartDate,
+          endDate: normalizedEndDate,
+          postingStartDate: normalizedPostingStartDate,
+          postingEndDate: normalizedPostingEndDate,
+          industries: campaignIndustries ? campaignIndustries : [],
+          socialMediaPlatform: Array.isArray(socialMediaPlatform) ? socialMediaPlatform : [],
+        };
+        await tx.campaignBrief.upsert({
+          where: { campaignId: existing.id },
+          update: briefData,
+          create: { campaignId: existing.id, ...briefData },
+        });
+
+        // 3b. Requirement (audience)
+        const requirementData = {
+          gender: audienceGender || [],
+          age: audienceAge || [],
+          language: audienceLanguage || [],
+          creator_persona: audienceCreatorPersona || [],
+          user_persona: audienceUserPersona || '',
+          country: finalizedCountries[0] || '',
+          countries: finalizedCountries,
+          secondary_gender: secondaryAudienceGender || [],
+          secondary_age: secondaryAudienceAge || [],
+          secondary_language: secondaryAudienceLanguage || [],
+          secondary_creator_persona: secondaryAudienceCreatorPersona || [],
+          secondary_user_persona: secondaryAudienceUserPersona || '',
+          secondary_country: secondaryCountry || '',
+          geographic_focus: geographicFocus || '',
+          geographicFocusOthers: geographicFocusOthers || '',
+        };
+        await tx.campaignRequirement.upsert({
+          where: { campaignId: existing.id },
+          update: requirementData,
+          create: { campaignId: existing.id, ...requirementData },
+        });
+
+        // 3c. Additional details (may not exist yet)
+        // Attachments the user KEPT from the prefilled set (sent as URL strings).
+        // Merge these with newly uploaded files so adding a file doesn't drop the
+        // pre-existing brand-guideline attachments; a removed one is simply absent.
+        const keptBrandGuidelines: string[] = (() => {
+          const raw = (req.body as any)?.existingBrandGuidelines;
+          if (Array.isArray(raw)) return raw.filter((v): v is string => typeof v === 'string' && !!v);
+          if (typeof raw === 'string' && raw) return [raw];
+          return [];
+        })();
+
+        const brandGuidelinesUrls: string[] = [...keptBrandGuidelines];
+        if (req.files && (req.files as any).brandGuidelines) {
+          const brandGuidelinesFiles = Array.isArray((req.files as any).brandGuidelines)
+            ? (req.files as any).brandGuidelines
+            : [(req.files as any).brandGuidelines];
+          for (const file of brandGuidelinesFiles) {
+            if (file && file.tempFilePath && file.name) {
+              const url = await uploadAttachments({
+                tempFilePath: file.tempFilePath,
+                fileName: file.name,
+                folderName: 'brandGuidelines',
+              });
+              brandGuidelinesUrls.push(url);
+            }
+          }
+        }
+
+        let productImage1Url: string | null = null;
+        if (req.files && (req.files as any).productImage1) {
+          const f = Array.isArray((req.files as any).productImage1)
+            ? (req.files as any).productImage1
+            : [(req.files as any).productImage1];
+          if (f.length > 0) productImage1Url = await uploadCompanyLogo(f[0].tempFilePath, f[0].name);
+        }
+
+        let productImage2Url: string | null = null;
+        if (req.files && (req.files as any).productImage2) {
+          const f = Array.isArray((req.files as any).productImage2)
+            ? (req.files as any).productImage2
+            : [(req.files as any).productImage2];
+          if (f.length > 0) productImage2Url = await uploadCompanyLogo(f[0].tempFilePath, f[0].name);
+        }
+
+        // In the activate form the brand-guidelines field is always rendered and
+        // prefilled, so its submitted state (kept URLs + new uploads) is the full
+        // intended set — write it unconditionally so removals also take effect.
+        // null when the user cleared every attachment.
+        const brandGuidelinesUrl =
+          brandGuidelinesUrls.length === 0 ? null : brandGuidelinesUrls.join(',');
+
+        const additionalDetailsData: any = {
+          contentFormat: Array.isArray(contentFormat) ? contentFormat : [],
+          mainMessage: mainMessage || null,
+          keyPoints: keyPoints || null,
+          toneAndStyle: toneAndStyle || null,
+          referenceContent: referenceContent || null,
+          hashtagsToUse: hashtagsToUse || null,
+          mentionsTagsRequired: mentionsTagsRequired || null,
+          creatorCompensation: creatorCompensation || null,
+          ctaDesiredAction: ctaDesiredAction || null,
+          ctaLinkUrl: ctaLinkUrl || null,
+          ctaPromoCode: ctaPromoCode || null,
+          ctaLinkInBioRequirements: ctaLinkInBioRequirements || null,
+          specialNotesInstructions: specialNotesInstructions || null,
+          needAds: needAds || null,
+        };
+        // Brand guidelines reflect the full submitted set (always written so
+        // additions, removals, and clears all persist).
+        additionalDetailsData.brandGuidelinesUrl = brandGuidelinesUrl;
+        if (productImage1Url !== null) additionalDetailsData.productImage1Url = productImage1Url;
+        if (productImage2Url !== null) additionalDetailsData.productImage2Url = productImage2Url;
+
+        await tx.campaignAdditionalDetails.upsert({
+          where: { campaignId: existing.id },
+          update: additionalDetailsData,
+          create: { campaignId: existing.id, ...additionalDetailsData },
+        });
+
+        // 3d. Products + reservation config: replace to match submitted set
+        await tx.product.deleteMany({ where: { campaignId: existing.id } });
+        if (productsToCreate.length > 0) {
+          await tx.product.createMany({
+            data: productsToCreate.map((p) => ({ ...p, campaignId: existing.id })),
+          });
+        }
+
+        if (logisticsType === 'RESERVATION') {
+          const mode: ReservationMode = schedulingOption === 'auto' ? 'AUTO_SCHEDULE' : 'MANUAL_CONFIRMATION';
+          const locationNames = Array.isArray(locations) ? locations.filter((loc: any) => loc.name && loc.name.trim() !== '') : [];
+          const reservationData = {
+            mode,
+            locations: locationNames as any,
+            availabilityRules: (availabilityRules || []) as any,
+            clientRemarks: clientRemarks || null,
+            allowMultipleBookings: allowMultipleBookings || false,
+          };
+          await tx.reservationConfiguration.upsert({
+            where: { campaignId: existing.id },
+            update: reservationData,
+            create: { campaignId: existing.id, ...reservationData },
+          });
+        } else {
+          await tx.reservationConfiguration.deleteMany({ where: { campaignId: existing.id } });
+        }
+
+        // 4. Reconcile campaign admins (add new; never duplicate)
+        const newlyAddedAdminIds: string[] = [];
+        for (const admin of admins.filter(Boolean)) {
+          const adminUserId = (admin as any).id;
+          const exists = await tx.campaignAdmin.findUnique({
+            where: { adminId_campaignId: { adminId: adminUserId, campaignId: existing.id } },
+          });
+          if (!exists) {
+            await tx.campaignAdmin.create({ data: { adminId: adminUserId, campaignId: existing.id } });
+            newlyAddedAdminIds.push(adminUserId);
+          }
+        }
+
+        // 5. Timelines: only create if the campaign has none yet (avoid stacking)
+        if (!existing.campaignTimeline || existing.campaignTimeline.length === 0) {
+          const { createCampaignTimelines } = require('../helper/campaignTimelineHelper');
+          await createCampaignTimelines(tx, existing.id, timeline, {
+            submissionVersion: existing.submissionVersion || 'v2',
+            campaignStartDate: normalizedStartDate,
+            campaignEndDate: normalizedEndDate,
+            postingStartDate: normalizedPostingStartDate,
+            postingEndDate: normalizedPostingEndDate,
+            campaignType: campaignType ?? existing.campaignType,
+          });
+        }
+
+        // 6. Credits: untouched by design.
+
+        // 7. Side effects: update existing thread; notify + event for newly added admins.
+        if (existing.thread) {
+          await tx.thread.update({
+            where: { id: existing.thread.id },
+            data: {
+              title: updatedCampaign.name,
+              description: updatedCampaign.description,
+              photoURL: finalImages[0] ?? existing.thread.photoURL,
+            },
+          });
+        }
+
+        await Promise.all(
+          admins
+            .filter((a: any) => a && newlyAddedAdminIds.includes(a.id))
+            .map(async (admin: any) => {
+              await tx.event.create({
+                data: {
+                  start: dayjs(normalizedStartDate).format(),
+                  end: dayjs(normalizedEndDate).format(),
+                  title: updatedCampaign.name,
+                  userId: admin.id as string,
+                  allDay: false,
+                },
+              });
+
+              const { title, message } = notificationAdminAssign(updatedCampaign.name);
+              const notif = await tx.notification.create({
+                data: {
+                  title,
+                  message,
+                  entity: 'Status',
+                  campaign: { connect: { id: existing.id } },
+                  userNotification: { create: { userId: admin.id } },
+                },
+                include: { userNotification: { select: { userId: true } } },
+              });
+              if (clients.get(admin.id)) io.to(clients.get(admin.id)).emit('notification', notif);
+            }),
+        );
+
+        logChange('Activated the Campaign', existing.id, req);
+        await tx.campaignLog.create({
+          data: {
+            message: 'Campaign Activated',
+            adminId: req.userId,
+            campaignId: existing.id,
+          },
+        });
+
+        return updatedCampaign;
+      },
+      { timeout: 500000 },
+    );
+
+    if (io) io.emit('campaign');
+
+    return res.status(200).json({ campaign, message: 'Campaign activated successfully.' });
+  } catch (error) {
+    if (!res.headersSent) {
+      return res.status(400).json({ message: error?.message || 'Failed to activate campaign' });
+    }
+    console.error('activateCampaignFull error after response sent:', error);
+  }
+};
+
 async function syncCreatorsCampaignSheetInternal() {
   // Spreadsheet and sheet details from user request
   const spreadsheetId = '1E6Rcm-0VA5INObz7weqpcdaQ7pcSLej7guiq8mwfjKo';
