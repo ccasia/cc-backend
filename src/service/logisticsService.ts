@@ -6,6 +6,17 @@ export const fetchAllLogisticsForCampaign = async (campaignId: string) => {
   const logistics = await prisma.logistic.findMany({
     where: {
       campaignId: campaignId,
+      creator: {
+        submission: {
+          some: {
+            campaignId: campaignId,
+            status: 'APPROVED',
+            submissionType: {
+              type: 'AGREEMENT_FORM',
+            },
+          },
+        },
+      },
     },
     include: {
       creator: {
