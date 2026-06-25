@@ -15,13 +15,14 @@ const CLIENT_EDITABLE_FIELDS = new Set<string>([
   'kpis',
   'kpiNotes',
   'extraNotes',
-  'gender',
-  'age',
+  'audienceGender',
+  'audienceAge',
   'country',
-  'language',
-  'creatorPersona',
-  'userPersona',
+  'audienceLanguage',
+  'audienceCreatorPersona',
+  'audienceUserPersona',
   'geographicFocus',
+  'geographicFocusOthers',
 ]);
 
 type BriefUpdateInput = Record<string, unknown>;
@@ -135,12 +136,6 @@ export const updateDraftBrief = async (
   });
 };
 
-const GEO_FOCUS_LABEL_TO_VALUE: Record<string, string> = {
-  'SEA Region': 'SEAregion',
-  Global: 'global',
-  Others: 'others',
-};
-
 // Translates the bd-brief-form payload (what the frontend brief form sends)
 // into nested writes across Campaign / CampaignBrief / CampaignRequirement /
 // CampaignAdditionalDetails. Field names mirror
@@ -208,20 +203,21 @@ const mapBriefPatch = (
   }
 
   // ── CampaignRequirement fields ─────────────────────────────────────────
-  if (Array.isArray(patch.gender)) requirementData.gender = patch.gender.filter((v): v is string => typeof v === 'string');
-  if (Array.isArray(patch.age)) requirementData.age = patch.age.filter((v): v is string => typeof v === 'string');
+  if (Array.isArray(patch.audienceGender)) requirementData.gender = patch.audienceGender.filter((v): v is string => typeof v === 'string');
+  if (Array.isArray(patch.audienceAge)) requirementData.age = patch.audienceAge.filter((v): v is string => typeof v === 'string');
   if (typeof patch.country === 'string') requirementData.country = patch.country;
-  if (Array.isArray(patch.language)) {
-    requirementData.language = patch.language.filter((v): v is string => typeof v === 'string');
+  if (Array.isArray(patch.audienceLanguage)) {
+    requirementData.language = patch.audienceLanguage.filter((v): v is string => typeof v === 'string');
   }
-  if (Array.isArray(patch.creatorPersona)) {
-    requirementData.creator_persona = patch.creatorPersona.filter((v): v is string => typeof v === 'string');
+  if (Array.isArray(patch.audienceCreatorPersona)) {
+    requirementData.creator_persona = patch.audienceCreatorPersona.filter((v): v is string => typeof v === 'string');
   }
-  if (typeof patch.userPersona === 'string') requirementData.user_persona = patch.userPersona;
+  if (typeof patch.audienceUserPersona === 'string') requirementData.user_persona = patch.audienceUserPersona;
   if (typeof patch.geographicFocus === 'string') {
-    requirementData.geographic_focus = patch.geographicFocus
-      ? (GEO_FOCUS_LABEL_TO_VALUE[patch.geographicFocus] ?? patch.geographicFocus)
-      : null;
+    requirementData.geographic_focus = patch.geographicFocus || null;
+  }
+  if (typeof patch.geographicFocusOthers === 'string') {
+    requirementData.geographicFocusOthers = patch.geographicFocusOthers || null;
   }
 
   // Build a self-sufficient `create` payload for each upsert branch so the
@@ -297,6 +293,7 @@ const buildBriefSnapshot = (brief: {
     creator_persona?: string[] | null;
     user_persona?: string | null;
     geographic_focus?: string | null;
+    geographicFocusOthers?: string | null;
   } | null;
   campaignAdditionalDetails?: { specialNotesInstructions?: string | null } | null;
 }): BriefSnapshot => {
@@ -323,13 +320,14 @@ const buildBriefSnapshot = (brief: {
     kpis,
     kpiNotes: kpiNotesLine ? kpiNotesLine[1].trim() : '',
     extraNotes: brief.description || '',
-    gender: brief.campaignRequirement?.gender || [],
-    age: brief.campaignRequirement?.age || [],
+    audienceGender: brief.campaignRequirement?.gender || [],
+    audienceAge: brief.campaignRequirement?.age || [],
     country: brief.campaignRequirement?.country || '',
-    language: brief.campaignRequirement?.language || [],
-    creatorPersona: brief.campaignRequirement?.creator_persona || [],
-    userPersona: brief.campaignRequirement?.user_persona || '',
+    audienceLanguage: brief.campaignRequirement?.language || [],
+    audienceCreatorPersona: brief.campaignRequirement?.creator_persona || [],
+    audienceUserPersona: brief.campaignRequirement?.user_persona || '',
     geographicFocus: brief.campaignRequirement?.geographic_focus || '',
+    geographicFocusOthers: brief.campaignRequirement?.geographicFocusOthers || '',
   };
 };
 
@@ -389,6 +387,7 @@ export const sendBriefToClient = async (
           creator_persona: true,
           user_persona: true,
           geographic_focus: true,
+          geographicFocusOthers: true,
         },
       },
       campaignAdditionalDetails: { select: { specialNotesInstructions: true } },
@@ -466,6 +465,7 @@ export const snapshotPublicSubmission = async (briefId: string) => {
           creator_persona: true,
           user_persona: true,
           geographic_focus: true,
+          geographicFocusOthers: true,
         },
       },
       campaignAdditionalDetails: { select: { specialNotesInstructions: true } },
