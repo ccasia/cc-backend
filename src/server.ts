@@ -20,6 +20,7 @@ import '@services/uploadVideo';
 import '@helper/processPitchVideo';
 import './helper/videoDraft';
 import './helper/videoDraftWorker';
+import './helper/xeroWebhookWorker';
 
 import dotenv from 'dotenv';
 import '@services/google_sheets/sheets';
@@ -39,10 +40,8 @@ import { model } from './scripts/ai';
 
 import crypto from 'crypto';
 
-import { TokenSet } from 'xero-node';
 import { prisma } from './prisma/prisma';
-import { xero } from '@configs/xero';
-import { logChange } from '@services/campaignServices';
+import { xeroWebhookQueue } from '@utils/queue';
 
 import { users } from '@utils/activeUsers';
 
@@ -168,74 +167,19 @@ app.post('/webhooks/xero', express.raw({ type: 'application/json', limit: '100mb
     if (xeroSignature !== expectedSignature) return res.status(401).send('Invalid signature');
 
     const payload = JSON.parse(req.body.toString('utf8'));
-    console.log('✅ Xero Webhook Verified', payload);
+    console.log('✅ Xero Webhook Verified:', payload.events?.length ?? 0, 'event(s)');
 
     if (!payload.events || !payload.events.length) return res.status(200).send('OK');
 
-    const user = await prisma.user.findFirst({
-      where: {
-        email: process.env.NODE_ENV === 'development' ? 'super@cultcreativeasia.com' : 'super@cultcreativeasia.com',
-      },
-      include: { admin: { select: { xeroTokenSet: true } } },
-    });
-
-    if (!user) return res.sendStatus(400);
-
-    const tokenSet: TokenSet = user.admin?.xeroTokenSet as TokenSet;
-    if (!tokenSet) throw new Error('User not connected to Xero');
-
-    await xero.initialize();
-    xero.setTokenSet(tokenSet);
-
-    if (dayjs.unix(tokenSet.expires_at!).isBefore(dayjs())) {
-      const validTokenSet = await xero.refreshToken();
-      // save the new tokenset
-      await prisma.admin.update({
-        where: {
-          userId: user.id,
-        },
-        data: {
-          xeroTokenSet: validTokenSet as any,
-        },
-      });
-    }
-
-    await xero.updateTenants();
-
-    // Handle all events
-    for (const event of payload.events) {
-      const { tenantId } = event;
-
-      // Fetch all paid invoices (or filter by invoiceID if needed)
-      const invoiceData = await xero.accountingApi.getInvoices(tenantId, undefined, 'Status=="PAID"');
-      const xeroInvoices = invoiceData.body.invoices || [];
-      const xeroInvoicesIds = xeroInvoices.map((inv) => inv.invoiceID);
-
-      if (xeroInvoicesIds.length) {
-        // Query invoices not yet paid before updating, so we only log newly-paid ones
-        const notYetPaid = await prisma.invoice.findMany({
-          where: { xeroInvoiceId: { in: xeroInvoicesIds as string[] }, status: { not: 'paid' } },
-          select: { invoiceNumber: true, campaignId: true, user: { select: { name: true } } },
-        });
-
-        const invoices = await prisma.invoice.updateMany({
-          where: { xeroInvoiceId: { in: xeroInvoicesIds as string[] } },
-          data: { status: 'paid' },
-        });
-        console.log('Updated invoices:', invoices);
-
-        // Log only invoices that actually transitioned to paid
-        for (const inv of notYetPaid) {
-          logChange(
-            `Invoice ${inv.invoiceNumber} for ${inv.user?.name || 'Unknown Creator'} was marked as paid`,
-            inv.campaignId,
-            undefined,
-            undefined,
-            { systemLabel: 'Xero' },
-          );
-        }
-      }
-    }
+    // Ack immediately and process events asynchronously so we always respond 2XX well within
+    // Xero's ~5s window. Heavy Xero/Prisma work and rate-limit (Retry-After) handling run in
+    // helper/xeroWebhookWorker.ts. Enqueue makes no Xero API call, so a failure here is safe to
+    // surface as 500 (Xero retries and we simply re-enqueue without touching the daily quota).
+    await xeroWebhookQueue.add(
+      'xero-webhook',
+      { events: payload.events },
+      { removeOnComplete: true, removeOnFail: 100 },
+    );
 
     res.status(200).send('OK');
   } catch (error) {
