@@ -463,10 +463,10 @@ export const createClientDemoSession = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'This demo link is no longer valid' });
     }
 
-    const accessToken = jwt.sign({ id: client.user.id }, process.env.ACCESSKEY as Secret, {
+    const accessToken = jwt.sign({ userId: client.user.id, email: client.user.email }, process.env.ACCESSKEY as Secret, {
       expiresIn: '4h',
     });
-    const refreshToken = jwt.sign({ id: client.user.id }, process.env.REFRESHKEY as Secret);
+    const refreshToken = jwt.sign({ userId: client.user.id, email: client.user.email }, process.env.REFRESHKEY as Secret);
 
     const session = req.session as any;
     session.userid = client.user.id;
