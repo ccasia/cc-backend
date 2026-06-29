@@ -1911,59 +1911,136 @@ export type DiscoveryBookmarkPlatform = (typeof DISCOVERY_BOOKMARK_PLATFORMS)[nu
 export const isDiscoveryBookmarkPlatform = (value: unknown): value is DiscoveryBookmarkPlatform =>
   DISCOVERY_BOOKMARK_PLATFORMS.includes(value as DiscoveryBookmarkPlatform);
 
-export const getDiscoveryBookmarkedCreators = async (userId: string) => {
-  const bookmarks = await prismaAny.bookMarkCreator.findMany({
-    where: { userId },
-    orderBy: { createdAt: 'desc' },
-  });
-
+// Shared helper: map a list of bookmark membership rows into hydrated discovery
+// creator rows, preserving the order of the supplied memberships (de-duplicated
+// by rowId so a creator that appears in several selected lists shows once).
+const mapBookmarkMembershipsToCreatorRows = async (memberships: { creatorUserId: string; platform: string }[]) => {
   const creatorUserIds = Array.from(
-    new Set(bookmarks.map((bookmark: any) => String(bookmark.creatorUserId || '').trim()).filter(Boolean)),
+    new Set(memberships.map((m) => String(m.creatorUserId || '').trim()).filter(Boolean)),
   );
 
-  let data: any[] = [];
+  if (creatorUserIds.length === 0) return [];
 
-  if (creatorUserIds.length > 0) {
-    const rows = await prismaAny.user.findMany({
-      where: { id: { in: creatorUserIds } },
-      select: buildConnectedSelect(false),
-    });
+  const rows = await prismaAny.user.findMany({
+    where: { id: { in: creatorUserIds } },
+    select: buildConnectedSelect(false),
+  });
 
-    const bookmarkedRowIds = new Set(
-      bookmarks.map((bookmark: any) => `${bookmark.creatorUserId}-${bookmark.platform}`),
-    );
+  const mappedRows = mapConnectedDiscoveryRows(rows, 'all', { includeDbTopVideos: true });
+  const pastCampaignsByCreator = await getPastCampaignsByCreatorIds(creatorUserIds as string[]);
+  const rowsByRowId = new Map(
+    mappedRows.map((mappedRow: any) => [
+      mappedRow.rowId,
+      { ...mappedRow, pastCampaigns: pastCampaignsByCreator.get(mappedRow.userId) || [] },
+    ]),
+  );
 
-    const mappedRows = mapConnectedDiscoveryRows(rows, 'all', { includeDbTopVideos: true });
-    const pastCampaignsByCreator = await getPastCampaignsByCreatorIds(creatorUserIds as string[]);
-    const rowsByRowId = new Map(
-      mappedRows.map((mappedRow: any) => [
-        mappedRow.rowId,
-        { ...mappedRow, pastCampaigns: pastCampaignsByCreator.get(mappedRow.userId) || [] },
-      ]),
-    );
+  const seen = new Set<string>();
+  const data: any[] = [];
+  memberships.forEach((m) => {
+    const rowId = `${m.creatorUserId}-${m.platform}`;
+    if (seen.has(rowId)) return;
+    const mappedRow = rowsByRowId.get(rowId);
+    if (mappedRow) {
+      seen.add(rowId);
+      data.push(mappedRow);
+    }
+  });
 
-    // Preserve bookmark order (most recent first)
-    data = bookmarks
-      .map((bookmark: any) => rowsByRowId.get(`${bookmark.creatorUserId}-${bookmark.platform}`))
-      .filter((mappedRow: any) => mappedRow && bookmarkedRowIds.has(mappedRow.rowId));
-  }
+  return data;
+};
+
+// Returns the account's bookmark lists (with creator counts) plus a flat list of
+// every membership so the UI can show which lists a given creator already lives in.
+export const getBookmarkLists = async (userId: string) => {
+  const lists = await prismaAny.bookMarkCreatorList.findMany({
+    where: { userId },
+    orderBy: { createdAt: 'asc' },
+    select: {
+      id: true,
+      name: true,
+      createdAt: true,
+      _count: { select: { creators: true } },
+    },
+  });
+
+  const memberships = await prismaAny.bookMarkCreator.findMany({
+    where: { userId },
+    select: { listId: true, creatorUserId: true, platform: true },
+  });
 
   return {
-    data,
-    bookmarks: bookmarks.map((bookmark: any) => ({
-      creatorUserId: bookmark.creatorUserId,
-      platform: bookmark.platform,
-      createdAt: bookmark.createdAt,
+    lists: lists.map((list: any) => ({
+      id: list.id,
+      name: list.name,
+      count: list._count?.creators ?? 0,
+      createdAt: list.createdAt,
     })),
-    total: bookmarks.length,
+    memberships,
   };
 };
 
-export const addDiscoveryBookmark = async (
+export const createBookmarkList = async (userId: string, name: string) => {
+  const trimmedName = String(name || '').trim();
+  if (!trimmedName) throw new Error('List name is required');
+
+  const existing = await prismaAny.bookMarkCreatorList.findUnique({
+    where: { userId_name: { userId, name: trimmedName } },
+  });
+  if (existing) throw new Error('A list with this name already exists');
+
+  return prismaAny.bookMarkCreatorList.create({
+    data: { userId, name: trimmedName },
+    select: { id: true, name: true, createdAt: true },
+  });
+};
+
+export const deleteBookmarkList = async (userId: string, listId: string) => {
+  const list = await prismaAny.bookMarkCreatorList.findUnique({
+    where: { id: listId },
+    select: { id: true, userId: true },
+  });
+
+  if (!list || list.userId !== userId) {
+    throw new Error('List not found');
+  }
+
+  await prismaAny.bookMarkCreatorList.delete({ where: { id: listId } });
+  return { deleted: true };
+};
+
+// Creators that belong to the given lists (union). When no listIds are supplied,
+// returns creators across all of the account's lists. Ordered most-recent first.
+export const getBookmarkedCreatorsByLists = async (userId: string, listIds: string[]) => {
+  const memberships = await prismaAny.bookMarkCreator.findMany({
+    where: {
+      userId,
+      ...(listIds.length > 0 ? { listId: { in: listIds } } : {}),
+    },
+    orderBy: { createdAt: 'desc' },
+    select: { creatorUserId: true, platform: true },
+  });
+
+  const data = await mapBookmarkMembershipsToCreatorRows(memberships);
+
+  return { data, total: data.length };
+};
+
+export const addCreatorToList = async (
   userId: string,
+  listId: string,
   creatorUserId: string,
   platform: DiscoveryBookmarkPlatform,
 ) => {
+  const list = await prismaAny.bookMarkCreatorList.findUnique({
+    where: { id: listId },
+    select: { id: true, userId: true },
+  });
+
+  if (!list || list.userId !== userId) {
+    throw new Error('List not found');
+  }
+
   const creatorUser = await prismaAny.user.findUnique({
     where: { id: creatorUserId },
     select: { id: true, role: true },
@@ -1975,20 +2052,30 @@ export const addDiscoveryBookmark = async (
 
   return prismaAny.bookMarkCreator.upsert({
     where: {
-      userId_creatorUserId_platform: { userId, creatorUserId, platform },
+      listId_creatorUserId_platform: { listId, creatorUserId, platform },
     },
     update: {},
-    create: { userId, creatorUserId, platform },
+    create: { userId, listId, creatorUserId, platform },
   });
 };
 
-export const removeDiscoveryBookmark = async (
+export const removeCreatorFromList = async (
   userId: string,
+  listId: string,
   creatorUserId: string,
   platform: DiscoveryBookmarkPlatform,
 ) => {
+  const list = await prismaAny.bookMarkCreatorList.findUnique({
+    where: { id: listId },
+    select: { id: true, userId: true },
+  });
+
+  if (!list || list.userId !== userId) {
+    throw new Error('List not found');
+  }
+
   const result = await prismaAny.bookMarkCreator.deleteMany({
-    where: { userId, creatorUserId, platform },
+    where: { listId, creatorUserId, platform },
   });
 
   return { removedCount: result.count };

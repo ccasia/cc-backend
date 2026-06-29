@@ -37,6 +37,7 @@ model User {
   BookMarkCampaign        BookMarkCampaign[]
   bookMarkCreator         BookMarkCreator[]   @relation("BookMarkCreatorOwner")
   bookMarkedBy            BookMarkCreator[]   @relation("BookMarkCreatorTarget")
+  bookMarkCreatorLists    BookMarkCreatorList[]
   campaignLogs            CampaignLog[]
   CampaignTaskAdmin       CampaignTaskAdmin[]
   creator                 Creator?
@@ -170,9 +171,10 @@ model Admin {
 }
 
 model Client {
-  id          String  @id @unique @default(cuid())
-  inviteToken String? @unique
-  companyId   String?
+  id              String  @id @unique @default(cuid())
+  inviteToken     String? @unique
+  demoAccessToken String? @unique
+  companyId       String?
 
   // Remove admin sharing - clients should not share admin IDs
   // adminId String? @unique  // ❌ REMOVED
@@ -207,6 +209,7 @@ enum ClientType {
   directClient
   agencyClient
   enterpriseClient
+  demoClient
 }
 
 enum ClientCampaignRole {
@@ -817,16 +820,60 @@ model BookMarkCampaign {
   @@unique([userId, campaignId])
 }
 
+model BookMarkCreatorList {
+  id        String            @id @default(cuid())
+  userId    String
+  name      String
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  creators  BookMarkCreator[]
+
+  @@unique([userId, name])
+  @@index([userId])
+}
+
 model BookMarkCreator {
-  id            String   @id @unique @default(cuid())
+  id            String              @id @unique @default(cuid())
   userId        String
+  listId        String
   creatorUserId String
   platform      String
-  createdAt     DateTime @default(now())
-  user          User     @relation("BookMarkCreatorOwner", fields: [userId], references: [id])
-  creatorUser   User     @relation("BookMarkCreatorTarget", fields: [creatorUserId], references: [id])
+  createdAt     DateTime            @default(now())
+  user          User                @relation("BookMarkCreatorOwner", fields: [userId], references: [id])
+  creatorUser   User                @relation("BookMarkCreatorTarget", fields: [creatorUserId], references: [id])
+  list          BookMarkCreatorList @relation(fields: [listId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, creatorUserId, platform])
+  @@unique([listId, creatorUserId, platform])
+  @@index([userId])
+  @@index([listId])
+}
+
+// Isolated table for campaigns created by client_demo sessions.
+// Has no link to real Campaign / credits / subscriptions. Owner IDs are
+// scalar (no formal relations) so this stays fully self-contained.
+model DemoCampaign {
+  id          String    @id @unique @default(cuid())
+  name        String
+  description String?
+  industry    String?
+  startDate   DateTime?
+  endDate     DateTime?
+  status      String    @default("SCHEDULED")
+
+  // Owner (demo session) — scalar IDs, isolated from real tables
+  userId    String // demo User.id (role client_demo)
+  clientId  String // demo Client.id (clientType demoClient)
+  companyId String // demo Company.id
+
+  data Json? // full submitted form payload snapshot
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([clientId])
+  @@index([userId])
 }
 
 // Separate admin and client campaign access models
@@ -1963,6 +2010,7 @@ enum RoleEnum {
   admin
   creator
   client
+  client_demo
   brand
   superadmin
   finance

@@ -40,6 +40,7 @@ import discoveryRoute from './discoveryRoute';
 import systemSettingRoute from './systemSettingRoute';
 import approvalRoute from './approvalRoute';
 import campaignBriefRoute from './campaignBriefRoute';
+import clientDemoRoute from './clientDemoRoute';
 
 export const router = express.Router();
 
@@ -84,3 +85,4 @@ router.use('/discovery', discoveryRoute);
 router.use('/system-settings', systemSettingRoute);
 router.use('/approval-requests', approvalRoute);
 router.use('/briefs', campaignBriefRoute);
+router.use('/client-demo', clientDemoRoute);
