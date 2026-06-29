@@ -266,12 +266,20 @@ export const getDashboardAttention = async (req: Request, res: Response) => {
       clientRejectedCount,
       clientApprovedCount,
     ] = await Promise.all([
-      prisma.creatorAgreement.count({
-        where: { isSent: false },
+      // Agreements: matches what AgreementsPendingModal fetches
+      prisma.submission.count({
+        where: {
+          status: 'PENDING_REVIEW',
+          submissionType: { type: 'AGREEMENT_FORM' },
+        },
       }),
 
+      // Submissions (drafts): excludes agreement forms to avoid double-counting
       prisma.submission.count({
-        where: { status: 'PENDING_REVIEW' },
+        where: {
+          status: 'PENDING_REVIEW',
+          submissionType: { type: { not: 'AGREEMENT_FORM' } },
+        },
       }),
 
       prisma.pitch.count({
@@ -288,8 +296,12 @@ export const getDashboardAttention = async (req: Request, res: Response) => {
         where: { status: 'CLIENT_FEEDBACK' },
       }),
 
+      // Overdue invoices: matches OverdueInvoicesModal (only campaigns with admin assigned)
       prisma.invoice.count({
-        where: { status: 'overdue' },
+        where: {
+          status: 'overdue',
+          campaign: { campaignAdmin: { some: {} } },
+        },
       }),
 
       prisma.pitch.findMany({
