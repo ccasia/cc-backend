@@ -26,6 +26,7 @@ import {
   unmarkMediaKitMandatory,
 } from '@controllers/creatorController';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
+import { canViewCreatorMediaKit } from '@middlewares/adminOrClient';
 // import { needPermissions } from '@middlewares/needPermissions';
 import { authenticate } from '@middlewares/authenticate';
 
@@ -38,7 +39,7 @@ router.get('/getMediaKit', authenticate, isSuperAdmin, getMediaKit);
 
 router.get('/mobile/media-kit', authenticate, getMobileMediaKit);
 
-router.get('/getCreatorByID/:id', authenticate, isSuperAdmin, getCreatorByID);
+router.get('/getCreatorByID/:id', authenticate, canViewCreatorMediaKit, getCreatorByID);
 router.get('/getCreatorFullInfoById/:id', getCreatorFullInfoById);
 router.get('/public/getCreatorFullInfoById/:id', getCreatorFullInfoByIdPublic);
 router.get('/getCreatorSocialMediaData', getCreatorSocialMediaData);

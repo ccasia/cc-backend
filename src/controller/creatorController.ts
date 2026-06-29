@@ -106,6 +106,13 @@ export const getCreatorByID = async (req: Request, res: Response) => {
           id: id,
         },
       },
+      // This endpoint is exposed to client/client_demo roles (media kit view),
+      // so never return auth secrets on the User record.
+      omit: {
+        password: true,
+        xeroRefreshToken: true,
+        twoFactorSecret: true,
+      },
       include: {
         creator: {
           include: {
