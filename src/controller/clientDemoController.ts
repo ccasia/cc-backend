@@ -31,10 +31,27 @@ const isTrustedDemoOrigin = (origin: string) => {
   }
 };
 
+const getOriginFromReferer = (referer?: string) => {
+  if (!referer) return undefined;
+  try {
+    const url = new URL(referer);
+    return `${url.protocol}//${url.host}`;
+  } catch {
+    return undefined;
+  }
+};
+
 const getTrustedDemoOrigin = (req: Request) => {
   const origin = normalizeOrigin(req.get('origin'));
+  if (origin && isTrustedDemoOrigin(origin)) return origin;
 
-  return origin && isTrustedDemoOrigin(origin) ? origin : null;
+  // Same-origin GET requests (e.g. fetching an existing demo link) don't send
+  // an Origin header, so fall back to the Referer's origin. The result is still
+  // validated against the trusted-origin allowlist below.
+  const refererOrigin = normalizeOrigin(getOriginFromReferer(req.get('referer')));
+  if (refererOrigin && isTrustedDemoOrigin(refererOrigin)) return refererOrigin;
+
+  return null;
 };
 
 const sendUntrustedDemoOriginResponse = (res: Response) => {
