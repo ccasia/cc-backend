@@ -7,9 +7,17 @@ import { prisma } from '../prisma/prisma';
 
 const DEMO_TOKEN_LENGTH = 32;
 
+const getDemoBaseUrl = () => {
+  const base = process.env.APP_PUBLIC_URL?.trim();
+  if (!base) {
+    throw new Error('APP_PUBLIC_URL is required to generate demo links');
+  }
+
+  return base.replace(/\/$/, '');
+};
+
 const getDemoUrl = (token: string) => {
-  const base = process.env.APP_PUBLIC_URL || process.env.BACKEND_URL || 'http://localhost';
-  return `${base.replace(/\/$/, '')}/client-demo/${token}`;
+  return `${getDemoBaseUrl()}/client-demo/${token}`;
 };
 
 const generateUniqueDemoToken = async () => {
@@ -27,6 +35,7 @@ export const createClientDemo = async (req: Request, res: Response) => {
   if (!rawName) return res.status(400).json({ message: 'Demo client name is required' });
 
   try {
+    getDemoBaseUrl();
     const demoAccessToken = await generateUniqueDemoToken();
     const demoEmail = `demo+${demoAccessToken.toLowerCase()}@cultcreativeasia.com`;
 
@@ -463,10 +472,17 @@ export const createClientDemoSession = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'This demo link is no longer valid' });
     }
 
-    const accessToken = jwt.sign({ userId: client.user.id, email: client.user.email }, process.env.ACCESSKEY as Secret, {
-      expiresIn: '4h',
-    });
-    const refreshToken = jwt.sign({ userId: client.user.id, email: client.user.email }, process.env.REFRESHKEY as Secret);
+    const accessToken = jwt.sign(
+      { userId: client.user.id, email: client.user.email },
+      process.env.ACCESSKEY as Secret,
+      {
+        expiresIn: '4h',
+      },
+    );
+    const refreshToken = jwt.sign(
+      { userId: client.user.id, email: client.user.email },
+      process.env.REFRESHKEY as Secret,
+    );
 
     const session = req.session as any;
     session.userid = client.user.id;
