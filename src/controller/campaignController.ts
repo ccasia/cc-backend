@@ -1527,6 +1527,9 @@ export const activateCampaignFull = async (req: Request, res: Response) => {
     agreementFrom,
     timeline,
     campaignStage,
+    // Client + credits (brief/handover activation: charge subs + link package)
+    client,
+    campaignCredits,
     socialMediaPlatform,
     // Additional Details 1
     contentFormat,
@@ -1632,7 +1635,73 @@ export const activateCampaignFull = async (req: Request, res: Response) => {
         const nextStatus = (campaignStage || 'ACTIVE') as CampaignStatus;
         const setPublishedAt = (nextStatus === 'ACTIVE' || nextStatus === 'SCHEDULED') && !existing.publishedAt;
 
-        // 2. Update Campaign core (NOT origin / submissionVersion / credits)
+        // Credit allocation + subscription link. The brief/handover flow reaches
+        // activation here with credits chosen in the form but never charged, and
+        // with no subscription connected. Mirror createCampaignV2: charge the
+        // company's ACTIVE subscriptions FIFO, build the allocation breakdown,
+        // increment creditsUsed, and connect the first charged subscription.
+        //
+        // Idempotent: skip if the campaign was already allocated (re-activation
+        // must not double-charge) — in that case just (re)link the FK.
+        const companyId = existing.companyId || client?.id || null;
+        const requestedCredits = Number(campaignCredits) || 0;
+        const existingAllocation = (existing.creditAllocationBreakdown as { subscriptionId: string }[] | null) || [];
+        const alreadyAllocated = existingAllocation.length > 0 || Boolean(existing.subscriptionId);
+
+        let subscriptionToConnect: string | undefined = existing.subscriptionId || undefined;
+        let creditFields: {
+          campaignCredits?: number;
+          creditsPending?: number;
+          creditsUtilized?: number;
+          creditAllocationBreakdown?: any;
+        } = {};
+
+        if (companyId && !alreadyAllocated) {
+          const activeSubs = await tx.subscription.findMany({
+            where: { companyId, status: 'ACTIVE' },
+            orderBy: { createdAt: 'asc' },
+          });
+
+          if (activeSubs.length > 0) {
+            // Link a package even when no credits are charged.
+            subscriptionToConnect = activeSubs[0].id;
+
+            if (requestedCredits > 0) {
+              const availableCredits = await getRemainingCredits(companyId);
+              if (typeof availableCredits === 'number' && requestedCredits > availableCredits) {
+                throw new Error(
+                  `Not enough credits to activate the campaign. Requested ${requestedCredits}, available ${availableCredits}.`,
+                );
+              }
+
+              const breakdown: { subscriptionId: string; amount: number }[] = [];
+              let remaining = requestedCredits;
+              for (const sub of activeSubs) {
+                if (remaining <= 0) break;
+                const available = (sub.totalCredits || 0) - (sub.creditsUsed || 0);
+                if (available > 0) {
+                  const chargeAmount = Math.min(available, remaining);
+                  breakdown.push({ subscriptionId: sub.id, amount: chargeAmount });
+                  remaining -= chargeAmount;
+                  await tx.subscription.update({
+                    where: { id: sub.id },
+                    data: { creditsUsed: { increment: chargeAmount } },
+                  });
+                }
+              }
+
+              if (breakdown.length > 0) subscriptionToConnect = breakdown[0].subscriptionId;
+              creditFields = {
+                campaignCredits: requestedCredits,
+                creditsPending: requestedCredits,
+                creditsUtilized: 0,
+                creditAllocationBreakdown: breakdown.length > 0 ? breakdown : Prisma.DbNull,
+              };
+            }
+          }
+        }
+
+        // 2. Update Campaign core + credits/subscription link
         const updatedCampaign = await tx.campaign.update({
           where: { id: existing.id },
           data: {
@@ -1650,6 +1719,8 @@ export const activateCampaignFull = async (req: Request, res: Response) => {
             status: nextStatus,
             publishedAt: setPublishedAt ? new Date() : existing.publishedAt,
             agreementTemplate: agreementFrom?.id ? { connect: { id: agreementFrom.id } } : undefined,
+            ...creditFields,
+            ...(subscriptionToConnect && { subscription: { connect: { id: subscriptionToConnect } } }),
           },
         });
 
