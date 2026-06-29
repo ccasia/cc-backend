@@ -100,6 +100,7 @@ const corsOptions = {
 app.use(
   cors({
     origin: [
+      'https://app.cultcreativeasia.com',
       'https://staging.cultcreativeasia.com',
       'http://localhost:3030',
       'http://192.168.100.228',
