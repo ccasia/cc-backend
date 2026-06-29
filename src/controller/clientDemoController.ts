@@ -7,17 +7,28 @@ import { prisma } from '../prisma/prisma';
 
 const DEMO_TOKEN_LENGTH = 32;
 
-const getDemoBaseUrl = () => {
-  const base = process.env.APP_PUBLIC_URL?.trim();
-  if (!base) {
-    throw new Error('APP_PUBLIC_URL is required to generate demo links');
-  }
+const TRUSTED_CLIENT_DEMO_ORIGINS = new Set([
+  'https://app.cultcreativeasia.com',
+  'https://staging.cultcreativeasia.com',
+  'http://localhost:3030',
+]);
 
-  return base.replace(/\/$/, '');
+const normalizeOrigin = (origin?: string) => origin?.trim().replace(/\/$/, '');
+
+const getTrustedDemoOrigin = (req: Request) => {
+  const origin = normalizeOrigin(req.get('origin'));
+
+  return origin && TRUSTED_CLIENT_DEMO_ORIGINS.has(origin) ? origin : null;
 };
 
-const getDemoUrl = (token: string) => {
-  return `${getDemoBaseUrl()}/client-demo/${token}`;
+const sendUntrustedDemoOriginResponse = (res: Response) => {
+  return res
+    .status(403)
+    .json({ message: 'Demo links can only be generated from a trusted frontend origin' });
+};
+
+const getDemoUrl = (origin: string, token: string) => {
+  return `${origin}/client-demo/${token}`;
 };
 
 const generateUniqueDemoToken = async () => {
@@ -34,8 +45,10 @@ export const createClientDemo = async (req: Request, res: Response) => {
   const rawName = String(req.body?.name || '').trim();
   if (!rawName) return res.status(400).json({ message: 'Demo client name is required' });
 
+  const demoOrigin = getTrustedDemoOrigin(req);
+  if (!demoOrigin) return sendUntrustedDemoOriginResponse(res);
+
   try {
-    getDemoBaseUrl();
     const demoAccessToken = await generateUniqueDemoToken();
     const demoEmail = `demo+${demoAccessToken.toLowerCase()}@cultcreativeasia.com`;
 
@@ -86,7 +99,7 @@ export const createClientDemo = async (req: Request, res: Response) => {
       userId: result.user.id,
       name: result.company.name,
       token: demoAccessToken,
-      url: getDemoUrl(demoAccessToken),
+      url: getDemoUrl(demoOrigin, demoAccessToken),
     });
   } catch (error: any) {
     console.error('createClientDemo error:', error);
@@ -97,6 +110,9 @@ export const createClientDemo = async (req: Request, res: Response) => {
 export const getClientDemoLinkByCompany = async (req: Request, res: Response) => {
   const companyId = String(req.params.companyId || '').trim();
   if (!companyId) return res.status(400).json({ message: 'companyId is required' });
+
+  const demoOrigin = getTrustedDemoOrigin(req);
+  if (!demoOrigin) return sendUntrustedDemoOriginResponse(res);
 
   try {
     const client = await prisma.client.findFirst({
@@ -121,7 +137,7 @@ export const getClientDemoLinkByCompany = async (req: Request, res: Response) =>
       userId: client.userId,
       name: client.company?.name || client.user.name,
       token: client.demoAccessToken,
-      url: getDemoUrl(client.demoAccessToken),
+      url: getDemoUrl(demoOrigin, client.demoAccessToken),
     });
   } catch (error: any) {
     console.error('getClientDemoLinkByCompany error:', error);
@@ -132,6 +148,9 @@ export const getClientDemoLinkByCompany = async (req: Request, res: Response) =>
 export const regenerateClientDemoLink = async (req: Request, res: Response) => {
   const companyId = String(req.params.companyId || '').trim();
   if (!companyId) return res.status(400).json({ message: 'companyId is required' });
+
+  const demoOrigin = getTrustedDemoOrigin(req);
+  if (!demoOrigin) return sendUntrustedDemoOriginResponse(res);
 
   try {
     const client = await prisma.client.findFirst({
@@ -167,7 +186,7 @@ export const regenerateClientDemoLink = async (req: Request, res: Response) => {
       userId: updated.userId,
       name: client.company?.name || client.user?.name,
       token: demoAccessToken,
-      url: getDemoUrl(demoAccessToken),
+      url: getDemoUrl(demoOrigin, demoAccessToken),
     });
   } catch (error: any) {
     console.error('regenerateClientDemoLink error:', error);
