@@ -10,21 +10,35 @@ const DEMO_TOKEN_LENGTH = 32;
 const TRUSTED_CLIENT_DEMO_ORIGINS = new Set([
   'https://app.cultcreativeasia.com',
   'https://staging.cultcreativeasia.com',
+  'http://localhost',
   'http://localhost:3030',
 ]);
 
 const normalizeOrigin = (origin?: string) => origin?.trim().replace(/\/$/, '');
 
+const isTrustedDemoOrigin = (origin: string) => {
+  if (TRUSTED_CLIENT_DEMO_ORIGINS.has(origin)) return true;
+
+  try {
+    const url = new URL(origin);
+    return (
+      url.protocol === 'http:' &&
+      ['localhost', '127.0.0.1', '0.0.0.0'].includes(url.hostname) &&
+      ['', '3030'].includes(url.port)
+    );
+  } catch {
+    return false;
+  }
+};
+
 const getTrustedDemoOrigin = (req: Request) => {
   const origin = normalizeOrigin(req.get('origin'));
 
-  return origin && TRUSTED_CLIENT_DEMO_ORIGINS.has(origin) ? origin : null;
+  return origin && isTrustedDemoOrigin(origin) ? origin : null;
 };
 
 const sendUntrustedDemoOriginResponse = (res: Response) => {
-  return res
-    .status(403)
-    .json({ message: 'Demo links can only be generated from a trusted frontend origin' });
+  return res.status(403).json({ message: 'Demo links can only be generated from a trusted frontend origin' });
 };
 
 const getDemoUrl = (origin: string, token: string) => {
