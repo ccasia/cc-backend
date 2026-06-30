@@ -41,6 +41,7 @@ import systemSettingRoute from './systemSettingRoute';
 import approvalRoute from './approvalRoute';
 import campaignBriefRoute from './campaignBriefRoute';
 import clientDemoRoute from './clientDemoRoute';
+import videoOfTheMonthRoute from './videoOfTheMonthRoute';
 
 export const router = express.Router();
 
@@ -86,3 +87,4 @@ router.use('/system-settings', systemSettingRoute);
 router.use('/approval-requests', approvalRoute);
 router.use('/briefs', campaignBriefRoute);
 router.use('/client-demo', clientDemoRoute);
+router.use('/video-of-the-month', videoOfTheMonthRoute);
