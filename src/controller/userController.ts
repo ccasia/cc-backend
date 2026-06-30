@@ -86,6 +86,7 @@ export const getAdmins = async (req: Request, res: Response) => {
                 select: {
                   id: true,
                   name: true,
+                  pic: { select: { name: true } },
                 },
               },
             },
@@ -96,7 +97,10 @@ export const getAdmins = async (req: Request, res: Response) => {
       // Transform data for frontend consumption
       const transformedAdmins = admins.map((admin) => {
         const isClient = admin.admin?.role?.name === 'Client';
-        const displayName = isClient && admin.client?.company?.name ? admin.client.company.name : admin.name;
+        const picName = admin.client?.company?.pic?.[0]?.name || null;
+        const displayName = isClient
+          ? picName || admin.name || admin.client?.company?.name || ''
+          : admin.name;
 
         return {
           id: admin.id,

@@ -2003,6 +2003,7 @@ enum CampaignDraftStatus {
 
 enum CampaignDraftOrigin {
   BD_CREATED
+  CSL_CREATED
   CLIENT_INVITED
 }
 

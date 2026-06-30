@@ -1,4 +1,4 @@
-import { CustomPackage, Package, PrismaClient, Subscription } from '@prisma/client';
+import { CustomPackage, Package, Prisma, PrismaClient, Subscription } from '@prisma/client';
 import dayjs from 'dayjs';
 // import { createClientPackageDefault } from './packageService';
 
@@ -220,11 +220,14 @@ export const handleCreateBrand = async ({
   }
 };
 
-export const generateCustomId = async (type: any) => {
+export const generateCustomId = async (
+  type: any,
+  client: Pick<typeof prisma, 'company'> = prisma,
+) => {
   const prefix = type === 'agency' ? 'A' : 'DC';
 
   // Find all companies with the matching prefix
-  const existingCompanies = await prisma.company.findMany({
+  const existingCompanies = await client.company.findMany({
     where: {
       clientId: {
         startsWith: prefix,
@@ -298,86 +301,102 @@ export const createNewCompany = async (data: CompanyForm, publicURL?: string) =>
     companyID,
   } = data;
 
-  try {
-    return await prisma.$transaction(async (tx) => {
-      const id: string = await generateSubscriptionCustomId();
-      const clientId = await generateCustomId(type);
-      const expiredAt = dayjs(invoiceDate).add(parseInt(validityPeriod), 'months').format();
-      const subscriptionData = {
-        creditsUsed: 0,
-        expiredAt,
-        subscriptionId: id,
-        currency: currency,
-      };
+  const MAX_ATTEMPTS = 3;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      return await prisma.$transaction(async (tx) => {
+        const id: string = await generateSubscriptionCustomId();
+        const clientId =
+          attempt === 1 && companyID ? companyID : await generateCustomId(type, tx);
+        const expiredAt = dayjs(invoiceDate).add(parseInt(validityPeriod), 'months').format();
+        const subscriptionData = {
+          creditsUsed: 0,
+          expiredAt,
+          subscriptionId: id,
+          currency: currency,
+        };
 
-      let customPackage: CustomPackage | null = null;
-      let fixedPackage: Package | null = null;
+        let customPackage: CustomPackage | null = null;
+        let fixedPackage: Package | null = null;
 
-      // Parallelize independent operations
-      if (packageType === 'Custom') {
-        customPackage = await tx.customPackage.create({
+        // Parallelize independent operations
+        if (packageType === 'Custom') {
+          customPackage = await tx.customPackage.create({
+            data: {
+              customName: packageType,
+              customCredits: parseInt(totalUGCCredits),
+              customPrice: parseFloat(packageValue),
+              customValidityPeriod: parseInt(validityPeriod),
+            },
+          });
+        }
+
+        if (packageId) {
+          fixedPackage = await tx.package.findUnique({
+            where: { id: packageId },
+          });
+        }
+
+        if (packageType !== 'Custom' && !fixedPackage) {
+          throw new Error('Fixed package not found');
+        }
+
+        const company = await tx.company.create({
           data: {
-            customName: packageType,
-            customCredits: parseInt(totalUGCCredits),
-            customPrice: parseFloat(packageValue),
-            customValidityPeriod: parseInt(validityPeriod),
-          },
-        });
-      }
-
-      if (packageId) {
-        fixedPackage = await tx.package.findUnique({
-          where: { id: packageId },
-        });
-      }
-
-      if (packageType !== 'Custom' && !fixedPackage) {
-        throw new Error('Fixed package not found');
-      }
-
-      const company = await tx.company.create({
-        data: {
-          type,
-          clientId: companyID,
-          name: companyName,
-          about: companyAbout,
-          address: companyAddress,
-          email: companyEmail,
-          phone: companyPhone,
-          registration_number: companyRegistrationNumber,
-          website: companyWebsite,
-          logo: publicURL,
-          pic: {
-            create: {
-              name: personInChargeName,
-              designation: personInChargeDesignation,
-              email: personInChargeEmail,
+            type,
+            clientId,
+            name: companyName,
+            about: companyAbout,
+            address: companyAddress,
+            email: companyEmail,
+            phone: companyPhone,
+            registration_number: companyRegistrationNumber,
+            website: companyWebsite,
+            logo: publicURL,
+            pic: {
+              create: {
+                name: personInChargeName,
+                designation: personInChargeDesignation,
+                email: personInChargeEmail,
+              },
+            },
+            subscriptions: {
+              create: {
+                ...(packageType === 'Custom'
+                  ? {
+                      customPackageId: customPackage!.id,
+                      totalCredits: customPackage?.customCredits,
+                      packagePrice: customPackage?.customPrice,
+                    }
+                  : {
+                      packageId: fixedPackage!.id,
+                      totalCredits: fixedPackage?.credits,
+                      packagePrice: parseFloat(packageValue),
+                    }),
+                ...subscriptionData,
+              },
             },
           },
-          subscriptions: {
-            create: {
-              ...(packageType === 'Custom'
-                ? {
-                    customPackageId: customPackage!.id,
-                    totalCredits: customPackage?.customCredits,
-                    packagePrice: customPackage?.customPrice,
-                  }
-                : {
-                    packageId: fixedPackage!.id,
-                    totalCredits: fixedPackage?.credits,
-                    packagePrice: parseFloat(packageValue),
-                  }),
-              ...subscriptionData,
-            },
-          },
-        },
+        });
+
+        return company;
       });
+    } catch (error) {
+      const isClientIdCollision =
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002' &&
+        (error.meta?.target as string[] | undefined)?.includes('clientId');
 
-      return company;
-    });
-  } catch (error) {
-    throw new Error(`Failed to create company: ${error.message}`);
+      if (isClientIdCollision && attempt < MAX_ATTEMPTS) {
+        continue;
+      }
+      throw new Error(`Failed to create company: ${error.message}`);
+    }
   }
+
+  // Unreachable in practice (the loop either returns or throws), but satisfies
+  // the compiler that the function always produces a value or error.
+  throw new Error('Failed to create company: exhausted clientId generation retries');
 };
 
 export const getRemainingCredits = async (clientId: string): Promise<number | null> => {

@@ -363,7 +363,10 @@ export const createBrief = async (req: Request, res: Response) => {
   const userid = req.userId;
   if (!userid) return res.status(401).json({ message: 'User not authenticated' });
   try {
-    const brief = await createDraftBrief(userid);
+    const user = await getUser(userid);
+    const role = classifyBriefRole(user as any);
+    const origin = role === 'CSL' ? 'CSL_CREATED' : 'BD_CREATED';
+    const brief = await createDraftBrief(userid, origin);
     return res.status(201).json({ id: brief.id });
   } catch (error) {
     console.error('createBrief error:', error);
@@ -565,16 +568,20 @@ export const assignCsm = async (req: Request, res: Response) => {
       return res.status(403).json({ message: 'Only CSL can assign CSMs.' });
     }
 
-    const { csmIds } = req.body || {};
+    const { csmIds, internalComments } = req.body || {};
     if (!Array.isArray(csmIds) || csmIds.length === 0) {
       return res.status(400).json({ message: 'Select at least one CSM to assign.' });
     }
+    const notes =
+      typeof internalComments === 'string' && internalComments.trim()
+        ? internalComments.trim()
+        : null;
 
-    const updated = await svcAssignCsmToBrief(id, csmIds);
+    const updated = await svcAssignCsmToBrief(id, csmIds, notes);
     return res.status(200).json(updated);
   } catch (error: any) {
     console.error('assignCsm error:', error);
-    if (/not found|handed-over|CSM|at least one/i.test(error?.message || '')) {
+    if (/not found|handed-over|CSM|at least one|company|active package/i.test(error?.message || '')) {
       return res.status(400).json({ message: error.message });
     }
     return res.status(500).json({ message: 'Failed to assign CSM' });
