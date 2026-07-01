@@ -2635,11 +2635,6 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
   const { cursor, take = 10, search } = req.query;
   const campaignId = req.query?.campaignId as string;
 
-  console.log('DISCOVER PAGE DEBUG');
-  console.log('User ID:', userid);
-  console.log('Query params:', { cursor, take, search, campaignId });
-  console.log('Request IP:', req.ip);
-
   try {
     const user = await prisma.user.findUnique({
       where: {
@@ -2659,11 +2654,8 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    console.log('✅ User found:', user.name, '| Role:', user.role);
     console.log('Creator interests count:', user.creator?.interests?.length || 0);
 
-    // Get all ACTIVE campaigns
-    console.log('📡 Fetching campaigns from database...');
     let campaigns = await prisma.campaign.findMany({
       take: Number(take),
 
@@ -2932,8 +2924,6 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
         hasNextPage: hasNextPage,
       },
     };
-
-    console.log('=== END DISCOVER PAGE DEBUG ===\n');
 
     return res.status(200).json(data);
   } catch (error) {
