@@ -1,26 +1,54 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../prisma/prisma';
 
-const prisma = new PrismaClient();
+/**
+ * Returns assigned campaign IDs for CS users.
+ * Superadmins (god/advanced mode) get null, meaning no campaign filter applies.
+ */
+async function getAssignedCampaignIds(userId: string): Promise<string[] | null> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      role: true,
+      admin: {
+        select: {
+          mode: true,
+          role: { select: { name: true } },
+        },
+      },
+    },
+  });
+
+  const isSuperAdmin =
+    user?.role === 'superadmin' || ['god', 'advanced'].includes(user?.admin?.mode || '');
+  if (isSuperAdmin) return null;
+
+  const assigned = await prisma.campaignAdmin.findMany({
+    where: { adminId: userId },
+    select: { campaignId: true },
+  });
+
+  return assigned.map((a) => a.campaignId);
+}
 
 /**
  * GET /api/dashboard/campaigns
- * Returns lightweight active campaigns data for dashboard
- * Only fetches minimal data needed for display
+ * Returns lightweight active campaigns data for dashboard.
+ * CS users only see campaigns they are assigned to.
  */
 export const getDashboardCampaigns = async (req: Request, res: Response) => {
   try {
     const { limit } = req.query;
-    // Only apply limit if explicitly provided, otherwise fetch all active campaigns
-    // Since we're only fetching minimal data, this should be performant
     const limitNum = limit ? Math.min(parseInt(limit as string, 10) || 1000, 1000) : undefined;
 
-    // OPTIMIZED: Only fetch active campaigns with minimal nested data
+    const assignedIds = await getAssignedCampaignIds(req.userId!);
+
     const campaigns = await prisma.campaign.findMany({
       where: {
         status: 'ACTIVE',
+        ...(assignedIds !== null && { id: { in: assignedIds } }),
       },
-      ...(limitNum && { take: limitNum }), // Only apply take if limit is provided
+      ...(limitNum && { take: limitNum }),
       select: {
         id: true,
         name: true,
@@ -41,21 +69,19 @@ export const getDashboardCampaigns = async (req: Request, res: Response) => {
             logo: true,
           },
         },
-        // Only count pitches, don't fetch full data
         _count: {
           select: {
             pitch: true,
             shortlisted: true,
           },
         },
-        // Only fetch minimal pitch data for pending pitches
         pitch: {
           where: {
             status: {
               in: ['undecided', 'PENDING_REVIEW', 'MAYBE', 'pending'],
             },
           },
-          take: 10, // Limit to 10 pending pitches per campaign
+          take: 10,
           select: {
             id: true,
             status: true,
@@ -78,7 +104,6 @@ export const getDashboardCampaigns = async (req: Request, res: Response) => {
       },
     });
 
-    // Transform data to match frontend expectations
     const transformedCampaigns = campaigns.map((campaign) => ({
       id: campaign.id,
       name: campaign.name,
@@ -87,14 +112,11 @@ export const getDashboardCampaigns = async (req: Request, res: Response) => {
       createdAt: campaign.createdAt,
       campaignBrief: campaign.campaignBrief,
       brand: campaign.brand,
-      // Include pitch array (already filtered to pending by backend)
       pitch: campaign.pitch,
-      // Include _count for pitch and shortlisted counts
       _count: {
         pitch: campaign._count.pitch,
         shortlisted: campaign._count.shortlisted,
       },
-      // Also include shortlisted as array for compatibility (but empty since we don't need full data)
       shortlisted: [],
     }));
 
@@ -111,13 +133,18 @@ export const getDashboardCampaigns = async (req: Request, res: Response) => {
 
 /**
  * GET /api/dashboard/stats
- * Returns aggregated dashboard statistics for superadmin
- * This endpoint optimizes performance by using database aggregations
- * instead of fetching all data and processing on the client
+ * Returns aggregated dashboard statistics.
+ * CS users only see stats scoped to their assigned campaigns.
  */
 export const getDashboardStats = async (req: Request, res: Response) => {
   try {
-    // Use Promise.all to fetch all metrics in parallel for better performance
+    const assignedIds = await getAssignedCampaignIds(req.userId!);
+    const isFiltered = assignedIds !== null;
+
+    const ids = assignedIds as string[];
+    const campaignWhere = isFiltered ? { id: { in: ids } } : {};
+    const pitchCampaignFilter = isFiltered ? { campaignId: { in: ids } } : {};
+
     const [
       totalCreators,
       totalClients,
@@ -131,65 +158,55 @@ export const getDashboardStats = async (req: Request, res: Response) => {
       creatorsInCampaigns,
       totalCompanies,
     ] = await Promise.all([
-      // Total creators count
       prisma.user.count({
         where: {
           role: 'creator',
           status: 'active',
+          ...(isFiltered && { shortlisted: { some: { campaignId: { in: assignedIds! } } } }),
         },
       }),
 
-      // Total clients count (users with client role)
       prisma.user.count({
         where: {
           role: 'client',
           status: 'active',
+          ...(isFiltered && {
+            client: { campaignClients: { some: { campaignId: { in: assignedIds! } } } },
+          }),
         },
       }),
 
-      // Active campaigns count
       prisma.campaign.count({
-        where: {
-          status: 'ACTIVE',
-        },
+        where: { status: 'ACTIVE', ...campaignWhere },
       }),
 
-      // Completed campaigns count
       prisma.campaign.count({
-        where: {
-          status: 'COMPLETED',
-        },
+        where: { status: 'COMPLETED', ...campaignWhere },
       }),
 
-      // Total pitches count
-      prisma.pitch.count(),
+      prisma.pitch.count({ where: pitchCampaignFilter }),
 
-      // Approved pitches count
       prisma.pitch.count({
         where: {
-          status: {
-            in: ['APPROVED', 'approved'],
-          },
+          ...pitchCampaignFilter,
+          status: { in: ['APPROVED', 'approved'] },
         },
       }),
 
-      // Total creators including NPCs (all statuses)
       prisma.user.count({
         where: {
           role: 'creator',
+          ...(isFiltered && { shortlisted: { some: { campaignId: { in: assignedIds! } } } }),
         },
       }),
 
-      // Pending pitches count
       prisma.pitch.count({
         where: {
-          status: {
-            in: ['PENDING_REVIEW', 'undecided', 'MAYBE', 'pending'],
-          },
+          ...pitchCampaignFilter,
+          status: { in: ['PENDING_REVIEW', 'undecided', 'MAYBE', 'pending'] },
         },
       }),
 
-      // Creators with media kit connected (has Instagram or TikTok account)
       prisma.user.count({
         where: {
           role: 'creator',
@@ -197,29 +214,25 @@ export const getDashboardStats = async (req: Request, res: Response) => {
           creator: {
             OR: [{ isFacebookConnected: true }, { isTiktokConnected: true }],
           },
+          ...(isFiltered && { shortlisted: { some: { campaignId: { in: assignedIds! } } } }),
         },
       }),
 
-      // Creators who are in at least one campaign (have been shortlisted)
       prisma.user.count({
         where: {
           role: 'creator',
           status: 'active',
           shortlisted: {
-            some: {},
+            some: isFiltered ? { campaignId: { in: assignedIds! } } : {},
           },
         },
       }),
 
-      // Total companies count
-      prisma.company.count(),
+      isFiltered ? Promise.resolve(0) : prisma.company.count(),
     ]);
 
-    // Calculate additional metrics
     const maybePitches = await prisma.pitch.count({
-      where: {
-        status: 'MAYBE',
-      },
+      where: { ...pitchCampaignFilter, status: 'MAYBE' },
     });
 
     return res.status(200).json({
@@ -251,10 +264,16 @@ export const getDashboardStats = async (req: Request, res: Response) => {
 
 /**
  * GET /api/dashboard/attention
- * Returns counts for items that need admin attention + avg response time
+ * Returns counts for items needing attention + response/rejection metrics.
+ * CS users only see items from their assigned campaigns.
  */
 export const getDashboardAttention = async (req: Request, res: Response) => {
   try {
+    const assignedIds = await getAssignedCampaignIds(req.userId!);
+    const isFiltered = assignedIds !== null;
+
+    const campaignIdFilter = isFiltered ? { campaignId: { in: assignedIds! } } : {};
+
     const [
       agreementsPendingReview,
       submissionsPendingReview,
@@ -266,17 +285,17 @@ export const getDashboardAttention = async (req: Request, res: Response) => {
       clientRejectedCount,
       clientApprovedCount,
     ] = await Promise.all([
-      // Agreements: matches what AgreementsPendingModal fetches
       prisma.submission.count({
         where: {
+          ...campaignIdFilter,
           status: 'PENDING_REVIEW',
           submissionType: { type: 'AGREEMENT_FORM' },
         },
       }),
 
-      // Submissions (drafts): excludes agreement forms to avoid double-counting
       prisma.submission.count({
         where: {
+          ...campaignIdFilter,
           status: 'PENDING_REVIEW',
           submissionType: { type: { not: 'AGREEMENT_FORM' } },
         },
@@ -284,28 +303,32 @@ export const getDashboardAttention = async (req: Request, res: Response) => {
 
       prisma.pitch.count({
         where: {
+          ...campaignIdFilter,
           status: { in: ['undecided', 'PENDING_REVIEW', 'MAYBE', 'pending'] },
         },
       }),
 
       prisma.submission.count({
-        where: { status: 'APPROVE_LINK' },
+        where: { ...campaignIdFilter, status: 'APPROVE_LINK' },
       }),
 
       prisma.submission.count({
-        where: { status: 'CLIENT_FEEDBACK' },
+        where: { ...campaignIdFilter, status: 'CLIENT_FEEDBACK' },
       }),
 
-      // Overdue invoices: matches OverdueInvoicesModal (only campaigns with admin assigned)
       prisma.invoice.count({
         where: {
           status: 'overdue',
-          campaign: { campaignAdmin: { some: {} } },
+          campaign: {
+            campaignAdmin: { some: {} },
+            ...buildCampaignRelationFilter(assignedIds),
+          },
         },
       }),
 
       prisma.pitch.findMany({
         where: {
+          ...campaignIdFilter,
           status: { notIn: ['undecided', 'PENDING_REVIEW', 'MAYBE', 'pending'] },
           completedAt: { not: null },
         },
@@ -314,14 +337,18 @@ export const getDashboardAttention = async (req: Request, res: Response) => {
         orderBy: { completedAt: 'desc' },
       }),
 
-      // Submissions rejected/sent back by client
       prisma.submission.count({
-        where: { status: { in: ['CLIENT_FEEDBACK', 'REJECTED', 'CHANGES_REQUIRED'] } },
+        where: {
+          ...campaignIdFilter,
+          status: { in: ['CLIENT_FEEDBACK', 'REJECTED', 'CHANGES_REQUIRED'] },
+        },
       }),
 
-      // Submissions approved by client
       prisma.submission.count({
-        where: { status: { in: ['APPROVED', 'CLIENT_APPROVED', 'POSTED'] } },
+        where: {
+          ...campaignIdFilter,
+          status: { in: ['APPROVED', 'CLIENT_APPROVED', 'POSTED'] },
+        },
       }),
     ]);
 
@@ -361,14 +388,18 @@ export const getDashboardAttention = async (req: Request, res: Response) => {
 
 /**
  * GET /api/dashboard/newly-approved
- * Returns recently shortlisted creators whose agreements haven't been sent yet
+ * Returns recently shortlisted creators whose agreements haven't been sent yet.
+ * CS users only see creators from their assigned campaigns.
  */
 export const getDashboardNewlyApproved = async (req: Request, res: Response) => {
   try {
+    const assignedIds = await getAssignedCampaignIds(req.userId!);
+
     const newlyApproved = await prisma.shortListedCreator.findMany({
       where: {
         isAgreementReady: false,
         userId: { not: null },
+        ...(assignedIds !== null && { campaignId: { in: assignedIds } }),
       },
       orderBy: { shortlisted_date: 'desc' },
       take: 20,
@@ -397,17 +428,18 @@ export const getDashboardNewlyApproved = async (req: Request, res: Response) => 
 
 /**
  * GET /api/dashboard/agreements-pending
- * Returns agreement submissions that creators have signed and sent back (PENDING_REVIEW)
- * so admins can approve or reject them
+ * Returns agreement submissions pending admin review.
+ * CS users only see items from their assigned campaigns.
  */
 export const getDashboardAgreementsPending = async (req: Request, res: Response) => {
   try {
+    const assignedIds = await getAssignedCampaignIds(req.userId!);
+
     const submissions = await prisma.submission.findMany({
       where: {
         status: 'PENDING_REVIEW',
-        submissionType: {
-          type: 'AGREEMENT_FORM',
-        },
+        submissionType: { type: 'AGREEMENT_FORM' },
+        ...(assignedIds !== null && { campaignId: { in: assignedIds } }),
       },
       orderBy: { updatedAt: 'desc' },
       select: {
@@ -444,15 +476,19 @@ export const getDashboardAgreementsPending = async (req: Request, res: Response)
 
 /**
  * GET /api/dashboard/overdue-invoices
- * Returns overdue invoices for campaigns that have admin/CS assigned
+ * Returns overdue invoices for campaigns that have admin/CS assigned.
+ * CS users only see invoices from their assigned campaigns.
  */
 export const getDashboardOverdueInvoices = async (req: Request, res: Response) => {
   try {
+    const assignedIds = await getAssignedCampaignIds(req.userId!);
+
     const invoices = await prisma.invoice.findMany({
       where: {
         status: 'overdue',
         campaign: {
           campaignAdmin: { some: {} },
+          ...buildCampaignRelationFilter(assignedIds),
         },
       },
       orderBy: { dueDate: 'asc' },
@@ -490,12 +526,18 @@ export const getDashboardOverdueInvoices = async (req: Request, res: Response) =
 
 /**
  * GET /api/dashboard/client-feedbacks
- * Returns submissions with CLIENT_FEEDBACK status (v4 only)
+ * Returns submissions with CLIENT_FEEDBACK status.
+ * CS users only see items from their assigned campaigns.
  */
 export const getDashboardClientFeedbacks = async (req: Request, res: Response) => {
   try {
+    const assignedIds = await getAssignedCampaignIds(req.userId!);
+
     const submissions = await prisma.submission.findMany({
-      where: { status: 'CLIENT_FEEDBACK' },
+      where: {
+        status: 'CLIENT_FEEDBACK',
+        ...(assignedIds !== null && { campaignId: { in: assignedIds } }),
+      },
       orderBy: { updatedAt: 'desc' },
       select: {
         id: true,
@@ -527,12 +569,18 @@ export const getDashboardClientFeedbacks = async (req: Request, res: Response) =
 
 /**
  * GET /api/dashboard/links-pending
- * Returns posting link submissions waiting for admin approval (APPROVE_LINK)
+ * Returns posting link submissions waiting for admin approval.
+ * CS users only see items from their assigned campaigns.
  */
 export const getDashboardLinksPending = async (req: Request, res: Response) => {
   try {
+    const assignedIds = await getAssignedCampaignIds(req.userId!);
+
     const submissions = await prisma.submission.findMany({
-      where: { status: 'APPROVE_LINK' },
+      where: {
+        status: 'APPROVE_LINK',
+        ...(assignedIds !== null && { campaignId: { in: assignedIds } }),
+      },
       orderBy: { updatedAt: 'desc' },
       select: {
         id: true,
@@ -564,13 +612,17 @@ export const getDashboardLinksPending = async (req: Request, res: Response) => {
 
 /**
  * GET /api/dashboard/pitches-pending
- * Returns pitches pending admin review
+ * Returns pitches pending admin review.
+ * CS users only see pitches from their assigned campaigns.
  */
 export const getDashboardPitchesPending = async (req: Request, res: Response) => {
   try {
+    const assignedIds = await getAssignedCampaignIds(req.userId!);
+
     const pitches = await prisma.pitch.findMany({
       where: {
         status: { in: ['undecided', 'PENDING_REVIEW', 'MAYBE', 'pending'] },
+        ...(assignedIds !== null && { campaignId: { in: assignedIds } }),
       },
       orderBy: { createdAt: 'desc' },
       select: {
@@ -600,16 +652,18 @@ export const getDashboardPitchesPending = async (req: Request, res: Response) =>
 
 /**
  * GET /api/dashboard/drafts-pending
- * Returns draft/video submissions pending admin review (excludes AGREEMENT_FORM type)
+ * Returns draft/video submissions pending admin review.
+ * CS users only see items from their assigned campaigns.
  */
 export const getDashboardDraftsPending = async (req: Request, res: Response) => {
   try {
+    const assignedIds = await getAssignedCampaignIds(req.userId!);
+
     const submissions = await prisma.submission.findMany({
       where: {
         status: 'PENDING_REVIEW',
-        submissionType: {
-          type: { not: 'AGREEMENT_FORM' },
-        },
+        submissionType: { type: { not: 'AGREEMENT_FORM' } },
+        ...(assignedIds !== null && { campaignId: { in: assignedIds } }),
       },
       orderBy: { updatedAt: 'desc' },
       select: {
@@ -660,3 +714,8 @@ export const deleteDashboardAgreement = async (req: Request, res: Response) => {
     });
   }
 };
+
+/** Builds a Prisma campaign relation filter from assigned campaign IDs. */
+function buildCampaignRelationFilter(assignedIds: string[] | null) {
+  return assignedIds !== null ? { id: { in: assignedIds } } : {};
+}
