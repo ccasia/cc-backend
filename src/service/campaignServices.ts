@@ -32,7 +32,7 @@ export const logChange = async (
   }
 };
 
-export const logAdminChange = async (message: string, adminId: string, req?: Request) => {
+export const logAdminChange = async (message: string, adminId?: string, req?: Request) => {
   if (adminId === undefined) {
     throw new Error('Admin ID is undefined');
   }

@@ -15,13 +15,14 @@ const CLIENT_EDITABLE_FIELDS = new Set<string>([
   'kpis',
   'kpiNotes',
   'extraNotes',
-  'gender',
-  'age',
+  'audienceGender',
+  'audienceAge',
   'country',
-  'language',
-  'creatorPersona',
-  'userPersona',
+  'audienceLanguage',
+  'audienceCreatorPersona',
+  'audienceUserPersona',
   'geographicFocus',
+  'geographicFocusOthers',
 ]);
 
 type BriefUpdateInput = Record<string, unknown>;
@@ -56,7 +57,7 @@ const assertTransition = (from: CampaignDraftStatus, to: CampaignDraftStatus) =>
   }
 };
 
-export const createDraftBrief = async (bdUserId: string) => {
+export const createDraftBrief = async (bdUserId: string, origin: 'BD_CREATED' | 'CSL_CREATED' = 'BD_CREATED') => {
   return prisma.campaign.create({
     data: {
       name: '',
@@ -64,7 +65,7 @@ export const createDraftBrief = async (bdUserId: string) => {
       status: 'DRAFT',
       origin: 'ADMIN',
       draftStatus: 'DRAFTED',
-      draftOrigin: 'BD_CREATED',
+      draftOrigin: origin,
       submissionVersion: 'v4',
       isCreditTier: true,
       // Start at 0, NOT 1. campaignCredits must mirror what has actually been
@@ -81,11 +82,7 @@ export const createDraftBrief = async (bdUserId: string) => {
   });
 };
 
-export const updateDraftBrief = async (
-  briefId: string,
-  patch: BriefUpdateInput,
-  actor: 'bd' | 'client',
-) => {
+export const updateDraftBrief = async (briefId: string, patch: BriefUpdateInput, actor: 'bd' | 'client') => {
   const current = await prisma.campaign.findUnique({
     where: { id: briefId },
     select: {
@@ -135,12 +132,6 @@ export const updateDraftBrief = async (
   });
 };
 
-const GEO_FOCUS_LABEL_TO_VALUE: Record<string, string> = {
-  'SEA Region': 'SEAregion',
-  Global: 'global',
-  Others: 'others',
-};
-
 // Translates the bd-brief-form payload (what the frontend brief form sends)
 // into nested writes across Campaign / CampaignBrief / CampaignRequirement /
 // CampaignAdditionalDetails. Field names mirror
@@ -152,10 +143,7 @@ type CurrentBriefRecord = {
   campaignAdditionalDetails?: { specialNotesInstructions?: string | null } | null;
 };
 
-const mapBriefPatch = (
-  patch: BriefUpdateInput,
-  current?: CurrentBriefRecord,
-): Prisma.CampaignUpdateInput => {
+const mapBriefPatch = (patch: BriefUpdateInput, current?: CurrentBriefRecord): Prisma.CampaignUpdateInput => {
   const out: Prisma.CampaignUpdateInput = {};
   const briefData: Prisma.CampaignBriefUpdateWithoutCampaignInput = {};
   const requirementData: Prisma.CampaignRequirementUpdateWithoutCampaignInput = {};
@@ -196,10 +184,14 @@ const mapBriefPatch = (
 
     const kpis = Array.isArray(patch.kpis)
       ? patch.kpis.filter((v): v is string => typeof v === 'string')
-      : (prevKpisMatch ? prevKpisMatch[1].split(',').map((s) => s.trim()).filter(Boolean) : []);
-    const kpiNotes = typeof patch.kpiNotes === 'string'
-      ? patch.kpiNotes.trim()
-      : (prevNotesMatch ? prevNotesMatch[1].trim() : '');
+      : prevKpisMatch
+        ? prevKpisMatch[1]
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : [];
+    const kpiNotes =
+      typeof patch.kpiNotes === 'string' ? patch.kpiNotes.trim() : prevNotesMatch ? prevNotesMatch[1].trim() : '';
 
     const parts: string[] = [];
     if (kpis.length) parts.push(`KPIs: ${kpis.join(', ')}`);
@@ -208,20 +200,23 @@ const mapBriefPatch = (
   }
 
   // ── CampaignRequirement fields ─────────────────────────────────────────
-  if (Array.isArray(patch.gender)) requirementData.gender = patch.gender.filter((v): v is string => typeof v === 'string');
-  if (Array.isArray(patch.age)) requirementData.age = patch.age.filter((v): v is string => typeof v === 'string');
+  if (Array.isArray(patch.audienceGender))
+    requirementData.gender = patch.audienceGender.filter((v): v is string => typeof v === 'string');
+  if (Array.isArray(patch.audienceAge))
+    requirementData.age = patch.audienceAge.filter((v): v is string => typeof v === 'string');
   if (typeof patch.country === 'string') requirementData.country = patch.country;
-  if (Array.isArray(patch.language)) {
-    requirementData.language = patch.language.filter((v): v is string => typeof v === 'string');
+  if (Array.isArray(patch.audienceLanguage)) {
+    requirementData.language = patch.audienceLanguage.filter((v): v is string => typeof v === 'string');
   }
-  if (Array.isArray(patch.creatorPersona)) {
-    requirementData.creator_persona = patch.creatorPersona.filter((v): v is string => typeof v === 'string');
+  if (Array.isArray(patch.audienceCreatorPersona)) {
+    requirementData.creator_persona = patch.audienceCreatorPersona.filter((v): v is string => typeof v === 'string');
   }
-  if (typeof patch.userPersona === 'string') requirementData.user_persona = patch.userPersona;
+  if (typeof patch.audienceUserPersona === 'string') requirementData.user_persona = patch.audienceUserPersona;
   if (typeof patch.geographicFocus === 'string') {
-    requirementData.geographic_focus = patch.geographicFocus
-      ? (GEO_FOCUS_LABEL_TO_VALUE[patch.geographicFocus] ?? patch.geographicFocus)
-      : null;
+    requirementData.geographic_focus = patch.geographicFocus || null;
+  }
+  if (typeof patch.geographicFocusOthers === 'string') {
+    requirementData.geographicFocusOthers = patch.geographicFocusOthers || null;
   }
 
   // Build a self-sufficient `create` payload for each upsert branch so the
@@ -297,13 +292,19 @@ const buildBriefSnapshot = (brief: {
     creator_persona?: string[] | null;
     user_persona?: string | null;
     geographic_focus?: string | null;
+    geographicFocusOthers?: string | null;
   } | null;
   campaignAdditionalDetails?: { specialNotesInstructions?: string | null } | null;
 }): BriefSnapshot => {
   const specialNotes = brief.campaignAdditionalDetails?.specialNotesInstructions || '';
   const kpiLine = /KPIs:\s*(.+)/.exec(specialNotes);
   const kpiNotesLine = /KPI notes:\s*([\s\S]+)/.exec(specialNotes);
-  const kpis = kpiLine ? kpiLine[1].split(',').map((s) => s.trim()).filter(Boolean) : [];
+  const kpis = kpiLine
+    ? kpiLine[1]
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+    : [];
 
   // Mirror the form: the objectives grid uses only `secondaryObjectives` (the
   // selectable card values). The fixed `objectives='Awareness'` primary is not a
@@ -316,20 +317,19 @@ const buildBriefSnapshot = (brief: {
     dateFrom: brief.campaignBrief?.postingStartDate
       ? new Date(brief.campaignBrief.postingStartDate).toISOString()
       : null,
-    dateTo: brief.campaignBrief?.postingEndDate
-      ? new Date(brief.campaignBrief.postingEndDate).toISOString()
-      : null,
+    dateTo: brief.campaignBrief?.postingEndDate ? new Date(brief.campaignBrief.postingEndDate).toISOString() : null,
     secondaryObjectives: combinedObjectives,
     kpis,
     kpiNotes: kpiNotesLine ? kpiNotesLine[1].trim() : '',
     extraNotes: brief.description || '',
-    gender: brief.campaignRequirement?.gender || [],
-    age: brief.campaignRequirement?.age || [],
+    audienceGender: brief.campaignRequirement?.gender || [],
+    audienceAge: brief.campaignRequirement?.age || [],
     country: brief.campaignRequirement?.country || '',
-    language: brief.campaignRequirement?.language || [],
-    creatorPersona: brief.campaignRequirement?.creator_persona || [],
-    userPersona: brief.campaignRequirement?.user_persona || '',
+    audienceLanguage: brief.campaignRequirement?.language || [],
+    audienceCreatorPersona: brief.campaignRequirement?.creator_persona || [],
+    audienceUserPersona: brief.campaignRequirement?.user_persona || '',
     geographicFocus: brief.campaignRequirement?.geographic_focus || '',
+    geographicFocusOthers: brief.campaignRequirement?.geographicFocusOthers || '',
   };
 };
 
@@ -359,11 +359,7 @@ const normalizeForCompare = (v: unknown, field?: string): string => {
 const valuesEqual = (a: unknown, b: unknown, field?: string): boolean =>
   normalizeForCompare(a, field) === normalizeForCompare(b, field);
 
-export const sendBriefToClient = async (
-  briefId: string,
-  clientName: string,
-  clientEmail: string,
-) => {
+export const sendBriefToClient = async (briefId: string, clientName: string, clientEmail: string) => {
   const current = await prisma.campaign.findUnique({
     where: { id: briefId },
     select: {
@@ -389,6 +385,7 @@ export const sendBriefToClient = async (
           creator_persona: true,
           user_persona: true,
           geographic_focus: true,
+          geographicFocusOthers: true,
         },
       },
       campaignAdditionalDetails: { select: { specialNotesInstructions: true } },
@@ -466,6 +463,7 @@ export const snapshotPublicSubmission = async (briefId: string) => {
           creator_persona: true,
           user_persona: true,
           geographic_focus: true,
+          geographicFocusOthers: true,
         },
       },
       campaignAdditionalDetails: { select: { specialNotesInstructions: true } },
@@ -520,11 +518,24 @@ export const approveBriefByClient = async (magicToken: string) => {
   });
 };
 
-export const handoverBrief = async (
-  briefId: string,
-  clientPackage: string | null,
-  internalComments: string | null,
-) => {
+type ExtendedTxClient = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
+
+const nextCampaignCode = async (tx: ExtendedTxClient): Promise<string> => {
+  const existing = await tx.campaign.findMany({
+    where: { campaignId: { startsWith: 'C' } },
+    select: { campaignId: true },
+  });
+
+  const maxNum = existing.reduce((max, row) => {
+    const m = /^C(\d+)$/.exec(row.campaignId ?? '');
+    const n = m ? parseInt(m[1], 10) : 0;
+    return n > max ? n : max;
+  }, 0);
+  const next = maxNum + 1;
+  return `C${next < 10 ? `0${next}` : next}`;
+};
+
+export const handoverBrief = async (briefId: string, clientPackage: string | null, internalComments: string | null) => {
   const current = await prisma.campaign.findUnique({
     where: { id: briefId },
     select: { id: true, draftStatus: true, briefOwnerId: true, campaignId: true },
@@ -533,21 +544,8 @@ export const handoverBrief = async (
   assertTransition(current.draftStatus, 'HANDED_OVER');
 
   return prisma.$transaction(async (tx) => {
-    let campaignCode = current.campaignId;
-    if (!campaignCode) {
-      const existing = await tx.campaign.findMany({
-        where: { campaignId: { startsWith: 'C' } },
-        select: { campaignId: true },
-      });
-      const maxNum = existing.reduce((max, row) => {
-        const m = /^C(\d+)$/.exec(row.campaignId ?? '');
-        const n = m ? parseInt(m[1], 10) : 0;
-        return n > max ? n : max;
-      }, 0);
-      const next = maxNum + 1;
-      campaignCode = `C${next < 10 ? `0${next}` : next}`;
-    }
-
+    const campaignCode = current.campaignId || (await nextCampaignCode(tx));
+    
     const updated = await tx.campaign.update({
       where: { id: briefId },
       data: {
@@ -577,17 +575,53 @@ export const handoverBrief = async (
 // activation later (agreement, deliverables, etc.). CSMs are added to
 // campaignAdmin with role 'manager', which is also how listBriefs scopes a CSM's
 // visibility to the briefs they've been assigned.
-export const assignCsmToBrief = async (briefId: string, csmUserIds: string[]) => {
+export const assignCsmToBrief = async (
+  briefId: string,
+  csmUserIds: string[],
+  internalComments?: string | null,
+) => {
   const ids = Array.from(new Set(csmUserIds.filter((id) => typeof id === 'string' && id)));
   if (ids.length === 0) throw new Error('Select at least one CSM to assign.');
 
   const current = await prisma.campaign.findUnique({
     where: { id: briefId },
-    select: { id: true, draftStatus: true },
+    select: {
+      id: true,
+      draftStatus: true,
+      draftOrigin: true,
+      campaignId: true,
+      briefOwnerId: true,
+      companyId: true,
+      brandId: true,
+      company: {
+        select: { name: true, subscriptions: { where: { status: 'ACTIVE' }, select: { id: true } } },
+      },
+      brand: {
+        select: {
+          name: true,
+          company: { select: { subscriptions: { where: { status: 'ACTIVE' }, select: { id: true } } } },
+        },
+      },
+    },
   });
   if (!current || !current.draftStatus) throw new Error('Brief not found');
-  if (current.draftStatus !== 'HANDED_OVER') {
+
+  const isAlreadyHandedOver = current.draftStatus === 'HANDED_OVER';
+  const needsSelfHandover =
+    current.draftStatus === 'APPROVED' && current.draftOrigin === 'CSL_CREATED';
+  if (!isAlreadyHandedOver && !needsSelfHandover) {
     throw new Error('CSMs can only be assigned to handed-over campaigns.');
+  }
+
+  if (needsSelfHandover) {
+    if (!current.companyId && !current.brandId) {
+      throw new Error('Link a company before assigning a CSM.');
+    }
+    const activeSubs =
+      current.company?.subscriptions?.length || current.brand?.company?.subscriptions?.length || 0;
+    if (activeSubs === 0) {
+      throw new Error('Attach an active package to the company before assigning a CSM.');
+    }
   }
 
   // Verify every id is actually a CSM admin before assigning.
@@ -605,6 +639,33 @@ export const assignCsmToBrief = async (briefId: string, csmUserIds: string[]) =>
   }
 
   return prisma.$transaction(async (tx) => {
+    if (needsSelfHandover) {
+      const campaignCode = current.campaignId || (await nextCampaignCode(tx));
+      await tx.campaign.update({
+        where: { id: briefId },
+        data: {
+          campaignId: campaignCode,
+          draftStatus: 'HANDED_OVER',
+          status: 'PENDING_ADMIN_ACTIVATION',
+          clientPackage: current.company?.name || current.brand?.name || null,
+          internalComments: internalComments ?? null,
+          handedOverAt: new Date(),
+          clientMagicToken: null,
+          clientTokenExpiresAt: null,
+        },
+      });
+      if (current.briefOwnerId) {
+        await tx.campaignAdmin.deleteMany({
+          where: { campaignId: briefId, adminId: current.briefOwnerId },
+        });
+      }
+    } else if (internalComments != null) {
+      await tx.campaign.update({
+        where: { id: briefId },
+        data: { internalComments },
+      });
+    }
+
     for (const adminId of ids) {
       await tx.campaignAdmin.upsert({
         where: { adminId_campaignId: { adminId, campaignId: briefId } },
@@ -701,10 +762,11 @@ export const removeBriefAttachmentUrl = async (briefId: string, url?: string) =>
 //   Superadmin → all briefs with a non-null draftStatus.
 //   BD         → only briefs they own (briefOwnerId) — survives handover, which
 //                removes them from campaignAdmin.
-//   CSL        → all HANDED_OVER briefs, by role (NOT membership) — they
-//                oversee/activate handovers without being a campaignAdmin.
-//   CS (CSM)   → only the HANDED_OVER briefs they've been assigned to
-//                (campaignAdmin membership).
+//   CSL        → all HANDED_OVER briefs, by role (NOT membership), PLUS their own
+//                in-progress briefs they authored (CSL_CREATED, pre-handover) so
+//                they can drive them through send → approve → assign.
+//   CS (CSM)   → the HANDED_OVER briefs they've been assigned to (campaignAdmin
+//                membership), PLUS any brief they authored themselves.
 export const listBriefs = async (user: Parameters<typeof classifyBriefRole>[0], userId: string) => {
   const role = classifyBriefRole(user);
 
@@ -718,12 +780,18 @@ export const listBriefs = async (user: Parameters<typeof classifyBriefRole>[0], 
     };
   } else if (role === 'CSL') {
     where = {
-      draftStatus: 'HANDED_OVER',
+      OR: [
+        { draftStatus: 'HANDED_OVER' },
+        { briefOwnerId: userId, draftStatus: { not: null } },
+      ],
     };
   } else if (role === 'CS') {
     where = {
-      draftStatus: 'HANDED_OVER',
-      campaignAdmin: { some: { adminId: userId } },
+      draftStatus: { not: null },
+      OR: [
+        { draftStatus: 'HANDED_OVER', campaignAdmin: { some: { adminId: userId } } },
+        { briefOwnerId: userId },
+      ],
     };
   } else {
     return [];
@@ -755,7 +823,7 @@ export const listBriefs = async (user: Parameters<typeof classifyBriefRole>[0], 
         take: 1,
       },
     },
-    orderBy: { createdAt: 'desc' },
+    orderBy: { updatedAt: 'desc' },
   });
 
   // briefOwnerId is a bare scalar (no relation), and the BD is removed from

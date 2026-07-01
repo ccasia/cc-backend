@@ -17,11 +17,13 @@ import { checkAndCompleteV4Campaign } from '../service/submissionV4CompletionSer
 import { fetchCommentsForVideo, editCommentRecord } from '../service/submissionCommentService';
 import { clients, io } from '../server';
 import { saveNotification } from './notificationController';
+import { sendExpoPushToUser } from '../helper/expoPush';
 import { notificationDraft } from '@helper/notification';
 import { saveCaptionToHistory } from '../utils/captionHistoryUtils';
 import { extractAndStoreSubmissionUrls } from '@services/submissionUrlService';
 import { scheduleInitialInsightFetch } from '@services/insightFetchService';
 import { checkShouldShowNPS } from '@services/npsFeedbackService';
+import { selectCurrentAgreementSubmission } from '@utils/submissionAgreement';
 
 const prisma = new PrismaClient();
 
@@ -322,7 +324,7 @@ export const getV4SubmissionsController = async (req: Request, res: Response) =>
 
     // Group submissions by type for easier frontend consumption
     const groupedSubmissions = {
-      agreement: submissions.find((s) => s.submissionType.type === 'AGREEMENT_FORM'),
+      agreement: selectCurrentAgreementSubmission(submissions),
       videos: submissions.filter((s) => s.submissionType.type === 'VIDEO'),
       photos: submissions.filter((s) => s.submissionType.type === 'PHOTO'),
       rawFootage: submissions.filter((s) => s.submissionType.type === 'RAW_FOOTAGE'),
@@ -350,8 +352,6 @@ export const getV4SubmissionsController = async (req: Request, res: Response) =>
  */
 export const submitV4ContentController = async (req: Request, res: Response) => {
   const { submissionId, videoUrls, photoUrls, rawFootageUrls, caption } = req.body as V4ContentSubmission;
-
-  console.log('ASDSD');
 
   try {
     if (!submissionId) {
@@ -411,7 +411,11 @@ export const submitV4ContentController = async (req: Request, res: Response) => 
  */
 export const approveV4Submission = async (req: Request, res: Response) => {
   const { submissionId, action, feedback, reasons, caption, videoId } = req.body;
-  const currentUserId = req.session.userid;
+  const currentUserId = req.userId;
+
+  if (!currentUserId) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
 
   try {
     if (!submissionId || !action) {
@@ -471,15 +475,10 @@ export const approveV4Submission = async (req: Request, res: Response) => {
     const effectiveCampaignOrigin = getEffectiveCampaignOrigin(submission.campaign);
 
     // Use status utilities to determine next status
-    const { submissionStatus: baseStatus, videoStatus: baseContentStatus } = getNextStatusAfterAdminAction(
+    const { submissionStatus: newStatus, videoStatus: contentStatus } = getNextStatusAfterAdminAction(
       action as any,
       effectiveCampaignOrigin as any,
     );
-
-    // For VIDEO submissions, admin approve always goes to APPROVED directly
-    const isVideoDirectApprove = action === 'approve' && submission.submissionType.type === 'VIDEO';
-    const newStatus = isVideoDirectApprove ? 'APPROVED' : baseStatus;
-    const contentStatus = isVideoDirectApprove ? 'APPROVED' : baseContentStatus;
 
     // Save current caption to history before updating (if caption is being changed)
     if (caption !== undefined) {
@@ -755,7 +754,11 @@ const CLIENT_THREADED_FEEDBACK_PLACEHOLDER = 'Client left detailed feedback via 
 
 export const approveV4SubmissionByClient = async (req: Request, res: Response) => {
   const { submissionId, action, feedback, reasons, videoId: bodyVideoId } = req.body;
-  const clientId = req.session.userid;
+  const clientId = req.userId;
+
+  if (!clientId) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
 
   try {
     if (!submissionId || !action) {
@@ -1107,7 +1110,11 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
  */
 export const forwardClientFeedbackV4 = async (req: Request, res: Response) => {
   const { submissionId, adminFeedback } = req.body;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
+
+  if (!adminId) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
 
   try {
     if (!submissionId) {
@@ -1268,7 +1275,7 @@ export const forwardClientFeedbackV4 = async (req: Request, res: Response) => {
  */
 export const updatePostingLinkController = async (req: Request, res: Response) => {
   const { submissionId, postingLink } = req.body as PostingLinkUpdate;
-  const currentUserId = req.session.userid;
+  const currentUserId = req.userId;
 
   try {
     if (!submissionId || !postingLink) {
@@ -1323,7 +1330,11 @@ export const updatePostingLinkController = async (req: Request, res: Response) =
  */
 export const approvePostingLinkV4 = async (req: Request, res: Response) => {
   const { submissionId, action, reasons } = req.body;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
+
+  if (!adminId) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
 
   try {
     if (!submissionId || !action) {
@@ -1491,7 +1502,7 @@ export const approvePostingLinkV4 = async (req: Request, res: Response) => {
  */
 export const approveIndividualContentV4 = async (req: Request, res: Response) => {
   const { contentType, contentId, feedback, reasons } = req.body;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     if (!contentType || !contentId) {
@@ -1704,7 +1715,7 @@ export const approveIndividualContentV4 = async (req: Request, res: Response) =>
  */
 export const requestChangesIndividualContentV4 = async (req: Request, res: Response) => {
   const { contentType, contentId, feedback, reasons } = req.body;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     if (!contentType || !contentId || !feedback) {
@@ -1855,7 +1866,7 @@ export const requestChangesIndividualContentV4 = async (req: Request, res: Respo
  */
 export const approveIndividualContentByClientV4 = async (req: Request, res: Response) => {
   const { contentType, contentId, feedback } = req.body;
-  const clientId = req.session.userid;
+  const clientId = req.userId;
 
   try {
     if (!contentType || !contentId) {
@@ -2053,7 +2064,7 @@ export const approveIndividualContentByClientV4 = async (req: Request, res: Resp
  */
 export const requestChangesIndividualContentByClientV4 = async (req: Request, res: Response) => {
   const { contentType, contentId, feedback, reasons } = req.body;
-  const clientId = req.session.userid;
+  const clientId = req.userId;
 
   try {
     if (!contentType || !contentId || !feedback) {
@@ -2467,7 +2478,7 @@ export const getPhotoFeedbackV4 = async (req: Request, res: Response) => {
  */
 export const forwardPhotoFeedbackV4 = async (req: Request, res: Response) => {
   const { feedbackId } = req.body;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     if (!feedbackId) {
@@ -2641,7 +2652,7 @@ export const getRawFootageFeedbackV4 = async (req: Request, res: Response) => {
  */
 export const forwardRawFootageFeedbackV4 = async (req: Request, res: Response) => {
   const { feedbackId } = req.body;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     if (!feedbackId) {
@@ -3020,7 +3031,7 @@ export const checkV4CompletionStatus = async (req: Request, res: Response) => {
  */
 export const triggerV4Completion = async (req: Request, res: Response) => {
   const { campaignId, userId } = req.body;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     if (!campaignId || !userId) {
@@ -3077,6 +3088,71 @@ export const getCaptionHistory = async (req: Request, res: Response) => {
 };
 
 /**
+ * Update a submission's caption without changing its review status.
+ * Admin-only, allowed only while the submission is still under review
+ * (PENDING_REVIEW / APPROVE_LINK). Records the change in caption history.
+ * PATCH /api/submissions/v4/submission/:submissionId/caption
+ */
+export const updateSubmissionCaption = async (req: Request, res: Response) => {
+  const { submissionId } = req.params;
+  const { caption } = req.body;
+  const currentUserId = req.userId;
+
+  if (!currentUserId) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  if (typeof caption !== 'string') {
+    return res.status(400).json({ message: 'caption must be a string' });
+  }
+
+  try {
+    const submission = await prisma.submission.findUnique({
+      where: { id: submissionId },
+      select: { id: true, caption: true, status: true, submissionVersion: true },
+    });
+
+    if (!submission) {
+      return res.status(404).json({ message: 'Submission not found' });
+    }
+
+    if (submission.submissionVersion !== 'v4') {
+      return res.status(400).json({ message: 'Not a v4 submission' });
+    }
+
+    if (!['PENDING_REVIEW', 'APPROVE_LINK'].includes(submission.status)) {
+      return res
+        .status(400)
+        .json({ message: 'Caption can only be edited while the submission is under review' });
+    }
+
+    const normalizedCaption = caption.trim();
+
+    // No-op if nothing changed
+    if (normalizedCaption === (submission.caption || '')) {
+      return res.status(200).json({ success: true, caption: submission.caption });
+    }
+
+    // Record the previous caption in history before overwriting
+    await saveCaptionToHistory(submissionId, normalizedCaption, currentUserId, 'admin');
+
+    const updated = await prisma.submission.update({
+      where: { id: submissionId },
+      data: { caption: normalizedCaption || null, updatedAt: new Date() },
+      select: { caption: true },
+    });
+
+    return res.status(200).json({ success: true, caption: updated.caption });
+  } catch (error) {
+    console.error('Error updating caption:', error);
+    return res.status(500).json({
+      message: 'Failed to update caption',
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+};
+
+/**
  * Get comments for a submission, optionally filtered by videoId.
  * Role-based: creators see admin-only, clients see admin+client, admins see all.
  * GET /api/submissions/v4/submission/:submissionId/comments?videoId=xxx
@@ -3085,7 +3161,7 @@ export const getComments = async (req: Request, res: Response) => {
   const { submissionId } = req.params;
   const { videoId } = req.query;
   const user = await prisma.user.findUnique({
-    where: { id: req.session.userid },
+    where: { id: req.userId },
     include: { client: { select: { company: { select: { logo: true } } } } },
   });
 
@@ -3155,7 +3231,7 @@ export const getComments = async (req: Request, res: Response) => {
 export const createComment = async (req: Request, res: Response) => {
   const { submissionId } = req.params;
   const { text, parentId, timestamp, videoId, isClientDraft } = req.body;
-  const sessionUserId = req.session.userid;
+  const sessionUserId = req.userId;
 
   if (!sessionUserId) {
     return res.status(401).json({ error: 'Unauthorized: No session found' });
@@ -3217,7 +3293,13 @@ export const createComment = async (req: Request, res: Response) => {
       },
       include: {
         user: { select: { id: true, name: true, role: true, client: { include: { company: true } } } },
-        submission: { select: { campaignId: true } },
+        submission: {
+          select: {
+            campaignId: true,
+            userId: true,
+            campaign: { select: { name: true } },
+          },
+        },
       },
     });
 
@@ -3235,6 +3317,90 @@ export const createComment = async (req: Request, res: Response) => {
       });
     }
 
+    // Notify the creator when an admin replies to a feedback thread. Replies are
+    // stacked per (creator, campaign): an existing unread reply notification is
+    // updated with a running count instead of inserting a new row, and the push
+    // shares a per-campaign collapseId so the OS banner replaces rather than piles up.
+    const creatorUserId = newComment.submission?.userId;
+    const isAdminReply =
+      !!parentId && (user.role === 'admin' || user.role === 'superadmin');
+
+    if (isAdminReply && commentCampaignId && creatorUserId && creatorUserId !== user.id) {
+      try {
+        const campaignName = newComment.submission?.campaign?.name ?? 'a campaign';
+
+        const existing = await prisma.userNotification.findFirst({
+          where: {
+            userId: creatorUserId,
+            read: false,
+            notification: {
+              entity: 'Feedback',
+              campaignId: commentCampaignId,
+            },
+          },
+          orderBy: { notification: { createdAt: 'desc' } },
+          include: { notification: true },
+        });
+
+        const replyMessage = (count: number) =>
+          count > 1
+            ? `You have ${count} new replies on "${campaignName}". Tap to review.`
+            : `An admin replied to your feedback on "${campaignName}". Tap to review.`;
+
+        if (existing) {
+          // Derive the new count from the prior message, defaulting to 2 on the
+          // second reply (the first created the row, this is the next one).
+          const prevCount = parseInt(existing.notification.message.match(/^You have (\d+)/)?.[1] ?? '1', 10);
+          const nextCount = prevCount + 1;
+
+          await prisma.notification.update({
+            where: { id: existing.notification.id },
+            // Point the stacked notification at the most recent reply's submission
+            // so tapping lands on the submission that was just replied to.
+            data: { message: replyMessage(nextCount), submissionId },
+          });
+          await prisma.userNotification.update({
+            where: { id: existing.id },
+            data: { read: false, readAt: null },
+          });
+
+          const updated = await prisma.userNotification.findUnique({
+            where: { id: existing.id },
+            include: { notification: true },
+          });
+
+          const creatorSocketId = clients.get(creatorUserId);
+          if (io && creatorSocketId && updated) {
+            io.to(creatorSocketId).emit('notification', updated.notification);
+          }
+
+          void sendExpoPushToUser(creatorUserId, {
+            title: `New feedback on ${campaignName}`,
+            body: replyMessage(nextCount),
+            data: { entity: 'Feedback', campaignId: commentCampaignId, submissionId },
+            collapseId: `feedback-reply-${commentCampaignId}`,
+          });
+        } else {
+          const notification = await saveNotification({
+            userId: creatorUserId,
+            title: `New feedback on ${campaignName}`,
+            message: replyMessage(1),
+            entity: 'Feedback',
+            entityId: commentCampaignId,
+            submissionId,
+          });
+
+          const creatorSocketId = clients.get(creatorUserId);
+          if (io && creatorSocketId) {
+            io.to(creatorSocketId).emit('notification', notification);
+          }
+        }
+      } catch (notifyError) {
+        // Never let a notification failure break comment creation.
+        console.error('[createComment] failed to notify creator of reply', notifyError);
+      }
+    }
+
     return res.status(201).json(newComment);
   } catch (error) {
     return res.status(400).json({ error: 'Failed to create comment' });
@@ -3247,7 +3413,7 @@ export const createComment = async (req: Request, res: Response) => {
  */
 export const toggleAgree = async (req: Request, res: Response) => {
   const { commentId } = req.params;
-  const userId = req.session.userid as string;
+  const userId = req.userId as string;
 
   try {
     const comment = await prisma.submissionComment.findUnique({
@@ -3304,7 +3470,7 @@ export const toggleAgree = async (req: Request, res: Response) => {
  */
 export const toggleResolve = async (req: Request, res: Response) => {
   const { commentId } = req.params;
-  const adminId = req.session.userid as string;
+  const adminId = req.userId as string;
 
   try {
     const comment = await prisma.submissionComment.findUnique({
@@ -3412,7 +3578,7 @@ export const toggleCreatorVisibility = async (req: Request, res: Response) => {
 export const updateComment = async (req: Request, res: Response) => {
   const { commentId } = req.params;
   const { text, timestamp } = req.body;
-  const adminId = req.session.userid as string;
+  const adminId = req.userId as string;
 
   if (!text || typeof text !== 'string' || !text.trim()) {
     return res.status(400).json({ error: 'Comment text is required' });
@@ -3461,7 +3627,7 @@ export const updateComment = async (req: Request, res: Response) => {
  */
 export const deleteComment = async (req: Request, res: Response) => {
   const { commentId } = req.params;
-  const adminId = req.session.userid as string;
+  const adminId = req.userId as string;
 
   try {
     const comment = await prisma.submissionComment.findUnique({
@@ -3504,7 +3670,7 @@ export const deleteComment = async (req: Request, res: Response) => {
  */
 export const deleteCommentByClient = async (req: Request, res: Response) => {
   const { commentId } = req.params;
-  const clientId = req.session.userid as string;
+  const clientId = req.userId as string;
 
   try {
     if (!clientId) return res.status(401).json({ error: 'Not logged in' });
@@ -3553,7 +3719,7 @@ export const deleteCommentByClient = async (req: Request, res: Response) => {
 export const sendVideoFeedbackToCreator = async (req: Request, res: Response) => {
   const { submissionId } = req.params;
   const { videoId } = req.body;
-  const adminId = req.session.userid as string;
+  const adminId = req.userId as string;
 
   try {
     if (!videoId) {
@@ -3591,8 +3757,10 @@ export const sendVideoFeedbackToCreator = async (req: Request, res: Response) =>
     });
     const parentIds = parentCommentIds.map((c) => c.id);
 
-    // Find the first unsent comment to link to Feedback (must not already have a Feedback linked)
-    const firstComment = await prisma.submissionComment.findFirst({
+    // Find ALL unsent top-level comments without an existing Feedback link.
+    // Each one becomes its own Feedback row so the creator sees every comment,
+    // not just the first.
+    const unsentTopLevelComments = await prisma.submissionComment.findMany({
       where: {
         submissionId,
         videoId,
@@ -3602,7 +3770,7 @@ export const sendVideoFeedbackToCreator = async (req: Request, res: Response) =>
         feedback: { is: null },
       },
       select: { id: true },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: 'asc' },
     });
 
     // Transaction: mark forwarded + create feedback + update statuses
@@ -3637,18 +3805,37 @@ export const sendVideoFeedbackToCreator = async (req: Request, res: Response) =>
             }),
           ]
         : []),
-      // Create backward-compat Feedback record linked to the first comment
-      prisma.feedback.create({
-        data: {
-          submissionId,
-          adminId,
-          videoId,
-          type: 'REQUEST',
-          sentToCreator: true,
-          content: '',
-          submissionCommentId: firstComment?.id || null,
-        },
-      }),
+      // Create one Feedback row per unsent top-level comment so the creator
+      // sees all comments. If there are no unsent comments (e.g. resending
+      // status with no new content), still create a single empty Feedback for
+      // back-compat with consumers that expect at least one row.
+      ...(unsentTopLevelComments.length > 0
+        ? unsentTopLevelComments.map((c) =>
+            prisma.feedback.create({
+              data: {
+                submissionId,
+                adminId,
+                videoId,
+                type: 'REQUEST',
+                sentToCreator: true,
+                content: '',
+                submissionCommentId: c.id,
+              },
+            }),
+          )
+        : [
+            prisma.feedback.create({
+              data: {
+                submissionId,
+                adminId,
+                videoId,
+                type: 'REQUEST',
+                sentToCreator: true,
+                content: '',
+                submissionCommentId: null,
+              },
+            }),
+          ]),
       // Update submission status
       prisma.submission.update({
         where: { id: submissionId },
@@ -3722,7 +3909,7 @@ export const sendVideoFeedbackToCreator = async (req: Request, res: Response) =>
 export const sendVideoFeedbackToClient = async (req: Request, res: Response) => {
   const { submissionId } = req.params;
   const { videoId } = req.body;
-  const adminId = req.session.userid as string;
+  const adminId = req.userId as string;
 
   try {
     if (!videoId) {

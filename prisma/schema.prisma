@@ -35,6 +35,9 @@ model User {
   agreementTemplate       AgreementTemplate[]
   Board                   Board?
   BookMarkCampaign        BookMarkCampaign[]
+  bookMarkCreator         BookMarkCreator[]   @relation("BookMarkCreatorOwner")
+  bookMarkedBy            BookMarkCreator[]   @relation("BookMarkCreatorTarget")
+  bookMarkCreatorLists    BookMarkCreatorList[]
   campaignLogs            CampaignLog[]
   CampaignTaskAdmin       CampaignTaskAdmin[]
   creator                 Creator?
@@ -63,6 +66,7 @@ model User {
   unreadMessages     UnreadMessage[]
   event              Event?               @relation(fields: [eventId], references: [id])
   userNotification   UserNotification[]
+  pushTokens         PushToken[]
   UserThread         UserThread[]
   threads            Thread[]             @relation("UserThreads")
   bugs               Bugs[]
@@ -97,16 +101,38 @@ model User {
   activatedAt   DateTime?
   passwordSetAt DateTime?
   aiModel       AiModel?
+  refreshTokens RefreshToken[]
+}
 
-  @@index([phoneNumber])
+model RefreshToken {
+  id        String @id @default(cuid())
+  tokenHash String @unique
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  expiresAt DateTime
+
+  userAgent String?
+  ipAddress String?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([tokenHash])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
 }
 
 model EmailVerification {
-  id        String   @id @unique @default(cuid())
+  id        String @id @unique @default(cuid())
   shortCode String
   token     String
-  expiredAt DateTime
-  user      User?
+  attempts  Int?   @default(0)
+
+  lastSendAt DateTime? @default(now())
+  expiredAt  DateTime
+  user       User?
 }
 
 model ResetPasswordToken {
@@ -145,9 +171,10 @@ model Admin {
 }
 
 model Client {
-  id          String  @id @unique @default(cuid())
-  inviteToken String? @unique
-  companyId   String?
+  id              String  @id @unique @default(cuid())
+  inviteToken     String? @unique
+  demoAccessToken String? @unique
+  companyId       String?
 
   // Remove admin sharing - clients should not share admin IDs
   // adminId String? @unique  // ❌ REMOVED
@@ -182,6 +209,7 @@ enum ClientType {
   directClient
   agencyClient
   enterpriseClient
+  demoClient
 }
 
 enum ClientCampaignRole {
@@ -268,7 +296,7 @@ model Creator {
   allowToChange          Boolean     @default(false)
   industries             Json?
   xeroContactId          String?
-  user                   User        @relation(fields: [userId], references: [id])
+  user                   User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   interests              Interest[]
   invoices               Invoice[]
   mediaKit               MediaKit?
@@ -413,6 +441,7 @@ model InstagramVideo {
 
   comments_count Int?
   like_count     Int?
+  view_count     Int?
   media_type     String?
   media_url      String?
   thumbnail_url  String?
@@ -443,12 +472,22 @@ model Message {
   id             Int             @id @default(autoincrement())
   content        String
   createdAt      DateTime        @default(now())
+  editedAt       DateTime?
+  deletedAt      DateTime?
+  deletedById    String?
   threadId       String?
   senderId       String?
   file           String?
   fileType       String?
+  fileWidth      Int?
+  fileHeight     Int?
+  fileName       String?
+  fileSize       Int?
+  replyToId      Int?
   sender         User?           @relation("UserMessages", fields: [senderId], references: [id])
   thread         Thread?         @relation(fields: [threadId], references: [id])
+  replyTo        Message?        @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies        Message[]       @relation("MessageReplies")
   seenMessages   SeenMessage[]
   threadLatest   Thread?         @relation("LatestMessage")
   unreadMessages UnreadMessage[]
@@ -467,11 +506,12 @@ model UnreadMessage {
 }
 
 model SeenMessage {
-  id        Int     @id @default(autoincrement())
+  id        Int       @id @default(autoincrement())
   userId    String
   messageId Int
-  message   Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  user      User    @relation(fields: [userId], references: [id])
+  seenAt    DateTime?
+  message   Message   @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id])
 
   @@unique([userId, messageId])
 }
@@ -755,14 +795,14 @@ model Campaign {
   clientMagicToken     String?              @unique
   clientTokenExpiresAt DateTime?
   editedByClientFields String[]             @default([])
-  
+
   // Snapshot of the brief field values at the moment it was sent to the client
-  clientBriefSnapshot  Json?
-  clientPackage        String?
-  internalComments     String?
-  sentToClientAt       DateTime?
-  approvedAt           DateTime?
-  handedOverAt         DateTime?
+  clientBriefSnapshot Json?
+  clientPackage       String?
+  internalComments    String?
+  sentToClientAt      DateTime?
+  approvedAt          DateTime?
+  handedOverAt        DateTime?
 
   publishedAt DateTime?
   completedAt DateTime?
@@ -779,6 +819,62 @@ model BookMarkCampaign {
   user       User     @relation(fields: [userId], references: [id])
 
   @@unique([userId, campaignId])
+}
+
+model BookMarkCreatorList {
+  id        String            @id @default(cuid())
+  userId    String
+  name      String
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  creators  BookMarkCreator[]
+
+  @@unique([userId, name])
+  @@index([userId])
+}
+
+model BookMarkCreator {
+  id            String              @id @unique @default(cuid())
+  userId        String
+  listId        String
+  creatorUserId String
+  platform      String
+  createdAt     DateTime            @default(now())
+  user          User                @relation("BookMarkCreatorOwner", fields: [userId], references: [id])
+  creatorUser   User                @relation("BookMarkCreatorTarget", fields: [creatorUserId], references: [id])
+  list          BookMarkCreatorList @relation(fields: [listId], references: [id], onDelete: Cascade)
+
+  @@unique([listId, creatorUserId, platform])
+  @@index([userId])
+  @@index([listId])
+}
+
+// Isolated table for campaigns created by client_demo sessions.
+// Has no link to real Campaign / credits / subscriptions. Owner IDs are
+// scalar (no formal relations) so this stays fully self-contained.
+model DemoCampaign {
+  id          String    @id @unique @default(cuid())
+  name        String
+  description String?
+  industry    String?
+  startDate   DateTime?
+  endDate     DateTime?
+  status      String    @default("SCHEDULED")
+
+  // Owner (demo session) — scalar IDs, isolated from real tables
+  userId    String // demo User.id (role client_demo)
+  clientId  String // demo Client.id (clientType demoClient)
+  companyId String // demo Company.id
+
+  data Json? // full submitted form payload snapshot
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([clientId])
+  @@index([userId])
 }
 
 // Separate admin and client campaign access models
@@ -1118,6 +1214,19 @@ model UserNotification {
   @@unique([userId, notificationId])
 }
 
+model PushToken {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  platform  String
+  deviceId  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
 model Submission {
   id                   String                 @id @default(cuid())
   content              String?
@@ -1162,8 +1271,23 @@ model Submission {
   submissionVersion     String?                @default("v2") // "v2", "v3", "v4"
   captionHistory        CaptionHistory[]
   submissionPostingUrls SubmissionPostingUrl[]
+  videoOfTheMonth       VideoOfTheMonth?
 
   @@unique([userId, campaignId, submissionTypeId, contentOrder])
+}
+
+model VideoOfTheMonth {
+  id           String     @id @default(cuid())
+  submissionId String     @unique
+  submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  videoIndex   Int        @default(0) // which entry in Submission.videos[] to feature
+  order        Int        @default(0) // display order on the home feed (asc)
+  featured     Boolean    @default(true) // currently shown; manual replace
+  createdById  String // admin user id who curated it
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@index([featured, order])
 }
 
 model SubmissionPostingUrl {
@@ -1895,6 +2019,7 @@ enum CampaignDraftStatus {
 
 enum CampaignDraftOrigin {
   BD_CREATED
+  CSL_CREATED
   CLIENT_INVITED
 }
 
@@ -1902,6 +2027,7 @@ enum RoleEnum {
   admin
   creator
   client
+  client_demo
   brand
   superadmin
   finance
@@ -2327,21 +2453,6 @@ model CreditTier {
   @@index([minFollowers])
 }
 
-// model AiModel {
-//   id String @id @unique @default(cuid())
-
-//   model           String
-//   temperature     Float
-//   systemPrompt    Json?
-//   maxOutputTokens Int
-//   apiKey          String
-
-//   createdAt DateTime @default(now())
-//   updatedAt DateTime @updatedAt
-
-//   @@map("ai_model")
-// }
-
 // NPS Feedback
 enum NpsUserType {
   CLIENT
@@ -2447,4 +2558,61 @@ model AiModel {
   user   User?   @relation(references: [id], fields: [userId])
 
   @@map("ai_model")
+}
+
+model WhatsappSetting {
+  id String @id @unique @default(cuid())
+
+  accessToken       String?
+  businessAccountId String?
+  phoneNumberId     String?
+  templateName      String?
+
+  isFeatureEnabled Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("whatsapp-setting")
+}
+
+model VerificationCode {
+  id String @id @unique @default(cuid())
+
+  verificationCode String
+  accessToken      String
+  phoneNumber      String
+  isUsed           Boolean @default(false)
+  attempts         Int     @default(0)
+
+  expiredAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model WhatsappMessage {
+  id String @id @unique @default(cuid())
+
+  messageId String? @unique
+
+  from String?
+  to   String?
+
+  message String?
+  sticker Json?
+
+  type String?
+
+  status String?
+  sentAt DateTime
+
+  direction TypeEnum?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum TypeEnum {
+  inbound
+  outbound
 }

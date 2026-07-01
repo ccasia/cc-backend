@@ -137,6 +137,15 @@ const notificationLogisticTracking = (campaignName: string, trackingNumber: stri
   };
 };
 
+const notificationLogisticShipped = (campaignName: string, trackingLink?: string | null) => {
+  return {
+    title: '📦 Product Shipped!',
+    message: trackingLink
+      ? `Your product for ${campaignName} is on the way. Track it here: ${trackingLink}`
+      : `Your product for ${campaignName} is on the way.`,
+  };
+};
+
 const notificationInvoiceGenerate = (campaignName: string) => {
   return {
     title: `💰 Invoice Generated!`,
@@ -211,6 +220,7 @@ export {
   notificationGroupChat,
   notificationLogisticDelivery,
   notificationLogisticTracking,
+  notificationLogisticShipped,
   notificationInvoiceGenerate,
   notificationInvoiceStatus,
   notificationInvoiceUpdate,

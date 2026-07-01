@@ -9,6 +9,8 @@ import {
   handleDisconnectTiktok,
   handleInstagramCallback,
   instagramCallback,
+  instagramMobileAuth,
+  instagramMobileCallback,
   redirectFacebookAuth,
   redirectTiktokAfterAuth,
   removeInstagramPermissions,
@@ -17,34 +19,38 @@ import {
   getTikTokMediaKit,
 } from '@controllers/socialController';
 import { Router } from 'express';
-import { isLoggedIn } from '@middlewares/onlyLogin';
+import { authenticate } from '@middlewares/authenticate';
 
 const router = Router();
 
-router.get('/oauth/tiktok', isLoggedIn, tiktokAuthentication);
+router.get('/oauth/tiktok', authenticate, tiktokAuthentication);
 
-router.get('/tiktok/callback', isLoggedIn, redirectTiktokAfterAuth);
+router.get('/oauth/instagram', authenticate, instagramMobileAuth);
 
-router.get('/tiktok/:userId', isLoggedIn, tiktokData);
+router.get('/instagram/mobile/callback', instagramMobileCallback);
+
+router.get('/tiktok/callback', redirectTiktokAfterAuth);
+
+router.get('/tiktok/:userId', authenticate, tiktokData);
 
 router.get('/auth/facebook', facebookAuthentication);
 
-router.get('/auth/facebook/callback', isLoggedIn, redirectFacebookAuth);
+router.get('/auth/facebook/callback', authenticate, redirectFacebookAuth);
 
-router.get('/instagram/:userId', isLoggedIn, getUserInstagramData);
+router.get('/instagram/:userId', authenticate, getUserInstagramData);
 
-router.post('/tiktok/disconnect', isLoggedIn, handleDisconnectTiktok);
+router.post('/tiktok/disconnect', authenticate, handleDisconnectTiktok);
 
-router.post('/facebook/disconnect', isLoggedIn, handleDisconnectFacebook);
+router.post('/facebook/disconnect', authenticate, handleDisconnectFacebook);
 
-router.get('/auth/instagram/callback', isLoggedIn, instagramCallback);
+router.get('/auth/instagram/callback', authenticate, instagramCallback);
 
-router.get('/instagram/overview/:userId', isLoggedIn, getInstagramOverview);
+router.get('/instagram/overview/:userId', authenticate, getInstagramOverview);
 
-router.delete('/instagram/permissions/:userId', isLoggedIn, removeInstagramPermissions);
+router.delete('/instagram/permissions/:userId', authenticate, removeInstagramPermissions);
 
 // Instagram, V2
-router.get('/v2/auth/instagram/callback', isLoggedIn, handleInstagramCallback);
+router.get('/v2/auth/instagram/callback', authenticate, handleInstagramCallback);
 router.get('/v2/instagramOverview/:userId', getInstagramMediaKit);
 router.get('/v2/mediaInsight/:userId', getInstagramMediaInsight);
 

@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { getUser } from '@services/userServices';
 
 export const isAdminOrClient = async (req: Request, res: Response, next: NextFunction) => {
-  const userid = req.session.userid;
+  const userid = req.userId;
 
   if (!userid) {
     return res.status(401).json({ message: 'User not authenticated' });
@@ -19,8 +19,30 @@ export const isAdminOrClient = async (req: Request, res: Response, next: NextFun
   next();
 };
 
+// Allows the roles permitted to view a creator's media kit:
+// superadmins/admins (internal) plus clients and demo clients (discovery tool).
+// Mirrors the frontend RoleBasedGuard on /dashboard/mediakit/client/:id.
+export const canViewCreatorMediaKit = async (req: Request, res: Response, next: NextFunction) => {
+  const userid = req.userId;
+
+  if (!userid) {
+    return res.status(401).json({ message: 'User not authenticated' });
+  }
+
+  try {
+    const user = await getUser(userid);
+    const allowedRoles = ['superadmin', 'admin', 'client', 'client_demo'];
+    if (!allowedRoles.includes(user?.role || '')) {
+      return res.status(403).json({ message: 'Access denied.' });
+    }
+  } catch (error) {
+    return res.status(400).json({ message: error });
+  }
+  next();
+};
+
 export const canActivateCampaign = async (req: Request, res: Response, next: NextFunction) => {
-  const userid = req.session.userid;
+  const userid = req.userId;
 
   if (!userid) {
     return res.status(401).json({ message: 'User not authenticated' });

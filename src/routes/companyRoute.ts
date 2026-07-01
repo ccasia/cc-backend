@@ -24,7 +24,10 @@ import {
   resendClientActivation,
   getClientsByCompanyId,
 } from '@controllers/companyController';
+import { authenticate } from '@middlewares/authenticate';
 const router = Router();
+
+router.use(authenticate);
 
 router.get('/', isSuperAdmin, clientOverview);
 router.get('/getCompany/:id', isSuperAdmin, getCompanyById);

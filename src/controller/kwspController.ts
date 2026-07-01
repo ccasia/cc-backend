@@ -7,7 +7,7 @@ const prisma = new PrismaClient();
 export const submitKWSPForm = async (req: Request, res: Response) => {
   try {
     const { fullName, nricPassport } = req.body;
-    const { userid } = req.session;
+    const userid = req.userId;
 
     if (!fullName || !nricPassport) {
       return res.status(400).json({

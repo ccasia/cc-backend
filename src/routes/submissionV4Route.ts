@@ -21,6 +21,7 @@ import {
   getSubmissionStatusInfo,
   updateSubmissionDueDate,
   getCaptionHistory,
+  updateSubmissionCaption,
   getComments,
   createComment,
   toggleAgree,
@@ -33,7 +34,7 @@ import {
   sendVideoFeedbackToClient,
 } from '../controller/submissionV4Controller';
 
-import { isLoggedIn } from '../middleware/onlyLogin';
+import { authenticate } from '../middleware/authenticate';
 import { isAdmin } from '../middleware/onlySuperadmin';
 import { isClient } from '@middlewares/clientOnly';
 
@@ -44,6 +45,7 @@ const router = express.Router();
  * All routes are prefixed with /api/submissions/v4
  */
 
+router.use(authenticate);
 // Create V4 submissions when creator is approved
 router.post('/create', createV4Submissions);
 
@@ -60,53 +62,56 @@ router.get('/status/:submissionId', getSubmissionStatusInfo);
 router.post('/submit-content', submitV4ContentController);
 
 // Approve/reject V4 submission (admin action)
-router.post('/approve', isLoggedIn, isAdmin, approveV4Submission);
+router.post('/approve', isAdmin, approveV4Submission);
 
 // Client approve/reject V4 submission (client action for client-created campaigns)
-router.post('/approve/client', isLoggedIn, isClient, approveV4SubmissionByClient);
+router.post('/approve/client', isClient, approveV4SubmissionByClient);
 
 // Admin forward client feedback to creator
-router.post('/forward-client-feedback', isLoggedIn, isAdmin, forwardClientFeedbackV4);
+router.post('/forward-client-feedback', isAdmin, forwardClientFeedbackV4);
 
 // Admin forward individual photo feedback to creator
-router.post('/forward-photo-feedback', isLoggedIn, isAdmin, forwardPhotoFeedbackV4);
+router.post('/forward-photo-feedback', isAdmin, forwardPhotoFeedbackV4);
 
 // Admin forward individual raw footage feedback to creator
-router.post('/forward-raw-footage-feedback', isLoggedIn, isAdmin, forwardRawFootageFeedbackV4);
+router.post('/forward-raw-footage-feedback', isAdmin, forwardRawFootageFeedbackV4);
 
 // Update posting link for approved submission (creator action)
 router.put('/posting-link', updatePostingLinkController);
 
 // Update due date for submission (admin action)
-router.put('/due-date', isLoggedIn, isAdmin, updateSubmissionDueDate);
+router.put('/due-date', isAdmin, updateSubmissionDueDate);
 
 // Admin approve/reject posting link (admin action)
-router.post('/posting-link/approve', isLoggedIn, isAdmin, approvePostingLinkV4);
+router.post('/posting-link/approve', isAdmin, approvePostingLinkV4);
 
 // Individual content feedback endpoints (following v3 pattern)
-router.patch('/content/approve', isLoggedIn, isAdmin, approveIndividualContentV4);
-router.patch('/content/request-changes', isLoggedIn, isAdmin, requestChangesIndividualContentV4);
-router.patch('/content/approve/client', isLoggedIn, isClient, approveIndividualContentByClientV4);
-router.patch('/content/request-changes/client', isLoggedIn, isClient, requestChangesIndividualContentByClientV4);
-router.get('/photo/:photoId/feedback', isLoggedIn, getPhotoFeedbackV4);
-router.get('/rawFootage/:rawFootageId/feedback', isLoggedIn, getRawFootageFeedbackV4);
-router.get('/content/feedback/:contentType/:contentId', isLoggedIn, getIndividualContentFeedbackV4);
+router.patch('/content/approve', isAdmin, approveIndividualContentV4);
+router.patch('/content/request-changes', isAdmin, requestChangesIndividualContentV4);
+router.patch('/content/approve/client', isClient, approveIndividualContentByClientV4);
+router.patch('/content/request-changes/client', isClient, requestChangesIndividualContentByClientV4);
+router.get('/photo/:photoId/feedback', getPhotoFeedbackV4);
+router.get('/rawFootage/:rawFootageId/feedback', getRawFootageFeedbackV4);
+router.get('/content/feedback/:contentType/:contentId', getIndividualContentFeedbackV4);
 
 // Caption history endpoint
-router.get('/:submissionId/caption-history', isLoggedIn, getCaptionHistory);
+router.get('/:submissionId/caption-history', getCaptionHistory);
+
+// Update caption without changing review status (admin only)
+router.patch('/submission/:submissionId/caption', isAdmin, updateSubmissionCaption);
 
 // Comment endpoints
-router.get('/submission/:submissionId/comments', isLoggedIn, getComments);
-router.post('/submission/:submissionId/comments', isLoggedIn, createComment);
-router.patch('/comments/:commentId', isLoggedIn, isAdmin, updateComment);
-router.delete('/comments/:commentId', isLoggedIn, isAdmin, deleteComment);
-router.post('/comments/:commentId/agree', isLoggedIn, isClient, toggleAgree);
-router.delete('/comments/:commentId/client', isLoggedIn, isClient, deleteCommentByClient);
-router.patch('/comments/:commentId/resolve', isLoggedIn, isAdmin, toggleResolve);
-router.patch('/comments/:commentId/visibility', isLoggedIn, isAdmin, toggleCreatorVisibility);
+router.get('/submission/:submissionId/comments', getComments);
+router.post('/submission/:submissionId/comments', createComment);
+router.patch('/comments/:commentId', isAdmin, updateComment);
+router.delete('/comments/:commentId', isAdmin, deleteComment);
+router.post('/comments/:commentId/agree', isClient, toggleAgree);
+router.delete('/comments/:commentId/client', isClient, deleteCommentByClient);
+router.patch('/comments/:commentId/resolve', isAdmin, toggleResolve);
+router.patch('/comments/:commentId/visibility', isAdmin, toggleCreatorVisibility);
 
 // Comment-based feedback actions
-router.post('/submission/:submissionId/send-to-creator', isLoggedIn, isAdmin, sendVideoFeedbackToCreator);
-router.post('/submission/:submissionId/send-to-client', isLoggedIn, isAdmin, sendVideoFeedbackToClient);
+router.post('/submission/:submissionId/send-to-creator', isAdmin, sendVideoFeedbackToCreator);
+router.post('/submission/:submissionId/send-to-client', isAdmin, sendVideoFeedbackToClient);
 
 export default router;

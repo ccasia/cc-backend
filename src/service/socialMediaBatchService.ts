@@ -251,7 +251,7 @@ async function ensureValidInstagramToken(userId: string): Promise<string> {
 
     try {
       // Refresh the token
-      const refreshedTokenData = await refreshInstagramToken(accessToken);
+      const refreshedTokenData = await refreshInstagramToken(accessToken!);
 
       // Encrypt the new token
       const newEncryptedAccessToken = encryptToken(refreshedTokenData.access_token);
@@ -277,7 +277,7 @@ async function ensureValidInstagramToken(userId: string): Promise<string> {
     }
   }
 
-  return accessToken;
+  return accessToken!;
 }
 
 /**
@@ -325,7 +325,7 @@ async function ensureValidTikTokToken(userId: string): Promise<string> {
 
     try {
       // Refresh the token
-      const refreshedTokenData = await refreshTikTokToken(refreshToken);
+      const refreshedTokenData = await refreshTikTokToken(refreshToken!);
 
       // Encrypt the new tokens
       const newEncryptedAccessToken = encryptToken(refreshedTokenData.access_token);
@@ -354,5 +354,5 @@ async function ensureValidTikTokToken(userId: string): Promise<string> {
     }
   }
 
-  return accessToken;
+  return accessToken!;
 }

@@ -27,7 +27,7 @@ import {
   patchBriefPublic,
   approveBriefPublic,
 } from '@controllers/campaignBriefController';
-import { isLoggedIn } from '../middleware/onlyLogin';
+import { authenticate } from '../middleware/authenticate';
 
 const router = Router();
 
@@ -56,27 +56,26 @@ const publicPatchLimiter = rateLimit({
 });
 
 // --- Existing CLIENT_INVITED (BD share-link) flow ---
-router.get('/my-invite-link', isLoggedIn, isBdOrSuperadmin, getMyInviteLink);
-router.post('/my-invite-link/rotate', isLoggedIn, isBdOrSuperadmin, rotateMyInviteLink);
+router.get('/my-invite-link', authenticate, isBdOrSuperadmin, getMyInviteLink);
+router.post('/my-invite-link/rotate', authenticate, isBdOrSuperadmin, rotateMyInviteLink);
 
 router.get('/invite/public/:token', publicLookupLimiter, getPublicInviteInfo);
 router.post('/invite/public/:token/submit', publicSubmitLimiter, bdSubmitDraft);
 
 // --- New BD-authored brief flow ---
-router.post('/', isLoggedIn, isBdOrSuperadmin, createBrief);
-router.get('/', isLoggedIn, isBdOrSuperadmin, listBriefs);
-router.get('/:id', isLoggedIn, isBdOrSuperadmin, getBrief);
-router.patch('/:id', isLoggedIn, isBdOrSuperadmin, patchBrief);
-router.post('/:id/send', isLoggedIn, isBdOrSuperadmin, sendBriefToClient);
-router.post('/:id/approve', isLoggedIn, isBdOrSuperadmin, approveBrief);
-router.post('/:id/reset', isLoggedIn, isBdOrSuperadmin, resetBrief);
-router.post('/:id/handover', isLoggedIn, isBdOrSuperadmin, handoverBrief);
+router.post('/', authenticate, isBdOrSuperadmin, createBrief);
+router.get('/', authenticate, isBdOrSuperadmin, listBriefs);
+router.get('/:id', authenticate, isBdOrSuperadmin, getBrief);
+router.patch('/:id', authenticate, isBdOrSuperadmin, patchBrief);
+router.post('/:id/send', authenticate, isBdOrSuperadmin, sendBriefToClient);
+router.post('/:id/approve', authenticate, isBdOrSuperadmin, approveBrief);
+router.post('/:id/handover', authenticate, isBdOrSuperadmin, handoverBrief);
 // CSL-only assignment of CSMs to a handed-over campaign (controller enforces
 // the CSL/superadmin role; isBdOrSuperadmin already admits CSL).
-router.post('/:id/assign-csm', isLoggedIn, isBdOrSuperadmin, assignCsm);
-router.post('/:id/attachments', isLoggedIn, isBdOrSuperadmin, uploadBriefAttachment);
-router.delete('/:id/attachments', isLoggedIn, isBdOrSuperadmin, deleteBriefAttachment);
-router.delete('/:id', isLoggedIn, isBdOrSuperadmin, deleteBrief);
+router.post('/:id/assign-csm', authenticate, isBdOrSuperadmin, assignCsm);
+router.post('/:id/attachments', authenticate, isBdOrSuperadmin, uploadBriefAttachment);
+router.delete('/:id/attachments', authenticate, isBdOrSuperadmin, deleteBriefAttachment);
+router.delete('/:id', authenticate, isBdOrSuperadmin, deleteBrief);
 
 // --- Public (magic-link) client review/edit/approve endpoints ---
 router.get('/public/:magicToken', publicLookupLimiter, getBriefPublic);

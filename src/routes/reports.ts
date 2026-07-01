@@ -39,7 +39,7 @@ reportsRouter.post('/generate/:campaignId', async (req: Request, res: Response):
       campaignId,
       sections,
       externalMetrics: req.body?.externalMetrics,
-      userId: req.session.userid,
+      userId: req.userId!,
     });
 
     res.json({ success: true, report });

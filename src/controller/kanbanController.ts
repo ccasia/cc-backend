@@ -11,7 +11,7 @@ export const getKanbanBoard = async (req: Request, res: Response) => {
   try {
     const board = await prisma.board.findUnique({
       where: {
-        userId: req.session.userid,
+        userId: req.userId,
       },
       include: {
         user: true,

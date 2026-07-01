@@ -273,6 +273,8 @@ function extractMetrics(
     if (denominator > 0) {
       engagementRate = ((likes + comments + shares + saved) / denominator) * 100;
     }
+  } else if (views > 0) {
+    engagementRate = ((likes + comments + shares) / views) * 100;
   } else if (platform === 'TikTok') {
     // Extract from TikTok insight structure
     views = insight.video?.play_count || insight.video?.view_count || 0;

@@ -1,0 +1,40 @@
+{
+  "$schema": "https://swc.rs/schema.json",
+  "jsc": {
+    "baseUrl": ".",
+    "parser": {
+      "syntax": "typescript",
+      "tsx": false,
+      "dynamicImport": true,
+      "decorators": true
+    },
+    "transform": {
+      "decoratorMetadata": true
+    },
+    "target": "es2016",
+    "loose": false,
+    "externalHelpers": false,
+    "keepClassNames": false,
+    "paths": {
+      "@/*": ["./*"],
+      "@controllers/*": ["./src/controller/*"],
+      "@routes/*": ["./src/routes/*"],
+      "@constants/*": ["./src/constants/*"],
+      "@configs/*": ["./src/config/*"],
+      "@middlewares/*": ["./src/middleware/*"],
+      "@services/*": ["./src/service/*"],
+      "@utils/*": ["./src/utils/*"],
+      "@helper/*": ["./src/helper/*"],
+      "@types": ["./src/types.ts"]
+    }
+  },
+
+  "module": {
+    "type": "commonjs",
+    "strict": false,
+    "strictMode": false,
+    "noInterop": false,
+    "lazy": false
+  },
+  "minify": true
+}

@@ -97,7 +97,7 @@ export const xeroCallBack = async (req: Request, res: Response) => {
   try {
     const user = await prisma.user.findUnique({
       where: {
-        id: req.session.userid,
+        id: req.userId,
       },
     });
 
@@ -109,7 +109,7 @@ export const xeroCallBack = async (req: Request, res: Response) => {
 
     await prisma.user.update({
       where: {
-        id: req.session.userid,
+        id: req.userId,
       },
       data: {
         xeroRefreshToken: tokenSet.refresh_token,
@@ -509,7 +509,7 @@ export const getAllInvoices = async (req: Request, res: Response) => {
 
 // get invoices by creator id
 export const getInvoicesByCreatorId = async (req: Request, res: Response) => {
-  const userid = req.session.userid;
+  const userid = req.userId;
 
   try {
     const invoices = await prisma.invoice.findMany({
@@ -521,6 +521,7 @@ export const getInvoicesByCreatorId = async (req: Request, res: Response) => {
           include: {
             brand: true,
             company: true,
+            campaignBrief: { select: { images: true } },
             creatorAgreement: {
               where: {
                 userId: userid,
@@ -943,7 +944,7 @@ export const getInvoiceByCreatorIdAndCampaignId = async (req: Request, res: Resp
 // create invoices
 export const createInvoice = async (req: Request, res: Response) => {
   // get user id from session
-  const { userid } = req.session;
+  const userid = req.userId;
 
   const {
     invoiceNumber,
@@ -1346,7 +1347,7 @@ export const updateInvoiceStatus = async (req: Request, res: Response) => {
 //           }
 //         }
 
-//         const adminId = req.session.userid;
+//         const adminId = req.userId;
 
 //         if (adminId) {
 //           const adminLogMessage = `Updated Invoice for - "${invoice.creator.user?.name}" `;
@@ -1399,7 +1400,7 @@ export const updateInvoice = async (req: Request, res: Response) => {
     reason,
   }: invoiceData = JSON.parse(req.body.data);
 
-  const userId = req.session.userid;
+  const userId = req.userId;
   const invoiceAttachment = (req.files as { file: any }).file;
 
   if (process.env.NODE_ENV !== 'production') {
@@ -1621,7 +1622,7 @@ export const updateInvoice = async (req: Request, res: Response) => {
           bankInfo,
           newContact,
           reason,
-          adminId: req.session.userid,
+          adminId: req.userId,
           invoiceAttachment,
         },
         {
@@ -1668,7 +1669,7 @@ export const getXeroContacts = async (req: Request, res: Response) => {
 };
 
 export const checkRefreshToken = async (req: Request, res: Response) => {
-  const userId = req.session.userid;
+  const userId = req.userId;
 
   try {
     const user = await prisma.user.findUnique({
@@ -1703,7 +1704,7 @@ export const checkRefreshToken = async (req: Request, res: Response) => {
 
 export const checkAndRefreshAccessToken = async (req: Request, res: Response, next: Function) => {
   try {
-    const userId = req.session.userid;
+    const userId = req.userId;
 
     const user = await prisma.user.findUnique({
       where: {
@@ -1760,7 +1761,7 @@ export const checkAndRefreshAccessToken = async (req: Request, res: Response, ne
 
     //   await prisma.user.update({
     //     where: {
-    //       id: req.session.userid,
+    //       id: req.userId,
     //     },
     //     data: {
     //       xeroRefreshToken: tokenSet.refresh_token,
@@ -1787,7 +1788,7 @@ export const checkAndRefreshAccessToken = async (req: Request, res: Response, ne
 
     //   await prisma.user.update({
     //     where: {
-    //       id: req.session.userid,
+    //       id: req.userId,
     //     },
     //     data: {
     //       xeroRefreshToken: tokenSet.refresh_token,
@@ -1957,6 +1958,9 @@ export const creatorInvoice = async (req: Request, res: Response) => {
                 userId: invoiceDetail.creatorId,
               },
             },
+            brand: { select: { id: true, name: true, logo: true } },
+            company: { select: { id: true, name: true, logo: true } },
+            campaignBrief: { select: { images: true } },
           },
         },
       },
@@ -2037,11 +2041,11 @@ export const generateInvoice = async (req: Request, res: Response) => {
 
       const invoice = await createInvoiceService(
         { ...creator, userId: creator.user?.id, campaignId: creator.campaign.id },
-        req.session.userid,
+        req.userId,
         invoiceAmount,
         undefined,
         undefined,
-        req.session.userid,
+        req.userId,
       );
 
       await prisma.shortListedCreator.update({
@@ -2067,7 +2071,7 @@ export const generateInvoice = async (req: Request, res: Response) => {
         images[0],
       );
 
-      const adminId = req.session.userid;
+      const adminId = req.userId;
       if (adminId) {
         const adminLogMessage = `Generated Invoice for - "${creator.user?.name}" `;
         logAdminChange(adminLogMessage, adminId, req);
@@ -2093,7 +2097,7 @@ export const generateInvoice = async (req: Request, res: Response) => {
 
 export const deleteInvoice = async (req: Request, res: Response) => {
   const { id } = req.params;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     const invoice = await prisma.invoice.findUnique({
@@ -2146,7 +2150,7 @@ export const disconnectXeroIntegration = async (req: Request, res: Response) => 
   try {
     const admin = await prisma.admin.findUnique({
       where: {
-        userId: req.session.userid,
+        userId: req.userId,
       },
     });
 
@@ -2300,7 +2304,7 @@ export async function generateMissingInvoices(req: Request, res: Response) {
 
 export const bulkUpdateInvoices = async (req: Request, res: Response) => {
   let { invoiceIds } = req.body;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
   const attachments: Record<string, any> = {};
 
   if (typeof invoiceIds === 'string') {

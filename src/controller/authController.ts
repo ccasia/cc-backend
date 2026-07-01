@@ -27,6 +27,14 @@ import { TokenSet, XeroClient } from 'xero-node';
 import { generate, generateSecret, generateURI, verify } from 'otplib';
 
 import QRCode from 'qrcode';
+import crypto from 'crypto';
+import * as z from 'zod';
+import {
+  generateAccessToken,
+  generateRefreshToken,
+  getRefreshTokenExpiryDate,
+  verifyRefreshToken,
+} from '@utils/tokens';
 
 const prisma = new PrismaClient();
 
@@ -898,7 +906,7 @@ export const logout = async (req: Request, res: Response) => {
 
 // check creator full data with two tables user and creator
 export const checkCreator = async (req: Request, res: Response) => {
-  const { userid } = req.session;
+  const userid = req.userId;
 
   try {
     const creator = await prisma.creator.findFirst({
@@ -944,7 +952,7 @@ export const checkCreator = async (req: Request, res: Response) => {
 
 // Function to get current user
 export const getCurrentUser = async (req: Request, res: Response) => {
-  const { userid } = req.session;
+  const userid = req.userId;
   try {
     const user = await prisma.user.findFirst({
       where: {
@@ -976,7 +984,7 @@ export const getCurrentUser = async (req: Request, res: Response) => {
 
 // Function to update creator information
 export const updateCreator = async (req: Request, res: Response) => {
-  const { userid } = req.session;
+  const userid = req.userId;
 
   if (!userid) {
     return res.status(401).json({ message: 'User not authenticated' });
@@ -1107,7 +1115,7 @@ export const updateCreator = async (req: Request, res: Response) => {
 
 // Function to update client profile
 export const updateClient = async (req: Request, res: Response) => {
-  const { userid } = req.session;
+  const userid = req.userId;
 
   if (!userid) {
     return res.status(401).json({ message: 'User not authenticated' });
@@ -1162,9 +1170,11 @@ export const updateClient = async (req: Request, res: Response) => {
 
 // Function to get user's information
 export const getprofile = async (req: Request, res: Response) => {
-  const userId = req.session.userid as string;
+  const userId = req?.userId || (req.userId as string);
+
   const isImpersonating = req.session.isImpersonating;
   const impersonatingBy = req.session.impersonatingBy;
+
   let xeroinformation;
   let xeroError;
 
@@ -1245,6 +1255,8 @@ export const getprofile = async (req: Request, res: Response) => {
         isImpersonating,
         impersonatingBy,
         isPasswordExist: Boolean(user.password),
+        isInstagramConnected: !!user.creator?.instagram,
+        isTiktokConnected: !!user.creator?.tiktok,
       },
       ...((user.role === 'superadmin' ||
         (user.role === 'admin' && user?.admin?.role?.name.toLowerCase() === 'finance')) && {
@@ -1857,7 +1869,7 @@ export const setupClientPassword = async (req: Request, res: Response) => {
 };
 
 export const deleteAccount = async (req: Request, res: Response) => {
-  const userId = req.session.userid as string;
+  const userId = req.userId as string;
 
   if (!userId) {
     return res.status(401).json({ message: 'Unauthorized' });
@@ -1924,7 +1936,7 @@ export const deleteAccount = async (req: Request, res: Response) => {
 
 export const setupTwoFactor = async (req: Request, res: Response) => {
   try {
-    const userId = req.session.userid;
+    const userId = req.userId;
 
     const user = await prisma.user.findUnique({
       where: {
@@ -1947,5 +1959,198 @@ export const setupTwoFactor = async (req: Request, res: Response) => {
     console.log(qrDataUrl);
   } catch (error) {
     return res.status(500).json(error);
+  }
+};
+
+const hashToken = (token: string) => crypto.createHash('sha256').update(token).digest('hex');
+
+export const mobileLogin = async (
+  req: Request<{}, {}, { email: string; password: string; ipAddress: string; userAgent: string }>,
+  res: Response,
+) => {
+  const { email, password, ipAddress, userAgent } = req.body;
+
+  try {
+    // Validation checking on server
+    if (!email.match(/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/g)) {
+      return res.status(400).json({ message: 'Please enter the correct email format', success: false });
+    }
+
+    const user = await prisma.user.findFirst({
+      where: {
+        email: {
+          mode: 'insensitive',
+          equals: email,
+        },
+      },
+    });
+
+    if (!user) return res.status(404).json({ message: 'User not found', success: false });
+
+    switch (user.status) {
+      case 'banned':
+        return res.status(400).json({ message: 'Account banned.' });
+      case 'pending':
+        return res.status(400).json({ message: 'Account pending.' });
+      case 'blacklisted':
+        return res.status(400).json({ message: 'Account blacklisted.' });
+      case 'suspended':
+        return res.status(400).json({ message: 'Account suspended.' });
+      case 'spam':
+        return res.status(400).json({ message: 'Account spam.' });
+      case 'rejected':
+        return res.status(400).json({ message: 'Account rejected.' });
+    }
+
+    const isMatch = await bcrypt.compare(password, user.password as string);
+
+    if (!isMatch) {
+      return res.status(404).json({ message: 'Wrong password' });
+    }
+
+    const accessToken = jwt.sign({ userId: user.id, email: user.email }, process.env.ACCESSKEY!, { expiresIn: '1m' });
+    const refreshToken = jwt.sign({ userId: user.id, email: user.email }, process.env.REFRESHKEY!, {
+      expiresIn: '30d',
+    });
+
+    const savedRefreshToken = await prisma.refreshToken.create({
+      data: {
+        tokenHash: hashToken(refreshToken),
+        userId: user.id,
+        expiresAt: dayjs().add(30, 'days').toDate(),
+        ipAddress,
+        userAgent,
+      },
+    });
+
+    return res.status(200).json({ user, token: { accessToken, refreshToken } });
+  } catch (err) {
+    console.log(err);
+    return res.status(500).json(err);
+  }
+};
+
+export const getSessionStatus = async (req: Request, res: Response) => {
+  return res.status(200).json({
+    pendingRegistration: req.session.pendingRegistration ?? null,
+  });
+};
+
+export const mobileTokenRefresh = async (req: Request, res: Response) => {
+  try {
+    const refreshSchema = z.object({ refreshToken: z.string().min(1) });
+    const parsed = refreshSchema.safeParse(req.body);
+
+    if (!parsed.success) {
+      return res.status(400).json({ success: false, message: 'Refresh token required' });
+    }
+
+    const { refreshToken } = parsed.data;
+
+    let payload: { userId: string; email: string };
+
+    try {
+      payload = verifyRefreshToken(refreshToken);
+    } catch {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid or expired refresh token',
+      });
+    }
+
+    const tokenHash = hashToken(refreshToken);
+
+    const stored = await prisma.refreshToken.findUnique({
+      where: { tokenHash },
+      include: {
+        user: {
+          select: { id: true, email: true, name: true, isActive: true },
+        },
+      },
+    });
+
+    if (!stored) {
+      // Nuke the entire family (revoke ALL tokens from this login session)
+      await prisma.refreshToken.deleteMany({
+        where: { userId: payload.userId },
+      });
+
+      return res.status(401).json({
+        success: false,
+        message: 'Refresh token reuse detected. Please log in again.',
+      });
+    }
+
+    if (stored.expiresAt < new Date()) {
+      await prisma.refreshToken.delete({ where: { id: stored.id } });
+
+      return res.status(401).json({
+        success: false,
+        message: 'Refresh token expired',
+      });
+    }
+
+    const newAccessToken = jwt.sign({ userId: stored.userId, email: stored.user.email }, process.env.ACCESSKEY!, {
+      expiresIn: '1m',
+    });
+
+    const newRefreshToken = jwt.sign({ userId: stored.userId, email: stored.user.email }, process.env.REFRESHKEY!, {
+      expiresIn: '30d',
+    });
+
+    const newRefreshTokenHash = hashToken(newRefreshToken);
+
+    await prisma.$transaction([
+      // Mark old token as revoked + linked to replacement (audit trail)
+      prisma.refreshToken.delete({
+        where: { id: stored.id },
+      }),
+      // Insert new token
+      prisma.refreshToken.create({
+        data: {
+          tokenHash: newRefreshTokenHash,
+          userId: stored.user.id,
+          expiresAt: getRefreshTokenExpiryDate(),
+          userAgent: req.headers['user-agent'] ?? null,
+          ipAddress: req.ip ?? null,
+        },
+      }),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        tokens: {
+          accessToken: newAccessToken,
+          refreshToken: newRefreshToken,
+        },
+      },
+    });
+  } catch (error) {
+    return res.status(500).json(error);
+  }
+};
+
+export const checkEmailExistence = async (req: Request<{}, {}, {}, { email: string }>, res: Response) => {
+  const email = req.query.email;
+
+  if (!email) return res.status(400).json({ message: 'Email is required', success: false });
+
+  try {
+    const isExist = await prisma.user.findFirst({
+      where: {
+        email: {
+          mode: 'insensitive',
+          equals: email,
+        },
+      },
+    });
+
+    if (isExist)
+      return res.status(400).json({ message: 'Email already registered.', success: false, emailExist: true });
+
+    return res.sendStatus(200);
+  } catch (error) {
+    return res.status(500).end();
   }
 };

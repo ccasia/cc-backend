@@ -7,7 +7,7 @@ import { clients, io } from '../server';
 const prisma = new PrismaClient();
 
 export const creatorUploadAgreement = async (req: Request, res: Response) => {
-  const userid = req.session.userid;
+  const userid = req.userId;
   const { campaignId, timelineId } = JSON.parse(req.body.data);
 
   // try {
@@ -155,7 +155,7 @@ export const getSubmissionByCampaignCreatorId = async (req: Request, res: Respon
 //         data: {
 //           content: feedback,
 //           submissionId: submissionId,
-//           adminId: req.session.userid as string,
+//           adminId: req.userId as string,
 //         },
 //       });
 //       const notification = await saveNotification(

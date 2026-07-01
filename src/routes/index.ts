@@ -7,11 +7,13 @@ import companyRoute from './companyRoute';
 import eventRoute from './eventRoute';
 import campaignRoute from './campaignRoute';
 import notificationRoute from './notificationRoute';
+import pushTokenRoute from './pushTokenRoute';
 import draftRoute from './draftRoute';
 import taskRoute from './taskRoute';
 import submissionRoute from './submissionRoute';
 import submissionV4Route from './submissionV4Route';
 import creatorSubmissionV4Route from './creatorSubmissionV4Route';
+import creatorSubmissionV2Route from './creatorSubmissionV2Route';
 import roleRoute from './roleRoute';
 import invoiceRoute from './invoiceRoute';
 import threadRoute from './threadRoute';
@@ -38,6 +40,8 @@ import discoveryRoute from './discoveryRoute';
 
 import approvalRoute from './approvalRoute';
 import campaignBriefRoute from './campaignBriefRoute';
+import clientDemoRoute from './clientDemoRoute';
+import videoOfTheMonthRoute from './videoOfTheMonthRoute';
 
 export const router = express.Router();
 
@@ -49,12 +53,14 @@ router.use('/company', companyRoute);
 router.use('/event', eventRoute);
 router.use('/campaign', campaignRoute);
 router.use('/notification', notificationRoute);
+router.use('/push-token', pushTokenRoute);
 router.use('/draft', draftRoute);
 router.use('/thread', threadRoute);
 router.use('/tasks', taskRoute);
 router.use('/submission', submissionRoute);
 router.use('/submissions/v4', submissionV4Route);
 router.use('/creator/submissions/v4', creatorSubmissionV4Route);
+router.use('/creator/submissions/v2', creatorSubmissionV2Route);
 router.use('/role', roleRoute);
 router.use('/invoice', invoiceRoute);
 router.use('/kanban', kanbanRoute);
@@ -80,3 +86,5 @@ router.use('/discovery', discoveryRoute);
 
 router.use('/approval-requests', approvalRoute);
 router.use('/briefs', campaignBriefRoute);
+router.use('/client-demo', clientDemoRoute);
+router.use('/video-of-the-month', videoOfTheMonthRoute);

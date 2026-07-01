@@ -9,7 +9,7 @@ const prisma = new PrismaClient();
 
 export const updateClient = async (req: Request, res: Response) => {
   try {
-    const userId = req.session.userid;
+    const userId = req.userId;
 
     if (!userId) {
       return res.status(401).json({ message: 'User not authenticated' });
@@ -130,7 +130,7 @@ export const updateClient = async (req: Request, res: Response) => {
 
 export const checkClientCompany = async (req: Request, res: Response) => {
   try {
-    const userId = req.session.userid;
+    const userId = req.userId;
 
     if (!userId) {
       return res.status(401).json({ message: 'User not authenticated' });
@@ -165,7 +165,7 @@ export const checkClientCompany = async (req: Request, res: Response) => {
 
 export const createClientCompany = async (req: Request, res: Response) => {
   try {
-    const userId = req.session.userid;
+    const userId = req.userId;
 
     if (!userId) {
       return res.status(401).json({ message: 'User not authenticated' });
@@ -252,7 +252,7 @@ export const createClientCompany = async (req: Request, res: Response) => {
 
 export const createClientCampaign = async (req: Request, res: Response) => {
   try {
-    const userId = req.session.userid;
+    const userId = req.userId;
 
     if (!userId) {
       return res.status(401).json({ message: 'User not authenticated' });
@@ -775,7 +775,7 @@ export const createClientCampaign = async (req: Request, res: Response) => {
 
 export const createClientRecord = async (req: Request, res: Response) => {
   try {
-    const userId = req.session.userid;
+    const userId = req.userId;
 
     if (!userId) {
       return res.status(401).json({ message: 'User not authenticated' });
@@ -826,7 +826,7 @@ export const createClientRecord = async (req: Request, res: Response) => {
 
 export const createClientWithCompany = async (req: Request, res: Response) => {
   try {
-    const userId = req.session.userid;
+    const userId = req.userId;
 
     if (!userId) {
       return res.status(401).json({ message: 'User not authenticated' });

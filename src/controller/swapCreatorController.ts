@@ -17,7 +17,7 @@ const prisma = new PrismaClient();
  */
 export const swapGuestWithPlatformCreator = async (req: Request, res: Response) => {
   const { campaignId, guestUserId, platformUserId } = req.body;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   // Validate input
   if (!campaignId || !guestUserId || !platformUserId) {
@@ -489,7 +489,7 @@ export const swapGuestWithPlatformCreator = async (req: Request, res: Response) 
  * POST /api/campaign/cleanupGuestCreators
  */
 export const cleanupOrphanedGuestUsers = async (req: Request, res: Response) => {
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     // Find all guest users

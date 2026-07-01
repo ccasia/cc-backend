@@ -15,7 +15,7 @@ interface AISettingsRequest extends Request {
 const prisma = new PrismaClient();
 
 export const aiSettings = async (req: Request, res: Response) => {
-  const userId = req.session.userid;
+  const userId = req.userId;
   try {
     const aiModel = await prisma.aiModel.findFirst({
       where: {
@@ -51,7 +51,7 @@ export const getCampaigns = async (req: Request, res: Response) => {
 
 export const updateAiSettings = async (req: AISettingsRequest, res: Response) => {
   const { apiKey, temperature, maxTokens, sectionPrompts } = req.body;
-  const userId = req.session.userid;
+  const userId = req.userId;
 
   try {
     const existingAiSetting = await prisma.aiModel.findFirst({

@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
-import amqplib from 'amqplib';
+import amqplib, { ChannelModel } from 'amqplib';
 import { getV4Submissions, updatePostingLink } from '../service/submissionV4Service';
 import { PostingLinkUpdate } from '../types/submissionV4Types';
 import { io, clients } from '../server';
@@ -8,6 +8,7 @@ import { saveNotification } from './notificationController';
 import { notificationDraft } from '@helper/notification';
 import { saveCaptionToHistory } from '../utils/captionHistoryUtils';
 import { completeLogisticService } from '@services/logisticsService';
+import { selectCurrentAgreementSubmission } from '@utils/submissionAgreement';
 
 const prisma = new PrismaClient();
 
@@ -17,7 +18,7 @@ const prisma = new PrismaClient();
  */
 export const getMyV4Submissions = async (req: Request, res: Response) => {
   const { campaignId } = req.query;
-  const creatorId = req.session.userid;
+  const creatorId = req.userId;
 
   try {
     if (!creatorId) {
@@ -77,7 +78,7 @@ export const getMyV4Submissions = async (req: Request, res: Response) => {
 
     // Group submissions by type for creator interface
     const groupedSubmissions = {
-      agreement: submissionsWithFilteredFeedback.find((s) => s.submissionType.type === 'AGREEMENT_FORM'),
+      agreement: selectCurrentAgreementSubmission(submissionsWithFilteredFeedback),
       videos: submissionsWithFilteredFeedback.filter((s) => s.submissionType.type === 'VIDEO'),
       photos: submissionsWithFilteredFeedback.filter((s) => s.submissionType.type === 'PHOTO'),
       rawFootage: submissionsWithFilteredFeedback.filter((s) => s.submissionType.type === 'RAW_FOOTAGE'),
@@ -117,7 +118,7 @@ export const getMyV4Submissions = async (req: Request, res: Response) => {
 export const submitMyV4Content = async (req: Request, res: Response) => {
   let submissionId: string, caption: string;
   const files = req.files as any;
-  const creatorId = req.session.userid;
+  const creatorId = req.userId;
 
   try {
     if (!creatorId) {
@@ -307,7 +308,7 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
     }
 
     // Build local file paths and enqueue processing job
-    let amqp: amqplib.Connection | null = null;
+    let amqp: ChannelModel | null = null;
     let channel: amqplib.Channel | null = null;
 
     const filePaths = new Map();
@@ -316,12 +317,14 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
     if (uploadedVideos.length) {
       filePaths.set('video', []);
       for (const video of uploadedVideos) {
-        const videoPath = `/tmp/${submissionId}_${video.name}`;
+        const uploadTs = Date.now();
+        const videoPath = `/tmp/${submissionId}_${uploadTs}_${video.name}`;
         await video.mv(videoPath);
+        const baseName = video.name.replace(/\.[^/.]+$/, '');
         filePaths.get('video').push({
           inputPath: videoPath,
-          outputPath: `/tmp/${submissionId}_${video.name.replace(/\.[^/.]+$/, '')}_compressed.mp4`,
-          fileName: `${submissionId}_${video.name}`,
+          outputPath: `/tmp/${submissionId}_${uploadTs}_${baseName}_compressed.mp4`,
+          fileName: `${submissionId}_${uploadTs}_${video.name}`,
           originalName: video.name,
         });
       }
@@ -402,8 +405,8 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
       if (hasNewFiles || hasPhotosToRemove) {
         try {
           amqp = await amqplib.connect(process.env.RABBIT_MQ!);
-          channel = await amqp.createChannel();
-          await channel.assertQueue('draft', { durable: true });
+          channel = await amqp?.createChannel();
+          await channel?.assertQueue('draft', { durable: true });
 
           const payload = {
             userid: creatorId,
@@ -428,7 +431,7 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
             photosToRemove: photosToRemove,
           };
 
-          channel.sendToQueue('draft', Buffer.from(JSON.stringify(payload)), { persistent: true });
+          channel?.sendToQueue('draft', Buffer.from(JSON.stringify(payload)), { persistent: true });
         } finally {
           if (channel) await channel.close();
           if (amqp) await amqp.close();
@@ -449,6 +452,16 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
           submittedAt: new Date().toISOString(),
           creatorId,
           newStatus,
+        });
+        // Also emit v4:submission:updated so admin listeners that only subscribe
+        // to status-change events (separate from content-submitted) refresh too.
+        io.to(submission.campaignId).emit('v4:submission:updated', {
+          submissionId,
+          campaignId: submission.campaignId,
+          newStatus,
+          creatorId,
+          action: 'creator_submitted',
+          updatedAt: new Date().toISOString(),
         });
       }
 
@@ -559,7 +572,9 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
  */
 export const updateMyPostingLink = async (req: Request, res: Response) => {
   const { submissionId, postingLink } = req.body as PostingLinkUpdate;
-  const creatorId = req.session.userid;
+  const creatorId = req.userId;
+
+  console.log(req.body);
 
   try {
     if (!creatorId) {
@@ -659,7 +674,7 @@ export const updateMyPostingLink = async (req: Request, res: Response) => {
  */
 export const getMySubmissionDetails = async (req: Request, res: Response) => {
   const { submissionId } = req.params;
-  const creatorId = req.session.userid;
+  const creatorId = req.userId;
 
   try {
     if (!creatorId) {
@@ -839,7 +854,7 @@ export const getMySubmissionDetails = async (req: Request, res: Response) => {
  */
 export const createMyFeedbackReply = async (req: Request, res: Response) => {
   const { feedbackId } = req.params;
-  const creatorId = req.session.userid;
+  const creatorId = req.userId;
   const { content } = req.body as { content?: string };
 
   try {
@@ -906,8 +921,21 @@ export const createMyFeedbackReply = async (req: Request, res: Response) => {
             photoURL: true,
           },
         },
+        submission: { select: { campaignId: true } },
       },
     });
+
+    // Mirror createComment's emit so the admin webapp updates live.
+    const campaignId = reply.submission?.campaignId;
+    if (io && campaignId) {
+      io.to(campaignId).emit('v4:comment:reply:added', {
+        submissionId: feedback.submissionId,
+        videoId: feedback.videoId ?? null,
+        campaignId,
+        comment: reply,
+        parentCommentId: rootCommentId,
+      });
+    }
 
     return res.status(201).json({
       reply: {
@@ -932,7 +960,7 @@ export const createMyFeedbackReply = async (req: Request, res: Response) => {
  */
 export const deleteMyReply = async (req: Request, res: Response) => {
   const { commentId } = req.params;
-  const creatorId = req.session.userid as string;
+  const creatorId = req.userId as string;
 
   try {
     if (!creatorId) return res.status(401).json({ error: 'Not logged in' });
@@ -982,7 +1010,7 @@ export const deleteMyReply = async (req: Request, res: Response) => {
  */
 export const getMyCampaignOverview = async (req: Request, res: Response) => {
   const { campaignId } = req.query;
-  const creatorId = req.session.userid;
+  const creatorId = req.userId;
 
   try {
     if (!creatorId) {
@@ -1022,7 +1050,7 @@ export const getMyCampaignOverview = async (req: Request, res: Response) => {
     const submissions = await getV4Submissions(campaignId as string, creatorId);
 
     // Find agreement form submission status
-    const agreementSubmission = submissions.find((s) => s.submissionType.type === 'AGREEMENT_FORM');
+    const agreementSubmission = selectCurrentAgreementSubmission(submissions);
     const isAgreementApproved =
       agreementSubmission?.status === 'APPROVED' || agreementSubmission?.status === 'CLIENT_APPROVED';
 

@@ -62,6 +62,10 @@ const getCreatorKeywordOnlyTexts = (row: any): string[] => {
     creator?.tiktok,
     creator?.tiktokUser?.username,
     creator?.tiktokUser?.display_name,
+    creator?.instagramUser?.biography,
+    creator?.tiktokUser?.biography,
+    creator?.mediaKit?.about,
+    ...(creator?.interests || []).map((interest: any) => interest?.name),
   ]
     .map((value) => String(value || '').trim())
     .filter(Boolean);
@@ -119,7 +123,7 @@ export const resolvePlatformContentMatchesFromApi = async (
             if (encryptedAccessToken) {
               const accessToken = decryptToken(encryptedAccessToken as any);
               const topVideosResult = await getCreatorTopVideosFromCacheOrFetch('instagram', creatorId, async () => {
-                const instagramMediaResponse = await getInstagramMedias(accessToken);
+                const instagramMediaResponse = await getInstagramMedias(accessToken!);
                 const videos = instagramMediaResponse?.videos || [];
                 return mapInstagramApiTopVideos(videos || []);
               });

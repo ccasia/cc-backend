@@ -37,9 +37,9 @@ export const updateProfileAdmin = async (req: Request, res: Response) => {
     if (files && files.image) {
       const { image } = files as any;
       const publicURL = await uploadProfileImage(image.tempFilePath, image.name, 'admin');
-      await updateAdmin(req.body, publicURL, req.session.userid as string | undefined);
+      await updateAdmin(req.body, publicURL, req.userId as string | undefined);
     } else {
-      await updateAdmin(req.body, undefined, req.session.userid as string | undefined);
+      await updateAdmin(req.body, undefined, req.userId as string | undefined);
     }
 
     return res.status(200).json({ message: 'Successfully updated' });
@@ -50,7 +50,7 @@ export const updateProfileAdmin = async (req: Request, res: Response) => {
 
 // Only superadmin is allow to run this function
 export const getAdmins = async (req: Request, res: Response) => {
-  const userid = req.session.userid;
+  const userid = req.userId;
   try {
     if (req.query.target && req.query.target === 'active') {
       const admins = await prisma.user.findMany({
@@ -86,6 +86,7 @@ export const getAdmins = async (req: Request, res: Response) => {
                 select: {
                   id: true,
                   name: true,
+                  pic: { select: { name: true } },
                 },
               },
             },
@@ -96,7 +97,10 @@ export const getAdmins = async (req: Request, res: Response) => {
       // Transform data for frontend consumption
       const transformedAdmins = admins.map((admin) => {
         const isClient = admin.admin?.role?.name === 'Client';
-        const displayName = isClient && admin.client?.company?.name ? admin.client.company.name : admin.name;
+        const picName = admin.client?.company?.pic?.[0]?.name || null;
+        const displayName = isClient
+          ? picName || admin.name || admin.client?.company?.name || ''
+          : admin.name;
 
         return {
           id: admin.id,

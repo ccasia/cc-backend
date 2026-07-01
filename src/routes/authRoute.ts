@@ -28,13 +28,17 @@ import {
   verifyClient,
   deleteAccount,
   setupTwoFactor,
+  getSessionStatus,
+  checkEmailExistence,
 } from '@controllers/authController';
 
 import { validateToken } from '@utils/jwtHelper';
 
 import passport from '../auth/googleAuth';
-import { isLoggedIn } from '@middlewares/onlyLogin';
+
 import rateLimit from 'express-rate-limit';
+
+import { authenticate } from '@middlewares/authenticate';
 
 const limiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
@@ -47,13 +51,13 @@ const limiter = rateLimit({
 
 const router = Router();
 
-// router.get('/', isLoggedIn, displayAll);
-router.get('/me', getprofile);
-
+router.get('/me', authenticate, getprofile);
 router.get('/verifyAdmin', verifyAdmin);
 router.get('/checkTokenValidity/:token', checkTokenValidity);
 router.get('/currentUser', validateToken, getCurrentUser);
 router.get('/checkCreator', validateToken, checkCreator);
+router.get('/session-status', getSessionStatus);
+router.get('/check-email', limiter, checkEmailExistence);
 
 // Google Auth
 router.get('/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
@@ -81,19 +85,19 @@ router.post('/registerFinanceUser', registerFinanceUser);
 router.post('/resendVerificationLinkCreator', resendVerificationLinkCreator);
 router.post('/resendVerificationLinkClient', resendVerificationLinkClient);
 router.post('/verifyClient', verifyClient);
-router.post('/setupTwoFactor', isLoggedIn, setupTwoFactor);
+router.post('/setupTwoFactor', authenticate, setupTwoFactor);
 
 // Client authentication routes
 router.post('/invite-client', inviteClient);
 router.get('/verify-client-invite', verifyClientInvite);
 router.post('/setup-client-password', setupClientPassword);
 
-router.put('/updateCreator', isLoggedIn, updateCreator);
-router.patch('/updateClient', isLoggedIn, updateClient);
+router.put('/updateCreator', authenticate, updateCreator);
+router.patch('/updateClient', authenticate, updateClient);
 
 router.patch('/updateProfileCreator', updateProfileCreator);
 router.patch('/changePassword', validateToken, changePassword);
 
-router.delete('/account', isLoggedIn, deleteAccount);
+router.delete('/account', authenticate, deleteAccount);
 
 export default router;

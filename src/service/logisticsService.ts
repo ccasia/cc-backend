@@ -6,6 +6,17 @@ export const fetchAllLogisticsForCampaign = async (campaignId: string) => {
   const logistics = await prisma.logistic.findMany({
     where: {
       campaignId: campaignId,
+      creator: {
+        submission: {
+          some: {
+            campaignId: campaignId,
+            status: 'APPROVED',
+            submissionType: {
+              type: 'AGREEMENT_FORM',
+            },
+          },
+        },
+      },
     },
     include: {
       creator: {
@@ -321,6 +332,31 @@ export const assignSingleCreator = async (data: SingleAssignData) => {
       include: { deliveryDetails: { include: { items: true } } },
     });
   }
+
+  const newLogistic = await prisma.logistic.create({
+    data: {
+      type: 'PRODUCT_DELIVERY',
+      status: 'SCHEDULED',
+      campaignId: campaignId,
+      creatorId: creatorId,
+      createdById: createdById,
+      deliveryDetails: {
+        create: {
+          items: {
+            create: items.map((item) => ({
+              productId: item.productId,
+              quantity: item.quantity,
+            })),
+          },
+        },
+      },
+    },
+  });
+
+  return await prisma.logistic.findUnique({
+    where: { id: newLogistic.id },
+    include: { deliveryDetails: { include: { items: true } } },
+  });
 };
 
 export const assignBulkCreators = async (data: BulkAssignData) => {
@@ -757,6 +793,7 @@ interface LogisticsInfoInput {
   userId: string;
   campaignId: string;
   dietaryRestrictions?: string;
+  phoneNumber?: string;
   userData: {
     address: string;
     location?: string;
@@ -772,6 +809,7 @@ export const creatorProductInfoService = async ({
   campaignId,
   userData,
   dietaryRestrictions,
+  phoneNumber,
 }: LogisticsInfoInput) => {
   return await prisma.$transaction(async (tx) => {
     const creator = await tx.creator.findUnique({
@@ -798,6 +836,17 @@ export const creatorProductInfoService = async ({
         dietaryRestrictions: dietaryRestrictions,
       },
     });
+
+    // TODO(logistics): only writes when truthy, so a creator can't CLEAR a saved
+    // phone via this endpoint (empty string is skipped, stale number persists).
+    // Mobile requires phone (zod min 1) so it's fine today; revisit if other
+    // clients can submit an empty phone and expect it to clear.
+    if (phoneNumber) {
+      await tx.user.update({
+        where: { id: userId },
+        data: { phoneNumber },
+      });
+    }
 
     const logistic = await tx.logistic.findUnique({
       where: {
@@ -828,10 +877,12 @@ export const creatorProductInfoService = async ({
               create: {
                 dietaryRestrictions,
                 address: fullAddressString,
+                isConfirmed: true,
               },
               update: {
                 dietaryRestrictions,
                 address: fullAddressString,
+                isConfirmed: true,
               },
             },
           },
@@ -849,6 +900,7 @@ export const creatorProductInfoService = async ({
             create: {
               dietaryRestrictions,
               address: fullAddressString,
+              isConfirmed: true,
             },
           },
         },

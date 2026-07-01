@@ -11,10 +11,9 @@ import { PrismaClient } from '@prisma/client';
 
 import '@configs/cronjob';
 import http from 'http';
-import { markMessagesAsSeen } from '@controllers/threadController';
-import { handleSendMessage, fetchMessagesFromThread } from '@services/threadService';
-import { isLoggedIn } from '@middlewares/onlyLogin';
-import { Server } from 'socket.io';
+import { handleSendMessage, fetchMessagesFromThread, markMessagesService } from '@services/threadService';
+import { authenticate } from '@middlewares/authenticate';
+import { Server, Socket } from 'socket.io';
 import '@services/uploadVideo';
 
 import '@helper/processPitchVideo';
@@ -44,6 +43,12 @@ import { prisma } from './prisma/prisma';
 import { xeroWebhookQueue } from '@utils/queue';
 
 import { users } from '@utils/activeUsers';
+import { mobileRouter } from '@routes/mobile';
+import { OTPTypes } from '@/types';
+
+import jwt from 'jsonwebtoken';
+
+// import { OTPTypes } from '@/types';
 
 Ffmpeg.setFfmpegPath(FfmpegPath.path);
 
@@ -87,16 +92,23 @@ app.use(
 );
 
 const corsOptions = {
-  origin: [
-    'https://app.cultcreativeasia.com',
-    'http://192.168.100.228',
-    'http://192.168.1.13',
-    'http://192.168.0.125', // willy - cult
-  ],
-  credentials: true,
+  origin: true, //included origin as true
+  credentials: true, //included credentials as true
 };
 
-app.use(cors());
+app.use(
+  cors({
+    origin: [
+      'https://app.cultcreativeasia.com',
+      'https://staging.cultcreativeasia.com',
+      'http://localhost:3030',
+      'http://192.168.100.228',
+      'http://192.168.100.55',
+      'http://192.168.1.15',
+    ],
+    credentials: true,
+  }),
+);
 
 app.use(morgan('combined'));
 
@@ -137,6 +149,7 @@ app.use(
     resave: false,
     saveUninitialized: false,
     proxy: process.env.NODE_ENV === 'production',
+
     cookie: {
       secure: process.env.NODE_ENV === 'production',
       maxAge: 24 * 60 * 60 * 1000, //expires in 24hours
@@ -154,6 +167,7 @@ app.use(
 app.use(passport.initialize());
 app.use(passport.session());
 
+app.use('/mobile', mobileRouter);
 app.use(router);
 
 app.post('/webhooks/xero', express.raw({ type: 'application/json', limit: '100mb' }), async (req, res) => {
@@ -188,11 +202,112 @@ app.post('/webhooks/xero', express.raw({ type: 'application/json', limit: '100mb
   }
 });
 
+app.get('/webhook/whatsapp', (req: Request, res: Response) => {
+  const mode = req.query['hub.mode'];
+  const token = req.query['hub.verify_token'];
+  const challenge = req.query['hub.challenge'];
+
+  if (mode === 'subscribe' && token === process.env.WHATSAPP_VERIFY_TOKEN) {
+    console.log('Webhook verified successfully');
+    return res.status(200).send(challenge); // ✅ Must send challenge back
+  }
+
+  console.log('Webhook verification failed');
+  return res.sendStatus(403);
+});
+
+app.post('/webhook/whatsapp', async (req: Request, res: Response) => {
+  res.sendStatus(200);
+
+  try {
+    const value = req.body.entry?.[0]?.changes?.[0]?.value;
+    if (!value) return;
+
+    // ── Outbound message status updates ──────────────────────────
+    if (value?.statuses) {
+      const status = value.statuses[0];
+      const { id: messageId, recipient_id: phoneNumber, status: statusType, timestamp, errors } = status;
+      const sentAt = dayjs(Number(timestamp) * 1000).toDate();
+
+      let data;
+
+      switch (statusType) {
+        case 'sent':
+          data = await prisma.whatsappMessage.create({
+            data: { to: phoneNumber, messageId, sentAt, status: statusType, direction: 'outbound' },
+          });
+          break;
+
+        case 'delivered':
+        case 'read':
+          data = await prisma.whatsappMessage.update({
+            where: { messageId },
+            data: { status: statusType },
+          });
+          break;
+
+        case 'failed':
+          data = await prisma.whatsappMessage.update({
+            where: { messageId },
+            data: {
+              status: 'failed',
+            },
+          });
+          break;
+      }
+
+      io.emit('whatsapp-message', data);
+    }
+
+    // ── Inbound messages from users ───────────────────────────────
+    if (value?.messages) {
+      const message = value.messages[0];
+      const sentAt = dayjs(Number(message.timestamp) * 1000).toDate();
+
+      let content = '';
+      switch (message.type) {
+        case 'text':
+          content = message.text?.body || '';
+          break;
+        case 'image':
+          content = message.image?.id || '';
+          break;
+        case 'audio':
+          content = message.audio?.id || '';
+          break;
+        case 'document':
+          content = message.document?.id || '';
+          break;
+        case 'sticker':
+          content = message.sticker?.id || '';
+          break;
+        default:
+          content = '';
+      }
+
+      const data = await prisma.whatsappMessage.create({
+        data: {
+          from: message.from,
+          message: content,
+          type: message.type,
+          direction: 'inbound',
+          sentAt,
+        },
+      });
+
+      io.emit('whatsapp-message', data);
+    }
+  } catch (error) {
+    console.error('Webhook processing error:', error);
+    // Don't re-send response — 200 already sent
+  }
+});
+
 app.get('/', (req: Request, res: Response) => {
   res.send(`Your IP is ${req.ip}. ${process.env.NODE_ENV} is running...`);
 });
 
-app.get('/users', isLoggedIn, async (_req, res) => {
+app.get('/users', authenticate, async (_req, res) => {
   const prisma = new PrismaClient();
   try {
     const users = await prisma.user.findMany({
@@ -206,55 +321,40 @@ app.get('/users', isLoggedIn, async (_req, res) => {
   }
 });
 
-app.get('/campaign/:id', async (req, res) => {
-  const message = req.query.message as string;
-
-  const campaignId = req.params.id;
-
-  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-  res.setHeader('Transfer-Encoding', 'chunked');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('X-Accel-Buffering', 'no');
-
-  try {
-    const chunks = await model.stream(
-      {
-        messages: [
-          {
-            role: 'human',
-            content: message ?? 'call get_user_info and create a summary of the account in 5-10 sentences.',
-          },
-        ],
-        campaignId: campaignId,
-      },
-      {
-        context: { campaignId: campaignId },
-        streamMode: 'messages',
-        configurable: { thread_id: req.session.userid.toString() },
-      },
-    );
-
-    for await (const [a, _] of chunks) {
-      if (a.type === 'ai' && typeof a.content === 'string' && a.content) {
-        io.emit('report', { content: a.content, id: a.id });
-        res.write(a.content);
-      }
-    }
-    io.emit('report:done');
-    return res.end();
-    // return res.sendStatus(200);
-  } catch (error) {
-    console.log(error);
-    return res.status(500).json(error);
-  }
-});
-
 export const clients = new Map();
 export const activeProcesses = new Map();
 export const queue = new Map();
 
+io.use((socket: Socket, next) => {
+  try {
+    const token = socket.handshake.auth?.token as string | undefined;
+
+    if (!token) {
+      return next();
+    }
+
+    const payload = jwt.verify(token, process.env.ACCESSKEY!) as {
+      userId: string;
+    };
+
+    console.log(payload);
+
+    // Identity comes from the verified token — never from anything the
+    // client tells us later. This is the whole point.
+    socket.data.userId = payload.userId;
+
+    return next();
+  } catch (err) {
+    console.log('SDadasd', err);
+    // Surfaces as `connect_error` on the client (err.message === "UNAUTHENTICATED").
+    // A thrown jwt error (expired/invalid signature) lands here too.
+    return next(new Error('UNAUTHENTICATED'));
+  }
+});
+
 io.on('connection', (socket) => {
   io.emit('onlineUsers', { onlineUsers: clients.size });
+
   socket.on('register', (userId) => {
     clients.set(userId, socket.id);
     users.set(userId, socket.id);
@@ -338,15 +438,8 @@ io.on('connection', (socket) => {
     }
 
     try {
-      const mockRequest = {
-        params: { threadId },
-        session: { userid: userId },
-        cookies: {},
-        headers: {},
-      } as unknown as Request;
-
-      await markMessagesAsSeen(mockRequest, {} as Response);
-      io.to(threadId).emit('messagesSeen', { threadId, userId });
+      const result = await markMessagesService(threadId, userId);
+      io.to(threadId).emit('messagesSeen', result);
     } catch (error) {
       console.error('Error marking messages as seen:', error);
       socket.emit('error', 'Failed to mark messages as seen.');

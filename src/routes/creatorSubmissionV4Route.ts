@@ -8,13 +8,13 @@ import {
   createMyFeedbackReply,
   deleteMyReply,
 } from '../controller/creatorSubmissionV4Controller';
-import { isLoggedIn } from '../middleware/onlyLogin';
+import { authenticate } from '../middleware/authenticate';
 import { isCreator } from '../middleware/isCreator';
 
 const router = Router();
 
 // Apply authentication middleware to all routes
-router.use(isLoggedIn);
+router.use(authenticate);
 router.use(isCreator);
 
 /**
@@ -23,7 +23,7 @@ router.use(isCreator);
  * @access Private (Creator only)
  * @query campaignId - Required campaign ID
  */
-router.get('/', getMyV4Submissions);
+router.get('/', authenticate, getMyV4Submissions);
 
 /**
  * @route GET /api/creator/submissions/v4/campaign-overview
@@ -31,7 +31,7 @@ router.get('/', getMyV4Submissions);
  * @access Private (Creator only)
  * @query campaignId - Required campaign ID
  */
-router.get('/campaign-overview', getMyCampaignOverview);
+router.get('/campaign-overview', authenticate, getMyCampaignOverview);
 
 /**
  * @route GET /api/creator/submissions/v4/:submissionId
@@ -39,7 +39,7 @@ router.get('/campaign-overview', getMyCampaignOverview);
  * @access Private (Creator only)
  * @param submissionId - Submission ID
  */
-router.get('/:submissionId', getMySubmissionDetails);
+router.get('/:submissionId', authenticate, getMySubmissionDetails);
 
 /**
  * @route POST /api/creator/submissions/v4/submit-content
@@ -47,7 +47,7 @@ router.get('/:submissionId', getMySubmissionDetails);
  * @access Private (Creator only)
  * @body submissionId, videoUrls?, photoUrls?, rawFootageUrls?, caption?
  */
-router.post('/submit-content', submitMyV4Content);
+router.post('/submit-content', authenticate, submitMyV4Content);
 
 /**
  * @route PUT /api/creator/submissions/v4/posting-link
@@ -55,7 +55,7 @@ router.post('/submit-content', submitMyV4Content);
  * @access Private (Creator only)
  * @body submissionId, postingLink
  */
-router.put('/posting-link', updateMyPostingLink);
+router.put('/posting-link', authenticate, updateMyPostingLink);
 
 /**
  * @route POST /api/creator/submissions/v4/feedback/:feedbackId/replies
@@ -64,7 +64,7 @@ router.put('/posting-link', updateMyPostingLink);
  * @param feedbackId - Feedback ID
  * @body content
  */
-router.post('/feedback/:feedbackId/replies', createMyFeedbackReply);
+router.post('/feedback/:feedbackId/replies', authenticate, createMyFeedbackReply);
 
 /**
  * @route DELETE /api/creator/submissions/v4/comments/:commentId
@@ -72,6 +72,6 @@ router.post('/feedback/:feedbackId/replies', createMyFeedbackReply);
  * @access Private (Creator only)
  * @param commentId - Comment ID (must be a reply owned by the creator)
  */
-router.delete('/comments/:commentId', deleteMyReply);
+router.delete('/comments/:commentId', authenticate, deleteMyReply);
 
 export default router;

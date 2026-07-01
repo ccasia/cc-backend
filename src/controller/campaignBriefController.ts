@@ -34,14 +34,14 @@ import {
 const prisma = new PrismaClient();
 
 const clientPublicUrl = (magicToken: string) => {
-  const base = process.env.APP_PUBLIC_URL || process.env.BACKEND_URL || 'http://localhost';
+  const base = process.env.BASE_EMAIL_URL || process.env.APP_PUBLIC_URL || process.env.BACKEND_URL || 'http://localhost';
   return `${base.replace(/\/$/, '')}/campaign-brief/client/${magicToken}`;
 };
 
 const TOKEN_LENGTH = 24;
 
 const publicUrl = (token: string) => {
-  const base = process.env.APP_PUBLIC_URL || process.env.BACKEND_URL || 'http://localhost';
+  const base = process.env.BASE_EMAIL_URL || process.env.APP_PUBLIC_URL || process.env.BACKEND_URL || 'http://localhost';
   return `${base.replace(/\/$/, '')}/campaign-brief/${token}`;
 };
 
@@ -56,7 +56,7 @@ const generateUniqueBdToken = async (): Promise<string> => {
 
 // GET /briefs/my-invite-link
 export const getMyInviteLink = async (req: Request, res: Response) => {
-  const userid = req.session.userid;
+  const userid = req.userId;
   if (!userid) return res.status(401).json({ message: 'User not authenticated' });
 
   try {
@@ -84,7 +84,7 @@ export const getMyInviteLink = async (req: Request, res: Response) => {
 
 // POST /briefs/my-invite-link/rotate
 export const rotateMyInviteLink = async (req: Request, res: Response) => {
-  const userid = req.session.userid;
+  const userid = req.userId;
   if (!userid) return res.status(401).json({ message: 'User not authenticated' });
 
   try {
@@ -163,6 +163,7 @@ export const bdSubmitDraft = async (req: Request, res: Response) => {
     // Optional primary audience (CampaignRequirement)
     user_persona: userPersona,
     geographic_focus: geographicFocus,
+    geographicFocusOthers,
   } = body;
 
   const secondaryObjectives = toStringArray(body.secondaryObjectives);
@@ -172,14 +173,6 @@ export const bdSubmitDraft = async (req: Request, res: Response) => {
   const countrySingle: string = typeof body.country === 'string' && body.country.trim() ? body.country.trim() : '';
   const language = toStringArray(body.language);
   const creatorPersona = toStringArray(body.creator_persona);
-
-  // Map the prospect form's human-readable geographic focus labels to the value
-  // tokens UpdateAudience expects on the BD edit screen.
-  const GEO_FOCUS_LABEL_TO_VALUE: Record<string, string> = {
-    'SEA Region': 'SEAregion',
-    Global: 'global',
-    Others: 'others',
-  };
 
   // Prospects may submit an incomplete brief — only a brand name is required so
   // the lead is identifiable. Everything else (dates, objectives, KPIs,
@@ -284,8 +277,10 @@ export const bdSubmitDraft = async (req: Request, res: Response) => {
     if (language.length) requirementData.language = language;
     if (creatorPersona.length) requirementData.creator_persona = creatorPersona;
     if (typeof geographicFocus === 'string' && geographicFocus.trim()) {
-      const raw = geographicFocus.trim();
-      requirementData.geographic_focus = GEO_FOCUS_LABEL_TO_VALUE[raw] ?? raw;
+      requirementData.geographic_focus = geographicFocus.trim();
+    }
+    if (typeof geographicFocusOthers === 'string' && geographicFocusOthers.trim()) {
+      requirementData.geographicFocusOthers = geographicFocusOthers.trim();
     }
 
     const campaign = await prisma.$transaction(async (tx) => {
@@ -365,10 +360,13 @@ export const bdSubmitDraft = async (req: Request, res: Response) => {
 
 // POST /briefs
 export const createBrief = async (req: Request, res: Response) => {
-  const userid = req.session.userid;
+  const userid = req.userId;
   if (!userid) return res.status(401).json({ message: 'User not authenticated' });
   try {
-    const brief = await createDraftBrief(userid);
+    const user = await getUser(userid);
+    const role = classifyBriefRole(user as any);
+    const origin = role === 'CSL' ? 'CSL_CREATED' : 'BD_CREATED';
+    const brief = await createDraftBrief(userid, origin);
     return res.status(201).json({ id: brief.id });
   } catch (error) {
     console.error('createBrief error:', error);
@@ -378,7 +376,7 @@ export const createBrief = async (req: Request, res: Response) => {
 
 // GET /briefs
 export const listBriefs = async (req: Request, res: Response) => {
-  const userid = req.session.userid;
+  const userid = req.userId;
   if (!userid) return res.status(401).json({ message: 'User not authenticated' });
   try {
     const user = await getUser(userid);
@@ -560,7 +558,7 @@ export const handoverBrief = async (req: Request, res: Response) => {
 // completes activation later. Body: { csmIds: string[] }.
 export const assignCsm = async (req: Request, res: Response) => {
   const { id } = req.params;
-  const userid = req.session.userid;
+  const userid = req.userId;
   if (!userid) return res.status(401).json({ message: 'User not authenticated' });
 
   try {
@@ -570,16 +568,20 @@ export const assignCsm = async (req: Request, res: Response) => {
       return res.status(403).json({ message: 'Only CSL can assign CSMs.' });
     }
 
-    const { csmIds } = req.body || {};
+    const { csmIds, internalComments } = req.body || {};
     if (!Array.isArray(csmIds) || csmIds.length === 0) {
       return res.status(400).json({ message: 'Select at least one CSM to assign.' });
     }
+    const notes =
+      typeof internalComments === 'string' && internalComments.trim()
+        ? internalComments.trim()
+        : null;
 
-    const updated = await svcAssignCsmToBrief(id, csmIds);
+    const updated = await svcAssignCsmToBrief(id, csmIds, notes);
     return res.status(200).json(updated);
   } catch (error: any) {
     console.error('assignCsm error:', error);
-    if (/not found|handed-over|CSM|at least one/i.test(error?.message || '')) {
+    if (/not found|handed-over|CSM|at least one|company|active package/i.test(error?.message || '')) {
       return res.status(400).json({ message: error.message });
     }
     return res.status(500).json({ message: 'Failed to assign CSM' });
