@@ -25,47 +25,47 @@ import {
 import { checkAndRefreshAccessToken } from '@controllers/invoiceController';
 import { creatorInvoice } from '@controllers/invoiceController';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
-import { isLoggedIn } from '@middlewares/onlyLogin';
+import { authenticate } from '@middlewares/authenticate';
 import { createInvoiceService } from '@services/invoiceService';
 // import { prisma } from 'src/prisma/prisma';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-router.get('/', isSuperAdmin, getAllInvoices);
+router.get('/', authenticate, isSuperAdmin, getAllInvoices);
 
-router.get('/getAll', isLoggedIn, getAllSelectedInvoices);
+router.get('/getAll', authenticate, getAllSelectedInvoices);
 
-router.get('/xeroConnect', isSuperAdmin, getXero);
+router.get('/xeroConnect', authenticate, isSuperAdmin, getXero);
 
 router.get('/xeroCallback', xeroCallBack);
 
 router.get('/getXeroContacts', checkAndRefreshAccessToken, getXeroContacts);
 
-router.get('/checkRefreshToken', isSuperAdmin, checkRefreshToken);
+router.get('/checkRefreshToken', authenticate, isSuperAdmin, checkRefreshToken);
 
-router.get('/creator', getInvoicesByCreatorId);
+router.get('/creator', authenticate, getInvoicesByCreatorId);
 
 // IMPORTANT: Specific routes must come before parameterized routes
-router.get('/stats', isLoggedIn, getAllInvoiceStats); // Stats for all invoices
-router.get('/stats/:campaignId', isLoggedIn, getInvoiceStats); // Stats for specific campaign
+router.get('/stats', authenticate, getAllInvoiceStats); // Stats for all invoices
+router.get('/stats/:campaignId', authenticate, getInvoiceStats); // Stats for specific campaign
 router.get('/getInvoicesByCampaignId/:id', getInvoicesByCampaignId);
 
-router.get('/:id', isLoggedIn, getInvoiceById);
+router.get('/:id', authenticate, getInvoiceById);
 
 router.get('/creator/:creatorId/campaign/:campaignId', getInvoiceByCreatorIdAndCampaignId);
 
-router.get('/creatorInvoice/:invoiceId', isLoggedIn, creatorInvoice);
+router.get('/creatorInvoice/:invoiceId', authenticate, creatorInvoice);
 
-router.post('/create', createInvoice);
+router.post('/create', authenticate, createInvoice);
 
-router.post('/bulk-update', bulkUpdateInvoices);
+router.post('/bulk-update', authenticate, bulkUpdateInvoices);
 
 router.patch('/updateStatus', updateInvoiceStatus);
 
-router.patch('/update', updateInvoice);
+router.patch('/update', authenticate, updateInvoice);
 
-router.delete('/:id', isSuperAdmin, deleteInvoice);
+router.delete('/:id', authenticate, isSuperAdmin, deleteInvoice);
 
 // Temporary function
 router.post('/generateInvoice', async (req, res) => {

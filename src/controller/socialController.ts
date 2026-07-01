@@ -1,7 +1,7 @@
 import { decryptToken, encryptToken } from '@helper/encrypt';
 import axios, { get } from 'axios';
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import dayjs from 'dayjs';
 import {
   calculateAverageLikes,
@@ -25,8 +25,11 @@ import {
   getTikTokEngagementRateOverTime,
   getTikTokMonthlyInteractions,
   getTikTokMediaObject,
+  getInstagramAudienceDemographics,
 } from '@services/socialMediaService';
 import { batchRequests } from '@helper/batchRequests';
+import crypto from 'crypto';
+import connection from '../config/redis';
 
 // Type definitions
 export interface UrlData {
@@ -197,8 +200,9 @@ export async function resolveTikTokShortUrl(url: string): Promise<string | null>
 }
 
 // Connect account
-export const tiktokAuthentication = (_req: Request, res: Response) => {
+export const tiktokAuthentication = (req: Request, res: Response) => {
   const csrfState = Math.random().toString(36).substring(2);
+  const state = `${csrfState}|${req.userId}`;
   res.cookie('csrfState', csrfState, { maxAge: 60000 });
 
   let url = 'https://www.tiktok.com/v2/auth/authorize/';
@@ -207,15 +211,174 @@ export const tiktokAuthentication = (_req: Request, res: Response) => {
   url += '&scope=user.info.basic,user.info.profile,user.info.stats,video.list';
   url += '&response_type=code';
   url += '&redirect_uri=' + process.env.TIKTOK_REDIRECT_URI;
-  url += '&state=' + csrfState;
-  url += '&disable_auto_auth=1';
+  url += '&state=' + state;
+  // url += '&disable_auto_auth=1';
 
   res.send(url);
+};
+
+const IG_STATE_PREFIX = 'ig_oauth_state:';
+const IG_STATE_TTL = 600;
+
+export const instagramMobileAuth = async (req: Request, res: Response) => {
+  const userId = req.userId;
+
+  if (!userId) return res.status(401).json({ message: 'Unauthenticated' });
+
+  const state = crypto.randomBytes(32).toString('hex');
+
+  await connection.set(`${IG_STATE_PREFIX}${state}`, userId, 'EX', IG_STATE_TTL);
+
+  const authUrl = new URL('https://www.instagram.com/oauth/authorize');
+  authUrl.searchParams.set('enable_fb_login', '0');
+  authUrl.searchParams.set('force_authentication', '1');
+  authUrl.searchParams.set('client_id', process.env.INSTAGRAM_CLIENT_ID!);
+  authUrl.searchParams.set('redirect_uri', process.env.INSTAGRAM_MOBILE_REDIRECT_URI!);
+  authUrl.searchParams.set('scope', 'instagram_business_basic,instagram_business_manage_insights');
+  authUrl.searchParams.set('response_type', 'code');
+  authUrl.searchParams.set('state', state); // opaque random, no userId inside
+
+  return res.send(authUrl.toString());
+};
+
+export const instagramMobileCallback = async (req: Request, res: Response) => {
+  const code = req.query.code as string;
+  const state = req.query.state as string;
+
+  const fail = (reason: string) => res.redirect(`cultapp:///media-kit?status=error&reason=${reason}`);
+
+  if (!code) return fail('missing_code');
+  if (!state) return fail('missing_state');
+
+  // from the issue-1 fix: userId resolved from the single-use nonce
+  const userId = await connection.getdel(`${IG_STATE_PREFIX}${state}`);
+  if (!userId) return fail('invalid_or_expired_state');
+
+  try {
+    // ---- Phase 1: external calls only, ZERO db writes ----
+    const data = await getInstagramAccessToken(code, process.env.INSTAGRAM_MOBILE_REDIRECT_URI);
+    const access_token = decryptToken(data.encryptedToken);
+
+    const creator = await prisma.creator.findUnique({ where: { userId } });
+    if (!creator) return fail('creator_not_found');
+
+    const overview = await getInstagramOverviewService(access_token!);
+
+    const [mediasReal, insightDataReal, audienceReal] = await Promise.all([
+      getInstagramMediaObject(access_token!, overview.user_id),
+      getInstagramUserInsight(access_token!, overview.user_id),
+      getInstagramAudienceDemographics(access_token!, overview.user_id),
+    ]);
+
+    const averageLikes = mediasReal.averageLikes || 0;
+    const averageComments = mediasReal.averageComments || 0;
+    const averageShares = overview.media_count ? insightDataReal.totals.shares / overview.media_count : 0;
+    const averageSaves = overview.media_count ? insightDataReal.totals.saves / overview.media_count : 0;
+
+    const instagramViews = insightDataReal.totals.reach || 0;
+    const instagramInteractions =
+      (insightDataReal.totals.likes || 0) +
+      (insightDataReal.totals.comments || 0) +
+      (insightDataReal.totals.shares || 0) +
+      (insightDataReal.totals.saves || 0);
+    const engagementRate = instagramViews ? (instagramInteractions / instagramViews) * 100 : 0;
+
+    // thumbnail caching is external I/O — keep it OUT of the transaction
+    const cachedVideos = await Promise.all(
+      (mediasReal.sortedVideos || []).map((media: any) => withCachedInstagramThumbnail(media, creator.id)),
+    );
+
+    // shared payload — defined once instead of duplicated across create/update
+    const profileData = {
+      user_id: overview.user_id,
+      profile_picture_url: overview.profile_picture_url,
+      biography: overview.biography,
+      followers_count: overview.followers_count,
+      follows_count: overview.follows_count,
+      media_count: overview.media_count,
+      username: overview.username,
+      totalLikes: mediasReal.totalLikes,
+      totalComments: mediasReal.totalComments,
+      totalShares: insightDataReal.totals.shares,
+      totalSaves: insightDataReal.totals.saves,
+      averageLikes,
+      averageComments,
+      averageShares,
+      averageSaves,
+      engagement_rate: engagementRate,
+      insightData: {
+        since: insightDataReal.since,
+        until: insightDataReal.until,
+        totals: insightDataReal.totals,
+        audience: audienceReal,
+      },
+    };
+
+    // ---- Phase 2: single atomic write (token + flag + profile + videos) ----
+    await prisma.$transaction(
+      async (tx) => {
+        const instagramUser = await tx.instagramUser.upsert({
+          where: { creatorId: creator.id },
+          update: {
+            ...profileData,
+            accessToken: data.encryptedToken,
+            expiresIn: data.expires_in,
+          },
+          create: {
+            ...profileData,
+            accessToken: data.encryptedToken,
+            expiresIn: data.expires_in,
+            creatorId: creator.id,
+          },
+        });
+
+        await tx.creator.update({
+          where: { id: creator.id },
+          data: { isFacebookConnected: true },
+        });
+
+        for (const media of cachedVideos) {
+          const videoData = {
+            video_id: media.id,
+            comments_count: media.comments_count,
+            like_count: media.like_count,
+            view_count: media.video_views ?? null,
+            media_type: media.media_type,
+            media_url: media.media_url,
+            thumbnail_url: media.thumbnail_url,
+            caption: media.caption,
+            permalink: media.permalink,
+          };
+
+          await (tx.instagramVideo as any).upsert({
+            where: { video_id: media.id },
+            update: videoData,
+            create: { ...videoData, instagramUserId: instagramUser.id },
+          });
+        }
+      },
+      { timeout: 20000, maxWait: 5000 },
+    );
+
+    // ---- Phase 3: non-critical follow-up, AFTER commit ----
+    try {
+      const { updateCreatorTier } = require('@services/creditTierService');
+      await updateCreatorTier(userId);
+    } catch (tierError) {
+      console.error('Failed to update credit tier after Instagram connect:', tierError);
+    }
+
+    return res.redirect('cultapp:///media-kit?status=success');
+  } catch (error) {
+    console.log('Error instagram mobile callback: ', error);
+    return fail('instagram_auth_failed');
+  }
 };
 
 // Get refresh token and access token
 export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
   const code = req.query.code;
+  const [, userId] = ((req.query.state as string) ?? '').split('|');
 
   try {
     // Exchange code for access token
@@ -239,9 +402,7 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
     const encryptedRefreshToken = encryptToken(refresh_token);
 
     const creator = await prisma.creator.update({
-      where: {
-        userId: req.session.userid,
-      },
+      where: { userId: userId },
       data: {
         tiktokData: { ...tokenResponse.data, access_token: encryptedAccessToken, refresh_token: encryptedRefreshToken },
         isTiktokConnected: true,
@@ -302,7 +463,7 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
       // Update creator's credit tier after TikTok follower data changes
       try {
         const { updateCreatorTier } = require('@services/creditTierService');
-        await updateCreatorTier(req.session.userid as string);
+        await updateCreatorTier(userId);
       } catch (tierError) {
         console.error('Failed to update credit tier after TikTok connect:', tierError);
         // Non-blocking - don't fail the callback if tier update fails
@@ -353,7 +514,7 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
       // Find campaigns where this user has submissions
       const userSubmissions = await prisma.submission.findMany({
         where: {
-          userId: req.session.userid,
+          userId: userId,
           status: 'POSTED',
           content: { not: null },
         },
@@ -366,7 +527,7 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
       // Emit analytics refresh event to each campaign room
       userSubmissions.forEach(({ campaignId }) => {
         io.to(campaignId).emit('analytics:refresh', {
-          userId: req.session.userid,
+          userId: userId,
           platform: 'TikTok',
           reason: 'mediakit_connected',
           timestamp: new Date().toISOString(),
@@ -375,7 +536,7 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
       });
     }
 
-    res.redirect(process.env.REDIRECT_CLIENT as string);
+    res.redirect('cultapp:///media-kit?status=success'); //later change
   } catch (error) {
     console.error('Error during TikTok OAuth:', error.response?.data || error.message);
     res.status(500).send('Error during TikTok OAuth');
@@ -440,7 +601,12 @@ export const tiktokData = async (req: Request, res: Response) => {
 };
 
 export const handleDisconnectTiktok = async (req: Request, res: Response) => {
-  const { userId } = req.body;
+  const userId = req.userId ?? req.body?.userId;
+
+  if (!userId) {
+    return res.status(400).json({ message: 'Missing user identifier.' });
+  }
+
   try {
     const creator = await prisma.creator.findFirst({
       where: {
@@ -467,29 +633,31 @@ export const handleDisconnectTiktok = async (req: Request, res: Response) => {
       },
     );
 
-    const updatedCreator = await prisma.creator.update({
-      where: {
-        userId: creator.userId,
-      },
-      data: {
-        isTiktokConnected: false,
-        tiktokData: {},
-      },
-      include: {
-        tiktokUser: true,
-      },
-    });
+    await prisma.$transaction(async (tx) => {
+      const updatedCreator = await tx.creator.update({
+        where: {
+          userId: creator.userId,
+        },
+        data: {
+          isTiktokConnected: false,
+          tiktokData: {},
+        },
+        include: {
+          tiktokUser: true,
+        },
+      });
 
-    await prisma.tiktokVideo.deleteMany({
-      where: {
-        tiktokUserId: updatedCreator.tiktokUser?.id,
-      },
-    });
+      await tx.tiktokVideo.deleteMany({
+        where: {
+          tiktokUserId: updatedCreator.tiktokUser?.id,
+        },
+      });
 
-    await prisma.tiktokUser.delete({
-      where: {
-        creatorId: creator.id,
-      },
+      await tx.tiktokUser.delete({
+        where: {
+          creatorId: creator.id,
+        },
+      });
     });
 
     return res.status(200).json({ message: 'TikTok account disconnected successfully' });
@@ -509,7 +677,7 @@ export const redirectFacebookAuth = async (req: Request, res: Response) => {
   const code = req.query.code; // Facebook sends the code here
 
   try {
-    if (!code || !req.session.userid) return res.status(400).json({ message: 'Bad requests' });
+    if (!code || !req.userId) return res.status(400).json({ message: 'Bad requests' });
 
     // Exchange the code for an access token
     const response = await axios.get('https://graph.facebook.com/v22.0/oauth/access_token', {
@@ -535,7 +703,7 @@ export const redirectFacebookAuth = async (req: Request, res: Response) => {
 
     await prisma.creator.update({
       where: {
-        userId: req.session.userid,
+        userId: req.userId,
       },
       data: {
         instagramData: {
@@ -564,7 +732,7 @@ export const redirectFacebookAuth = async (req: Request, res: Response) => {
 };
 
 export const getUserInstagramData = async (req: Request, res: Response) => {
-  const userId = req.session.userid || req.params.userId;
+  const userId = req.userId || req.params.userId;
   const userContents = [];
 
   try {
@@ -578,12 +746,12 @@ export const getUserInstagramData = async (req: Request, res: Response) => {
 
     const accessToken = decryptToken(instagramData?.access_token?.value);
 
-    const pageId = await getPageId(accessToken);
+    const pageId = await getPageId(accessToken!);
     console.log(pageId);
 
-    const instagramAccountId = await getInstagramBusinesssAccountId(accessToken, pageId);
+    const instagramAccountId = await getInstagramBusinesssAccountId(accessToken!, pageId);
 
-    const userData: any = await getInstagramUserData(accessToken, instagramAccountId, [
+    const userData: any = await getInstagramUserData(accessToken!, instagramAccountId, [
       'followers_count',
       'follows_count',
       'media',
@@ -608,7 +776,7 @@ export const getUserInstagramData = async (req: Request, res: Response) => {
 
     const userContents = await Promise.all(
       userMedia.map((media: { id: string }) =>
-        getInstagramMediaData(accessToken, media.id, [
+        getInstagramMediaData(accessToken!, media.id, [
           'comments_count',
           'like_count',
           'media_type',
@@ -630,54 +798,64 @@ export const getUserInstagramData = async (req: Request, res: Response) => {
 };
 
 export const handleDisconnectFacebook = async (req: Request, res: Response) => {
-  const { userId } = req.body;
+  // Prefer the authenticated user. Only fall back to the body for privileged/admin flows.
+  const userId = req.userId ?? req.body.userId;
+
+  if (!userId) {
+    return res.status(400).json({ message: 'Missing user identifier.' });
+  }
+
   try {
     const creator = await prisma.creator.findFirst({
-      where: {
-        userId: userId,
-      },
+      where: { userId },
     });
 
-    if (!creator || !creator.isFacebookConnected)
-      return res.status(404).json({ message: 'Creator is not linked to Instagram' });
+    if (!creator || !creator.isFacebookConnected) {
+      return res.status(404).json({ message: 'Creator is not connected to Facebook.' });
+    }
 
     const accessToken = decryptToken((creator?.instagramData as any)?.access_token?.value);
 
-    if (!accessToken) return res.status(404).json({ message: 'Access token not found.' });
+    // Best-effort revocation on Facebook's side. If the token is already expired or
+    // revoked, we still want to clear local state below, so isolate the failure.
+    if (accessToken) {
+      try {
+        const { data } = await axios.get('https://graph.facebook.com/me', {
+          params: { fields: 'id', access_token: accessToken },
+        });
 
-    const response = await axios.get(`https://graph.facebook.com/me`, {
-      params: {
-        fields: 'id',
-        access_token: accessToken,
-      },
-    });
-
-    await axios.delete(`https://graph.facebook.com/${response?.data?.id}/permissions`, {
-      params: {
-        access_token: accessToken,
-      },
-    });
+        if (data?.id) {
+          await axios.delete(`https://graph.facebook.com/${data.id}/permissions`, {
+            params: { access_token: accessToken },
+          });
+        }
+      } catch (revokeError) {
+        // Log message only — never the full axios error (it carries the token in config.params).
+        console.error(
+          'Facebook permission revocation failed:',
+          revokeError instanceof Error ? revokeError.message : revokeError,
+        );
+      }
+    }
 
     await prisma.creator.update({
-      where: {
-        userId: creator.userId,
-      },
+      where: { userId: creator.userId },
       data: {
         isFacebookConnected: false,
-        instagramData: {},
+        instagramData: Prisma.JsonNull,
       },
     });
 
-    return res.status(200).json({ message: 'Instagram account disconnected successfully' });
+    return res.status(200).json({ message: 'Facebook account disconnected successfully.' });
   } catch (error) {
-    console.log(error);
-    return res.status(404).json(error);
+    console.error('handleDisconnectFacebook error:', error);
+    return res.status(500).json({ message: 'Failed to disconnect Facebook account.' });
   }
 };
 
 export const instagramCallback = async (req: Request, res: Response) => {
   const code = req.query.code;
-  const userId = req.session.userid;
+  const userId = req.userId;
 
   if (!code) return res.status(404).json({ message: 'Code not found.' });
   if (!userId) return res.status(404).json({ message: 'Session Expired. Please log in again.' });
@@ -698,10 +876,10 @@ export const instagramCallback = async (req: Request, res: Response) => {
       },
     });
 
-    const overview = await getInstagramOverviewService(access_token);
+    const overview = await getInstagramOverviewService(access_token!);
 
-    const medias = await getInstagramMediaObject(access_token, overview.user_id);
-    const insightData = await getInstagramUserInsight(access_token, overview.user_id);
+    const medias = await getInstagramMediaObject(access_token!, overview.user_id);
+    const insightData = await getInstagramUserInsight(access_token!, overview.user_id);
 
     const averageLikes = medias.averageLikes || 0;
     const averageComments = medias.averageComments || 0;
@@ -798,6 +976,7 @@ export const instagramCallback = async (req: Request, res: Response) => {
           video_id: videoId,
           comments_count: media.comments_count,
           like_count: media.like_count,
+          view_count: media.video_views ?? null,
           media_type: media.media_type,
           media_url: media.media_url,
           thumbnail_url: media.thumbnail_url,
@@ -808,6 +987,7 @@ export const instagramCallback = async (req: Request, res: Response) => {
           video_id: videoId,
           comments_count: media.comments_count,
           like_count: media.like_count,
+          view_count: media.video_views ?? null,
           media_type: media.media_type,
           media_url: media.media_url,
           thumbnail_url: media.thumbnail_url,
@@ -825,7 +1005,7 @@ export const instagramCallback = async (req: Request, res: Response) => {
 };
 
 export const getInstagramOverview = async (req: Request, res: Response) => {
-  const userId = req.params.userId || req.session.userid;
+  const userId = req.params.userId || req.userId;
   try {
     const user = await prisma.creator.findUnique({
       where: {
@@ -914,7 +1094,7 @@ export const removeInstagramPermissions = async (req: Request, res: Response) =>
 // V2 INSTAGRAM
 export const handleInstagramCallback = async (req: Request, res: Response) => {
   const code = req.query.code;
-  const userId = req.session.userid;
+  const userId = req.userId;
 
   if (!code) return res.status(404).json({ message: 'Code not found.' });
   if (!userId) return res.status(404).json({ message: 'Session Expired. Please log in again.' });
@@ -1193,6 +1373,7 @@ export const getInstagramMediaKit = async (req: Request, res: Response) => {
           video_id: videoId,
           comments_count: media.comments_count,
           like_count: media.like_count,
+          view_count: media.video_views ?? null,
           media_type: media.media_type,
           media_url: media.media_url,
           thumbnail_url: media.thumbnail_url,
@@ -1205,6 +1386,7 @@ export const getInstagramMediaKit = async (req: Request, res: Response) => {
           video_id: videoId,
           comments_count: media.comments_count,
           like_count: media.like_count,
+          view_count: media.video_views ?? null,
           media_type: media.media_type,
           media_url: media.media_url,
           thumbnail_url: media.thumbnail_url,
@@ -1862,7 +2044,7 @@ export async function ensureValidInstagramToken(userId: string): Promise<string>
 
     try {
       // Refresh the token using the existing service
-      const refreshedTokenData = await refreshInstagramToken(accessToken);
+      const refreshedTokenData = await refreshInstagramToken(accessToken!);
 
       // Encrypt the new token
       const newEncryptedAccessToken = encryptToken(refreshedTokenData.access_token);
@@ -1905,7 +2087,7 @@ export async function ensureValidInstagramToken(userId: string): Promise<string>
     }
   }
 
-  return accessToken;
+  return accessToken!;
 }
 
 // Local-dev only: deterministic mock insight payload keyed by post URL.
@@ -2197,7 +2379,7 @@ export async function ensureValidTikTokToken(userId: string): Promise<string> {
 
     try {
       // Refresh the token
-      const refreshedTokenData = await refreshTikTokToken(refreshToken);
+      const refreshedTokenData = await refreshTikTokToken(refreshToken!);
 
       // Encrypt the new tokens
       const newEncryptedAccessToken = encryptToken(refreshedTokenData.access_token);
@@ -2232,7 +2414,7 @@ export async function ensureValidTikTokToken(userId: string): Promise<string> {
     }
   }
 
-  return accessToken;
+  return accessToken!;
 }
 
 export const getTikTokVideoInsight = async (req: Request, res: Response) => {

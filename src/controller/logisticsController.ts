@@ -29,6 +29,9 @@ import {
 import { logChange } from '@services/campaignServices';
 import { computeChanges, FieldMapping } from '@utils/campaignLogDiff';
 import { PrismaClient } from '@prisma/client';
+import { saveNotification } from '@controllers/notificationController';
+import { notificationLogisticShipped } from '@helper/notification';
+import { clients, io } from '../server';
 
 const prisma = new PrismaClient();
 
@@ -37,17 +40,42 @@ async function getLogisticContext(logisticId: string) {
     where: { id: logisticId },
     select: {
       campaignId: true,
+      creatorId: true,
       type: true,
       creator: { select: { name: true } },
+      campaign: { select: { name: true } },
       reservationDetails: { select: { outlet: true } },
     },
   });
   return {
     campaignId: logistic?.campaignId || '',
+    // creatorId on Logistic is the creator's User id (see creatorProductInfoService,
+    // which keys creatorId_campaignId by userId) — so it's usable for notifications.
+    creatorUserId: logistic?.creatorId || '',
+    campaignName: logistic?.campaign?.name || 'your campaign',
     creatorName: logistic?.creator?.name || 'Unknown Creator',
     type: logistic?.type || 'PRODUCT_DELIVERY',
     outlet: logistic?.reservationDetails?.outlet || null,
   };
+}
+
+function getAuthedUserId(req: Request): string | undefined {
+  return req.userId ?? (req as any).session?.userid;
+}
+
+function emitLogisticSocket(
+  req: Request,
+  campaignId: string | null | undefined,
+  payload: { logisticId?: string; action?: string } = {},
+) {
+  if (!campaignId) return;
+  const io = req.app.get('io');
+  if (!io) return;
+  io.to(campaignId).emit('v4:logistic:updated', {
+    campaignId,
+    ...payload,
+    updatedAt: new Date().toISOString(),
+  });
 }
 
 export const getLogisticsForCampaign = async (req: Request, res: Response) => {
@@ -66,7 +94,8 @@ export const getLogisticsForCampaign = async (req: Request, res: Response) => {
 
 export const getCreatorLogistics = async (req: Request, res: Response) => {
   try {
-    const { userid } = (req as any).session;
+    const userid = getAuthedUserId(req);
+    if (!userid) return res.status(401).json({ message: 'Unauthorized' });
 
     const logistics = await fetchAllLogisticsForCreator(userid);
     return res.status(200).json(logistics);
@@ -79,7 +108,8 @@ export const getCreatorLogistics = async (req: Request, res: Response) => {
 export const getCreatorLogisticForCampaign = async (req: Request, res: Response) => {
   try {
     const { campaignId } = req.params;
-    const { userid } = (req as any).session;
+    const userid = getAuthedUserId(req);
+    if (!userid) return res.status(401).json({ message: 'Unauthorized' });
 
     if (!campaignId) {
       return res.status(400).json({ message: 'Campaign ID is required.' });
@@ -145,7 +175,8 @@ export const singleAssignmentLogistics = async (req: Request, res: Response) => 
   try {
     const { campaignId } = req.params;
     const { creatorId, items } = req.body;
-    const { userid: createdById } = (req as any).session;
+    const createdById = getAuthedUserId(req);
+    if (!createdById) return res.status(401).json({ message: 'Unauthorized' });
 
     if (!creatorId || !items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ message: 'Creator ID and a non-empty array of items are required.' });
@@ -167,6 +198,11 @@ export const singleAssignmentLogistics = async (req: Request, res: Response) => 
       assignedItems,
     });
 
+    emitLogisticSocket(req, campaignId, {
+      logisticId: (logistic as any)?.id,
+      action: 'assigned',
+    });
+
     return res.status(201).json(logistic);
   } catch (error) {
     console.error('Error in singleAssignmentLogistics controller', error);
@@ -178,7 +214,8 @@ export const bulkAssignmentLogistics = async (req: Request, res: Response) => {
   try {
     const { campaignId } = req.params;
     const { assignments } = req.body;
-    const { userid: createdById } = (req as any).session;
+    const createdById = getAuthedUserId(req);
+    if (!createdById) return res.status(401).json({ message: 'Unauthorized' });
 
     if (!assignments || !Array.isArray(assignments) || assignments.length === 0) {
       return res.status(400).json({ message: 'Assignments array is required and cannot be empty.' });
@@ -217,6 +254,8 @@ export const bulkAssignmentLogistics = async (req: Request, res: Response) => {
       await logChange(`Logistics assigned to ${creatorName}`, campaignId, req, undefined, { assignedItems });
     }
 
+    emitLogisticSocket(req, campaignId, { action: 'bulk-assigned' });
+
     return res.status(201).json(logistics);
   } catch (error) {
     console.error('Error in bulkAssignmentLogistics controller:', error);
@@ -230,7 +269,8 @@ export const scheduleDelivery = async (req: Request, res: Response) => {
     const { trackingLink, expectedDeliveryDate } = req.body;
     const logistic = await scheduleDeliveryService(logisticId, req.body);
 
-    const { campaignId, creatorName } = await getLogisticContext(logisticId);
+    const { campaignId, creatorUserId, campaignName, creatorName } =
+      await getLogisticContext(logisticId);
 
     // Fetch address from delivery details for metadata
     const deliveryInfo = await prisma.logistic.findUnique({
@@ -244,6 +284,23 @@ export const scheduleDelivery = async (req: Request, res: Response) => {
       expectedDeliveryDate: expectedDeliveryDate || null,
       address: deliveryInfo?.deliveryDetails?.address || null,
     });
+
+    // Notify the creator that their product has shipped — important logistics
+    // info, mirrors the in-app/email cues the creator gets for other milestones.
+    if (creatorUserId) {
+      const { title, message } = notificationLogisticShipped(campaignName, trackingLink);
+      const notification = await saveNotification({
+        userId: creatorUserId,
+        title,
+        message,
+        entity: 'Logistic',
+        entityId: campaignId,
+      });
+      const socketId = clients.get(creatorUserId);
+      if (socketId) io.to(socketId).emit('notification', notification);
+    }
+
+    emitLogisticSocket(req, campaignId, { logisticId, action: 'scheduled' });
 
     return res.status(200).json(logistic);
   } catch (error) {
@@ -321,7 +378,8 @@ export const reportIssue = async (req: Request, res: Response) => {
   try {
     const { logisticId } = req.params;
     const { reason } = req.body;
-    const { userid } = (req as any).session;
+    const userid = getAuthedUserId(req);
+    if (!userid) return res.status(401).json({ message: 'Unauthorized' });
 
     const updated = await reportLogisticIssue(logisticId, reason, userid);
 
@@ -363,6 +421,11 @@ export const updateLogisticStatus = async (req: Request, res: Response) => {
 
     const { campaignId, creatorName } = await getLogisticContext(logisticId);
     await logChange(`Logistics status for ${creatorName} changed to ${status}`, campaignId, req);
+
+    emitLogisticSocket(req, campaignId, {
+      logisticId,
+      action: `status:${status}`,
+    });
 
     return res.status(200).json(updatedStatus);
   } catch (error) {
@@ -444,6 +507,11 @@ export const adminUpdateLogisticDetails = async (req: Request, res: Response) =>
       );
     }
 
+    emitLogisticSocket(req, campaignId, {
+      logisticId,
+      action: 'admin-updated',
+    });
+
     return res.status(200).json(updatedLogistic);
   } catch (error) {
     console.error('Error admin updating logistic:', error);
@@ -454,7 +522,8 @@ export const adminUpdateLogisticDetails = async (req: Request, res: Response) =>
 export const resolveLogisticIssue = async (req: Request, res: Response) => {
   try {
     const { logisticId } = req.params;
-    const { userid } = (req as any).session;
+    const userid = getAuthedUserId(req);
+    if (!userid) return res.status(401).json({ message: 'Unauthorized' });
 
     // Fetch issue reason before resolving (status is still OPEN)
     const openIssue = await prisma.logisticIssue.findFirst({
@@ -475,6 +544,11 @@ export const resolveLogisticIssue = async (req: Request, res: Response) => {
     if (openIssue?.reason) meta.reason = openIssue.reason;
     await logChange(message, campaignId, req, undefined, Object.keys(meta).length > 0 ? meta : undefined);
 
+    emitLogisticSocket(req, campaignId, {
+      logisticId,
+      action: 'issue-resolved',
+    });
+
     return res.status(200).json(result);
   } catch (error) {
     console.error('Error resolving issue:', error);
@@ -485,12 +559,18 @@ export const resolveLogisticIssue = async (req: Request, res: Response) => {
 export const retryLogisticDelivery = async (req: Request, res: Response) => {
   try {
     const { logisticId } = req.params;
-    const { userid } = (req as any).session;
+    const userid = getAuthedUserId(req);
+    if (!userid) return res.status(401).json({ message: 'Unauthorized' });
 
     const result = await retryDeliveryService(logisticId, userid);
 
     const { campaignId, creatorName } = await getLogisticContext(logisticId);
     await logChange(`Logistics delivery retry scheduled for ${creatorName}`, campaignId, req);
+
+    emitLogisticSocket(req, campaignId, {
+      logisticId,
+      action: 'delivery-retry',
+    });
 
     return res.status(200).json(result);
   } catch (error) {
@@ -502,14 +582,17 @@ export const retryLogisticDelivery = async (req: Request, res: Response) => {
 export const submitCreatorProductInfo = async (req: Request, res: Response) => {
   try {
     const { campaignId } = req.params;
-    const { userid } = (req as any).session;
-    const { address, location, city, state, country, postcode, dietaryRestrictions } = req.body;
+    const userid = getAuthedUserId(req);
+    if (!userid) return res.status(401).json({ message: 'Unauthorized' });
+    const { address, location, city, state, country, postcode, dietaryRestrictions, phoneNumber } =
+      req.body;
 
     const result = await creatorProductInfoService({
       userId: userid,
       campaignId,
       userData: { address, location, city, state, country, postcode },
       dietaryRestrictions,
+      phoneNumber,
     });
 
     const creator = await prisma.user.findUnique({ where: { id: userid }, select: { name: true } });
@@ -543,6 +626,9 @@ export const upsertReservationConfig = async (req: Request, res: Response) => {
     }
 
     const config = await upsertReservationConfigService(campaignId, req.body);
+
+    emitLogisticSocket(req, campaignId, { action: 'reservation-config-updated' });
+
     return res.status(200).json(config);
   } catch (error) {
     console.error('Error saving reservation config:', error);
@@ -584,7 +670,8 @@ export const getReservationSlots = async (req: Request, res: Response) => {
 export const submitReservationDetails = async (req: Request, res: Response) => {
   try {
     const { campaignId } = req.params;
-    const { userid } = (req as any).session;
+    const userid = getAuthedUserId(req);
+    if (!userid) return res.status(401).json({ message: 'Unauthorized' });
     const { outlet, phoneNumber, remarks, pax, selectedSlots } = req.body;
 
     if (!selectedSlots || selectedSlots.length === 0) {
@@ -645,6 +732,11 @@ export const updateReservationDetails = async (req: Request, res: Response) => {
       });
     }
 
+    emitLogisticSocket(req, campaignId, {
+      logisticId,
+      action: 'reservation-details-updated',
+    });
+
     return res.status(200).json(result);
   } catch (error) {
     console.error('Error updating reservation details:', error);
@@ -687,6 +779,11 @@ export const scheduleReservation = async (req: Request, res: Response) => {
       picContact: picContact || null,
     });
 
+    emitLogisticSocket(req, campaignId, {
+      logisticId,
+      action: 'reservation-scheduled',
+    });
+
     return res.status(200).json(result);
   } catch (error) {
     console.error('Error confirming reservation:', error);
@@ -708,6 +805,11 @@ export const rescheduleReservation = async (req: Request, res: Response) => {
       undefined,
       outlet ? { outlet } : undefined,
     );
+
+    emitLogisticSocket(req, campaignId, {
+      logisticId,
+      action: 'reservation-rescheduled',
+    });
 
     return res.status(200).json({ message: 'Reservation reset successfully', result });
   } catch (error) {
@@ -745,6 +847,11 @@ export const adminSchedule = async (req: Request, res: Response) => {
       startTime: startTime || null,
       endTime: endTime || null,
       outlet: outlet || null,
+    });
+
+    emitLogisticSocket(req, campaignId, {
+      logisticId,
+      action: isReschedule ? 'admin-rescheduled' : 'admin-scheduled',
     });
 
     return res.status(200).json(result);

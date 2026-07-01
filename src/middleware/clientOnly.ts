@@ -5,13 +5,11 @@ const prisma = new PrismaClient();
 
 export const isClient = async (req: Request, res: Response, next: NextFunction) => {
   // Check if client is logged in
-  const userId = req.session.userid;
+  const userId = req.userId;
   if (!userId) {
     console.log('Client middleware: No user ID in session');
     return res.status(401).json({ message: 'You are not logged in' });
   }
-
-  console.log('Client middleware: Checking user with ID', userId);
 
   const user = await prisma.user.findUnique({
     where: {

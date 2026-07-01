@@ -1,6 +1,6 @@
 import { Router } from 'express';
 
-import { isLoggedIn } from '@middlewares/onlyLogin';
+import { authenticate } from '@middlewares/authenticate';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
 import { isCreator, isCreatorOrClient } from '@middlewares/isCreator';
 import { submitFeedback, getAllFeedback, getFeedbackStats, checkCreatorNps } from '@controllers/npsFeedbackController';
@@ -8,13 +8,13 @@ import { submitFeedback, getAllFeedback, getFeedbackStats, checkCreatorNps } fro
 const router = Router();
 
 // Client or creator submits NPS feedback
-router.post('/', isLoggedIn, isCreatorOrClient, submitFeedback);
+router.post('/', authenticate, isCreatorOrClient, submitFeedback);
 
 // Creator NPS check (must be before the GET / route to avoid conflict)
-router.get('/check-creator', isLoggedIn, isCreator, checkCreatorNps);
+router.get('/check-creator', authenticate, isCreator, checkCreatorNps);
 
 // Superadmin views
-router.get('/stats', isLoggedIn, isSuperAdmin, getFeedbackStats);
-router.get('/', isLoggedIn, isSuperAdmin, getAllFeedback);
+router.get('/stats', authenticate, isSuperAdmin, getFeedbackStats);
+router.get('/', authenticate, isSuperAdmin, getAllFeedback);
 
 export default router;

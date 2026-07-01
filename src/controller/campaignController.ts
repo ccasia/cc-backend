@@ -13,6 +13,7 @@ import {
   LogisticStatus,
   PaymentForm,
   Pitch,
+  PitchStatus,
   Prisma,
   PrismaClient,
   ShortListedCreator,
@@ -71,16 +72,47 @@ import { deliveryConfirmation, shortlisted, tracking } from '@configs/nodemailer
 import { createNewSpreadSheet, upsertSheetAndWriteRows } from '@services/google_sheets/sheets';
 import { getRemainingCredits } from '@services/companyService';
 import { handleGuestForShortListing } from '@services/shortlistService';
+import { saveCampaignBookmark, unsaveCampaignBookmark } from '@services/campaignBookmarkService';
 import getCountry from '@utils/getCountry';
 // import { applyCreditCampiagn } from '@services/packageService';
 import { sendShortlistEmailToClients, ShortlistedCreatorInput } from '@services/notificationService';
 import { calculateAverageMetrics } from '@utils/averagingMetrics';
 import { computeChanges, FieldMapping } from '@utils/campaignLogDiff';
+import {
+  CREATOR_CAMPAIGN_MEMBERSHIP_UPDATED_EVENT,
+  createCreatorCampaignMembershipUpdatedPayload,
+} from '@utils/campaignMembershipEvents';
 
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
 Ffmpeg.setFfprobePath(ffprobePath.path);
 
 const prisma = new PrismaClient();
+
+const emitCreatorCampaignMembershipUpdated = ({
+  userId,
+  campaignId,
+  pitchId,
+  action,
+}: {
+  userId: string;
+  campaignId: string;
+  pitchId?: string;
+  action: 'withdraw' | 'remove';
+}) => {
+  const payload = createCreatorCampaignMembershipUpdatedPayload({
+    userId,
+    campaignId,
+    pitchId,
+    action,
+  });
+  const creatorSocketId = clients.get(userId);
+
+  if (creatorSocketId) {
+    io.to(creatorSocketId).emit(CREATOR_CAMPAIGN_MEMBERSHIP_UPDATED_EVENT, payload);
+  }
+
+  io.to(campaignId).emit(CREATOR_CAMPAIGN_MEMBERSHIP_UPDATED_EVENT, payload);
+};
 
 const normalizePlatform = (platform?: string): SocialPlatform => (platform === 'tiktok' ? 'tiktok' : 'instagram');
 
@@ -546,7 +578,7 @@ export const createCampaign = async (req: Request, res: Response) => {
         }
 
         // Check if the user creating the campaign is a Client
-        const userId = req.session.userid;
+        const userId = req.userId;
 
         if (userId) {
           const currentUser = await tx.user.findUnique({
@@ -676,7 +708,7 @@ export const createCampaign = async (req: Request, res: Response) => {
 
         // Get admin info for logging
         const admin = await tx.user.findUnique({
-          where: { id: req.session.userid },
+          where: { id: req.userId },
         });
         const adminName = admin?.name || 'Admin';
         const userRole = admin?.role || 'admin';
@@ -686,12 +718,12 @@ export const createCampaign = async (req: Request, res: Response) => {
         await tx.campaignLog.create({
           data: {
             message: campaignActivityMessage,
-            adminId: req.session.userid,
+            adminId: req.userId,
             campaignId: campaign.id,
           },
         });
 
-        const adminId = req.session.userid;
+        const adminId = req.userId;
         if (adminId) {
           const adminLogMessage = `Created campaign - "${campaign.name}" `;
           logAdminChange(adminLogMessage, adminId, req);
@@ -1241,7 +1273,7 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
         }
 
         // Check if creating user is a Client
-        const userId = req.session.userid;
+        const userId = req.userId;
         if (userId) {
           const currentUser = await tx.user.findUnique({
             where: { id: userId },
@@ -1330,12 +1362,12 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
         await tx.campaignLog.create({
           data: {
             message: 'Campaign Created',
-            adminId: req.session.userid,
+            adminId: req.userId,
             campaignId: campaign.id,
           },
         });
 
-        const adminId = req.session.userid;
+        const adminId = req.userId;
         if (adminId) {
           logAdminChange(`Created campaign - "${campaign.name}"`, adminId, req);
         }
@@ -1425,6 +1457,503 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
       return res.status(400).json(error?.message);
     }
     console.error('createCampaignV2 error after response sent:', error);
+  }
+};
+
+export const activateCampaignFull = async (req: Request, res: Response) => {
+  const { campaignId } = req.params;
+  const rawData = JSON.parse(req.body.data);
+  const {
+    // General info
+    campaignName,
+    campaignDescription,
+    brandAbout,
+    campaignStartDate,
+    campaignEndDate,
+    postingStartDate,
+    postingEndDate,
+    productName,
+    campaignIndustries,
+    websiteLink,
+    // Objectives
+    campaignObjectives,
+    secondaryObjectives,
+    boostContent,
+    primaryKPI,
+    performanceBaseline,
+    // Target audience
+    country,
+    audienceGender,
+    audienceAge,
+    audienceLanguage,
+    audienceCreatorPersona,
+    audienceUserPersona,
+    geographicFocus,
+    geographicFocusOthers,
+    secondaryAudienceGender,
+    secondaryAudienceAge,
+    secondaryAudienceLanguage,
+    secondaryAudienceCreatorPersona,
+    secondaryAudienceUserPersona,
+    secondaryCountry,
+    // Logistics
+    logisticsType,
+    products,
+    schedulingOption,
+    locations,
+    availabilityRules,
+    allowMultipleBookings,
+    clientRemarks,
+    // Activation / deliverables
+    campaignType,
+    rawFootage,
+    photos,
+    crossPosting,
+    ads,
+    campaignManager,
+    agreementFrom,
+    timeline,
+    campaignStage,
+    // Client + credits (brief/handover activation: charge subs + link package)
+    client,
+    campaignCredits,
+    socialMediaPlatform,
+    // Additional Details 1
+    contentFormat,
+    mainMessage,
+    keyPoints,
+    toneAndStyle,
+    referenceContent,
+    // Additional Details 2
+    hashtagsToUse,
+    mentionsTagsRequired,
+    creatorCompensation,
+    ctaDesiredAction,
+    ctaLinkUrl,
+    ctaPromoCode,
+    ctaLinkInBioRequirements,
+    specialNotesInstructions,
+    needAds,
+  } = rawData;
+
+  try {
+    const campaign = await prisma.$transaction(
+      async (tx) => {
+        // 1. Load + guard
+        const existing = await tx.campaign.findUnique({
+          where: { id: campaignId },
+          include: {
+            campaignBrief: true,
+            campaignRequirement: true,
+            campaignAdditionalDetails: true,
+            campaignTimeline: true,
+            thread: true,
+            campaignAdmin: true,
+          },
+        });
+
+        if (!existing) {
+          throw new Error('Campaign not found');
+        }
+
+        if (existing.status !== 'PENDING_ADMIN_ACTIVATION') {
+          throw new Error(
+            `Campaign cannot be activated from status "${existing.status}". Only campaigns pending admin activation can be activated.`,
+          );
+        }
+
+        // Resolve campaign manager users (admins to assign)
+        const admins = await Promise.all(
+          (campaignManager || []).map(async (admin: any) =>
+            tx.user.findUnique({
+              where: { id: admin?.id as string },
+              include: { admin: true, client: true },
+            }),
+          ),
+        );
+
+        // Upload any newly provided campaign cover images
+        const uploadedImageUrls: string[] = [];
+        if (req.files && (req.files as any).campaignImages) {
+          const images = Array.isArray((req.files as any).campaignImages)
+            ? (req.files as any).campaignImages
+            : [(req.files as any).campaignImages];
+          for (const image of images) {
+            const url = await uploadCompanyLogo(image.tempFilePath, image.name);
+            uploadedImageUrls.push(url);
+          }
+        }
+
+        // Normalize dates
+        const normalizedStartDate = campaignStartDate ? dayjs(campaignStartDate).toDate() : existing.campaignBrief?.startDate ?? new Date();
+        const normalizedEndDate = campaignEndDate ? dayjs(campaignEndDate).toDate() : existing.campaignBrief?.endDate ?? normalizedStartDate;
+        const normalizedPostingStartDate = postingStartDate ? dayjs(postingStartDate).toDate() : existing.campaignBrief?.postingStartDate ?? null;
+        const normalizedPostingEndDate = postingEndDate ? dayjs(postingEndDate).toDate() : existing.campaignBrief?.postingEndDate ?? null;
+
+        // Products (delivery logistics)
+        let productsToCreate: any[] = [];
+        if (logisticsType === 'PRODUCT_DELIVERY' && Array.isArray(products)) {
+          productsToCreate = products
+            .filter((product: any) => product.name && product.name.trim() !== '')
+            .map((product: any) => ({ productName: product.name }));
+        }
+
+        // Finalize countries - combine country + secondaryCountry
+        let finalizedCountries: string[] = [];
+        if (typeof country === 'string' && country) {
+          finalizedCountries.push(country);
+        } else if (Array.isArray(country) && country.length > 0) {
+          finalizedCountries.push(...country);
+        }
+        if (typeof secondaryCountry === 'string' && secondaryCountry) {
+          finalizedCountries.push(secondaryCountry);
+        } else if (Array.isArray(secondaryCountry) && secondaryCountry.length > 0) {
+          finalizedCountries.push(...secondaryCountry);
+        }
+        finalizedCountries = [...new Set(finalizedCountries)];
+
+        // Keep existing images unless new ones were uploaded
+        const existingImages = Array.isArray(existing.campaignBrief?.images)
+          ? (existing.campaignBrief?.images as string[])
+          : [];
+        const finalImages: string[] = uploadedImageUrls.length > 0 ? uploadedImageUrls : existingImages;
+
+        // Status transition (ACTIVE now / SCHEDULED future), default ACTIVE
+        const nextStatus = (campaignStage || 'ACTIVE') as CampaignStatus;
+        const setPublishedAt = (nextStatus === 'ACTIVE' || nextStatus === 'SCHEDULED') && !existing.publishedAt;
+
+        // Credit allocation + subscription link. The brief/handover flow reaches
+        // activation here with credits chosen in the form but never charged, and
+        // with no subscription connected. Mirror createCampaignV2: charge the
+        // company's ACTIVE subscriptions FIFO, build the allocation breakdown,
+        // increment creditsUsed, and connect the first charged subscription.
+        //
+        // Idempotent: skip if the campaign was already allocated (re-activation
+        // must not double-charge) — in that case just (re)link the FK.
+        const companyId = existing.companyId || client?.id || null;
+        const requestedCredits = Number(campaignCredits) || 0;
+        const existingAllocation = (existing.creditAllocationBreakdown as { subscriptionId: string }[] | null) || [];
+        const alreadyAllocated = existingAllocation.length > 0 || Boolean(existing.subscriptionId);
+
+        let subscriptionToConnect: string | undefined = existing.subscriptionId || undefined;
+        let creditFields: {
+          campaignCredits?: number;
+          creditsPending?: number;
+          creditsUtilized?: number;
+          creditAllocationBreakdown?: any;
+        } = {};
+
+        if (companyId && !alreadyAllocated) {
+          const activeSubs = await tx.subscription.findMany({
+            where: { companyId, status: 'ACTIVE' },
+            orderBy: { createdAt: 'asc' },
+          });
+
+          if (activeSubs.length > 0) {
+            // Link a package even when no credits are charged.
+            subscriptionToConnect = activeSubs[0].id;
+
+            if (requestedCredits > 0) {
+              const availableCredits = await getRemainingCredits(companyId);
+              if (typeof availableCredits === 'number' && requestedCredits > availableCredits) {
+                throw new Error(
+                  `Not enough credits to activate the campaign. Requested ${requestedCredits}, available ${availableCredits}.`,
+                );
+              }
+
+              const breakdown: { subscriptionId: string; amount: number }[] = [];
+              let remaining = requestedCredits;
+              for (const sub of activeSubs) {
+                if (remaining <= 0) break;
+                const available = (sub.totalCredits || 0) - (sub.creditsUsed || 0);
+                if (available > 0) {
+                  const chargeAmount = Math.min(available, remaining);
+                  breakdown.push({ subscriptionId: sub.id, amount: chargeAmount });
+                  remaining -= chargeAmount;
+                  await tx.subscription.update({
+                    where: { id: sub.id },
+                    data: { creditsUsed: { increment: chargeAmount } },
+                  });
+                }
+              }
+
+              if (breakdown.length > 0) subscriptionToConnect = breakdown[0].subscriptionId;
+              creditFields = {
+                campaignCredits: requestedCredits,
+                creditsPending: requestedCredits,
+                creditsUtilized: 0,
+                creditAllocationBreakdown: breakdown.length > 0 ? breakdown : Prisma.DbNull,
+              };
+            }
+          }
+        }
+
+        // 2. Update Campaign core + credits/subscription link
+        const updatedCampaign = await tx.campaign.update({
+          where: { id: existing.id },
+          data: {
+            name: campaignName ?? existing.name,
+            description: campaignDescription ?? existing.description,
+            campaignType: campaignType ?? existing.campaignType,
+            brandAbout: brandAbout ?? existing.brandAbout ?? '',
+            productName: productName ?? existing.productName ?? '',
+            websiteLink: websiteLink ?? existing.websiteLink ?? '',
+            logisticsType: logisticsType && logisticsType !== '' ? (logisticsType as LogisticType) : null,
+            rawFootage: rawFootage || false,
+            ads: ads || false,
+            photos: photos || false,
+            crossPosting: crossPosting || false,
+            status: nextStatus,
+            publishedAt: setPublishedAt ? new Date() : existing.publishedAt,
+            agreementTemplate: agreementFrom?.id ? { connect: { id: agreementFrom.id } } : undefined,
+            ...creditFields,
+            ...(subscriptionToConnect && { subscription: { connect: { id: subscriptionToConnect } } }),
+          },
+        });
+
+        // 3a. Brief (row exists for a pending-activation campaign; upsert defensively)
+        const briefData = {
+          title: campaignName ?? existing.campaignBrief?.title ?? '',
+          objectives: campaignObjectives || '',
+          secondaryObjectives: Array.isArray(secondaryObjectives) ? secondaryObjectives : [],
+          boostContent: boostContent || '',
+          primaryKPI: primaryKPI || '',
+          performanceBaseline: performanceBaseline || '',
+          images: finalImages,
+          startDate: normalizedStartDate,
+          endDate: normalizedEndDate,
+          postingStartDate: normalizedPostingStartDate,
+          postingEndDate: normalizedPostingEndDate,
+          industries: campaignIndustries ? campaignIndustries : [],
+          socialMediaPlatform: Array.isArray(socialMediaPlatform) ? socialMediaPlatform : [],
+        };
+        await tx.campaignBrief.upsert({
+          where: { campaignId: existing.id },
+          update: briefData,
+          create: { campaignId: existing.id, ...briefData },
+        });
+
+        // 3b. Requirement (audience)
+        const requirementData = {
+          gender: audienceGender || [],
+          age: audienceAge || [],
+          language: audienceLanguage || [],
+          creator_persona: audienceCreatorPersona || [],
+          user_persona: audienceUserPersona || '',
+          country: finalizedCountries[0] || '',
+          countries: finalizedCountries,
+          secondary_gender: secondaryAudienceGender || [],
+          secondary_age: secondaryAudienceAge || [],
+          secondary_language: secondaryAudienceLanguage || [],
+          secondary_creator_persona: secondaryAudienceCreatorPersona || [],
+          secondary_user_persona: secondaryAudienceUserPersona || '',
+          secondary_country: secondaryCountry || '',
+          geographic_focus: geographicFocus || '',
+          geographicFocusOthers: geographicFocusOthers || '',
+        };
+        await tx.campaignRequirement.upsert({
+          where: { campaignId: existing.id },
+          update: requirementData,
+          create: { campaignId: existing.id, ...requirementData },
+        });
+
+        // 3c. Additional details (may not exist yet)
+        // Attachments the user KEPT from the prefilled set (sent as URL strings).
+        // Merge these with newly uploaded files so adding a file doesn't drop the
+        // pre-existing brand-guideline attachments; a removed one is simply absent.
+        const keptBrandGuidelines: string[] = (() => {
+          const raw = (req.body as any)?.existingBrandGuidelines;
+          if (Array.isArray(raw)) return raw.filter((v): v is string => typeof v === 'string' && !!v);
+          if (typeof raw === 'string' && raw) return [raw];
+          return [];
+        })();
+
+        const brandGuidelinesUrls: string[] = [...keptBrandGuidelines];
+        if (req.files && (req.files as any).brandGuidelines) {
+          const brandGuidelinesFiles = Array.isArray((req.files as any).brandGuidelines)
+            ? (req.files as any).brandGuidelines
+            : [(req.files as any).brandGuidelines];
+          for (const file of brandGuidelinesFiles) {
+            if (file && file.tempFilePath && file.name) {
+              const url = await uploadAttachments({
+                tempFilePath: file.tempFilePath,
+                fileName: file.name,
+                folderName: 'brandGuidelines',
+              });
+              brandGuidelinesUrls.push(url);
+            }
+          }
+        }
+
+        let productImage1Url: string | null = null;
+        if (req.files && (req.files as any).productImage1) {
+          const f = Array.isArray((req.files as any).productImage1)
+            ? (req.files as any).productImage1
+            : [(req.files as any).productImage1];
+          if (f.length > 0) productImage1Url = await uploadCompanyLogo(f[0].tempFilePath, f[0].name);
+        }
+
+        let productImage2Url: string | null = null;
+        if (req.files && (req.files as any).productImage2) {
+          const f = Array.isArray((req.files as any).productImage2)
+            ? (req.files as any).productImage2
+            : [(req.files as any).productImage2];
+          if (f.length > 0) productImage2Url = await uploadCompanyLogo(f[0].tempFilePath, f[0].name);
+        }
+
+        // In the activate form the brand-guidelines field is always rendered and
+        // prefilled, so its submitted state (kept URLs + new uploads) is the full
+        // intended set — write it unconditionally so removals also take effect.
+        // null when the user cleared every attachment.
+        const brandGuidelinesUrl =
+          brandGuidelinesUrls.length === 0 ? null : brandGuidelinesUrls.join(',');
+
+        const additionalDetailsData: any = {
+          contentFormat: Array.isArray(contentFormat) ? contentFormat : [],
+          mainMessage: mainMessage || null,
+          keyPoints: keyPoints || null,
+          toneAndStyle: toneAndStyle || null,
+          referenceContent: referenceContent || null,
+          hashtagsToUse: hashtagsToUse || null,
+          mentionsTagsRequired: mentionsTagsRequired || null,
+          creatorCompensation: creatorCompensation || null,
+          ctaDesiredAction: ctaDesiredAction || null,
+          ctaLinkUrl: ctaLinkUrl || null,
+          ctaPromoCode: ctaPromoCode || null,
+          ctaLinkInBioRequirements: ctaLinkInBioRequirements || null,
+          specialNotesInstructions: specialNotesInstructions || null,
+          needAds: needAds || null,
+        };
+        // Brand guidelines reflect the full submitted set (always written so
+        // additions, removals, and clears all persist).
+        additionalDetailsData.brandGuidelinesUrl = brandGuidelinesUrl;
+        if (productImage1Url !== null) additionalDetailsData.productImage1Url = productImage1Url;
+        if (productImage2Url !== null) additionalDetailsData.productImage2Url = productImage2Url;
+
+        await tx.campaignAdditionalDetails.upsert({
+          where: { campaignId: existing.id },
+          update: additionalDetailsData,
+          create: { campaignId: existing.id, ...additionalDetailsData },
+        });
+
+        // 3d. Products + reservation config: replace to match submitted set
+        await tx.product.deleteMany({ where: { campaignId: existing.id } });
+        if (productsToCreate.length > 0) {
+          await tx.product.createMany({
+            data: productsToCreate.map((p) => ({ ...p, campaignId: existing.id })),
+          });
+        }
+
+        if (logisticsType === 'RESERVATION') {
+          const mode: ReservationMode = schedulingOption === 'auto' ? 'AUTO_SCHEDULE' : 'MANUAL_CONFIRMATION';
+          const locationNames = Array.isArray(locations) ? locations.filter((loc: any) => loc.name && loc.name.trim() !== '') : [];
+          const reservationData = {
+            mode,
+            locations: locationNames as any,
+            availabilityRules: (availabilityRules || []) as any,
+            clientRemarks: clientRemarks || null,
+            allowMultipleBookings: allowMultipleBookings || false,
+          };
+          await tx.reservationConfiguration.upsert({
+            where: { campaignId: existing.id },
+            update: reservationData,
+            create: { campaignId: existing.id, ...reservationData },
+          });
+        } else {
+          await tx.reservationConfiguration.deleteMany({ where: { campaignId: existing.id } });
+        }
+
+        // 4. Reconcile campaign admins (add new; never duplicate)
+        const newlyAddedAdminIds: string[] = [];
+        for (const admin of admins.filter(Boolean)) {
+          const adminUserId = (admin as any).id;
+          const exists = await tx.campaignAdmin.findUnique({
+            where: { adminId_campaignId: { adminId: adminUserId, campaignId: existing.id } },
+          });
+          if (!exists) {
+            await tx.campaignAdmin.create({ data: { adminId: adminUserId, campaignId: existing.id } });
+            newlyAddedAdminIds.push(adminUserId);
+          }
+        }
+
+        // 5. Timelines: only create if the campaign has none yet (avoid stacking)
+        if (!existing.campaignTimeline || existing.campaignTimeline.length === 0) {
+          const { createCampaignTimelines } = require('../helper/campaignTimelineHelper');
+          await createCampaignTimelines(tx, existing.id, timeline, {
+            submissionVersion: existing.submissionVersion || 'v2',
+            campaignStartDate: normalizedStartDate,
+            campaignEndDate: normalizedEndDate,
+            postingStartDate: normalizedPostingStartDate,
+            postingEndDate: normalizedPostingEndDate,
+            campaignType: campaignType ?? existing.campaignType,
+          });
+        }
+
+        // 6. Credits: untouched by design.
+
+        // 7. Side effects: update existing thread; notify + event for newly added admins.
+        if (existing.thread) {
+          await tx.thread.update({
+            where: { id: existing.thread.id },
+            data: {
+              title: updatedCampaign.name,
+              description: updatedCampaign.description,
+              photoURL: finalImages[0] ?? existing.thread.photoURL,
+            },
+          });
+        }
+
+        await Promise.all(
+          admins
+            .filter((a: any) => a && newlyAddedAdminIds.includes(a.id))
+            .map(async (admin: any) => {
+              await tx.event.create({
+                data: {
+                  start: dayjs(normalizedStartDate).format(),
+                  end: dayjs(normalizedEndDate).format(),
+                  title: updatedCampaign.name,
+                  userId: admin.id as string,
+                  allDay: false,
+                },
+              });
+
+              const { title, message } = notificationAdminAssign(updatedCampaign.name);
+              const notif = await tx.notification.create({
+                data: {
+                  title,
+                  message,
+                  entity: 'Status',
+                  campaign: { connect: { id: existing.id } },
+                  userNotification: { create: { userId: admin.id } },
+                },
+                include: { userNotification: { select: { userId: true } } },
+              });
+              if (clients.get(admin.id)) io.to(clients.get(admin.id)).emit('notification', notif);
+            }),
+        );
+
+        logChange('Activated the Campaign', existing.id, req);
+        await tx.campaignLog.create({
+          data: {
+            message: 'Campaign Activated',
+            adminId: req.userId,
+            campaignId: existing.id,
+          },
+        });
+
+        return updatedCampaign;
+      },
+      { timeout: 500000 },
+    );
+
+    if (io) io.emit('campaign');
+
+    return res.status(200).json({ campaign, message: 'Campaign activated successfully.' });
+  } catch (error) {
+    if (!res.headersSent) {
+      return res.status(400).json({ message: error?.message || 'Failed to activate campaign' });
+    }
+    console.error('activateCampaignFull error after response sent:', error);
   }
 };
 
@@ -1579,7 +2108,7 @@ export const exportCampaignMasterList = async (req: Request, res: Response) => {
 
 // Campaign Info for Admin
 export const getAllCampaigns = async (req: Request, res: Response) => {
-  const id = req.session.userid;
+  const id = req.userId;
 
   console.log('TEST');
 
@@ -1978,7 +2507,9 @@ export const getCampaignById = async (req: Request, res: Response) => {
     // null. Mirrors the shape built in companyController. (brand is deprecated.)
     let companyWithSummary: any = campaign?.company;
     if (campaign?.company) {
-      const activeSubs = (campaign.company.subscriptions || []).filter((sub: any) => sub.status === 'ACTIVE');
+      const activeSubs = (campaign.company.subscriptions || []).filter(
+        (sub: any) => sub.status === 'ACTIVE',
+      );
       const totalCredits = activeSubs.reduce((sum: number, sub: any) => sum + (sub.totalCredits || 0), 0);
       const usedCredits = activeSubs.reduce((sum: number, sub: any) => sum + (sub.creditsUsed || 0), 0);
       companyWithSummary = {
@@ -1992,8 +2523,9 @@ export const getCampaignById = async (req: Request, res: Response) => {
             activeSubs.length > 0
               ? activeSubs
                   .slice()
-                  .sort((a: any, b: any) => new Date(a.expiredAt).getTime() - new Date(b.expiredAt).getTime())[0]
-                  .expiredAt
+                  .sort(
+                    (a: any, b: any) => new Date(a.expiredAt).getTime() - new Date(b.expiredAt).getTime(),
+                  )[0].expiredAt
               : null,
         },
       };
@@ -2050,16 +2582,13 @@ export const getAllActiveCampaign = async (_req: Request, res: Response) => {
 };
 
 export const getAllCampaignsFinance = async (req: Request, res: Response) => {
-  const { userid } = req.session;
+  const userId = req.userId;
+
   const user = await prisma.user.findUnique({
     where: {
-      id: userid,
+      id: userId,
     },
   });
-
-  // if (user?.role !== 'finance') {
-  //   return res.status(401).json({ message: 'Unauthorized' });
-  // }
 
   try {
     const campaigns = await prisma.campaign.findMany({
@@ -2115,14 +2644,9 @@ export const getAllCampaignsFinance = async (req: Request, res: Response) => {
 };
 
 export const matchCampaignWithCreator = async (req: Request, res: Response) => {
-  const { userid } = req.session;
+  const userid = req.userId;
   const { cursor, take = 10, search } = req.query;
   const campaignId = req.query?.campaignId as string;
-
-  console.log('DISCOVER PAGE DEBUG');
-  console.log('User ID:', userid);
-  console.log('Query params:', { cursor, take, search, campaignId });
-  console.log('Request IP:', req.ip);
 
   try {
     const user = await prisma.user.findUnique({
@@ -2143,11 +2667,8 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    console.log('✅ User found:', user.name, '| Role:', user.role);
     console.log('Creator interests count:', user.creator?.interests?.length || 0);
 
-    // Get all ACTIVE campaigns
-    console.log('📡 Fetching campaigns from database...');
     let campaigns = await prisma.campaign.findMany({
       take: Number(take),
 
@@ -2417,8 +2938,6 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       },
     };
 
-    console.log('=== END DISCOVER PAGE DEBUG ===\n');
-
     return res.status(200).json(data);
   } catch (error) {
     console.error('❌ ERROR in matchCampaignWithCreator:', error);
@@ -2428,7 +2947,7 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
 
 export const creatorMakePitch = async (req: Request, res: Response) => {
   const { campaignId, content, type, followerCount } = req.body;
-  const id = req.session.userid;
+  const id = req.userId;
   let pitch;
 
   try {
@@ -2475,20 +2994,6 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
 
     if (!campaignWithOrigin) {
       return res.status(404).json({ message: 'Campaign not found' });
-    }
-
-    // For credit tier campaigns, validate creator has follower data
-    if (campaignWithOrigin.isCreditTier) {
-      const { canPitchToCreditTierCampaign } = require('@services/creditTierService');
-      const canPitch = await canPitchToCreditTierCampaign(id as string);
-
-      if (!canPitch) {
-        return res.status(403).json({
-          message:
-            'You must have follower data (Instagram, TikTok, or manually entered) to pitch to this campaign. Please connect your social media account or update your profile with your follower count.',
-          code: 'NO_FOLLOWER_DATA',
-        });
-      }
     }
 
     // Check if creator has media kit (used for manualFollowerCount update decision)
@@ -2680,7 +3185,7 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
 };
 
 export const getAllPitches = async (req: Request, res: Response) => {
-  const userId = req.session.userid;
+  const userId = req.userId;
 
   try {
     // Get user role for role-based status display
@@ -2802,7 +3307,7 @@ export const getAllCreatorAgreements = async (req: Request, res: Response) => {
 };
 
 export const getCampaignsByCreatorId = async (req: Request, res: Response) => {
-  const { userid } = req.session;
+  const userid = req.userId;
   try {
     const shortlisted = await prisma.shortListedCreator.findMany({
       where: {
@@ -2871,7 +3376,9 @@ export const getCampaignsByCreatorId = async (req: Request, res: Response) => {
 
 export const getCampaignForCreatorById = async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { userid } = req.session as any;
+
+  // `authenticate` middleware guarantees req.userId is set (returns 401 otherwise).
+  const userid = req.userId as string;
   try {
     const campaign = await prisma.campaign.findUnique({
       where: {
@@ -3027,7 +3534,7 @@ export const getCampaignForCreatorById = async (req: Request, res: Response) => 
 };
 
 export const getCampaignPitchForCreator = async (req: Request, res: Response) => {
-  const userid = req.session.userid;
+  const userid = req.userId;
 
   try {
     const campaings = await prisma.pitch.findMany({
@@ -3139,7 +3646,7 @@ export const getCampaignLog = async (req: Request, res: Response) => {
 
 export const getPitchById = async (req: Request, res: Response) => {
   const { id } = req.params;
-  const userId = req.session.userid;
+  const userId = req.userId;
 
   try {
     // Get user role for role-based status display
@@ -3717,6 +4224,8 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
 };
 
 // For creator
+const REMOVED_CREATOR_PITCH_STATUSES: PitchStatus[] = [PitchStatus.WITHDRAWN];
+
 export const getMyCampaigns = async (req: Request, res: Response) => {
   const { userId } = req.params;
 
@@ -3735,18 +4244,35 @@ export const getMyCampaigns = async (req: Request, res: Response) => {
 
     const campaigns = await prisma.campaign.findMany({
       where: {
-        OR: [
+        AND: [
           {
-            shortlisted: {
-              some: {
-                userId: user.id,
+            OR: [
+              {
+                shortlisted: {
+                  some: {
+                    userId: user.id,
+                  },
+                },
               },
-            },
+              {
+                pitch: {
+                  some: {
+                    userId: user.id,
+                    status: {
+                      notIn: REMOVED_CREATOR_PITCH_STATUSES,
+                    },
+                  },
+                },
+              },
+            ],
           },
           {
             pitch: {
-              some: {
+              none: {
                 userId: user.id,
+                status: {
+                  in: REMOVED_CREATOR_PITCH_STATUSES,
+                },
               },
             },
           },
@@ -3783,8 +4309,12 @@ export const getMyCampaigns = async (req: Request, res: Response) => {
         pitch: {
           where: {
             userId: user.id,
+            status: {
+              notIn: REMOVED_CREATOR_PITCH_STATUSES,
+            },
           },
         },
+        bookMarkCampaign: true,
         campaignBrief: true,
         campaignAdmin: {
           include: {
@@ -3934,7 +4464,7 @@ export const getMyCampaigns = async (req: Request, res: Response) => {
 export const changeCampaignStage = async (req: Request, res: Response) => {
   const { status } = req.body;
   const { campaignId } = req.params;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   let updatedCampaign: any;
   try {
@@ -4057,7 +4587,7 @@ export const changeCampaignStage = async (req: Request, res: Response) => {
 
 export const closeCampaign = async (req: Request, res: Response) => {
   const { id } = req.params;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     // Use transaction for atomicity
@@ -4254,7 +4784,7 @@ export const editCampaignInfo = async (req: Request, res: Response) => {
     postingStartDate,
     postingEndDate,
   } = req.body;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   const publicURL: string[] = [];
   if (req.files && (req.files as any).campaignImages) {
@@ -4380,7 +4910,7 @@ export const editCampaignInfo = async (req: Request, res: Response) => {
 
 export const editCampaignObjectives = async (req: Request, res: Response) => {
   const { id, objectives, secondaryObjectives, boostContent, primaryKPI, performanceBaseline } = req.body;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     console.log('editCampaignObjectives received:', {
@@ -4488,7 +5018,7 @@ export const editCampaignBrandOrCompany = async (req: Request, res: Response) =>
           },
     });
 
-    const adminId = req.session.userid;
+    const adminId = req.userId;
 
     // Get admin info for logging
     if (adminId) {
@@ -4548,7 +5078,7 @@ export const editCampaignDosAndDonts = async (req: Request, res: Response) => {
       },
     });
 
-    const adminId = req.session.userid;
+    const adminId = req.userId;
 
     // Get admin info for logging
     if (adminId) {
@@ -4656,7 +5186,7 @@ export const editCampaignRequirements = async (req: Request, res: Response) => {
       },
     });
 
-    const adminId = req.session.userid;
+    const adminId = req.userId;
 
     // Get admin info for logging
     if (adminId) {
@@ -4743,7 +5273,7 @@ export const editCampaignLogistics = async (req: Request, res: Response) => {
     clientRemarks,
   } = req.body;
 
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     // Fetch old data for diff
@@ -4857,7 +5387,7 @@ export const editCampaignLogistics = async (req: Request, res: Response) => {
 export const editCampaignFinalise = async (req: Request, res: Response) => {
   const { campaignId, campaignManagers, campaignType, deliverables, isV4Submission, isCreditTier } = req.body;
 
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     // Get campaign for logging with current campaignType and submission version
@@ -5280,7 +5810,7 @@ export const editCampaignFinalise = async (req: Request, res: Response) => {
 };
 
 export const editCampaignAdditionalDetails = async (req: Request, res: Response) => {
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     // Handle both JSON body and FormData
@@ -5706,7 +6236,7 @@ export const editCampaignTimeline = async (req: Request, res: Response) => {
       },
     });
 
-    const adminId = req.session.userid;
+    const adminId = req.userId;
 
     // Get admin info for logging
     if (adminId) {
@@ -5803,7 +6333,7 @@ export const editCampaignTimeline = async (req: Request, res: Response) => {
 
 export const changePitchStatus = async (req: Request, res: Response) => {
   const { status, pitchId, totalUGCVideos } = req.body;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     const existingPitch = await prisma.pitch.findUnique({
@@ -6235,7 +6765,7 @@ export const changePitchStatus = async (req: Request, res: Response) => {
 
 export const uploadVideoTest = async (req: Request, res: Response) => {
   const { campaignId } = req.body;
-  const { userid } = req.session;
+  const userid = req.userId;
 
   const fileName = `${userid}_${campaignId}_pitch.mp4`;
 
@@ -6309,20 +6839,15 @@ export const uploadVideoTest = async (req: Request, res: Response) => {
 
 export const saveCampaign = async (req: Request, res: Response) => {
   const { campaignId } = req.body;
-  const userid = req.session.userid;
+  const userId = req.userId;
 
   try {
-    const bookmark = await prisma.bookMarkCampaign.create({
-      data: {
-        userId: userid as string,
-        campaignId: campaignId as string,
-      },
-      include: {
-        campaign: true,
-      },
+    const bookmark = await saveCampaignBookmark(prisma, {
+      userId: userId as string,
+      campaignId: campaignId as string,
     });
 
-    return res.status(200).json({ message: `Campaign ${bookmark.campaign?.name} has been bookmarked.` });
+    return res.status(200).json({ message: 'Campaign has been bookmarked.', bookmark });
   } catch (error) {
     return res.status(400).json(error);
   }
@@ -6330,20 +6855,19 @@ export const saveCampaign = async (req: Request, res: Response) => {
 
 export const unSaveCampaign = async (req: Request, res: Response) => {
   const { id } = req.params;
+  const userId = req.userId;
 
   try {
-    const bookmark = await prisma.bookMarkCampaign.delete({
-      where: {
-        id: id as string,
-      },
-      include: {
-        campaign: true,
-      },
+    const bookmark = await unsaveCampaignBookmark(prisma, {
+      bookmarkId: id as string,
+      userId: userId as string,
     });
 
-    return res
-      .status(200)
-      .json({ message: `Campaign ${bookmark.campaign?.name} has been removed from your saved campaigns.` });
+    if (!bookmark) {
+      return res.status(404).json({ message: 'Saved campaign not found.' });
+    }
+
+    return res.status(200).json({ message: 'Campaign has been removed from your saved campaigns.', bookmark });
   } catch (error) {
     return res.status(400).json(error);
   }
@@ -6356,7 +6880,7 @@ export const unSaveCampaign = async (req: Request, res: Response) => {
 //     creatorId: userId,
 //   } = req.body;
 
-//   const adminId = req.session.userid;
+//   const adminId = req.userId;
 
 //   try {
 //     const logistics = await prisma.logistics.create({
@@ -6423,7 +6947,7 @@ export const unSaveCampaign = async (req: Request, res: Response) => {
 // export const updateStatusLogistic = async (req: Request, res: Response) => {
 //   // eslint-disable-next-line prefer-const
 //   let { logisticId, status } = req.body;
-//   const adminId = req.session.userid;
+//   const adminId = req.userId;
 
 //   if (status === 'Pending Delivery Confirmation') {
 //     status = status.split(' ').join('_');
@@ -6628,6 +7152,9 @@ export const creatorAgreements = async (req: Request, res: Response) => {
               },
             },
           },
+          omit: {
+            password: true,
+          },
         },
       },
     });
@@ -6722,7 +7249,7 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
     });
 
     // Get admin info for logging
-    const adminId = req.session.userid;
+    const adminId = req.userId;
     const admin = await prisma.user.findUnique({
       where: { id: adminId },
     });
@@ -7068,7 +7595,7 @@ export const sendAgreement = async (req: Request, res: Response) => {
   const normalizedPlatform = normalizePlatform(selectedPlatform);
   const parsedFollowerCount = followerCount ? Math.floor(Number(followerCount)) : null;
 
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     const isUserExist = await prisma.user.findUnique({
@@ -7688,7 +8215,7 @@ export const sendAgreement = async (req: Request, res: Response) => {
 export const editCampaignImages = async (req: Request, res: Response) => {
   const { campaignImages, campaignId } = req.body;
   const newImages: string[] = [];
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     const newCampaignImages = (req.files as any)?.campaignImages;
@@ -7860,7 +8387,7 @@ export const removePitchVideo = async (req: Request, res: Response) => {
 
 export const editCampaignAdmin = async (req: Request, res: Response) => {
   const { id } = req.params;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   const {
     data: { admins },
@@ -8130,7 +8657,7 @@ export const editCampaignAdmin = async (req: Request, res: Response) => {
 
 // Add client managers to a campaign and flip origin to CLIENT (V3)
 export const addClientManagers = async (req: Request, res: Response) => {
-  const adminId = req.session.userid;
+  const adminId = req.userId;
   const { campaignId, clientManagers } = req.body as {
     campaignId: string;
     clientManagers: ({ id?: string; email?: string } | string)[];
@@ -8201,7 +8728,7 @@ export const editCampaignAttachments = async (req: Request, res: Response) => {
   const { id } = req.params;
   const { otherAttachments: currentAttachments } = req.body;
   const otherAttachments: string[] = [];
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     const campaign = await prisma.campaign.findUnique({
@@ -8328,7 +8855,7 @@ export const createNewSpreadSheets = async (req: Request, res: Response) => {
 export const editCampaignReference = async (req: Request, res: Response) => {
   const { id } = req.params;
   const { referencesLinks } = req.body;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     const campaign = await prisma.campaign.findUnique({
@@ -8396,7 +8923,7 @@ export const editCampaignReference = async (req: Request, res: Response) => {
 
 export const linkNewAgreement = async (req: Request, res: Response) => {
   const { template, campaignId } = req.body;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     const campaign = await prisma.campaign.findUnique({
@@ -8460,7 +8987,7 @@ export const linkNewAgreement = async (req: Request, res: Response) => {
 
 export const removeCreatorFromCampaign = async (req: Request, res: Response) => {
   const { creatorId, campaignId } = req.body;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     console.log(`Attempting to remove creator ${creatorId} from campaign ${campaignId}`);
@@ -8742,6 +9269,12 @@ export const removeCreatorFromCampaign = async (req: Request, res: Response) => 
       updatedBy: adminId,
       updatedAt: new Date().toISOString(),
     });
+    emitCreatorCampaignMembershipUpdated({
+      userId: creatorId,
+      campaignId,
+      pitchId: campaign.pitch?.[0]?.id,
+      action: 'remove',
+    });
 
     return res.status(200).json({ message: 'Creator has been successfully withdrawn from the campaign.' });
   } catch (error) {
@@ -8764,7 +9297,7 @@ export const getCampaignsTotal = async (req: Request, res: Response) => {
 
 export const resendAgreement = async (req: Request, res: Response) => {
   const { userId, campaignId } = req.body;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     const user = await prisma.user.findUnique({
@@ -8887,7 +9420,7 @@ export const resendAgreement = async (req: Request, res: Response) => {
 export const submitAgreementV3 = async (req: Request, res: Response) => {
   const { pitchId } = req.params as { pitchId: string };
   const { agreementUrl } = req.body as { agreementUrl?: string };
-  const userId = req.session.userid;
+  const userId = req.userId;
 
   try {
     console.log('[submitAgreementV3] start', { pitchId, userId, hasAgreementUrl: !!agreementUrl });
@@ -8996,7 +9529,7 @@ export const submitAgreementV3 = async (req: Request, res: Response) => {
 export const shortlistCreator = async (req: Request, res: Response) => {
   const { newVal: creators, campaignId } = req.body;
 
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   try {
     await prisma.$transaction(
@@ -9407,7 +9940,7 @@ export const shortlistCreatorV2 = async (req: Request, res: Response) => {
 };
 
 export const getClientCampaigns = async (req: Request, res: Response) => {
-  const { userid } = req.session;
+  const userid = req.userId;
 
   console.log('getClientCampaigns called for user ID:', userid);
 
@@ -9528,7 +10061,7 @@ export const getClientCampaigns = async (req: Request, res: Response) => {
 
 export const activateClientCampaign = async (req: Request, res: Response) => {
   try {
-    const userId = req.session.userid;
+    const userId = req.userId;
     const { campaignId } = req.params;
 
     if (!userId) {
@@ -10252,7 +10785,7 @@ export const updateCampaignOrigin = async (req: Request, res: Response) => {
 
 // Check campaign admin entries for the current user
 export const checkCampaignAdmin = async (req: Request, res: Response) => {
-  const { userid } = req.session;
+  const userid = req.userId;
 
   console.log('checkCampaignAdmin called for user ID:', userid);
 
@@ -10327,7 +10860,7 @@ export const checkCampaignAdmin = async (req: Request, res: Response) => {
 
 // Add client to campaign admin for all company campaigns
 export const addClientToCampaignAdmin = async (req: Request, res: Response) => {
-  const { userid } = req.session;
+  const userid = req.userId;
 
   console.log('addClientToCampaignAdmin called for user ID:', userid);
 
@@ -10773,7 +11306,7 @@ export const checkCampaignCreatorVisibility = async (req: Request, res: Response
 export const shortlistCreatorV3 = async (req: Request, res: Response) => {
   // Support both per-creator adminComments (new) and legacy single adminComments (backward compat)
   const { creators, campaignId, adminComments: legacyAdminComments, ugcCredits } = req.body;
-  const userId = req.session.userid;
+  const userId = req.userId;
 
   try {
     // Validate follower counts - max 10 billion (prevents 64-bit integer overflow)
@@ -11236,6 +11769,15 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
       updatedAt: new Date().toISOString(),
     });
 
+    // Nudge each shortlisted creator's app to refetch "Your Campaigns" in real-time.
+    // The mobile useMyCampaignsRealtime hook listens for 'pitchUpdate' and invalidates the list.
+    for (const creator of creators) {
+      const creatorSocketId = clients.get(creator.id);
+      if (creatorSocketId) {
+        io.to(creatorSocketId).emit('pitchUpdate');
+      }
+    }
+
     return res.status(200).json({ message: 'Successfully shortlisted creators for V3 flow' });
   } catch (error) {
     console.error('Error shortlisting creators for V3:', error);
@@ -11408,7 +11950,7 @@ export const shortlistCreatorV2ForClient = async (req: Request, res: Response) =
 
 export const initialActivateCampaign = async (req: Request, res: Response) => {
   try {
-    const userId = req.session.userid;
+    const userId = req.userId;
     const { campaignId } = req.params;
 
     if (!userId) {
@@ -11625,7 +12167,7 @@ export const initialActivateCampaign = async (req: Request, res: Response) => {
 // Add this function after the shortlistCreatorV3 function
 export const assignUGCCreditsV3 = async (req: Request, res: Response) => {
   const { creators, campaignId } = req.body;
-  const userId = req.session.userid;
+  const userId = req.userId;
 
   try {
     // Allow superadmin to bypass campaign admin check
@@ -11755,7 +12297,7 @@ export const assignUGCCreditsV3 = async (req: Request, res: Response) => {
 // 3.1 Shortlisting Non-Platform (Guest) Creators
 export const shortlistGuestCreators = async (req: Request, res: Response) => {
   const { campaignId, guestCreators } = req.body;
-  const adminId = req.session.userid;
+  const adminId = req.userId;
 
   if (!campaignId || !Array.isArray(guestCreators) || guestCreators.length === 0) {
     return res.status(400).json({ message: 'Campaign ID and a list of guest creators are required.' });
@@ -12011,7 +12553,7 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
 
 export const changeCampaignCredit = async (req: Request, res: Response) => {
   const { campaignId, newCredit } = req.body;
-  const { userid } = req.session;
+  const userid = req.userId;
 
   try {
     const user = await prisma.user.findFirst({
@@ -12242,7 +12784,7 @@ export const syncCampaignCredits = async (req: Request, res: Response) => {
  */
 export const updateAllCampaignCredits = async (req: Request, res: Response) => {
   const { campaignId, campaignCredits, creditsUtilized, creditsPending } = req.body;
-  const { userid } = req.session;
+  const userid = req.userId;
 
   try {
     const user = await prisma.user.findFirst({
@@ -12657,7 +13199,7 @@ const isEmpty = (value: unknown): boolean => {
 
 export const submitDraftForReview = async (req: Request, res: Response) => {
   const { id } = req.params;
-  const userid = req.session.userid;
+  const userid = req.userId;
   const { campaignCredits: rawCredits } = req.body;
 
   if (!userid) return res.status(401).json({ message: 'User not authenticated' });
@@ -12823,7 +13365,7 @@ export const submitDraftForReview = async (req: Request, res: Response) => {
 };
 
 export const getDraftCampaigns = async (req: Request, res: Response) => {
-  const userid = req.session.userid;
+  const userid = req.userId;
 
   try {
     const user = await prisma.user.findUnique({
@@ -12865,7 +13407,7 @@ export const getDraftCampaigns = async (req: Request, res: Response) => {
 
 export const deleteDraftCampaign = async (req: Request, res: Response) => {
   const { id } = req.params;
-  const userid = req.session.userid;
+  const userid = req.userId;
 
   try {
     const user = await prisma.user.findUnique({

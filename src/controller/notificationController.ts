@@ -1,6 +1,8 @@
 import { Entity, PrismaClient } from '@prisma/client';
 import { Request, Response } from 'express';
 
+import { sendExpoPushToUser } from '../helper/expoPush';
+
 const prisma = new PrismaClient();
 
 export enum Title {
@@ -21,6 +23,7 @@ export const saveNotification = async ({
   type,
   threadId,
   invoiceId,
+  submissionId,
 }: {
   userId: string;
   campaignId?: string;
@@ -33,7 +36,19 @@ export const saveNotification = async ({
   type?: string;
   threadId?: string;
   invoiceId?: string;
+  submissionId?: string;
 }) => {
+  // Fire-and-forget push notification (does not block DB write)
+  void sendExpoPushToUser(userId, {
+    title: title ?? 'New notification',
+    body: message,
+    // entityId is always a campaign id at every call site (see DB branches below,
+    // which write campaignId: entityId). Most callers pass entityId rather than
+    // campaignId, so fall back to it so the mobile deep-link resolver can route to
+    // the campaign instead of dropping to the generic notifications page.
+    data: { entity, campaignId: campaignId ?? entityId, pitchId, threadId, invoiceId, submissionId },
+  });
+
   if (entity === 'Agreement' || entity === 'Draft' || entity === 'Timeline' || entity === 'Post') {
     return prisma.notification.create({
       data: {
@@ -141,6 +156,7 @@ export const saveNotification = async ({
         message: message,
         title: title,
         entity: entity,
+        ...(submissionId ? { submission: { connect: { id: submissionId } } } : {}),
         campaign: {
           connect: {
             id: entityId || '',
@@ -235,7 +251,7 @@ export const saveNotification = async ({
 };
 
 export const getNotificationByUserId = async (req: Request, res: Response) => {
-  const { userid } = req.session;
+  const userid = req.userId;
   try {
     const notifications = await prisma.userNotification.findMany({
       where: {
@@ -244,9 +260,20 @@ export const getNotificationByUserId = async (req: Request, res: Response) => {
       include: {
         notification: {
           include: {
-            campaign: true,
+            campaign: {
+              include: {
+                campaignBrief: { select: { images: true } },
+                company: { select: { id: true, name: true, logo: true } },
+                brand: { select: { id: true, name: true, logo: true } },
+              },
+            },
             pitch: true,
           },
+        },
+      },
+      orderBy: {
+        notification: {
+          createdAt: 'desc',
         },
       },
     });
@@ -258,7 +285,7 @@ export const getNotificationByUserId = async (req: Request, res: Response) => {
 };
 
 export const markAllAsRead = async (req: Request, res: Response) => {
-  const { userid } = req.session;
+  const userid = req.userId;
   try {
     await prisma.userNotification.updateMany({
       where: {
@@ -276,7 +303,7 @@ export const markAllAsRead = async (req: Request, res: Response) => {
 
 export const markAsRead = async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { userid } = req.session;
+  const userid = req.userId;
 
   try {
     const userNotification = await prisma.userNotification.findUnique({
@@ -304,7 +331,7 @@ export const markAsRead = async (req: Request, res: Response) => {
 };
 
 export const archiveAll = async (req: Request, res: Response) => {
-  const { userid } = req.session;
+  const userid = req.userId;
   try {
     await prisma.userNotification.updateMany({
       where: {

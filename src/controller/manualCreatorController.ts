@@ -30,7 +30,8 @@ export const createEntry = async (req: Request, res: Response) => {
       platform: providedPlatform,
       photoURL,
     } = req.body;
-    const adminId = req.session.userid;
+
+    const adminId = req.userId;
 
     // Validate required fields
     if (!creatorName || !creatorUsername) {
@@ -89,7 +90,7 @@ export const createEntry = async (req: Request, res: Response) => {
       comments: Number(comments),
       shares: Number(shares),
       saved: saved !== undefined ? Number(saved) : undefined,
-      createdBy: adminId,
+      createdBy: adminId!,
       photoURL,
     });
 

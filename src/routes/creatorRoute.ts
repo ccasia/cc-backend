@@ -8,6 +8,7 @@ import {
   updateCreator,
   updateMediaKit,
   getMediaKit,
+  getMobileMediaKit,
   getCreatorFullInfoById,
   updatePaymentForm,
   updateCreatorForm,
@@ -25,23 +26,27 @@ import {
   unmarkMediaKitMandatory,
 } from '@controllers/creatorController';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
+import { canViewCreatorMediaKit } from '@middlewares/adminOrClient';
 // import { needPermissions } from '@middlewares/needPermissions';
-import { isLoggedIn } from '@middlewares/onlyLogin';
+import { authenticate } from '@middlewares/authenticate';
 
 const router = Router();
 
 // Optimized endpoint - returns only count instead of all creators
 router.get('/count', getCreatorCount);
 router.get('/getAllCreators', getCreators);
-router.get('/getMediaKit', isSuperAdmin, getMediaKit);
-router.get('/getCreatorByID/:id', isSuperAdmin, getCreatorByID);
+router.get('/getMediaKit', authenticate, isSuperAdmin, getMediaKit);
+
+router.get('/mobile/media-kit', authenticate, getMobileMediaKit);
+
+router.get('/getCreatorByID/:id', authenticate, canViewCreatorMediaKit, getCreatorByID);
 router.get('/getCreatorFullInfoById/:id', getCreatorFullInfoById);
 router.get('/public/getCreatorFullInfoById/:id', getCreatorFullInfoByIdPublic);
 router.get('/getCreatorSocialMediaData', getCreatorSocialMediaData);
 router.get('/creator/:id/social-media', getCreatorSocialMediaDataById);
-router.get('/getPartnerships/:id', isLoggedIn, getPartnerships);
+router.get('/getPartnerships/:id', authenticate, getPartnerships);
 
-router.get('/exportCreators', isSuperAdmin, exportCreatorsToSheet);
+router.get('/exportCreators', authenticate, isSuperAdmin, exportCreatorsToSheet);
 
 // router.post('/crawl', crawlCreator);
 
@@ -50,13 +55,13 @@ router.post('/createCreator', createCampaignCreator);
 router.post('/markMediaKitMandatory', isSuperAdmin, markMediaKitMandatory);
 router.post('/unmarkMediaKitMandatory', isSuperAdmin, unmarkMediaKitMandatory);
 
-router.patch('/updateSocialMediaUsername', isLoggedIn, updateSocialMedia);
-router.patch('/update-creator', isLoggedIn, updateCreator);
-router.patch('/update-media-kit', isLoggedIn, updateMediaKit);
-router.patch('/updatePaymentForm', isLoggedIn, updatePaymentForm);
-router.patch('/updateCreatorForm', isLoggedIn, updateCreatorForm);
-router.patch('/updatePreference/:id', isLoggedIn, updateCreatorPreference);
+router.patch('/updateSocialMediaUsername', authenticate, updateSocialMedia);
+router.patch('/update-creator', authenticate, updateCreator);
+router.patch('/update-media-kit', authenticate, updateMediaKit);
+router.patch('/updatePaymentForm', authenticate, updatePaymentForm);
+router.patch('/updateCreatorForm', authenticate, updateCreatorForm);
+router.patch('/updatePreference/:id', authenticate, updateCreatorPreference);
 
-router.delete('/delete/:id', isSuperAdmin, deleteCreator);
+router.delete('/delete/:id', authenticate, isSuperAdmin, deleteCreator);
 
 export default router;

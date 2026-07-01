@@ -1,11 +1,14 @@
 /* eslint-disable no-unused-vars */
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
-import { markMessagesService, fetchMessagesFromThread, totalUnreadMessagesService } from '@services/threadService';
-import { clients, io } from '../server';
-import { notificationCSMChat, notificationGroupChat } from '@helper/notification';
-import { saveNotification } from './notificationController';
-import { uploadAttachments } from '@configs/cloudStorage.config';
+import {
+  markMessagesService,
+  fetchMessagesFromThread,
+  totalUnreadMessagesService,
+  sendMessageService,
+  ThreadServiceError,
+} from '@services/threadService';
+import { io } from '../server';
 
 const prisma = new PrismaClient();
 
@@ -90,7 +93,7 @@ export const getThreadById = async (req: Request, res: Response) => {
 
 export const archiveThread = async (req: Request, res: Response) => {
   const { threadId } = req.params;
-  const userId = req.session.userid;
+  const userId = req.userId;
   try {
     const updatedUserThread = await prisma.userThread.update({
       where: {
@@ -112,7 +115,7 @@ export const archiveThread = async (req: Request, res: Response) => {
 
 export const unarchiveThread = async (req: Request, res: Response) => {
   const { threadId } = req.params;
-  const userId = req.session.userid;
+  const userId = req.userId;
   try {
     const updatedUserThread = await prisma.userThread.update({
       where: {
@@ -230,174 +233,48 @@ export const addUserToThread = async (req: Request, res: Response) => {
   }
 };
 
-// Function to send a message in a thread
+// Function to send a message in a thread (web/session route — no MIME restriction)
 export const sendMessageInThread = async (req: Request, res: Response) => {
   const { threadId, content } = req.body as SendMessageParams;
-  const userId = req.session.userid;
+  const userId = req.userId;
+
+  if (!userId) {
+    return res.status(400).json({ error: 'Missing sender information.' });
+  }
+  if (!threadId) {
+    return res.status(400).json({ error: 'Missing threadId.' });
+  }
+
+  const rawWidth = (req.body as any).fileWidth as string | number | undefined;
+  const rawHeight = (req.body as any).fileHeight as string | number | undefined;
+  const rawReplyTo = (req.body as any).replyToMessageId as string | number | undefined;
+  const parseDim = (v: string | number | undefined): number | null => {
+    if (v == null) return null;
+    const n = typeof v === 'number' ? v : parseInt(v, 10);
+    return Number.isFinite(n) && n > 0 ? Math.round(n) : null;
+  };
+
+  let file = null;
+  if (req.files && (req.files as any).attachments) {
+    const raw = (req.files as any).attachments;
+    file = Array.isArray(raw) ? raw[0] : raw;
+  }
 
   try {
-    if (!userId) {
-      return res.status(400).json({ error: 'Missing sender information.' });
-    }
-
-    let fileUrl: string | null = null;
-    let fileType: string | null = null;
-
-    // Handle file upload if present
-    if (req.files && (req.files as any).attachments) {
-      const file = Array.isArray((req.files as any).attachments)
-        ? (req.files as any).attachments[0]
-        : (req.files as any).attachments;
-
-      try {
-        fileUrl = await uploadAttachments({
-          tempFilePath: file.tempFilePath,
-          fileName: file.name,
-          folderName: 'chat-attachments',
-        });
-        fileType = file.mimetype;
-      } catch (uploadError) {
-        console.error('File upload error:', uploadError);
-        return res.status(500).json({ error: 'Failed to upload attachment.' });
-      }
-    }
-
-    const datas = await prisma.$transaction(async (tx) => {
-      const message = await tx.message.create({
-        data: {
-          content: content || '',
-          threadId,
-          senderId: userId,
-          file: fileUrl,
-          fileType: fileType,
-          createdAt: new Date(),
-        },
-        include: {
-          sender: {
-            select: {
-              id: true,
-              name: true,
-              photoURL: true,
-              role: true,
-            },
-          },
-        },
-      });
-
-      const data = await tx.thread.update({
-        where: { id: threadId },
-        data: { latestMessageId: message.id },
-        include: {
-          campaign: true,
-          UserThread: {
-            include: {
-              user: true,
-            },
-          },
-          unreadMessages: true,
-        },
-      });
-      return { data, message };
+    const message = await sendMessageService({
+      userId,
+      threadId,
+      content,
+      file,
+      fileWidth: parseDim(rawWidth),
+      fileHeight: parseDim(rawHeight),
+      replyToId: parseDim(rawReplyTo),
     });
-
-    // Emit the message to all users in the thread via socket for real-time updates
-    io.to(threadId).emit('message', {
-      id: datas.message.id,
-      content: datas.message.content,
-      senderId: datas.message.senderId,
-      threadId: datas.message.threadId,
-      file: datas.message.file,
-      fileType: datas.message.fileType,
-      createdAt: datas.message.createdAt,
-      sender: datas.message.sender,
-    });
-
-    const userIds = datas.data.UserThread.map((thread) => thread.user.id);
-
-    // Proceed only if the thread has an associated campaign
-    if (datas.data.campaign) {
-      const userIds = datas.data.UserThread.map((thread) => thread.user.id);
-      const { title, message: notificationMessage } = notificationGroupChat(datas.data.campaign.name, datas.data.title);
-
-      // Create notifications for all users in the thread, except the sender
-      for (const thread of datas.data.UserThread.filter((t) => t.user.id !== userId)) {
-        const notification = await saveNotification({
-          userId: thread.user.id,
-          message: notificationMessage,
-          title,
-          entity: 'Chat',
-          threadId: datas.data.id,
-          entityId: datas.data.campaign.id,
-        });
-
-        // Emit notification event for real-time updates
-        io.to(clients.get(thread.user.id)).emit('notification', notification);
-      }
-    }
-
-    if (!datas.data.campaign) {
-      const { title, message: notificationMessage } = notificationCSMChat(datas.data.title);
-
-      for (const thread of datas.data.UserThread.filter((t) => t.user.id !== userId)) {
-        const notification = await saveNotification({
-          userId: thread.user.id,
-          message: notificationMessage,
-          title,
-          threadId: datas.data.id,
-          entity: 'Chat',
-        });
-
-        io.to(clients.get(thread.user.id)).emit('notification', notification);
-      }
-    }
-
-    const unreadMessages = await prisma.unreadMessage.groupBy({
-      by: ['userId'],
-      _count: true,
-      where: {
-        userId: { in: userIds },
-        threadId: threadId,
-      },
-    });
-
-    const unreadCountMap = new Map(unreadMessages.map((count) => [count.userId, count._count]));
-    const senderInformation = datas.data.UserThread.find((elem) => elem.userId === userId);
-
-    for (const thread of datas.data.UserThread.filter((elem) => elem.userId !== userId)) {
-      const count = unreadCountMap.get(thread.user.id) || 0;
-
-      io.to(clients.get(thread.user.id)).emit('messageCount', { count, name: senderInformation?.user.name });
-    }
-
-    // Only create unread messages if this is a direct API call (has files)
-    // Socket messages handle unread creation in socketController
-    if (fileUrl) {
-      const usersInThread = await prisma.userThread.findMany({
-        where: {
-          threadId,
-          userId: { not: userId },
-        },
-        select: {
-          userId: true,
-        },
-      });
-
-      if (usersInThread.length > 0) {
-        const unreadMessagesData = usersInThread.map(({ userId }) => ({
-          userId,
-          threadId,
-          messageId: datas.message.id,
-        }));
-
-        await prisma.unreadMessage.createMany({
-          data: unreadMessagesData,
-          skipDuplicates: true,
-        });
-      }
-    }
-
-    return res.status(201).json(datas.message);
+    return res.status(201).json(message);
   } catch (error) {
+    if (error instanceof ThreadServiceError) {
+      return res.status(error.status).json({ error: error.message });
+    }
     console.log(error);
     return res.status(400).json({ error: 'An error occurred while sending the message.' });
   }
@@ -405,28 +282,9 @@ export const sendMessageInThread = async (req: Request, res: Response) => {
 
 export const getMessagesFromThread = async (req: Request, res: Response) => {
   const { threadId } = req.params;
-  const userId = req.session.userid;
   try {
     const messages = await fetchMessagesFromThread(threadId);
 
-    const unreadMessages = await prisma.unreadMessage.findMany({
-      where: {
-        threadId,
-        userId,
-      },
-    });
-    //console.log('Unread messages to be deleted:', unreadMessages);
-
-    // Delete unread messages
-    if (unreadMessages.length > 0) {
-      await prisma.unreadMessage.deleteMany({
-        where: {
-          threadId,
-          userId,
-        },
-      });
-      //console.log('Unread messages marked as seen.');
-    }
     res.status(200).json(messages);
   } catch (error) {
     console.error(error);
@@ -435,7 +293,7 @@ export const getMessagesFromThread = async (req: Request, res: Response) => {
 };
 
 export const getUnreadMessageCount = async (req: Request, res: Response) => {
-  const userId = req.session.userid;
+  const userId = req.userId;
   const { threadId } = req.params;
 
   try {
@@ -457,7 +315,7 @@ export const getUnreadMessageCount = async (req: Request, res: Response) => {
 };
 
 export const getTotalUnreadMessageCount = async (req: Request, res: Response) => {
-  const userId = req.session.userid;
+  const userId = req.userId;
 
   if (!userId) {
     return res.status(400).json({ error: 'Missing user information.' });
@@ -475,7 +333,7 @@ export const getTotalUnreadMessageCount = async (req: Request, res: Response) =>
 // Mark a message as read
 export const markMessagesAsSeen = async (req: Request, res: Response) => {
   const { threadId } = req.params;
-  const userId = req.session.userid;
+  const userId = req.userId;
 
   if (!userId) {
     return res.status(400).json({ error: 'User ID is missing from the session.' });
@@ -483,6 +341,7 @@ export const markMessagesAsSeen = async (req: Request, res: Response) => {
 
   try {
     const result = await markMessagesService(threadId, userId);
+    io.to(threadId).emit('messagesSeen', result);
     res.status(200).json(result);
   } catch (error) {
     console.error('Error marking messages as seen:', error);

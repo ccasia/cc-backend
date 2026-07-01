@@ -41,13 +41,25 @@ const uploadInstagramThumbnailFromUrl = async (sourceUrl: string, destination: s
     const buffer = Buffer.from(response.data);
 
     const file = storage.bucket(process.env.BUCKET_NAME).file(destination);
-    await file.save(buffer, {
-      metadata: {
-        contentType,
-        cacheControl: 'public, max-age=31536000',
-      },
+
+    file.save(buffer, {
       resumable: false,
+      metadata: {
+        contentType: contentType as string,
+      },
     });
+
+    // file.save(buffer, {
+    //   metadata: {
+    //     contentType: contentType,
+    //   },
+    //   // metadata: {
+    //   //   contentType,
+    //   //   cacheControl: 'public, max-age=31536000',
+    //   // },
+    //   resumable: false,
+    // });
+
     await file.makePublic();
 
     return buildGcsPublicUrl(process.env.BUCKET_NAME, destination);
@@ -182,7 +194,7 @@ export const getInstagramMediaData = async (
 };
 
 // Get Long-lived token
-export const getInstagramAccessToken = async (code: string) => {
+export const getInstagramAccessToken = async (code: string, redirectUri?: string) => {
   if (!code) throw new Error('Code not found');
 
   try {
@@ -191,9 +203,9 @@ export const getInstagramAccessToken = async (code: string) => {
       {
         client_id: process.env.INSTAGRAM_CLIENT_ID,
         client_secret: process.env.INSTAGRAM_CLIENT_SECRET,
-        redirect_uri: process.env.INSTAGRAM_AUTH_CALLBACK,
+        redirect_uri: redirectUri ?? process.env.INSTAGRAM_AUTH_CALLBACK,
         grant_type: 'authorization_code',
-        code: code, // The code received from the authorization server
+        code: code,
       },
       {
         headers: {
@@ -231,6 +243,7 @@ export const getInstagramAccessToken = async (code: string) => {
 
 export const refreshInstagramToken = async (accessToken: string) => {
   if (!accessToken) throw new Error('Access token is not provided');
+
   try {
     const refreshedToken = await axios.get('https://graph.instagram.com/refresh_access_token', {
       params: {
@@ -337,6 +350,64 @@ export const getInstagramUserInsight = async (accessToken: string, instagramUser
   }
 };
 
+export const getInstagramAudienceDemographics = async (accessToken: string, instagramUserId: string) => {
+  try {
+    const [genderAgeRes, countryRes] = await Promise.all([
+      axios.get(`https://graph.instagram.com/v22.0/${instagramUserId}/insights`, {
+        params: {
+          metric: 'follower_demographics',
+          period: 'lifetime',
+          access_token: accessToken,
+          timeframe: 'last_90_days',
+          metric_type: 'total_value',
+          breakdown: 'gender, age',
+        },
+      }),
+
+      axios.get(`https://graph.instagram.com/v22.0/${instagramUserId}/insights`, {
+        params: {
+          metric: 'follower_demographics',
+          period: 'lifetime',
+          access_token: accessToken,
+          timeframe: 'last_90_days',
+          metric_type: 'total_value',
+          breakdown: 'country',
+        },
+      }),
+    ]);
+
+    // Handle both old (values[].value as object) and new (total_value.breakdowns) response formats
+    const parseBreakdown = (res: any, metricName: string): Record<string, number> => {
+      const item = res.data?.data?.[0];
+      if (!item) return {};
+
+      // New format
+      const breakdown = item?.total_value?.breakdowns?.[0]?.results;
+
+      if (breakdown) {
+        return breakdown.reduce((acc: Record<string, number>, r: any) => {
+          acc[r.dimension_values.join('.')] = r.value;
+          return acc;
+        }, {});
+      }
+
+      // Old format
+      const val = item?.values?.[0]?.value;
+      return typeof val === 'object' ? val : {};
+    };
+
+    const genderAge = parseBreakdown(genderAgeRes, 'audience_gender_age');
+    const country = parseBreakdown(countryRes, 'audience_country');
+
+    console.log(genderAge, country);
+
+    return { genderAge, country };
+  } catch (error: any) {
+    console.error('[InstagramAudience] Failed to fetch demographics:', error?.response?.data || error?.message);
+    return null;
+  }
+};
+
 export const getInstagramMediaObject = async (
   accessToken: string,
   instaUserId: string,
@@ -345,6 +416,7 @@ export const getInstagramMediaObject = async (
     'id',
     'comments_count',
     'like_count',
+    'video_views',
     'media_type',
     'media_url',
     'thumbnail_url',
@@ -373,7 +445,7 @@ export const getInstagramMediaObject = async (
 
     const sortedVideos = [...videos]
       .sort((a: any, b: any) => Number(b?.like_count || 0) - Number(a?.like_count || 0))
-      .slice(0, 3);
+      .slice(0, 4);
 
     return { sortedVideos, averageLikes, averageComments, totalComments, totalLikes };
   } catch (error) {
@@ -448,6 +520,7 @@ export const getInstagramMedias = async (
     'id',
     'comments_count',
     'like_count',
+    'video_views',
     'media_type',
     'media_url',
     'thumbnail_url',
@@ -573,7 +646,7 @@ export const getTikTokMediaObject = async (accessToken: string, limit = 20) => {
 
   const sortedVideos = [...mappedVideos]
     .sort((a: any, b: any) => Number(b?.like_count || 0) - Number(a?.like_count || 0))
-    .slice(0, 3);
+    .slice(0, 4);
 
   const totalLikes = mappedVideos.reduce((sum: number, video: any) => sum + (video.like_count || 0), 0);
   const totalComments = mappedVideos.reduce((sum: number, video: any) => sum + (video.comment_count || 0), 0);

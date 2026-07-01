@@ -9,11 +9,12 @@ export const encryptToken = (token: string): any => {
   console.log('cypher', cipher);
   const encryptedToken = Buffer.concat([cipher.update(token), cipher.final()]);
 
-  console.log('encryptedToken', encryptedToken);
   return { iv: iv.toString('hex'), content: encryptedToken.toString('hex') };
 };
 
-export const decryptToken = (encryptedData: { iv: string; content: string }): string => {
+export const decryptToken = (encryptedData: { iv: string; content: string }): string | null => {
+  if (!encryptedData) return null;
+
   const { iv, content } = encryptedData;
 
   const key = crypto.createHash('sha256').update(secretKey).digest();

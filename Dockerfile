@@ -111,4 +111,4 @@ WORKDIR /app/dist
 RUN mkdir -p form/tmp form/pdf upload
 
 # Use node to run the built app.js file
-CMD ["node", "src/server.js"]
+CMD ["node", "server.js"]

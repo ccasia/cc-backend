@@ -15,6 +15,7 @@ export const handleSendMessage = async (message: any, io: any) => {
       threadId,
       content,
     },
+    userId: senderId,
     session: {
       userid: senderId,
     },

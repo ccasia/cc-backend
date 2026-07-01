@@ -2,6 +2,12 @@ import { PrismaClient } from '@prisma/client';
 import { decryptToken, encryptToken } from '@helper/encrypt';
 import { refreshTikTokToken } from '@services/socialMediaService';
 import {
+  createDiscoveryApiSummary,
+  resolvePlatformContentMatchesFromApi,
+} from '@helper/discovery/platformContentResolver';
+import { buildConnectedSelect } from '@helper/discovery/queryBuilders';
+
+import {
   getInstagramMediaObject,
   getInstagramMedias,
   getInstagramOverviewService,
@@ -9,11 +15,7 @@ import {
   getTikTokMediaObject,
   getTikTokOverviewService,
 } from '@services/socialMediaService';
-import {
-  createDiscoveryApiSummary,
-  resolvePlatformContentMatchesFromApi,
-} from '@helper/discovery/platformContentResolver';
-import { buildConnectedSelect } from '@helper/discovery/queryBuilders';
+
 import { hydrateMissingInstagramData, hydrateMissingTikTokData, TopVideosByCreator } from '@helper/discovery/hydration';
 import { clients, getIo } from '../config/socket';
 import {
@@ -45,6 +47,7 @@ const DISCOVERY_DEBUG_ENABLED = process.env.DISCOVERY_DEBUG === 'true';
 const DISCOVERY_CONTENT_SEARCH_LIVE_API_FALLBACK = process.env.DISCOVERY_CONTENT_SEARCH_LIVE_API_FALLBACK === 'true';
 const DISCOVERY_CONTENT_QUERY_CACHE_TTL_MS = Number(process.env.DISCOVERY_CONTENT_QUERY_CACHE_TTL_MS || 30 * 1000);
 const DISCOVERY_CONTENT_QUERY_CACHE_MAX_ENTRIES = Number(process.env.DISCOVERY_CONTENT_QUERY_CACHE_MAX_ENTRIES || 200);
+const DISCOVERY_EXPORT_MAX_ROWS = Number(process.env.DISCOVERY_EXPORT_MAX_ROWS || 2500);
 
 const discoveryApiResponseCache = new Map<string, { expiresAt: number; value: any }>();
 const discoveryApiInFlightRequests = new Map<string, Promise<any>>();
@@ -217,6 +220,8 @@ export interface DiscoveryQueryInput {
   sortDirection?: DiscoverySortDirection;
 }
 
+export type DiscoveryExportDataInput = Omit<DiscoveryQueryInput, 'page' | 'limit' | 'hydrateMissing'>;
+
 export interface InviteDiscoveryCreatorsInput {
   campaignId: string;
   creatorIds: string[];
@@ -277,7 +282,7 @@ const ensureValidTikTokAccessTokenForCreator = async (creator: any): Promise<str
 
   try {
     const refreshToken = decryptToken(encryptedRefreshToken as any);
-    const refreshedTokenData = await refreshTikTokToken(refreshToken);
+    const refreshedTokenData = await refreshTikTokToken(refreshToken!);
 
     const newEncryptedAccessToken = encryptToken(refreshedTokenData.access_token);
     const newEncryptedRefreshToken = encryptToken(refreshedTokenData.refresh_token);
@@ -330,7 +335,7 @@ const collectContentMatchedRowsAcrossAllCandidates = async (
   const tiktokTopVideosByCreator: TopVideosByCreator = new Map();
   const rateLimitState = { instagram: false, tiktok: false };
 
-  while (true) {
+  while (skip >= 0) {
     const batchRows = await prismaAny.user.findMany({
       where,
       skip,
@@ -510,7 +515,7 @@ const buildConnectedWhere = (
         }
       : undefined;
 
-  // Keyword → search through creator names/handles and content captions/titles
+  // Keyword → search through creator names/handles, bios, interests and content captions/titles
   const keywordCondition =
     includeContentFilters && filters.keyword
       ? {
@@ -518,6 +523,26 @@ const buildConnectedWhere = (
             { name: { contains: filters.keyword, mode: 'insensitive' as const } },
             { creator: { is: { instagram: { contains: filters.keyword, mode: 'insensitive' as const } } } },
             { creator: { is: { tiktok: { contains: filters.keyword, mode: 'insensitive' as const } } } },
+            {
+              creator: {
+                is: { instagramUser: { biography: { contains: filters.keyword, mode: 'insensitive' as const } } },
+              },
+            },
+            {
+              creator: {
+                is: { tiktokUser: { biography: { contains: filters.keyword, mode: 'insensitive' as const } } },
+              },
+            },
+            {
+              creator: {
+                is: { mediaKit: { about: { contains: filters.keyword, mode: 'insensitive' as const } } },
+              },
+            },
+            {
+              creator: {
+                is: { interests: { some: { name: { contains: filters.keyword, mode: 'insensitive' as const } } } },
+              },
+            },
             {
               creator: {
                 is: {
@@ -615,6 +640,118 @@ const countRowsForPlatformMatch = (
   return total;
 };
 
+interface DiscoveryPastCampaign {
+  id: string;
+  name: string;
+  image: string | null;
+  date: string;
+  views: number | null;
+}
+
+const formatCampaignDate = (value: any): string | null => {
+  if (!value) return null;
+  const dateObj = new Date(value);
+  if (Number.isNaN(dateObj.getTime())) return null;
+  return dateObj.toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+};
+
+const formatCampaignPeriod = (start: any, end: any): string => {
+  const startLabel = formatCampaignDate(start);
+  const endLabel = formatCampaignDate(end);
+  if (startLabel && endLabel) {
+    return startLabel === endLabel ? startLabel : `${startLabel} - ${endLabel}`;
+  }
+  return startLabel || endLabel || '';
+};
+
+const resolveCampaignCoverImage = (images: any): string | null => {
+  if (!Array.isArray(images) || images.length === 0) return null;
+  const first = images[0];
+  if (!first) return null;
+  if (typeof first === 'string') return first;
+  return first.preview || first.path || first.url || null;
+};
+
+// Builds, for each creator userId on the page, the list of campaigns where they have a
+// POSTED submission (a completed deliverable), with the campaign cover, date period, and
+// summed post views (latest snapshot per post). Views are null when no insight data exists.
+export const getPastCampaignsByCreatorIds = async (
+  userIds: string[],
+): Promise<Map<string, DiscoveryPastCampaign[]>> => {
+  const result = new Map<string, DiscoveryPastCampaign[]>();
+  const uniqueUserIds = Array.from(new Set((userIds || []).map((id) => String(id || '').trim()).filter(Boolean)));
+  if (uniqueUserIds.length === 0) return result;
+
+  const [postedSubmissions, engagementSnapshots] = await Promise.all([
+    prismaAny.submission.findMany({
+      where: { userId: { in: uniqueUserIds }, status: 'POSTED' },
+      select: {
+        userId: true,
+        campaignId: true,
+        campaign: {
+          select: {
+            id: true,
+            name: true,
+            campaignBrief: {
+              select: { images: true, startDate: true, endDate: true },
+            },
+          },
+        },
+      },
+    }),
+    prismaAny.postEngagementSnapshot.findMany({
+      where: { userId: { in: uniqueUserIds } },
+      select: {
+        userId: true,
+        campaignId: true,
+        postUrl: true,
+        snapshotDay: true,
+        views: true,
+      },
+      orderBy: { snapshotDay: 'asc' },
+    }),
+  ]);
+
+  // Keep the latest snapshot (highest snapshotDay) per post, then sum views per creator+campaign.
+  const latestSnapshotByPost = new Map<string, any>();
+  for (const snapshot of engagementSnapshots as any[]) {
+    latestSnapshotByPost.set(snapshot.postUrl, snapshot);
+  }
+  const viewsByCreatorCampaign = new Map<string, number>();
+  for (const snapshot of latestSnapshotByPost.values()) {
+    const key = `${snapshot.userId}|${snapshot.campaignId}`;
+    viewsByCreatorCampaign.set(key, (viewsByCreatorCampaign.get(key) || 0) + (snapshot.views || 0));
+  }
+
+  const seenCreatorCampaign = new Set<string>();
+  for (const submission of postedSubmissions as any[]) {
+    const submissionUserId = submission?.userId;
+    const campaignId = submission?.campaignId;
+    if (!submissionUserId || !campaignId) continue;
+
+    const dedupeKey = `${submissionUserId}|${campaignId}`;
+    if (seenCreatorCampaign.has(dedupeKey)) continue;
+    seenCreatorCampaign.add(dedupeKey);
+
+    const brief = submission?.campaign?.campaignBrief;
+    const list = result.get(submissionUserId) || [];
+    list.push({
+      id: campaignId,
+      name: submission?.campaign?.name || 'Untitled campaign',
+      image: resolveCampaignCoverImage(brief?.images),
+      date: formatCampaignPeriod(brief?.startDate, brief?.endDate),
+      views: viewsByCreatorCampaign.has(dedupeKey) ? (viewsByCreatorCampaign.get(dedupeKey) as number) : null,
+    });
+    result.set(submissionUserId, list);
+  }
+
+  return result;
+};
+
 export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
   const search = (input.search || '').trim();
   const platform = normalizePlatform(input.platform);
@@ -652,34 +789,23 @@ export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
   const baseWhere = buildConnectedWhere('', platform);
 
   const [connectedTotal, dualConnectedTotal, connectedRows, locationRows] = await Promise.all([
-    hasContentSearch ? Promise.resolve(0) : prismaAny.user.count({ where: connectedWhere }),
-    hasContentSearch
-      ? Promise.resolve(0)
-      : platform === 'all'
-        ? prismaAny.user.count({
-            where: {
-              ...connectedWhere,
-              creator: {
-                is: {
-                  ...((connectedWhere as any).creator?.is || {}),
-                  isFacebookConnected: true,
-                  isTiktokConnected: true,
-                  instagramUser: { isNot: null },
-                  tiktokUser: { isNot: null },
-                },
+    prismaAny.user.count({ where: connectedWhere }),
+    platform === 'all'
+      ? prismaAny.user.count({
+          where: {
+            ...connectedWhere,
+            creator: {
+              is: {
+                ...((connectedWhere as any).creator?.is || {}),
+                isFacebookConnected: true,
+                isTiktokConnected: true,
+                instagramUser: { isNot: null },
+                tiktokUser: { isNot: null },
               },
             },
-          })
-        : Promise.resolve(0),
-    hasContentSearch
-      ? Promise.resolve([])
-      : prismaAny.user.findMany({
-          where: connectedWhere,
-          skip: platform === 'all' ? 0 : pagination.skip,
-          take: platform === 'all' ? allPlatformWindowSize : pagination.limit,
-          orderBy: connectedOrderBy,
-          select: buildConnectedSelect(includeAccessTokenSelect),
-        }),
+          },
+        })
+      : Promise.resolve(0),
     prismaAny.user.findMany({
       where: connectedWhere,
       skip: platform === 'all' ? 0 : pagination.skip,
@@ -755,6 +881,15 @@ export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
     contentMatchedTotal = contentMatchResult.matchedRowsCount;
   }
 
+  // For content (keyword/hashtag) searches the real result count is the number of rows
+  // that survive the live re-check, not the DB pre-filter count. Reporting the pre-filter
+  // count makes loadedCount unreachable on the client and spins its load-more loop.
+  const responseTotal = hasContentSearch
+    ? contentMatchedTotal
+    : platform === 'all'
+      ? connectedTotal + dualConnectedTotal
+      : connectedTotal;
+
   const connectedCreators = finalRows.flatMap((row: any) => {
     const creatorId = row.creator?.id;
 
@@ -802,6 +937,7 @@ export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
         tiktok: row.creator?.tiktok || null,
       },
       interests: row.creator?.interests?.map((i: any) => i.name).filter(Boolean) || [],
+      languages: Array.isArray(row.creator?.languages) ? row.creator.languages.filter(Boolean) : [],
       about: row.creator?.mediaKit?.about || null,
       instagram: {
         connected: Boolean(row.creator?.isFacebookConnected && row.creator?.instagramUser),
@@ -874,7 +1010,15 @@ export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
     return rowsByPlatform;
   });
 
-  const sortedConnectedCreators = sortDiscoveryRows(connectedCreators, sortBy, sortDirection);
+  // On content searches, keep only the platform rows that actually matched the live
+  // re-check so the rendered rows line up 1:1 with contentMatchedTotal.
+  const matchedConnectedCreators = hasContentSearch
+    ? connectedCreators.filter((creator: any) =>
+        Boolean(contentMatchesByCreator.get(creator.creatorId)?.[creator.platform as 'instagram' | 'tiktok']),
+      )
+    : connectedCreators;
+
+  const sortedConnectedCreators = sortDiscoveryRows(matchedConnectedCreators, sortBy, sortDirection);
 
   const paginatedConnectedCreators =
     platform === 'all'
@@ -920,6 +1064,11 @@ export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
 
   console.log('[Discovery][APIs]', apiSummary);
 
+  const pastCampaignsByCreator =
+    paginatedCreatorUserIds.length > 0
+      ? await getPastCampaignsByCreatorIds(paginatedCreatorUserIds)
+      : new Map<string, DiscoveryPastCampaign[]>();
+
   const enrichedPaginatedConnectedCreators = (paginatedConnectedCreators || []).map((creator: any) => {
     const creatorId = creator?.creatorId;
     if (!creatorId) {
@@ -941,6 +1090,7 @@ export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
 
     return {
       ...creator,
+      pastCampaigns: pastCampaignsByCreator.get(creator?.userId) || [],
       instagram: {
         ...(creator?.instagram || {}),
         topVideos: instagramTopVideos,
@@ -1022,7 +1172,7 @@ export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
     page: pagination.page,
     limit: pagination.limit,
     returned: enrichedPaginatedConnectedCreators.length,
-    total: platform === 'all' ? connectedTotal + dualConnectedTotal : connectedTotal,
+    total: responseTotal,
     hasContentSearch,
     topVideos: creatorTopVideoLogSummary,
   });
@@ -1038,12 +1188,187 @@ export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
     pagination: {
       page: pagination.page,
       limit: pagination.limit,
-      total: platform === 'all' ? connectedTotal + dualConnectedTotal : connectedTotal,
+      total: responseTotal,
     },
     availableLocations: sortedLocations,
   };
 
   return result;
+};
+
+const mapConnectedDiscoveryRows = (
+  rows: any[],
+  platform: PlatformFilter,
+  options: { includeDbTopVideos?: boolean } = {},
+) =>
+  rows.flatMap((row: any) => {
+    const age = calculateAge(row.creator?.birthDate);
+    const city = row.city?.trim();
+    const country = row.country?.trim();
+    const location = [city, country].filter(Boolean).join(', ') || null;
+
+    const instagramTopVideos = options.includeDbTopVideos ? row.creator?.instagramUser?.instagramVideo || [] : [];
+    const rawTiktokHandle = row.creator?.tiktok || row.creator?.tiktokUser?.username || null;
+    const normalizedTiktokHandle = rawTiktokHandle ? String(rawTiktokHandle).replace(/^@/, '') : null;
+    const tiktokTopVideos = options.includeDbTopVideos
+      ? (row.creator?.tiktokUser?.tiktokVideo || []).map((video: any) => ({
+          ...video,
+          video_url:
+            normalizedTiktokHandle && video?.video_id
+              ? `https://www.tiktok.com/@${normalizedTiktokHandle}/video/${video.video_id}`
+              : null,
+        }))
+      : [];
+
+    const baseCreator = {
+      type: 'connected',
+      userId: row.id,
+      creatorId: row.creator?.id,
+      name: row.name,
+      gender: mapPronounsToGender(row.creator?.pronounce),
+      age,
+      location,
+      creditTier: row.creator?.creditTier?.name || null,
+      handles: {
+        instagram: row.creator?.instagram || null,
+        tiktok: row.creator?.tiktok || null,
+      },
+      interests: row.creator?.interests?.map((i: any) => i.name).filter(Boolean) || [],
+      languages: Array.isArray(row.creator?.languages) ? row.creator.languages.filter(Boolean) : [],
+      about: row.creator?.mediaKit?.about || null,
+      instagram: {
+        connected: Boolean(row.creator?.isFacebookConnected && row.creator?.instagramUser),
+        profilePictureUrl: row.creator?.instagramUser?.profile_picture_url || null,
+        biography: row.creator?.instagramUser?.biography || null,
+        followers: row.creator?.instagramUser?.followers_count || 0,
+        engagementRate: row.creator?.instagramUser?.engagement_rate || 0,
+        totalLikes: row.creator?.instagramUser?.totalLikes || 0,
+        totalSaves: row.creator?.instagramUser?.totalSaves || 0,
+        totalShares: row.creator?.instagramUser?.totalShares || 0,
+        insightData: row.creator?.instagramUser?.insightData || null,
+        averageLikes: row.creator?.instagramUser?.averageLikes || 0,
+        averageSaves: row.creator?.instagramUser?.averageSaves || 0,
+        averageShares: row.creator?.instagramUser?.averageShares || 0,
+        topVideos: instagramTopVideos,
+      },
+      tiktok: {
+        profilePictureUrl: row.creator?.tiktokUser?.avatar_url || null,
+        biography: row.creator?.tiktokUser?.biography || null,
+        connected: Boolean(row.creator?.isTiktokConnected && row.creator?.tiktokUser),
+        followers: row.creator?.tiktokUser?.follower_count || 0,
+        engagementRate: row.creator?.tiktokUser?.engagement_rate || 0,
+        averageLikes: row.creator?.tiktokUser?.averageLikes || 0,
+        averageSaves: 0,
+        averageShares: row.creator?.tiktokUser?.averageShares || 0,
+        topVideos: tiktokTopVideos,
+      },
+    };
+
+    const rowsByPlatform: any[] = [];
+
+    if (platform === 'instagram') {
+      if (baseCreator.instagram.connected) {
+        rowsByPlatform.push({
+          ...baseCreator,
+          rowId: `${row.id}-instagram`,
+          platform: 'instagram',
+        });
+      }
+      return rowsByPlatform;
+    }
+
+    if (platform === 'tiktok') {
+      if (baseCreator.tiktok.connected) {
+        rowsByPlatform.push({
+          ...baseCreator,
+          rowId: `${row.id}-tiktok`,
+          platform: 'tiktok',
+        });
+      }
+      return rowsByPlatform;
+    }
+
+    if (baseCreator.instagram.connected) {
+      rowsByPlatform.push({
+        ...baseCreator,
+        rowId: `${row.id}-instagram`,
+        platform: 'instagram',
+      });
+    }
+
+    if (baseCreator.tiktok.connected) {
+      rowsByPlatform.push({
+        ...baseCreator,
+        rowId: `${row.id}-tiktok`,
+        platform: 'tiktok',
+      });
+    }
+
+    return rowsByPlatform;
+  });
+
+export const getDiscoveryCreatorsExportData = async (input: DiscoveryExportDataInput) => {
+  const search = (input.search || '').trim();
+  const platform = normalizePlatform(input.platform);
+  const { sortBy, sortDirection } = normalizeDiscoverySort(input.sortBy, input.sortDirection);
+  const connectedOrderBy = buildDiscoveryUserOrderBy(platform, sortBy, sortDirection);
+  const take = Math.max(1, DISCOVERY_EXPORT_MAX_ROWS);
+
+  const connectedWhere = buildConnectedWhere(search, platform, {
+    gender: input.gender,
+    ageRange: input.ageRange,
+    country: input.country,
+    city: input.city,
+    creditTier: input.creditTier,
+    languages: input.languages,
+    interests: input.interests,
+    keyword: input.keyword,
+    hashtag: input.hashtag,
+  });
+
+  const [connectedTotal, dualConnectedTotal, rows] = await Promise.all([
+    prismaAny.user.count({ where: connectedWhere }),
+    platform === 'all'
+      ? prismaAny.user.count({
+          where: {
+            ...connectedWhere,
+            creator: {
+              is: {
+                ...((connectedWhere as any).creator?.is || {}),
+                isFacebookConnected: true,
+                isTiktokConnected: true,
+                instagramUser: { isNot: null },
+                tiktokUser: { isNot: null },
+              },
+            },
+          },
+        })
+      : Promise.resolve(0),
+    prismaAny.user.findMany({
+      where: connectedWhere,
+      take,
+      orderBy: connectedOrderBy,
+      select: buildConnectedSelect(false),
+    }),
+  ]);
+
+  const total = platform === 'all' ? connectedTotal + dualConnectedTotal : connectedTotal;
+  const sortedRows = sortDiscoveryRows(mapConnectedDiscoveryRows(rows, platform), sortBy, sortDirection);
+  const data = sortedRows.slice(0, DISCOVERY_EXPORT_MAX_ROWS);
+
+  return {
+    filters: {
+      search,
+      platform,
+      sortBy,
+      sortDirection,
+    },
+    data,
+    total,
+    exported: data.length,
+    truncated: total > data.length,
+    maxRows: DISCOVERY_EXPORT_MAX_ROWS,
+  };
 };
 
 const normalizeNonPlatformFilter = (
@@ -1577,4 +1902,181 @@ export const inviteDiscoveryCreators = async (input: InviteDiscoveryCreatorsInpu
     skippedExistingCount: inviteResult.skippedExistingCount,
     skippedNotFoundCount: inviteResult.skippedNotFoundCount,
   };
+};
+
+const DISCOVERY_BOOKMARK_PLATFORMS = ['instagram', 'tiktok'] as const;
+
+export type DiscoveryBookmarkPlatform = (typeof DISCOVERY_BOOKMARK_PLATFORMS)[number];
+
+export const isDiscoveryBookmarkPlatform = (value: unknown): value is DiscoveryBookmarkPlatform =>
+  DISCOVERY_BOOKMARK_PLATFORMS.includes(value as DiscoveryBookmarkPlatform);
+
+// Shared helper: map a list of bookmark membership rows into hydrated discovery
+// creator rows, preserving the order of the supplied memberships (de-duplicated
+// by rowId so a creator that appears in several selected lists shows once).
+const mapBookmarkMembershipsToCreatorRows = async (memberships: { creatorUserId: string; platform: string }[]) => {
+  const creatorUserIds = Array.from(
+    new Set(memberships.map((m) => String(m.creatorUserId || '').trim()).filter(Boolean)),
+  );
+
+  if (creatorUserIds.length === 0) return [];
+
+  const rows = await prismaAny.user.findMany({
+    where: { id: { in: creatorUserIds } },
+    select: buildConnectedSelect(false),
+  });
+
+  const mappedRows = mapConnectedDiscoveryRows(rows, 'all', { includeDbTopVideos: true });
+  const pastCampaignsByCreator = await getPastCampaignsByCreatorIds(creatorUserIds as string[]);
+  const rowsByRowId = new Map(
+    mappedRows.map((mappedRow: any) => [
+      mappedRow.rowId,
+      { ...mappedRow, pastCampaigns: pastCampaignsByCreator.get(mappedRow.userId) || [] },
+    ]),
+  );
+
+  const seen = new Set<string>();
+  const data: any[] = [];
+  memberships.forEach((m) => {
+    const rowId = `${m.creatorUserId}-${m.platform}`;
+    if (seen.has(rowId)) return;
+    const mappedRow = rowsByRowId.get(rowId);
+    if (mappedRow) {
+      seen.add(rowId);
+      data.push(mappedRow);
+    }
+  });
+
+  return data;
+};
+
+// Returns the account's bookmark lists (with creator counts) plus a flat list of
+// every membership so the UI can show which lists a given creator already lives in.
+export const getBookmarkLists = async (userId: string) => {
+  const lists = await prismaAny.bookMarkCreatorList.findMany({
+    where: { userId },
+    orderBy: { createdAt: 'asc' },
+    select: {
+      id: true,
+      name: true,
+      createdAt: true,
+      _count: { select: { creators: true } },
+    },
+  });
+
+  const memberships = await prismaAny.bookMarkCreator.findMany({
+    where: { userId },
+    select: { listId: true, creatorUserId: true, platform: true },
+  });
+
+  return {
+    lists: lists.map((list: any) => ({
+      id: list.id,
+      name: list.name,
+      count: list._count?.creators ?? 0,
+      createdAt: list.createdAt,
+    })),
+    memberships,
+  };
+};
+
+export const createBookmarkList = async (userId: string, name: string) => {
+  const trimmedName = String(name || '').trim();
+  if (!trimmedName) throw new Error('List name is required');
+
+  const existing = await prismaAny.bookMarkCreatorList.findUnique({
+    where: { userId_name: { userId, name: trimmedName } },
+  });
+  if (existing) throw new Error('A list with this name already exists');
+
+  return prismaAny.bookMarkCreatorList.create({
+    data: { userId, name: trimmedName },
+    select: { id: true, name: true, createdAt: true },
+  });
+};
+
+export const deleteBookmarkList = async (userId: string, listId: string) => {
+  const list = await prismaAny.bookMarkCreatorList.findUnique({
+    where: { id: listId },
+    select: { id: true, userId: true },
+  });
+
+  if (!list || list.userId !== userId) {
+    throw new Error('List not found');
+  }
+
+  await prismaAny.bookMarkCreatorList.delete({ where: { id: listId } });
+  return { deleted: true };
+};
+
+// Creators that belong to the given lists (union). When no listIds are supplied,
+// returns creators across all of the account's lists. Ordered most-recent first.
+export const getBookmarkedCreatorsByLists = async (userId: string, listIds: string[]) => {
+  const memberships = await prismaAny.bookMarkCreator.findMany({
+    where: {
+      userId,
+      ...(listIds.length > 0 ? { listId: { in: listIds } } : {}),
+    },
+    orderBy: { createdAt: 'desc' },
+    select: { creatorUserId: true, platform: true },
+  });
+
+  const data = await mapBookmarkMembershipsToCreatorRows(memberships);
+
+  return { data, total: data.length };
+};
+
+export const addCreatorToList = async (
+  userId: string,
+  listId: string,
+  creatorUserId: string,
+  platform: DiscoveryBookmarkPlatform,
+) => {
+  const list = await prismaAny.bookMarkCreatorList.findUnique({
+    where: { id: listId },
+    select: { id: true, userId: true },
+  });
+
+  if (!list || list.userId !== userId) {
+    throw new Error('List not found');
+  }
+
+  const creatorUser = await prismaAny.user.findUnique({
+    where: { id: creatorUserId },
+    select: { id: true, role: true },
+  });
+
+  if (!creatorUser || creatorUser.role !== 'creator') {
+    throw new Error('Creator not found');
+  }
+
+  return prismaAny.bookMarkCreator.upsert({
+    where: {
+      listId_creatorUserId_platform: { listId, creatorUserId, platform },
+    },
+    update: {},
+    create: { userId, listId, creatorUserId, platform },
+  });
+};
+
+export const removeCreatorFromList = async (
+  userId: string,
+  listId: string,
+  creatorUserId: string,
+  platform: DiscoveryBookmarkPlatform,
+) => {
+  const list = await prismaAny.bookMarkCreatorList.findUnique({
+    where: { id: listId },
+    select: { id: true, userId: true },
+  });
+
+  if (!list || list.userId !== userId) {
+    throw new Error('List not found');
+  }
+
+  const result = await prismaAny.bookMarkCreator.deleteMany({
+    where: { listId, creatorUserId, platform },
+  });
+
+  return { removedCount: result.count };
 };

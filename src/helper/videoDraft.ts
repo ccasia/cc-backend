@@ -16,6 +16,12 @@ import { createNewTask, getTaskId, updateTask } from '@services/kanbanService';
 import { createNewRowData } from '@services/google_sheets/sheets';
 import { saveNotification } from '@controllers/notificationController';
 import { notificationDraft } from './notification';
+import {
+  hasCurrentFinalDraftRevisionRequest,
+  hasRequiredCurrentFinalDraftMedia,
+  pairUploadedDraftsWithRevisionRequests,
+  previousDraftUrlsForReplacement,
+} from './draftSubmissionStatus';
 
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
 Ffmpeg.setFfprobePath(ffprobePath.path);
@@ -161,40 +167,56 @@ const checkCurrentSubmission = async (submissionId: string) => {
 
     allDeliverablesSent = hasVideo && hasRawFootage && hasPhotos;
   } else if (submission?.submissionType.type === 'FINAL_DRAFT') {
-    const [videosWithRevision, rawFootagesWithRevision, photosWithRevision] = await Promise.all([
+    const [
+      currentVideos,
+      currentRawFootages,
+      currentPhotos,
+      currentVideosWithRevision,
+      currentRawFootagesWithRevision,
+      currentPhotosWithRevision,
+    ] = await Promise.all([
+      prisma.video.count({ where: { submissionId: submission.id, resubmissions: { none: {} } } }),
+      prisma.rawFootage.count({ where: { submissionId: submission.id } }),
+      prisma.photo.count({ where: { submissionId: submission.id } }),
       prisma.video.count({
         where: {
           submissionId: submission.id,
-          userId: submission.userId,
-          campaignId: submission.campaignId,
           status: 'REVISION_REQUESTED',
+          resubmissions: { none: {} },
         },
       }),
       prisma.rawFootage.count({
         where: {
           submissionId: submission.id,
-          userId: submission.userId,
-          campaignId: submission.campaignId,
           status: 'REVISION_REQUESTED',
         },
       }),
       prisma.photo.count({
         where: {
           submissionId: submission.id,
-          userId: submission.userId,
-          campaignId: submission.campaignId,
           status: 'REVISION_REQUESTED',
         },
       }),
     ]);
 
-    const hasVideos = videosWithRevision === 0;
+    const requiredCurrentMedia = hasRequiredCurrentFinalDraftMedia(
+      {
+        videos: currentVideos,
+        rawFootages: currentRawFootages,
+        photos: currentPhotos,
+      },
+      submission.campaign,
+    );
+    const currentMediaNeedsRevision = hasCurrentFinalDraftRevisionRequest(
+      {
+        videos: currentVideosWithRevision,
+        rawFootages: currentRawFootagesWithRevision,
+        photos: currentPhotosWithRevision,
+      },
+      submission.campaign,
+    );
 
-    const hasRawFootage = submission.campaign.rawFootage ? rawFootagesWithRevision === 0 : true;
-
-    const hasPhotos = submission.campaign.photos ? photosWithRevision === 0 : true;
-
-    allDeliverablesSent = hasVideos && hasRawFootage && hasPhotos;
+    allDeliverablesSent = requiredCurrentMedia.allDeliverablesSent && !currentMediaNeedsRevision;
   }
 
   // Re-fetch current status (may have changed during processing)
@@ -289,6 +311,7 @@ async function deleteFileIfExists(filePath: string) {
                 rawFootages: true,
                 photos: true,
                 submissionType: true,
+                submissionVersion: true,
                 userId: true,
                 campaign: {
                   select: {
@@ -312,6 +335,9 @@ async function deleteFileIfExists(filePath: string) {
                 submissionId: submission.id,
                 status: 'REVISION_REQUESTED',
                 resubmissions: { none: {} },
+              },
+              orderBy: {
+                createdAt: 'asc',
               },
             });
 
@@ -392,46 +418,21 @@ async function deleteFileIfExists(filePath: string) {
               const url = await Promise.all(videoPromises);
 
               if (requestChangeVideos.length) {
-                if (content.isV4) {
-                  // V4: Create NEW video entries (preserve previous drafts as separate records)
-                  await Promise.all(
-                    requestChangeVideos.map(async (video, index) =>
-                      prisma.video.create({
-                        data: {
-                          url: url[index],
-                          submissionId: submission.id,
-                          campaignId: content.campaignId,
-                          userId: submission.userId,
-                          status: 'PENDING',
-                          resubmittedFromId: video.id,
-                        },
-                      }),
-                    ),
-                  );
-                } else {
-                  // Non-V4: Original behavior — update in-place, save old URL in previousDrafts
-                  await Promise.all(
-                    requestChangeVideos.map(async (video, index) => {
-                      const existingPreviousDrafts = (video as any).previousDrafts || [];
-                      const oldUrl = video.url;
-
-                      return prisma.video.update({
-                        where: { id: video.id },
-                        data: {
-                          url: url[index],
-                          submissionId: submission.id,
-                          campaignId: content.campaignId,
-                          userId: submission.userId,
-                          status: 'PENDING',
-                          previousDrafts: oldUrl ? [...existingPreviousDrafts, oldUrl] : existingPreviousDrafts,
-                          feedback: null,
-                          reasons: [],
-                          feedbackAt: null,
-                        },
-                      });
+                await Promise.all(
+                  pairUploadedDraftsWithRevisionRequests(requestChangeVideos, url).map(({ requested, url: videoUrl }) =>
+                    prisma.video.create({
+                      data: {
+                        url: videoUrl,
+                        submissionId: submission.id,
+                        campaignId: content.campaignId ?? submission.campaignId,
+                        userId: submission.userId,
+                        status: 'PENDING',
+                        previousDrafts: previousDraftUrlsForReplacement(requested),
+                        resubmittedFromId: requested.id,
+                      },
                     }),
-                  );
-                }
+                  ),
+                );
               }
 
               const data = await prisma.submission.update({
@@ -711,9 +712,11 @@ async function deleteFileIfExists(filePath: string) {
 
             await checkCurrentSubmission(submission.id);
 
-            // Emit V4 socket event so admin UI refreshes with new content and status
-            if (content.isV4 && submission.campaignId) {
-              io?.to(submission.campaignId).emit('v4:content:processed', {
+            // Emit socket event to notify that content is now processed and available.
+            // Mirrors videoDraftWorker.ts: both consume the same 'draft' queue, so the
+            // v2 flow must fire here too or the mobile refresh would be flaky (~50%).
+            if (io && submission.campaignId) {
+              const processedPayload = {
                 submissionId: submission.id,
                 campaignId: submission.campaignId,
                 hasVideo: filePaths?.video?.length > 0,
@@ -721,7 +724,15 @@ async function deleteFileIfExists(filePath: string) {
                 hasRawFootage: filePaths?.rawFootages?.length > 0,
                 processedAt: new Date().toISOString(),
                 creatorId: content.userid,
+              };
+
+              io.to(submission.campaignId).emit('v4:content:processed', {
+                ...processedPayload,
               });
+
+              if (!content.isV4 && submission.submissionVersion !== 'v4') {
+                io.to(submission.campaignId).emit('v2:content:processed', processedPayload);
+              }
             }
 
             const endUsage = process.cpuUsage(startUsage);

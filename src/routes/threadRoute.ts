@@ -15,8 +15,11 @@ import {
   markMessagesAsSeen,
   getTotalUnreadMessageCount,
 } from '@controllers/threadController';
+import { authenticate } from '@middlewares/authenticate';
 
 const router = Router();
+
+router.use(authenticate);
 
 // Create thread
 

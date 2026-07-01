@@ -106,6 +106,13 @@ export const getCreatorByID = async (req: Request, res: Response) => {
           id: id,
         },
       },
+      // This endpoint is exposed to client/client_demo roles (media kit view),
+      // so never return auth secrets on the User record.
+      omit: {
+        password: true,
+        xeroRefreshToken: true,
+        twoFactorSecret: true,
+      },
       include: {
         creator: {
           include: {
@@ -415,6 +422,99 @@ export const getMediaKit = async (req: Request, res: Response) => {
   }
 };
 
+// Mobile-specific: reads cached social data from DB — no live API calls to Instagram/TikTok
+export const getMobileMediaKit = async (req: Request, res: Response) => {
+  const userId = req.userId;
+
+  try {
+    const creator = await prisma.creator.findFirst({
+      where: { userId },
+      select: {
+        id: true,
+        isFacebookConnected: true,
+        isTiktokConnected: true,
+        instagram: true,
+        tiktok: true,
+        interests: { select: { id: true, name: true } },
+        mediaKit: { select: { displayName: true, about: true } },
+        instagramUser: {
+          select: {
+            username: true,
+            followers_count: true,
+            follows_count: true,
+            media_count: true,
+            biography: true,
+            profile_picture_url: true,
+            totalLikes: true,
+            totalComments: true,
+            totalShares: true,
+            totalSaves: true,
+            averageLikes: true,
+            averageComments: true,
+            averageShares: true,
+            averageSaves: true,
+            engagement_rate: true,
+            insightData: true,
+            instagramVideo: {
+              orderBy: { like_count: 'desc' },
+              take: 4,
+              select: {
+                video_id: true,
+                thumbnail_url: true,
+                media_url: true,
+                like_count: true,
+                view_count: true,
+                comments_count: true,
+                caption: true,
+              },
+            },
+          },
+        },
+        tiktokUser: {
+          select: {
+            username: true,
+            display_name: true,
+            biography: true,
+            avatar_url: true,
+            follower_count: true,
+            following_count: true,
+            likes_count: true,
+            totalLikes: true,
+            totalComments: true,
+            totalShares: true,
+            averageLikes: true,
+            averageComments: true,
+            averageShares: true,
+            engagement_rate: true,
+            tiktokVideo: {
+              orderBy: { view_count: 'desc' },
+              take: 4,
+              select: {
+                video_id: true,
+                cover_image_url: true,
+                title: true,
+                description: true,
+                like_count: true,
+                comment_count: true,
+                share_count: true,
+                view_count: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    console.log(creator?.instagramUser?.insightData);
+
+    if (!creator) return res.status(404).json({ message: 'Creator not found' });
+
+    return res.status(200).json({ creator });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
 export const getCreatorFullInfoById = async (req: Request, res: Response) => {
   const { id } = req.params;
   try {
@@ -510,11 +610,14 @@ export const getCreatorFullInfoByIdPublic = async (req: Request, res: Response) 
 
 export const updatePaymentForm = async (req: Request, res: Response) => {
   const { bankName, bankAccName, bankNumber, icPassportNumber, countryOfBank }: any = req.body;
+  const userId = req.userId;
+
+  console.log(req.body);
 
   try {
     const existingPaymentForm = await prisma.paymentForm.findFirst({
       where: {
-        userId: req.session.userid,
+        userId: userId,
       },
       include: {
         user: {
@@ -526,8 +629,6 @@ export const updatePaymentForm = async (req: Request, res: Response) => {
         },
       },
     });
-    // {"payTo":"Dan","bankName":"Affin Bank Berhad","accountName":"asdasdasd","accountEmail":"debis60817@lxheir.com","accountNumber":"131231231"}
-    // if (!existingPaymentForm) return res.status(404).json({ message: 'Payment form not found' });
 
     if (existingPaymentForm?.status === 'rejected') {
       const { name, email } = existingPaymentForm.user;
@@ -545,7 +646,7 @@ export const updatePaymentForm = async (req: Request, res: Response) => {
 
     const paymentForm = await prisma.paymentForm.upsert({
       where: {
-        userId: req.session.userid as string,
+        userId: req.userId as string,
       },
       update: {
         icNumber: icPassportNumber.toString(),
@@ -556,7 +657,7 @@ export const updatePaymentForm = async (req: Request, res: Response) => {
         status: 'approved',
       },
       create: {
-        user: { connect: { id: req.session.userid } },
+        user: { connect: { id: req.userId } },
         icNumber: icPassportNumber.toString(),
         bankAccountNumber: bankNumber.toString(),
         bankAccountName: bankAccName.toString(),
@@ -579,15 +680,16 @@ export const updatePaymentForm = async (req: Request, res: Response) => {
       },
     });
 
-    return res.status(200).json({ message: 'Successfully updated payment form.' });
+    return res.status(200).json({ message: 'Successfully updated payment form.', success: true });
   } catch (error) {
+    console.log(error);
     return res.status(400).json(error);
   }
 };
 
 export const updateCreatorForm = async (req: Request, res: Response) => {
   //   const { fullName, address, icNumber, bankName, accountNumber } = req.body;
-  //   const userId = req.session.userid as string;
+  //   const userId = req.userId as string;
 
   const { fullName, address, icNumber, bankName, accountName, accountNumber, userId } = req.body;
 
@@ -716,7 +818,7 @@ export const getCreatorSocialMediaData = async (req: Request, res: Response) => 
   try {
     const creator = await prisma.creator.findUnique({
       where: {
-        userId: req.session.userid as string,
+        userId: req.userId as string,
       },
       select: {
         socialMediaData: true,
@@ -759,7 +861,7 @@ export const getCreatorSocialMediaDataById = async (req: Request, res: Response)
 };
 
 export const updateSocialMedia = async (req: Request, res: Response) => {
-  const { userid } = req.session;
+  const userid = req.userId;
   const { tiktok: tiktokUsername, instagram: instagramUsername } = req.body;
 
   try {
@@ -1064,8 +1166,8 @@ export const getCreatorAnalytics = async (req: Request, res: Response) => {
         const accessToken = decryptToken(creator.instagramUser.accessToken as { iv: string; content: string });
 
         // Get real-time analytics from Instagram API
-        const engagement = await getInstagramEngagementRateOverTime(accessToken);
-        const monthly = await getInstagramMonthlyInteractions(accessToken);
+        const engagement = await getInstagramEngagementRateOverTime(accessToken!);
+        const monthly = await getInstagramMonthlyInteractions(accessToken!);
 
         // Calculate overall engagement rate
         const totalEngagement = (creator.instagramUser.totalLikes || 0) + (creator.instagramUser.totalComments || 0);
@@ -1101,8 +1203,8 @@ export const getCreatorAnalytics = async (req: Request, res: Response) => {
           const accessToken = decryptToken(tiktokData.access_token as { iv: string; content: string });
 
           // Get real-time analytics from TikTok API
-          const engagement = await getTikTokEngagementRateOverTime(accessToken);
-          const monthly = await getTikTokMonthlyInteractions(accessToken);
+          const engagement = await getTikTokEngagementRateOverTime(accessToken!);
+          const monthly = await getTikTokMonthlyInteractions(accessToken!);
 
           // Calculate overall engagement rate
           const totalEngagement = creator.tiktokUser.likes_count || 0;
