@@ -34,14 +34,14 @@ import {
 const prisma = new PrismaClient();
 
 const clientPublicUrl = (magicToken: string) => {
-  const base = process.env.APP_PUBLIC_URL || process.env.BACKEND_URL || 'http://localhost';
+  const base = process.env.BASE_EMAIL_URL || process.env.APP_PUBLIC_URL || process.env.BACKEND_URL || 'http://localhost';
   return `${base.replace(/\/$/, '')}/campaign-brief/client/${magicToken}`;
 };
 
 const TOKEN_LENGTH = 24;
 
 const publicUrl = (token: string) => {
-  const base = process.env.APP_PUBLIC_URL || process.env.BACKEND_URL || 'http://localhost';
+  const base = process.env.BASE_EMAIL_URL || process.env.APP_PUBLIC_URL || process.env.BACKEND_URL || 'http://localhost';
   return `${base.replace(/\/$/, '')}/campaign-brief/${token}`;
 };
 
