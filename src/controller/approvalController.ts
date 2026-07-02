@@ -253,10 +253,12 @@ async function ensureApprovedCreatorCampaignSetup(tx: Prisma.TransactionClient, 
   }
 }
 
+const APPROVAL_COMMENT_MAX_LEN = 5000;
+
 // POST /api/approval-requests
 // Creates an approval request for selected pitches, provisions a client account for the approver
 export const createApprovalRequest = async (req: Request, res: Response) => {
-  const { campaignId, approverName, approverEmail, pitchIds } = req.body;
+  const { campaignId, approverName, approverEmail, pitchIds, csComments } = req.body;
 
   if (!campaignId || !approverName || !approverEmail || !Array.isArray(pitchIds) || pitchIds.length === 0) {
     return res.status(400).json({ message: 'campaignId, approverName, approverEmail, and pitchIds are required' });
@@ -272,6 +274,16 @@ export const createApprovalRequest = async (req: Request, res: Response) => {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   if (!emailRegex.test(approverEmail)) {
     return res.status(400).json({ message: 'Invalid approver email' });
+  }
+
+  const sanitizedCsComments: Record<string, string> = {};
+  if (csComments && typeof csComments === 'object') {
+    for (const pitchId of validPitchIds) {
+      const raw = (csComments as Record<string, unknown>)[pitchId];
+      if (typeof raw === 'string' && raw.trim().length > 0) {
+        sanitizedCsComments[pitchId] = raw.trim().slice(0, APPROVAL_COMMENT_MAX_LEN);
+      }
+    }
   }
 
   try {
@@ -382,7 +394,10 @@ export const createApprovalRequest = async (req: Request, res: Response) => {
           inviteToken,
           expiresAt,
           creators: {
-            create: validPitchIds.map((pitchId: string) => ({ pitchId })),
+            create: validPitchIds.map((pitchId: string) => ({
+              pitchId,
+              csComment: sanitizedCsComments[pitchId] ?? null,
+            })),
           },
         },
       });
@@ -564,8 +579,6 @@ export const getApprovalRequest = async (req: Request, res: Response) => {
     return res.status(500).json({ message: 'Error fetching approval request' });
   }
 };
-
-const APPROVAL_COMMENT_MAX_LEN = 5000;
 
 // PATCH /api/approval-requests/:token/creators/:pitchId
 export const actionApprovalCreator = async (req: Request, res: Response) => {
