@@ -1924,6 +1924,7 @@ model ApprovalRequestCreator {
   pitchId           String
   status            ApprovalCreatorStatus @default(PENDING)
   comment           String?
+  csComment         String?
   createdAt         DateTime              @default(now())
   updatedAt         DateTime              @updatedAt
 
