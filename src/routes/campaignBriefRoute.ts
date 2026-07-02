@@ -26,6 +26,7 @@ import {
   getBriefPublic,
   patchBriefPublic,
   approveBriefPublic,
+  lostBrief,
 } from '@controllers/campaignBriefController';
 import { authenticate } from '../middleware/authenticate';
 
@@ -76,6 +77,7 @@ router.post('/:id/assign-csm', authenticate, isBdOrSuperadmin, assignCsm);
 router.post('/:id/attachments', authenticate, isBdOrSuperadmin, uploadBriefAttachment);
 router.delete('/:id/attachments', authenticate, isBdOrSuperadmin, deleteBriefAttachment);
 router.delete('/:id', authenticate, isBdOrSuperadmin, deleteBrief);
+router.post('/:id/lost', authenticate, isBdOrSuperadmin, lostBrief);
 
 // --- Public (magic-link) client review/edit/approve endpoints ---
 router.get('/public/:magicToken', publicLookupLimiter, getBriefPublic);
