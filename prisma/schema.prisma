@@ -796,6 +796,11 @@ model Campaign {
   clientTokenExpiresAt DateTime?
   editedByClientFields String[]             @default([])
 
+  // Lost Deal tracking
+  lostAmount     Float?
+  lostCurrency   String?
+  lostReason     String?      @db.Text
+
   // Snapshot of the brief field values at the moment it was sent to the client
   clientBriefSnapshot Json?
   clientPackage       String?
@@ -2014,6 +2019,7 @@ enum CampaignDraftStatus {
   PENDING_REVIEW
   APPROVED
   HANDED_OVER
+  LOST
 }
 
 enum CampaignDraftOrigin {
