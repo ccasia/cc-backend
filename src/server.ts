@@ -153,10 +153,10 @@ app.use(
     proxy: process.env.NODE_ENV === 'production',
 
     cookie: {
-      secure: process.env.NODE_ENV === 'production',
+      secure: process.env.CROSS_SITE_COOKIES === 'true' || process.env.NODE_ENV === 'production',
+      sameSite: process.env.CROSS_SITE_COOKIES === 'true' ? 'none' : 'lax',
       maxAge: 24 * 60 * 60 * 1000, //expires in 24hours
       httpOnly: true,
-      sameSite: 'none',
     },
     store: new PrismaSessionStore(new PrismaClient(), {
       checkPeriod: 2 * 60 * 1000,

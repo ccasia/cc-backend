@@ -1052,6 +1052,22 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
       }
     }
 
+    // Notify the creator when their draft is approved by the client (in-app + push)
+    if (action === 'approve' && newSubmissionStatus === 'CLIENT_APPROVED' && submission.userId) {
+      const creatorNotification = await saveNotification({
+        userId: submission.userId,
+        title: '🙌 Draft Approved',
+        message: `The client approved your ${submission.campaign.name} draft - nice work!`,
+        entity: 'Draft',
+        entityId: submission.campaign.id,
+      });
+
+      const creatorSocketId = clients.get(submission.userId);
+      if (io && creatorSocketId) {
+        io.to(creatorSocketId).emit('notification', creatorNotification);
+      }
+    }
+
     console.log(`✅ V4 submission ${submissionId} ${action}d by client ${clientId}`);
 
     // Create campaign log for client action
@@ -3878,10 +3894,11 @@ export const sendVideoFeedbackToCreator = async (req: Request, res: Response) =>
     const creatorId = submission.userId;
     const notification = await saveNotification({
       userId: creatorId,
-      title: `📝 Feedback for Video for ${submission.campaign.name} is ready to view.`,
-      message: `CSM has requested changes for your submission to the "${submission.campaign.name}" campaign. Please review the feedback.`,
+      title: `📝 The client left notes on your ${submission.campaign.name} draft.`,
+      message: 'Take a look',
       entity: 'Draft',
       entityId: submission.campaign.id,
+      submissionId: submissionId,
     });
 
     const creatorSocketId = clients.get(creatorId);

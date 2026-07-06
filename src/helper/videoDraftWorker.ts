@@ -611,18 +611,6 @@ async function deleteFileIfExists(filePath: string) {
                 // });
               }
 
-              const { title, message } = notificationDraft(data.campaign.name, 'Creator');
-
-              const notification = await saveNotification({
-                userId: data.userId,
-                message: message,
-                title: title,
-                entity: 'Draft',
-                entityId: data.campaign.id,
-              });
-
-              io?.to(clients.get(data.userId)).emit('notification', notification);
-
               const adminUser = data.campaign.campaignAdmin.filter((ca) => ca.admin.user.role === 'admin');
 
               const { title: adminTitle, message: adminMessage } = notificationDraft(

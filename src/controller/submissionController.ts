@@ -286,17 +286,17 @@ export const agreementSubmission = async (req: Request, res: Response) => {
         },
       });
 
-      const { title, message } = notificationAgreement(submission.campaign.name, 'Creator');
+      // const { title, message } = notificationAgreement(submission.campaign.name, 'Creator');
 
-      const creatorNotification = await saveNotification({
-        userId: submission.userId,
-        entity: 'Agreement',
-        entityId: submission.campaignId,
-        title: title,
-        message: message,
-      });
+      // const creatorNotification = await saveNotification({
+      //   userId: submission.userId,
+      //   entity: 'Agreement',
+      //   entityId: submission.campaignId,
+      //   title: title,
+      //   message: message,
+      // });
 
-      io.to(clients.get(submission.userId)).emit('notification', creatorNotification);
+      // io.to(clients.get(submission.userId)).emit('notification', creatorNotification);
 
       const { title: adminTitle, message: adminMessage } = notificationAgreement(
         submission.campaign.name,
@@ -641,7 +641,7 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
         userId: userId,
         message: message,
         title: title,
-        entity: 'Campaign',
+        entity: 'Draft',
         entityId: campaign?.id,
       });
 

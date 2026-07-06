@@ -3122,17 +3122,18 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
         },
       });
 
-      const notification = notificationPitch(pitch.campaign.name, 'Creator');
-      const newPitch = await saveNotification({
-        userId: user?.id as string,
-        message: notification.message,
-        title: notification.title,
-        entity: 'Pitch',
-        entityId: campaign?.id as string,
-        pitchId: pitch.id,
-      });
+      // const notification = notificationPitch(pitch.campaign.name, 'Creator');
+      // const newPitch = await saveNotification({
+      //   userId: user?.id as string,
+      //   message: notification.message,
+      //   title: notification.title,
+      //   entity: 'Pitch',
+      //   entityId: campaign?.id as string,
+      //   pitchId: pitch.id,
+      //   sendPush: false,
+      // });
 
-      io.to(clients.get(user?.id)).emit('notification', newPitch);
+      // io.to(clients.get(user?.id)).emit('notification', newPitch);
 
       const campaignManagers = campaign?.campaignAdmin;
 

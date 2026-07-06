@@ -288,7 +288,7 @@ export const sendMessageService = async ({
     const isCampaign = Boolean(datas.data.campaign);
     const { title, message: notificationMessage } = isCampaign
       ? notificationGroupChat(datas.data.campaign!.name, datas.data.title)
-      : notificationCSMChat(datas.data.title);
+      : notificationCSMChat(datas.message.sender?.name ?? 'Someone', datas.message.content);
 
     for (const recipientId of recipientIds) {
       const notification = await saveNotification({
