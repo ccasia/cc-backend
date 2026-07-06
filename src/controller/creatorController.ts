@@ -486,6 +486,7 @@ export const getMobileMediaKit = async (req: Request, res: Response) => {
             averageComments: true,
             averageShares: true,
             engagement_rate: true,
+            analyticsData: true,
             tiktokVideo: {
               orderBy: { view_count: 'desc' },
               take: 4,

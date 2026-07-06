@@ -372,6 +372,7 @@ model TiktokUser {
   averageComments Float?
   averageShares   Float?
   engagement_rate Float?
+  analyticsData   Json?
   lastUpdated     DateTime?
 
   createdAt   DateTime      @default(now())
