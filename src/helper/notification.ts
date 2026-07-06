@@ -1,7 +1,7 @@
 const notificationCampaignLive = (campaignName: string) => {
   return {
-    title: '🚀 Campaign is Live',
-    message: `Campaign Live! The ${campaignName} is now live!`,
+    title: '✨ New campaign just dropped',
+    message: `[${campaignName}] is live in Discovery`,
   };
 };
 
@@ -49,8 +49,8 @@ const notificationDraft = (campaignName: string, type: 'Admin' | 'Creator', crea
 
 const notificationSignature = (campaignName: string) => {
   return {
-    title: '📄 Agreement Due for Signature and Upload',
-    message: ` Agreement Pending. The agreement for ${campaignName} is ready for signature.`,
+    title: `🎉 You're in for ${campaignName}`,
+    message: 'Sign your agreement to lock it in.',
   };
 };
 
@@ -77,8 +77,8 @@ const notificationAgreement = (campaignName: string, type: 'Admin' | 'Creator', 
 
 const notificationApproveAgreement = (campaignName: string) => {
   return {
-    title: '🥳 Agreement Approved!',
-    message: `Your agreement for the ${campaignName} has been approved. You’re all set to move forward!`,
+    title: '🚀Agreement approved',
+    message: `Start your draft for ${campaignName}`,
   };
 };
 
@@ -116,10 +116,10 @@ const notificationGroupChat = (campaignName: string, thread: string) => {
   };
 };
 
-const notificationCSMChat = (thread: string) => {
+const notificationCSMChat = (csName: string, messageContent: string) => {
   return {
-    title: `💬 New Private!`,
-    message: `You have a new message in your CSM chat. `,
+    title: `💬 ${csName} messaged you`,
+    message: messageContent?.trim() ? messageContent : 'Sent you an attachment',
   };
 };
 
@@ -155,14 +155,30 @@ const notificationInvoiceGenerate = (campaignName: string) => {
 
 const notificationInvoiceUpdate = (campaignName: string) => {
   return {
-    title: ` ✏️ Invoice Updated!`,
-    message: `Your invoice for ${campaignName} has been edited by Finance Admin. `,
+    title: `✏️ Heads up`,
+    message: `Your ${campaignName} invoice was updated. Take a look`,
+  };
+};
+
+// Creator-facing: invoice approved by Finance (In-App only)
+const notificationInvoiceApproved = (campaignName: string, paymentDate: string) => {
+  return {
+    title: `🙌 Invoice approved for ${campaignName}`,
+    message: `Payment scheduled for ${paymentDate}`,
+  };
+};
+
+// Creator-facing: payment made (Push + In-App)
+const notificationInvoicePaid = (campaignName: string) => {
+  return {
+    title: `🎉 Cha-ching`,
+    message: `Your ${campaignName} payment just landed`,
   };
 };
 
 const notificationInvoiceStatus = (campaignName: string) => {
   return {
-    title: `💰 Invoice Payment Status Updated`,
+    title: `💰 Invoice Updated!`,
     message: ` The payment status of your invoice for ${campaignName} has been updated. `,
   };
 };
@@ -195,6 +211,28 @@ const reminderDueDate = (
   }
 };
 
+// Escalation reminders (nudges sent when a creator hasn't actioned a step)
+const escalationAgreementUnsigned = (campaignName: string) => {
+  return {
+    title: '⏰ Agreement still waiting on your signature',
+    message: `Your ${campaignName} agreement is still waiting on your signature.`,
+  };
+};
+
+const escalationDraftNotSubmitted = (campaignName: string) => {
+  return {
+    title: "⏰ Your draft is due soon",
+    message: `Your ${campaignName} draft is due soon - let's get it in.`,
+  };
+};
+
+const escalationPostingNotSubmitted = (campaignName: string) => {
+  return {
+    title: '⏰ Posting link reminder',
+    message: `Don't forget to drop your posting link for ${campaignName}.`,
+  };
+};
+
 // helper function for Client notifications
 const notificationPitchForClientReview = (campaignName: string) => {
   return {
@@ -224,6 +262,11 @@ export {
   notificationInvoiceGenerate,
   notificationInvoiceStatus,
   notificationInvoiceUpdate,
+  notificationInvoiceApproved,
+  notificationInvoicePaid,
   reminderDueDate,
+  escalationAgreementUnsigned,
+  escalationDraftNotSubmitted,
+  escalationPostingNotSubmitted,
   notificationPitchForClientReview,
 };

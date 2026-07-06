@@ -24,6 +24,7 @@ export const saveNotification = async ({
   threadId,
   invoiceId,
   submissionId,
+  sendPush = true,
 }: {
   userId: string;
   campaignId?: string;
@@ -37,17 +38,16 @@ export const saveNotification = async ({
   threadId?: string;
   invoiceId?: string;
   submissionId?: string;
+  sendPush?: boolean;
 }) => {
-  // Fire-and-forget push notification (does not block DB write)
-  void sendExpoPushToUser(userId, {
-    title: title ?? 'New notification',
-    body: message,
-    // entityId is always a campaign id at every call site (see DB branches below,
-    // which write campaignId: entityId). Most callers pass entityId rather than
-    // campaignId, so fall back to it so the mobile deep-link resolver can route to
-    // the campaign instead of dropping to the generic notifications page.
-    data: { entity, campaignId: campaignId ?? entityId, pitchId, threadId, invoiceId, submissionId },
-  });
+  if (sendPush) {
+    // Fire-and-forget push notification (does not block DB write)
+    void sendExpoPushToUser(userId, {
+      title: title ?? 'New notification',
+      body: message,
+      data: { entity, campaignId: campaignId ?? entityId, pitchId, threadId, invoiceId, submissionId },
+    });
+  }
 
   if (entity === 'Agreement' || entity === 'Draft' || entity === 'Timeline' || entity === 'Post') {
     return prisma.notification.create({
@@ -56,6 +56,7 @@ export const saveNotification = async ({
         title: title,
         entity: entity,
         campaignId: entityId,
+        submissionId: submissionId,
         creatorId: creatorId,
         userNotification: {
           create: {
@@ -81,6 +82,7 @@ export const saveNotification = async ({
         entity: entity,
         threadId: threadId,
         invoiceId: invoiceId,
+        campaignId: campaignId ?? entityId,
         userNotification: {
           create: {
             userId: userId,

@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { createInvoiceService } from './invoiceService';
+import { saveNotification } from '../controller/notificationController';
 import { clients, io } from '../server';
 import {
   CREATOR_CAMPAIGN_COMPLETED_EVENT,
@@ -298,7 +299,22 @@ export const handleV4CompletedCampaign = async (
     }
     io.to(campaignId).emit(CREATOR_CAMPAIGN_COMPLETED_EVENT, completedPayload);
 
-    // TODO: Send notification to creator (similar to V3 flow)
+    // Notify the creator their posting is approved and the invoice is ready (in-app + push)
+    if (invoice?.id) {
+      const creatorNotification = await saveNotification({
+        userId,
+        title: '✅ Posting Approved',
+        message: `Your ${creatorData.campaign.name} posting is approved - invoice's ready inside`,
+        entity: 'Invoice',
+        invoiceId: invoice.id,
+        entityId: campaignId,
+      });
+
+      if (creatorSocketId) {
+        io.to(creatorSocketId).emit('notification', creatorNotification);
+      }
+    }
+
     // TODO: Send email notification (similar to V3 flow)
 
     return true;
