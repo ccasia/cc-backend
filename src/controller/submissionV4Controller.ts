@@ -2762,6 +2762,7 @@ export const getV4SubmissionById = async (req: Request, res: Response) => {
             id: true,
             name: true,
             email: true,
+            status: true,
             photoURL: true,
           },
         },

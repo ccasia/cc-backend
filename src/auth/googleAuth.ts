@@ -76,6 +76,7 @@ passport.use(
       try {
         const existingUser = await prisma.user.findFirst({
           where: {
+            status: { not: 'deleted' },
             OR: [{ email: profile.emails?.[0].value }, { googleId: profile.id }],
           },
           include: {
