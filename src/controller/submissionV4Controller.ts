@@ -689,10 +689,11 @@ export const approveV4Submission = async (req: Request, res: Response) => {
 
       const notification = await saveNotification({
         userId: creatorId,
-        title: `📝 Feedback for ${content} for ${submission.campaign.name} is ready to view.`, // Double check with Naylisa for title/messages
-        message: `CSM has requested changes for your submission to the "${submission.campaign.name}" campaign. Please review the feedback.`,
+        title: `📝 Changes Required`,
+        message: `The client left notes on your ${submission.campaign.name} ${content} draft. Take a look`,
         entity: 'Draft',
         entityId: submission.campaign.id,
+        submissionId,
       });
 
       const creatorSocketId = clients.get(creatorId);
