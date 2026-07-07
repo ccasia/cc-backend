@@ -99,6 +99,7 @@ model User {
 
   userFlow      UserFlow[]
   activatedAt   DateTime?
+  deletedAt     DateTime?
   passwordSetAt DateTime?
   aiModel       AiModel?
   refreshTokens RefreshToken[]
@@ -1988,6 +1989,7 @@ enum Status {
   suspended
   spam
   guest
+  deleted
 }
 
 enum InvoiceStatus {

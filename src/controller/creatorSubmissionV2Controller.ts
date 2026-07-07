@@ -28,7 +28,7 @@ const submissionInclude = {
     select: { id: true, name: true, campaignType: true },
   },
   user: {
-    select: { id: true, name: true, email: true, photoURL: true },
+    select: { id: true, name: true, email: true, status: true, photoURL: true },
   },
   video: {
     select: {
@@ -75,7 +75,7 @@ const submissionInclude = {
         include: {
           replies: {
             include: {
-              user: { select: { id: true, name: true, role: true, photoURL: true } },
+              user: { select: { id: true, name: true, status: true, role: true, photoURL: true } },
             },
             orderBy: { createdAt: 'asc' as const },
           },

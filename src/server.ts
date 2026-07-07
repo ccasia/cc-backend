@@ -382,7 +382,7 @@ export const clients = new Map();
 export const activeProcesses = new Map();
 export const queue = new Map();
 
-io.use((socket: Socket, next) => {
+io.use(async (socket: Socket, next) => {
   try {
     const token = socket.handshake.auth?.token as string | undefined;
 
@@ -394,11 +394,18 @@ io.use((socket: Socket, next) => {
       userId: string;
     };
 
-    console.log(payload);
+    const user = await prisma.user.findUnique({
+      where: { id: payload.userId },
+      select: { id: true, status: true },
+    });
+
+    if (!user || user.status === 'deleted') {
+      return next(new Error('UNAUTHENTICATED'));
+    }
 
     // Identity comes from the verified token — never from anything the
     // client tells us later. This is the whole point.
-    socket.data.userId = payload.userId;
+    socket.data.userId = user.id;
 
     return next();
   } catch (err) {

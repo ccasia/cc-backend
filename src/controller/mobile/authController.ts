@@ -74,6 +74,8 @@ export const login = async (
         return res.status(400).json({ message: 'Account spam.' });
       case 'rejected':
         return res.status(400).json({ message: 'Account rejected.' });
+      case 'deleted':
+        return res.status(400).json({ message: 'Account not found.' });
     }
 
     const isMatch = await bcrypt.compare(password, user.password as string);
@@ -144,7 +146,9 @@ export const register = async (
       where: { email: { mode: 'insensitive', equals: normalizedEmail } },
     });
 
-    if (existing?.status === 'active') {
+    // 'deleted' rows are soft-deleted archives whose data must survive — never
+    // let them fall through to the cleanup delete below.
+    if (existing?.status === 'active' || existing?.status === 'deleted') {
       return res.status(409).json({ success: false, message: 'Email already exists' });
     }
 
@@ -186,7 +190,7 @@ export const register = async (
           languages: creatorData.languages || [],
           instagramProfileLink: creatorData.instagramProfileLink || '',
           tiktokProfileLink: creatorData.tiktokProfileLink || '',
-          state: creatorData.state || '', 
+          state: creatorData.state || '',
         });
       }
 
@@ -423,7 +427,7 @@ export const tokenRefresh = async (req: Request, res: Response) => {
       where: { tokenHash },
       include: {
         user: {
-          select: { id: true, email: true, name: true, isActive: true },
+          select: { id: true, email: true, name: true, isActive: true, status: true },
         },
       },
     });
@@ -437,6 +441,15 @@ export const tokenRefresh = async (req: Request, res: Response) => {
       return res.status(401).json({
         success: false,
         message: 'Refresh token reuse detected. Please log in again.',
+      });
+    }
+
+    if (stored.user.status === 'deleted') {
+      await prisma.refreshToken.deleteMany({ where: { userId: stored.userId } });
+
+      return res.status(401).json({
+        success: false,
+        message: 'Account not found.',
       });
     }
 

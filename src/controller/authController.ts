@@ -14,6 +14,7 @@ import { getUser } from '@services/userServices';
 
 import { getJWTToken, verifyToken } from '@utils/jwtHelper';
 import { uploadProfileImage } from '@configs/cloudStorage.config';
+import { io } from '../server';
 
 import { createKanbanBoard } from './kanbanController';
 import { saveCreatorToSpreadsheet } from '@helper/registeredCreatorSpreadsheet';
@@ -1239,6 +1240,8 @@ export const getprofile = async (req: Request, res: Response) => {
         return res.status(400).json({ message: 'Account spam.' });
       case 'rejected':
         return res.status(400).json({ message: 'Account rejected.' });
+      case 'deleted':
+        return res.status(400).json({ message: 'Account not found.' });
     }
 
     // Check if user is a child account
@@ -1320,6 +1323,8 @@ export const login = async (req: Request, res: Response) => {
         return res.status(400).json({ message: 'Account spam.' });
       case 'rejected':
         return res.status(400).json({ message: 'Account rejected.' });
+      case 'deleted':
+        return res.status(400).json({ message: 'Account not found.' });
     }
 
     // // Hashed password
@@ -1867,46 +1872,58 @@ export const deleteAccount = async (req: Request, res: Response) => {
   try {
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      include: {
-        creator: true,
-        admin: true,
-      },
     });
 
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    // Delete all related data based on user role
-    await prisma.$transaction(async (tx) => {
-      // Common deletions for all users
-      await tx.interest.deleteMany({ where: { userId } });
-      await tx.invoice.deleteMany({ where: { creatorId: userId } });
-      await tx.pitch.deleteMany({ where: { userId } });
-      await tx.userNotification.deleteMany({ where: { userId } });
-      await tx.notification.deleteMany({ where: { userId } });
-      await tx.unreadMessage.deleteMany({ where: { userId } });
-      await tx.seenMessage.deleteMany({ where: { userId } });
-      await tx.bookMarkCampaign.deleteMany({ where: { userId } });
-      await tx.paymentForm.deleteMany({ where: { userId } });
-      await tx.userThread.deleteMany({ where: { userId } });
-      await tx.creatorAgreement.deleteMany({ where: { userId } });
-      await tx.submission.deleteMany({ where: { userId } });
-      // await tx.logistic.deleteMany({ where: { userId } });
-
-      // Role-specific deletions
-      if (user.role === 'creator') {
-        await tx.creator.delete({
-          where: { userId },
-          include: { mediaKit: true },
-        });
-      } else if (user.role === 'admin') {
-        await tx.admin.delete({ where: { userId } });
+    // Re-authenticate before deleting. The mobile app sends the user's password to confirm intent;
+    // the shared web caller (cc-frontend) sends none, so validate only when a password is provided
+    // AND the account has a local password (OAuth-only/Google accounts have nothing to compare).
+    const { password } = (req.body ?? {}) as { password?: string };
+    if (password !== undefined && user.password && !user.googleId) {
+      const isMatch = await bcrypt.compare(password, user.password);
+      if (!isMatch) {
+        return res.status(400).json({ message: 'Incorrect password' });
       }
+    }
 
-      // Finally delete the user
-      await tx.user.delete({ where: { id: userId } });
-    });
+    // Idempotency: a second call (double-tap / two devices racing) must not re-run the update,
+    // which would double-prefix the already-renamed email and eventually truncate the original.
+    if (user.status === 'deleted') {
+      return res.status(200).json({ message: 'Account deleted successfully' });
+    }
+
+    // Soft delete: keep all data (invoices, agreements, campaign history) but block login.
+    // Renaming the email frees the unique constraint so the same email can re-register fresh;
+    // the userId prefix makes it collision-proof across delete/re-register cycles while the
+    // original stays readable (after the second underscore) for business records.
+    await prisma.$transaction([
+      prisma.user.update({
+        where: { id: userId },
+        data: {
+          status: 'deleted',
+          deletedAt: new Date(),
+          googleId: null,
+          email: `deleted_${userId}_${user.email}`.slice(0, 255),
+        },
+      }),
+      prisma.refreshToken.deleteMany({ where: { userId } }),
+      prisma.pushToken.deleteMany({ where: { userId } }),
+      prisma.session.deleteMany({ where: { data: { contains: userId } } }),
+    ]);
+
+    // Terminate any live realtime connections — socket auth only runs at connect time, so an
+    // already-open socket would otherwise keep receiving chat/notifications. Match on the
+    // middleware-verified socket.data.userId (set in server.ts), not the client-supplied
+    // `clients` map (which only tracks one socket per user). The existing `disconnect` handler
+    // cleans up the clients/users maps automatically.
+    for (const socket of io.sockets.sockets.values()) {
+      if (socket.data.userId === userId) {
+        socket.disconnect(true);
+      }
+    }
 
     // Clear session and cookies
     req.session.destroy((err) => {
@@ -2227,7 +2244,7 @@ export const mobileTokenRefresh = async (req: Request, res: Response) => {
       where: { tokenHash },
       include: {
         user: {
-          select: { id: true, email: true, name: true, isActive: true },
+          select: { id: true, email: true, name: true, isActive: true, status: true },
         },
       },
     });
@@ -2241,6 +2258,15 @@ export const mobileTokenRefresh = async (req: Request, res: Response) => {
       return res.status(401).json({
         success: false,
         message: 'Refresh token reuse detected. Please log in again.',
+      });
+    }
+
+    if (stored.user.status === 'deleted') {
+      await prisma.refreshToken.deleteMany({ where: { userId: stored.userId } });
+
+      return res.status(401).json({
+        success: false,
+        message: 'Account not found.',
       });
     }
 
