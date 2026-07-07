@@ -2402,6 +2402,11 @@ export const getCampaignById = async (req: Request, res: Response) => {
             isAgreementReady: true,
             creditPerVideo: true,
             creditTierId: true,
+            adminRating: true,
+            adminRatingTags: true,
+            adminRatingNote: true,
+            adminRatedAt: true,
+            adminRatedById: true,
             creditTier: {
               select: {
                 id: true,
@@ -11764,6 +11769,50 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
     console.error('Error shortlisting creators for V3:', error);
     return res.status(400).json({
       message: error instanceof Error ? error.message : 'Failed to shortlist creators',
+      error,
+    });
+  }
+};
+
+// Creator Rating
+export const rateCreator = async (req: Request, res: Response) => {
+  const { campaignId, creatorId, rating, tags, note } = req.body;
+  const adminId = req.userId;
+
+  try {
+    if (!campaignId || !creatorId) {
+      return res.status(400).json({ message: 'campaignId and creatorId are required' });
+    }
+
+    const ratingValue = Number(rating);
+    if (!ratingValue || ratingValue < 1 || ratingValue > 5) {
+      return res.status(400).json({ message: 'rating must be a number between 1 and 5' });
+    }
+
+    const shortlistedCreator = await prisma.shortListedCreator.findUnique({
+      where: { userId_campaignId: { userId: creatorId, campaignId } },
+    });
+
+    if (!shortlistedCreator) {
+      return res.status(404).json({ message: 'Creator is not shortlisted for this campaign' });
+    }
+
+    const updated = await prisma.shortListedCreator.update({
+      where: { id: shortlistedCreator.id },
+      data: {
+        adminRating: ratingValue,
+        adminRatingTags: Array.isArray(tags) ? tags.filter((tag: unknown) => typeof tag === 'string') : [],
+        adminRatingNote: typeof note === 'string' && note.trim().length > 0 ? note.trim() : null,
+        adminRatedAt: new Date(),
+        adminRatedById: adminId,
+      },
+    });
+
+    return res.status(200).json({ message: 'Rating submitted successfully', data: updated });
+  } catch (error) {
+    console.error('Error submitting creator rating:', error);
+    return res.status(500).json({
+      message: error instanceof Error ? error.message : 'Failed to submit rating',
       error,
     });
   }
