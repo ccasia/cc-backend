@@ -523,8 +523,8 @@ export const rejectPitchByAdmin = async (req: Request, res: Response) => {
     const notification = await saveNotification({
       userId: pitch.userId,
       title: 'Pitch Rejected',
-      message: `Your pitch for campaign "${pitch.campaign.name}" has been rejected by admin.`,
-      entity: 'Pitch',
+      message: `💡 This one didn't work out, but new campaigns drop all the time. Keep pitching!`,
+      entity: 'Campaign',
       entityId: pitch.campaignId,
     });
 
