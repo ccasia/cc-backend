@@ -1158,6 +1158,13 @@ model ShortListedCreator {
   creditTierId   String? // Tier ID at time of assignment (snapshot)
   creditTier     CreditTier? @relation(fields: [creditTierId], references: [id])
 
+  // Admin rating (client-side rating pending SAM)
+  adminRating     Int? 
+  adminRatingTags String[] @default([])
+  adminRatingNote String?
+  adminRatedAt    DateTime?
+  adminRatedById  String? 
+
   @@unique([userId, campaignId])
   @@index([userId])
 }
