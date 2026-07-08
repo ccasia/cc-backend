@@ -2407,6 +2407,9 @@ export const getCampaignById = async (req: Request, res: Response) => {
             adminRatingNote: true,
             adminRatedAt: true,
             adminRatedById: true,
+            clientRating: true,
+            clientRatedAt: true,
+            clientRatedById: true,
             creditTier: {
               select: {
                 id: true,
@@ -11777,7 +11780,7 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
 // Creator Rating
 export const rateCreator = async (req: Request, res: Response) => {
   const { campaignId, creatorId, rating, tags, note } = req.body;
-  const adminId = req.userId;
+  const raterId = req.userId;
 
   try {
     if (!campaignId || !creatorId) {
@@ -11789,6 +11792,20 @@ export const rateCreator = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'rating must be a number between 1 and 5' });
     }
 
+    // Determine which side of the rating to write from the authenticated user's
+    // role — never trust a client-supplied flag. Clients rate stars only; admins
+    // can additionally attach tags and a note.
+    const rater = await prisma.user.findUnique({
+      where: { id: raterId },
+      select: { role: true },
+    });
+
+    if (!rater) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
+    const isClient = rater.role === 'client' || rater.role === 'client_demo';
+
     const shortlistedCreator = await prisma.shortListedCreator.findUnique({
       where: { userId_campaignId: { userId: creatorId, campaignId } },
     });
@@ -11797,15 +11814,36 @@ export const rateCreator = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Creator is not shortlisted for this campaign' });
     }
 
+    // Each side may only rate once. The demo role (client_demo) is exempt so the
+    // showcase view can be re-rated freely.
+    const isDemo = rater.role === 'client_demo';
+    const alreadyRated = isClient
+      ? shortlistedCreator.clientRatedAt !== null
+      : shortlistedCreator.adminRatedAt !== null;
+
+    if (alreadyRated && !isDemo) {
+      return res.status(409).json({ message: 'You have already rated this creator' });
+    }
+
+    const ratingData: Prisma.ShortListedCreatorUpdateInput = isClient
+      ? {
+          clientRating: ratingValue,
+          clientRatedAt: new Date(),
+          clientRatedById: raterId,
+        }
+      : {
+          adminRating: ratingValue,
+          adminRatingTags: Array.isArray(tags)
+            ? tags.filter((tag: unknown) => typeof tag === 'string')
+            : [],
+          adminRatingNote: typeof note === 'string' && note.trim().length > 0 ? note.trim() : null,
+          adminRatedAt: new Date(),
+          adminRatedById: raterId,
+        };
+
     const updated = await prisma.shortListedCreator.update({
       where: { id: shortlistedCreator.id },
-      data: {
-        adminRating: ratingValue,
-        adminRatingTags: Array.isArray(tags) ? tags.filter((tag: unknown) => typeof tag === 'string') : [],
-        adminRatingNote: typeof note === 'string' && note.trim().length > 0 ? note.trim() : null,
-        adminRatedAt: new Date(),
-        adminRatedById: adminId,
-      },
+      data: ratingData,
     });
 
     return res.status(200).json({ message: 'Rating submitted successfully', data: updated });

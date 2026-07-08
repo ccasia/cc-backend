@@ -17,17 +17,17 @@ model User {
   emailVerificationId String?            @unique
   emailVerifcation    EmailVerification? @relation(fields: [emailVerificationId], references: [id])
 
-  createdAt               DateTime            @default(now())
-  name                    String?             @db.VarChar(255)
-  photoURL                String?             @db.VarChar(255)
-  country                 String?             @db.VarChar(100)
-  city                    String?             @db.VarChar(100)
-  phoneNumber             String?             @db.VarChar(100)
-  updatedAt               DateTime?           @updatedAt
-  status                  Status              @default(pending)
+  createdAt               DateTime              @default(now())
+  name                    String?               @db.VarChar(255)
+  photoURL                String?               @db.VarChar(255)
+  country                 String?               @db.VarChar(100)
+  city                    String?               @db.VarChar(100)
+  phoneNumber             String?               @db.VarChar(100)
+  updatedAt               DateTime?             @updatedAt
+  status                  Status                @default(pending)
   eventId                 String?
   role                    RoleEnum
-  photoBackgroundURL      String?             @db.VarChar(255)
+  photoBackgroundURL      String?               @db.VarChar(255)
   updateRefershToken      DateTime?
   xeroRefreshToken        String?
   admin                   Admin?
@@ -35,8 +35,8 @@ model User {
   agreementTemplate       AgreementTemplate[]
   Board                   Board?
   BookMarkCampaign        BookMarkCampaign[]
-  bookMarkCreator         BookMarkCreator[]   @relation("BookMarkCreatorOwner")
-  bookMarkedBy            BookMarkCreator[]   @relation("BookMarkCreatorTarget")
+  bookMarkCreator         BookMarkCreator[]     @relation("BookMarkCreatorOwner")
+  bookMarkedBy            BookMarkCreator[]     @relation("BookMarkCreatorTarget")
   bookMarkCreatorLists    BookMarkCreatorList[]
   campaignLogs            CampaignLog[]
   CampaignTaskAdmin       CampaignTaskAdmin[]
@@ -45,18 +45,18 @@ model User {
   feedback                Feedback[]
   commentAgreements       CommentAgreement[]
   submissionComments      SubmissionComment[]
-  forwardedComments       SubmissionComment[] @relation("ForwardedComments")
-  resolvedComments        SubmissionComment[] @relation("ResolvedComments")
+  forwardedComments       SubmissionComment[]   @relation("ForwardedComments")
+  resolvedComments        SubmissionComment[]   @relation("ResolvedComments")
   finance                 Finance?
-  invoice                 Invoice[]           @relation("CreatedBy")
-  sentMessages            Message[]           @relation("UserMessages")
+  invoice                 Invoice[]             @relation("CreatedBy")
+  sentMessages            Message[]             @relation("UserMessages")
   notifications           Notification[]
   paymentForm             PaymentForm?
   pitch                   Pitch[]
-  approvedPitches         Pitch[]             @relation("ApprovedByClient")
-  rejectedPitches         Pitch[]             @relation("RejectedByClient")
-  maybePitches            Pitch[]             @relation("MaybeByClient")
-  acceptedInviteByCreator Pitch[]             @relation("AcceptedInviteByCreator")
+  approvedPitches         Pitch[]               @relation("ApprovedByClient")
+  rejectedPitches         Pitch[]               @relation("RejectedByClient")
+  maybePitches            Pitch[]               @relation("MaybeByClient")
+  acceptedInviteByCreator Pitch[]               @relation("AcceptedInviteByCreator")
 
   resetPasswordToken ResetPasswordToken?
   seenMessages       SeenMessage[]
@@ -799,9 +799,9 @@ model Campaign {
   editedByClientFields String[]             @default([])
 
   // Lost Deal tracking
-  lostAmount     Float?
-  lostCurrency   String?
-  lostReason     String?      @db.Text
+  lostAmount   Float?
+  lostCurrency String?
+  lostReason   String? @db.Text
 
   // Snapshot of the brief field values at the moment it was sent to the client
   clientBriefSnapshot Json?
@@ -1160,11 +1160,16 @@ model ShortListedCreator {
   creditTier     CreditTier? @relation(fields: [creditTierId], references: [id])
 
   // Admin rating (client-side rating pending SAM)
-  adminRating     Int? 
-  adminRatingTags String[] @default([])
+  adminRating     Int?
+  adminRatingTags String[]  @default([])
   adminRatingNote String?
   adminRatedAt    DateTime?
-  adminRatedById  String? 
+  adminRatedById  String?
+
+  // Client rating
+  clientRating    Int?
+  clientRatedAt   DateTime?
+  clientRatedById String?
 
   @@unique([userId, campaignId])
   @@index([userId])
