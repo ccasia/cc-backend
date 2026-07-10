@@ -260,6 +260,8 @@ export const updateProfile = async (
       city?: string;
       pronounce?: string;
       birthDate?: string | null;
+      instagramProfileLink?: string;
+      tiktokProfileLink?: string;
     }
   >,
   res: Response,
@@ -270,7 +272,7 @@ export const updateProfile = async (
     return res.status(401).json({ success: false, message: 'Unauthorized' });
   }
 
-  const { name, phone, Nationality, city, pronounce, birthDate } = req.body;
+  const { name, phone, Nationality, city, pronounce, birthDate, instagramProfileLink, tiktokProfileLink } = req.body;
 
   try {
     const result = await prisma.$transaction(async (tx) => {
@@ -284,7 +286,13 @@ export const updateProfile = async (
         },
       });
 
-      if (updatedUser.role === 'creator' && (pronounce !== undefined || birthDate !== undefined)) {
+      if (
+        updatedUser.role === 'creator' &&
+        (pronounce !== undefined ||
+          birthDate !== undefined ||
+          instagramProfileLink !== undefined ||
+          tiktokProfileLink !== undefined)
+      ) {
         await tx.creator.update({
           where: { userId },
           data: {
@@ -292,6 +300,8 @@ export const updateProfile = async (
             ...(birthDate !== undefined && {
               birthDate: birthDate ? new Date(birthDate) : null,
             }),
+            ...(instagramProfileLink !== undefined && { instagramProfileLink }),
+            ...(tiktokProfileLink !== undefined && { tiktokProfileLink }),
           },
         });
       }
