@@ -4279,6 +4279,11 @@ export const getMyCampaigns = async (req: Request, res: Response) => {
                 creatorRemarks: true,
               },
             },
+            deliveryDetails: {
+              select: {
+                isConfirmed: true,
+              },
+            },
           },
         },
         brand: { include: { company: { include: { subscriptions: true } } } },
