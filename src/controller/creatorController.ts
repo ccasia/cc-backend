@@ -15,6 +15,7 @@ import {
   getTikTokMonthlyInteractions,
 } from '@services/socialMediaService';
 import { decryptToken } from '@helper/encrypt';
+import { CreatorRatingReveal, mapCompletedCreatorRatingReveal } from '@utils/creatorRatingReveal';
 
 const prisma = new PrismaClient();
 
@@ -93,6 +94,57 @@ export const getCreators = async (_req: Request, res: Response) => {
   } catch (error) {
     console.log(error);
     return res.status(400).json({ message: error });
+  }
+};
+
+export const getCompletedCreatorRatings = async (req: Request, res: Response) => {
+  const userId = req.userId;
+
+  if (!userId) {
+    return res.status(401).json({ message: 'Unauthorized' });
+  }
+
+  try {
+    const ratings = await prisma.shortListedCreator.findMany({
+      where: {
+        userId,
+        adminRating: { not: null },
+        clientRating: { not: null },
+        adminRatedAt: { not: null },
+        clientRatedAt: { not: null },
+      },
+      select: {
+        id: true,
+        campaignId: true,
+        userId: true,
+        adminRating: true,
+        clientRating: true,
+        adminRatingTags: true,
+        adminRatingNote: true,
+        adminRatedAt: true,
+        clientRatedAt: true,
+        campaign: {
+          select: {
+            name: true,
+            campaignBrief: {
+              select: {
+                images: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const data = ratings
+      .map(mapCompletedCreatorRatingReveal)
+      .filter((rating): rating is CreatorRatingReveal => rating !== null)
+      .sort((a, b) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime());
+
+    return res.status(200).json({ data });
+  } catch (error) {
+    console.error('Error fetching completed creator ratings:', error);
+    return res.status(500).json({ message: 'Failed to fetch completed creator ratings' });
   }
 };
 
