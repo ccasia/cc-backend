@@ -81,6 +81,7 @@ import {
   CREATOR_CAMPAIGN_MEMBERSHIP_UPDATED_EVENT,
   createCreatorCampaignMembershipUpdatedPayload,
 } from '@utils/campaignMembershipEvents';
+import { buildCreatorRatingEventId, shouldEmitCreatorRatingCompleted } from '@utils/creatorRatingReveal';
 
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
 Ffmpeg.setFfprobePath(ffprobePath.path);
@@ -11833,9 +11834,7 @@ export const rateCreator = async (req: Request, res: Response) => {
         }
       : {
           adminRating: ratingValue,
-          adminRatingTags: Array.isArray(tags)
-            ? tags.filter((tag: unknown) => typeof tag === 'string')
-            : [],
+          adminRatingTags: Array.isArray(tags) ? tags.filter((tag: unknown) => typeof tag === 'string') : [],
           adminRatingNote: typeof note === 'string' && note.trim().length > 0 ? note.trim() : null,
           adminRatedAt: new Date(),
           adminRatedById: raterId,
@@ -11845,6 +11844,20 @@ export const rateCreator = async (req: Request, res: Response) => {
       where: { id: shortlistedCreator.id },
       data: ratingData,
     });
+
+    if (shortlistedCreator.userId && shouldEmitCreatorRatingCompleted(shortlistedCreator, updated)) {
+      const creatorSocketId = clients.get(shortlistedCreator.userId);
+      const payload = {
+        userId: shortlistedCreator.userId,
+        campaignId: shortlistedCreator.campaignId,
+        ratingEventId: buildCreatorRatingEventId(updated),
+        updatedAt: new Date().toISOString(),
+      };
+
+      if (creatorSocketId) {
+        io.to(creatorSocketId).emit('creator:rating-completed', payload);
+      }
+    }
 
     return res.status(200).json({ message: 'Rating submitted successfully', data: updated });
   } catch (error) {

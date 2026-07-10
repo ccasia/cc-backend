@@ -24,8 +24,10 @@ import {
   createCampaignCreator,
   markMediaKitMandatory,
   unmarkMediaKitMandatory,
+  getCompletedCreatorRatings,
 } from '@controllers/creatorController';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
+import { isCreator } from '@middlewares/isCreator';
 import { canViewCreatorMediaKit } from '@middlewares/adminOrClient';
 // import { needPermissions } from '@middlewares/needPermissions';
 import { authenticate } from '@middlewares/authenticate';
@@ -38,6 +40,7 @@ router.get('/getAllCreators', getCreators);
 router.get('/getMediaKit', authenticate, isSuperAdmin, getMediaKit);
 
 router.get('/mobile/media-kit', authenticate, getMobileMediaKit);
+router.get('/completed-ratings', authenticate, isCreator, getCompletedCreatorRatings);
 
 router.get('/getCreatorByID/:id', authenticate, canViewCreatorMediaKit, getCreatorByID);
 router.get('/getCreatorFullInfoById/:id', getCreatorFullInfoById);
