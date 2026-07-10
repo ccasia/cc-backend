@@ -435,6 +435,8 @@ export const getMobileMediaKit = async (req: Request, res: Response) => {
         isTiktokConnected: true,
         instagram: true,
         tiktok: true,
+        instagramProfileLink: true,
+        tiktokProfileLink: true,
         interests: { select: { id: true, name: true } },
         mediaKit: { select: { displayName: true, about: true } },
         instagramUser: {
