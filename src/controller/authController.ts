@@ -37,6 +37,7 @@ import {
   getRefreshTokenExpiryDate,
   verifyRefreshToken,
 } from '@utils/tokens';
+import { revokeAppleToken } from '@utils/apple';
 
 const prisma = new PrismaClient();
 
@@ -1261,6 +1262,13 @@ export const getprofile = async (req: Request, res: Response) => {
         isPasswordExist: Boolean(user.password),
         isInstagramConnected: !!user.creator?.instagram,
         isTiktokConnected: !!user.creator?.tiktok,
+        // Connected-accounts settings: whether each social provider is linked.
+        // We don't store a per-provider email, so surface the account email as
+        // the linked address (correct for the common sign-up-with-provider case).
+        isAppleLinked: Boolean(user.appleId),
+        isGoogleLinked: Boolean(user.googleId),
+        appleEmail: user.appleId ? user.email : null,
+        googleEmail: user.googleId ? user.email : null,
       },
       ...((user.role === 'superadmin' ||
         (user.role === 'admin' && user?.admin?.role?.name.toLowerCase() === 'finance')) && {
@@ -1906,6 +1914,7 @@ export const deleteAccount = async (req: Request, res: Response) => {
           status: 'deleted',
           deletedAt: new Date(),
           googleId: null,
+          appleId: null,
           email: `deleted_${userId}_${user.email}`.slice(0, 255),
         },
       }),
@@ -1913,6 +1922,14 @@ export const deleteAccount = async (req: Request, res: Response) => {
       prisma.pushToken.deleteMany({ where: { userId } }),
       prisma.session.deleteMany({ where: { data: { contains: userId } } }),
     ]);
+
+    // Apple requires revoking the user's token on account deletion (App Store
+    // guideline 5.1.1(v)). We stored the refresh token at sign-in via the
+    // authorizationCode exchange. `user` was read before the soft-delete above,
+    // so it still carries the token. Best-effort — never blocks deletion.
+    if (user.appleRefreshToken) {
+      await revokeAppleToken(user.appleRefreshToken);
+    }
 
     // Terminate any live realtime connections — socket auth only runs at connect time, so an
     // already-open socket would otherwise keep receiving chat/notifications. Match on the

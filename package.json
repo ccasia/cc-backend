@@ -40,6 +40,7 @@
     "@socket.io/redis-adapter": "^8.3.0",
     "@types/bcryptjs": "^2.4.6",
     "amqplib": "^0.10.4",
+    "apple-signin-auth": "^2.0.0",
     "axios": "^1.7.7",
     "bcrypt": "^5.1.1",
     "bcryptjs": "^2.4.3",

@@ -8,8 +8,10 @@ datasource db {
 }
 
 model User {
-  id       String  @id @unique @default(cuid())
-  googleId String? @unique
+  id                String  @id @unique @default(cuid())
+  googleId          String? @unique
+  appleId           String? @unique
+  appleRefreshToken String?
 
   email    String  @unique @db.VarChar(255)
   password String? @db.VarChar(255)
