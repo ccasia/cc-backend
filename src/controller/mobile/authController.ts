@@ -16,6 +16,7 @@ import crypto from 'crypto';
 import { createKanbanBoard } from '../kanbanController';
 import { saveCreatorToSpreadsheet } from '@/src/helper/registeredCreatorSpreadsheet';
 import { exchangeAppleRefreshToken, revokeAppleToken } from '@/src/utils/apple';
+import { verifyGoogleIdToken } from '@/src/utils/google';
 
 interface MobileCreatorData {
   phone?: string;
@@ -668,6 +669,7 @@ const handleSocialSignIn = async ({
   provider,
   providerId,
   email,
+  emailVerified,
   name,
   appleRefreshToken,
   ipAddress,
@@ -677,20 +679,22 @@ const handleSocialSignIn = async ({
   provider: SocialProvider;
   providerId: string;
   email?: string;
+  emailVerified?: boolean;
   name?: string | null;
-  // Apple-only: refresh token from the authorizationCode exchange, persisted so
-  // it can be revoked on account deletion (App Store requirement).
   appleRefreshToken?: string | null;
   ipAddress?: string;
   userAgent?: string;
   res: Response;
 }) => {
   const idField = provider === 'apple' ? 'appleId' : 'googleId';
+  const emailField = provider === 'apple' ? 'appleEmail' : 'googleEmail';
+  const unlinkedField = provider === 'apple' ? 'appleUnlinkedAt' : 'googleUnlinkedAt';
   const normalizedEmail = email?.toLowerCase();
 
   // Only persist the refresh token when we actually got one, so a later sign-in
   // that skipped the exchange doesn't wipe a previously stored token.
   const appleTokenData = appleRefreshToken ? { appleRefreshToken } : {};
+  const providerEmailData = normalizedEmail ? { [emailField]: normalizedEmail } : {};
 
   let user = await prisma.user.findFirst({ where: { [idField]: providerId } });
 
@@ -700,22 +704,38 @@ const handleSocialSignIn = async ({
     });
 
     if (byEmail) {
-      user = await prisma.user.update({
-        where: { id: byEmail.id },
-        data: { [idField]: providerId, ...appleTokenData },
-      });
+      const existingProviderId = (byEmail as Record<string, unknown>)[idField];
+      const existingProviderEmail = (byEmail as Record<string, unknown>)[emailField];
+      const deliberatelyUnlinked = Boolean((byEmail as Record<string, unknown>)[unlinkedField]);
+      const alreadyHasDifferentIdentity = Boolean(existingProviderId) && existingProviderId !== providerId;
+      const matchesLinkedEmail = !existingProviderEmail || existingProviderEmail === normalizedEmail;
+
+      if (emailVerified && !deliberatelyUnlinked && !alreadyHasDifferentIdentity && matchesLinkedEmail) {
+        user = await prisma.user.update({
+          where: { id: byEmail.id },
+          data: { [idField]: providerId, ...appleTokenData, ...providerEmailData },
+        });
+      }
     }
-  } else if (user && appleRefreshToken) {
-    // Existing linked user re-signing in — refresh the stored token.
+  } else if (user) {
     user = await prisma.user.update({
       where: { id: user.id },
-      data: appleTokenData,
+      data: { ...appleTokenData, ...providerEmailData },
     });
   }
 
   if (!user) {
     if (!normalizedEmail) {
       return res.status(400).json({ success: false, message: 'No email provided by identity provider' });
+    }
+    const emailTaken = await prisma.user.findFirst({
+      where: { status: { not: 'deleted' }, email: { mode: 'insensitive', equals: normalizedEmail } },
+    });
+    if (emailTaken) {
+      return res.status(409).json({
+        success: false,
+        message: 'An account with this email already exists. Sign in via email and link this account from settings.',
+      });
     }
     user = await prisma.user.create({
       data: {
@@ -725,6 +745,7 @@ const handleSocialSignIn = async ({
         role: 'creator',
         status: 'active',
         ...appleTokenData,
+        ...providerEmailData,
         creator: { create: { isOnBoardingFormCompleted: false } },
       },
     });
@@ -750,6 +771,15 @@ const handleSocialSignIn = async ({
   };
   if (blocked[user.status]) {
     return res.status(400).json({ message: blocked[user.status] });
+  }
+
+  // This mobile app is creator-only. An existing non-creator account (admin,
+  // client, brand, etc. — typically created via the web app) must not be able to
+  // sign in here and land on a creator UI with nothing for them. Refuse before
+  // issuing any token. Brand-new social users are always created as 'creator'
+  // above, so this only rejects pre-existing non-creator accounts.
+  if (user.role !== 'creator') {
+    return res.status(403).json({ success: false, message: 'This app is for creators only.' });
   }
 
   // Issue tokens — same inline pattern as mobile `login`.
@@ -807,10 +837,14 @@ export const appleLogin = async (
     // must not block sign-in.
     const appleRefreshToken = authorizationCode ? await exchangeAppleRefreshToken(authorizationCode) : null;
 
+    // Apple encodes email_verified as a boolean or the string "true".
+    const appleEmailVerified = claims.email_verified === true || claims.email_verified === 'true';
+
     return await handleSocialSignIn({
       provider: 'apple',
       providerId: claims.sub,
       email: claims.email || email,
+      emailVerified: appleEmailVerified,
       name: fullName,
       appleRefreshToken,
       ipAddress,
@@ -863,6 +897,9 @@ export const linkApple = async (
       where: { id: userId },
       data: {
         appleId: claims.sub,
+        // Store the real linked email; clear the unlink flag (deliberate relink).
+        appleEmail: claims.email?.toLowerCase() ?? null,
+        appleUnlinkedAt: null,
         // Only overwrite the stored token when we actually got a fresh one.
         ...(appleRefreshToken ? { appleRefreshToken } : {}),
       },
@@ -909,7 +946,14 @@ export const unlinkApple = async (req: Request, res: Response) => {
 
     await prisma.user.update({
       where: { id: userId },
-      data: { appleId: null, appleRefreshToken: null },
+      data: {
+        appleId: null,
+        appleRefreshToken: null,
+        appleEmail: null,
+        // Mark deliberate unlink so a later logged-out Apple sign-in won't
+        // silently re-link by matching email.
+        appleUnlinkedAt: new Date(),
+      },
     });
 
     // Best-effort revoke (never blocks) — removes the app from Apple ID settings.
@@ -921,6 +965,133 @@ export const unlinkApple = async (req: Request, res: Response) => {
   } catch (error) {
     console.log(error);
     return res.status(500).json({ success: false, message: 'Failed to unlink Apple account' });
+  }
+};
+
+/**
+ * Mobile Google sign-in. The native SDK verifies with Google on-device and hands
+ * the app an ID token; we verify it here and delegate to the shared
+ * `handleSocialSignIn`. Mirror of `appleLogin`, minus the refresh-token exchange
+ * (Google needs no app-side revocation on delete).
+ */
+export const googleLogin = async (
+  req: Request<{}, {}, { idToken?: string; ipAddress?: string; userAgent?: string }>,
+  res: Response,
+) => {
+  const { idToken, ipAddress, userAgent } = req.body;
+
+  if (!idToken) {
+    return res.status(400).json({ success: false, message: 'Missing Google ID token' });
+  }
+
+  try {
+    const { sub, email, emailVerified, name } = await verifyGoogleIdToken(idToken);
+
+    return await handleSocialSignIn({
+      provider: 'google',
+      providerId: sub,
+      email,
+      emailVerified,
+      name,
+      ipAddress,
+      userAgent,
+      res,
+    });
+  } catch (error) {
+    console.log(error);
+    return res.status(401).json({ success: false, message: 'Invalid Google token' });
+  }
+};
+
+/**
+ * Link a Google account to the CURRENTLY authenticated user (Connected Accounts
+ * settings). Mirror of `linkApple`: verifies the Google identity, refuses if that
+ * googleId already belongs to a different account, then attaches it to req.userId.
+ */
+export const linkGoogle = async (req: Request<{}, {}, { idToken?: string }>, res: Response) => {
+  const userId = req.userId;
+  if (!userId) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  const { idToken } = req.body;
+  if (!idToken) {
+    return res.status(400).json({ success: false, message: 'Missing Google ID token' });
+  }
+
+  try {
+    const { sub, email } = await verifyGoogleIdToken(idToken);
+
+    // Reject if this Google identity is already linked to someone else.
+    const existing = await prisma.user.findFirst({ where: { googleId: sub } });
+    if (existing && existing.id !== userId) {
+      return res
+        .status(409)
+        .json({ success: false, message: 'This Google account is already linked to another user.' });
+    }
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        googleId: sub,
+        // Store the real linked email so settings shows it, and clear the
+        // unlink flag — this is a deliberate (re)link.
+        googleEmail: email?.toLowerCase() ?? null,
+        googleUnlinkedAt: null,
+      },
+    });
+
+    return res.status(200).json({ success: true, message: 'Google account linked' });
+  } catch (error) {
+    console.log(error);
+    return res.status(401).json({ success: false, message: 'Invalid Google token' });
+  }
+};
+
+/**
+ * Unlink the Google account from the current user. Blocks if Google is the user's
+ * ONLY sign-in method (no password and no Apple) to avoid lockout. No token
+ * revocation — Google (unlike Apple) requires none.
+ */
+export const unlinkGoogle = async (req: Request, res: Response) => {
+  const userId = req.userId;
+  if (!userId) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  try {
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+    if (!user.googleId) {
+      return res.status(400).json({ success: false, message: 'Google account is not linked' });
+    }
+
+    // Prevent lockout: Google can only be removed if the user has another way in.
+    const hasOtherLogin = Boolean(user.password) || Boolean(user.appleId);
+    if (!hasOtherLogin) {
+      return res.status(400).json({
+        success: false,
+        message: 'Google is your only sign-in method. Set a password or link another account first.',
+      });
+    }
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        googleId: null,
+        googleEmail: null,
+        // Mark the deliberate unlink so a later logged-out Google sign-in won't
+        // silently re-link this account by matching email.
+        googleUnlinkedAt: new Date(),
+      },
+    });
+
+    return res.status(200).json({ success: true, message: 'Google account unlinked' });
+  } catch (error) {
+    console.log(error);
+    return res.status(500).json({ success: false, message: 'Failed to unlink Google account' });
   }
 };
 
