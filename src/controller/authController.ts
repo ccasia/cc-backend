@@ -1262,13 +1262,10 @@ export const getprofile = async (req: Request, res: Response) => {
         isPasswordExist: Boolean(user.password),
         isInstagramConnected: !!user.creator?.instagram,
         isTiktokConnected: !!user.creator?.tiktok,
-        // Connected-accounts settings: whether each social provider is linked.
-        // We don't store a per-provider email, so surface the account email as
-        // the linked address (correct for the common sign-up-with-provider case).
         isAppleLinked: Boolean(user.appleId),
         isGoogleLinked: Boolean(user.googleId),
-        appleEmail: user.appleId ? user.email : null,
-        googleEmail: user.googleId ? user.email : null,
+        appleEmail: user.appleId ? user.appleEmail || user.email : null,
+        googleEmail: user.googleId ? user.googleEmail || user.email : null,
       },
       ...((user.role === 'superadmin' ||
         (user.role === 'admin' && user?.admin?.role?.name.toLowerCase() === 'finance')) && {

@@ -10,6 +10,9 @@ import {
   appleLogin,
   linkApple,
   unlinkApple,
+  googleLogin,
+  linkGoogle,
+  unlinkGoogle,
   completeOnboarding,
 } from '@controllers/mobile/authController';
 import { authenticate } from '@middlewares/authenticate';
@@ -32,6 +35,12 @@ authRoute.post('/apple', appleLogin);
 authRoute.post('/apple/link', authenticate, linkApple);
 
 authRoute.post('/apple/unlink', authenticate, unlinkApple);
+
+authRoute.post('/google', googleLogin);
+
+authRoute.post('/google/link', authenticate, linkGoogle);
+
+authRoute.post('/google/unlink', authenticate, unlinkGoogle);
 
 authRoute.post('/complete-onboarding', authenticate, completeOnboarding);
 
