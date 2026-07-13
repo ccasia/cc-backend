@@ -54,6 +54,25 @@ export const detectPlatformFromUrl = (url: string): string | null => {
   return null;
 };
 
+//Validate a creator username/handle (not a URL - e.g. rejects pasted share links with query strings)
+export const validateUsername = (username: string): { isValid: boolean; reason?: string } => {
+  if (!username || !username.trim()) {
+    return { isValid: false, reason: 'Username is required' };
+  }
+
+  if (!/^@?[A-Za-z0-9_.]+$/.test(username.trim())) {
+    return {
+      isValid: false,
+      reason: 'Username can only contain letters, numbers, periods and underscores (paste a plain handle, not a share link)',
+    };
+  }
+
+  return { isValid: true };
+};
+
+//Strip a leading '@' from a handle
+export const sanitizeUsername = (username: string): string => username.trim().replace(/^@/, '');
+
 //Validate URL format
 export const validateUrl = (url: string, expectedPlatform?: string): { isValid: boolean; reason?: string } => {
   if (!url) {
@@ -111,7 +130,7 @@ export const createManualCreatorEntry = async (input: CreateManualCreatorInput) 
     data: {
       campaignId,
       creatorName,
-      creatorUsername,
+      creatorUsername: sanitizeUsername(creatorUsername),
       platform,
       postUrl: postUrl || null,
       views,
@@ -190,6 +209,9 @@ export const updateManualCreatorEntry = async (
     },
     data: {
       ...data,
+      ...(data.creatorUsername !== undefined && {
+        creatorUsername: sanitizeUsername(data.creatorUsername),
+      }),
       ...(engagementRate !== undefined && { engagementRate }),
     },
   });
