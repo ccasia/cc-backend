@@ -43,6 +43,14 @@ const normalizePlatform = (platform?: string | null): 'instagram' | 'tiktok' | u
   return undefined;
 };
 
+// Pitch.followerCount is the count the admin recorded when sourcing the creator. It is
+// stored as free text, and it is what the campaign agreed to — not the creator's media kit.
+const parsePitchFollowerCount = (followerCount?: string | null): number | null => {
+  const digits = String(followerCount ?? '').replace(/\D/g, '');
+  const parsed = Number.parseInt(digits, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+};
+
 // Utility function to map submission types to entities
 const getEntityFromSubmissionType = (submissionType: string, userRole?: 'admin' | 'client' | 'creator') => {
   const baseEntity = (() => {
@@ -198,8 +206,12 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
       const pitchPlatform = normalizePlatform(pitch.selectedPlatform);
       if (pitch.campaign.isCreditTier) {
         try {
-          const { calculateCreatorTier } = require('@services/creditTierService');
-          const { tier } = await calculateCreatorTier(pitch.userId, pitchPlatform);
+          const { resolveAgreedTier } = require('@services/creditTierService');
+          const { tier } = await resolveAgreedTier(
+            pitch.userId,
+            pitchPlatform,
+            parsePitchFollowerCount(pitch.followerCount),
+          );
           if (tier) {
             creditPerVideo = tier.creditsPerVideo;
             creditTierId = tier.id;
@@ -686,8 +698,12 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
     const pitchPlatform = normalizePlatform(pitch.selectedPlatform);
     if (pitch.campaign.isCreditTier) {
       try {
-        const { calculateCreatorTier } = require('@services/creditTierService');
-        const { tier } = await calculateCreatorTier(pitch.userId, pitchPlatform);
+        const { resolveAgreedTier } = require('@services/creditTierService');
+        const { tier } = await resolveAgreedTier(
+          pitch.userId,
+          pitchPlatform,
+          parsePitchFollowerCount(pitch.followerCount),
+        );
         if (tier) {
           creditPerVideo = tier.creditsPerVideo;
           creditTierId = tier.id;

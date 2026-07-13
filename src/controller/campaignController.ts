@@ -114,7 +114,31 @@ const emitCreatorCampaignMembershipUpdated = ({
   io.to(campaignId).emit(CREATOR_CAMPAIGN_MEMBERSHIP_UPDATED_EVENT, payload);
 };
 
-const normalizePlatform = (platform?: string): SocialPlatform => (platform === 'tiktok' ? 'tiktok' : 'instagram');
+// Returns undefined for an unknown/absent platform. Never guess a platform here:
+// a missing value must fall back to a stored snapshot, not silently become Instagram.
+const normalizePlatform = (platform?: string | null): SocialPlatform | undefined => {
+  if (platform === 'tiktok') return 'tiktok';
+  if (platform === 'instagram') return 'instagram';
+  return undefined;
+};
+
+// Picks the first platform that was actually recorded, in order of authority:
+// what the admin just submitted, then the campaign snapshot, then the pitch.
+const resolvePlatform = (...candidates: (string | null | undefined)[]): SocialPlatform =>
+  candidates.reduce<SocialPlatform | undefined>((found, c) => found ?? normalizePlatform(c), undefined) ?? 'instagram';
+
+// The follower count this campaign agreed for the creator. Pitch.followerCount is free text
+// holding what the admin recorded when sourcing them, and for creators shortlisted before the
+// shortlist snapshot carried a count it is the only place that number survives.
+const getAgreedFollowerCount = async (userId: string, campaignId: string): Promise<number | null> => {
+  const pitch = await prisma.pitch.findFirst({
+    where: { userId, campaignId },
+    select: { followerCount: true },
+  });
+
+  const parsed = Number.parseInt(String(pitch?.followerCount ?? '').replace(/\D/g, ''), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+};
 
 const getFollowerForPlatform = (creator: any, platform: SocialPlatform): number => {
   const instagramFollowers = creator?.instagramUser?.followers_count || 0;
@@ -7179,7 +7203,7 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
       selectedPlatform,
       followerCount,
     } = JSON.parse(req.body.data);
-    const normalizedPlatform = normalizePlatform(selectedPlatform);
+    const requestedPlatform = normalizePlatform(selectedPlatform);
 
     console.log('Received update data:', { paymentAmount, currency, campaignId, agreementId, isNew, credits });
 
@@ -7248,6 +7272,10 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
       },
     });
 
+    // Keep the platform the campaign already agreed on when the request omits one,
+    // so an edit that only touches the amount cannot flip the creator's platform.
+    const normalizedPlatform = resolvePlatform(requestedPlatform, currentShortlisted?.selectedPlatform);
+
     // Get admin info for logging
     const adminId = req.userId;
     const admin = await prisma.user.findUnique({
@@ -7279,11 +7307,15 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
     }
 
     if (isCreditTierCampaign && !isGuestCreator && newVideoCount !== null && newVideoCount > 0) {
-      const { calculateCreatorCreditCost } = require('@services/creditTierService');
+      const { resolveAgreedTier } = require('@services/creditTierService');
       try {
-        const creditCost = await calculateCreatorCreditCost(creator.id, newVideoCount, normalizedPlatform);
-        creditPerVideo = creditCost.creditPerVideo;
-        tierSnapshot = creditCost.tier;
+        const agreedFollowerCount =
+          parsedFollowerCount ??
+          currentShortlisted?.followerCount ??
+          (await getAgreedFollowerCount(creator.id, campaignId));
+        const { tier } = await resolveAgreedTier(creator.id, normalizedPlatform, agreedFollowerCount);
+        creditPerVideo = tier?.creditsPerVideo ?? null;
+        tierSnapshot = tier;
       } catch (error: any) {
         console.warn(
           `Credit tier calculation failed for creator ${creator.id}, proceeding without tier data:`,
@@ -7592,7 +7624,7 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
 
 export const sendAgreement = async (req: Request, res: Response) => {
   const { user, id: agreementId, campaignId, isNew, credits, selectedPlatform, followerCount } = req.body;
-  const normalizedPlatform = normalizePlatform(selectedPlatform);
+  const requestedPlatform = normalizePlatform(selectedPlatform);
   const parsedFollowerCount = followerCount ? Math.floor(Number(followerCount)) : null;
 
   const adminId = req.userId;
@@ -7656,6 +7688,10 @@ export const sendAgreement = async (req: Request, res: Response) => {
       },
     });
 
+    // Fall back to the platform already agreed for this campaign rather than guessing,
+    // otherwise a linked creator with no submitted platform silently becomes Instagram.
+    let normalizedPlatform = resolvePlatform(requestedPlatform, shortlistedCreator?.selectedPlatform);
+
     // Pitch-only flow (e.g. external approver) can leave APPROVED pitches without a shortlist row.
     // Client approval path creates ShortListedCreator; mirror that here so sendAgreement can run.
     if (!shortlistedCreator) {
@@ -7690,18 +7726,20 @@ export const sendAgreement = async (req: Request, res: Response) => {
         return res.status(404).json({ message: 'This creator is not shortlisted.' });
       }
 
+      normalizedPlatform = resolvePlatform(requestedPlatform, pitchForUser.selectedPlatform);
+
       let creditPerVideo: number | null = null;
       let creditTierId: string | null = null;
       if (campMeta.isCreditTier) {
         try {
-          const { calculateCreatorTier } = require('@services/creditTierService');
-          const { tier } = await calculateCreatorTier(isUserExist.id, normalizedPlatform);
+          const { resolveAgreedTier } = require('@services/creditTierService');
+          const { tier } = await resolveAgreedTier(isUserExist.id, normalizedPlatform, parsedFollowerCount);
           if (tier) {
             creditPerVideo = tier.creditsPerVideo;
             creditTierId = tier.id;
           }
         } catch (tierErr) {
-          console.log('calculateCreatorTier in sendAgreement shortlist backfill:', tierErr);
+          console.log('resolveAgreedTier in sendAgreement shortlist backfill:', tierErr);
         }
       }
 
@@ -7884,13 +7922,30 @@ export const sendAgreement = async (req: Request, res: Response) => {
 
       // Calculate credits based on campaign type
       if (isCreditTierCampaign) {
-        // Credit Tier Campaign: Calculate credits based on creator's tier
-        const { calculateCreatorCreditCost } = require('@services/creditTierService');
+        // Credit Tier Campaign: charge from the tier the admin is agreeing to right now.
+        // Deriving it from live socials instead would let a creator's media kit inflate the
+        // cost above the tier the campaign was budgeted with, draining its credits.
+        const { resolveAgreedTier } = require('@services/creditTierService');
         try {
-          const creditCost = await calculateCreatorCreditCost(isUserExist.id, videoCount, normalizedPlatform);
-          creditsToAssign = creditCost.totalCredits;
-          creditPerVideo = creditCost.creditPerVideo;
-          tierSnapshot = creditCost.tier;
+          const agreedFollowerCount =
+            parsedFollowerCount ??
+            shortlistedCreator.followerCount ??
+            (await getAgreedFollowerCount(isUserExist.id, campaignId));
+          const { tier, followerCount: resolvedFollowerCount } = await resolveAgreedTier(
+            isUserExist.id,
+            normalizedPlatform,
+            agreedFollowerCount,
+          );
+          if (!tier) {
+            throw new Error(
+              resolvedFollowerCount === 0
+                ? 'Creator does not have follower data. Please connect media kit or enter follower count manually.'
+                : "No credit tier found for this creator's follower count.",
+            );
+          }
+          creditsToAssign = tier.creditsPerVideo * videoCount;
+          creditPerVideo = tier.creditsPerVideo;
+          tierSnapshot = tier;
         } catch (error: any) {
           console.warn(
             `Credit tier calculation failed for creator ${isUserExist.id}, falling back to 1:1 credits:`,
@@ -11392,7 +11447,8 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
       for (const creator of creators) {
         const user = creatorData.find((u) => u.id === creator.id);
         if (!user) continue;
-        const selectedPlatform = normalizePlatform(creator.selectedPlatform);
+        // The shortlist form requires the admin to pick a platform, so this never falls back.
+        const selectedPlatform = resolvePlatform(creator.selectedPlatform);
         let resolvedFollowerCount = 0;
 
         console.log(`Processing creator: ${user.name} (${user.id})`);
@@ -12337,7 +12393,8 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
       for (const guest of guestCreators) {
         // give guest a userId
         const { userId } = await handleGuestForShortListing(guest, tx);
-        const selectedPlatform = normalizePlatform(guest.selectedPlatform);
+        // The Add Non-Platform Creator modal always submits a platform.
+        const selectedPlatform = resolvePlatform(guest.selectedPlatform);
 
         // Update guest creator's manualFollowerCount and credit tier if followerCount provided
         if (guest.followerCount) {

@@ -134,7 +134,15 @@ export const swapGuestWithPlatformCreator = async (req: Request, res: Response) 
         include: { creditTier: true },
       });
 
-      // Store guest data to transfer - prioritize shortlist data, fallback to pitch data
+      // Pitch.followerCount is free text; it holds the count the admin typed when sourcing.
+      const guestFollowerDigits = String(guestPitch?.followerCount ?? '').replace(/\D/g, '');
+      const parsedGuestFollowerCount = Number.parseInt(guestFollowerDigits, 10);
+      const guestFollowerCount =
+        Number.isFinite(parsedGuestFollowerCount) && parsedGuestFollowerCount > 0 ? parsedGuestFollowerCount : null;
+
+      // Store guest data to transfer - prioritize shortlist data, fallback to pitch data.
+      // selectedPlatform and followerCount are the admin's sourcing decision for this campaign;
+      // losing them here is what lets the agreement fall back to the creator's own media kit.
       const transferData = {
         ugcVideos: guestShortlist?.ugcVideos ?? guestPitch?.ugcCredits ?? null,
         amount: guestShortlist?.amount ?? guestPitch?.amount ?? null,
@@ -146,6 +154,8 @@ export const swapGuestWithPlatformCreator = async (req: Request, res: Response) 
         shortlisted_date: guestShortlist?.shortlisted_date ?? new Date(),
         creditTierId: guestShortlist?.creditTierId ?? guestCreator?.creditTierId ?? null,
         creditPerVideo: guestShortlist?.creditPerVideo ?? guestCreator?.creditTier?.creditsPerVideo ?? null,
+        selectedPlatform: guestShortlist?.selectedPlatform ?? guestPitch?.selectedPlatform ?? null,
+        followerCount: guestShortlist?.followerCount ?? guestFollowerCount,
       };
 
       // Transfer guest creator's profileLink to platform creator
@@ -159,25 +169,29 @@ export const swapGuestWithPlatformCreator = async (req: Request, res: Response) 
         console.log(`[SWAP] Transferred guest profile link to platform creator: ${guestUser.creator.profileLink}`);
       }
 
-      // Copy guest's tier to the platform creator so it shows up across the app, not just
-      // in this campaign. Skip if they already have a tier, since their real one is better
-      // than the admin's manual guess.
-      if (platformUser.creator && !platformUser.creator.creditTierId && guestCreator?.creditTierId) {
-        const followerCountToCopy =
-          (platformUser.creator.manualFollowerCount ?? 0) > 0
-            ? platformUser.creator.manualFollowerCount
-            : guestCreator.manualFollowerCount;
-        await tx.creator.update({
-          where: { id: platformUser.creator.id },
-          data: {
-            creditTierId: guestCreator.creditTierId,
-            tierUpdatedAt: new Date(),
-            ...(followerCountToCopy != null && { manualFollowerCount: followerCountToCopy }),
-          },
-        });
-        console.log(
-          `[SWAP] Transferred guest tier (${guestCreator.creditTier?.name ?? guestCreator.creditTierId}) and follower count (${followerCountToCopy}) to platform creator`,
-        );
+      // Carry the follower count the admin sourced onto the platform creator. It is recorded
+      // per platform, so copy the platform-specific fields - the legacy manualFollowerCount is
+      // not what the guest shortlist writes.
+      if (platformUser.creator && guestCreator) {
+        const guestPlatform = guestShortlist?.selectedPlatform ?? guestPitch?.selectedPlatform;
+        const manualCount =
+          guestPlatform === 'tiktok'
+            ? guestCreator.manualTiktokFollowerCount
+            : guestCreator.manualInstagramFollowerCount;
+        const followerCountToCopy = (manualCount ?? 0) > 0 ? manualCount : guestFollowerCount;
+
+        if (followerCountToCopy != null && followerCountToCopy > 0) {
+          await tx.creator.update({
+            where: { id: platformUser.creator.id },
+            data:
+              guestPlatform === 'tiktok'
+                ? { manualTiktokFollowerCount: followerCountToCopy }
+                : { manualInstagramFollowerCount: followerCountToCopy },
+          });
+          console.log(
+            `[SWAP] Transferred sourced ${guestPlatform ?? 'instagram'} follower count (${followerCountToCopy}) to platform creator`,
+          );
+        }
       }
 
       // 2. Delete old shortlist entry for guest (if exists)
@@ -230,6 +244,7 @@ export const swapGuestWithPlatformCreator = async (req: Request, res: Response) 
               agreementTemplateId: guestPitch.agreementTemplateId,
               followerCount: guestPitch.followerCount,
               engagementRate: guestPitch.engagementRate,
+              selectedPlatform: guestPitch.selectedPlatform,
             },
           });
           console.log(`[SWAP] Updated existing platform pitch with guest data`);
@@ -249,6 +264,7 @@ export const swapGuestWithPlatformCreator = async (req: Request, res: Response) 
               agreementTemplateId: guestPitch.agreementTemplateId,
               followerCount: guestPitch.followerCount,
               engagementRate: guestPitch.engagementRate,
+              selectedPlatform: guestPitch.selectedPlatform,
             },
           });
           console.log(`[SWAP] Created new platform pitch with guest data`);
