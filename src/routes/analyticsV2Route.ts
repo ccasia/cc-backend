@@ -23,6 +23,7 @@ import {
   getAvgSubmissionResponseDetails,
   getClientRejectionRate,
   getCreditsPerCS,
+  getCSMWorkload,
   getRejectionReasons,
   getRequireChangesRate,
   getTopShortlistedCreators,
@@ -36,6 +37,7 @@ import {
 } from '@controllers/analyticsV2Controller';
 import { authenticate } from '@middlewares/authenticate';
 import { isSuperAdmin } from '@middlewares/onlySuperadmin';
+import { isSalesAndMarketing } from '@middlewares/isSalesAndMarketing';
 
 const router = Router();
 
@@ -62,6 +64,7 @@ router.get('/avg-submission-response', authenticate, isSuperAdmin, getAvgSubmiss
 router.get('/avg-submission-response/details', authenticate, isSuperAdmin, getAvgSubmissionResponseDetails);
 router.get('/client-rejection-rate', authenticate, isSuperAdmin, getClientRejectionRate);
 router.get('/credits-per-cs', authenticate, isSuperAdmin, getCreditsPerCS);
+router.get('/csm-workload', authenticate, isSalesAndMarketing, getCSMWorkload);
 router.get('/rejection-reasons', authenticate, isSuperAdmin, getRejectionReasons);
 router.get('/require-changes-rate', authenticate, isSuperAdmin, getRequireChangesRate);
 router.get('/top-shortlisted-creators', authenticate, isSuperAdmin, getTopShortlistedCreators);

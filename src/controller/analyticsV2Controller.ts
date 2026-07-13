@@ -26,6 +26,7 @@ import {
   getAvgSubmissionResponseDetails as getAvgSubmissionResponseDetailsData,
   getClientRejectionRateData,
   getCreditsPerCSData,
+  getCSMWorkloadData,
   getRejectionReasonsData,
   getRequireChangesRateData,
   getTopShortlistedCreatorsData,
@@ -475,6 +476,20 @@ export const getCreditsPerCS = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Error fetching credits per CS data:', error);
     return res.status(500).json({ success: false, message: 'Failed to fetch credits per CS data' });
+  }
+};
+
+export const getCSMWorkload = async (req: Request, res: Response) => {
+  try {
+    const parsed = parseOptionalDateRange(req);
+    if ('error' in parsed) return res.status(parsed.error.status).json(parsed.error.body);
+    const { startDate, endDate } = parsed;
+
+    const data = await getCSMWorkloadData(startDate, endDate);
+    return res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    console.error('Error fetching CSM workload data:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch CSM workload data' });
   }
 };
 
