@@ -12807,9 +12807,9 @@ export const syncCampaignCredits = async (req: Request, res: Response) => {
           },
         },
         creatorAgreement: {
+          where: { isSent: true },
           select: {
             userId: true,
-            isSent: true,
           },
         },
       },
@@ -12819,22 +12819,40 @@ export const syncCampaignCredits = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Campaign not found' });
     }
 
-    // Calculate utilized credits: sum of ugcVideos for shortlisted non-guest creators with sent agreements
+    const isV4Campaign = campaign.submissionVersion === 'v4';
+    const sentAgreementUserIds = new Set(campaign.creatorAgreement.map((agreement) => agreement.userId));
+
+    // Non-v4: credits are only actually utilized once a posting is approved (see deductCredits)
+    let approvedUserIds = new Set<string>();
+    if (!isV4Campaign) {
+      const approvedSubmissions = await prisma.submission.findMany({
+        where: { campaignId, status: 'APPROVED' },
+        select: { userId: true },
+        distinct: ['userId'],
+      });
+      approvedUserIds = new Set(approvedSubmissions.map((submission) => submission.userId));
+    }
+
+    // Calculate utilized credits for shortlisted non-guest creators:
+    // - v4: agreement sent (submissions/credits are utilized immediately on send)
+    // - non-v4: submission approved (credits are only utilized once a posting is approved)
     // For credit tier campaigns, multiply ugcVideos by creditPerVideo
     const creditsUtilized = campaign.shortlisted.reduce((total, creator) => {
       const isGuest = creator.user?.creator?.isGuest === true;
-      // const hasAgreementSent = creator.userId && sentAgreementUserIds.has(creator.userId);
+      if (isGuest) return total;
 
-      if (!isGuest) {
-        const videos = creator.ugcVideos || 0;
-        // For credit tier campaigns, multiply by creditPerVideo
-        if (campaign.isCreditTier) {
-          const perVideo = creator.creditPerVideo || 1;
-          return total + videos * perVideo;
-        }
-        return total + videos;
+      const qualifies = isV4Campaign
+        ? Boolean(creator.userId && sentAgreementUserIds.has(creator.userId))
+        : Boolean(creator.userId && approvedUserIds.has(creator.userId));
+
+      if (!qualifies) return total;
+
+      const videos = creator.ugcVideos || 0;
+      if (campaign.isCreditTier) {
+        const perVideo = creator.creditPerVideo || 1;
+        return total + videos * perVideo;
       }
-      return total;
+      return total + videos;
     }, 0);
 
     // Calculate pending credits
