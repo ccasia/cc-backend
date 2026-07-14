@@ -8104,13 +8104,13 @@ export const sendAgreement = async (req: Request, res: Response) => {
         .filter((agreementRecord) => agreementRecord.user?.creator?.isGuest !== true)
         .map((agreementRecord) => agreementRecord.userId);
 
-      // Calculate total credits assigned based on campaign type
-      let totalAssigned = 0;
-      if (sentNonGuestUserIds.length) {
+      // Sum credits (ugcVideos, or ugcVideos * creditPerVideo for tier campaigns) for a set of creators
+      const calcAssignedCredits = async (userIds: string[]) => {
+        if (!userIds.length) return 0;
         const shortlistedForCredits = await prisma.shortListedCreator.findMany({
           where: {
             campaignId,
-            userId: { in: sentNonGuestUserIds },
+            userId: { in: userIds },
             ugcVideos: { gt: 0 },
           },
           select: {
@@ -8120,21 +8120,17 @@ export const sendAgreement = async (req: Request, res: Response) => {
         });
 
         if (isCreditTierCampaign) {
-          // For tier campaigns: sum (ugcVideos * creditPerVideo)
-          totalAssigned = shortlistedForCredits.reduce((sum, item) => {
+          return shortlistedForCredits.reduce((sum, item) => {
             const videos = Number(item.ugcVideos || 0);
             const perVideo = Number(item.creditPerVideo || 1);
             return sum + videos * perVideo;
           }, 0);
-        } else {
-          // For non-tier campaigns: sum ugcVideos directly (1 credit = 1 video)
-          totalAssigned = shortlistedForCredits.reduce((sum, item) => sum + Number(item.ugcVideos || 0), 0);
         }
-      }
+        return shortlistedForCredits.reduce((sum, item) => sum + Number(item.ugcVideos || 0), 0);
+      };
 
-      // For v4 campaigns: mark credits as utilized immediately (submissions are created)
-      // For non-v4 campaigns: only track assigned credits, will be utilized when posting approved
       if (isV4Campaign) {
+        const totalAssigned = await calcAssignedCredits(sentNonGuestUserIds);
         await prisma.campaign.update({
           where: { id: campaignId },
           data: {
@@ -8143,7 +8139,21 @@ export const sendAgreement = async (req: Request, res: Response) => {
           },
         });
       } else {
-        // Non-v4: Only update pending (assigned but not yet utilized)
+        let approvedUserIds: string[] = [];
+        if (sentNonGuestUserIds.length) {
+          const approvedSubmissions = await prisma.submission.findMany({
+            where: {
+              campaignId,
+              userId: { in: sentNonGuestUserIds },
+              status: 'APPROVED',
+            },
+            select: { userId: true },
+            distinct: ['userId'],
+          });
+          approvedUserIds = approvedSubmissions.map((s) => s.userId);
+        }
+
+        const totalAssigned = await calcAssignedCredits(approvedUserIds);
         await prisma.campaign.update({
           where: { id: campaignId },
           data: {
