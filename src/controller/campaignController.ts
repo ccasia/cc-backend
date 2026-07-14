@@ -8104,6 +8104,23 @@ export const sendAgreement = async (req: Request, res: Response) => {
         .filter((agreementRecord) => agreementRecord.user?.creator?.isGuest !== true)
         .map((agreementRecord) => agreementRecord.userId);
 
+      // Only count creators whose agreement has actually been approved (AGREEMENT_FORM
+      // submission status === APPROVED) - not merely sent - for dashboard credit math.
+      let approvedAgreementUserIds: string[] = [];
+      if (sentNonGuestUserIds.length) {
+        const approvedAgreementSubmissions = await prisma.submission.findMany({
+          where: {
+            campaignId,
+            userId: { in: sentNonGuestUserIds },
+            status: 'APPROVED',
+            submissionType: { type: 'AGREEMENT_FORM' },
+          },
+          select: { userId: true },
+          distinct: ['userId'],
+        });
+        approvedAgreementUserIds = approvedAgreementSubmissions.map((s) => s.userId);
+      }
+
       // Sum credits (ugcVideos, or ugcVideos * creditPerVideo for tier campaigns) for a set of creators
       const calcAssignedCredits = async (userIds: string[]) => {
         if (!userIds.length) return 0;
@@ -8129,8 +8146,9 @@ export const sendAgreement = async (req: Request, res: Response) => {
         return shortlistedForCredits.reduce((sum, item) => sum + Number(item.ugcVideos || 0), 0);
       };
 
+      const totalAssigned = await calcAssignedCredits(approvedAgreementUserIds);
+
       if (isV4Campaign) {
-        const totalAssigned = await calcAssignedCredits(sentNonGuestUserIds);
         await prisma.campaign.update({
           where: { id: campaignId },
           data: {
@@ -8139,21 +8157,9 @@ export const sendAgreement = async (req: Request, res: Response) => {
           },
         });
       } else {
-        let approvedUserIds: string[] = [];
-        if (sentNonGuestUserIds.length) {
-          const approvedSubmissions = await prisma.submission.findMany({
-            where: {
-              campaignId,
-              userId: { in: sentNonGuestUserIds },
-              status: 'APPROVED',
-            },
-            select: { userId: true },
-            distinct: ['userId'],
-          });
-          approvedUserIds = approvedSubmissions.map((s) => s.userId);
-        }
-
-        const totalAssigned = await calcAssignedCredits(approvedUserIds);
+        // Non-v4: creditsUtilized is still only incremented by deductCredits on posting
+        // approval - only the "assigned" (pending) side of the dashboard math is gated
+        // on agreement approval here.
         await prisma.campaign.update({
           where: { id: campaignId },
           data: {
@@ -12783,11 +12789,12 @@ export const changeCampaignCredit = async (req: Request, res: Response) => {
 };
 
 /**
- * Syncs campaign credits based on shortlisted creators with sent agreements.
+ * Syncs campaign credits based on shortlisted creators with an approved agreement.
  * This recalculates creditsUtilized based on actual data and updates creditsPending accordingly.
  *
  * Formula:
- * - creditsUtilized = sum of ugcVideos for shortlisted creators (non-guest) whose agreements have been sent
+ * - creditsUtilized = sum of ugcVideos (or ugcVideos * creditPerVideo for credit-tier campaigns)
+ *   for shortlisted creators (non-guest) whose AGREEMENT_FORM submission is APPROVED
  * - creditsPending = campaignCredits - creditsUtilized
  */
 export const syncCampaignCredits = async (req: Request, res: Response) => {
@@ -12806,12 +12813,6 @@ export const syncCampaignCredits = async (req: Request, res: Response) => {
             },
           },
         },
-        creatorAgreement: {
-          where: { isSent: true },
-          select: {
-            userId: true,
-          },
-        },
       },
     });
 
@@ -12819,33 +12820,26 @@ export const syncCampaignCredits = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Campaign not found' });
     }
 
-    const isV4Campaign = campaign.submissionVersion === 'v4';
-    const sentAgreementUserIds = new Set(campaign.creatorAgreement.map((agreement) => agreement.userId));
+    // Only count creators whose agreement has actually been approved (AGREEMENT_FORM
+    // submission status === APPROVED) - not merely sent - for both v4 and non-v4 campaigns.
+    const approvedAgreementSubmissions = await prisma.submission.findMany({
+      where: {
+        campaignId,
+        status: 'APPROVED',
+        submissionType: { type: 'AGREEMENT_FORM' },
+      },
+      select: { userId: true },
+      distinct: ['userId'],
+    });
+    const approvedAgreementUserIds = new Set(approvedAgreementSubmissions.map((submission) => submission.userId));
 
-    // Non-v4: credits are only actually utilized once a posting is approved (see deductCredits)
-    let approvedUserIds = new Set<string>();
-    if (!isV4Campaign) {
-      const approvedSubmissions = await prisma.submission.findMany({
-        where: { campaignId, status: 'APPROVED' },
-        select: { userId: true },
-        distinct: ['userId'],
-      });
-      approvedUserIds = new Set(approvedSubmissions.map((submission) => submission.userId));
-    }
-
-    // Calculate utilized credits for shortlisted non-guest creators:
-    // - v4: agreement sent (submissions/credits are utilized immediately on send)
-    // - non-v4: submission approved (credits are only utilized once a posting is approved)
-    // For credit tier campaigns, multiply ugcVideos by creditPerVideo
+    // Calculate utilized credits for shortlisted non-guest creators with an approved agreement.
+    // For credit tier campaigns, multiply ugcVideos by creditPerVideo.
     const creditsUtilized = campaign.shortlisted.reduce((total, creator) => {
       const isGuest = creator.user?.creator?.isGuest === true;
       if (isGuest) return total;
 
-      const qualifies = isV4Campaign
-        ? Boolean(creator.userId && sentAgreementUserIds.has(creator.userId))
-        : Boolean(creator.userId && approvedUserIds.has(creator.userId));
-
-      if (!qualifies) return total;
+      if (!(creator.userId && approvedAgreementUserIds.has(creator.userId))) return total;
 
       const videos = creator.ugcVideos || 0;
       if (campaign.isCreditTier) {
