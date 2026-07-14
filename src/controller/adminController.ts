@@ -178,7 +178,7 @@ export const impersonateClient = async (req: Request<{}, {}, { email: string }>,
     });
 
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
-    if (user.role != 'client')
+    if (user.role !== 'client')
       return res.status(404).json({ success: false, message: 'Cannot impersonate other administrators' });
 
     const admin = await prisma.user.findUnique({ where: { id: sessionUserId } });

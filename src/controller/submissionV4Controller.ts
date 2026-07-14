@@ -15,7 +15,7 @@ import {
 } from '../utils/v4StatusUtils';
 import { checkAndCompleteV4Campaign } from '../service/submissionV4CompletionService';
 import { fetchCommentsForVideo, editCommentRecord } from '../service/submissionCommentService';
-import { clients, io } from '../server';
+
 import { saveNotification } from './notificationController';
 import { sendExpoPushToUser } from '../helper/expoPush';
 import { notificationDraft } from '@helper/notification';
@@ -24,6 +24,7 @@ import { extractAndStoreSubmissionUrls } from '@services/submissionUrlService';
 import { scheduleInitialInsightFetch } from '@services/insightFetchService';
 import { checkShouldShowNPS } from '@services/npsFeedbackService';
 import { selectCurrentAgreementSubmission } from '@utils/submissionAgreement';
+import { clients, getIo } from '../config/socket';
 
 const prisma = new PrismaClient();
 
@@ -280,10 +281,9 @@ export const createV4Submissions = async (req: Request, res: Response) => {
     const submissions = await getV4Submissions(campaignId, userId);
 
     // Emit socket event for real-time updates
-    const io = req.app.get('io');
 
-    if (io) {
-      io.to(campaignId).emit('v4:submissions:created', {
+    if (getIo()) {
+      getIo().to(campaignId).emit('v4:submissions:created', {
         campaignId,
         userId,
         count: result.count,
@@ -366,9 +366,8 @@ export const submitV4ContentController = async (req: Request, res: Response) => 
     });
 
     // Emit socket event for real-time updates
-    const io = req.app.get('io');
 
-    if (io) {
+    if (getIo()) {
       // Get campaign ID for socket room
       const submission = await prisma.submission.findUnique({
         where: { id: submissionId },
@@ -376,14 +375,16 @@ export const submitV4ContentController = async (req: Request, res: Response) => 
       });
 
       if (submission) {
-        io.to(submission.campaign.id).emit('v4:content:submitted', {
-          submissionId,
-          campaignId: submission.campaign.id,
-          hasVideo: videoUrls && videoUrls.length > 0,
-          hasPhotos: photoUrls && photoUrls.length > 0,
-          hasRawFootage: rawFootageUrls && rawFootageUrls.length > 0,
-          submittedAt: new Date().toISOString(),
-        });
+        getIo()
+          .to(submission.campaign.id)
+          .emit('v4:content:submitted', {
+            submissionId,
+            campaignId: submission.campaign.id,
+            hasVideo: videoUrls && videoUrls.length > 0,
+            hasPhotos: photoUrls && photoUrls.length > 0,
+            hasRawFootage: rawFootageUrls && rawFootageUrls.length > 0,
+            submittedAt: new Date().toISOString(),
+          });
       }
     }
 
@@ -631,9 +632,9 @@ export const approveV4Submission = async (req: Request, res: Response) => {
     });
 
     // Emit socket event for real-time updates
-    const io = req.app.get('io');
-    if (io) {
-      io.to(submission.campaign.id).emit('v4:submission:updated', {
+
+    if (getIo()) {
+      getIo().to(submission.campaign.id).emit('v4:submission:updated', {
         submissionId,
         userId: currentUserId,
         campaignId: submission.campaign.id,
@@ -668,7 +669,7 @@ export const approveV4Submission = async (req: Request, res: Response) => {
 
         const clientSocketId = clients.get(clientUserId);
         if (clientSocketId) {
-          io.to(clientSocketId).emit('notification', notification);
+          getIo().to(clientSocketId).emit('notification', notification);
         }
       }
     } else if (action === 'request_revision' || action === 'rejected') {
@@ -696,8 +697,8 @@ export const approveV4Submission = async (req: Request, res: Response) => {
       });
 
       const creatorSocketId = clients.get(creatorId);
-      if (io && creatorSocketId) {
-        io.to(creatorSocketId).emit('notification', notification);
+      if (getIo() && creatorSocketId) {
+        getIo().to(creatorSocketId).emit('notification', notification);
       }
     }
 
@@ -1004,20 +1005,21 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
     await prisma.$transaction(updates);
 
     // Emit socket event for real-time updates
-    const io = req.app.get('io');
 
-    if (io) {
-      io.to(submission.campaign.id).emit('v4:submission:updated', {
-        submissionId,
-        userId: clientId,
-        campaignId: submission.campaign.id,
-        newStatus: newSubmissionStatus,
-        action,
-        byClient: true,
-        updatedAt: new Date().toISOString(),
-        feedbackDeadline: deadline?.toISOString() || null,
-        feedbackSentByName: clientName,
-      });
+    if (getIo()) {
+      getIo()
+        .to(submission.campaign.id)
+        .emit('v4:submission:updated', {
+          submissionId,
+          userId: clientId,
+          campaignId: submission.campaign.id,
+          newStatus: newSubmissionStatus,
+          action,
+          byClient: true,
+          updatedAt: new Date().toISOString(),
+          feedbackDeadline: deadline?.toISOString() || null,
+          feedbackSentByName: clientName,
+        });
     }
 
     // Notifications for admins
@@ -1048,7 +1050,7 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
       const adminSocketId = clients.get(adminUserId);
 
       if (adminSocketId) {
-        io.to(adminSocketId).emit('notification', notification);
+        getIo().to(adminSocketId).emit('notification', notification);
       }
     }
 
@@ -1063,8 +1065,8 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
       });
 
       const creatorSocketId = clients.get(submission.userId);
-      if (io && creatorSocketId) {
-        io.to(creatorSocketId).emit('notification', creatorNotification);
+      if (getIo() && creatorSocketId) {
+        getIo().to(creatorSocketId).emit('notification', creatorNotification);
       }
     }
 
@@ -1462,8 +1464,8 @@ export const approvePostingLinkV4 = async (req: Request, res: Response) => {
     });
 
     // Emit socket event for real-time updates
-    const io = req.app.get('io');
-    if (io) {
+
+    if (getIo()) {
       // Get campaign ID for socket room
       const submissionWithCampaign = await prisma.submission.findUnique({
         where: { id: submissionId },
@@ -1472,22 +1474,26 @@ export const approvePostingLinkV4 = async (req: Request, res: Response) => {
 
       if (submissionWithCampaign) {
         // Emit submission update event
-        io.to(submissionWithCampaign.campaign.id).emit('v4:submission:updated', {
-          submissionId,
-          campaignId: submissionWithCampaign.campaign.id,
-          newStatus,
-          action: `posting_link_${action}`,
-          updatedAt: new Date().toISOString(),
-        });
+        getIo()
+          .to(submissionWithCampaign.campaign.id)
+          .emit('v4:submission:updated', {
+            submissionId,
+            campaignId: submissionWithCampaign.campaign.id,
+            newStatus,
+            action: `posting_link_${action}`,
+            updatedAt: new Date().toISOString(),
+          });
 
         // Emit campaign update event for analytics consistency with V3
-        io.to(submissionWithCampaign.campaign.id).emit('v4:campaign:updated', {
-          campaignId: submissionWithCampaign.campaign.id,
-          action: `posting_link_${action}`,
-          submissionId,
-          newStatus,
-          updatedAt: new Date().toISOString(),
-        });
+        getIo()
+          .to(submissionWithCampaign.campaign.id)
+          .emit('v4:campaign:updated', {
+            campaignId: submissionWithCampaign.campaign.id,
+            action: `posting_link_${action}`,
+            submissionId,
+            newStatus,
+            updatedAt: new Date().toISOString(),
+          });
       }
     }
 
@@ -3142,9 +3148,7 @@ export const updateSubmissionCaption = async (req: Request, res: Response) => {
     }
 
     if (!['PENDING_REVIEW', 'APPROVE_LINK'].includes(submission.status)) {
-      return res
-        .status(400)
-        .json({ message: 'Caption can only be edited while the submission is under review' });
+      return res.status(400).json({ message: 'Caption can only be edited while the submission is under review' });
     }
 
     const normalizedCaption = caption.trim();
@@ -3327,15 +3331,17 @@ export const createComment = async (req: Request, res: Response) => {
     // Emit socket event for real-time updates (including client drafts for client-to-client sync)
     const commentCampaignId = newComment.submission?.campaignId;
 
-    if (commentCampaignId && io) {
+    if (commentCampaignId && getIo()) {
       const eventName = parentId ? 'v4:comment:reply:added' : 'v4:comment:added';
-      io.to(commentCampaignId).emit(eventName, {
-        submissionId,
-        videoId,
-        campaignId: commentCampaignId,
-        comment: newComment,
-        ...(parentId ? { parentCommentId: parentId } : {}),
-      });
+      getIo()
+        .to(commentCampaignId)
+        .emit(eventName, {
+          submissionId,
+          videoId,
+          campaignId: commentCampaignId,
+          comment: newComment,
+          ...(parentId ? { parentCommentId: parentId } : {}),
+        });
     }
 
     // Notify the creator when an admin replies to a feedback thread. Replies are
@@ -3343,8 +3349,7 @@ export const createComment = async (req: Request, res: Response) => {
     // updated with a running count instead of inserting a new row, and the push
     // shares a per-campaign collapseId so the OS banner replaces rather than piles up.
     const creatorUserId = newComment.submission?.userId;
-    const isAdminReply =
-      !!parentId && (user.role === 'admin' || user.role === 'superadmin');
+    const isAdminReply = !!parentId && (user.role === 'admin' || user.role === 'superadmin');
 
     if (isAdminReply && commentCampaignId && creatorUserId && creatorUserId !== user.id) {
       try {
@@ -3391,8 +3396,8 @@ export const createComment = async (req: Request, res: Response) => {
           });
 
           const creatorSocketId = clients.get(creatorUserId);
-          if (io && creatorSocketId && updated) {
-            io.to(creatorSocketId).emit('notification', updated.notification);
+          if (getIo() && creatorSocketId && updated) {
+            getIo().to(creatorSocketId).emit('notification', updated.notification);
           }
 
           void sendExpoPushToUser(creatorUserId, {
@@ -3412,8 +3417,8 @@ export const createComment = async (req: Request, res: Response) => {
           });
 
           const creatorSocketId = clients.get(creatorUserId);
-          if (io && creatorSocketId) {
-            io.to(creatorSocketId).emit('notification', notification);
+          if (getIo() && creatorSocketId) {
+            getIo().to(creatorSocketId).emit('notification', notification);
           }
         }
       } catch (notifyError) {
@@ -3468,8 +3473,8 @@ export const toggleAgree = async (req: Request, res: Response) => {
     });
 
     const campaignId = comment.submission?.campaignId;
-    if (campaignId && io) {
-      io.to(campaignId).emit('v4:comment:agreed', {
+    if (campaignId && getIo()) {
+      getIo().to(campaignId).emit('v4:comment:agreed', {
         submissionId: comment.submissionId,
         videoId: comment.videoId,
         campaignId,
@@ -3525,8 +3530,8 @@ export const toggleResolve = async (req: Request, res: Response) => {
     });
 
     const campaignId = comment.submission?.campaignId;
-    if (campaignId && io) {
-      io.to(campaignId).emit('v4:comment:updated', {
+    if (campaignId && getIo()) {
+      getIo().to(campaignId).emit('v4:comment:updated', {
         submissionId: comment.submissionId,
         videoId: comment.videoId,
         campaignId,
@@ -3574,8 +3579,8 @@ export const toggleCreatorVisibility = async (req: Request, res: Response) => {
     });
 
     const campaignId = comment.submission?.campaignId;
-    if (campaignId && io) {
-      io.to(campaignId).emit('v4:comment:visibility:toggled', {
+    if (campaignId && getIo()) {
+      getIo().to(campaignId).emit('v4:comment:visibility:toggled', {
         submissionId: comment.submissionId,
         videoId: comment.videoId,
         campaignId,
@@ -3627,8 +3632,8 @@ export const updateComment = async (req: Request, res: Response) => {
     // campaignId is included from the service query
     const editCampaignId = (updatedComment as any).submission?.campaignId;
 
-    if (editCampaignId && io) {
-      io.to(editCampaignId).emit('v4:comment:updated', {
+    if (editCampaignId && getIo()) {
+      getIo().to(editCampaignId).emit('v4:comment:updated', {
         submissionId: comment.submissionId,
         videoId: comment.videoId,
         campaignId: editCampaignId,
@@ -3670,8 +3675,8 @@ export const deleteComment = async (req: Request, res: Response) => {
 
     await prisma.submissionComment.delete({ where: { id: commentId } });
 
-    if (deleteCampaignId && io) {
-      io.to(deleteCampaignId).emit('v4:comment:deleted', {
+    if (deleteCampaignId && getIo()) {
+      getIo().to(deleteCampaignId).emit('v4:comment:deleted', {
         commentId,
         submissionId: comment.submissionId,
         videoId: comment.videoId,
@@ -3716,8 +3721,8 @@ export const deleteCommentByClient = async (req: Request, res: Response) => {
 
     await prisma.submissionComment.delete({ where: { id: commentId } });
 
-    if (deleteCampaignId && io) {
-      io.to(deleteCampaignId).emit('v4:comment:deleted', {
+    if (deleteCampaignId && getIo()) {
+      getIo().to(deleteCampaignId).emit('v4:comment:deleted', {
         commentId,
         submissionId: comment.submissionId,
         videoId: comment.videoId,
@@ -3880,8 +3885,8 @@ export const sendVideoFeedbackToCreator = async (req: Request, res: Response) =>
     ]);
 
     // Socket: reuse existing v4:submission:updated event
-    if (io) {
-      io.to(submission.campaign.id).emit('v4:submission:updated', {
+    if (getIo()) {
+      getIo().to(submission.campaign.id).emit('v4:submission:updated', {
         submissionId,
         campaignId: submission.campaign.id,
         newStatus,
@@ -3902,8 +3907,8 @@ export const sendVideoFeedbackToCreator = async (req: Request, res: Response) =>
     });
 
     const creatorSocketId = clients.get(creatorId);
-    if (io && creatorSocketId) {
-      io.to(creatorSocketId).emit('notification', notification);
+    if (getIo() && creatorSocketId) {
+      getIo().to(creatorSocketId).emit('notification', notification);
     }
 
     console.log(`✅ V4 submission ${submissionId} feedback sent to creator by admin ${adminId}`);
@@ -4011,8 +4016,8 @@ export const sendVideoFeedbackToClient = async (req: Request, res: Response) => 
     ]);
 
     // Socket: reuse existing v4:submission:updated event
-    if (io) {
-      io.to(submission.campaign.id).emit('v4:submission:updated', {
+    if (getIo()) {
+      getIo().to(submission.campaign.id).emit('v4:submission:updated', {
         submissionId,
         campaignId: submission.campaign.id,
         newStatus,
@@ -4039,7 +4044,7 @@ export const sendVideoFeedbackToClient = async (req: Request, res: Response) => 
 
         const clientSocketId = clients.get(clientUserId);
         if (clientSocketId) {
-          io.to(clientSocketId).emit('notification', notification);
+          getIo().to(clientSocketId).emit('notification', notification);
         }
       }),
     );

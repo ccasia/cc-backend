@@ -1,13 +1,14 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import dayjs from 'dayjs';
-import { clients, io } from '../server';
+
 import { saveNotification } from './notificationController';
 import { notificationPitchForClientReview } from '@helper/notification';
 import {
   CREATOR_CAMPAIGN_MEMBERSHIP_UPDATED_EVENT,
   createCreatorCampaignMembershipUpdatedPayload,
 } from '@utils/campaignMembershipEvents';
+import { clients, getIo } from '../config/socket';
 
 const prisma = new PrismaClient();
 
@@ -31,10 +32,10 @@ const emitCreatorCampaignMembershipUpdated = ({
   const creatorSocketId = clients.get(userId);
 
   if (creatorSocketId) {
-    io.to(creatorSocketId).emit(CREATOR_CAMPAIGN_MEMBERSHIP_UPDATED_EVENT, payload);
+    getIo().to(creatorSocketId).emit(CREATOR_CAMPAIGN_MEMBERSHIP_UPDATED_EVENT, payload);
   }
 
-  io.to(campaignId).emit(CREATOR_CAMPAIGN_MEMBERSHIP_UPDATED_EVENT, payload);
+  getIo().to(campaignId).emit(CREATOR_CAMPAIGN_MEMBERSHIP_UPDATED_EVENT, payload);
 };
 
 const normalizePlatform = (platform?: string | null): 'instagram' | 'tiktok' | undefined => {
@@ -383,7 +384,7 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
 
         const clientSocketId = clients.get(clientUser.admin.userId);
         if (clientSocketId) {
-          io.to(clientSocketId).emit('notification', notification);
+          getIo().to(clientSocketId).emit('notification', notification);
         }
       }
 
@@ -400,7 +401,7 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
       console.log(adminComments ? `Comments: ${adminComments}` : 'No comments provided');
 
       // Emit to campaign room for real-time updates
-      io.to(pitch.campaignId).emit('v3:pitch:status-updated', {
+      getIo().to(pitch.campaignId).emit('v3:pitch:status-updated', {
         pitchId,
         campaignId: pitch.campaignId,
         newStatus: 'SENT_TO_CLIENT',
@@ -425,8 +426,8 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
 
       const creatorSocketId = clients.get(pitch.userId);
       if (creatorSocketId) {
-        io.to(creatorSocketId).emit('notification', creatorNotification);
-        io.to(creatorSocketId).emit('pitchUpdate');
+        getIo().to(creatorSocketId).emit('notification', creatorNotification);
+        getIo().to(creatorSocketId).emit('pitchUpdate');
       }
 
       // Log campaign activity for admin pitch approval
@@ -444,7 +445,7 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
       console.log(adminComments ? `Comments: ${adminComments}` : 'No comments provided');
 
       // Emit to campaign room for real-time updates
-      io.to(pitch.campaignId).emit('v3:pitch:status-updated', {
+      getIo().to(pitch.campaignId).emit('v3:pitch:status-updated', {
         pitchId,
         campaignId: pitch.campaignId,
         newStatus: 'APPROVED',
@@ -530,8 +531,8 @@ export const rejectPitchByAdmin = async (req: Request, res: Response) => {
 
     const socketId = clients.get(pitch.userId);
     if (socketId) {
-      io.to(socketId).emit('notification', notification);
-      io.to(socketId).emit('pitchUpdate');
+      getIo().to(socketId).emit('notification', notification);
+      getIo().to(socketId).emit('pitchUpdate');
     }
 
     // Fetch the updated pitch to return in response
@@ -555,7 +556,7 @@ export const rejectPitchByAdmin = async (req: Request, res: Response) => {
     console.log(`Pitch ${pitchId} rejected by admin, creator removed from campaign`);
 
     // Emit to campaign room for real-time updates
-    io.to(pitch.campaignId).emit('v3:pitch:status-updated', {
+    getIo().to(pitch.campaignId).emit('v3:pitch:status-updated', {
       pitchId,
       campaignId: pitch.campaignId,
       newStatus: 'REJECTED',
@@ -675,8 +676,8 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
       const creatorSocketId = clients.get(pitch.userId);
 
       if (creatorSocketId) {
-        io.to(creatorSocketId).emit('notification', creatorNotification);
-        io.to(creatorSocketId).emit('pitchUpdate');
+        getIo().to(creatorSocketId).emit('notification', creatorNotification);
+        getIo().to(creatorSocketId).emit('pitchUpdate');
       }
     }
 
@@ -885,7 +886,7 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
       const adminSocketId = clients.get(adminUser.admin.userId);
 
       if (adminSocketId) {
-        io.to(adminSocketId).emit('notification', notification);
+        getIo().to(adminSocketId).emit('notification', notification);
       }
     }
 
@@ -902,7 +903,7 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
     console.log(`Pitch ${pitchId} approved by client, status updated to APPROVED`);
 
     // Emit to campaign room for real-time updates
-    io.to(pitch.campaignId).emit('v3:pitch:status-updated', {
+    getIo().to(pitch.campaignId).emit('v3:pitch:status-updated', {
       pitchId,
       campaignId: pitch.campaignId,
       newStatus: 'APPROVED',
@@ -1020,7 +1021,7 @@ export const rejectPitchByClient = async (req: Request, res: Response) => {
     const creatorSocketId = clients.get(pitch.userId);
 
     if (creatorSocketId) {
-      io.to(creatorSocketId).emit('notification', creatorNotification);
+      getIo().to(creatorSocketId).emit('notification', creatorNotification);
     }
 
     // Create notification for admin
@@ -1041,7 +1042,7 @@ export const rejectPitchByClient = async (req: Request, res: Response) => {
       const adminSocketId = clients.get(adminUser.admin.userId);
 
       if (adminSocketId) {
-        io.to(adminSocketId).emit('notification', adminNotification);
+        getIo().to(adminSocketId).emit('notification', adminNotification);
       }
     }
 
@@ -1058,7 +1059,7 @@ export const rejectPitchByClient = async (req: Request, res: Response) => {
     console.log(`Pitch ${pitchId} rejected by client, creator removed from campaign`);
 
     // Emit to campaign room for real-time updates
-    io.to(pitch.campaignId).emit('v3:pitch:status-updated', {
+    getIo().to(pitch.campaignId).emit('v3:pitch:status-updated', {
       pitchId,
       campaignId: pitch.campaignId,
       newStatus: 'REJECTED',
@@ -1158,8 +1159,8 @@ export const withdrawCreatorFromCampaign = async (req: Request, res: Response) =
 
     const socketId = clients.get(pitch.userId);
     if (socketId) {
-      io.to(socketId).emit('notification', notification);
-      io.to(socketId).emit('pitchUpdate');
+      getIo().to(socketId).emit('notification', notification);
+      getIo().to(socketId).emit('pitchUpdate');
     }
 
     // Create campaign log
@@ -1175,7 +1176,7 @@ export const withdrawCreatorFromCampaign = async (req: Request, res: Response) =
     console.log(`Creator ${pitch.userId} withdrawn from campaign ${pitch.campaignId}`);
 
     // Emit to campaign room for real-time updates
-    io.to(pitch.campaignId).emit('v3:pitch:status-updated', {
+    getIo().to(pitch.campaignId).emit('v3:pitch:status-updated', {
       pitchId,
       campaignId: pitch.campaignId,
       newStatus: 'WITHDRAWN',
@@ -1323,7 +1324,7 @@ export const maybePitchByClient = async (req: Request, res: Response) => {
     console.log(`Pitch ${pitchId} set to maybe by client`);
 
     // Emit to campaign room for real-time updates
-    io.to(pitch.campaignId).emit('v3:pitch:status-updated', {
+    getIo().to(pitch.campaignId).emit('v3:pitch:status-updated', {
       pitchId,
       campaignId: pitch.campaignId,
       newStatus: 'MAYBE',
@@ -1397,8 +1398,8 @@ export const setPitchAgreement = async (req: Request, res: Response) => {
       },
     });
 
-    if (io) {
-      io.to(pitch.campaignId).emit('v3:pitch:outreach-updated', {
+    if (getIo()) {
+      getIo().to(pitch.campaignId).emit('v3:pitch:outreach-updated', {
         pitchId: updatedPitchAgreement.id,
         campaignId: pitch.campaignId,
         outreachStatus: updatedPitchAgreement.outreachStatus,
@@ -2600,9 +2601,9 @@ export const updateOutreachStatus = async (req: Request, res: Response) => {
     console.log(`Outreach status updated: Pitch ${pitchId} -> ${outreachStatus} by admin ${adminId}`);
 
     // Emit socket event for real-time updates
-    const io = req.app.get('io');
-    if (io) {
-      io.to(pitch.campaign.id).emit('v3:pitch:outreach-updated', {
+
+    if (getIo()) {
+      getIo().to(pitch.campaign.id).emit('v3:pitch:outreach-updated', {
         pitchId: updatedPitch.id,
         campaignId: pitch.campaign.id,
         outreachStatus: updatedPitch.outreachStatus,

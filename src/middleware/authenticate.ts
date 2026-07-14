@@ -34,7 +34,7 @@ export const authenticate = (req: Request, res: Response, next: NextFunction) =>
       req.authMethod = 'jwt';
       return next();
     } catch {
-      console.log('ASDASD');
+      console.log('Invalid or expired token');
       return res.status(401).json({ success: false, message: 'Invalid or expired token' });
     }
   }

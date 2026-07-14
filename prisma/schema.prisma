@@ -17,17 +17,17 @@ model User {
   emailVerificationId String?            @unique
   emailVerifcation    EmailVerification? @relation(fields: [emailVerificationId], references: [id])
 
-  createdAt               DateTime            @default(now())
-  name                    String?             @db.VarChar(255)
-  photoURL                String?             @db.VarChar(255)
-  country                 String?             @db.VarChar(100)
-  city                    String?             @db.VarChar(100)
-  phoneNumber             String?             @db.VarChar(100)
-  updatedAt               DateTime?           @updatedAt
-  status                  Status              @default(pending)
+  createdAt               DateTime              @default(now())
+  name                    String?               @db.VarChar(255)
+  photoURL                String?               @db.VarChar(255)
+  country                 String?               @db.VarChar(100)
+  city                    String?               @db.VarChar(100)
+  phoneNumber             String?               @db.VarChar(100)
+  updatedAt               DateTime?             @updatedAt
+  status                  Status                @default(pending)
   eventId                 String?
   role                    RoleEnum
-  photoBackgroundURL      String?             @db.VarChar(255)
+  photoBackgroundURL      String?               @db.VarChar(255)
   updateRefershToken      DateTime?
   xeroRefreshToken        String?
   admin                   Admin?
@@ -35,8 +35,8 @@ model User {
   agreementTemplate       AgreementTemplate[]
   Board                   Board?
   BookMarkCampaign        BookMarkCampaign[]
-  bookMarkCreator         BookMarkCreator[]   @relation("BookMarkCreatorOwner")
-  bookMarkedBy            BookMarkCreator[]   @relation("BookMarkCreatorTarget")
+  bookMarkCreator         BookMarkCreator[]     @relation("BookMarkCreatorOwner")
+  bookMarkedBy            BookMarkCreator[]     @relation("BookMarkCreatorTarget")
   bookMarkCreatorLists    BookMarkCreatorList[]
   campaignLogs            CampaignLog[]
   CampaignTaskAdmin       CampaignTaskAdmin[]
@@ -45,18 +45,18 @@ model User {
   feedback                Feedback[]
   commentAgreements       CommentAgreement[]
   submissionComments      SubmissionComment[]
-  forwardedComments       SubmissionComment[] @relation("ForwardedComments")
-  resolvedComments        SubmissionComment[] @relation("ResolvedComments")
+  forwardedComments       SubmissionComment[]   @relation("ForwardedComments")
+  resolvedComments        SubmissionComment[]   @relation("ResolvedComments")
   finance                 Finance?
-  invoice                 Invoice[]           @relation("CreatedBy")
-  sentMessages            Message[]           @relation("UserMessages")
+  invoice                 Invoice[]             @relation("CreatedBy")
+  sentMessages            Message[]             @relation("UserMessages")
   notifications           Notification[]
   paymentForm             PaymentForm?
   pitch                   Pitch[]
-  approvedPitches         Pitch[]             @relation("ApprovedByClient")
-  rejectedPitches         Pitch[]             @relation("RejectedByClient")
-  maybePitches            Pitch[]             @relation("MaybeByClient")
-  acceptedInviteByCreator Pitch[]             @relation("AcceptedInviteByCreator")
+  approvedPitches         Pitch[]               @relation("ApprovedByClient")
+  rejectedPitches         Pitch[]               @relation("RejectedByClient")
+  maybePitches            Pitch[]               @relation("MaybeByClient")
+  acceptedInviteByCreator Pitch[]               @relation("AcceptedInviteByCreator")
 
   resetPasswordToken ResetPasswordToken?
   seenMessages       SeenMessage[]
@@ -97,11 +97,12 @@ model User {
 
   twoFactorSecret String?
 
-  userFlow      UserFlow[]
-  activatedAt   DateTime?
-  passwordSetAt DateTime?
-  aiModel       AiModel?
-  refreshTokens RefreshToken[]
+  userFlow       UserFlow[]
+  activatedAt    DateTime?
+  passwordSetAt  DateTime?
+  aiModel        AiModel?
+  refreshTokens  RefreshToken[]
+  uploadSessions UploadSession[]
 }
 
 model RefreshToken {
@@ -798,9 +799,9 @@ model Campaign {
   editedByClientFields String[]             @default([])
 
   // Lost Deal tracking
-  lostAmount     Float?
-  lostCurrency   String?
-  lostReason     String?      @db.Text
+  lostAmount   Float?
+  lostCurrency String?
+  lostReason   String? @db.Text
 
   // Snapshot of the brief field values at the moment it was sent to the client
   clientBriefSnapshot Json?
@@ -814,6 +815,7 @@ model Campaign {
   completedAt DateTime?
 
   approvalRequests ApprovalRequest[]
+  uploadSessions   UploadSession[]
 }
 
 model BookMarkCampaign {
@@ -1277,6 +1279,7 @@ model Submission {
   captionHistory        CaptionHistory[]
   submissionPostingUrls SubmissionPostingUrl[]
   videoOfTheMonth       VideoOfTheMonth?
+  uploadSessions        UploadSession[]
 
   @@unique([userId, campaignId, submissionTypeId, contentOrder])
 }
@@ -1467,6 +1470,7 @@ model Video {
 
   feedbackRecords    Feedback[]
   submissionComments SubmissionComment[]
+  uploadSession      UploadSession?
 }
 
 model RawFootage {
@@ -2621,4 +2625,51 @@ model WhatsappMessage {
 enum TypeEnum {
   inbound
   outbound
+}
+
+model UploadSession {
+  id String @id @default(cuid())
+
+  // GCS resumable session
+  gcsSessionUri String? @db.Text // filled in after client reports the Location header
+  gcsObjectPath String // e.g. "raw/{userId}/{timestamp}-{filename}"
+
+  // Progress tracking
+  status        UploadStatus @default(INITIATED)
+  bytesTotal    BigInt?
+  bytesUploaded BigInt       @default(0)
+
+  // Ownership / association
+  userId       String
+  user         User        @relation(fields: [userId], references: [id])
+  campaignId   String?
+  campaign     Campaign?   @relation(fields: [campaignId], references: [id])
+  submissionId String?
+  submission   Submission? @relation(fields: [submissionId], references: [id])
+
+  // Link to final Video once compression completes
+  videoId String? @unique
+  video   Video?  @relation(fields: [videoId], references: [id])
+
+  // Lifecycle
+  expiresAt    DateTime
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  completedAt  DateTime?
+  failedAt     DateTime?
+  errorMessage String?
+
+  @@index([userId, status])
+  @@index([status, expiresAt])
+}
+
+enum UploadStatus {
+  INITIATED // signed URL generated, client hasn't started GCS handshake yet
+  UPLOADING // client is PUTting chunks to GCS
+  RAW_UPLOAD_COMPLETE // raw file fully landed in GCS
+  QUEUED_FOR_COMPRESSION // compression job enqueued
+  COMPRESSING // ffmpeg worker actively processing
+  COMPRESSION_FAILED
+  COMPLETED // compressed file uploaded, Video row created
+  FAILED
 }
