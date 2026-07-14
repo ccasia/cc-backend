@@ -14,6 +14,7 @@ import {
   approveBriefByClient as svcApproveBriefByClient,
   handoverBrief as svcHandoverBrief,
   assignCsmToBrief as svcAssignCsmToBrief,
+  finalizeOwnBrief as svcFinalizeOwnBrief,
   deleteBrief as svcDeleteBrief,
   listBriefs as svcListBriefs,
   getBriefById as svcGetBriefById,
@@ -360,7 +361,9 @@ export const createBrief = async (req: Request, res: Response) => {
   try {
     const user = await getUser(userid);
     const role = classifyBriefRole(user as any);
-    const origin = role === 'CSL' ? 'CSL_CREATED' : 'BD_CREATED';
+    let origin: 'BD_CREATED' | 'CSL_CREATED' | 'CSM_CREATED' = 'BD_CREATED';
+    if (role === 'CSL') origin = 'CSL_CREATED';
+    else if (role === 'CS') origin = 'CSM_CREATED';
     const brief = await createDraftBrief(userid, origin);
     return res.status(201).json({ id: brief.id });
   } catch (error) {
@@ -579,6 +582,34 @@ export const assignCsm = async (req: Request, res: Response) => {
       return res.status(400).json({ message: error.message });
     }
     return res.status(500).json({ message: 'Failed to assign CSM' });
+  }
+};
+
+// POST /briefs/:id/finalize  — a CSM finalizes their own CSM_CREATED brief into
+// a campaign they manage. No handover, no CSM selection.
+export const finalizeBrief = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const userid = req.userId;
+  if (!userid) return res.status(401).json({ message: 'User not authenticated' });
+
+  try {
+    const user = await getUser(userid);
+    const role = classifyBriefRole(user as any);
+    if (role !== 'CS' && role !== 'superadmin') {
+      return res.status(403).json({ message: 'Only a CSM can finalize their own brief.' });
+    }
+
+    const { internalComments } = req.body || {};
+    const notes = typeof internalComments === 'string' && internalComments.trim() ? internalComments.trim() : null;
+
+    const updated = await svcFinalizeOwnBrief(id, userid, notes);
+    return res.status(200).json(updated);
+  } catch (error: any) {
+    console.error('finalizeBrief error:', error);
+    if (/not found|owner|approve|company|active package|CSM-authored/i.test(error?.message || '')) {
+      return res.status(400).json({ message: error.message });
+    }
+    return res.status(500).json({ message: 'Failed to finalize brief' });
   }
 };
 

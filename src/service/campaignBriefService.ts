@@ -58,7 +58,10 @@ const assertTransition = (from: CampaignDraftStatus, to: CampaignDraftStatus) =>
   }
 };
 
-export const createDraftBrief = async (bdUserId: string, origin: 'BD_CREATED' | 'CSL_CREATED' = 'BD_CREATED') => {
+export const createDraftBrief = async (
+  bdUserId: string,
+  origin: 'BD_CREATED' | 'CSL_CREATED' | 'CSM_CREATED' = 'BD_CREATED',
+) => {
   return prisma.campaign.create({
     data: {
       name: '',
@@ -668,6 +671,87 @@ export const assignCsmToBrief = async (briefId: string, csmUserIds: string[], in
         update: { role: 'manager' },
       });
     }
+    return tx.campaign.findUnique({
+      where: { id: briefId },
+      select: { id: true, draftStatus: true, status: true },
+    });
+  });
+};
+
+// A CSM who authored the brief (CSM_CREATED) finalizes it into their own
+// campaign at APPROVED — there is no handover to CSL and no CSM selection. The
+// brief owner stays on the campaign as 'manager' (mirroring how assigned CSMs
+// appear elsewhere). Requires a linked company with an active package, same as
+// the CSL self-handover precondition.
+export const finalizeOwnBrief = async (
+  briefId: string,
+  ownerUserId: string,
+  internalComments?: string | null,
+) => {
+  const current = await prisma.campaign.findUnique({
+    where: { id: briefId },
+    select: {
+      id: true,
+      draftStatus: true,
+      draftOrigin: true,
+      campaignId: true,
+      briefOwnerId: true,
+      companyId: true,
+      brandId: true,
+      company: {
+        select: { name: true, subscriptions: { where: { status: 'ACTIVE' }, select: { id: true } } },
+      },
+      brand: {
+        select: {
+          name: true,
+          company: { select: { subscriptions: { where: { status: 'ACTIVE' }, select: { id: true } } } },
+        },
+      },
+    },
+  });
+  if (!current || !current.draftStatus) throw new Error('Brief not found');
+
+  if (current.draftOrigin !== 'CSM_CREATED') {
+    throw new Error('Only CSM-authored briefs can be finalized this way.');
+  }
+  if (current.briefOwnerId !== ownerUserId) {
+    throw new Error('Only the brief owner can finalize this campaign.');
+  }
+  if (current.draftStatus !== 'APPROVED') {
+    throw new Error('The client must approve the brief before it can be finalized.');
+  }
+  if (!current.companyId && !current.brandId) {
+    throw new Error('Link a company before finalizing.');
+  }
+  const activeSubs = current.company?.subscriptions?.length || current.brand?.company?.subscriptions?.length || 0;
+  if (activeSubs === 0) {
+    throw new Error('Attach an active package to the company before finalizing.');
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const campaignCode = current.campaignId || (await nextCampaignCode(tx));
+    await tx.campaign.update({
+      where: { id: briefId },
+      data: {
+        campaignId: campaignCode,
+        draftStatus: 'HANDED_OVER',
+        status: 'PENDING_ADMIN_ACTIVATION',
+        clientPackage: current.company?.name || current.brand?.name || null,
+        internalComments: internalComments ?? null,
+        handedOverAt: new Date(),
+        clientMagicToken: null,
+        clientTokenExpiresAt: null,
+      },
+    });
+
+    // Keep the CSM on the campaign, but as 'manager' so they surface in the same
+    // manager-based views/queries as assigned CSMs.
+    await tx.campaignAdmin.upsert({
+      where: { adminId_campaignId: { adminId: ownerUserId, campaignId: briefId } },
+      create: { adminId: ownerUserId, campaignId: briefId, role: 'manager' },
+      update: { role: 'manager' },
+    });
+
     return tx.campaign.findUnique({
       where: { id: briefId },
       select: { id: true, draftStatus: true, status: true },
