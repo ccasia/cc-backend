@@ -38,6 +38,7 @@
     "@prisma/client": "6.4.0",
     "@quixo3/prisma-session-store": "^3.1.13",
     "@socket.io/redis-adapter": "^8.3.0",
+    "@socket.io/redis-emitter": "^5.1.0",
     "@types/bcryptjs": "^2.4.6",
     "amqplib": "^0.10.4",
     "apple-signin-auth": "^2.0.0",

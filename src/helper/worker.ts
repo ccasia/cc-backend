@@ -16,13 +16,11 @@ import fs from 'fs-extra';
 import { PrismaClient } from '@prisma/client';
 
 import { xero } from '@configs/xero';
-import { Server } from 'socket.io';
+
 import { users } from '@utils/activeUsers';
-// import { io } from '../server';
+import { getIo } from '../config/socket';
 
 const prisma = new PrismaClient();
-
-const io = new Server();
 
 const worker = new Worker(
   'invoice-queue',
@@ -174,7 +172,7 @@ const worker = new Worker(
             threadId: invoice.id,
             entityId: invoice.campaignId,
           });
-          io.to(users.get(admin.adminId)).emit('notification', notification);
+          getIo().to(users.get(admin.adminId)).emit('notification', notification);
           return notification;
         }),
     );
@@ -216,7 +214,7 @@ const worker = new Worker(
       entityId: invoice.campaignId,
     });
 
-    io.to(users.get(invoice.creatorId)).emit('notification', creatorNotification);
+    getIo().to(users.get(invoice.creatorId)).emit('notification', creatorNotification);
   },
   {
     connection,
@@ -471,7 +469,7 @@ export const bulkInvoiceWorker = new Worker(
                       entityId: updatedInvoice.campaignId,
                     });
                     const userId = users.get(admin.adminId);
-                    if (userId) io.to(userId).emit('notification', notification);
+                    if (userId) getIo().to(userId).emit('notification', notification);
                   } catch (e) {
                     console.error('CSM Notif failed', admin.adminId);
                   }
@@ -487,7 +485,7 @@ export const bulkInvoiceWorker = new Worker(
             entity: 'Invoice',
             entityId: updatedInvoice.campaignId,
           });
-          io.to(updatedInvoice.creatorId).emit('notification', creatorNotification);
+          getIo().to(updatedInvoice.creatorId).emit('notification', creatorNotification);
         }
       } catch (batchError) {
         console.error(`Critical Batch Error for tenant ${tenantId}:`, batchError.message);

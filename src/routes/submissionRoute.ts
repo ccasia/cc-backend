@@ -18,6 +18,7 @@ import {
   adminManagePhotosV2,
   adminManageDraftVideosV2,
   adminManageRawFootagesV2,
+  uploadSubmissionCaption,
 } from '@controllers/submissionController';
 import { authenticate } from '@middlewares/authenticate';
 import { isSuperAdmin, isAdmin } from '@middlewares/onlySuperadmin';
@@ -55,6 +56,9 @@ router.patch('/managePhotos', authenticate, isSuperAdmin, adminManagePhotos);
 router.patch('/manageVideos', authenticate, isSuperAdmin, adminManageVideos);
 router.patch('/manageRawFootages', authenticate, isSuperAdmin, adminManageRawFootages);
 router.patch('/manageFinalDraft', authenticate, isSuperAdmin, adminManageFinalDraft);
+
+// To update submission caption
+router.patch('/:id/caption', authenticate, uploadSubmissionCaption);
 
 // Direct status update endpoint
 router.patch('/status', authenticate, isSuperAdmin, updateSubmissionStatus);

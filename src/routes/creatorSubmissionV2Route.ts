@@ -20,7 +20,7 @@ router.use(isCreator);
  * @access Private (Creator only)
  * @query campaignId - Required campaign ID
  */
-router.get('/', authenticate, getMyV2Submissions);
+router.get('/', getMyV2Submissions);
 
 /**
  * @route PUT /api/creator/submissions/v2/posting-link
@@ -28,7 +28,7 @@ router.get('/', authenticate, getMyV2Submissions);
  * @access Private (Creator only)
  * @body submissionId, postingLink
  */
-router.put('/posting-link', authenticate, updateMyV2PostingLink);
+router.put('/posting-link', updateMyV2PostingLink);
 
 /**
  * @route GET /api/creator/submissions/v2/:submissionId
@@ -36,6 +36,6 @@ router.put('/posting-link', authenticate, updateMyV2PostingLink);
  * @access Private (Creator only)
  * @param submissionId - Submission ID
  */
-router.get('/:submissionId', authenticate, getMyV2SubmissionDetails);
+router.get('/:submissionId', getMyV2SubmissionDetails);
 
 export default router;

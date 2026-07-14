@@ -387,7 +387,6 @@ export const createChildAccount = async (req: Request, res: Response) => {
 export const resendInvitation = async (req: Request, res: Response) => {
   try {
     const { childAccountId } = req.params;
-    console.log('Resending invitation for child account ID:', childAccountId);
 
     const childAccount = await prisma.childAccount.findUnique({
       where: { id: childAccountId },

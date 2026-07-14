@@ -2,7 +2,7 @@ import { buildGcsPublicUrl, storage } from '@configs/cloudStorage.config';
 import amqp from 'amqplib';
 import dayjs from 'dayjs';
 import fse from 'fs-extra';
-import { io } from '@/src/server';
+import { getIo } from '../config/socket';
 
 (async () => {
   console.log('Raw footages processing');
@@ -31,7 +31,7 @@ import { io } from '@/src/server';
         readStream.on('data', (chunk) => {
           uploadedBytes += chunk.length;
           const percentage = Math.round((uploadedBytes / totalBytes) * 100);
-          io.emit('uploadProgress', { name: name, percentage, isDone: false });
+          getIo().emit('uploadProgress', { name: name, percentage, isDone: false });
         });
 
         // await new Promise<void>((resolve, reject) => {
@@ -45,7 +45,7 @@ import { io } from '@/src/server';
             await blob.makePublic();
             const publicUrl = buildGcsPublicUrl(bucket.name, blob.name);
             fse.unlinkSync(tempFilePath); // Cleanup temp file
-            io.emit('uploadProgress', { name: name, percentage: 100, isDone: true });
+            getIo().emit('uploadProgress', { name: name, percentage: 100, isDone: true });
           });
         // });
 

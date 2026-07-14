@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { Entity, FeedbackStatus, Photo, PrismaClient, SubmissionStatus } from '@prisma/client';
 import { uploadAgreementForm, uploadPitchVideo } from '@configs/cloudStorage.config';
 import { saveNotification } from './notificationController';
-import { activeProcesses, clients, io } from '../server';
+import { activeProcesses } from '../server';
 import Ffmpeg from 'fluent-ffmpeg';
 import FfmpegPath from '@ffmpeg-installer/ffmpeg';
 import amqplib from 'amqplib';
@@ -46,6 +46,7 @@ import {
   handleSubmissionNotification,
 } from '@services/submissionService';
 import { ensureValidInstagramToken, ensureValidTikTokToken } from '@controllers/socialController';
+import { clients, getIo } from '../config/socket';
 
 Ffmpeg.setFfmpegPath(FfmpegPath.path);
 // Ffmpeg.setFfmpegPath(FfmpegProbe.path);
@@ -71,7 +72,7 @@ const emitAgreementSubmissionUpdated = ({
   newStatus: string;
   action: string;
 }) => {
-  io.to(campaignId).emit('v4:submission:updated', {
+  getIo().to(campaignId).emit('v4:submission:updated', {
     submissionId,
     campaignId,
     userId,
@@ -108,8 +109,8 @@ const emitV2PostingUpdated = ({
   };
 
   try {
-    io.to(campaignId).emit('v2:posting:updated', payload);
-    io.to(campaignId).emit('v2:campaign:updated', payload);
+    getIo().to(campaignId).emit('v2:posting:updated', payload);
+    getIo().to(campaignId).emit('v2:campaign:updated', payload);
   } catch (err) {
     console.log(err);
   }
@@ -141,7 +142,7 @@ const emitV2SubmissionUpdated = ({
   };
 
   try {
-    io.to(campaignId).emit('v2:campaign:updated', payload);
+    getIo().to(campaignId).emit('v2:campaign:updated', payload);
   } catch (err) {
     console.log(err);
   }
@@ -296,7 +297,7 @@ export const agreementSubmission = async (req: Request, res: Response) => {
       //   message: message,
       // });
 
-      // io.to(clients.get(submission.userId)).emit('notification', creatorNotification);
+      // getIo().to(clients.get(submission.userId)).emit('notification', creatorNotification);
 
       const { title: adminTitle, message: adminMessage } = notificationAgreement(
         submission.campaign.name,
@@ -363,9 +364,9 @@ export const agreementSubmission = async (req: Request, res: Response) => {
 
           const adminSocketId = clients.get(campaignAdmin.admin.userId);
           if (adminSocketId) {
-            io.to(adminSocketId).emit('notification', adminNotification);
-            io.to(adminSocketId).emit('newSubmission');
-            io.to(adminSocketId).emit('agreementReady');
+            getIo().to(adminSocketId).emit('notification', adminNotification);
+            getIo().to(adminSocketId).emit('newSubmission');
+            getIo().to(adminSocketId).emit('agreementReady');
           }
         }
       }
@@ -380,8 +381,8 @@ export const agreementSubmission = async (req: Request, res: Response) => {
     for (const admin of allSuperadmins) {
       const superadminSocketId = clients.get(admin.id);
       if (superadminSocketId) {
-        io.to(superadminSocketId).emit('newSubmission');
-        io.to(superadminSocketId).emit('agreementReady');
+        getIo().to(superadminSocketId).emit('newSubmission');
+        getIo().to(superadminSocketId).emit('agreementReady');
       }
     }
 
@@ -652,8 +653,8 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
         firstDraftDue(user.email, campaign?.name as string, user.name ?? 'Creator', campaign?.id as string, image);
       }
 
-      io.to(clients.get(userId)).emit('notification', notification);
-      io.to(clients.get(userId)).emit('newFeedback');
+      getIo().to(clients.get(userId)).emit('notification', notification);
+      getIo().to(clients.get(userId)).emit('newFeedback');
       emitAgreementSubmissionUpdated({
         submissionId: agreementSubs.id,
         campaignId,
@@ -795,8 +796,8 @@ export const adminManageAgreementSubmission = async (req: Request, res: Response
         entityId: campaign?.id,
       });
 
-      io.to(clients.get(userId)).emit('notification', notification);
-      io.to(clients.get(userId)).emit('newFeedback');
+      getIo().to(clients.get(userId)).emit('notification', notification);
+      getIo().to(clients.get(userId)).emit('newFeedback');
       emitAgreementSubmissionUpdated({
         submissionId: submission.id,
         campaignId,
@@ -1493,8 +1494,8 @@ export const adminManageDraft = async (req: Request, res: Response) => {
         entityId: submission.campaignId,
       });
 
-      io.to(clients.get(submission.userId)).emit('notification', notification);
-      io.to(clients.get(submission.userId)).emit('newFeedback');
+      getIo().to(clients.get(submission.userId)).emit('notification', notification);
+      getIo().to(clients.get(submission.userId)).emit('newFeedback');
 
       return res.status(200).json({ message: 'Draft approved successfully', submission: result });
     } else {
@@ -1598,8 +1599,8 @@ export const adminManageDraft = async (req: Request, res: Response) => {
         entityId: submission.campaignId,
       });
 
-      io.to(clients.get(sub.userId)).emit('notification', notification);
-      io.to(clients.get(sub.userId)).emit('newFeedback');
+      getIo().to(clients.get(sub.userId)).emit('notification', notification);
+      getIo().to(clients.get(sub.userId)).emit('newFeedback');
 
       return res.status(200).json({ message: 'Changes requested successfully' });
     }
@@ -1749,8 +1750,8 @@ export const postingSubmission = async (req: Request, res: Response) => {
         }
       }
 
-      io.to(clients.get(admin.adminId)).emit('notification', notification);
-      io.to(clients.get(admin.adminId)).emit('newSubmission');
+      getIo().to(clients.get(admin.adminId)).emit('notification', notification);
+      getIo().to(clients.get(admin.adminId)).emit('newSubmission');
     }
 
     const notification = await saveNotification({
@@ -1761,7 +1762,7 @@ export const postingSubmission = async (req: Request, res: Response) => {
       entityId: submission.campaignId,
     });
 
-    io.to(clients.get(submission.userId)).emit('notification', notification);
+    getIo().to(clients.get(submission.userId)).emit('notification', notification);
 
     const allSuperadmins = await prisma.user.findMany({
       where: {
@@ -1770,7 +1771,7 @@ export const postingSubmission = async (req: Request, res: Response) => {
     });
 
     for (const admin of allSuperadmins) {
-      io.to(clients.get(admin.id)).emit('newSubmission');
+      getIo().to(clients.get(admin.id)).emit('newSubmission');
     }
 
     return res.status(200).json({ message: 'Successfully submitted' });
@@ -2029,8 +2030,8 @@ export const adminManagePosting = async (req: Request, res: Response) => {
           entity: Entity.Post,
         });
 
-        io.to(clients.get(submission.userId)).emit('notification', notification);
-        io.to(clients.get(submission.userId)).emit('newFeedback');
+        getIo().to(clients.get(submission.userId)).emit('notification', notification);
+        getIo().to(clients.get(submission.userId)).emit('newFeedback');
       }
     });
 
@@ -2441,8 +2442,8 @@ export const adminManagePhotos = async (req: Request, res: Response) => {
 
     // Send notifications regardless of sectionOnly flag
     const notification = await handleSubmissionNotification(submission.id);
-    io.to(clients.get(submission.userId)).emit('notification', notification);
-    io.to(clients.get(submission.userId)).emit('newFeedback');
+    getIo().to(clients.get(submission.userId)).emit('notification', notification);
+    getIo().to(clients.get(submission.userId)).emit('newFeedback');
 
     return res.status(200).json({
       message: type === 'approve' ? 'Photos approved successfully' : 'Changes requested successfully',
@@ -2851,8 +2852,8 @@ export const adminManageVideos = async (req: Request, res: Response) => {
           entityId: approveSubmission.campaignId,
         });
 
-        io.to(clients.get(approveSubmission.userId)).emit('notification', notification);
-        io.to(clients.get(approveSubmission.userId)).emit('newFeedback');
+        getIo().to(clients.get(approveSubmission.userId)).emit('notification', notification);
+        getIo().to(clients.get(approveSubmission.userId)).emit('newFeedback');
       });
 
       return res.status(200).json({ message: 'Successfully submitted' });
@@ -3004,8 +3005,8 @@ export const adminManageVideos = async (req: Request, res: Response) => {
 
       // Send notifications regardless of sectionOnly flag
       const notification = await handleSubmissionNotification(submission.id);
-      io.to(clients.get(submission.userId)).emit('notification', notification);
-      io.to(clients.get(submission.userId)).emit('newFeedback');
+      getIo().to(clients.get(submission.userId)).emit('notification', notification);
+      getIo().to(clients.get(submission.userId)).emit('newFeedback');
     });
 
     return res.status(200).json({ message: 'Successfully submitted' });
@@ -3606,8 +3607,8 @@ export const adminManageRawFootages = async (req: Request, res: Response) => {
 
     // Send notifications regardless of sectionOnly flag
     const notification = await handleSubmissionNotification(submission.id);
-    io.to(clients.get(submission.userId)).emit('notification', notification);
-    io.to(clients.get(submission.userId)).emit('newFeedback');
+    getIo().to(clients.get(submission.userId)).emit('notification', notification);
+    getIo().to(clients.get(submission.userId)).emit('newFeedback');
 
     return res.status(200).json({
       message: type === 'approve' ? 'Raw footage approved successfully' : 'Changes requested successfully',
@@ -4235,8 +4236,12 @@ export const adminManagePhotosV2 = async (req: Request, res: Response) => {
       entityId: result.photo.campaignId as string,
     });
 
-    io.to(clients.get(result.photo.userId as string)).emit('notification', notification);
-    io.to(clients.get(result.photo.userId as string)).emit('newFeedback');
+    getIo()
+      .to(clients.get(result.photo.userId as string))
+      .emit('notification', notification);
+    getIo()
+      .to(clients.get(result.photo.userId as string))
+      .emit('newFeedback');
 
     return res.status(200).json({
       success: true,
@@ -4603,8 +4608,12 @@ export const adminManageDraftVideosV2 = async (req: Request, res: Response) => {
       entityId: result.video.campaignId as string,
     });
 
-    io.to(clients.get(result.video.userId as string)).emit('notification', notification);
-    io.to(clients.get(result.video.userId as string)).emit('newFeedback');
+    getIo()
+      .to(clients.get(result.video.userId as string))
+      .emit('notification', notification);
+    getIo()
+      .to(clients.get(result.video.userId as string))
+      .emit('newFeedback');
 
     return res.status(200).json({
       success: true,
@@ -4973,8 +4982,12 @@ export const adminManageRawFootagesV2 = async (req: Request, res: Response) => {
       entityId: result.rawFootage.campaignId as string,
     });
 
-    io.to(clients.get(result.rawFootage.userId as string)).emit('notification', notification);
-    io.to(clients.get(result.rawFootage.userId as string)).emit('newFeedback');
+    getIo()
+      .to(clients.get(result.rawFootage.userId as string))
+      .emit('notification', notification);
+    getIo()
+      .to(clients.get(result.rawFootage.userId as string))
+      .emit('newFeedback');
 
     return res.status(200).json({
       success: true,
@@ -4997,5 +5010,48 @@ export const adminManageRawFootagesV2 = async (req: Request, res: Response) => {
       message: 'Internal server error',
       error: error.message,
     });
+  }
+};
+
+export const uploadSubmissionCaption = async (req: Request, res: Response) => {
+  const id = req.params.id;
+  const userId = req.userId;
+  const caption = req.body.caption;
+
+  if (!id) return res.status(400).json({ message: 'Id is missing' });
+
+  try {
+    const submission = await prisma.submission.findUnique({
+      where: {
+        id: id,
+      },
+    });
+
+    if (!submission) return res.status(404).json({ message: 'Submission not found' });
+
+    const exitingCaption = submission.caption;
+
+    await prisma.submission.update({
+      where: {
+        id: submission.id,
+      },
+      data: {
+        caption: caption,
+        ...(exitingCaption && {
+          captionHistory: {
+            create: {
+              caption: exitingCaption,
+              authorType: 'creator',
+              author: userId!,
+            },
+          },
+        }),
+      },
+    });
+
+    res.sendStatus(200);
+  } catch (error) {
+    console.log('Updating Caption Error: ', error);
+    res.status(500).json({ error: 'Failed to update submission caption' });
   }
 };

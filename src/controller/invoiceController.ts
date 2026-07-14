@@ -16,7 +16,6 @@ import {
   notificationInvoicePaid,
 } from '@helper/notification';
 import { saveNotification } from './notificationController';
-import { clients, io } from '../server';
 
 import { TokenSet } from 'openid-client';
 import { error } from 'console';
@@ -36,22 +35,11 @@ import { missingInvoices } from '@constants/missing-invoices';
 import { creatorAgreements } from './campaignController';
 import { bulkInvoiceQueue, invoiceQueue } from '@utils/queue';
 import { xero } from '@configs/xero';
-// import { decreamentCreditCampiagn } from '@services/packageService';
+import { clients, getIo } from '../config/socket';
 
 const prisma = new PrismaClient();
+
 const MAX_INVOICE_NUMBER_RETRIES = 8;
-
-// const client_id: string = process.env.XERO_CLIENT_ID as string;
-// const client_secret: string = process.env.XERO_CLIENT_SECRET as string;
-// const redirectUrl: string = process.env.XERO_REDIRECT_URL as string;
-// const scopes: string = process.env.XERO_SCOPES as string;
-
-// export const xero = new XeroClient({
-//   clientId: client_id,
-//   clientSecret: client_secret,
-//   redirectUris: [redirectUrl],
-//   scopes: scopes?.split(' '),
-// });
 
 // invoice item type definition
 interface InvoiceItem {
@@ -1086,7 +1074,8 @@ export const updateInvoiceStatus = async (req: Request, res: Response) => {
         entityId: invoice.campaignId,
         sendPush: status === 'paid',
       });
-      io.to(clients.get(invoice.creatorId)).emit('notification', creatorNotification);
+
+      getIo().to(clients.get(invoice.creatorId)).emit('notification', creatorNotification);
     }
 
     // Keep notifying campaign admins of the status change (In-App).
@@ -1101,7 +1090,8 @@ export const updateInvoiceStatus = async (req: Request, res: Response) => {
         entityId: invoice.campaignId,
         sendPush: false,
       });
-      io.to(clients.get(admin.adminId)).emit('notification', notification);
+
+      getIo().to(clients.get(admin.adminId)).emit('notification', notification);
     }
   } catch (error) {
     res.status(500).json({ error: 'Something went wrong' });
@@ -1337,7 +1327,8 @@ export const updateInvoice = async (req: Request, res: Response) => {
         entityId: invoice.campaignId,
         sendPush: false,
       });
-      io.to(clients.get(invoice.creatorId)).emit('notification', creatorNotification);
+
+      getIo().to(clients.get(invoice.creatorId)).emit('notification', creatorNotification);
     }
 
     const creatorUser = invoice.creator.user;

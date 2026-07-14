@@ -14,7 +14,6 @@ import { getUser } from '@services/userServices';
 
 import { getJWTToken, verifyToken } from '@utils/jwtHelper';
 import { uploadProfileImage } from '@configs/cloudStorage.config';
-import { io } from '../server';
 
 import { createKanbanBoard } from './kanbanController';
 import { saveCreatorToSpreadsheet } from '@helper/registeredCreatorSpreadsheet';
@@ -38,6 +37,7 @@ import {
   verifyRefreshToken,
 } from '@utils/tokens';
 import { revokeAppleToken } from '@utils/apple';
+import { getIo } from '../config/socket';
 
 const prisma = new PrismaClient();
 
@@ -1933,7 +1933,7 @@ export const deleteAccount = async (req: Request, res: Response) => {
     // middleware-verified socket.data.userId (set in server.ts), not the client-supplied
     // `clients` map (which only tracks one socket per user). The existing `disconnect` handler
     // cleans up the clients/users maps automatically.
-    for (const socket of io.sockets.sockets.values()) {
+    for (const socket of getIo().sockets.sockets.values()) {
       if (socket.data.userId === userId) {
         socket.disconnect(true);
       }

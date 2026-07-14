@@ -2,7 +2,6 @@ import { Request, Response } from 'express';
 import { Entity, PrismaClient } from '@prisma/client';
 import { uploadAgreementForm } from '@configs/cloudStorage.config';
 import { Title, saveNotification } from './notificationController';
-import { clients, io } from '../server';
 
 const prisma = new PrismaClient();
 
@@ -66,11 +65,11 @@ export const creatorUploadAgreement = async (req: Request, res: Response) => {
   //           `New Agreement Submitted By ${user?.name} For Campaign ${campaign?.name}`,
   //           Entity.Campaign,
   //         );
-  //         io.to(clients.get(item.adminId)).emit('notification', data);
+  //         getIo().to(clients.get(item.adminId)).emit('notification', data);
   //       }),
   //     ]);
 
-  //     io.to(clients.get(userid)).emit('notification', data);
+  //     getIo().to(clients.get(userid)).emit('notification', data);
   //     return res.status(200).json({ message: 'Successfully upload' });
   //   } else {
   //     return res.status(404).json({ message: 'File not found' });
@@ -140,7 +139,7 @@ export const getSubmissionByCampaignCreatorId = async (req: Request, res: Respon
 //         },
 //       });
 //       const notification = await saveNotification(userId, `First Draft is open for submission`, Entity.Campaign);
-//       io.to(clients.get(userId)).emit('notification', notification);
+//       getIo().to(clients.get(userId)).emit('notification', notification);
 //     } else if (data.status === 'reject') {
 //       const { feedback, campaignTaskId, submissionId, userId } = data;
 //       await prisma.campaignTask.update({
@@ -163,7 +162,7 @@ export const getSubmissionByCampaignCreatorId = async (req: Request, res: Respon
 //         `Please Resubmit Your Agreement Form for ${campaign?.name}`,
 //         Entity.Campaign,
 //       );
-//       io.to(clients.get(userId)).emit('notification', notification);
+//       getIo().to(clients.get(userId)).emit('notification', notification);
 //     }
 
 //     return res.status(200).json({ message: 'Successfully updated' });
