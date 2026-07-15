@@ -50,7 +50,7 @@ export const createNewBug = async (req: Request, res: Response) => {
         email: user?.email,
         name: user?.name || '',
         campaignName: campaignName || '',
-        createdAt: dayjs(item.createdAt).tz('Asia/Kuala_Lumpur').format('LLL'),
+        createdAt: dayjs(item.createdAt).tz('Asia/Kuala_Lumpur').toString(),
         stepsToReproduce: item.stepsToReproduce,
         attachment: item.attachments.join('\n\n'),
       },
