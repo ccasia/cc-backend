@@ -3,8 +3,13 @@ import { PrismaClient } from '@prisma/client';
 import { createNewBugRowData } from '@services/google_sheets/sheets';
 import dayjs from 'dayjs';
 import { Request, Response } from 'express';
+import utc from 'dayjs/plugin/utc';
+import timezone from 'dayjs/plugin/timezone';
 
 const prisma = new PrismaClient();
+
+dayjs.extend(utc);
+dayjs.extend(timezone);
 
 export const createNewBug = async (req: Request, res: Response) => {
   const { stepsToReproduce, campaignName } = JSON.parse(req.body.data);
@@ -45,7 +50,7 @@ export const createNewBug = async (req: Request, res: Response) => {
         email: user?.email,
         name: user?.name || '',
         campaignName: campaignName || '',
-        createdAt: dayjs(item.createdAt).format('LLL'),
+        createdAt: dayjs(item.createdAt).tz('Asia/Kuala_Lumpur').format('LLL'),
         stepsToReproduce: item.stepsToReproduce,
         attachment: item.attachments.join('\n\n'),
       },
