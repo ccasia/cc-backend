@@ -1,6 +1,13 @@
 import ffmpeg from 'fluent-ffmpeg';
+import ffmpegPath from '@ffmpeg-installer/ffmpeg';
+import ffprobePath from '@ffprobe-installer/ffprobe';
 import * as os from 'os';
 import * as path from 'path';
+
+if (ffmpegPath) {
+  ffmpeg.setFfmpegPath(ffmpegPath.path);
+}
+ffmpeg.setFfprobePath(ffprobePath.path);
 
 export async function runFfmpegCompression(
   inputPath: string,
