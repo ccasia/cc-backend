@@ -267,6 +267,7 @@ export const register = async (
       emailSent: true,
       message: 'Verification email sent',
       email: user.email,
+      phoneNumber: user.phoneNumber,
     });
   } catch (error) {
     console.error('Mobile creator registration error:', error);
