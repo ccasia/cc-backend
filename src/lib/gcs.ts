@@ -7,7 +7,7 @@ import * as fs from 'fs/promises';
 const pathToJSONKey = `config/test-cs.json`;
 
 export const storage = new Storage({
-  keyFilename: '@configs/test-cs.json',
+  keyFilename: 'config/test-cs.json',
 });
 
 const bucket = storage.bucket(process.env.BUCKET_NAME!);
