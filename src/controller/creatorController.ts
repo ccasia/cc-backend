@@ -520,6 +520,7 @@ export const getMobileMediaKit = async (req: Request, res: Response) => {
                 view_count: true,
                 comments_count: true,
                 caption: true,
+                permalink: true,
               },
             },
           },
