@@ -42,6 +42,7 @@ import approvalRoute from './approvalRoute';
 import campaignBriefRoute from './campaignBriefRoute';
 import clientDemoRoute from './clientDemoRoute';
 import videoOfTheMonthRoute from './videoOfTheMonthRoute';
+import financeRoute from './financeRoute';
 
 export const router = express.Router();
 
@@ -88,3 +89,4 @@ router.use('/approval-requests', approvalRoute);
 router.use('/briefs', campaignBriefRoute);
 router.use('/client-demo', clientDemoRoute);
 router.use('/video-of-the-month', videoOfTheMonthRoute);
+router.use('/finance', financeRoute);
