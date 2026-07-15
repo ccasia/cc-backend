@@ -2087,6 +2087,7 @@ export const sendVerificationCode = async (req: Request<{}, {}, { phoneNumber: s
       sentAt: dayjs().toDate(),
       attempts: 0,
       isCodeUsed: false,
+      userId: '',
     };
 
     await whatsapp.sendVerificationCode(phoneNumber, token);
@@ -2113,7 +2114,7 @@ export const verifyCode = async (req: Request<{}, {}, { code: string }>, res: Re
   }
 
   // Extract early before any mutation
-  const { secret, phone, attempts } = req.session.otp;
+  const { secret, phone, attempts, userId } = req.session.otp;
 
   // Guard: too many attempts
   if (attempts >= 5) {
@@ -2139,7 +2140,37 @@ export const verifyCode = async (req: Request<{}, {}, { code: string }>, res: Re
 
     req.session.otp = undefined;
 
-    return res.status(200).json({ success: true, message: 'Phone verified successfully' });
+    const [user] = await prisma.$transaction([
+      prisma.user.update({ where: { id: userId }, data: { status: 'active' } }),
+      prisma.emailVerification.deleteMany({
+        where: {
+          user: {
+            id: userId,
+          },
+        },
+      }),
+    ]);
+
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    const accessToken = jwt.sign({ userId: user.id, email: user.email }, process.env.ACCESSKEY!, { expiresIn: '15m' });
+    const refreshToken = jwt.sign({ userId: user.id, email: user.email }, process.env.REFRESHKEY!, {
+      expiresIn: '30d',
+    });
+
+    await prisma.refreshToken.create({
+      data: {
+        tokenHash: hashToken(refreshToken),
+        userId: user.id,
+        expiresAt: dayjs().add(30, 'days').toDate(),
+        userAgent: req.headers['user-agent'] ?? null,
+        ipAddress: req.ip ?? null,
+      },
+    });
+
+    return res
+      .status(200)
+      .json({ success: true, message: 'Phone verified successfully', token: { accessToken, refreshToken } });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ success: false, message: 'Internal server error' });
@@ -2207,6 +2238,7 @@ export const resendVerificationCode = async (req: Request, res: Response) => {
     const currentAttempt = req.session?.otp?.attempts;
 
     req.session.otp = {
+      ...req.session.otp,
       secret,
       phone: phoneNumber,
       sentAt: dayjs().toDate(),

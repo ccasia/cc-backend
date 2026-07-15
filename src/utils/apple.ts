@@ -37,9 +37,7 @@ const buildClientSecret = (): string =>
  * refresh token. Returns null (never throws) if credentials aren't configured
  * or the exchange fails — sign-in must not break just because revoke isn't set up.
  */
-export const exchangeAppleRefreshToken = async (
-  authorizationCode: string,
-): Promise<string | null> => {
+export const exchangeAppleRefreshToken = async (authorizationCode: string): Promise<string | null> => {
   if (!appleConfigured()) return null;
   try {
     const tokens = await appleSignin.getAuthorizationToken(authorizationCode, {

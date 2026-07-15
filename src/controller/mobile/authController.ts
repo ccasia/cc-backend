@@ -17,6 +17,8 @@ import { createKanbanBoard } from '../kanbanController';
 import { saveCreatorToSpreadsheet } from '@/src/helper/registeredCreatorSpreadsheet';
 import { exchangeAppleRefreshToken, revokeAppleToken } from '@/src/utils/apple';
 import { verifyGoogleIdToken } from '@/src/utils/google';
+import WhatsappSetting from '@/src/service/whatsappSetting';
+import { generate, generateSecret } from 'otplib';
 
 interface MobileCreatorData {
   phone?: string;
@@ -91,12 +93,12 @@ export const login = async (
       return res.status(404).json({ message: 'Wrong password' });
     }
 
-    const accessToken = jwt.sign({ userId: user.id, email: user.email }, process.env.ACCESSKEY!, { expiresIn: '1m' });
+    const accessToken = jwt.sign({ userId: user.id, email: user.email }, process.env.ACCESSKEY!, { expiresIn: '15m' });
     const refreshToken = jwt.sign({ userId: user.id, email: user.email }, process.env.REFRESHKEY!, {
       expiresIn: '30d',
     });
 
-    const savedRefreshToken = await prisma.refreshToken.create({
+    prisma.refreshToken.create({
       data: {
         tokenHash: hashToken(refreshToken),
         userId: user.id,
@@ -230,9 +232,27 @@ export const register = async (
 
     // Send AFTER commit — never do network I/O inside a transaction.
     try {
-      await mobileCreatorVerificationEmail(user.email, shortCode);
+      const whatsapp = new WhatsappSetting();
+      await whatsapp.initialize();
+
+      const secret = generateSecret();
+
+      // Generate current token
+      const token = await generate({ secret });
+
+      req.session.otp = {
+        secret,
+        phone: user.phoneNumber!,
+        sentAt: dayjs().toDate(),
+        attempts: 0,
+        isCodeUsed: false,
+        userId: user.id,
+      };
+
+      await whatsapp.sendVerificationCode(user.phoneNumber!, token);
+      // await mobileCreatorVerificationEmail(user.email, shortCode);
     } catch (mailError) {
-      console.error('Verification email send failed:', mailError);
+      console.error('Verification code send failed:', mailError);
       // Account + code exist and are valid; the client can fall back to the resend endpoint.
       return res.status(201).json({
         success: true,
@@ -868,11 +888,13 @@ export const linkApple = async (
   res: Response,
 ) => {
   const userId = req.userId;
+
   if (!userId) {
     return res.status(401).json({ success: false, message: 'Unauthorized' });
   }
 
   const { identityToken, authorizationCode } = req.body;
+
   if (!identityToken) {
     return res.status(400).json({ success: false, message: 'Missing Apple identity token' });
   }
@@ -886,9 +908,7 @@ export const linkApple = async (
     // Reject if this Apple identity is already linked to someone else.
     const existing = await prisma.user.findFirst({ where: { appleId: claims.sub } });
     if (existing && existing.id !== userId) {
-      return res
-        .status(409)
-        .json({ success: false, message: 'This Apple account is already linked to another user.' });
+      return res.status(409).json({ success: false, message: 'This Apple account is already linked to another user.' });
     }
 
     const appleRefreshToken = authorizationCode ? await exchangeAppleRefreshToken(authorizationCode) : null;
