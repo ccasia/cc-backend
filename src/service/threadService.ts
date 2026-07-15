@@ -3,7 +3,7 @@ import { sendMessageInThread } from '@controllers/threadController';
 import { Request, Response } from 'express';
 import { randomUUID } from 'crypto';
 import { storage, uploadAttachments, uploadAttachmentStream } from '@configs/cloudStorage.config';
-import { clients, io } from '../server';
+import { clients, getIo } from '../config/socket';
 import { notificationCSMChat, notificationGroupChat } from '@helper/notification';
 import { saveNotification } from '@controllers/notificationController';
 
@@ -204,7 +204,7 @@ export const sendMessageService = async ({
         size: file.size,
         progressCallback:
           clientNonce && senderSocketId
-            ? (percent) => io.to(senderSocketId).emit('attachmentProgress', { clientNonce, percent })
+            ? (percent) => getIo().to(senderSocketId).emit('attachmentProgress', { clientNonce, percent })
             : undefined,
       });
     } else {
@@ -263,7 +263,7 @@ export const sendMessageService = async ({
     return { data, message };
   });
 
-  io.to(threadId).emit('message', {
+  getIo().to(threadId).emit('message', {
     id: datas.message.id,
     content: datas.message.content,
     senderId: datas.message.senderId,
@@ -299,7 +299,7 @@ export const sendMessageService = async ({
         threadId: datas.data.id,
         ...(isCampaign ? { entityId: datas.data.campaign!.id } : {}),
       });
-      io.to(clients.get(recipientId)).emit('notification', notification);
+      getIo().to(clients.get(recipientId)).emit('notification', notification);
     }
   };
   await notifyAll();
@@ -331,7 +331,7 @@ export const sendMessageService = async ({
 
   for (const recipientId of recipientIds) {
     const count = unreadCountMap.get(recipientId) || 0;
-    io.to(clients.get(recipientId)).emit('messageCount', { count, name: sender?.user.name });
+    getIo().to(clients.get(recipientId)).emit('messageCount', { count, name: sender?.user.name });
   }
 
   return datas.message;
@@ -454,7 +454,7 @@ export const editMessageService = async ({ userId, threadId, messageId, content 
     include: messageInclude,
   });
 
-  io.to(threadId).emit('messageUpdated', updated);
+  getIo().to(threadId).emit('messageUpdated', updated);
   return updated;
 };
 
@@ -486,7 +486,7 @@ export const deleteMessageService = async ({ userId, threadId, messageId }: Mess
   });
 
   await deleteChatAttachmentIfPresent(message.file);
-  io.to(threadId).emit('messageDeleted', deleted);
+  getIo().to(threadId).emit('messageDeleted', deleted);
   return deleted;
 };
 

@@ -47,7 +47,7 @@ import {
   rejectPendingPitchInternal,
 } from '@services/campaignServices';
 import { saveNotification } from '@controllers/notificationController';
-import { clients, io } from '../server';
+// import { clients, getIo() } from '../server';
 import fs from 'fs';
 import Ffmpeg from 'fluent-ffmpeg';
 import ffmpegPath from '@ffmpeg-installer/ffmpeg';
@@ -82,6 +82,7 @@ import {
   createCreatorCampaignMembershipUpdatedPayload,
 } from '@utils/campaignMembershipEvents';
 import { buildCreatorRatingEventId, shouldEmitCreatorRatingCompleted } from '@utils/creatorRatingReveal';
+import { clients, getIo } from '../config/socket';
 
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
 Ffmpeg.setFfprobePath(ffprobePath.path);
@@ -108,10 +109,10 @@ const emitCreatorCampaignMembershipUpdated = ({
   const creatorSocketId = clients.get(userId);
 
   if (creatorSocketId) {
-    io.to(creatorSocketId).emit(CREATOR_CAMPAIGN_MEMBERSHIP_UPDATED_EVENT, payload);
+    getIo().to(creatorSocketId).emit(CREATOR_CAMPAIGN_MEMBERSHIP_UPDATED_EVENT, payload);
   }
 
-  io.to(campaignId).emit(CREATOR_CAMPAIGN_MEMBERSHIP_UPDATED_EVENT, payload);
+  getIo().to(campaignId).emit(CREATOR_CAMPAIGN_MEMBERSHIP_UPDATED_EVENT, payload);
 };
 
 const normalizePlatform = (platform?: string): SocialPlatform => (platform === 'tiktok' ? 'tiktok' : 'instagram');
@@ -699,7 +700,7 @@ export const createCampaign = async (req: Request, res: Response) => {
               },
             });
 
-            io.to(clients.get(admin.id)).emit('notification', data);
+            getIo().to(clients.get(admin.id)).emit('notification', data);
             return createdAdminRel;
           }),
         );
@@ -729,8 +730,8 @@ export const createCampaign = async (req: Request, res: Response) => {
           logAdminChange(adminLogMessage, adminId, req);
         }
 
-        if (io) {
-          io.emit('campaign');
+        if (getIo()) {
+          getIo().emit('campaign');
         }
 
         // Add child accounts to the new campaign if it's a client-created campaign
@@ -1365,7 +1366,7 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
               include: { userNotification: { select: { userId: true } } },
             });
 
-            io.to(clients.get(admin.id)).emit('notification', data);
+            getIo().to(clients.get(admin.id)).emit('notification', data);
             return createdAdminRel;
           }),
         );
@@ -1386,8 +1387,8 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
           logAdminChange(`Created campaign - "${campaign.name}"`, adminId, req);
         }
 
-        if (io) {
-          io.emit('campaign');
+        if (getIo()) {
+          getIo().emit('campaign');
         }
 
         // Add child accounts for client-created campaigns
@@ -1599,10 +1600,18 @@ export const activateCampaignFull = async (req: Request, res: Response) => {
         }
 
         // Normalize dates
-        const normalizedStartDate = campaignStartDate ? dayjs(campaignStartDate).toDate() : existing.campaignBrief?.startDate ?? new Date();
-        const normalizedEndDate = campaignEndDate ? dayjs(campaignEndDate).toDate() : existing.campaignBrief?.endDate ?? normalizedStartDate;
-        const normalizedPostingStartDate = postingStartDate ? dayjs(postingStartDate).toDate() : existing.campaignBrief?.postingStartDate ?? null;
-        const normalizedPostingEndDate = postingEndDate ? dayjs(postingEndDate).toDate() : existing.campaignBrief?.postingEndDate ?? null;
+        const normalizedStartDate = campaignStartDate
+          ? dayjs(campaignStartDate).toDate()
+          : (existing.campaignBrief?.startDate ?? new Date());
+        const normalizedEndDate = campaignEndDate
+          ? dayjs(campaignEndDate).toDate()
+          : (existing.campaignBrief?.endDate ?? normalizedStartDate);
+        const normalizedPostingStartDate = postingStartDate
+          ? dayjs(postingStartDate).toDate()
+          : (existing.campaignBrief?.postingStartDate ?? null);
+        const normalizedPostingEndDate = postingEndDate
+          ? dayjs(postingEndDate).toDate()
+          : (existing.campaignBrief?.postingEndDate ?? null);
 
         // Products (delivery logistics)
         let productsToCreate: any[] = [];
@@ -1819,8 +1828,7 @@ export const activateCampaignFull = async (req: Request, res: Response) => {
         // prefilled, so its submitted state (kept URLs + new uploads) is the full
         // intended set — write it unconditionally so removals also take effect.
         // null when the user cleared every attachment.
-        const brandGuidelinesUrl =
-          brandGuidelinesUrls.length === 0 ? null : brandGuidelinesUrls.join(',');
+        const brandGuidelinesUrl = brandGuidelinesUrls.length === 0 ? null : brandGuidelinesUrls.join(',');
 
         const additionalDetailsData: any = {
           contentFormat: Array.isArray(contentFormat) ? contentFormat : [],
@@ -1860,7 +1868,9 @@ export const activateCampaignFull = async (req: Request, res: Response) => {
 
         if (logisticsType === 'RESERVATION') {
           const mode: ReservationMode = schedulingOption === 'auto' ? 'AUTO_SCHEDULE' : 'MANUAL_CONFIRMATION';
-          const locationNames = Array.isArray(locations) ? locations.filter((loc: any) => loc.name && loc.name.trim() !== '') : [];
+          const locationNames = Array.isArray(locations)
+            ? locations.filter((loc: any) => loc.name && loc.name.trim() !== '')
+            : [];
           const reservationData = {
             mode,
             locations: locationNames as any,
@@ -1942,7 +1952,7 @@ export const activateCampaignFull = async (req: Request, res: Response) => {
                 },
                 include: { userNotification: { select: { userId: true } } },
               });
-              if (clients.get(admin.id)) io.to(clients.get(admin.id)).emit('notification', notif);
+              if (clients.get(admin.id)) getIo().to(clients.get(admin.id)).emit('notification', notif);
             }),
         );
 
@@ -1960,7 +1970,7 @@ export const activateCampaignFull = async (req: Request, res: Response) => {
       { timeout: 500000 },
     );
 
-    if (io) io.emit('campaign');
+    if (getIo()) getIo().emit('campaign');
 
     return res.status(200).json({ campaign, message: 'Campaign activated successfully.' });
   } catch (error) {
@@ -2503,9 +2513,7 @@ export const getCampaignById = async (req: Request, res: Response) => {
     // null. Mirrors the shape built in companyController. (brand is deprecated.)
     let companyWithSummary: any = campaign?.company;
     if (campaign?.company) {
-      const activeSubs = (campaign.company.subscriptions || []).filter(
-        (sub: any) => sub.status === 'ACTIVE',
-      );
+      const activeSubs = (campaign.company.subscriptions || []).filter((sub: any) => sub.status === 'ACTIVE');
       const totalCredits = activeSubs.reduce((sum: number, sub: any) => sum + (sub.totalCredits || 0), 0);
       const usedCredits = activeSubs.reduce((sum: number, sub: any) => sum + (sub.creditsUsed || 0), 0);
       companyWithSummary = {
@@ -2519,9 +2527,8 @@ export const getCampaignById = async (req: Request, res: Response) => {
             activeSubs.length > 0
               ? activeSubs
                   .slice()
-                  .sort(
-                    (a: any, b: any) => new Date(a.expiredAt).getTime() - new Date(b.expiredAt).getTime(),
-                  )[0].expiredAt
+                  .sort((a: any, b: any) => new Date(a.expiredAt).getTime() - new Date(b.expiredAt).getTime())[0]
+                  .expiredAt
               : null,
         },
       };
@@ -3142,7 +3149,7 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
       //   sendPush: false,
       // });
 
-      // io.to(clients.get(user?.id)).emit('notification', newPitch);
+      // getIo().to(clients.get(user?.id)).emit('notification', newPitch);
 
       const campaignManagers = campaign?.campaignAdmin;
 
@@ -3161,13 +3168,13 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
             entityId: campaign?.id as string,
           });
 
-          io.to(clients.get(manager)).emit('notification', notification);
+          getIo().to(clients.get(manager)).emit('notification', notification);
         }
       });
     }
 
     // Emit to campaign room for real-time updates
-    io.to(campaignId).emit('v3:pitch:status-updated', {
+    getIo().to(campaignId).emit('v3:pitch:status-updated', {
       campaignId,
       newStatus: 'PENDING_REVIEW',
       action: 'submit',
@@ -3395,8 +3402,17 @@ export const getCampaignForCreatorById = async (req: Request, res: Response) => 
         campaignAdmin: {
           include: {
             admin: {
+              omit: {
+                inviteToken: true,
+                xeroTokenSet: true,
+                bdInviteToken: true,
+              },
               include: {
-                user: true,
+                user: {
+                  omit: {
+                    password: true,
+                  },
+                },
                 role: true,
               },
             },
@@ -3455,6 +3471,7 @@ export const getCampaignForCreatorById = async (req: Request, res: Response) => 
     });
 
     const submissions = campaign.submission;
+
     let completed = 0;
     let totalSubmissions = 0;
 
@@ -3478,47 +3495,7 @@ export const getCampaignForCreatorById = async (req: Request, res: Response) => 
     const adjustedData = {
       ...campaign,
       totalCompletion: ((completed / totalSubmissions) * 100).toFixed(),
-      // totalCompletion:
-      //   (campaign.submission.filter(
-      //     (submission) =>
-      //       submission.userId === userid &&
-      //       (submission.status === 'APPROVED' ||
-      //         submission.submissionType.type === 'FIRST_DRAFT' ||
-      //         submission.status === 'CHANGES_REQUIRED'),
-      //   ).length /
-      //     campaign.submission.filter((submission) => submission.userId === userid).length) *
-      //     100 || null,
     };
-
-    // const adjustedCampaigns = campaigns.map((campaign) => {
-    //   const submissions = campaign.submission;
-    //   let completed = 0;
-    //   let totalSubmissions = 0;
-
-    //   submissions?.forEach((submission) => {
-    //     if (
-    //       submission.status === 'APPROVED' ||
-    //       (submission.submissionType?.type === 'FIRST_DRAFT' && submission.status === 'CHANGES_REQUIRED')
-    //     ) {
-    //       completed++;
-    //     }
-    //   });
-
-    //   const isChangesRequired =
-    //     campaign.submission.find((submission) => submission.submissionType.type === 'FIRST_DRAFT')?.status ===
-    //     'CHANGES_REQUIRED';
-
-    //   totalSubmissions = campaign.campaignType === 'ugc' ? (isChangesRequired ? 3 : 2) : isChangesRequired ? 4 : 3;
-
-    //   return {
-    //     ...campaign,
-    //     pitch: campaign.pitch.find((pitch) => pitch.userId === user.id) ?? null,
-    //     shortlisted: campaign.shortlisted.find((shortlisted) => shortlisted.userId === user.id) ?? null,
-    //     creatorAgreement: campaign.creatorAgreement.find((agreement) => agreement.userId === user.id) ?? null,
-    //     submission: campaign.submission.filter((submission) => submission.userId === user.id) ?? null,
-    //     totalCompletion: ((completed / totalSubmissions) * 100).toFixed(),
-    //   };
-    // });
 
     return res.status(200).json({ ...adjustedData, agreement });
   } catch (error) {
@@ -4526,7 +4503,7 @@ export const changeCampaignStage = async (req: Request, res: Response) => {
           entity: 'Status',
           entityId: updatedCampaign.id,
         });
-        io.to(clients.get(value.userId)).emit('notification', data);
+        getIo().to(clients.get(value.userId)).emit('notification', data);
       });
     }
 
@@ -4541,7 +4518,7 @@ export const changeCampaignStage = async (req: Request, res: Response) => {
           entity: 'Status',
           entityId: updatedCampaign.id,
         });
-        io.to(clients.get(admin.adminId)).emit('notification', data);
+        getIo().to(clients.get(admin.adminId)).emit('notification', data);
       }
     }
 
@@ -4571,7 +4548,7 @@ export const changeCampaignStage = async (req: Request, res: Response) => {
       logAdminChange(adminLogMessage, adminId, req);
     }
 
-    io.emit('campaignStatus', updatedCampaign);
+    getIo().emit('campaignStatus', updatedCampaign);
 
     return res.status(200).json({ message: 'Campaign stage changed successfully.', status: updatedCampaign?.status });
   } catch (error) {
@@ -4725,7 +4702,7 @@ export const closeCampaign = async (req: Request, res: Response) => {
         entity: 'Campaign',
         entityId: result.campaign.id,
       });
-      io.to(clients.get(item.adminId)).emit('notification', data);
+      getIo().to(clients.get(item.adminId)).emit('notification', data);
     });
 
     // Step 7: Log admin activity
@@ -6550,8 +6527,8 @@ export const changePitchStatus = async (req: Request, res: Response) => {
           const socketId = clients.get(pitch.userId);
 
           if (socketId) {
-            io.to(socketId).emit('notification', data);
-            io.to(socketId).emit('shortlisted', {
+            getIo().to(socketId).emit('notification', data);
+            getIo().to(socketId).emit('shortlisted', {
               message: 'shortlisted',
               campaignId: pitch.campaign.id,
               campaignName: pitch.campaign.name,
@@ -6586,7 +6563,7 @@ export const changePitchStatus = async (req: Request, res: Response) => {
 
             const adminSocketId = clients.get(admin.admin.userId);
             if (adminSocketId) {
-              io.to(adminSocketId).emit('notification', notification);
+              getIo().to(adminSocketId).emit('notification', notification);
             }
           }
 
@@ -6755,7 +6732,7 @@ export const changePitchStatus = async (req: Request, res: Response) => {
       logAdminChange(message, adminId, req);
     }
 
-    io.to(clients.get(existingPitch.userId)).emit('pitchUpdate');
+    getIo().to(clients.get(existingPitch.userId)).emit('pitchUpdate');
 
     return res.status(200).json({ message: 'Successfully changed.' });
   } catch (error) {
@@ -6924,7 +6901,7 @@ export const unSaveCampaign = async (req: Request, res: Response) => {
 //       entity: 'Logistic',
 //     });
 
-//     io.to(clients.get(userId)).emit('notification', notification);
+//     getIo().to(clients.get(userId)).emit('notification', notification);
 
 //     const adminLogMessage = `Created New Logistic for campaign - ${logistics.campaign.name} `;
 //     logAdminChange(adminLogMessage, adminId, req);
@@ -7002,7 +6979,7 @@ export const unSaveCampaign = async (req: Request, res: Response) => {
 //         entity: 'Logistic',
 //       });
 
-//       io.to(clients.get(updated.userId)).emit('notification', notification);
+//       getIo().to(clients.get(updated.userId)).emit('notification', notification);
 //     }
 
 //     // // deliveryConfirmation
@@ -7017,7 +6994,7 @@ export const unSaveCampaign = async (req: Request, res: Response) => {
 //     //   entity: 'Logistic',
 //     // });
 
-//     // io.to(clients.get(updated.userId)).emit('notification', notification);
+//     // getIo().to(clients.get(updated.userId)).emit('notification', notification);
 
 //     const adminLogMessage = `Updated Logistic status for campaign - ${updated.campaign.name} `;
 //     logAdminChange(adminLogMessage, adminId, req);
@@ -8061,7 +8038,7 @@ export const sendAgreement = async (req: Request, res: Response) => {
     });
 
     // Real-time SWR refresh for pitch lists (usePitchSocket listens for this)
-    if (io) {
+    if (getIo()) {
       const pitchForSocket = await prisma.pitch.findFirst({
         where: { userId: isUserExist.id, campaignId },
         select: {
@@ -8072,7 +8049,7 @@ export const sendAgreement = async (req: Request, res: Response) => {
         },
       });
       if (pitchForSocket) {
-        io.to(campaignId).emit('v3:pitch:outreach-updated', {
+        getIo().to(campaignId).emit('v3:pitch:outreach-updated', {
           pitchId: pitchForSocket.id,
           campaignId,
           outreachStatus: pitchForSocket.outreachStatus,
@@ -8104,13 +8081,30 @@ export const sendAgreement = async (req: Request, res: Response) => {
         .filter((agreementRecord) => agreementRecord.user?.creator?.isGuest !== true)
         .map((agreementRecord) => agreementRecord.userId);
 
-      // Calculate total credits assigned based on campaign type
-      let totalAssigned = 0;
+      // Only count creators whose agreement has actually been approved (AGREEMENT_FORM
+      // submission status === APPROVED) - not merely sent - for dashboard credit math.
+      let approvedAgreementUserIds: string[] = [];
       if (sentNonGuestUserIds.length) {
-        const shortlistedForCredits = await prisma.shortListedCreator.findMany({
+        const approvedAgreementSubmissions = await prisma.submission.findMany({
           where: {
             campaignId,
             userId: { in: sentNonGuestUserIds },
+            status: 'APPROVED',
+            submissionType: { type: 'AGREEMENT_FORM' },
+          },
+          select: { userId: true },
+          distinct: ['userId'],
+        });
+        approvedAgreementUserIds = approvedAgreementSubmissions.map((s) => s.userId);
+      }
+
+      // Sum credits (ugcVideos, or ugcVideos * creditPerVideo for tier campaigns) for a set of creators
+      const calcAssignedCredits = async (userIds: string[]) => {
+        if (!userIds.length) return 0;
+        const shortlistedForCredits = await prisma.shortListedCreator.findMany({
+          where: {
+            campaignId,
+            userId: { in: userIds },
             ugcVideos: { gt: 0 },
           },
           select: {
@@ -8120,20 +8114,17 @@ export const sendAgreement = async (req: Request, res: Response) => {
         });
 
         if (isCreditTierCampaign) {
-          // For tier campaigns: sum (ugcVideos * creditPerVideo)
-          totalAssigned = shortlistedForCredits.reduce((sum, item) => {
+          return shortlistedForCredits.reduce((sum, item) => {
             const videos = Number(item.ugcVideos || 0);
             const perVideo = Number(item.creditPerVideo || 1);
             return sum + videos * perVideo;
           }, 0);
-        } else {
-          // For non-tier campaigns: sum ugcVideos directly (1 credit = 1 video)
-          totalAssigned = shortlistedForCredits.reduce((sum, item) => sum + Number(item.ugcVideos || 0), 0);
         }
-      }
+        return shortlistedForCredits.reduce((sum, item) => sum + Number(item.ugcVideos || 0), 0);
+      };
 
-      // For v4 campaigns: mark credits as utilized immediately (submissions are created)
-      // For non-v4 campaigns: only track assigned credits, will be utilized when posting approved
+      const totalAssigned = await calcAssignedCredits(approvedAgreementUserIds);
+
       if (isV4Campaign) {
         await prisma.campaign.update({
           where: { id: campaignId },
@@ -8143,7 +8134,9 @@ export const sendAgreement = async (req: Request, res: Response) => {
           },
         });
       } else {
-        // Non-v4: Only update pending (assigned but not yet utilized)
+        // Non-v4: creditsUtilized is still only incremented by deductCredits on posting
+        // approval - only the "assigned" (pending) side of the dashboard math is gated
+        // on agreement approval here.
         await prisma.campaign.update({
           where: { id: campaignId },
           data: {
@@ -8195,8 +8188,8 @@ export const sendAgreement = async (req: Request, res: Response) => {
     const socketId = clients.get(isUserExist.id);
 
     if (socketId) {
-      io.to(socketId).emit('notification', notification);
-      io.to(clients.get(isUserExist.id)).emit('agreementReady');
+      getIo().to(socketId).emit('notification', notification);
+      getIo().to(clients.get(isUserExist.id)).emit('agreementReady');
     }
 
     await prisma.campaignLog.create({
@@ -9257,7 +9250,7 @@ export const removeCreatorFromCampaign = async (req: Request, res: Response) => 
     });
 
     // Emit to campaign room for real-time updates
-    io.to(campaignId).emit('v3:pitch:status-updated', {
+    getIo().to(campaignId).emit('v3:pitch:status-updated', {
       campaignId,
       newStatus: 'REMOVED',
       action: 'remove',
@@ -9401,8 +9394,8 @@ export const resendAgreement = async (req: Request, res: Response) => {
     const socketId = clients.get(userId);
 
     if (socketId) {
-      io.to(socketId).emit('notification', notification);
-      io.to(clients.get(userId)).emit('agreementReady');
+      getIo().to(socketId).emit('notification', notification);
+      getIo().to(clients.get(userId)).emit('agreementReady');
     }
 
     return res.status(200).json({ message: 'Agreement resent successfully.' });
@@ -9497,9 +9490,9 @@ export const submitAgreementV3 = async (req: Request, res: Response) => {
       });
       const socketId = clients.get(a.admin.userId);
       if (socketId) {
-        io.to(socketId).emit('notification', notification);
-        io.to(socketId).emit('agreementReady');
-        io.to(socketId).emit('pitchUpdate');
+        getIo().to(socketId).emit('notification', notification);
+        getIo().to(socketId).emit('agreementReady');
+        getIo().to(socketId).emit('pitchUpdate');
       }
     }
 
@@ -9653,9 +9646,9 @@ export const shortlistCreator = async (req: Request, res: Response) => {
 
             const socketId = clients.get(creator.id);
             if (socketId) {
-              io.to(socketId).emit('notification', notification);
+              getIo().to(socketId).emit('notification', notification);
               // Emit shortlisted event with campaign data for popup
-              io.to(socketId).emit('shortlisted', {
+              getIo().to(socketId).emit('shortlisted', {
                 message: 'shortlisted',
                 campaignId: campaign.id,
                 campaignName: campaign.name,
@@ -9886,9 +9879,9 @@ export const shortlistCreatorV2 = async (req: Request, res: Response) => {
 
           const socketId = clients.get(creator.id);
           if (socketId) {
-            io.to(socketId).emit('notification', notification);
+            getIo().to(socketId).emit('notification', notification);
             // Emit shortlisted event with campaign data for popup
-            io.to(socketId).emit('shortlisted', {
+            getIo().to(socketId).emit('shortlisted', {
               message: 'shortlisted',
               campaignId: campaign.id,
               campaignName: campaign.name,
@@ -10713,7 +10706,7 @@ export const activateClientCampaign = async (req: Request, res: Response) => {
         const socketId = clients.get(adminUser.id);
 
         if (socketId) {
-          io.to(socketId).emit('notification', notification);
+          getIo().to(socketId).emit('notification', notification);
           console.log(`Sent real-time notification to user ${adminUser.id} on socket ${socketId}`);
         }
       }
@@ -11756,7 +11749,7 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
     });
 
     // Emit to campaign room for real-time updates
-    io.to(campaignId).emit('v3:pitch:status-updated', {
+    getIo().to(campaignId).emit('v3:pitch:status-updated', {
       campaignId,
       newStatus: 'APPROVED',
       action: 'shortlist',
@@ -11769,7 +11762,7 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
     for (const creator of creators) {
       const creatorSocketId = clients.get(creator.id);
       if (creatorSocketId) {
-        io.to(creatorSocketId).emit('pitchUpdate');
+        getIo().to(creatorSocketId).emit('pitchUpdate');
       }
     }
 
@@ -11860,7 +11853,7 @@ export const rateCreator = async (req: Request, res: Response) => {
       };
 
       if (creatorSocketId) {
-        io.to(creatorSocketId).emit('creator:rating-completed', payload);
+        getIo().to(creatorSocketId).emit('creator:rating-completed', payload);
       }
     }
 
@@ -12773,11 +12766,12 @@ export const changeCampaignCredit = async (req: Request, res: Response) => {
 };
 
 /**
- * Syncs campaign credits based on shortlisted creators with sent agreements.
+ * Syncs campaign credits based on shortlisted creators with an approved agreement.
  * This recalculates creditsUtilized based on actual data and updates creditsPending accordingly.
  *
  * Formula:
- * - creditsUtilized = sum of ugcVideos for shortlisted creators (non-guest) whose agreements have been sent
+ * - creditsUtilized = sum of ugcVideos (or ugcVideos * creditPerVideo for credit-tier campaigns)
+ *   for shortlisted creators (non-guest) whose AGREEMENT_FORM submission is APPROVED
  * - creditsPending = campaignCredits - creditsUtilized
  */
 export const syncCampaignCredits = async (req: Request, res: Response) => {
@@ -12796,12 +12790,6 @@ export const syncCampaignCredits = async (req: Request, res: Response) => {
             },
           },
         },
-        creatorAgreement: {
-          select: {
-            userId: true,
-            isSent: true,
-          },
-        },
       },
     });
 
@@ -12809,22 +12797,33 @@ export const syncCampaignCredits = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Campaign not found' });
     }
 
-    // Calculate utilized credits: sum of ugcVideos for shortlisted non-guest creators with sent agreements
-    // For credit tier campaigns, multiply ugcVideos by creditPerVideo
+    // Only count creators whose agreement has actually been approved (AGREEMENT_FORM
+    // submission status === APPROVED) - not merely sent - for both v4 and non-v4 campaigns.
+    const approvedAgreementSubmissions = await prisma.submission.findMany({
+      where: {
+        campaignId,
+        status: 'APPROVED',
+        submissionType: { type: 'AGREEMENT_FORM' },
+      },
+      select: { userId: true },
+      distinct: ['userId'],
+    });
+    const approvedAgreementUserIds = new Set(approvedAgreementSubmissions.map((submission) => submission.userId));
+
+    // Calculate utilized credits for shortlisted non-guest creators with an approved agreement.
+    // For credit tier campaigns, multiply ugcVideos by creditPerVideo.
     const creditsUtilized = campaign.shortlisted.reduce((total, creator) => {
       const isGuest = creator.user?.creator?.isGuest === true;
-      // const hasAgreementSent = creator.userId && sentAgreementUserIds.has(creator.userId);
+      if (isGuest) return total;
 
-      if (!isGuest) {
-        const videos = creator.ugcVideos || 0;
-        // For credit tier campaigns, multiply by creditPerVideo
-        if (campaign.isCreditTier) {
-          const perVideo = creator.creditPerVideo || 1;
-          return total + videos * perVideo;
-        }
-        return total + videos;
+      if (!(creator.userId && approvedAgreementUserIds.has(creator.userId))) return total;
+
+      const videos = creator.ugcVideos || 0;
+      if (campaign.isCreditTier) {
+        const perVideo = creator.creditPerVideo || 1;
+        return total + videos * perVideo;
       }
-      return total;
+      return total + videos;
     }, 0);
 
     // Calculate pending credits

@@ -7,6 +7,7 @@ export interface OTPTypes {
   sentAt: Date;
   attempts: number;
   isCodeUsed: boolean;
+  userId: string;
 }
 
 declare module 'express-session' {

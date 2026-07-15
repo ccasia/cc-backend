@@ -3105,9 +3105,10 @@ export const getCSMWorkloadData = async (startDate?: Date, endDate?: Date) => {
           COUNT(DISTINCT c.id) FILTER (WHERE c.status = 'COMPLETED')                  AS "completedCampaigns",
           COUNT(DISTINCT c."companyId") FILTER (WHERE c.status = 'ACTIVE')            AS "activeClients",
           COALESCE(SUM(cc.creator_count) FILTER (WHERE c.status = 'ACTIVE'), 0)::int  AS "activeCreators",
-          COALESCE(SUM(c."campaignCredits"), 0)::int                                  AS "totalCredits",
-          COALESCE(SUM(c."creditsPending"), 0)::int                                   AS "pendingCredits",
-          COALESCE(SUM(c."creditsUtilized"), 0)::int                                  AS "utilisedCredits"
+          -- Credit tracking is only reliable for v4 campaigns; non-v4 credit accounting is excluded
+          COALESCE(SUM(c."campaignCredits") FILTER (WHERE c."submissionVersion" = 'v4'), 0)::int AS "totalCredits",
+          COALESCE(SUM(c."creditsPending")  FILTER (WHERE c."submissionVersion" = 'v4'), 0)::int AS "pendingCredits",
+          COALESCE(SUM(c."creditsUtilized") FILTER (WHERE c."submissionVersion" = 'v4'), 0)::int AS "utilisedCredits"
         FROM "CampaignAdmin" ca
         INNER JOIN "Admin"    a  ON a."userId"      = ca."adminId"
         INNER JOIN "Role"     r  ON r.id            = a."roleId"
@@ -3137,9 +3138,10 @@ export const getCSMWorkloadData = async (startDate?: Date, endDate?: Date) => {
           COUNT(DISTINCT c.id) FILTER (WHERE c.status = 'COMPLETED')                  AS "completedCampaigns",
           COUNT(DISTINCT c."companyId") FILTER (WHERE c.status = 'ACTIVE')            AS "activeClients",
           COALESCE(SUM(cc.creator_count) FILTER (WHERE c.status = 'ACTIVE'), 0)::int  AS "activeCreators",
-          COALESCE(SUM(c."campaignCredits"), 0)::int                                  AS "totalCredits",
-          COALESCE(SUM(c."creditsPending"), 0)::int                                   AS "pendingCredits",
-          COALESCE(SUM(c."creditsUtilized"), 0)::int                                  AS "utilisedCredits"
+          -- Credit tracking is only reliable for v4 campaigns; non-v4 credit accounting is excluded
+          COALESCE(SUM(c."campaignCredits") FILTER (WHERE c."submissionVersion" = 'v4'), 0)::int AS "totalCredits",
+          COALESCE(SUM(c."creditsPending")  FILTER (WHERE c."submissionVersion" = 'v4'), 0)::int AS "pendingCredits",
+          COALESCE(SUM(c."creditsUtilized") FILTER (WHERE c."submissionVersion" = 'v4'), 0)::int AS "utilisedCredits"
         FROM "CampaignAdmin" ca
         INNER JOIN "Admin"    a  ON a."userId"      = ca."adminId"
         INNER JOIN "Role"     r  ON r.id            = a."roleId"

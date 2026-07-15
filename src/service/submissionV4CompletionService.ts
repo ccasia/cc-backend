@@ -1,7 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { createInvoiceService } from './invoiceService';
 import { saveNotification } from '../controller/notificationController';
-import { clients, io } from '../server';
+import { clients, getIo } from '../config/socket';
 import {
   CREATOR_CAMPAIGN_COMPLETED_EVENT,
   createCreatorCampaignCompletedPayload,
@@ -295,9 +295,9 @@ export const handleV4CompletedCampaign = async (
     const completedPayload = createCreatorCampaignCompletedPayload({ userId, campaignId });
     const creatorSocketId = clients.get(userId);
     if (creatorSocketId) {
-      io.to(creatorSocketId).emit(CREATOR_CAMPAIGN_COMPLETED_EVENT, completedPayload);
+      getIo().to(creatorSocketId).emit(CREATOR_CAMPAIGN_COMPLETED_EVENT, completedPayload);
     }
-    io.to(campaignId).emit(CREATOR_CAMPAIGN_COMPLETED_EVENT, completedPayload);
+    getIo().to(campaignId).emit(CREATOR_CAMPAIGN_COMPLETED_EVENT, completedPayload);
 
     // Notify the creator their posting is approved and the invoice is ready (in-app + push)
     if (invoice?.id) {
@@ -311,7 +311,7 @@ export const handleV4CompletedCampaign = async (
       });
 
       if (creatorSocketId) {
-        io.to(creatorSocketId).emit('notification', creatorNotification);
+        getIo().to(creatorSocketId).emit('notification', creatorNotification);
       }
     }
 

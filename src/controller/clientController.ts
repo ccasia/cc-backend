@@ -2,8 +2,9 @@ import { Request, Response } from 'express';
 import { PrismaClient, CampaignStatus, LogisticType, ReservationMode, Prisma } from '@prisma/client';
 import { uploadCompanyLogo, uploadAttachments } from '@configs/cloudStorage.config';
 import { getRemainingCredits } from '@services/companyService';
-import { clients, io } from '../server';
+
 import { saveNotification } from './notificationController';
+import { clients, getIo } from '../config/socket';
 
 const prisma = new PrismaClient();
 
@@ -750,7 +751,7 @@ export const createClientCampaign = async (req: Request, res: Response) => {
         const socketId = clients.get(adminUser.id);
 
         if (socketId) {
-          io.to(socketId).emit('notification', notification);
+          getIo().to(socketId).emit('notification', notification);
           console.log(`Sent real-time notification to user ${adminUser.id} on socket ${socketId}`);
         }
       }
