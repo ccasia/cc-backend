@@ -4,10 +4,10 @@ import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 
-const pathToJSONKey = `src/config/test-cs.json`;
+const pathToJSONKey = `config/test-cs.json`;
 
 export const storage = new Storage({
-  keyFilename: pathToJSONKey,
+  keyFilename: '@configs/test-cs.json',
 });
 
 const bucket = storage.bucket(process.env.BUCKET_NAME!);
