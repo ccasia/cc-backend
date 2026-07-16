@@ -6,6 +6,7 @@ import {
   CREATOR_CAMPAIGN_COMPLETED_EVENT,
   createCreatorCampaignCompletedPayload,
 } from '@utils/campaignCompletionEvents';
+import { getEffectiveCampaignOrigin } from '@utils/campaignFlow';
 
 const prisma = new PrismaClient();
 
@@ -25,10 +26,13 @@ interface CompletionStatus {
  * For normal campaigns:
  * 1. Video submissions (if any) must be POSTED
  * 2. Photo submissions (if any) must be POSTED
- * 3. Raw Footage submissions (if any) must be CLIENT_APPROVED
+ * 3. Raw Footage submissions (if any) must be fully approved
  *
  * For UGC campaigns:
- * All submissions must be CLIENT_APPROVED (posting links not required)
+ * All submissions must be fully approved (posting links not required)
+ *
+ * "Fully approved" is CLIENT_APPROVED on campaigns with a client; on campaigns
+ * without one, admin approval (APPROVED) is final.
  */
 export const checkV4SubmissionCompletion = async (campaignId: string, userId: string): Promise<CompletionStatus> => {
   try {
@@ -43,6 +47,16 @@ export const checkV4SubmissionCompletion = async (campaignId: string, userId: st
           select: {
             isCampaignDone: true,
             ugcVideos: true,
+          },
+        },
+        campaignAdmin: {
+          include: {
+            admin: {
+              include: {
+                user: { select: { role: true } },
+                role: true,
+              },
+            },
           },
         },
       },
@@ -107,6 +121,12 @@ export const checkV4SubmissionCompletion = async (campaignId: string, userId: st
     const missingDeliverables: string[] = [];
     let allComplete = true;
 
+    // Terminal approval status depends on the flow: campaigns with a client end at
+    // CLIENT_APPROVED; campaigns without one end at APPROVED (admin approval is final).
+    // On client campaigns APPROVED alone must NOT complete (client review still pending).
+    const hasClientFlow = getEffectiveCampaignOrigin(campaign) === 'CLIENT';
+    const approvedStatuses: string[] = hasClientFlow ? ['CLIENT_APPROVED'] : ['CLIENT_APPROVED', 'APPROVED'];
+
     // Group submissions by type for easier analysis
     const videoSubmissions = submissions.filter((s) => s.submissionType.type === 'VIDEO');
     const photoSubmissions = submissions.filter((s) => s.submissionType.type === 'PHOTO');
@@ -123,7 +143,7 @@ export const checkV4SubmissionCompletion = async (campaignId: string, userId: st
 
       // Check video submissions
       for (const submission of videoSubmissions) {
-        if (submission.status !== 'CLIENT_APPROVED') {
+        if (!approvedStatuses.includes(submission.status)) {
           allComplete = false;
           missingDeliverables.push(`Video ${submission.contentOrder} (current: ${submission.status})`);
         }
@@ -131,7 +151,7 @@ export const checkV4SubmissionCompletion = async (campaignId: string, userId: st
 
       // Check photo submissions
       for (const submission of photoSubmissions) {
-        if (submission.status !== 'CLIENT_APPROVED') {
+        if (!approvedStatuses.includes(submission.status)) {
           allComplete = false;
           missingDeliverables.push(`Photos (current: ${submission.status})`);
         }
@@ -139,7 +159,7 @@ export const checkV4SubmissionCompletion = async (campaignId: string, userId: st
 
       // Check raw footage submissions
       for (const submission of rawFootageSubmissions) {
-        if (submission.status !== 'CLIENT_APPROVED') {
+        if (!approvedStatuses.includes(submission.status)) {
           allComplete = false;
           missingDeliverables.push(`Raw Footage (current: ${submission.status})`);
         }
@@ -166,9 +186,9 @@ export const checkV4SubmissionCompletion = async (campaignId: string, userId: st
         }
       }
 
-      // Check raw footage submissions - must be CLIENT_APPROVED
+      // Check raw footage submissions - must be fully approved (client or admin-final)
       for (const submission of rawFootageSubmissions) {
-        if (submission.status !== 'CLIENT_APPROVED') {
+        if (!approvedStatuses.includes(submission.status)) {
           allComplete = false;
           missingDeliverables.push(`Raw Footage approval (current: ${submission.status})`);
         }
@@ -351,8 +371,10 @@ export const checkAndCompleteV4Campaign = async (submissionId: string, adminId?:
       return;
     }
 
-    // Only check completion for potentially completing statuses
-    const completingStatuses = ['POSTED', 'CLIENT_APPROVED'];
+    // Only check completion for potentially completing statuses.
+    // APPROVED is included as a trigger for no-client campaigns where admin approval is
+    // final; checkV4SubmissionCompletion still enforces CLIENT_APPROVED on client campaigns.
+    const completingStatuses = ['POSTED', 'CLIENT_APPROVED', 'APPROVED'];
     if (!completingStatuses.includes(submission.status)) {
       console.log(`⏳ Submission ${submissionId} status ${submission.status} not a completing status, skipping`);
       return;
