@@ -8163,6 +8163,27 @@ export const sendAgreement = async (req: Request, res: Response) => {
       entityId: campaignId,
     });
 
+    const agreementSubmission = await prisma.submission.findFirst({
+      where: {
+        submissionType: {
+          type: 'AGREEMENT_FORM',
+        },
+        campaignId: agreement.campaignId,
+        userId: agreement.userId,
+      },
+      select: { id: true },
+    });
+
+    getIo()
+      .to(user.userId)
+      .emit(
+        'notification',
+        notificationSignature(campaign.name, {
+          campaignId: agreement.campaignId,
+          submissionId: agreementSubmission?.id,
+        }),
+      );
+
     const socketId = clients.get(isUserExist.id);
 
     if (socketId) {
@@ -9368,6 +9389,27 @@ export const resendAgreement = async (req: Request, res: Response) => {
     });
 
     const socketId = clients.get(userId);
+
+    const agreementSubmission = await prisma.submission.findFirst({
+      where: {
+        submissionType: {
+          type: 'AGREEMENT_FORM',
+        },
+        campaignId: agreement.campaignId,
+        userId: agreement.userId,
+      },
+      select: { id: true },
+    });
+
+    getIo()
+      .to(socketId)
+      .emit(
+        'notification',
+        notificationSignature(campaign.name, {
+          campaignId: agreement.campaignId,
+          submissionId: agreementSubmission?.id,
+        }),
+      );
 
     if (socketId) {
       getIo().to(socketId).emit('notification', notification);

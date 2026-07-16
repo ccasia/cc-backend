@@ -98,7 +98,7 @@ export const login = async (
       expiresIn: '30d',
     });
 
-    prisma.refreshToken.create({
+    await prisma.refreshToken.create({
       data: {
         tokenHash: hashToken(refreshToken),
         userId: user.id,
@@ -509,7 +509,7 @@ export const tokenRefresh = async (req: Request, res: Response) => {
     }
 
     const newAccessToken = jwt.sign({ userId: stored.userId, email: stored.user.email }, process.env.ACCESSKEY!, {
-      expiresIn: '1m',
+      expiresIn: '15m',
     });
 
     const newRefreshToken = jwt.sign({ userId: stored.userId, email: stored.user.email }, process.env.REFRESHKEY!, {
@@ -592,7 +592,7 @@ export const verifyEmail = async (req: Request<{}, {}, { email: string; shortCod
     }),
   ]);
 
-  const accessToken = jwt.sign({ userId: user.id, email: user.email }, process.env.ACCESSKEY!, { expiresIn: '1m' });
+  const accessToken = jwt.sign({ userId: user.id, email: user.email }, process.env.ACCESSKEY!, { expiresIn: '15m' });
   const refreshToken = jwt.sign({ userId: user.id, email: user.email }, process.env.REFRESHKEY!, {
     expiresIn: '30d',
   });
@@ -804,7 +804,7 @@ const handleSocialSignIn = async ({
   }
 
   // Issue tokens — same inline pattern as mobile `login`.
-  const accessToken = jwt.sign({ userId: user.id, email: user.email }, process.env.ACCESSKEY!, { expiresIn: '1m' });
+  const accessToken = jwt.sign({ userId: user.id, email: user.email }, process.env.ACCESSKEY!, { expiresIn: '15m' });
   const refreshToken = jwt.sign({ userId: user.id, email: user.email }, process.env.REFRESHKEY!, { expiresIn: '30d' });
 
   await prisma.refreshToken.create({

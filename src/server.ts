@@ -414,6 +414,7 @@ io.on('connection', (socket) => {
   socket.on('register', (userId) => {
     clients.set(userId, socket.id);
     users.set(userId, socket.id);
+    socket.join(userId);
   });
 
   socket.on('online-user', () => {

@@ -924,6 +924,8 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
 
     console.log(`Pitch ${pitchId} approved by client, status updated to APPROVED`);
 
+    // Afiq added this for realtime banner pop up in the mobile apps
+
     // Emit to campaign room for real-time updates
     getIo().to(pitch.campaignId).emit('v3:pitch:status-updated', {
       pitchId,

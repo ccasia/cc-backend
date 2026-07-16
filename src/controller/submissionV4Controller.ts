@@ -18,7 +18,7 @@ import { fetchCommentsForVideo, editCommentRecord } from '../service/submissionC
 
 import { saveNotification } from './notificationController';
 import { sendExpoPushToUser } from '../helper/expoPush';
-import { notificationDraft } from '@helper/notification';
+import { notificationApproveDraft, notificationDraft } from '@helper/notification';
 import { saveCaptionToHistory } from '../utils/captionHistoryUtils';
 import { extractAndStoreSubmissionUrls } from '@services/submissionUrlService';
 import { scheduleInitialInsightFetch } from '@services/insightFetchService';
@@ -626,6 +626,10 @@ export const approveV4Submission = async (req: Request, res: Response) => {
     // Emit socket event for real-time updates
 
     if (getIo()) {
+      // getIo()
+      //   .to(clients.get(currentUserId))
+      //   .emit('notification', notificationApproveDraft(submission.campaign.name, 'Video'));
+
       getIo().to(submission.campaign.id).emit('v4:submission:updated', {
         submissionId,
         userId: currentUserId,

@@ -1,3 +1,8 @@
+interface Entity {
+  campaignId?: string;
+  submissionId?: string;
+}
+
 const notificationCampaignLive = (campaignName: string) => {
   return {
     title: '✨ New campaign just dropped',
@@ -47,10 +52,12 @@ const notificationDraft = (campaignName: string, type: 'Admin' | 'Creator', crea
   };
 };
 
-const notificationSignature = (campaignName: string) => {
+const notificationSignature = (campaignName: string, entity?: Entity) => {
   return {
     title: `🎉 You're in for ${campaignName}`,
     message: 'Sign your agreement to lock it in.',
+    campaignId: entity?.campaignId,
+    submissionId: entity?.submissionId,
   };
 };
 
@@ -221,7 +228,7 @@ const escalationAgreementUnsigned = (campaignName: string) => {
 
 const escalationDraftNotSubmitted = (campaignName: string) => {
   return {
-    title: "⏰ Your draft is due soon",
+    title: '⏰ Your draft is due soon',
     message: `Your ${campaignName} draft is due soon - let's get it in.`,
   };
 };
