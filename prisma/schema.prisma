@@ -812,6 +812,11 @@ model Campaign {
   lostAmount   Float?
   lostCurrency String?
   lostReason   String? @db.Text
+  lostAt       DateTime?
+
+  // Won Deal tracking (BD dashboard) — deal value snapshotted at handover, from
+  wonAmount   Float?
+  wonCurrency String?
 
   // Snapshot of the brief field values at the moment it was sent to the client
   clientBriefSnapshot Json?
