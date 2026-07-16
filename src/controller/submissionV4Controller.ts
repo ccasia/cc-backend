@@ -25,17 +25,25 @@ import { scheduleInitialInsightFetch } from '@services/insightFetchService';
 import { checkShouldShowNPS } from '@services/npsFeedbackService';
 import { selectCurrentAgreementSubmission } from '@utils/submissionAgreement';
 import { clients, getIo } from '../config/socket';
+import { getEffectiveCampaignOrigin } from '@utils/campaignFlow';
 
 const prisma = new PrismaClient();
 
-/**
- * Determine effective campaign origin for V4 status flow
- * V4 campaigns with client managers should follow CLIENT flow even if origin is ADMIN
- */
-const getEffectiveCampaignOrigin = (campaign: any): 'CLIENT' | 'ADMIN' => {
-  const hasClientManagers = campaign.campaignAdmin?.some((ca: any) => ca.admin.user.role === 'client');
-  return hasClientManagers ? 'CLIENT' : campaign.origin;
-};
+// Campaign relations required by getEffectiveCampaignOrigin (@utils/campaignFlow).
+// Queries whose campaign object feeds that helper must load these, otherwise the
+// helper silently falls back to the raw campaign origin.
+const campaignFlowInclude = {
+  campaignAdmin: {
+    include: {
+      admin: {
+        include: {
+          user: { select: { role: true } },
+          role: true,
+        },
+      },
+    },
+  },
+} as const;
 
 /**
  * Extract URLs and schedule initial insight fetch for a submission (non-blocking background task)
@@ -85,7 +93,7 @@ const updateSubmissionStatusBasedOnContent = async (submissionId: string) => {
     where: { id: submissionId },
     include: {
       submissionType: true,
-      campaign: true,
+      campaign: { include: campaignFlowInclude },
       photos: true,
       rawFootages: true,
       video: true,
@@ -152,7 +160,7 @@ const updateSubmissionStatusBasedOnContent = async (submissionId: string) => {
     newSubmissionStatus = 'CLIENT_FEEDBACK';
   } else if ((hasApproved || hasSentToClient) && allProcessed) {
     // Check what the final status should be based on content statuses
-    const isClientCampaign = submission.campaign?.origin === 'CLIENT';
+    const isClientCampaign = getEffectiveCampaignOrigin(submission.campaign) === 'CLIENT';
 
     if (isClientCampaign) {
       // For client campaigns
@@ -441,23 +449,7 @@ export const approveV4Submission = async (req: Request, res: Response) => {
             name: true,
           },
         },
-        campaign: {
-          include: {
-            campaignAdmin: {
-              include: {
-                admin: {
-                  include: {
-                    user: {
-                      select: {
-                        role: true,
-                      },
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
+        campaign: { include: campaignFlowInclude },
         video: true,
         photos: true,
         rawFootages: true,
@@ -591,7 +583,7 @@ export const approveV4Submission = async (req: Request, res: Response) => {
     if (action === 'request_revision' || action === 'reject') {
       // Admin requesting changes = REQUEST type
       feedbackType = 'REQUEST';
-    } else if (action === 'approve' && submission.campaign.origin === 'CLIENT') {
+    } else if (action === 'approve' && effectiveCampaignOrigin === 'CLIENT') {
       // Send to Client = COMMENT type
       feedbackType = 'COMMENT';
     }
@@ -648,11 +640,11 @@ export const approveV4Submission = async (req: Request, res: Response) => {
     // This controller only handles the actual content submissions (VIDEO, PHOTO, RAW_FOOTAGE)
 
     const actionMessage =
-      submission.campaign.origin === 'CLIENT' && action === 'approve' && submission.submissionType.type !== 'VIDEO'
+      effectiveCampaignOrigin === 'CLIENT' && action === 'approve' && submission.submissionType.type !== 'VIDEO'
         ? 'approved and sent to client for review'
         : `${action}d successfully`;
 
-    if (submission.campaign.origin === 'CLIENT' && action === 'approve' && submission.submissionType.type !== 'VIDEO') {
+    if (effectiveCampaignOrigin === 'CLIENT' && action === 'approve' && submission.submissionType.type !== 'VIDEO') {
       const clientUsers = submission.campaign.campaignAdmin.filter((ca) => ca.admin.user.role === 'client');
 
       for (const clientUser of clientUsers) {
@@ -1554,7 +1546,7 @@ export const approveIndividualContentV4 = async (req: Request, res: Response) =>
         where: { id: contentId },
         include: {
           submission: {
-            include: { campaign: true },
+            include: { campaign: { include: campaignFlowInclude } },
           },
         },
       });
@@ -1590,21 +1582,7 @@ export const approveIndividualContentV4 = async (req: Request, res: Response) =>
         where: { id: contentId },
         include: {
           submission: {
-            include: {
-              campaign: {
-                include: {
-                  campaignAdmin: {
-                    include: {
-                      admin: {
-                        include: {
-                          user: true,
-                        },
-                      },
-                    },
-                  },
-                },
-              },
-            },
+            include: { campaign: { include: campaignFlowInclude } },
           },
         },
       });
@@ -1640,21 +1618,7 @@ export const approveIndividualContentV4 = async (req: Request, res: Response) =>
         where: { id: contentId },
         include: {
           submission: {
-            include: {
-              campaign: {
-                include: {
-                  campaignAdmin: {
-                    include: {
-                      admin: {
-                        include: {
-                          user: true,
-                        },
-                      },
-                    },
-                  },
-                },
-              },
-            },
+            include: { campaign: { include: campaignFlowInclude } },
           },
         },
       });
@@ -1918,7 +1882,7 @@ export const approveIndividualContentByClientV4 = async (req: Request, res: Resp
         where: { id: contentId },
         include: {
           submission: {
-            include: { campaign: true },
+            include: { campaign: { include: campaignFlowInclude } },
           },
         },
       });
@@ -1933,8 +1897,8 @@ export const approveIndividualContentByClientV4 = async (req: Request, res: Resp
         return res.status(400).json({ message: 'Not a v4 submission' });
       }
 
-      if (submission.campaign.origin !== 'CLIENT') {
-        return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
+      if (getEffectiveCampaignOrigin(submission.campaign) !== 'CLIENT') {
+        return res.status(400).json({ message: 'This endpoint is only for campaigns with a client' });
       }
 
       // Update video
@@ -1953,7 +1917,7 @@ export const approveIndividualContentByClientV4 = async (req: Request, res: Resp
         where: { id: contentId },
         include: {
           submission: {
-            include: { campaign: true },
+            include: { campaign: { include: campaignFlowInclude } },
           },
         },
       });
@@ -1968,8 +1932,8 @@ export const approveIndividualContentByClientV4 = async (req: Request, res: Resp
         return res.status(400).json({ message: 'Not a v4 submission' });
       }
 
-      if (submission.campaign.origin !== 'CLIENT') {
-        return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
+      if (getEffectiveCampaignOrigin(submission.campaign) !== 'CLIENT') {
+        return res.status(400).json({ message: 'This endpoint is only for campaigns with a client' });
       }
 
       // Update raw footage
@@ -1988,7 +1952,7 @@ export const approveIndividualContentByClientV4 = async (req: Request, res: Resp
         where: { id: contentId },
         include: {
           submission: {
-            include: { campaign: true },
+            include: { campaign: { include: campaignFlowInclude } },
           },
         },
       });
@@ -2003,8 +1967,8 @@ export const approveIndividualContentByClientV4 = async (req: Request, res: Resp
         return res.status(400).json({ message: 'Not a v4 submission' });
       }
 
-      if (submission.campaign.origin !== 'CLIENT') {
-        return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
+      if (getEffectiveCampaignOrigin(submission.campaign) !== 'CLIENT') {
+        return res.status(400).json({ message: 'This endpoint is only for campaigns with a client' });
       }
 
       // Update photo
@@ -2116,7 +2080,7 @@ export const requestChangesIndividualContentByClientV4 = async (req: Request, re
         where: { id: contentId },
         include: {
           submission: {
-            include: { campaign: true },
+            include: { campaign: { include: campaignFlowInclude } },
           },
         },
       });
@@ -2131,8 +2095,8 @@ export const requestChangesIndividualContentByClientV4 = async (req: Request, re
         return res.status(400).json({ message: 'Not a v4 submission' });
       }
 
-      if (submission.campaign.origin !== 'CLIENT') {
-        return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
+      if (getEffectiveCampaignOrigin(submission.campaign) !== 'CLIENT') {
+        return res.status(400).json({ message: 'This endpoint is only for campaigns with a client' });
       }
 
       // Update video
@@ -2152,7 +2116,7 @@ export const requestChangesIndividualContentByClientV4 = async (req: Request, re
         where: { id: contentId },
         include: {
           submission: {
-            include: { campaign: true },
+            include: { campaign: { include: campaignFlowInclude } },
           },
         },
       });
@@ -2167,8 +2131,8 @@ export const requestChangesIndividualContentByClientV4 = async (req: Request, re
         return res.status(400).json({ message: 'Not a v4 submission' });
       }
 
-      if (submission.campaign.origin !== 'CLIENT') {
-        return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
+      if (getEffectiveCampaignOrigin(submission.campaign) !== 'CLIENT') {
+        return res.status(400).json({ message: 'This endpoint is only for campaigns with a client' });
       }
 
       // Update raw footage
@@ -2188,7 +2152,7 @@ export const requestChangesIndividualContentByClientV4 = async (req: Request, re
         where: { id: contentId },
         include: {
           submission: {
-            include: { campaign: true },
+            include: { campaign: { include: campaignFlowInclude } },
           },
         },
       });
@@ -2203,8 +2167,8 @@ export const requestChangesIndividualContentByClientV4 = async (req: Request, re
         return res.status(400).json({ message: 'Not a v4 submission' });
       }
 
-      if (submission.campaign.origin !== 'CLIENT') {
-        return res.status(400).json({ message: 'This endpoint is only for client-created campaigns' });
+      if (getEffectiveCampaignOrigin(submission.campaign) !== 'CLIENT') {
+        return res.status(400).json({ message: 'This endpoint is only for campaigns with a client' });
       }
 
       // Update photo

@@ -783,7 +783,7 @@ model Campaign {
   updatedAt DateTime @updatedAt
 
   // V4 submission version tracking
-  submissionVersion String? @default("v3") // "v2", "v3", "v4"
+  submissionVersion String? @default("v4") // "v2", "v3", "v4" — immutable after creation; all new campaigns are v4
 
   // Trends analysis
   submissionPostingUrls SubmissionPostingUrl[]

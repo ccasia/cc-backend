@@ -4,6 +4,7 @@ import dayjs from 'dayjs';
 
 import { saveNotification } from './notificationController';
 import { notificationPitchForClientReview } from '@helper/notification';
+import { campaignHasClient } from '@utils/campaignFlow';
 import {
   CREATOR_CAMPAIGN_MEMBERSHIP_UPDATED_EVENT,
   createCreatorCampaignMembershipUpdatedPayload,
@@ -98,7 +99,7 @@ const normalizePitchStatusForV4 = (pitch: any): string | null => {
 
 export const approvePitchByAdmin = async (req: Request, res: Response) => {
   const { pitchId } = req.params;
-  const { adminComments } = req.body;
+  const { adminComments, action } = req.body;
   const adminId = req.userId;
 
   if (!adminId) return res.status(401).json({ message: 'Unauthorized' });
@@ -138,13 +139,34 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
 
     const isV4Campaign = pitch.campaign.submissionVersion === 'v4';
     const isMaybeApproval = pitch.status === 'MAYBE';
+    const hasClient = campaignHasClient(pitch.campaign);
 
-    // Determine status based on campaign type and current pitch status:
-    // - MAYBE pitches: APPROVED directly (skip client review, follow client-approved flow)
-    // - v4 campaigns (PENDING_REVIEW/INVITED): SENT_TO_CLIENT (client needs to approve)
-    // - non-v4 campaigns: APPROVED directly (admin approval is final)
-    const newStatus = isMaybeApproval || !isV4Campaign ? 'APPROVED' : 'SENT_TO_CLIENT';
-    const skipClientReview = isMaybeApproval || !isV4Campaign;
+    // Explicit action from the hybrid pitch UX:
+    // - 'approve': admin approval is final
+    // - 'send_to_client': forward to client review (requires a client on the campaign)
+    // Absent action keeps legacy behavior (v4 -> client review) for older frontends.
+    if (action && !['approve', 'send_to_client'].includes(action)) {
+      return res.status(400).json({ message: 'action must be approve or send_to_client' });
+    }
+
+    if (action === 'send_to_client' && !hasClient) {
+      return res.status(400).json({ message: 'Cannot send to client: campaign has no client attached' });
+    }
+
+    let sendToClient: boolean;
+    if (isMaybeApproval) {
+      // MAYBE pitches already went through client review — approval is always final
+      sendToClient = false;
+    } else if (action) {
+      sendToClient = action === 'send_to_client';
+    } else {
+      // Legacy (no action param): v4 campaigns forward to client review, but only when a
+      // client actually exists — otherwise the pitch would wait on a review nobody can do
+      sendToClient = isV4Campaign && hasClient;
+    }
+
+    const newStatus = sendToClient ? 'SENT_TO_CLIENT' : 'APPROVED';
+    const skipClientReview = !sendToClient;
 
     const updateData: {
       status: 'SENT_TO_CLIENT' | 'APPROVED';
@@ -367,8 +389,8 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
       }
     }
 
-    if (isV4Campaign && !isMaybeApproval) {
-      // V4 flow: Notify client users for review
+    if (sendToClient) {
+      // Client-review flow: Notify client users for review
       const clientUsers = pitch.campaign.campaignAdmin.filter((ca) => ca.admin.user.role === 'client');
 
       for (const clientUser of clientUsers) {
@@ -440,7 +462,7 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
       });
 
       console.log(
-        `Pitch ${pitchId} approved by admin, status updated to APPROVED (${isMaybeApproval ? 'MAYBE direct approval' : 'non-v4 direct approval'})`,
+        `Pitch ${pitchId} approved by admin, status updated to APPROVED (${isMaybeApproval ? 'MAYBE direct approval' : 'direct final approval'})`,
       );
       console.log(adminComments ? `Comments: ${adminComments}` : 'No comments provided');
 
