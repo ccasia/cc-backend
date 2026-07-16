@@ -111,6 +111,8 @@ model User {
   aiModel        AiModel?
   refreshTokens  RefreshToken[]
   uploadSessions UploadSession[]
+
+  isPhoneVerified Boolean @default(false)
 }
 
 model RefreshToken {

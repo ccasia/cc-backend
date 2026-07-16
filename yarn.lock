@@ -5896,6 +5896,11 @@ levn@^0.4.1:
     prelude-ls "^1.2.1"
     type-check "~0.4.0"
 
+libphonenumber-js@^1.13.8:
+  version "1.13.8"
+  resolved "https://registry.yarnpkg.com/libphonenumber-js/-/libphonenumber-js-1.13.8.tgz#4250f92798e64ffc6556aae2894058861e878ea5"
+  integrity sha512-80xal1m93rADejw2pMp2MSzFhHCPLEspjHxnH2UtqI+DgAmElsbmLMiqk9niwH9NWAfjsRtaJI+qBrOEmRx9nQ==
+
 libreoffice-convert@^1.6.0:
   version "1.8.1"
   resolved "https://registry.yarnpkg.com/libreoffice-convert/-/libreoffice-convert-1.8.1.tgz#8ee0928e579703ad7ead48be284ab547c9c348c7"
