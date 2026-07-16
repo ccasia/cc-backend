@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { campaignHasClient } from '@utils/campaignFlow';
 import { decryptToken, encryptToken } from '@helper/encrypt';
 import { refreshTikTokToken } from '@services/socialMediaService';
 import {
@@ -752,6 +753,55 @@ export const getPastCampaignsByCreatorIds = async (
   return result;
 };
 
+// Overall creator rating for the discovery cards: the mean of each campaign's
+// "final rating". Per campaign the final rating is the average of whichever sides
+// have rated (client + admin -> mean; only one side -> that value; neither ->
+// campaign skipped). Creators with no ratings map to null (card shows 0/no stars).
+export const getAverageRatingsByCreatorIds = async (userIds: string[]): Promise<Map<string, number | null>> => {
+  const result = new Map<string, number | null>();
+  const uniqueUserIds = Array.from(new Set((userIds || []).map((id) => String(id || '').trim()).filter(Boolean)));
+  if (uniqueUserIds.length === 0) return result;
+
+  const shortlistedRows = await prismaAny.shortListedCreator.findMany({
+    where: {
+      userId: { in: uniqueUserIds },
+      OR: [{ clientRating: { not: null } }, { adminRating: { not: null } }],
+    },
+    select: {
+      userId: true,
+      clientRating: true,
+      adminRating: true,
+    },
+  });
+
+  const finalRatingsByCreator = new Map<string, number[]>();
+  for (const row of shortlistedRows as any[]) {
+    const rowUserId = row?.userId;
+    if (!rowUserId) continue;
+
+    const sides = [row.clientRating, row.adminRating].filter((value): value is number => typeof value === 'number');
+    if (sides.length === 0) continue;
+
+    const campaignFinal = sides.reduce((sum, value) => sum + value, 0) / sides.length;
+    const list = finalRatingsByCreator.get(rowUserId) || [];
+    list.push(campaignFinal);
+    finalRatingsByCreator.set(rowUserId, list);
+  }
+
+  for (const userId of uniqueUserIds) {
+    const finals = finalRatingsByCreator.get(userId);
+    if (!finals || finals.length === 0) {
+      result.set(userId, null);
+      continue;
+    }
+    const average = finals.reduce((sum, value) => sum + value, 0) / finals.length;
+    // One decimal place to match the card's `rating.toFixed(1)` display.
+    result.set(userId, Math.round(average * 10) / 10);
+  }
+
+  return result;
+};
+
 export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
   const search = (input.search || '').trim();
   const platform = normalizePlatform(input.platform);
@@ -1064,10 +1114,13 @@ export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
 
   console.log('[Discovery][APIs]', apiSummary);
 
-  const pastCampaignsByCreator =
+  const [pastCampaignsByCreator, averageRatingByCreator] =
     paginatedCreatorUserIds.length > 0
-      ? await getPastCampaignsByCreatorIds(paginatedCreatorUserIds)
-      : new Map<string, DiscoveryPastCampaign[]>();
+      ? await Promise.all([
+          getPastCampaignsByCreatorIds(paginatedCreatorUserIds),
+          getAverageRatingsByCreatorIds(paginatedCreatorUserIds),
+        ])
+      : [new Map<string, DiscoveryPastCampaign[]>(), new Map<string, number | null>()];
 
   const enrichedPaginatedConnectedCreators = (paginatedConnectedCreators || []).map((creator: any) => {
     const creatorId = creator?.creatorId;
@@ -1091,6 +1144,7 @@ export const getDiscoveryCreators = async (input: DiscoveryQueryInput) => {
     return {
       ...creator,
       pastCampaigns: pastCampaignsByCreator.get(creator?.userId) || [],
+      averageRating: averageRatingByCreator.get(creator?.userId) ?? null,
       instagram: {
         ...(creator?.instagram || {}),
         topVideos: instagramTopVideos,
@@ -1621,6 +1675,13 @@ export const inviteDiscoveryCreators = async (input: InviteDiscoveryCreatorsInpu
     const isV4Campaign = campaign.submissionVersion === 'v4';
     const threadId = campaign.thread?.id;
 
+    // v4 with a client: invites go to client review. v4 without one: to admin review
+    // (SENT_TO_CLIENT would strand them — nobody left to act). Non-v4: approved directly.
+    let invitePitchStatus: 'SENT_TO_CLIENT' | 'PENDING_REVIEW' | 'APPROVED' = 'APPROVED';
+    if (isV4Campaign) {
+      invitePitchStatus = campaignHasClient(campaign) ? 'SENT_TO_CLIENT' : 'PENDING_REVIEW';
+    }
+
     const creatorUsers = await tx.user.findMany({
       where: {
         id: { in: creatorIds },
@@ -1649,8 +1710,6 @@ export const inviteDiscoveryCreators = async (input: InviteDiscoveryCreatorsInpu
         skippedNotFoundCount += 1;
         continue;
       }
-
-      const invitePitchStatus = isV4Campaign ? 'SENT_TO_CLIENT' : 'APPROVED';
 
       const existingPitch = await tx.pitch.findFirst({
         where: {
@@ -1927,11 +1986,18 @@ const mapBookmarkMembershipsToCreatorRows = async (memberships: { creatorUserId:
   });
 
   const mappedRows = mapConnectedDiscoveryRows(rows, 'all', { includeDbTopVideos: true });
-  const pastCampaignsByCreator = await getPastCampaignsByCreatorIds(creatorUserIds as string[]);
+  const [pastCampaignsByCreator, averageRatingByCreator] = await Promise.all([
+    getPastCampaignsByCreatorIds(creatorUserIds as string[]),
+    getAverageRatingsByCreatorIds(creatorUserIds as string[]),
+  ]);
   const rowsByRowId = new Map(
     mappedRows.map((mappedRow: any) => [
       mappedRow.rowId,
-      { ...mappedRow, pastCampaigns: pastCampaignsByCreator.get(mappedRow.userId) || [] },
+      {
+        ...mappedRow,
+        pastCampaigns: pastCampaignsByCreator.get(mappedRow.userId) || [],
+        averageRating: averageRatingByCreator.get(mappedRow.userId) ?? null,
+      },
     ]),
   );
 

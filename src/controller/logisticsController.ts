@@ -31,7 +31,7 @@ import { computeChanges, FieldMapping } from '@utils/campaignLogDiff';
 import { PrismaClient } from '@prisma/client';
 import { saveNotification } from '@controllers/notificationController';
 import { notificationLogisticShipped } from '@helper/notification';
-import { clients, io } from '../server';
+import { clients, getIo } from '../config/socket';
 
 const prisma = new PrismaClient();
 
@@ -69,13 +69,15 @@ function emitLogisticSocket(
   payload: { logisticId?: string; action?: string } = {},
 ) {
   if (!campaignId) return;
-  const io = req.app.get('io');
-  if (!io) return;
-  io.to(campaignId).emit('v4:logistic:updated', {
-    campaignId,
-    ...payload,
-    updatedAt: new Date().toISOString(),
-  });
+
+  if (!getIo()) return;
+  getIo()
+    .to(campaignId)
+    .emit('v4:logistic:updated', {
+      campaignId,
+      ...payload,
+      updatedAt: new Date().toISOString(),
+    });
 }
 
 export const getLogisticsForCampaign = async (req: Request, res: Response) => {
@@ -269,8 +271,7 @@ export const scheduleDelivery = async (req: Request, res: Response) => {
     const { trackingLink, expectedDeliveryDate } = req.body;
     const logistic = await scheduleDeliveryService(logisticId, req.body);
 
-    const { campaignId, creatorUserId, campaignName, creatorName } =
-      await getLogisticContext(logisticId);
+    const { campaignId, creatorUserId, campaignName, creatorName } = await getLogisticContext(logisticId);
 
     // Fetch address from delivery details for metadata
     const deliveryInfo = await prisma.logistic.findUnique({
@@ -297,7 +298,7 @@ export const scheduleDelivery = async (req: Request, res: Response) => {
         entityId: campaignId,
       });
       const socketId = clients.get(creatorUserId);
-      if (socketId) io.to(socketId).emit('notification', notification);
+      if (socketId) getIo().to(socketId).emit('notification', notification);
     }
 
     emitLogisticSocket(req, campaignId, { logisticId, action: 'scheduled' });
@@ -584,8 +585,7 @@ export const submitCreatorProductInfo = async (req: Request, res: Response) => {
     const { campaignId } = req.params;
     const userid = getAuthedUserId(req);
     if (!userid) return res.status(401).json({ message: 'Unauthorized' });
-    const { address, location, city, state, country, postcode, dietaryRestrictions, phoneNumber } =
-      req.body;
+    const { address, location, city, state, country, postcode, dietaryRestrictions, phoneNumber } = req.body;
 
     const result = await creatorProductInfoService({
       userId: userid,

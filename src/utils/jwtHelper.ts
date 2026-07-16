@@ -5,21 +5,47 @@ import dayjs from 'dayjs';
 
 const prisma = new PrismaClient();
 
-export const validateToken = (req: any, res: Response, next: NextFunction) => {
+export const validateToken = async (req: any, res: Response, next: NextFunction) => {
   const accessToken = req.cookies['accessToken'];
 
   if (!accessToken) return res.status(400).json({ error: 'User not Authenticated!' });
 
+  let validToken: { id?: string; userId?: string };
   try {
-    const validToken = verify(accessToken, process.env.ACCESSKEY as string);
-    if (validToken) {
-      req.authenticated = true;
-      req.user = validToken;
-      return next();
-    }
-  } catch (err) {
-    return res.status(400).json({ error: err });
+    validToken = verify(accessToken, process.env.ACCESSKEY as string) as { id?: string; userId?: string };
+  } catch {
+    return res.status(400).json({ error: 'User not Authenticated!' });
   }
+
+  // Every signing site puts the user id in `id` (web) or `userId` (mobile);
+  // a token with neither is not one of ours.
+  const userId = validToken.id || validToken.userId;
+
+  if (!userId) return res.status(401).json({ error: 'User not Authenticated!' });
+
+  let user;
+  try {
+    user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, status: true },
+    });
+  } catch {
+    // DB failure is not an auth failure — a 4xx here would bounce users off
+    // the web auth bootstrap (/api/auth/currentUser) during an outage.
+    return res.status(503).json({ error: 'Service temporarily unavailable' });
+  }
+
+  if (!user) return res.status(401).json({ error: 'User not Authenticated!' });
+
+  if (user.status === 'deleted') {
+    res.clearCookie('accessToken');
+    res.clearCookie('userid');
+    return res.status(401).json({ message: 'Account not found.' });
+  }
+
+  req.authenticated = true;
+  req.user = validToken;
+  return next();
 };
 
 export const verifyToken = (token: string) => {

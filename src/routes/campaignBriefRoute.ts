@@ -17,6 +17,7 @@ import {
   resetBrief,
   handoverBrief,
   assignCsm,
+  finalizeBrief,
   deleteBrief,
   uploadBriefAttachment,
   uploadBriefAttachmentPublic,
@@ -26,6 +27,7 @@ import {
   getBriefPublic,
   patchBriefPublic,
   approveBriefPublic,
+  lostBrief,
 } from '@controllers/campaignBriefController';
 import { authenticate } from '../middleware/authenticate';
 
@@ -73,9 +75,13 @@ router.post('/:id/handover', authenticate, isBdOrSuperadmin, handoverBrief);
 // CSL-only assignment of CSMs to a handed-over campaign (controller enforces
 // the CSL/superadmin role; isBdOrSuperadmin already admits CSL).
 router.post('/:id/assign-csm', authenticate, isBdOrSuperadmin, assignCsm);
+// CSM finalizes their own CSM_CREATED brief into a campaign they manage — no
+// handover, no CSM selection (controller enforces CS/superadmin + ownership).
+router.post('/:id/finalize', authenticate, isBdOrSuperadmin, finalizeBrief);
 router.post('/:id/attachments', authenticate, isBdOrSuperadmin, uploadBriefAttachment);
 router.delete('/:id/attachments', authenticate, isBdOrSuperadmin, deleteBriefAttachment);
 router.delete('/:id', authenticate, isBdOrSuperadmin, deleteBrief);
+router.post('/:id/lost', authenticate, isBdOrSuperadmin, lostBrief);
 
 // --- Public (magic-link) client review/edit/approve endpoints ---
 router.get('/public/:magicToken', publicLookupLimiter, getBriefPublic);

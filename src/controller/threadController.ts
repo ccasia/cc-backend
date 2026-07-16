@@ -8,7 +8,7 @@ import {
   sendMessageService,
   ThreadServiceError,
 } from '@services/threadService';
-import { io } from '../server';
+import { getIo } from '../config/socket';
 
 const prisma = new PrismaClient();
 
@@ -341,7 +341,7 @@ export const markMessagesAsSeen = async (req: Request, res: Response) => {
 
   try {
     const result = await markMessagesService(threadId, userId);
-    io.to(threadId).emit('messagesSeen', result);
+    getIo().to(threadId).emit('messagesSeen', result);
     res.status(200).json(result);
   } catch (error) {
     console.error('Error marking messages as seen:', error);

@@ -43,11 +43,12 @@ const expiryFromNow = (): Date => {
 };
 
 const allowedTransitions: Record<CampaignDraftStatus, CampaignDraftStatus[]> = {
-  DRAFTED: ['SENT_TO_CLIENT'],
-  SENT_TO_CLIENT: ['SENT_TO_CLIENT', 'APPROVED', 'PENDING_REVIEW'],
-  PENDING_REVIEW: ['SENT_TO_CLIENT', 'APPROVED', 'HANDED_OVER'],
-  APPROVED: ['HANDED_OVER'],
+  DRAFTED: ['SENT_TO_CLIENT', 'LOST'],
+  SENT_TO_CLIENT: ['SENT_TO_CLIENT', 'APPROVED', 'PENDING_REVIEW', 'LOST'],
+  PENDING_REVIEW: ['SENT_TO_CLIENT', 'APPROVED', 'HANDED_OVER', 'LOST'],
+  APPROVED: ['HANDED_OVER', 'LOST'],
   HANDED_OVER: [],
+  LOST: [],
 };
 
 const assertTransition = (from: CampaignDraftStatus, to: CampaignDraftStatus) => {
@@ -57,7 +58,10 @@ const assertTransition = (from: CampaignDraftStatus, to: CampaignDraftStatus) =>
   }
 };
 
-export const createDraftBrief = async (bdUserId: string, origin: 'BD_CREATED' | 'CSL_CREATED' = 'BD_CREATED') => {
+export const createDraftBrief = async (
+  bdUserId: string,
+  origin: 'BD_CREATED' | 'CSL_CREATED' | 'CSM_CREATED' = 'BD_CREATED',
+) => {
   return prisma.campaign.create({
     data: {
       name: '',
@@ -545,7 +549,6 @@ export const handoverBrief = async (briefId: string, clientPackage: string | nul
 
   return prisma.$transaction(async (tx) => {
     const campaignCode = current.campaignId || (await nextCampaignCode(tx));
-    
     const updated = await tx.campaign.update({
       where: { id: briefId },
       data: {
@@ -575,11 +578,7 @@ export const handoverBrief = async (briefId: string, clientPackage: string | nul
 // activation later (agreement, deliverables, etc.). CSMs are added to
 // campaignAdmin with role 'manager', which is also how listBriefs scopes a CSM's
 // visibility to the briefs they've been assigned.
-export const assignCsmToBrief = async (
-  briefId: string,
-  csmUserIds: string[],
-  internalComments?: string | null,
-) => {
+export const assignCsmToBrief = async (briefId: string, csmUserIds: string[], internalComments?: string | null) => {
   const ids = Array.from(new Set(csmUserIds.filter((id) => typeof id === 'string' && id)));
   if (ids.length === 0) throw new Error('Select at least one CSM to assign.');
 
@@ -607,8 +606,7 @@ export const assignCsmToBrief = async (
   if (!current || !current.draftStatus) throw new Error('Brief not found');
 
   const isAlreadyHandedOver = current.draftStatus === 'HANDED_OVER';
-  const needsSelfHandover =
-    current.draftStatus === 'APPROVED' && current.draftOrigin === 'CSL_CREATED';
+  const needsSelfHandover = current.draftStatus === 'APPROVED' && current.draftOrigin === 'CSL_CREATED';
   if (!isAlreadyHandedOver && !needsSelfHandover) {
     throw new Error('CSMs can only be assigned to handed-over campaigns.');
   }
@@ -617,8 +615,7 @@ export const assignCsmToBrief = async (
     if (!current.companyId && !current.brandId) {
       throw new Error('Link a company before assigning a CSM.');
     }
-    const activeSubs =
-      current.company?.subscriptions?.length || current.brand?.company?.subscriptions?.length || 0;
+    const activeSubs = current.company?.subscriptions?.length || current.brand?.company?.subscriptions?.length || 0;
     if (activeSubs === 0) {
       throw new Error('Attach an active package to the company before assigning a CSM.');
     }
@@ -673,6 +670,83 @@ export const assignCsmToBrief = async (
         update: { role: 'manager' },
       });
     }
+    return tx.campaign.findUnique({
+      where: { id: briefId },
+      select: { id: true, draftStatus: true, status: true },
+    });
+  });
+};
+
+// A CSM who authored the brief (CSM_CREATED) finalizes it into their own
+// campaign at APPROVED — there is no handover to CSL and no CSM selection. The
+// brief owner stays on the campaign as 'manager' (mirroring how assigned CSMs
+// appear elsewhere). Requires a linked company with an active package, same as
+// the CSL self-handover precondition.
+export const finalizeOwnBrief = async (briefId: string, ownerUserId: string, internalComments?: string | null) => {
+  const current = await prisma.campaign.findUnique({
+    where: { id: briefId },
+    select: {
+      id: true,
+      draftStatus: true,
+      draftOrigin: true,
+      campaignId: true,
+      briefOwnerId: true,
+      companyId: true,
+      brandId: true,
+      company: {
+        select: { name: true, subscriptions: { where: { status: 'ACTIVE' }, select: { id: true } } },
+      },
+      brand: {
+        select: {
+          name: true,
+          company: { select: { subscriptions: { where: { status: 'ACTIVE' }, select: { id: true } } } },
+        },
+      },
+    },
+  });
+  if (!current || !current.draftStatus) throw new Error('Brief not found');
+
+  if (current.draftOrigin !== 'CSM_CREATED') {
+    throw new Error('Only CSM-authored briefs can be finalized this way.');
+  }
+  if (current.briefOwnerId !== ownerUserId) {
+    throw new Error('Only the brief owner can finalize this campaign.');
+  }
+  if (current.draftStatus !== 'APPROVED') {
+    throw new Error('The client must approve the brief before it can be finalized.');
+  }
+  if (!current.companyId && !current.brandId) {
+    throw new Error('Link a company before finalizing.');
+  }
+  const activeSubs = current.company?.subscriptions?.length || current.brand?.company?.subscriptions?.length || 0;
+  if (activeSubs === 0) {
+    throw new Error('Attach an active package to the company before finalizing.');
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const campaignCode = current.campaignId || (await nextCampaignCode(tx));
+    await tx.campaign.update({
+      where: { id: briefId },
+      data: {
+        campaignId: campaignCode,
+        draftStatus: 'HANDED_OVER',
+        status: 'PENDING_ADMIN_ACTIVATION',
+        clientPackage: current.company?.name || current.brand?.name || null,
+        internalComments: internalComments ?? null,
+        handedOverAt: new Date(),
+        clientMagicToken: null,
+        clientTokenExpiresAt: null,
+      },
+    });
+
+    // Keep the CSM on the campaign, but as 'manager' so they surface in the same
+    // manager-based views/queries as assigned CSMs.
+    await tx.campaignAdmin.upsert({
+      where: { adminId_campaignId: { adminId: ownerUserId, campaignId: briefId } },
+      create: { adminId: ownerUserId, campaignId: briefId, role: 'manager' },
+      update: { role: 'manager' },
+    });
+
     return tx.campaign.findUnique({
       where: { id: briefId },
       select: { id: true, draftStatus: true, status: true },
@@ -780,18 +854,12 @@ export const listBriefs = async (user: Parameters<typeof classifyBriefRole>[0], 
     };
   } else if (role === 'CSL') {
     where = {
-      OR: [
-        { draftStatus: 'HANDED_OVER' },
-        { briefOwnerId: userId, draftStatus: { not: null } },
-      ],
+      OR: [{ draftStatus: 'HANDED_OVER' }, { briefOwnerId: userId, draftStatus: { not: null } }],
     };
   } else if (role === 'CS') {
     where = {
       draftStatus: { not: null },
-      OR: [
-        { draftStatus: 'HANDED_OVER', campaignAdmin: { some: { adminId: userId } } },
-        { briefOwnerId: userId },
-      ],
+      OR: [{ draftStatus: 'HANDED_OVER', campaignAdmin: { some: { adminId: userId } } }, { briefOwnerId: userId }],
     };
   } else {
     return [];
@@ -817,6 +885,9 @@ export const listBriefs = async (user: Parameters<typeof classifyBriefRole>[0], 
       handedOverAt: true,
       clientMagicToken: true,
       clientTokenExpiresAt: true,
+      lostAmount: true,
+      lostCurrency: true,
+      lostReason: true,
       campaignAdmin: {
         where: { role: 'owner' },
         select: { admin: { select: { user: { select: { id: true, name: true } } } } },
@@ -900,6 +971,29 @@ export const listCslUsers = async () => {
     select: {
       userId: true,
       user: { select: { id: true, name: true, email: true } },
+    },
+  });
+};
+
+export const lostBrief = async (briefId: string, lostAmount: number, lostCurrency: string, lostReason: string) => {
+  const current = await prisma.campaign.findUnique({
+    where: { id: briefId },
+    select: { id: true, draftStatus: true },
+  });
+
+  if (!current || !current.draftStatus) {
+    throw new Error('Brief not found');
+  }
+
+  assertTransition(current.draftStatus, 'LOST');
+
+  return prisma.campaign.update({
+    where: { id: briefId },
+    data: {
+      draftStatus: 'LOST',
+      lostAmount,
+      lostCurrency,
+      lostReason,
     },
   });
 };

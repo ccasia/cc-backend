@@ -30,6 +30,7 @@ import {
 import { batchRequests } from '@helper/batchRequests';
 import crypto from 'crypto';
 import connection from '../config/redis';
+import { clients, getIo } from '../config/socket';
 
 // Type definitions
 export interface UrlData {
@@ -368,6 +369,15 @@ export const instagramMobileCallback = async (req: Request, res: Response) => {
       console.error('Failed to update credit tier after Instagram connect:', tierError);
     }
 
+    const creatorSocketId = clients.get(userId);
+    if (creatorSocketId) {
+      getIo().to(creatorSocketId).emit('media-kit:updated', {
+        platform: 'instagram',
+        status: 'success',
+        timestamp: new Date().toISOString(),
+      });
+    }
+
     return res.redirect('cultapp:///media-kit?status=success');
   } catch (error) {
     console.log('Error instagram mobile callback: ', error);
@@ -435,6 +445,42 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
 
       const videos = videoInfoResponse.data.data.videos;
 
+      // Same aggregation formula as getTikTokMediaObject/getTikTokMediaKit —
+      // computed here too so stats are populated immediately on connect
+      // instead of staying at 0 until something else backfills them.
+      const totalLikes = videos.reduce((sum: number, v: any) => sum + (v.like_count || 0), 0);
+      const totalComments = videos.reduce((sum: number, v: any) => sum + (v.comment_count || 0), 0);
+      const totalShares = videos.reduce((sum: number, v: any) => sum + (v.share_count || 0), 0);
+      const totalViews = videos.reduce((sum: number, v: any) => sum + (v.view_count || 0), 0);
+
+      const averageLikes = videos.length ? totalLikes / videos.length : 0;
+      const averageComments = videos.length ? totalComments / videos.length : 0;
+      const averageShares = videos.length ? totalShares / videos.length : 0;
+
+      const engagement_rate = totalViews ? ((totalLikes + totalComments + totalShares) / totalViews) * 100 : 0;
+
+      // Trend charts (page 3 of the media kit) — non-critical, so a failure
+      // here shouldn't block the connect flow, just leave analyticsData null.
+      let analyticsData: {
+        engagementRates: number[];
+        months: string[];
+        monthlyInteractions: { month: string; interactions: number }[];
+      } | null = null;
+      try {
+        const [engagementAnalytics, monthlyAnalytics] = await Promise.all([
+          // Mobile shows a 6-month trend (web stays at the default 3).
+          getTikTokEngagementRateOverTime(access_token, 20, 6),
+          getTikTokMonthlyInteractions(access_token, 20, 6),
+        ]);
+        analyticsData = {
+          engagementRates: engagementAnalytics.engagementRates,
+          months: engagementAnalytics.months,
+          monthlyInteractions: monthlyAnalytics.monthlyData,
+        };
+      } catch (analyticsError) {
+        console.error('Failed to fetch TikTok trend analytics on connect:', analyticsError);
+      }
+
       const tiktokUser = await prisma.tiktokUser.upsert({
         where: {
           creatorId: creator.id,
@@ -447,7 +493,16 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
           following_count: userData.following_count,
           follower_count: userData.follower_count,
           likes_count: userData.likes_count,
-        },
+          totalLikes,
+          totalComments,
+          totalShares,
+          averageLikes,
+          averageComments,
+          averageShares,
+          engagement_rate,
+          analyticsData,
+          lastUpdated: new Date(),
+        } as any,
         create: {
           creatorId: creator.id,
           display_name: userData.display_name,
@@ -457,7 +512,16 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
           following_count: userData.following_count,
           follower_count: userData.follower_count,
           likes_count: userData.likes_count,
-        },
+          totalLikes,
+          totalComments,
+          totalShares,
+          averageLikes,
+          averageComments,
+          averageShares,
+          engagement_rate,
+          analyticsData,
+          lastUpdated: new Date(),
+        } as any,
       });
 
       // Update creator's credit tier after TikTok follower data changes
@@ -508,33 +572,39 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
       }
     }
 
-    // Emit socket event for analytics refresh
-    const io = req.app.get('io');
-    if (io) {
-      // Find campaigns where this user has submissions
-      const userSubmissions = await prisma.submission.findMany({
-        where: {
-          userId: userId,
-          status: 'POSTED',
-          content: { not: null },
-        },
-        select: {
-          campaignId: true,
-        },
-        distinct: ['campaignId'],
-      });
-
-      // Emit analytics refresh event to each campaign room
-      userSubmissions.forEach(({ campaignId }) => {
-        io.to(campaignId).emit('analytics:refresh', {
-          userId: userId,
-          platform: 'TikTok',
-          reason: 'mediakit_connected',
-          timestamp: new Date().toISOString(),
-        });
-        console.log(`📡 Emitted analytics:refresh for campaign ${campaignId} (TikTok connected)`);
+    const creatorSocketId = clients.get(userId);
+    if (creatorSocketId) {
+      getIo().to(creatorSocketId).emit('media-kit:updated', {
+        platform: 'tiktok',
+        status: 'success',
+        timestamp: new Date().toISOString(),
       });
     }
+
+    // Emit socket event for analytics refresh
+    // Find campaigns where this user has submissions
+    const userSubmissions = await prisma.submission.findMany({
+      where: {
+        userId: userId,
+        status: 'POSTED',
+        content: { not: null },
+      },
+      select: {
+        campaignId: true,
+      },
+      distinct: ['campaignId'],
+    });
+
+    // Emit analytics refresh event to each campaign room
+    userSubmissions.forEach(({ campaignId }) => {
+      getIo().to(campaignId).emit('analytics:refresh', {
+        userId: userId,
+        platform: 'TikTok',
+        reason: 'mediakit_connected',
+        timestamp: new Date().toISOString(),
+      });
+      console.log(`📡 Emitted analytics:refresh for campaign ${campaignId} (TikTok connected)`);
+    });
 
     res.redirect('cultapp:///media-kit?status=success'); //later change
   } catch (error) {
@@ -1136,8 +1206,7 @@ export const handleInstagramCallback = async (req: Request, res: Response) => {
       });
     });
 
-    const io = req.app.get('io');
-    if (io) {
+    if (getIo()) {
       const userSubmissions = await prisma.submission.findMany({
         where: {
           userId: userId,
@@ -1151,7 +1220,7 @@ export const handleInstagramCallback = async (req: Request, res: Response) => {
       });
 
       userSubmissions.forEach(({ campaignId }) => {
-        io.to(campaignId).emit('analytics:refresh', {
+        getIo().to(campaignId).emit('analytics:refresh', {
           userId,
           platform: 'Instagram',
           reason: 'mediakit_connected',
@@ -1514,7 +1583,14 @@ export const getTikTokMediaKit = async (req: Request, res: Response) => {
     const averageShares = mediaObject.averageShares;
     const averageViews = mediaObject.averageViews;
 
-    // Get analytics data for charts with error handling
+    // Get analytics data for charts with error handling.
+    // Fetched as a 6-month window (same as mobile) and sliced down to the
+    // trailing 3 for this endpoint's own (web) response — computing 3
+    // months directly vs. slicing the last 3 of a 6-month result is
+    // equivalent, since each month bucket is derived independently from
+    // the same video list. That single 6-month fetch is also what gets
+    // persisted below, so the DB's analyticsData always satisfies mobile's
+    // 6-month view without a web page-view silently truncating it back to 3.
     let analytics: {
       engagementRates: number[];
       months: string[];
@@ -1524,15 +1600,24 @@ export const getTikTokMediaKit = async (req: Request, res: Response) => {
       months: [],
       monthlyInteractions: [],
     };
+    let analyticsSixMonths: typeof analytics | null = null;
 
     try {
-      const engagementAnalytics = await getTikTokEngagementRateOverTime(accessToken);
-      const monthlyAnalytics = await getTikTokMonthlyInteractions(accessToken);
+      const [engagementAnalytics, monthlyAnalytics] = await Promise.all([
+        getTikTokEngagementRateOverTime(accessToken, 20, 6),
+        getTikTokMonthlyInteractions(accessToken, 20, 6),
+      ]);
 
-      analytics = {
+      analyticsSixMonths = {
         engagementRates: engagementAnalytics.engagementRates,
         months: engagementAnalytics.months,
         monthlyInteractions: monthlyAnalytics.monthlyData,
+      };
+
+      analytics = {
+        engagementRates: analyticsSixMonths.engagementRates.slice(-3),
+        months: analyticsSixMonths.months.slice(-3),
+        monthlyInteractions: analyticsSixMonths.monthlyInteractions.slice(-3),
       };
     } catch (analyticsError) {
       console.error('Failed to fetch TikTok analytics:', analyticsError);
@@ -1541,6 +1626,11 @@ export const getTikTokMediaKit = async (req: Request, res: Response) => {
 
     // TikTok Engagement Rate Formula: (likes + comments + shares) / views
     const engagement_rate = totalViews ? ((totalLikes + totalComments + totalShares) / totalViews) * 100 : 0;
+
+    // Only persist analytics if the fetch actually succeeded (empty months
+    // signals the try/catch above failed) — otherwise skip the field so a
+    // transient API error doesn't blow away previously-good trend data.
+    const analyticsPatch = analyticsSixMonths ? { analyticsData: analyticsSixMonths } : {};
 
     // Update TikTok user data in database
     const tiktokUser = await prisma.tiktokUser.upsert({
@@ -1561,6 +1651,7 @@ export const getTikTokMediaKit = async (req: Request, res: Response) => {
         averageShares: averageShares,
         engagement_rate: engagement_rate,
         lastUpdated: new Date(),
+        ...analyticsPatch,
       } as any,
       create: {
         creatorId: user.creator.id,
@@ -1579,6 +1670,7 @@ export const getTikTokMediaKit = async (req: Request, res: Response) => {
         averageShares: averageShares,
         engagement_rate: engagement_rate,
         lastUpdated: new Date(),
+        ...analyticsPatch,
       } as any,
     });
 

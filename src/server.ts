@@ -14,12 +14,16 @@ import http from 'http';
 import { handleSendMessage, fetchMessagesFromThread, markMessagesService } from '@services/threadService';
 import { authenticate } from '@middlewares/authenticate';
 import { Server, Socket } from 'socket.io';
-import '@services/uploadVideo';
+// import '@services/uploadVideo';
+
+import '@helper/processPitchVideo';
+
+import './helper/xeroWebhookWorker';
+import { getIo, initializeSocket } from './config/socket';
 
 import '@helper/processPitchVideo';
 import './helper/videoDraft';
 import './helper/videoDraftWorker';
-import './helper/xeroWebhookWorker';
 
 import dotenv from 'dotenv';
 import '@services/google_sheets/sheets';
@@ -47,8 +51,8 @@ import { mobileRouter } from '@routes/mobile';
 import { OTPTypes } from '@/types';
 
 import jwt from 'jsonwebtoken';
-
-// import { OTPTypes } from '@/types';
+import { QueueEvents } from 'bullmq';
+import connection from './config/redis';
 
 Ffmpeg.setFfmpegPath(FfmpegPath.path);
 
@@ -58,21 +62,15 @@ const uploadPath = path.join(__dirname, 'uploads');
 const uploadPathChunks = path.join(__dirname, 'chunks');
 
 const app: Application = express();
+
 const server = http.createServer(app);
 
-export const io = new Server(server, {
-  connectionStateRecovery: {},
-  cors: {
-    origin: '*',
-    methods: ['GET', 'POST'],
-  },
-});
+const io = initializeSocket(server);
 
 // expose io to request handlers
 app.set('io', io);
 
 app.use(express.static('public'));
-// app.use(express.json({ limit: '10mb' }));
 
 app.use((req, res, next) => {
   if (req.path.startsWith('/webhooks')) {
@@ -81,8 +79,10 @@ app.use((req, res, next) => {
     express.json()(req, res, next);
   }
 });
+
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
+
 app.use(
   fileUpload({
     limits: { fileSize: 1024 * 1024 * 1024 },
@@ -90,11 +90,6 @@ app.use(
     tempFileDir: '/tmp/',
   }),
 );
-
-const corsOptions = {
-  origin: true, //included origin as true
-  credentials: true, //included credentials as true
-};
 
 app.use(
   cors({
@@ -131,6 +126,7 @@ declare module 'express-session' {
     xeroActiveTenants: any;
     isImpersonating?: boolean;
     impersonatingBy?: { userId: string; name: string } | null;
+    otp: OTPTypes | undefined;
     pendingRegistration:
       | {
           phone: string;
@@ -151,10 +147,10 @@ app.use(
     proxy: process.env.NODE_ENV === 'production',
 
     cookie: {
-      secure: process.env.NODE_ENV === 'production',
+      secure: process.env.CROSS_SITE_COOKIES === 'true' || process.env.NODE_ENV === 'production',
+      sameSite: process.env.CROSS_SITE_COOKIES === 'true' ? 'none' : 'lax',
       maxAge: 24 * 60 * 60 * 1000, //expires in 24hours
       httpOnly: true,
-      sameSite: 'none',
     },
     store: new PrismaSessionStore(new PrismaClient(), {
       checkPeriod: 2 * 60 * 1000,
@@ -325,7 +321,7 @@ export const clients = new Map();
 export const activeProcesses = new Map();
 export const queue = new Map();
 
-io.use((socket: Socket, next) => {
+io.use(async (socket: Socket, next) => {
   try {
     const token = socket.handshake.auth?.token as string | undefined;
 
@@ -337,15 +333,21 @@ io.use((socket: Socket, next) => {
       userId: string;
     };
 
-    console.log(payload);
+    const user = await prisma.user.findUnique({
+      where: { id: payload.userId },
+      select: { id: true, status: true },
+    });
+
+    if (!user || user.status === 'deleted') {
+      return next(new Error('UNAUTHENTICATED'));
+    }
 
     // Identity comes from the verified token — never from anything the
     // client tells us later. This is the whole point.
-    socket.data.userId = payload.userId;
+    socket.data.userId = user.id;
 
     return next();
   } catch (err) {
-    console.log('SDadasd', err);
     // Surfaces as `connect_error` on the client (err.message === "UNAUTHENTICATED").
     // A thrown jwt error (expired/invalid signature) lands here too.
     return next(new Error('UNAUTHENTICATED'));
@@ -358,16 +360,22 @@ io.on('connection', (socket) => {
   socket.on('register', (userId) => {
     clients.set(userId, socket.id);
     users.set(userId, socket.id);
+    socket.join(userId);
   });
 
   socket.on('online-user', () => {
     io.emit('onlineUsers', { onlineUsers: clients.size });
   });
 
+  socket.on('join:upload', (data) => {
+    socket.join(`upload:${data}`);
+  });
+
   // join/leave campaign rooms for live updates per campaign
   socket.on('join-campaign', (campaignId: string) => {
     if (campaignId) socket.join(campaignId);
   });
+
   socket.on('leave-campaign', (campaignId: string) => {
     if (campaignId) socket.leave(campaignId);
   });
@@ -512,7 +520,7 @@ app.post('/video', async (req: Request, res: Response) => {
       let uploadedBytes = 0;
       const { tempFilePath, name, mimetype, data, size } = videos;
 
-      if (size > 100 * 1024 * 1024) {
+      if (size > 1 * 1024 * 1024 * 1024) {
         return res.status(404).json({ message: 'File size too large' });
       }
 
@@ -530,6 +538,7 @@ app.post('/video', async (req: Request, res: Response) => {
       readStream.on('data', (chunk) => {
         uploadedBytes += chunk.length;
         const percentage = Math.round((uploadedBytes / totalBytes) * 100);
+
         io.emit('uploadProgress', { name: name, percentage });
       });
 
@@ -588,6 +597,22 @@ app.get('/report/:campaignId', async (req, res) => {
   const dbViews = data.reduce((s, r) => s + r.totalViews, 0);
 
   return res.status(200).json(dbViews);
+});
+
+const queueEvents = new QueueEvents('compression-queue', { connection: connection });
+
+queueEvents.on('progress', ({ data }) => {
+  const { submissionId, progress, uploadSessionId } = data as {
+    submissionId: string;
+    progress: number;
+    uploadSessionId: string;
+  };
+  console.log(progress);
+  io.to(`upload:${uploadSessionId}`).emit('compression:progress', { submissionId, progress, uploadSessionId });
+});
+
+queueEvents.on('completed', ({ returnvalue }) => {
+  getIo().to(`upload:${returnvalue}`).emit('status', 'completed');
 });
 
 if (require.main === module) {

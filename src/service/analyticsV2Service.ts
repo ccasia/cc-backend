@@ -3067,6 +3067,112 @@ export const getCreditsPerCSData = async (startDate?: Date, endDate?: Date) => {
   return { csAdmins: Array.from(adminMap.values()) };
 };
 
+// CSM workload
+
+interface CSMWorkloadRow {
+  adminUserId: string;
+  csName: string;
+  csEmail: string;
+  csPhoto: string | null;
+  roleName: string;
+  activeCampaigns: bigint | number;
+  completedCampaigns: bigint | number;
+  activeClients: bigint | number;
+  activeCreators: bigint | number;
+  totalCredits: bigint | number;
+  pendingCredits: bigint | number;
+  utilisedCredits: bigint | number;
+}
+
+export const getCSMWorkloadData = async (startDate?: Date, endDate?: Date) => {
+  const hasDateFilter = !!startDate && !!endDate;
+
+  const rows = hasDateFilter
+    ? await prisma.$queryRaw<CSMWorkloadRow[]>`
+        WITH campaign_creators AS (
+          SELECT "campaignId", COUNT(DISTINCT "userId") AS creator_count
+          FROM "ShortListedCreator"
+          WHERE "userId" IS NOT NULL
+          GROUP BY "campaignId"
+        )
+        SELECT
+          a."userId"                                                                  AS "adminUserId",
+          u.name                                                                      AS "csName",
+          u.email                                                                     AS "csEmail",
+          u."photoURL"                                                                AS "csPhoto",
+          r.name                                                                      AS "roleName",
+          COUNT(DISTINCT c.id) FILTER (WHERE c.status = 'ACTIVE')                     AS "activeCampaigns",
+          COUNT(DISTINCT c.id) FILTER (WHERE c.status = 'COMPLETED')                  AS "completedCampaigns",
+          COUNT(DISTINCT c."companyId") FILTER (WHERE c.status = 'ACTIVE')            AS "activeClients",
+          COALESCE(SUM(cc.creator_count) FILTER (WHERE c.status = 'ACTIVE'), 0)::int  AS "activeCreators",
+          -- Credit tracking is only reliable for v4 campaigns; non-v4 credit accounting is excluded
+          COALESCE(SUM(c."campaignCredits") FILTER (WHERE c."submissionVersion" = 'v4'), 0)::int AS "totalCredits",
+          COALESCE(SUM(c."creditsPending")  FILTER (WHERE c."submissionVersion" = 'v4'), 0)::int AS "pendingCredits",
+          COALESCE(SUM(c."creditsUtilized") FILTER (WHERE c."submissionVersion" = 'v4'), 0)::int AS "utilisedCredits"
+        FROM "CampaignAdmin" ca
+        INNER JOIN "Admin"    a  ON a."userId"      = ca."adminId"
+        INNER JOIN "Role"     r  ON r.id            = a."roleId"
+        INNER JOIN "User"     u  ON u.id            = a."userId"
+        INNER JOIN "Campaign" c  ON c.id            = ca."campaignId"
+        LEFT  JOIN campaign_creators cc ON cc."campaignId" = c.id
+        WHERE r.name IN ('CSM', 'CSL')
+          AND c."createdAt" >= ${startDate}
+          AND c."createdAt" <= ${endDate}
+        GROUP BY a."userId", u.name, u.email, u."photoURL", r.name
+        ORDER BY u.name
+      `
+    : await prisma.$queryRaw<CSMWorkloadRow[]>`
+        WITH campaign_creators AS (
+          SELECT "campaignId", COUNT(DISTINCT "userId") AS creator_count
+          FROM "ShortListedCreator"
+          WHERE "userId" IS NOT NULL
+          GROUP BY "campaignId"
+        )
+        SELECT
+          a."userId"                                                                  AS "adminUserId",
+          u.name                                                                      AS "csName",
+          u.email                                                                     AS "csEmail",
+          u."photoURL"                                                                AS "csPhoto",
+          r.name                                                                      AS "roleName",
+          COUNT(DISTINCT c.id) FILTER (WHERE c.status = 'ACTIVE')                     AS "activeCampaigns",
+          COUNT(DISTINCT c.id) FILTER (WHERE c.status = 'COMPLETED')                  AS "completedCampaigns",
+          COUNT(DISTINCT c."companyId") FILTER (WHERE c.status = 'ACTIVE')            AS "activeClients",
+          COALESCE(SUM(cc.creator_count) FILTER (WHERE c.status = 'ACTIVE'), 0)::int  AS "activeCreators",
+          -- Credit tracking is only reliable for v4 campaigns; non-v4 credit accounting is excluded
+          COALESCE(SUM(c."campaignCredits") FILTER (WHERE c."submissionVersion" = 'v4'), 0)::int AS "totalCredits",
+          COALESCE(SUM(c."creditsPending")  FILTER (WHERE c."submissionVersion" = 'v4'), 0)::int AS "pendingCredits",
+          COALESCE(SUM(c."creditsUtilized") FILTER (WHERE c."submissionVersion" = 'v4'), 0)::int AS "utilisedCredits"
+        FROM "CampaignAdmin" ca
+        INNER JOIN "Admin"    a  ON a."userId"      = ca."adminId"
+        INNER JOIN "Role"     r  ON r.id            = a."roleId"
+        INNER JOIN "User"     u  ON u.id            = a."userId"
+        INNER JOIN "Campaign" c  ON c.id            = ca."campaignId"
+        LEFT  JOIN campaign_creators cc ON cc."campaignId" = c.id
+        WHERE r.name IN ('CSM', 'CSL')
+        GROUP BY a."userId", u.name, u.email, u."photoURL", r.name
+        ORDER BY u.name
+      `;
+
+  const csAdmins = rows.map((row) => ({
+    adminUserId: row.adminUserId,
+    name: row.csName,
+    email: row.csEmail,
+    photo: row.csPhoto || null,
+    role: row.roleName,
+    activeCampaigns: Number(row.activeCampaigns) || 0,
+    completedCampaigns: Number(row.completedCampaigns) || 0,
+    activeClients: Number(row.activeClients) || 0,
+    activeCreators: Number(row.activeCreators) || 0,
+    creditCapacity: {
+      total: Number(row.totalCredits) || 0,
+      pending: Number(row.pendingCredits) || 0,
+      utilised: Number(row.utilisedCredits) || 0,
+    },
+  }));
+
+  return { csAdmins };
+};
+
 // Rejection Reasons
 
 interface RejectionReasonRow {

@@ -3,12 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import { UploadedFile } from 'express-fileupload';
 import { generateRandomString } from '@utils/randomString';
 import { getUser } from '@services/userServices';
-import {
-  bdDraftCreated,
-  briefSentToClient,
-  briefApprovedByClient,
-  briefHandedOver,
-} from '@configs/nodemailer.config';
+import { bdDraftCreated, briefSentToClient, briefApprovedByClient, briefHandedOver } from '@configs/nodemailer.config';
 import { uploadAttachments } from '@configs/cloudStorage.config';
 import { classifyBriefRole } from '@utils/briefRoles';
 import {
@@ -19,6 +14,7 @@ import {
   approveBriefByClient as svcApproveBriefByClient,
   handoverBrief as svcHandoverBrief,
   assignCsmToBrief as svcAssignCsmToBrief,
+  finalizeOwnBrief as svcFinalizeOwnBrief,
   deleteBrief as svcDeleteBrief,
   listBriefs as svcListBriefs,
   getBriefById as svcGetBriefById,
@@ -28,20 +24,23 @@ import {
   removeBriefAttachmentUrl as svcRemoveBriefAttachmentUrl,
   snapshotPublicSubmission as svcSnapshotPublicSubmission,
   resetBriefToSnapshot as svcResetBriefToSnapshot,
+  lostBrief as svcLostBrief,
   BRIEF_ATTACHMENT_MAX,
 } from '@services/campaignBriefService';
 
 const prisma = new PrismaClient();
 
 const clientPublicUrl = (magicToken: string) => {
-  const base = process.env.BASE_EMAIL_URL || process.env.APP_PUBLIC_URL || process.env.BACKEND_URL || 'http://localhost';
+  const base =
+    process.env.BASE_EMAIL_URL || process.env.APP_PUBLIC_URL || process.env.BACKEND_URL || 'http://localhost';
   return `${base.replace(/\/$/, '')}/campaign-brief/client/${magicToken}`;
 };
 
 const TOKEN_LENGTH = 24;
 
 const publicUrl = (token: string) => {
-  const base = process.env.BASE_EMAIL_URL || process.env.APP_PUBLIC_URL || process.env.BACKEND_URL || 'http://localhost';
+  const base =
+    process.env.BASE_EMAIL_URL || process.env.APP_PUBLIC_URL || process.env.BACKEND_URL || 'http://localhost';
   return `${base.replace(/\/$/, '')}/campaign-brief/${token}`;
 };
 
@@ -237,10 +236,7 @@ export const bdSubmitDraft = async (req: Request, res: Response) => {
     const endSource = postingEnd || postingStart;
     const parsedStart = startSource ? new Date(startSource) : null;
     const parsedEnd = endSource ? new Date(endSource) : null;
-    if (
-      (parsedStart && Number.isNaN(parsedStart.getTime())) ||
-      (parsedEnd && Number.isNaN(parsedEnd.getTime()))
-    ) {
+    if ((parsedStart && Number.isNaN(parsedStart.getTime())) || (parsedEnd && Number.isNaN(parsedEnd.getTime()))) {
       return res.status(400).json({ message: 'Invalid posting dates' });
     }
     const now = new Date();
@@ -365,7 +361,9 @@ export const createBrief = async (req: Request, res: Response) => {
   try {
     const user = await getUser(userid);
     const role = classifyBriefRole(user as any);
-    const origin = role === 'CSL' ? 'CSL_CREATED' : 'BD_CREATED';
+    let origin: 'BD_CREATED' | 'CSL_CREATED' | 'CSM_CREATED' = 'BD_CREATED';
+    if (role === 'CSL') origin = 'CSL_CREATED';
+    else if (role === 'CS') origin = 'CSM_CREATED';
     const brief = await createDraftBrief(userid, origin);
     return res.status(201).json({ id: brief.id });
   } catch (error) {
@@ -498,9 +496,7 @@ export const resetBrief = async (req: Request, res: Response) => {
 export const handoverBrief = async (req: Request, res: Response) => {
   const { id } = req.params;
   const { internalComments } = req.body || {};
-  const notes = typeof internalComments === 'string' && internalComments.trim()
-    ? internalComments.trim()
-    : null;
+  const notes = typeof internalComments === 'string' && internalComments.trim() ? internalComments.trim() : null;
 
   // A handover-ready brief must already have a company linked (with an active
   // package). The HandoverDialog orchestrates company/package creation via
@@ -511,14 +507,18 @@ export const handoverBrief = async (req: Request, res: Response) => {
       companyId: true,
       brandId: true,
       company: { select: { name: true, subscriptions: { where: { status: 'ACTIVE' }, select: { id: true } } } },
-      brand: { select: { name: true, company: { select: { subscriptions: { where: { status: 'ACTIVE' }, select: { id: true } } } } } },
+      brand: {
+        select: {
+          name: true,
+          company: { select: { subscriptions: { where: { status: 'ACTIVE' }, select: { id: true } } } },
+        },
+      },
     },
   });
   if (!linked || (!linked.companyId && !linked.brandId)) {
     return res.status(400).json({ message: 'Link a company before handing over the brief.' });
   }
-  const activeSubs =
-    linked.company?.subscriptions?.length || linked.brand?.company?.subscriptions?.length || 0;
+  const activeSubs = linked.company?.subscriptions?.length || linked.brand?.company?.subscriptions?.length || 0;
   if (activeSubs === 0) {
     return res.status(400).json({ message: 'Attach an active package to the company before handover.' });
   }
@@ -572,10 +572,7 @@ export const assignCsm = async (req: Request, res: Response) => {
     if (!Array.isArray(csmIds) || csmIds.length === 0) {
       return res.status(400).json({ message: 'Select at least one CSM to assign.' });
     }
-    const notes =
-      typeof internalComments === 'string' && internalComments.trim()
-        ? internalComments.trim()
-        : null;
+    const notes = typeof internalComments === 'string' && internalComments.trim() ? internalComments.trim() : null;
 
     const updated = await svcAssignCsmToBrief(id, csmIds, notes);
     return res.status(200).json(updated);
@@ -585,6 +582,34 @@ export const assignCsm = async (req: Request, res: Response) => {
       return res.status(400).json({ message: error.message });
     }
     return res.status(500).json({ message: 'Failed to assign CSM' });
+  }
+};
+
+// POST /briefs/:id/finalize  — a CSM finalizes their own CSM_CREATED brief into
+// a campaign they manage. No handover, no CSM selection.
+export const finalizeBrief = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const userid = req.userId;
+  if (!userid) return res.status(401).json({ message: 'User not authenticated' });
+
+  try {
+    const user = await getUser(userid);
+    const role = classifyBriefRole(user as any);
+    if (role !== 'CS' && role !== 'superadmin') {
+      return res.status(403).json({ message: 'Only a CSM can finalize their own brief.' });
+    }
+
+    const { internalComments } = req.body || {};
+    const notes = typeof internalComments === 'string' && internalComments.trim() ? internalComments.trim() : null;
+
+    const updated = await svcFinalizeOwnBrief(id, userid, notes);
+    return res.status(200).json(updated);
+  } catch (error: any) {
+    console.error('finalizeBrief error:', error);
+    if (/not found|owner|approve|company|active package|CSM-authored/i.test(error?.message || '')) {
+      return res.status(400).json({ message: error.message });
+    }
+    return res.status(500).json({ message: 'Failed to finalize brief' });
   }
 };
 
@@ -677,9 +702,7 @@ const handleBriefAttachmentUpload = async (
       return res.status(200).json({ url, attachments });
     } catch (err: any) {
       if (err?.code === 'ATTACHMENT_LIMIT') {
-        return res
-          .status(400)
-          .json({ message: `You can attach at most ${BRIEF_ATTACHMENT_MAX} files` });
+        return res.status(400).json({ message: `You can attach at most ${BRIEF_ATTACHMENT_MAX} files` });
       }
       throw err;
     }
@@ -772,5 +795,34 @@ export const approveBriefPublic = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'This link is no longer valid' });
     }
     return res.status(500).json({ message: 'Failed to approve brief' });
+  }
+};
+
+export const lostBrief = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { lostAmount, lostCurrency, lostReason } = req.body || {};
+
+  if (lostAmount === undefined || lostAmount === null || Number.isNaN(Number(lostAmount))) {
+    return res.status(400).json({ message: 'A valid lost amount is required' });
+  }
+
+  if (typeof lostCurrency !== 'string' || !lostCurrency.trim()) {
+    return res.status(400).json({ message: 'Lost currency is required' });
+  }
+
+  if (typeof lostReason !== 'string' || !lostReason.trim()) {
+    return res.status(400).json({ message: 'Lost reason is required' });
+  }
+
+  try {
+    const updated = await svcLostBrief(id, Number(lostAmount), lostCurrency.trim(), lostReason.trim());
+
+    return res.status(200).json({ id: updated.id, draftStatus: updated.draftStatus });
+  } catch (error) {
+    console.error('lostBrief error:', error);
+    if (/transition|not found/i.test(error?.message || '')) {
+      return res.status(400).json({ message: error.message });
+    }
+    return res.status(500).json({ message: 'Failed to mark brief as lost' });
   }
 };

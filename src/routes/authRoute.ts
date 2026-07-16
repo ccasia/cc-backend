@@ -30,6 +30,10 @@ import {
   setupTwoFactor,
   getSessionStatus,
   checkEmailExistence,
+  sendVerificationCode,
+  resendVerificationCode,
+  verifyCode,
+  getOtpStatus,
 } from '@controllers/authController';
 
 import { validateToken } from '@utils/jwtHelper';
@@ -52,6 +56,7 @@ const limiter = rateLimit({
 const router = Router();
 
 router.get('/me', authenticate, getprofile);
+router.get('/otp-status', getOtpStatus);
 router.get('/verifyAdmin', verifyAdmin);
 router.get('/checkTokenValidity/:token', checkTokenValidity);
 router.get('/currentUser', validateToken, getCurrentUser);
@@ -86,6 +91,10 @@ router.post('/resendVerificationLinkCreator', resendVerificationLinkCreator);
 router.post('/resendVerificationLinkClient', resendVerificationLinkClient);
 router.post('/verifyClient', verifyClient);
 router.post('/setupTwoFactor', authenticate, setupTwoFactor);
+
+router.post('/send-code', sendVerificationCode);
+router.post('/resend-code', resendVerificationCode);
+router.patch('/verify-code', verifyCode);
 
 // Client authentication routes
 router.post('/invite-client', inviteClient);

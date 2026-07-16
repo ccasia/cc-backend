@@ -6,7 +6,7 @@ import ffprobePath from '@ffprobe-installer/ffprobe';
 import fs from 'fs';
 import { uploadPitchVideo, uploadImage } from '@configs/cloudStorage.config';
 import amqplib from 'amqplib';
-import { activeProcesses, clients, io } from '../server';
+import { activeProcesses } from '../server';
 import { Entity, PrismaClient, Submission } from '@prisma/client';
 import { spawn } from 'child_process';
 import path from 'path';
@@ -22,6 +22,7 @@ import {
   pairUploadedDraftsWithRevisionRequests,
   previousDraftUrlsForReplacement,
 } from './draftSubmissionStatus';
+import { getIo, clients } from '../config/socket';
 
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
 Ffmpeg.setFfprobePath(ffprobePath.path);
@@ -61,27 +62,31 @@ export const processVideo = async (
       .on('progress', (progress) => {
         activeProcesses.set(submissionId, command);
         const percentage = Math.round(progress.percent as number);
-        if (io) {
-          io.to(clients.get(userid)).emit('progress', {
-            progress: percentage,
-            submissionId: submissionId,
-            name: 'Compression Start',
-            fileName: fileName,
-            fileSize: fs.statSync(inputPath).size,
-            fileType: path.extname(fileName),
-          });
+        if (getIo()) {
+          getIo()
+            .to(clients.get(userid))
+            .emit('progress', {
+              progress: percentage,
+              submissionId: submissionId,
+              name: 'Compression Start',
+              fileName: fileName,
+              fileSize: fs.statSync(inputPath).size,
+              fileType: path.extname(fileName),
+            });
         }
       })
       .on('end', async () => {
-        if (io) {
-          io.to(clients.get(userid)).emit('progress', {
-            progress: 100,
-            submissionId: submissionId,
-            name: 'Compression Start',
-            fileName: fileName,
-            fileSize: fs.statSync(inputPath).size,
-            fileType: path.extname(fileName),
-          });
+        if (getIo()) {
+          getIo()
+            .to(clients.get(userid))
+            .emit('progress', {
+              progress: 100,
+              submissionId: submissionId,
+              name: 'Compression Start',
+              fileName: fileName,
+              fileSize: fs.statSync(inputPath).size,
+              fileType: path.extname(fileName),
+            });
         }
 
         // if (fs.existsSync(inputPath)) {
@@ -260,36 +265,20 @@ const checkCurrentSubmission = async (submissionId: string) => {
     }
   }
 
-  if (io) {
+  if (getIo()) {
     const creatorSocketId = clients.get(submission.userId);
     if (creatorSocketId) {
-      io.to(creatorSocketId).emit('updateSubmission');
+      getIo().to(creatorSocketId).emit('updateSubmission');
     }
   }
 };
-
-async function deleteFileIfExists(filePath: string) {
-  try {
-    await fs.promises.access(filePath); // Check if file exists
-    await fs.promises.unlink(filePath); // Delete the file
-    console.log(`Deleted: ${filePath}`);
-  } catch (error) {
-    if (error.code === 'ENOENT') {
-      console.log(`File does not exist: ${filePath}`);
-    } else {
-      console.error(`Error deleting file: ${error.message}`);
-    }
-  }
-}
 
 (async () => {
   try {
     const conn = await amqplib.connect(process.env.RABBIT_MQ!);
     const channel = await conn.createChannel();
     await channel.assertQueue('draft', { durable: true });
-    // await channel.purgeQueue('draft');
 
-    console.log('Consumer 1 Starting...');
     const startUsage = process.cpuUsage();
 
     await channel.consume(
@@ -297,7 +286,7 @@ async function deleteFileIfExists(filePath: string) {
       async (msg) => {
         if (msg !== null) {
           const content: any = JSON.parse(msg.content.toString());
-          console.log('RECIEVED', content);
+
           const { filePaths } = content;
 
           try {
@@ -373,14 +362,16 @@ async function deleteFileIfExists(filePath: string) {
                   videoFile.fileName,
                   content.folder,
                   (data: number) => {
-                    io?.to(clients.get(content.userid)!).emit('progress', {
-                      progress: Math.ceil(data),
-                      submissionId: submission.id,
-                      name: 'Uploading Start',
-                      fileName: videoFile.fileName,
-                      fileSize: fs.statSync(videoFile.outputPath).size,
-                      fileType: path.extname(videoFile.fileName),
-                    });
+                    getIo()
+                      ?.to(clients.get(content.userid)!)
+                      .emit('progress', {
+                        progress: Math.ceil(data),
+                        submissionId: submission.id,
+                        name: 'Uploading Start',
+                        fileName: videoFile.fileName,
+                        fileSize: fs.statSync(videoFile.outputPath).size,
+                        fileType: path.extname(videoFile.fileName),
+                      });
                   },
                   size,
                 );
@@ -400,7 +391,7 @@ async function deleteFileIfExists(filePath: string) {
                       ...(parentVideo && { resubmittedFromId: parentVideo.id }),
                     },
                   });
-                } else if (!requestChangeVideos.length) {
+
                   await prisma.video.create({
                     data: {
                       url: videoPublicURL,
@@ -561,14 +552,16 @@ async function deleteFileIfExists(filePath: string) {
                     rawFootageFileName,
                     content.folder,
                     (data: number) => {
-                      io?.to(clients.get(content.userid)!).emit('progress', {
-                        progress: Math.ceil(data),
-                        submissionId: submission.id,
-                        name: 'Uploading Start',
-                        fileName: rawFootageFileName,
-                        fileSize: fs.statSync(rawFootagePath).size,
-                        fileType: path.extname(rawFootagePath),
-                      });
+                      getIo()
+                        ?.to(clients.get(content.userid)!)
+                        .emit('progress', {
+                          progress: Math.ceil(data),
+                          submissionId: submission.id,
+                          name: 'Uploading Start',
+                          fileName: rawFootageFileName,
+                          fileSize: fs.statSync(rawFootagePath).size,
+                          fileType: path.extname(rawFootagePath),
+                        });
                     },
                     size,
                   );
@@ -715,7 +708,7 @@ async function deleteFileIfExists(filePath: string) {
             // Emit socket event to notify that content is now processed and available.
             // Mirrors videoDraftWorker.ts: both consume the same 'draft' queue, so the
             // v2 flow must fire here too or the mobile refresh would be flaky (~50%).
-            if (io && submission.campaignId) {
+            if (getIo() && submission.campaignId) {
               const processedPayload = {
                 submissionId: submission.id,
                 campaignId: submission.campaignId,
@@ -726,26 +719,18 @@ async function deleteFileIfExists(filePath: string) {
                 creatorId: content.userid,
               };
 
-              io.to(submission.campaignId).emit('v4:content:processed', {
-                ...processedPayload,
-              });
+              getIo()
+                .to(submission.campaignId)
+                .emit('v4:content:processed', {
+                  ...processedPayload,
+                });
 
               if (!content.isV4 && submission.submissionVersion !== 'v4') {
-                io.to(submission.campaignId).emit('v2:content:processed', processedPayload);
+                getIo().to(submission.campaignId).emit('v2:content:processed', processedPayload);
               }
             }
 
             const endUsage = process.cpuUsage(startUsage);
-
-            console.log(`CPU Usage: ${endUsage.user} microseconds (user) / ${endUsage.system} microseconds (system)`);
-
-            // for (const item of content.admins) {
-            //   if (item.admin && item.admin.user && item.admin.user.id) {
-            //     io.to(clients.get(item.admin.user.id)).emit('newSubmission');
-            //   } else {
-            //     console.warn('[videoDraft] Skipping admin notification: missing admin or user for item:', item);
-            //   }
-            // }
 
             const allSuperadmins = await prisma.user.findMany({
               where: {
@@ -754,7 +739,7 @@ async function deleteFileIfExists(filePath: string) {
             });
 
             for (const admin of allSuperadmins) {
-              io.to(clients.get(admin.id)).emit('newSubmission');
+              getIo().to(clients.get(admin.id)).emit('newSubmission');
             }
           } catch (error) {
             console.error('Error processing submission:', error);

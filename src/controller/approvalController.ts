@@ -4,8 +4,9 @@ import { Request, Response } from 'express';
 import { Prisma, PrismaClient } from '@prisma/client';
 
 import { sendCreatorApprovalListEmail, type ApprovalListEmailCreatorRow } from '@configs/nodemailer.config';
+import { getIo } from '../config/socket';
 
-import { io } from '../server';
+// import { io } from '../server';
 
 const prisma = new PrismaClient();
 
@@ -724,14 +725,16 @@ export const actionApprovalCreator = async (req: Request, res: Response) => {
       where: { id: pitchId },
       select: { status: true },
     });
-    if (io && approvalRequest.campaignId) {
-      io.to(approvalRequest.campaignId).emit('v3:pitch:status-updated', {
-        pitchId,
-        campaignId: approvalRequest.campaignId,
-        newStatus: pitchAfter?.status ?? null,
-        action: isPending ? action : 'approval_note',
-        updatedAt: new Date().toISOString(),
-      });
+    if (getIo() && approvalRequest.campaignId) {
+      getIo()
+        .to(approvalRequest.campaignId)
+        .emit('v3:pitch:status-updated', {
+          pitchId,
+          campaignId: approvalRequest.campaignId,
+          newStatus: pitchAfter?.status ?? null,
+          action: isPending ? action : 'approval_note',
+          updatedAt: new Date().toISOString(),
+        });
     }
 
     const actionMessage =

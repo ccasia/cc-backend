@@ -27,6 +27,7 @@ import { TokenSet, XeroClient } from 'xero-node';
 import { generate, generateSecret, generateURI, verify } from 'otplib';
 
 import QRCode from 'qrcode';
+import WhatsappSetting from '@services/whatsappSetting';
 import crypto from 'crypto';
 import * as z from 'zod';
 import {
@@ -35,6 +36,8 @@ import {
   getRefreshTokenExpiryDate,
   verifyRefreshToken,
 } from '@utils/tokens';
+import { revokeAppleToken } from '@utils/apple';
+import { getIo } from '../config/socket';
 
 const prisma = new PrismaClient();
 
@@ -1238,6 +1241,8 @@ export const getprofile = async (req: Request, res: Response) => {
         return res.status(400).json({ message: 'Account spam.' });
       case 'rejected':
         return res.status(400).json({ message: 'Account rejected.' });
+      case 'deleted':
+        return res.status(400).json({ message: 'Account not found.' });
     }
 
     // Check if user is a child account
@@ -1257,6 +1262,10 @@ export const getprofile = async (req: Request, res: Response) => {
         isPasswordExist: Boolean(user.password),
         isInstagramConnected: !!user.creator?.instagram,
         isTiktokConnected: !!user.creator?.tiktok,
+        isAppleLinked: Boolean(user.appleId),
+        isGoogleLinked: Boolean(user.googleId),
+        appleEmail: user.appleId ? user.appleEmail || user.email : null,
+        googleEmail: user.googleId ? user.googleEmail || user.email : null,
       },
       ...((user.role === 'superadmin' ||
         (user.role === 'admin' && user?.admin?.role?.name.toLowerCase() === 'finance')) && {
@@ -1319,6 +1328,8 @@ export const login = async (req: Request, res: Response) => {
         return res.status(400).json({ message: 'Account spam.' });
       case 'rejected':
         return res.status(400).json({ message: 'Account rejected.' });
+      case 'deleted':
+        return res.status(400).json({ message: 'Account not found.' });
     }
 
     // // Hashed password
@@ -1878,46 +1889,67 @@ export const deleteAccount = async (req: Request, res: Response) => {
   try {
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      include: {
-        creator: true,
-        admin: true,
-      },
     });
 
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    // Delete all related data based on user role
-    await prisma.$transaction(async (tx) => {
-      // Common deletions for all users
-      await tx.interest.deleteMany({ where: { userId } });
-      await tx.invoice.deleteMany({ where: { creatorId: userId } });
-      await tx.pitch.deleteMany({ where: { userId } });
-      await tx.userNotification.deleteMany({ where: { userId } });
-      await tx.notification.deleteMany({ where: { userId } });
-      await tx.unreadMessage.deleteMany({ where: { userId } });
-      await tx.seenMessage.deleteMany({ where: { userId } });
-      await tx.bookMarkCampaign.deleteMany({ where: { userId } });
-      await tx.paymentForm.deleteMany({ where: { userId } });
-      await tx.userThread.deleteMany({ where: { userId } });
-      await tx.creatorAgreement.deleteMany({ where: { userId } });
-      await tx.submission.deleteMany({ where: { userId } });
-      // await tx.logistic.deleteMany({ where: { userId } });
-
-      // Role-specific deletions
-      if (user.role === 'creator') {
-        await tx.creator.delete({
-          where: { userId },
-          include: { mediaKit: true },
-        });
-      } else if (user.role === 'admin') {
-        await tx.admin.delete({ where: { userId } });
+    // Re-authenticate before deleting. The mobile app sends the user's password to confirm intent;
+    // the shared web caller (cc-frontend) sends none, so validate only when a password is provided
+    // AND the account has a local password (OAuth-only/Google accounts have nothing to compare).
+    const { password } = (req.body ?? {}) as { password?: string };
+    if (password !== undefined && user.password && !user.googleId) {
+      const isMatch = await bcrypt.compare(password, user.password);
+      if (!isMatch) {
+        return res.status(400).json({ message: 'Incorrect password' });
       }
+    }
 
-      // Finally delete the user
-      await tx.user.delete({ where: { id: userId } });
-    });
+    // Idempotency: a second call (double-tap / two devices racing) must not re-run the update,
+    // which would double-prefix the already-renamed email and eventually truncate the original.
+    if (user.status === 'deleted') {
+      return res.status(200).json({ message: 'Account deleted successfully' });
+    }
+
+    // Soft delete: keep all data (invoices, agreements, campaign history) but block login.
+    // Renaming the email frees the unique constraint so the same email can re-register fresh;
+    // the userId prefix makes it collision-proof across delete/re-register cycles while the
+    // original stays readable (after the second underscore) for business records.
+    await prisma.$transaction([
+      prisma.user.update({
+        where: { id: userId },
+        data: {
+          status: 'deleted',
+          deletedAt: new Date(),
+          googleId: null,
+          appleId: null,
+          email: `deleted_${userId}_${user.email}`.slice(0, 255),
+        },
+      }),
+      prisma.refreshToken.deleteMany({ where: { userId } }),
+      prisma.pushToken.deleteMany({ where: { userId } }),
+      prisma.session.deleteMany({ where: { data: { contains: userId } } }),
+    ]);
+
+    // Apple requires revoking the user's token on account deletion (App Store
+    // guideline 5.1.1(v)). We stored the refresh token at sign-in via the
+    // authorizationCode exchange. `user` was read before the soft-delete above,
+    // so it still carries the token. Best-effort — never blocks deletion.
+    if (user.appleRefreshToken) {
+      await revokeAppleToken(user.appleRefreshToken);
+    }
+
+    // Terminate any live realtime connections — socket auth only runs at connect time, so an
+    // already-open socket would otherwise keep receiving chat/notifications. Match on the
+    // middleware-verified socket.data.userId (set in server.ts), not the client-supplied
+    // `clients` map (which only tracks one socket per user). The existing `disconnect` handler
+    // cleans up the clients/users maps automatically.
+    for (const socket of getIo().sockets.sockets.values()) {
+      if (socket.data.userId === userId) {
+        socket.disconnect(true);
+      }
+    }
 
     // Clear session and cookies
     req.session.destroy((err) => {
@@ -2008,7 +2040,7 @@ export const mobileLogin = async (
       return res.status(404).json({ message: 'Wrong password' });
     }
 
-    const accessToken = jwt.sign({ userId: user.id, email: user.email }, process.env.ACCESSKEY!, { expiresIn: '1m' });
+    const accessToken = jwt.sign({ userId: user.id, email: user.email }, process.env.ACCESSKEY!, { expiresIn: '15m' });
     const refreshToken = jwt.sign({ userId: user.id, email: user.email }, process.env.REFRESHKEY!, {
       expiresIn: '30d',
     });
@@ -2030,8 +2062,214 @@ export const mobileLogin = async (
   }
 };
 
+export const sendVerificationCode = async (req: Request<{}, {}, { phoneNumber: string }>, res: Response) => {
+  const phoneNumber = req.body.phoneNumber;
+
+  if (!phoneNumber) {
+    return res.status(400).json({ success: false, message: 'Phone number is required' });
+  }
+
+  try {
+    // fetch only active users with a phone number
+    const phoneNumbers = await prisma.user.findMany({
+      where: {
+        status: 'active',
+        phoneNumber: { not: null },
+      },
+      select: { phoneNumber: true },
+    });
+
+    const normalizedInput = phoneNumber.replace(/\D/g, '');
+
+    const isExist = phoneNumbers.some(({ phoneNumber }) => phoneNumber?.replace(/\D/g, '') === normalizedInput);
+
+    if (isExist) return res.status(409).json({ success: false, message: 'Phone number exist' });
+
+    const whatsapp = new WhatsappSetting();
+    await whatsapp.initialize();
+
+    const secret = generateSecret();
+
+    // Generate current token
+    const token = await generate({ secret });
+
+    req.session.otp = {
+      secret,
+      phone: phoneNumber,
+      sentAt: dayjs().toDate(),
+      attempts: 0,
+      isCodeUsed: false,
+      userId: '',
+    };
+
+    await whatsapp.sendVerificationCode(phoneNumber, token);
+
+    return res.status(200).json({ success: true, message: 'Successfully sent' });
+  } catch (error) {
+    if (error?.message.includes('Whatsapp')) {
+      return res.status(400).json({ success: false, message: 'Please contact our admin.' });
+    }
+
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+};
+
+export const verifyCode = async (req: Request<{}, {}, { code: string }>, res: Response) => {
+  const { code } = req.body;
+
+  if (!code) {
+    return res.status(400).json({ success: false, message: 'Code is required' });
+  }
+
+  if (!req.session.otp) {
+    return res.status(401).json({ success: false, message: 'Session expired, please request a new code' });
+  }
+
+  // Extract early before any mutation
+  const { secret, phone, attempts, userId } = req.session.otp;
+
+  // Guard: too many attempts
+  if (attempts >= 5) {
+    // eslint-disable-next-line @typescript-eslint/no-empty-function
+    req.session.destroy(() => {});
+    return res.status(429).json({ success: false, message: 'Too many attempts, please request a new code' });
+  }
+
+  try {
+    const isValid = await verify({ token: code, secret, epochTolerance: 600 });
+
+    if (!isValid.valid) {
+      req.session.otp.attempts += 1;
+      return res.status(400).json({ success: false, message: 'Invalid code' });
+    }
+
+    // Clear OTP and move to next stage
+    req.session.pendingRegistration = {
+      phone,
+      verified: true,
+      authType: 'otp',
+    };
+
+    req.session.otp = undefined;
+
+    const [user] = await prisma.$transaction([
+      prisma.user.update({ where: { id: userId }, data: { status: 'active' } }),
+      prisma.emailVerification.deleteMany({
+        where: {
+          user: {
+            id: userId,
+          },
+        },
+      }),
+    ]);
+
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    const accessToken = jwt.sign({ userId: user.id, email: user.email }, process.env.ACCESSKEY!, { expiresIn: '15m' });
+    const refreshToken = jwt.sign({ userId: user.id, email: user.email }, process.env.REFRESHKEY!, {
+      expiresIn: '30d',
+    });
+
+    await prisma.refreshToken.create({
+      data: {
+        tokenHash: hashToken(refreshToken),
+        userId: user.id,
+        expiresAt: dayjs().add(30, 'days').toDate(),
+        userAgent: req.headers['user-agent'] ?? null,
+        ipAddress: req.ip ?? null,
+      },
+    });
+
+    return res
+      .status(200)
+      .json({ success: true, message: 'Phone verified successfully', token: { accessToken, refreshToken } });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+};
+
+export const getOtpStatus = async (req: Request, res: Response) => {
+  const lastSent = req.session?.otp?.sentAt;
+
+  if (!lastSent) {
+    return res.status(200).json({ secondsLeft: 0 });
+  }
+
+  const elapsed = dayjs().diff(lastSent);
+  const cooldown = 60 * 1000;
+  const secondsLeft = Math.max(0, Math.ceil((cooldown - elapsed) / 1000));
+
+  return res.status(200).json({ secondsLeft, phoneNumber: req.session.otp?.phone });
+};
+
+export const resendVerificationCode = async (req: Request, res: Response) => {
+  const phoneNumber = req.session?.otp?.phone;
+
+  if (!phoneNumber) {
+    return res.status(401).json({
+      success: false,
+      message: 'Session expired, please start over',
+    });
+  }
+
+  if (!req.session.otp) {
+    return res.status(401).json({ success: false, message: 'Session expired, please request a new code' });
+  }
+
+  const lastSent = req.session.otp.sentAt;
+  const attempts = req.session.otp.attempts;
+  const cooldown = 60 * 1000;
+
+  if (lastSent && dayjs().diff(lastSent) < cooldown) {
+    const secondsLeft = Math.ceil((cooldown - dayjs().diff(lastSent)) / 1000);
+    return res.status(429).json({
+      success: false,
+      message: `Please wait ${secondsLeft} seconds before requesting a new code`,
+    });
+  }
+
+  if (attempts >= 5) return res.status(429).json({ success: false, message: 'Too many attempts' });
+
+  try {
+    const whatsapp = new WhatsappSetting();
+    await whatsapp.initialize();
+
+    const secret = generateSecret();
+    const token = await generate({ secret });
+
+    await whatsapp.sendVerificationCode(phoneNumber, token);
+
+    await new Promise<void>((resolve, reject) => {
+      req.session.regenerate((err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+
+    const currentAttempt = req.session?.otp?.attempts;
+
+    req.session.otp = {
+      ...req.session.otp,
+      secret,
+      phone: phoneNumber,
+      sentAt: dayjs().toDate(),
+      attempts: currentAttempt + 1,
+      isCodeUsed: false,
+    };
+
+    return res.status(200).json({ success: true, message: 'Verification code resent' });
+  } catch (error) {
+    if (error?.message?.includes('Whatsapp')) {
+      return res.status(400).json({ success: false, message: 'Please contact our admin.' });
+    }
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+};
+
 export const getSessionStatus = async (req: Request, res: Response) => {
   return res.status(200).json({
+    otp: req.session.otp ? { sentAt: req.session.otp.sentAt } : null,
     pendingRegistration: req.session.pendingRegistration ?? null,
   });
 };
@@ -2064,7 +2302,7 @@ export const mobileTokenRefresh = async (req: Request, res: Response) => {
       where: { tokenHash },
       include: {
         user: {
-          select: { id: true, email: true, name: true, isActive: true },
+          select: { id: true, email: true, name: true, isActive: true, status: true },
         },
       },
     });
@@ -2081,6 +2319,15 @@ export const mobileTokenRefresh = async (req: Request, res: Response) => {
       });
     }
 
+    if (stored.user.status === 'deleted') {
+      await prisma.refreshToken.deleteMany({ where: { userId: stored.userId } });
+
+      return res.status(401).json({
+        success: false,
+        message: 'Account not found.',
+      });
+    }
+
     if (stored.expiresAt < new Date()) {
       await prisma.refreshToken.delete({ where: { id: stored.id } });
 
@@ -2091,7 +2338,7 @@ export const mobileTokenRefresh = async (req: Request, res: Response) => {
     }
 
     const newAccessToken = jwt.sign({ userId: stored.userId, email: stored.user.email }, process.env.ACCESSKEY!, {
-      expiresIn: '1m',
+      expiresIn: '15m',
     });
 
     const newRefreshToken = jwt.sign({ userId: stored.userId, email: stored.user.email }, process.env.REFRESHKEY!, {

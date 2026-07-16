@@ -5,8 +5,95 @@ import { createNewSpreadSheet } from './google_sheets/sheets';
 import { JWT } from 'google-auth-library';
 import { google } from 'googleapis';
 import { GoogleSpreadsheet } from 'google-spreadsheet';
+import { getEffectiveCampaignOrigin } from '@utils/campaignFlow';
 
 const prisma = new PrismaClient();
+
+/**
+ * Fallback for when the last client is detached from a campaign mid-flight.
+ *
+ * Pitches, submissions, and content items sitting in SENT_TO_CLIENT / CLIENT_FEEDBACK
+ * would be stranded — nobody is left to act on them. Return them to admin review so
+ * the flow can continue without a client (admin approval is then final).
+ *
+ * Safe to call after any campaign-manager update: it re-checks client presence itself
+ * and is a no-op when a client is still attached. See docs/v4-unification-plan.md (Phase 5).
+ */
+export const revertStrandedClientReviewItems = async (campaignId: string, adminId?: string) => {
+  const campaign = await prisma.campaign.findUnique({
+    where: { id: campaignId },
+    include: {
+      campaignAdmin: {
+        include: {
+          admin: {
+            include: {
+              user: { select: { role: true } },
+              role: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  // No-op while the campaign's flow still routes to a client — including CLIENT-origin
+  // campaigns, whose approvals go to client review even without client campaign admins.
+  // Reverting those would ping-pong items between admin and client review.
+  if (!campaign || getEffectiveCampaignOrigin(campaign) === 'CLIENT') {
+    return { reverted: false, total: 0 };
+  }
+
+  const clientReviewStatuses = ['SENT_TO_CLIENT', 'CLIENT_FEEDBACK'] as const;
+
+  const revertedPitches = await prisma.pitch.updateMany({
+    where: { campaignId, status: 'SENT_TO_CLIENT' },
+    data: { status: 'PENDING_REVIEW' },
+  });
+
+  const revertedSubmissions = await prisma.submission.updateMany({
+    where: { campaignId, status: { in: [...clientReviewStatuses] } },
+    data: { status: 'PENDING_REVIEW' },
+  });
+
+  // Individual content items reviewed at the video/photo/raw-footage level.
+  // PENDING is the FeedbackStatus for "awaiting admin decision".
+  const [revertedVideos, revertedPhotos, revertedRawFootages] = await Promise.all([
+    prisma.video.updateMany({
+      where: { campaignId, status: { in: [...clientReviewStatuses] } },
+      data: { status: 'PENDING' },
+    }),
+    prisma.photo.updateMany({
+      where: { campaignId, status: { in: [...clientReviewStatuses] } },
+      data: { status: 'PENDING' },
+    }),
+    prisma.rawFootage.updateMany({
+      where: { campaignId, status: { in: [...clientReviewStatuses] } },
+      data: { status: 'PENDING' },
+    }),
+  ]);
+
+  const total =
+    revertedPitches.count +
+    revertedSubmissions.count +
+    revertedVideos.count +
+    revertedPhotos.count +
+    revertedRawFootages.count;
+
+  if (total > 0) {
+    await prisma.campaignLog.create({
+      data: {
+        message: `Client removed from campaign — ${revertedPitches.count} pitch(es) and ${revertedSubmissions.count} submission(s) awaiting client review were returned to admin review`,
+        campaignId,
+        ...(adminId && { adminId }),
+      },
+    });
+    console.log(
+      `Campaign ${campaignId}: client detached, reverted ${total} item(s) from client review to admin review`,
+    );
+  }
+
+  return { reverted: total > 0, total };
+};
 
 // `req` is for the admin ID
 export const logChange = async (

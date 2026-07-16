@@ -8,8 +8,6 @@
     "strict": false,
     "outDir": "./dist",
     "rootDir": ".",
-    "baseUrl": ".",
-    
     "paths": {
       "@/*": ["./*"],
       "@controllers/*": ["./src/controller/*"],

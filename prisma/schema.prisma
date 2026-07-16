@@ -8,8 +8,15 @@ datasource db {
 }
 
 model User {
-  id       String  @id @unique @default(cuid())
-  googleId String? @unique
+  id String @id @unique @default(cuid())
+
+  googleId          String?   @unique
+  appleId           String?   @unique
+  appleRefreshToken String?
+  googleEmail       String?   @db.VarChar(255)
+  appleEmail        String?   @db.VarChar(255)
+  googleUnlinkedAt  DateTime?
+  appleUnlinkedAt   DateTime?
 
   email    String  @unique @db.VarChar(255)
   password String? @db.VarChar(255)
@@ -17,17 +24,17 @@ model User {
   emailVerificationId String?            @unique
   emailVerifcation    EmailVerification? @relation(fields: [emailVerificationId], references: [id])
 
-  createdAt               DateTime            @default(now())
-  name                    String?             @db.VarChar(255)
-  photoURL                String?             @db.VarChar(255)
-  country                 String?             @db.VarChar(100)
-  city                    String?             @db.VarChar(100)
-  phoneNumber             String?             @db.VarChar(100)
-  updatedAt               DateTime?           @updatedAt
-  status                  Status              @default(pending)
+  createdAt               DateTime              @default(now())
+  name                    String?               @db.VarChar(255)
+  photoURL                String?               @db.VarChar(255)
+  country                 String?               @db.VarChar(100)
+  city                    String?               @db.VarChar(100)
+  phoneNumber             String?               @db.VarChar(100)
+  updatedAt               DateTime?             @updatedAt
+  status                  Status                @default(pending)
   eventId                 String?
   role                    RoleEnum
-  photoBackgroundURL      String?             @db.VarChar(255)
+  photoBackgroundURL      String?               @db.VarChar(255)
   updateRefershToken      DateTime?
   xeroRefreshToken        String?
   admin                   Admin?
@@ -45,18 +52,18 @@ model User {
   feedback                Feedback[]
   commentAgreements       CommentAgreement[]
   submissionComments      SubmissionComment[]
-  forwardedComments       SubmissionComment[] @relation("ForwardedComments")
-  resolvedComments        SubmissionComment[] @relation("ResolvedComments")
+  forwardedComments       SubmissionComment[]   @relation("ForwardedComments")
+  resolvedComments        SubmissionComment[]   @relation("ResolvedComments")
   finance                 Finance?
-  invoice                 Invoice[]           @relation("CreatedBy")
-  sentMessages            Message[]           @relation("UserMessages")
+  invoice                 Invoice[]             @relation("CreatedBy")
+  sentMessages            Message[]             @relation("UserMessages")
   notifications           Notification[]
   paymentForm             PaymentForm?
   pitch                   Pitch[]
-  approvedPitches         Pitch[]             @relation("ApprovedByClient")
-  rejectedPitches         Pitch[]             @relation("RejectedByClient")
-  maybePitches            Pitch[]             @relation("MaybeByClient")
-  acceptedInviteByCreator Pitch[]             @relation("AcceptedInviteByCreator")
+  approvedPitches         Pitch[]               @relation("ApprovedByClient")
+  rejectedPitches         Pitch[]               @relation("RejectedByClient")
+  maybePitches            Pitch[]               @relation("MaybeByClient")
+  acceptedInviteByCreator Pitch[]               @relation("AcceptedInviteByCreator")
 
   resetPasswordToken ResetPasswordToken?
   seenMessages       SeenMessage[]
@@ -97,11 +104,15 @@ model User {
 
   twoFactorSecret String?
 
-  userFlow      UserFlow[]
-  activatedAt   DateTime?
-  passwordSetAt DateTime?
-  aiModel       AiModel?
-  refreshTokens RefreshToken[]
+  userFlow       UserFlow[]
+  activatedAt    DateTime?
+  deletedAt      DateTime?
+  passwordSetAt  DateTime?
+  aiModel        AiModel?
+  refreshTokens  RefreshToken[]
+  uploadSessions UploadSession[]
+
+  isPhoneVerified Boolean @default(false)
 }
 
 model RefreshToken {
@@ -372,6 +383,7 @@ model TiktokUser {
   averageComments Float?
   averageShares   Float?
   engagement_rate Float?
+  analyticsData   Json?
   lastUpdated     DateTime?
 
   createdAt   DateTime      @default(now())
@@ -771,7 +783,7 @@ model Campaign {
   updatedAt DateTime @updatedAt
 
   // V4 submission version tracking
-  submissionVersion String? @default("v3") // "v2", "v3", "v4"
+  submissionVersion String? @default("v4") // "v2", "v3", "v4" — immutable after creation; all new campaigns are v4
 
   // Trends analysis
   submissionPostingUrls SubmissionPostingUrl[]
@@ -796,6 +808,11 @@ model Campaign {
   clientTokenExpiresAt DateTime?
   editedByClientFields String[]             @default([])
 
+  // Lost Deal tracking
+  lostAmount   Float?
+  lostCurrency String?
+  lostReason   String? @db.Text
+
   // Snapshot of the brief field values at the moment it was sent to the client
   clientBriefSnapshot Json?
   clientPackage       String?
@@ -809,6 +826,7 @@ model Campaign {
   summaryUrl  String?
 
   approvalRequests ApprovalRequest[]
+  uploadSessions   UploadSession[]
 }
 
 model BookMarkCampaign {
@@ -1153,6 +1171,18 @@ model ShortListedCreator {
   creditTierId   String? // Tier ID at time of assignment (snapshot)
   creditTier     CreditTier? @relation(fields: [creditTierId], references: [id])
 
+  // Admin rating (client-side rating pending SAM)
+  adminRating     Int?
+  adminRatingTags String[]  @default([])
+  adminRatingNote String?
+  adminRatedAt    DateTime?
+  adminRatedById  String?
+
+  // Client rating
+  clientRating    Int?
+  clientRatedAt   DateTime?
+  clientRatedById String?
+
   @@unique([userId, campaignId])
   @@index([userId])
 }
@@ -1272,6 +1302,7 @@ model Submission {
   captionHistory        CaptionHistory[]
   submissionPostingUrls SubmissionPostingUrl[]
   videoOfTheMonth       VideoOfTheMonth?
+  uploadSessions        UploadSession[]
 
   @@unique([userId, campaignId, submissionTypeId, contentOrder])
 }
@@ -1462,6 +1493,7 @@ model Video {
 
   feedbackRecords    Feedback[]
   submissionComments SubmissionComment[]
+  uploadSession      UploadSession?
 }
 
 model RawFootage {
@@ -1984,6 +2016,7 @@ enum Status {
   suspended
   spam
   guest
+  deleted
 }
 
 enum InvoiceStatus {
@@ -2016,11 +2049,13 @@ enum CampaignDraftStatus {
   PENDING_REVIEW
   APPROVED
   HANDED_OVER
+  LOST
 }
 
 enum CampaignDraftOrigin {
   BD_CREATED
   CSL_CREATED
+  CSM_CREATED
   CLIENT_INVITED
 }
 
@@ -2616,4 +2651,51 @@ model WhatsappMessage {
 enum TypeEnum {
   inbound
   outbound
+}
+
+model UploadSession {
+  id String @id @default(cuid())
+
+  // GCS resumable session
+  gcsSessionUri String? @db.Text // filled in after client reports the Location header
+  gcsObjectPath String // e.g. "raw/{userId}/{timestamp}-{filename}"
+
+  // Progress tracking
+  status        UploadStatus @default(INITIATED)
+  bytesTotal    BigInt?
+  bytesUploaded BigInt       @default(0)
+
+  // Ownership / association
+  userId       String
+  user         User        @relation(fields: [userId], references: [id])
+  campaignId   String?
+  campaign     Campaign?   @relation(fields: [campaignId], references: [id])
+  submissionId String?
+  submission   Submission? @relation(fields: [submissionId], references: [id])
+
+  // Link to final Video once compression completes
+  videoId String? @unique
+  video   Video?  @relation(fields: [videoId], references: [id])
+
+  // Lifecycle
+  expiresAt    DateTime
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  completedAt  DateTime?
+  failedAt     DateTime?
+  errorMessage String?
+
+  @@index([userId, status])
+  @@index([status, expiresAt])
+}
+
+enum UploadStatus {
+  INITIATED // signed URL generated, client hasn't started GCS handshake yet
+  UPLOADING // client is PUTting chunks to GCS
+  RAW_UPLOAD_COMPLETE // raw file fully landed in GCS
+  QUEUED_FOR_COMPRESSION // compression job enqueued
+  COMPRESSING // ffmpeg worker actively processing
+  COMPRESSION_FAILED
+  COMPLETED // compressed file uploaded, Video row created
+  FAILED
 }

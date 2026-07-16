@@ -30,6 +30,7 @@ import {
   saveCampaign,
   unSaveCampaign,
   shortlistCreator,
+  rateCreator,
   creatorAgreements,
   updateAmountAgreement,
   sendAgreement,
@@ -212,6 +213,7 @@ router.post('/uploadVideo', authenticate, uploadVideoTest);
 router.post('/saveCampaign', authenticate, saveCampaign);
 
 router.post('/shortlistCreator', authenticate, isSuperAdmin, shortlistCreator);
+router.post('/rateCreator', authenticate, rateCreator);
 router.post('/template/:id', authenticate, isSuperAdmin, createNewTemplate);
 router.post('/draftPitch', authenticate, draftPitch);
 router.post('/spreadsheet', authenticate, isSuperAdmin, createNewSpreadSheets);

@@ -1,13 +1,15 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import dayjs from 'dayjs';
-import { clients, io } from '../server';
+
 import { saveNotification } from './notificationController';
 import { notificationPitchForClientReview } from '@helper/notification';
+import { campaignHasClient } from '@utils/campaignFlow';
 import {
   CREATOR_CAMPAIGN_MEMBERSHIP_UPDATED_EVENT,
   createCreatorCampaignMembershipUpdatedPayload,
 } from '@utils/campaignMembershipEvents';
+import { clients, getIo } from '../config/socket';
 
 const prisma = new PrismaClient();
 
@@ -31,24 +33,16 @@ const emitCreatorCampaignMembershipUpdated = ({
   const creatorSocketId = clients.get(userId);
 
   if (creatorSocketId) {
-    io.to(creatorSocketId).emit(CREATOR_CAMPAIGN_MEMBERSHIP_UPDATED_EVENT, payload);
+    getIo().to(creatorSocketId).emit(CREATOR_CAMPAIGN_MEMBERSHIP_UPDATED_EVENT, payload);
   }
 
-  io.to(campaignId).emit(CREATOR_CAMPAIGN_MEMBERSHIP_UPDATED_EVENT, payload);
+  getIo().to(campaignId).emit(CREATOR_CAMPAIGN_MEMBERSHIP_UPDATED_EVENT, payload);
 };
 
 const normalizePlatform = (platform?: string | null): 'instagram' | 'tiktok' | undefined => {
   if (platform === 'tiktok') return 'tiktok';
   if (platform === 'instagram') return 'instagram';
   return undefined;
-};
-
-// Pitch.followerCount is the count the admin recorded when sourcing the creator. It is
-// stored as free text, and it is what the campaign agreed to — not the creator's media kit.
-const parsePitchFollowerCount = (followerCount?: string | null): number | null => {
-  const digits = String(followerCount ?? '').replace(/\D/g, '');
-  const parsed = Number.parseInt(digits, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 };
 
 // Utility function to map submission types to entities
@@ -105,7 +99,7 @@ const normalizePitchStatusForV4 = (pitch: any): string | null => {
 
 export const approvePitchByAdmin = async (req: Request, res: Response) => {
   const { pitchId } = req.params;
-  const { adminComments } = req.body;
+  const { adminComments, action } = req.body;
   const adminId = req.userId;
 
   if (!adminId) return res.status(401).json({ message: 'Unauthorized' });
@@ -145,13 +139,34 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
 
     const isV4Campaign = pitch.campaign.submissionVersion === 'v4';
     const isMaybeApproval = pitch.status === 'MAYBE';
+    const hasClient = campaignHasClient(pitch.campaign);
 
-    // Determine status based on campaign type and current pitch status:
-    // - MAYBE pitches: APPROVED directly (skip client review, follow client-approved flow)
-    // - v4 campaigns (PENDING_REVIEW/INVITED): SENT_TO_CLIENT (client needs to approve)
-    // - non-v4 campaigns: APPROVED directly (admin approval is final)
-    const newStatus = isMaybeApproval || !isV4Campaign ? 'APPROVED' : 'SENT_TO_CLIENT';
-    const skipClientReview = isMaybeApproval || !isV4Campaign;
+    // Explicit action from the hybrid pitch UX:
+    // - 'approve': admin approval is final
+    // - 'send_to_client': forward to client review (requires a client on the campaign)
+    // Absent action keeps legacy behavior (v4 -> client review) for older frontends.
+    if (action && !['approve', 'send_to_client'].includes(action)) {
+      return res.status(400).json({ message: 'action must be approve or send_to_client' });
+    }
+
+    if (action === 'send_to_client' && !hasClient) {
+      return res.status(400).json({ message: 'Cannot send to client: campaign has no client attached' });
+    }
+
+    let sendToClient: boolean;
+    if (isMaybeApproval) {
+      // MAYBE pitches already went through client review — approval is always final
+      sendToClient = false;
+    } else if (action) {
+      sendToClient = action === 'send_to_client';
+    } else {
+      // Legacy (no action param): v4 campaigns forward to client review, but only when a
+      // client actually exists — otherwise the pitch would wait on a review nobody can do
+      sendToClient = isV4Campaign && hasClient;
+    }
+
+    const newStatus = sendToClient ? 'SENT_TO_CLIENT' : 'APPROVED';
+    const skipClientReview = !sendToClient;
 
     const updateData: {
       status: 'SENT_TO_CLIENT' | 'APPROVED';
@@ -378,8 +393,8 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
       }
     }
 
-    if (isV4Campaign && !isMaybeApproval) {
-      // V4 flow: Notify client users for review
+    if (sendToClient) {
+      // Client-review flow: Notify client users for review
       const clientUsers = pitch.campaign.campaignAdmin.filter((ca) => ca.admin.user.role === 'client');
 
       for (const clientUser of clientUsers) {
@@ -395,7 +410,7 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
 
         const clientSocketId = clients.get(clientUser.admin.userId);
         if (clientSocketId) {
-          io.to(clientSocketId).emit('notification', notification);
+          getIo().to(clientSocketId).emit('notification', notification);
         }
       }
 
@@ -412,7 +427,7 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
       console.log(adminComments ? `Comments: ${adminComments}` : 'No comments provided');
 
       // Emit to campaign room for real-time updates
-      io.to(pitch.campaignId).emit('v3:pitch:status-updated', {
+      getIo().to(pitch.campaignId).emit('v3:pitch:status-updated', {
         pitchId,
         campaignId: pitch.campaignId,
         newStatus: 'SENT_TO_CLIENT',
@@ -437,8 +452,8 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
 
       const creatorSocketId = clients.get(pitch.userId);
       if (creatorSocketId) {
-        io.to(creatorSocketId).emit('notification', creatorNotification);
-        io.to(creatorSocketId).emit('pitchUpdate');
+        getIo().to(creatorSocketId).emit('notification', creatorNotification);
+        getIo().to(creatorSocketId).emit('pitchUpdate');
       }
 
       // Log campaign activity for admin pitch approval
@@ -451,12 +466,12 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
       });
 
       console.log(
-        `Pitch ${pitchId} approved by admin, status updated to APPROVED (${isMaybeApproval ? 'MAYBE direct approval' : 'non-v4 direct approval'})`,
+        `Pitch ${pitchId} approved by admin, status updated to APPROVED (${isMaybeApproval ? 'MAYBE direct approval' : 'direct final approval'})`,
       );
       console.log(adminComments ? `Comments: ${adminComments}` : 'No comments provided');
 
       // Emit to campaign room for real-time updates
-      io.to(pitch.campaignId).emit('v3:pitch:status-updated', {
+      getIo().to(pitch.campaignId).emit('v3:pitch:status-updated', {
         pitchId,
         campaignId: pitch.campaignId,
         newStatus: 'APPROVED',
@@ -542,8 +557,8 @@ export const rejectPitchByAdmin = async (req: Request, res: Response) => {
 
     const socketId = clients.get(pitch.userId);
     if (socketId) {
-      io.to(socketId).emit('notification', notification);
-      io.to(socketId).emit('pitchUpdate');
+      getIo().to(socketId).emit('notification', notification);
+      getIo().to(socketId).emit('pitchUpdate');
     }
 
     // Fetch the updated pitch to return in response
@@ -567,7 +582,7 @@ export const rejectPitchByAdmin = async (req: Request, res: Response) => {
     console.log(`Pitch ${pitchId} rejected by admin, creator removed from campaign`);
 
     // Emit to campaign room for real-time updates
-    io.to(pitch.campaignId).emit('v3:pitch:status-updated', {
+    getIo().to(pitch.campaignId).emit('v3:pitch:status-updated', {
       pitchId,
       campaignId: pitch.campaignId,
       newStatus: 'REJECTED',
@@ -687,8 +702,8 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
       const creatorSocketId = clients.get(pitch.userId);
 
       if (creatorSocketId) {
-        io.to(creatorSocketId).emit('notification', creatorNotification);
-        io.to(creatorSocketId).emit('pitchUpdate');
+        getIo().to(creatorSocketId).emit('notification', creatorNotification);
+        getIo().to(creatorSocketId).emit('pitchUpdate');
       }
     }
 
@@ -901,7 +916,7 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
       const adminSocketId = clients.get(adminUser.admin.userId);
 
       if (adminSocketId) {
-        io.to(adminSocketId).emit('notification', notification);
+        getIo().to(adminSocketId).emit('notification', notification);
       }
     }
 
@@ -917,8 +932,10 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
 
     console.log(`Pitch ${pitchId} approved by client, status updated to APPROVED`);
 
+    // Afiq added this for realtime banner pop up in the mobile apps
+
     // Emit to campaign room for real-time updates
-    io.to(pitch.campaignId).emit('v3:pitch:status-updated', {
+    getIo().to(pitch.campaignId).emit('v3:pitch:status-updated', {
       pitchId,
       campaignId: pitch.campaignId,
       newStatus: 'APPROVED',
@@ -1036,7 +1053,7 @@ export const rejectPitchByClient = async (req: Request, res: Response) => {
     const creatorSocketId = clients.get(pitch.userId);
 
     if (creatorSocketId) {
-      io.to(creatorSocketId).emit('notification', creatorNotification);
+      getIo().to(creatorSocketId).emit('notification', creatorNotification);
     }
 
     // Create notification for admin
@@ -1057,7 +1074,7 @@ export const rejectPitchByClient = async (req: Request, res: Response) => {
       const adminSocketId = clients.get(adminUser.admin.userId);
 
       if (adminSocketId) {
-        io.to(adminSocketId).emit('notification', adminNotification);
+        getIo().to(adminSocketId).emit('notification', adminNotification);
       }
     }
 
@@ -1074,7 +1091,7 @@ export const rejectPitchByClient = async (req: Request, res: Response) => {
     console.log(`Pitch ${pitchId} rejected by client, creator removed from campaign`);
 
     // Emit to campaign room for real-time updates
-    io.to(pitch.campaignId).emit('v3:pitch:status-updated', {
+    getIo().to(pitch.campaignId).emit('v3:pitch:status-updated', {
       pitchId,
       campaignId: pitch.campaignId,
       newStatus: 'REJECTED',
@@ -1174,8 +1191,8 @@ export const withdrawCreatorFromCampaign = async (req: Request, res: Response) =
 
     const socketId = clients.get(pitch.userId);
     if (socketId) {
-      io.to(socketId).emit('notification', notification);
-      io.to(socketId).emit('pitchUpdate');
+      getIo().to(socketId).emit('notification', notification);
+      getIo().to(socketId).emit('pitchUpdate');
     }
 
     // Create campaign log
@@ -1191,7 +1208,7 @@ export const withdrawCreatorFromCampaign = async (req: Request, res: Response) =
     console.log(`Creator ${pitch.userId} withdrawn from campaign ${pitch.campaignId}`);
 
     // Emit to campaign room for real-time updates
-    io.to(pitch.campaignId).emit('v3:pitch:status-updated', {
+    getIo().to(pitch.campaignId).emit('v3:pitch:status-updated', {
       pitchId,
       campaignId: pitch.campaignId,
       newStatus: 'WITHDRAWN',
@@ -1339,7 +1356,7 @@ export const maybePitchByClient = async (req: Request, res: Response) => {
     console.log(`Pitch ${pitchId} set to maybe by client`);
 
     // Emit to campaign room for real-time updates
-    io.to(pitch.campaignId).emit('v3:pitch:status-updated', {
+    getIo().to(pitch.campaignId).emit('v3:pitch:status-updated', {
       pitchId,
       campaignId: pitch.campaignId,
       newStatus: 'MAYBE',
@@ -1413,8 +1430,8 @@ export const setPitchAgreement = async (req: Request, res: Response) => {
       },
     });
 
-    if (io) {
-      io.to(pitch.campaignId).emit('v3:pitch:outreach-updated', {
+    if (getIo()) {
+      getIo().to(pitch.campaignId).emit('v3:pitch:outreach-updated', {
         pitchId: updatedPitchAgreement.id,
         campaignId: pitch.campaignId,
         outreachStatus: updatedPitchAgreement.outreachStatus,
@@ -2616,9 +2633,9 @@ export const updateOutreachStatus = async (req: Request, res: Response) => {
     console.log(`Outreach status updated: Pitch ${pitchId} -> ${outreachStatus} by admin ${adminId}`);
 
     // Emit socket event for real-time updates
-    const io = req.app.get('io');
-    if (io) {
-      io.to(pitch.campaign.id).emit('v3:pitch:outreach-updated', {
+
+    if (getIo()) {
+      getIo().to(pitch.campaign.id).emit('v3:pitch:outreach-updated', {
         pitchId: updatedPitch.id,
         campaignId: pitch.campaign.id,
         outreachStatus: updatedPitch.outreachStatus,
@@ -2685,4 +2702,10 @@ export const acceptInviteByCreator = async (req: Request, res: Response) => {
     console.error('Error accepting invite by creator:', error);
     return res.status(500).json({ message: 'Failed to accept invite' });
   }
+};
+
+const parsePitchFollowerCount = (followerCount?: string | null): number | null => {
+  const digits = String(followerCount ?? '').replace(/\D/g, '');
+  const parsed = Number.parseInt(digits, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 };

@@ -1,7 +1,7 @@
 import { prisma } from '@/src/prisma/prisma';
 import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
-import { Prisma } from '@prisma/client';
+import { Prisma, Employment } from '@prisma/client';
 import jwt, { Secret } from 'jsonwebtoken';
 import { generateRandomString } from '@/src/utils/randomString';
 import dayjs from 'dayjs';
@@ -11,8 +11,14 @@ import { handleChangePassword } from '@/src/service/authServices';
 import { z } from 'zod';
 import { getRefreshTokenExpiryDate, hashToken, verifyRefreshToken } from '@/src/utils/tokens';
 import { delay } from 'bullmq';
+import appleSignin from 'apple-signin-auth';
 import crypto from 'crypto';
 import { createKanbanBoard } from '../kanbanController';
+import { saveCreatorToSpreadsheet } from '@/src/helper/registeredCreatorSpreadsheet';
+import { exchangeAppleRefreshToken, revokeAppleToken } from '@/src/utils/apple';
+import { verifyGoogleIdToken } from '@/src/utils/google';
+import WhatsappSetting from '@/src/service/whatsappSetting';
+import { generate, generateSecret } from 'otplib';
 
 interface MobileCreatorData {
   phone?: string;
@@ -37,6 +43,9 @@ const generateNumericCode = (length = 6): string =>
     .randomInt(0, 10 ** length)
     .toString()
     .padStart(length, '0');
+
+const isEmployment = (value?: string): value is Employment =>
+  value != null && (Object.values(Employment) as string[]).includes(value);
 
 export const login = async (
   req: Request<{}, {}, { email: string; password: string; ipAddress: string; userAgent: string }>,
@@ -74,6 +83,8 @@ export const login = async (
         return res.status(400).json({ message: 'Account spam.' });
       case 'rejected':
         return res.status(400).json({ message: 'Account rejected.' });
+      case 'deleted':
+        return res.status(400).json({ message: 'Account not found.' });
     }
 
     const isMatch = await bcrypt.compare(password, user.password as string);
@@ -82,12 +93,12 @@ export const login = async (
       return res.status(404).json({ message: 'Wrong password' });
     }
 
-    const accessToken = jwt.sign({ userId: user.id, email: user.email }, process.env.ACCESSKEY!, { expiresIn: '1m' });
+    const accessToken = jwt.sign({ userId: user.id, email: user.email }, process.env.ACCESSKEY!, { expiresIn: '15m' });
     const refreshToken = jwt.sign({ userId: user.id, email: user.email }, process.env.REFRESHKEY!, {
       expiresIn: '30d',
     });
 
-    const savedRefreshToken = await prisma.refreshToken.create({
+    await prisma.refreshToken.create({
       data: {
         tokenHash: hashToken(refreshToken),
         userId: user.id,
@@ -144,7 +155,9 @@ export const register = async (
       where: { email: { mode: 'insensitive', equals: normalizedEmail } },
     });
 
-    if (existing?.status === 'active') {
+    // 'deleted' rows are soft-deleted archives whose data must survive — never
+    // let them fall through to the cleanup delete below.
+    if (existing?.status === 'active' || existing?.status === 'deleted') {
       return res.status(409).json({ success: false, message: 'Email already exists' });
     }
 
@@ -186,7 +199,7 @@ export const register = async (
           languages: creatorData.languages || [],
           instagramProfileLink: creatorData.instagramProfileLink || '',
           tiktokProfileLink: creatorData.tiktokProfileLink || '',
-          state: creatorData.state || '', 
+          state: creatorData.state || '',
         });
       }
 
@@ -219,9 +232,27 @@ export const register = async (
 
     // Send AFTER commit — never do network I/O inside a transaction.
     try {
-      await mobileCreatorVerificationEmail(user.email, shortCode);
+      const whatsapp = new WhatsappSetting();
+      await whatsapp.initialize();
+
+      const secret = generateSecret();
+
+      // Generate current token
+      const token = await generate({ secret });
+
+      req.session.otp = {
+        secret,
+        phone: user.phoneNumber!,
+        sentAt: dayjs().toDate(),
+        attempts: 0,
+        isCodeUsed: false,
+        userId: user.id,
+      };
+
+      await whatsapp.sendVerificationCode(user.phoneNumber!, token);
+      // await mobileCreatorVerificationEmail(user.email, shortCode);
     } catch (mailError) {
-      console.error('Verification email send failed:', mailError);
+      console.error('Verification code send failed:', mailError);
       // Account + code exist and are valid; the client can fall back to the resend endpoint.
       return res.status(201).json({
         success: true,
@@ -236,6 +267,7 @@ export const register = async (
       emailSent: true,
       message: 'Verification email sent',
       email: user.email,
+      phoneNumber: user.phoneNumber,
     });
   } catch (error) {
     console.error('Mobile creator registration error:', error);
@@ -256,6 +288,8 @@ export const updateProfile = async (
       city?: string;
       pronounce?: string;
       birthDate?: string | null;
+      instagramProfileLink?: string;
+      tiktokProfileLink?: string;
     }
   >,
   res: Response,
@@ -266,7 +300,7 @@ export const updateProfile = async (
     return res.status(401).json({ success: false, message: 'Unauthorized' });
   }
 
-  const { name, phone, Nationality, city, pronounce, birthDate } = req.body;
+  const { name, phone, Nationality, city, pronounce, birthDate, instagramProfileLink, tiktokProfileLink } = req.body;
 
   try {
     const result = await prisma.$transaction(async (tx) => {
@@ -280,7 +314,13 @@ export const updateProfile = async (
         },
       });
 
-      if (updatedUser.role === 'creator' && (pronounce !== undefined || birthDate !== undefined)) {
+      if (
+        updatedUser.role === 'creator' &&
+        (pronounce !== undefined ||
+          birthDate !== undefined ||
+          instagramProfileLink !== undefined ||
+          tiktokProfileLink !== undefined)
+      ) {
         await tx.creator.update({
           where: { userId },
           data: {
@@ -288,6 +328,8 @@ export const updateProfile = async (
             ...(birthDate !== undefined && {
               birthDate: birthDate ? new Date(birthDate) : null,
             }),
+            ...(instagramProfileLink !== undefined && { instagramProfileLink }),
+            ...(tiktokProfileLink !== undefined && { tiktokProfileLink }),
           },
         });
       }
@@ -353,7 +395,10 @@ export const changePasword = async (
   }
 
   const schema = z.object({
-    currentPassword: z.string().min(1),
+    // Optional: social-only users (Apple/Google) have no current password to
+    // supply — they're SETTING one. The verify below only runs when a password
+    // actually exists on the account.
+    currentPassword: z.string().optional(),
     newPassword: z
       .string()
       .min(8)
@@ -375,7 +420,12 @@ export const changePasword = async (
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
+    // Only accounts that already have a local password must prove the current
+    // one. Social-only users (no password) skip straight to setting a new one.
     if (!user.googleId && user.password) {
+      if (!currentPassword) {
+        return res.status(400).json({ success: false, message: 'Current password is required' });
+      }
       const isMatch = await bcrypt.compare(currentPassword, user.password);
       if (!isMatch) {
         return res.status(400).json({ success: false, message: 'Wrong current password' });
@@ -423,7 +473,7 @@ export const tokenRefresh = async (req: Request, res: Response) => {
       where: { tokenHash },
       include: {
         user: {
-          select: { id: true, email: true, name: true, isActive: true },
+          select: { id: true, email: true, name: true, isActive: true, status: true },
         },
       },
     });
@@ -440,6 +490,15 @@ export const tokenRefresh = async (req: Request, res: Response) => {
       });
     }
 
+    if (stored.user.status === 'deleted') {
+      await prisma.refreshToken.deleteMany({ where: { userId: stored.userId } });
+
+      return res.status(401).json({
+        success: false,
+        message: 'Account not found.',
+      });
+    }
+
     if (stored.expiresAt < new Date()) {
       await prisma.refreshToken.delete({ where: { id: stored.id } });
 
@@ -450,7 +509,7 @@ export const tokenRefresh = async (req: Request, res: Response) => {
     }
 
     const newAccessToken = jwt.sign({ userId: stored.userId, email: stored.user.email }, process.env.ACCESSKEY!, {
-      expiresIn: '1m',
+      expiresIn: '15m',
     });
 
     const newRefreshToken = jwt.sign({ userId: stored.userId, email: stored.user.email }, process.env.REFRESHKEY!, {
@@ -533,7 +592,7 @@ export const verifyEmail = async (req: Request<{}, {}, { email: string; shortCod
     }),
   ]);
 
-  const accessToken = jwt.sign({ userId: user.id, email: user.email }, process.env.ACCESSKEY!, { expiresIn: '1m' });
+  const accessToken = jwt.sign({ userId: user.id, email: user.email }, process.env.ACCESSKEY!, { expiresIn: '15m' });
   const refreshToken = jwt.sign({ userId: user.id, email: user.email }, process.env.REFRESHKEY!, {
     expiresIn: '30d',
   });
@@ -622,5 +681,515 @@ export const resendVerification = async (req: Request<{}, {}, { email: string }>
     return res
       .status(400)
       .json({ success: false, message: error instanceof Error ? error.message : 'Error resending code' });
+  }
+};
+
+type SocialProvider = 'apple' | 'google';
+
+const handleSocialSignIn = async ({
+  provider,
+  providerId,
+  email,
+  emailVerified,
+  name,
+  appleRefreshToken,
+  ipAddress,
+  userAgent,
+  res,
+}: {
+  provider: SocialProvider;
+  providerId: string;
+  email?: string;
+  emailVerified?: boolean;
+  name?: string | null;
+  appleRefreshToken?: string | null;
+  ipAddress?: string;
+  userAgent?: string;
+  res: Response;
+}) => {
+  const idField = provider === 'apple' ? 'appleId' : 'googleId';
+  const emailField = provider === 'apple' ? 'appleEmail' : 'googleEmail';
+  const unlinkedField = provider === 'apple' ? 'appleUnlinkedAt' : 'googleUnlinkedAt';
+  const normalizedEmail = email?.toLowerCase();
+
+  // Only persist the refresh token when we actually got one, so a later sign-in
+  // that skipped the exchange doesn't wipe a previously stored token.
+  const appleTokenData = appleRefreshToken ? { appleRefreshToken } : {};
+  const providerEmailData = normalizedEmail ? { [emailField]: normalizedEmail } : {};
+
+  let user = await prisma.user.findFirst({ where: { [idField]: providerId } });
+
+  if (!user && normalizedEmail) {
+    const byEmail = await prisma.user.findFirst({
+      where: { status: { not: 'deleted' }, email: { mode: 'insensitive', equals: normalizedEmail } },
+    });
+
+    if (byEmail) {
+      const existingProviderId = (byEmail as Record<string, unknown>)[idField];
+      const existingProviderEmail = (byEmail as Record<string, unknown>)[emailField];
+      const deliberatelyUnlinked = Boolean((byEmail as Record<string, unknown>)[unlinkedField]);
+      const alreadyHasDifferentIdentity = Boolean(existingProviderId) && existingProviderId !== providerId;
+      const matchesLinkedEmail = !existingProviderEmail || existingProviderEmail === normalizedEmail;
+
+      if (emailVerified && !deliberatelyUnlinked && !alreadyHasDifferentIdentity && matchesLinkedEmail) {
+        user = await prisma.user.update({
+          where: { id: byEmail.id },
+          data: { [idField]: providerId, ...appleTokenData, ...providerEmailData },
+        });
+      }
+    }
+  } else if (user) {
+    user = await prisma.user.update({
+      where: { id: user.id },
+      data: { ...appleTokenData, ...providerEmailData },
+    });
+  }
+
+  if (!user) {
+    if (!normalizedEmail) {
+      return res.status(400).json({ success: false, message: 'No email provided by identity provider' });
+    }
+    const emailTaken = await prisma.user.findFirst({
+      where: { status: { not: 'deleted' }, email: { mode: 'insensitive', equals: normalizedEmail } },
+    });
+    if (emailTaken) {
+      return res.status(409).json({
+        success: false,
+        message: 'An account with this email already exists. Sign in via email and link this account from settings.',
+      });
+    }
+    user = await prisma.user.create({
+      data: {
+        [idField]: providerId,
+        email: normalizedEmail,
+        name: name || null,
+        role: 'creator',
+        status: 'active',
+        ...appleTokenData,
+        ...providerEmailData,
+        creator: { create: { isOnBoardingFormCompleted: false } },
+      },
+    });
+
+    await createKanbanBoard(user.id, 'creator');
+    saveCreatorToSpreadsheet({
+      name: user.name || '',
+      email: user.email,
+      phoneNumber: user.phoneNumber || '',
+      country: user.country || '',
+      createdAt: user.createdAt || new Date(),
+    }).catch((e) => console.error('Error saving creator to spreadsheet:', e));
+  }
+
+  // Block unusable states for existing/linked accounts (mirrors `login`).
+  const blocked: Record<string, string> = {
+    banned: 'Account banned.',
+    blacklisted: 'Account blacklisted.',
+    suspended: 'Account suspended.',
+    spam: 'Account spam.',
+    rejected: 'Account rejected.',
+    deleted: 'Account not found.',
+  };
+  if (blocked[user.status]) {
+    return res.status(400).json({ message: blocked[user.status] });
+  }
+
+  // This mobile app is creator-only. An existing non-creator account (admin,
+  // client, brand, etc. — typically created via the web app) must not be able to
+  // sign in here and land on a creator UI with nothing for them. Refuse before
+  // issuing any token. Brand-new social users are always created as 'creator'
+  // above, so this only rejects pre-existing non-creator accounts.
+  if (user.role !== 'creator') {
+    return res.status(403).json({ success: false, message: 'This app is for creators only.' });
+  }
+
+  // Issue tokens — same inline pattern as mobile `login`.
+  const accessToken = jwt.sign({ userId: user.id, email: user.email }, process.env.ACCESSKEY!, { expiresIn: '15m' });
+  const refreshToken = jwt.sign({ userId: user.id, email: user.email }, process.env.REFRESHKEY!, { expiresIn: '30d' });
+
+  await prisma.refreshToken.create({
+    data: {
+      tokenHash: hashToken(refreshToken),
+      userId: user.id,
+      expiresAt: dayjs().add(30, 'days').toDate(),
+      ipAddress,
+      userAgent,
+    },
+  });
+
+  // Return the creator so the app can route on isOnBoardingFormCompleted.
+  const userWithCreator = await prisma.user.findUnique({
+    where: { id: user.id },
+    include: { creator: true },
+  });
+
+  return res.status(200).json({ user: userWithCreator, token: { accessToken, refreshToken } });
+};
+
+export const appleLogin = async (
+  req: Request<
+    {},
+    {},
+    {
+      identityToken?: string;
+      authorizationCode?: string;
+      email?: string;
+      fullName?: string;
+      ipAddress?: string;
+      userAgent?: string;
+    }
+  >,
+  res: Response,
+) => {
+  const { identityToken, authorizationCode, email, fullName, ipAddress, userAgent } = req.body;
+
+  if (!identityToken) {
+    return res.status(400).json({ success: false, message: 'Missing Apple identity token' });
+  }
+
+  try {
+    const claims = await appleSignin.verifyIdToken(identityToken, {
+      audience: process.env.APPLE_BUNDLE_ID!.split(',').map((s) => s.trim()),
+      ignoreExpiration: false,
+    });
+
+    // Exchange the one-time authorizationCode for Apple's refresh token so we can
+    // revoke it on account deletion. Best-effort (returns null if unconfigured);
+    // must not block sign-in.
+    const appleRefreshToken = authorizationCode ? await exchangeAppleRefreshToken(authorizationCode) : null;
+
+    // Apple encodes email_verified as a boolean or the string "true".
+    const appleEmailVerified = claims.email_verified === true || claims.email_verified === 'true';
+
+    return await handleSocialSignIn({
+      provider: 'apple',
+      providerId: claims.sub,
+      email: claims.email || email,
+      emailVerified: appleEmailVerified,
+      name: fullName,
+      appleRefreshToken,
+      ipAddress,
+      userAgent,
+      res,
+    });
+  } catch (error) {
+    console.log(error);
+    return res.status(401).json({ success: false, message: 'Invalid Apple token' });
+  }
+};
+
+/**
+ * Link an Apple account to the CURRENTLY authenticated user (Connected Accounts
+ * settings). Unlike `appleLogin` (which find-or-creates), this attaches the
+ * verified appleId to req.userId, refusing if that appleId already belongs to a
+ * different account.
+ */
+export const linkApple = async (
+  req: Request<{}, {}, { identityToken?: string; authorizationCode?: string }>,
+  res: Response,
+) => {
+  const userId = req.userId;
+
+  if (!userId) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  const { identityToken, authorizationCode } = req.body;
+
+  if (!identityToken) {
+    return res.status(400).json({ success: false, message: 'Missing Apple identity token' });
+  }
+
+  try {
+    const claims = await appleSignin.verifyIdToken(identityToken, {
+      audience: process.env.APPLE_BUNDLE_ID!.split(',').map((s) => s.trim()),
+      ignoreExpiration: false,
+    });
+
+    // Reject if this Apple identity is already linked to someone else.
+    const existing = await prisma.user.findFirst({ where: { appleId: claims.sub } });
+    if (existing && existing.id !== userId) {
+      return res.status(409).json({ success: false, message: 'This Apple account is already linked to another user.' });
+    }
+
+    const appleRefreshToken = authorizationCode ? await exchangeAppleRefreshToken(authorizationCode) : null;
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        appleId: claims.sub,
+        // Store the real linked email; clear the unlink flag (deliberate relink).
+        appleEmail: claims.email?.toLowerCase() ?? null,
+        appleUnlinkedAt: null,
+        // Only overwrite the stored token when we actually got a fresh one.
+        ...(appleRefreshToken ? { appleRefreshToken } : {}),
+      },
+    });
+
+    return res.status(200).json({ success: true, message: 'Apple account linked' });
+  } catch (error) {
+    console.log(error);
+    return res.status(401).json({ success: false, message: 'Invalid Apple token' });
+  }
+};
+
+/**
+ * Unlink the Apple account from the current user. Blocks if Apple is the user's
+ * ONLY sign-in method (no password and no other social) to avoid lockout, and
+ * revokes the Apple token so the app is removed from the user's Apple ID
+ * settings (consistent with account deletion).
+ */
+export const unlinkApple = async (req: Request, res: Response) => {
+  const userId = req.userId;
+  if (!userId) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  try {
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+    if (!user.appleId) {
+      return res.status(400).json({ success: false, message: 'Apple account is not linked' });
+    }
+
+    // Prevent lockout: Apple can only be removed if the user has another way in.
+    const hasOtherLogin = Boolean(user.password) || Boolean(user.googleId);
+    if (!hasOtherLogin) {
+      return res.status(400).json({
+        success: false,
+        message: 'Apple is your only sign-in method. Set a password or link another account first.',
+      });
+    }
+
+    const tokenToRevoke = user.appleRefreshToken;
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        appleId: null,
+        appleRefreshToken: null,
+        appleEmail: null,
+        // Mark deliberate unlink so a later logged-out Apple sign-in won't
+        // silently re-link by matching email.
+        appleUnlinkedAt: new Date(),
+      },
+    });
+
+    // Best-effort revoke (never blocks) — removes the app from Apple ID settings.
+    if (tokenToRevoke) {
+      await revokeAppleToken(tokenToRevoke);
+    }
+
+    return res.status(200).json({ success: true, message: 'Apple account unlinked' });
+  } catch (error) {
+    console.log(error);
+    return res.status(500).json({ success: false, message: 'Failed to unlink Apple account' });
+  }
+};
+
+/**
+ * Mobile Google sign-in. The native SDK verifies with Google on-device and hands
+ * the app an ID token; we verify it here and delegate to the shared
+ * `handleSocialSignIn`. Mirror of `appleLogin`, minus the refresh-token exchange
+ * (Google needs no app-side revocation on delete).
+ */
+export const googleLogin = async (
+  req: Request<{}, {}, { idToken?: string; ipAddress?: string; userAgent?: string }>,
+  res: Response,
+) => {
+  const { idToken, ipAddress, userAgent } = req.body;
+
+  if (!idToken) {
+    return res.status(400).json({ success: false, message: 'Missing Google ID token' });
+  }
+
+  try {
+    const { sub, email, emailVerified, name } = await verifyGoogleIdToken(idToken);
+
+    return await handleSocialSignIn({
+      provider: 'google',
+      providerId: sub,
+      email,
+      emailVerified,
+      name,
+      ipAddress,
+      userAgent,
+      res,
+    });
+  } catch (error) {
+    console.log(error);
+    return res.status(401).json({ success: false, message: 'Invalid Google token' });
+  }
+};
+
+/**
+ * Link a Google account to the CURRENTLY authenticated user (Connected Accounts
+ * settings). Mirror of `linkApple`: verifies the Google identity, refuses if that
+ * googleId already belongs to a different account, then attaches it to req.userId.
+ */
+export const linkGoogle = async (req: Request<{}, {}, { idToken?: string }>, res: Response) => {
+  const userId = req.userId;
+  if (!userId) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  const { idToken } = req.body;
+  if (!idToken) {
+    return res.status(400).json({ success: false, message: 'Missing Google ID token' });
+  }
+
+  try {
+    const { sub, email } = await verifyGoogleIdToken(idToken);
+
+    // Reject if this Google identity is already linked to someone else.
+    const existing = await prisma.user.findFirst({ where: { googleId: sub } });
+    if (existing && existing.id !== userId) {
+      return res
+        .status(409)
+        .json({ success: false, message: 'This Google account is already linked to another user.' });
+    }
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        googleId: sub,
+        // Store the real linked email so settings shows it, and clear the
+        // unlink flag — this is a deliberate (re)link.
+        googleEmail: email?.toLowerCase() ?? null,
+        googleUnlinkedAt: null,
+      },
+    });
+
+    return res.status(200).json({ success: true, message: 'Google account linked' });
+  } catch (error) {
+    console.log(error);
+    return res.status(401).json({ success: false, message: 'Invalid Google token' });
+  }
+};
+
+/**
+ * Unlink the Google account from the current user. Blocks if Google is the user's
+ * ONLY sign-in method (no password and no Apple) to avoid lockout. No token
+ * revocation — Google (unlike Apple) requires none.
+ */
+export const unlinkGoogle = async (req: Request, res: Response) => {
+  const userId = req.userId;
+  if (!userId) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  try {
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+    if (!user.googleId) {
+      return res.status(400).json({ success: false, message: 'Google account is not linked' });
+    }
+
+    // Prevent lockout: Google can only be removed if the user has another way in.
+    const hasOtherLogin = Boolean(user.password) || Boolean(user.appleId);
+    if (!hasOtherLogin) {
+      return res.status(400).json({
+        success: false,
+        message: 'Google is your only sign-in method. Set a password or link another account first.',
+      });
+    }
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        googleId: null,
+        googleEmail: null,
+        // Mark the deliberate unlink so a later logged-out Google sign-in won't
+        // silently re-link this account by matching email.
+        googleUnlinkedAt: new Date(),
+      },
+    });
+
+    return res.status(200).json({ success: true, message: 'Google account unlinked' });
+  } catch (error) {
+    console.log(error);
+    return res.status(500).json({ success: false, message: 'Failed to unlink Google account' });
+  }
+};
+
+export const completeOnboarding = async (req: Request<{}, {}, { creatorData?: MobileCreatorData }>, res: Response) => {
+  const userId = req.userId;
+  if (!userId) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  const { creatorData } = req.body;
+  if (!creatorData) {
+    return res.status(400).json({ success: false, message: 'Missing creator data' });
+  }
+
+  const missing: string[] = [];
+  if (!creatorData.Nationality) missing.push('Nationality');
+  if (!creatorData.city && !creatorData.state) missing.push('city or state');
+  if (!creatorData.phone || creatorData.phone.trim().length < 7) missing.push('phone');
+  if (!creatorData.pronounce) missing.push('pronounce');
+  if (!creatorData.birthDate) missing.push('birthDate');
+  if (!creatorData.languages || creatorData.languages.length < 1) missing.push('languages (min 1)');
+  if (!creatorData.interests || creatorData.interests.length < 3) missing.push('interests (min 3)');
+  const hasSocial =
+    (creatorData.instagramProfileLink && creatorData.instagramProfileLink.trim().length > 0) ||
+    (creatorData.tiktokProfileLink && creatorData.tiktokProfileLink.trim().length > 0);
+  if (!hasSocial) missing.push('instagramProfileLink or tiktokProfileLink');
+  if (missing.length > 0) {
+    return res.status(400).json({ success: false, message: `Missing required fields: ${missing.join(', ')}` });
+  }
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: userId },
+        data: {
+          phoneNumber: creatorData.phone || '',
+          country: creatorData.Nationality || '',
+          city: creatorData.city || creatorData.state || '',
+          ...(creatorData.referralCode ? { referralCode: creatorData.referralCode } : {}),
+        },
+      });
+
+      await tx.creator.update({
+        where: { userId },
+        data: {
+          isOnBoardingFormCompleted: true,
+          instagram: creatorData.instagram || '',
+          pronounce: creatorData.pronounce || '',
+          birthDate: creatorData.birthDate ? new Date(creatorData.birthDate) : null,
+          ...(isEmployment(creatorData.employment) && { employment: creatorData.employment }),
+          tiktok: creatorData.tiktok || '',
+          languages: creatorData.languages || [],
+          instagramProfileLink: creatorData.instagramProfileLink || '',
+          tiktokProfileLink: creatorData.tiktokProfileLink || '',
+          state: creatorData.state || '',
+        },
+      });
+
+      if (creatorData.interests && creatorData.interests.length > 0) {
+        await tx.interest.deleteMany({ where: { userId } });
+        await tx.interest.createMany({
+          data: creatorData.interests.map((interest) => ({
+            name: typeof interest === 'string' ? interest : interest.name,
+            userId,
+          })),
+        });
+      }
+    });
+
+    const userWithCreator = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { creator: true },
+    });
+
+    return res.status(200).json({ success: true, user: userWithCreator });
+  } catch (error) {
+    console.error('completeOnboarding error:', error);
+    return res.status(500).json({ success: false, message: error instanceof Error ? error.message : 'Failed' });
   }
 };

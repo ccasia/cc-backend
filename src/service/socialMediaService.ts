@@ -942,6 +942,7 @@ export const getInstagramMonthlyInteractions = async (
 export const getTikTokEngagementRateOverTime = async (
   accessToken: string,
   limit = 20,
+  months = 3,
 ): Promise<{ engagementRates: number[]; months: string[] }> => {
   try {
     const response = await axios.post(
@@ -974,41 +975,31 @@ export const getTikTokEngagementRateOverTime = async (
 
     const followersCount = userResponse.data.data.user.follower_count || 1;
 
-    // Group videos by month and calculate engagement rates
-    const monthlyData = new Map<string, { totalEngagement: number; videoCount: number }>();
-    const lastThreeMonths = new Set<string>();
-
-    // Get last 3 months
-    for (let i = 0; i < 3; i++) {
-      const month = dayjs().subtract(i, 'month').format('MMM');
-      lastThreeMonths.add(month);
-    }
-
-    videos.forEach((video: any) => {
-      const videoDate = dayjs.unix(video.create_time);
-      const monthKey = videoDate.format('MMM');
-
-      if (lastThreeMonths.has(monthKey)) {
-        const engagement = (video.like_count || 0) + (video.comment_count || 0);
-
-        if (!monthlyData.has(monthKey)) {
-          monthlyData.set(monthKey, { totalEngagement: 0, videoCount: 0 });
-        }
-
-        const current = monthlyData.get(monthKey)!;
-        current.totalEngagement += engagement;
-        current.videoCount += 1;
-      }
+    // Trailing N calendar months, oldest -> newest. Keyed by YYYY-MM (not just
+    // "MMM") so grouping/ordering stays correct across a year boundary.
+    const MONTHS = months;
+    const monthsWindow = Array.from({ length: MONTHS }, (_, idx) => {
+      const d = dayjs().subtract(MONTHS - 1 - idx, 'month');
+      return { key: d.format('YYYY-MM'), label: d.format('MMM') };
     });
 
-    // Calculate engagement rates and prepare ordered data
-    const monthOrder = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const lastThreeMonthsArray = Array.from(lastThreeMonths).sort(
-      (a, b) => monthOrder.indexOf(a) - monthOrder.indexOf(b),
-    );
+    const monthlyData = new Map<string, { totalEngagement: number; videoCount: number }>();
 
-    const engagementRates = lastThreeMonthsArray.map((month) => {
-      const data = monthlyData.get(month);
+    videos.forEach((video: any) => {
+      const monthKey = dayjs.unix(video.create_time).format('YYYY-MM');
+      const engagement = (video.like_count || 0) + (video.comment_count || 0);
+
+      if (!monthlyData.has(monthKey)) {
+        monthlyData.set(monthKey, { totalEngagement: 0, videoCount: 0 });
+      }
+
+      const current = monthlyData.get(monthKey)!;
+      current.totalEngagement += engagement;
+      current.videoCount += 1;
+    });
+
+    const engagementRates = monthsWindow.map(({ key }) => {
+      const data = monthlyData.get(key);
       if (!data || data.videoCount === 0) return 0;
 
       const avgEngagementPerVideo = data.totalEngagement / data.videoCount;
@@ -1018,7 +1009,7 @@ export const getTikTokEngagementRateOverTime = async (
 
     return {
       engagementRates,
-      months: lastThreeMonthsArray,
+      months: monthsWindow.map((m) => m.label),
     };
   } catch (error) {
     console.error('Error calculating TikTok engagement rate over time:', error);
@@ -1030,6 +1021,7 @@ export const getTikTokEngagementRateOverTime = async (
 export const getTikTokMonthlyInteractions = async (
   accessToken: string,
   limit = 20,
+  months = 3,
 ): Promise<{ monthlyData: { month: string; interactions: number }[] }> => {
   try {
     const response = await axios.post(
@@ -1048,39 +1040,26 @@ export const getTikTokMonthlyInteractions = async (
 
     const videos = response.data.data?.videos || [];
 
-    if (videos.length === 0) {
-      return { monthlyData: [] };
-    }
-
-    // Group videos by month and calculate total interactions
-    const monthlyData = new Map<string, number>();
-    const lastThreeMonths = new Set<string>();
-
-    // Get last 3 months
-    for (let i = 0; i < 3; i++) {
-      const month = dayjs().subtract(i, 'month').format('MMM');
-      lastThreeMonths.add(month);
-    }
-
-    videos.forEach((video: any) => {
-      const videoDate = dayjs.unix(video.create_time);
-      const monthKey = videoDate.format('MMM');
-
-      if (lastThreeMonths.has(monthKey)) {
-        const interactions = (video.like_count || 0) + (video.comment_count || 0);
-        monthlyData.set(monthKey, (monthlyData.get(monthKey) || 0) + interactions);
-      }
+    // Trailing N calendar months, oldest -> newest, keyed by YYYY-MM so
+    // grouping/ordering stays correct across a year boundary. Always
+    // returned in full even with no videos, so charts get a stable N points.
+    const MONTHS = months;
+    const monthsWindow = Array.from({ length: MONTHS }, (_, idx) => {
+      const d = dayjs().subtract(MONTHS - 1 - idx, 'month');
+      return { key: d.format('YYYY-MM'), label: d.format('MMM') };
     });
 
-    // Prepare ordered data
-    const monthOrder = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const lastThreeMonthsArray = Array.from(lastThreeMonths).sort(
-      (a, b) => monthOrder.indexOf(a) - monthOrder.indexOf(b),
-    );
+    const monthlyData = new Map<string, number>();
 
-    const formattedData = lastThreeMonthsArray.map((month) => ({
-      month,
-      interactions: monthlyData.get(month) || 0,
+    videos.forEach((video: any) => {
+      const monthKey = dayjs.unix(video.create_time).format('YYYY-MM');
+      const interactions = (video.like_count || 0) + (video.comment_count || 0);
+      monthlyData.set(monthKey, (monthlyData.get(monthKey) || 0) + interactions);
+    });
+
+    const formattedData = monthsWindow.map(({ key, label }) => ({
+      month: label,
+      interactions: monthlyData.get(key) || 0,
     }));
 
     return { monthlyData: formattedData };

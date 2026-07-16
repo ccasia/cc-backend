@@ -76,6 +76,7 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
             id: true,
             name: true,
             email: true,
+            status: true,
             photoURL: true,
           },
         },
@@ -204,6 +205,7 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
             id: true,
             name: true,
             email: true,
+            status: true,
             photoURL: true,
           },
         },
@@ -264,6 +266,7 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
         user: r.user,
       })),
     });
+
     allSubmissions.forEach((s: any) => {
       if (s.feedback) s.feedback = s.feedback.map(mapFeedbackReplies);
     });
