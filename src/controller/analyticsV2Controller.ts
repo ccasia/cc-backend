@@ -27,6 +27,7 @@ import {
   getClientRejectionRateData,
   getCreditsPerCSData,
   getCSMWorkloadData,
+  getCSMWorkloadDetailData,
   getRejectionReasonsData,
   getRequireChangesRateData,
   getTopShortlistedCreatorsData,
@@ -490,6 +491,23 @@ export const getCSMWorkload = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Error fetching CSM workload data:', error);
     return res.status(500).json({ success: false, message: 'Failed to fetch CSM workload data' });
+  }
+};
+
+export const getCSMWorkloadDetail = async (req: Request, res: Response) => {
+  try {
+    const { adminUserId } = req.params;
+    const parsed = parseOptionalDateRange(req);
+    if ('error' in parsed) return res.status(parsed.error.status).json(parsed.error.body);
+    const { startDate, endDate } = parsed;
+
+    const data = await getCSMWorkloadDetailData(adminUserId, startDate, endDate);
+    if (!data) return res.status(404).json({ success: false, message: 'CSM not found' });
+
+    return res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    console.error('Error fetching CSM workload detail data:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch CSM workload detail data' });
   }
 };
 
