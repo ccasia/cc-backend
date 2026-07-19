@@ -3173,6 +3173,380 @@ export const getCSMWorkloadData = async (startDate?: Date, endDate?: Date) => {
   return { csAdmins };
 };
 
+// CSM workload — drill-down detail for a single CSM (campaigns, clients, creators, stats)
+
+interface CSMDetailCampaignRow {
+  campaignId: string;
+  campaignName: string;
+  status: string;
+  submissionVersion: string | null;
+  credits: number;
+  creditsUtilized: number;
+  creditsPending: number;
+  companyId: string | null;
+  companyName: string | null;
+  companyLogo: string | null;
+  campaignImages: unknown;
+  creatorCount: number;
+  subscriptionExpiredAt: Date | null;
+  packageName: string | null;
+}
+
+interface CSMDetailCreatorRow {
+  userId: string;
+  name: string;
+  photo: string | null;
+  campaignCount: number;
+  campaignNames: string[];
+}
+
+export const getCSMWorkloadDetailData = async (
+  adminUserId: string,
+  startDate?: Date,
+  endDate?: Date,
+) => {
+  const hasDateFilter = !!startDate && !!endDate;
+
+  const csmRows = await prisma.$queryRaw<
+    { adminUserId: string; name: string; email: string; photo: string | null; roleName: string }[]
+  >`
+    SELECT u.id AS "adminUserId", u.name, u.email, u."photoURL" AS photo, r.name AS "roleName"
+    FROM "Admin" a
+    INNER JOIN "User" u ON u.id = a."userId"
+    INNER JOIN "Role" r ON r.id = a."roleId"
+    WHERE a."userId" = ${adminUserId}
+    LIMIT 1
+  `;
+
+  if (csmRows.length === 0) return null;
+  const csm = csmRows[0];
+
+  const campaignRows = hasDateFilter
+    ? await prisma.$queryRaw<CSMDetailCampaignRow[]>`
+        WITH campaign_creators AS (
+          SELECT "campaignId", COUNT(DISTINCT "userId") AS creator_count
+          FROM "ShortListedCreator"
+          WHERE "userId" IS NOT NULL
+          GROUP BY "campaignId"
+        )
+        SELECT
+          c.id                                   AS "campaignId",
+          c.name                                  AS "campaignName",
+          c.status::text                          AS "status",
+          c."submissionVersion"                   AS "submissionVersion",
+          COALESCE(c."campaignCredits", 0)::int   AS "credits",
+          COALESCE(c."creditsUtilized", 0)::int   AS "creditsUtilized",
+          COALESCE(c."creditsPending", 0)::int    AS "creditsPending",
+          comp.id                                 AS "companyId",
+          comp.name                                AS "companyName",
+          comp.logo                                AS "companyLogo",
+          cb.images                                AS "campaignImages",
+          COALESCE(cc.creator_count, 0)::int       AS "creatorCount",
+          sub."expiredAt"                          AS "subscriptionExpiredAt",
+          COALESCE(pkg.name, cpkg."customName")    AS "packageName"
+        FROM "CampaignAdmin" ca
+        INNER JOIN "Admin"    a  ON a."userId"      = ca."adminId"
+        INNER JOIN "Role"     r  ON r.id            = a."roleId"
+        INNER JOIN "Campaign" c  ON c.id            = ca."campaignId"
+        LEFT  JOIN "Company"       comp ON comp.id  = c."companyId"
+        LEFT  JOIN "CampaignBrief" cb   ON cb."campaignId" = c.id
+        LEFT  JOIN campaign_creators cc ON cc."campaignId" = c.id
+        LEFT  JOIN "Subscription"   sub  ON sub.id  = c."subscriptionId"
+        LEFT  JOIN "Package"        pkg  ON pkg.id  = sub."packageId"
+        LEFT  JOIN "CustomPackage"  cpkg ON cpkg.id = sub."customPackageId"
+        WHERE ca."adminId" = ${adminUserId}
+          AND r.name IN ('CSM', 'CSL')
+          AND c."createdAt" >= ${startDate}
+          AND c."createdAt" <= ${endDate}
+        ORDER BY c."createdAt" DESC
+      `
+    : await prisma.$queryRaw<CSMDetailCampaignRow[]>`
+        WITH campaign_creators AS (
+          SELECT "campaignId", COUNT(DISTINCT "userId") AS creator_count
+          FROM "ShortListedCreator"
+          WHERE "userId" IS NOT NULL
+          GROUP BY "campaignId"
+        )
+        SELECT
+          c.id                                   AS "campaignId",
+          c.name                                  AS "campaignName",
+          c.status::text                          AS "status",
+          c."submissionVersion"                   AS "submissionVersion",
+          COALESCE(c."campaignCredits", 0)::int   AS "credits",
+          COALESCE(c."creditsUtilized", 0)::int   AS "creditsUtilized",
+          COALESCE(c."creditsPending", 0)::int    AS "creditsPending",
+          comp.id                                 AS "companyId",
+          comp.name                                AS "companyName",
+          comp.logo                                AS "companyLogo",
+          cb.images                                AS "campaignImages",
+          COALESCE(cc.creator_count, 0)::int       AS "creatorCount",
+          sub."expiredAt"                          AS "subscriptionExpiredAt",
+          COALESCE(pkg.name, cpkg."customName")    AS "packageName"
+        FROM "CampaignAdmin" ca
+        INNER JOIN "Admin"    a  ON a."userId"      = ca."adminId"
+        INNER JOIN "Role"     r  ON r.id            = a."roleId"
+        INNER JOIN "Campaign" c  ON c.id            = ca."campaignId"
+        LEFT  JOIN "Company"       comp ON comp.id  = c."companyId"
+        LEFT  JOIN "CampaignBrief" cb   ON cb."campaignId" = c.id
+        LEFT  JOIN campaign_creators cc ON cc."campaignId" = c.id
+        LEFT  JOIN "Subscription"   sub  ON sub.id  = c."subscriptionId"
+        LEFT  JOIN "Package"        pkg  ON pkg.id  = sub."packageId"
+        LEFT  JOIN "CustomPackage"  cpkg ON cpkg.id = sub."customPackageId"
+        WHERE ca."adminId" = ${adminUserId}
+          AND r.name IN ('CSM', 'CSL')
+        ORDER BY c."createdAt" DESC
+      `;
+
+  // Creator budget = campaignCredits * rate (mirrors cc-frontend/src/utils/campaign-budget.js), v4 campaigns only.
+  // "Spent" = sum of invoice amounts for that campaign, excluding invoices that never became a real financial
+  // commitment (draft / rejected / failed).
+  const CAMPAIGN_BUDGET_RATE_PER_CREDIT = 300;
+  const campaignIds = campaignRows.map((row) => row.campaignId);
+  const spentRows = campaignIds.length
+    ? await prisma.$queryRaw<{ campaignId: string; spent: number | null }[]>`
+        SELECT "campaignId", SUM(amount)::float AS spent
+        FROM "Invoice"
+        WHERE "campaignId" IN (${Prisma.join(campaignIds)})
+          AND status NOT IN ('draft', 'rejected', 'failed')
+        GROUP BY "campaignId"
+      `
+    : [];
+  const spentMap = new Map(spentRows.map((row) => [row.campaignId, Number(row.spent) || 0]));
+
+  const campaigns = campaignRows.map((row) => {
+    const imgs = Array.isArray(row.campaignImages) ? row.campaignImages : [];
+    const campaignImage = imgs.length > 0 && typeof imgs[0] === 'string' ? imgs[0] : null;
+    const credits = Number(row.credits) || 0;
+    const creatorBudget =
+      row.submissionVersion === 'v4' && credits > 0 ? credits * CAMPAIGN_BUDGET_RATE_PER_CREDIT : null;
+    return {
+      campaignId: row.campaignId,
+      name: row.campaignName,
+      status: row.status,
+      submissionVersion: row.submissionVersion,
+      credits,
+      creditsUtilized: Number(row.creditsUtilized) || 0,
+      creditsPending: Number(row.creditsPending) || 0,
+      companyId: row.companyId,
+      companyName: row.companyName,
+      companyLogo: row.companyLogo,
+      campaignImage,
+      creatorCount: Number(row.creatorCount) || 0,
+      creatorBudget,
+      creatorBudgetSpent: creatorBudget != null ? spentMap.get(row.campaignId) || 0 : null,
+      subscriptionExpiredAt: row.subscriptionExpiredAt,
+      packageName: row.packageName,
+    };
+  });
+
+  // Clients: companies this CSM works with (i.e. at least one of their campaigns is assigned to
+  // this CSM). Once a company qualifies as "this CSM's client", ALL of that company's campaigns
+  // are shown on their card — including ones with no CSM/CSL assigned in CampaignAdmin (e.g.
+  // client-authored campaigns) — so the client's campaign count reflects their real total, not
+  // just the subset formally assigned to this CSM.
+  // Package/validity shown for a client is taken from whichever of their campaigns has the
+  // furthest-out subscription expiry (i.e. their current/most relevant subscription).
+  const companyIds = Array.from(
+    new Set(campaigns.map((c) => c.companyId).filter((id): id is string => !!id))
+  );
+
+  interface CSMClientCampaignRow {
+    campaignId: string;
+    campaignName: string;
+    status: string;
+    companyId: string;
+    companyName: string | null;
+    companyLogo: string | null;
+    credits: number;
+    creditsUtilized: number;
+    subscriptionExpiredAt: Date | null;
+    packageName: string | null;
+  }
+
+  const clientCampaignRows = companyIds.length
+    ? await prisma.$queryRaw<CSMClientCampaignRow[]>`
+        SELECT
+          c.id                                   AS "campaignId",
+          c.name                                  AS "campaignName",
+          c.status::text                          AS "status",
+          comp.id                                 AS "companyId",
+          comp.name                                AS "companyName",
+          comp.logo                                AS "companyLogo",
+          COALESCE(c."campaignCredits", 0)::int   AS "credits",
+          COALESCE(c."creditsUtilized", 0)::int   AS "creditsUtilized",
+          sub."expiredAt"                          AS "subscriptionExpiredAt",
+          COALESCE(pkg.name, cpkg."customName")    AS "packageName"
+        FROM "Campaign" c
+        INNER JOIN "Company"      comp ON comp.id  = c."companyId"
+        LEFT  JOIN "Subscription" sub  ON sub.id   = c."subscriptionId"
+        LEFT  JOIN "Package"      pkg  ON pkg.id   = sub."packageId"
+        LEFT  JOIN "CustomPackage" cpkg ON cpkg.id = sub."customPackageId"
+        WHERE c."companyId" IN (${Prisma.join(companyIds)})
+        ORDER BY c."createdAt" DESC
+      `
+    : [];
+
+  const clientMap = new Map<
+    string,
+    {
+      companyId: string;
+      name: string;
+      logo: string | null;
+      activeCampaigns: number;
+      totalCampaigns: number;
+      packageName: string | null;
+      validityEnds: Date | null;
+      hasSubscription: boolean;
+      campaigns: { campaignId: string; name: string; status: string; credits: number; creditsUtilized: number }[];
+    }
+  >();
+  for (const camp of clientCampaignRows) {
+    if (!clientMap.has(camp.companyId)) {
+      clientMap.set(camp.companyId, {
+        companyId: camp.companyId,
+        name: camp.companyName || 'Unnamed client',
+        logo: camp.companyLogo,
+        activeCampaigns: 0,
+        totalCampaigns: 0,
+        packageName: null,
+        validityEnds: null,
+        hasSubscription: false,
+        campaigns: [],
+      });
+    }
+    const client = clientMap.get(camp.companyId)!;
+    client.totalCampaigns += 1;
+    if (camp.status === 'ACTIVE') client.activeCampaigns += 1;
+    client.campaigns.push({
+      campaignId: camp.campaignId,
+      name: camp.campaignName,
+      status: camp.status,
+      credits: Number(camp.credits) || 0,
+      creditsUtilized: Number(camp.creditsUtilized) || 0,
+    });
+    if (camp.subscriptionExpiredAt && (!client.validityEnds || camp.subscriptionExpiredAt > client.validityEnds)) {
+      client.validityEnds = camp.subscriptionExpiredAt;
+      client.packageName = camp.packageName;
+      client.hasSubscription = true;
+    }
+  }
+  const clients = Array.from(clientMap.values())
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((client) => ({
+      companyId: client.companyId,
+      name: client.name,
+      logo: client.logo,
+      activeCampaigns: client.activeCampaigns,
+      totalCampaigns: client.totalCampaigns,
+      packageName: client.packageName,
+      validityEnds: client.validityEnds,
+      isSubscription: client.hasSubscription,
+      status: client.activeCampaigns > 0 ? 'Active' : 'Past',
+      campaigns: client.campaigns,
+    }));
+
+  // Creators: distinct creators shortlisted across this CSM's campaigns
+  const creatorRows = await prisma.$queryRaw<CSMDetailCreatorRow[]>`
+    SELECT
+      u.id                                     AS "userId",
+      u.name                                    AS name,
+      u."photoURL"                              AS photo,
+      COUNT(DISTINCT slc."campaignId")::int     AS "campaignCount",
+      array_agg(DISTINCT cam.name)              AS "campaignNames"
+    FROM "ShortListedCreator" slc
+    INNER JOIN "Campaign"     cam ON cam.id = slc."campaignId"
+    INNER JOIN "CampaignAdmin" ca ON ca."campaignId" = slc."campaignId"
+    INNER JOIN "Admin"         a  ON a."userId" = ca."adminId"
+    INNER JOIN "Role"          r  ON r.id = a."roleId"
+    INNER JOIN "User"          u  ON u.id = slc."userId"
+    WHERE ca."adminId" = ${adminUserId}
+      AND r.name IN ('CSM', 'CSL')
+      AND slc."userId" IS NOT NULL
+    GROUP BY u.id, u.name, u."photoURL"
+    ORDER BY u.name
+  `;
+
+  const creators = creatorRows.map((row) => ({
+    userId: row.userId,
+    name: row.name,
+    photo: row.photo,
+    campaignCount: Number(row.campaignCount) || 0,
+    campaignNames: Array.isArray(row.campaignNames) ? row.campaignNames.filter(Boolean) : [],
+  }));
+
+  // Stats: avg agreement & submission response time, scoped to this CSM's campaigns
+  const [agreementAvgResult, submissionAvgResult] = await Promise.all([
+    prisma.$queryRaw<{ avghours: number | null }[]>`
+      SELECT ROUND(AVG(EXTRACT(EPOCH FROM (s."submissionDate" - ca."completedAt")) / 3600)::numeric, 2) AS "avghours"
+      FROM "CreatorAgreement" ca
+      INNER JOIN "Submission" s ON s."userId" = ca."userId" AND s."campaignId" = ca."campaignId"
+      INNER JOIN "SubmissionType" st ON st.id = s."submissionTypeId"
+      INNER JOIN "CampaignAdmin" cadm ON cadm."campaignId" = ca."campaignId"
+      INNER JOIN "Admin" adm ON adm."userId" = cadm."adminId"
+      INNER JOIN "Role" r ON r.id = adm."roleId"
+      WHERE ca."isSent" = true
+        AND ca."completedAt" IS NOT NULL
+        AND st.type = 'AGREEMENT_FORM'
+        AND s."submissionDate" IS NOT NULL
+        AND EXTRACT(EPOCH FROM (s."submissionDate" - ca."completedAt")) > 0
+        AND cadm."adminId" = ${adminUserId}
+        AND r.name IN ('CSM', 'CSL')
+    `,
+    prisma.$queryRaw<{ avghours: number | null }[]>`
+      SELECT ROUND(AVG(EXTRACT(EPOCH FROM (sr.submitted_at - sr.agreement_at)) / 3600)::numeric, 2) AS "avghours"
+      FROM (
+        SELECT ca."userId", ca."campaignId", ca."completedAt" AS agreement_at, s."submissionDate" AS submitted_at
+        FROM "CreatorAgreement" ca
+        INNER JOIN "Submission" s ON s."userId" = ca."userId" AND s."campaignId" = ca."campaignId"
+        INNER JOIN "SubmissionType" st ON st.id = s."submissionTypeId"
+        WHERE ca."isSent" = true
+          AND ca."completedAt" IS NOT NULL
+          AND st.type = 'FIRST_DRAFT'
+          AND s."submissionDate" IS NOT NULL
+          AND EXTRACT(EPOCH FROM (s."submissionDate" - ca."completedAt")) > 0
+
+        UNION ALL
+
+        SELECT ca."userId", ca."campaignId", ca."completedAt" AS agreement_at, s."submissionDate" AS submitted_at
+        FROM "CreatorAgreement" ca
+        INNER JOIN "Submission" s ON s."userId" = ca."userId" AND s."campaignId" = ca."campaignId"
+        INNER JOIN "SubmissionType" st ON st.id = s."submissionTypeId"
+        WHERE ca."isSent" = true
+          AND ca."completedAt" IS NOT NULL
+          AND st.type = 'VIDEO'
+          AND s."submissionVersion" = 'v4'
+          AND s."contentOrder" = 1
+          AND s."submissionDate" IS NOT NULL
+          AND EXTRACT(EPOCH FROM (s."submissionDate" - ca."completedAt")) > 0
+      ) sr
+      INNER JOIN "CampaignAdmin" cadm ON cadm."campaignId" = sr."campaignId"
+      INNER JOIN "Admin" adm ON adm."userId" = cadm."adminId"
+      INNER JOIN "Role" r ON r.id = adm."roleId"
+      WHERE cadm."adminId" = ${adminUserId}
+        AND r.name IN ('CSM', 'CSL')
+    `,
+  ]);
+
+  const stats = {
+    avgAgreementResponseHours: agreementAvgResult[0]?.avghours != null ? Number(agreementAvgResult[0].avghours) : null,
+    avgSubmissionResponseHours: submissionAvgResult[0]?.avghours != null ? Number(submissionAvgResult[0].avghours) : null,
+  };
+
+  return {
+    csm: {
+      adminUserId: csm.adminUserId,
+      name: csm.name,
+      email: csm.email,
+      photo: csm.photo || null,
+      role: csm.roleName,
+    },
+    campaigns,
+    clients,
+    creators,
+    stats,
+  };
+};
+
 // Rejection Reasons
 
 interface RejectionReasonRow {
