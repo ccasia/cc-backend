@@ -3339,13 +3339,6 @@ export const getCSMWorkloadDetailData = async (
     };
   });
 
-  // Clients: companies this CSM works with (i.e. at least one of their campaigns is assigned to
-  // this CSM). Once a company qualifies as "this CSM's client", ALL of that company's campaigns
-  // are shown on their card — including ones with no CSM/CSL assigned in CampaignAdmin (e.g.
-  // client-authored campaigns) — so the client's campaign count reflects their real total, not
-  // just the subset formally assigned to this CSM.
-  // Package/validity shown for a client is taken from whichever of their campaigns has the
-  // furthest-out subscription expiry (i.e. their current/most relevant subscription).
   const companyIds = Array.from(
     new Set(campaigns.map((c) => c.companyId).filter((id): id is string => !!id))
   );
@@ -3532,6 +3525,8 @@ export const getCSMWorkloadDetailData = async (
     avgSubmissionResponseHours: submissionAvgResult[0]?.avghours != null ? Number(submissionAvgResult[0].avghours) : null,
   };
 
+  const attention = await getCSMWorkloadAttentionData(campaignIds);
+
   return {
     csm: {
       adminUserId: csm.adminUserId,
@@ -3544,6 +3539,375 @@ export const getCSMWorkloadDetailData = async (
     clients,
     creators,
     stats,
+    attention,
+  };
+};
+
+interface CSMAttentionRejectionRow {
+  campaignId: string;
+  campaignName: string;
+  rejected: number;
+  total: number;
+}
+
+function avgHoursFromPairs(pairs: { start: Date | null; end: Date | null }[]): number | null {
+  const durations = pairs
+    .filter((p): p is { start: Date; end: Date } => !!p.start && !!p.end)
+    .map((p) => (p.end.getTime() - p.start.getTime()) / (1000 * 60 * 60))
+    .filter((hours) => hours > 0);
+
+  if (durations.length === 0) return null;
+  const avg = durations.reduce((sum, h) => sum + h, 0) / durations.length;
+  return Math.round(avg * 10) / 10;
+}
+
+export const getCSMWorkloadAttentionData = async (campaignIds: string[]) => {
+  if (campaignIds.length === 0) {
+    return {
+      actionItems: {
+        agreementsPendingReview: 0,
+        submissionsPendingReview: 0,
+        pitchesPendingReview: 0,
+        linksToApprove: 0,
+        clientFeedbacks: 0,
+        overdueInvoices: 0,
+      },
+      items: {
+        agreementsPendingReview: [],
+        submissionsPendingReview: [],
+        pitchesPendingReview: [],
+        linksToApprove: [],
+        clientFeedbacks: [],
+        overdueInvoices: [],
+      },
+      responseTime: {
+        pitchReviewHours: null,
+        agreementReviewHours: null,
+        draftReviewHours: null,
+        postingReviewHours: null,
+        avgResponseHours: null,
+      },
+      rejectionRate: { avgRate: 0, highest: null, median: null, lowest: null },
+    };
+  }
+
+  const campaignIdFilter = { campaignId: { in: campaignIds } };
+  const PITCH_PENDING_STATUSES = ['undecided', 'PENDING_REVIEW', 'MAYBE', 'pending'] as const;
+  const ITEM_LIST_CAP = 5;
+
+  const [
+    agreementsPendingReview,
+    submissionsPendingReview,
+    pitchesPendingReview,
+    linksToApprove,
+    clientFeedbacks,
+    overdueInvoices,
+    decidedPitches,
+    agreementSubmissions,
+    draftSubmissions,
+    approvedV4SubmissionsWithLinks,
+    pendingAgreementItems,
+    pendingSubmissionItems,
+    pendingPitchItems,
+    pendingLinkItems,
+    pendingFeedbackItems,
+    overdueInvoiceItems,
+  ] = await Promise.all([
+    prisma.submission.count({
+      where: { ...campaignIdFilter, status: 'PENDING_REVIEW', submissionType: { type: 'AGREEMENT_FORM' } },
+    }),
+    prisma.submission.count({
+      where: { ...campaignIdFilter, status: 'PENDING_REVIEW', submissionType: { type: { not: 'AGREEMENT_FORM' } } },
+    }),
+    prisma.pitch.count({
+      where: { ...campaignIdFilter, status: { in: [...PITCH_PENDING_STATUSES] } },
+    }),
+    prisma.submission.count({ where: { ...campaignIdFilter, status: 'APPROVE_LINK' } }),
+    prisma.submission.count({ where: { ...campaignIdFilter, status: 'CLIENT_FEEDBACK' } }),
+    prisma.invoice.count({
+      where: {
+        campaignId: { in: campaignIds },
+        dueDate: { lt: new Date() },
+        status: { notIn: ['paid', 'draft', 'rejected', 'failed'] },
+      },
+    }),
+
+    // Pitch review — admin decision turnaround
+    prisma.pitch.findMany({
+      where: { ...campaignIdFilter, status: { notIn: [...PITCH_PENDING_STATUSES] }, completedAt: { not: null } },
+      select: { createdAt: true, completedAt: true },
+      take: 500,
+    }),
+
+    // Agreement review — admin decision turnaround on AGREEMENT_FORM submissions
+    prisma.submission.findMany({
+      where: {
+        ...campaignIdFilter,
+        submissionType: { type: 'AGREEMENT_FORM' },
+        completedAt: { not: null },
+        submissionDate: { not: null },
+      },
+      select: { submissionDate: true, completedAt: true },
+      take: 500,
+    }),
+
+    // Draft review — admin decision turnaround on non-agreement submissions
+    prisma.submission.findMany({
+      where: {
+        ...campaignIdFilter,
+        submissionType: { type: { not: 'AGREEMENT_FORM' } },
+        completedAt: { not: null },
+        submissionDate: { not: null },
+      },
+      select: { submissionDate: true, completedAt: true },
+      take: 500,
+    }),
+
+    prisma.submission.findMany({
+      where: {
+        ...campaignIdFilter,
+        submissionVersion: 'v4',
+        status: 'APPROVED',
+        completedAt: { not: null },
+        submissionPostingUrls: { some: {} },
+      },
+      select: {
+        completedAt: true,
+        submissionPostingUrls: { select: { createdAt: true }, orderBy: { createdAt: 'asc' }, take: 1 },
+      },
+      take: 500,
+    }),
+
+    // Expandable "Action items pending" lists — capped preview per category (see ITEM_LIST_CAP).
+    prisma.submission.findMany({
+      where: { ...campaignIdFilter, status: 'PENDING_REVIEW', submissionType: { type: 'AGREEMENT_FORM' } },
+      orderBy: { updatedAt: 'desc' },
+      take: ITEM_LIST_CAP,
+      select: {
+        id: true,
+        updatedAt: true,
+        campaign: { select: { name: true } },
+        user: { select: { name: true, photoURL: true } },
+      },
+    }),
+    prisma.submission.findMany({
+      where: { ...campaignIdFilter, status: 'PENDING_REVIEW', submissionType: { type: { not: 'AGREEMENT_FORM' } } },
+      orderBy: { updatedAt: 'desc' },
+      take: ITEM_LIST_CAP,
+      select: {
+        id: true,
+        updatedAt: true,
+        campaign: { select: { name: true } },
+        user: { select: { name: true, photoURL: true } },
+      },
+    }),
+    prisma.pitch.findMany({
+      where: { ...campaignIdFilter, status: { in: [...PITCH_PENDING_STATUSES] } },
+      orderBy: { createdAt: 'desc' },
+      take: ITEM_LIST_CAP,
+      select: {
+        id: true,
+        createdAt: true,
+        campaign: { select: { name: true } },
+        user: { select: { name: true, photoURL: true } },
+      },
+    }),
+    prisma.submission.findMany({
+      where: { ...campaignIdFilter, status: 'APPROVE_LINK' },
+      orderBy: { updatedAt: 'desc' },
+      take: ITEM_LIST_CAP,
+      select: {
+        id: true,
+        updatedAt: true,
+        campaign: { select: { name: true } },
+        user: { select: { name: true, photoURL: true } },
+      },
+    }),
+    prisma.submission.findMany({
+      where: { ...campaignIdFilter, status: 'CLIENT_FEEDBACK' },
+      orderBy: { updatedAt: 'desc' },
+      take: ITEM_LIST_CAP,
+      select: {
+        id: true,
+        updatedAt: true,
+        campaign: { select: { name: true } },
+        user: { select: { name: true, photoURL: true } },
+      },
+    }),
+    prisma.invoice.findMany({
+      where: {
+        campaignId: { in: campaignIds },
+        dueDate: { lt: new Date() },
+        status: { notIn: ['paid', 'draft', 'rejected', 'failed'] },
+      },
+      orderBy: { dueDate: 'asc' },
+      take: ITEM_LIST_CAP,
+      select: {
+        id: true,
+        dueDate: true,
+        amount: true,
+        campaign: { select: { name: true } },
+        creator: { select: { user: { select: { name: true, photoURL: true } } } },
+      },
+    }),
+  ]);
+
+  const toItem = (row: {
+    id: string;
+    date: Date | null;
+    campaignName: string | null;
+    creatorName: string | null;
+    creatorPhoto: string | null;
+    meta?: string | null;
+  }) => ({
+    id: row.id,
+    date: row.date,
+    campaignName: row.campaignName || 'Unknown campaign',
+    creatorName: row.creatorName || 'Unknown creator',
+    creatorPhoto: row.creatorPhoto || null,
+    meta: row.meta || null,
+  });
+
+  const items = {
+    agreementsPendingReview: pendingAgreementItems.map((s) =>
+      toItem({
+        id: s.id,
+        date: s.updatedAt,
+        campaignName: s.campaign?.name,
+        creatorName: s.user?.name,
+        creatorPhoto: s.user?.photoURL,
+      }),
+    ),
+    submissionsPendingReview: pendingSubmissionItems.map((s) =>
+      toItem({
+        id: s.id,
+        date: s.updatedAt,
+        campaignName: s.campaign?.name,
+        creatorName: s.user?.name,
+        creatorPhoto: s.user?.photoURL,
+      }),
+    ),
+    pitchesPendingReview: pendingPitchItems.map((p) =>
+      toItem({
+        id: p.id,
+        date: p.createdAt,
+        campaignName: p.campaign?.name,
+        creatorName: p.user?.name,
+        creatorPhoto: p.user?.photoURL,
+      }),
+    ),
+    linksToApprove: pendingLinkItems.map((s) =>
+      toItem({
+        id: s.id,
+        date: s.updatedAt,
+        campaignName: s.campaign?.name,
+        creatorName: s.user?.name,
+        creatorPhoto: s.user?.photoURL,
+      }),
+    ),
+    clientFeedbacks: pendingFeedbackItems.map((s) =>
+      toItem({
+        id: s.id,
+        date: s.updatedAt,
+        campaignName: s.campaign?.name,
+        creatorName: s.user?.name,
+        creatorPhoto: s.user?.photoURL,
+      }),
+    ),
+    overdueInvoices: overdueInvoiceItems.map((inv) =>
+      toItem({
+        id: inv.id,
+        date: inv.dueDate,
+        campaignName: inv.campaign?.name,
+        creatorName: inv.creator?.user?.name,
+        creatorPhoto: inv.creator?.user?.photoURL,
+        meta: inv.amount != null ? `MYR ${Number(inv.amount).toLocaleString()}` : null,
+      }),
+    ),
+  };
+
+  const pitchReviewHours = avgHoursFromPairs(
+    decidedPitches.map((p) => ({ start: p.createdAt, end: p.completedAt })),
+  );
+  const agreementReviewHours = avgHoursFromPairs(
+    agreementSubmissions.map((s) => ({ start: s.submissionDate, end: s.completedAt })),
+  );
+  const draftReviewHours = avgHoursFromPairs(
+    draftSubmissions.map((s) => ({ start: s.submissionDate, end: s.completedAt })),
+  );
+  const postingReviewHours = avgHoursFromPairs(
+    approvedV4SubmissionsWithLinks.map((s) => ({
+      start: s.submissionPostingUrls[0]?.createdAt ?? null,
+      end: s.completedAt,
+    })),
+  );
+
+  const responseTimeValues = [pitchReviewHours, agreementReviewHours, draftReviewHours, postingReviewHours].filter(
+    (h): h is number => h != null,
+  );
+  const avgResponseHours =
+    responseTimeValues.length > 0
+      ? Math.round((responseTimeValues.reduce((sum, h) => sum + h, 0) / responseTimeValues.length) * 10) / 10
+      : null;
+
+  // Rejection rate — per-campaign Pitch client-rejection breakdown, v4 only (mirrors getClientRejectionRateData).
+  const rejectionRows = await prisma.$queryRaw<CSMAttentionRejectionRow[]>`
+    SELECT
+      c.id AS "campaignId",
+      c.name AS "campaignName",
+      COUNT(CASE WHEN p."rejectedByClientId" IS NOT NULL THEN 1 END)::int AS "rejected",
+      COUNT(p.id)::int AS "total"
+    FROM "Campaign" c
+    LEFT JOIN "Pitch" p
+      ON p."campaignId" = c.id
+      AND (
+        p."rejectedByClientId" IS NOT NULL
+        OR p."approvedByClientId" IS NOT NULL
+        OR p."maybeByClientId" IS NOT NULL
+        OR p.status = 'SENT_TO_CLIENT'
+      )
+    WHERE c.id IN (${Prisma.join(campaignIds)})
+      AND c."submissionVersion" = 'v4'
+    GROUP BY c.id, c.name
+  `;
+
+  const rejectionBreakdown = rejectionRows
+    .filter((row) => row.total > 0)
+    .map((row) => ({
+      campaignId: row.campaignId,
+      campaignName: row.campaignName,
+      rate: Math.round((row.rejected / row.total) * 1000) / 10,
+      rejected: row.rejected,
+      total: row.total,
+    }))
+    .sort((a, b) => a.rate - b.rate);
+
+  const totalRejected = rejectionRows.reduce((sum, r) => sum + r.rejected, 0);
+  const totalSent = rejectionRows.reduce((sum, r) => sum + r.total, 0);
+  const avgRate = totalSent > 0 ? Math.round((totalRejected / totalSent) * 1000) / 10 : 0;
+
+  const toRejectionSummary = (row: (typeof rejectionBreakdown)[number] | undefined) =>
+    row ? { campaignId: row.campaignId, campaignName: row.campaignName, rate: row.rate } : null;
+
+  const lowest = toRejectionSummary(rejectionBreakdown[0]);
+  const highest = toRejectionSummary(rejectionBreakdown[rejectionBreakdown.length - 1]);
+  const median =
+    rejectionBreakdown.length >= 3
+      ? toRejectionSummary(rejectionBreakdown[Math.floor((rejectionBreakdown.length - 1) / 2)])
+      : null;
+
+  return {
+    actionItems: {
+      agreementsPendingReview,
+      submissionsPendingReview,
+      pitchesPendingReview,
+      linksToApprove,
+      clientFeedbacks,
+      overdueInvoices,
+    },
+    items,
+    responseTime: { pitchReviewHours, agreementReviewHours, draftReviewHours, postingReviewHours, avgResponseHours },
+    rejectionRate: { avgRate, highest, median, lowest },
   };
 };
 
