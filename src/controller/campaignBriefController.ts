@@ -25,6 +25,7 @@ import {
   snapshotPublicSubmission as svcSnapshotPublicSubmission,
   resetBriefToSnapshot as svcResetBriefToSnapshot,
   lostBrief as svcLostBrief,
+  getBdDashboard as svcGetBdDashboard,
   BRIEF_ATTACHMENT_MAX,
 } from '@services/campaignBriefService';
 
@@ -394,6 +395,20 @@ export const listBriefs = async (req: Request, res: Response) => {
   }
 };
 
+// GET /briefs/bd-dashboard?month=YYYY-MM
+export const getBdDashboard = async (req: Request, res: Response) => {
+  const userid = req.userId;
+  if (!userid) return res.status(401).json({ message: 'User not authenticated' });
+  try {
+    const month = typeof req.query.month === 'string' ? req.query.month : undefined;
+    const data = await svcGetBdDashboard(userid, month);
+    return res.status(200).json(data);
+  } catch (error) {
+    console.error('getBdDashboard error:', error);
+    return res.status(500).json({ message: 'Failed to load BD dashboard' });
+  }
+};
+
 // GET /briefs/:id
 export const getBrief = async (req: Request, res: Response) => {
   const { id } = req.params;
@@ -493,10 +508,24 @@ export const resetBrief = async (req: Request, res: Response) => {
 //
 // Hands the brief over to the CSL (CS Lead) group. There is no individual CS
 // picker — CSL is responsible for assigning a specific CS member afterward.
+// Parse an optional deal value (wonAmount/wonCurrency) from a request body.
+// Returns { amount: null, currency: null } when absent or non-numeric — the deal
+// value is best-effort snapshot data, not a hard requirement for handover.
+const parseWon = (body: any): { amount: number | null; currency: string | null } => {
+  const rawAmount = body?.wonAmount;
+  const amount =
+    rawAmount === undefined || rawAmount === null || rawAmount === '' || Number.isNaN(Number(rawAmount))
+      ? null
+      : Number(rawAmount);
+  const currency = typeof body?.wonCurrency === 'string' && body.wonCurrency.trim() ? body.wonCurrency.trim() : null;
+  return { amount, currency };
+};
+
 export const handoverBrief = async (req: Request, res: Response) => {
   const { id } = req.params;
   const { internalComments } = req.body || {};
   const notes = typeof internalComments === 'string' && internalComments.trim() ? internalComments.trim() : null;
+  const won = parseWon(req.body);
 
   // A handover-ready brief must already have a company linked (with an active
   // package). The HandoverDialog orchestrates company/package creation via
@@ -525,7 +554,7 @@ export const handoverBrief = async (req: Request, res: Response) => {
   const displayName = linked.company?.name || linked.brand?.name || null;
 
   try {
-    const updated = await svcHandoverBrief(id, displayName, notes);
+    const updated = await svcHandoverBrief(id, displayName, notes, won);
 
     // Notify every CSL user.
     const csls = await svcListCslUsers();
@@ -601,8 +630,9 @@ export const finalizeBrief = async (req: Request, res: Response) => {
 
     const { internalComments } = req.body || {};
     const notes = typeof internalComments === 'string' && internalComments.trim() ? internalComments.trim() : null;
+    const won = parseWon(req.body);
 
-    const updated = await svcFinalizeOwnBrief(id, userid, notes);
+    const updated = await svcFinalizeOwnBrief(id, userid, notes, won);
     return res.status(200).json(updated);
   } catch (error: any) {
     console.error('finalizeBrief error:', error);

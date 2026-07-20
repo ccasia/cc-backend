@@ -539,7 +539,12 @@ const nextCampaignCode = async (tx: ExtendedTxClient): Promise<string> => {
   return `C${next < 10 ? `0${next}` : next}`;
 };
 
-export const handoverBrief = async (briefId: string, clientPackage: string | null, internalComments: string | null) => {
+export const handoverBrief = async (
+  briefId: string,
+  clientPackage: string | null,
+  internalComments: string | null,
+  won?: { amount: number | null; currency: string | null },
+) => {
   const current = await prisma.campaign.findUnique({
     where: { id: briefId },
     select: { id: true, draftStatus: true, briefOwnerId: true, campaignId: true },
@@ -559,6 +564,8 @@ export const handoverBrief = async (briefId: string, clientPackage: string | nul
         clientPackage,
         internalComments: internalComments ?? null,
         handedOverAt: new Date(),
+        wonAmount: won?.amount ?? null,
+        wonCurrency: won?.currency ?? null,
         clientMagicToken: null,
         clientTokenExpiresAt: null,
       },
@@ -687,6 +694,7 @@ export const finalizeOwnBrief = async (
   briefId: string,
   ownerUserId: string,
   internalComments?: string | null,
+  won?: { amount: number | null; currency: string | null },
 ) => {
   const current = await prisma.campaign.findUnique({
     where: { id: briefId },
@@ -739,6 +747,8 @@ export const finalizeOwnBrief = async (
         clientPackage: current.company?.name || current.brand?.name || null,
         internalComments: internalComments ?? null,
         handedOverAt: new Date(),
+        wonAmount: won?.amount ?? null,
+        wonCurrency: won?.currency ?? null,
         clientMagicToken: null,
         clientTokenExpiresAt: null,
       },
@@ -980,6 +990,152 @@ export const listCslUsers = async () => {
   });
 };
 
+// ---------------------------------------------------------------------------
+// BD dashboard aggregate
+// ---------------------------------------------------------------------------
+
+const DEFAULT_CURRENCY = 'MYR';
+
+// Role-name test mirroring isBDUser in @utils/briefRoles (and the isBdOrSuperadmin
+// middleware). Kept local as a plain string test so it can filter a fetched list.
+const isBdRoleName = (roleName?: string | null): boolean => {
+  const name = (roleName || '').toLowerCase();
+  return (
+    name === 'bd' ||
+    name.includes('business development') ||
+    name === 'sales and marketing' ||
+    name.includes('sales and marketing')
+  );
+};
+
+type MonthRange = { start: Date; end: Date; label: string };
+
+// Resolve a YYYY-MM (or current month) to a [start, end) range. Uses the server's
+// local time — deployments run Asia/Kuala_Lumpur, matching the cron timezone.
+export const resolveMonthRange = (month?: string): MonthRange => {
+  const now = new Date();
+  let year = now.getFullYear();
+  let monthIndex = now.getMonth();
+  if (month && /^\d{4}-\d{2}$/.test(month)) {
+    const [y, m] = month.split('-').map(Number);
+    year = y;
+    monthIndex = m - 1;
+  }
+  const start = new Date(year, monthIndex, 1, 0, 0, 0, 0);
+  const end = new Date(year, monthIndex + 1, 1, 0, 0, 0, 0);
+  const label = `${year}-${String(monthIndex + 1).padStart(2, '0')}`;
+  return { start, end, label };
+};
+
+const emptyBucket = () => ({ wonCount: 0, wonAmount: 0, lostCount: 0, lostAmount: 0 });
+
+export const getBdDashboard = async (currentUserId: string, month?: string) => {
+  const { start, end, label } = resolveMonthRange(month);
+
+  // Team = admins whose role name classifies as BD. Fetch admins with a role
+  // and filter by the shared name test (Prisma can't do case-insensitive
+  // multi-pattern matching cleanly in one where).
+  const admins = await prisma.admin.findMany({
+    where: { role: { isNot: null } },
+    select: {
+      userId: true,
+      role: { select: { name: true } },
+      user: { select: { id: true, name: true } },
+    },
+  });
+  const bdMembers = admins.filter((a) => isBdRoleName(a.role?.name));
+  const bdUserIds = bdMembers.map((a) => a.userId);
+  // Ensure the current user is represented even if their role naming is atypical.
+  const memberIds = Array.from(new Set([currentUserId, ...bdUserIds]));
+
+  // Won = handed over this month, grouped by owner + currency.
+  const wonRows = await prisma.campaign.findMany({
+    where: {
+      draftStatus: 'HANDED_OVER',
+      handedOverAt: { gte: start, lt: end },
+      briefOwnerId: { in: memberIds },
+    },
+    select: { briefOwnerId: true, wonAmount: true, wonCurrency: true },
+  });
+
+  // Lost = lost this month (fall back to updatedAt for pre-migration rows),
+  // grouped by owner + currency.
+  const lostRows = await prisma.campaign.findMany({
+    where: {
+      draftStatus: 'LOST',
+      briefOwnerId: { in: memberIds },
+      OR: [{ lostAt: { gte: start, lt: end } }, { AND: [{ lostAt: null }, { updatedAt: { gte: start, lt: end } }] }],
+    },
+    select: { briefOwnerId: true, lostAmount: true, lostCurrency: true },
+  });
+
+  // Per-user, per-currency accumulator. null currency → default bucket.
+  const byUser = new Map<string, Record<string, ReturnType<typeof emptyBucket>>>();
+  const bucketFor = (userId: string | null, currency: string | null) => {
+    const uid = userId || 'unknown';
+    const cur = currency || DEFAULT_CURRENCY;
+    if (!byUser.has(uid)) byUser.set(uid, {});
+    const perCur = byUser.get(uid)!;
+    if (!perCur[cur]) perCur[cur] = emptyBucket();
+    return perCur[cur];
+  };
+
+  wonRows.forEach((r) => {
+    const b = bucketFor(r.briefOwnerId, r.wonCurrency);
+    b.wonCount += 1;
+    b.wonAmount += r.wonAmount || 0;
+  });
+  lostRows.forEach((r) => {
+    const b = bucketFor(r.briefOwnerId, r.lostCurrency);
+    b.lostCount += 1;
+    b.lostAmount += r.lostAmount || 0;
+  });
+
+  const currencies = new Set<string>([DEFAULT_CURRENCY, 'SGD']);
+  byUser.forEach((perCur) => Object.keys(perCur).forEach((c) => currencies.add(c)));
+
+  const withWinRate = (bucket: ReturnType<typeof emptyBucket>) => {
+    const decided = bucket.wonCount + bucket.lostCount;
+    return { ...bucket, winRate: decided > 0 ? bucket.wonCount / decided : null };
+  };
+
+  const bucketsForUser = (userId: string) => {
+    const perCur = byUser.get(userId) || {};
+    const out: Record<string, ReturnType<typeof withWinRate>> = {};
+    currencies.forEach((c) => {
+      out[c] = withWinRate(perCur[c] || emptyBucket());
+    });
+    return out;
+  };
+
+  const me = bucketsForUser(currentUserId);
+
+  const nameById = new Map(bdMembers.map((a) => [a.userId, a.user?.name || 'Unknown']));
+  const members = bdUserIds.map((uid) => ({
+    userId: uid,
+    name: nameById.get(uid) || 'Unknown',
+    ...bucketsForUser(uid),
+  }));
+
+  const totals: Record<string, { wonCount: number; wonAmount: number }> = {};
+  currencies.forEach((c) => {
+    totals[c] = { wonCount: 0, wonAmount: 0 };
+  });
+  members.forEach((m) => {
+    currencies.forEach((c) => {
+      totals[c].wonCount += (m as any)[c].wonCount;
+      totals[c].wonAmount += (m as any)[c].wonAmount;
+    });
+  });
+
+  return {
+    month: label,
+    currencies: Array.from(currencies),
+    me,
+    team: { members, totals },
+  };
+};
+
 export const lostBrief = async (briefId: string, lostAmount: number, lostCurrency: string, lostReason: string) => {
   const current = await prisma.campaign.findUnique({
     where: { id: briefId },
@@ -999,6 +1155,7 @@ export const lostBrief = async (briefId: string, lostAmount: number, lostCurrenc
       lostAmount,
       lostCurrency,
       lostReason,
+      lostAt: new Date(),
     },
   });
 };

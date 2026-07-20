@@ -10,6 +10,7 @@ import {
   // BD-authored brief flow
   createBrief,
   listBriefs,
+  getBdDashboard,
   getBrief,
   patchBrief,
   sendBriefToClient,
@@ -67,6 +68,7 @@ router.post('/invite/public/:token/submit', publicSubmitLimiter, bdSubmitDraft);
 // --- New BD-authored brief flow ---
 router.post('/', authenticate, isBdOrSuperadmin, createBrief);
 router.get('/', authenticate, isBdOrSuperadmin, listBriefs);
+router.get('/bd-dashboard', authenticate, isBdOrSuperadmin, getBdDashboard);
 router.get('/:id', authenticate, isBdOrSuperadmin, getBrief);
 router.patch('/:id', authenticate, isBdOrSuperadmin, patchBrief);
 router.post('/:id/send', authenticate, isBdOrSuperadmin, sendBriefToClient);
