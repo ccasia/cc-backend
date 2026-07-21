@@ -29,6 +29,7 @@ import {
   patchBriefPublic,
   approveBriefPublic,
   lostBrief,
+  getBdOverview,
 } from '@controllers/campaignBriefController';
 import { authenticate } from '../middleware/authenticate';
 
@@ -69,6 +70,7 @@ router.post('/invite/public/:token/submit', publicSubmitLimiter, bdSubmitDraft);
 router.post('/', authenticate, isBdOrSuperadmin, createBrief);
 router.get('/', authenticate, isBdOrSuperadmin, listBriefs);
 router.get('/bd-dashboard', authenticate, isBdOrSuperadmin, getBdDashboard);
+router.get('/bd-overview', authenticate, isBdOrSuperadmin, getBdOverview);
 router.get('/:id', authenticate, isBdOrSuperadmin, getBrief);
 router.patch('/:id', authenticate, isBdOrSuperadmin, patchBrief);
 router.post('/:id/send', authenticate, isBdOrSuperadmin, sendBriefToClient);

@@ -1159,3 +1159,182 @@ export const lostBrief = async (briefId: string, lostAmount: number, lostCurrenc
     },
   });
 };
+
+type DateRange = { start?: Date; end?: Date };
+
+export const resolveDateRange = (startDate?: string, endDate?: string): DateRange => {
+  const parse = (val?: string): Date | undefined => {
+    if (!val) return undefined;
+    const day = new Date(val);
+
+    return Number.isNaN(day.getTime()) ? undefined : day;
+  };
+
+  return { start: parse(startDate), end: parse(endDate) };
+};
+
+const inRange = ({ start, end }: DateRange): Prisma.DateTimeFilter | undefined => {
+  if (!start && !end) return undefined;
+  const filter: Prisma.DateTimeFilter = {};
+
+  if (start) filter.gte = start;
+  if (end) filter.lte = end;
+
+  return filter;
+};
+
+export const getBdOverview = async (startDate?: string, endDate?: string) => {
+  const range = resolveDateRange(startDate, endDate);
+  const rangeFilter = inRange(range);
+
+  const lostDateWhere: Prisma.CampaignWhereInput | undefined = rangeFilter
+    ? { OR: [{ lostAt: rangeFilter }, { AND: [{ lostAt: null }, { updatedAt: rangeFilter }] }] }
+    : undefined;
+
+  const admins = await prisma.admin.findMany({
+    select: {
+      userId: true,
+      role: { select: { name: true } },
+      user: { select: { id: true, name: true, photoURL: true } },
+    },
+  });
+
+  const bdAdmins = admins.filter((a) => isBdRoleName(a.role?.name));
+  const nameById = new Map(bdAdmins.map((a) => [a.userId, a.user?.name || 'Unknown']));
+  const photoById = new Map(bdAdmins.map((a) => [a.userId, a.user?.photoURL || 'Unknown']));
+
+  const statusGroups = await prisma.campaign.groupBy({
+    by: ['draftStatus', 'status'],
+    where: { draftStatus: { not: null } },
+    _count: { _all: true },
+  });
+  const stageCount = (status: CampaignDraftStatus) =>
+    statusGroups.filter((g) => g.draftStatus === status).reduce((s, g) => s + g._count._all, 0);
+  const handedOverActive = statusGroups
+    .filter((g) => g.draftStatus === 'HANDED_OVER' && g.status === 'ACTIVE')
+    .reduce((s, g) => s + g._count._all, 0);
+  const handedOverTotal = stageCount('HANDED_OVER');
+
+  const lostSnapshotCount = await prisma.campaign.count({
+    where: { draftStatus: 'LOST', ...(lostDateWhere || {}) },
+  });
+
+  const pipeline = [
+    { key: 'DRAFTED', label: 'Drafted', count: stageCount('DRAFTED') },
+    { key: 'SENT_TO_CLIENT', label: 'Sent', count: stageCount('SENT_TO_CLIENT') },
+    { key: 'PENDING_REVIEW', label: 'Pending', count: stageCount('PENDING_REVIEW') },
+    { key: 'APPROVED', label: 'Approved', count: stageCount('APPROVED') },
+    { key: 'HANDED_OVER', label: 'Handed over', count: handedOverTotal - handedOverActive },
+    { key: 'ACTIVE', label: 'Active', count: handedOverActive },
+    { key: 'LOST', label: 'Lost', count: lostSnapshotCount },
+  ];
+
+  const sentRows = await prisma.campaign.findMany({
+    where: {
+      draftStatus: { not: null },
+      sentToClientAt: rangeFilter ? { ...rangeFilter, not: null } : { not: null },
+    },
+    select: { briefOwnerId: true },
+  });
+
+  const wonRows = await prisma.campaign.findMany({
+    where: {
+      draftStatus: 'HANDED_OVER',
+      handedOverAt: rangeFilter ? { ...rangeFilter, not: null } : { not: null },
+    },
+    select: { briefOwnerId: true, wonAmount: true, wonCurrency: true },
+  });
+
+  const lostRows = await prisma.campaign.findMany({
+    where: { draftStatus: 'LOST', ...(lostDateWhere || {}) },
+    select: { briefOwnerId: true, lostAmount: true, lostCurrency: true },
+  });
+
+  const pendingRows = await prisma.campaign.findMany({
+    where: { draftStatus: 'PENDING_REVIEW' },
+    select: { briefOwnerId: true },
+  });
+
+  type Person = {
+    userId: string;
+    name: string;
+    photoURL: string | null;
+    sent: number;
+    pending: number;
+    converted: number;
+    lost: number;
+    convRate: number | null;
+    value: Record<string, { wonAmount: number; lostAmount: number }>;
+  };
+
+  const byUser = new Map<string, Person>();
+  const ensure = (uid: string | null): Person => {
+    const id = uid || 'unknown';
+    if (!byUser.has(id)) {
+      byUser.set(id, {
+        userId: id,
+        name: nameById.get(id) || 'Unknown',
+        photoURL: photoById.get(id) || null,
+        sent: 0,
+        pending: 0,
+        converted: 0,
+        lost: 0,
+        convRate: null,
+        value: {},
+      });
+    }
+    return byUser.get(id)!;
+  };
+
+  const valueBucket = (p: Person, currency: string | null) => {
+    const cur = currency || DEFAULT_CURRENCY;
+    if (!p.value[cur]) p.value[cur] = { wonAmount: 0, lostAmount: 0 };
+    return p.value[cur];
+  };
+
+  sentRows.forEach((r) => {
+    ensure(r.briefOwnerId).sent += 1;
+  });
+  pendingRows.forEach((r) => {
+    ensure(r.briefOwnerId).pending += 1;
+  });
+  wonRows.forEach((r) => {
+    const p = ensure(r.briefOwnerId);
+    p.converted += 1;
+    valueBucket(p, r.wonCurrency).wonAmount += r.wonAmount || 0;
+  });
+  lostRows.forEach((r) => {
+    const p = ensure(r.briefOwnerId);
+    p.lost += 1;
+    valueBucket(p, r.lostCurrency).lostAmount += r.lostAmount || 0;
+  });
+
+  const people = Array.from(byUser.values())
+    .map((p) => ({ ...p, convRate: p.sent > 0 ? p.converted / p.sent : null }))
+    .filter((p) => p.sent || p.pending || p.converted || p.lost)
+    .sort((a, b) => b.converted - a.converted || b.sent - a.sent);
+
+  const currencies = new Set<string>([DEFAULT_CURRENCY, 'SGD']);
+  people.forEach((p) => Object.keys(p.value).forEach((c) => currencies.add(c)));
+  const valueTotals: Record<string, { wonAmount: number; lostAmount: number }> = {};
+  currencies.forEach((c) => {
+    valueTotals[c] = { wonAmount: 0, lostAmount: 0 };
+  });
+  people.forEach((p) =>
+    Object.entries(p.value).forEach(([c, v]) => {
+      valueTotals[c].wonAmount += v.wonAmount;
+      valueTotals[c].lostAmount += v.lostAmount;
+    }),
+  );
+
+  return {
+    range: {
+      startDate: range.start ? range.start.toISOString() : null,
+      endDate: range.end ? range.end.toISOString() : null,
+    },
+    currencies: Array.from(currencies),
+    pipeline,
+    people,
+    valueTotals,
+  };
+};

@@ -27,6 +27,7 @@ import {
   lostBrief as svcLostBrief,
   getBdDashboard as svcGetBdDashboard,
   BRIEF_ATTACHMENT_MAX,
+  getBdOverview as svcGetBdOverview,
 } from '@services/campaignBriefService';
 
 const prisma = new PrismaClient();
@@ -854,5 +855,20 @@ export const lostBrief = async (req: Request, res: Response) => {
       return res.status(400).json({ message: error.message });
     }
     return res.status(500).json({ message: 'Failed to mark brief as lost' });
+  }
+};
+
+// GET /briefs/bd-overview?startDate=&endDate=
+export const getBdOverview = async (req: Request, res: Response) => {
+  const userid = req.userId;
+  if (!userid) return res.status(401).json({ message: 'User not authenticated' });
+  try {
+    const startDate = typeof req.query.startDate === 'string' ? req.query.startDate : undefined;
+    const endDate = typeof req.query.endDate === 'string' ? req.query.endDate : undefined;
+    const data = await svcGetBdOverview(startDate, endDate);
+    return res.status(200).json(data);
+  } catch (error) {
+    console.error('getBdOverview error:', error);
+    return res.status(500).json({ message: 'Failed to load BD overview' });
   }
 };
