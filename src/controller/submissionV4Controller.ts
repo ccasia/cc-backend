@@ -3117,7 +3117,7 @@ export const updateSubmissionCaption = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Not a v4 submission' });
     }
 
-    if (!['PENDING_REVIEW', 'APPROVE_LINK'].includes(submission.status)) {
+    if (!['PENDING_REVIEW', 'APPROVE_LINK', 'CLIENT_FEEDBACK'].includes(submission.status)) {
       return res.status(400).json({ message: 'Caption can only be edited while the submission is under review' });
     }
 
