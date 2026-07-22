@@ -18,7 +18,6 @@ import { PrismaClient } from '@prisma/client';
 import { xero } from '@configs/xero';
 
 import { users } from '@utils/activeUsers';
-import { getIo } from '../config/socket';
 
 const prisma = new PrismaClient();
 
