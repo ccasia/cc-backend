@@ -10,6 +10,8 @@ import { saveCaptionToHistory } from '../utils/captionHistoryUtils';
 import { completeLogisticService } from '@services/logisticsService';
 import { selectCurrentAgreementSubmission } from '@utils/submissionAgreement';
 import { getIo } from '../config/socket';
+import { normalizePostingLinks, joinPostingLinksToContent } from '../utils/postingLinkValidation';
+import { scheduleUrlExtractionAndFetch } from './submissionV4Controller';
 
 const prisma = new PrismaClient();
 
@@ -591,7 +593,7 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
  * PUT /api/creator/submissions/v4/posting-link
  */
 export const updateMyPostingLink = async (req: Request, res: Response) => {
-  const { submissionId, postingLink } = req.body as PostingLinkUpdate;
+  const { submissionId, postingLinks } = req.body as PostingLinkUpdate;
   const creatorId = req.userId;
 
   try {
@@ -599,17 +601,19 @@ export const updateMyPostingLink = async (req: Request, res: Response) => {
       return res.status(401).json({ message: 'You are not logged in' });
     }
 
-    if (!submissionId || !postingLink) {
+    if (!submissionId || !postingLinks) {
       return res.status(400).json({
-        message: 'submissionId and postingLink are required',
+        message: 'submissionId and postingLinks are required',
       });
     }
 
-    // Validate URL format
+    let normalizedLinks: string[];
     try {
-      new URL(postingLink);
-    } catch {
-      return res.status(400).json({ message: 'Invalid posting link URL' });
+      normalizedLinks = normalizePostingLinks(postingLinks);
+    } catch (validationError) {
+      return res.status(400).json({
+        message: validationError instanceof Error ? validationError.message : 'Invalid posting links',
+      });
     }
 
     // Verify this submission belongs to the creator
@@ -644,7 +648,9 @@ export const updateMyPostingLink = async (req: Request, res: Response) => {
       });
     }
 
-    const result = await updatePostingLink(submissionId, postingLink); // Creator adding link - no adminId
+    const result = await updatePostingLink(submissionId, normalizedLinks);
+
+    scheduleUrlExtractionAndFetch(submissionId, joinPostingLinksToContent(normalizedLinks));
 
     // Emit socket event for real-time updates
 
@@ -652,13 +658,13 @@ export const updateMyPostingLink = async (req: Request, res: Response) => {
       getIo().to(submission.campaignId).emit('v4:posting:updated', {
         submissionId,
         campaignId: submission.campaignId,
-        postingLink,
+        postingLinks: normalizedLinks,
         updatedAt: new Date().toISOString(),
         creatorId,
       });
     }
 
-    console.log(`🔗 Creator ${creatorId} updated posting link for v4 submission ${submissionId}`);
+    console.log(`🔗 Creator ${creatorId} updated posting link(s) for v4 submission ${submissionId}`);
 
     res.status(200).json({
       message: 'Posting link updated successfully',

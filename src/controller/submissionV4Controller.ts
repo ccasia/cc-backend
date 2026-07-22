@@ -4,10 +4,17 @@ import {
   createV4SubmissionsForCreator,
   getV4Submissions,
   updatePostingLink,
+  addPostingLinkToPostedSubmission,
   submitV4Content,
   V4_ACTIVE_VIDEO_VERSIONS_LIMIT,
 } from '../service/submissionV4Service';
-import { V4SubmissionCreateData, PostingLinkUpdate, V4ContentSubmission } from '../types/submissionV4Types';
+import {
+  V4SubmissionCreateData,
+  PostingLinkUpdate,
+  PostingLinkAdd,
+  V4ContentSubmission,
+} from '../types/submissionV4Types';
+import { normalizePostingLinks, joinPostingLinksToContent } from '../utils/postingLinkValidation';
 import {
   getNextStatusAfterAdminAction,
   getNextStatusAfterClientAction,
@@ -51,7 +58,7 @@ const campaignFlowInclude = {
  * @param submissionId - Submission ID
  * @param content - Content that may contain URLs (e.g., posting link, caption)
  */
-function scheduleUrlExtractionAndFetch(submissionId: string, content: string | undefined): void {
+export function scheduleUrlExtractionAndFetch(submissionId: string, content: string | undefined): void {
   if (!content) {
     return; // No content to extract
   }
@@ -1289,29 +1296,31 @@ export const forwardClientFeedbackV4 = async (req: Request, res: Response) => {
  * PUT /api/submissions/v4/posting-link
  */
 export const updatePostingLinkController = async (req: Request, res: Response) => {
-  const { submissionId, postingLink } = req.body as PostingLinkUpdate;
+  const { submissionId, postingLinks } = req.body as PostingLinkUpdate;
   const currentUserId = req.userId;
 
   try {
-    if (!submissionId || !postingLink) {
+    if (!submissionId || !postingLinks) {
       return res.status(400).json({
-        message: 'submissionId and postingLink are required',
+        message: 'submissionId and postingLinks are required',
       });
     }
 
-    // Validate URL format
+    let normalizedLinks: string[];
     try {
-      new URL(postingLink);
-    } catch {
-      return res.status(400).json({ message: 'Invalid posting link URL' });
+      normalizedLinks = normalizePostingLinks(postingLinks);
+    } catch (validationError) {
+      return res.status(400).json({
+        message: validationError instanceof Error ? validationError.message : 'Invalid posting links',
+      });
     }
 
-    const result = await updatePostingLink(submissionId, postingLink, currentUserId);
+    const result = await updatePostingLink(submissionId, normalizedLinks, currentUserId);
 
-    console.log(`🔗 Posting link updated for v4 submission ${submissionId}`);
+    console.log(`🔗 Posting link(s) updated for v4 submission ${submissionId}`);
 
     // Schedule URL extraction and initial insight fetch (non-blocking)
-    scheduleUrlExtractionAndFetch(submissionId, postingLink);
+    scheduleUrlExtractionAndFetch(submissionId, joinPostingLinksToContent(normalizedLinks));
 
     res.status(200).json({
       message: 'Posting link updated successfully',
@@ -1334,6 +1343,65 @@ export const updatePostingLinkController = async (req: Request, res: Response) =
 
     res.status(500).json({
       message: 'Failed to update posting link',
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+};
+
+export const addPostingLinkToPostedSubmissionController = async (req: Request, res: Response) => {
+  const { submissionId, postingLink } = req.body as PostingLinkAdd;
+  const adminId = req.userId;
+
+  try {
+    if (!adminId) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
+    if (!submissionId || !postingLink) {
+      return res.status(400).json({
+        message: 'submissionId and postingLink are required',
+      });
+    }
+
+    const result = await addPostingLinkToPostedSubmission(submissionId, postingLink, adminId);
+
+    console.log(`🔗 Additional posting link added to POSTED v4 submission ${submissionId}`);
+
+    // Schedule URL extraction and initial insight fetch (non-blocking)
+    scheduleUrlExtractionAndFetch(submissionId, result.content ?? undefined);
+
+    if (getIo()) {
+      getIo().to(result.campaignId).emit('v4:posting:updated', {
+        submissionId,
+        submission: result,
+      });
+    }
+
+    res.status(200).json({
+      message: 'Posting link added successfully',
+      submission: result,
+    });
+  } catch (error) {
+    console.error('Error adding posting link to posted submission:', error);
+
+    if (error instanceof Error) {
+      if (error.message.includes('not found')) {
+        return res.status(404).json({ message: error.message });
+      }
+      if (
+        error.message.includes('Can only add') ||
+        error.message.includes('maximum') ||
+        error.message.includes('already been added') ||
+        error.message.includes('Invalid posting link') ||
+        error.message.includes('Not a v4') ||
+        error.message.includes('UGC')
+      ) {
+        return res.status(400).json({ message: error.message });
+      }
+    }
+
+    res.status(500).json({
+      message: 'Failed to add posting link',
       error: error instanceof Error ? error.message : 'Unknown error',
     });
   }
@@ -1413,15 +1481,17 @@ export const approvePostingLinkV4 = async (req: Request, res: Response) => {
     // Determine new status and content action
     let newStatus: string;
     let newContent: string | null;
+    let newVideos: string[] | undefined;
 
     switch (action) {
       case 'approve':
         newStatus = 'POSTED';
-        newContent = submission.content; // Keep the posting link
+        newContent = submission.content; // Keep the posting link(s)
         break;
       case 'reject':
         newStatus = 'REJECTED'; // Requires changes
-        newContent = null; // Clear the posting link
+        newContent = null; // Clear the posting link(s)
+        newVideos = []; // Clear posting links array too (reject is all-or-nothing)
         break;
       default:
         newStatus = submission.status;
@@ -1451,6 +1521,7 @@ export const approvePostingLinkV4 = async (req: Request, res: Response) => {
       data: {
         status: newStatus as SubmissionStatus,
         content: newContent,
+        ...(newVideos !== undefined && { videos: newVideos }),
         updatedAt: new Date(),
       },
     });
@@ -3112,7 +3183,7 @@ export const updateSubmissionCaption = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Not a v4 submission' });
     }
 
-    if (!['PENDING_REVIEW', 'APPROVE_LINK'].includes(submission.status)) {
+    if (!['PENDING_REVIEW', 'APPROVE_LINK', 'CLIENT_FEEDBACK'].includes(submission.status)) {
       return res.status(400).json({ message: 'Caption can only be edited while the submission is under review' });
     }
 
