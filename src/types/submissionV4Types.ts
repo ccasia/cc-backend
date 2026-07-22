@@ -35,6 +35,11 @@ export interface V4SubmissionResponse {
 
 export interface PostingLinkUpdate {
   submissionId: string;
+  postingLinks: string[];
+}
+
+export interface PostingLinkAdd {
+  submissionId: string;
   postingLink: string;
 }
 
