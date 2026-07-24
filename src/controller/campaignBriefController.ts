@@ -285,6 +285,7 @@ export const bdSubmitDraft = async (req: Request, res: Response) => {
       return tx.campaign.create({
         data: {
           name: brandName.trim(),
+          brandName: brandName.trim(),
           description,
           status: 'DRAFT',
           origin: 'CLIENT',
