@@ -8,6 +8,7 @@ const MAGIC_TOKEN_LENGTH = 32;
 
 const CLIENT_EDITABLE_FIELDS = new Set<string>([
   'brandName',
+  'campaignName',
   'industry',
   'dateFrom',
   'dateTo',
@@ -92,6 +93,7 @@ export const updateDraftBrief = async (briefId: string, patch: BriefUpdateInput,
     select: {
       id: true,
       name: true,
+      brandName: true,
       draftStatus: true,
       editedByClientFields: true,
       clientBriefSnapshot: true,
@@ -121,6 +123,9 @@ export const updateDraftBrief = async (briefId: string, patch: BriefUpdateInput,
     const snapshot = (current.clientBriefSnapshot || {}) as BriefSnapshot;
     const edited = new Set(current.editedByClientFields || []);
     for (const field of Object.keys(patch)) {
+      if ((field === 'campaignName' || field === 'brandName') && !String(patch[field] ?? '').trim()) {
+        continue;
+      }
       if (valuesEqual(patch[field], snapshot[field], field)) {
         edited.delete(field);
       } else {
@@ -142,6 +147,7 @@ export const updateDraftBrief = async (briefId: string, patch: BriefUpdateInput,
 // cc-frontend/src/sections/public-access/bd-brief-form.jsx.
 type CurrentBriefRecord = {
   name?: string | null;
+  brandName?: string | null;
   campaignBrief?: { id: string } | null;
   campaignRequirement?: { id: string } | null;
   campaignAdditionalDetails?: { specialNotesInstructions?: string | null } | null;
@@ -154,11 +160,9 @@ const mapBriefPatch = (patch: BriefUpdateInput, current?: CurrentBriefRecord): P
   const additionalDetailsData: Prisma.CampaignAdditionalDetailsUpdateWithoutCampaignInput = {};
 
   // ── Campaign-level fields ──────────────────────────────────────────────
-  if (typeof patch.brandName === 'string') out.name = patch.brandName;
+  if (typeof patch.campaignName === 'string' && patch.campaignName.trim()) out.name = patch.campaignName;
+  if (typeof patch.brandName === 'string' && patch.brandName.trim()) out.brandName = patch.brandName;
   if (typeof patch.extraNotes === 'string') out.description = patch.extraNotes;
-
-  // ── CampaignBrief fields ───────────────────────────────────────────────
-  if (typeof patch.brandName === 'string') briefData.title = patch.brandName;
   if (typeof patch.industry === 'string') briefData.industries = patch.industry;
   if (patch.dateFrom !== undefined) {
     briefData.postingStartDate = patch.dateFrom ? new Date(patch.dateFrom as string) : null;
@@ -234,7 +238,11 @@ const mapBriefPatch = (patch: BriefUpdateInput, current?: CurrentBriefRecord): P
     } else {
       const now = new Date();
       const briefCreate: Prisma.CampaignBriefCreateWithoutCampaignInput = {
-        title: typeof briefData.title === 'string' ? briefData.title : current?.name || 'Untitled Brief',
+        title:
+          (typeof briefData.title === 'string' ? briefData.title : '') ||
+          current?.name ||
+          current?.brandName ||
+          'Untitled Brief',
         startDate: (briefData.startDate as Date) || now,
         endDate: (briefData.endDate as Date) || now,
         images: [],
@@ -280,6 +288,7 @@ type BriefSnapshot = Record<string, unknown>;
 // snapshot values are directly comparable to incoming patch values.
 const buildBriefSnapshot = (brief: {
   name?: string | null;
+  brandName?: string | null;
   description?: string | null;
   campaignBrief?: {
     industries?: string | null;
@@ -316,7 +325,8 @@ const buildBriefSnapshot = (brief: {
   const combinedObjectives = brief.campaignBrief?.secondaryObjectives || [];
 
   return {
-    brandName: brief.name || '',
+    brandName: brief.brandName || brief.name || '',
+    campaignName: brief.name || '',
     industry: brief.campaignBrief?.industries || '',
     dateFrom: brief.campaignBrief?.postingStartDate
       ? new Date(brief.campaignBrief.postingStartDate).toISOString()
@@ -370,6 +380,7 @@ export const sendBriefToClient = async (briefId: string, clientName: string, cli
       id: true,
       draftStatus: true,
       name: true,
+      brandName: true,
       description: true,
       campaignBrief: {
         select: {
@@ -410,6 +421,7 @@ export const sendBriefToClient = async (briefId: string, clientName: string, cli
       clientMagicToken: magicToken,
       clientTokenExpiresAt: expiryFromNow(),
       sentToClientAt: new Date(),
+      ...(current.brandName ? {} : current.name ? { brandName: current.name } : {}),
       // (Re)snapshot the sent baseline. Reset the edited-field list so a resend
       // starts the client's review fresh against the current brief.
       clientBriefSnapshot: snapshot as Prisma.InputJsonValue,
@@ -448,6 +460,7 @@ export const snapshotPublicSubmission = async (briefId: string) => {
     select: {
       id: true,
       name: true,
+      brandName: true,
       description: true,
       campaignBrief: {
         select: {
@@ -897,6 +910,7 @@ export const listBriefs = async (user: Parameters<typeof classifyBriefRole>[0], 
       createdAt: true,
       sentToClientAt: true,
       approvedAt: true,
+      brandName: true,
       handedOverAt: true,
       clientMagicToken: true,
       clientTokenExpiresAt: true,
