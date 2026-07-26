@@ -9,6 +9,7 @@ import {
   approveV4SubmissionByClient,
   forwardClientFeedbackV4,
   approvePostingLinkV4,
+  addPostingLinkToPostedSubmissionController,
   approveIndividualContentV4,
   requestChangesIndividualContentV4,
   approveIndividualContentByClientV4,
@@ -84,6 +85,8 @@ router.put('/due-date', isAdmin, updateSubmissionDueDate);
 
 // Admin approve/reject posting link (admin action)
 router.post('/posting-link/approve', isAdmin, approvePostingLinkV4);
+
+router.post('/posting-link/add', isAdmin, addPostingLinkToPostedSubmissionController);
 
 // Individual content feedback endpoints (following v3 pattern)
 router.patch('/content/approve', isAdmin, approveIndividualContentV4);

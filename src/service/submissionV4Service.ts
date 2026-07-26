@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { V4SubmissionCreateData } from '../types/submissionV4Types';
 import { saveCaptionToHistory } from '../utils/captionHistoryUtils';
+import { MAX_POSTING_LINKS, joinPostingLinksToContent } from '../utils/postingLinkValidation';
 
 const prisma = new PrismaClient();
 
@@ -296,10 +297,7 @@ export const getV4Submissions = async (campaignId: string, userId?: string) => {
   }
 };
 
-/**
- * Update posting link for an approved submission
- */
-export const updatePostingLink = async (submissionId: string, postingLink: string, adminId?: string) => {
+export const updatePostingLink = async (submissionId: string, postingLinks: string[], adminId?: string) => {
   try {
     // Verify submission is approved and v4
     const submission = await prisma.submission.findUnique({
@@ -339,12 +337,11 @@ export const updatePostingLink = async (submissionId: string, postingLink: strin
       );
     }
 
-    // Update the posting link and mark it ready for posting-link approval.
-    // Track who added the posting link (admin or creator)
     const updatedSubmission = await prisma.submission.update({
       where: { id: submissionId },
       data: {
-        content: postingLink,
+        videos: postingLinks,
+        content: joinPostingLinksToContent(postingLinks),
         status: 'APPROVE_LINK',
         approvedByAdminId: adminId || null, // Track if admin added the link
         updatedAt: new Date(),
@@ -360,6 +357,78 @@ export const updatePostingLink = async (submissionId: string, postingLink: strin
     return updatedSubmission;
   } catch (error) {
     console.error('Error updating posting link:', error);
+    throw error;
+  }
+};
+
+export const addPostingLinkToPostedSubmission = async (submissionId: string, newLink: string, adminId: string) => {
+  try {
+    const submission = await prisma.submission.findUnique({
+      where: { id: submissionId },
+      include: {
+        submissionType: true,
+        campaign: {
+          select: { campaignType: true },
+        },
+      },
+    });
+
+    if (!submission) {
+      throw new Error('Submission not found');
+    }
+
+    if (submission.submissionVersion !== 'v4') {
+      throw new Error('Not a v4 submission');
+    }
+
+    if (submission.campaign?.campaignType === 'ugc') {
+      throw new Error('Posting links are not required for UGC (No posting) campaigns');
+    }
+
+    if (submission.status !== 'POSTED') {
+      throw new Error(`Can only add a link to a POSTED submission. Current status: ${submission.status}`);
+    }
+
+    const existingLinks = submission.videos ?? [];
+
+    if (existingLinks.length >= MAX_POSTING_LINKS) {
+      throw new Error(`This submission already has the maximum of ${MAX_POSTING_LINKS} posting links`);
+    }
+
+    const trimmed = newLink.trim();
+
+    try {
+      // eslint-disable-next-line no-new
+      new URL(trimmed);
+    } catch {
+      throw new Error('Invalid posting link URL');
+    }
+
+    if (existingLinks.includes(trimmed)) {
+      throw new Error('This posting link has already been added');
+    }
+
+    const updatedLinks = [...existingLinks, trimmed];
+
+    const updatedSubmission = await prisma.submission.update({
+      where: { id: submissionId },
+      data: {
+        videos: updatedLinks,
+        content: joinPostingLinksToContent(updatedLinks),
+        updatedAt: new Date(),
+        // status intentionally left unchanged (stays POSTED) — no approval step for this path
+      },
+      include: {
+        submissionType: true,
+        video: true,
+        photos: true,
+        rawFootages: true,
+      },
+    });
+
+    return updatedSubmission;
+  } catch (error) {
+    console.error('Error adding posting link to posted submission:', error);
     throw error;
   }
 };
