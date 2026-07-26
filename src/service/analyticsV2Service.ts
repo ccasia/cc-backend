@@ -3198,6 +3198,8 @@ interface CSMDetailCreatorRow {
   photo: string | null;
   campaignCount: number;
   campaignNames: string[];
+  instagramTierName: string | null;
+  tiktokTierName: string | null;
 }
 
 export const getCSMWorkloadDetailData = async (
@@ -3297,17 +3299,14 @@ export const getCSMWorkloadDetailData = async (
         ORDER BY c."createdAt" DESC
       `;
 
-  // Creator budget = campaignCredits * rate (mirrors cc-frontend/src/utils/campaign-budget.js), v4 campaigns only.
-  // "Spent" = sum of invoice amounts for that campaign, excluding invoices that never became a real financial
-  // commitment (draft / rejected / failed).
   const CAMPAIGN_BUDGET_RATE_PER_CREDIT = 300;
   const campaignIds = campaignRows.map((row) => row.campaignId);
   const spentRows = campaignIds.length
     ? await prisma.$queryRaw<{ campaignId: string; spent: number | null }[]>`
-        SELECT "campaignId", SUM(amount)::float AS spent
-        FROM "Invoice"
+        SELECT "campaignId", SUM(CAST(NULLIF(amount, '') AS numeric))::float AS spent
+        FROM "CreatorAgreement"
         WHERE "campaignId" IN (${Prisma.join(campaignIds)})
-          AND status NOT IN ('draft', 'rejected', 'failed')
+          AND "isSent" = true
         GROUP BY "campaignId"
       `
     : [];
@@ -3438,24 +3437,48 @@ export const getCSMWorkloadDetailData = async (
       campaigns: client.campaigns,
     }));
 
-  // Creators: distinct creators shortlisted across this CSM's campaigns
   const creatorRows = await prisma.$queryRaw<CSMDetailCreatorRow[]>`
     SELECT
       u.id                                     AS "userId",
       u.name                                    AS name,
       u."photoURL"                              AS photo,
       COUNT(DISTINCT slc."campaignId")::int     AS "campaignCount",
-      array_agg(DISTINCT cam.name)              AS "campaignNames"
+      array_agg(DISTINCT cam.name)              AS "campaignNames",
+      ig_tier.name                              AS "instagramTierName",
+      tt_tier.name                              AS "tiktokTierName"
     FROM "ShortListedCreator" slc
     INNER JOIN "Campaign"     cam ON cam.id = slc."campaignId"
     INNER JOIN "CampaignAdmin" ca ON ca."campaignId" = slc."campaignId"
     INNER JOIN "Admin"         a  ON a."userId" = ca."adminId"
     INNER JOIN "Role"          r  ON r.id = a."roleId"
     INNER JOIN "User"          u  ON u.id = slc."userId"
+    LEFT  JOIN "Creator"       c  ON c."userId" = u.id
+    LEFT  JOIN "InstagramUser" ig ON ig."creatorId" = c.id
+    LEFT  JOIN "TiktokUser"    tt ON tt."creatorId" = c.id
+    LEFT JOIN LATERAL (
+      SELECT ct.name
+      FROM "CreditTier" ct
+      WHERE ct."isActive" = true
+        AND ct."minFollowers" <= COALESCE(ig.followers_count, c."manualInstagramFollowerCount", 0)
+        AND COALESCE(ig.followers_count, c."manualInstagramFollowerCount", 0) > 0
+        AND (ct."maxFollowers" IS NULL OR ct."maxFollowers" >= COALESCE(ig.followers_count, c."manualInstagramFollowerCount", 0))
+      ORDER BY ct."minFollowers" DESC
+      LIMIT 1
+    ) ig_tier ON true
+    LEFT JOIN LATERAL (
+      SELECT ct.name
+      FROM "CreditTier" ct
+      WHERE ct."isActive" = true
+        AND ct."minFollowers" <= COALESCE(tt.follower_count, c."manualTiktokFollowerCount", 0)
+        AND COALESCE(tt.follower_count, c."manualTiktokFollowerCount", 0) > 0
+        AND (ct."maxFollowers" IS NULL OR ct."maxFollowers" >= COALESCE(tt.follower_count, c."manualTiktokFollowerCount", 0))
+      ORDER BY ct."minFollowers" DESC
+      LIMIT 1
+    ) tt_tier ON true
     WHERE ca."adminId" = ${adminUserId}
       AND r.name IN ('CSM', 'CSL')
       AND slc."userId" IS NOT NULL
-    GROUP BY u.id, u.name, u."photoURL"
+    GROUP BY u.id, u.name, u."photoURL", ig_tier.name, tt_tier.name
     ORDER BY u.name
   `;
 
@@ -3463,6 +3486,8 @@ export const getCSMWorkloadDetailData = async (
     userId: row.userId,
     name: row.name,
     photo: row.photo,
+    instagramTierName: row.instagramTierName || null,
+    tiktokTierName: row.tiktokTierName || null,
     campaignCount: Number(row.campaignCount) || 0,
     campaignNames: Array.isArray(row.campaignNames) ? row.campaignNames.filter(Boolean) : [],
   }));
@@ -3899,6 +3924,7 @@ export const getCSMWorkloadAttentionData = async (campaignIds: string[]) => {
   return {
     actionItems: {
       agreementsPendingReview,
+
       submissionsPendingReview,
       pitchesPendingReview,
       linksToApprove,
