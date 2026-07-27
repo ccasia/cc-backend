@@ -2710,7 +2710,7 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    console.log('Creator interests count:', user.creator?.interests?.length || 0);
+    const country = await getCountry(req.ip as string);
 
     let campaigns = await prisma.campaign.findMany({
       take: Number(take),
@@ -2735,6 +2735,15 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
               name: {
                 contains: search as string,
                 mode: 'insensitive',
+              },
+            }),
+          },
+          {
+            ...(country && {
+              campaignRequirement: {
+                countries: {
+                  hasSome: [country],
+                },
               },
             }),
           },
@@ -2786,7 +2795,6 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
     });
 
     const originalFetchedCount = campaigns.length;
-    console.log('Initial campaigns fetched from DB:', originalFetchedCount);
 
     if (campaigns?.length === 0) {
       console.log('No campaigns found in database');
@@ -2803,24 +2811,12 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
       return res.status(200).json(data);
     }
 
-    console.log('Campaign IDs fetched:', campaigns.map((c) => c.id).join(', '));
-    console.log('Campaign names:', campaigns.map((c) => c.name).join(', '));
-
     const beforeFilterCount = campaigns.length;
 
     campaigns = campaigns.filter((campaign) => {
       return campaign.status === 'ACTIVE';
     });
 
-    console.log(
-      '✅ After ACTIVE status filter:',
-      campaigns.length,
-      '(removed:',
-      beforeFilterCount - campaigns.length,
-      ')',
-    );
-
-    const country = await getCountry(req.ip as string);
     console.log('🌍 Detected country:', country);
     console.log('🔧 Environment:', process.env.NODE_ENV);
 
