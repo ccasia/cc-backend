@@ -3568,6 +3568,203 @@ export const getCSMWorkloadDetailData = async (
   };
 };
 
+interface CampaignsOverviewRow {
+  campaignId: string;
+  name: string;
+  status: string;
+  submissionVersion: string | null;
+  credits: number;
+  creditsUtilized: number;
+  creditsPending: number;
+  companyName: string | null;
+  csmName: string | null;
+}
+
+export const getCampaignsOverviewData = async (startDate?: Date, endDate?: Date) => {
+  const hasDateFilter = !!startDate && !!endDate;
+
+  const rows = hasDateFilter
+    ? await prisma.$queryRaw<CampaignsOverviewRow[]>`
+        SELECT
+          c.id                                   AS "campaignId",
+          c.name                                  AS name,
+          c.status::text                          AS status,
+          c."submissionVersion"                   AS "submissionVersion",
+          COALESCE(c."campaignCredits", 0)::int   AS credits,
+          COALESCE(c."creditsUtilized", 0)::int   AS "creditsUtilized",
+          COALESCE(c."creditsPending", 0)::int    AS "creditsPending",
+          comp.name                                AS "companyName",
+          csm.name                                 AS "csmName"
+        FROM "Campaign" c
+        LEFT JOIN "Company" comp ON comp.id = c."companyId"
+        LEFT JOIN LATERAL (
+          SELECT u2.name
+          FROM "CampaignAdmin" ca2
+          INNER JOIN "Admin" a2 ON a2."userId" = ca2."adminId"
+          INNER JOIN "Role"  r2 ON r2.id = a2."roleId"
+          INNER JOIN "User"  u2 ON u2.id = a2."userId"
+          WHERE ca2."campaignId" = c.id AND r2.name IN ('CSM', 'CSL')
+          ORDER BY u2.name
+          LIMIT 1
+        ) csm ON true
+        WHERE c."createdAt" >= ${startDate}
+          AND c."createdAt" <= ${endDate}
+        ORDER BY c."createdAt" DESC
+      `
+    : await prisma.$queryRaw<CampaignsOverviewRow[]>`
+        SELECT
+          c.id                                   AS "campaignId",
+          c.name                                  AS name,
+          c.status::text                          AS status,
+          c."submissionVersion"                   AS "submissionVersion",
+          COALESCE(c."campaignCredits", 0)::int   AS credits,
+          COALESCE(c."creditsUtilized", 0)::int   AS "creditsUtilized",
+          COALESCE(c."creditsPending", 0)::int    AS "creditsPending",
+          comp.name                                AS "companyName",
+          csm.name                                 AS "csmName"
+        FROM "Campaign" c
+        LEFT JOIN "Company" comp ON comp.id = c."companyId"
+        LEFT JOIN LATERAL (
+          SELECT u2.name
+          FROM "CampaignAdmin" ca2
+          INNER JOIN "Admin" a2 ON a2."userId" = ca2."adminId"
+          INNER JOIN "Role"  r2 ON r2.id = a2."roleId"
+          INNER JOIN "User"  u2 ON u2.id = a2."userId"
+          WHERE ca2."campaignId" = c.id AND r2.name IN ('CSM', 'CSL')
+          ORDER BY u2.name
+          LIMIT 1
+        ) csm ON true
+        ORDER BY c."createdAt" DESC
+      `;
+
+  const CAMPAIGN_BUDGET_RATE_PER_CREDIT = 300;
+  const campaignIds = rows.map((row) => row.campaignId);
+  const spentRows = campaignIds.length
+    ? await prisma.$queryRaw<{ campaignId: string; spent: number | null }[]>`
+        SELECT "campaignId", SUM(CAST(NULLIF(amount, '') AS numeric))::float AS spent
+        FROM "CreatorAgreement"
+        WHERE "campaignId" IN (${Prisma.join(campaignIds)})
+          AND "isSent" = true
+        GROUP BY "campaignId"
+      `
+    : [];
+  const spentMap = new Map(spentRows.map((row) => [row.campaignId, Number(row.spent) || 0]));
+
+  const campaigns = rows.map((row) => {
+    const credits = Number(row.credits) || 0;
+    const creditsUtilized = Number(row.creditsUtilized) || 0;
+    const creatorBudget =
+      row.submissionVersion === 'v4' && credits > 0 ? credits * CAMPAIGN_BUDGET_RATE_PER_CREDIT : null;
+    const creatorBudgetSpent = creatorBudget != null ? spentMap.get(row.campaignId) || 0 : null;
+    const creditsPct = credits > 0 ? Math.min(100, Math.round((creditsUtilized / credits) * 100)) : 0;
+    const budgetPct =
+      creatorBudget != null && creatorBudget > 0
+        ? Math.min(100, Math.round(((creatorBudgetSpent || 0) / creatorBudget) * 100))
+        : 0;
+
+    return {
+      campaignId: row.campaignId,
+      name: row.name,
+      status: row.status,
+      companyName: row.companyName || 'Unknown client',
+      csmName: row.csmName || null,
+      credits,
+      creditsUtilized,
+      creditsPending: Number(row.creditsPending) || 0,
+      creatorBudget,
+      creatorBudgetSpent,
+      completionPct: Math.max(creditsPct, budgetPct),
+    };
+  });
+
+  // Worst (lowest overall completion) first, so CSMs can spot stalled campaigns.
+  campaigns.sort((a, b) => a.completionPct - b.completionPct);
+
+  const counts = {
+    total: campaigns.length,
+    active: campaigns.filter((c) => c.status === 'ACTIVE').length,
+    completed: campaigns.filter((c) => c.status === 'COMPLETED').length,
+  };
+
+  return { campaigns, counts };
+};
+
+interface ClientsOverviewRow {
+  companyId: string;
+  name: string;
+  logo: string | null;
+  creditsUsed: number;
+  totalCredits: number | null;
+  expiredAt: Date;
+  subscriptionStatus: string;
+  packageName: string | null;
+  isDemo: boolean;
+}
+
+export const getClientsOverviewData = async () => {
+  const rows = await prisma.$queryRaw<ClientsOverviewRow[]>`
+    WITH latest_sub AS (
+      SELECT DISTINCT ON (s."companyId") s.*
+      FROM "Subscription" s
+      WHERE s."companyId" IS NOT NULL
+      ORDER BY s."companyId", s."createdAt" DESC
+    )
+    SELECT
+      comp.id                                 AS "companyId",
+      comp.name                                AS name,
+      comp.logo                                AS logo,
+      ls."creditsUsed"                         AS "creditsUsed",
+      ls."totalCredits"                        AS "totalCredits",
+      ls."expiredAt"                           AS "expiredAt",
+      ls.status::text                          AS "subscriptionStatus",
+      COALESCE(pkg.name, cpkg."customName")    AS "packageName",
+      EXISTS (
+        SELECT 1 FROM "Client" cl WHERE cl."companyId" = comp.id AND cl."clientType" = 'demoClient'
+      )                                        AS "isDemo"
+    FROM "Company" comp
+    INNER JOIN latest_sub ls ON ls."companyId" = comp.id
+    LEFT JOIN "Package"       pkg  ON pkg.id  = ls."packageId"
+    LEFT JOIN "CustomPackage" cpkg ON cpkg.id = ls."customPackageId"
+    ORDER BY (ls.status = 'ACTIVE') DESC, ls."expiredAt" DESC
+  `;
+
+  const CAMPAIGN_BUDGET_RATE_PER_CREDIT = 300;
+  const companyIds = rows.map((row) => row.companyId);
+  const spentRows = companyIds.length
+    ? await prisma.$queryRaw<{ companyId: string; spent: number | null }[]>`
+        SELECT comp.id AS "companyId", SUM(CAST(NULLIF(ca.amount, '') AS numeric))::float AS spent
+        FROM "CreatorAgreement" ca
+        INNER JOIN "Campaign" c ON c.id = ca."campaignId"
+        INNER JOIN "Company" comp ON comp.id = c."companyId"
+        WHERE ca."isSent" = true
+          AND comp.id IN (${Prisma.join(companyIds)})
+        GROUP BY comp.id
+      `
+    : [];
+  const spentMap = new Map(spentRows.map((row) => [row.companyId, Number(row.spent) || 0]));
+
+  const clients = rows.map((row) => {
+    const totalCredits = Number(row.totalCredits) || 0;
+    const creditsUsed = Number(row.creditsUsed) || 0;
+    const creatorBudget = totalCredits * CAMPAIGN_BUDGET_RATE_PER_CREDIT;
+    const creatorBudgetSpent = spentMap.get(row.companyId) || 0;
+
+    return {
+      companyId: row.companyId,
+      name: row.name,
+      logo: row.logo,
+      isDemo: row.isDemo,
+      packageName: row.packageName,
+      subscriptionStatus: row.subscriptionStatus,
+      expiredAt: row.expiredAt,
+      ugcCredits: { used: creditsUsed, total: totalCredits },
+      creatorBudget: { spent: creatorBudgetSpent, total: creatorBudget },
+    };
+  });
+
+  return { clients, total: clients.length };
+};
+
 interface CSMAttentionRejectionRow {
   campaignId: string;
   campaignName: string;
