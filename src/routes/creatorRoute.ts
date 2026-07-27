@@ -55,8 +55,8 @@ router.get('/exportCreators', authenticate, isSuperAdmin, exportCreatorsToSheet)
 
 router.post('/createKanban', createKanban);
 router.post('/createCreator', createCampaignCreator);
-router.post('/markMediaKitMandatory', isSuperAdmin, markMediaKitMandatory);
-router.post('/unmarkMediaKitMandatory', isSuperAdmin, unmarkMediaKitMandatory);
+router.post('/markMediaKitMandatory', authenticate, isSuperAdmin, markMediaKitMandatory);
+router.post('/unmarkMediaKitMandatory', authenticate, isSuperAdmin, unmarkMediaKitMandatory);
 
 router.patch('/updateSocialMediaUsername', authenticate, updateSocialMedia);
 router.patch('/update-creator', authenticate, updateCreator);
