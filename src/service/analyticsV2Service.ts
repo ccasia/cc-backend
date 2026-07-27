@@ -3701,7 +3701,12 @@ interface ClientsOverviewRow {
   isDemo: boolean;
 }
 
-export const getClientsOverviewData = async () => {
+export const getClientsOverviewData = async (startDate?: Date, endDate?: Date) => {
+  const hasDateFilter = !!startDate && !!endDate;
+  const dateFilterSql = hasDateFilter
+    ? Prisma.sql`WHERE ls."createdAt" >= ${startDate} AND ls."createdAt" <= ${endDate}`
+    : Prisma.empty;
+
   const rows = await prisma.$queryRaw<ClientsOverviewRow[]>`
     WITH latest_sub AS (
       SELECT DISTINCT ON (s."companyId") s.*
@@ -3725,6 +3730,7 @@ export const getClientsOverviewData = async () => {
     INNER JOIN latest_sub ls ON ls."companyId" = comp.id
     LEFT JOIN "Package"       pkg  ON pkg.id  = ls."packageId"
     LEFT JOIN "CustomPackage" cpkg ON cpkg.id = ls."customPackageId"
+    ${dateFilterSql}
     ORDER BY (ls.status = 'ACTIVE') DESC, ls."expiredAt" DESC
   `;
 

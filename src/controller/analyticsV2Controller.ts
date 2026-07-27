@@ -529,7 +529,11 @@ export const getCampaignsOverview = async (req: Request, res: Response) => {
 
 export const getClientsOverview = async (req: Request, res: Response) => {
   try {
-    const data = await getClientsOverviewData();
+    const parsed = parseOptionalDateRange(req);
+    if ('error' in parsed) return res.status(parsed.error.status).json(parsed.error.body);
+    const { startDate, endDate } = parsed;
+
+    const data = await getClientsOverviewData(startDate, endDate);
     return res.status(200).json({ success: true, data });
   } catch (error: any) {
     console.error('Error fetching clients overview data:', error);
