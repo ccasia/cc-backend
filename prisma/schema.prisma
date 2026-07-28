@@ -800,6 +800,7 @@ model Campaign {
 
   // BD-authored brief flow (Campaign Brief lifecycle before activation)
   draftStatus          CampaignDraftStatus?
+  onHoldAt             DateTime?
   draftOrigin          CampaignDraftOrigin?
   briefOwnerId         String?
   brandName            String?
@@ -812,7 +813,7 @@ model Campaign {
   // Lost Deal tracking
   lostAmount   Float?
   lostCurrency String?
-  lostReason   String? @db.Text
+  lostReason   String?   @db.Text
   lostAt       DateTime?
 
   // Won Deal tracking (BD dashboard) — deal value snapshotted at handover, from
@@ -826,6 +827,7 @@ model Campaign {
   sentToClientAt      DateTime?
   approvedAt          DateTime?
   handedOverAt        DateTime?
+  onHoldAt            DateTime?
 
   publishedAt DateTime?
   completedAt DateTime?
