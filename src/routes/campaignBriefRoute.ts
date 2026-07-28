@@ -30,6 +30,7 @@ import {
   approveBriefPublic,
   lostBrief,
   getBdOverview,
+  holdBrief,
 } from '@controllers/campaignBriefController';
 import { authenticate } from '../middleware/authenticate';
 
@@ -86,6 +87,7 @@ router.post('/:id/attachments', authenticate, isBdOrSuperadmin, uploadBriefAttac
 router.delete('/:id/attachments', authenticate, isBdOrSuperadmin, deleteBriefAttachment);
 router.delete('/:id', authenticate, isBdOrSuperadmin, deleteBrief);
 router.post('/:id/lost', authenticate, isBdOrSuperadmin, lostBrief);
+router.post('/:id/hold', authenticate, isBdOrSuperadmin, holdBrief);
 
 // --- Public (magic-link) client review/edit/approve endpoints ---
 router.get('/public/:magicToken', publicLookupLimiter, getBriefPublic);

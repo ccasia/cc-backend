@@ -416,6 +416,7 @@ export const sendBriefToClient = async (briefId: string, clientName: string, cli
     where: { id: briefId },
     data: {
       draftStatus: 'SENT_TO_CLIENT',
+      onHoldAt: null,
       clientName,
       clientEmail,
       clientMagicToken: magicToken,
@@ -444,6 +445,7 @@ export const approveBriefByBd = async (briefId: string) => {
     where: { id: current.id },
     data: {
       draftStatus: 'APPROVED',
+      onHoldAt: null,
       approvedAt: new Date(),
     },
   });
@@ -528,6 +530,7 @@ export const approveBriefByClient = async (magicToken: string) => {
     where: { id: current.id },
     data: {
       draftStatus: 'APPROVED',
+      onHoldAt: null,
       approvedAt: new Date(),
       // Token stays valid so BD can still view what the client saw, but the
       // approve action is single-shot via the state machine.
@@ -573,6 +576,7 @@ export const handoverBrief = async (
       data: {
         campaignId: campaignCode,
         draftStatus: 'HANDED_OVER',
+        onHoldAt: null,
         status: 'PENDING_ADMIN_ACTIVATION',
         clientPackage,
         internalComments: internalComments ?? null,
@@ -664,6 +668,7 @@ export const assignCsmToBrief = async (briefId: string, csmUserIds: string[], in
         data: {
           campaignId: campaignCode,
           draftStatus: 'HANDED_OVER',
+          onHoldAt: null,
           status: 'PENDING_ADMIN_ACTIVATION',
           clientPackage: current.company?.name || current.brand?.name || null,
           internalComments: internalComments ?? null,
@@ -756,6 +761,7 @@ export const finalizeOwnBrief = async (
       data: {
         campaignId: campaignCode,
         draftStatus: 'HANDED_OVER',
+        onHoldAt: null,
         status: 'PENDING_ADMIN_ACTIVATION',
         clientPackage: current.company?.name || current.brand?.name || null,
         internalComments: internalComments ?? null,
@@ -906,6 +912,7 @@ export const listBriefs = async (user: Parameters<typeof classifyBriefRole>[0], 
       // stuck on the draft's HANDED_OVER badge.
       status: true,
       draftOrigin: true,
+      onHoldAt: true,
       briefOwnerId: true,
       createdAt: true,
       sentToClientAt: true,
@@ -1166,11 +1173,32 @@ export const lostBrief = async (briefId: string, lostAmount: number, lostCurrenc
     where: { id: briefId },
     data: {
       draftStatus: 'LOST',
+      onHoldAt: null,
       lostAmount,
       lostCurrency,
       lostReason,
       lostAt: new Date(),
     },
+  });
+};
+
+const HOLDABLE_STATUS: CampaignDraftStatus[] = ['DRAFTED', 'SENT_TO_CLIENT', 'APPROVED'];
+
+export const setBriefHold = async (briefId: string, onHold: boolean) => {
+  const current = await prisma.campaign.findUnique({
+    where: { id: briefId },
+    select: { id: true, draftStatus: true, onHoldAt: true },
+  });
+
+  if (!current || !current.draftStatus) throw new Error('Brief not found');
+
+  if (onHold && !HOLDABLE_STATUS.includes(current.draftStatus))
+    throw new Error(`Cannot hold a brief in status ${current.draftStatus}`);
+
+  return prisma.campaign.update({
+    where: { id: briefId },
+    data: { onHoldAt: onHold ? new Date() : null },
+    select: { id: true, draftStatus: true, onHoldAt: true },
   });
 };
 
@@ -1274,9 +1302,7 @@ export const getBdOverview = async (startDate?: string, endDate?: string) => {
   // to the User table so they still resolve to a real name.
   const ownerIds = [
     ...new Set(
-      [...sentRows, ...wonRows, ...lostRows, ...pendingRows]
-        .map((r) => r.briefOwnerId)
-        .filter((v): v is string => !!v)
+      [...sentRows, ...wonRows, ...lostRows, ...pendingRows].map((r) => r.briefOwnerId).filter((v): v is string => !!v),
     ),
   ];
   const missingIds = ownerIds.filter((id) => !nameById.has(id));
@@ -1356,10 +1382,7 @@ export const getBdOverview = async (startDate?: string, endDate?: string) => {
     .filter((p) => p.sent || p.pending || p.converted || p.lost)
     // Actual BD members lead the table; other brief authors (CSM/CSL/superadmin)
     // follow, each still ranked by conversions.
-    .sort(
-      (a, b) =>
-        Number(b.isBd) - Number(a.isBd) || b.converted - a.converted || b.sent - a.sent
-    );
+    .sort((a, b) => Number(b.isBd) - Number(a.isBd) || b.converted - a.converted || b.sent - a.sent);
 
   const currencies = new Set<string>([DEFAULT_CURRENCY, 'SGD']);
   people.forEach((p) => Object.keys(p.value).forEach((c) => currencies.add(c)));

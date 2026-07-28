@@ -28,6 +28,7 @@ import {
   getBdDashboard as svcGetBdDashboard,
   BRIEF_ATTACHMENT_MAX,
   getBdOverview as svcGetBdOverview,
+  setBriefHold as svcSetBriefHold,
 } from '@services/campaignBriefService';
 
 const prisma = new PrismaClient();
@@ -856,6 +857,29 @@ export const lostBrief = async (req: Request, res: Response) => {
       return res.status(400).json({ message: error.message });
     }
     return res.status(500).json({ message: 'Failed to mark brief as lost' });
+  }
+};
+
+// POST /briefs/:id/hold   body: { onHold: boolean }
+export const holdBrief = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { onHold } = req.body || {};
+
+  if (typeof onHold !== 'boolean') return res.status(400).json({ message: 'onHold (boolean) is required' });
+
+  try {
+    const updated = await svcSetBriefHold(id, onHold);
+    return res.status(200).json({
+      id: updated.id,
+      draftStatus: updated.draftStatus,
+      onHoldAt: updated.onHoldAt,
+    });
+  } catch (error) {
+    console.error('holdBrief error:', error);
+    if (/not found|cannot hold/i.test(error?.message || '')) {
+      return res.status(400).json({ message: error.message });
+    }
+    return res.status(500).json({ message: 'Failed to update brief hold status' });
   }
 };
 
