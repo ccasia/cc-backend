@@ -1262,11 +1262,25 @@ export const getBdOverview = async (startDate?: string, endDate?: string) => {
     where: { draftStatus: 'LOST', ...(lostDateWhere || {}) },
   });
 
+  const onHoldCount = await prisma.campaign.count({
+    where: { draftStatus: { not: null }, onHoldAt: { not: null } },
+  });
+
+  const onHoldByStage = await prisma.campaign.groupBy({
+    by: ['draftStatus'],
+    where: { draftStatus: { not: null }, onHoldAt: { not: null } },
+    _count: { _all: true },
+  });
+
+  const heldIn = (status: CampaignDraftStatus) =>
+    onHoldByStage.filter((g) => g.draftStatus === status).reduce((s, g) => s + g._count._all, 0);
+  const activeStageCount = (status: CampaignDraftStatus) => stageCount(status) - heldIn(status);
+
   const pipeline = [
-    { key: 'DRAFTED', label: 'Drafted', count: stageCount('DRAFTED') },
-    { key: 'SENT_TO_CLIENT', label: 'Sent', count: stageCount('SENT_TO_CLIENT') },
-    { key: 'PENDING_REVIEW', label: 'Pending', count: stageCount('PENDING_REVIEW') },
-    { key: 'APPROVED', label: 'Approved', count: stageCount('APPROVED') },
+    { key: 'DRAFTED', label: 'Drafted', count: activeStageCount('DRAFTED') },
+    { key: 'SENT_TO_CLIENT', label: 'Sent', count: activeStageCount('SENT_TO_CLIENT') },
+    { key: 'APPROVED', label: 'Approved', count: activeStageCount('APPROVED') },
+    { key: 'ON_HOLD', label: 'On hold', count: onHoldCount },
     { key: 'HANDED_OVER', label: 'Handed over', count: handedOverTotal - handedOverActive },
     { key: 'ACTIVE', label: 'Active', count: handedOverActive },
     { key: 'LOST', label: 'Lost', count: lostSnapshotCount },
@@ -1293,8 +1307,8 @@ export const getBdOverview = async (startDate?: string, endDate?: string) => {
     select: { briefOwnerId: true, lostAmount: true, lostCurrency: true },
   });
 
-  const pendingRows = await prisma.campaign.findMany({
-    where: { draftStatus: 'PENDING_REVIEW' },
+  const onHoldRows = await prisma.campaign.findMany({
+    where: { draftStatus: { not: null }, onHoldAt: { not: null } },
     select: { briefOwnerId: true },
   });
 
@@ -1302,7 +1316,7 @@ export const getBdOverview = async (startDate?: string, endDate?: string) => {
   // to the User table so they still resolve to a real name.
   const ownerIds = [
     ...new Set(
-      [...sentRows, ...wonRows, ...lostRows, ...pendingRows].map((r) => r.briefOwnerId).filter((v): v is string => !!v),
+      [...sentRows, ...wonRows, ...lostRows, ...onHoldRows].map((r) => r.briefOwnerId).filter((v): v is string => !!v),
     ),
   ];
   const missingIds = ownerIds.filter((id) => !nameById.has(id));
@@ -1326,7 +1340,7 @@ export const getBdOverview = async (startDate?: string, endDate?: string) => {
     role: string | null;
     isBd: boolean;
     sent: number;
-    pending: number;
+    onHold: number;
     converted: number;
     lost: number;
     convRate: number | null;
@@ -1344,7 +1358,7 @@ export const getBdOverview = async (startDate?: string, endDate?: string) => {
         role: roleById.get(id) || null,
         isBd: isBdById.get(id) ?? false,
         sent: 0,
-        pending: 0,
+        onHold: 0,
         converted: 0,
         lost: 0,
         convRate: null,
@@ -1363,8 +1377,8 @@ export const getBdOverview = async (startDate?: string, endDate?: string) => {
   sentRows.forEach((r) => {
     ensure(r.briefOwnerId).sent += 1;
   });
-  pendingRows.forEach((r) => {
-    ensure(r.briefOwnerId).pending += 1;
+  onHoldRows.forEach((r) => {
+    ensure(r.briefOwnerId).onHold += 1;
   });
   wonRows.forEach((r) => {
     const p = ensure(r.briefOwnerId);
@@ -1379,7 +1393,7 @@ export const getBdOverview = async (startDate?: string, endDate?: string) => {
 
   const people = Array.from(byUser.values())
     .map((p) => ({ ...p, convRate: p.sent > 0 ? p.converted / p.sent : null }))
-    .filter((p) => p.sent || p.pending || p.converted || p.lost)
+    .filter((p) => p.sent || p.onHold || p.converted || p.lost)
     // Actual BD members lead the table; other brief authors (CSM/CSL/superadmin)
     // follow, each still ranked by conversions.
     .sort((a, b) => Number(b.isBd) - Number(a.isBd) || b.converted - a.converted || b.sent - a.sent);
