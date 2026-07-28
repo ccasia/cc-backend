@@ -800,7 +800,6 @@ model Campaign {
 
   // BD-authored brief flow (Campaign Brief lifecycle before activation)
   draftStatus          CampaignDraftStatus?
-  onHoldAt             DateTime?
   draftOrigin          CampaignDraftOrigin?
   briefOwnerId         String?
   brandName            String?
