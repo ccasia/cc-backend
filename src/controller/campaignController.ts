@@ -7157,9 +7157,6 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
       selectedPlatform,
       followerCount,
     } = JSON.parse(req.body.data);
-    // const normalizedPlatform = normalizePlatform(selectedPlatform);
-
-    console.log('Received update data:', { paymentAmount, currency, campaignId, agreementId, isNew, credits });
 
     const creator = await prisma.user.findUnique({
       where: {
@@ -7193,11 +7190,12 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Campaign not found' });
     }
 
-    const isCreditTierCampaign = campaign.isCreditTier === true;
-    const isGuestCreator = creator.creator?.isGuest === true;
+    const isCreditTierCampaign = campaign.isCreditTier;
+    const isGuestCreator = creator.creator?.isGuest;
 
     // Get current agreement amount for comparison
     let currentAgreement = null;
+
     if (isNew) {
       // For V3: Find by userId and campaignId
       currentAgreement = await prisma.creatorAgreement.findUnique({
@@ -7224,6 +7222,9 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
         },
       },
     });
+
+    if (!currentShortlisted) return res.status(401).json({ message: 'Creator is not shortlisted' });
+
     const currentPitch = await prisma.pitch.findUnique({
       where: {
         userId_campaignId: {
@@ -7245,10 +7246,12 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
 
     // Get admin info for logging and follower authorization.
     const adminId = req.userId;
+
     const admin = await prisma.user.findUnique({
       where: { id: adminId },
       select: { name: true, role: true },
     });
+
     const resolvedFollower = resolveAgreementFollowerCount({
       actorRole: admin?.role,
       requestedFollowerCount: followerCount,
@@ -7257,12 +7260,15 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
       pitch: currentPitch,
       creator: creator.creator,
     });
+
     const effectiveFollowerCount = resolvedFollower.followerCount;
+
     const { shortlistData: shortlistFollowerData, pitchData: pitchFollowerData } = buildAgreementFollowerSnapshot(
       effectiveFollowerCount,
       { platformChanged },
     );
     const adminName = admin?.name || 'Admin';
+
     const creatorName = creator.name || 'Creator';
 
     // Determine if credits/videos are being updated
@@ -7586,8 +7592,6 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
       }
     }
 
-    console.log('Updated agreement:', updatedAgreement);
-
     return res.status(200).json({
       message: 'Agreement updated successfully',
       agreement: updatedAgreement,
@@ -7804,6 +7808,7 @@ export const sendAgreement = async (req: Request, res: Response) => {
         campaignCredits: true,
         submissionVersion: true,
         isCreditTier: true,
+        campaignType: true,
       },
     });
 
@@ -7907,7 +7912,11 @@ export const sendAgreement = async (req: Request, res: Response) => {
     }
 
     if (!isGuestCreator) {
-      videoCount = Math.floor(Number(credits ?? shortlistedCreator.ugcVideos ?? 0));
+      videoCount =
+        campaign.campaignType === 'seeding_campaign'
+          ? 1
+          : Math.floor(Number(credits ?? shortlistedCreator.ugcVideos ?? 0));
+
       if (!Number.isFinite(videoCount) || videoCount <= 0) {
         return res.status(400).json({
           message: 'Number of videos must be provided before sending this agreement.',

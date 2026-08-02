@@ -1815,17 +1815,23 @@ model Crawler {
 }
 
 model AgreementTemplate {
-  id            String     @id @unique @default(cuid())
-  url           String?
-  adminName     String?
-  adminICNumber String?
-  signURL       String?
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
-  userId        String?
-  user          User?      @relation(fields: [userId], references: [id])
-  isDefault     Boolean?   @default(false)
-  campaign      Campaign[]
+  id                    String                 @id @unique @default(cuid())
+  url                   String?
+  adminName             String?
+  adminICNumber         String?
+  signURL               String?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  userId                String?
+  user                  User?                  @relation(fields: [userId], references: [id])
+  isDefault             Boolean?               @default(false)
+  agreementTemplateType AgreementTemplateType?
+  campaign              Campaign[]
+}
+
+enum AgreementTemplateType {
+  seedingCampaign
+  surfSharkCampaign
 }
 
 model Bugs {

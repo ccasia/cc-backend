@@ -39,7 +39,6 @@ import dayjs from 'dayjs';
 import passport from 'passport';
 
 import amqplib from 'amqplib';
-import { model } from './scripts/ai';
 
 import crypto from 'crypto';
 
