@@ -112,6 +112,13 @@ model User {
   refreshTokens  RefreshToken[]
   uploadSessions UploadSession[]
 
+  treasureHuntClaims       TreasureHuntClaim[]
+  xpTransactions           XpTransaction[]
+  xpBalance                UserXpBalance?
+  createdTreasureHunts     TreasureHunt[]         @relation("TreasureHuntCreatedBy")
+  updatedTreasureHunts     TreasureHunt[]         @relation("TreasureHuntUpdatedBy")
+  treasureHuntAuditActions TreasureHuntAuditLog[]
+
   isPhoneVerified Boolean @default(false)
 }
 
@@ -2701,4 +2708,170 @@ enum UploadStatus {
   COMPRESSION_FAILED
   COMPLETED // compressed file uploaded, Video row created
   FAILED
+}
+
+model TreasureHunt {
+  id               String              @id @default(cuid())
+  eventKey         String              @unique @default("FIND_CIPTA") @db.VarChar(50)
+  title            String              @db.VarChar(255)
+  description      String              @db.Text
+  heroArtworkUrl   String?             @db.VarChar(2048)
+  startsAt         DateTime
+  endsAt           DateTime
+  rewardXp         Int                 @default(50)
+  status           TreasureHuntStatus  @default(DRAFT)
+  featuredSlot     Int?                @unique
+  publishedAt      DateTime?
+  pausedAt         DateTime?
+  archivedAt       DateTime?
+  createdById      String
+  updatedById      String?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  createdBy        User                @relation("TreasureHuntCreatedBy", fields: [createdById], references: [id])
+  updatedBy        User?               @relation("TreasureHuntUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  locations        TreasureHuntLocation[]
+  auditLogs        TreasureHuntAuditLog[]
+
+  @@index([status, startsAt, endsAt])
+  @@index([createdAt])
+}
+
+model TreasureHuntLocation {
+  id                    String                        @id @default(cuid())
+  huntId                String
+  name                  String                        @db.VarChar(255)
+  hint                  String                        @db.Text
+  sortOrder             Int
+  artworkUrl            String                        @db.VarChar(2048)
+  isEnabled             Boolean                       @default(true)
+  publicTokenHash       String?                       @unique @db.VarChar(64)
+  publicTokenCiphertext String?                       @db.Text
+  tokenIssuedAt         DateTime?
+  tokenVersion          Int                           @default(0)
+  createdAt             DateTime                      @default(now())
+  updatedAt             DateTime                      @updatedAt
+  hunt                  TreasureHunt                  @relation(fields: [huntId], references: [id], onDelete: Cascade)
+  bitlyPublication      TreasureHuntBitlyPublication?
+  claims                TreasureHuntClaim[]
+  auditLogs             TreasureHuntAuditLog[]
+
+  @@unique([huntId, sortOrder])
+  @@index([huntId, isEnabled, sortOrder])
+}
+
+model TreasureHuntBitlyPublication {
+  id                    String                   @id @default(cuid())
+  locationId            String                   @unique
+  status                BitlyPublicationStatus   @default(NOT_STARTED)
+  bitlinkId             String?                  @unique @db.VarChar(255)
+  bitlinkUrl            String?                  @unique @db.VarChar(2048)
+  qrCodeId              String?                  @unique @db.VarChar(255)
+  qrImageUrl            String?                  @db.VarChar(2048)
+  rawScanCount          Int                      @default(0)
+  analyticsSource       String?                  @db.VarChar(100)
+  lastAnalyticsSyncedAt DateTime?
+  lastAttemptAt         DateTime?
+  nextRetryAt           DateTime?
+  lastErrorCode         String?                  @db.VarChar(100)
+  lastErrorMessage      String?                  @db.Text
+  leaseId               String?                  @db.VarChar(64)
+  leaseExpiresAt        DateTime?
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
+  location              TreasureHuntLocation     @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@index([status, nextRetryAt])
+  @@index([leaseExpiresAt])
+}
+
+model TreasureHuntClaim {
+  id         String                   @id @default(cuid())
+  userId     String
+  locationId String
+  source     TreasureHuntClaimSource
+  claimedAt  DateTime                 @default(now())
+  user       User                     @relation(fields: [userId], references: [id])
+  location   TreasureHuntLocation     @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  capture    TreasureHuntCapture?
+
+  @@unique([userId, locationId])
+  @@index([userId, claimedAt])
+  @@index([locationId, claimedAt])
+}
+
+model TreasureHuntCapture {
+  id          String              @id @default(cuid())
+  claimId     String              @unique
+  objectPath  String              @unique @db.VarChar(2048)
+  contentType String              @db.VarChar(100)
+  byteSize    Int
+  sha256      String              @db.VarChar(64)
+  width       Int
+  height      Int
+  createdAt   DateTime            @default(now())
+  claim       TreasureHuntClaim   @relation(fields: [claimId], references: [id], onDelete: Cascade)
+}
+
+model XpTransaction {
+  id         String        @id @default(cuid())
+  userId     String
+  amount     Int
+  sourceType XpSourceType
+  sourceId   String
+  metadata   Json?
+  createdAt  DateTime      @default(now())
+  user       User          @relation(fields: [userId], references: [id])
+
+  @@unique([sourceType, sourceId])
+  @@index([userId, createdAt])
+}
+
+model UserXpBalance {
+  userId    String   @id
+  total     Int      @default(0)
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model TreasureHuntAuditLog {
+  id          String                @id @default(cuid())
+  huntId      String?
+  locationId  String?
+  actorUserId String
+  action      String                @db.VarChar(100)
+  metadata    Json?
+  requestId   String?               @db.VarChar(255)
+  createdAt   DateTime              @default(now())
+  hunt        TreasureHunt?         @relation(fields: [huntId], references: [id], onDelete: SetNull)
+  location    TreasureHuntLocation? @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  actor       User                  @relation(fields: [actorUserId], references: [id])
+
+  @@index([huntId, createdAt])
+  @@index([actorUserId, createdAt])
+}
+
+enum TreasureHuntStatus {
+  DRAFT
+  PUBLISHED
+  PAUSED
+  ARCHIVED
+}
+
+enum TreasureHuntClaimSource {
+  IN_APP_CAMERA
+  EXTERNAL_LINK
+}
+
+enum BitlyPublicationStatus {
+  NOT_STARTED
+  BITLINK_CREATED
+  QR_CREATED
+  READY
+  RATE_LIMITED
+  FAILED
+}
+
+enum XpSourceType {
+  HUNT_LOCATION_CLAIM
 }
