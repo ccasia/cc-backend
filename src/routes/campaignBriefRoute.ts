@@ -10,6 +10,7 @@ import {
   // BD-authored brief flow
   createBrief,
   listBriefs,
+  getBdDashboard,
   getBrief,
   patchBrief,
   sendBriefToClient,
@@ -28,6 +29,8 @@ import {
   patchBriefPublic,
   approveBriefPublic,
   lostBrief,
+  getBdOverview,
+  holdBrief,
 } from '@controllers/campaignBriefController';
 import { authenticate } from '../middleware/authenticate';
 
@@ -67,6 +70,8 @@ router.post('/invite/public/:token/submit', publicSubmitLimiter, bdSubmitDraft);
 // --- New BD-authored brief flow ---
 router.post('/', authenticate, isBdOrSuperadmin, createBrief);
 router.get('/', authenticate, isBdOrSuperadmin, listBriefs);
+router.get('/bd-dashboard', authenticate, isBdOrSuperadmin, getBdDashboard);
+router.get('/bd-overview', authenticate, isBdOrSuperadmin, getBdOverview);
 router.get('/:id', authenticate, isBdOrSuperadmin, getBrief);
 router.patch('/:id', authenticate, isBdOrSuperadmin, patchBrief);
 router.post('/:id/send', authenticate, isBdOrSuperadmin, sendBriefToClient);
@@ -82,6 +87,7 @@ router.post('/:id/attachments', authenticate, isBdOrSuperadmin, uploadBriefAttac
 router.delete('/:id/attachments', authenticate, isBdOrSuperadmin, deleteBriefAttachment);
 router.delete('/:id', authenticate, isBdOrSuperadmin, deleteBrief);
 router.post('/:id/lost', authenticate, isBdOrSuperadmin, lostBrief);
+router.post('/:id/hold', authenticate, isBdOrSuperadmin, holdBrief);
 
 // --- Public (magic-link) client review/edit/approve endpoints ---
 router.get('/public/:magicToken', publicLookupLimiter, getBriefPublic);

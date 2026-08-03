@@ -24,6 +24,9 @@ import {
   getClientRejectionRate,
   getCreditsPerCS,
   getCSMWorkload,
+  getCSMWorkloadDetail,
+  getCampaignsOverview,
+  getClientsOverview,
   getRejectionReasons,
   getRequireChangesRate,
   getTopShortlistedCreators,
@@ -65,6 +68,9 @@ router.get('/avg-submission-response/details', authenticate, isSuperAdmin, getAv
 router.get('/client-rejection-rate', authenticate, isSuperAdmin, getClientRejectionRate);
 router.get('/credits-per-cs', authenticate, isSuperAdmin, getCreditsPerCS);
 router.get('/csm-workload', authenticate, isSalesAndMarketing, getCSMWorkload);
+router.get('/csm-workload/:adminUserId', authenticate, isSalesAndMarketing, getCSMWorkloadDetail);
+router.get('/campaigns-overview', authenticate, isSuperAdmin, getCampaignsOverview);
+router.get('/clients-overview', authenticate, isSuperAdmin, getClientsOverview);
 router.get('/rejection-reasons', authenticate, isSuperAdmin, getRejectionReasons);
 router.get('/require-changes-rate', authenticate, isSuperAdmin, getRequireChangesRate);
 router.get('/top-shortlisted-creators', authenticate, isSuperAdmin, getTopShortlistedCreators);

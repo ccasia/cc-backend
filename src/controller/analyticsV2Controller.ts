@@ -27,6 +27,9 @@ import {
   getClientRejectionRateData,
   getCreditsPerCSData,
   getCSMWorkloadData,
+  getCSMWorkloadDetailData,
+  getCampaignsOverviewData,
+  getClientsOverviewData,
   getRejectionReasonsData,
   getRequireChangesRateData,
   getTopShortlistedCreatorsData,
@@ -490,6 +493,51 @@ export const getCSMWorkload = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Error fetching CSM workload data:', error);
     return res.status(500).json({ success: false, message: 'Failed to fetch CSM workload data' });
+  }
+};
+
+export const getCSMWorkloadDetail = async (req: Request, res: Response) => {
+  try {
+    const { adminUserId } = req.params;
+    const parsed = parseOptionalDateRange(req);
+    if ('error' in parsed) return res.status(parsed.error.status).json(parsed.error.body);
+    const { startDate, endDate } = parsed;
+
+    const data = await getCSMWorkloadDetailData(adminUserId, startDate, endDate);
+    if (!data) return res.status(404).json({ success: false, message: 'CSM not found' });
+
+    return res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    console.error('Error fetching CSM workload detail data:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch CSM workload detail data' });
+  }
+};
+
+export const getCampaignsOverview = async (req: Request, res: Response) => {
+  try {
+    const parsed = parseOptionalDateRange(req);
+    if ('error' in parsed) return res.status(parsed.error.status).json(parsed.error.body);
+    const { startDate, endDate } = parsed;
+
+    const data = await getCampaignsOverviewData(startDate, endDate);
+    return res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    console.error('Error fetching campaigns overview data:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch campaigns overview data' });
+  }
+};
+
+export const getClientsOverview = async (req: Request, res: Response) => {
+  try {
+    const parsed = parseOptionalDateRange(req);
+    if ('error' in parsed) return res.status(parsed.error.status).json(parsed.error.body);
+    const { startDate, endDate } = parsed;
+
+    const data = await getClientsOverviewData(startDate, endDate);
+    return res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    console.error('Error fetching clients overview data:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch clients overview data' });
   }
 };
 
