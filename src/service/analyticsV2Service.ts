@@ -3105,10 +3105,9 @@ export const getCSMWorkloadData = async (startDate?: Date, endDate?: Date) => {
           COUNT(DISTINCT c.id) FILTER (WHERE c.status = 'COMPLETED')                  AS "completedCampaigns",
           COUNT(DISTINCT c."companyId") FILTER (WHERE c.status = 'ACTIVE')            AS "activeClients",
           COALESCE(SUM(cc.creator_count) FILTER (WHERE c.status = 'ACTIVE'), 0)::int  AS "activeCreators",
-          -- Credit tracking is only reliable for v4 campaigns; non-v4 credit accounting is excluded
-          COALESCE(SUM(c."campaignCredits") FILTER (WHERE c."submissionVersion" = 'v4'), 0)::int AS "totalCredits",
-          COALESCE(SUM(c."creditsPending")  FILTER (WHERE c."submissionVersion" = 'v4'), 0)::int AS "pendingCredits",
-          COALESCE(SUM(c."creditsUtilized") FILTER (WHERE c."submissionVersion" = 'v4'), 0)::int AS "utilisedCredits"
+          COALESCE(SUM(c."campaignCredits"), 0)::int AS "totalCredits",
+          COALESCE(SUM(c."creditsPending"),  0)::int AS "pendingCredits",
+          COALESCE(SUM(c."creditsUtilized"), 0)::int AS "utilisedCredits"
         FROM "CampaignAdmin" ca
         INNER JOIN "Admin"    a  ON a."userId"      = ca."adminId"
         INNER JOIN "Role"     r  ON r.id            = a."roleId"
@@ -3116,8 +3115,9 @@ export const getCSMWorkloadData = async (startDate?: Date, endDate?: Date) => {
         INNER JOIN "Campaign" c  ON c.id            = ca."campaignId"
         LEFT  JOIN campaign_creators cc ON cc."campaignId" = c.id
         WHERE r.name IN ('CSM', 'CSL')
-          AND c."createdAt" >= ${startDate}
+          AND c."submissionVersion" = 'v4'
           AND c."createdAt" <= ${endDate}
+          AND (c."completedAt" IS NULL OR c."completedAt" >= ${startDate})
         GROUP BY a."userId", u.name, u.email, u."photoURL", r.name
         ORDER BY u.name
       `
@@ -3138,10 +3138,9 @@ export const getCSMWorkloadData = async (startDate?: Date, endDate?: Date) => {
           COUNT(DISTINCT c.id) FILTER (WHERE c.status = 'COMPLETED')                  AS "completedCampaigns",
           COUNT(DISTINCT c."companyId") FILTER (WHERE c.status = 'ACTIVE')            AS "activeClients",
           COALESCE(SUM(cc.creator_count) FILTER (WHERE c.status = 'ACTIVE'), 0)::int  AS "activeCreators",
-          -- Credit tracking is only reliable for v4 campaigns; non-v4 credit accounting is excluded
-          COALESCE(SUM(c."campaignCredits") FILTER (WHERE c."submissionVersion" = 'v4'), 0)::int AS "totalCredits",
-          COALESCE(SUM(c."creditsPending")  FILTER (WHERE c."submissionVersion" = 'v4'), 0)::int AS "pendingCredits",
-          COALESCE(SUM(c."creditsUtilized") FILTER (WHERE c."submissionVersion" = 'v4'), 0)::int AS "utilisedCredits"
+          COALESCE(SUM(c."campaignCredits"), 0)::int AS "totalCredits",
+          COALESCE(SUM(c."creditsPending"),  0)::int AS "pendingCredits",
+          COALESCE(SUM(c."creditsUtilized"), 0)::int AS "utilisedCredits"
         FROM "CampaignAdmin" ca
         INNER JOIN "Admin"    a  ON a."userId"      = ca."adminId"
         INNER JOIN "Role"     r  ON r.id            = a."roleId"
@@ -3149,6 +3148,7 @@ export const getCSMWorkloadData = async (startDate?: Date, endDate?: Date) => {
         INNER JOIN "Campaign" c  ON c.id            = ca."campaignId"
         LEFT  JOIN campaign_creators cc ON cc."campaignId" = c.id
         WHERE r.name IN ('CSM', 'CSL')
+          AND c."submissionVersion" = 'v4'
         GROUP BY a."userId", u.name, u.email, u."photoURL", r.name
         ORDER BY u.name
       `;
@@ -3258,8 +3258,9 @@ export const getCSMWorkloadDetailData = async (
         LEFT  JOIN "CustomPackage"  cpkg ON cpkg.id = sub."customPackageId"
         WHERE ca."adminId" = ${adminUserId}
           AND r.name IN ('CSM', 'CSL')
-          AND c."createdAt" >= ${startDate}
+          AND c."submissionVersion" = 'v4'
           AND c."createdAt" <= ${endDate}
+          AND (c."completedAt" IS NULL OR c."completedAt" >= ${startDate})
         ORDER BY c."createdAt" DESC
       `
     : await prisma.$queryRaw<CSMDetailCampaignRow[]>`
@@ -3296,6 +3297,7 @@ export const getCSMWorkloadDetailData = async (
         LEFT  JOIN "CustomPackage"  cpkg ON cpkg.id = sub."customPackageId"
         WHERE ca."adminId" = ${adminUserId}
           AND r.name IN ('CSM', 'CSL')
+          AND c."submissionVersion" = 'v4'
         ORDER BY c."createdAt" DESC
       `;
 
@@ -3374,6 +3376,7 @@ export const getCSMWorkloadDetailData = async (
         LEFT  JOIN "Package"      pkg  ON pkg.id   = sub."packageId"
         LEFT  JOIN "CustomPackage" cpkg ON cpkg.id = sub."customPackageId"
         WHERE c."companyId" IN (${Prisma.join(companyIds)})
+          AND c."submissionVersion" = 'v4'
         ORDER BY c."createdAt" DESC
       `
     : [];
@@ -3505,6 +3508,7 @@ export const getCSMWorkloadDetailData = async (
       WHERE ca."isSent" = true
         AND ca."completedAt" IS NOT NULL
         AND st.type = 'AGREEMENT_FORM'
+        AND s."submissionVersion" = 'v4'
         AND s."submissionDate" IS NOT NULL
         AND EXTRACT(EPOCH FROM (s."submissionDate" - ca."completedAt")) > 0
         AND cadm."adminId" = ${adminUserId}
@@ -3520,6 +3524,7 @@ export const getCSMWorkloadDetailData = async (
         WHERE ca."isSent" = true
           AND ca."completedAt" IS NOT NULL
           AND st.type = 'FIRST_DRAFT'
+          AND s."submissionVersion" = 'v4'
           AND s."submissionDate" IS NOT NULL
           AND EXTRACT(EPOCH FROM (s."submissionDate" - ca."completedAt")) > 0
 
@@ -3607,8 +3612,9 @@ export const getCampaignsOverviewData = async (startDate?: Date, endDate?: Date)
           ORDER BY u2.name
           LIMIT 1
         ) csm ON true
-        WHERE c."createdAt" >= ${startDate}
+        WHERE c."submissionVersion" = 'v4'
           AND c."createdAt" <= ${endDate}
+          AND (c."completedAt" IS NULL OR c."completedAt" >= ${startDate})
         ORDER BY c."createdAt" DESC
       `
     : await prisma.$queryRaw<CampaignsOverviewRow[]>`
@@ -3634,6 +3640,7 @@ export const getCampaignsOverviewData = async (startDate?: Date, endDate?: Date)
           ORDER BY u2.name
           LIMIT 1
         ) csm ON true
+        WHERE c."submissionVersion" = 'v4'
         ORDER BY c."createdAt" DESC
       `;
 
@@ -3743,6 +3750,7 @@ export const getClientsOverviewData = async (startDate?: Date, endDate?: Date) =
         INNER JOIN "Campaign" c ON c.id = ca."campaignId"
         INNER JOIN "Company" comp ON comp.id = c."companyId"
         WHERE ca."isSent" = true
+          AND c."submissionVersion" = 'v4'
           AND comp.id IN (${Prisma.join(companyIds)})
         GROUP BY comp.id
       `

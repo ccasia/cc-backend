@@ -142,7 +142,9 @@ export const getDashboardStats = async (req: Request, res: Response) => {
     const isFiltered = assignedIds !== null;
 
     const ids = assignedIds as string[];
-    const campaignWhere = isFiltered ? { id: { in: ids } } : {};
+    // Opt-in filter: the superadmin dashboard only reports on v4 campaigns.
+    const versionWhere = req.query.version === 'v4' ? { submissionVersion: 'v4' as const } : {};
+    const campaignWhere = { ...(isFiltered && { id: { in: ids } }), ...versionWhere };
     const pitchCampaignFilter = isFiltered ? { campaignId: { in: ids } } : {};
 
     const [
