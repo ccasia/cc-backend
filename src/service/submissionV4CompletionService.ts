@@ -268,7 +268,7 @@ export const handleV4CompletedCampaign = async (
 
     const campaign = await prisma.campaign.findUnique({ where: { id: campaignId }, select: { campaignType: true } });
 
-    const isSeedingCampaign = campaign?.campaignType === 'seeding_campaign';
+    const isSeedingCampaign = campaign?.campaignType === 'seedingCampaign';
 
     // Check if already processed to prevent duplicates
     if (creatorData.isCampaignDone) {

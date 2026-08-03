@@ -7913,7 +7913,7 @@ export const sendAgreement = async (req: Request, res: Response) => {
 
     if (!isGuestCreator) {
       videoCount =
-        campaign.campaignType === 'seeding_campaign'
+        campaign.campaignType === 'seedingCampaign'
           ? 1
           : Math.floor(Number(credits ?? shortlistedCreator.ugcVideos ?? 0));
 
