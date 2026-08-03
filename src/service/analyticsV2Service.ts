@@ -3302,22 +3302,36 @@ export const getCSMWorkloadDetailData = async (
   const CAMPAIGN_BUDGET_RATE_PER_CREDIT = 300;
   const campaignIds = campaignRows.map((row) => row.campaignId);
   const spentRows = campaignIds.length
-    ? await prisma.$queryRaw<{ campaignId: string; spent: number | null }[]>`
-        SELECT "campaignId", SUM(CAST(NULLIF(amount, '') AS numeric))::float AS spent
+    ? await prisma.$queryRaw<{ campaignId: string; currency: string | null; spent: number | null }[]>`
+        SELECT "campaignId", currency, SUM(CAST(NULLIF(amount, '') AS numeric))::float AS spent
         FROM "CreatorAgreement"
         WHERE "campaignId" IN (${Prisma.join(campaignIds)})
           AND "isSent" = true
-        GROUP BY "campaignId"
+        GROUP BY "campaignId", currency
       `
     : [];
-  const spentMap = new Map(spentRows.map((row) => [row.campaignId, Number(row.spent) || 0]));
+  // Cap is always MYR-denominated (credits x rate), so only MYR spend can be plotted
+  // against it. Spend booked in other currencies is surfaced separately rather than
+  // silently summed in or dropped.
+  const spentMyrMap = new Map<string, number>();
+  const spentOtherMap = new Map<string, { currency: string; amount: number }[]>();
+  spentRows.forEach((row) => {
+    const amount = Number(row.spent) || 0;
+    const currency = (row.currency || 'MYR').toUpperCase();
+    if (currency === 'MYR') {
+      spentMyrMap.set(row.campaignId, (spentMyrMap.get(row.campaignId) || 0) + amount);
+    } else {
+      const list = spentOtherMap.get(row.campaignId) || [];
+      list.push({ currency, amount });
+      spentOtherMap.set(row.campaignId, list);
+    }
+  });
 
   const campaigns = campaignRows.map((row) => {
     const imgs = Array.isArray(row.campaignImages) ? row.campaignImages : [];
     const campaignImage = imgs.length > 0 && typeof imgs[0] === 'string' ? imgs[0] : null;
     const credits = Number(row.credits) || 0;
-    const creatorBudget =
-      row.submissionVersion === 'v4' && credits > 0 ? credits * CAMPAIGN_BUDGET_RATE_PER_CREDIT : null;
+    const creatorBudget = credits > 0 ? credits * CAMPAIGN_BUDGET_RATE_PER_CREDIT : null;
     return {
       campaignId: row.campaignId,
       name: row.campaignName,
@@ -3332,7 +3346,8 @@ export const getCSMWorkloadDetailData = async (
       campaignImage,
       creatorCount: Number(row.creatorCount) || 0,
       creatorBudget,
-      creatorBudgetSpent: creatorBudget != null ? spentMap.get(row.campaignId) || 0 : null,
+      creatorBudgetSpent: spentMyrMap.get(row.campaignId) || 0,
+      creatorBudgetSpentOther: spentOtherMap.get(row.campaignId) || [],
       subscriptionExpiredAt: row.subscriptionExpiredAt,
       packageName: row.packageName,
     };
@@ -3566,6 +3581,244 @@ export const getCSMWorkloadDetailData = async (
     stats,
     attention,
   };
+};
+
+interface CampaignsOverviewRow {
+  campaignId: string;
+  name: string;
+  status: string;
+  submissionVersion: string | null;
+  credits: number;
+  creditsUtilized: number;
+  creditsPending: number;
+  companyName: string | null;
+  csmName: string | null;
+}
+
+export const getCampaignsOverviewData = async (startDate?: Date, endDate?: Date) => {
+  const hasDateFilter = !!startDate && !!endDate;
+
+  const rows = hasDateFilter
+    ? await prisma.$queryRaw<CampaignsOverviewRow[]>`
+        SELECT
+          c.id                                   AS "campaignId",
+          c.name                                  AS name,
+          c.status::text                          AS status,
+          c."submissionVersion"                   AS "submissionVersion",
+          COALESCE(c."campaignCredits", 0)::int   AS credits,
+          COALESCE(c."creditsUtilized", 0)::int   AS "creditsUtilized",
+          COALESCE(c."creditsPending", 0)::int    AS "creditsPending",
+          comp.name                                AS "companyName",
+          csm.name                                 AS "csmName"
+        FROM "Campaign" c
+        LEFT JOIN "Company" comp ON comp.id = c."companyId"
+        LEFT JOIN LATERAL (
+          SELECT u2.name
+          FROM "CampaignAdmin" ca2
+          INNER JOIN "Admin" a2 ON a2."userId" = ca2."adminId"
+          INNER JOIN "Role"  r2 ON r2.id = a2."roleId"
+          INNER JOIN "User"  u2 ON u2.id = a2."userId"
+          WHERE ca2."campaignId" = c.id AND r2.name IN ('CSM', 'CSL')
+          ORDER BY u2.name
+          LIMIT 1
+        ) csm ON true
+        WHERE c."submissionVersion" = 'v4'
+          AND c."createdAt" <= ${endDate}
+          AND (c."completedAt" IS NULL OR c."completedAt" >= ${startDate})
+        ORDER BY c."createdAt" DESC
+      `
+    : await prisma.$queryRaw<CampaignsOverviewRow[]>`
+        SELECT
+          c.id                                   AS "campaignId",
+          c.name                                  AS name,
+          c.status::text                          AS status,
+          c."submissionVersion"                   AS "submissionVersion",
+          COALESCE(c."campaignCredits", 0)::int   AS credits,
+          COALESCE(c."creditsUtilized", 0)::int   AS "creditsUtilized",
+          COALESCE(c."creditsPending", 0)::int    AS "creditsPending",
+          comp.name                                AS "companyName",
+          csm.name                                 AS "csmName"
+        FROM "Campaign" c
+        LEFT JOIN "Company" comp ON comp.id = c."companyId"
+        LEFT JOIN LATERAL (
+          SELECT u2.name
+          FROM "CampaignAdmin" ca2
+          INNER JOIN "Admin" a2 ON a2."userId" = ca2."adminId"
+          INNER JOIN "Role"  r2 ON r2.id = a2."roleId"
+          INNER JOIN "User"  u2 ON u2.id = a2."userId"
+          WHERE ca2."campaignId" = c.id AND r2.name IN ('CSM', 'CSL')
+          ORDER BY u2.name
+          LIMIT 1
+        ) csm ON true
+        WHERE c."submissionVersion" = 'v4'
+        ORDER BY c."createdAt" DESC
+      `;
+
+  const CAMPAIGN_BUDGET_RATE_PER_CREDIT = 300;
+  const campaignIds = rows.map((row) => row.campaignId);
+  const spentRows = campaignIds.length
+    ? await prisma.$queryRaw<{ campaignId: string; currency: string | null; spent: number | null }[]>`
+        SELECT "campaignId", currency, SUM(CAST(NULLIF(amount, '') AS numeric))::float AS spent
+        FROM "CreatorAgreement"
+        WHERE "campaignId" IN (${Prisma.join(campaignIds)})
+          AND "isSent" = true
+        GROUP BY "campaignId", currency
+      `
+    : [];
+  // Cap is always MYR-denominated (credits x rate), so only MYR spend can be plotted
+  // against it. Spend booked in other currencies is surfaced separately rather than
+  // silently summed in or dropped.
+  const spentMyrMap = new Map<string, number>();
+  const spentOtherMap = new Map<string, { currency: string; amount: number }[]>();
+  spentRows.forEach((row) => {
+    const amount = Number(row.spent) || 0;
+    const currency = (row.currency || 'MYR').toUpperCase();
+    if (currency === 'MYR') {
+      spentMyrMap.set(row.campaignId, (spentMyrMap.get(row.campaignId) || 0) + amount);
+    } else {
+      const list = spentOtherMap.get(row.campaignId) || [];
+      list.push({ currency, amount });
+      spentOtherMap.set(row.campaignId, list);
+    }
+  });
+
+  const campaigns = rows.map((row) => {
+    const credits = Number(row.credits) || 0;
+    const creditsUtilized = Number(row.creditsUtilized) || 0;
+    const creatorBudget = credits > 0 ? credits * CAMPAIGN_BUDGET_RATE_PER_CREDIT : null;
+    const creatorBudgetSpent = spentMyrMap.get(row.campaignId) || 0;
+    const creatorBudgetSpentOther = spentOtherMap.get(row.campaignId) || [];
+    const creditsPct = credits > 0 ? Math.min(100, Math.round((creditsUtilized / credits) * 100)) : 0;
+    const budgetPct =
+      creatorBudget != null && creatorBudget > 0
+        ? Math.min(100, Math.round((creatorBudgetSpent / creatorBudget) * 100))
+        : 0;
+
+    return {
+      campaignId: row.campaignId,
+      name: row.name,
+      status: row.status,
+      companyName: row.companyName || 'Unknown client',
+      csmName: row.csmName || null,
+      credits,
+      creditsUtilized,
+      creditsPending: Number(row.creditsPending) || 0,
+      creatorBudget,
+      creatorBudgetSpent,
+      creatorBudgetSpentOther,
+      completionPct: Math.max(creditsPct, budgetPct),
+    };
+  });
+
+  // Worst (lowest overall completion) first, so CSMs can spot stalled campaigns.
+  campaigns.sort((a, b) => a.completionPct - b.completionPct);
+
+  const counts = {
+    total: campaigns.length,
+    active: campaigns.filter((c) => c.status === 'ACTIVE').length,
+    completed: campaigns.filter((c) => c.status === 'COMPLETED').length,
+  };
+
+  return { campaigns, counts };
+};
+
+interface ClientsOverviewRow {
+  companyId: string;
+  name: string;
+  logo: string | null;
+  creditsUsed: number;
+  totalCredits: number | null;
+  expiredAt: Date;
+  subscriptionStatus: string;
+  packageName: string | null;
+  isDemo: boolean;
+}
+
+export const getClientsOverviewData = async (startDate?: Date, endDate?: Date) => {
+  const hasDateFilter = !!startDate && !!endDate;
+  const dateFilterSql = hasDateFilter
+    ? Prisma.sql`WHERE ls."createdAt" >= ${startDate} AND ls."createdAt" <= ${endDate}`
+    : Prisma.empty;
+
+  const rows = await prisma.$queryRaw<ClientsOverviewRow[]>`
+    WITH latest_sub AS (
+      SELECT DISTINCT ON (s."companyId") s.*
+      FROM "Subscription" s
+      WHERE s."companyId" IS NOT NULL
+      ORDER BY s."companyId", s."createdAt" DESC
+    )
+    SELECT
+      comp.id                                 AS "companyId",
+      comp.name                                AS name,
+      comp.logo                                AS logo,
+      ls."creditsUsed"                         AS "creditsUsed",
+      ls."totalCredits"                        AS "totalCredits",
+      ls."expiredAt"                           AS "expiredAt",
+      ls.status::text                          AS "subscriptionStatus",
+      COALESCE(pkg.name, cpkg."customName")    AS "packageName",
+      EXISTS (
+        SELECT 1 FROM "Client" cl WHERE cl."companyId" = comp.id AND cl."clientType" = 'demoClient'
+      )                                        AS "isDemo"
+    FROM "Company" comp
+    INNER JOIN latest_sub ls ON ls."companyId" = comp.id
+    LEFT JOIN "Package"       pkg  ON pkg.id  = ls."packageId"
+    LEFT JOIN "CustomPackage" cpkg ON cpkg.id = ls."customPackageId"
+    ${dateFilterSql}
+    ORDER BY (ls.status = 'ACTIVE') DESC, ls."expiredAt" DESC
+  `;
+
+  const CAMPAIGN_BUDGET_RATE_PER_CREDIT = 300;
+  const companyIds = rows.map((row) => row.companyId);
+  const spentRows = companyIds.length
+    ? await prisma.$queryRaw<{ companyId: string; currency: string | null; spent: number | null }[]>`
+        SELECT comp.id AS "companyId", ca.currency, SUM(CAST(NULLIF(ca.amount, '') AS numeric))::float AS spent
+        FROM "CreatorAgreement" ca
+        INNER JOIN "Campaign" c ON c.id = ca."campaignId"
+        INNER JOIN "Company" comp ON comp.id = c."companyId"
+        WHERE ca."isSent" = true
+          AND c."submissionVersion" = 'v4'
+          AND comp.id IN (${Prisma.join(companyIds)})
+        GROUP BY comp.id, ca.currency
+      `
+    : [];
+  // Cap is always MYR-denominated (credits x rate), so only MYR spend can be plotted
+  // against it. Spend booked in other currencies is surfaced separately rather than
+  // silently summed in or dropped.
+  const spentMyrMap = new Map<string, number>();
+  const spentOtherMap = new Map<string, { currency: string; amount: number }[]>();
+  spentRows.forEach((row) => {
+    const amount = Number(row.spent) || 0;
+    const currency = (row.currency || 'MYR').toUpperCase();
+    if (currency === 'MYR') {
+      spentMyrMap.set(row.companyId, (spentMyrMap.get(row.companyId) || 0) + amount);
+    } else {
+      const list = spentOtherMap.get(row.companyId) || [];
+      list.push({ currency, amount });
+      spentOtherMap.set(row.companyId, list);
+    }
+  });
+
+  const clients = rows.map((row) => {
+    const totalCredits = Number(row.totalCredits) || 0;
+    const creditsUsed = Number(row.creditsUsed) || 0;
+    const creatorBudget = totalCredits * CAMPAIGN_BUDGET_RATE_PER_CREDIT;
+    const creatorBudgetSpent = spentMyrMap.get(row.companyId) || 0;
+    const creatorBudgetSpentOther = spentOtherMap.get(row.companyId) || [];
+
+    return {
+      companyId: row.companyId,
+      name: row.name,
+      logo: row.logo,
+      isDemo: row.isDemo,
+      packageName: row.packageName,
+      subscriptionStatus: row.subscriptionStatus,
+      expiredAt: row.expiredAt,
+      ugcCredits: { used: creditsUsed, total: totalCredits },
+      creatorBudget: { spent: creatorBudgetSpent, total: creatorBudget, spentOther: creatorBudgetSpentOther },
+    };
+  });
+
+  return { clients, total: clients.length };
 };
 
 interface CSMAttentionRejectionRow {
