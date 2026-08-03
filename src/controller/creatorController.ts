@@ -3,7 +3,7 @@ import https from 'https';
 import { Entity, PrismaClient } from '@prisma/client';
 import { uploadAgreementForm, uploadProfileImage } from '@configs/cloudStorage.config';
 import { Title, saveNotification } from './notificationController';
-import { clients, io } from '../server';
+
 import { updateInvoices } from '@services/invoiceService';
 import { exportCreatorsToSpreadsheet, exportMediaKitStatusToSpreadsheet } from '@services/creatorsSpreadsheetService';
 import { createKanbanBoard } from './kanbanController';
@@ -520,6 +520,7 @@ export const getMobileMediaKit = async (req: Request, res: Response) => {
                 view_count: true,
                 comments_count: true,
                 caption: true,
+                permalink: true,
               },
             },
           },
@@ -666,8 +667,6 @@ export const getCreatorFullInfoByIdPublic = async (req: Request, res: Response) 
 export const updatePaymentForm = async (req: Request, res: Response) => {
   const { bankName, bankAccName, bankNumber, icPassportNumber, countryOfBank }: any = req.body;
   const userId = req.userId;
-
-  console.log(req.body);
 
   try {
     const existingPaymentForm = await prisma.paymentForm.findFirst({

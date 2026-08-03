@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { Entity, PrismaClient } from '@prisma/client';
 import { time } from 'console';
 import { Title, saveNotification } from './notificationController';
-import { clients, io } from '../server';
+import { clients, getIo } from '../config/socket';
 
 const prisma = new PrismaClient();
 
@@ -78,7 +78,7 @@ export const updateOrCreateDefaultTimeline = async (req: Request, res: Response)
           message: 'Default Timeline Is Updated',
           entity: 'Timeline',
         });
-        io.to(clients.get(admin.id)).emit('notification', data);
+        getIo().to(clients.get(admin.id)).emit('notification', data);
       }),
     );
     return res.status(200).json({ message: 'Successfully updated' });

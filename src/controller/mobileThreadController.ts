@@ -10,7 +10,8 @@ import {
 } from '@services/threadService';
 import { CHAT_DOC_ALLOWED_MIMES, CHAT_DOC_MAX_SIZE } from '@constants/chatFileTypes';
 import { getLinkPreviewForUrl } from '@services/linkPreviewService';
-import { io } from '../server';
+
+import { getIo } from '../config/socket';
 
 const prisma = new PrismaClient();
 
@@ -282,7 +283,7 @@ export const markThreadSeen = async (req: Request, res: Response) => {
     }
 
     const result = await markMessagesService(threadId, userId);
-    io.to(threadId).emit('messagesSeen', result);
+    getIo().to(threadId).emit('messagesSeen', result);
     return res.status(200).json(result);
   } catch (error) {
     console.error('mobile markThreadSeen error:', error);

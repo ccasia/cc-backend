@@ -30,7 +30,7 @@ import {
 import { batchRequests } from '@helper/batchRequests';
 import crypto from 'crypto';
 import connection from '../config/redis';
-import { clients, io } from '../server';
+import { clients, getIo } from '../config/socket';
 
 // Type definitions
 export interface UrlData {
@@ -371,7 +371,7 @@ export const instagramMobileCallback = async (req: Request, res: Response) => {
 
     const creatorSocketId = clients.get(userId);
     if (creatorSocketId) {
-      io.to(creatorSocketId).emit('media-kit:updated', {
+      getIo().to(creatorSocketId).emit('media-kit:updated', {
         platform: 'instagram',
         status: 'success',
         timestamp: new Date().toISOString(),
@@ -461,7 +461,11 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
 
       // Trend charts (page 3 of the media kit) — non-critical, so a failure
       // here shouldn't block the connect flow, just leave analyticsData null.
-      let analyticsData: { engagementRates: number[]; months: string[]; monthlyInteractions: { month: string; interactions: number }[] } | null = null;
+      let analyticsData: {
+        engagementRates: number[];
+        months: string[];
+        monthlyInteractions: { month: string; interactions: number }[];
+      } | null = null;
       try {
         const [engagementAnalytics, monthlyAnalytics] = await Promise.all([
           // Mobile shows a 6-month trend (web stays at the default 3).
@@ -570,7 +574,7 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
 
     const creatorSocketId = clients.get(userId);
     if (creatorSocketId) {
-      io.to(creatorSocketId).emit('media-kit:updated', {
+      getIo().to(creatorSocketId).emit('media-kit:updated', {
         platform: 'tiktok',
         status: 'success',
         timestamp: new Date().toISOString(),
@@ -593,7 +597,7 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
 
     // Emit analytics refresh event to each campaign room
     userSubmissions.forEach(({ campaignId }) => {
-      io.to(campaignId).emit('analytics:refresh', {
+      getIo().to(campaignId).emit('analytics:refresh', {
         userId: userId,
         platform: 'TikTok',
         reason: 'mediakit_connected',
@@ -1202,8 +1206,7 @@ export const handleInstagramCallback = async (req: Request, res: Response) => {
       });
     });
 
-    const io = req.app.get('io');
-    if (io) {
+    if (getIo()) {
       const userSubmissions = await prisma.submission.findMany({
         where: {
           userId: userId,
@@ -1217,7 +1220,7 @@ export const handleInstagramCallback = async (req: Request, res: Response) => {
       });
 
       userSubmissions.forEach(({ campaignId }) => {
-        io.to(campaignId).emit('analytics:refresh', {
+        getIo().to(campaignId).emit('analytics:refresh', {
           userId,
           platform: 'Instagram',
           reason: 'mediakit_connected',

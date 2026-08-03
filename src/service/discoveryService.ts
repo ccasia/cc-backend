@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { campaignHasClient } from '@utils/campaignFlow';
 import { decryptToken, encryptToken } from '@helper/encrypt';
 import { refreshTikTokToken } from '@services/socialMediaService';
 import {
@@ -1678,6 +1679,13 @@ export const inviteDiscoveryCreators = async (input: InviteDiscoveryCreatorsInpu
     const isV4Campaign = campaign.submissionVersion === 'v4';
     const threadId = campaign.thread?.id;
 
+    // v4 with a client: invites go to client review. v4 without one: to admin review
+    // (SENT_TO_CLIENT would strand them — nobody left to act). Non-v4: approved directly.
+    let invitePitchStatus: 'SENT_TO_CLIENT' | 'PENDING_REVIEW' | 'APPROVED' = 'APPROVED';
+    if (isV4Campaign) {
+      invitePitchStatus = campaignHasClient(campaign) ? 'SENT_TO_CLIENT' : 'PENDING_REVIEW';
+    }
+
     const creatorUsers = await tx.user.findMany({
       where: {
         id: { in: creatorIds },
@@ -1706,8 +1714,6 @@ export const inviteDiscoveryCreators = async (input: InviteDiscoveryCreatorsInpu
         skippedNotFoundCount += 1;
         continue;
       }
-
-      const invitePitchStatus = isV4Campaign ? 'SENT_TO_CLIENT' : 'APPROVED';
 
       const existingPitch = await tx.pitch.findFirst({
         where: {

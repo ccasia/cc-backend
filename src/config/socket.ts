@@ -1,27 +1,45 @@
 import { Server } from 'socket.io';
-let io: any;
+import { createAdapter } from '@socket.io/redis-adapter';
+
+import connection, { subClient } from './redis';
+import { users } from '../utils/activeUsers';
+
+let io: Server;
 
 export const clients = new Map();
 
 export const initializeSocket = (server: any) => {
   io = new Server(server);
+
+  io.adapter(createAdapter(connection, subClient));
+
   io.on('connection', (socket: any) => {
-    const userid = (socket.request as any).session.userid;
+    // const userid = (socket.request as any)?.session?.userid;
 
-    if (userid) {
-      clients.set(userid, socket.id);
-    }
-
-    socket.on('chat', (data: any) => {
-      io.to(clients.get('01f17901-100b-4076-935c-1ec02abccace'))
-        .to(clients.get('7457ab90-efd3-4f26-8153-c4cc10997257'))
-        .emit('message', data);
+    socket.on('register', (userId: string) => {
+      if (userId) {
+        clients.set(userId, socket.id);
+        users.set(userId, socket.id);
+        socket.join(userId);
+      }
     });
+
+    // if (userid) {
+    //   clients.set(userid, socket.id);
+    // }
 
     socket.on('disconnect', () => {
-      clients.delete(userid);
+      clients.forEach((value, key) => {
+        if (value === socket.id) {
+          clients.delete(key);
+          users.delete(key);
+        }
+      });
+      io.emit('onlineUsers', { onlineUsers: clients.size });
     });
   });
+
+  return io;
 };
 
 export const getIo = () => {

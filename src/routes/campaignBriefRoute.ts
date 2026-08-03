@@ -10,6 +10,7 @@ import {
   // BD-authored brief flow
   createBrief,
   listBriefs,
+  getBdDashboard,
   getBrief,
   patchBrief,
   sendBriefToClient,
@@ -17,6 +18,7 @@ import {
   resetBrief,
   handoverBrief,
   assignCsm,
+  finalizeBrief,
   deleteBrief,
   uploadBriefAttachment,
   uploadBriefAttachmentPublic,
@@ -27,6 +29,8 @@ import {
   patchBriefPublic,
   approveBriefPublic,
   lostBrief,
+  getBdOverview,
+  holdBrief,
 } from '@controllers/campaignBriefController';
 import { authenticate } from '../middleware/authenticate';
 
@@ -66,6 +70,8 @@ router.post('/invite/public/:token/submit', publicSubmitLimiter, bdSubmitDraft);
 // --- New BD-authored brief flow ---
 router.post('/', authenticate, isBdOrSuperadmin, createBrief);
 router.get('/', authenticate, isBdOrSuperadmin, listBriefs);
+router.get('/bd-dashboard', authenticate, isBdOrSuperadmin, getBdDashboard);
+router.get('/bd-overview', authenticate, isBdOrSuperadmin, getBdOverview);
 router.get('/:id', authenticate, isBdOrSuperadmin, getBrief);
 router.patch('/:id', authenticate, isBdOrSuperadmin, patchBrief);
 router.post('/:id/send', authenticate, isBdOrSuperadmin, sendBriefToClient);
@@ -74,10 +80,14 @@ router.post('/:id/handover', authenticate, isBdOrSuperadmin, handoverBrief);
 // CSL-only assignment of CSMs to a handed-over campaign (controller enforces
 // the CSL/superadmin role; isBdOrSuperadmin already admits CSL).
 router.post('/:id/assign-csm', authenticate, isBdOrSuperadmin, assignCsm);
+// CSM finalizes their own CSM_CREATED brief into a campaign they manage — no
+// handover, no CSM selection (controller enforces CS/superadmin + ownership).
+router.post('/:id/finalize', authenticate, isBdOrSuperadmin, finalizeBrief);
 router.post('/:id/attachments', authenticate, isBdOrSuperadmin, uploadBriefAttachment);
 router.delete('/:id/attachments', authenticate, isBdOrSuperadmin, deleteBriefAttachment);
 router.delete('/:id', authenticate, isBdOrSuperadmin, deleteBrief);
 router.post('/:id/lost', authenticate, isBdOrSuperadmin, lostBrief);
+router.post('/:id/hold', authenticate, isBdOrSuperadmin, holdBrief);
 
 // --- Public (magic-link) client review/edit/approve endpoints ---
 router.get('/public/:magicToken', publicLookupLimiter, getBriefPublic);

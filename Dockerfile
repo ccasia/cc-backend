@@ -75,6 +75,7 @@ RUN yarn install --production --frozen-lockfile
 
 # Copy built files and necessary folders
 COPY --from=builder /app/dist ./dist
+COPY ecosystem.config.js ./dist/ecosystem.config.js
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/.env ./.env
@@ -86,8 +87,6 @@ COPY --from=builder /app/.env ./.env
 
 # Generate Prisma client in production environment
 RUN npx prisma generate
-
-RUN yarn global add pm2
 
 # RUN npx prisma migrate dev --name init
 
@@ -111,4 +110,5 @@ WORKDIR /app/dist
 RUN mkdir -p form/tmp form/pdf upload
 
 # Use node to run the built app.js file
-CMD ["node", "server.js"]
+# CMD ["node", "server.js"]
+CMD ["pm2-runtime", "ecosystem.config.js"]

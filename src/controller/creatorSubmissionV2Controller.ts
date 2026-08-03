@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { selectCurrentAgreementSubmission } from '@utils/submissionAgreement';
 import { normalizeVideoDraftHistory } from '@helper/draftSubmissionStatus';
+import { getIo } from '../config/socket';
 
 const prisma = new PrismaClient();
 
@@ -204,6 +205,7 @@ const shouldExposePosting = (posting: any | undefined, approvedDraft: any | unde
  */
 export const getMyV2Submissions = async (req: Request, res: Response) => {
   const { campaignId } = req.query;
+
   const creatorId = req.userId;
 
   try {
@@ -414,8 +416,7 @@ export const updateMyV2PostingLink = async (req: Request, res: Response) => {
 
     // Socket emit must not fail the request — the link is already saved.
     try {
-      const io = req.app.get('io');
-      if (io) {
+      if (getIo()) {
         const payload = {
           submissionId,
           campaignId: (submission as any).campaignId,
@@ -425,8 +426,12 @@ export const updateMyV2PostingLink = async (req: Request, res: Response) => {
           updatedAt: new Date().toISOString(),
           creatorId,
         };
-        io.to((submission as any).campaignId).emit('v2:posting:updated', payload);
-        io.to((submission as any).campaignId).emit('v2:campaign:updated', payload);
+        getIo()
+          .to((submission as any).campaignId)
+          .emit('v2:posting:updated', payload);
+        getIo()
+          .to((submission as any).campaignId)
+          .emit('v2:campaign:updated', payload);
       }
     } catch (err) {
       console.log(err);

@@ -7,7 +7,7 @@ import timezone from 'dayjs/plugin/timezone';
 import LocalizedFormat from 'dayjs/plugin/localizedFormat';
 import { Title, saveNotification } from '@controllers/notificationController';
 import { notifications } from '@constants/reminders';
-import { clients, io } from '../server';
+// import { clients, io } from '../server';
 import {
   reminderDueDate,
   escalationAgreementUnsigned,
@@ -16,6 +16,7 @@ import {
 } from '@helper/notification';
 import { fetchInsightsForAllCampaigns } from '@services/insightFetchService';
 import { capturePostEngagementSnapshots, captureDailyPostEngagement } from '@services/postEngagementSnapshotService';
+import { clients, getIo } from './socket';
 
 const prisma = new PrismaClient();
 
@@ -88,7 +89,7 @@ new CronJob(
           entityId: submission.campaignId,
         });
 
-        io.to(clients.get(submission.userId)).emit('notification', data);
+        getIo().to(clients.get(submission.userId)).emit('notification', data);
       }
     });
   },
@@ -123,7 +124,7 @@ new CronJob(
         submissionId,
       });
       const socket = clients.get(userId);
-      if (socket) io.to(socket).emit('notification', data);
+      if (socket) getIo().to(socket).emit('notification', data);
     };
 
     try {
@@ -209,8 +210,8 @@ new CronJob(
       console.error('[Cronjob] Escalation reminders failed:', error);
     }
   },
-  null, 
-  true, 
+  null,
+  true,
   'Asia/Kuala_Lumpur',
 );
 

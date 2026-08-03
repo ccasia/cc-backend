@@ -2,7 +2,6 @@ import { Entity, PrismaClient, User } from '@prisma/client';
 import { Request, Response } from 'express';
 import amqplib from 'amqplib';
 import { Title, saveNotification } from './notificationController';
-import { clients, io } from '../server';
 
 const prisma = new PrismaClient();
 
@@ -232,7 +231,7 @@ export const submitFeedBackFirstDraft = async (req: Request, res: Response) => {
   //       `Request Edit For First Draft In Campaign ${campaignTask?.campaign?.name}`,
   //       Entity.User,
   //     );
-  //     io.to(clients.get(creatorId)).emit('notification', data);
+  //     getIo().to(clients.get(creatorId)).emit('notification', data);
   //     return res.status(200).json({ message: 'Succesfully Submitted' });
   //   } else {
   //     const { comments } = req.body;

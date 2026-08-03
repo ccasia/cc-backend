@@ -3,12 +3,15 @@ import { PrismaClient } from '@prisma/client';
 import amqplib, { ChannelModel } from 'amqplib';
 import { getV4Submissions, updatePostingLink } from '../service/submissionV4Service';
 import { PostingLinkUpdate } from '../types/submissionV4Types';
-import { io, clients } from '../server';
+import { clients } from '../server';
 import { saveNotification } from './notificationController';
 import { notificationDraft } from '@helper/notification';
 import { saveCaptionToHistory } from '../utils/captionHistoryUtils';
 import { completeLogisticService } from '@services/logisticsService';
 import { selectCurrentAgreementSubmission } from '@utils/submissionAgreement';
+import { getIo } from '../config/socket';
+import { normalizePostingLinks, joinPostingLinksToContent } from '../utils/postingLinkValidation';
+import { scheduleUrlExtractionAndFetch } from './submissionV4Controller';
 
 const prisma = new PrismaClient();
 
@@ -16,7 +19,7 @@ const prisma = new PrismaClient();
  * Get creator's own V4 submissions for a campaign
  * GET /api/creator/submissions/v4?campaignId=xxx
  */
-export const getMyV4Submissions = async (req: Request, res: Response) => {
+export const getMyV4Submissions = async (req: Request<{}, {}, {}, { campaignId: string }>, res: Response) => {
   const { campaignId } = req.query;
   const creatorId = req.userId;
 
@@ -26,13 +29,13 @@ export const getMyV4Submissions = async (req: Request, res: Response) => {
     }
 
     if (!campaignId) {
-      return res.status(400).json({ message: 'campaignId is required' });
+      return res.status(400).json({ message: 'Id is missing' });
     }
 
     // Verify creator has access to this campaign
     const creatorAccess = await prisma.shortListedCreator.findFirst({
       where: {
-        campaignId: campaignId as string,
+        campaignId: campaignId,
         userId: creatorId,
       },
     });
@@ -86,14 +89,21 @@ export const getMyV4Submissions = async (req: Request, res: Response) => {
 
     // Calculate overall progress
     const totalSubmissions = submissionsWithFilteredFeedback.length;
-    const completedSubmissions = submissionsWithFilteredFeedback.filter(
-      (s) => s.status === 'APPROVED' || s.status === 'CLIENT_APPROVED' || s.status === 'POSTED',
-    ).length;
-    const progress = totalSubmissions > 0 ? (completedSubmissions / totalSubmissions) * 100 : 0;
 
-    console.log(
-      `🎯 Creator ${creatorId} retrieved ${submissionsWithFilteredFeedback.length} v4 submissions for campaign ${campaignId}`,
-    );
+    // const completedSubmissions = submissionsWithFilteredFeedback.filter(
+    //   (s) => s.status === 'APPROVED' || s.status === 'CLIENT_APPROVED' || s.status === 'POSTED',
+    // ).length;
+
+    const completedSubmissions = submissionsWithFilteredFeedback.filter((s) => {
+      if (s.submissionType.type === 'AGREEMENT_FORM' && s.status === 'APPROVED') return true;
+      if (s.submissionType.type === 'VIDEO' && s.status === 'POSTED') return true;
+      if (s.submissionType.type === 'PHOTO' && s.status === 'POSTED') return true;
+      if (s.submissionType.type === 'RAW_FOOTAGE' && s.status === 'CLIENT_APPROVED') return true;
+    }).length;
+
+    console.log(submissionsWithFilteredFeedback);
+
+    const progress = totalSubmissions > 0 ? (completedSubmissions / totalSubmissions) * 100 : 0;
 
     res.status(200).json({
       submissions: submissionsWithFilteredFeedback,
@@ -439,23 +449,25 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
       }
 
       // Emit socket event for real-time updates
-      const io = req.app.get('io');
-      if (io) {
-        io.to(submission.campaignId).emit('v4:content:submitted', {
-          submissionId,
-          campaignId: submission.campaignId,
-          hasVideo: uploadedVideos.length > 0,
-          hasPhotos: uploadedPhotos.length > 0,
-          hasRawFootage: uploadedRawFootages.length > 0,
-          hasPhotoRemoval: photosToRemove.length > 0,
-          hasRawFootageRemoval,
-          submittedAt: new Date().toISOString(),
-          creatorId,
-          newStatus,
-        });
+
+      if (getIo()) {
+        getIo()
+          .to(submission.campaignId)
+          .emit('v4:content:submitted', {
+            submissionId,
+            campaignId: submission.campaignId,
+            hasVideo: uploadedVideos.length > 0,
+            hasPhotos: uploadedPhotos.length > 0,
+            hasRawFootage: uploadedRawFootages.length > 0,
+            hasPhotoRemoval: photosToRemove.length > 0,
+            hasRawFootageRemoval,
+            submittedAt: new Date().toISOString(),
+            creatorId,
+            newStatus,
+          });
         // Also emit v4:submission:updated so admin listeners that only subscribe
         // to status-change events (separate from content-submitted) refresh too.
-        io.to(submission.campaignId).emit('v4:submission:updated', {
+        getIo().to(submission.campaignId).emit('v4:submission:updated', {
           submissionId,
           campaignId: submission.campaignId,
           newStatus,
@@ -529,7 +541,7 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
 
       const adminSocketId = clients.get(adminUserId);
       if (adminSocketId) {
-        io.to(adminSocketId).emit('notification', notification);
+        getIo().to(adminSocketId).emit('notification', notification);
       }
     }
 
@@ -571,27 +583,27 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
  * PUT /api/creator/submissions/v4/posting-link
  */
 export const updateMyPostingLink = async (req: Request, res: Response) => {
-  const { submissionId, postingLink } = req.body as PostingLinkUpdate;
+  const { submissionId, postingLinks } = req.body as PostingLinkUpdate;
   const creatorId = req.userId;
-
-  console.log(req.body);
 
   try {
     if (!creatorId) {
       return res.status(401).json({ message: 'You are not logged in' });
     }
 
-    if (!submissionId || !postingLink) {
+    if (!submissionId || !postingLinks) {
       return res.status(400).json({
-        message: 'submissionId and postingLink are required',
+        message: 'submissionId and postingLinks are required',
       });
     }
 
-    // Validate URL format
+    let normalizedLinks: string[];
     try {
-      new URL(postingLink);
-    } catch {
-      return res.status(400).json({ message: 'Invalid posting link URL' });
+      normalizedLinks = normalizePostingLinks(postingLinks);
+    } catch (validationError) {
+      return res.status(400).json({
+        message: validationError instanceof Error ? validationError.message : 'Invalid posting links',
+      });
     }
 
     // Verify this submission belongs to the creator
@@ -626,21 +638,23 @@ export const updateMyPostingLink = async (req: Request, res: Response) => {
       });
     }
 
-    const result = await updatePostingLink(submissionId, postingLink); // Creator adding link - no adminId
+    const result = await updatePostingLink(submissionId, normalizedLinks);
+
+    scheduleUrlExtractionAndFetch(submissionId, joinPostingLinksToContent(normalizedLinks));
 
     // Emit socket event for real-time updates
-    const io = req.app.get('io');
-    if (io) {
-      io.to(submission.campaignId).emit('v4:posting:updated', {
+
+    if (getIo()) {
+      getIo().to(submission.campaignId).emit('v4:posting:updated', {
         submissionId,
         campaignId: submission.campaignId,
-        postingLink,
+        postingLinks: normalizedLinks,
         updatedAt: new Date().toISOString(),
         creatorId,
       });
     }
 
-    console.log(`🔗 Creator ${creatorId} updated posting link for v4 submission ${submissionId}`);
+    console.log(`🔗 Creator ${creatorId} updated posting link(s) for v4 submission ${submissionId}`);
 
     res.status(200).json({
       message: 'Posting link updated successfully',
@@ -927,14 +941,16 @@ export const createMyFeedbackReply = async (req: Request, res: Response) => {
 
     // Mirror createComment's emit so the admin webapp updates live.
     const campaignId = reply.submission?.campaignId;
-    if (io && campaignId) {
-      io.to(campaignId).emit('v4:comment:reply:added', {
-        submissionId: feedback.submissionId,
-        videoId: feedback.videoId ?? null,
-        campaignId,
-        comment: reply,
-        parentCommentId: rootCommentId,
-      });
+    if (getIo() && campaignId) {
+      getIo()
+        .to(campaignId)
+        .emit('v4:comment:reply:added', {
+          submissionId: feedback.submissionId,
+          videoId: feedback.videoId ?? null,
+          campaignId,
+          comment: reply,
+          parentCommentId: rootCommentId,
+        });
     }
 
     return res.status(201).json({
@@ -989,8 +1005,8 @@ export const deleteMyReply = async (req: Request, res: Response) => {
 
     await prisma.submissionComment.delete({ where: { id: commentId } });
 
-    if (deleteCampaignId && io) {
-      io.to(deleteCampaignId).emit('v4:comment:deleted', {
+    if (deleteCampaignId && getIo()) {
+      getIo().to(deleteCampaignId).emit('v4:comment:deleted', {
         commentId,
         submissionId: comment.submissionId,
         videoId: comment.videoId,

@@ -45,9 +45,10 @@ import {
   uploadCampaignAssets,
   createNewSpreadSheetAsync,
   rejectPendingPitchInternal,
+  revertStrandedClientReviewItems,
 } from '@services/campaignServices';
 import { saveNotification } from '@controllers/notificationController';
-import { clients, io } from '../server';
+// import { clients, getIo() } from '../server';
 import fs from 'fs';
 import Ffmpeg from 'fluent-ffmpeg';
 import ffmpegPath from '@ffmpeg-installer/ffmpeg';
@@ -77,11 +78,13 @@ import getCountry from '@utils/getCountry';
 import { sendShortlistEmailToClients, ShortlistedCreatorInput } from '@services/notificationService';
 import { calculateAverageMetrics } from '@utils/averagingMetrics';
 import { computeChanges, FieldMapping } from '@utils/campaignLogDiff';
+import { campaignHasClient } from '@utils/campaignFlow';
 import {
   CREATOR_CAMPAIGN_MEMBERSHIP_UPDATED_EVENT,
   createCreatorCampaignMembershipUpdatedPayload,
 } from '@utils/campaignMembershipEvents';
 import { buildCreatorRatingEventId, shouldEmitCreatorRatingCompleted } from '@utils/creatorRatingReveal';
+import { clients, getIo } from '../config/socket';
 
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
 Ffmpeg.setFfprobePath(ffprobePath.path);
@@ -108,10 +111,10 @@ const emitCreatorCampaignMembershipUpdated = ({
   const creatorSocketId = clients.get(userId);
 
   if (creatorSocketId) {
-    io.to(creatorSocketId).emit(CREATOR_CAMPAIGN_MEMBERSHIP_UPDATED_EVENT, payload);
+    getIo().to(creatorSocketId).emit(CREATOR_CAMPAIGN_MEMBERSHIP_UPDATED_EVENT, payload);
   }
 
-  io.to(campaignId).emit(CREATOR_CAMPAIGN_MEMBERSHIP_UPDATED_EVENT, payload);
+  getIo().to(campaignId).emit(CREATOR_CAMPAIGN_MEMBERSHIP_UPDATED_EVENT, payload);
 };
 
 const normalizePlatform = (platform?: string): SocialPlatform => (platform === 'tiktok' ? 'tiktok' : 'instagram');
@@ -699,7 +702,7 @@ export const createCampaign = async (req: Request, res: Response) => {
               },
             });
 
-            io.to(clients.get(admin.id)).emit('notification', data);
+            getIo().to(clients.get(admin.id)).emit('notification', data);
             return createdAdminRel;
           }),
         );
@@ -729,8 +732,8 @@ export const createCampaign = async (req: Request, res: Response) => {
           logAdminChange(adminLogMessage, adminId, req);
         }
 
-        if (io) {
-          io.emit('campaign');
+        if (getIo()) {
+          getIo().emit('campaign');
         }
 
         // Add child accounts to the new campaign if it's a client-created campaign
@@ -945,6 +948,13 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
 
   const clientManagers = Array.isArray(rawData?.clientManagers) ? rawData.clientManagers : [];
 
+  // Whether the selected company's client users should be attached as client managers.
+  // Falls back to the legacy signal (submissionVersion === 'v4') for older frontends
+  // that coupled the version to the client-campaign toggle.
+  const isClientCampaign =
+    rawData?.isClientCampaign === true ||
+    (rawData?.isClientCampaign === undefined && rawData?.submissionVersion === 'v4');
+
   try {
     const { images } = await uploadCampaignAssets(req.files);
 
@@ -1087,7 +1097,7 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
             productName: productName || '',
             websiteLink: websiteLink || '',
             origin: 'ADMIN',
-            submissionVersion: submissionVersion || 'v2',
+            submissionVersion: submissionVersion || 'v4',
             isCreditTier: isCreditTier === true,
             rawFootage: rawFootage || false,
             ads: ads || false,
@@ -1261,7 +1271,7 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
         // For v2 campaigns: uses the timeline array from frontend with date validation
         const { createCampaignTimelines } = require('../helper/campaignTimelineHelper');
         await createCampaignTimelines(tx, campaign.id, timeline, {
-          submissionVersion: submissionVersion || 'v2',
+          submissionVersion: submissionVersion || 'v4',
           campaignStartDate: normalizedStartDate,
           campaignEndDate: normalizedEndDate,
           postingStartDate: normalizedPostingStartDate,
@@ -1365,7 +1375,7 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
               include: { userNotification: { select: { userId: true } } },
             });
 
-            io.to(clients.get(admin.id)).emit('notification', data);
+            getIo().to(clients.get(admin.id)).emit('notification', data);
             return createdAdminRel;
           }),
         );
@@ -1386,8 +1396,8 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
           logAdminChange(`Created campaign - "${campaign.name}"`, adminId, req);
         }
 
-        if (io) {
-          io.emit('campaign');
+        if (getIo()) {
+          getIo().emit('campaign');
         }
 
         // Add child accounts for client-created campaigns
@@ -1400,9 +1410,9 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
           }
         }
 
-        // For v4 campaigns only: Add client users to CampaignClient and CampaignAdmin
+        // Client campaigns only: Add client users to CampaignClient and CampaignAdmin
         // This ensures clients can only manage campaigns when explicitly enabled
-        if (submissionVersion === 'v4' && client?.id) {
+        if (isClientCampaign && client?.id) {
           try {
             const companyClients = await tx.client.findMany({
               where: { companyId: client.id },
@@ -1437,8 +1447,9 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
           }
         }
 
-        // For v4 campaigns: Add client users from campaignManager to CampaignClient
-        if (submissionVersion === 'v4') {
+        // Client users explicitly picked as campaign managers are always tracked in
+        // CampaignClient, regardless of the client-campaign toggle
+        if (submissionVersion !== 'v2') {
           try {
             for (const user of admins.filter(Boolean)) {
               if ((user as any)?.client?.id) {
@@ -1599,10 +1610,18 @@ export const activateCampaignFull = async (req: Request, res: Response) => {
         }
 
         // Normalize dates
-        const normalizedStartDate = campaignStartDate ? dayjs(campaignStartDate).toDate() : existing.campaignBrief?.startDate ?? new Date();
-        const normalizedEndDate = campaignEndDate ? dayjs(campaignEndDate).toDate() : existing.campaignBrief?.endDate ?? normalizedStartDate;
-        const normalizedPostingStartDate = postingStartDate ? dayjs(postingStartDate).toDate() : existing.campaignBrief?.postingStartDate ?? null;
-        const normalizedPostingEndDate = postingEndDate ? dayjs(postingEndDate).toDate() : existing.campaignBrief?.postingEndDate ?? null;
+        const normalizedStartDate = campaignStartDate
+          ? dayjs(campaignStartDate).toDate()
+          : (existing.campaignBrief?.startDate ?? new Date());
+        const normalizedEndDate = campaignEndDate
+          ? dayjs(campaignEndDate).toDate()
+          : (existing.campaignBrief?.endDate ?? normalizedStartDate);
+        const normalizedPostingStartDate = postingStartDate
+          ? dayjs(postingStartDate).toDate()
+          : (existing.campaignBrief?.postingStartDate ?? null);
+        const normalizedPostingEndDate = postingEndDate
+          ? dayjs(postingEndDate).toDate()
+          : (existing.campaignBrief?.postingEndDate ?? null);
 
         // Products (delivery logistics)
         let productsToCreate: any[] = [];
@@ -1819,8 +1838,7 @@ export const activateCampaignFull = async (req: Request, res: Response) => {
         // prefilled, so its submitted state (kept URLs + new uploads) is the full
         // intended set — write it unconditionally so removals also take effect.
         // null when the user cleared every attachment.
-        const brandGuidelinesUrl =
-          brandGuidelinesUrls.length === 0 ? null : brandGuidelinesUrls.join(',');
+        const brandGuidelinesUrl = brandGuidelinesUrls.length === 0 ? null : brandGuidelinesUrls.join(',');
 
         const additionalDetailsData: any = {
           contentFormat: Array.isArray(contentFormat) ? contentFormat : [],
@@ -1860,7 +1878,9 @@ export const activateCampaignFull = async (req: Request, res: Response) => {
 
         if (logisticsType === 'RESERVATION') {
           const mode: ReservationMode = schedulingOption === 'auto' ? 'AUTO_SCHEDULE' : 'MANUAL_CONFIRMATION';
-          const locationNames = Array.isArray(locations) ? locations.filter((loc: any) => loc.name && loc.name.trim() !== '') : [];
+          const locationNames = Array.isArray(locations)
+            ? locations.filter((loc: any) => loc.name && loc.name.trim() !== '')
+            : [];
           const reservationData = {
             mode,
             locations: locationNames as any,
@@ -1942,7 +1962,7 @@ export const activateCampaignFull = async (req: Request, res: Response) => {
                 },
                 include: { userNotification: { select: { userId: true } } },
               });
-              if (clients.get(admin.id)) io.to(clients.get(admin.id)).emit('notification', notif);
+              if (clients.get(admin.id)) getIo().to(clients.get(admin.id)).emit('notification', notif);
             }),
         );
 
@@ -1960,7 +1980,7 @@ export const activateCampaignFull = async (req: Request, res: Response) => {
       { timeout: 500000 },
     );
 
-    if (io) io.emit('campaign');
+    if (getIo()) getIo().emit('campaign');
 
     return res.status(200).json({ campaign, message: 'Campaign activated successfully.' });
   } catch (error) {
@@ -2503,9 +2523,7 @@ export const getCampaignById = async (req: Request, res: Response) => {
     // null. Mirrors the shape built in companyController. (brand is deprecated.)
     let companyWithSummary: any = campaign?.company;
     if (campaign?.company) {
-      const activeSubs = (campaign.company.subscriptions || []).filter(
-        (sub: any) => sub.status === 'ACTIVE',
-      );
+      const activeSubs = (campaign.company.subscriptions || []).filter((sub: any) => sub.status === 'ACTIVE');
       const totalCredits = activeSubs.reduce((sum: number, sub: any) => sum + (sub.totalCredits || 0), 0);
       const usedCredits = activeSubs.reduce((sum: number, sub: any) => sum + (sub.creditsUsed || 0), 0);
       companyWithSummary = {
@@ -2519,15 +2537,19 @@ export const getCampaignById = async (req: Request, res: Response) => {
             activeSubs.length > 0
               ? activeSubs
                   .slice()
-                  .sort(
-                    (a: any, b: any) => new Date(a.expiredAt).getTime() - new Date(b.expiredAt).getTime(),
-                  )[0].expiredAt
+                  .sort((a: any, b: any) => new Date(a.expiredAt).getTime() - new Date(b.expiredAt).getTime())[0]
+                  .expiredAt
               : null,
         },
       };
     }
 
-    return res.status(200).json({ ...campaign, company: companyWithSummary, approverPitchIds });
+    return res.status(200).json({
+      ...campaign,
+      company: companyWithSummary,
+      approverPitchIds,
+      hasClient: campaign ? campaignHasClient(campaign) : false,
+    });
   } catch (error) {
     return res.status(400).json(error);
   }
@@ -3012,9 +3034,6 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
       },
     });
 
-    const isClientManagedFlow = campaignWithOrigin.origin === 'CLIENT' || campaignWithOrigin.submissionVersion === 'v4';
-    const initialStatus = isClientManagedFlow ? 'PENDING_REVIEW' : 'undecided';
-
     if (isPitchExist) {
       if (isPitchExist.type === 'text') {
         pitch = await prisma.pitch.update({
@@ -3142,7 +3161,7 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
       //   sendPush: false,
       // });
 
-      // io.to(clients.get(user?.id)).emit('notification', newPitch);
+      // getIo().to(clients.get(user?.id)).emit('notification', newPitch);
 
       const campaignManagers = campaign?.campaignAdmin;
 
@@ -3161,13 +3180,13 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
             entityId: campaign?.id as string,
           });
 
-          io.to(clients.get(manager)).emit('notification', notification);
+          getIo().to(clients.get(manager)).emit('notification', notification);
         }
       });
     }
 
     // Emit to campaign room for real-time updates
-    io.to(campaignId).emit('v3:pitch:status-updated', {
+    getIo().to(campaignId).emit('v3:pitch:status-updated', {
       campaignId,
       newStatus: 'PENDING_REVIEW',
       action: 'submit',
@@ -3395,8 +3414,17 @@ export const getCampaignForCreatorById = async (req: Request, res: Response) => 
         campaignAdmin: {
           include: {
             admin: {
+              omit: {
+                inviteToken: true,
+                xeroTokenSet: true,
+                bdInviteToken: true,
+              },
               include: {
-                user: true,
+                user: {
+                  omit: {
+                    password: true,
+                  },
+                },
                 role: true,
               },
             },
@@ -3455,6 +3483,7 @@ export const getCampaignForCreatorById = async (req: Request, res: Response) => 
     });
 
     const submissions = campaign.submission;
+
     let completed = 0;
     let totalSubmissions = 0;
 
@@ -3478,47 +3507,7 @@ export const getCampaignForCreatorById = async (req: Request, res: Response) => 
     const adjustedData = {
       ...campaign,
       totalCompletion: ((completed / totalSubmissions) * 100).toFixed(),
-      // totalCompletion:
-      //   (campaign.submission.filter(
-      //     (submission) =>
-      //       submission.userId === userid &&
-      //       (submission.status === 'APPROVED' ||
-      //         submission.submissionType.type === 'FIRST_DRAFT' ||
-      //         submission.status === 'CHANGES_REQUIRED'),
-      //   ).length /
-      //     campaign.submission.filter((submission) => submission.userId === userid).length) *
-      //     100 || null,
     };
-
-    // const adjustedCampaigns = campaigns.map((campaign) => {
-    //   const submissions = campaign.submission;
-    //   let completed = 0;
-    //   let totalSubmissions = 0;
-
-    //   submissions?.forEach((submission) => {
-    //     if (
-    //       submission.status === 'APPROVED' ||
-    //       (submission.submissionType?.type === 'FIRST_DRAFT' && submission.status === 'CHANGES_REQUIRED')
-    //     ) {
-    //       completed++;
-    //     }
-    //   });
-
-    //   const isChangesRequired =
-    //     campaign.submission.find((submission) => submission.submissionType.type === 'FIRST_DRAFT')?.status ===
-    //     'CHANGES_REQUIRED';
-
-    //   totalSubmissions = campaign.campaignType === 'ugc' ? (isChangesRequired ? 3 : 2) : isChangesRequired ? 4 : 3;
-
-    //   return {
-    //     ...campaign,
-    //     pitch: campaign.pitch.find((pitch) => pitch.userId === user.id) ?? null,
-    //     shortlisted: campaign.shortlisted.find((shortlisted) => shortlisted.userId === user.id) ?? null,
-    //     creatorAgreement: campaign.creatorAgreement.find((agreement) => agreement.userId === user.id) ?? null,
-    //     submission: campaign.submission.filter((submission) => submission.userId === user.id) ?? null,
-    //     totalCompletion: ((completed / totalSubmissions) * 100).toFixed(),
-    //   };
-    // });
 
     return res.status(200).json({ ...adjustedData, agreement });
   } catch (error) {
@@ -4526,7 +4515,7 @@ export const changeCampaignStage = async (req: Request, res: Response) => {
           entity: 'Status',
           entityId: updatedCampaign.id,
         });
-        io.to(clients.get(value.userId)).emit('notification', data);
+        getIo().to(clients.get(value.userId)).emit('notification', data);
       });
     }
 
@@ -4541,7 +4530,7 @@ export const changeCampaignStage = async (req: Request, res: Response) => {
           entity: 'Status',
           entityId: updatedCampaign.id,
         });
-        io.to(clients.get(admin.adminId)).emit('notification', data);
+        getIo().to(clients.get(admin.adminId)).emit('notification', data);
       }
     }
 
@@ -4571,7 +4560,7 @@ export const changeCampaignStage = async (req: Request, res: Response) => {
       logAdminChange(adminLogMessage, adminId, req);
     }
 
-    io.emit('campaignStatus', updatedCampaign);
+    getIo().emit('campaignStatus', updatedCampaign);
 
     return res.status(200).json({ message: 'Campaign stage changed successfully.', status: updatedCampaign?.status });
   } catch (error) {
@@ -4725,7 +4714,7 @@ export const closeCampaign = async (req: Request, res: Response) => {
         entity: 'Campaign',
         entityId: result.campaign.id,
       });
-      io.to(clients.get(item.adminId)).emit('notification', data);
+      getIo().to(clients.get(item.adminId)).emit('notification', data);
     });
 
     // Step 7: Log admin activity
@@ -5386,7 +5375,7 @@ export const editCampaignLogistics = async (req: Request, res: Response) => {
 };
 
 export const editCampaignFinalise = async (req: Request, res: Response) => {
-  const { campaignId, campaignManagers, campaignType, deliverables, isV4Submission, isCreditTier } = req.body;
+  const { campaignId, campaignManagers, campaignType, deliverables, isCreditTier } = req.body;
 
   const adminId = req.userId;
 
@@ -5655,12 +5644,12 @@ export const editCampaignFinalise = async (req: Request, res: Response) => {
           (ca) => ca.admin?.user?.role === 'client' || ca.admin?.role?.name === 'Client',
         );
 
-        if (!hasRemainingClientAdmin && campaign.submissionVersion === 'v4') {
-          await prisma.campaign.update({
-            where: { id: campaignId },
-            data: { submissionVersion: 'v2' },
-          });
-          console.log(`Reverted campaign ${campaignId} to v2 (no client admins remaining)`);
+        // submissionVersion is immutable after creation — detaching the last client no
+        // longer reverts the campaign to v2; the flow simply stops routing through a client.
+        // Return items stranded in client review to admin review (self-checks client
+        // presence; no-op when a client remains).
+        if (!hasRemainingClientAdmin) {
+          await revertStrandedClientReviewItems(campaignId, adminId);
         }
       }
 
@@ -5685,13 +5674,9 @@ export const editCampaignFinalise = async (req: Request, res: Response) => {
         }
       }
 
-      // If a client user is added, update submissionVersion to v4 and add to CampaignClient
+      // If a client user is added, add them to CampaignClient (submissionVersion is
+      // immutable — attaching a client changes flow behavior, not the campaign version)
       if (hasClientAdmin) {
-        await prisma.campaign.update({
-          where: { id: campaignId },
-          data: { submissionVersion: 'v4' },
-        });
-
         // For client users being added as campaign admins, also add them to CampaignClient
         // This ensures they are tracked in both models for v4 campaigns
         for (const admin of validAdminRecords) {
@@ -5735,25 +5720,9 @@ export const editCampaignFinalise = async (req: Request, res: Response) => {
       }
     }
 
-    // Handle explicit isV4Submission toggle from the form
-    // This takes precedence over automatic client-based detection
-    if (typeof isV4Submission === 'boolean') {
-      if (isV4Submission && campaign.submissionVersion !== 'v4') {
-        // Enable v4
-        await prisma.campaign.update({
-          where: { id: campaignId },
-          data: { submissionVersion: 'v4' },
-        });
-        console.log(`Campaign ${campaignId} enabled as v4 via toggle`);
-      } else if (!isV4Submission && campaign.submissionVersion === 'v4') {
-        // Disable v4 (revert to v2)
-        await prisma.campaign.update({
-          where: { id: campaignId },
-          data: { submissionVersion: 'v2' },
-        });
-        console.log(`Campaign ${campaignId} reverted to v2 via toggle`);
-      }
-    }
+    // Note: the legacy isV4Submission toggle no longer converts the campaign version —
+    // submissionVersion is immutable after creation. Client involvement is controlled
+    // solely by which client users are attached as campaign managers.
 
     // Log the change
     if (adminId) {
@@ -5786,21 +5755,7 @@ export const editCampaignFinalise = async (req: Request, res: Response) => {
         },
       });
 
-      // Check if campaign version changed
-      const updatedCampaign = await prisma.campaign.findUnique({
-        where: { id: campaignId },
-        select: { submissionVersion: true },
-      });
-      const wasConvertedToV4 = updatedCampaign?.submissionVersion === 'v4' && campaign.submissionVersion !== 'v4';
-      const wasRevertedToV2 = updatedCampaign?.submissionVersion === 'v2' && campaign.submissionVersion === 'v4';
-
-      let adminLogMessage = `Updated campaign finalise settings for campaign - ${campaign.name}`;
-      if (wasConvertedToV4) {
-        adminLogMessage = `Updated campaign finalise settings for campaign - ${campaign.name} and converted to V4 (client added)`;
-      } else if (wasRevertedToV2) {
-        adminLogMessage = `Updated campaign finalise settings for campaign - ${campaign.name} and reverted to V2 (all clients removed)`;
-      }
-      logAdminChange(adminLogMessage, adminId, req);
+      logAdminChange(`Updated campaign finalise settings for campaign - ${campaign.name}`, adminId, req);
     }
 
     return res.status(200).json({ message: 'Campaign finalise settings updated successfully' });
@@ -6550,8 +6505,8 @@ export const changePitchStatus = async (req: Request, res: Response) => {
           const socketId = clients.get(pitch.userId);
 
           if (socketId) {
-            io.to(socketId).emit('notification', data);
-            io.to(socketId).emit('shortlisted', {
+            getIo().to(socketId).emit('notification', data);
+            getIo().to(socketId).emit('shortlisted', {
               message: 'shortlisted',
               campaignId: pitch.campaign.id,
               campaignName: pitch.campaign.name,
@@ -6586,7 +6541,7 @@ export const changePitchStatus = async (req: Request, res: Response) => {
 
             const adminSocketId = clients.get(admin.admin.userId);
             if (adminSocketId) {
-              io.to(adminSocketId).emit('notification', notification);
+              getIo().to(adminSocketId).emit('notification', notification);
             }
           }
 
@@ -6755,7 +6710,7 @@ export const changePitchStatus = async (req: Request, res: Response) => {
       logAdminChange(message, adminId, req);
     }
 
-    io.to(clients.get(existingPitch.userId)).emit('pitchUpdate');
+    getIo().to(clients.get(existingPitch.userId)).emit('pitchUpdate');
 
     return res.status(200).json({ message: 'Successfully changed.' });
   } catch (error) {
@@ -6924,7 +6879,7 @@ export const unSaveCampaign = async (req: Request, res: Response) => {
 //       entity: 'Logistic',
 //     });
 
-//     io.to(clients.get(userId)).emit('notification', notification);
+//     getIo().to(clients.get(userId)).emit('notification', notification);
 
 //     const adminLogMessage = `Created New Logistic for campaign - ${logistics.campaign.name} `;
 //     logAdminChange(adminLogMessage, adminId, req);
@@ -7002,7 +6957,7 @@ export const unSaveCampaign = async (req: Request, res: Response) => {
 //         entity: 'Logistic',
 //       });
 
-//       io.to(clients.get(updated.userId)).emit('notification', notification);
+//       getIo().to(clients.get(updated.userId)).emit('notification', notification);
 //     }
 
 //     // // deliveryConfirmation
@@ -7017,7 +6972,7 @@ export const unSaveCampaign = async (req: Request, res: Response) => {
 //     //   entity: 'Logistic',
 //     // });
 
-//     // io.to(clients.get(updated.userId)).emit('notification', notification);
+//     // getIo().to(clients.get(updated.userId)).emit('notification', notification);
 
 //     const adminLogMessage = `Updated Logistic status for campaign - ${updated.campaign.name} `;
 //     logAdminChange(adminLogMessage, adminId, req);
@@ -8061,7 +8016,7 @@ export const sendAgreement = async (req: Request, res: Response) => {
     });
 
     // Real-time SWR refresh for pitch lists (usePitchSocket listens for this)
-    if (io) {
+    if (getIo()) {
       const pitchForSocket = await prisma.pitch.findFirst({
         where: { userId: isUserExist.id, campaignId },
         select: {
@@ -8072,7 +8027,7 @@ export const sendAgreement = async (req: Request, res: Response) => {
         },
       });
       if (pitchForSocket) {
-        io.to(campaignId).emit('v3:pitch:outreach-updated', {
+        getIo().to(campaignId).emit('v3:pitch:outreach-updated', {
           pitchId: pitchForSocket.id,
           campaignId,
           outreachStatus: pitchForSocket.outreachStatus,
@@ -8208,11 +8163,32 @@ export const sendAgreement = async (req: Request, res: Response) => {
       entityId: campaignId,
     });
 
+    const agreementSubmission = await prisma.submission.findFirst({
+      where: {
+        submissionType: {
+          type: 'AGREEMENT_FORM',
+        },
+        campaignId: agreement.campaignId,
+        userId: agreement.userId,
+      },
+      select: { id: true },
+    });
+
+    getIo()
+      .to(user.userId)
+      .emit(
+        'notification',
+        notificationSignature(campaign.name, {
+          campaignId: agreement.campaignId,
+          submissionId: agreementSubmission?.id,
+        }),
+      );
+
     const socketId = clients.get(isUserExist.id);
 
     if (socketId) {
-      io.to(socketId).emit('notification', notification);
-      io.to(clients.get(isUserExist.id)).emit('agreementReady');
+      getIo().to(socketId).emit('notification', notification);
+      getIo().to(clients.get(isUserExist.id)).emit('agreementReady');
     }
 
     await prisma.campaignLog.create({
@@ -8466,11 +8442,6 @@ export const editCampaignAdmin = async (req: Request, res: Response) => {
       admins.every((item: any) => item.id !== admin.admin.userId),
     );
 
-    // Check if any new admin being added is a client user
-    const hasClientAdmin = adjustedAdmins.some((admin: any) => {
-      return admin?.user?.role === 'client' || admin?.role?.name === 'Client';
-    });
-
     await prisma.campaignAdmin.deleteMany({
       where: {
         campaignId: campaign?.id,
@@ -8488,7 +8459,7 @@ export const editCampaignAdmin = async (req: Request, res: Response) => {
             adminId: admin.userId,
           })),
         },
-        ...(hasClientAdmin && { submissionVersion: 'v4' }),
+        // submissionVersion is immutable — adding a client changes flow behavior only
       },
     });
 
@@ -8624,6 +8595,12 @@ export const editCampaignAdmin = async (req: Request, res: Response) => {
       }
     }
 
+    // Client detached mid-flight: return items stranded in client review to admin
+    // review (self-checks client presence; no-op when a client remains).
+    if (removedAdmins.length > 0) {
+      await revertStrandedClientReviewItems(campaign.id, adminId);
+    }
+
     // Get admin info for logging
     if (adminId) {
       const oldAdminNames = existingAdmins.map((ca: any) => ca.admin?.userId).filter(Boolean);
@@ -8659,10 +8636,7 @@ export const editCampaignAdmin = async (req: Request, res: Response) => {
         },
       });
 
-      const adminLogMessage = hasClientAdmin
-        ? `Updated Admins list in ${campaign.name} and converted to V4 (client added)`
-        : `Updated Admins list in ${campaign.name} `;
-      logAdminChange(adminLogMessage, adminId, req);
+      logAdminChange(`Updated Admins list in ${campaign.name}`, adminId, req);
     }
 
     return res.status(200).json({ message: 'Update Success.' });
@@ -9273,7 +9247,7 @@ export const removeCreatorFromCampaign = async (req: Request, res: Response) => 
     });
 
     // Emit to campaign room for real-time updates
-    io.to(campaignId).emit('v3:pitch:status-updated', {
+    getIo().to(campaignId).emit('v3:pitch:status-updated', {
       campaignId,
       newStatus: 'REMOVED',
       action: 'remove',
@@ -9416,9 +9390,30 @@ export const resendAgreement = async (req: Request, res: Response) => {
 
     const socketId = clients.get(userId);
 
+    const agreementSubmission = await prisma.submission.findFirst({
+      where: {
+        submissionType: {
+          type: 'AGREEMENT_FORM',
+        },
+        campaignId: agreement.campaignId,
+        userId: agreement.userId,
+      },
+      select: { id: true },
+    });
+
+    getIo()
+      .to(socketId)
+      .emit(
+        'notification',
+        notificationSignature(campaign.name, {
+          campaignId: agreement.campaignId,
+          submissionId: agreementSubmission?.id,
+        }),
+      );
+
     if (socketId) {
-      io.to(socketId).emit('notification', notification);
-      io.to(clients.get(userId)).emit('agreementReady');
+      getIo().to(socketId).emit('notification', notification);
+      getIo().to(clients.get(userId)).emit('agreementReady');
     }
 
     return res.status(200).json({ message: 'Agreement resent successfully.' });
@@ -9513,9 +9508,9 @@ export const submitAgreementV3 = async (req: Request, res: Response) => {
       });
       const socketId = clients.get(a.admin.userId);
       if (socketId) {
-        io.to(socketId).emit('notification', notification);
-        io.to(socketId).emit('agreementReady');
-        io.to(socketId).emit('pitchUpdate');
+        getIo().to(socketId).emit('notification', notification);
+        getIo().to(socketId).emit('agreementReady');
+        getIo().to(socketId).emit('pitchUpdate');
       }
     }
 
@@ -9669,9 +9664,9 @@ export const shortlistCreator = async (req: Request, res: Response) => {
 
             const socketId = clients.get(creator.id);
             if (socketId) {
-              io.to(socketId).emit('notification', notification);
+              getIo().to(socketId).emit('notification', notification);
               // Emit shortlisted event with campaign data for popup
-              io.to(socketId).emit('shortlisted', {
+              getIo().to(socketId).emit('shortlisted', {
                 message: 'shortlisted',
                 campaignId: campaign.id,
                 campaignName: campaign.name,
@@ -9902,9 +9897,9 @@ export const shortlistCreatorV2 = async (req: Request, res: Response) => {
 
           const socketId = clients.get(creator.id);
           if (socketId) {
-            io.to(socketId).emit('notification', notification);
+            getIo().to(socketId).emit('notification', notification);
             // Emit shortlisted event with campaign data for popup
-            io.to(socketId).emit('shortlisted', {
+            getIo().to(socketId).emit('shortlisted', {
               message: 'shortlisted',
               campaignId: campaign.id,
               campaignName: campaign.name,
@@ -10729,7 +10724,7 @@ export const activateClientCampaign = async (req: Request, res: Response) => {
         const socketId = clients.get(adminUser.id);
 
         if (socketId) {
-          io.to(socketId).emit('notification', notification);
+          getIo().to(socketId).emit('notification', notification);
           console.log(`Sent real-time notification to user ${adminUser.id} on socket ${socketId}`);
         }
       }
@@ -11316,10 +11311,16 @@ export const checkCampaignCreatorVisibility = async (req: Request, res: Response
 // Add this function after the shortlistCreatorV2 function
 export const shortlistCreatorV3 = async (req: Request, res: Response) => {
   // Support both per-creator adminComments (new) and legacy single adminComments (backward compat)
-  const { creators, campaignId, adminComments: legacyAdminComments, ugcCredits } = req.body;
+  const { creators, campaignId, adminComments: legacyAdminComments, ugcCredits, action } = req.body;
   const userId = req.userId;
 
   try {
+    // Optional explicit action (hybrid UX): 'approve' = admin approval is final even when
+    // a client is attached; 'send_to_client' = route through client review (requires a
+    // client). Absent = derived from client presence.
+    if (action && !['approve', 'send_to_client'].includes(action)) {
+      return res.status(400).json({ message: 'action must be approve or send_to_client' });
+    }
     // Validate follower counts - max 10 billion (prevents 64-bit integer overflow)
     const MAX_FOLLOWER_COUNT = 10_000_000_000;
     for (const creator of creators) {
@@ -11378,12 +11379,30 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
           shortlisted: true,
           thread: true,
           campaignBrief: true,
+          campaignAdmin: {
+            include: {
+              admin: {
+                include: {
+                  user: { select: { role: true } },
+                  role: true,
+                },
+              },
+            },
+          },
         },
       });
 
       if (!campaign) throw new Error('Campaign not found');
 
       const isV4Campaign = campaign.submissionVersion === 'v4';
+      // Shortlisting routes through client review when a client is attached, unless the
+      // admin explicitly chose to approve directly. Without a client, admin shortlisting
+      // is always a direct final approval.
+      const hasClient = campaignHasClient(campaign);
+      if (action === 'send_to_client' && !hasClient) {
+        throw new Error('Cannot send to client: campaign has no client attached');
+      }
+      const requiresClientReview = isV4Campaign && hasClient && action !== 'approve';
       const creatorIds = creators.map((c: any) => c.id);
 
       const creatorData = await tx.user.findMany({
@@ -11493,10 +11512,9 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
             },
           });
         } else {
-          // Determine status based on campaign type:
-          // - v4 campaigns: SENT_TO_CLIENT (needs client approval)
-          // - non-v4 campaigns: APPROVED directly
-          const pitchStatus = isV4Campaign ? 'SENT_TO_CLIENT' : 'APPROVED';
+          // Campaigns with a client: SENT_TO_CLIENT (client approves the shortlist).
+          // No client (or non-v4): APPROVED directly.
+          const pitchStatus = requiresClientReview ? 'SENT_TO_CLIENT' : 'APPROVED';
 
           // Extract per-creator comments with fallback to legacy format
           const creatorAdminComments =
@@ -11525,9 +11543,10 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
           });
         }
 
-        // For non-v4 campaigns: Also create ShortListedCreator and submissions (direct approval)
-        if (!isV4Campaign) {
-          console.log(`Non-v4 campaign: Creating ShortListedCreator for ${user.id}`);
+        // Direct approval (non-v4, or v4 without a client): also create ShortListedCreator
+        // and submissions. Client-review campaigns get this setup when the client approves.
+        if (!requiresClientReview) {
+          console.log(`Direct-approval shortlist: Creating ShortListedCreator for ${user.id}`);
 
           // For credit tier campaigns, calculate creditPerVideo from creator's tier
           let creditPerVideo: number | null = null;
@@ -11618,6 +11637,14 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
             orderBy: { order: 'asc' },
           });
 
+          // v4 campaigns don't use the v2 draft/posting submission types — those flows
+          // live on the typed VIDEO/PHOTO/RAW_FOOTAGE submissions created at agreement
+          // approval (mirrors approvePitchByAdmin's direct-approval path)
+          const v2SubmissionTypes = ['FIRST_DRAFT', 'FINAL_DRAFT', 'POSTING'];
+          const timelinesFiltered = isV4Campaign
+            ? timelines.filter((t) => !v2SubmissionTypes.includes(t.submissionType?.type || ''))
+            : timelines;
+
           // Get creator's board
           const board = await tx.board.findUnique({
             where: { userId: user.id },
@@ -11629,11 +11656,11 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
             const columnInProgress = board.columns.find((c) => c.name.includes('In Progress'));
 
             if (columnToDo && columnInProgress) {
-              console.log(`Creating submissions for non-v4 shortlist - ${timelines.length} timeline(s)`);
+              console.log(`Creating submissions for direct-approval shortlist - ${timelinesFiltered.length} timeline(s)`);
 
               // Create submissions for timeline items
               const submissions = await Promise.all(
-                timelines.map(async (timeline, index) => {
+                timelinesFiltered.map(async (timeline, index) => {
                   return await tx.submission.create({
                     data: {
                       dueDate: timeline.endDate,
@@ -11641,6 +11668,7 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
                       userId: user.id,
                       status: timeline.submissionType?.type === 'AGREEMENT_FORM' ? 'IN_PROGRESS' : 'NOT_STARTED',
                       submissionTypeId: timeline.submissionTypeId as string,
+                      submissionVersion: isV4Campaign ? 'v4' : undefined,
                       task: {
                         create: {
                           name: timeline.name,
@@ -11658,23 +11686,25 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
                 }),
               );
 
-              // Create dependencies between submissions for non-v4 campaigns
-              const agreement = submissions.find((s) => s.submissionType?.type === 'AGREEMENT_FORM');
-              const draft = submissions.find((s) => s.submissionType?.type === 'FIRST_DRAFT');
-              const finalDraft = submissions.find((s) => s.submissionType?.type === 'FINAL_DRAFT');
-              const posting = submissions.find((s) => s.submissionType?.type === 'POSTING');
+              if (!isV4Campaign) {
+                // Create dependencies between submissions for non-v4 campaigns
+                const agreement = submissions.find((s) => s.submissionType?.type === 'AGREEMENT_FORM');
+                const draft = submissions.find((s) => s.submissionType?.type === 'FIRST_DRAFT');
+                const finalDraft = submissions.find((s) => s.submissionType?.type === 'FINAL_DRAFT');
+                const posting = submissions.find((s) => s.submissionType?.type === 'POSTING');
 
-              const dependencies = [
-                { submissionId: draft?.id, dependentSubmissionId: agreement?.id },
-                { submissionId: finalDraft?.id, dependentSubmissionId: draft?.id },
-                { submissionId: posting?.id, dependentSubmissionId: finalDraft?.id },
-              ].filter((dep) => dep.submissionId && dep.dependentSubmissionId);
+                const dependencies = [
+                  { submissionId: draft?.id, dependentSubmissionId: agreement?.id },
+                  { submissionId: finalDraft?.id, dependentSubmissionId: draft?.id },
+                  { submissionId: posting?.id, dependentSubmissionId: finalDraft?.id },
+                ].filter((dep) => dep.submissionId && dep.dependentSubmissionId);
 
-              if (dependencies.length > 0) {
-                await tx.submissionDependency.createMany({ data: dependencies });
+                if (dependencies.length > 0) {
+                  await tx.submissionDependency.createMany({ data: dependencies });
+                }
               }
 
-              console.log(`Created ${submissions.length} submissions for non-v4 shortlist`);
+              console.log(`Created ${submissions.length} submissions for direct-approval shortlist`);
             }
           }
         }
@@ -11705,9 +11735,9 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
           }
         }
 
-        // Create appropriate notifications based on campaign type
-        if (isV4Campaign) {
-          // For v4: Notify client users for review
+        // Create appropriate notifications based on who reviews the shortlist
+        if (requiresClientReview) {
+          // Notify client users for review
           const clientUsers = await tx.campaignAdmin.findMany({
             where: {
               campaignId: campaign.id,
@@ -11738,7 +11768,7 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
             });
           }
         } else {
-          // For non-v4: Notify the creator they've been approved
+          // Direct approval: Notify the creator they've been approved
           await tx.notification.create({
             data: {
               title: 'You have been selected! 🎉',
@@ -11772,7 +11802,7 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
     });
 
     // Emit to campaign room for real-time updates
-    io.to(campaignId).emit('v3:pitch:status-updated', {
+    getIo().to(campaignId).emit('v3:pitch:status-updated', {
       campaignId,
       newStatus: 'APPROVED',
       action: 'shortlist',
@@ -11785,7 +11815,7 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
     for (const creator of creators) {
       const creatorSocketId = clients.get(creator.id);
       if (creatorSocketId) {
-        io.to(creatorSocketId).emit('pitchUpdate');
+        getIo().to(creatorSocketId).emit('pitchUpdate');
       }
     }
 
@@ -11876,7 +11906,7 @@ export const rateCreator = async (req: Request, res: Response) => {
       };
 
       if (creatorSocketId) {
-        io.to(creatorSocketId).emit('creator:rating-completed', payload);
+        getIo().to(creatorSocketId).emit('creator:rating-completed', payload);
       }
     }
 

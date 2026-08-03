@@ -6,6 +6,7 @@ import {
   deleteManualCreatorEntry,
   updateManualCreatorEntry,
   validateUrl,
+  validateUsername,
   detectPlatformFromUrl,
 } from '@services/manualCreatorService';
 
@@ -38,6 +39,14 @@ export const createEntry = async (req: Request, res: Response) => {
       return res.status(400).json({
         success: false,
         message: 'Creator name and username are required',
+      });
+    }
+
+    const usernameValidation = validateUsername(creatorUsername);
+    if (!usernameValidation.isValid) {
+      return res.status(400).json({
+        success: false,
+        message: usernameValidation.reason || 'Invalid username',
       });
     }
 
@@ -216,6 +225,16 @@ export const updateEntry = async (req: Request, res: Response) => {
         return res.status(400).json({
           success: false,
           message: urlValidation.reason || 'Invalid URL',
+        });
+      }
+    }
+
+    if (creatorUsername !== undefined) {
+      const usernameValidation = validateUsername(creatorUsername);
+      if (!usernameValidation.isValid) {
+        return res.status(400).json({
+          success: false,
+          message: usernameValidation.reason || 'Invalid username',
         });
       }
     }

@@ -32,7 +32,7 @@ export const handleSendMessage = async (message: any, io: any) => {
       json: async (data: any) => {
         if (code === 201) {
           // //console.log('Message saved:', data);
-          // io.to(threadId).emit('message', {
+          // getIo().to(threadId).emit('message', {
           //   senderId,
           //   threadId,
           //   content,
