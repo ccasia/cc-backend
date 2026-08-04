@@ -42,15 +42,13 @@ export const isAdmin = async (req: Request, res: Response, next: NextFunction) =
       return next();
     }
 
-    // For non-superadmins, check if they have CSM role
-    const isCSM =
-      user?.admin?.role?.name === 'CSM' ||
-      user?.admin?.role?.name === 'Customer Success Manager' ||
-      (user?.admin?.role?.name || '').toLowerCase().includes('csm') ||
-      (user?.admin?.role?.name || '').toLowerCase().includes('customer success');
+    // Customer Success Managers and Leads handle campaign operations.
+    const roleName = (user?.admin?.role?.name || '').trim().toLowerCase();
+    const isCustomerSuccess =
+      roleName === 'csm' || roleName === 'csl' || roleName.includes('customer success') || roleName.includes('cs lead');
 
-    if (!isCSM) {
-      return res.status(403).json({ message: 'Access denied. Superadmin or CSM role required.' });
+    if (!isCustomerSuccess) {
+      return res.status(403).json({ message: 'Access denied. Superadmin, CSM, or CSL role required.' });
     }
 
     next();
