@@ -44,11 +44,16 @@ import clientDemoRoute from './clientDemoRoute';
 import videoOfTheMonthRoute from './videoOfTheMonthRoute';
 import financeRoute from './financeRoute';
 import uploadRoute from './uploadRoute';
+import treasureHuntRoute from './treasureHuntRoute';
+import treasureHuntAdminRoute from './treasureHuntAdminRoute';
 
 export const router = express.Router();
 
 router.use('/user', userRoute);
 router.use('/auth', authRoute);
+// Mounted before the generic /admin router so its strict-superadmin routes are
+// matched first and not shadowed by adminRoute's own auth handling.
+router.use('/admin/treasure-hunts', treasureHuntAdminRoute);
 router.use('/admin', adminRoute);
 router.use('/creator', creatorRoute);
 router.use('/company', companyRoute);
@@ -92,3 +97,4 @@ router.use('/client-demo', clientDemoRoute);
 router.use('/video-of-the-month', videoOfTheMonthRoute);
 router.use('/finance', financeRoute);
 router.use('/upload-sessions', uploadRoute);
+router.use('/hunts', treasureHuntRoute);
