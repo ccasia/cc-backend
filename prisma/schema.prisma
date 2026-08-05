@@ -120,6 +120,9 @@ model User {
   treasureHuntAuditActions TreasureHuntAuditLog[]
 
   isPhoneVerified Boolean @default(false)
+
+  creatorAchievements  CreatorAchievement[]
+  leaderboardSnapshots LeaderboardSnapshot[]
 }
 
 model RefreshToken {
@@ -2823,19 +2826,23 @@ model XpTransaction {
   amount     Int
   sourceType XpSourceType
   sourceId   String
+  periodId   String?
   metadata   Json?
   createdAt  DateTime      @default(now())
   user       User          @relation(fields: [userId], references: [id])
 
-  @@unique([sourceType, sourceId])
+  @@unique([userId, sourceType, sourceId])
   @@index([userId, createdAt])
+  @@index([periodId])
 }
 
 model UserXpBalance {
-  userId    String   @id
-  total     Int      @default(0)
-  updatedAt DateTime @updatedAt
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId          String    @id
+  total           Int       @default(0)
+  rank            String    @default("riser")
+  mediaKitBonusAt DateTime?
+  updatedAt       DateTime  @updatedAt
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model TreasureHuntAuditLog {
@@ -2878,4 +2885,57 @@ enum BitlyPublicationStatus {
 
 enum XpSourceType {
   HUNT_LOCATION_CLAIM
+  PITCH_SUBMITTED
+  PITCH_APPROVED
+  SHORTLISTED
+  SUBMISSION_SUBMITTED
+  SUBMISSION_APPROVED
+  POSTING_SUBMITTED
+  POSTING_APPROVED
+  CLIENT_RATING
+  MEDIA_KIT_CONNECTED
+  LEADERBOARD_TOP_10
+  LEADERBOARD_TOP_3
+  WEEKLY_TASK
+  ACHIEVEMENT
+}
+
+// ─────────────────────────── Gamification ────────────────────────────
+
+model Achievement {
+  id          String               @id
+  name        String
+  category    String
+  rarity      String
+  icon        String
+  description String
+  target      Int
+  active      Boolean              @default(true)
+  sortOrder   Int
+  creators    CreatorAchievement[]
+}
+
+model CreatorAchievement {
+  userId        String
+  achievementId String
+  progress      Int         @default(0)
+  unlockedAt    DateTime?
+  updatedAt     DateTime    @updatedAt
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievement   Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+
+  @@id([userId, achievementId])
+  @@index([achievementId])
+}
+
+model LeaderboardSnapshot {
+  periodId  String
+  userId    String
+  rank      Int
+  xp        Int
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([periodId, userId])
+  @@index([userId])
 }
