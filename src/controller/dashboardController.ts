@@ -142,9 +142,20 @@ export const getDashboardStats = async (req: Request, res: Response) => {
     const isFiltered = assignedIds !== null;
 
     const ids = assignedIds as string[];
-    // Opt-in filter: the superadmin dashboard only reports on v4 campaigns.
     const versionWhere = req.query.version === 'v4' ? { submissionVersion: 'v4' as const } : {};
-    const campaignWhere = { ...(isFiltered && { id: { in: ids } }), ...versionWhere };
+    const { startDate: startParam, endDate: endParam } = req.query;
+    let dateWhere: { createdAt?: { gte: Date; lte: Date } } = {};
+    if (startParam && endParam) {
+      const startDate = new Date(startParam as string);
+      const endDate = new Date(endParam as string);
+      if (!isNaN(startDate.getTime()) && !isNaN(endDate.getTime())) {
+        if (!(endParam as string).includes('T')) endDate.setUTCHours(23, 59, 59, 999);
+        dateWhere = { createdAt: { gte: startDate, lte: endDate } };
+      }
+    }
+    const campaignConditions = { ...versionWhere, ...dateWhere };
+    const hasCampaignConditions = Object.keys(campaignConditions).length > 0;
+    const campaignWhere = { ...(isFiltered && { id: { in: ids } }), ...campaignConditions };
     const pitchCampaignFilter = isFiltered ? { campaignId: { in: ids } } : {};
 
     const [
@@ -164,7 +175,14 @@ export const getDashboardStats = async (req: Request, res: Response) => {
         where: {
           role: 'creator',
           status: 'active',
-          ...(isFiltered && { shortlisted: { some: { campaignId: { in: assignedIds! } } } }),
+          ...((isFiltered || hasCampaignConditions) && {
+            shortlisted: {
+              some: {
+                ...(isFiltered && { campaignId: { in: assignedIds! } }),
+                ...(hasCampaignConditions && { campaign: campaignConditions }),
+              },
+            },
+          }),
         },
       }),
 
@@ -172,8 +190,15 @@ export const getDashboardStats = async (req: Request, res: Response) => {
         where: {
           role: 'client',
           status: 'active',
-          ...(isFiltered && {
-            client: { campaignClients: { some: { campaignId: { in: assignedIds! } } } },
+          ...((isFiltered || hasCampaignConditions) && {
+            client: {
+              campaignClients: {
+                some: {
+                  ...(isFiltered && { campaignId: { in: assignedIds! } }),
+                  ...(hasCampaignConditions && { campaign: campaignConditions }),
+                },
+              },
+            },
           }),
         },
       }),
@@ -264,11 +289,6 @@ export const getDashboardStats = async (req: Request, res: Response) => {
   }
 };
 
-/**
- * GET /api/dashboard/attention
- * Returns counts for items needing attention + response/rejection metrics.
- * CS users only see items from their assigned campaigns.
- */
 export const getDashboardAttention = async (req: Request, res: Response) => {
   try {
     const assignedIds = await getAssignedCampaignIds(req.userId!);
