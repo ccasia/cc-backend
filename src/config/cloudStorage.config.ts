@@ -1,4 +1,5 @@
 import { Storage, TransferManager } from '@google-cloud/storage';
+import { randomUUID } from 'crypto';
 import dayjs from 'dayjs';
 import fs from 'fs';
 
@@ -17,9 +18,11 @@ export const buildGcsPublicUrl = (bucketName: string, objectName: string, versio
   return version ? `${url}?v=${encodeURIComponent(version)}` : url;
 };
 
+export const buildUniqueObjectName = (fileName: string): string => `${randomUUID()}_${fileName}`;
+
 export const uploadImage = async (tempFilePath: string, fileName: string, folderName: string) => {
   const uploadPromise = new Promise<string>((resolve, reject) => {
-    const destination = `${folderName}/${fileName}`;
+    const destination = `${folderName}/${buildUniqueObjectName(fileName)}`;
 
     storage.bucket(process.env.BUCKET_NAME as string).upload(
       tempFilePath,
@@ -62,7 +65,7 @@ export const uploadImage = async (tempFilePath: string, fileName: string, folder
 export const uploadProfileImage = async (tempFilePath: string, fileName: string, folderName: string) => {
   try {
     const bucket = storage.bucket(process.env.BUCKET_NAME as string);
-    const destination = `${folderName}/${fileName}`;
+    const destination = `${folderName}/${buildUniqueObjectName(fileName)}`;
 
     await bucket.upload(tempFilePath, {
       destination: destination,
@@ -72,7 +75,7 @@ export const uploadProfileImage = async (tempFilePath: string, fileName: string,
     });
 
     // Construct the URL manually
-    const publicUrl = buildGcsPublicUrl(process.env.BUCKET_NAME as string, destination);
+    const publicUrl = buildGcsPublicUrl(process.env.BUCKET_NAME as string, destination, dayjs().format());
 
     return publicUrl;
   } catch (err) {
@@ -83,7 +86,7 @@ export const uploadProfileImage = async (tempFilePath: string, fileName: string,
 
 export const uploadCompanyLogo = async (tempFilePath: string, fileName: string) => {
   const uploadPromise = new Promise<string>((resolve, reject) => {
-    const destination = `companyLogo/${fileName}`;
+    const destination = `companyLogo/${buildUniqueObjectName(fileName)}`;
 
     storage.bucket(process.env.BUCKET_NAME as string).upload(
       tempFilePath,
@@ -105,7 +108,7 @@ export const uploadCompanyLogo = async (tempFilePath: string, fileName: string) 
           ?.makePublic()
           // eslint-disable-next-line promise/always-return
           .then(() => {
-            const publicURL = buildGcsPublicUrl(process.env.BUCKET_NAME as string, destination);
+            const publicURL = buildGcsPublicUrl(process.env.BUCKET_NAME as string, destination, dayjs().format());
             resolve(publicURL);
           })
           .catch((err) => {
