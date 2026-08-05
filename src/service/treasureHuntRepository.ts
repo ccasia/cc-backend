@@ -7,6 +7,7 @@ import {
   TreasureHuntError,
 } from './treasureHuntService';
 import { lockTreasureHunt, lockTreasureHuntLocation } from './treasureHuntDb';
+import { awardXp } from './gamificationService';
 
 const locationSelect = {
   id: true,
@@ -409,21 +410,25 @@ export const createPrismaTreasureHuntRepository = ({
             },
           });
 
-          await tx.xpTransaction.create({
-            data: {
-              userId: input.userId,
-              amount: awardedXp,
-              sourceType: 'HUNT_LOCATION_CLAIM',
-              sourceId: input.claimId,
-              metadata: { huntLocationId: input.locationId },
-            },
+          // Award through the shared engine so hunt XP counts toward rank and
+          // the monthly leaderboard like every other source. Passing `tx` keeps
+          // it in this transaction: a failed award rolls the claim back rather
+          // than burning the QR token for nothing.
+          const award = await awardXp({
+            userId: input.userId,
+            sourceType: 'HUNT_LOCATION_CLAIM',
+            sourceId: input.claimId,
+            xp: awardedXp,
+            metadata: { huntLocationId: input.locationId },
+            tx,
           });
 
-          await tx.userXpBalance.upsert({
-            where: { userId: input.userId },
-            create: { userId: input.userId, total: awardedXp },
-            update: { total: { increment: awardedXp } },
-          });
+          // Publishing requires rewardXp > 0, so this is unreachable — but a
+          // claim that silently awards nothing burns the QR token for good,
+          // so fail loudly rather than trust a check in another file.
+          if (!award.awarded) {
+            throw new Error(`Treasure hunt claim ${input.claimId} awarded no XP (${award.reason}).`);
+          }
         });
       } catch (error: any) {
         const target = error?.meta?.target;
