@@ -18,7 +18,8 @@
       "@services/*": ["./src/service/*"],
       "@utils/*": ["./src/utils/*"],
       "@helper/*": ["./src/helper/*"],
-      "@types": ["./src/types.ts"]
+      "@types": ["./src/types.ts"],
+      "@modules/*": ["./src/modules/*"]
     },
     "skipLibCheck": true,
     "esModuleInterop": true,
