@@ -18,6 +18,7 @@ import { getIo, initializeSocket } from './config/socket';
 
 import '@helper/processPitchVideo';
 import './helper/videoDraft';
+import '@helper/verificationCodeWorker';
 // import './helper/videoDraftWorker';
 
 import dotenv from 'dotenv';
