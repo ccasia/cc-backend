@@ -2827,7 +2827,7 @@ model XpTransaction {
   amount Int //points
   userId String
 
-  sourceType XpSourceType // maybe we are not using this anymore
+  sourceType XpSourceType? // maybe we are not using this anymore
   sourceId   String // maybe we are not using this anymore
 
   actionId String?
@@ -2839,7 +2839,7 @@ model XpTransaction {
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id])
 
-  // @@unique([userId, sourceType, sourceId])
+  @@unique([userId, actionId, sourceId])
   @@index([userId, createdAt])
   @@index([periodId])
   @@index([actionId])
@@ -2966,7 +2966,7 @@ model LeaderboardSnapshot {
 
 model XpAction {
   id         String     @id @default(cuid())
-  code       String
+  code       String     @unique
   name       String
   points     Int?
   rewardType RewardType
@@ -2986,7 +2986,7 @@ enum RewardType {
 
 model Rank {
   id        String @id @default(cuid())
-  name      String
+  name      String @unique
   minPoints Int
 
   createdAt DateTime @default(now())
