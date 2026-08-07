@@ -8,7 +8,7 @@ export const GAMIFICATION_XP: { name: string; point: number | null; code: string
     name: 'Hunt Location Claim',
     code: 'hunt_location_claim',
     point: null,
-    rewardType: 'one_time',
+    rewardType: 'repeatable',
   },
   {
     name: 'Pitch Submitted',
@@ -84,34 +84,36 @@ export const GAMIFICATION_XP: { name: string; point: number | null; code: string
   },
   {
     name: 'Weekly Tasks',
-    code: 'connecting_media_kit',
+    code: 'weekly_tasks',
     point: null,
-    rewardType: 'one_time',
+    rewardType: 'repeatable',
+  },
+  {
+    name: 'Achievement',
+    code: 'achievement',
+    point: null,
+    rewardType: 'repeatable',
   },
 ];
 
 const seedGamification = async () => {
-  // 1.Create Ranks
-  const createManyRanks: Prisma.RankCreateManyInput[] = RANKS.map((rank) => ({
-    name: rank.name,
-    minPoints: rank.minXp,
-  }));
+  // 1. Ranks
+  for (const rank of RANKS) {
+    await prisma.rank.upsert({
+      where: { name: rank.name },
+      update: { minPoints: rank.minXp },
+      create: { name: rank.name, minPoints: rank.minXp },
+    });
+  }
 
-  await prisma.rank.createMany({
-    data: createManyRanks,
-  });
-
-  // 2. Create Point Actions
-  const createManyPoints: Prisma.XpActionCreateManyInput[] = GAMIFICATION_XP.map((item) => ({
-    name: item.name,
-    points: item.point,
-    code: item.code,
-    rewardType: item.rewardType,
-  }));
-
-  await prisma.xpAction.createMany({
-    data: createManyPoints,
-  });
+  // 2. Point actions
+  for (const item of GAMIFICATION_XP) {
+    await prisma.xpAction.upsert({
+      where: { code: item.code },
+      update: { name: item.name, points: item.point, rewardType: item.rewardType },
+      create: { code: item.code, name: item.name, points: item.point, rewardType: item.rewardType },
+    });
+  }
 
   console.log('Done seeding gamification.');
 };
