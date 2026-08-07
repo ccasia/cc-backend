@@ -41,56 +41,54 @@ export interface RankProgress {
   pointsToNextRank: number | null;
 }
 
-export class GamificationService {
-  async getPointAction(code: PointActionCode | string): Promise<PointActionRecord | null> {
-    const action = await prisma.xpAction.findFirst({ where: { code } });
-    if (!action) return null;
+export const getPointAction = async (code: PointActionCode | string): Promise<PointActionRecord | null> => {
+  const action = await prisma.xpAction.findFirst({ where: { code } });
+  if (!action) return null;
 
-    return {
-      id: action.id,
-      code: action.code,
-      name: action.name,
-      points: action.points,
-      rewardType: action.rewardType,
-      isOneTime: action.rewardType === 'one_time',
-    };
-  }
+  return {
+    id: action.id,
+    code: action.code,
+    name: action.name,
+    points: action.points,
+    rewardType: action.rewardType,
+    isOneTime: action.rewardType === 'one_time',
+  };
+};
 
-  async getCreatorPoints(creatorId: string): Promise<CreatorPointsRecord | null> {
-    const balance = await prisma.userXpBalance.findUnique({
-      where: { userId: creatorId },
-      include: { rank: true },
-    });
-    if (!balance) return null;
+export const getCreatorPoints = async (creatorId: string): Promise<CreatorPointsRecord | null> => {
+  const balance = await prisma.userXpBalance.findUnique({
+    where: { userId: creatorId },
+    include: { rank: true },
+  });
+  if (!balance) return null;
 
-    return {
-      creatorId: balance.userId,
-      totalPoints: balance.total,
-      currentRankId: balance.currentRankId,
-      currentRank: balance.rank,
-      updatedAt: balance.updatedAt,
-    };
-  }
+  return {
+    creatorId: balance.userId,
+    totalPoints: balance.total,
+    currentRankId: balance.currentRankId,
+    currentRank: balance.rank,
+    updatedAt: balance.updatedAt,
+  };
+};
 
-  async calculateNextRank(totalPoints: number): Promise<RankProgress> {
-    const ranks = await prisma.rank.findMany({ orderBy: { minPoints: 'asc' } });
+export const calculateNextRank = async (totalPoints: number): Promise<RankProgress> => {
+  const ranks = await prisma.rank.findMany({ orderBy: { minPoints: 'asc' } });
 
-    let currentRank = ranks[0];
-    let nextRank: Rank | null = null;
+  let currentRank = ranks[0];
+  let nextRank: Rank | null = null;
 
-    for (const rank of ranks) {
-      if (rank.minPoints <= totalPoints) {
-        currentRank = rank;
-      } else {
-        nextRank = rank;
-        break;
-      }
+  for (const rank of ranks) {
+    if (rank.minPoints <= totalPoints) {
+      currentRank = rank;
+    } else {
+      nextRank = rank;
+      break;
     }
-
-    return {
-      currentRank,
-      nextRank,
-      pointsToNextRank: nextRank ? nextRank.minPoints - totalPoints : null,
-    };
   }
-}
+
+  return {
+    currentRank,
+    nextRank,
+    pointsToNextRank: nextRank ? nextRank.minPoints - totalPoints : null,
+  };
+};
