@@ -3734,7 +3734,6 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
 
     if (
       user.admin?.mode === 'god' ||
-      user.admin?.role?.name === 'CSL' ||
       user.admin?.mode === 'advanced' ||
       user.admin?.role?.slug === 'sales_and_marketing'
     ) {
@@ -4034,7 +4033,10 @@ export const getAllCampaignsByAdminId = async (req: Request<RequestQuery>, res: 
     }
 
     // CSM Admin: on Completed tab show all completed campaigns, not just their own
-    const isCSMAdmin = user.admin?.role?.name === 'CSM' || user.admin?.role?.name === 'Customer Success Manager';
+    const isCSMAdmin =
+      user.admin?.role?.name === 'CSM' ||
+      user.admin?.role?.name === 'Customer Success Manager' ||
+      user.admin?.role?.name === 'CSL';
     const showAllCompletedForCSM = isCSMAdmin && status === 'COMPLETED';
 
     console.log('Non-superadmin user, status condition:', statusCondition);
@@ -13258,9 +13260,27 @@ export const getCampaignsForPublic = async (req: Request, res: Response) => {
 // Function to fetch all status for all campaign. Return value number
 export const getCampaignStatus = async (req: Request, res: Response) => {
   try {
+    const requester = req.userId
+      ? await prisma.user.findUnique({
+          where: { id: req.userId },
+          select: { admin: { select: { role: { select: { name: true } } } } },
+        })
+      : null;
+
+    const requesterRole = requester?.admin?.role?.name;
+    const scopeActiveToOwn =
+      requesterRole === 'CSM' || requesterRole === 'Customer Success Manager' || requesterRole === 'CSL';
+
     const activeCampaigns = prisma.campaign.count({
       where: {
         status: 'ACTIVE',
+        ...(scopeActiveToOwn && {
+          campaignAdmin: {
+            some: {
+              adminId: req.userId,
+            },
+          },
+        }),
       },
     });
 
