@@ -5,6 +5,7 @@ import {
   getPostEngagementTrend,
   getPostEngagementTrendByUrl,
   getCampaignPostTrends,
+  getLatestCampaignPostEngagement,
   captureDailyPostEngagementForUrl,
 } from '@services/postEngagementSnapshotService';
 
@@ -192,6 +193,35 @@ export const getCampaignDailyTrends = async (req: Request, res: Response) => {
     return res.status(500).json({
       success: false,
       message: 'Failed to fetch campaign daily trends',
+      error: error.message,
+    });
+  }
+};
+
+// Get the latest stored metrics for every post in a campaign.
+// GET /api/campaign/:campaignId/post-engagement-snapshots/latest
+export const getLatestCampaignPostSnapshots = async (req: Request, res: Response) => {
+  try {
+    const { campaignId } = req.params;
+
+    if (!campaignId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Campaign ID is required',
+      });
+    }
+
+    const snapshots = await getLatestCampaignPostEngagement(campaignId);
+
+    return res.status(200).json({
+      success: true,
+      data: snapshots,
+    });
+  } catch (error: any) {
+    console.error('Error fetching latest campaign post snapshots:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch latest campaign post snapshots',
       error: error.message,
     });
   }
