@@ -650,7 +650,7 @@ export const assignCsmToBrief = async (briefId: string, csmUserIds: string[], in
   const csmAdmins = await prisma.admin.findMany({
     where: {
       userId: { in: ids },
-      role: { name: { in: ['CSM', 'Customer Success Manager'] } },
+      role: { name: { in: ['CSM', 'Customer Success Manager', 'CSL'] } },
     },
     select: { userId: true },
   });
