@@ -17,6 +17,7 @@ import {
 import { fetchInsightsForAllCampaigns } from '@services/insightFetchService';
 import { capturePostEngagementSnapshots } from '@services/postEngagementSnapshotService';
 import { clients, getIo } from './socket';
+import { snapshotLeaderboard } from '../modules/gamification';
 
 const prisma = new PrismaClient();
 
@@ -261,6 +262,32 @@ new CronJob(
       });
     } catch (error) {
       console.error('[Cronjob] Post engagement snapshot collection failed:', error);
+    }
+  },
+  null, // onComplete
+  true, // start
+  'Asia/Kuala_Lumpur',
+);
+
+new CronJob(
+  '30 0 1 * *',
+  async function () {
+    const periodId = dayjs().tz('Asia/Kuala_Lumpur').subtract(1, 'month').format('YYYY-MM');
+
+    console.log('[Cronjob] Starting leaderboard snapshot for', periodId);
+
+    try {
+      const result = await snapshotLeaderboard(periodId);
+
+      console.log('[Cronjob] Leaderboard snapshot completed:', {
+        periodId: result.periodId,
+        ranked: result.ranked,
+        awarded: result.awarded,
+        skipped: result.skipped,
+        timestamp: dayjs().tz('Asia/Kuala_Lumpur').format(),
+      });
+    } catch (error) {
+      console.error('[Cronjob] Leaderboard snapshot failed:', error);
     }
   },
   null, // onComplete

@@ -46,7 +46,6 @@ import financeRoute from './financeRoute';
 import uploadRoute from './uploadRoute';
 import treasureHuntRoute from './treasureHuntRoute';
 import treasureHuntAdminRoute from './treasureHuntAdminRoute';
-import gamificationRoute from './gamificationRoute'
 
 export const router = express.Router();
 
@@ -99,4 +98,3 @@ router.use('/video-of-the-month', videoOfTheMonthRoute);
 router.use('/finance', financeRoute);
 router.use('/upload-sessions', uploadRoute);
 router.use('/hunts', treasureHuntRoute);
-router.use('/gamification', gamificationRoute)

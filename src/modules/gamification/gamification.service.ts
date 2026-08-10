@@ -3,6 +3,8 @@ import { prisma } from '@/src/prisma/prisma';
 import { clients, getIo } from '@configs/socket';
 import { saveNotification } from '@controllers/notificationController';
 import { getPeriodId } from '@constants/gamification';
+import { previousDay } from 'date-fns';
+import { RowType } from 'xero-node';
 
 type ExtendedClient = typeof prisma;
 type TxClient = Omit<ExtendedClient, '$connect' | '$disconnect' | '$transaction' | '$on' | '$use' | '$extends'>;
@@ -303,3 +305,224 @@ const notifyXpAwarded = async (
     console.error('[gamification] notifyXpAwarded failed:', error);
   }
 };
+
+// ─────────────────────────── Leaderboard ───────────────────────────
+export type LeaderboardEntry = {
+  id: string;
+  rank: number;
+  name: string;
+  xp: number;
+  avatarUrl: string | null;
+  rankDelta: number;
+  isCurrentUser: boolean;
+};
+
+const previousPeriodId = (periodId: string): string => {
+  const [year, month] = periodId.split('-').map(Number);
+  const prev = new Date(Date.UTC(year, month - 2, 1));
+  return prev.toISOString().slice(0, 7);
+};
+
+export const getLeaderboard = async (
+  viewerId: string,
+  limit = 20,
+  tx: TxClient = prisma,
+): Promise<{ periodId: string; entries: LeaderboardEntry[]; viewerEntry: LeaderboardEntry | null }> => {
+  const take = Math.min(Math.max(limit, 1), 100);
+  const periodId = getPeriodId();
+
+  const previous = await tx.leaderboardSnapshot.findMany({
+    where: { periodId: previousPeriodId(periodId) },
+    select: { userId: true, rank: true },
+  });
+  const previousRanks = new Map(previous.map((row) => [row.userId, row.rank]));
+
+  const totals = await tx.xpTransaction.groupBy({
+    by: ['userId'],
+    where: { periodId },
+    _sum: { amount: true },
+    orderBy: { _sum: { amount: 'desc' } },
+    take,
+  });
+
+  const users = await tx.user.findMany({
+    where: { id: { in: totals.map((row) => row.userId) } },
+    select: { id: true, name: true, photoURL: true },
+  });
+  const userById = new Map(users.map((user) => [user.id, user]));
+
+  const entries = totals.map((row, index) => {
+    const rank = index + 1;
+    const previousRank = previousRanks.get(row.userId);
+
+    return {
+      id: row.userId,
+      rank,
+      name: userById.get(row.userId)?.name ?? 'Unknown Creator',
+      xp: row._sum.amount ?? 0,
+      avatarUrl: userById.get(row.userId)?.photoURL ?? null,
+      rankDelta: previousRank ? previousRank - rank : 0,
+      isCurrentUser: row.userId === viewerId,
+    };
+  });
+
+  return {
+    periodId,
+    entries,
+    viewerEntry: entries.find((entry) => entry.isCurrentUser) ?? null,
+  };
+};
+
+// ─────────────────────────── Codex ───────────────────────────
+const SECRET_PLACEHOLDER = {
+  name: '???',
+  description: 'Keep creating to uncover this one.',
+  icon: 'help-circle-outline',
+};
+
+export const getCodex = async (userId: string, tx: TxClient = prisma) => {
+  const [achievements, earned, totalCreators] = await Promise.all([
+    tx.achievement.findMany({
+      where: { active: true },
+      orderBy: { sortOrder: 'asc' },
+    }),
+    tx.creatorAchievement.findMany({ where: { userId } }),
+    tx.user.count({ where: { role: 'creator' } }),
+  ]);
+
+  const progressByAchievement = new Map(earned.map((row) => [row.achievementId, row]));
+
+  const unlockedCounts = await tx.creatorAchievement.groupBy({
+    by: ['achievementId'],
+    where: { unlockedAt: { not: null } },
+    _count: { userId: true },
+  });
+  const unlockedBy = new Map(unlockedCounts.map((row) => [row.achievementId, row._count.userId]));
+
+  return achievements.map((achievement) => {
+    const mine = progressByAchievement.get(achievement.id);
+    const unlocked = Boolean(mine?.unlockedAt);
+    const hidden = achievement.rarity === 'secret' && !unlocked;
+
+    return {
+      id: achievement.id,
+      name: hidden ? SECRET_PLACEHOLDER.name : achievement.name,
+      description: hidden ? SECRET_PLACEHOLDER.description : achievement.description,
+      icon: hidden ? SECRET_PLACEHOLDER.icon : achievement.icon,
+      category: achievement.category,
+      rarity: achievement.rarity,
+      unlocked,
+      progressCurrent: mine?.progress ?? 0,
+      progressTarget: achievement.target,
+      earnedPercent: totalCreators > 0 ? Math.round(((unlockedBy.get(achievement.id) ?? 0) / totalCreators) * 100) : 0,
+    };
+  });
+};
+
+export const progressAchievement = async (
+  userId: string,
+  achievementId: string,
+  increment = 1,
+  tx: TxClient = prisma,
+): Promise<{ unlocked: boolean }> => {
+  const achievement = await tx.achievement.findUnique({
+    where: { id: achievementId },
+  });
+  if (!achievement || !achievement.active) return { unlocked: false };
+
+  const row = await tx.creatorAchievement.upsert({
+    where: { userId_achievementId: { userId, achievementId } },
+    create: { userId, achievementId, progress: increment },
+    update: { progress: { increment } },
+  });
+
+  if (row.unlockedAt || row.progress < achievement.target) {
+    return { unlocked: false };
+  }
+
+  await tx.creatorAchievement.update({
+    where: { userId_achievementId: { userId, achievementId } },
+    data: { unlockedAt: new Date() },
+  });
+
+  await awardXp({
+    userId,
+    actionCode: 'achievement',
+    sourceId: achievementId,
+    xp: XP_BY_RARITY[achievement.rarity] ?? 0,
+    metadata: { achievementId, name: achievement.name },
+    tx,
+  });
+
+  return { unlocked: true };
+};
+
+const XP_BY_RARITY: Record<string, number> = {
+  common: 50,
+  uncommon: 100,
+  rare: 250,
+  legendary: 500,
+  secret: 500,
+};
+
+// ─────────────────────────── Snapshot ───────────────────────────
+type SnapshotResult = {
+  periodId: string;
+  ranked: number;
+  awarded: number;
+  skipped: boolean;
+};
+
+export const snapshotLeaderboard = async (periodId: string): Promise<SnapshotResult> => {
+  if (periodId >= getPeriodId()) {
+    console.warn(`[gamification] Refusing to snapshot in-progress period ${periodId}.`);
+    return { periodId, ranked: 0, awarded: 0, skipped: true };
+  }
+
+  const totals = await prisma.xpTransaction.groupBy({
+    by: ['userId'],
+    where: { periodId },
+    _sum: { amount: true },
+    orderBy: { _sum: { amount: 'desc' } },
+  });
+
+  if (totals.length === 0) {
+    return { periodId, ranked: 0, awarded: 0, skipped: false };
+  }
+
+  const standings = totals.map((row, index) => ({
+    userId: row.userId,
+    xp: row._sum.amount ?? 0,
+    rank: index + 1,
+  }));
+
+  await prisma.$transaction(
+    standings.map((entry) =>
+      prisma.leaderboardSnapshot.upsert({
+        where: { periodId_userId: { periodId, userId: entry.userId } },
+        create: { periodId, userId: entry.userId, rank: entry.rank, xp: entry.xp },
+        update: { rank: entry.rank, xp: entry.xp },
+      }),
+    ),
+  );
+
+  let awarded = 0;
+
+  for (const entry of standings) {
+    if (entry.rank > 10) break;
+
+    const actionCode = entry.rank <= 3 ? 'leaderboard_top_3' : 'leaderboard_top_10';
+
+    const result = await awardXp({
+      userId: entry.userId,
+      actionCode,
+      sourceId: periodId,
+      metadata: { periodId, rank: entry.rank, xp: entry.xp },
+    });
+
+    if (result.awarded) awarded += 1;
+  }
+
+  return { periodId, ranked: standings.length, awarded, skipped: false };
+};
+
