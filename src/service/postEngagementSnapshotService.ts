@@ -2,7 +2,7 @@ import { PrismaClient } from '@prisma/client';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
-import { batchFetchInsights } from './socialMediaBatchService';
+import { batchFetchInsights, BatchInsightResult } from './socialMediaBatchService';
 import { getMetricValue } from '@utils/insightNormalizationHelper';
 
 dayjs.extend(utc);
@@ -405,6 +405,79 @@ export async function getPostEngagementSnapshots(campaignId: string): Promise<
  */
 const DAILY_CAPTURE_MAX_AGE_DAYS = 90;
 
+export async function storeDailyPostEngagementResults(
+  postingUrls: any[],
+  results: BatchInsightResult[],
+  platform: 'Instagram' | 'TikTok',
+  snapshotDate: Date = new Date(),
+): Promise<{ captured: number; failed: number }> {
+  const snapshotStart = dayjs(snapshotDate).tz('Asia/Kuala_Lumpur').startOf('day');
+  const stats = { captured: 0, failed: 0 };
+
+  for (let i = 0; i < postingUrls.length; i++) {
+    const postingUrl = postingUrls[i];
+    const result = results[i];
+
+    if (!result || result.error || !result.insight) {
+      console.error(`   ❌ Fetch failed for ${postingUrl.postUrl}: ${result?.error ?? 'no result'}`);
+      stats.failed++;
+      continue;
+    }
+
+    try {
+      const postDate = dayjs(postingUrl.postingDate).tz('Asia/Kuala_Lumpur').startOf('day');
+      const metrics = extractMetrics(result.insight, platform);
+
+      await prisma.dailyPostEngagementSnapshot.upsert({
+        where: {
+          postUrl_snapshotDate: {
+            postUrl: postingUrl.postUrl,
+            snapshotDate: snapshotStart.toDate(),
+          },
+        },
+        create: {
+          campaignId: postingUrl.campaignId,
+          submissionId: postingUrl.submissionId,
+          postUrl: postingUrl.postUrl,
+          platform,
+          userId: postingUrl.submission.userId,
+          postDate: postDate.toDate(),
+          snapshotDate: snapshotStart.toDate(),
+          daysSincePost: snapshotStart.diff(postDate, 'day'),
+          capturedAt: new Date(),
+          views: metrics.views,
+          likes: metrics.likes,
+          comments: metrics.comments,
+          shares: metrics.shares,
+          saved: metrics.saved,
+          reach: metrics.reach,
+          engagementRate: metrics.engagementRate,
+          rawMetrics: result.insight,
+        },
+        update: {
+          daysSincePost: snapshotStart.diff(postDate, 'day'),
+          capturedAt: new Date(),
+          views: metrics.views,
+          likes: metrics.likes,
+          comments: metrics.comments,
+          shares: metrics.shares,
+          saved: metrics.saved,
+          reach: metrics.reach,
+          engagementRate: metrics.engagementRate,
+          rawMetrics: result.insight,
+        },
+      });
+
+      stats.captured++;
+    } catch (error: any) {
+      console.error(`   ❌ Upsert failed for ${postingUrl.postUrl}: ${error.message}`);
+      stats.failed++;
+    }
+  }
+
+  return stats;
+}
+
 /**
  * Run the daily per-post engagement capture across every eligible posting URL
  * in every ACTIVE/COMPLETED campaign.
@@ -493,68 +566,10 @@ export async function captureDailyPostEngagement(): Promise<{
         delayMs: 200,
       });
 
-      for (let i = 0; i < urls.length; i++) {
-        stats.processed++;
-        const url = urls[i];
-        const result = results[i];
-
-        if (!result || result.error || !result.insight) {
-          console.error(`   ❌ Fetch failed for ${url.postUrl}: ${result?.error ?? 'no result'}`);
-          stats.failed++;
-          continue;
-        }
-
-        try {
-          const postDate = dayjs(url.postingDate!).tz('Asia/Kuala_Lumpur').startOf('day');
-          const daysSincePost = today.diff(postDate, 'day');
-          const metrics = extractMetrics(result.insight, platform);
-
-          await prisma.dailyPostEngagementSnapshot.upsert({
-            where: {
-              postUrl_snapshotDate: {
-                postUrl: url.postUrl,
-                snapshotDate: today.toDate(),
-              },
-            },
-            create: {
-              campaignId: url.campaignId,
-              submissionId: url.submissionId,
-              postUrl: url.postUrl,
-              platform,
-              userId: url.submission.userId,
-              postDate: postDate.toDate(),
-              snapshotDate: today.toDate(),
-              daysSincePost,
-              capturedAt: new Date(),
-              views: metrics.views,
-              likes: metrics.likes,
-              comments: metrics.comments,
-              shares: metrics.shares,
-              saved: metrics.saved,
-              reach: metrics.reach,
-              engagementRate: metrics.engagementRate,
-              rawMetrics: result.insight,
-            },
-            update: {
-              daysSincePost,
-              capturedAt: new Date(),
-              views: metrics.views,
-              likes: metrics.likes,
-              comments: metrics.comments,
-              shares: metrics.shares,
-              saved: metrics.saved,
-              reach: metrics.reach,
-              engagementRate: metrics.engagementRate,
-              rawMetrics: result.insight,
-            },
-          });
-
-          stats.captured++;
-        } catch (error: any) {
-          console.error(`   ❌ Upsert failed for ${url.postUrl}: ${error.message}`);
-          stats.failed++;
-        }
-      }
+      const stored = await storeDailyPostEngagementResults(urls, results, platform, today.toDate());
+      stats.processed += urls.length;
+      stats.captured += stored.captured;
+      stats.failed += stored.failed;
     }
 
     console.log('\n' + '='.repeat(80));
@@ -784,6 +799,88 @@ export async function getPostEngagementTrendByUrl(
   });
 
   return rows;
+}
+
+export interface LatestPostEngagementSnapshot {
+  submissionId: string;
+  userId: string;
+  postUrl: string;
+  platform: string;
+  postDate: Date;
+  snapshotDate: Date;
+  capturedAt: Date;
+  views: number;
+  likes: number;
+  comments: number;
+  shares: number;
+  saved: number;
+  reach: number;
+  engagementRate: number;
+}
+
+/**
+ * Return the newest stored metrics for each campaign post.
+ * Daily snapshots are preferred. Milestone snapshots provide a fallback for
+ * older posts that are outside the daily capture window.
+ */
+export async function getLatestCampaignPostEngagement(campaignId: string): Promise<LatestPostEngagementSnapshot[]> {
+  const [dailySnapshots, milestoneSnapshots] = await Promise.all([
+    prisma.dailyPostEngagementSnapshot.findMany({
+      where: { campaignId },
+      orderBy: { snapshotDate: 'desc' },
+      distinct: ['postUrl'],
+    }),
+    prisma.postEngagementSnapshot.findMany({
+      where: { campaignId },
+      orderBy: { capturedAt: 'desc' },
+      distinct: ['postUrl'],
+    }),
+  ]);
+
+  const latestByPost = new Map<string, LatestPostEngagementSnapshot>();
+
+  for (const snapshot of dailySnapshots) {
+    latestByPost.set(snapshot.postUrl, {
+      submissionId: snapshot.submissionId,
+      userId: snapshot.userId,
+      postUrl: snapshot.postUrl,
+      platform: snapshot.platform,
+      postDate: snapshot.postDate,
+      snapshotDate: snapshot.snapshotDate,
+      capturedAt: snapshot.capturedAt,
+      views: snapshot.views,
+      likes: snapshot.likes,
+      comments: snapshot.comments,
+      shares: snapshot.shares,
+      saved: snapshot.saved,
+      reach: snapshot.reach,
+      engagementRate: snapshot.engagementRate,
+    });
+  }
+
+  for (const snapshot of milestoneSnapshots) {
+    const current = latestByPost.get(snapshot.postUrl);
+    if (current && current.capturedAt >= snapshot.capturedAt) continue;
+
+    latestByPost.set(snapshot.postUrl, {
+      submissionId: snapshot.submissionId,
+      userId: snapshot.userId,
+      postUrl: snapshot.postUrl,
+      platform: snapshot.platform,
+      postDate: snapshot.postDate,
+      snapshotDate: snapshot.capturedAt,
+      capturedAt: snapshot.capturedAt,
+      views: snapshot.views,
+      likes: snapshot.likes,
+      comments: snapshot.comments,
+      shares: snapshot.shares,
+      saved: snapshot.saved,
+      reach: snapshot.reach,
+      engagementRate: snapshot.engagementRate,
+    });
+  }
+
+  return Array.from(latestByPost.values());
 }
 
 /**

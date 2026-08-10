@@ -4,6 +4,7 @@ import { calculateDailyMetrics, storeInsightSnapshot } from '@services/trendAnal
 import { getCampaignSubmissionUrls, extractAndStoreSubmissionUrls } from '@services/submissionUrlService';
 import { normalizeInsightResults, UrlData } from '@utils/insightNormalizationHelper';
 import { getManualCreatorEntries } from '@services/manualCreatorService';
+import { storeDailyPostEngagementResults } from '@services/postEngagementSnapshotService';
 
 const prisma = new PrismaClient();
 
@@ -91,14 +92,20 @@ export async function fetchAndStoreInsightsForCampaign(campaignId: string): Prom
       return;
     }
 
+    let snapshotFailures = 0;
+
     // Fetch and store Instagram insights
     if (instaUrls.length > 0) {
-      await fetchAndStorePlatformInsights(campaignId, 'Instagram', instaUrls);
+      snapshotFailures += await fetchAndStorePlatformInsights(campaignId, 'Instagram', instaUrls);
     }
 
     // Fetch and store TikTok insights
     if (tiktokUrls.length > 0) {
-      await fetchAndStorePlatformInsights(campaignId, 'TikTok', tiktokUrls);
+      snapshotFailures += await fetchAndStorePlatformInsights(campaignId, 'TikTok', tiktokUrls);
+    }
+
+    if (snapshotFailures > 0) {
+      throw new Error(`Failed to refresh ${snapshotFailures} campaign post snapshots`);
     }
 
     console.log(`✅ Insights fetched and stored for campaign ${campaignId}`);
@@ -115,7 +122,7 @@ async function fetchAndStorePlatformInsights(
   campaignId: string,
   platform: 'Instagram' | 'TikTok',
   urls: any[],
-): Promise<void> {
+): Promise<number> {
   console.log(`\n   📦 Fetching ${platform} insights...`);
 
   try {
@@ -135,13 +142,15 @@ async function fetchAndStorePlatformInsights(
       delayMs: 200,
     });
 
+    const dailySnapshotResult = await storeDailyPostEngagementResults(urls, results, platform);
+
     // Filter valid results
     const validResults = results.filter((r) => !r.error);
     console.log(`   ✅ Successfully fetched: ${validResults.length}/${results.length}`);
 
     if (validResults.length === 0) {
       console.log(`   ⚠️  No valid insights for ${platform}, skipping snapshot...`);
-      return;
+      return dailySnapshotResult.failed;
     }
 
     // Normalize insights using the helper
@@ -165,7 +174,7 @@ async function fetchAndStorePlatformInsights(
 
     if (normalizedInsights.length === 0 && manualEntriesForPlatform.length === 0) {
       console.log(`⚠️  No insights or manual entries for ${platform}, skipping snapshot...`);
-      return;
+      return dailySnapshotResult.failed;
     }
 
     // Calculate metrics including manual entries
@@ -175,6 +184,7 @@ async function fetchAndStorePlatformInsights(
     await storeInsightSnapshot(campaignId, metrics, new Date());
 
     console.log(`   💾 Snapshot stored for ${platform}`);
+    return dailySnapshotResult.failed;
   } catch (error: any) {
     console.error(`   ❌ Error processing ${platform} insights:`, error.message);
     throw error;
@@ -200,33 +210,43 @@ export async function fetchInsightsForAllCampaigns(): Promise<{
   };
 
   try {
-    // Get all campaigns with POSTED or APPROVED submissions (either with URLs or with content to backfill)
-    const campaignIds = await prisma.submission.findMany({
-      where: {
-        status: { in: ['POSTED', 'APPROVED'] },
-        content: { not: null },
-      },
-      select: {
-        campaignId: true,
-      },
-      distinct: ['campaignId'],
-    });
+    const [postingUrlCampaigns, submissionCampaigns] = await Promise.all([
+      prisma.submissionPostingUrl.findMany({
+        where: {
+          postingDate: { not: null },
+          campaign: { status: { in: ['ACTIVE', 'COMPLETED'] } },
+        },
+        select: { campaignId: true },
+        distinct: ['campaignId'],
+      }),
+      prisma.submission.findMany({
+        where: {
+          status: { in: ['POSTED', 'APPROVED'] },
+          content: { not: null },
+        },
+        select: { campaignId: true },
+        distinct: ['campaignId'],
+      }),
+    ]);
+    const campaignIds = [
+      ...new Set([...postingUrlCampaigns, ...submissionCampaigns].map(({ campaignId }) => campaignId)),
+    ];
 
-    console.log(`📊 Found ${campaignIds.length} campaign(s) with POSTED/APPROVED submissions\n`);
+    console.log(`📊 Found ${campaignIds.length} campaign(s) with posted content\n`);
 
     if (campaignIds.length === 0) {
-      console.log(`   ℹ️  No POSTED/APPROVED submissions found`);
+      console.log(`   ℹ️  No posted content found`);
       return stats;
     }
 
-    for (const campaign of campaignIds) {
+    for (const campaignId of campaignIds) {
       stats.processed++;
 
       try {
-        await fetchAndStoreInsightsForCampaign(campaign.campaignId);
+        await fetchAndStoreInsightsForCampaign(campaignId);
         stats.success++;
       } catch (error: any) {
-        console.error(`❌ Failed to process campaign ${campaign.campaignId}:`, error.message);
+        console.error(`❌ Failed to process campaign ${campaignId}:`, error.message);
         stats.failed++;
       }
 
