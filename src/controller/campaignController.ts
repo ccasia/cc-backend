@@ -5564,10 +5564,15 @@ export const editCampaignFinalise = async (req: Request, res: Response) => {
         },
       });
 
-      // Get CSM and Client admins that should be managed by this form
+      // Get CSM/CSL and Client admins that should be managed by this form. This must stay in
+      // sync with the frontend's existingManagers filter in UpdateFinaliseCampaign.jsx —
+      // a role listed there but missing here can be deselected in the UI but never removed.
       const managedAdmins = existingAdmins.filter(
         (ca) =>
-          ca.admin?.role?.name === 'CSM' || ca.admin?.role?.name === 'Client' || ca.admin?.user?.role === 'client',
+          ca.admin?.role?.name === 'CSM' ||
+          ca.admin?.role?.name === 'CSL' ||
+          ca.admin?.role?.name === 'Client' ||
+          ca.admin?.user?.role === 'client',
       );
 
       // Find admins that need to be removed (in existing but not in new list)
