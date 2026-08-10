@@ -68,13 +68,13 @@ export const GAMIFICATION_XP: { name: string; point: number | null; code: string
     name: 'LeaderBoard Top 10',
     code: 'leaderboard_top_10',
     point: 250,
-    rewardType: 'one_time',
+    rewardType: 'repeatable',
   },
   {
     name: 'LeaderBoard Top 3',
     code: 'leaderboard_top_3',
     point: 500,
-    rewardType: 'one_time',
+    rewardType: 'repeatable',
   },
   {
     name: 'Connecting Media Kit',

@@ -2848,16 +2848,13 @@ model UserXpBalance {
   total           Int       @default(0)
   mediaKitBonusAt DateTime?
 
-  userId        String @unique
+  userId        String @id
   currentRankId String
 
-  // rank   String @default("riser")
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   rank Rank @relation(fields: [currentRankId], references: [id])
 
   updatedAt DateTime @updatedAt
-
-  @@id([userId, currentRankId])
 }
 
 model TreasureHuntAuditLog {

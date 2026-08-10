@@ -7,7 +7,7 @@ import {
   TreasureHuntError,
 } from './treasureHuntService';
 import { lockTreasureHunt, lockTreasureHuntLocation } from './treasureHuntDb';
-import { awardXp } from './gamificationService';
+import { awardXp } from '@/src/modules/gamification';
 
 const locationSelect = {
   id: true,
@@ -416,7 +416,7 @@ export const createPrismaTreasureHuntRepository = ({
           // than burning the QR token for nothing.
           const award = await awardXp({
             userId: input.userId,
-            sourceType: 'HUNT_LOCATION_CLAIM',
+            actionCode: 'hunt_location_claim',
             sourceId: input.claimId,
             xp: awardedXp,
             metadata: { huntLocationId: input.locationId },
