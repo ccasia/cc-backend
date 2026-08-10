@@ -38,18 +38,22 @@ new CronJob(
   '0 0 * * *', // cronTime
   async function () {
     const today = dayjs().tz('Asia/Kuala_Lumpur').startOf('day').toISOString();
+    const todayStart = dayjs().tz('Asia/Kuala_Lumpur').startOf('day').toDate();
+    const todayEnd = dayjs().tz('Asia/Kuala_Lumpur').endOf('day').toDate();
 
-    // Update campaign start date
     await prisma.campaign.updateMany({
       where: {
+        status: 'SCHEDULED',
         campaignBrief: {
           startDate: {
-            equals: today,
+            gte: todayStart,
+            lte: todayEnd,
           },
         },
       },
       data: {
         status: 'ACTIVE',
+        publishedAt: new Date(),
       },
     });
 
