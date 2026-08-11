@@ -410,17 +410,23 @@ export async function storeDailyPostEngagementResults(
   results: BatchInsightResult[],
   platform: 'Instagram' | 'TikTok',
   snapshotDate: Date = new Date(),
-): Promise<{ captured: number; failed: number }> {
+): Promise<{ captured: number; failed: number; failures: { postUrl: string; reason: string }[] }> {
   const snapshotStart = dayjs(snapshotDate).tz('Asia/Kuala_Lumpur').startOf('day');
-  const stats = { captured: 0, failed: 0 };
+  const stats: { captured: number; failed: number; failures: { postUrl: string; reason: string }[] } = {
+    captured: 0,
+    failed: 0,
+    failures: [],
+  };
 
   for (let i = 0; i < postingUrls.length; i++) {
     const postingUrl = postingUrls[i];
     const result = results[i];
 
     if (!result || result.error || !result.insight) {
-      console.error(`   ❌ Fetch failed for ${postingUrl.postUrl}: ${result?.error ?? 'no result'}`);
+      const reason = result?.error ?? 'No insight result returned';
+      console.error(`   ❌ Fetch failed for ${postingUrl.postUrl}: ${reason}`);
       stats.failed++;
+      stats.failures.push({ postUrl: postingUrl.postUrl, reason });
       continue;
     }
 
@@ -472,6 +478,7 @@ export async function storeDailyPostEngagementResults(
     } catch (error: any) {
       console.error(`   ❌ Upsert failed for ${postingUrl.postUrl}: ${error.message}`);
       stats.failed++;
+      stats.failures.push({ postUrl: postingUrl.postUrl, reason: `Snapshot storage failed: ${error.message}` });
     }
   }
 

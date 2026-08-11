@@ -229,11 +229,18 @@ export const refreshCampaignInsightsController = async (req: Request, res: Respo
     console.log(`🔄 Manual refresh triggered for campaign ${campaignId}`);
 
     // Fetch and store insights
-    await fetchAndStoreInsightsForCampaign(campaignId);
+    const result = await fetchAndStoreInsightsForCampaign(campaignId);
 
-    return res.status(200).json({
-      success: true,
-      message: `Insights refreshed for campaign: ${campaign.name}`,
+    const status = result.failed === 0 ? 200 : result.succeeded > 0 ? 207 : 422;
+
+    return res.status(status).json({
+      success: result.failed === 0,
+      partialSuccess: result.failed > 0 && result.succeeded > 0,
+      message:
+        result.failed > 0
+          ? `Refreshed ${result.succeeded} of ${result.total} campaign posts`
+          : `Insights refreshed for campaign: ${campaign.name}`,
+      data: result,
     });
   } catch (error: any) {
     console.error('Error refreshing campaign insights:', error.message);
