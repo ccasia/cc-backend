@@ -11,10 +11,14 @@ export const checkCampaignAccess = async (req: Request, res: Response, next: Nex
       return res.status(400).json({ message: 'Campaign ID is required in the URL or request body.' });
     }
 
-    const { userid } = req.session as any;
+    const userId = req.userId;
+
+    if (!userId) {
+      return res.status(401).json({ message: 'Authentication error: User not found.' });
+    }
 
     const user = await prisma.user.findUnique({
-      where: { id: userid },
+      where: { id: userId },
       select: {
         id: true,
         role: true,
@@ -42,12 +46,14 @@ export const checkCampaignAccess = async (req: Request, res: Response, next: Nex
         return res.status(404).json({ message: 'Campaign not found.' });
       }
 
-      if (campaign.companyId === user.client?.companyId) {
+      if (campaign.companyId && user.client?.companyId && campaign.companyId === user.client.companyId) {
         return next();
       }
 
       return res.status(403).json({ message: 'Forbidden: You do not have permission to access this campaign.' });
     }
+
+    return res.status(403).json({ message: 'Forbidden: You do not have permission to access campaign analytics.' });
   } catch (error) {
     console.error('Error in checkCampaignAccess middleware:', error);
     return res.status(500).json({ message: 'Internal Server Error' });

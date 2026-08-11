@@ -10,7 +10,7 @@ import { notifications } from '@constants/reminders';
 import { clients } from '../server';
 
 import { fetchInsightsForAllCampaigns } from '@services/insightFetchService';
-import { capturePostEngagementSnapshots, captureDailyPostEngagement } from '@services/postEngagementSnapshotService';
+import { capturePostEngagementSnapshots } from '@services/postEngagementSnapshotService';
 import { runCreditDriftCheck } from '@services/creditDriftDetector';
 // import { clients, io } from '../server';
 import {
@@ -264,20 +264,6 @@ new CronJob(
       });
     } catch (error) {
       console.error('[Cronjob] Post engagement snapshot collection failed:', error);
-    }
-
-    try {
-      const dailyResult = await captureDailyPostEngagement();
-
-      console.log('[Cronjob] Daily post engagement collection completed:', {
-        processed: dailyResult.processed,
-        captured: dailyResult.captured,
-        skipped: dailyResult.skipped,
-        failed: dailyResult.failed,
-        timestamp: dayjs().tz('Asia/Kuala_Lumpur').format(),
-      });
-    } catch (error) {
-      console.error('[Cronjob] Daily post engagement collection failed:', error);
     }
   },
   null, // onComplete
