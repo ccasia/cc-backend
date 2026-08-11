@@ -58,8 +58,15 @@ export async function scheduleInitialInsightFetch(campaignId: string, submission
     console.log(`🔍 Running scheduled initial insight fetch for campaign ${campaignId}...`);
 
     try {
-      await fetchAndStoreInsightsForCampaign(campaignId);
-      console.log(`✅ Initial insight fetch complete for campaign ${campaignId}`);
+      const result = await fetchAndStoreInsightsForCampaign(campaignId);
+      if (result.total > 0 && result.failed === result.total) {
+        throw new Error(`Failed to refresh all ${result.total} campaign post snapshots`);
+      }
+      if (result.failed > 0) {
+        console.warn(`⚠️  Initial insight fetch partially completed for campaign ${campaignId}`);
+      } else {
+        console.log(`✅ Initial insight fetch complete for campaign ${campaignId}`);
+      }
     } catch (error: any) {
       console.error(`❌ Initial insight fetch failed for campaign ${campaignId}:`, error.message);
     } finally {
@@ -229,7 +236,11 @@ function buildRefreshFailures(
 function classifyRefreshFailure(reason: string): string {
   const normalized = reason.toLowerCase();
 
-  if (normalized.includes('not connected') || normalized.includes('no instagram account linked')) {
+  if (
+    normalized.includes('not connected') ||
+    normalized.includes('no instagram account linked') ||
+    normalized.includes('no tiktok account linked')
+  ) {
     return 'ACCOUNT_NOT_CONNECTED';
   }
   if (normalized.includes('access token not found')) return 'ACCESS_TOKEN_MISSING';
@@ -296,7 +307,13 @@ export async function fetchInsightsForAllCampaigns(): Promise<{
       stats.processed++;
 
       try {
-        await fetchAndStoreInsightsForCampaign(campaignId);
+        const result = await fetchAndStoreInsightsForCampaign(campaignId);
+        if (result.total > 0 && result.failed === result.total) {
+          throw new Error(`Failed to refresh all ${result.total} campaign post snapshots`);
+        }
+        if (result.failed > 0) {
+          console.warn(`⚠️  Partially refreshed campaign ${campaignId}: ${result.succeeded}/${result.total} posts`);
+        }
         stats.success++;
       } catch (error: any) {
         console.error(`❌ Failed to process campaign ${campaignId}:`, error.message);
