@@ -100,10 +100,12 @@ import {
   getPostDailyTrend,
   getPostDailyTrendByUrl,
   getCampaignDailyTrends,
+  getLatestCampaignPostSnapshots,
   triggerDailyCapture,
 } from '@controllers/postEngagementSnapshotController';
 import { isSuperAdmin, isAdmin, isBdOrSuperadmin } from '@middlewares/onlySuperadmin';
 import { canActivateCampaign } from '@middlewares/adminOrClient';
+import { checkCampaignAccess } from '@middlewares/checkCampaignAccess';
 
 import {
   createNewTimeline,
@@ -287,6 +289,12 @@ router.get('/:campaignId/post-engagement-snapshots', authenticate, getCampaignPo
 router.post('/:campaignId/post-engagement-snapshots/capture', authenticate, isAdmin, triggerManualSnapshot);
 
 // Daily per-post engagement trend endpoints
+router.get(
+  '/:campaignId/post-engagement-snapshots/latest',
+  authenticate,
+  checkCampaignAccess,
+  getLatestCampaignPostSnapshots,
+);
 router.get('/:campaignId/post-engagement-snapshots/daily', authenticate, getCampaignDailyTrends);
 router.get('/:campaignId/post-engagement-snapshots/daily-by-url', authenticate, getPostDailyTrendByUrl);
 router.get('/:campaignId/post-engagement-snapshots/daily/:submissionId', authenticate, getPostDailyTrend);
