@@ -115,6 +115,7 @@ type AwardXpInput = {
   sourceId?: string;
   xp?: number;
   metadata?: Prisma.InputJsonValue;
+  periodId?: string;
   tx?: TxClient;
 };
 
@@ -129,6 +130,7 @@ const writeXp = async (
   sourceId: string,
   xp: number,
   metadata?: Prisma.InputJsonValue,
+  periodId: string = getPeriodId(),
 ) => {
   await tx.xpTransaction.create({
     data: {
@@ -136,7 +138,7 @@ const writeXp = async (
       amount: xp,
       actionId: action.id,
       sourceId,
-      periodId: getPeriodId(),
+      periodId,
       metadata,
     },
   });
@@ -166,7 +168,7 @@ const writeXp = async (
 };
 
 export const awardXp = async (input: AwardXpInput): Promise<AwardXpResult> => {
-  const { userId, actionCode, metadata, tx } = input;
+  const { userId, actionCode, metadata, tx, periodId } = input;
 
   const action = await getPointAction(actionCode, tx);
   if (!action) {
@@ -187,13 +189,13 @@ export const awardXp = async (input: AwardXpInput): Promise<AwardXpResult> => {
   }
 
   if (tx) {
-    const result = await writeXp(tx, userId, action, sourceId, xp, metadata);
+    const result = await writeXp(tx, userId, action, sourceId, xp, metadata, periodId);
     return { awarded: true, xp, totalPoints: result.totalPoints, rankUp: result.rankUp };
   }
 
   try {
     const result = await prisma.$transaction(async (trx) => {
-      return writeXp(trx, userId, action, sourceId, xp, metadata);
+      return writeXp(trx, userId, action, sourceId, xp, metadata, periodId);
     });
 
     void notifyXpAwarded(userId, action, xp, result.totalPoints, result.rankUp);
@@ -381,16 +383,23 @@ const SECRET_PLACEHOLDER = {
 };
 
 export const getCodex = async (userId: string, tx: TxClient = prisma) => {
-  const [achievements, earned, totalCreators] = await Promise.all([
+  const [achievements, earned, totalCreators, myEvents] = await Promise.all([
     tx.achievement.findMany({
       where: { active: true },
       orderBy: { sortOrder: 'asc' },
     }),
     tx.creatorAchievement.findMany({ where: { userId } }),
     tx.user.count({ where: { role: 'creator' } }),
+    // Progress is derived, not stored — one grouped query covers all badges.
+    tx.creatorAchievementEvent.groupBy({
+      by: ['achievementId'],
+      where: { userId },
+      _sum: { increment: true },
+    }),
   ]);
 
   const progressByAchievement = new Map(earned.map((row) => [row.achievementId, row]));
+  const progressCount = new Map(myEvents.map((row) => [row.achievementId, row._sum.increment ?? 0]));
 
   const unlockedCounts = await tx.creatorAchievement.groupBy({
     by: ['achievementId'],
@@ -411,18 +420,22 @@ export const getCodex = async (userId: string, tx: TxClient = prisma) => {
       icon: hidden ? SECRET_PLACEHOLDER.icon : achievement.icon,
       category: achievement.category,
       rarity: achievement.rarity,
+      xp: achievement.xp,
       unlocked,
-      progressCurrent: mine?.progress ?? 0,
+      // Unlocked badges show a full bar even if the qualifying events predate
+      // the event ledger.
+      progressCurrent: unlocked ? achievement.target : (progressCount.get(achievement.id) ?? 0),
       progressTarget: achievement.target,
       earnedPercent: totalCreators > 0 ? Math.round(((unlockedBy.get(achievement.id) ?? 0) / totalCreators) * 100) : 0,
     };
   });
 };
 
-export const progressAchievement = async (
+const applyAchievementProgress = async (
   userId: string,
   achievementId: string,
   increment = 1,
+  sourceId: string,
   tx: TxClient = prisma,
 ): Promise<{ unlocked: boolean }> => {
   const achievement = await tx.achievement.findUnique({
@@ -430,13 +443,36 @@ export const progressAchievement = async (
   });
   if (!achievement || !achievement.active) return { unlocked: false };
 
-  const row = await tx.creatorAchievement.upsert({
+  // The row must exist before an event can reference it (composite FK).
+  const existing = await tx.creatorAchievement.upsert({
     where: { userId_achievementId: { userId, achievementId } },
-    create: { userId, achievementId, progress: increment },
-    update: { progress: { increment } },
+    create: { userId, achievementId },
+    update: {},
   });
 
-  if (row.unlockedAt || row.progress < achievement.target) {
+  // Already unlocked — nothing further to record.
+  if (existing.unlockedAt) return { unlocked: false };
+
+  // The unique key is what makes this idempotent: a retried request, or two
+  // routes reaching the same approval, collide here instead of double-counting.
+  try {
+    await tx.creatorAchievementEvent.create({
+      data: { userId, achievementId, sourceId, increment },
+    });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      return { unlocked: false };
+    }
+    throw error;
+  }
+
+  // Derived, never cached — the events are the only source of truth.
+  const totals = await tx.creatorAchievementEvent.aggregate({
+    where: { userId, achievementId },
+    _sum: { increment: true },
+  });
+
+  if ((totals._sum.increment ?? 0) < achievement.target) {
     return { unlocked: false };
   }
 
@@ -449,7 +485,7 @@ export const progressAchievement = async (
     userId,
     actionCode: 'achievement',
     sourceId: achievementId,
-    xp: XP_BY_RARITY[achievement.rarity] ?? 0,
+    xp: achievement.xp,
     metadata: { achievementId, name: achievement.name },
     tx,
   });
@@ -457,12 +493,45 @@ export const progressAchievement = async (
   return { unlocked: true };
 };
 
-const XP_BY_RARITY: Record<string, number> = {
-  common: 50,
-  uncommon: 100,
-  rare: 250,
-  legendary: 500,
-  secret: 500,
+type ProgressAchievementInput = {
+  userId: string;
+  code: string;
+  /**
+   * Natural key of the thing that caused this progress — a pitchId, a
+   * submissionId. Repeat calls with the same sourceId are ignored, so a retried
+   * request or two routes reaching the same approval can't double-count.
+   *
+   * Omit only for one-shot badges with no meaningful source (first-light): the
+   * badge code is used instead, capping it at a single event.
+   */
+  sourceId?: string;
+  increment?: number;
+  tx?: TxClient;
+};
+
+export const progressAchievement = async ({
+  userId,
+  code,
+  sourceId,
+  increment = 1,
+  tx = prisma,
+}: ProgressAchievementInput): Promise<{ unlocked: boolean }> => {
+  try {
+    const achievement = await tx.achievement.findUnique({
+      where: { code },
+      select: { id: true },
+    });
+
+    if (!achievement) {
+      console.error(`[gamification] Unknown achievement code "${code}".`);
+      return { unlocked: false };
+    }
+
+    return await applyAchievementProgress(userId, achievement.id, increment, sourceId ?? code, tx);
+  } catch (error) {
+    console.error(`[gamification] progressAchievement("${code}") failed:`, error);
+    return { unlocked: false };
+  }
 };
 
 // ─────────────────────────── Snapshot ───────────────────────────
@@ -517,6 +586,7 @@ export const snapshotLeaderboard = async (periodId: string): Promise<SnapshotRes
       userId: entry.userId,
       actionCode,
       sourceId: periodId,
+      periodId,
       metadata: { periodId, rank: entry.rank, xp: entry.xp },
     });
 
@@ -525,4 +595,3 @@ export const snapshotLeaderboard = async (periodId: string): Promise<SnapshotRes
 
   return { periodId, ranked: standings.length, awarded, skipped: false };
 };
-

@@ -2917,11 +2917,13 @@ enum XpSourceType {
 
 model Achievement {
   id          String               @id @default(cuid())
+  code        String               @unique
   name        String
   category    String
   rarity      String
   icon        String
   description String
+  xp          Int
   target      Int
   active      Boolean              @default(true)
   sortOrder   Int
@@ -2934,16 +2936,32 @@ model Achievement {
 model CreatorAchievement {
   userId        String
   achievementId String
-  progress      Int         @default(0)
   unlockedAt    DateTime?
   user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   achievement   Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+
+  events CreatorAchievementEvent[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@id([userId, achievementId])
   @@index([achievementId])
+}
+
+model CreatorAchievementEvent {
+  id            String @id @default(cuid())
+  userId        String
+  achievementId String
+  sourceId      String
+  increment     Int    @default(1)
+
+  creatorAchievement CreatorAchievement @relation(fields: [userId, achievementId], references: [userId, achievementId], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, achievementId, sourceId])
+  @@index([userId, achievementId])
 }
 
 model LeaderboardSnapshot {
