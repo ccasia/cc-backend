@@ -85,6 +85,7 @@ import {
 } from '@utils/campaignMembershipEvents';
 import { buildCreatorRatingEventId, shouldEmitCreatorRatingCompleted } from '@utils/creatorRatingReveal';
 import { clients, getIo } from '../config/socket';
+import { awardXp, progressAchievement } from '@/src/modules/gamification';
 
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
 Ffmpeg.setFfprobePath(ffprobePath.path);
@@ -3088,6 +3089,11 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
           },
         });
       }
+    }
+
+    if (!isPitchExist && pitch) {
+      void awardXp({ userId: id as string, actionCode: 'pitch_submitted', sourceId: campaignId });
+      void progressAchievement({ userId: id as string, code: 'pitch-perfect', sourceId: campaignId });
     }
 
     // Update Creator.manualFollowerCount if no media kit and followerCount provided
@@ -6372,6 +6378,9 @@ export const changePitchStatus = async (req: Request, res: Response) => {
               ugcVideos: totalUGCVideos ? parseInt(totalUGCVideos) : null,
             },
           });
+
+          await awardXp({ userId: pitch.userId, actionCode: 'pitch_approved', sourceId: pitch.campaignId, tx });
+          await progressAchievement({ userId: pitch.userId, code: 'in-demand', sourceId: pitch.campaignId, tx });
 
           const timelines = await tx.campaignTimeline.findMany({
             where: {

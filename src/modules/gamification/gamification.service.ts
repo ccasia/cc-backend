@@ -1,13 +1,13 @@
-import { Prisma, Rank, RewardType } from '@prisma/client';
-import { prisma } from '@/src/prisma/prisma';
+import { Prisma, PrismaClient, Rank, RewardType } from '@prisma/client';
 import { clients, getIo } from '@configs/socket';
 import { saveNotification } from '@controllers/notificationController';
 import { getPeriodId } from '@constants/gamification';
 import { previousDay } from 'date-fns';
 import { RowType } from 'xero-node';
 
-type ExtendedClient = typeof prisma;
-type TxClient = Omit<ExtendedClient, '$connect' | '$disconnect' | '$transaction' | '$on' | '$use' | '$extends'>;
+const prisma = new PrismaClient();
+
+type TxClient = Omit<PrismaClient, '$connect' | '$disconnect' | '$transaction' | '$on' | '$use' | '$extends'>;
 
 export type PointActionCode =
   | 'pitch_submitted'
@@ -591,6 +591,10 @@ export const snapshotLeaderboard = async (periodId: string): Promise<SnapshotRes
     });
 
     if (result.awarded) awarded += 1;
+
+    if (entry.rank <= 3) {
+      await progressAchievement({ userId: entry.userId, code: 'hall-of-famer', sourceId: periodId });
+    }
   }
 
   return { periodId, ranked: standings.length, awarded, skipped: false };
