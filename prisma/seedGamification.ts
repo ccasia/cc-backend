@@ -300,9 +300,9 @@ export const ACHIEVEMENTS: {
     category: 'secret',
     rarity: 'secret',
     icon: 'incognito',
-    description: 'Visit the Cult Codex 10 times.',
+    description: 'Visit the Cult Codex on 30 different days.',
     xp: 300,
-    target: 10,
+    target: 30,
     sortOrder: 17,
   },
   {
@@ -313,7 +313,8 @@ export const ACHIEVEMENTS: {
     icon: 'book-search-outline',
     description: 'Unlock every other badge in the Cult Codex.',
     xp: 300,
-    target: 17,
+    // 19 badges total, so 18 others. Keep in step if badges are added or retired.
+    target: 18,
     sortOrder: 18,
   },
 ];

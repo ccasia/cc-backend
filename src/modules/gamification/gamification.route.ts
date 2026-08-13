@@ -5,6 +5,7 @@ import {
   getMyCodex,
   getMyGamification,
   getMyXpHistory,
+  recordCodexVisit,
 } from './gamification.controller';
 
 const router = Router();
@@ -15,5 +16,6 @@ router.get('/me', getMyGamification);
 router.get('/history', getMyXpHistory);
 router.get('/leaderboard', getCurrentLeaderboard);
 router.get('/codex', getMyCodex);
+router.post('/codex/visit', recordCodexVisit);
 
 export default router;

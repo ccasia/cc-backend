@@ -85,7 +85,7 @@ import {
 } from '@utils/campaignMembershipEvents';
 import { buildCreatorRatingEventId, shouldEmitCreatorRatingCompleted } from '@utils/creatorRatingReveal';
 import { clients, getIo } from '../config/socket';
-import { awardXp, progressAchievement } from '@/src/modules/gamification';
+import { awardXp, onPitchSubmitted, progressAchievement } from '@/src/modules/gamification';
 
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
 Ffmpeg.setFfprobePath(ffprobePath.path);
@@ -3092,8 +3092,7 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
     }
 
     if (!isPitchExist && pitch) {
-      void awardXp({ userId: id as string, actionCode: 'pitch_submitted', sourceId: campaignId });
-      void progressAchievement({ userId: id as string, code: 'pitch-perfect', sourceId: campaignId });
+      onPitchSubmitted({ userId: id as string, campaignId, pitchId: pitch.id });
     }
 
     // Update Creator.manualFollowerCount if no media kit and followerCount provided
@@ -6378,9 +6377,6 @@ export const changePitchStatus = async (req: Request, res: Response) => {
               ugcVideos: totalUGCVideos ? parseInt(totalUGCVideos) : null,
             },
           });
-
-          await awardXp({ userId: pitch.userId, actionCode: 'pitch_approved', sourceId: pitch.campaignId, tx });
-          await progressAchievement({ userId: pitch.userId, code: 'in-demand', sourceId: pitch.campaignId, tx });
 
           const timelines = await tx.campaignTimeline.findMany({
             where: {
@@ -11559,6 +11555,18 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
           });
         }
 
+        void awardXp({
+          userId: user.id,
+          actionCode: 'shortlisted',
+          sourceId: `${user.id}:${campaign.id}`,
+          metadata: { campaignId: campaign.id },
+        });
+        void progressAchievement({
+          userId: user.id,
+          code: 'overachiever',
+          sourceId: `${user.id}:${campaign.id}`,
+        });
+
         // Direct approval (non-v4, or v4 without a client): also create ShortListedCreator
         // and submissions. Client-review campaigns get this setup when the client approves.
         if (!requiresClientReview) {
@@ -11672,7 +11680,9 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
             const columnInProgress = board.columns.find((c) => c.name.includes('In Progress'));
 
             if (columnToDo && columnInProgress) {
-              console.log(`Creating submissions for direct-approval shortlist - ${timelinesFiltered.length} timeline(s)`);
+              console.log(
+                `Creating submissions for direct-approval shortlist - ${timelinesFiltered.length} timeline(s)`,
+              );
 
               // Create submissions for timeline items
               const submissions = await Promise.all(
@@ -11911,6 +11921,19 @@ export const rateCreator = async (req: Request, res: Response) => {
       where: { id: shortlistedCreator.id },
       data: ratingData,
     });
+
+    if (isClient && (ratingValue === 4 || ratingValue === 5)) {
+      void awardXp({
+        userId: creatorId,
+        actionCode: ratingValue === 5 ? 'client_rating_5' : 'client_rating_4',
+        sourceId: campaignId,
+        metadata: { campaignId, rating: ratingValue },
+      });
+
+      if (ratingValue === 5 && raterId) {
+        void progressAchievement({ userId: creatorId, code: 'brand-expert', sourceId: raterId });
+      }
+    }
 
     if (shortlistedCreator.userId && shouldEmitCreatorRatingCompleted(shortlistedCreator, updated)) {
       const creatorSocketId = clients.get(shortlistedCreator.userId);

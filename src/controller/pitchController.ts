@@ -10,6 +10,7 @@ import {
   createCreatorCampaignMembershipUpdatedPayload,
 } from '@utils/campaignMembershipEvents';
 import { clients, getIo } from '../config/socket';
+import { awardXp, progressAchievement } from '@/src/modules/gamification';
 
 const prisma = new PrismaClient();
 
@@ -387,6 +388,14 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
           }
         }
       }
+
+      void awardXp({
+        userId: pitch.userId,
+        actionCode: 'pitch_approved',
+        sourceId: pitch.campaignId,
+        metadata: { pitchId, campaignId: pitch.campaignId },
+      });
+      void progressAchievement({ userId: pitch.userId, code: 'in-demand', sourceId: pitch.campaignId });
     }
 
     if (sendToClient) {
@@ -684,6 +693,14 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
         completedAt: new Date().toISOString(),
       },
     });
+
+    void awardXp({
+      userId: pitch.userId,
+      actionCode: 'pitch_approved',
+      sourceId: pitch.campaignId,
+      metadata: { pitchId, campaignId: pitch.campaignId },
+    });
+    void progressAchievement({ userId: pitch.userId, code: 'in-demand', sourceId: pitch.campaignId });
 
     if (pitch.isInvited) {
       const creatorNotification = await saveNotification({

@@ -431,6 +431,8 @@ export const getCodex = async (userId: string, tx: TxClient = prisma) => {
   });
 };
 
+const CODEX_HUNTER_CODE = 'codex-hunter';
+
 const applyAchievementProgress = async (
   userId: string,
   achievementId: string,
@@ -489,6 +491,13 @@ const applyAchievementProgress = async (
     metadata: { achievementId, name: achievement.name },
     tx,
   });
+
+  // "Unlock every other badge in the Cult Codex" — every unlock but its own feeds
+  // it. sourceId is the badge just unlocked, so each one contributes once, and
+  // excluding itself stops the award from recursing.
+  if (achievement.code !== CODEX_HUNTER_CODE) {
+    void progressAchievement({ userId, code: CODEX_HUNTER_CODE, sourceId: achievementId });
+  }
 
   return { unlocked: true };
 };
@@ -595,6 +604,8 @@ export const snapshotLeaderboard = async (periodId: string): Promise<SnapshotRes
     if (entry.rank <= 3) {
       await progressAchievement({ userId: entry.userId, code: 'hall-of-famer', sourceId: periodId });
     }
+
+    await progressAchievement({ userId: entry.userId, code: 'star-creator', sourceId: periodId });
   }
 
   return { periodId, ranked: standings.length, awarded, skipped: false };

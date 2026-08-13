@@ -33,6 +33,7 @@ import { checkShouldShowNPS } from '@services/npsFeedbackService';
 import { selectCurrentAgreementSubmission } from '@utils/submissionAgreement';
 import { clients, getIo } from '../config/socket';
 import { getEffectiveCampaignOrigin } from '@utils/campaignFlow';
+import { awardXp } from '@/src/modules/gamification';
 
 const prisma = new PrismaClient();
 
@@ -508,6 +509,15 @@ export const approveV4Submission = async (req: Request, res: Response) => {
       updateData.approvedAt = new Date();
     }
 
+    if (updateData.approvedAt && submission.submissionType.type !== 'AGREEMENT_FORM') {
+      void awardXp({
+        userId: submission.userId,
+        actionCode: 'submission_approved',
+        sourceId: submissionId,
+        metadata: { submissionId, campaignId: submission.campaignId, type: submission.submissionType.type },
+      });
+    }
+
     updates.push(
       prisma.submission.update({
         where: { id: submissionId },
@@ -893,6 +903,15 @@ export const approveV4SubmissionByClient = async (req: Request, res: Response) =
           data: { isClientDraft: false },
         }),
       );
+    }
+
+    if (newSubmissionStatus === 'CLIENT_APPROVED' && submission.submissionType.type !== 'AGREEMENT_FORM') {
+      void awardXp({
+        userId: submission.userId,
+        actionCode: 'submission_approved',
+        sourceId: submissionId,
+        metadata: { submissionId, campaignId: submission.campaignId, type: submission.submissionType.type },
+      });
     }
 
     // Update submission status
@@ -1530,6 +1549,15 @@ export const approvePostingLinkV4 = async (req: Request, res: Response) => {
         updatedAt: new Date(),
       },
     });
+
+    if (action === 'approve') {
+      void awardXp({
+        userId: submission.userId,
+        actionCode: 'posting_link_approved',
+        sourceId: submissionId,
+        metadata: { submissionId, campaignId: submission.campaignId },
+      });
+    }
 
     // Emit socket event for real-time updates
 

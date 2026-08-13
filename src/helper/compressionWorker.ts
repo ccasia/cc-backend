@@ -6,6 +6,7 @@ import { prisma } from '../prisma/prisma';
 import { buildPublicUrl, deleteFile, downloadFromGCS, uploadToGCS } from '../lib/gcs';
 import * as fs from 'fs-extra';
 import { runFfmpegCompression } from '../lib/ffmpeg';
+import { onSubmissionSubmitted } from '@/src/modules/gamification';
 
 const worker = new Worker(
   'compression-queue',
@@ -29,7 +30,7 @@ const worker = new Worker(
     try {
       const submission = await prisma.submission.findUnique({
         where: { id: submissionId },
-        select: { id: true },
+        select: { id: true, submissionType: { select: { type: true } } },
       });
 
       if (!submission) throw new Error('Submission not found');
@@ -74,6 +75,13 @@ const worker = new Worker(
       await prisma.submission.update({
         where: { id: submission.id },
         data: { status: 'PENDING_REVIEW' },
+      });
+
+      onSubmissionSubmitted({
+        submissionId: submission.id,
+        userId,
+        campaignId,
+        submissionType: submission.submissionType?.type,
       });
 
       return uploadSessionId;
