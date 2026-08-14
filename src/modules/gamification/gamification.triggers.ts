@@ -68,6 +68,101 @@ const progressFirstMover = async (userId: string, campaignId: string, pitchId: s
   }
 };
 
+export const onInvoicePaid = (creatorId: string): void => {
+  void progressSideHustle(creatorId);
+};
+
+const progressSideHustle = async (creatorId: string): Promise<void> => {
+  try {
+    const paid = await prisma.invoice.aggregate({
+      where: { creatorId, status: 'paid' },
+      _sum: { amount: true },
+    });
+
+    const total = Math.floor(paid._sum.amount ?? 0);
+    if (total <= 0) return;
+
+    const earned = await prisma.creatorAchievementEvent.aggregate({
+      where: { userId: creatorId, creatorAchievement: { achievement: { code: 'side-hustle' } } },
+      _sum: { increment: true },
+    });
+
+    const delta = total - (earned._sum.increment ?? 0);
+    if (delta > 0) {
+      void progressAchievement({
+        userId: creatorId,
+        code: 'side-hustle',
+        sourceId: `total-${total}`,
+        increment: delta,
+      });
+    }
+  } catch (error) {
+    console.error(`[gamification] side-hustle check failed for ${creatorId}:`, error);
+  }
+};
+
+/**
+ * The creator was shortlisted for a campaign.
+ */
+export const onShortlisted = (userId: string, campaignId: string): void => {
+  void awardXp({
+    userId,
+    actionCode: 'shortlisted',
+    sourceId: `${userId}:${campaignId}`,
+    metadata: { campaignId },
+  });
+  void progressAchievement({ userId, code: 'overachiever', sourceId: `${userId}:${campaignId}` });
+  void progressShowrunner(userId, campaignId);
+};
+
+const progressShowrunner = async (userId: string, campaignId: string): Promise<void> => {
+  try {
+    const now = new Date();
+
+    const concurrent = await prisma.shortListedCreator.count({
+      where: {
+        userId,
+        isCampaignDone: false,
+        campaign: {
+          campaignBrief: { startDate: { lte: now }, endDate: { gte: now } },
+        },
+      },
+    });
+
+    if (concurrent >= 3) {
+      void progressAchievement({ userId, code: 'showrunner', sourceId: campaignId });
+    }
+  } catch (error) {
+    console.error(`[gamification] showrunner check failed for ${userId}/${campaignId}:`, error);
+  }
+};
+
+type MediaKitPlatform = 'instagram' | 'tiktok';
+
+export const onMediaKitConnected = (userId: string, platform: MediaKitPlatform): void => {
+  void awardXp({ userId, actionCode: 'connecting_media_kit', sourceId: platform });
+  void progressAchievement({ userId, code: 'media-kitter', sourceId: platform });
+};
+
+type PostSnapshotInput = {
+  userId: string;
+  submissionId: string;
+  views: number;
+};
+
+export const onPostSnapshot = ({ userId, submissionId, views }: PostSnapshotInput): void => {
+  if (views < CROWD_PLEASER_VIEWS) return;
+
+  void progressAchievement({
+    userId,
+    code: 'crowd-pleaser',
+    sourceId: submissionId,
+    increment: CROWD_PLEASER_VIEWS,
+  });
+};
+
+const CROWD_PLEASER_VIEWS = 50_000;
+
 const QUICK_TURN_WINDOW_MS = 72 * 60 * 60 * 1000;
 
 /**

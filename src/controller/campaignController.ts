@@ -85,7 +85,7 @@ import {
 } from '@utils/campaignMembershipEvents';
 import { buildCreatorRatingEventId, shouldEmitCreatorRatingCompleted } from '@utils/creatorRatingReveal';
 import { clients, getIo } from '../config/socket';
-import { awardXp, onPitchSubmitted, progressAchievement } from '@/src/modules/gamification';
+import { awardXp, onPitchSubmitted, onShortlisted, progressAchievement } from '@/src/modules/gamification';
 
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
 Ffmpeg.setFfprobePath(ffprobePath.path);
@@ -9664,6 +9664,8 @@ export const shortlistCreator = async (req: Request, res: Response) => {
           });
 
           for (const creator of creatorData) {
+            onShortlisted(creator.id, campaign.id);
+
             const notification = await saveNotification({
               userId: creator.id,
               entityId: campaignId,
@@ -9897,6 +9899,8 @@ export const shortlistCreatorV2 = async (req: Request, res: Response) => {
         });
 
         for (const creator of creatorData) {
+          onShortlisted(creator.id, campaign.id);
+
           const notification = await saveNotification({
             userId: creator.id,
             entityId: campaignId,
@@ -11555,22 +11559,17 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
           });
         }
 
-        void awardXp({
-          userId: user.id,
-          actionCode: 'shortlisted',
-          sourceId: `${user.id}:${campaign.id}`,
-          metadata: { campaignId: campaign.id },
-        });
-        void progressAchievement({
-          userId: user.id,
-          code: 'overachiever',
-          sourceId: `${user.id}:${campaign.id}`,
-        });
-
         // Direct approval (non-v4, or v4 without a client): also create ShortListedCreator
         // and submissions. Client-review campaigns get this setup when the client approves.
         if (!requiresClientReview) {
           console.log(`Direct-approval shortlist: Creating ShortListedCreator for ${user.id}`);
+
+          // Awarded here rather than above the branch: on client-review campaigns the
+          // creator is only proposed at this point (pitch SENT_TO_CLIENT, no
+          // ShortListedCreator row), so awarding there paid out for campaigns the client
+          // could still reject, and left showrunner counting a row that did not exist.
+          // The client-approval path awards on its own when it creates the row.
+          onShortlisted(user.id, campaign.id);
 
           // For credit tier campaigns, calculate creditPerVideo from creator's tier
           let creditPerVideo: number | null = null;
@@ -12075,6 +12074,8 @@ export const shortlistCreatorV2ForClient = async (req: Request, res: Response) =
 
         // Create notifications for shortlisted creators
         for (const creator of creatorData) {
+          onShortlisted(creator.id, campaign.id);
+
           await tx.notification.create({
             data: {
               title: 'You have been shortlisted!',
@@ -12557,6 +12558,8 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
           console.log(`Guest creator ${guest.profileLink} is already shortlisted. Skipping.`);
           continue; // Skip and move to the next guest
         }
+
+        onShortlisted(userId, campaignId);
 
         // Also create a V3 pitch entry so it appears in the pitches list
         const existingPitch = await tx.pitch.findFirst({

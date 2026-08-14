@@ -16,6 +16,7 @@ import {
   notificationInvoicePaid,
 } from '@helper/notification';
 import { saveNotification } from './notificationController';
+import { onInvoicePaid } from '@/src/modules/gamification';
 
 import { TokenSet } from 'openid-client';
 import { error } from 'console';
@@ -1055,6 +1056,12 @@ export const updateInvoiceStatus = async (req: Request, res: Response) => {
         invoice.campaignId,
         req,
       );
+    }
+
+    // Manual status change; the Xero sync awards on its own path. side-hustle
+    // recomputes from all paid invoices, so both routes converge on the same total.
+    if (status === 'paid' && invoice.creatorId) {
+      onInvoicePaid(invoice.creatorId);
     }
 
     // Creator-facing notification, tailored per status.

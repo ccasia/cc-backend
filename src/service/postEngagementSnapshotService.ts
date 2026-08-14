@@ -4,6 +4,7 @@ import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
 import { batchFetchInsights, BatchInsightResult } from './socialMediaBatchService';
 import { getMetricValue } from '@utils/insightNormalizationHelper';
+import { onPostSnapshot } from '@/src/modules/gamification';
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -319,6 +320,12 @@ async function storePostSnapshot(snapshot: PostSnapshot): Promise<void> {
       engagementRate: snapshot.metrics.engagementRate,
       rawMetrics: snapshot.rawMetrics,
     },
+  });
+
+  onPostSnapshot({
+    userId: snapshot.userId,
+    submissionId: snapshot.submissionId,
+    views: snapshot.metrics.views,
   });
 }
 

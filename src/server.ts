@@ -19,6 +19,7 @@ import { getIo, initializeSocket } from './config/socket';
 import '@helper/processPitchVideo';
 import './helper/videoDraft';
 import '@helper/verificationCodeWorker';
+import { onInvoicePaid } from '@/src/modules/gamification';
 import '@helper/compressionWorker';
 // import './helper/videoDraftWorker';
 
@@ -225,7 +226,12 @@ app.post('/webhooks/xero', express.raw({ type: 'application/json', limit: '100mb
         // Query invoices not yet paid before updating, so we only log newly-paid ones
         const notYetPaid = await prisma.invoice.findMany({
           where: { xeroInvoiceId: { in: xeroInvoicesIds as string[] }, status: { not: 'paid' } },
-          select: { invoiceNumber: true, campaignId: true, user: { select: { name: true } } },
+          select: {
+            invoiceNumber: true,
+            campaignId: true,
+            creatorId: true,
+            user: { select: { name: true } },
+          },
         });
 
         const invoices = await prisma.invoice.updateMany({
@@ -236,6 +242,8 @@ app.post('/webhooks/xero', express.raw({ type: 'application/json', limit: '100mb
 
         // Log only invoices that actually transitioned to paid
         for (const inv of notYetPaid) {
+          if (inv.creatorId) onInvoicePaid(inv.creatorId);
+
           logChange(
             `Invoice ${inv.invoiceNumber} for ${inv.user?.name || 'Unknown Creator'} was marked as paid`,
             inv.campaignId,

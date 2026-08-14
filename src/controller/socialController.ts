@@ -28,6 +28,7 @@ import {
   getInstagramAudienceDemographics,
 } from '@services/socialMediaService';
 import { batchRequests } from '@helper/batchRequests';
+import { onMediaKitConnected } from '@/src/modules/gamification';
 import crypto from 'crypto';
 import connection from '../config/redis';
 import { clients, getIo } from '../config/socket';
@@ -369,6 +370,8 @@ export const instagramMobileCallback = async (req: Request, res: Response) => {
       console.error('Failed to update credit tier after Instagram connect:', tierError);
     }
 
+    onMediaKitConnected(userId, 'instagram');
+
     const creatorSocketId = clients.get(userId);
     if (creatorSocketId) {
       getIo().to(creatorSocketId).emit('media-kit:updated', {
@@ -419,6 +422,8 @@ export const redirectTiktokAfterAuth = async (req: Request, res: Response) => {
       },
       include: { tiktokUser: true },
     });
+
+    onMediaKitConnected(userId, 'tiktok');
 
     if (access_token) {
       const userInfoResponse = await axios.get('https://open.tiktokapis.com/v2/user/info/', {
@@ -786,6 +791,8 @@ export const redirectFacebookAuth = async (req: Request, res: Response) => {
       },
     });
 
+    onMediaKitConnected(req.userId, 'instagram');
+
     // // Get User Info using the Access Token
     // const userInfo = await axios.get('https://graph.facebook.com/me', {
     //   params: {
@@ -945,6 +952,8 @@ export const instagramCallback = async (req: Request, res: Response) => {
         isFacebookConnected: true, //Instagram
       },
     });
+
+    onMediaKitConnected(userId, 'instagram');
 
     const overview = await getInstagramOverviewService(access_token!);
 
@@ -1205,6 +1214,8 @@ export const handleInstagramCallback = async (req: Request, res: Response) => {
         },
       });
     });
+
+    onMediaKitConnected(userId, 'instagram');
 
     if (getIo()) {
       const userSubmissions = await prisma.submission.findMany({
