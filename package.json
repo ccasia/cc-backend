@@ -24,7 +24,8 @@
     "try": "ts-node src/config/nodemailer.config.ts",
     "db-push": "npx prisma db push && docker exec -it cc-backend npx prisma db push",
     "push-campaigns": "ts-node campaignLogs.ts",
-    "run-worker": "npx tsx src/helper/worker"
+    "run-worker": "npx tsx src/helper/worker",
+    "ai": "npx tsx src/scripts/agent"
   },
   "dependencies": {
     "@dotenvx/dotenvx": "^1.9.0",
@@ -54,6 +55,7 @@
     "csv-parser": "^3.0.0",
     "date-fns": "^4.1.0",
     "dayjs": "^1.11.10",
+    "deepagents": "^1.12.3",
     "docxtemplater": "^3.50.0",
     "dotenv": "^16.4.1",
     "expo-server-sdk": "^6.1.0",
@@ -66,6 +68,7 @@
     "fs-extra": "^11.2.0",
     "google-spreadsheet": "^4.1.4",
     "googleapis": "^148.0.0",
+    "inquirer": "^14.0.2",
     "ioredis": "^5.9.2",
     "ipinfo": "^1.5.2",
     "ipinfo-express": "^2.0.2",
