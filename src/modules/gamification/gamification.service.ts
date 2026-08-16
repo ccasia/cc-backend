@@ -1,5 +1,5 @@
-import { Prisma, PrismaClient, Rank, RewardType } from '@prisma/client';
-import { clients, getIo } from '@configs/socket';
+import { Achievement, Prisma, PrismaClient, Rank, RewardType } from '@prisma/client';
+import { getIo } from '@configs/socket';
 import { saveNotification } from '@controllers/notificationController';
 import { getPeriodId } from '@constants/gamification';
 import { previousDay } from 'date-fns';
@@ -190,6 +190,7 @@ export const awardXp = async (input: AwardXpInput): Promise<AwardXpResult> => {
 
   if (tx) {
     const result = await writeXp(tx, userId, action, sourceId, xp, metadata, periodId);
+    void notifyXpAwarded(userId, action, xp, result.totalPoints, result.rankUp);
     return { awarded: true, xp, totalPoints: result.totalPoints, rankUp: result.rankUp };
   }
 
@@ -278,6 +279,30 @@ export const getXpHistory = async ({ userId, limit = 20, cursor, periodId }: XpH
   };
 };
 
+const notifyBadgeUnlocked = (userId: string, achievement: Achievement): void => {
+  try {
+    getIo().to(userId).emit('gamification:badge', {
+      id: achievement.id,
+      code: achievement.code,
+      name: achievement.name,
+      icon: achievement.icon,
+      rarity: achievement.rarity,
+      xp: achievement.xp,
+    });
+  } catch (error) {
+    console.error('[gamification] notifyBadgeUnlocked emit failed:', error);
+  }
+
+  void saveNotification({
+    userId,
+    title: '🎖 Badge Unlocked!',
+    message: `${achievement.name} — +${achievement.xp} XP. ${achievement.description}`,
+    entity: 'User',
+  }).catch((error) => {
+    console.error('[gamification] notifyBadgeUnlocked notification failed:', error);
+  });
+};
+
 const notifyXpAwarded = async (
   userId: string,
   action: PointActionRecord,
@@ -286,13 +311,10 @@ const notifyXpAwarded = async (
   rankUp: Rank | null,
 ): Promise<void> => {
   try {
-    const socketId = clients.get(userId);
-    if (socketId) {
-      const io = getIo();
-      io.to(socketId).emit('gamification:xp', { xp, actionCode: action.code, totalPoints });
-      if (rankUp) {
-        io.to(socketId).emit('gamification:rankUp', { rank: rankUp });
-      }
+    const io = getIo();
+    io.to(userId).emit('gamification:xp', { xp, actionCode: action.code, totalPoints });
+    if (rankUp) {
+      io.to(userId).emit('gamification:rankUp', { rank: rankUp });
     }
 
     if (rankUp) {
@@ -376,10 +398,14 @@ export const getLeaderboard = async (
 };
 
 // ─────────────────────────── Codex ───────────────────────────
-const SECRET_PLACEHOLDER = {
-  name: '???',
-  description: 'Keep creating to uncover this one.',
-  icon: 'help-circle-outline',
+const SECRET_DESCRIPTION = 'Keep creating to uncover this one.';
+
+const CODEX_HOLDER_LIMIT = 3;
+
+export type CodexHolder = {
+  id: string;
+  initial: string;
+  avatarUrl: string | null;
 };
 
 export const getCodex = async (userId: string, tx: TxClient = prisma) => {
@@ -408,6 +434,27 @@ export const getCodex = async (userId: string, tx: TxClient = prisma) => {
   });
   const unlockedBy = new Map(unlockedCounts.map((row) => [row.achievementId, row._count.userId]));
 
+  const holderLists = await Promise.all(
+    achievements.map((achievement) =>
+      tx.creatorAchievement.findMany({
+        where: { achievementId: achievement.id, unlockedAt: { not: null } },
+        take: CODEX_HOLDER_LIMIT,
+        select: { user: { select: { id: true, name: true, photoURL: true } } },
+      }),
+    ),
+  );
+
+  const holdersByAchievement = new Map<string, CodexHolder[]>(
+    achievements.map((achievement, index) => [
+      achievement.id,
+      holderLists[index].map((row) => ({
+        id: row.user.id,
+        initial: (row.user.name?.trim()?.[0] ?? '?').toUpperCase(),
+        avatarUrl: row.user.photoURL,
+      })),
+    ]),
+  );
+
   return achievements.map((achievement) => {
     const mine = progressByAchievement.get(achievement.id);
     const unlocked = Boolean(mine?.unlockedAt);
@@ -415,18 +462,18 @@ export const getCodex = async (userId: string, tx: TxClient = prisma) => {
 
     return {
       id: achievement.id,
-      name: hidden ? SECRET_PLACEHOLDER.name : achievement.name,
-      description: hidden ? SECRET_PLACEHOLDER.description : achievement.description,
-      icon: hidden ? SECRET_PLACEHOLDER.icon : achievement.icon,
+      name: achievement.name,
+      description: hidden ? SECRET_DESCRIPTION : achievement.description,
+      icon: achievement.icon,
       category: achievement.category,
       rarity: achievement.rarity,
       xp: achievement.xp,
       unlocked,
-      // Unlocked badges show a full bar even if the qualifying events predate
-      // the event ledger.
       progressCurrent: unlocked ? achievement.target : (progressCount.get(achievement.id) ?? 0),
       progressTarget: achievement.target,
       earnedPercent: totalCreators > 0 ? Math.round(((unlockedBy.get(achievement.id) ?? 0) / totalCreators) * 100) : 0,
+      earnedCount: unlockedBy.get(achievement.id) ?? 0,
+      holders: holdersByAchievement.get(achievement.id) ?? [],
     };
   });
 };
@@ -492,9 +539,8 @@ const applyAchievementProgress = async (
     tx,
   });
 
-  // "Unlock every other badge in the Cult Codex" — every unlock but its own feeds
-  // it. sourceId is the badge just unlocked, so each one contributes once, and
-  // excluding itself stops the award from recursing.
+  notifyBadgeUnlocked(userId, achievement);
+
   if (achievement.code !== CODEX_HUNTER_CODE) {
     void progressAchievement({ userId, code: CODEX_HUNTER_CODE, sourceId: achievementId });
   }
