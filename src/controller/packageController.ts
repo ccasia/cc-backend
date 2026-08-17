@@ -277,6 +277,34 @@ export const createPackage = async (req: Request, res: Response) => {
   }
 };
 
+export const deletePackage = async (req: Request, res: Response) => {
+  const { id } = req.params;
+
+  try {
+    const existingPackage = await prisma.package.findUnique({ where: { id } });
+
+    if (!existingPackage) return res.status(404).json({ message: 'Package not found' });
+
+    const subscriptionCount = await prisma.subscription.count({ where: { packageId: id } });
+
+    if (subscriptionCount > 0) {
+      return res.status(400).json({
+        message: `Cannot delete "${existingPackage.name}" — it is used by ${subscriptionCount} existing subscription${subscriptionCount === 1 ? '' : 's'}.`,
+      });
+    }
+
+    await prisma.$transaction([
+      prisma.price.deleteMany({ where: { packageId: id } }),
+      prisma.package.delete({ where: { id } }),
+    ]);
+
+    return res.status(200).json({ message: 'Package successfully deleted' });
+  } catch (error) {
+    console.log(error);
+    return res.status(400).json(error);
+  }
+};
+
 export const updatePackage = async (req: Request, res: Response) => {
   const { name, credits, validityPeriod, priceMYR, priceSGD } = req.body;
   const { id } = req.params;
