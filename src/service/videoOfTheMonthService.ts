@@ -1,14 +1,16 @@
 import { PrismaClient, Prisma } from '@prisma/client';
+import { createVideoOfTheMonthThumbnail } from '@helper/videoOfTheMonthThumbnail';
 
 const prisma = new PrismaClient();
 
 // Shape returned to the mobile app for each featured video.
-export type FeaturedVideo = {
+export interface FeaturedVideo {
   id: string;
   videoUrl: string;
+  thumbnailUrl: string | null;
   brand: string; // campaign name
   creator: string; // creator (user) name
-};
+}
 
 const featuredInclude = {
   submission: {
@@ -43,9 +45,7 @@ const resolveVideoUrl = (record: FeaturedRecord): string | null => {
 
 const resolveBrand = (record: FeaturedRecord): string => {
   const campaign = record.submission.campaign;
-  return (
-    campaign?.company?.name ?? campaign?.brand?.name ?? campaign?.name ?? 'Cult Creative'
-  );
+  return campaign?.company?.name ?? campaign?.brand?.name ?? campaign?.name ?? 'Cult Creative';
 };
 
 const resolveCreator = (record: FeaturedRecord): string => {
@@ -67,6 +67,7 @@ export const getFeaturedVideos = async (): Promise<FeaturedVideo[]> => {
     acc.push({
       id: record.id,
       videoUrl,
+      thumbnailUrl: record.thumbnailUrl,
       brand: resolveBrand(record),
       creator: resolveCreator(record),
     });
@@ -119,12 +120,12 @@ export const searchFeaturableSubmissions = async (search?: string) => {
   });
 };
 
-export type CreateFeaturedInput = {
+export interface CreateFeaturedInput {
   submissionId: string;
   videoIndex?: number;
   order?: number;
   createdById: string;
-};
+}
 
 // Feature a submission. Guards: submission must exist and have a video at the
 // requested index. The unique submissionId constraint prevents duplicates.
@@ -135,7 +136,8 @@ export const createFeaturedVideo = async (input: CreateFeaturedInput) => {
       id: true,
       video: {
         where: { url: { not: null }, status: { not: 'REJECTED' } },
-        select: { id: true },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true, url: true },
       },
     },
   });
@@ -154,7 +156,7 @@ export const createFeaturedVideo = async (input: CreateFeaturedInput) => {
     throw new Error('VIDEO_INDEX_OUT_OF_RANGE');
   }
 
-  return prisma.videoOfTheMonth.create({
+  const created = await prisma.videoOfTheMonth.create({
     data: {
       submissionId: input.submissionId,
       videoIndex,
@@ -163,22 +165,58 @@ export const createFeaturedVideo = async (input: CreateFeaturedInput) => {
     },
     include: featuredInclude,
   });
+
+  try {
+    return await generateFeaturedVideoThumbnail(created.id);
+  } catch (error) {
+    console.error('Failed to generate featured video thumbnail', { id: created.id, error });
+    return created;
+  }
 };
 
-export type UpdateFeaturedInput = {
+export interface UpdateFeaturedInput {
   order?: number;
   featured?: boolean;
   videoIndex?: number;
-};
+}
 
 export const updateFeaturedVideo = async (id: string, input: UpdateFeaturedInput) => {
-  return prisma.videoOfTheMonth.update({
+  const updated = await prisma.videoOfTheMonth.update({
     where: { id },
     data: {
       ...(input.order !== undefined ? { order: input.order } : {}),
       ...(input.featured !== undefined ? { featured: input.featured } : {}),
       ...(input.videoIndex !== undefined ? { videoIndex: input.videoIndex } : {}),
     },
+    include: featuredInclude,
+  });
+
+  if (input.videoIndex === undefined && updated.thumbnailUrl) return updated;
+
+  try {
+    return await generateFeaturedVideoThumbnail(id);
+  } catch (error) {
+    console.error('Failed to generate featured video thumbnail', { id, error });
+    return updated;
+  }
+};
+
+export const generateFeaturedVideoThumbnail = async (id: string) => {
+  const record = await prisma.videoOfTheMonth.findUnique({
+    where: { id },
+    include: featuredInclude,
+  });
+
+  if (!record) throw new Error('FEATURED_VIDEO_NOT_FOUND');
+
+  const videoUrl = resolveVideoUrl(record);
+  if (!videoUrl) throw new Error('SUBMISSION_HAS_NO_VIDEO');
+
+  const thumbnailUrl = await createVideoOfTheMonthThumbnail(videoUrl, record.id);
+
+  return prisma.videoOfTheMonth.update({
+    where: { id },
+    data: { thumbnailUrl },
     include: featuredInclude,
   });
 };
