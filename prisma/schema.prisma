@@ -1326,6 +1326,7 @@ model VideoOfTheMonth {
   id           String     @id @default(cuid())
   submissionId String     @unique
   submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  thumbnailUrl String?
   videoIndex   Int        @default(0) // which entry in Submission.videos[] to feature
   order        Int        @default(0) // display order on the home feed (asc)
   featured     Boolean    @default(true) // currently shown; manual replace
