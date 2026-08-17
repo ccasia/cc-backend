@@ -33,7 +33,7 @@ import { checkShouldShowNPS } from '@services/npsFeedbackService';
 import { selectCurrentAgreementSubmission } from '@utils/submissionAgreement';
 import { clients, getIo } from '../config/socket';
 import { getEffectiveCampaignOrigin } from '@utils/campaignFlow';
-import { awardXp } from '@/src/modules/gamification';
+import { awardXp, onAgreementApproved } from '@/src/modules/gamification';
 
 const prisma = new PrismaClient();
 
@@ -516,6 +516,10 @@ export const approveV4Submission = async (req: Request, res: Response) => {
         sourceId: submissionId,
         metadata: { submissionId, campaignId: submission.campaignId, type: submission.submissionType.type },
       });
+    }
+
+    if (newStatus === 'APPROVED' && submission.submissionType.type === 'AGREEMENT_FORM') {
+      onAgreementApproved({ userId: submission.userId, campaignId: submission.campaignId });
     }
 
     updates.push(

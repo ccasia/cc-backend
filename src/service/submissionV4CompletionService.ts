@@ -341,7 +341,6 @@ export const handleV4CompletedCampaign = async (
     onCampaignCompleted({
       userId,
       campaignId,
-      companyId: creatorData.campaign?.companyId ?? creatorData.campaign?.brandId ?? null,
     });
 
     return true;

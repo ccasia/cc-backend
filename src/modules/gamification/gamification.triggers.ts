@@ -192,25 +192,41 @@ type CampaignCompletedInput = {
   companyId?: string | null;
 };
 
-export const onCampaignCompleted = ({ userId, campaignId, companyId }: CampaignCompletedInput): void => {
+export const onCampaignCompleted = ({ userId, campaignId }: CampaignCompletedInput): void => {
   void progressAchievement({ userId, code: 'cult-legend', sourceId: campaignId });
-
-  if (companyId) {
-    void progressEncore(userId, campaignId, companyId);
-  }
 };
 
-const progressEncore = async (userId: string, campaignId: string, companyId: string): Promise<void> => {
+type AgreementApprovedInput = {
+  userId: string;
+  campaignId: string;
+};
+
+export const onAgreementApproved = ({ userId, campaignId }: AgreementApprovedInput): void => {
+  void progressEncore(userId, campaignId);
+};
+
+const progressEncore = async (userId: string, campaignId: string): Promise<void> => {
   try {
-    const count = await prisma.shortListedCreator.count({
-      where: {
-        userId,
-        isCampaignDone: true,
-        campaign: { OR: [{ companyId }, { brandId: companyId }] },
-      },
+    const campaign = await prisma.campaign.findUnique({
+      where: { id: campaignId },
+      select: { companyId: true, brandId: true },
     });
 
-    if (count >= 2) {
+    const companyId = campaign?.companyId ?? campaign?.brandId;
+    if (!companyId) return;
+
+    const approvedAgreements = await prisma.submission.findMany({
+      where: {
+        userId,
+        status: 'APPROVED',
+        submissionType: { type: 'AGREEMENT_FORM' },
+        campaign: { OR: [{ companyId }, { brandId: companyId }] },
+      },
+      select: { campaignId: true },
+      distinct: ['campaignId'],
+    });
+
+    if (approvedAgreements.length >= 2) {
       void progressAchievement({ userId, code: 'encore', sourceId: companyId });
     }
   } catch (error) {
