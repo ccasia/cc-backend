@@ -120,6 +120,9 @@ model User {
   treasureHuntAuditActions TreasureHuntAuditLog[]
 
   isPhoneVerified Boolean @default(false)
+
+  creatorAchievements  CreatorAchievement[]
+  leaderboardSnapshots LeaderboardSnapshot[]
 }
 
 model RefreshToken {
@@ -2716,27 +2719,27 @@ enum UploadStatus {
 }
 
 model TreasureHunt {
-  id               String              @id @default(cuid())
-  eventKey         String              @unique @default("FIND_CIPTA") @db.VarChar(50)
-  title            String              @db.VarChar(255)
-  description      String              @db.Text
-  heroArtworkUrl   String?             @db.VarChar(2048)
-  startsAt         DateTime
-  endsAt           DateTime
-  rewardXp         Int                 @default(50)
-  status           TreasureHuntStatus  @default(DRAFT)
-  featuredSlot     Int?                @unique
-  publishedAt      DateTime?
-  pausedAt         DateTime?
-  archivedAt       DateTime?
-  createdById      String
-  updatedById      String?
-  createdAt        DateTime            @default(now())
-  updatedAt        DateTime            @updatedAt
-  createdBy        User                @relation("TreasureHuntCreatedBy", fields: [createdById], references: [id])
-  updatedBy        User?               @relation("TreasureHuntUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
-  locations        TreasureHuntLocation[]
-  auditLogs        TreasureHuntAuditLog[]
+  id             String                 @id @default(cuid())
+  eventKey       String                 @unique @default("FIND_CIPTA") @db.VarChar(50)
+  title          String                 @db.VarChar(255)
+  description    String                 @db.Text
+  heroArtworkUrl String?                @db.VarChar(2048)
+  startsAt       DateTime
+  endsAt         DateTime
+  rewardXp       Int                    @default(50)
+  status         TreasureHuntStatus     @default(DRAFT)
+  featuredSlot   Int?                   @unique
+  publishedAt    DateTime?
+  pausedAt       DateTime?
+  archivedAt     DateTime?
+  createdById    String
+  updatedById    String?
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+  createdBy      User                   @relation("TreasureHuntCreatedBy", fields: [createdById], references: [id])
+  updatedBy      User?                  @relation("TreasureHuntUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  locations      TreasureHuntLocation[]
+  auditLogs      TreasureHuntAuditLog[]
 
   @@index([status, startsAt, endsAt])
   @@index([createdAt])
@@ -2766,38 +2769,38 @@ model TreasureHuntLocation {
 }
 
 model TreasureHuntBitlyPublication {
-  id                    String                   @id @default(cuid())
-  locationId            String                   @unique
-  status                BitlyPublicationStatus   @default(NOT_STARTED)
-  bitlinkId             String?                  @unique @db.VarChar(255)
-  bitlinkUrl            String?                  @unique @db.VarChar(2048)
-  qrCodeId              String?                  @unique @db.VarChar(255)
-  qrImageUrl            String?                  @db.VarChar(2048)
-  rawScanCount          Int                      @default(0)
-  analyticsSource       String?                  @db.VarChar(100)
+  id                    String                 @id @default(cuid())
+  locationId            String                 @unique
+  status                BitlyPublicationStatus @default(NOT_STARTED)
+  bitlinkId             String?                @unique @db.VarChar(255)
+  bitlinkUrl            String?                @unique @db.VarChar(2048)
+  qrCodeId              String?                @unique @db.VarChar(255)
+  qrImageUrl            String?                @db.VarChar(2048)
+  rawScanCount          Int                    @default(0)
+  analyticsSource       String?                @db.VarChar(100)
   lastAnalyticsSyncedAt DateTime?
   lastAttemptAt         DateTime?
   nextRetryAt           DateTime?
-  lastErrorCode         String?                  @db.VarChar(100)
-  lastErrorMessage      String?                  @db.Text
-  leaseId               String?                  @db.VarChar(64)
+  lastErrorCode         String?                @db.VarChar(100)
+  lastErrorMessage      String?                @db.Text
+  leaseId               String?                @db.VarChar(64)
   leaseExpiresAt        DateTime?
-  createdAt             DateTime                 @default(now())
-  updatedAt             DateTime                 @updatedAt
-  location              TreasureHuntLocation     @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  location              TreasureHuntLocation   @relation(fields: [locationId], references: [id], onDelete: Cascade)
 
   @@index([status, nextRetryAt])
   @@index([leaseExpiresAt])
 }
 
 model TreasureHuntClaim {
-  id         String                   @id @default(cuid())
+  id         String                  @id @default(cuid())
   userId     String
   locationId String
   source     TreasureHuntClaimSource
-  claimedAt  DateTime                 @default(now())
-  user       User                     @relation(fields: [userId], references: [id])
-  location   TreasureHuntLocation     @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  claimedAt  DateTime                @default(now())
+  user       User                    @relation(fields: [userId], references: [id])
+  location   TreasureHuntLocation    @relation(fields: [locationId], references: [id], onDelete: Restrict)
   capture    TreasureHuntCapture?
 
   @@unique([userId, locationId])
@@ -2806,37 +2809,53 @@ model TreasureHuntClaim {
 }
 
 model TreasureHuntCapture {
-  id          String              @id @default(cuid())
-  claimId     String              @unique
-  objectPath  String              @unique @db.VarChar(2048)
-  contentType String              @db.VarChar(100)
+  id          String            @id @default(cuid())
+  claimId     String            @unique
+  objectPath  String            @unique @db.VarChar(2048)
+  contentType String            @db.VarChar(100)
   byteSize    Int
-  sha256      String              @db.VarChar(64)
+  sha256      String            @db.VarChar(64)
   width       Int
   height      Int
-  createdAt   DateTime            @default(now())
-  claim       TreasureHuntClaim   @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  createdAt   DateTime          @default(now())
+  claim       TreasureHuntClaim @relation(fields: [claimId], references: [id], onDelete: Cascade)
 }
 
 model XpTransaction {
-  id         String        @id @default(cuid())
-  userId     String
-  amount     Int
-  sourceType XpSourceType
-  sourceId   String
-  metadata   Json?
-  createdAt  DateTime      @default(now())
-  user       User          @relation(fields: [userId], references: [id])
+  id String @id @default(cuid())
 
-  @@unique([sourceType, sourceId])
+  amount Int //points
+  userId String
+
+  sourceType XpSourceType? // maybe we are not using this anymore
+  sourceId   String // maybe we are not using this anymore
+
+  actionId String?
+  action   XpAction? @relation(references: [id], fields: [actionId])
+
+  periodId String?
+
+  metadata  Json?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@unique([userId, actionId, sourceId])
   @@index([userId, createdAt])
+  @@index([periodId])
+  @@index([actionId])
 }
 
 model UserXpBalance {
-  userId    String   @id
-  total     Int      @default(0)
+  total           Int       @default(0)
+  mediaKitBonusAt DateTime?
+
+  userId        String @id
+  currentRankId String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rank Rank @relation(fields: [currentRankId], references: [id])
+
   updatedAt DateTime @updatedAt
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model TreasureHuntAuditLog {
@@ -2879,4 +2898,114 @@ enum BitlyPublicationStatus {
 
 enum XpSourceType {
   HUNT_LOCATION_CLAIM
+  PITCH_SUBMITTED
+  PITCH_APPROVED
+  SHORTLISTED
+  SUBMISSION_SUBMITTED
+  SUBMISSION_APPROVED
+  POSTING_SUBMITTED
+  POSTING_APPROVED
+  CLIENT_RATING
+  MEDIA_KIT_CONNECTED
+  LEADERBOARD_TOP_10
+  LEADERBOARD_TOP_3
+  WEEKLY_TASK
+  ACHIEVEMENT
+}
+
+// ─────────────────────────── Gamification ────────────────────────────
+
+model Achievement {
+  id          String               @id @default(cuid())
+  code        String               @unique
+  name        String
+  category    String
+  rarity      String
+  icon        String
+  description String
+  xp          Int
+  target      Int
+  active      Boolean              @default(true)
+  sortOrder   Int
+  creators    CreatorAchievement[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model CreatorAchievement {
+  userId        String
+  achievementId String
+  unlockedAt    DateTime?
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievement   Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+
+  events CreatorAchievementEvent[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([userId, achievementId])
+  @@index([achievementId])
+}
+
+model CreatorAchievementEvent {
+  id            String @id @default(cuid())
+  userId        String
+  achievementId String
+  sourceId      String
+  increment     Int    @default(1)
+
+  creatorAchievement CreatorAchievement @relation(fields: [userId, achievementId], references: [userId, achievementId], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, achievementId, sourceId])
+  @@index([userId, achievementId])
+}
+
+model LeaderboardSnapshot {
+  periodId String
+  userId   String
+  rank     Int
+  xp       Int
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([periodId, userId])
+  @@index([userId])
+}
+
+model XpAction {
+  id         String     @id @default(cuid())
+  code       String     @unique
+  name       String
+  points     Int?
+  rewardType RewardType
+
+  xpTransactions XpTransaction[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("xp_action")
+}
+
+enum RewardType {
+  repeatable
+  one_time
+}
+
+model Rank {
+  id        String @id @default(cuid())
+  name      String @unique
+  minPoints Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userXpBalances UserXpBalance[]
 }

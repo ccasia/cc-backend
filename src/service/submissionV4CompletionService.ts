@@ -7,6 +7,7 @@ import {
   createCreatorCampaignCompletedPayload,
 } from '@utils/campaignCompletionEvents';
 import { getEffectiveCampaignOrigin } from '@utils/campaignFlow';
+import { onCampaignCompleted } from '@/src/modules/gamification';
 
 const prisma = new PrismaClient();
 
@@ -336,6 +337,11 @@ export const handleV4CompletedCampaign = async (
     }
 
     // TODO: Send email notification (similar to V3 flow)
+
+    onCampaignCompleted({
+      userId,
+      campaignId,
+    });
 
     return true;
   } catch (error) {

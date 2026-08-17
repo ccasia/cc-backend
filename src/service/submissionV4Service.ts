@@ -2,6 +2,7 @@ import { PrismaClient } from '@prisma/client';
 import { V4SubmissionCreateData } from '../types/submissionV4Types';
 import { saveCaptionToHistory } from '../utils/captionHistoryUtils';
 import { MAX_POSTING_LINKS, joinPostingLinksToContent } from '../utils/postingLinkValidation';
+import { onSubmissionSubmitted } from '@/src/modules/gamification';
 
 const prisma = new PrismaClient();
 
@@ -553,6 +554,13 @@ export const submitV4Content = async (
 
     // Execute all updates in transaction
     const results = await prisma.$transaction(updates);
+
+    onSubmissionSubmitted({
+      submissionId,
+      userId: submission.userId,
+      campaignId: submission.campaignId,
+      submissionType: submission.submissionType?.type,
+    });
 
     return results[results.length - 1]; // Return updated submission
   } catch (error) {

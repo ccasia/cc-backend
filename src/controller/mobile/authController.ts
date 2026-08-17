@@ -18,6 +18,7 @@ import { saveCreatorToSpreadsheet } from '@/src/helper/registeredCreatorSpreadsh
 import { exchangeAppleRefreshToken, revokeAppleToken } from '@/src/utils/apple';
 import { verifyGoogleIdToken } from '@/src/utils/google';
 import WhatsappSetting from '@/src/service/whatsappSetting';
+import { progressAchievement } from '@/src/modules/gamification';
 import { generate, generateSecret } from 'otplib';
 
 interface MobileCreatorData {
@@ -107,6 +108,10 @@ export const login = async (
         userAgent,
       },
     });
+
+    if (user.role === 'creator') {
+      void progressAchievement({ userId: user.id, code: 'first-light', sourceId: 'first-login' });
+    }
 
     return res.status(200).json({ user, token: { accessToken, refreshToken } });
   } catch (err) {
@@ -732,6 +737,10 @@ export const verifyEmail = async (req: Request<{}, {}, { email: string; shortCod
     },
   });
 
+  if (user.role === 'creator') {
+    void progressAchievement({ userId: user.id, code: 'first-light', sourceId: 'first-login' });
+  }
+
   // issue your real access + refresh tokens here
   return res.json({ success: true, message: 'Email verified', token: { accessToken, refreshToken } });
 };
@@ -941,6 +950,10 @@ const handleSocialSignIn = async ({
       userAgent,
     },
   });
+
+  // Same badge as the password path — the role check above already guarantees
+  // this is a creator. Shared by both Google and Apple sign-in.
+  void progressAchievement({ userId: user.id, code: 'first-light', sourceId: 'first-login' });
 
   // Return the creator so the app can route on isOnBoardingFormCompleted.
   const userWithCreator = await prisma.user.findUnique({

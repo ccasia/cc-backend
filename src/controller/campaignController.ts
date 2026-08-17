@@ -85,6 +85,7 @@ import {
 } from '@utils/campaignMembershipEvents';
 import { buildCreatorRatingEventId, shouldEmitCreatorRatingCompleted } from '@utils/creatorRatingReveal';
 import { clients, getIo } from '../config/socket';
+import { awardXp, onPitchSubmitted, onShortlisted, progressAchievement } from '@/src/modules/gamification';
 
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
 Ffmpeg.setFfprobePath(ffprobePath.path);
@@ -3088,6 +3089,10 @@ export const creatorMakePitch = async (req: Request, res: Response) => {
           },
         });
       }
+    }
+
+    if (!isPitchExist && pitch) {
+      onPitchSubmitted({ userId: id as string, campaignId, pitchId: pitch.id });
     }
 
     // Update Creator.manualFollowerCount if no media kit and followerCount provided
@@ -9659,6 +9664,8 @@ export const shortlistCreator = async (req: Request, res: Response) => {
           });
 
           for (const creator of creatorData) {
+            onShortlisted(creator.id, campaign.id);
+
             const notification = await saveNotification({
               userId: creator.id,
               entityId: campaignId,
@@ -9892,6 +9899,8 @@ export const shortlistCreatorV2 = async (req: Request, res: Response) => {
         });
 
         for (const creator of creatorData) {
+          onShortlisted(creator.id, campaign.id);
+
           const notification = await saveNotification({
             userId: creator.id,
             entityId: campaignId,
@@ -11555,6 +11564,13 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
         if (!requiresClientReview) {
           console.log(`Direct-approval shortlist: Creating ShortListedCreator for ${user.id}`);
 
+          // Awarded here rather than above the branch: on client-review campaigns the
+          // creator is only proposed at this point (pitch SENT_TO_CLIENT, no
+          // ShortListedCreator row), so awarding there paid out for campaigns the client
+          // could still reject, and left showrunner counting a row that did not exist.
+          // The client-approval path awards on its own when it creates the row.
+          onShortlisted(user.id, campaign.id);
+
           // For credit tier campaigns, calculate creditPerVideo from creator's tier
           let creditPerVideo: number | null = null;
           let creditTierId: string | null = null;
@@ -11663,7 +11679,9 @@ export const shortlistCreatorV3 = async (req: Request, res: Response) => {
             const columnInProgress = board.columns.find((c) => c.name.includes('In Progress'));
 
             if (columnToDo && columnInProgress) {
-              console.log(`Creating submissions for direct-approval shortlist - ${timelinesFiltered.length} timeline(s)`);
+              console.log(
+                `Creating submissions for direct-approval shortlist - ${timelinesFiltered.length} timeline(s)`,
+              );
 
               // Create submissions for timeline items
               const submissions = await Promise.all(
@@ -11903,6 +11921,19 @@ export const rateCreator = async (req: Request, res: Response) => {
       data: ratingData,
     });
 
+    if (isClient && (ratingValue === 4 || ratingValue === 5)) {
+      void awardXp({
+        userId: creatorId,
+        actionCode: ratingValue === 5 ? 'client_rating_5' : 'client_rating_4',
+        sourceId: campaignId,
+        metadata: { campaignId, rating: ratingValue },
+      });
+
+      if (ratingValue === 5 && raterId) {
+        void progressAchievement({ userId: creatorId, code: 'brand-expert', sourceId: raterId });
+      }
+    }
+
     if (shortlistedCreator.userId && shouldEmitCreatorRatingCompleted(shortlistedCreator, updated)) {
       const creatorSocketId = clients.get(shortlistedCreator.userId);
       const payload = {
@@ -12043,6 +12074,8 @@ export const shortlistCreatorV2ForClient = async (req: Request, res: Response) =
 
         // Create notifications for shortlisted creators
         for (const creator of creatorData) {
+          onShortlisted(creator.id, campaign.id);
+
           await tx.notification.create({
             data: {
               title: 'You have been shortlisted!',
@@ -12525,6 +12558,8 @@ export const shortlistGuestCreators = async (req: Request, res: Response) => {
           console.log(`Guest creator ${guest.profileLink} is already shortlisted. Skipping.`);
           continue; // Skip and move to the next guest
         }
+
+        onShortlisted(userId, campaignId);
 
         // Also create a V3 pitch entry so it appears in the pitches list
         const existingPitch = await tx.pitch.findFirst({

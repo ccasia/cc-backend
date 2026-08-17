@@ -5,6 +5,7 @@ import { Prisma, PrismaClient } from '@prisma/client';
 
 import { sendCreatorApprovalListEmail, type ApprovalListEmailCreatorRow } from '@configs/nodemailer.config';
 import { getIo } from '../config/socket';
+import { awardXp, onShortlisted, progressAchievement } from '@/src/modules/gamification';
 
 // import { io } from '../server';
 
@@ -137,6 +138,8 @@ async function ensureApprovedCreatorCampaignSetup(tx: Prisma.TransactionClient, 
       },
     });
   }
+
+  onShortlisted(pitch.userId, pitch.campaignId);
 
   const existingAgreement = await tx.creatorAgreement.findFirst({
     where: {
@@ -612,7 +615,7 @@ export const actionApprovalCreator = async (req: Request, res: Response) => {
             ...(commentToStore !== null && { comment: commentToStore }),
           },
         });
-        await tx.pitch.update({
+        const updatedPitch = await tx.pitch.update({
           where: { id: pitchId },
           data: {
             status: pitchStatus,
@@ -622,6 +625,22 @@ export const actionApprovalCreator = async (req: Request, res: Response) => {
 
         if (action === 'approve') {
           await ensureApprovedCreatorCampaignSetup(tx, pitchId);
+
+          // A synthesized shortlist entry is not a pitch the creator wrote.
+          if (updatedPitch.type !== 'shortlisted') {
+            await awardXp({
+              userId: updatedPitch.userId,
+              actionCode: 'pitch_approved',
+              sourceId: updatedPitch.campaignId,
+              tx,
+            });
+            await progressAchievement({
+              userId: updatedPitch.userId,
+              code: 'in-demand',
+              sourceId: updatedPitch.campaignId,
+              tx,
+            });
+          }
         }
       });
 

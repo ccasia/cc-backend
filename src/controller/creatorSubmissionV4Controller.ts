@@ -12,6 +12,7 @@ import { selectCurrentAgreementSubmission } from '@utils/submissionAgreement';
 import { getIo } from '../config/socket';
 import { normalizePostingLinks, joinPostingLinksToContent } from '../utils/postingLinkValidation';
 import { scheduleUrlExtractionAndFetch } from './submissionV4Controller';
+import { awardXp, onSubmissionSubmitted } from '@/src/modules/gamification';
 
 const prisma = new PrismaClient();
 
@@ -402,6 +403,15 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
         },
       });
 
+      if (newStatus === 'PENDING_REVIEW') {
+        onSubmissionSubmitted({
+          submissionId,
+          userId: submission.userId,
+          campaignId: submission.campaignId,
+          submissionType: submission.submissionType?.type,
+        });
+      }
+
       // Auto-resolve all unresolved comments when creator submits new content
       await prisma.submissionComment.updateMany({
         where: { submissionId, resolvedAt: null },
@@ -639,6 +649,13 @@ export const updateMyPostingLink = async (req: Request, res: Response) => {
     }
 
     const result = await updatePostingLink(submissionId, normalizedLinks);
+
+    void awardXp({
+      userId: creatorId,
+      actionCode: 'posting_link_submitted',
+      sourceId: submissionId,
+      metadata: { submissionId, campaignId: submission.campaignId },
+    });
 
     scheduleUrlExtractionAndFetch(submissionId, joinPostingLinksToContent(normalizedLinks));
 

@@ -10,6 +10,7 @@ import {
   createCreatorCampaignMembershipUpdatedPayload,
 } from '@utils/campaignMembershipEvents';
 import { clients, getIo } from '../config/socket';
+import { awardXp, onShortlisted, progressAchievement } from '@/src/modules/gamification';
 
 const prisma = new PrismaClient();
 
@@ -267,6 +268,8 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
         });
       }
 
+      onShortlisted(pitch.userId, pitch.campaignId);
+
       // Create creatorAgreement for non-v4 campaigns (if it doesn't exist)
       const existingAgreement = await prisma.creatorAgreement.findFirst({
         where: {
@@ -386,6 +389,19 @@ export const approvePitchByAdmin = async (req: Request, res: Response) => {
             console.log(`Created ${submissions.length} submissions for admin pitch approval`);
           }
         }
+      }
+
+      // Admin shortlisting synthesizes a type:'shortlisted' pitch so the creator
+      // shows up in the pitches list. Nobody wrote it, so approving it is not a
+      // pitch approval — the shortlist itself already awards through onShortlisted.
+      if (pitch.type !== 'shortlisted') {
+        void awardXp({
+          userId: pitch.userId,
+          actionCode: 'pitch_approved',
+          sourceId: pitch.campaignId,
+          metadata: { pitchId, campaignId: pitch.campaignId },
+        });
+        void progressAchievement({ userId: pitch.userId, code: 'in-demand', sourceId: pitch.campaignId });
       }
     }
 
@@ -685,6 +701,17 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
       },
     });
 
+    // See approvePitchByAdmin: a synthesized shortlist entry is not a pitch.
+    if (pitch.type !== 'shortlisted') {
+      void awardXp({
+        userId: pitch.userId,
+        actionCode: 'pitch_approved',
+        sourceId: pitch.campaignId,
+        metadata: { pitchId, campaignId: pitch.campaignId },
+      });
+      void progressAchievement({ userId: pitch.userId, code: 'in-demand', sourceId: pitch.campaignId });
+    }
+
     if (pitch.isInvited) {
       const creatorNotification = await saveNotification({
         title: 'Campaign Invitation',
@@ -763,6 +790,8 @@ export const approvePitchByClient = async (req: Request, res: Response) => {
         },
       });
     }
+
+    onShortlisted(pitch.userId, pitch.campaignId);
 
     const existingAgreement = await prisma.creatorAgreement.findFirst({
       where: {

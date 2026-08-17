@@ -24,7 +24,9 @@
     "try": "ts-node src/config/nodemailer.config.ts",
     "db-push": "npx prisma db push && docker exec -it cc-backend npx prisma db push",
     "push-campaigns": "ts-node campaignLogs.ts",
-    "run-worker": "npx tsx src/helper/worker"
+    "run-worker": "npx tsx src/helper/worker",
+    "seed-gamification": "npx tsx prisma/seedGamification.ts",
+    "seed-leaderboard": "npx tsx src/scripts/snapshotLeaderboard.ts"
   },
   "dependencies": {
     "@dotenvx/dotenvx": "^1.9.0",
