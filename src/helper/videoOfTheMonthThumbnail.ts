@@ -14,11 +14,12 @@ const THUMBNAIL_TIMEOUT_MS = 30_000;
 
 export const createVideoOfTheMonthThumbnail = async (videoUrl: string, featuredVideoId: string): Promise<string> => {
   const outputPath = path.join(os.tmpdir(), `featured-video-${randomUUID()}.jpg`);
+  const encodedVideoUrl = new URL(videoUrl).toString();
 
   try {
     await new Promise<void>((resolve, reject) => {
       let settled = false;
-      const command = Ffmpeg(videoUrl)
+      const command = Ffmpeg(encodedVideoUrl)
         .seekInput(1)
         .outputOptions(['-frames:v 1', '-vf scale=466:782:force_original_aspect_ratio=decrease', '-q:v 3']);
 
