@@ -3,7 +3,6 @@ import { authenticate } from '../middleware/authenticate';
 import { generateResumableSessionUrl } from '../lib/gcs';
 import { prisma } from '../prisma/prisma';
 import { bigIntSerializerMiddleware } from '../middleware/bigIntSerializer';
-import { storage } from '../config/cloudStorage.config';
 import { Queue } from 'bullmq';
 import connection from '../config/redis';
 
