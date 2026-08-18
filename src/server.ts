@@ -13,8 +13,7 @@ import '@configs/cronjob';
 import http from 'http';
 import { handleSendMessage, fetchMessagesFromThread, markMessagesService } from '@services/threadService';
 import { authenticate } from '@middlewares/authenticate';
-import { Server, Socket } from 'socket.io';
-// import '@services/uploadVideo';
+import { Socket } from 'socket.io';
 
 import '@helper/processPitchVideo';
 
@@ -27,7 +26,6 @@ import './helper/videoDraftWorker';
 
 import dotenv from 'dotenv';
 import '@services/google_sheets/sheets';
-import path from 'path';
 import fse from 'fs-extra';
 
 import { PrismaSessionStore } from '@quixo3/prisma-session-store';
@@ -47,7 +45,6 @@ import { xeroWebhookQueue } from '@utils/queue';
 
 import { users } from '@utils/activeUsers';
 import { mobileRouter } from '@routes/mobile';
-import { OTPTypes } from '@/types';
 
 import jwt from 'jsonwebtoken';
 import { QueueEvents } from 'bullmq';
@@ -56,9 +53,6 @@ import connection from './config/redis';
 Ffmpeg.setFfmpegPath(FfmpegPath.path);
 
 dotenv.config();
-
-const uploadPath = path.join(__dirname, 'uploads');
-const uploadPathChunks = path.join(__dirname, 'chunks');
 
 const app: Application = express();
 
@@ -110,37 +104,10 @@ app.disable('x-powered-by');
 
 app.set('trust proxy', true);
 
-// create the session here
-declare module 'express-session' {
-  interface Session {
-    userid: string;
-    refreshToken: string;
-    name: string;
-    role: string;
-    photoURL: string;
-    xeroToken: any;
-    xeroTokenid: any;
-    xeroTokenSet: any;
-    xeroTenants: any;
-    xeroActiveTenants: any;
-    isImpersonating?: boolean;
-    impersonatingBy?: { userId: string; name: string } | null;
-    otp: OTPTypes | undefined;
-    pendingRegistration:
-      | {
-          phone: string;
-          verified: boolean;
-          authType: 'otp' | 'email';
-        }
-      | undefined;
-  }
-}
-
-app.set('trust proxy', true);
-
 app.use(
   session({
-    secret: process.env.SESSION_SECRET as string,
+    name: 'sid',
+    secret: process.env.SESSION_SECRET!,
     resave: false,
     saveUninitialized: false,
     proxy: process.env.NODE_ENV === 'production',
@@ -221,7 +188,7 @@ app.post('/webhook/whatsapp', async (req: Request, res: Response) => {
     // ── Outbound message status updates ──────────────────────────
     if (value?.statuses) {
       const status = value.statuses[0];
-      const { id: messageId, recipient_id: phoneNumber, status: statusType, timestamp, errors } = status;
+      const { id: messageId, recipient_id: phoneNumber, status: statusType, timestamp } = status;
       const sentAt = dayjs(Number(timestamp) * 1000).toDate();
 
       let data;
@@ -476,7 +443,7 @@ app.post('/video', async (req: Request, res: Response) => {
     if (videos.length) {
       for (const video of videos) {
         let uploadedBytes = 0;
-        const { tempFilePath, name, mimetype, data, size } = video;
+        const { tempFilePath, name, mimetype, size } = video;
 
         if (size > 100 * 1024 * 1024) {
           return res.status(404).json({ message: 'File size too large' });
@@ -517,7 +484,7 @@ app.post('/video', async (req: Request, res: Response) => {
       }
     } else {
       let uploadedBytes = 0;
-      const { tempFilePath, name, mimetype, data, size } = videos;
+      const { tempFilePath, name, mimetype, size } = videos;
 
       if (size > 1 * 1024 * 1024 * 1024) {
         return res.status(404).json({ message: 'File size too large' });

@@ -23,23 +23,19 @@ const storage = new Storage({
   keyFilename: '@configs/test-cs.json',
 });
 
-const bucket = storage.bucket('app-test-cult-cretive');
-
 const prisma = new PrismaClient();
 
 export const updateProfileAdmin = async (req: Request, res: Response) => {
   const { files } = req;
   const body = req.body;
 
-  const permission = body.permission;
-
   try {
     if (files && files.image) {
       const { image } = files as any;
       const publicURL = await uploadProfileImage(image.tempFilePath, image.name, 'admin');
-      await updateAdmin(req.body, publicURL, req.userId as string | undefined);
+      await updateAdmin(req.body, publicURL, req.userId);
     } else {
-      await updateAdmin(req.body, undefined, req.userId as string | undefined);
+      await updateAdmin(req.body, undefined, req?.userId);
     }
 
     return res.status(200).json({ message: 'Successfully updated' });
@@ -98,9 +94,7 @@ export const getAdmins = async (req: Request, res: Response) => {
       const transformedAdmins = admins.map((admin) => {
         const isClient = admin.admin?.role?.name === 'Client';
         const picName = admin.client?.company?.pic?.[0]?.name || null;
-        const displayName = isClient
-          ? picName || admin.name || admin.client?.company?.name || ''
-          : admin.name;
+        const displayName = isClient ? picName || admin.name || admin.client?.company?.name || '' : admin.name;
 
         return {
           id: admin.id,

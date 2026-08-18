@@ -13,11 +13,7 @@
  */
 
 import { PrismaClient } from '@prisma/client';
-import {
-  getHighestFollowerCount,
-  getTierByFollowerCount,
-  getAllActiveTiers,
-} from '../service/creditTierService';
+import { getHighestFollowerCount, getTierByFollowerCount, getAllActiveTiers } from '../service/creditTierService';
 
 const prisma = new PrismaClient();
 
@@ -25,9 +21,7 @@ async function printActiveTiers() {
   const tiers = await getAllActiveTiers();
 
   if (tiers.length === 0) {
-    throw new Error(
-      'No active credit tiers found in the database. Aborting to avoid a no-op run.',
-    );
+    throw new Error('No active credit tiers found in the database. Aborting to avoid a no-op run.');
   }
 
   console.log('Active Credit Tiers in database:');
@@ -89,7 +83,9 @@ async function assignTiersToUntierredCreators() {
 
       if (!tier) {
         skippedAboveMaxTier++;
-        console.log(`  Skipped creator ${creator.id}: ${followerCount.toLocaleString()} followers does not match any active tier`);
+        console.log(
+          `  Skipped creator ${creator.id}: ${followerCount.toLocaleString()} followers does not match any active tier`,
+        );
         continue;
       }
 
@@ -122,9 +118,7 @@ async function assignTiersToUntierredCreators() {
   console.log(`  Skipped (above top tier max):   ${skippedAboveMaxTier}`);
   console.log(`  Errors:                       ${errorCount}`);
   console.log('\n--- Tier Distribution (newly assigned) ---');
-  const sortedTiers = Object.entries(tierCounts).sort(
-    ([, a], [, b]) => a.minFollowers - b.minFollowers,
-  );
+  const sortedTiers = Object.entries(tierCounts).sort(([, a], [, b]) => a.minFollowers - b.minFollowers);
   for (const [tierName, { count }] of sortedTiers) {
     console.log(`  ${tierName}: ${count} creators`);
   }

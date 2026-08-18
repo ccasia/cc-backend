@@ -91,15 +91,9 @@ async function main() {
   console.log('--- Interpretation ---');
   if (remaining !== null && remaining > totalRealAvailable) {
     console.log(`⚠️  BUG CONFIRMED.`);
-    console.log(
-      `   Gate returned ${remaining} but only ${totalRealAvailable} is actually allocatable.`,
-    );
-    console.log(
-      `   A new campaign with campaignCredits ≤ ${remaining} would pass the gate.`,
-    );
-    console.log(
-      `   Those above ${totalRealAvailable} would create a campaign with empty creditAllocationBreakdown`,
-    );
+    console.log(`   Gate returned ${remaining} but only ${totalRealAvailable} is actually allocatable.`);
+    console.log(`   A new campaign with campaignCredits ≤ ${remaining} would pass the gate.`);
+    console.log(`   Those above ${totalRealAvailable} would create a campaign with empty creditAllocationBreakdown`);
     console.log(`   and no subscription.creditsUsed increment — silent over-allocation.`);
   } else if (remaining === totalRealAvailable) {
     console.log(`✅ Gate matches reality for this company. No over-allocation surface right now.`);

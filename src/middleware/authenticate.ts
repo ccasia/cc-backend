@@ -1,4 +1,3 @@
-// middleware/authenticate.ts
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { prisma } from '@/src/prisma/prisma';
@@ -7,7 +6,7 @@ declare global {
   namespace Express {
     interface Request {
       userId?: string;
-      authMethod: 'session' | 'jwt';
+      authMethod?: 'session' | 'jwt';
     }
   }
 }
@@ -27,7 +26,7 @@ const dbUnavailable = (res: Response) =>
 export const authenticate = async (req: Request, res: Response, next: NextFunction) => {
   // 1. Try session-based auth first (web)
 
-  if (req.session?.userid) {
+  if (req.session.userid) {
     let user;
     try {
       user = await validateActiveUser(req.session.userid);

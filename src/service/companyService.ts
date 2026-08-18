@@ -220,10 +220,7 @@ export const handleCreateBrand = async ({
   }
 };
 
-export const generateCustomId = async (
-  type: any,
-  client: Pick<typeof prisma, 'company'> = prisma,
-) => {
+export const generateCustomId = async (type: any, client: Pick<typeof prisma, 'company'> = prisma) => {
   const prefix = type === 'agency' ? 'A' : 'DC';
 
   // Find all companies with the matching prefix
@@ -306,8 +303,7 @@ export const createNewCompany = async (data: CompanyForm, publicURL?: string) =>
     try {
       return await prisma.$transaction(async (tx) => {
         const id: string = await generateSubscriptionCustomId();
-        const clientId =
-          attempt === 1 && companyID ? companyID : await generateCustomId(type, tx);
+        const clientId = attempt === 1 && companyID ? companyID : await generateCustomId(type, tx);
         const expiredAt = dayjs(invoiceDate).add(parseInt(validityPeriod), 'months').format();
         const subscriptionData = {
           creditsUsed: 0,

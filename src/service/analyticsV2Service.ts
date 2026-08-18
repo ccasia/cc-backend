@@ -3202,11 +3202,7 @@ interface CSMDetailCreatorRow {
   tiktokTierName: string | null;
 }
 
-export const getCSMWorkloadDetailData = async (
-  adminUserId: string,
-  startDate?: Date,
-  endDate?: Date,
-) => {
+export const getCSMWorkloadDetailData = async (adminUserId: string, startDate?: Date, endDate?: Date) => {
   const hasDateFilter = !!startDate && !!endDate;
 
   const csmRows = await prisma.$queryRaw<
@@ -3340,9 +3336,7 @@ export const getCSMWorkloadDetailData = async (
     };
   });
 
-  const companyIds = Array.from(
-    new Set(campaigns.map((c) => c.companyId).filter((id): id is string => !!id))
-  );
+  const companyIds = Array.from(new Set(campaigns.map((c) => c.companyId).filter((id): id is string => !!id)));
 
   interface CSMClientCampaignRow {
     campaignId: string;
@@ -3552,7 +3546,8 @@ export const getCSMWorkloadDetailData = async (
 
   const stats = {
     avgAgreementResponseHours: agreementAvgResult[0]?.avghours != null ? Number(agreementAvgResult[0].avghours) : null,
-    avgSubmissionResponseHours: submissionAvgResult[0]?.avghours != null ? Number(submissionAvgResult[0].avghours) : null,
+    avgSubmissionResponseHours:
+      submissionAvgResult[0]?.avghours != null ? Number(submissionAvgResult[0].avghours) : null,
   };
 
   const attention = await getCSMWorkloadAttentionData(campaignIds);
@@ -4062,9 +4057,7 @@ export const getCSMWorkloadAttentionData = async (campaignIds: string[]) => {
     ),
   };
 
-  const pitchReviewHours = avgHoursFromPairs(
-    decidedPitches.map((p) => ({ start: p.createdAt, end: p.completedAt })),
-  );
+  const pitchReviewHours = avgHoursFromPairs(decidedPitches.map((p) => ({ start: p.createdAt, end: p.completedAt })));
   const agreementReviewHours = avgHoursFromPairs(
     agreementSubmissions.map((s) => ({ start: s.submissionDate, end: s.completedAt })),
   );

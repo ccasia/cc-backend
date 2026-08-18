@@ -1339,42 +1339,28 @@ export const login = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Wrong password' });
     }
 
-    // 4 hours
-    const accessToken = jwt.sign({ id: data.id }, process.env.ACCESSKEY as Secret, {
-      expiresIn: '4h',
-    });
-
-    const refreshToken = jwt.sign({ id: data.id }, process.env.REFRESHKEY as Secret);
-
-    const session = req.session;
-    session.userid = data.id;
-    session.refreshToken = refreshToken;
-    session.role = data.role;
-    session.name = data.name || '';
-    session.photoURL = data.photoURL || '';
-
-    res.cookie('userid', data.id, {
-      maxAge: 60 * 60 * 24 * 1000, // 1 Day
-
-      httpOnly: true,
-    });
-
-    res.cookie('accessToken', accessToken, {
-      maxAge: 60 * 60 * 4 * 1000, // 1 Day
-      httpOnly: true,
-    });
-
-    // Check if user is a child account
     const isChildAccount = await prisma.childAccount.findFirst({
       where: { email: data.email },
     });
 
-    return res.status(200).json({
-      user: {
-        ...data,
-        isChildAccount: !!isChildAccount,
-      },
-      accessToken: accessToken,
+    req.session.regenerate((err) => {
+      if (err) return res.status(500).json({ message: 'Session error' });
+
+      req.session.userid = data.id;
+      req.session.role = data.role;
+      req.session.name = data.name ?? '';
+      req.session.photoURL = data.photoURL ?? '';
+
+      req.session.save((err) => {
+        if (err) return res.status(500).json({ message: 'Session error' });
+
+        res.status(200).json({
+          user: {
+            ...data,
+            isChildAccount: !!isChildAccount,
+          },
+        });
+      });
     });
   } catch (error) {
     console.log(error);

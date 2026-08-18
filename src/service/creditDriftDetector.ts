@@ -13,7 +13,10 @@ const ACTIVE_CAMPAIGN_STATUSES = [
   'PENDING_ADMIN_ACTIVATION',
 ] as const;
 
-type AllocationEntry = { subscriptionId: string; amount: number };
+interface AllocationEntry {
+  subscriptionId: string;
+  amount: number;
+}
 
 export interface DriftRow {
   subscriptionId: string;

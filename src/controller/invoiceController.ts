@@ -1297,8 +1297,8 @@ export const updateInvoice = async (req: Request, res: Response) => {
         .map(({ key, label, oldVal, newVal }) => ({
           field: key,
           label,
-          old: key === 'dueDate' ? toDateStr(oldVal) : oldVal ?? null,
-          new: key === 'dueDate' ? toDateStr(newVal) : newVal ?? null,
+          old: key === 'dueDate' ? toDateStr(oldVal) : (oldVal ?? null),
+          new: key === 'dueDate' ? toDateStr(newVal) : (newVal ?? null),
         }));
 
       if (changes.length > 0) {

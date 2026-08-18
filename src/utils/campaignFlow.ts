@@ -12,16 +12,16 @@
  * See docs/v4-unification-plan.md (cc-frontend) for the full context.
  */
 
-type CampaignAdminLike = {
+interface CampaignAdminLike {
   admin?: {
     user?: { role?: string | null } | null;
     role?: { name?: string | null } | null;
   } | null;
-};
+}
 
-type CampaignFlowInput = {
+interface CampaignFlowInput {
   campaignAdmin?: CampaignAdminLike[] | null;
-};
+}
 
 const isClientAdmin = (ca: CampaignAdminLike): boolean =>
   ca?.admin?.user?.role === 'client' || ca?.admin?.role?.name === 'Client';
