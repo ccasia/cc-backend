@@ -1835,6 +1835,8 @@ model AgreementTemplate {
   isDefault             Boolean?               @default(false)
   agreementTemplateType AgreementTemplateType?
   campaign              Campaign[]
+
+  isNdaRequired Boolean @default(false)
 }
 
 enum AgreementTemplateType {

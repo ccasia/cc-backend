@@ -5399,7 +5399,7 @@ export const editCampaignLogistics = async (req: Request, res: Response) => {
 };
 
 export const editCampaignFinalise = async (req: Request, res: Response) => {
-  const { campaignId, campaignManagers, campaignType, deliverables, isCreditTier } = req.body;
+  const { campaignId, campaignManagers, campaignType, deliverables, isCreditTier, isNdaRequired } = req.body;
 
   const adminId = req.userId;
 
@@ -5464,6 +5464,17 @@ export const editCampaignFinalise = async (req: Request, res: Response) => {
         isCreditTier: isCreditTier === true,
       },
     });
+
+    if (campaign.agreementTemplateId) {
+      await prisma.agreementTemplate.update({
+        where: {
+          id: campaign.agreementTemplateId!,
+        },
+        data: {
+          isNdaRequired: isNdaRequired,
+        },
+      });
+    }
 
     // Handle timeline changes when campaignType changes
     const newCampaignType = campaignType || 'normal';
@@ -7438,6 +7449,7 @@ export const updateAmountAgreement = async (req: Request, res: Response) => {
         },
       });
     } else {
+      console.log(url);
       // For V2: Update existing CreatorAgreement
       updatedAgreement = await prisma.creatorAgreement.update({
         where: {
