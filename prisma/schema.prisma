@@ -2851,7 +2851,7 @@ model UserXpBalance {
   mediaKitBonusAt DateTime?
 
   userId        String @id
-  currentRankId String
+  currentRankId String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   rank Rank @relation(fields: [currentRankId], references: [id])
