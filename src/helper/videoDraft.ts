@@ -279,6 +279,8 @@ const checkCurrentSubmission = async (submissionId: string) => {
     const channel = await conn.createChannel();
     await channel.assertQueue('draft', { durable: true });
 
+    console.log('VIDEO DRAFT QUEUE RUNNING...');
+
     const startUsage = process.cpuUsage();
 
     await channel.consume(
