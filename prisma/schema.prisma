@@ -2854,7 +2854,7 @@ model UserXpBalance {
   currentRankId String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  rank Rank @relation(fields: [currentRankId], references: [id])
+  rank Rank? @relation(fields: [currentRankId], references: [id])
 
   updatedAt DateTime @updatedAt
 }
