@@ -954,6 +954,11 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
   const isClientCampaign =
     rawData?.isClientCampaign === true ||
     (rawData?.isClientCampaign === undefined && rawData?.submissionVersion === 'v4');
+  const draftUploadPrefix = `https://storage.googleapis.com/${process.env.BUCKET_NAME}/campaign-creation-drafts/${encodeURIComponent(
+    req.userId!,
+  )}/`;
+  const isOwnedDraftFileUrl = (value: unknown): value is string =>
+    typeof value === 'string' && value.startsWith(draftUploadPrefix);
 
   try {
     const { images } = await uploadCampaignAssets(req.files);
@@ -1024,7 +1029,9 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
         }
 
         // Process uploaded images
-        const publicURL: string[] = [];
+        const publicURL: string[] = Array.isArray(rawData.draftCampaignImageUrls)
+          ? rawData.draftCampaignImageUrls.filter(isOwnedDraftFileUrl)
+          : [];
         if (req.files && (req.files as any).campaignImages) {
           const images = Array.isArray((req.files as any).campaignImages)
             ? (req.files as any).campaignImages
@@ -1170,7 +1177,9 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
         });
 
         // Process brand guidelines PDF/image upload (support multiple)
-        const brandGuidelinesUrls: string[] = [];
+        const brandGuidelinesUrls: string[] = Array.isArray(rawData.draftBrandGuidelineUrls)
+          ? rawData.draftBrandGuidelineUrls.filter(isOwnedDraftFileUrl)
+          : [];
         if (req.files && (req.files as any).brandGuidelines) {
           const brandGuidelinesFiles = Array.isArray((req.files as any).brandGuidelines)
             ? (req.files as any).brandGuidelines
@@ -1188,7 +1197,9 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
         }
 
         // Process product image 1 upload
-        let productImage1Url: string | null = null;
+        let productImage1Url: string | null = isOwnedDraftFileUrl(rawData.draftProductImage1Url)
+          ? rawData.draftProductImage1Url
+          : null;
         if (req.files && (req.files as any).productImage1) {
           const productImage1Files = Array.isArray((req.files as any).productImage1)
             ? (req.files as any).productImage1
@@ -1199,7 +1210,9 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
         }
 
         // Process product image 2 upload
-        let productImage2Url: string | null = null;
+        let productImage2Url: string | null = isOwnedDraftFileUrl(rawData.draftProductImage2Url)
+          ? rawData.draftProductImage2Url
+          : null;
         if (req.files && (req.files as any).productImage2) {
           const productImage2Files = Array.isArray((req.files as any).productImage2)
             ? (req.files as any).productImage2
