@@ -1900,6 +1900,7 @@ model Package {
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
   prices         Price[]
+  isArchived     Boolean        @default(false)
 }
 
 model Price {
