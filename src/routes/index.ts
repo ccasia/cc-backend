@@ -44,6 +44,9 @@ import clientDemoRoute from './clientDemoRoute';
 import videoOfTheMonthRoute from './videoOfTheMonthRoute';
 import financeRoute from './financeRoute';
 import uploadRoute from './uploadRoute';
+import treasureHuntRoute from './treasureHuntRoute';
+import treasureHuntAdminRoute from './treasureHuntAdminRoute';
+import campaignCreationDraftRoute from './campaignCreationDraftRoute';
 
 export const router = express.Router();
 
@@ -54,6 +57,7 @@ router.use('/creator', creatorRoute);
 router.use('/company', companyRoute);
 router.use('/event', eventRoute);
 router.use('/campaign', campaignRoute);
+router.use('/campaign-creation-drafts', campaignCreationDraftRoute);
 router.use('/notification', notificationRoute);
 router.use('/push-token', pushTokenRoute);
 router.use('/draft', draftRoute);
