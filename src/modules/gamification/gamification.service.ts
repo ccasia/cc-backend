@@ -38,8 +38,8 @@ export interface PointActionRecord {
 export interface CreatorPointsRecord {
   creatorId: string;
   totalPoints: number;
-  currentRankId: string;
-  currentRank: Rank;
+  currentRankId: string | null;
+  currentRank: Rank | null;
   updatedAt: Date;
 }
 
