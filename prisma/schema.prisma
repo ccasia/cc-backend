@@ -13,6 +13,7 @@ model User {
   googleId          String?   @unique
   appleId           String?   @unique
   appleRefreshToken String?
+  appleAudience     String?
   googleEmail       String?   @db.VarChar(255)
   appleEmail        String?   @db.VarChar(255)
   googleUnlinkedAt  DateTime?
@@ -65,25 +66,26 @@ model User {
   maybePitches            Pitch[]               @relation("MaybeByClient")
   acceptedInviteByCreator Pitch[]               @relation("AcceptedInviteByCreator")
 
-  resetPasswordToken ResetPasswordToken?
-  seenMessages       SeenMessage[]
-  shortlisted        ShortListedCreator[]
-  submission         Submission[]
-  taskAssignee       TaskAssignee[]
-  unreadMessages     UnreadMessage[]
-  event              Event?               @relation(fields: [eventId], references: [id])
-  userNotification   UserNotification[]
-  pushTokens         PushToken[]
-  UserThread         UserThread[]
-  threads            Thread[]             @relation("UserThreads")
-  bugs               Bugs[]
-  video              Video[]
-  rawFootage         RawFootage[]
-  photo              Photo[]
-  isActive           Boolean              @default(true)
-  isVerified         Boolean              @default(false)
-  isKWSPCampaign     Boolean?             @default(false)
-  hasSubmittedKWSP   Boolean              @default(false)
+  resetPasswordToken         ResetPasswordToken?
+  seenMessages               SeenMessage[]
+  shortlisted                ShortListedCreator[]
+  submission                 Submission[]
+  taskAssignee               TaskAssignee[]
+  unreadMessages             UnreadMessage[]
+  event                      Event?               @relation(fields: [eventId], references: [id])
+  userNotification           UserNotification[]
+  pushTokens                 PushToken[]
+  UserThread                 UserThread[]
+  threads                    Thread[]             @relation("UserThreads")
+  bugs                       Bugs[]
+  video                      Video[]
+  rawFootage                 RawFootage[]
+  photo                      Photo[]
+  isActive                   Boolean              @default(true)
+  isVerified                 Boolean              @default(false)
+  isKWSPCampaign             Boolean?             @default(false)
+  hasSubmittedKWSP           Boolean              @default(false)
+  hasAcceptedTermsAndPrivacy Boolean              @default(false)
 
   referralCode String? @db.VarChar(50)
 
@@ -113,6 +115,23 @@ model User {
   uploadSessions UploadSession[]
 
   isPhoneVerified Boolean @default(false)
+}
+
+model PendingSocialSignup {
+  id              String   @id @default(cuid())
+  provider        String   @db.VarChar(16)
+  providerSubject String   @db.VarChar(255)
+  email           String   @db.VarChar(255)
+  name            String?  @db.VarChar(255)
+  appleAudience   String?  @db.VarChar(255)
+  tokenHash       String   @unique @db.VarChar(64)
+  expiresAt       DateTime
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([provider, providerSubject])
+  @@index([expiresAt])
+  @@map("pending_social_signups")
 }
 
 model RefreshToken {

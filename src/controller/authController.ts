@@ -1923,7 +1923,7 @@ export const deleteAccount = async (req: Request, res: Response) => {
     // authorizationCode exchange. `user` was read before the soft-delete above,
     // so it still carries the token. Best-effort — never blocks deletion.
     if (user.appleRefreshToken) {
-      await revokeAppleToken(user.appleRefreshToken);
+      await revokeAppleToken(user.appleRefreshToken, user.appleAudience ?? undefined);
     }
 
     // Terminate any live realtime connections — socket auth only runs at connect time, so an
