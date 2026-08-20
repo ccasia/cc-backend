@@ -74,6 +74,13 @@ import { createNewSpreadSheet, upsertSheetAndWriteRows } from '@services/google_
 import { getRemainingCredits } from '@services/companyService';
 import { handleGuestForShortListing } from '@services/shortlistService';
 import { saveCampaignBookmark, unsaveCampaignBookmark } from '@services/campaignBookmarkService';
+import {
+  blockBrand as blockBrandService,
+  unblockBrand as unblockBrandService,
+  getBlockedBrandsForUser,
+  getBlockedBrandIds,
+} from '@services/blockedBrandService';
+import { flagCampaign } from '@services/campaignFlagService';
 import getCountry from '@utils/getCountry';
 // import { applyCreditCampiagn } from '@services/packageService';
 import { sendShortlistEmailToClients, ShortlistedCreatorInput } from '@services/notificationService';
@@ -2711,6 +2718,7 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
     }
 
     const country = await getCountry(req.ip as string);
+    const blockedBrandIds = await getBlockedBrandIds(prisma, { userId: userid as string });
 
     let campaigns = await prisma.campaign.findMany({
       take: Number(take),
@@ -2745,6 +2753,12 @@ export const matchCampaignWithCreator = async (req: Request, res: Response) => {
                   hasSome: [country],
                 },
               },
+            }),
+          },
+          {
+            ...(blockedBrandIds.length > 0 && {
+              // "Blocked brand" is keyed off Company, not Brand — see blockedBrandService.ts.
+              companyId: { notIn: blockedBrandIds },
             }),
           },
         ],
@@ -6864,6 +6878,72 @@ export const unSaveCampaign = async (req: Request, res: Response) => {
     }
 
     return res.status(200).json({ message: 'Campaign has been removed from your saved campaigns.', bookmark });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const blockBrand = async (req: Request, res: Response) => {
+  const { brandId } = req.body;
+  const userId = req.userId;
+
+  try {
+    const blockedBrand = await blockBrandService(prisma, {
+      userId: userId as string,
+      brandId: brandId as string,
+    });
+
+    return res.status(200).json({ message: 'All campaigns from this brand are now blocked.', blockedBrand });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const unblockBrand = async (req: Request, res: Response) => {
+  const { brandId } = req.params;
+  const userId = req.userId;
+
+  try {
+    const blockedBrand = await unblockBrandService(prisma, {
+      userId: userId as string,
+      brandId: brandId as string,
+    });
+
+    if (!blockedBrand) {
+      return res.status(404).json({ message: 'Blocked brand not found.' });
+    }
+
+    return res.status(200).json({ message: 'Brand has been unblocked.', blockedBrand });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const getBlockedBrands = async (req: Request, res: Response) => {
+  const userId = req.userId;
+
+  try {
+    const blockedBrands = await getBlockedBrandsForUser(prisma, { userId: userId as string });
+
+    return res.status(200).json({ blockedBrands });
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+};
+
+export const reportCampaign = async (req: Request, res: Response) => {
+  const { campaignId, reason, details } = req.body;
+  const userId = req.userId;
+
+  try {
+    const flag = await flagCampaign(prisma, {
+      userId: userId as string,
+      campaignId: campaignId as string,
+      reason: reason as string,
+      details: details as string | undefined,
+    });
+
+    return res.status(200).json({ message: 'Campaign has been reported. Thanks for flagging this.', flag });
   } catch (error) {
     return res.status(400).json(error);
   }
