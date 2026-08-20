@@ -234,13 +234,22 @@ const prisma = new PrismaClient();
 
 export const getAllPackages = async (req: Request, res: Response) => {
   try {
+    const includeArchived = req.query.includeArchived === 'true';
+
     const packages = await prisma.package.findMany({
+      where: includeArchived ? undefined : { isArchived: false },
       include: {
         prices: true,
+        _count: { select: { subscriptions: true } },
       },
     });
 
-    return res.status(200).json(packages);
+    const withSubscriptionCount = packages.map(({ _count, ...pkg }) => ({
+      ...pkg,
+      subscriptionCount: _count.subscriptions,
+    }));
+
+    return res.status(200).json(withSubscriptionCount);
   } catch (error) {
     return res.status(400).json(error);
   }
@@ -288,8 +297,15 @@ export const deletePackage = async (req: Request, res: Response) => {
     const subscriptionCount = await prisma.subscription.count({ where: { packageId: id } });
 
     if (subscriptionCount > 0) {
-      return res.status(400).json({
-        message: `Cannot delete "${existingPackage.name}" — it is used by ${subscriptionCount} existing subscription${subscriptionCount === 1 ? '' : 's'}.`,
+      if (existingPackage.isArchived) {
+        return res.status(200).json({ message: 'Package is already archived' });
+      }
+
+      await prisma.package.update({ where: { id }, data: { isArchived: true } });
+
+      return res.status(200).json({
+        message: `"${existingPackage.name}" is in use, so it was archived instead of deleted.`,
+        archived: true,
       });
     }
 
@@ -299,6 +315,48 @@ export const deletePackage = async (req: Request, res: Response) => {
     ]);
 
     return res.status(200).json({ message: 'Package successfully deleted' });
+  } catch (error) {
+    console.log(error);
+    return res.status(400).json(error);
+  }
+};
+
+export const archivePackage = async (req: Request, res: Response) => {
+  const { id } = req.params;
+
+  try {
+    const existingPackage = await prisma.package.findUnique({ where: { id } });
+
+    if (!existingPackage) return res.status(404).json({ message: 'Package not found' });
+
+    if (existingPackage.isArchived) {
+      return res.status(200).json({ message: 'Package is already archived' });
+    }
+
+    await prisma.package.update({ where: { id }, data: { isArchived: true } });
+
+    return res.status(200).json({ message: `"${existingPackage.name}" archived` });
+  } catch (error) {
+    console.log(error);
+    return res.status(400).json(error);
+  }
+};
+
+export const unarchivePackage = async (req: Request, res: Response) => {
+  const { id } = req.params;
+
+  try {
+    const existingPackage = await prisma.package.findUnique({ where: { id } });
+
+    if (!existingPackage) return res.status(404).json({ message: 'Package not found' });
+
+    if (!existingPackage.isArchived) {
+      return res.status(200).json({ message: 'Package is not archived' });
+    }
+
+    await prisma.package.update({ where: { id }, data: { isArchived: false } });
+
+    return res.status(200).json({ message: `"${existingPackage.name}" restored` });
   } catch (error) {
     console.log(error);
     return res.status(400).json(error);
