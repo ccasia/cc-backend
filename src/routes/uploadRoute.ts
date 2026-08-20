@@ -12,9 +12,32 @@ const compressionQueue = new Queue('compression-queue', { connection: connection
 router.use(authenticate);
 router.use(bigIntSerializerMiddleware);
 
+router.get('/', async (req, res) => {
+  try {
+    const submissionId = req.query.submissionId as string;
+    const userId = req.userId;
+
+    const uploadSessions = await prisma.uploadSession.findMany({
+      where: {
+        submissionId: submissionId!,
+        userId,
+        status: 'UPLOADING',
+      },
+      orderBy: {
+        createdAt: 'asc',
+      },
+    });
+
+    return res.status(200).json({ uploadSessions: uploadSessions });
+  } catch (error) {
+    return res.status(500).json({ error: 'Failed to fetch upload session' });
+  }
+});
+
 router.post('/', async (req, res) => {
   try {
     const { campaignId, submissionId, contentType, fileName, fileSize } = req.body;
+
     const userId = req.userId;
 
     if (!userId || !contentType || !fileName || !fileSize) {
@@ -31,6 +54,7 @@ router.post('/', async (req, res) => {
         campaignId: campaignId ?? null,
         submissionId: submissionId ?? null,
         bytesTotal: BigInt(fileSize),
+
         status: 'INITIATED',
         expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
       },

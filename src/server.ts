@@ -533,7 +533,7 @@ queueEvents.on('progress', ({ data }) => {
     progress: number;
     uploadSessionId: string;
   };
-  console.log(progress);
+
   io.to(`upload:${uploadSessionId}`).emit('compression:progress', { submissionId, progress, uploadSessionId });
 });
 
