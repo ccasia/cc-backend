@@ -59,5 +59,6 @@ exportClientsEmail()
     console.log('Done ✨');
   })
   .catch((err) => {
+    console.log(err);
     prisma.$disconnect();
   });
