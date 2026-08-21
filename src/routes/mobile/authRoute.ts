@@ -11,6 +11,7 @@ import {
   linkApple,
   unlinkApple,
   googleLogin,
+  completeSocialRegistration,
   linkGoogle,
   unlinkGoogle,
   completeOnboarding,
@@ -37,6 +38,8 @@ authRoute.post('/apple/link', authenticate, linkApple);
 authRoute.post('/apple/unlink', authenticate, unlinkApple);
 
 authRoute.post('/google', googleLogin);
+
+authRoute.post('/social/complete-registration', completeSocialRegistration);
 
 authRoute.post('/google/link', authenticate, linkGoogle);
 
