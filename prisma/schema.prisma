@@ -43,6 +43,8 @@ model User {
   agreementTemplate       AgreementTemplate[]
   Board                   Board?
   BookMarkCampaign        BookMarkCampaign[]
+  blockedBrand            BlockedBrand[]
+  campaignFlag            CampaignFlag[]
   bookMarkCreator         BookMarkCreator[]     @relation("BookMarkCreatorOwner")
   bookMarkedBy            BookMarkCreator[]     @relation("BookMarkCreatorTarget")
   bookMarkCreatorLists    BookMarkCreatorList[]
@@ -639,6 +641,7 @@ model Company {
   subscriptions       Subscription[]
   clients             Client[]
   SubscriptionHistory SubscriptionHistory[]
+  blockedBy           BlockedBrand[]
 
   @@index([clientId])
 }
@@ -755,6 +758,7 @@ model Campaign {
   campaignType        String?            @default("normal")
   origin              CampaignOrigin     @default(ADMIN)
   bookMarkCampaign    BookMarkCampaign[]
+  campaignFlag        CampaignFlag[]
   agreementTemplate   AgreementTemplate? @relation(fields: [agreementTemplateId], references: [id])
   brand               Brand?             @relation(fields: [brandId], references: [id])
   company             Company?           @relation(fields: [companyId], references: [id])
@@ -864,6 +868,42 @@ model BookMarkCampaign {
   user       User     @relation(fields: [userId], references: [id])
 
   @@unique([userId, campaignId])
+}
+
+// Named for the "block this brand" product feature, but keys off Company, not
+// Brand: campaigns are populated with `companyId`, and `Brand`/`campaign.brandId`
+// are effectively unused in practice (0 Brand rows / 0 campaigns with brandId
+// set as of this writing). Company is what's actually shown to creators as the
+// campaign's "brand" (see mobile `cardPropsFromCampaign`: brand ?? company).
+model BlockedBrand {
+  id        String  @id @unique @default(cuid())
+  userId    String
+  companyId String
+  user      User    @relation(fields: [userId], references: [id])
+  company   Company @relation(fields: [companyId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, companyId])
+  @@index([userId])
+}
+
+// Content-moderation "report this campaign" flagging — unrelated to the
+// AI-generated Post Campaign Report (PCR) feature (`ReportService`,
+// `CampaignReportResult` in src/types/index.ts), hence the distinct name.
+model CampaignFlag {
+  id         String   @id @unique @default(cuid())
+  userId     String
+  campaignId String
+  reason     String
+  details    String?
+  user       User     @relation(fields: [userId], references: [id])
+  campaign   Campaign @relation(fields: [campaignId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([campaignId])
+  @@index([userId])
 }
 
 model BookMarkCreatorList {

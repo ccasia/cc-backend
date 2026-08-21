@@ -245,6 +245,18 @@ export const deleteCreator = async (req: Request, res: Response) => {
         },
       }),
 
+      prisma.blockedBrand.deleteMany({
+        where: {
+          userId: id,
+        },
+      }),
+
+      prisma.campaignFlag.deleteMany({
+        where: {
+          userId: id,
+        },
+      }),
+
       prisma.paymentForm.deleteMany({
         where: {
           userId: id,
