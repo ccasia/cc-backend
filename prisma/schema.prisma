@@ -2671,6 +2671,8 @@ enum TypeEnum {
 model UploadSession {
   id String @id @default(cuid())
 
+  fileName String?
+
   // GCS resumable session
   gcsSessionUri String? @db.Text // filled in after client reports the Location header
   gcsObjectPath String // e.g. "raw/{userId}/{timestamp}-{filename}"

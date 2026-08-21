@@ -538,7 +538,12 @@ queueEvents.on('progress', ({ data }) => {
 });
 
 queueEvents.on('completed', ({ returnvalue }) => {
-  getIo().to(`upload:${returnvalue}`).emit('status', 'completed');
+  const { submissionId, uploadSessionId } = returnvalue as unknown as {
+    submissionId: string;
+    uploadSessionId: string;
+  };
+
+  getIo().to(`upload:${uploadSessionId}`).emit('status', { status: 'completed', submissionId });
 });
 
 if (require.main === module) {

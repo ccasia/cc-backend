@@ -76,7 +76,7 @@ const worker = new Worker(
         data: { status: 'PENDING_REVIEW' },
       });
 
-      return uploadSessionId;
+      return { uploadSessionId, submissionId };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
 

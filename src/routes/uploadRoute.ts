@@ -22,6 +22,8 @@ router.get('/', async (req, res) => {
         submissionId: submissionId!,
         userId,
         status: 'UPLOADING',
+        gcsSessionUri: { not: null },
+        expiresAt: { gt: new Date() },
       },
       orderBy: {
         createdAt: 'asc',
@@ -54,9 +56,9 @@ router.post('/', async (req, res) => {
         campaignId: campaignId ?? null,
         submissionId: submissionId ?? null,
         bytesTotal: BigInt(fileSize),
-
         status: 'INITIATED',
-        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+        expiresAt: new Date(Date.now() + 15 * 60 * 1000), // 7 days
+        fileName: fileName,
       },
     });
 
