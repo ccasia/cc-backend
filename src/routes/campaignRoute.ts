@@ -29,6 +29,10 @@ import {
   getAllCampaignsFinance,
   saveCampaign,
   unSaveCampaign,
+  blockBrand,
+  unblockBrand,
+  getBlockedBrands,
+  reportCampaign,
   shortlistCreator,
   rateCreator,
   creatorAgreements,
@@ -262,6 +266,11 @@ router.patch('/changeCredits', authenticate, isSuperAdmin, changeCampaignCredit)
 
 router.delete('/timelineType/:id', authenticate, isSuperAdmin, deleteTimelineType);
 router.delete('/unsaveCampaign/:id', authenticate, unSaveCampaign);
+
+router.post('/blockBrand', authenticate, blockBrand);
+router.delete('/unblockBrand/:brandId', authenticate, unblockBrand);
+router.get('/blockedBrands', authenticate, getBlockedBrands);
+router.post('/reportCampaign', authenticate, reportCampaign);
 
 // Client campaign activation by CSM
 router.post('/activateClientCampaign/:campaignId', authenticate, canActivateCampaign, activateClientCampaign);

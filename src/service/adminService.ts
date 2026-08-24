@@ -19,6 +19,8 @@ export const handleDeleteAdminById = async (id: string) => {
       await tx.unreadMessage.deleteMany({ where: { userId: id } });
       await tx.seenMessage.deleteMany({ where: { userId: id } });
       await tx.bookMarkCampaign.deleteMany({ where: { userId: id } });
+      await tx.blockedBrand.deleteMany({ where: { userId: id } });
+      await tx.campaignFlag.deleteMany({ where: { userId: id } });
       await tx.campaignTaskAdmin.deleteMany({ where: { userId: id } });
       await tx.feedback.deleteMany({ where: { adminId: id } });
       await tx.notification.deleteMany({ where: { userId: id } });
