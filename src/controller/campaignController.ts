@@ -86,6 +86,13 @@ import {
 import { buildCreatorRatingEventId, shouldEmitCreatorRatingCompleted } from '@utils/creatorRatingReveal';
 import { clients, getIo } from '../config/socket';
 import { awardXp, onPitchSubmitted, onShortlisted, progressAchievement } from '@/src/modules/gamification';
+import {
+  CampaignCreationDraftLockedError,
+  CampaignCreationDraftConflictError,
+  getCampaignCreationDraftForCampaign,
+  getCampaignCreationDraftUploadPrefix,
+  getLegacyCampaignCreationDraftUploadPrefix,
+} from '@services/campaignCreationDraftService';
 
 Ffmpeg.setFfmpegPath(ffmpegPath.path);
 Ffmpeg.setFfprobePath(ffprobePath.path);
@@ -945,6 +952,8 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
     submissionVersion,
     // Credit tier pricing
     isCreditTier,
+    creationDraftId,
+    creationDraftRevision,
   } = rawData;
 
   const clientManagers = Array.isArray(rawData?.clientManagers) ? rawData.clientManagers : [];
@@ -955,13 +964,33 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
   const isClientCampaign =
     rawData?.isClientCampaign === true ||
     (rawData?.isClientCampaign === undefined && rawData?.submissionVersion === 'v4');
-  const draftUploadPrefix = `https://storage.googleapis.com/${process.env.BUCKET_NAME}/campaign-creation-drafts/${encodeURIComponent(
-    req.userId!,
-  )}/`;
+  const draftUploadPrefixes: string[] = [];
   const isOwnedDraftFileUrl = (value: unknown): value is string =>
-    typeof value === 'string' && value.startsWith(draftUploadPrefix);
+    typeof value === 'string' && draftUploadPrefixes.some((prefix) => value.startsWith(prefix));
 
   try {
+    if (creationDraftId !== undefined && creationDraftId !== null) {
+      if (
+        typeof creationDraftId !== 'string' ||
+        !creationDraftId ||
+        !Number.isInteger(creationDraftRevision) ||
+        creationDraftRevision < 0
+      ) {
+        throw new Error('A valid creationDraftRevision is required with creationDraftId');
+      }
+
+      const draftForCampaign = await getCampaignCreationDraftForCampaign(req.userId!, creationDraftId);
+      if (draftForCampaign.status === 'locked') throw new CampaignCreationDraftLockedError();
+      if (draftForCampaign.status === 'not-found') {
+        throw new Error('Campaign creation draft not found or not owned by the current user');
+      }
+
+      draftUploadPrefixes.push(getCampaignCreationDraftUploadPrefix(req.userId!, creationDraftId));
+      if (draftForCampaign.legacyFileStorage) {
+        draftUploadPrefixes.push(getLegacyCampaignCreationDraftUploadPrefix(req.userId!));
+      }
+    }
+
     const { images } = await uploadCampaignAssets(req.files);
 
     const campaign = await prisma.$transaction(
@@ -1483,6 +1512,33 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
           }
         }
 
+        if (typeof creationDraftId === 'string' && typeof creationDraftRevision === 'number') {
+          await tx.$queryRaw`
+            SELECT "id"
+            FROM "CampaignCreationDraft"
+            WHERE "id" = ${creationDraftId} AND "ownerId" = ${req.userId}
+            FOR UPDATE
+          `;
+          const deletedDraft = await tx.campaignCreationDraft.deleteMany({
+            where: {
+              id: creationDraftId,
+              ownerId: req.userId,
+              revision: creationDraftRevision,
+              filesCleanupPending: false,
+              uploadLeases: {
+                none: {
+                  OR: [{ cleanupPending: true }, { releasedAt: null, expiresAt: { gt: new Date() } }],
+                },
+              },
+            },
+          });
+          if (deletedDraft.count !== 1) {
+            throw new CampaignCreationDraftConflictError();
+          }
+          // Campaign records now own these URLs. The discard cleanup is intentionally
+          // not called here, so successful campaign assets remain available.
+        }
+
         return campaign;
       },
       { timeout: 500000 },
@@ -1492,6 +1548,12 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
 
     return res.status(200).json({ campaign, message: 'Campaign created successfully.' });
   } catch (error) {
+    if (error instanceof CampaignCreationDraftLockedError) {
+      return res.status(409).json({ code: 'DRAFT_LOCKED', message: error.message });
+    }
+    if (error instanceof CampaignCreationDraftConflictError) {
+      return res.status(409).json({ code: 'DRAFT_REVISION_CONFLICT', message: error.message });
+    }
     if (!res.headersSent) {
       return res.status(400).json(error?.message);
     }
