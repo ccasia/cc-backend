@@ -20,10 +20,8 @@ export const buildGcsPublicUrl = (bucketName: string, objectName: string, versio
 
 export const buildUniqueObjectName = (fileName: string): string => `${randomUUID()}_${fileName}`;
 
-export const uploadImage = async (tempFilePath: string, fileName: string, folderName: string) => {
+export const uploadImageToObjectPath = async (tempFilePath: string, destination: string) => {
   const uploadPromise = new Promise<string>((resolve, reject) => {
-    const destination = `${folderName}/${buildUniqueObjectName(fileName)}`;
-
     storage.bucket(process.env.BUCKET_NAME as string).upload(
       tempFilePath,
       {
@@ -61,6 +59,9 @@ export const uploadImage = async (tempFilePath: string, fileName: string, folder
     throw new Error(`Error uploading file: ${err}`);
   }
 };
+
+export const uploadImage = async (tempFilePath: string, fileName: string, folderName: string) =>
+  uploadImageToObjectPath(tempFilePath, `${folderName}/${buildUniqueObjectName(fileName)}`);
 
 export const uploadProfileImage = async (tempFilePath: string, fileName: string, folderName: string) => {
   try {
@@ -432,5 +433,45 @@ export const deleteContent = async ({ fileName, folderName }: any) => {
     console.log(`File ${fileName} deleted from bucket ${bucketName}.`);
   } catch (error) {
     throw new Error(error);
+  }
+};
+
+export const deleteGcsObjectsByPrefix = async (prefix: string, preservePrefixes: string[] = []) => {
+  const bucket = storage.bucket(process.env.BUCKET_NAME as string);
+  const [files] = await bucket.getFiles({ prefix });
+  const filesToDelete = files.filter(
+    (file) => !preservePrefixes.some((preservePrefix) => file.name.startsWith(preservePrefix)),
+  );
+
+  await Promise.all(
+    filesToDelete.map(async (file) => {
+      try {
+        await file.delete();
+      } catch (error) {
+        if ((error as { code?: number })?.code !== 404) throw error;
+      }
+    }),
+  );
+};
+
+export const deleteGcsObjectByPublicUrl = async (publicUrl: string) => {
+  const bucketName = process.env.BUCKET_NAME as string;
+  const parsedUrl = new URL(publicUrl);
+  if (parsedUrl.protocol !== 'https:' || parsedUrl.hostname !== 'storage.googleapis.com') {
+    throw new Error('Invalid GCS public URL');
+  }
+
+  const pathParts = parsedUrl.pathname
+    .split('/')
+    .filter(Boolean)
+    .map((part) => decodeURIComponent(part));
+  if (pathParts[0] !== bucketName || pathParts.length < 2) {
+    throw new Error('GCS public URL does not belong to the configured bucket');
+  }
+
+  try {
+    await storage.bucket(bucketName).file(pathParts.slice(1).join('/')).delete();
+  } catch (error) {
+    if ((error as { code?: number })?.code !== 404) throw error;
   }
 };
