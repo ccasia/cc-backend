@@ -76,7 +76,7 @@ const worker = new Worker(
         data: { status: 'PENDING_REVIEW' },
       });
 
-      return { uploadSessionId, submissionId };
+      return { uploadSessionId, progress: 100, submissionId };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
 
@@ -93,6 +93,10 @@ const worker = new Worker(
   },
   { connection, concurrency: 2 }, // tune based on your Compute Engine instance's CPU
 );
+
+worker.on('ready', () => {
+  console.log('Compression Worker Ready');
+});
 
 worker.on('completed', async (job) => {
   await deleteFile(job.data.rawObjectPath);
