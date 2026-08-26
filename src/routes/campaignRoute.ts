@@ -85,7 +85,20 @@ import {
   cleanupOrphanedGuestUsers,
   getGuestCreatorsForCampaign,
 } from '@controllers/swapCreatorController';
-import { getPCRData, savePCRData } from '@controllers/pcrController';
+import {
+  getPCRData,
+  generatePCRData,
+  savePCRData,
+  saveVersionedPCRData,
+  getPCRDraft,
+  savePCRDraft,
+  deletePCRDraft,
+  flushPCRDraft,
+  getPCRSessionDraft,
+  savePCRSessionDraft,
+  deletePCRSessionDraft,
+  flushPCRSessionDraft,
+} from '@controllers/pcrController';
 import { markPCRAsReady } from '@controllers/campaignController';
 import {
   getEngagementHeatmapController,
@@ -284,9 +297,35 @@ router.get('/:campaignId/trends/summary', authenticate, getTrendsSummaryControll
 router.post('/:campaignId/trends/refresh', authenticate, isSuperAdmin, refreshCampaignInsightsController);
 
 // PCR (Post Campaign Report) endpoints
-router.get('/:campaignId/pcr', authenticate, getPCRData);
-router.post('/:campaignId/pcr', authenticate, savePCRData);
-router.patch('/:id/pcr-ready', authenticate, isAdmin, markPCRAsReady);
+router.get('/:campaignId/pcr', authenticate, checkCampaignAccess, getPCRData);
+router.post('/:campaignId/pcr/generate', authenticate, isAdmin, checkCampaignAccess, generatePCRData);
+router.post('/:campaignId/pcr', authenticate, isAdmin, checkCampaignAccess, savePCRData);
+router.put('/:campaignId/pcr', authenticate, isAdmin, checkCampaignAccess, saveVersionedPCRData);
+router.patch('/:id/pcr-ready', authenticate, isAdmin, checkCampaignAccess, markPCRAsReady);
+
+// PCR autosave draft (Redis-backed) endpoints
+router.get('/:campaignId/pcr/draft', authenticate, isAdmin, checkCampaignAccess, getPCRDraft);
+router.put('/:campaignId/pcr/draft', authenticate, isAdmin, checkCampaignAccess, savePCRDraft);
+router.delete('/:campaignId/pcr/draft', authenticate, isAdmin, checkCampaignAccess, deletePCRDraft);
+router.post('/:campaignId/pcr/flush', authenticate, isAdmin, checkCampaignAccess, flushPCRDraft);
+
+// Session-scoped PCR autosave endpoints
+router.get('/:campaignId/pcr/drafts/:editorSessionId', authenticate, isAdmin, checkCampaignAccess, getPCRSessionDraft);
+router.put('/:campaignId/pcr/drafts/:editorSessionId', authenticate, isAdmin, checkCampaignAccess, savePCRSessionDraft);
+router.delete(
+  '/:campaignId/pcr/drafts/:editorSessionId',
+  authenticate,
+  isAdmin,
+  checkCampaignAccess,
+  deletePCRSessionDraft,
+);
+router.post(
+  '/:campaignId/pcr/drafts/:editorSessionId/flush',
+  authenticate,
+  isAdmin,
+  checkCampaignAccess,
+  flushPCRSessionDraft,
+);
 
 // Manual Creator Entry endpoints (for campaign analytics)
 router.post('/:campaignId/manual-creator', authenticate, isAdmin, createManualCreator);

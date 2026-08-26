@@ -2544,6 +2544,7 @@ model CampaignPCR {
   campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
   content Json // Stores all editable PCR content as JSON
+  revision Int  @default(1)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

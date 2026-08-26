@@ -5,7 +5,9 @@ const prisma = new PrismaClient();
 
 export const checkCampaignAccess = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { campaignId } = req.params;
+    // PCR ready uses the existing `:id` route parameter; all other campaign
+    // routes use `:campaignId`.
+    const campaignId = req.params.campaignId ?? req.params.id;
 
     if (!campaignId) {
       return res.status(400).json({ message: 'Campaign ID is required in the URL or request body.' });
@@ -32,20 +34,20 @@ export const checkCampaignAccess = async (req: Request, res: Response, next: Nex
       return res.status(401).json({ message: 'Authentication error: User not found.' });
     }
 
+    const campaign = await prisma.campaign.findUnique({
+      where: { id: campaignId },
+      select: { companyId: true },
+    });
+
+    if (!campaign) {
+      return res.status(404).json({ message: 'Campaign not found.' });
+    }
+
     if (user.role === 'admin' || user.role === 'superadmin') {
       return next();
     }
 
     if (user.role === 'client') {
-      const campaign = await prisma.campaign.findUnique({
-        where: { id: campaignId },
-        select: { companyId: true },
-      });
-
-      if (!campaign) {
-        return res.status(404).json({ message: 'Campaign not found.' });
-      }
-
       if (campaign.companyId && user.client?.companyId && campaign.companyId === user.client.companyId) {
         return next();
       }
