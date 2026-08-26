@@ -30,6 +30,7 @@
     "@dotenvx/dotenvx": "^1.9.0",
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@ffprobe-installer/ffprobe": "^2.1.2",
+    "@google-cloud/documentai": "^10.0.0",
     "@google-cloud/storage": "^7.11.2",
     "@langchain/core": "^1.1.27",
     "@langchain/google-genai": "^2.1.20",
