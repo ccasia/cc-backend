@@ -31,6 +31,7 @@ import {
 import amqplib from 'amqplib';
 
 import {
+  buildOwnedUrlPrefixes,
   deleteContent,
   uploadAgreementForm,
   uploadAttachments,
@@ -955,11 +956,11 @@ export const createCampaignV2 = async (req: Request, res: Response) => {
   const isClientCampaign =
     rawData?.isClientCampaign === true ||
     (rawData?.isClientCampaign === undefined && rawData?.submissionVersion === 'v4');
-  const draftUploadPrefix = `https://storage.googleapis.com/${process.env.BUCKET_NAME}/campaign-creation-drafts/${encodeURIComponent(
-    req.userId!,
-  )}/`;
+  const draftUploadPrefixes = buildOwnedUrlPrefixes(
+    `campaign-creation-drafts/${encodeURIComponent(req.userId!)}/`,
+  );
   const isOwnedDraftFileUrl = (value: unknown): value is string =>
-    typeof value === 'string' && value.startsWith(draftUploadPrefix);
+    typeof value === 'string' && draftUploadPrefixes.some((prefix) => value.startsWith(prefix));
 
   try {
     const { images } = await uploadCampaignAssets(req.files);
