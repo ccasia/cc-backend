@@ -12,8 +12,42 @@ export const storage = new Storage({
 export const encodeGcsObjectPath = (objectName: string): string =>
   objectName.split('/').map(encodeURIComponent).join('/');
 
+export const MEDIA_BASE_URL = (process.env.MEDIA_BASE_URL || '').replace(/\/+$/, '');
+
+export const parseOwnedObjectPath = (url: string | null | undefined): string | null => {
+  if (!url) return null;
+  try {
+    const parsed = new URL(url);
+    const bucketName = process.env.BUCKET_NAME;
+    if (!bucketName) return null;
+
+    const pathname = decodeURIComponent(parsed.pathname.replace(/^\/+/, ''));
+
+    if (MEDIA_BASE_URL && `${parsed.protocol}//${parsed.host}` === MEDIA_BASE_URL) {
+      return pathname;
+    }
+
+    if (parsed.hostname === 'storage.googleapis.com') {
+      const prefix = `${bucketName}/`;
+      return pathname.startsWith(prefix) ? pathname.slice(prefix.length) : null;
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+};
+
+export const buildOwnedUrlPrefixes = (objectPrefix: string): string[] => [
+  `https://storage.googleapis.com/${process.env.BUCKET_NAME}/${objectPrefix}`,
+  ...(MEDIA_BASE_URL ? [`${MEDIA_BASE_URL}/${objectPrefix}`] : []),
+];
+
 export const buildGcsPublicUrl = (bucketName: string, objectName: string, version?: string): string => {
-  const url = `https://storage.googleapis.com/${bucketName}/${encodeGcsObjectPath(objectName)}`;
+  const encoded = encodeGcsObjectPath(objectName);
+  const url = MEDIA_BASE_URL
+    ? `${MEDIA_BASE_URL}/${encoded}`
+    : `https://storage.googleapis.com/${bucketName}/${encoded}`;
 
   return version ? `${url}?v=${encodeURIComponent(version)}` : url;
 };

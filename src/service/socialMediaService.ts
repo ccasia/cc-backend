@@ -1,4 +1,4 @@
-import { buildGcsPublicUrl, storage } from '@configs/cloudStorage.config';
+import { buildGcsPublicUrl, parseOwnedObjectPath, storage } from '@configs/cloudStorage.config';
 import { encryptToken } from '@helper/encrypt';
 import axios from 'axios';
 import crypto from 'crypto';
@@ -23,9 +23,9 @@ const getUrlExtension = (url?: string): string => {
 
 const isDurableStorageUrl = (url?: string): boolean => {
   if (!url) return false;
-  return (
-    url.includes('storage.googleapis.com') || (process.env.BUCKET_NAME ? url.includes(process.env.BUCKET_NAME) : false)
-  );
+  if (parseOwnedObjectPath(url) !== null) return true;
+
+  return process.env.BUCKET_NAME ? url.includes(process.env.BUCKET_NAME) : false;
 };
 
 const uploadInstagramThumbnailFromUrl = async (sourceUrl: string, destination: string): Promise<string | null> => {

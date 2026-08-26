@@ -2,7 +2,12 @@ import { PrismaClient } from '@prisma/client';
 import { sendMessageInThread } from '@controllers/threadController';
 import { Request, Response } from 'express';
 import { randomUUID } from 'crypto';
-import { storage, uploadAttachments, uploadAttachmentStream } from '@configs/cloudStorage.config';
+import {
+  storage,
+  uploadAttachments,
+  parseOwnedObjectPath,
+  uploadAttachmentStream,
+} from '@configs/cloudStorage.config';
 import { clients, getIo } from '../config/socket';
 import { notificationCSMChat, notificationGroupChat } from '@helper/notification';
 import { saveNotification } from '@controllers/notificationController';
@@ -115,19 +120,8 @@ const messageInclude = {
 };
 
 const parseChatAttachmentPath = (url: string | null | undefined) => {
-  if (!url) return null;
-  try {
-    const parsed = new URL(url);
-    const bucketName = process.env.BUCKET_NAME;
-    if (parsed.hostname !== 'storage.googleapis.com' || !bucketName) return null;
-    const pathname = decodeURIComponent(parsed.pathname.replace(/^\/+/, ''));
-    const prefix = `${bucketName}/`;
-    if (!pathname.startsWith(prefix)) return null;
-    const objectPath = pathname.slice(prefix.length);
-    return objectPath.startsWith('chat-attachments/') ? objectPath : null;
-  } catch {
-    return null;
-  }
+  const objectPath = parseOwnedObjectPath(url);
+  return objectPath?.startsWith('chat-attachments/') ? objectPath : null;
 };
 
 const deleteChatAttachmentIfPresent = async (url: string | null | undefined) => {
