@@ -62,11 +62,8 @@ RUN apk add --no-cache \
     libreoffice \
     ttf-dejavu \
     fontconfig \
+    ffmpeg \
     && rm -rf /var/cache/apk/*
-    
-RUN apt-get update && \
-    apt-get install -y ffmpeg && \
-    rm -rf /var/lib/apt/lists/*
 
 RUN yarn global add pm2
 
