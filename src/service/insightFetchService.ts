@@ -19,6 +19,23 @@ const INITIAL_FETCH_DELAY_MS = 2 * 60 * 60 * 1000; // 2 hours
  */
 const scheduledFetches = new Map<string, NodeJS.Timeout>();
 
+export interface InsightRefreshFailure {
+  platform: 'Instagram' | 'TikTok';
+  postUrl: string;
+  creatorId: string;
+  creatorName: string;
+  creatorEmail: string;
+  code: string;
+  reason: string;
+}
+
+export interface InsightRefreshResult {
+  total: number;
+  succeeded: number;
+  failed: number;
+  failures: InsightRefreshFailure[];
+}
+
 /**
  * Schedule initial insight fetch for newly posted URLs
  * Delays fetch by 2 hours to let post accumulate engagement
@@ -41,8 +58,15 @@ export async function scheduleInitialInsightFetch(campaignId: string, submission
     console.log(`🔍 Running scheduled initial insight fetch for campaign ${campaignId}...`);
 
     try {
-      await fetchAndStoreInsightsForCampaign(campaignId);
-      console.log(`✅ Initial insight fetch complete for campaign ${campaignId}`);
+      const result = await fetchAndStoreInsightsForCampaign(campaignId);
+      if (result.total > 0 && result.failed === result.total) {
+        throw new Error(`Failed to refresh all ${result.total} campaign post snapshots`);
+      }
+      if (result.failed > 0) {
+        console.warn(`⚠️  Initial insight fetch partially completed for campaign ${campaignId}`);
+      } else {
+        console.log(`✅ Initial insight fetch complete for campaign ${campaignId}`);
+      }
     } catch (error: any) {
       console.error(`❌ Initial insight fetch failed for campaign ${campaignId}:`, error.message);
     } finally {
@@ -59,7 +83,7 @@ export async function scheduleInitialInsightFetch(campaignId: string, submission
  *
  * @param campaignId - Campaign ID to fetch insights for
  */
-export async function fetchAndStoreInsightsForCampaign(campaignId: string): Promise<void> {
+export async function fetchAndStoreInsightsForCampaign(campaignId: string): Promise<InsightRefreshResult> {
   console.log(`🔍 Fetching insights for campaign ${campaignId}...`);
 
   try {
@@ -70,8 +94,7 @@ export async function fetchAndStoreInsightsForCampaign(campaignId: string): Prom
     });
 
     if (!campaign) {
-      console.warn(`⚠️  Campaign ${campaignId} not found`);
-      return;
+      throw new Error(`Campaign ${campaignId} not found`);
     }
 
     console.log(`📊 Campaign: ${campaign.name} (${campaign.status})`);
@@ -89,26 +112,24 @@ export async function fetchAndStoreInsightsForCampaign(campaignId: string): Prom
 
     if (instaUrls.length === 0 && tiktokUrls.length === 0) {
       console.log(`   ⚠️  No posting URLs found, skipping...`);
-      return;
+      return { total: 0, succeeded: 0, failed: 0, failures: [] };
     }
 
-    let snapshotFailures = 0;
+    const failures: InsightRefreshFailure[] = [];
 
     // Fetch and store Instagram insights
     if (instaUrls.length > 0) {
-      snapshotFailures += await fetchAndStorePlatformInsights(campaignId, 'Instagram', instaUrls);
+      failures.push(...(await fetchAndStorePlatformInsights(campaignId, 'Instagram', instaUrls)));
     }
 
     // Fetch and store TikTok insights
     if (tiktokUrls.length > 0) {
-      snapshotFailures += await fetchAndStorePlatformInsights(campaignId, 'TikTok', tiktokUrls);
-    }
-
-    if (snapshotFailures > 0) {
-      throw new Error(`Failed to refresh ${snapshotFailures} campaign post snapshots`);
+      failures.push(...(await fetchAndStorePlatformInsights(campaignId, 'TikTok', tiktokUrls)));
     }
 
     console.log(`✅ Insights fetched and stored for campaign ${campaignId}`);
+    const total = instaUrls.length + tiktokUrls.length;
+    return { total, succeeded: total - failures.length, failed: failures.length, failures };
   } catch (error: any) {
     console.error(`❌ Error fetching insights for campaign ${campaignId}:`, error.message);
     throw error;
@@ -122,7 +143,7 @@ async function fetchAndStorePlatformInsights(
   campaignId: string,
   platform: 'Instagram' | 'TikTok',
   urls: any[],
-): Promise<number> {
+): Promise<InsightRefreshFailure[]> {
   console.log(`\n   📦 Fetching ${platform} insights...`);
 
   try {
@@ -150,7 +171,7 @@ async function fetchAndStorePlatformInsights(
 
     if (validResults.length === 0) {
       console.log(`   ⚠️  No valid insights for ${platform}, skipping snapshot...`);
-      return dailySnapshotResult.failed;
+      return buildRefreshFailures(urls, platform, dailySnapshotResult.failures);
     }
 
     // Normalize insights using the helper
@@ -174,7 +195,7 @@ async function fetchAndStorePlatformInsights(
 
     if (normalizedInsights.length === 0 && manualEntriesForPlatform.length === 0) {
       console.log(`⚠️  No insights or manual entries for ${platform}, skipping snapshot...`);
-      return dailySnapshotResult.failed;
+      return buildRefreshFailures(urls, platform, dailySnapshotResult.failures);
     }
 
     // Calculate metrics including manual entries
@@ -184,11 +205,54 @@ async function fetchAndStorePlatformInsights(
     await storeInsightSnapshot(campaignId, metrics, new Date());
 
     console.log(`   💾 Snapshot stored for ${platform}`);
-    return dailySnapshotResult.failed;
+    return buildRefreshFailures(urls, platform, dailySnapshotResult.failures);
   } catch (error: any) {
     console.error(`   ❌ Error processing ${platform} insights:`, error.message);
     throw error;
   }
+}
+
+function buildRefreshFailures(
+  urls: any[],
+  platform: 'Instagram' | 'TikTok',
+  failures: { postUrl: string; reason: string }[],
+): InsightRefreshFailure[] {
+  return failures.map(({ postUrl, reason }) => {
+    const postingUrl = urls.find((url) => url.postUrl === postUrl);
+    const user = postingUrl?.submission?.user;
+
+    return {
+      platform,
+      postUrl,
+      creatorId: user?.id || postingUrl?.submission?.userId || '',
+      creatorName: user?.name || 'Unknown creator',
+      creatorEmail: user?.email || '',
+      code: classifyRefreshFailure(reason),
+      reason,
+    };
+  });
+}
+
+function classifyRefreshFailure(reason: string): string {
+  const normalized = reason.toLowerCase();
+
+  if (
+    normalized.includes('not connected') ||
+    normalized.includes('no instagram account linked') ||
+    normalized.includes('no tiktok account linked')
+  ) {
+    return 'ACCOUNT_NOT_CONNECTED';
+  }
+  if (normalized.includes('access token not found')) return 'ACCESS_TOKEN_MISSING';
+  if (normalized.includes('token refresh failed') || normalized.includes('expired')) return 'TOKEN_EXPIRED';
+  if (normalized.includes('could not find media') || normalized.includes('no video data found')) {
+    return 'POST_NOT_ACCESSIBLE';
+  }
+  if (normalized.includes('no mediaid') || normalized.includes('shortcode')) return 'POST_IDENTIFIER_MISSING';
+  if (normalized.includes('snapshot storage failed')) return 'SNAPSHOT_STORAGE_FAILED';
+  if (normalized.includes('rate limit') || normalized.includes('too many requests')) return 'RATE_LIMITED';
+
+  return 'PLATFORM_API_ERROR';
 }
 
 /**
@@ -243,7 +307,13 @@ export async function fetchInsightsForAllCampaigns(): Promise<{
       stats.processed++;
 
       try {
-        await fetchAndStoreInsightsForCampaign(campaignId);
+        const result = await fetchAndStoreInsightsForCampaign(campaignId);
+        if (result.total > 0 && result.failed === result.total) {
+          throw new Error(`Failed to refresh all ${result.total} campaign post snapshots`);
+        }
+        if (result.failed > 0) {
+          console.warn(`⚠️  Partially refreshed campaign ${campaignId}: ${result.succeeded}/${result.total} posts`);
+        }
         stats.success++;
       } catch (error: any) {
         console.error(`❌ Failed to process campaign ${campaignId}:`, error.message);
