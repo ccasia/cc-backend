@@ -7,7 +7,7 @@ import session from 'express-session';
 import cookieParser from 'cookie-parser';
 
 import fileUpload from 'express-fileupload';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Video } from '@prisma/client';
 
 import '@configs/cronjob';
 import http from 'http';
@@ -416,105 +416,6 @@ io.on('connection', (socket) => {
   });
 });
 
-const bucket = storage.bucket(process.env.BUCKET_NAME as string);
-
-// app.post('/video', async (req: Request, res: Response) => {
-//   const urls: string[] = [];
-
-//   try {
-//     const videos = (req.files as any).rawFootages;
-
-//     if (videos.length) {
-//       for (const video of videos) {
-//         let uploadedBytes = 0;
-//         const { tempFilePath, name, mimetype, size } = video;
-
-//         if (size > 100 * 1024 * 1024) {
-//           return res.status(404).json({ message: 'File size too large' });
-//         }
-
-//         const readStream = fse.createReadStream(tempFilePath);
-
-//         const blob = bucket.file(`videos/${dayjs().format()}-${name}`);
-
-//         const totalBytes = fse.statSync(tempFilePath).size;
-
-//         const blobStream = blob.createWriteStream({
-//           resumable: false,
-//           contentType: mimetype,
-//         });
-
-//         readStream.on('data', (chunk) => {
-//           uploadedBytes += chunk.length;
-//           const percentage = Math.round((uploadedBytes / totalBytes) * 100);
-//           io.emit('uploadProgress', { name: name, percentage });
-//         });
-
-//         await new Promise<void>((resolve, reject) => {
-//           readStream
-//             .pipe(blobStream)
-//             .on('error', (err) => {
-//               console.error('Error uploading to GCS:', err);
-//               reject('Failed to upload file.');
-//             })
-//             .on('finish', async () => {
-//               await blob.makePublic();
-//               const publicUrl = buildGcsPublicUrl(bucket.name, blob.name);
-//               urls.push(publicUrl);
-//               fse.unlinkSync(tempFilePath); // Cleanup temp file
-//               resolve();
-//             });
-//         });
-//       }
-//     } else {
-//       let uploadedBytes = 0;
-//       const { tempFilePath, name, mimetype, size } = videos;
-
-//       if (size > 1 * 1024 * 1024 * 1024) {
-//         return res.status(404).json({ message: 'File size too large' });
-//       }
-
-//       const readStream = fse.createReadStream(tempFilePath);
-
-//       const blob = bucket.file(`videos/${dayjs().format()}-${name}`);
-
-//       const totalBytes = fse.statSync(tempFilePath).size;
-
-//       const blobStream = blob.createWriteStream({
-//         resumable: false,
-//         contentType: mimetype,
-//       });
-
-//       readStream.on('data', (chunk) => {
-//         uploadedBytes += chunk.length;
-//         const percentage = Math.round((uploadedBytes / totalBytes) * 100);
-
-//         io.emit('uploadProgress', { name: name, percentage });
-//       });
-
-//       await new Promise<void>((resolve, reject) => {
-//         readStream
-//           .pipe(blobStream)
-//           .on('error', (err) => {
-//             console.error('Error uploading to GCS:', err);
-//             reject('Failed to upload file.');
-//           })
-//           .on('finish', async () => {
-//             await blob.makePublic();
-//             const publicUrl = buildGcsPublicUrl(bucket.name, blob.name);
-//             urls.push(publicUrl);
-//             fse.unlinkSync(tempFilePath); // Cleanup temp file
-//             resolve();
-//           });
-//       });
-//     }
-
-//     return res.status(200).send({ message: 'File uploaded successfully.', url: urls });
-//   } catch (error) {
-//     return res.status(400).json(error);
-//   }
-// });
-
 app.post('/video', (req: Request, res: Response) => {
   try {
     const video = req.files;
@@ -528,22 +429,30 @@ app.post('/video', (req: Request, res: Response) => {
 const queueEvents = new QueueEvents('compression-queue', { connection: connection });
 
 queueEvents.on('progress', ({ data }) => {
-  const { submissionId, progress, uploadSessionId } = data as {
+  const { submissionId, progress, uploadSessionId, etaSeconds } = data as {
     submissionId: string;
     progress: number;
     uploadSessionId: string;
+    etaSeconds: number;
   };
 
-  io.to(`upload:${uploadSessionId}`).emit('compression:progress', { submissionId, progress, uploadSessionId });
+  // getIo()
+  //   .to(`upload:${uploadSessionId}`)
+  //   .emit('compression:progress', { submissionId, progress, uploadSessionId, etaSeconds });
+
+  getIo().emit('compression:progress', { submissionId, progress, uploadSessionId, etaSeconds });
 });
 
 queueEvents.on('completed', ({ returnvalue }) => {
-  const { submissionId, uploadSessionId } = returnvalue as unknown as {
+  const { submissionId, uploadSessionId, video } = returnvalue as unknown as {
     submissionId: string;
     uploadSessionId: string;
+    video: Video;
   };
 
-  getIo().to(`upload:${uploadSessionId}`).emit('status', { status: 'completed', submissionId });
+  // getIo().to(`upload:${uploadSessionId}`).emit('status', { status: 'completed', submissionId, progress: 100, video });
+
+  getIo().emit('status', { submissionId, progress: 100, video });
 });
 
 if (require.main === module) {

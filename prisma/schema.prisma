@@ -1502,7 +1502,9 @@ model Video {
 
   feedbackRecords    Feedback[]
   submissionComments SubmissionComment[]
-  uploadSession      UploadSession?
+
+  uploadSessionId String? @unique
+  uploadSession   UploadSession? @relation(fields: [uploadSessionId], references: [id])
 }
 
 model RawFootage {
@@ -2690,9 +2692,9 @@ model UploadSession {
   submissionId String?
   submission   Submission? @relation(fields: [submissionId], references: [id])
 
-  // Link to final Video once compression completes
-  videoId String? @unique
-  video   Video?  @relation(fields: [videoId], references: [id])
+  // // Link to final Video once compression completes
+  // videoId String? @unique
+  // video   Video?  @relation(fields: [videoId], references: [id])
 
   // Lifecycle
   expiresAt    DateTime
@@ -2701,6 +2703,7 @@ model UploadSession {
   completedAt  DateTime?
   failedAt     DateTime?
   errorMessage String?
+  video        Video?
 
   @@index([userId, status])
   @@index([status, expiresAt])

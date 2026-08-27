@@ -101,8 +101,6 @@ export const getMyV4Submissions = async (req: Request<{}, {}, {}, { campaignId: 
       if (s.submissionType.type === 'RAW_FOOTAGE' && s.status === 'CLIENT_APPROVED') return true;
     }).length;
 
-    console.log(submissionsWithFilteredFeedback);
-
     const progress = totalSubmissions > 0 ? (completedSubmissions / totalSubmissions) * 100 : 0;
 
     res.status(200).json({
@@ -131,10 +129,6 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
   const creatorId = req.userId;
 
   try {
-    if (!creatorId) {
-      return res.status(401).json({ message: 'You are not logged in' });
-    }
-
     // Parse JSON data from form data
     let isSelectiveUpdate = false;
     let caption = '';
@@ -200,6 +194,7 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
 
     // Check if submission is in a state that allows content updates
     const allowedStatuses = ['IN_PROGRESS', 'CHANGES_REQUIRED', 'REJECTED', 'NOT_STARTED', 'CLIENT_FEEDBACK'];
+
     if (!allowedStatuses.includes(submission.status)) {
       return res.status(400).json({
         message: `Cannot submit content. Current status: ${submission.status}`,
@@ -217,22 +212,8 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
         ? [files.rawFootages]
         : [];
 
-    // Debug logs for incoming files
-    console.log('V4 submit-content incoming payload:', {
-      fileKeys: files ? Object.keys(files) : [],
-      videosCount: uploadedVideos.length,
-      photosCount: uploadedPhotos.length,
-      rawFootagesCount: uploadedRawFootages.length,
-      submissionType: submission.submissionType.type,
-      existingVideos: submission.video?.length || 0,
-      existingPhotos: submission.photos?.length || 0,
-      existingRawFootages: submission.rawFootages?.length || 0,
-      submissionStatus: submission.status,
-      isSelectiveUpdate,
-      keepExistingPhotosCount: keepExistingPhotos.length,
-    });
-
     const hasUploadedFiles = uploadedVideos.length > 0 || uploadedPhotos.length > 0 || uploadedRawFootages.length > 0;
+
     const existingMediaCount =
       (submission.video?.length || 0) + (submission.photos?.length || 0) + (submission.rawFootages?.length || 0);
 
@@ -265,11 +246,6 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
 
     // V4 Photo Additive System: Never delete existing photos, only add new ones
     const isResubmission = ['CHANGES_REQUIRED', 'REJECTED'].includes(submission.status);
-
-    if (isResubmission) {
-      // In V4, we can now both remove existing photos and add new ones
-      // This creates a flexible system where creators can manage their photo collection
-    }
 
     // Handle raw footage replacement for V4 resubmissions
     if (isResubmission) {
@@ -376,14 +352,6 @@ export const submitMyV4Content = async (req: Request, res: Response) => {
       hasRawFootageRemoval || // raw footages removed
       (isResubmission && isSelectiveUpdate && keepExistingPhotos.length !== (submission.photos?.length || 0)) ||
       (caption && caption.trim() !== (submission.caption || '').trim());
-
-    console.log('🔍 Checking for meaningful changes:', {
-      hasUploadedFiles,
-      photosToRemove: photosToRemove.length,
-      hasRawFootageRemoval,
-      hasCaptionChange: caption && caption.trim() !== (submission.caption || '').trim(),
-      hasMeaningfulChanges,
-    });
 
     // Determine if async processing (worker) is needed
     const hasAsyncProcessing = uploadedVideos.length > 0 || uploadedPhotos.length > 0 || uploadedRawFootages.length > 0;
